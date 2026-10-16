@@ -182,6 +182,22 @@ def is_transient(e):
     return c is not None and (c in TRANSIENT or c in (-418, -429) or -599 <= c <= -500 or -1599 <= c <= -1500)
 
 
+AUDIT_TIMEOUT_S = 3.0         # EXEC-CAL-00 audit read: per-request timeout, well below the 10 s enrichment cap
+AUDIT_COOL_S = 60.0           # EXEC-CAL-00: shared audit-read pause after a 418 / 429 (or longer, per Retry-After)
+AUDIT_RATE_CODES = (-1003, -1015)                           # too many requests / orders
+
+
+class AuditSkipped(BinanceError):
+    """EXEC-CAL-00: an audit read was not sent (T05b outage or the audit cooldown). Nothing went to the network."""
+    audit_stop, reason = True, 'cooldown'
+    def __init__(self, msg): super().__init__(-1007, msg)
+
+
+class AuditRateLimited(BinanceError):
+    """EXEC-CAL-00: an audit read was answered 418 / 429: that job stops and every audit read pauses (shared cooldown)."""
+    audit_stop, reason = True, 'rate_limit'
+
+
 def new_cid(prefix='zb'):
     return f'{prefix}{uuid.uuid4().hex[:22]}'
 
@@ -222,12 +238,17 @@ def _bool_field(row, key, default=_MISSING):
 class Futures:
     def __init__(self, key='', secret='', base=TESTNET, recv_window=6000):
         self.key, self.secret, self.base, self.rw = key, (secret or '').encode(), base, recv_window
-        self.s = requests.Session()
-        if key: self.s.headers['X-MBX-APIKEY'] = key
+        self.s = self._new_session()
         self.offset = 0
         self.last_ok = 0.0
         try: self.sync_time()
         except Exception: pass
+
+    def _new_session(self):
+        """The one constructor + auth path of every HTTP session of this client (trading and EXEC-CAL-00 audit reads)."""
+        s = requests.Session()
+        if self.key: s.headers['X-MBX-APIKEY'] = self.key
+        return s
 
     @property
     def health(self):
@@ -240,14 +261,14 @@ class Futures:
         st = self.s.get(self.base + '/fapi/v1/time', timeout=10).json()['serverTime']
         self.offset = st - int(time.time() * 1000)
 
-    def _once(self, method, url, params, signed):
+    def _once(self, method, url, params, signed, sess=None, timeout=15):
         p = dict(params)
         if signed:                                   # re-signed on every attempt (fresh timestamp)
             p['timestamp'] = int(time.time() * 1000) + self.offset
             p['recvWindow'] = self.rw
             q = urllib.parse.urlencode(p)
             p['signature'] = hmac.new(self.secret, q.encode(), hashlib.sha256).hexdigest()
-        r = self.s.request(method, url, params=p, timeout=15)
+        r = (sess or self.s).request(method, url, params=p, timeout=timeout)
         try:
             data = r.json() if r.content else {}
         except ValueError:
@@ -319,6 +340,66 @@ class Futures:
                              critical=True)      # T05b: an order's own confirmation is never skipped by the circuit
         except BinanceError as e:
             if e.code == -2013: return None             # order does not exist
+            raise
+
+    # ---- EXEC-CAL-00 audit reads (observe only) -----------------------------------------------------------------------
+    # A path of their own, separate from _req: own requests.Session (same constructor / auth as trading, built lazily on
+    # the enrichment worker), one attempt, a short timeout, and they NEVER call health.ok() / fail() or touch any circuit
+    # telemetry (state, counters, last_ok). They obey the T05b outage (no read while it is open) and a shared audit
+    # cooldown that a 418 / 429 / Retry-After sets, so one rate limit pauses every pending enrichment.
+    def _audit_state(self):
+        st = self.__dict__.get('_audit')
+        if st is None: st = self.__dict__.setdefault('_audit', dict(lock=threading.Lock(), s=None, until=0.0))
+        return st
+
+    def _audit_session(self):
+        st = self._audit_state()
+        with st['lock']:
+            if st['s'] is None: st['s'] = self._new_session()
+            return st['s']
+
+    def audit_blocked(self):
+        """None when an audit read may be sent; else why not ('cooldown': a T05b outage or the audit cooldown is active).
+        A peek only: it never counts a fail-fast or moves the outage probe."""
+        if self.health.state == 'outage': return 'cooldown'
+        st = self._audit_state()
+        with st['lock']:
+            return 'cooldown' if time.monotonic() < st['until'] else None
+
+    def _audit_cool(self, seconds):
+        st = self._audit_state()
+        with st['lock']: st['until'] = max(st['until'], time.monotonic() + max(0.0, float(seconds or 0)))
+
+    def _audit_req(self, path, params):
+        if self.audit_blocked():
+            raise AuditSkipped(f'audit read {path} not sent (cooldown)')
+        try:
+            r, data = self._once('GET', self.base + path, params, True, sess=self._audit_session(), timeout=AUDIT_TIMEOUT_S)
+        except requests.RequestException as ex:
+            raise _scrubbed(ex) from None
+        code = data.get('code') if isinstance(data, dict) else None
+        ra = retry_after(getattr(r, 'headers', None))
+        if r.status_code in (418, 429) or code in AUDIT_RATE_CODES:
+            self._audit_cool(max(AUDIT_COOL_S, ra))
+            raise AuditRateLimited(-r.status_code if r.status_code in (418, 429) else code,
+                                   data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
+        if ra: self._audit_cool(ra)                     # any other Retry-After is honoured too
+        if r.status_code >= 500 or code in TRANSIENT:
+            raise BinanceError(code if isinstance(code, int) and code in TRANSIENT else -r.status_code, f'HTTP {r.status_code}')
+        if isinstance(data, dict) and code not in (None, 0, 200):
+            raise BinanceError(code, data.get('msg'))
+        return data
+
+    def user_trades(self, symbol, order_id):
+        """EXEC-CAL-00 (read-only audit path): this account's executions of ONE order (price, qty, commission,
+        commissionAsset rows). One attempt; the caller bounds its own retries. Never drives the T05b circuit."""
+        return self._audit_req('/fapi/v1/userTrades', dict(symbol=symbol, orderId=order_id))
+
+    def audit_order(self, symbol, cid):
+        """EXEC-CAL-00: an order's own record by client id on the audit path (None = not found)."""
+        try: return self._audit_req('/fapi/v1/order', dict(symbol=symbol, origClientOrderId=cid))
+        except BinanceError as e:
+            if e.code == -2013: return None
             raise
 
     def _order(self, params):

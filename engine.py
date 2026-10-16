@@ -14,6 +14,7 @@ import strategies as S
 import trade_audit as TA
 import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
+from binance_client import AuditSkipped
 from ai_filter import review
 import grid as GRID
 import tradfi_universe as TU, tradfi_session as TS
@@ -204,6 +205,305 @@ def close_fill_writers(timeout=2.0):
 
 
 atexit.register(close_fill_writers, 2.0)
+
+
+# ---- EXEC-CAL-00: fill-audit enrichment (observe only, PAPER/testnet) ---------------------------------------------------
+# A fill record whose order answer has no average price (or, always, no commission) is handed to ONE process-wide worker
+# with the order's ids held in memory only. The worker reads the order's own record / its userTrades (bounded retries,
+# wall-clock cap), folds price + commission into the record and writes it once through the fill writer. The order path
+# only does a non-blocking hand-off: enrichment never sends, retries, cancels or resizes an order, never touches a lot,
+# and what it cannot resolve stays explicitly missing (enrich_status), never a synthetic price or an assumed fee.
+ENRICH_ATTEMPTS = 3               # read rounds per fill, at most
+ENRICH_BACKOFF_S = (0.5, 1.5)     # wait before round 2 / 3 (trades not visible yet, 429 / 5xx / timeout)
+ENRICH_CAP_S = 10.0               # from hand-off: no round starts after it (an in-flight read keeps its client timeout)
+ENRICH_QUEUE_MAX = 200            # pending fills; beyond this the record is written at once, missingness explicit
+ENRICH_SEEN_MAX = 2000            # order keys remembered (memory only) so a duplicate hand-off is never recorded twice
+ENRICH_STATUSES = ('resolved', 'partial', 'missing', 'timeout')
+_MAKER_FILL_KINDS = ('entry_maker',)
+
+
+def _fnum(v):
+    if isinstance(v, bool): return None
+    try: x = float(v)
+    except (TypeError, ValueError): return None
+    return x if math.isfinite(x) else None
+
+
+def _quote_asset(sym):
+    """The quote currency a commission must be charged in to be normalised to a rate (None = unknown -> stays missing)."""
+    for q in ('USDT', 'USDC'):
+        if isinstance(sym, str) and sym.endswith(q) and len(sym) > len(q): return q
+    return None
+
+
+def _bps(act, ref, sign):
+    """(act - ref) / ref in bps times sign; None unless both prices are real (> 0) - missing is never 0."""
+    act, ref = _fnum(act), _fnum(ref)
+    if not act or not ref or act <= 0 or ref <= 0: return None
+    return round((act - ref) / ref * 1e4 * sign, 2) + 0.0
+
+
+def fill_px_fields(rec, lim=None):
+    """Pure: the derived price fields of a fill record from its `actual` (in place). decision_slippage_bps = actual vs the
+    decision price (signal_px, else expected), adverse = positive. limit_improvement_bps (maker kinds only, diagnostic,
+    never netted against cost) = actual vs the limit it rested at, better than the limit = positive."""
+    sgn = 1 if rec.get('buy') else -1
+    act = rec.get('actual')
+    rec['slip_bps'] = _bps(act, rec.get('expected'), sgn)
+    ref = rec.get('signal_px') if (_fnum(rec.get('signal_px')) or 0) > 0 else rec.get('expected')
+    for k, v in (('decision_slippage_bps', _bps(act, ref, sgn)),
+                 ('limit_improvement_bps', _bps(act, lim, -sgn) if rec.get('kind') in _MAKER_FILL_KINDS else None)):
+        if v is None: rec.pop(k, None)
+        else: rec[k] = v
+    return rec
+
+
+def fill_px_unknown(rec):
+    """EXEC-CAL-00: the record's price is not an exchange-reported execution price (e.g. a maker fill answered without
+    avgPrice, booked at its limit): `actual` and every bps field derived from it are cleared (in place) until the
+    audit reads resolve them. Booking is untouched - this only changes what the audit record claims."""
+    rec['actual'] = None
+    return fill_px_fields(rec)
+
+
+def _px_known(refs):
+    return all((_fnum(r.get('opx')) or 0) > 0 for r in refs)
+
+
+def _ref_limit(refs):
+    if not refs or not all(_fnum(r.get('lpx')) for r in refs): return None
+    q = sum(r['exec'] for r in refs)
+    return sum(r['lpx'] * r['exec'] for r in refs) / q if q > 0 else None
+
+
+def _covered(r):
+    tq, ex = r.get('tq'), r.get('exec') or 0
+    return tq is not None and tq + 1e-12 >= ex * (1 - 1e-6)
+
+
+def enrich_attempt(rec, refs, client):
+    """One read round for every order of the fill not complete yet (memory-only refs: oid / cid / exec / opx / lpx).
+    Read-only: the order's own record (only when its exchange id is not known) and its userTrades. Returns True when
+    another round may help (a transient failure, or trades not visible / not complete yet), False when done. Each round
+    re-reads the full trade list of an order (deduplicated by trade id), so a repeated row is never counted twice."""
+    sym, again = rec.get('symbol'), False
+    blocked = getattr(client, 'audit_blocked', None)
+    for r in refs:
+        if r.get('done'): continue
+        try:
+            why = blocked() if blocked else None
+            if why: raise AuditSkipped(f'audit read not sent ({why})')
+            if r.get('oid') is None:
+                g = getattr(client, 'audit_order', None) or getattr(client, 'get_order', None)
+                if not (g and r.get('cid')): r['done'] = True; continue                  # nothing to correlate with
+                o = g(sym, r['cid'])
+                if not o: again = True; continue                                         # not visible yet
+                r['oid'] = o.get('orderId')
+                if not r.get('opx'): r['opx'] = Engine._fill_px(o)
+                if r['oid'] is None: r['done'] = True; continue
+            rows = client.user_trades(sym, r['oid'])
+        except Exception as e:
+            if getattr(e, 'audit_stop', False):                                          # cooldown / 418 / 429: stop the job
+                for x in refs: x['done'] = True
+                rec['enrich_reason'] = getattr(e, 'reason', 'cooldown')
+                return False
+            if isinstance(e, BinanceError) and not is_transient(e): r['done'] = True      # a definitive refusal: no retry
+            else: again = True                                                           # 429 / 5xx / timeout / outage
+            continue
+        got = {}
+        for t in rows if isinstance(rows, list) else ():
+            if not isinstance(t, dict) or str(t.get('orderId')) != str(r['oid']) or t.get('symbol', sym) != sym: continue
+            q, p = _fnum(t.get('qty')), _fnum(t.get('price'))
+            if not q or q <= 0 or not p or p <= 0 or t.get('id') is None: continue        # an id-less row is never counted
+            got[str(t['id'])] = (q, p, _fnum(t.get('commission')), t.get('commissionAsset'))
+        if not got: again = True; continue                                                # not visible yet
+        r['tq'] = sum(v[0] for v in got.values()); r['tn'] = sum(v[0] * v[1] for v in got.values())
+        r['comm'] = sum(v[2] for v in got.values()) if all(v[2] is not None for v in got.values()) else None
+        r['rebate'] = any(v[2] is not None and v[2] < 0 for v in got.values())           # a maker rebate (negative fee)
+        r['assets'] = {v[3] if isinstance(v[3], str) else None for v in got.values()}
+        if _covered(r): r['done'] = True
+        else: again = True                                                                # more executions to show
+    return again
+
+
+def enrich_finish(rec, refs, cut=False):
+    """Pure: fold what the reads found into the record (in place) and set enrich_status. The price comes only from
+    complete evidence: every order's trades cover its executed quantity (qty-weighted over all of them), else every order's
+    own reported average; otherwise the record keeps the price it was built with (or none). The commission becomes a rate
+    only when every trade is charged in the symbol's quote asset; otherwise commission_rate / commission_asset stay absent.
+    A rebate (any negative commission) is flagged commission_rebate and leaves commission_rate / fee_rate absent.
+    cut: the cap (or a shutdown) ended the reads - 'timeout' instead of 'missing' when nothing was found."""
+    refs = refs or []
+    full = bool(refs) and all(_covered(r) for r in refs)
+    px = None
+    if full:
+        tq, tn = sum(r['tq'] for r in refs), sum(r['tn'] for r in refs)
+        px = tn / tq if tq > 0 else None
+    elif refs and all(_fnum(r.get('opx')) for r in refs):
+        q = sum(r['exec'] for r in refs)
+        px = sum(r['opx'] * r['exec'] for r in refs) / q if q > 0 else None
+    if px: rec['actual'] = round(px, 10) + 0.0
+    fill_px_fields(rec, _ref_limit(refs))
+    rate, quote = None, _quote_asset(rec.get('symbol'))
+    if full and quote and all(r.get('comm') is not None and r.get('assets') == {quote} for r in refs):
+        tn = sum(r['tn'] for r in refs)
+        if tn > 0: rate = sum(r['comm'] for r in refs) / tn
+    for k in ('commission_rate', 'fee_rate', 'commission_asset', 'commission_rebate'): rec.pop(k, None)
+    if rate is not None and (rate < 0 or any(r.get('rebate') for r in refs)):
+        rec['commission_rebate'], rec['commission_asset'], rate = True, quote, None   # never a negative fee_rate
+    if rate is not None:
+        rec['commission_rate'] = rec['fee_rate'] = round(rate, 8) + 0.0     # fee_rate: the field EXEC-CAL-01 reads
+        rec['commission_asset'] = quote
+    has_px = bool(_fnum(rec.get('actual')))
+    rec['enrich_status'] = ('resolved' if has_px and rate is not None else 'partial' if has_px or rate is not None
+                            else 'timeout' if cut else 'missing')
+    return rec
+
+
+class FillEnricher:
+    """EXEC-CAL-00: the ONE enrichment worker of this process (lazy thread, like FillWriter). submit() is the only call an
+    order path makes: a non-blocking hand-off under a lock (no I/O). Each job is in exactly one place - the queue or the
+    worker's hands - and is written exactly once (by the worker, or by close() for what is still queued), so a duplicate
+    hand-off, an engine replaced by a settings restart or a shutdown mid-enrichment never records a fill twice.
+    Shutdown writes EVERY pending job at once (queued and in flight, as cut short) before the fill writers close; a read
+    still in flight then finishes into nothing (its job is already claimed). Ids are marked seen and a job is queued only
+    once the worker thread is confirmed running; if it cannot start, the caller writes the record now, once.
+    Limitation: the seen-set is memory only (ids are never persisted), so a replay of the same fill after a process
+    restart can write a second record for that order."""
+
+    def __init__(self):
+        self.cv = threading.Condition()
+        self.jobs, self.busy, self.closing, self.thread = [], 0, False, None
+        self.inflight = []                                  # the job the worker is reading right now (at most one)
+        self.seen = collections.OrderedDict()              # memory only: (symbol, 'o'|'c', id) of orders handed off
+        self.ctr = dict(submitted=0, duplicates=0, refused=0, start_failed=0, dropped_late=0,
+                        **{s: 0 for s in ENRICH_STATUSES})
+
+    @staticmethod
+    def _keys(rec, refs):
+        sym = rec.get('symbol')                             # both ids when known: a re-hand-off by either one is a duplicate
+        return [k for r in refs for k in ((sym, 'o', str(r['oid'])) if r.get('oid') is not None else None,
+                                          (sym, 'c', str(r['cid'])) if r.get('cid') else None) if k]
+
+    def submit(self, rec, refs, client, writer):
+        """'queued' | 'duplicate' (this order was already handed off: dropped) | 'refused' (closing / full: the caller
+        writes the record now)."""
+        keys = self._keys(rec, refs)
+        with self.cv:
+            if self.closing: self.ctr['refused'] += 1; return 'refused'
+            if any(k in self.seen for k in keys): self.ctr['duplicates'] += 1; return 'duplicate'
+            if len(self.jobs) + self.busy >= ENRICH_QUEUE_MAX: self.ctr['refused'] += 1; return 'refused'
+            if self.thread is None or not self.thread.is_alive():
+                try:
+                    t = threading.Thread(target=self._run, name='fill-enrich', daemon=True); t.start()
+                except Exception:                           # no worker: nothing queued, nothing seen - the caller writes now
+                    self.ctr['start_failed'] += 1; self.ctr['refused'] += 1; return 'refused'
+                self.thread = t
+            for k in keys: self.seen[k] = True
+            while len(self.seen) > ENRICH_SEEN_MAX: self.seen.popitem(last=False)
+            now = _mono()
+            self.jobs.append(dict(rec=copy.deepcopy(rec), refs=[dict(r) for r in refs], client=client, writer=writer,
+                                  rec0=copy.deepcopy(rec), refs0=[dict(r) for r in refs],
+                                  deadline=now + ENRICH_CAP_S, next_at=now, n=0, written=False))
+            self.ctr['submitted'] += 1
+            self.cv.notify_all()
+        return 'queued'
+
+    def _run(self):
+        while True:
+            with self.cv:
+                while True:
+                    if self.closing: return
+                    if self.jobs:
+                        j = min(self.jobs, key=lambda x: x['next_at'])
+                        wait = j['next_at'] - _mono()
+                        if wait <= 0: break
+                    else:
+                        wait = 0.5
+                    self.cv.wait(min(0.5, wait))
+                self.jobs.remove(j); self.busy += 1; self.inflight.append(j)
+            try:
+                self._step(j)
+            except Exception as e:
+                log.debug(f'fill enrichment step failed ({type(e).__name__})')
+            finally:
+                with self.cv:
+                    self.busy -= 1
+                    if j in self.inflight: self.inflight.remove(j)
+                    self.cv.notify_all()
+
+    def _step(self, j):
+        if _mono() >= j['deadline']: return self._finish(j, cut=True)
+        j['n'] += 1
+        try: again = enrich_attempt(j['rec'], j['refs'], j['client'])
+        except Exception: again = True
+        if not again or j['n'] >= ENRICH_ATTEMPTS: return self._finish(j, cut=False)
+        nxt = _mono() + ENRICH_BACKOFF_S[min(j['n'] - 1, len(ENRICH_BACKOFF_S) - 1)]
+        if nxt >= j['deadline']: return self._finish(j, cut=True)
+        with self.cv:
+            if not self.closing:
+                j['next_at'] = nxt; self.jobs.append(j); self.cv.notify_all(); return
+        self._finish(j, cut=True)
+
+    def _finish(self, j, cut, snapshot=False):
+        """Write the job's record exactly once: the first caller claims it (under the lock); a later one is dropped.
+        snapshot (shutdown with a read in flight): the worker may still be mutating rec/refs, so the pristine copies taken
+        at hand-off are written instead, as cut short."""
+        with self.cv:
+            if j.get('written'): self.ctr['dropped_late'] += 1; return
+            j['written'] = True
+            rec, refs = (copy.deepcopy(j['rec0']), [dict(r) for r in j['refs0']]) if snapshot else (j['rec'], j['refs'])
+        n = j['n']
+        try: enrich_finish(rec, refs, cut)
+        except Exception: rec['enrich_status'] = 'timeout' if cut else 'missing'
+        rec['enrich_attempts'] = n
+        with self.cv: self.ctr[rec['enrich_status']] = self.ctr.get(rec['enrich_status'], 0) + 1
+        try: j['writer'].emit(rec)
+        except Exception: pass
+
+    def flush(self, timeout=2.0):
+        """Wait (bounded) until every handed-off fill is written to its writer's queue. Never call from an order path."""
+        end = _mono() + timeout
+        with self.cv:
+            while (self.jobs or self.busy) and _mono() < end: self.cv.wait(min(0.05, max(0.0, end - _mono())))
+            return not (self.jobs or self.busy)
+
+    def close(self, timeout=2.0):
+        """Stop accepting and write EVERY pending record now, once, as cut short: the queued ones and the one whose read
+        is still in flight (from its hand-off snapshot) - all before close_fill_writers runs. The in-flight read's later
+        result is dropped. Then the worker is waited for (bounded). True when no worker thread remains."""
+        end = _mono() + timeout
+        with self.cv:
+            self.closing = True; left, self.jobs = self.jobs, []; busy = list(self.inflight); self.cv.notify_all()
+        for j in left: self._finish(j, cut=True)
+        for j in busy: self._finish(j, cut=True, snapshot=True)
+        with self.cv:
+            while self.busy and _mono() < end: self.cv.wait(min(0.05, max(0.0, end - _mono())))
+        if self.thread is not None: self.thread.join(max(0.0, end - _mono()) + 0.3)
+        return not (self.thread is not None and self.thread.is_alive())
+
+    def summary(self):
+        with self.cv: return dict(self.ctr, queued=len(self.jobs), busy=self.busy, closing=self.closing)
+
+
+_ENRICHER, _ENRICHER_LOCK = None, threading.Lock()
+
+
+def fill_enricher():
+    """The process-wide enrichment worker (a new one only when none exists or the old one was closed)."""
+    global _ENRICHER
+    with _ENRICHER_LOCK:
+        if _ENRICHER is None or _ENRICHER.closing: _ENRICHER = FillEnricher()
+        return _ENRICHER
+
+
+def close_fill_enricher(timeout=2.0):
+    with _ENRICHER_LOCK: en = _ENRICHER
+    return True if en is None else en.close(timeout)
+
+
+atexit.register(close_fill_enricher, 1.0)      # registered after close_fill_writers: runs FIRST at exit (LIFO), so cut-
+#                                                short records still reach the fill writer before it closes
 
 LEV_REFUSAL_COOLDOWN_S = 1800     # T03c: after Binance refuses a leverage change, no new change request for this coin for 30 min
 LEV_MARGIN_RATIO_MAX = 0.5        # T03c: worst-case account margin ratio (every stop filled) allowed for an above-cap entry
@@ -1335,6 +1635,8 @@ class Engine:
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
         self._fillw = fill_writer(self.F['fills'])   # T05: process-wide telemetry writer for this file (lazy thread)
+        self._enr = fill_enricher()               # EXEC-CAL-00: process-wide fill-audit enrichment worker (lazy thread)
+        self._mk_refs = {}                        # EXEC-CAL-00: resting maker entry -> its filled orders (memory only, ids never saved)
         self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
@@ -2273,24 +2575,58 @@ class Engine:
                        expected=exp, actual=act, slip_bps=slip, qty_req=q_req, qty_fill=qf, outcome=outcome,
                        wait_s=round(max(0.0, time.time() - t0), 2) if t0 else None)
             rec.update({k: v for k, v in extra.items() if v is not None})
-            return rec
+            return fill_px_fields(rec)                                  # EXEC-CAL-00: + decision_slippage_bps
         except Exception as e:
             log.warning(f'fill telemetry record not built ({e})'); return None
 
-    def _fill_emit(self, rec):
-        """Hand a finished record to the writer without ever waiting (a full queue or a closing writer drops it, counted)."""
+    def _enrich_on(self):
+        """EXEC-CAL-00: enrichment reads run only for the PAPER/testnet client, and only when it declares user_trades."""
+        return not self.live and not self.dry and callable(getattr(self.trade, 'user_trades', None))
+
+    @staticmethod
+    def _order_ref(o, exec_qty=None, limit=None, cid=None):
+        """EXEC-CAL-00: memory-only correlation of one executed order (its ids are NEVER written to any file), its
+        executed quantity, its own reported average (opx) and, for a resting maker order, its limit (lpx)."""
+        o = o if isinstance(o, dict) else {}
+        ex = _fnum(o.get('executedQty') if exec_qty is None else exec_qty)
+        if not ex or ex <= 0: return None
+        return dict(oid=o.get('orderId'), cid=o.get('clientOrderId') or cid, exec=ex, opx=Engine._fill_px(o), lpx=_fnum(limit))
+
+    def _fill_emit(self, rec, refs=None):
+        """Hand a finished record to the writer without ever waiting (a full queue or a closing writer drops it, counted).
+        EXEC-CAL-00: with refs (the executed orders behind it) on the PAPER/testnet client, a filled record goes to the
+        enrichment worker instead (non-blocking; it writes the record once, enriched or explicitly missing). A record
+        that cannot be handed off is written now with its missingness explicit. The caller's dict is never changed."""
         if not rec: return
+        try:
+            if refs is not None and rec.get('outcome') in ('filled', 'partial'):
+                refs = [r for r in refs if r]
+                if rec.get('actual') is not None and not (refs and _px_known(refs)):
+                    rec = fill_px_unknown(dict(rec))                    # no exchange price: never the limit as `actual`
+                lim = _ref_limit(refs)
+                if self._enrich_on():
+                    if refs and all(r.get('oid') is not None or r.get('cid') for r in refs):
+                        if self._enr.submit(rec, refs, self.trade, self._fillw) in ('queued', 'duplicate'): return
+                    rec = enrich_finish(copy.deepcopy(rec), refs); rec['enrich_attempts'] = 0
+                elif lim:
+                    rec = fill_px_fields(dict(rec), lim)                # maker limit improvement, no reads
+        except Exception as e:
+            log.debug(f'fill enrichment hand-off failed ({type(e).__name__})')
         try: self._fillw.emit(rec)
         except Exception: pass
 
-    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, **extra):
+    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, order=None, **extra):
         rec = self._fill_rec(kind, sym, side, buy, expected, actual, q_req, q_fill, t0, **extra)
-        self._fill_emit(rec)
+        self._fill_emit(rec, None if order is None else [self._order_ref(order, (rec or {}).get('qty_fill'))])
         return rec
 
     def _fill_flush(self, timeout=2.0):
-        """Wait (bounded) until the writer has handled every queued record. Never call from an order path."""
-        return self._fillw.flush(timeout)
+        """Wait (bounded) until the enrichment worker and then the writer have handled every queued record. Never call
+        from an order path."""
+        end = _mono() + timeout
+        try: self._enr.flush(timeout)
+        except Exception: pass
+        return self._fillw.flush(max(0.0, end - _mono()))
 
     def fill_summary(self):
         """Per-kind counts, average/worst slippage (bps) and average wait over the last FILL_WINDOW written records, the
@@ -2811,7 +3147,7 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why,
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, reason=why,
                        **({'outcome': 'unfilled'} if got == 0 else {}))
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
@@ -3188,7 +3524,7 @@ class Engine:
             q = got
             act = float(o.get('avgPrice') or 0) or None
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
-                                    px, act, q, o.get('executedQty'), t0, reason=why, fallback_order=(why == 'entry_fallback') or None))
+                                    px, act, q, o.get('executedQty'), t0, order=o, reason=why, fallback_order=(why == 'entry_fallback') or None))
             px = act or px
         try:
             self._apply_add(lot, q, px, why)
@@ -4717,7 +5053,7 @@ class Engine:
         fill = act or plan['px']
         got = self._exec_of(o, plan['qty'], r['step'])                    # AUD-03: exchange truth, never the request
         self._last_order = dict(rec=self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG',
-                                               plan['px'], act, plan['qty'], o.get('executedQty'), t0, signal_px=plan.get('signal_px'),
+                                               plan['px'], act, plan['qty'], o.get('executedQty'), t0, order=o, signal_px=plan.get('signal_px'),
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
                                                manual=plan.get('manual') or None, **({'outcome': 'unfilled'} if got == 0 else {})))
         if got is None:                                                   # answered, not final: like a lost answer
@@ -5273,11 +5609,19 @@ class Engine:
         except BinanceError as e:                                                   # e.g. -5022 post-only would take: re-price
             log.info(f'maker entry {sym} rejected: {e}'); rec['status'] = 'between'
 
+    @staticmethod
+    def _mk_key(rec):
+        return (rec.get('symbol'), rec.get('side'), rec.get('t0'))
+
     def _maker_done_order(self, rec, o):
         ex = float(o.get('executedQty') or 0)
         if ex > 0:
             px = float(o.get('avgPrice') or 0) or rec['price']
             rec['filled'] += ex; rec['cost'] += ex * px
+            if not float(o.get('avgPrice') or 0): rec['px_unknown'] = True    # EXEC-CAL-00: booked at the limit (audit only)
+            try:                                                     # EXEC-CAL-00: memory only (ids are never saved)
+                self._mk_refs.setdefault(self._mk_key(rec), []).append(self._order_ref(o, ex, rec['price'], rec.get('cid')))
+            except Exception: pass
         rec['status'] = 'between'
 
     def _maker_poll(self, k, marks):
@@ -5316,6 +5660,9 @@ class Engine:
     def _maker_finalize(self, k, rem, small, px, no_fallback=None):
         rec = self.state['resting_entries'].pop(k)
         plan, r = rec['plan'], self.rules[rec['symbol']]
+        mrefs = self._mk_refs.pop(self._mk_key(rec), None)               # EXEC-CAL-00: None after a restart (not known)
+        if mrefs is not None and (not all(mrefs) or abs(sum(x['exec'] for x in mrefs) - rec['filled']) > 1e-9 * max(1.0, rec['filled'])):
+            mrefs = None                                                 # incomplete correlation: no enrichment, no limit diagnostic
         sl = next((x for x in self.S['SLEEVES'] if x['id'] == rec['sleeve']), None) or dict(plan['sl'], enabled=False, max_pos=0)
         sg = dict(plan['sg'], close=px)
         fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small and not no_fallback
@@ -5345,7 +5692,8 @@ class Engine:
                         else: st['fallback_unconfirmed'] = 'Binance answered without an executed quantity'
                         self._replace_stop(lot)
             if mrec: mrec.update(st)
-            self._fill_emit(mrec)
+            if mrec and rec.get('px_unknown'): fill_px_unknown(mrec)     # EXEC-CAL-00: the limit is not an executed price
+            self._fill_emit(mrec, mrefs)
             return
         blk = (self.entry_block(sl, rec['symbol'], rec['side'], sg=sg)
                or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if fallback else None
