@@ -3,6 +3,7 @@
 This packet comes from the frozen runner `tools/research/run_breadth_candidate.py`, unchanged: `--mgmt defaults`, CORE-10 account settings, `--symbols BTCUSDT`. It was exported by `tools/research/structure_btc_packet.py` at commit `1fb5a71`. Runner packet sha256 (prefix): long `9b88d403ba4c…`, short `bf5b5725a153…`; the full values are in `decomposition.json`.
 
 - **Window:** 2024-10-14T00:00Z to 2026-09-28T00:00Z, end-exclusive. Indicator warm-up starts 2024-10-11T17:00Z. Nothing on or after the 2026-09-28 sealed cutoff is used.
+- **Coverage (read this before the BTC rows):** the BTC packet is account-sized, and the account busts and then stops trading. LONG trades actually span 2024-10-14 to 2025-06-26, and SHORT trades 2024-10-14 to 2025-08-16, so about 8-10 months, partly after the bust; this is **not** a two-year BTC result. The full-window evidence is the CORE-10 fixed-R view in `decomposition.json` (about 14.4k trades per side, no bust). It shows the same shape but has no per-trade CSV here.
 - **Account:** $500 start, 1% risk per trade, max leverage 10, 8% daily halt.
 - **Strategy management:** stop 1.0 ATR, target 2R, 24-candle time cap, plus the strategy's own exit signal.
 - **Both sides bust:** long at 2025-02-16T10:00Z (trade #437 of 718), short at 2025-05-18T03:30Z (#526 of 719). After the bust the runner keeps trading the dead account, so per-trade R stays meaningful but $ amounts shrink.
