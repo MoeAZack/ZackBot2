@@ -196,10 +196,13 @@ def test_analyst_aggregate_counts_only(app_env, monkeypatch):
         MLS.record_decision(dec, sleeve='A', strategy='ema_mom', family='Trend', symbol='BTCUSDT', side='LONG', tf='4h',
                             candle_time=tm, taken=True, features={'features': {'regime': 'RANGE'}}, trade_id=f'A|BTCUSDT|LONG|{k}')
         did = MLS.decision_id('A', 'ema_mom', 'BTCUSDT', 'LONG', '4h', tm)
-        MLS.record_label(lab, dec, decision_id=did, net_r=(1.5 if k % 2 else -1.0), net_pnl=1.0, exit_reason='stop', trade_id=f'A|BTCUSDT|LONG|{k}')
+        MLS.record_label(lab, dec, decision_id=did, net_r=(1.5 if k % 2 else -1.0), net_pnl=1.0, exit_reason='stop',
+                         mfe_r=(2.0 if k % 2 else 0.8), mae_r=-0.4, trade_id=f'A|BTCUSDT|LONG|{k}')
     raw = A.ml_aggregate(e)
     agg = SA.build_aggregate(raw)
     assert agg['n_trades'] == raw['n_trades'] >= 10 and agg['performance']['all']['n'] == raw['n_trades']
+    assert agg['mfe_mae_coverage'] == {'mfe': 1.0, 'mae': 1.0}
+    assert agg['outcome_diagnostics']['profitable_then_lost'] == 6
     blob = json.dumps(agg)
     assert 'A|BTCUSDT' not in blob and 'decision_id' not in blob
 

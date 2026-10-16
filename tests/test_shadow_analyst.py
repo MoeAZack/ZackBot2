@@ -337,6 +337,15 @@ def test_report_fields_usage_and_rotation(tmp_path, monkeypatch):
     assert a.usage(NOW)['day']['calls'] == 13
 
 
+def test_spend_guard_refuses_before_transport(tmp_path):
+    a, t, _ = mk(tmp_path)
+    cfg = {sa.FLAG: True, sa.DAILY_BUDGET_SETTING: 0, sa.MONTHLY_BUDGET_SETTING: 190}
+    r = run(a, cfg=cfg)
+    assert r['status'] == sa.STATUS_NO and r['reason'] == 'budget_exhausted' and t.calls == []
+    b = a._budget(cfg, NOW)
+    assert b['daily_limit_usd'] == 0 and b['daily_remaining_usd'] == 0
+
+
 # --- schedule -------------------------------------------------------------------------------------------------------
 def cairo(y, m, d, h, mi):
     return dt.datetime(y, m, d, h, mi, tzinfo=sa.CAIRO).astimezone(UTC)
@@ -350,7 +359,7 @@ def test_schedule_slots_winter_and_summer():
     assert sa.due_slots(dt.datetime(2026, 11, 1, 22, 14, tzinfo=UTC), []) == []
     assert sa.due_slots(dt.datetime(2026, 11, 1, 22, 15, tzinfo=UTC), []) == ['2026-11-02T00:15']
     assert sa.due_slots(cairo(2026, 11, 2, 12, 15), ['2026-11-02T00:15']) == ['2026-11-02T12:15']
-    assert sa.due_slots(cairo(2026, 11, 2, 12, 14), ['2026-11-02T00:15']) == []
+    assert sa.due_slots(cairo(2026, 11, 2, 12, 14), ['2026-11-02T00:15']) == ['2026-11-02T06:15']
 
 
 def test_egypt_dst_2026_transitions():
@@ -370,7 +379,7 @@ def test_egypt_dst_2026_transitions():
 
 @pytest.mark.parametrize('day', [dt.date(2026, 4, 23), dt.date(2026, 4, 24), dt.date(2026, 4, 25),
                                  dt.date(2026, 10, 29), dt.date(2026, 10, 30), dt.date(2026, 10, 15)])
-def test_at_most_twice_per_cairo_day(day):
+def test_at_most_four_times_per_cairo_day(day):
     start = dt.datetime(day.year, day.month, day.day, tzinfo=sa.CAIRO).astimezone(UTC) - dt.timedelta(hours=2)
     runs, fired = [], []
     t = start
@@ -382,13 +391,14 @@ def test_at_most_twice_per_cairo_day(day):
     per_day = {}
     for s, when in fired:
         per_day.setdefault(when.astimezone(sa.CAIRO).date(), []).append(s)
-    assert all(len(v) <= 2 for v in per_day.values())
-    assert sorted(s for s, _ in fired if s.startswith(day.isoformat())) == [f'{day}T00:15', f'{day}T12:15']
+    assert all(len(v) <= 4 for v in per_day.values())
+    assert sorted(s for s, _ in fired if s.startswith(day.isoformat())) == [
+        f'{day}T00:15', f'{day}T06:15', f'{day}T12:15', f'{day}T18:15']
     if day != dt.date(2026, 4, 24):
         for s, when in fired:
             if s.startswith(day.isoformat()):
                 lt = when.astimezone(sa.CAIRO)
-                assert (lt.hour, lt.minute) in ((0, 15), (12, 15))
+                assert (lt.hour, lt.minute) in ((0, 15), (6, 15), (12, 15), (18, 15))
 
 
 def test_backlog_collapses_to_one():
@@ -442,7 +452,7 @@ def test_ai_filter_untouched(tmp_path):
     cfg = Spy({sa.FLAG: True, 'AI_FILTER': 'on', 'ANTHROPIC_API_KEY': 'should-not-be-read'})
     r = run(a, cfg=cfg)
     assert r['status'] == sa.STATUS_OK
-    assert cfg.read <= {sa.FLAG, sa.MODEL_SETTING}
+    assert cfg.read <= {sa.FLAG, sa.MODEL_SETTING, sa.DAILY_BUDGET_SETTING, sa.MONTHLY_BUDGET_SETTING}
     assert cfg['AI_FILTER'] == 'on' and 'should-not-be-read' not in t.calls[0]['body']
 
 

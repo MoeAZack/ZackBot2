@@ -626,10 +626,25 @@ def ml_aggregate(e):
         counts[g] = dict(c.most_common(30))
     counts['regime'] = dict(collections.Counter(str((d.get('features') or {}).get('regime') or '?') for d in taken.values()).most_common(10))
     skips = collections.Counter(str(r.get('reason') or '?').split(' - ')[0].split(':')[0][:40] for r in dec if not r.get('taken'))
+    exits = collections.Counter(str(l.get('exit_reason') or '?')[:40] for _, l in trades)
     times = sorted(str(r.get('candle_time')) for r in dec if r.get('candle_time'))
     miss = collections.Counter(k for r in dec for k in (r.get('missing') or []))
+    mfes = [float(l['mfe_r']) for _, l in trades if isinstance(l.get('mfe_r'), (int, float))]
+    maes = [float(l['mae_r']) for _, l in trades if isinstance(l.get('mae_r'), (int, float))]
+    givebacks = [float(l['mfe_r']) - float(l['net_r']) for _, l in trades
+                 if isinstance(l.get('mfe_r'), (int, float)) and isinstance(l.get('net_r'), (int, float))]
+    diagnostic = dict(
+        avg_mfe_r=round(sum(mfes) / len(mfes), 3) if mfes else 0,
+        avg_mae_r=round(sum(maes) / len(maes), 3) if maes else 0,
+        avg_giveback_r=round(sum(givebacks) / len(givebacks), 3) if givebacks else 0,
+        profitable_then_lost=sum(1 for _, l in trades if isinstance(l.get('mfe_r'), (int, float)) and
+                                 isinstance(l.get('net_r'), (int, float)) and l['mfe_r'] > 0.5 and l['net_r'] < 0),
+    )
     raw = dict(n_trades=len(trades), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
-               missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {})
+               mfe_mae_coverage=dict(mfe=round(len(mfes) / len(trades), 3), mae=round(len(maes) / len(trades), 3)) if trades else {},
+               outcome_diagnostics=diagnostic,
+               missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {},
+               notes=[f'exit {k}: {v}' for k, v in exits.most_common(8)])
     if times: raw['window'] = dict(start=times[0], end=times[-1])
     return raw
 
@@ -665,7 +680,8 @@ def analyst_view(app, now=None):
     return dict(enabled=SA.is_enabled(e.S), model=str(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL),
                 mode='LIVE' if e.live else 'PAPER', key_set=bool(app.cfg.get('ANTHROPIC_API_KEY')),
                 workspace_id_set=bool(app.cfg.get('ANTHROPIC_WORKSPACE_ID')), ml_shadow=bool(e.S.get('ML_SHADOW')),
-                ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now))
+                ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now), budget=a._budget(e.S, now),
+                schedule_cairo=['00:15', '06:15', '12:15', '18:15'])
 
 
 def analyst_action(app, path, b, now=None):
@@ -1368,6 +1384,8 @@ def settings_update(e, b):
         elif k == 'CLAUDE_SHADOW_MODEL':
             if not isinstance(v, str) or not re.fullmatch(r'[A-Za-z0-9.\-_]{0,80}', v): raise ValueError('shadow analyst model: letters, digits, dot, dash only')
             ns[k] = v or SA.DEFAULT_MODEL
+        elif k in ('CLAUDE_DAILY_BUDGET_USD', 'CLAUDE_MONTHLY_BUDGET_USD'):
+            ns[k] = _num(v, 0, 1000, k.lower())
         elif k == 'MARKET_COLLECTOR':
             if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
             ns[k] = v

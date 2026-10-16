@@ -1,6 +1,6 @@
 """ML-SHADOW-01: CLAUDE_SHADOW_ANALYST - an optional, PAPER-only research reader.
 
-Twice per Cairo day (00:15 and 12:15 Africa/Cairo) or on a manual request, a COMPACT, locally built aggregate of the
+Four times per Cairo day (00:15, 06:15, 12:15 and 18:15 Africa/Cairo) or on a manual request, a COMPACT, locally built aggregate of the
 bot's own statistics (counts, score buckets, net-R/PF/win-rate, coverage, skip reasons, drift, missingness) is sent to
 the Anthropic Messages API and the model returns research notes as strict JSON.
 
@@ -26,6 +26,8 @@ log = logging.getLogger('shadow_analyst')
 
 FLAG = 'CLAUDE_SHADOW_ANALYST'
 MODEL_SETTING = 'CLAUDE_SHADOW_MODEL'
+DAILY_BUDGET_SETTING = 'CLAUDE_DAILY_BUDGET_USD'
+MONTHLY_BUDGET_SETTING = 'CLAUDE_MONTHLY_BUDGET_USD'
 DEFAULT_MODEL = 'claude-sonnet-5-5'            # owner 2026-10-15; single constant - change here only
 API_URL = 'https://api.anthropic.com/v1/messages'
 ANTHROPIC_VERSION = '2023-06-01'
@@ -46,7 +48,9 @@ STATUS_OK = 'OK'
 STATUS_NO = 'NO_ANALYSIS'
 
 CAIRO = ZoneInfo('Africa/Cairo')
-SLOTS = ((0, 15), (12, 15))                    # Cairo local wall times
+SLOTS = ((0, 15), (6, 15), (12, 15), (18, 15))  # Cairo local wall times
+DEFAULT_DAILY_BUDGET_USD = 8.0
+DEFAULT_MONTHLY_BUDGET_USD = 190.0
 
 SCHEMA_KEYS = ('observations', 'regime_strategy_interactions', 'feature_suggestions', 'data_quality_warnings', 'experiments')
 MAX_ITEMS = 10
@@ -70,7 +74,7 @@ USER_SUFFIX = "\n</data>"
 # --- aggregate allow-list --------------------------------------------------------------------------------------------
 # Sections in priority order, highest first. Truncation drops from the END; REQUIRED sections are never dropped.
 SECTIONS = ('window', 'n_trades', 'performance', 'counts', 'score_buckets', 'drift', 'skip_reasons',
-            'exposure_duplication', 'mfe_mae_coverage', 'missingness', 'notes')
+            'exposure_duplication', 'mfe_mae_coverage', 'outcome_diagnostics', 'missingness', 'notes')
 REQUIRED = ('window', 'n_trades', 'performance', 'counts')
 COUNT_GROUPS = ('strategy', 'family', 'side', 'regime')
 PERF_FIELDS = ('n', 'net_r', 'pf', 'win_rate', 'avg_r')
@@ -140,7 +144,7 @@ def build_aggregate(raw):
 
     Accepted keys: window {start,end,days}, n_trades int, performance {name: {n,net_r,pf,win_rate,avg_r}},
     counts {strategy|family|side|regime: {name: int}}, score_buckets / skip_reasons / drift / exposure_duplication /
-    mfe_mae_coverage / missingness: {name: number}, notes: [short strings]."""
+    mfe_mae_coverage / outcome_diagnostics / missingness: {name: number}, notes: [short strings]."""
     raw = raw if isinstance(raw, dict) else {}
     agg = {}
     w = raw.get('window')
@@ -161,7 +165,8 @@ def build_aggregate(raw):
     cnt = raw.get('counts')
     if isinstance(cnt, dict):
         agg['counts'] = {g: _num_map(cnt[g]) for g in COUNT_GROUPS if isinstance(cnt.get(g), dict)}
-    for sec in ('score_buckets', 'drift', 'skip_reasons', 'exposure_duplication', 'mfe_mae_coverage', 'missingness'):
+    for sec in ('score_buckets', 'drift', 'skip_reasons', 'exposure_duplication', 'mfe_mae_coverage',
+                'outcome_diagnostics', 'missingness'):
         if isinstance(raw.get(sec), dict):
             agg[sec] = _num_map(raw[sec])
     notes = raw.get('notes')
@@ -522,6 +527,17 @@ class ShadowAnalyst:
             return r
         return {'day': row('day', local.date().isoformat()), 'month': row('month', local.strftime('%Y-%m'))}
 
+    def _budget(self, cfg, now_utc=None):
+        """Configured spend guard and locally metered remaining allowance. Provider credit is never assumed."""
+        used = self.usage(now_utc)
+        daily = max(0.0, float((cfg or {}).get(DAILY_BUDGET_SETTING, DEFAULT_DAILY_BUDGET_USD)))
+        monthly = max(0.0, float((cfg or {}).get(MONTHLY_BUDGET_SETTING, DEFAULT_MONTHLY_BUDGET_USD)))
+        return {
+            'daily_limit_usd': daily, 'monthly_limit_usd': monthly,
+            'daily_remaining_usd': round(max(0.0, daily - used['day']['est_cost_usd']), 4),
+            'monthly_remaining_usd': round(max(0.0, monthly - used['month']['est_cost_usd']), 4),
+        }
+
     # public ---------------------------------------------------------------------------------------------------------
     def auth_self_test(self, api_key, workspace_id=None, *, now_utc=None, transport=None):
         """Run the self-test and record it for this (key, workspace) pair. -> {'status', 'request_id'}."""
@@ -557,7 +573,7 @@ class ShadowAnalyst:
         return dict(r, cached=True)
 
     def run_scheduled(self, raw_aggregates, *, api_key, cfg, trading_mode, now_utc, workspace_id=None):
-        """Call from a timer (e.g. every few minutes). Runs only when a Cairo 00:15 / 12:15 slot is due -> result or None."""
+        """Call from a timer. Runs only when a six-hour Cairo slot is due -> result or None."""
         slots = due_slots(now_utc, self.state.get('slots_run'))
         if not slots:
             return None
@@ -594,6 +610,9 @@ class ShadowAnalyst:
         if str(trading_mode).upper() != 'PAPER':
             return self._no('live_refused', now_utc, record=False)
         model = str(cfg.get(MODEL_SETTING) or DEFAULT_MODEL)
+        budget = self._budget(cfg, now_utc)
+        if budget['daily_remaining_usd'] <= 0 or budget['monthly_remaining_usd'] <= 0:
+            return self._no('budget_exhausted', now_utc, model, record=False)
         agg = build_aggregate(raw)
         if agg.get('n_trades', 0) < MIN_TRADES or not (agg.get('performance') or agg.get('counts')):
             return self._no('insufficient_data', now_utc, model)
