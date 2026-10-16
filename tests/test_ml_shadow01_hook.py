@@ -217,9 +217,10 @@ def test_completed_backtest_is_compact_analyst_evidence_without_trade_ledger(app
     }
     (data / 'backtests' / 'safe.json').write_text(json.dumps(result), encoding='utf-8')
     raw = A.ml_aggregate(e)
-    assert raw['n_trades'] == 321
-    assert raw['notes'] == ['backtest SCALP holdout: trades=321, ret=18.2%, pf=1.31, maxdd=-7.4%, win=54.0%, '
-                            'oos_ret=4.3%, oos_dd=-3.1%, realistic=True, promotable=False']
+    assert raw['n_trades'] == 321 and raw['notes'] == []
+    b = SA.build_aggregate(raw)['backtests'][0]                      # F5: structured, nothing cut at a string cap
+    assert b == dict(name='SCALP holdout', trades=321, ret=18.2, pf=1.31, maxdd=-7.4, win=54.0, oos_ret=4.3, oos_dd=-3.1,
+                     realistic=True, promotable=False)
     assert 'request' not in json.dumps(raw)
 
 
@@ -355,3 +356,178 @@ def test_btc_cutoff_vectorised_equals_loop_incl_future_rows():
     t0 = _t.perf_counter()
     for k in range(200): btc_keep_mask(btc.t, to_utc(btc.t.iloc[n - 1 - k]))
     assert _t.perf_counter() - t0 < 0.5                                               # was ~6.5 ms/decision with the loop
+
+
+# ------------------------------------------------------------------ PR #127 correction: bounded scan, lock scope, dispatch
+import pathlib, threading, time                              # noqa: E402
+
+
+def _bt_file(d, name, i, extra=None, mtime=None):
+    r = {'name': f'bt {i}', 'stats': {'trades': 100 + i, 'pf': 1.1, 'maxdd': -5.0}, 'oos': {'ret_last': 1.0, 'dd_last': -2.0},
+         'feasibility': {'execution_realistic': True, 'promotable': True}, 'request': {'sleeves': []}}
+    r.update(extra or {})
+    p = d / name
+    p.write_text(json.dumps(r), encoding='utf-8')
+    if mtime is not None:
+        os.utime(p, (mtime, mtime))
+    return p
+
+
+def _bt_dir(e):
+    d = pathlib.Path(e.dir) / 'backtests'
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def test_backtest_scan_skips_oversize_before_parsing(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    d = _bt_dir(e)
+    _bt_file(d, 'ok.json', 1, mtime=1000)
+    big = _bt_file(d, 'big.json', 2, extra={'pad': 'x' * 5000}, mtime=2000)       # newest, but oversize
+    monkeypatch.setattr(A, 'BT_FILE_MAX_BYTES', 2000)
+    seen = []
+    real = json.loads
+    monkeypatch.setattr(A.json, 'loads', lambda s, *a, **k: (seen.append(len(s)), real(s, *a, **k))[1])
+    bts = A._recent_backtests(str(d))
+    assert [b['name'] for b in bts] == ['bt 1'] and os.path.getsize(big) > 2000
+    assert seen and max(seen) <= 2000                                              # the oversize file was never parsed
+
+
+def test_backtest_scan_bounded_file_count_newest_first(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    d = _bt_dir(e)
+    for i in range(20):
+        _bt_file(d, f'r{i:02d}.json', i, extra={'lab': True} if i in (19, 18) else None, mtime=1000 + i)
+    (d / 'junk.json').write_text('{not json', encoding='utf-8')
+    os.utime(d / 'junk.json', (5000, 5000))
+    opened = []
+    real_open = open
+    monkeypatch.setattr('builtins.open', lambda f, *a, **k: (opened.append(str(f)), real_open(f, *a, **k))[1])
+    monkeypatch.setattr(A, 'BT_SCAN_MAX_FILES', 4)
+    bts = A._recent_backtests(str(d))
+    assert len(opened) == 4                                                       # junk + 2 lab + 1 valid, then stop
+    assert [b['name'] for b in bts] == ['bt 17']
+    opened.clear()
+    monkeypatch.setattr(A, 'BT_SCAN_MAX_FILES', 24)
+    bts = A._recent_backtests(str(d))
+    assert [b['name'] for b in bts] == [f'bt {i}' for i in range(17, 11, -1)] and len(opened) <= 24
+    monkeypatch.setattr(A, 'BT_SCAN_MAX_ENTRIES', 3)
+    assert len(A._recent_backtests(str(d))) <= 3
+    assert A._recent_backtests(str(d / 'missing')) == []
+
+
+def test_analyst_lock_not_held_while_scanning(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    fake_analyst(A, app, FakeTransport((500, '{}')))
+    e.S['CLAUDE_SHADOW_ANALYST'] = True
+    held = []
+    real = A._recent_backtests
+    monkeypatch.setattr(A, '_recent_backtests', lambda p: (held.append(A.ANALYST_LOCK.locked()), real(p))[1])
+    A.handle('/api/analyst/analyze_now', {})
+    A.analyst_tick(app, now=datetime(2026, 10, 15, 10, 30, tzinfo=timezone.utc))
+    A.analyst_backtest_review()
+    assert held == [False, False, False]
+
+
+def _drain():
+    import app as A
+    deadline = time.time() + 5
+    while A.ANALYST_REVIEW_Q.unfinished_tasks and time.time() < deadline:
+        time.sleep(0.01)
+    assert A.ANALYST_REVIEW_Q.unfinished_tasks == 0
+
+
+def test_slow_analyst_never_blocks_the_research_worker(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    e.S['CLAUDE_SHADOW_ANALYST'] = True
+    gate, started, runs = threading.Event(), threading.Event(), []
+
+    def slow_review():
+        runs.append(1)
+        started.set()
+        gate.wait(5)
+    monkeypatch.setattr(A, 'analyst_backtest_review', slow_review)
+    _drain()
+    t0 = time.monotonic()
+    assert A.request_backtest_review() is True                 # first finished backtest
+    assert started.wait(2)
+    queued = [A.request_backtest_review() for _ in range(5)]   # five more backtests finish while the critique is stuck
+    assert time.monotonic() - t0 < 1.0                         # the worker returned at once every time
+    assert queued == [True, False, False, False, False]        # one pending review; the rest coalesce into it
+    assert A.ANALYST_REVIEW_Q.qsize() <= 1
+    gate.set()
+    _drain()
+    assert len(runs) == 2                                      # in-flight + one coalesced follow-up
+
+
+def test_failing_analyst_does_not_stop_later_reviews(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    e.S['CLAUDE_SHADOW_ANALYST'] = True
+    runs = []
+
+    def boom():
+        runs.append(1)
+        raise RuntimeError('api down')
+    monkeypatch.setattr(A, 'analyst_backtest_review', boom)
+    _drain()
+    for _ in range(3):
+        assert A.request_backtest_review() is True
+        _drain()
+    assert len(runs) == 3 and A._ANALYST_REVIEW_THREAD.is_alive()
+
+
+def test_review_not_queued_when_off_or_live(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    monkeypatch.setattr(A, 'analyst_backtest_review', lambda: pytest.fail('must not run'))
+    _drain()
+    assert A.request_backtest_review() is False                # analyst OFF
+    e.S['CLAUDE_SHADOW_ANALYST'] = True
+    e.live = True
+    assert A.request_backtest_review() is False                # LIVE
+    assert A.ANALYST_REVIEW_Q.qsize() == 0
+
+
+def test_backtest_worker_only_queues_the_critique():
+    import ast
+    import inspect
+    import app as A
+    src = inspect.getsource(A.run_backtest_job)
+    calls = {n.func.id for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    assert 'request_backtest_review' in calls and 'analyst_backtest_review' not in calls
+    assert src.index("job.update(status='done'") < src.index('request_backtest_review()')
+
+
+def test_concurrent_analyses_are_serialised(app_env, monkeypatch):
+    A, app, e, _ = app_env
+    e.S['CLAUDE_SHADOW_ANALYST'] = True
+    active, peak, n = [0], [0], [0]
+    lock = threading.Lock()
+    body = json.dumps({'type': 'message', 'stop_reason': 'end_turn', 'usage': {'input_tokens': 10, 'output_tokens': 5},
+                       'content': [{'type': 'text', 'text': json.dumps({k: [] for k in SA.SCHEMA_KEYS})}]})
+
+    def transport(url, headers, b, timeout):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        time.sleep(0.05)
+        with lock:
+            active[0] -= 1
+        return 200, body
+    a = fake_analyst(A, app, transport)
+    assert a.auth_self_test(KEY, None, now_utc=FIXED)['status'] == SA.AUTH_ACCEPTED
+
+    def agg(_e):
+        with lock:
+            n[0] += 1
+            k = n[0]
+        return {'n_trades': 20 + k, 'performance': {'all': {'n': 20 + k, 'net_r': 1.0}}, 'counts': {}}
+    monkeypatch.setattr(A, 'ml_aggregate', agg)
+    out = []
+    ths = [threading.Thread(target=lambda: out.append(A.handle('/api/analyst/analyze_now', {}))) for _ in range(6)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(10)
+    assert len(out) == 6 and all(r['status'] == SA.STATUS_OK for r in out)
+    assert peak[0] == 1                                        # the API call and state update stay serialised
+    assert a.usage()['day']['calls'] == 6

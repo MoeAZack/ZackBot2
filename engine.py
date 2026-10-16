@@ -521,7 +521,7 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
                        # Both OFF by default; independent of AI_FILTER; nothing in trading code ever reads their output.
                        ML_SHADOW=False, CLAUDE_SHADOW_ANALYST=False, CLAUDE_SHADOW_MODEL=_SHADOW_MODEL,
-                       CLAUDE_DAILY_BUDGET_USD=18.0, CLAUDE_MONTHLY_BUDGET_USD=198.0)
+                       CLAUDE_DAILY_BUDGET_USD=18.0, CLAUDE_MONTHLY_BUDGET_USD=198.0)   # USD ceilings, not expected spend
 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(

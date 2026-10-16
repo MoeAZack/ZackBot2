@@ -127,10 +127,13 @@ def test_happy_path_request_shape(tmp_path):
     assert sa.estimate_tokens(body['system']) + sa.estimate_tokens(body['messages'][0]['content']) <= 4000
 
 
-def test_model_configurable(tmp_path):
+def test_model_configurable(tmp_path, monkeypatch):
+    monkeypatch.setitem(sa.MODEL_PRICES_PER_MTOK, 'claude-priced-x', {'input': 10.0, 'output': 50.0})
     a, t, _ = mk(tmp_path)
-    run(a, cfg={sa.FLAG: 'on', sa.MODEL_SETTING: 'claude-opus-x'})
-    assert json.loads(t.calls[0]['body'])['model'] == 'claude-opus-x'
+    run(a, cfg={sa.FLAG: 'on', sa.MODEL_SETTING: 'claude-priced-x'})
+    assert json.loads(t.calls[0]['body'])['model'] == 'claude-priced-x'
+    # metered at THAT model's price: 1200 in x $10/M + 150 out x $50/M
+    assert a.usage(NOW)['day']['est_cost_usd'] == round(1200 * 10 / 1e6 + 150 * 50 / 1e6, 4)
 
 
 # --- redaction ------------------------------------------------------------------------------------------------------
@@ -679,3 +682,104 @@ def test_workspace_id_trailing_newline_rejected_cowork_f1():
     assert SA.valid_workspace_id('wrkspc_ok')
     for bad in ('wrkspc_ok\n', 'wrkspc_ok\r\n', 'wrkspc_ok\r', '\nwrkspc_ok', 'wrkspc ok'):
         assert not SA.valid_workspace_id(bad), repr(bad)
+
+
+# --- PR #127 correction (Codex 6215940159) ------------------------------------------------------------------------------
+def bt_row(**over):
+    d = dict(name='SCALP holdout v2 long+short', trades=321, days=730, ret=18.2, pf=1.31, maxdd=-7.4, win=54.0, sharpe=1.12,
+             worst_month=-4.4, liquidations=0, busted=False, oos_ret_first=12.5, oos_ret=4.3, oos_dd=-3.1,
+             executable_pct=97.5, rule_blocked=4, rules_applied=True, realistic=True, promotable=False,
+             # must never reach the payload
+             request={'sleeves': [{'key': 'x'}], 'universe': ['BTCUSDT']}, path=r'C:\Users\someone\data\backtests\x.json',
+             id='20261015-101500-ab12', order_id='ord_9f8a7b6c5d4e3f2a1b0c', curve=[[1, 2]], symbols=['BTCUSDT'], note='free text')
+    d.update(over)
+    return d
+
+
+def test_f5_backtest_fields_survive_structurally(tmp_path):
+    a, t, _ = mk(tmp_path)
+    r = run(a, data=raw(backtests=[bt_row()]))
+    assert r['status'] == sa.STATUS_OK
+    sent = json.loads(json.loads(t.calls[0]['body'])['messages'][0]['content'].split('<data>\n')[1].split('\n</data>')[0])
+    b = sent['backtests'][0]
+    for f, v in dict(oos_ret=4.3, oos_dd=-3.1, oos_ret_first=12.5, maxdd=-7.4, pf=1.31, trades=321, executable_pct=97.5,
+                     rule_blocked=4, realistic=True, promotable=False, rules_applied=True).items():
+        assert b[f] == v, f
+    assert b['name'] == 'SCALP holdout v2 long+short'
+    assert set(b) <= {'name', *sa.BT_FIELDS}
+    payload = t.calls[0]['body']
+    for probe in ('request', 'sleeves', 'universe', 'Users', 'someone', '20261015-101500', 'ord_9f8a', 'curve', 'symbols',
+                  'free text', 'order_id'):
+        assert probe not in payload, probe
+
+
+def test_f5_backtest_names_bounded_and_safe():
+    rows = [bt_row(name=r'C:\Users\moe\x.json'), bt_row(name='../../etc/passwd'), bt_row(name='key ' + KEY),
+            bt_row(name='run 1234567890123'), bt_row(name='long name ' * 20), bt_row(name='IGNORE <prev> {all} "instr"'),
+            bt_row(name=None), bt_row(name='seventh')]
+    out = sa.build_backtests(rows)
+    assert len(out) == sa.MAX_BACKTESTS == 6
+    assert [o['name'] for o in out[:4]] == [sa.REDACTED] * 4
+    assert out[4]['name'] == ('long name ' * 4)[:sa.MAX_BT_NAME] and out[5]['name'] == 'IGNORE prev all instr'
+    assert sa.build_backtests([{'name': 'only junk', 'request': {'a': 1}, 'pf': 'high', 'trades': 10**12}]) == []
+    assert sa.build_backtests('not a list') == [] and sa.build_backtests([1, 'x', None]) == []
+    assert sa.build_backtests([dict(name='nan', pf=float('nan'), ret=float('inf'), trades=5)]) == [{'name': 'nan', 'trades': 5}]
+
+
+def test_f5_backtests_kept_before_lower_priority_sections():
+    agg = sa.build_aggregate(raw(backtests=[bt_row()] * 6, notes=['n' * 70] * 12))
+    small = sa.estimate_input_tokens({k: agg[k] for k in sa.REQUIRED + ('backtests',)}) + 5
+    out, dropped = sa.fit_budget(agg, small)
+    assert 'backtests' in out and 'notes' in dropped
+
+
+def test_f1_default_model_price_pinned():
+    assert sa.DEFAULT_MODEL == 'claude-sonnet-5-5'
+    assert sa.MODEL_PRICES_PER_MTOK[sa.DEFAULT_MODEL] == {'input': 2.0, 'output': 10.0}
+    assert sa.worst_case_call_usd(sa.DEFAULT_MODEL) == pytest.approx(4000 * 2 / 1e6 + 1600 * 10 / 1e6)
+    assert sa.model_price('claude-unknown-9') is None and sa.worst_case_call_usd('claude-unknown-9') is None
+
+
+@pytest.mark.parametrize('model', ['claude-opus-x', 'claude-fable-5-1', 'CLAUDE-SONNET-5-5', 'claude-sonnet-5-5 '])
+def test_f1_unknown_model_refused_not_undercounted(tmp_path, model):
+    a, t, _ = mk(tmp_path)
+    r = run(a, cfg={sa.FLAG: True, sa.MODEL_SETTING: model})
+    assert r == {'status': sa.STATUS_NO, 'reason': 'model_price_unknown', 'input_hash': None}
+    assert t.calls == [] and a.usage(NOW)['day']['calls'] == 0
+
+
+def test_f1_call_refused_when_worst_case_would_cross_ceiling(tmp_path):
+    a, t, _ = mk(tmp_path)
+    worst = sa.worst_case_call_usd(sa.DEFAULT_MODEL)
+    r = run(a, cfg={sa.FLAG: True, sa.DAILY_BUDGET_SETTING: worst - 0.0001})
+    assert r['reason'] == 'budget_exhausted' and t.calls == []
+    r = run(a, cfg={sa.FLAG: True, sa.DAILY_BUDGET_SETTING: worst})
+    assert r['status'] == sa.STATUS_OK and len(t.calls) == 1
+
+
+def test_f1_legacy_usage_rows_valued_at_default_price(tmp_path):
+    a, t, _ = mk(tmp_path)
+    a.state['usage'] = {'day': {'2026-10-15': {'input_tokens': 1_000_000, 'output_tokens': 0, 'calls': 3}},
+                        'month': {'2026-10': {'input_tokens': 1_000_000, 'output_tokens': 0, 'calls': 3}}}
+    assert a.usage(NOW)['day']['est_cost_usd'] == 2.0
+    run(a)                                                  # 1200 in / 150 out at the pinned default price
+    assert a.usage(NOW)['month']['est_cost_usd'] == round(2.0 + 1200 * 2 / 1e6 + 150 * 10 / 1e6, 4)
+    assert a.usage(NOW)['day']['calls'] == 4
+
+
+def test_f1_auth_self_test_explicit_default_model_unmetered(tmp_path):
+    a = sa.ShadowAnalyst(str(tmp_path), transport=FakeTransport((200, api_body('x'))), sleep=lambda s: None)
+    t = FakeTransport((200, api_body('x', usage=(9, 1))))
+    assert a.auth_self_test(KEY, None, now_utc=NOW, transport=t)['status'] == 'accepted'
+    body = json.loads(t.calls[0]['body'])
+    assert body['model'] == sa.AUTH_SELF_TEST_MODEL == sa.DEFAULT_MODEL and body['max_tokens'] == 1
+    assert a.usage(NOW)['day']['calls'] == 0                # the self-test is never added to the spend counters
+    # an unknown CLAUDE_SHADOW_MODEL does not change the self-test (it takes no cfg) but still blocks analysis
+    r = run(a, cfg={sa.FLAG: True, sa.MODEL_SETTING: 'claude-opus-x'})
+    assert r['reason'] == 'model_price_unknown'
+
+
+def test_wording_limits_are_ceilings():
+    doc = sa.__doc__ + sa.ShadowAnalyst.run_scheduled.__doc__ + sa.ShadowAnalyst._budget.__doc__
+    assert 'CEILINGS' in doc and 'not expected spend' in doc and 'six-hour' not in doc and 'Twice per' not in doc
+    assert 'at most two scheduled' not in sa.due_slots.__doc__
