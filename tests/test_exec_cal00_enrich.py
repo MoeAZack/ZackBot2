@@ -360,3 +360,25 @@ def test_maker_refs_lost_by_restart_mean_no_reads_and_no_limit_diagnostic():
     r = one(e, 'entry_maker')
     assert e.trade.ut_calls == 0 and 'enrich_status' not in r and 'limit_improvement_bps' not in r
     assert r['actual'] == 99.9 and r['decision_slippage_bps'] == pytest.approx(-10.0)
+
+
+# ------------------------------------------------------------------ self-review: races / partial correlation
+def test_enrichment_racing_a_close_never_touches_lots_or_state():
+    e, _ = mk(); e.trade.ut_script = ['empty', 'empty']      # entry enrichment still pending when the lot closes
+    k = opened(e); e.close_lot(k, 'signal', mark=101.0)
+    snap = json.dumps(e.state, sort_keys=True, default=str); hist = json.dumps(e.history, default=str)
+    rs = recs(e)
+    assert json.dumps(e.state, sort_keys=True, default=str) == snap and json.dumps(e.history, default=str) == hist
+    assert sorted(r['kind'] for r in rs) == ['entry_market', 'exit'] and k not in e.state['lots']
+    assert {r['enrich_status'] for r in rs} == {'resolved'}
+
+
+def test_maker_fill_partly_before_restart_is_not_enriched_from_the_rest():
+    e, _ = mk(ENTRY_ORDER='maker', MAKER_REPRICE=2, MAKER_WAIT_S=30)
+    bk = Book(e.trade)
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    rec = next(iter(e.state['resting_entries'].values()))
+    rec['filled'] += 0.001; rec['cost'] += 0.001 * 99.9      # executed before a restart: its order id is not in memory
+    bk.fill(); e.manage(e.trade.marks())
+    r = one(e, 'entry_maker')
+    assert e.trade.ut_calls == 0 and 'enrich_status' not in r and 'limit_improvement_bps' not in r
