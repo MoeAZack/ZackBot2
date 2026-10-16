@@ -13,7 +13,6 @@ import pytest
 
 from breadth_registered import assert_pinned, registered_blob
 
-from breadth_registered import assert_pinned, registered_blob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FROZEN_COMMIT = 'c8c7b92'          # the runner commit every breadth packet of #105-#114 was produced with
