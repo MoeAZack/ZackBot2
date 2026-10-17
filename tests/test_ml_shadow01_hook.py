@@ -71,6 +71,23 @@ def ledger_rows(e, kind):
     return [json.loads(x) for x in open(p, encoding='utf-8')] if os.path.exists(p) else []
 
 
+def test_close_excursions_only_labelled_when_audit_is_fully_observed(tmp_path, monkeypatch):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['ML_SHADOW'] = True
+    e._ml_ledgers = lambda: (object(), object())
+    captured = []
+    monkeypatch.setattr(MLS, 'record_label', lambda *a, **kw: (captured.append(kw), kw)[1])
+    lot = {'ml_decision_id': 'd' * 32}
+    rec = dict(r=1.0, pnl=5.0, exit_reason='take_profit', closed='2026-10-17T00:00:00+00:00')
+    metrics = {'mfe': {'r': 2.0}, 'mae': {'r': -0.5}}
+    e._ml_label('partial', rec, lot, dict(coverage='partial', observations=9, target=120, target_touch_t='x', metrics=metrics))
+    e._ml_label('targetless', rec, lot, dict(coverage='full', observations=9, target=None, target_touch_t=None, metrics=metrics))
+    e._ml_label('full', rec, lot, dict(coverage='full', observations=9, target=120, target_touch_t=None, metrics=metrics))
+    assert captured[0]['mfe_r'] is None and captured[0]['mae_r'] is None and captured[0]['target_before_stop'] is None
+    assert captured[1]['mfe_r'] == 2.0 and captured[1]['mae_r'] == -0.5 and captured[1]['target_before_stop'] is None
+    assert captured[2]['target_before_stop'] is False
+
+
 def test_ml_shadow_on_vs_off_identical_trading(tmp_path, monkeypatch):
     e0, off = run_fixture(tmp_path / 'off', monkeypatch, False)
     e1, on = run_fixture(tmp_path / 'on', monkeypatch, True)
@@ -87,6 +104,7 @@ def test_ml_shadow_on_vs_off_identical_trading(tmp_path, monkeypatch):
     assert skip['features']['atr_pct'] is not None                                # features_at ran on the candle frame
     labels = ledger_rows(e1, 'labels')
     assert len(labels) == 2 and {l['exit_reason'] for l in labels} == {'exit_signal'}
+    assert all('mfe_r' in l and 'mae_r' in l for l in labels)                     # no fabricated values without mark samples
     taken_ids = {r['decision_id'] for r in dec if r['taken']}
     assert {l['decision_id'] for l in labels} <= taken_ids
     assert e1.health['ml_shadow']['errors'] == 0 and e1.health['ml_shadow']['labels'] == 2

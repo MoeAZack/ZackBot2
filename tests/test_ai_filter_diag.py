@@ -21,7 +21,7 @@ class Resp:
         return self._body
 
 
-def run(monkeypatch, resp):
+def run(monkeypatch, resp, sig=SIG):
     seen = {}
 
     def post(url, **kw):
@@ -30,7 +30,8 @@ def run(monkeypatch, resp):
             raise resp
         return resp
     monkeypatch.setattr(A.requests, 'post', post)
-    return A.review(CFG, 'BTCUSDT', 'X', SIG, [], 0)
+    result = A.review(CFG, 'BTCUSDT', 'X', sig, [], 0)
+    return result, seen
 
 
 def leaks(*parts):
@@ -44,16 +45,18 @@ def err(t, msg='Your credit balance is too low; org_SECRET123 req_SECRET456 acct
 
 def test_success_unchanged(monkeypatch):
     body = {'content': [{'type': 'text', 'text': '{"decision": "skip", "reason": "stretched 4 ATR above EMA20"}'}]}
-    dec, why, meta = run(monkeypatch, Resp(200, body))
+    (dec, why, meta), seen = run(monkeypatch, Resp(200, body))
     assert (dec, why) == ('skip', 'stretched 4 ATR above EMA20')
     assert meta['http_status'] == 200 and 'api_error' not in meta and 'error' not in meta
+    fmt = seen['json']['output_config']['format']
+    assert fmt['type'] == 'json_schema' and fmt['schema'] == A.OUTPUT_SCHEMA
 
 
 @pytest.mark.parametrize('status,etype', [(401, 'authentication_error'), (403, 'permission_error'), (404, 'not_found_error'),
                                           (400, 'invalid_request_error'), (429, 'rate_limit_error'), (529, 'overloaded_error'),
                                           (500, 'api_error')])
 def test_api_error_records_status_and_type_only(monkeypatch, status, etype):
-    dec, why, meta = run(monkeypatch, Resp(status, err(etype)))
+    (dec, why, meta), _ = run(monkeypatch, Resp(status, err(etype)))
     assert dec == 'take' and 'taking trade by rules' in why                  # fail-open unchanged
     assert meta['http_status'] == status and meta['api_error'] == etype
     assert f'http {status} {etype}' in why
@@ -61,12 +64,12 @@ def test_api_error_records_status_and_type_only(monkeypatch, status, etype):
 
 
 def test_billing_message_text_never_logged(monkeypatch):
-    dec, why, meta = run(monkeypatch, Resp(400, err('invalid_request_error')))
+    (dec, why, meta), _ = run(monkeypatch, Resp(400, err('invalid_request_error')))
     assert 'credit' not in why.lower() and 'credit' not in json.dumps(meta).lower()
 
 
 def test_unusual_error_type_is_replaced_by_fixed_label(monkeypatch):
-    dec, why, meta = run(monkeypatch, Resp(400, err('Bad Thing: sk-ant-TESTKEY org_SECRET123')))
+    (dec, why, meta), _ = run(monkeypatch, Resp(400, err('Bad Thing: sk-ant-TESTKEY org_SECRET123')))
     assert meta['api_error'] == 'api_error' and not leaks(why, meta)
 
 
@@ -74,19 +77,46 @@ def test_unusual_error_type_is_replaced_by_fixed_label(monkeypatch):
                                   Resp(200, {'content': []}), Resp(200, {'content': [{'type': 'tool_use'}]}),
                                   Resp(502, None, raw='upstream')])
 def test_malformed_response(monkeypatch, resp):
-    dec, why, meta = run(monkeypatch, resp)
+    (dec, why, meta), _ = run(monkeypatch, resp)
     assert dec == 'take' and meta['api_error'] == 'malformed_response' and meta['http_status'] == resp.status_code
 
 
 def test_network_failure_has_no_status(monkeypatch):
-    dec, why, meta = run(monkeypatch, A.requests.ConnectionError('dns fail for acct-9876543210'))
+    (dec, why, meta), _ = run(monkeypatch, A.requests.ConnectionError('dns fail for acct-9876543210'))
     assert dec == 'take' and 'http_status' not in meta and meta['error'] == 'ConnectionError'
     assert 'ConnectionError' in why and not leaks(why, meta)
 
 
 def test_unparseable_model_text_still_fails_open(monkeypatch):
-    dec, why, meta = run(monkeypatch, Resp(200, {'content': [{'type': 'text', 'text': 'no json here'}]}))
+    (dec, why, meta), _ = run(monkeypatch, Resp(200, {'content': [{'type': 'text', 'text': 'no json here'}]}))
     assert dec == 'take' and meta['http_status'] == 200 and 'api_error' not in meta and meta['error']
+
+
+@pytest.mark.parametrize('text', [
+    '```json\n{"decision":"skip","reason":"x"}\n```',
+    '{"decision":"maybe","reason":"x"}',
+    '{"decision":"take","reason":""}',
+    '{"decision":"take","reason":"x","extra":1}',
+    '[{"decision":"take","reason":"x"}]',
+])
+def test_schema_violations_fail_open(monkeypatch, text):
+    (dec, why, meta), _ = run(monkeypatch, Resp(200, {'content': [{'type': 'text', 'text': text}]}))
+    assert dec == 'take' and 'taking trade by rules' in why and meta['error']
+
+
+def test_thinking_block_before_one_text_is_accepted(monkeypatch):
+    body = {'stop_reason': 'end_turn', 'content': [
+        {'type': 'thinking', 'thinking': 'hidden'},
+        {'type': 'text', 'text': '{"decision":"take","reason":"not stretched"}'},
+    ]}
+    (dec, why, _), _ = run(monkeypatch, Resp(200, body))
+    assert (dec, why) == ('take', 'not stretched')
+
+
+def test_missing_signal_fields_do_not_escape(monkeypatch):
+    body = {'content': [{'type': 'text', 'text': '{"decision":"take","reason":"limited context"}'}]}
+    (dec, _, meta), seen = run(monkeypatch, Resp(200, body), sig={'time': 't'})
+    assert dec == 'take' and 'unavailable' in seen['json']['messages'][0]['content'] and 'error' not in meta
 
 
 def test_no_key_or_off_never_calls(monkeypatch):

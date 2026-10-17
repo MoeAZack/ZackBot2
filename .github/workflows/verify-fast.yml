@@ -33,6 +33,9 @@ jobs:
           [[ "$ZB_GOLDEN_BASE" =~ ^[0-9a-f]{40}$ ]] || { echo "PR base sha missing or malformed: '$ZB_GOLDEN_BASE'"; exit 1; }
           git fetch --no-tags --depth=1 origin "$ZB_GOLDEN_BASE"
           git cat-file -e "$ZB_GOLDEN_BASE^{commit}"
+          # BT-EXEC-OBS-01 pins registered prereg bytes and the empty /2 envelope set at this immutable baseline.
+          git fetch --no-tags --depth=1 origin 09445476a1bb694ee7135f350928762bc793db50
+          git cat-file -e '0944547^{commit}'
       - name: Fetch the breadth_static40 registration tag (annotated, peels to Y)
         run: |
           git fetch --no-tags --depth=2 origin +refs/tags/zb-breadth-static40-v1-registration-20261016:refs/tags/zb-breadth-static40-v1-registration-20261016

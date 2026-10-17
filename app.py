@@ -1036,7 +1036,7 @@ class App:
         for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
             pnl = sd * (m - l['avg']) * l['qty'] if m else None
-            lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
+            lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'book', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
                              tp=l.get('tp'), add_blocked=l.get('add_blocked'), **_stop_view(e, l),     # AUD-04: fresh confirmation
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
@@ -1102,7 +1102,7 @@ class App:
         settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
-                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status)):          # CTRL-01-LITE: current controls + the preview table (ctrl_effect)
+                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status)):
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
@@ -1539,7 +1539,13 @@ def settings_update(e, b):
             if not bool(v) and e.install_block():          # AUD-05 r5: resuming never bypasses the account confirmation
                 raise ValueError('cannot resume entries: ' + e.install_block())
             ns[k] = bool(v)
-        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): ns[k] = bool(v)
+        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK', 'FEE_EDGE_GATE', 'PAPER_BOOKS'):
+            if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
+            if k == 'PAPER_BOOKS' and v and getattr(e, 'live', True) is not False:
+                raise ValueError('five-book tracking is PAPER only')
+            ns[k] = v
+        elif k == 'FEE_EDGE_MULT': ns[k] = _num(v, 1, 20, 'fee edge multiple')
+        elif k == 'PAPER_BOOK_CAP': ns[k] = _num(v, 100, 1e7, 'paper book capital')
         elif k in ('ML_SHADOW', 'CLAUDE_SHADOW_ANALYST'):          # ML-SHADOW-01: observation / report only, independent of AI_FILTER
             if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
             if v and k == 'CLAUDE_SHADOW_ANALYST' and getattr(e, 'live', True) is not False:
