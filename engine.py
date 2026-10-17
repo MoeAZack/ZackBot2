@@ -12,6 +12,7 @@ import pandas as pd
 
 import strategies as S
 import trade_audit as TA
+import paper_books as PB
 import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from binance_client import AuditSkipped
@@ -816,6 +817,11 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
                        # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
                        ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
+                       # PAPER fee-economics gate. Off by default for backward compatibility; the five-book experiment
+                       # enables it explicitly. One stop-risk dollar must cover at least FEE_EDGE_MULT x conservative
+                       # round-trip fees + slippage, otherwise turnover has no room to pay for itself.
+                       FEE_EDGE_GATE=False, FEE_EDGE_MULT=3.0,
+                       PAPER_BOOKS=False, PAPER_BOOK_CAP=2000.0,
                        PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]),
                        CTRL_BIAS='neutral', CTRL_RISK='max_test',   # CTRL-01-LITE (default = today's behaviour)
                        # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
@@ -1307,9 +1313,10 @@ def validate_state(doc):
 
 
 _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_FLATTEN=(0.0, 1.0), CAPITAL_CAP=(0.0, 1e12),
-                    MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01))
+                    MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01),
+                    FEE_EDGE_MULT=(1.0, 20.0), PAPER_BOOK_CAP=(100.0, 1e7))
 _SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED',
-                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST')
+                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS')
 
 
 def validate_settings(doc):
@@ -3366,7 +3373,8 @@ class Engine:
         exit_avg = sum(f[2] * f[3] for f in closes) / cq if closes else lot['avg']
         gross = lot.get('realized', 0.0); fees = lot.get('fees', 0.0); net = gross - fees
         opened = datetime.fromisoformat(lot['opened']); closed = now_utc()
-        rec = dict(id=key, sleeve=lot['sleeve'], strategy=(next((x['name'] for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
+        rec = dict(id=key, sleeve=lot['sleeve'], book=lot.get('book'),
+                   strategy_key=lot.get('key_strategy'), strategy=(next((x['name'] for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
                    or ('Manual' if lot.get('manual') else lot.get('key_strategy'))), symbol=lot['symbol'], side=lot['side'], tf=lot.get('tf'),
                    opened=lot['opened'], closed=closed.isoformat(timespec='seconds'), hours=round((closed - opened).total_seconds() / 3600, 1),
                    entry=lot.get('entry0', lot['e0']), avg_entry=lot['avg'], exit=exit_avg, qty_max=lot.get('qty_max', lot['q0']),
@@ -3377,13 +3385,16 @@ class Engine:
                    move_pct=round(sd * (exit_avg - lot.get('entry0', lot['e0'])) / lot.get('entry0', lot['e0']) * 100, 2), exit_reason=why,
                    adds=lot.get('adds', 0), dca=lot.get('dca', 0), tp1=lot.get('tp1', False), manual=lot.get('manual', False),
                    fills=lot.get('fills', []))
+        au = None
         try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
             au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
-            if au: au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed']); self._audit_emit(au)
+            if au:
+                au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed'])
+                self._audit_emit(au)
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
         self._save_aux('history', self.history)
-        self._ml_label(key, rec, lot)                              # ML-SHADOW-01 close label (observe only, never raises)
+        self._ml_label(key, rec, lot, au)                          # ML-SHADOW-01 close label (observe only, never raises)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
 
     # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
@@ -3454,7 +3465,7 @@ class Engine:
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
-    def _ml_label(self, key, rec, lot):
+    def _ml_label(self, key, rec, lot, audit=None):
         """ML-SHADOW-01 close hook: one label (realized R / pnl / exit reason) for a lot carrying an ml_decision_id.
         Never raises, never changes the trade record."""
         try:
@@ -3463,8 +3474,16 @@ class Engine:
             if not isinstance(did, str): return
             import ml_shadow as MLS
             dec, lab = self._ml_ledgers()
+            m = (audit or {}).get('metrics') or {}
+            mfe, mae = m.get('mfe') or {}, m.get('mae') or {}
+            full = (audit or {}).get('coverage') == 'full'
+            touched = (audit or {}).get('target_touch_t')
+            target_known = full and (audit or {}).get('target') is not None and int((audit or {}).get('observations') or 0) > 0
             row = MLS.record_label(lab, dec, decision_id=did, net_r=rec.get('r'), net_pnl=rec.get('pnl'),
-                                   exit_reason=rec.get('exit_reason'), trade_id=key)
+                                   exit_reason=rec.get('exit_reason'), mfe_r=mfe.get('r') if full else None,
+                                   mae_r=mae.get('r') if full else None,
+                                   target_before_stop=(bool(touched) if target_known else None), trade_id=key,
+                                   closed_at=rec.get('closed'))
             if row is not None: self._ml_health()['labels'] += 1
         except Exception:                                   # noqa: BLE001
             try: self._ml_health()['errors'] += 1
@@ -4176,10 +4195,20 @@ class Engine:
         sl = next((x for x in Sg['SLEEVES'] if x['id'] == lot['sleeve']), None)
         if not sl or (lot.get('key_strategy') and sl['key'] != lot['key_strategy']):
             return 'strategy slot removed or replaced - no more adds (stop and exits still run)'
-        share = min(float(sl['share']), float(lot.get('share', sl['share'])))
-        cap = Sg['MAX_LEVERAGE'] * (self.last_eq or 0) * share
-        used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l['sleeve'] == lot['sleeve'])
-        if used + q * px > cap: return f'slot leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
+        book = lot.get('book') if not self.live and Sg.get('PAPER_BOOKS') is True else None
+        if book in PB.IDS:
+            cap = Sg['MAX_LEVERAGE'] * PB.allocation(self.last_eq or 0, Sg.get('PAPER_BOOK_CAP') or 2000.0)
+            used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l.get('book') == book)
+            cap_name = 'book'
+        else:
+            share = min(float(sl['share']), float(lot.get('share', sl['share'])))
+            cap = Sg['MAX_LEVERAGE'] * (self.last_eq or 0) * share
+            used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l['sleeve'] == lot['sleeve'])
+            cap_name = 'slot'
+        if cap_name == 'book':
+            if used + q * px > cap: return f'book leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
+        else:
+            if used + q * px > cap: return f'slot leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
         sd = 1 if lot['side'] == 'LONG' else -1
         add_risk = 0.0 if lot.get('levels') else q * max(0.0, sd * (px - lot['stop']))   # DCA levels are already in open risk
         hits = self._rules_eval(sl, lot['symbol'], lot['side'], dict(notional=q * px, risk=add_risk), add=True)
@@ -4908,7 +4937,9 @@ class Engine:
             g = dict(stop_atr=stop_atr or 2.5)
             if tp_r: g['tp_r'] = tp_r
         sd = 1 if side == 'LONG' else -1
-        sleeve_eq = eq if manual else eq * sl['share']
+        book_mode = bool(not manual and not self.live and self.S.get('PAPER_BOOKS') is True)
+        book = PB.book_for(sl.get('key')) if book_mode else None
+        sleeve_eq = PB.allocation(eq, self.S.get('PAPER_BOOK_CAP') or 2000.0) if book_mode else (eq if manual else eq * sl['share'])
         risk = risk if risk is not None else sl['risk'] * self.kelly_mult(sl) * self.governor_mult()
         risk_usd = sleeve_eq * risk
         if 'dca' in g:                                  # martingale DCA: a hard basket stop is mandatory, depth/scale bounded
@@ -4929,8 +4960,10 @@ class Engine:
         risk_usd = base_risk_usd * factor                # the risk-sized position scales; the stop below does not
         px = self.trade.marks().get(sym) if not self.dry else sg['close']
         atr = sg['atr']
-        lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - sum(
-            l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == ('MAN' if manual else sl['id']))) / px
+        open_notional = sum(l['qty'] * l['avg'] for l in self.state['lots'].values()
+                            if (l.get('book') == book if book_mode
+                                else l['sleeve'] == ('MAN' if manual else sl['id'])))
+        lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - open_notional) / px
 
         def _size(ru):
             z_ = F.risk_qty(g, ru, px, atr, sd)          # BT02: shared sizing (DCA basket or stop_atr), same formula as before
@@ -4964,6 +4997,16 @@ class Engine:
             self.last_skip = block
             if manual: raise ValueError(block)
             return False
+        if not manual and self.S.get('FEE_EDGE_GATE') is True:
+            actual_risk = risk_usd * qty / qty_raw if qty_raw else 0.0
+            # Conservative and deterministic: assume both fills are taker plus the audit's adverse slippage on each side.
+            # A maker fill can only improve this estimate; a maker->market fallback therefore cannot invalidate the gate.
+            round_trip = qty * px * (2 * FEE_EST + 2 * TA.EXEC_SLIP_BPS / 1e4)
+            mult = float(self.S.get('FEE_EDGE_MULT') or 3.0)
+            if actual_risk <= mult * round_trip:
+                self.last_skip = (f'fee_edge: stop risk ${actual_risk:.2f} does not cover {mult:g}x conservative '
+                                  f'round-trip cost ${round_trip:.2f}')
+                return False
         warns = list(self._rule_warns)
         reason = 'manual' if manual else 'signal'
         if not manual and self.S.get('AI_FILTER'):
@@ -4994,7 +5037,8 @@ class Engine:
             if sl and not manual: self.miss(sl, sym, side, sg, 'WARNING: ' + w_, kind='warning')
         plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name', 'share') if k in sl}, sym=sym, side=side, qty=qty,
                     stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
-                    sg=dict(time=sg.get('time'), close=sg.get('close')))
+                    sg=dict(time=sg.get('time'), close=sg.get('close')), book=book,
+                    book_eq=sleeve_eq if book_mode else None)
         if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
         if not manual and self.S.get('ENTRY_ORDER') == 'maker' and how != 'exposure':
             return self._maker_start(plan)
@@ -5010,6 +5054,22 @@ class Engine:
         sls = self.S.get('SLEEVES') or []
         return dict(bias=b, risk=k, current=ctrl_effect(b, k, sls), table=ctrl_table(sls),
                     bias_levels=[[x, v[0]] for x, v in CTRL_BIAS.items()], risk_levels=[[x, v[0]] for x, v in CTRL_RISK.items()])
+
+    def paper_books_status(self):
+        eq = self.last_eq or 0.0
+        cap = self.S.get('PAPER_BOOK_CAP') or 2000.0
+        view = []
+        for lot in self.state.get('lots', {}).values():
+            row = dict(lot)
+            mark, stop = (self.marks or {}).get(lot.get('symbol')), lot.get('stop')
+            if mark is not None and stop is not None:
+                sd = 1 if lot.get('side') == 'LONG' else -1
+                row['risk_current'] = max(0.0, sd * (float(mark) - float(stop)) * float(lot.get('qty') or 0))
+            view.append(row)
+        return dict(enabled=self.S.get('PAPER_BOOKS') is True and not self.live, shared_account=True,
+                    note='books share Binance margin; attribution is separate, liquidation is account-wide',
+                    target_total=round(5 * float(cap), 2), effective_total=round(5 * PB.allocation(eq, cap), 2),
+                    books=PB.summary(eq, cap, view, self.history))
 
     def _ctrl_log(self, what, sl, sym, side, ce, factor, why, **kw):
         """CTRL-01-LITE: one line for every control-caused scale / reject decision (never when the control had no effect)."""
@@ -5267,9 +5327,11 @@ class Engine:
         key = f"{'MAN' if manual else sl['id']}|{sym}|{side}|{int(time.time())}"
         fee = maker_qty * fill * float(self.S.get('FEE_MAKER', 0.0002)) + (qty - maker_qty) * fill * FEE_EST
         lot = dict(symbol=sym, side=side, sleeve='MAN' if manual else sl['id'], key_strategy=None if manual else sl['key'],
+                   book=plan.get('book'),
                    qty=qty, q0=qty, avg=fill, e0=fill, entry0=fill, R=abs(fill - stop), stop=stop, stop_id=None, stop_dirty=True, tp1=False, adds=0, dca=0,
                    best=fill, atr0=atr, atr_now=atr, mgmt=g, tf=(sl['tf'] if sl else '4h'), manual=manual,
-                   opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2), eq_at_entry=round(eq, 2),
+                   opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2),
+                   eq_at_entry=round(plan.get('book_eq') or eq, 2), account_eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty

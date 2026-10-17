@@ -548,6 +548,10 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 <!-- ======================= STRATEGIES ======================= -->
 <section class="tab" id="t_strat" role="tabpanel" aria-labelledby="n_strat">
   <div class="help">A <b>profile</b> loads a whole set of strategies in one click. Below it, each <b>slot</b> is one strategy with its own share of capital, risk per trade, coins, direction and timeframe. "Advanced" opens trade management: stops, trailing, partial take-profit, pyramiding (adding to winners), DCA safety orders, and the optional filters. Changes apply after "Save strategies"; open trades keep the rules they were opened with.</div>
+  <div class="card"><h3>Five paper test books <span id="bookState" class="tag t-mute"></span><span class="r"><label class="small t2" for="bookCap">Target per book $</label><input id="bookCap" type="number" min="100" max="10000000" step="100" style="width:90px" onchange="saveBooks()"><label class="sw" title="Enable for new automatic PAPER trades"><input type="checkbox" id="bookOn" onchange="saveBooks()"><span></span></label></span></h3>
+    <div class="help">One PAPER account, split into five separately tracked strategy plans. Each plan gets one fifth of current equity, up to the target above. Existing, manual and LIVE trades stay outside the books. Binance margin is still shared, so these are clean performance groups—not separate exchange wallets.</div>
+    <div class="g3" id="bookRows"></div>
+  </div>
   <div class="card"><h3>Profiles <span class="r mix"><label class="small t2" for="mixPct">When combining, the added profile gets</label><input id="mixPct" type="number" value="50" min="5" max="95" step="5" style="width:64px"><span class="small t2">% of capital</span></span></h3>
     <div class="help">"Apply" replaces your slots with the profile. "Combine" keeps your current slots and adds the profile's slots next to them, splitting capital by the % above (e.g. Boost 4h + Active 1h). Each slot trades independently with its own stops. Review, then press Save strategies. Profile numbers are <b>in-sample backtests</b>: the strategies were chosen on the same history they are tested on, so expect live results to be worse.</div>
     <div class="g3" id="presets"></div></div>
@@ -1343,6 +1347,14 @@ function updUnsaved(){const n=slDiff();$('usStrat').classList.toggle('on',n>0);$
 function discardSleeves(){if(!confirm('Discard your unsaved strategy changes?'))return;slDirty=false;SLV=null;ADV.clear();renderSleeves(true);updUnsaved()}
 
 // ---------------- strategies
+async function saveBooks(){try{await post('/api/settings',{PAPER_BOOKS:$('bookOn').checked,PAPER_BOOK_CAP:+$('bookCap').value});toast('Paper books saved');load()}catch(e){toast(e.message,true);load()}}
+function renderBooks(){const p=D.paper_books||{},rows=p.books||[],on=!!p.enabled;
+  $('bookOn').checked=on;$('bookOn').disabled=D.mode==='LIVE';$('bookCap').value=D.settings.PAPER_BOOK_CAP||2000;
+  $('bookState').className='tag '+(on?'t-long':'t-mute');$('bookState').textContent=on?'TRACKING NEW TRADES':'OFF';
+  setHTML($('bookRows'),rows.map(b=>`<div class="preset"><div style="display:flex;justify-content:space-between"><b>${esc(b.name)}</b><span class="tag t-mute">${usd(b.allocation,0)}</span></div>
+    <div class="small" style="margin-top:6px">Open <b>${b.open}</b> · risk left <b>${usd(b.open_risk)}</b> · closed <b>${b.closed}</b></div>
+    <div class="small ${cls(b.net_pnl)}">Net <b>${usd(b.net_pnl)}</b> <span class="mute">after ${usd(b.fees)} fees</span></div>
+    <div class="mute" style="font-size:10.5px;margin-top:5px">${(b.strategies||[]).map(libName).map(esc).join(' · ')}</div></div>`).join(''))}
 const MG=[['stop_atr','Stop (ATR)'],['trail_atr','Trailing stop (ATR)'],['be_r','Breakeven after (R)'],['tp1_r','Partial TP at (R)'],['tp1_frac','Partial TP size (0-1)'],['tp_r','Full TP at (R)'],['max_bars','Time exit (candles)']];
 function btBadge(bt){if(!bt)return '';return `${bt.unverified?`<div class="note bad" role="alert" style="margin:6px 0 0;white-space:normal"><b>UNVERIFIED</b> · ${esc(bt.unverified)}</div>`:''}<div class="mbadge" title="How these numbers were made">${bt.unverified?'<b>Old, unverified</b> · ':''}Backtest ${esc(bt.start||'?')}–${esc(bt.stop||'?')} · ${bt.insample?'in-sample':'out-of-sample'} · compounded · engine ${esc(bt.engine||'?')}</div>
   <div class="small" style="display:flex;gap:10px;flex-wrap:wrap"><span>$500 → <b>${usd(bt.end,0)}</b></span><span>max DD <b class="neg">${bt.dd}%</b></span><span>worst month <b class="neg">${bt.wm}%</b></span><span>~${bt.wk} trades/wk</span></div>`}
@@ -2033,7 +2045,7 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
   catch(e){if(EXPIRED)return;OFFLINE=true;$('status').innerHTML='<i></i>APP OFFLINE';$('status').className='pill p-bad';console.error(e)}
   finally{LOADING=false}}
 function renderAll(){SKIPPED=0;renderHeader();const t=CUR;
-  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
+  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderBooks();renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
     if(t==='strat')renderGrids();
     if(t==='coins')renderCoins();if(t==='sig')renderSignals();if(t==='logs')renderLogs();if(t==='set')renderSet();if(t==='bt'){btSources();labResume();roSum()}}
   finally{renderSafety()}}
