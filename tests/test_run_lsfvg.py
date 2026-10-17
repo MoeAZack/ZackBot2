@@ -197,7 +197,9 @@ def test_packet_fields_and_summarize_consistency(env):
               'trades', 'skips', 'open_at_end', 'packet_sha256'):
         assert k in p
     assert set(p['runner_sha256']) == {'run_lsfvg.py', 'liquidity_sweep_fvg.py', 'run_breadth_candidate.py',
-                                       'run_vwaprev_candidate.py'}
+                                       'run_vwaprev_candidate.py', 'backtest.py', 'strategies.py', 'pit_run.py',
+                                       'run_r4.py', 'splits.py'}
+    assert all(len(v) == 64 for v in p['runner_sha256'].values())
     assert all(len(f['sha256']) == 64 for f in p['cache']['files'].values())
     closed = [t for s in SYMS for t in oracle(s)[0] if t['R_net'] is not None]
     ref = LS.summarize(closed)
@@ -228,7 +230,8 @@ def test_packet_fields_and_summarize_consistency(env):
         assert {'symbol', 'side', 't_in', 't_out', 'label', 'R_gross', 'R_net', 'mfe_r', 'mae_r', 'giveback_r'} <= set(row)
         assert row['giveback_r'] == pytest.approx(row['mfe_r'] - row['R_gross'], abs=1e-8)
         assert row['mfe_r'] >= 0 and row['mae_r'] >= 0
-    assert p['decision']['verdict'] in ('CANDIDATE', 'PARK')
+    assert p['decision']['tier_verdict'] in ('CANDIDATE', 'PARK') and 'verdict' not in p['decision']
+    assert p['decision']['final_requires'] == 'CANDIDATE on both CORE-10 and CORE-20 (combined sides)'
 
 
 def test_max_dd_in_exit_order(env):
@@ -314,7 +317,8 @@ def _c(**kw):
                                          (dict(gross_R=2.99), 'PARK'), (dict(n=0, wins=0, losses=0), 'PARK'),
                                          (dict(pf=None, losses=0), 'CANDIDATE')])
 def test_decision_rule(kw, verdict):
-    assert R.decision(_c(**kw), ['Q1', 'Q2', 'Q3'])['verdict'] == verdict
+    d = R.decision(_c(**kw), ['Q1', 'Q2', 'Q3'])
+    assert d['tier_verdict'] == verdict and d['final_requires'] == R.FINAL_REQUIRES
 
 
 # ------------------------------------------------------------------ determinism
@@ -331,3 +335,114 @@ def test_packet_json_roundtrip(env):
     with open(env['tmp'] / 'p.json', encoding='utf-8') as f:
         p = json.load(f)
     assert p['candidate'] == LS.CANDIDATE and p['non_promotable'] is True
+
+
+# ------------------------------------------------------------------ review 4d535b3 follow-ups
+def test_detect_restored_after_exception(monkeypatch):
+    """The wrapper is removed even when run_symbol raises inside it."""
+    def boom(df, side, atr=None):
+        raise ZeroDivisionError('detector failed')
+    monkeypatch.setattr(LS, 'detect', boom)
+    with pytest.raises(ZeroDivisionError):
+        with R.window_signals(5, []):
+            LS.run_symbol(LT.base())
+    assert LS.detect is boom
+
+
+def test_pre_window_trade_raises_runner_error(env, monkeypatch):
+    import contextlib
+    monkeypatch.setattr(R, 'window_signals', lambda lo_i, ex: contextlib.nullcontext())
+    with pytest.raises(R.RunnerError, match='pre-window signal'):
+        go(env)
+    assert not os.path.exists(env['tmp'] / 'p.json')
+
+
+def test_warmup_bar_count_mismatch_raises_runner_error(env, monkeypatch):
+    monkeypatch.setattr(R, 'WARMUP_BARS', R.WARMUP_BARS - 1)
+    with pytest.raises(R.RunnerError, match='warm-up bars'):
+        go(env)
+
+
+def test_net_share_null_when_group_net_near_zero():
+    rows = [dict(symbol='ETHUSDT', R_net=1.0), dict(symbol='SOLUSDT', R_net=-1.0 + 1e-12)]
+    c = R.concentration(rows, ['ETHUSDT', 'SOLUSDT'])
+    assert c['ETHUSDT']['net_R_share'] is None and c['SOLUSDT']['net_R_share'] is None
+    c = R.concentration([dict(symbol='ETHUSDT', R_net=2.0), dict(symbol='SOLUSDT', R_net=-1.0)], ['ETHUSDT', 'SOLUSDT'])
+    assert c['ETHUSDT']['net_R_share'] == pytest.approx(2.0)
+
+
+def test_prereg_block_written_before_data(env, monkeypatch):
+    order = []
+    real_pre, real_read = R.prereg, R.B.read_cache
+    monkeypatch.setattr(R, 'prereg', lambda: (order.append('prereg'), real_pre())[1])
+    monkeypatch.setattr(R.B, 'read_cache', lambda *a, **k: (order.append('read'), real_read(*a, **k))[1])
+    p = go(env)
+    assert order[0] == 'prereg' and 'read' in order
+    pr = p['prereg']
+    assert pr['written_before_data'] is True and pr['source'] == 'Cowork 6228948749'
+    assert pr['rule_text'] == LS.__doc__
+    assert 'exit bar x on open fills' in pr['funding'] and 'both sides' in pr['funding']
+    assert 'R_net' in pr['pf_and_quarters_use'] and pr['final_requires'] == R.FINAL_REQUIRES
+    sem = pr['frozen_v0_semantics']
+    assert len(sem) == 3 and pr['frozen_v0_semantics_source'] == 'Cowork 6228999316'
+    assert 'dies' in sem[0] and 'does not re-arm on a later FVG within s+3' in sem[0]
+    assert 'earliest s wins' in sem[1] and 'no retry at a later n' in sem[1]
+    assert 'ATR14 at bar n-1' in sem[2] and '6228929513' in sem[2]
+    assert set(p['skips_by_reason']) == set(R.SKIPS)
+    assert p['skips_by_reason'] == {k: sum(1 for x in p['skips'] if x['skip'] == k) for k in R.SKIPS}
+    assert p['skips_by_reason'] == p['stats']['combined']['skips']
+    for g in ('long', 'short', 'combined'):
+        st = p['stats'][g]
+        assert set(st['gap_exit_by_label']) == set(R.LABELS)
+        assert st['gap_exit_by_label'] == {k: sum(1 for x in p['trades'] if x['label'] == k and x['gap_exit']
+                                                  and (g == 'combined' or x['side'] == g)) for k in R.LABELS}
+        assert isinstance(st['skips_by_symbol'], dict) and 'lt_minus1_by_label' in st and 'open_end' in st
+
+
+def test_skips_by_symbol_counts():
+    sk = [dict(symbol='ETHUSDT', side='short', n=1, skip='overlap'), dict(symbol='ETHUSDT', side='long', n=2,
+          skip='conflict'), dict(symbol='ETHUSDT', side='short', n=2, skip='conflict'),
+          dict(symbol='SOLUSDT', side='short', n=3, skip='cost_guard')]
+    summ = LS.summarize([])['total']
+    st = R.group_stats([], sk, [], ['Q1'], summ)
+    assert st['skips_by_symbol'] == {'ETHUSDT': {'conflict': 2, 'overlap': 1}, 'SOLUSDT': {'conflict': 0, 'overlap': 0}}
+    assert st['conflict_events'] == 1
+
+
+# ------------------------------------------------------------------ --check-coverage
+def test_check_coverage_reports_late_listing_and_nothing_past_end(env, monkeypatch):
+    path = os.path.join(env['cache'], 'SOLUSDT_4h.csv')
+    d = pd.read_csv(path, encoding='utf-8')
+    d.iloc[HEAD + 40:].to_csv(path, index=False)                   # listed 40 bars after the warm-up start
+    calls = []
+    monkeypatch.setattr(LS, 'run_symbol', lambda *a, **k: calls.append('run'))
+    monkeypatch.setattr(R.VC, 'clean_commit', lambda *a, **k: calls.append('commit'))
+    monkeypatch.setattr(LS.ST, 'indicators', lambda *a, **k: calls.append('ind'))
+    cov = R.check_coverage(cache=env['cache'], window=WINDOW, symbols=SYMS)
+    assert not calls                                                # nothing computed
+    assert cov['required_warmup_start'] == SP.utc(WARM_LO)
+    eth, sol = cov['symbols']['ETHUSDT'], cov['symbols']['SOLUSDT']
+    assert eth['ok'] and eth['first'] == SP.utc(WARM_LO - HEAD * H4) and eth['last'] == SP.utc(HI - H4)
+    assert not sol['covers_warmup'] and sol['first'] == SP.utc(WARM_LO + 40 * H4) and not sol['ok']
+    assert cov['late_or_short'] == ['SOLUSDT']
+    assert all(v['last'] is None or v['last'] < cov['window']['end'] for v in cov['symbols'].values())
+    assert SP.utc(HI) not in json.dumps(cov['symbols'])            # the cache runs TAIL bars past END: none shown
+
+
+def test_check_coverage_missing_file_and_holdout(env):
+    os.remove(os.path.join(env['cache'], 'SOLUSDT_4h.csv'))
+    cov = R.check_coverage(cache=env['cache'], window=WINDOW, symbols=SYMS)
+    assert cov['symbols']['SOLUSDT']['missing_file'] and cov['late_or_short'] == ['SOLUSDT']
+    with pytest.raises(R.RunnerError, match='sealed|holdout'):
+        R.check_coverage(cache=env['cache'], window='2026-06-01T00:00:00Z/2026-09-28T04:00:00Z', symbols=SYMS)
+
+
+def test_cli_check_coverage(env, capsys):
+    out = str(env['tmp'] / 'cov.json')
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(SYMS), '--check-coverage']) == 0
+    rep = json.loads(capsys.readouterr().out)
+    assert rep['late_or_short'] == [] and not os.path.exists(out)
+    assert R.main(['--cache', env['cache'], '--window', '2026-09-01T00:00:00Z/2026-10-01T00:00:00Z',
+                   '--symbols', 'ETHUSDT', '--check-coverage']) == 2
+    with pytest.raises(SystemExit):
+        R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', 'ETHUSDT'])   # --out required for a run
