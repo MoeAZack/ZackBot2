@@ -324,3 +324,57 @@ def test_every_add_path_kind_is_an_opening_fill():
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'engine.py'), encoding='utf-8').read()
     whys = set(re.findall(r"_add_qty\([^)]*?,\s*'([a-z_]+)'", src))
     assert {'entry_fallback', 'pyramid_add', 'safety_order'} <= whys and whys <= set(AC.OPENING_FILLS)
+
+
+# ------------------------------------------------------------------ Codex ruling 3 (6238997253): fallback is an entry
+def test_fallback_completed_entry_never_blends_into_the_exit_price():
+    from test_v31_engine import maker_engine, age, lot_of
+    import trade_audit as TA
+    e, bk = maker_engine(); assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    bk.fill(0.4); age(e); e.manage(e.trade.marks())
+    for _ in range(3): age(e, total=True); e.manage(e.trade.marks())
+    lot = lot_of(e); k = next(k for k, l in e.state['lots'].items() if l is lot)
+    kinds = [f[1] for f in lot['fills']]
+    assert kinds[:2] == ['entry', 'entry_fallback'], kinds
+    q_in, avg = lot['qty'], lot['avg']
+    e.trade.mark['BTCUSDT'] = 105.0
+    e.close_lot(k, 'signal', mark=105.0)
+    h = e.history[-1]
+    exits = [f for f in h['fills'] if f[1] not in TA.ENTRY_KINDS]
+    assert len(exits) == 1 and exits[0][2] == pytest.approx(q_in)
+    assert h['exit'] == pytest.approx(105.0)                         # was blended with the fallback's entry price
+    assert h['move_pct'] == pytest.approx((105.0 - h['entry']) / h['entry'] * 100, abs=0.01)
+    assert h['pnl_gross'] == pytest.approx((105.0 - avg) * q_in, rel=1e-6)
+    assert AC.held_at(h['fills'], 4e12) == 0.0 and set(AC.OPENING_FILLS) >= set(TA.ENTRY_KINDS)
+
+
+# ------------------------------------------------------------------ Codex ruling 2 / Cowork should-fixes
+def test_ambiguous_funding_marks_every_holder_incomplete_and_keeps_the_raw_row():
+    e, _ = mk(MX, HEDGE=True)
+    a = opened(e); e.state['lots'][a]['opened'] = '2020-01-01T00:00:00+00:00'
+    b = 'X'; e.state['lots'][b] = dict(e.state['lots'][a], side='SHORT')     # another book's opposite leg on the symbol
+    e.trade.income_rows = [frow(1, -0.3)]
+    e.funding_tick(force=True)
+    for k in (a, b):
+        l = e.state['lots'][k]
+        assert l['funding_partial'] == ['ambiguous_opposite_side_funding'] and l['funding_unattributed'] == 1
+        assert 'funding_actual' not in l                                   # never zero-filled, never netted
+    row = json.loads(open(os.path.join(e.dir, 'funding.jsonl')).readline())
+    assert row['status'] == 'ambiguous' and row['amount'] == -0.3 and row['shares'] == []
+    assert sorted(x['side'] for x in row['holders']) == ['LONG', 'SHORT']
+    e.close_lot(a, 'signal', mark=101.0)
+    assert e.history[-1]['funding_partial'] == ['ambiguous_opposite_side_funding']   # carried to the row
+
+
+def test_apply_fill_is_idempotent_per_cost_ref():
+    t = dict(cost_refs=['a'])
+    rec = dict(cost_ref='a', commission_raw=[dict(asset='USDT', maker=False, amount=0.5, n=1)])
+    AC.apply_fill(t, rec); AC.apply_fill(t, rec)
+    AC.finalize(t, 'USDT', 1)
+    assert t['fees_actual_by_asset'] == {'USDT': 0.5} and t['cost_refs_done'] == ['a'] and t['fees_actual'] == 0.5
+
+
+def test_no_cost_records_is_never_a_complete_zero():
+    t = {}
+    AC.finalize(t, 'USDT', None)
+    assert t['fees_actual'] is None and t['fees_actual_partial'] == ['no_cost_records']

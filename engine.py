@@ -2773,13 +2773,21 @@ class Engine:
                 if k in seen_set: continue
                 seen.append(k); seen_set.add(k)
                 amt, asset, sym = _fnum(r.get('income')), r.get('asset'), r.get('symbol')
-                st, shares = AC.attribute_funding(amt, [(key, s, q) for key, s, q in self._funding_holders(sym, t)])
+                hs = self._funding_holders(sym, t)
+                st, shares = AC.attribute_funding(amt, [(key, s, q) for key, s, q in hs])
+                if st in ('ambiguous', 'unreadable'):           # never estimated, never netted: every holder is incomplete
+                    why = 'ambiguous_opposite_side_funding' if st == 'ambiguous' else 'unreadable_funding'
+                    for (kind, key), _s, _q in hs:
+                        tgt = self.state['lots'].get(key) if kind == 'lot' else next((h for h in self.history if h.get('id') == key), None)
+                        if tgt is not None:
+                            AC.mark_funding_gap(tgt, why); rows_changed = rows_changed or kind == 'row'
                 for (kind, key), a in shares.items():
                     tgt = self.state['lots'].get(key) if kind == 'lot' else next((h for h in self.history if h.get('id') == key), None)
                     if tgt is not None:
                         AC.apply_funding(tgt, a, asset); rows_changed = rows_changed or kind == 'row'
                 new.append(dict(kind='funding', key=k, symbol=sym, asset=asset, amount=amt, time_ms=t, status=st,
-                                shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()]))
+                                shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()],
+                                **({'holders': [dict(kind=kk, id=kid, side=s) for (kk, kid), s, _q in hs]} if not shares else {})))
             del seen[:-self.FUNDING_SEEN_MAX]
             self.state['funding_cursor_ms'] = hi                 # same-ms rows are re-read next time and deduped by key
             # Order: evidence log first (a crash after it only repeats a line, deduped by key), then state (seen keys +
@@ -3534,7 +3542,7 @@ class Engine:
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
         self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
-        closes = [f for f in lot.get('fills', []) if f[1] not in ('entry', 'pyramid_add', 'safety_order')]
+        closes = [f for f in lot.get('fills', []) if f[1] not in TA.ENTRY_KINDS]      # entry_fallback is an entry
         cq = sum(f[2] for f in closes) or 1e-12
         exit_avg = sum(f[2] * f[3] for f in closes) / cq if closes else lot['avg']
         gross = lot.get('realized', 0.0); fees = lot.get('fees', 0.0); net = gross - fees

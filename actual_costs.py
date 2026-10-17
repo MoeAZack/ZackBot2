@@ -10,7 +10,7 @@ import hashlib, math
 from datetime import datetime
 
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
-               'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_actual', 'funding_by_asset', 'funding_rows')
+               'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows')
 
 
 def _num(v):
@@ -36,6 +36,7 @@ def raw_from_trades(trades):
 
 def apply_fill(target, rec):
     """Fold one finished fill record (with commission_raw / commission_missing) into a lot or history row (in place)."""
+    if rec.get('cost_ref') and rec['cost_ref'] in (target.get('cost_refs_done') or ()): return target   # replay-safe
     by = target.setdefault('fees_actual_by_asset', {})
     raw = rec.get('commission_raw') if isinstance(rec.get('commission_raw'), list) else []
     if rec.get('commission_missing') or not raw:
@@ -74,6 +75,7 @@ def finalize(target, quote, booked_fills, now_ms=None, wait_ms=None):
         lost = now_ms is not None and wait_ms is not None and t is not None and now_ms - t > wait_ms
         why.append('fill_records_lost' if lost else 'fill_records_pending')
     if booked_fills is not None and refs < booked_fills: why.append('fills_without_cost_record')
+    if not refs and booked_fills is None: why.append('no_cost_records')
     if not quote or any(a != quote for a in by): why.append('non_quote_asset')
     if why:
         target['fees_actual'], target['fees_actual_partial'] = None, sorted(set(why))
@@ -102,7 +104,7 @@ def attribute_funding(income, side_qty):
 
 # every kind a lot's `fills` books as an increase: the opening fill plus every `why` the engine's _add_qty books
 # (a maker entry completed by the market fallback books its remainder as 'entry_fallback'); anything else reduces.
-OPENING_FILLS = ('entry', 'entry_maker', 'entry_market', 'entry_fallback', 'pyramid_add', 'safety_order')
+OPENING_FILLS = ('entry', 'entry_maker', 'entry_market', 'entry_fallback', 'pyramid_add', 'safety_order', 'grid_buy', 'grid_sell')
 
 
 def held_at(fills, t_ms):
@@ -115,6 +117,13 @@ def held_at(fills, t_ms):
         except (TypeError, ValueError, IndexError): return None
         if ts <= t_ms: q += qty if kind in OPENING_FILLS else -qty
     return max(q, 0.0)
+
+
+def mark_funding_gap(target, reason):
+    """A funding payment that could not be attributed to this lot / row: its funding_actual is no longer complete."""
+    target['funding_unattributed'] = int(target.get('funding_unattributed') or 0) + 1
+    target['funding_partial'] = sorted(set(target.get('funding_partial') or []) | {reason})
+    return target
 
 
 def apply_funding(target, amount, asset):
