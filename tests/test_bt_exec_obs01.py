@@ -1474,8 +1474,9 @@ def test_promotion_records_naming_a_run_never_admit_silently(tmp_path):
                                 (led, 'window_spent', env['run_digest'], 'run_envelope_unreadable'),
                                 (led, 'holdout_rerun', 'f' * 64, 'run_envelope_unreadable'),
                                 (led, 'window_spent', 'not-a-digest', 'run_digest_invalid')):
-        with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}'):
+        with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}') as ei:
             add(d, kind, rd)
+        assert isinstance(ei.value, L.LedgerError)                     # also a ledger refusal (record checks)
         assert tree_hash(tmp_path) == before
     # BY DESIGN out of the boundary: a window_spent with run_digest null names no run to promote - it only burns the
     # window (breadth_eval's evaluation spend); the ledger's record checks still apply.

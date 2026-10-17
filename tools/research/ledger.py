@@ -290,15 +290,17 @@ def _enforce_promotion(d: str, run_digest, exec_manifest=None, exec_store=None) 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import report as R
     EO = R._exec_obs()
+    # these refusals are ALSO LedgerErrors: the ledger's own record checks refuse the same cases with this wording
+    refused = type('LedgerPromotionRefused', (EO.PromotionRefused, LedgerError), {})
     if not isinstance(run_digest, str) or not HEX64.match(run_digest):
-        raise EO.PromotionRefused(['run_digest_invalid'])
+        raise refused(['run_digest_invalid'])
     runs = _runs_of(d)
     if runs is None:
-        raise EO.PromotionRefused(['runs_store_missing'])
+        raise refused(['runs_store_missing: a promotion record needs the immutable runs store beside the ledger'])
     try:
         env = R.load_envelope(runs, run_digest)
     except R.ReportError as e:
-        raise EO.PromotionRefused([f'run_envelope_unreadable: {e}'])
+        raise refused([f'run_envelope_unreadable: no readable frozen run envelope for the record ({e})'])
     R.enforce_promotion(env, exec_manifest=exec_manifest, exec_store=exec_store)
 
 
