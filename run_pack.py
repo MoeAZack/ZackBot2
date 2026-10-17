@@ -100,7 +100,7 @@ def _rows(name, data):
     return len(d) if isinstance(d, (list, dict)) else None
 
 
-def write_pack(dest_root, cohort, docs=None, sources=None, forbid=()):
+def write_pack(dest_root, cohort, docs=None, sources=None, forbid=(), meta=None):
     """docs: {name: json-able}; sources: {name: existing file path (missing files are recorded as absent)}.
     Returns (pack_dir, pack_sha). Never overwrites; on any failure nothing is left at the final path."""
     final = os.path.join(dest_root, cohort['id'])
@@ -115,7 +115,8 @@ def write_pack(dest_root, cohort, docs=None, sources=None, forbid=()):
         if os.path.basename(name) != name or name == MANIFEST: raise PackRefused(f'bad file name {name!r}')
         scan(name, b, forbid)
     files = [dict(file=n, bytes=len(b), rows=_rows(n, b), sha256=sha256_bytes(b)) for n, b in sorted(blobs.items())]
-    man = json.dumps(dict(cohort=cohort, files=files, absent=sorted(absent), pack_version=1), indent=1, sort_keys=True).encode()
+    man = json.dumps(dict(cohort=cohort, files=files, absent=sorted(absent), pack_version=1, meta=meta or {}),
+                     indent=1, sort_keys=True).encode()
     os.makedirs(dest_root, exist_ok=True)
     tmp = os.path.join(dest_root, f".tmp-{cohort['id']}-{os.getpid()}")
     os.mkdir(tmp)
@@ -153,7 +154,23 @@ def verify_pack(path):
     probs += [f'cohort: {p}' for p in validate_cohort(man.get('cohort'))]
     if (man.get('cohort') or {}).get('id') != os.path.basename(os.path.normpath(path)):
         probs.append('folder name does not match the cohort id')
-    return dict(ok=not probs, pack_sha=sha256_bytes(raw), problems=probs, cohort_id=(man.get('cohort') or {}).get('id'))
+    drift = list((man.get('meta') or {}).get('drift') or [])
+    want = (man.get('cohort') or {}).get('settings_sha')
+
+    def snap(name):
+        if name not in listed: return None
+        try:
+            with open(os.path.join(path, name), 'rb') as f: return json.loads(f.read())
+        except (OSError, ValueError): return None
+    start, end = snap('settings_at_start.json'), snap('settings_at_end.json')
+    if start is None:
+        if 'settings_snapshot' not in drift: probs.append('no settings_at_start snapshot and drift does not record it')
+    elif sha256_doc(start)[:16] != want: probs.append('settings_at_start does not match the cohort settings_sha')
+    if end is None: probs.append('settings_at_end missing')
+    elif sha256_doc(end)[:16] != want and 'settings_sha' not in drift:
+        probs.append('settings changed during the cohort but the drift is not recorded')
+    return dict(ok=not probs, clean=not probs and not drift, drift=drift, pack_sha=sha256_bytes(raw), problems=probs,
+                cohort_id=(man.get('cohort') or {}).get('id'))
 
 
 def replay_check(path):

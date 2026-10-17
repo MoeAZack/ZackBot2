@@ -10,10 +10,12 @@ import run_pack as RP
 from test_safety import mk_engine, SL, SG
 
 T0 = '2026-10-17T13:19:00+00:00'
+SETS = {'MAX_LEVERAGE': 5}
+SNAP = {'settings_at_start.json': SETS, 'settings_at_end.json': SETS}
 
 
 def coh(**kw):
-    return RP.new_cohort(kw.pop('started', T0), 'code', 'set', BL.book_version(), 'fee', 2000.0, **kw)
+    return RP.new_cohort(kw.pop('started', T0), 'code', RP.sha256_doc(SETS)[:16], BL.book_version(), 'fee', 2000.0, **kw)
 
 
 def row(book, pnl, fees=0.5, closed='2026-10-17T15:00:00+00:00', **kw):
@@ -132,7 +134,7 @@ def test_cohort_id_is_a_hash_of_its_fields_and_edits_are_detected():
     for k, v in (('book_cap', 5000.0), ('code_sha', 'other'), ('mode', 'LIVE'), ('started_utc', '2026-10-18T00:00:00+00:00')):
         assert RP.validate_cohort(dict(c, **{k: v}))
     assert RP.drift(c, code_sha='code', book_version=c['book_version']) == []
-    assert RP.drift(c, code_sha='new', settings_sha='set') == ['code_sha']
+    assert RP.drift(c, code_sha='new', settings_sha=c['settings_sha']) == ['code_sha']
 
 
 # ------------------------------------------------------------------ pack
@@ -140,11 +142,13 @@ def test_pack_round_trip_verify_and_tamper_detection():
     root = tempfile.mkdtemp(); c = coh()
     src = os.path.join(root, 'src.jsonl')
     with open(src, 'w') as f: f.write('{"a":1}\n{"a":2}\n')
-    path, sha = RP.write_pack(os.path.join(root, 'out'), c, {'history.json': [1, 2, 3]}, {'fills.jsonl': src, 'none.jsonl': None})
+    path, sha = RP.write_pack(os.path.join(root, 'out'), c, dict(SNAP, **{'history.json': [1, 2, 3]}),
+                              {'fills.jsonl': src, 'none.jsonl': None})
     v = RP.verify_pack(path)
     assert v['ok'] and v['pack_sha'] == sha and v['cohort_id'] == c['id']
     man = json.load(open(os.path.join(path, 'MANIFEST.json')))
-    assert {x['file']: x['rows'] for x in man['files']} == {'history.json': 3, 'fills.jsonl': 2} and man['absent'] == ['none.jsonl']
+    assert {x['file']: x['rows'] for x in man['files'] if x['file'] in ('history.json', 'fills.jsonl')} == {'history.json': 3, 'fills.jsonl': 2}
+    assert man['absent'] == ['none.jsonl'] and v['clean']
     with open(os.path.join(path, 'history.json'), 'ab') as f: f.write(b' ')
     assert not RP.verify_pack(path)['ok']
     with open(os.path.join(path, 'extra.txt'), 'w') as f: f.write('x')
@@ -268,25 +272,11 @@ def test_boundary_packs_verifies_replays_and_cannot_mix_cohorts():
     assert b'k' * 16 not in raw and b's' * 16 not in raw
     new = e.book_ledger_status()                                           # the new cohort starts clean
     assert all(b['closed'] == 0 and b['nav'] == 2000 for b in new['books'].values())
-    assert new['excluded']['foreign'] == len(e.history)
+    assert e.cohort_rows == [] and len(e.history) == 2                     # trading history untouched by the boundary
     assert e.state['cohort_archive'][-1]['pack_sha'] == out['pack_sha']
 
 
 # ------------------------------------------------------------------ review r1 regressions
-def test_history_trim_never_drops_open_cohort_rows():
-    e, _ = books_engine()
-    cid = e.state['cohort']['id']
-    old = [row('B1_FAST', 100, fees=0, cohort_id='CH-old') for _ in range(500)]
-    own = [row('B1_FAST', 1, fees=0, cohort_id=cid) for _ in range(3200)]
-    kept = e._trim_history(old + own)
-    assert sum(r.get('cohort_id') == cid for r in kept) == 3200 and len(kept) == 3200
-    e.history = kept
-    assert e.book_ledger_status()['books']['B1_FAST']['nav'] == 2000 + 3200
-    e.COHORT_KEEP_MAX = 3100
-    assert len(e._trim_history(own)) == 3100 and e.state['history_truncated'] == cid
-    assert e.book_ledger_status()['history_truncated'] is True
-
-
 def test_boundary_flushes_writers_and_packs_rotated_runtime_files():
     e, tmp = books_engine()
     calls = []
@@ -358,15 +348,6 @@ def test_verify_pack_checks_folder_name_and_absent_files():
     assert any('folder name' in p for p in RP.verify_pack(moved)['problems'])
 
 
-def test_closing_a_trade_keeps_every_open_cohort_row_beyond_the_history_cap():
-    e, _ = books_engine()
-    cid = e.state['cohort']['id']
-    e.history = [row('B1_FAST', 5, cohort_id='CH-old') for _ in range(200)] + [row('B1_FAST', 1, cohort_id=cid) for _ in range(3000)]
-    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
-    e.close_lot(next(iter(e.state['lots'])), 'manual')
-    assert sum(r.get('cohort_id') == cid for r in e.history) == 3001 and len(e.history) == 3001
-
-
 # ------------------------------------------------------------------ review r2 regressions
 def test_boundary_flushes_enricher_before_fills_and_records_undrained():
     e, _ = books_engine()
@@ -398,3 +379,133 @@ def test_unreadable_sidecar_is_a_dispute_and_is_never_overwritten():
     with open(e.F['cohort'], 'w') as f: f.write('{"id": "CH-trunc')               # truncated / damaged
     e._cohort_init()
     assert open(e.F['cohort']).read() == '{"id": "CH-trunc' and e.book_ledger_status() is None
+
+
+# ------------------------------------------------------------------ Codex review (6235416696) regressions
+def restart(e, tmp):
+    e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)
+    e2.S.update(PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, CAP_SINCE=e.S['CAP_SINCE'], CAPITAL_CAP=e.S['CAPITAL_CAP'],
+                UNIVERSE=e.S['UNIVERSE'], SYMBOLS_ON=e.S['SYMBOLS_ON'], MAX_LEVERAGE=e.S.get('MAX_LEVERAGE'))
+    e2._cohort_init()
+    return e2
+
+
+@pytest.mark.parametrize('where', ['state', 'sidecar'])
+def test_boundary_interrupted_after_pack_completes_on_restart_and_on_retry(monkeypatch, where):
+    for how in ('restart', 'retry'):
+        e, tmp = books_engine()
+        old, dest = e.state['cohort']['id'], tempfile.mkdtemp()
+        if where == 'state':
+            real_w = e._save_wal
+            calls = []
+            def wal():                                                     # the intent save passes, the completion save fails
+                calls.append(1)
+                if len(calls) > 1: raise OSError('crash')
+                return real_w()
+            monkeypatch.setattr(e, '_save_wal', wal)
+        else:
+            real = e._save_aux
+            monkeypatch.setattr(e, '_save_aux', lambda n, o: (_ for _ in ()).throw(OSError('crash')) if n == 'cohort' else real(n, o))
+        with pytest.raises(OSError): e.cohort_boundary(dest)
+        assert os.path.isdir(os.path.join(dest, old))                     # the pack was published before the crash
+        if where == 'state': assert e.state['cohort']['id'] == old and e.state['cohort_closing']   # memory rolled back
+        monkeypatch.undo()
+        e2 = restart(e, tmp) if how == 'restart' else e
+        if how == 'retry' and where == 'state': e2.cohort_boundary(dest)   # same call again: completes, never "exists"
+        assert e2.state['cohort']['id'] != old and not e2.state.get('cohort_closing')
+        assert [a['id'] for a in e2.state['cohort_archive']] == [old] and RP.verify_pack(os.path.join(dest, old))['ok']
+        if how == 'restart':
+            assert not getattr(e2, '_cohort_conflict', False) and json.load(open(e2.F['cohort']))['id'] == e2.state['cohort']['id']
+            assert e2.book_ledger_status() is not None
+
+
+def test_interrupted_boundary_with_a_tampered_pack_is_not_completed():
+    e, tmp = books_engine()
+    old, dest = e.state['cohort']['id'], tempfile.mkdtemp()
+    e.state['cohort_closing'] = dict(old=dict(e.state['cohort'], ended_utc=E.now_utc().isoformat(timespec='seconds')), dest=dest,
+                                     note='', drift=[])
+    os.makedirs(os.path.join(dest, old)); open(os.path.join(dest, old, 'MANIFEST.json'), 'w').write('{}')
+    with pytest.raises(RuntimeError, match='does not verify'): e.cohort_boundary(dest)
+    assert e.state['cohort']['id'] == old and e.state['cohort_closing'] and e.book_ledger_status() is None
+
+
+def test_evidence_retention_never_changes_trading_history_window():
+    e, _ = books_engine(COMPOUND=True)
+    cid = e.state['cohort']['id']
+    for i in range(3000):
+        r = row('B3_TREND', 100, fees=0, cohort_id=cid, id=f'r{i}'); e.history.append(r); e._cohort_row(r)
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    e.close_lot(next(iter(e.state['lots'])), 'manual')
+    assert len(e.history) == 3000 and e.history[0]['id'] == 'r1'          # baseline trading window, oldest row dropped
+    base = sum(h.get('pnl') or 0 for h in e.history if h.get('closed', '') >= e.S['CAP_SINCE'])
+    assert e.capital_info()['realized'] == round(base, 2)
+    assert e.book_ledger_status()['books']['B3_TREND']['closed'] == 3001   # the ledger still sees every cohort trade
+
+
+def test_evidence_rows_survive_restart_and_heal_from_history():
+    e, tmp = books_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    e.close_lot(next(iter(e.state['lots'])), 'manual')
+    os.remove(e.F['cohort_rows'])                                          # a lost append: history still holds the row
+    e.save_state()
+    e2 = restart(e, tmp)
+    assert [r['id'] for r in e2.cohort_rows] == [e.history[-1]['id']]
+    assert e2.book_ledger_status()['books']['B3_TREND']['closed'] == 1
+
+
+def test_boundary_refuses_drift_unless_accepted_and_seals_it_verifiably():
+    e, _ = books_engine(MAX_LEVERAGE=5)
+    e._cohort_init()
+    e.state['cohort'] = None; e.state.pop('cohort_settings', None)
+    os.remove(e.F['cohort']); e._cohort_init()                             # cohort started under MAX_LEVERAGE 5
+    e.S['MAX_LEVERAGE'] = 3
+    with pytest.raises(RuntimeError, match='settings_sha changed'): e.cohort_boundary(tempfile.mkdtemp())
+    out = e.cohort_boundary(tempfile.mkdtemp(), accept_drift=True)
+    v = RP.verify_pack(out['pack'])
+    assert v['ok'] and not v['clean'] and 'settings_sha' in v['drift']
+    assert json.load(open(os.path.join(out['pack'], 'settings_at_start.json')))['MAX_LEVERAGE'] == 5
+    assert json.load(open(os.path.join(out['pack'], 'book_ledger_final.json')))['drift'] == v['drift']
+    mp = os.path.join(out['pack'], 'MANIFEST.json')                        # strip the recorded drift: verify catches it
+    man = json.load(open(mp)); man['meta'] = {}; json.dump(man, open(mp, 'w'))
+    assert any('drift is not recorded' in p for p in RP.verify_pack(out['pack'])['problems'])
+
+
+def test_boundary_refuses_an_active_grid():
+    e, _ = books_engine()
+    e.state['grids'] = {'G|BTCUSDT': dict(symbol='BTCUSDT')}
+    with pytest.raises(RuntimeError, match=r'not flat \(grids\)'): e.cohort_boundary(tempfile.mkdtemp())
+
+
+def test_retry_of_a_pending_boundary_reuses_its_end_time_and_destination(monkeypatch):
+    e, _ = books_engine()
+    old, dest = e.state['cohort']['id'], tempfile.mkdtemp()
+    real_w, calls = e._save_wal, []
+    monkeypatch.setattr(e, '_save_wal', lambda: calls.append(1) or (real_w() if len(calls) == 1 else (_ for _ in ()).throw(OSError('x'))))
+    with pytest.raises(OSError): e.cohort_boundary(dest)
+    monkeypatch.undo()
+    ended = e.state['cohort_closing']['old']['ended_utc']
+    with pytest.raises(RuntimeError, match='pending for'): e.cohort_boundary(tempfile.mkdtemp())
+    later = E.now_utc() + E.timedelta(hours=1)
+    monkeypatch.setattr(E, 'now_utc', lambda: later)                     # a fresh boundary would get a new end time
+    out = e.cohort_boundary(dest)
+    assert json.load(open(os.path.join(out['pack'], 'cohort.json')))['ended_utc'] == ended == e.state['cohort']['started_utc']
+
+
+def test_completing_the_same_transition_twice_never_duplicates_the_archive():
+    e, _ = books_engine()
+    pend = dict(old=dict(e.state['cohort'], ended_utc=E.now_utc().isoformat(timespec='seconds')), dest=tempfile.mkdtemp(), note='', drift=[])
+    e._complete_boundary(pend); e._complete_boundary(pend)
+    assert [a['id'] for a in e.state['cohort_archive']] == [pend['old']['id']]
+
+
+def test_missing_settings_snapshot_is_drift():
+    e, _ = books_engine()
+    e.state.pop('cohort_settings'); e._cohort_init()
+    assert e.cohort_drift == ['settings_snapshot']
+    with pytest.raises(RuntimeError, match='settings_snapshot'): e.cohort_boundary(tempfile.mkdtemp())
+
+
+def test_verify_rejects_a_start_snapshot_that_is_not_the_cohorts():
+    root = tempfile.mkdtemp(); c = coh()
+    path, _ = RP.write_pack(root, c, {'settings_at_start.json': {'MAX_LEVERAGE': 9}, 'settings_at_end.json': SETS})
+    assert any('settings_at_start does not match' in p for p in RP.verify_pack(path)['problems'])
