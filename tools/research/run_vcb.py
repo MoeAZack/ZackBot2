@@ -19,7 +19,7 @@ Adapted from the accepted C1 runner (run_lsfvg.py @ 50206bf); the same guards, r
     helpers, backtest.py, strategies.py and the pit_run / run_r4 / splits guard modules.
   - raw open times (Codex 6230537709): before any conversion, truncation or slicing, every row of every requested
     symbol's file (rows after END and late-excluded symbols included) is read as text; a non-numeric, NaN / inf,
-    non-integer-millisecond or off-4h-grid open time REFUSES the run (never dropped, never truncated onto the grid).
+    non-integer-millisecond, outside [0, 2^53) or off-4h-grid open time REFUSES the run (never dropped, never truncated onto the grid).
   - a --symbols run is labelled tier_label SYMBOLS-<n run> with non_decision true and decision.tier_verdict
     NON_DECISION (the computed verdict is kept as diagnostic_verdict); a --tier run is decision-bearing (non_decision
     false) and labelled with its eligible count when symbols are excluded.
@@ -213,7 +213,7 @@ def late_listing(df, warm_lo: int, hi: int):
 def raw_time_problems(raw: bytes) -> dict:
     """Every row of the raw cache bytes (the whole file, rows at / after END included), read as TEXT before any float
     conversion, truncation or slicing: an open time that is non-numeric, NaN / inf, not an exact integer millisecond
-    value, or an integer not on the 4h grid is counted. Empty dict = every open time is an exact on-grid integer.
+    value, an integer outside [0, 2^53), or an integer not on the 4h grid is counted. Empty dict = every open time is an exact on-grid integer.
     A file without a `t` column returns {} (the shared reader refuses it)."""
     try:
         col = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False, na_filter=False)
@@ -232,13 +232,15 @@ def raw_time_problems(raw: bytes) -> dict:
                 k = 'nan_or_inf'
             elif d != d.to_integral_value():
                 k = 'non_integer_ms'
+            elif not 0 <= int(d) < 2 ** 53:              # pre-epoch, or beyond exact float / datetime range
+                k = 'out_of_range'
             elif int(d) % TF_MS:
                 k = 'off_grid'
             else:
                 continue
         out[k] = out.get(k, 0) + 1
         if first is None:
-            first = f'row {i + 2}: {v!r}'                # csv line number (header = line 1)
+            first = f'data row {i + 1}: {v!r}'           # 1-based among non-blank data rows (blank lines skipped)
     if out:
         out['first_bad'] = first
     return out
@@ -262,7 +264,10 @@ def read_checked(cache: str, s: str):
         df, rec = B.read_cache(cache, s, TF)
     except B.RunnerError as e:
         raise _err(e) from None
-    if raw is not None and rec.get('sha256') != hashlib.sha256(raw).hexdigest():
+    if raw is None:                                      # absent at check time: the reader must also have found nothing
+        if df is not None or rec.get('sha256') is not None or not rec.get('missing_file'):
+            raise RunnerError(f'vcb: cache file {s}_{TF}.csv appeared after the raw-time check; refused')
+    elif rec.get('sha256') != hashlib.sha256(raw).hexdigest():
         raise RunnerError(f'vcb: cache file {s}_{TF}.csv changed while being read; refused')
     return df, rec
 

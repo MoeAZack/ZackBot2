@@ -977,7 +977,9 @@ def test_excursions_intrabar_stop_counts_exit_bar_open():
 
 
 # ------------------------------------------------------------------ Codex 6230537709: raw-time integrity + Q2 labels
-BAD_T = {'nan': 'nan', 'inf': 'inf', 'non_numeric': 'abc', 'fractional_ms': '+0.5', 'off_grid': '+1'}
+BAD_T = {'nan': 'nan', 'inf': 'inf', 'non_numeric': 'abc', 'fractional_ms': '+0.5', 'off_grid': '+1',
+         'huge_exponent': '14400000e400', 'above_2_63': '10000000000008000000', 'negative': '-14400000'}
+HUGE = ('huge_exponent', 'above_2_63', 'negative')                  # on the 4h grid, outside [0, 2^53)
 
 
 def _bad_t(env, sym, row, how):
@@ -1037,7 +1039,7 @@ def test_raw_time_problems_helper():
                  ('1e', 'non_numeric'), (f'{WARM_LO}.5', 'non_integer_ms'), (f'{WARM_LO}.000001', 'non_integer_ms'),
                  (str(WARM_LO + 1), 'off_grid'), (str(WARM_LO - 1), 'off_grid')):
         p = R.raw_time_problems(f't,o\n{WARM_LO},1\n{v},1\n'.encode())
-        assert p[k] == 1 and p['first_bad'].startswith('row 3'), (v, p)
+        assert p[k] == 1 and p['first_bad'].startswith('data row 2'), (v, p)
 
 
 def test_q2_symbols_run_is_non_decision(env):
@@ -1076,3 +1078,49 @@ def test_raw_time_check_must_cover_the_bytes_the_reader_hashed(env, monkeypatch)
     with pytest.raises(R.RunnerError, match='changed while being read'):
         go(env)
     assert not os.path.exists(env['tmp'] / 'p.json')
+
+
+@pytest.mark.parametrize('where', ['in_window', 'after_end'])
+@pytest.mark.parametrize('how', HUGE)
+def test_out_of_range_open_time_refused_by_cli_coverage_check(env, capsys, how, where):
+    row = IN_WIN if where == 'in_window' else HEAD + NSLICE + TAIL - 3
+    _bad_t(env, 'SOLUSDT', row, how)
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(SYMS), '--check-coverage']) == 2
+    err = capsys.readouterr().err
+    assert 'REFUSED' in err and 'malformed raw open times' in err and 'out_of_range' in err
+
+
+def test_raw_time_range_bounds():
+    top = (2 ** 53 - 1) // H4 * H4                                 # largest on-grid value below 2^53
+    for v, ok in (('0', True), (str(top), True), (str(top + H4), False), (str(-H4), False)):
+        p = R.raw_time_problems(f't,o\n{v},1\n'.encode())
+        assert (p == {}) is ok and (ok or p['out_of_range'] == 1), (v, p)
+
+
+def test_raw_time_row_number_counts_data_rows_not_blank_lines():
+    p = R.raw_time_problems(f't,o\n\n{WARM_LO},1\n\nnan,1\n'.encode())
+    assert p['first_bad'] == "data row 2: 'nan'"
+
+
+def test_file_appearing_after_raw_check_refused_at_cli(env, capsys, monkeypatch):
+    """TOCTOU: absent at the raw-time check, created (NaN open time after END) before the shared reader opens it."""
+    _cli_repo(env, monkeypatch)
+    path = os.path.join(env['cache'], 'SOLUSDT_4h.csv')
+    with open(path, encoding='utf-8') as f:
+        body = f.read()
+    os.remove(path)
+    real = R.B.read_cache
+
+    def appear(cache, s, tf):
+        if s == 'SOLUSDT' and not os.path.exists(path):
+            with open(path, 'w', encoding='utf-8', newline='') as f:
+                f.write(body)
+            _bad_t(env, 'SOLUSDT', HEAD + NSLICE + TAIL - 3, 'nan')
+        return real(cache, s, tf)
+    monkeypatch.setattr(R.B, 'read_cache', appear)
+    outdir = env['tmp'] / 'outdir'
+    outdir.mkdir()
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(SYMS),
+                   '--out', str(outdir / 'cli.json')]) == 2
+    err = capsys.readouterr().err
+    assert 'REFUSED' in err and 'appeared after the raw-time check' in err and os.listdir(outdir) == []
