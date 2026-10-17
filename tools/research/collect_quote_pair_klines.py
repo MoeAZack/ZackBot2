@@ -20,6 +20,10 @@ import collect_klines_research as CK  # noqa: E402
 import run_vwaprev_candidate as VC  # noqa: E402
 
 FORMAT = 'zb-quote-pair-klines/1'
+CONTRACT = 'quote_pair_usdc_shadow.v0'
+WINDOW = '2024-10-14T00:00:00Z/2026-09-28T00:00:00Z'
+INTERVAL = '4h'
+WARMUP_BARS = 220
 
 
 class PairCollectError(RuntimeError):
@@ -50,17 +54,54 @@ def resolve_symbols(raw_symbols, quote, static=None):
     return out
 
 
+def validate_files(man, out):
+    """Turn malformed or unproved cache bytes into INCOMPLETE before they can be sealed."""
+    incomplete = set(man.get('incomplete', ()))
+    for symbol, rec in man['files'].items():
+        path = os.path.join(out, rec['file'])
+        problems = []
+        try:
+            df = CK.pd.read_csv(path)
+            if list(df.columns) != CK.COLS:
+                problems.append('columns')
+            else:
+                n = df[CK.COLS].apply(CK.pd.to_numeric, errors='coerce')
+                finite = CK.np.isfinite(n.to_numpy(float)).all(axis=1)
+                ordered = n.t.to_numpy().tolist() == sorted(n.t.to_numpy().tolist())
+                o, h, l, c, v, qv = (n[x].to_numpy(float) for x in ('o', 'h', 'l', 'c', 'v', 'qv'))
+                valid = (finite & (o > 0) & (h > 0) & (l > 0) & (c > 0) & (v >= 0) & (qv >= 0)
+                         & (h >= l) & (o >= l) & (o <= h) & (c >= l) & (c <= h))
+                if not valid.all():
+                    problems.append(f'invalid_ohlcv_rows={int((~valid).sum())}')
+                if not ordered:
+                    problems.append('timestamps_not_sorted')
+        except (OSError, ValueError, KeyError) as e:
+            problems.append(f'unreadable={type(e).__name__}')
+        if rec.get('fetched', '').startswith('existing file'):
+            problems.append('preexisting_provenance_unverified')
+        rec['validation'] = {'status': 'INCOMPLETE' if problems else 'complete', 'problems': problems,
+                             'source': rec.get('fetched')}
+        if problems:
+            rec['status'] = 'INCOMPLETE'
+            rec['error'] = '; '.join(problems)
+            incomplete.add(symbol)
+    man['incomplete'] = sorted(incomplete)
+
+
 def collect_pair(*, symbols, quote, interval, window, out, manifest, warmup_bars=220, **kwargs):
     if os.path.exists(manifest):
         raise PairCollectError(f'{manifest} exists; a manifest is never overwritten')
+    if interval != INTERVAL or window != WINDOW or int(warmup_bars) != WARMUP_BARS:
+        raise PairCollectError(f'{CONTRACT} requires {INTERVAL}, window {WINDOW}, warmup {WARMUP_BARS}')
     quote = str(quote).upper()
     resolved = resolve_symbols(symbols, quote)
     man = CK.collect(symbols=resolved, interval=interval, window=window, out=out, manifest=None,
                      warmup_bars=warmup_bars, **kwargs)
+    validate_files(man, out)
     pairs = {s: {'base': s[:-len(quote)], 'usdt_twin': s[:-len(quote)] + 'USDT'} for s in resolved}
     with open(os.path.abspath(__file__), 'rb') as f:
         tool_sha = hashlib.sha256(f.read()).hexdigest()
-    man.update(format=FORMAT, quote=quote, pairs=pairs)
+    man.update(format=FORMAT, contract=CONTRACT, quote=quote, pairs=pairs)
     man.setdefault('tool', {})['collect_quote_pair_klines.py'] = tool_sha
     os.makedirs(os.path.dirname(os.path.abspath(manifest)), exist_ok=True)
     with open(manifest, 'x', encoding='utf-8', newline='\n') as f:
