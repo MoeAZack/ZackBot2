@@ -572,3 +572,12 @@ def test_abort_reloads_the_open_cohorts_evidence_rows(monkeypatch):
     monkeypatch.undo()
     e.cohort_rows = []                                                     # as after a restart that could not complete it
     assert e.cohort_boundary_abort() and e.book_ledger_status()['books']['B3_TREND']['closed'] == 1
+
+
+def test_failed_abort_keeps_the_intent_in_memory(monkeypatch):
+    e, _ = books_engine()
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(OSError('gone')))
+    with pytest.raises(OSError): e.cohort_boundary(tempfile.mkdtemp())
+    monkeypatch.setattr(e, '_save_wal', lambda: (_ for _ in ()).throw(OSError('disk')))
+    with pytest.raises(OSError): e.cohort_boundary_abort()
+    assert e.state['cohort_closing'] and e.book_ledger_status() is None

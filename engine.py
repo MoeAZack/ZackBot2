@@ -5289,7 +5289,10 @@ class Engine:
             if not pend: return False
             if os.path.lexists(os.path.join(pend['dest'], pend['old']['id'])):
                 raise RuntimeError('its pack is already published - complete the boundary instead of aborting it')
-            self.state.pop('cohort_closing'); self._save_wal()
+            self.state.pop('cohort_closing')
+            try: self._save_wal()
+            except BaseException:
+                self.state['cohort_closing'] = pend; raise         # memory never drops an intent the disk still holds
             self._load_cohort_rows(); self.cohort_drift = self._cohort_drift_now(self.state['cohort'])
             log.warning(f"RUN-PACK-01 pending boundary of {pend['old']['id']} aborted; the cohort continues")
             return True
@@ -5297,7 +5300,8 @@ class Engine:
     def _complete_boundary(self, pend):
         coh = pend['old']
         busy = [k for k in self.BOUNDARY_BUSY if self.state.get(k)]
-        if busy: raise RuntimeError(f"cohort boundary pending but not flat ({', '.join(busy)}) - flatten, or abort it")
+        if busy: raise RuntimeError(f"cohort boundary pending but not flat ({', '.join(busy)}) - flatten, then retry the boundary "
+                                    "(or abort it while no pack is published)")
         final = os.path.join(pend['dest'], coh['id'])
         if os.path.lexists(final):                                 # written before an interruption: it must verify
             v = RP.verify_pack(final)
