@@ -793,7 +793,7 @@ class Access:
         if envelope is not None and self.plan.split(key)['name'] == 'holdout':
             # BT-EXEC-OBS-01 promotion boundary, before any guard or ledger record: a never-promotable run (a /3 run
             # whose execution realism is refused, a /2 run with execution-like config) cannot spend the holdout.
-            R.enforce_promotion(envelope, exec_manifest=exec_manifest, exec_store=exec_store)
+            R.enforce_promotion(envelope, exec_manifest=exec_manifest, exec_store=exec_store, ledger_path=self.path)
         if not M.promotion_eligible(self.ds.manifest):
             raise PITError(f'{self.ds.manifest["manifest_id"]} is reproduction-only: it opens only as a development '
                            f'window and can never feed split, holdout or promotion evidence')

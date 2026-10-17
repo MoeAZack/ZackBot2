@@ -568,7 +568,7 @@ def exec_realism(env: dict, exec_manifest, exec_store) -> dict:
     return {'claims': list(run['exec_obs']['claims']), 'refusals': refusals, 'promotable': not refusals}
 
 
-def enforce_promotion(obj: dict, *, exec_manifest=None, exec_store=None) -> None:
+def enforce_promotion(obj: dict, *, exec_manifest=None, exec_store=None, ledger_path=None) -> None:
     """THE promotion / registration boundary (BT-EXEC-OBS-01, Codex 6225951309 item 4) for an envelope or a sealed
     report: raises `exec_obs.PromotionRefused` (`promotion_refused:<first reason>`, every reason in `.reasons`) when a
     /3 run's execution realism is not promotable (recomputed; a report's `exec_realism` label must agree) or a /2 run's
@@ -577,7 +577,13 @@ def enforce_promotion(obj: dict, *, exec_manifest=None, exec_store=None) -> None
     A sealed report (it carries `results`) is re-verified first (Codex 6226591731 item 2): its `report_digest` must
     equal the digest of everything else, its results must be the attested payload, and a /3 report's `exec_realism`
     must EXACTLY equal the recomputation from `exec_manifest` / `exec_store` (a /2 report has none). Any mismatch
-    refuses (`report_digest_mismatch`, `results_not_attested`, `exec_realism_mismatch`, `exec_realism_unexpected`)."""
+    refuses (`report_digest_mismatch`, `results_not_attested`, `exec_realism_mismatch`, `exec_realism_unexpected`).
+    Its attestation is re-proven too (Codex 6227428968): the recorded `attestation_digest` must be present and equal the
+    digest of the attestation (`attestation_digest_missing` / `attestation_digest_mismatch`), and `check_attestation`
+    must find its immutable anchor - the family ledger's data_access record whose detail.evaluation_attestation is that
+    digest - in the ledger at `ledger_path` (`attestation_unverified`). report_digest is an unkeyed hash, so only that
+    anchor catches a fully re-sealed forgery; a sealed report with no ledger path refuses
+    (`attestation_ledger_missing`), never skips. Every check is read-only and runs before any mutation."""
     if not isinstance(obj, dict) or obj.get('run_digest') != run_digest(obj.get('run')) or \
             obj.get('format') != run_format(obj['run']):
         raise ReportError('promotion: not a valid envelope / report (format or run_digest mismatch)')
@@ -597,6 +603,20 @@ def enforce_promotion(obj: dict, *, exec_manifest=None, exec_store=None) -> None
             ok = False
         if not ok:
             raise EO.PromotionRefused(['results_not_attested'])
+        if 'attestation_digest' not in obj:
+            raise EO.PromotionRefused(['attestation_digest_missing'])
+        try:
+            ok = obj['attestation_digest'] == _digest(att)
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise EO.PromotionRefused(['attestation_digest_mismatch'])
+        if not ledger_path:
+            raise EO.PromotionRefused(['attestation_ledger_missing'])
+        try:
+            check_attestation(obj, att, ledger_path)
+        except (ReportError, OSError, ValueError) as e:                     # an unreadable ledger is no anchor
+            raise EO.PromotionRefused([f'attestation_unverified: {e}'])
         if obj['format'] == FORMAT_3:
             now = exec_realism(obj, exec_manifest, exec_store)
             if obj.get('exec_realism') != now:

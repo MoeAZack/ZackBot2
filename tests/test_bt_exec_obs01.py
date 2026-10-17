@@ -797,6 +797,37 @@ def no_att(monkeypatch):
     monkeypatch.setattr(R, 'exec_env_mismatch', lambda *a: [])
 
 
+@pytest.fixture
+def genuine(monkeypatch, tmp_path):
+    """Seal a report whose runner attestation is REAL in shape and anchored in a family ledger exactly as
+    pit.evaluate anchors it (a data_access record with detail.evaluation_attestation = its digest). Only the
+    sealing-process host check is relaxed (the fixture run's frozen environment is synthetic); check_attestation
+    itself runs unpatched."""
+    real = R.exec_env_mismatch
+    monkeypatch.setattr(R, 'exec_env_mismatch', lambda f, seen, where: [] if where == 'the process sealing the report'
+                        else real(f, seen, where))
+    led = tmp_path / 'sealed_ledger'
+    led.mkdir(exist_ok=True)
+
+    def seal(run, m, store, res=None):
+        env = R.envelope(run)
+        res = res or results()
+        ep = run['eval']['entrypoint']
+        f = next(x for x in run['eval']['files'] if x['path'] == ep['path'])
+        att = {'format': R.ATTESTATION_FORMAT, 'runner': R.SEALABLE_RUNNER, 'isolation': R.SEALABLE_ISOLATION,
+               'perturbed': True, 'run_digest': env['run_digest'], 'split': run['split'], 'window': run['window'],
+               'evaluator': dict(f, function=ep['function'], summary=ep['summary']),
+               'schedule': run['eval']['schedule'], 'execution_environment': run['code']['execution_environment'],
+               'code': [f], 'results_digest': R.results_digest(res)}
+        path = str(led / f'{run["family"]}.jsonl')
+        L.append(path, kind='data_access', candidate_id=run['candidate_id'], split=run['split'],
+                 window=run['window'], author='t', cairo_date='2026-10-17', manifest_digest=run['manifest_digest'],
+                 run_digest=env['run_digest'], detail={'evaluation_attestation': R._digest(att)},
+                 lineage=None if os.path.exists(path) else 'root')
+        return R.make_report(env, res, att, path, exec_manifest=m, exec_store=store), path
+    return seal
+
+
 def test_make_report_v3_labels_non_promotable_and_v2_shape_unchanged(world, no_att):
     store, m = world
     res = results()
@@ -1299,21 +1330,19 @@ def test_pit_holdout_open_refuses_before_any_ledger_record(tmp_path):
     assert tree_hash(*dirs) == before
 
 
-def test_report_level_boundary_rechecks_the_label(world, no_att):
+def test_report_level_boundary_rechecks_the_label(world, genuine):
     store, m = world
-    res = results()
-    att = {'results_digest': R.results_digest(res)}
-    rep = R.make_report(R.envelope(run3(m, ['maker_fill'])), res, att, 'unused', exec_manifest=m, exec_store=store)
+    rep, led = genuine(run3(m, ['maker_fill']), m, store)
     with pytest.raises(E.PromotionRefused, match='^promotion_refused:model_not_implemented:maker_fill$'):
-        R.enforce_promotion(rep, exec_manifest=m, exec_store=store)
-    ok = R.make_report(R.envelope(run3(m)), res, att, 'unused', exec_manifest=m, exec_store=store)
-    R.enforce_promotion(ok, exec_manifest=m, exec_store=store)
+        R.enforce_promotion(rep, exec_manifest=m, exec_store=store, ledger_path=led)
+    ok, led = genuine(run3(m), m, store)
+    R.enforce_promotion(ok, exec_manifest=m, exec_store=store, ledger_path=led)
     lied = reseal(dict(ok, exec_realism={'claims': [], 'refusals': ['x'], 'promotable': False}))
     with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_mismatch$'):
-        R.enforce_promotion(lied, exec_manifest=m, exec_store=store)
+        R.enforce_promotion(lied, exec_manifest=m, exec_store=store, ledger_path=led)
     with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_mismatch$'):
         R.enforce_promotion(reseal({k: v for k, v in ok.items() if k != 'exec_realism'}), exec_manifest=m,
-                            exec_store=store)
+                            exec_store=store, ledger_path=led)
     with pytest.raises(R.ReportError, match='run_digest mismatch'):
         R.enforce_promotion(dict(ok, run_digest='0' * 64))
 
@@ -1388,38 +1417,36 @@ def reseal(rep):
 
 
 # item 2: a sealed report is re-verified in full before promotion
-def test_forged_sealed_reports_refuse_with_zero_mutation(world, no_att, tmp_path):
+def test_forged_sealed_reports_refuse_with_zero_mutation(world, genuine, tmp_path):
     store, m = world
-    res = results()
-    att = {'results_digest': R.results_digest(res)}
-    ok = R.make_report(R.envelope(run3(m)), res, att, 'unused', exec_manifest=m, exec_store=store)
-    bad = R.make_report(R.envelope(run3(m, ['maker_fill'])), res, att, 'unused', exec_manifest=m, exec_store=store)
+    ok, led = genuine(run3(m), m, store)
+    bad, led_bad = genuine(run3(m, ['maker_fill']), m, store)
     other = tmp_path / 'other'
     make_store(other, alt_after=D0)
     tampered = copy.deepcopy(ok)
     tampered['results']['long']['base'][next(iter(R.SECTIONS))] = {'x': 1}
     cases = [
-        (tampered, 'report_digest_mismatch'),                                  # results edited, digest stale
-        (dict(ok, report_digest='0' * 64), 'report_digest_mismatch'),          # stale / forged digest
-        (reseal(tampered), 'results_not_attested'),                            # resealed, but not the attested payload
-        (reseal(dict(bad, exec_realism=dict(bad['exec_realism'], refusals=[], promotable=True))),
+        (tampered, led, 'report_digest_mismatch'),                             # results edited, digest stale
+        (dict(ok, report_digest='0' * 64), led, 'report_digest_mismatch'),     # stale / forged digest
+        (reseal(tampered), led, 'results_not_attested'),                       # resealed, not the attested payload
+        (reseal(dict(bad, exec_realism=dict(bad['exec_realism'], refusals=[], promotable=True))), led_bad,
          'exec_realism_mismatch'),                                             # forged promotable=true
-        (reseal(dict(ok, exec_realism={'claims': ['maker_fill'], 'refusals': [], 'promotable': True})),
+        (reseal(dict(ok, exec_realism={'claims': ['maker_fill'], 'refusals': [], 'promotable': True})), led,
          'exec_realism_mismatch'),                                             # label != recomputation
     ]
-    before = evidence_snapshot()
-    for rep, reason in cases:
+    two, led2 = genuine(run2(), None, None)
+    before = tree_hash(tmp_path)
+    for rep, ledger, reason in cases:
         with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}$'):
-            R.enforce_promotion(rep, exec_manifest=m, exec_store=store)
+            R.enforce_promotion(rep, exec_manifest=m, exec_store=store, ledger_path=ledger)
     with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_mismatch$') as ei:
-        R.enforce_promotion(ok, exec_manifest=m, exec_store=str(other))        # evidence no longer matches
+        R.enforce_promotion(ok, exec_manifest=m, exec_store=str(other), ledger_path=led)   # evidence changed
     assert any(x.startswith('manifest_files_unverified') for x in ei.value.reasons)
-    two = R.make_report(R.envelope(run2()), res, att, 'unused')
-    R.enforce_promotion(two)
+    R.enforce_promotion(two, ledger_path=led2)
     with pytest.raises(E.PromotionRefused, match='^promotion_refused:exec_realism_unexpected$'):
-        R.enforce_promotion(reseal(dict(two, exec_realism=ok['exec_realism'])))
-    R.enforce_promotion(ok, exec_manifest=m, exec_store=store)                 # the genuine report passes
-    assert evidence_snapshot() == before
+        R.enforce_promotion(reseal(dict(two, exec_realism=ok['exec_realism'])), ledger_path=led2)
+    R.enforce_promotion(ok, exec_manifest=m, exec_store=store, ledger_path=led)   # the genuine report passes
+    assert tree_hash(tmp_path) == before
 
 
 # item 1: the ledger boundary verifies the bound execution evidence the caller threads in; never a silent admit
@@ -1483,3 +1510,53 @@ def test_promotion_records_naming_a_run_never_admit_silently(tmp_path):
     rec = L.append(str(nostore / 'fam.jsonl'), kind='window_spent', candidate_id='fam.v1', split='holdout', window=w,
                    author='t', cairo_date='2026-10-17', detail={}, lineage='root')
     assert rec['kind'] == 'window_spent' and rec['run_digest'] is None
+
+
+# ============================================================ round 3: Codex 6227428968 + Cowork 6227451620
+def test_sealed_report_attestation_is_reproven_against_its_ledger_anchor(world, genuine, tmp_path):
+    store, m = world
+    ok, led = genuine(run3(m), m, store)
+    kw = dict(exec_manifest=m, exec_store=store, ledger_path=led)
+    R.enforce_promotion(ok, **kw)                                              # genuine positive control
+
+    att = dict(ok['attestation'], note='edited')                              # arbitrary attestation mutation
+    forged_res = copy.deepcopy(ok['results'])
+    forged_res['long']['base'][next(iter(R.SECTIONS))] = {'x': 1}
+    att_res = dict(ok['attestation'], results_digest=R.results_digest(forged_res))
+    att_all = dict(ok['attestation'], perturbed=True, code=list(ok['attestation']['code']) * 2)
+    cases = [
+        (reseal(dict(ok, attestation_digest='0' * 64)), kw, 'attestation_digest_mismatch'),          # wrong
+        (reseal({k: v for k, v in ok.items() if k != 'attestation_digest'}), kw, 'attestation_digest_missing'),
+        (reseal(dict(ok, attestation=att)), kw, 'attestation_digest_mismatch'),   # mutated, report re-sealed
+        (reseal(dict(ok, results=forged_res, attestation=att_res, attestation_digest=R._digest(att_res))), kw,
+         'attestation_unverified'),                                           # forged results, all digests re-sealed
+        (reseal(dict(ok, attestation=att_all, attestation_digest=R._digest(att_all))), kw,
+         'attestation_unverified'),                                           # only the ledger anchor catches it
+        (ok, dict(kw, ledger_path=None), 'attestation_ledger_missing'),        # no resolvable ledger: refuse
+        (ok, dict(kw, ledger_path=str(tmp_path / 'nowhere' / 'fam.jsonl')), 'attestation_unverified'),
+    ]
+    before = tree_hash(tmp_path)
+    for rep, k, reason in cases:
+        with pytest.raises(E.PromotionRefused, match=f'^promotion_refused:{reason}'):
+            R.enforce_promotion(rep, **k)
+        assert tree_hash(tmp_path) == before
+    R.enforce_promotion(ok, **kw)
+
+
+def test_ledger_and_pit_boundaries_thread_their_family_ledger(monkeypatch, tmp_path):
+    seen = []
+    real = R.enforce_promotion
+    monkeypatch.setattr(R, 'enforce_promotion', lambda obj, **k: (seen.append(k.get('ledger_path')), real(obj, **k)))
+    led, runs = tmp_path / 'ledger', tmp_path / 'runs'
+    led.mkdir()
+    runs.mkdir()
+    ok = holdout_env(run3(None, []))
+    R.write_envelope(str(runs), ok)
+    reveal_rec(str(led / 'fam.jsonl'), ok)
+    assert seen == [str(led / 'fam.jsonl')]
+    plan = S.SplitPlan(PLAN, interval='1h', lookback_bars=15, horizon_bars=1)
+    acc = access(str(tmp_path / 'p'), plan)
+    acc.open('train', lineage='root')
+    with pytest.raises(P.PITError):
+        acc.open('holdout', envelope=ok)
+    assert seen[-1] == acc.path

@@ -277,7 +277,7 @@ def _next(data: bytes, rec: dict) -> bytes:
     return line_of(rec)
 
 
-def _enforce_promotion(d: str, run_digest, exec_manifest=None, exec_store=None) -> None:
+def _enforce_promotion(d: str, run_digest, exec_manifest=None, exec_store=None, ledger_path=None) -> None:
     """The promotion boundary for a PROMOTION_KINDS record (Codex 6226591731 item 1, Cowork 6226614247). A record that
     names a run must prove it: the frozen envelope is resolved from the runs store beside the ledger and must pass
     report.enforce_promotion WITH the caller's bound execution evidence (`exec_manifest` read under `exec_store`; a /3
@@ -301,7 +301,7 @@ def _enforce_promotion(d: str, run_digest, exec_manifest=None, exec_store=None) 
         env = R.load_envelope(runs, run_digest)
     except R.ReportError as e:
         raise refused([f'run_envelope_unreadable: no readable frozen run envelope for the record ({e})'])
-    R.enforce_promotion(env, exec_manifest=exec_manifest, exec_store=exec_store)
+    R.enforce_promotion(env, exec_manifest=exec_manifest, exec_store=exec_store, ledger_path=ledger_path)
 
 
 def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, manifest_digest=None, run_digest=None,
@@ -311,7 +311,7 @@ def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, 
     a /3 run bound to execution observations needs its manifest (`exec_manifest`) and store (`exec_store`)."""
     d = _dir_of(path)
     if kind in PROMOTION_KINDS:
-        _enforce_promotion(d, run_digest, exec_manifest, exec_store)
+        _enforce_promotion(d, run_digest, exec_manifest, exec_store, ledger_path=path)
     family = os.path.splitext(os.path.basename(path))[0]
     lock = os.path.join(d, LOCK)
     try:
