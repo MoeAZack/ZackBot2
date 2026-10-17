@@ -365,3 +365,29 @@ def test_closing_a_trade_keeps_every_open_cohort_row_beyond_the_history_cap():
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     e.close_lot(next(iter(e.state['lots'])), 'manual')
     assert sum(r.get('cohort_id') == cid for r in e.history) == 3001 and len(e.history) == 3001
+
+
+# ------------------------------------------------------------------ review r2 regressions
+def test_boundary_flushes_enricher_before_fills_and_records_undrained():
+    e, _ = books_engine()
+    order = []
+    e._enr.flush = lambda *a, **k: order.append('enr') or True
+    e._fillw.flush = lambda *a, **k: order.append('fills') or False          # fills writer timed out
+    e._auditw.flush = lambda *a, **k: order.append('audit') or True
+    out = e.cohort_boundary(tempfile.mkdtemp())
+    assert order == ['enr', 'fills', 'audit']
+    assert json.load(open(os.path.join(out['pack'], 'scope.json')))['undrained_writers'] == ['fills']
+
+
+def test_missing_sidecar_is_rewritten_and_a_disagreeing_one_stops_stamping():
+    e, tmp = books_engine()
+    os.remove(e.F['cohort'])
+    e._cohort_init()
+    assert json.load(open(e.F['cohort']))['id'] == e.state['cohort']['id']
+    with open(e.F['cohort'], 'w') as f: json.dump(coh(seq=7), f)          # state restored from an older backup, say
+    e._cohort_init()
+    assert e.book_ledger_status() is None
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    assert 'cohort_id' not in next(iter(e.state['lots'].values()))
+    e.close_lot(next(iter(e.state['lots'])), 'manual')
+    with pytest.raises(RuntimeError, match='disputed'): e.cohort_boundary(tempfile.mkdtemp())

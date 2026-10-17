@@ -5078,7 +5078,7 @@ class Engine:
                     books=PB.summary(eq, cap, view, self.history))
 
     # ------------------------------------------------------------ RUN-PACK-01 / BOOK-LEDGER-01 (PAPER books, observe only)
-    HISTORY_KEEP, COHORT_KEEP_MAX = 3000, 50000
+    HISTORY_KEEP, COHORT_KEEP_MAX = 3000, 10000
 
     def _trim_history(self, hist):
         """Keep the last HISTORY_KEEP rows, but never drop a row of the open cohort (its ledger is rebuilt from them).
@@ -5114,14 +5114,16 @@ class Engine:
     def _settings_allow(self):
         return sorted(k for k in set(GLOBAL_DEFAULTS) | {'SLEEVES', 'schema_version'} if not k.startswith('TELEGRAM'))
 
-    def _cohort_sidecar(self):
+    def _cohort_sidecar(self, any_state=False):
         try:
             with open(self.F['cohort'], encoding='utf-8') as f: side = json.load(f)
         except (OSError, ValueError): return None
+        if any_state: return side if isinstance(side, dict) else {}
         return side if not RP.validate_cohort(side) and not side.get('ended_utc') else None
 
     def _cohort_ok(self):
-        return self._books_on() and not RP.validate_cohort(self.state.get('cohort')) and not self.state['cohort'].get('ended_utc')
+        return (self._books_on() and not RP.validate_cohort(self.state.get('cohort')) and not self.state['cohort'].get('ended_utc')
+                and not getattr(self, '_cohort_conflict', False))
 
     def _cohort_init(self):
         """Create the cohort record once (start = the capital fresh-start time, so a lost record is re-created identically);
@@ -5141,6 +5143,13 @@ class Engine:
                 log.info(f"RUN-PACK-01 cohort {self.state['cohort']['id']} (started {start})")
                 return
             bad = RP.validate_cohort(rec)
+            if not bad:
+                side = self._cohort_sidecar(any_state=True)
+                if side is None: self._save_aux('cohort', rec)       # older install / failed first write: mirror it now
+                elif side.get('id') != rec['id']:
+                    self._integrity_alert('integrity|cohort', f"cohort.json holds {side.get('id')} but state holds {rec['id']} - "
+                                                              'state may be an older backup; book lots are not stamped')
+                    bad = ['state and cohort.json disagree']; self._cohort_conflict = True
             if bad:
                 self._integrity_alert('integrity|cohort', f"PAPER cohort record damaged ({'; '.join(bad)}) - book lots are not "
                                                           'stamped and the ledger is not written until a cohort boundary')
@@ -5200,7 +5209,8 @@ class Engine:
             if not self._books_on(): raise RuntimeError('five-book tracking is off')
             busy = [k for k in ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries') if self.state.get(k)]
             if busy: raise RuntimeError(f"cohort boundary refused: not flat ({', '.join(busy)})")
-            if RP.validate_cohort(self.state.get('cohort')): raise RuntimeError('cohort record damaged - inspect before a boundary')
+            if RP.validate_cohort(self.state.get('cohort')) or getattr(self, '_cohort_conflict', False):
+                raise RuntimeError('cohort record damaged or disputed - inspect before a boundary')
             norm = lambda p: os.path.normcase(os.path.realpath(os.path.abspath(p)))
             here, dest = norm(self.dir), norm(dest_root)
             if os.path.splitdrive(here)[0] == os.path.splitdrive(dest)[0] and os.path.commonpath([here, dest]) == here:
@@ -5212,16 +5222,19 @@ class Engine:
             docs = {'cohort.json': coh, 'history.json': rows, 'book_ledger_final.json': led, 'note.json': dict(note=note),
                     'book_summary.json': PB.summary(0, coh['book_cap'], (), [r for r in rows if r.get('book')]),
                     'settings_allowlist.json': RP.sanitize_settings(self.S, self._settings_allow())}
-            for w in (self._fillw, self._auditw, self._enr):        # the last close's telemetry must be on disk first
-                try: w.flush()
-                except Exception as ex: log.warning(f'pack: writer flush failed ({ex})')
+            undrained = []                       # the last close's telemetry must be on disk first: the enricher hands its
+            for name, w in (('enricher', self._enr), ('fills', self._fillw), ('audit', self._auditw)):   # jobs to the fills
+                try: ok = w.flush()                                                                      # writer, so it goes first
+                except Exception as ex: ok = False; log.warning(f'pack: {name} flush failed ({ex})')
+                if ok is False: undrained.append(name)
             srcs = {}
             for name, p in (('book_ledger.jsonl', self.F['book_ledger']), ('fills.jsonl', self.F['fills']),
                             ('trade_audit.jsonl', self.F['audit'])):
                 srcs[name], srcs[name.replace('.jsonl', '.1.jsonl')] = p, p + '.1'
             srcs['equity.json'] = self.F['equity']
             docs['scope.json'] = dict(cohort_filtered=['history.json', 'book_ledger_final.json', 'book_summary.json'],
-                                      runtime_wide=sorted(srcs), note='runtime-wide files are raw copies; filter by cohort_id / time')
+                                      runtime_wide=sorted(srcs), undrained_writers=undrained,
+                                      note='runtime-wide files are raw copies; filter by cohort_id / time')
             forbid = [str(self.cfg.get(k) or '') for k in ('API_KEY', 'API_SECRET', 'TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_WORKSPACE_ID')]
             path, sha = RP.write_pack(dest_root, coh, docs, srcs, forbid=forbid)
             arch = self.state.setdefault('cohort_archive', [])
