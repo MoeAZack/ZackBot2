@@ -5280,7 +5280,9 @@ class Engine:
                                    'pass accept_drift to seal it into the pack as drifted evidence')
             self.state['cohort_closing'] = dict(old=dict(self.state['cohort'], ended_utc=now_utc().isoformat(timespec='seconds')),
                                                 dest=dest_root, note=note, drift=drift, settings_end=self._settings_snapshot())
-            self._save_wal()                                       # raises when not durable: nothing is written then
+            try: self._save_wal()                                  # raises when not durable: nothing is written then
+            except BaseException:
+                self.state.pop('cohort_closing', None); raise          # memory never holds an intent the disk does not
             return self._complete_boundary(self.state['cohort_closing'])
 
     def cohort_boundary_abort(self):

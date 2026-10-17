@@ -611,3 +611,15 @@ def test_pending_boundary_blocks_every_new_risk_path(monkeypatch):
     assert e.cohort_boundary_abort() and e.persist_block() is None
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     assert next(iter(e.state['lots'].values()))['cohort_id'] == e.state['cohort']['id']
+
+
+# ------------------------------------------------------------------ Cowork low note 1 (6236607916)
+def test_failed_intent_save_leaves_no_pending_boundary_in_memory(monkeypatch):
+    e, _ = books_engine()
+    cid, dest = e.state['cohort']['id'], tempfile.mkdtemp()
+    monkeypatch.setattr(e, '_save_wal', lambda: (_ for _ in ()).throw(OSError('disk')))
+    with pytest.raises(OSError): e.cohort_boundary(dest)
+    monkeypatch.undo()
+    assert 'cohort_closing' not in e.state and os.listdir(dest) == []
+    assert e.persist_block() is None and e.book_ledger_status() is not None and e.state['cohort']['id'] == cid
+    assert e.cohort_boundary(dest)['closed'] == cid                       # a plain retry is a normal boundary
