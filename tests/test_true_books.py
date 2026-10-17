@@ -800,3 +800,37 @@ def test_the_halt_confirmation_start_alone_is_saved(monkeypatch):
     monkeypatch.setattr(e, 'save_state', lambda: saved.append(1) or True)
     e.true_books({'ETHUSDT': 30.0})
     assert saved and 'B3_TREND' in e.state['true_books']['halt_pend']
+
+
+# ------------------------------------------------------------------ Codex ruling (c) 6240669425
+def test_an_unattributable_funding_payment_blocks_every_book_across_restart():
+    e, tmp = tb_engine()
+    e.history.append(dict(funded_row(e), id='old', cohort_id='CH-older', closed='2026-10-17T14:10:00+00:00'))  # sold before
+    assert pay(e, amount=-0.4, tran=7) == '1 new'                      # nobody of this cohort held BTCUSDT then
+    books = e.true_books()
+    for b in books.values():
+        u = [x for x in b['incomplete'] if x.get('subtype') == 'funding_unattributed']
+        assert len(u) == 1 and u[0]['reason'] == 'unowned_account_activity' and u[0]['amount'] == -0.4
+        assert u[0]['symbol'] == 'BTCUSDT' and u[0]['time_ms'] == FUND_T and u[0]['key'] and not b['rankable']
+    assert TB.admit(books['B2_RANGE']).startswith('book B2_RANGE INCOMPLETE (unowned_account_activity)')
+    assert pay(e, amount=-0.4, tran=7) == '0 new' and len(e.state['funding_unowned']) == 1   # a replay adds nothing
+    e2 = restart(e, tmp)
+    assert all('unowned_account_activity' in reasons(b) for b in e2.true_books().values())
+
+
+def test_an_owned_or_pre_cohort_payment_is_not_unowned():
+    e, _ = tb_engine()
+    close_row(e, funded_row(e))
+    assert pay(e) == '1 new' and not e.state.get('funding_unowned')    # owned by f1
+    e.trade.income = lambda *a, **k: [dict(tranId=9, time=FUND_T - 30 * 86400 * 1000, income='-1', asset='USDT', symbol='ETHUSDT')]
+    assert e.funding_tick(force=True) == '1 new' and not e.state.get('funding_unowned')   # before this cohort began
+    assert e.true_books()['B2_RANGE']['complete']
+
+
+def test_an_unowned_payment_replayed_after_a_failed_save_is_recorded_once(monkeypatch):
+    e, _ = tb_engine()
+    e.state['funding_err'] = 'persist_failed'                         # the history file must land before the cursor moves
+    monkeypatch.setattr(e, '_save_aux', lambda *a: False)
+    assert pay(e, amount=-0.4, tran=7) == 'persist_failed' and not e.state.get('funding_seen')
+    monkeypatch.undo()
+    assert pay(e, amount=-0.4, tran=7) == '1 new' and len(e.state['funding_unowned']) == 1

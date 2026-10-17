@@ -94,7 +94,7 @@ def merge_rows(rows):
 
 
 def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None, start=START, peaks=None, funding=None,
-            unsaved=()):
+            unsaved=(), unowned_funding=()):
     """Pure. {book: doc} for the five books. Only rows / lots stamped with cohort_id count (an older cohort's lots and their
     later exits, fees and funding stay with that cohort). halted: the persisted sticky halts {book: {...}}.
     working: [(book, notional, stop_risk)] for entries placed but not yet a lot (resting maker, unconfirmed): they hold a
@@ -104,7 +104,9 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
     EVERY book INCOMPLETE (unowned_account_activity); an amount that cannot be read is INCOMPLETE too - never zero-filled.
     funding: {ok, why, through_ms} from the engine's funding reader. Not ok (no reader / read failed / stale / never read):
     every open lot of the cohort and every row closed after through_ms is INCOMPLETE (funding_unread), never exact zero.
-    unsaved: row ids whose latest revision is not yet durable (evidence_revision_pending)."""
+    unsaved: row ids whose latest revision is not yet durable (evidence_revision_pending).
+    unowned_funding: this cohort's funding payments no lot / row could own -> every book unowned_account_activity
+    (subtype funding_unattributed, with the payment's hashed key / symbol / asset / amount / time)."""
     marks, halted, peaks = marks or {}, halted or {}, peaks or {}
     funding, unsaved = funding or dict(ok=False, why='unknown', through_ms=None), set(unsaved or ())
     fund_t = funding.get('through_ms') if not funding.get('ok') else None
@@ -186,6 +188,10 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         else: b['stop_risk'] += max(Decimal(0), r)
     if unowned['rows'] or unowned['lots'] or unowned['working']:
         for b in out.values(): b['incomplete'].append(dict(reason='unowned_account_activity', **unowned))
+    for u in list(unowned_funding or ())[:20]:
+        for b in out.values():
+            b['incomplete'].append(dict(reason='unowned_account_activity', subtype='funding_unattributed',
+                                        **{k: u.get(k) for k in ('key', 'symbol', 'asset', 'amount', 'time_ms')}))
     for b, r in conflicts:                                      # a disputed owner contaminates every book
         for bb in (out.values() if b is None or 'book' in r['_conflict'] else (b,)):
             bb['incomplete'].append(dict(reason='row_conflict', id=r.get('id'), fields=r['_conflict']))

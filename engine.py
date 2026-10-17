@@ -2823,7 +2823,8 @@ class Engine:
                 marks = (self.marks or {}) if time.time() - (getattr(self, 'marks_t', 0) or 0) <= MARK_FRESH_S else {}
             books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
                                marks, self._tb_working(), st['halted'], peaks=st['peak'], funding=self._tb_funding(),
-                               unsaved=self.state.get('cohort_rev_pending') or ())
+                               unsaved=self.state.get('cohort_rev_pending') or (),
+                               unowned_funding=[u for u in self.state.get('funding_unowned') or () if u.get('cohort_id') == st['cohort_id']])
             dirty, now, pend, new = False, time.time(), st['halt_pend'], {}
             if on:
                 for k, b in books.items():
@@ -2969,6 +2970,13 @@ class Engine:
                     if tgt is not None and _funding_once(tgt, k):
                         AC.apply_funding(tgt, a, asset)
                         if kind == 'row': rows_changed[id(tgt)] = tgt
+                if st == 'unattributed':                        # a real payment no lot / row can own (Codex ruling (c))
+                    coh = self.state.get('cohort') or {}
+                    t0 = TB._ms(coh.get('started_utc'))
+                    un = self.state.setdefault('funding_unowned', [])
+                    if coh.get('id') and (t0 is None or t >= t0) and all(u.get('key') != k for u in un):
+                        un.append(dict(cohort_id=coh['id'], key=k, symbol=sym, asset=asset, amount=amt, time_ms=t))
+                        del un[:-200]                           # saved with the cursor (one state save)
                 new.append(dict(kind='funding', key=k, symbol=sym, asset=asset, amount=amt, time_ms=t, status=st,
                                 shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()],
                                 **({'holders': [dict(kind=kk, id=kid, side=s) for (kk, kid), s, _q in hs]} if not shares else {})))
