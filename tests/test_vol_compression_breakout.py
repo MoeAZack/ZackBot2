@@ -354,6 +354,16 @@ def test_signal_while_open_is_ignored():
     assert [t['b'] for t in r['trades']] == [130] and [(s['skip'], s['b']) for s in r['skips']] == [('overlap', 145)]
 
 
+def test_open_end_trade_keeps_slot_for_later_signal():           # Codex 6229979391
+    ov = {145: (106.0, 112.0, 105.0, 111.0), 146: (111.0, 112.0, 110.0, 111.0), 147: (111.0, 112.0, 110.0, 111.0),
+          148: (111.0, 112.0, 110.0, 111.0)}
+    r = run(frame(ov, N=149, atr_ov=cand_at({}, 145)))              # time decided at close 148, no bar 149
+    assert [g['b'] for g in r['signals']] == [130, 145]             # 145 >= 130 + 13: consumption passed
+    t, = r['trades']
+    assert (t['b'], t['label'], t['exit_i'], t['R_net']) == (130, 'open_end', None, None)
+    assert [(s['skip'], s['b']) for s in r['skips']] == [('overlap', 145)]
+
+
 def test_same_bar_long_short_conflict_is_asserted(monkeypatch):    # injection only: unreachable on valid bars
     real = VC.detect
     monkeypatch.setattr(VC, 'detect', lambda df, side, atr=None: [dict(g, side=side) for g in real(df, 'long', atr)])
