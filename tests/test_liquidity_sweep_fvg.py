@@ -216,6 +216,41 @@ def test_stop_side_gap_skips_both_sides():
     assert [x['skip'] for x in LS.run_symbol(flip(df))['skips']] == ['gap_stop']
 
 
+def test_cost_guard_denominator_is_entry_open_not_close_n():
+    # R = 2521 - 2500.05 = 20.95: < 0.84% x open 2500.05 (21.0004) -> skip; >= 0.84% x close[n] 2492 (20.9328)
+    df = base(off=2400.0, extra={20: (104.0, 120.0, 103.0, 105.0), 23: (100.05, 101.0, 91.0, 92.0)})
+    tr, sk = trade(df)
+    assert tr == [] and [x['skip'] for x in sk] == ['cost_guard']
+
+
+def test_target_gap_at_open_fills_at_open():
+    (t,), _ = trade(base(extra={24: (45.0, 46.0, 44.0, 45.0)}))      # target 50, opens at 45
+    assert (t['label'], t['exit_i'], t['exit'], t['gap_exit']) == ('target', 24, 45.0, True)
+    assert t['R_gross'] == pytest.approx(47 / 21)
+
+
+@pytest.mark.parametrize('flipped', [False, True])
+def test_exact_net_R_costs_known_trade(flipped):
+    df = base(extra={24: (92.0, 95.0, 49.0, 60.0)})                  # short 92 -> target 50 on bar 24
+    if flipped:
+        df = flip(df)                                                # long 108 -> 150
+    (t,), _ = trade(df)
+    E, X = (108.0, 150.0) if flipped else (92.0, 50.0)
+    ef, xf = (E * 1.0002, X * 0.9998) if flipped else (E * 0.9998, X * 1.0002)
+    assert (t['entry_fill'], t['exit_fill']) == (pytest.approx(ef, abs=1e-12), pytest.approx(xf, abs=1e-12))
+    slip = (E + X) * 0.0002
+    fee = (ef + xf) * 0.0005
+    fund = 0.00005 * float(df['c'][23] + df['c'][24])
+    assert t['slip_R'] == pytest.approx(slip / 21, abs=1e-15)
+    assert t['fee_R'] == pytest.approx(fee / 21, abs=1e-15)
+    assert t['fund_R'] == pytest.approx(fund / 21, abs=1e-15)
+    assert t['R_gross'] == 2.0
+    assert t['R_net'] == pytest.approx(2.0 - (slip + fee + fund) / 21, abs=1e-12)
+    assert t['R_net'] == pytest.approx(t['R_gross'] - t['slip_R'] - t['fee_R'] - t['fund_R'], abs=1e-12)
+    gross_after_slip = (xf - ef) if flipped else (ef - xf)
+    assert gross_after_slip == pytest.approx(42.0 - slip, abs=1e-12)
+
+
 # ---- exits (fixture 7, Codex fix 3, Cowork c/e)
 def test_stop_beats_target_same_bar():
     (t,), _ = trade(base(extra={24: (92.0, 114.0, 49.0, 92.0)}))
@@ -287,13 +322,60 @@ def test_overlap_ignored_but_pivot_consumed():
     assert 42 not in ns(df)
 
 
-def test_signal_on_exit_bar_is_taken():
+def test_later_signal_after_stop_is_taken():
     df = base(N=70, extra={24: (92.0, 114.0, 49.0, 92.0)})          # stop intrabar at bar 24
     s2 = {30: PIV, 40: SWEEP, 41: BEAR, 42: FVG}
     for i, rrow in s2.items():
         df.loc[i, ['o', 'h', 'l', 'c']] = rrow
     r = LS.run_symbol(df)
     assert [t['n'] for t in r['trades']] == [22, 42]
+
+
+def _long_setup(rows):
+    """Short trade from base (n=22, entry 23, stop 113, FVG edge 103) plus long-setup rows while it is open."""
+    ov = {k: REST for k in range(23, 60)}
+    ov.update({26: (92.0, 93.0, 85.0, 92.0)})                        # pivot low 85 (confirmed at 29)
+    ov.update(rows)
+    return base(extra=ov, N=60)
+
+
+def test_signal_on_intrabar_stop_bar_is_taken():
+    # bar 33 rallies through the short stop 113 intrabar AND completes a bullish FVG (long n2 = 33): flat at close 33
+    rows = {31: (87.0, 89.0, 83.0, 88.0), 32: (90.0, 101.0, 89.0, 100.0), 33: (100.0, 114.0, 95.0, 110.0)}
+    rows.update({k: (110.0, 111.0, 109.0, 110.0) for k in range(34, 60)})
+    r = LS.run_symbol(_long_setup(rows))
+    assert [(t['side'], t['n'], t['label'], t['exit_i']) for t in r['trades']] ==         [('short', 22, 'stop', 33), ('long', 33, 'time', 46)]
+    assert r['skips'] == []
+
+
+def test_signal_at_close_before_next_open_exit_is_ignored_and_pivot_consumed():
+    # short time cap decided at close 34, fills open 35: the long signal at close 34 is ignored (not queued)
+    rows = {32: (87.0, 89.0, 83.0, 88.0), 33: (89.0, 99.0, 83.0, 98.0), 34: (98.0, 102.0, 90.0, 101.0)}
+    rows.update({k: (100.0, 101.0, 99.0, 100.0) for k in range(35, 60)})
+    rows.update({40: (87.0, 89.0, 83.0, 88.0), 41: (89.0, 99.0, 88.0, 98.0), 42: (98.0, 102.0, 90.0, 101.0)})
+    df = _long_setup(rows)
+    assert [g['n'] for g in sig(df, 'long')] == [34]                # the bar-40 resweep of 85 finds it consumed
+    r = LS.run_symbol(df)
+    assert [(t['side'], t['n'], t['label'], t['exit_i']) for t in r['trades']] == [('short', 22, 'time', 35)]
+    assert [(x['skip'], x['side'], x['n']) for x in r['skips']] == [('overlap', 'long', 34)]
+
+
+def test_same_bar_long_short_conflict_skips_both(monkeypatch):
+    # geometrically a bar cannot be both a bearish and a bullish FVG; the slot rule is still pinned
+    real = LS.detect
+    df = base()
+    monkeypatch.setattr(LS, 'detect', lambda d, side, atr=None: [dict(g, side=side) for g in real(d, 'short', atr)])
+    r = LS.run_symbol(df)
+    assert r['trades'] == [] and sorted((x['skip'], x['side'], x['n']) for x in r['skips']) ==         [('conflict', 'long', 22), ('conflict', 'short', 22)]
+
+
+def test_two_sweeps_one_fvg_bar_earliest_sweep_wins():
+    ov = {5: (100.0, 120.0, 99.0, 100.0), 12: PIV, 20: SWEEP, 21: (105.0, 122.0, 104.0, 106.0),
+          22: (105.0, 106.0, 95.0, 96.0), 23: (96.0, 97.0, 90.0, 92.0)}
+    df = frame(ov, rest_from=24)
+    gs = sig(df)
+    assert [(g['s'], g['n'], g['j'], g['P']) for g in gs] == [(20, 23, 12, 110.0)]
+    assert gs[0]['stop'] == 123.0
 
 
 # ---- fixture 8: L/S mirror
@@ -338,3 +420,10 @@ def test_summary_counts():
     r = LS.run_symbol(df)
     sm = LS.summarize(r['trades'])
     assert sm['total']['n'] == sm['short']['n'] == 1 and sm['total']['lt_minus1'] == 1 and sm['long']['n'] == 0
+    assert sm['total']['lt_minus1_by_label'] == {'stop': 1, 'invalidation': 0, 'time': 0}
+
+
+def test_summary_lt_minus1_by_label_invalidation():
+    df = base(extra={23: (92.0, 105.0, 91.0, 104.0), 24: (118.0, 119.0, 117.0, 118.0)})
+    sm = LS.summarize(LS.run_symbol(df)['trades'])
+    assert sm['short']['lt_minus1_by_label'] == {'stop': 0, 'invalidation': 1, 'time': 0}

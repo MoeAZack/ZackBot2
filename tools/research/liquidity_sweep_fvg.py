@@ -231,6 +231,8 @@ def summarize(trades) -> dict:
         out[name] = dict(n=len(sel), net_R=sum(t['R_net'] for t in sel), gross_R=sum(t['R_gross'] for t in sel),
                          fee_R=sum(t['fee_R'] for t in sel), slip_R=sum(t['slip_R'] for t in sel),
                          fund_R=sum(t['fund_R'] for t in sel), pf=(w / lo) if lo > 0 else None,
-                         lt_minus1=sum(1 for t in sel if t['lt_minus1']))
+                         lt_minus1=sum(1 for t in sel if t['lt_minus1']),
+                         lt_minus1_by_label={k: sum(1 for t in sel if t['lt_minus1'] and t['label'] == k)
+                                             for k in ('stop', 'invalidation', 'time')})
     out['open_end'] = sum(1 for t in trades if t['R_net'] is None)
     return out
