@@ -1583,6 +1583,11 @@ def _slug(s):
     return s or 'unnamed'
 
 
+_BOOK = (('halted', 'book_halted'), ('cost_pending', 'book_cost_pending'), ('INCOMPLETE', 'book_incomplete'),
+         ('full', 'book_full'), ('leverage cap', 'book_leverage_cap'), ('stop-risk cap', 'book_stop_risk_cap'),
+         ('has no NAV', 'book_no_nav'))
+
+
 def reason_info(reason, _depth=0):
     """dict(stage, code[, detail]) for a not-taken signal's reason text. detail: the inner cause of a wrapper text
     (the inner gate as 'stage/code' for trailing cancels and blocked fallbacks). Never raises."""
@@ -1599,6 +1604,10 @@ def reason_info(reason, _depth=0):
                 elif rest: out['detail'] = rest[:160]
                 if out['code'] is None: out['code'] = 'other'
                 return out
+        if r.startswith('book B') and ' ' in r[5:]:                    # TRUE-BOOK-01 book-local refusals
+            word = r[5:].split(' ', 1)[1]
+            return dict(stage='true_book', code=next((c for w, c in _BOOK if word.startswith(w)), 'book_other'))
+        if r.startswith('true books: '): return dict(stage='true_book', code='book_no_cohort' if 'cohort' in r else 'book_unmapped')
         if r.startswith('risk rule '):
             name, _, msg = r[len('risk rule '):].partition(':')
             return dict(stage='risk_gateway', code=_slug(name), detail=msg.strip()[:160])
