@@ -1959,6 +1959,8 @@ class Engine:
         does not). None = fine."""
         unt = getattr(self, 'state_untrusted', None)
         if unt: return f"data file not saved ({', '.join(sorted(unt))}.json) - no new risk until it saves again"
+        if (getattr(self, 'state', None) or {}).get('cohort_closing'):         # RUN-PACK-01: nothing may open between cohorts
+            return 'PAPER cohort boundary pending - no new risk until it completes or is aborted'
         return self.install_block()
 
     def install_block(self):
@@ -5325,7 +5327,9 @@ class Engine:
             for k in keys: self.state.pop(k, None)
             self.state.update(undo[0]); self.cohort_rows, self.cohort_drift = undo[1], undo[2]
             raise
-        self._save_aux('cohort', self.state['cohort'])               # a stale sidecar (archived id) is rewritten at start
+        try: self._save_aux('cohort', self.state['cohort'])          # committed above: a sidecar failure is recoverable (a
+        except Exception as ex:                                       # stale archived id is rewritten at the next start)
+            log.warning(f'cohort.json not written after the boundary ({type(ex).__name__}) - rewritten at the next start')
         log.info(f"RUN-PACK-01 cohort {coh['id']} closed, pack {path} sha256 {sha}; new cohort {self.state['cohort']['id']}")
         return dict(closed=coh['id'], pack=path, pack_sha=sha, new=self.state['cohort']['id'])
 

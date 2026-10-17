@@ -390,7 +390,7 @@ def restart(e, tmp):
     return e2
 
 
-@pytest.mark.parametrize('where', ['state', 'sidecar'])
+@pytest.mark.parametrize('where', ['state'])
 def test_boundary_interrupted_after_pack_completes_on_restart_and_on_retry(monkeypatch, where):
     for how in ('restart', 'retry'):
         e, tmp = books_engine()
@@ -532,7 +532,7 @@ def test_pending_boundary_is_never_completed_unless_flat(monkeypatch):
     monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(RP.PackRefused('scan')))
     with pytest.raises(RP.PackRefused): e.cohort_boundary(dest)
     monkeypatch.undo()
-    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())        # trading went on while it was pending
+    e.state['lots']['restored'] = dict(symbol='BTCUSDT', side='LONG')      # e.g. a position found at reconcile
     with pytest.raises(RuntimeError, match='pending but not flat'): e.cohort_boundary(dest)
 
 
@@ -581,3 +581,33 @@ def test_failed_abort_keeps_the_intent_in_memory(monkeypatch):
     monkeypatch.setattr(e, '_save_wal', lambda: (_ for _ in ()).throw(OSError('disk')))
     with pytest.raises(OSError): e.cohort_boundary_abort()
     assert e.state['cohort_closing'] and e.book_ledger_status() is None
+
+
+# ------------------------------------------------------------------ Codex early re-review (6235784500) regressions
+def test_sidecar_failure_after_commit_is_success_and_never_makes_a_second_cohort(monkeypatch):
+    e, tmp = books_engine()
+    old, dest = e.state['cohort']['id'], tempfile.mkdtemp()
+    real = e._save_aux
+    monkeypatch.setattr(e, '_save_aux', lambda n, o: (_ for _ in ()).throw(OSError('crash')) if n == 'cohort' else real(n, o))
+    out = e.cohort_boundary(dest)                                          # committed: returns, nothing for a caller to retry
+    monkeypatch.undo()
+    assert out['closed'] == old and [a['id'] for a in e.state['cohort_archive']] == [old] and os.listdir(dest) == [old]
+    e2 = restart(e, tmp)
+    assert e2.state['cohort']['id'] == out['new'] and not getattr(e2, '_cohort_conflict', False)
+    assert json.load(open(e2.F['cohort']))['id'] == out['new'] and len(e2.state['cohort_archive']) == 1
+
+
+def test_pending_boundary_blocks_every_new_risk_path(monkeypatch):
+    e, _ = books_engine()
+    assert e.open_lot(SL, 'ETHUSDT', 'LONG', SG, None, e.equity())
+    k = next(iter(e.state['lots'])); held = dict(e.state['lots'][k], stop_dirty=False)
+    e.close_lot(k, 'manual')
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **kw: (_ for _ in ()).throw(OSError('crash before the pack')))
+    with pytest.raises(OSError): e.cohort_boundary(tempfile.mkdtemp())
+    monkeypatch.undo()
+    assert 'cohort boundary pending' in e.persist_block()
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and not e.state['lots']
+    assert 'cohort boundary pending' in (e._add_block(held, 1, 100) or '')   # adds to a held position too
+    assert e.cohort_boundary_abort() and e.persist_block() is None
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    assert next(iter(e.state['lots'].values()))['cohort_id'] == e.state['cohort']['id']
