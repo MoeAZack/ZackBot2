@@ -72,6 +72,7 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
+from fractions import Fraction
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -314,6 +315,20 @@ def read_checked(cache: str, s: str):
 
 
 # ------------------------------------------------------------------ manifest binding (Codex 6231454794)
+class DuplicateKeyError(ValueError):
+    pass
+
+
+def _no_dup_keys(pairs):
+    """json object_pairs_hook: a key repeated at any level of the manifest refuses it (no last-one-wins)."""
+    out = {}
+    for k, v in pairs:
+        if k in out:
+            raise DuplicateKeyError(f'duplicate key {k!r}')
+        out[k] = v
+    return out
+
+
 def load_manifest(path: str):
     """(manifest dict, sha256 of the exact bytes parsed). Unreadable / non-JSON / no `files` object refuses."""
     try:
@@ -322,9 +337,9 @@ def load_manifest(path: str):
     except OSError as e:
         raise RunnerError(f'tpc: manifest {path} unreadable ({type(e).__name__}); refused') from None
     try:
-        m = json.loads(raw.decode('utf-8'))
+        m = json.loads(raw.decode('utf-8'), object_pairs_hook=_no_dup_keys)
     except (UnicodeDecodeError, ValueError) as e:
-        raise RunnerError(f'tpc: manifest {path} is not valid JSON ({type(e).__name__}); refused') from None
+        raise RunnerError(f'tpc: manifest {path} is not valid JSON ({type(e).__name__}: {e}); refused') from None
     if not isinstance(m, dict) or not isinstance(m.get('files'), dict):
         raise RunnerError(f'tpc: manifest {path} has no "files" object; refused')
     return m, hashlib.sha256(raw).hexdigest()
@@ -422,20 +437,28 @@ def group_stats(rows, skips, opens, blocked, quarters, summary) -> dict:
     net = [x['R_net'] for x in rows]
     cost = summary['fee_R'] + summary['slip_R'] + summary['fund_R']
     q = {k: 0.0 for k in quarters}
+    qx = {k: Fraction(0) for k in quarters}             # exact quarterly sums (decision); q is the serialized float
     for x in rows:
         q[x['quarter']] = q.get(x['quarter'], 0.0) + x['R_net']
+        qx[x['quarter']] = qx.get(x['quarter'], Fraction(0)) + Fraction(x['R_net'])
     order = sorted(rows, key=lambda x: (x['t_out'], x['t_in'], x['symbol'], x['side']))
     cum = np.cumsum([0.0] + [x['R_net'] for x in order])
     hold = [x['hold_bars'] for x in rows]
+    # exact decision inputs: Fraction sums of every trade's own float R components (no float summation error)
+    xw = sum((Fraction(x['R_net']) for x in rows if x['R_net'] > 0), Fraction(0))
+    xl = -sum((Fraction(x['R_net']) for x in rows if x['R_net'] < 0), Fraction(0))
+    xg = sum((Fraction(x['R_gross']) for x in rows), Fraction(0))
+    xc = sum((Fraction(x['fee_R']) + Fraction(x['slip_R']) + Fraction(x['fund_R']) for x in rows), Fraction(0))
     return dict(
-        _raw=dict(pf=summary['pf'], gross_R=summary['gross_R'], cost_R=cost),    # unrounded; popped before serializing
+        _raw=dict(pf=summary['pf'], gross_R=summary['gross_R'], cost_R=cost,      # popped before serializing
+                  exact=dict(pf=(xw / xl) if xl > 0 else None, gross_R=xg, cost_R=xc)),
         n=summary['n'], wins=sum(1 for v in net if v > 0), losses=sum(1 for v in net if v < 0),
         net_R=_r(summary['net_R']), gross_R=_r(summary['gross_R']), fee_R=_r(summary['fee_R']),
         slip_R=_r(summary['slip_R']), fund_R=_r(summary['fund_R']), cost_R=_r(cost), pf=_r(summary['pf']),
         avg_R=_r(summary['net_R'] / n) if n else None,
         gross_R_per_trade=_r(summary['gross_R'] / n) if n else None, cost_R_per_trade=_r(cost / n) if n else None,
         max_dd_R=_r(float((np.maximum.accumulate(cum) - cum).max())),
-        quarters={k: _r(v) for k, v in sorted(q.items())}, positive_quarters=sum(1 for v in q.values() if v > 0),
+        quarters={k: _r(v) for k, v in sorted(q.items())}, positive_quarters=sum(1 for v in qx.values() if v > 0),
         hold_bars_mean=_r(np.mean(hold)) if n else None, hold_bars_median=_r(np.median(hold)) if n else None,
         mfe_r_mean=_r(np.mean([x['mfe_r'] for x in rows])) if n else None,
         mae_r_mean=_r(np.mean([x['mae_r'] for x in rows])) if n else None,
@@ -465,19 +488,22 @@ def decision(c: dict, quarters) -> dict:
     """CANDIDATE (per tier) only if combined PF > 1.0 AND combined own quarterly net R > 0 in >= 2/3 of the window
     quarters AND gross R per trade >= 3 x cost R per trade; otherwise PARK. Final: CANDIDATE on both eligible-history
     tiers."""
-    # every threshold is evaluated on UNROUNDED values (c['_raw'] from group_stats, else c itself); only the serialized
-    # fields below are rounded. positive_quarters is already counted on the raw quarterly sums.
+    # every threshold is evaluated on EXACT values (c['_raw']['exact'] from group_stats: Fraction sums of the per-trade
+    # floats; else the unrounded raw / given values); the serialized fields below are the float sums rounded to 9 dp.
+    # positive_quarters is already counted on the exact quarterly sums.
     raw = c.get('_raw', c)
+    ex = raw.get('exact', raw)
     n, nq, pf, gross, cost = c['n'], len(quarters), raw['pf'], raw['gross_R'], raw['cost_R']
-    pf_ok = n > 0 and ((pf is not None and pf > 1.0) or (pf is None and c['losses'] == 0 and c['wins'] > 0))
+    xpf, xg, xc = ex['pf'], ex['gross_R'], ex['cost_R']
+    pf_ok = n > 0 and ((xpf is not None and xpf > 1) or (xpf is None and c['losses'] == 0 and c['wins'] > 0))
     q_ok = nq > 0 and 3 * c['positive_quarters'] >= 2 * nq
-    cost_ok = n > 0 and gross >= 3 * cost
+    cost_ok = n > 0 and xg >= 3 * xc
     return dict(
         rule='CANDIDATE only if combined PF > 1.0 AND combined own quarterly net R > 0 in >= 2/3 of the window quarters '
              'AND gross R per trade >= 3 x cost R per trade; otherwise PARK (frozen C1 rule, whole family)',
         pf=_r(pf), pf_ok=bool(pf_ok), positive_quarters=c['positive_quarters'], quarters=nq, quarters_ok=bool(q_ok),
         gross_R_per_trade=_r(gross / n) if n else None, cost_R_per_trade=_r(cost / n) if n else None,
-        cost_ok=bool(cost_ok), evaluated_on='unrounded values (serialized fields rounded to 9 dp)',
+        cost_ok=bool(cost_ok), evaluated_on='exact Fraction sums of per-trade float values',
         tier_verdict='CANDIDATE' if (pf_ok and q_ok and cost_ok) else 'PARK', final_requires=FINAL_REQUIRES)
 
 

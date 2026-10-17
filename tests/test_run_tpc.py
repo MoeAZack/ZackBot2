@@ -599,6 +599,43 @@ def test_group_stats_feeds_raw_values_to_decision():
     assert st['pf'] == 1.0 and d['pf_ok'] is True
 
 
+def _xrow(q, net, gross=None, fee=0.0):
+    return dict(symbol='ETHUSDT', side='long', quarter=q, t_in=q, t_out=q, R_net=net,
+                R_gross=net + fee if gross is None else gross, fee_R=fee, slip_R=0.0, fund_R=0.0, hold_bars=1,
+                mfe_r=0.0, mae_r=0.0, giveback_gross_r=0.0, giveback_net_r=0.0, label='time', gap_exit=False,
+                lt_minus1=False)
+
+
+def _xdec(rows, quarters=('2025Q1',)):
+    st = R.group_stats(rows, [], [], [], list(quarters), TPC.summarize(rows)['total'])
+    return st, R.decision(st, list(quarters))
+
+
+def test_exact_cost_boundary_gross_03_vs_cost_01():
+    """Codex repro: gross 0.05 + 0.25 vs cost 0.04 + 0.06 passes exactly (Fraction sums) but fails in float sums."""
+    rows = [_xrow('2025Q1', 0.05 - 0.04, gross=0.05, fee=0.04), _xrow('2025Q1', 0.25 - 0.06, gross=0.25, fee=0.06)]
+    assert not (0.05 + 0.25 >= 3 * (0.04 + 0.06))                              # the float comparison fails
+    st, d = _xdec(rows)
+    assert d['cost_ok'] is True and d['evaluated_on'] == 'exact Fraction sums of per-trade float values'
+    assert st['gross_R'] == R._r(0.05 + 0.25) and st['cost_R'] == R._r(0.04 + 0.06)   # serialized fields unchanged
+
+
+def test_exact_pf_boundary():
+    """Wins 0.01 + 0.02 vs loss 0.03: float PF is exactly 1.0 (fails PF > 1), the exact sums give PF > 1."""
+    rows = [_xrow('2025Q1', 0.01), _xrow('2025Q2', 0.02), _xrow('2025Q2', -0.03)]
+    assert (0.01 + 0.02) / 0.03 == 1.0
+    st, d = _xdec(rows, ('2025Q1', '2025Q2'))
+    assert d['pf_ok'] is True and d['pf'] == 1.0 and st['pf'] == 1.0
+
+
+def test_exact_quarter_sign():
+    """0.01 + 0.02 - 0.03 is 0.0 in floats but > 0 exactly: the quarter counts as positive."""
+    rows = [_xrow('2025Q1', 0.01), _xrow('2025Q1', 0.02), _xrow('2025Q1', -0.03)]
+    assert 0.01 + 0.02 - 0.03 == 0.0
+    st, d = _xdec(rows)
+    assert st['positive_quarters'] == 1 and st['quarters']['2025Q1'] == 0.0 and d['quarters_ok'] is True
+
+
 def test_decision_uses_raw_not_rounded_group_fields():
     c = dict(n=10, wins=5, losses=5, positive_quarters=3, pf=1.0, gross_R=3.0, cost_R=1.0,
              _raw=dict(pf=1.0 + EPS, gross_R=3.0 - 1e-13, cost_R=1.0))
@@ -1007,6 +1044,58 @@ def test_manifest_late_symbol_is_checked(env, capsys, monkeypatch):
     man = manifest(env, SYMS + ['HYPEUSDT'], edit=_set('HYPEUSDT', 'sha256', 'f' * 64))
     rc, cap, outdir = _cli_run(env, capsys, ['--exclude-late', 'HYPEUSDT', '--manifest', man], syms=SYMS + ['HYPEUSDT'])
     assert rc == 2 and 'HYPEUSDT cache sha256' in cap.err and os.listdir(outdir) == []
+
+
+def _write_raw_manifest(env, text):
+    p = env['tmp'] / 'dup_manifest.json'
+    p.write_text(text, encoding='utf-8')
+    return str(p)
+
+
+def _entries(env):
+    files = json.loads(open(manifest(env, SYMS, name='src.json'), encoding='utf-8').read())['files']
+    bad = dict(files['SOLUSDT'], sha256='0' * 64)
+    return files, bad
+
+
+def test_manifest_duplicate_symbol_entry_refused(env, capsys, monkeypatch):
+    """A repeated symbol key (bad entry first, good one second) refuses: no last-one-wins."""
+    _cli_repo(env, monkeypatch)
+    files, bad = _entries(env)
+    text = ('{"files": {"ETHUSDT": %s, "SOLUSDT": %s, "SOLUSDT": %s}}'
+            % (json.dumps(files['ETHUSDT']), json.dumps(bad), json.dumps(files['SOLUSDT'])))
+    rc, cap, outdir = _cli_run(env, capsys, ['--manifest', _write_raw_manifest(env, text)])
+    assert rc == 2 and 'duplicate key' in cap.err and 'SOLUSDT' in cap.err and os.listdir(outdir) == []
+
+
+def test_manifest_duplicate_top_level_files_refused(env, capsys, monkeypatch):
+    _cli_repo(env, monkeypatch)
+    files, bad = _entries(env)
+    text = '{"files": %s, "files": %s}' % (json.dumps(dict(files, SOLUSDT=bad)), json.dumps(files))
+    rc, cap, outdir = _cli_run(env, capsys, ['--manifest', _write_raw_manifest(env, text)])
+    assert rc == 2 and "duplicate key 'files'" in cap.err and os.listdir(outdir) == []
+
+
+def test_manifest_key_case_must_match(env, capsys, monkeypatch):
+    _cli_repo(env, monkeypatch)
+
+    def lower(m):
+        m['files']['solusdt'] = m['files'].pop('SOLUSDT')
+    rc, cap, outdir = _cli_run(env, capsys, ['--manifest', manifest(env, SYMS, edit=lower)])
+    assert rc == 2 and 'no entry for SOLUSDT' in cap.err and os.listdir(outdir) == []
+
+
+@pytest.mark.parametrize('key', ['first_ms', 'last_ms'])
+@pytest.mark.parametrize('val', ['same_as_float', 1.7e12])
+def test_manifest_ms_must_be_int(env, key, val):
+    def ms(m):
+        for s, e in m['files'].items():
+            d = pd.read_csv(os.path.join(env['cache'], e['file']))
+            e['first_ms'], e['last_ms'] = int(d.t.min()), int(d.t.max())
+        e = m['files']['SOLUSDT']
+        e[key] = float(e[key]) if val == 'same_as_float' else val
+    with pytest.raises(R.RunnerError, match=f'{key[:-3]} open time'):
+        go(env, manifest=manifest(env, SYMS, edit=ms))
 
 
 def test_manifest_missing_file_symbol_refused(env):
