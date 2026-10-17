@@ -80,6 +80,8 @@ def atr14(df) -> np.ndarray:
 
 def _arrays(df, side):
     o, h, l, c = (np.asarray(df[k], dtype=float) for k in ('o', 'h', 'l', 'c'))
+    if not all(bool(np.all(x > 0)) for x in (o, h, l, c)):
+        raise ValueError('prices must be > 0 (real-price abs() shortcuts assume it)')
     if side == 'long':
         return o, h, l, c
     if side == 'short':

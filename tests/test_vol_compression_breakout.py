@@ -261,6 +261,37 @@ def test_open_at_end():
     assert t['label'] == 'open_end' and t['R_net'] is None and VC.summarize(r['trades'])['open_end'] == 1
 
 
+def test_intrabar_stop_equality_exits_as_stop():                # review item 1: L == stop
+    t = one(frame({131: (105.0, 106.0, 97.0, 104.0)}))
+    assert (t['label'], t['exit_i'], t['exit'], t['gap_exit']) == ('stop', 131, 97.0, False)
+
+
+@pytest.mark.parametrize('o,label', [(129.0, 'target'), (97.0, 'stop')])
+def test_gap_equality_at_open_owns_label_over_pending(o, label):  # review items 2-3: open == target / == stop
+    t = one(frame({135: (105.0, 106.0, 100.0, 100.5), 136: (o, o + 1, o - 0.5, o)}))
+    assert (t['label'], t['exit_i'], t['exit'], t['gap_exit']) == (label, 136, o, True)
+
+
+def test_funding_sums_real_closes_entry_to_exit_inclusive():    # review item 4: closes drift from entry
+    ov = {131: (105.0, 108.0, 104.0, 107.0), 132: (107.0, 110.0, 106.0, 109.0), 133: (109.0, 112.0, 108.0, 111.0),
+          134: (111.0, 114.0, 110.0, 113.0), 135: (113.0, 114.0, 96.0, 100.0)}
+    for df, closes in ((frame(ov), 540.0), (flip(frame(ov)), 5 * 200 - 540.0)):
+        t = one(df)
+        assert (t['label'], t['entry_i'], t['exit_i']) == ('stop', 131, 135)
+        assert t['fund_R'] == pytest.approx(0.00005 * closes / 8, abs=1e-15)
+        assert closes != t['entry'] * 5
+
+
+@pytest.mark.parametrize('col,v', [('o', 0.0), ('h', -1.0), ('l', 0.0), ('c', -5.0)])
+def test_non_positive_prices_rejected(col, v):
+    df = frame()
+    df.loc[50, col] = v
+    with pytest.raises(ValueError):
+        VC.run_symbol(df)
+    with pytest.raises(ValueError):
+        VC.detect(df, 'short')
+
+
 # ---- box consumption
 @pytest.mark.parametrize('first', ['cost', 'gap'])
 @pytest.mark.parametrize('p,ok', [(142, False), (143, True)])
