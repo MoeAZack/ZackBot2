@@ -404,9 +404,12 @@ def test_cli_once_symbols_out_and_exit_codes(tmp_path):
 
 def test_cli_preserves_explicit_usdc_symbols():
     import collect_market_data as T
-    syms, why = T.resolve_symbols('btcusdc,ETHUSDT,sol')
+    syms, why = T.resolve_symbols('btcusdc,ETHUSDT,sol,btcusdc')
     assert syms == ['BTCUSDC', 'ETHUSDT', 'SOLUSDT']
     assert why == '--symbols'
+    for bad in ('USDT', 'USDC', '../../evilUSDC', 'BTC/USDC', 'BTC-USD'):
+        with pytest.raises(ValueError):
+            T.resolve_symbols(bad)
 
 
 def test_cli_default_universe_is_the_engine_top40():
