@@ -309,8 +309,9 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
     """Pure. The Strategies-tab comparison: one row per book (family) and one per mapped strategy, from the same TRUE-BOOK
     valuation (books = compute()) and this cohort's merged closed rows. audits: {trade id: {mfe_r, mae_r, giveback_r}}
     (hindsight, describes finished trades; a close without one counts as audit_missing, never 0). rejections:
-    [(book, strategy_key, code)] of this cohort's not-taken signals. Only rankable rows are ranked (by avg R): a row is
-    rankable when its book is, every one of its closes is complete and it has at least min_n closes."""
+    [(book, strategy_key, code)] of this cohort's not-taken signals. Only rankable rows are ranked: a row is rankable when
+    its book is, every one of its closes is complete, it has at least min_n closes and it is positive after costs (net > 0
+    and avg R > 0; Codex 6243268587). Order: avg R, then after-cost net. Losing rows stay visible and unranked."""
     audits = audits or {}
     rows = [r for r in merge_rows(rows) if r.get('book') in books]
     rej = {}
@@ -357,7 +358,10 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
                          note=None if s['closed'] >= min_n else f'insufficient n ({s["closed"]}/{min_n})')
                 strats.append(s)
     for lst in (fams, strats):
-        ranked = sorted((x for x in lst if x['rankable'] and x['avg_r'] is not None), key=lambda x: -x['avg_r'])
+        for x in lst:
+            if x['rankable'] and not (x['net'] is not None and x['net'] > 0 and x['avg_r'] is not None and x['avg_r'] > 0):
+                x['rankable'] = False; x['note'] = 'not positive after costs'   # comparison only, never a promotion
+        ranked = sorted((x for x in lst if x['rankable']), key=lambda x: (-x['avg_r'], -x['net']))
         for i, x in enumerate(ranked): x['rank'] = i + 1
         for x in lst: x.setdefault('rank', None)
     return dict(min_n=min_n, families=fams, strategies=strats)

@@ -175,3 +175,23 @@ def test_concurrent_reads_never_double_the_offset():
     for t in ts: t.start()
     for t in ts: t.join()
     assert e._tb_exc['off'][e.F['audit']] == os.path.getsize(e.F['audit']) and len(e._tb_exc['ids']) == 2000
+
+
+def test_a_row_losing_after_costs_is_never_ranked_even_with_positive_r():
+    k = sorted(PB.BOOKS[2][2])[0]
+    rows = rows_for('B3_TREND', k, 20, fees_actual=12.0)          # +0.5R each, but -2.0 net after actual fees
+    out = TB.compare(C('C', rows), rows)
+    s, f = strat(out, k), fam(out, 'B3_TREND')
+    assert s['avg_r'] == 0.5 and s['net'] == -40.0 and not s['rankable'] and s['rank'] is None
+    assert s['note'] == 'not positive after costs' and s['closed'] == 20
+    assert f['avg_r'] == 0.5 and f['net'] == -40.0 and not f['rankable'] and f['rank'] is None
+    rows = rows_for('B3_TREND', k, 20, r=-0.1)                     # net positive, R not: unranked too
+    assert not strat(TB.compare(C('C', rows), rows), k)['rankable']
+
+
+def test_equal_avg_r_ranks_the_larger_after_cost_net_first():
+    k3, k2 = sorted(PB.BOOKS[2][2])[0], sorted(PB.BOOKS[1][2])[0]
+    rows = rows_for('B2_RANGE', k2, 20, r=0.5) + rows_for('B3_TREND', k3, 20, gross=20.0, r=0.5)   # larger net in the later book
+    out = TB.compare(C('C', rows), rows)
+    assert strat(out, k3)['rank'] == 1 and strat(out, k2)['rank'] == 2
+    assert fam(out, 'B3_TREND')['rank'] == 1 and fam(out, 'B2_RANGE')['rank'] == 2
