@@ -15,6 +15,13 @@ imported, not copied:
     [warm-up start, END) before any indicator exists (VC.slice_frame + VC.assert_bounded), completeness on the 4h grid
     (B.completeness). STRICTER than breadth: any requested symbol with a missing file or an incomplete slice REFUSES the
     whole run (breadth drops such a symbol from the book); C1 has no BTC regime split, so BTCUSDT is not loaded.
+    The whole cache file is read and hashed (sha256 of its bytes) BEFORE slicing; the slice then drops every row at /
+    after END, so no post-END row reaches any statistic, check or report.
+  - OHLC sanity (Cowork 6229112441): any bar in [warm-up start, END) with a non-finite or non-positive o/h/l/c, or
+    h < max(o, c), or l > min(o, c) REFUSES the whole run (same policy as a missing candle). Bars at / after END are
+    never checked.
+  - packet write: built in a unique temp file, then linked to --out exclusively (os.link fails if --out exists), so a
+    file created at --out during the run is never replaced (RunnerError); the temp file is always removed.
   - warm-up: the 220 bars before START feed ATR14 and the pivots only. Signals whose FVG bar n opens before START are
     removed BEFORE the one-slot-per-symbol logic (the run starts flat at START, like backtest.run(t0=START)); they are
     counted in warmup.signals_excluded and never traded, skipped or reported as overlap.
@@ -44,6 +51,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -140,7 +148,9 @@ def excursions(df, t) -> dict:
     """MFE / MAE / giveback in R from real prices on the path entry -> exit: the full ranges of bars [entry_i, exit_i),
     plus the entry fill price, the exit bar's open and the exit price (the exit bar's range after the exit is never
     counted; for an intrabar stop / target only the exit level of that bar counts). giveback_gross_r = MFE - gross R,
-    giveback_net_r = MFE - net R (Codex 6228979583: no unqualified giveback field)."""
+    giveback_net_r = MFE - net R (Codex 6228979583: no unqualified giveback field).
+    DIAGNOSTIC: on an intrabar stop / target exit the exit bar's high / low before the exit are ignored (their order
+    vs the exit is unknown), so MAE / MFE can understate the exit bar's excursion."""
     e, x, E, X, R = t['entry_i'], t['exit_i'], t['entry'], t['exit'], t['R_unit']
     h = np.asarray(df['h'], dtype=float)
     lw = np.asarray(df['l'], dtype=float)
@@ -230,6 +240,24 @@ def decision(c: dict, quarters) -> dict:
         tier_verdict='CANDIDATE' if (pf_ok and q_ok and cost_ok) else 'PARK', final_requires=FINAL_REQUIRES)
 
 
+# ------------------------------------------------------------------ OHLC sanity
+def ohlc_problems(d) -> dict:
+    """Counts of insane bars in a slice already bounded to [warm_lo, END): non-finite / non-positive o/h/l/c,
+    h < max(o, c), l > min(o, c). Empty dict = sane."""
+    o, h, lw, c = (d[k].to_numpy(float) for k in ('o', 'h', 'l', 'c'))
+    with np.errstate(invalid='ignore'):
+        bad_val = ~(np.isfinite(o) & np.isfinite(h) & np.isfinite(lw) & np.isfinite(c)) | (o <= 0) | (h <= 0) | \
+            (lw <= 0) | (c <= 0)
+        hi_bad = ~bad_val & (h < np.maximum(o, c))
+        lo_bad = ~bad_val & (lw > np.minimum(o, c))
+    out = {k: int(v.sum()) for k, v in (('non_finite_or_non_positive', bad_val), ('h_below_max_oc', hi_bad),
+                                        ('l_above_min_oc', lo_bad)) if v.any()}
+    if out:
+        t = _ms(d.t)
+        out['first_bad'] = _utc(int(t[np.flatnonzero(bad_val | hi_bad | lo_bad)[0]]))
+    return out
+
+
 # ------------------------------------------------------------------ pre-registration (fixed before any data is read)
 def prereg() -> dict:
     """Cowork 6228948749: the accounting and reporting commitments, built from code constants only (no cache input)."""
@@ -312,6 +340,9 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
         frames[s] = d
     if bad:
         raise RunnerError(f'lsfvg: INCOMPLETE cache for {bad} over [{_utc(warm_lo)}, {_utc(hi)}); refused (no fill)')
+    insane = {s: p for s in syms for p in [ohlc_problems(frames[s])] if p}
+    if insane:
+        raise RunnerError(f'lsfvg: OHLC sanity failed for {insane} over [{_utc(warm_lo)}, {_utc(hi)}); refused')
     try:
         VC.assert_bounded(frames, warm_lo, hi)
     except VC.RunnerError as e:
@@ -399,10 +430,17 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
     }
     pkt['packet_sha256'] = hashlib.sha256(_canon(pkt)).hexdigest()
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    tmp = out + '.tmp'
-    with open(tmp, 'wb') as f:
-        f.write(json.dumps(pkt, sort_keys=True, indent=1, allow_nan=False).encode())
-    os.replace(tmp, out)
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(out) + '.', suffix='.tmp',
+                               dir=os.path.dirname(os.path.abspath(out)))
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(json.dumps(pkt, sort_keys=True, indent=1, allow_nan=False).encode())
+        try:
+            os.link(tmp, out)                            # exclusive: fails if --out appeared during the run
+        except FileExistsError:
+            raise RunnerError(f'lsfvg: {out} was created during the run; a packet is never overwritten') from None
+    finally:
+        os.remove(tmp)
     return pkt
 
 

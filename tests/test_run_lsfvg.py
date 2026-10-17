@@ -466,3 +466,70 @@ def test_cli_check_coverage(env, capsys):
                    '--symbols', 'ETHUSDT', '--check-coverage']) == 2
     with pytest.raises(SystemExit):
         R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', 'ETHUSDT'])   # --out required for a run
+
+
+# ------------------------------------------------------------------ Cowork 6229112441
+def test_out_created_during_run_is_never_replaced(env, monkeypatch):
+    out = env['tmp'] / 'p.json'
+    real = LS.summarize
+
+    def racing(trades):
+        with open(out, 'wb') as f:                                  # appears after the initial exists() check
+            f.write(b'ORIGINAL')
+        return real(trades)
+    monkeypatch.setattr(LS, 'summarize', racing)
+    with pytest.raises(R.RunnerError, match='created during the run'):
+        go(env)
+    with open(out, 'rb') as f:
+        assert f.read() == b'ORIGINAL'
+    assert sorted(os.listdir(env['tmp'])) == sorted(['candles', 'repo', 'p.json'])     # temp file removed
+
+
+def test_packet_write_leaves_no_temp(env):
+    go(env)
+    assert sorted(os.listdir(env['tmp'])) == sorted(['candles', 'repo', 'p.json'])
+
+
+def _poke(env, row, **vals):
+    path = os.path.join(env['cache'], 'SOLUSDT_4h.csv')
+    d = pd.read_csv(path, encoding='utf-8')
+    for k, v in vals.items():
+        d.loc[row, k] = v
+    d.to_csv(path, index=False)
+
+
+IN_WIN = HEAD + W + 30                                              # a csv row inside [START, END)
+
+
+@pytest.mark.parametrize('vals', [dict(c=float('nan')), dict(o=0.0, h=0.0, l=0.0, c=0.0), dict(h=98.0, l=99.0),
+                                  dict(h=104.5, c=105.0), dict(l=150.5), dict(l=-1.0),
+                                  dict(o=float('inf'))],
+                         ids=['nan_close', 'zero_bar', 'h_below_l', 'h_below_close', 'l_above_close', 'negative_low',
+                              'inf_open'])
+def test_ohlc_sanity_refuses(env, vals):
+    _poke(env, IN_WIN, **vals)
+    with pytest.raises(R.RunnerError, match='OHLC sanity'):
+        go(env)
+    assert not os.path.exists(env['tmp'] / 'p.json')
+
+
+def test_ohlc_sanity_covers_warmup(env):
+    _poke(env, HEAD + 3, c=float('nan'))                            # inside [warm-up start, START)
+    with pytest.raises(R.RunnerError, match='OHLC sanity'):
+        go(env)
+
+
+def test_ohlc_sanity_ignores_bars_before_warmup_and_after_end(env):
+    _poke(env, HEAD - 1, c=float('nan'))                            # before the warm-up start
+    for k in range(HEAD + NSLICE, HEAD + NSLICE + 5):               # at / after END (the holdout side)
+        _poke(env, k, h=-5.0, l=-9.0, c=float('nan'))
+    p = go(env)
+    assert p['stats']['combined']['n'] >= 8
+
+
+def test_ohlc_problems_helper_counts():
+    d = pd.DataFrame(dict(t=pd.to_datetime([0, H4, 2 * H4, 3 * H4], unit='ms'), o=[1.0, 1.0, 1.0, 1.0],
+                          h=[2.0, 0.5, 2.0, 2.0], l=[0.5, 0.4, 1.5, 0.5], c=[1.5, 0.45, 1.6, 1.5]))
+    p = R.ohlc_problems(d)
+    assert p == {'h_below_max_oc': 1, 'l_above_min_oc': 1, 'first_bad': SP.utc(H4)}
+    assert R.ohlc_problems(d.iloc[[0, 3]]) == {}
