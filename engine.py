@@ -2746,6 +2746,7 @@ class Engine:
     # cohort (true_books.compute); sizing, the 4-lot cap, leverage and stop-risk use that book's NAV. HALT is sticky for the
     # cohort (state['true_books']['halted']); other books keep trading. Strategy logic and risk % are unchanged.
     TB_HALT_CONFIRM_S = 30           # an unrealized-only NAV <= 0 must persist this long before the halt is made sticky
+    TB_INCOMPLETE_NOTIFY_S = 6 * 3600   # a book that stays INCOMPLETE (refusing new risk) is reported again every 6 h
 
     def _tb_on(self):
         return bool(getattr(self, 'live', True) is False and self.S.get('TRUE_BOOKS') is True and self.S.get('PAPER_BOOKS') is True)
@@ -2754,10 +2755,10 @@ class Engine:
         cid = (self.state.get('cohort') or {}).get('id')
         st = self.state.get('true_books')
         if not isinstance(st, dict):
-            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={}, halt_pend={})
+            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={}, halt_pend={}, inc_note={})
         elif cid and st.get('cohort_id') != cid:                       # a NEW cohort: every book starts fresh
-            st.clear(); st.update(cohort_id=cid, halted={}, peak={}, halt_pend={})
-        for k in ('halted', 'peak', 'halt_pend'):
+            st.clear(); st.update(cohort_id=cid, halted={}, peak={}, halt_pend={}, inc_note={})
+        for k in ('halted', 'peak', 'halt_pend', 'inc_note'):
             if not isinstance(st.get(k), dict): st[k] = {}
         return st
 
@@ -2841,6 +2842,15 @@ class Engine:
                 if TB.D(pend.get(k)) is None: pend[k] = now; dirty = True    # mark-to-market only: confirm on a later tick
                 t0 = float(TB.D(pend[k]))
                 if now - t0 >= self.TB_HALT_CONFIRM_S: new[k] = dict(b['halt'] or {}, confirmed_s=round(now - t0))
+            notes = []
+            if persist and on:                                       # the owner hears when a book goes quiet (Codex S1 #2)
+                for k, b in books.items():
+                    if not b['incomplete'] or TB.cost_pending_only(b):  # complete, or only a commission in flight
+                        if st['inc_note'].pop(k, None) is not None: dirty = True
+                        continue
+                    if now - float(TB.D(st['inc_note'].get(k)) or 0) >= self.TB_INCOMPLETE_NOTIFY_S:
+                        st['inc_note'][k] = now; dirty = True
+                        notes.append((k, sorted({x['reason'] for x in b['incomplete']})))
             if new and persist and on:
                 for k, h in new.items():
                     pend.pop(k, None)
@@ -2851,6 +2861,9 @@ class Engine:
                 for b in books.values():
                     b['incomplete'].append(dict(reason='true_book_state_not_durable')); b['complete'] = b['rankable'] = False
             for k in new: self.notify(f'TRUE-BOOK: book {k} HALTED (NAV <= 0) - no new risk in this book; other books continue')
+            for k, why in notes:
+                self.notify(f'TRUE-BOOK: book {k} INCOMPLETE ({", ".join(why)}) - no new risk in this book until it is '
+                            'measured; its open lots stay managed; other books continue')
             return books
 
     def _tb_add_block(self, lot, q, px):
@@ -2970,11 +2983,12 @@ class Engine:
                     if tgt is not None and _funding_once(tgt, k):
                         AC.apply_funding(tgt, a, asset)
                         if kind == 'row': rows_changed[id(tgt)] = tgt
-                if st == 'unattributed':                        # a real payment no lot / row can own (Codex ruling (c))
+                if st in ('unattributed', 'unreadable'):        # a payment no lot / row can own or account (ruling (c),
+                    # Codex 6240869316): an unreadable amount or time contaminates every book, holders or not
                     coh = self.state.get('cohort') or {}
                     t0 = TB._ms(coh.get('started_utc'))
                     un = self.state.setdefault('funding_unowned', [])
-                    if coh.get('id') and (t0 is None or t >= t0) and all(u.get('key') != k for u in un):
+                    if coh.get('id') and (t0 is None or t <= 0 or t >= t0) and all(u.get('key') != k for u in un):
                         un.append(dict(cohort_id=coh['id'], key=k, symbol=sym, asset=asset, amount=amt, time_ms=t))
                         del un[:-200]                           # saved with the cursor (one state save)
                 new.append(dict(kind='funding', key=k, symbol=sym, asset=asset, amount=amt, time_ms=t, status=st,
@@ -5540,7 +5554,10 @@ class Engine:
             i = at.get(r.get('id'))
             if i is None: self._cohort_row(r); at[r.get('id')] = len(self.cohort_rows) - 1; continue
             m = self.cohort_rows[i]
-            if TB.merge_rows([m, r])[0].get('_conflict'): self._cohort_rev(r, cid); continue   # the dispute stays on record
+            c = TB.merge_rows([m, r])[0].get('_conflict')
+            if c:                                               # the dispute stays on record - once, not once per start
+                if not set(c) <= set(m.get('_conflict') or ()): self._cohort_rev(r, cid)
+                continue
             if (TB.D(m.get('cost_rev')) or 0) > (TB.D(r.get('cost_rev')) or 0):
                 for k in TB.REVISABLE:                          # the history file missed a saved restatement: catch it up,
                     if k in m: r[k] = copy.deepcopy(m[k])       # so a later update never lands on (or wins with) a stale copy

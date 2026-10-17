@@ -225,6 +225,14 @@ def _funding_gap(b, x):
                                     assets=sorted(x.get('funding_by_asset') or ())))
 
 
+def cost_pending_only(b):
+    """True when the book's only incompleteness is fill commissions still in flight (fill_records_pending): accounting
+    latency, not a hole. Anything else - including fill_records_lost / fills_without_cost_record - is not."""
+    inc = b['incomplete']
+    return bool(inc) and all(x['reason'] == 'fees_actual_missing' and set(x.get('why') or ()) == {'fill_records_pending'}
+                             for x in inc)
+
+
 def admit(b, new_notional=None, new_stop_risk=None, add=False, max_leverage=None, max_lots=MAX_LOTS,
           stop_risk_max=STOP_RISK_MAX, working=None):
     """The book's own gate for one new lot (add=False) or an add to an existing lot (add=True). None or a reason."""
@@ -233,6 +241,8 @@ def admit(b, new_notional=None, new_stop_risk=None, add=False, max_leverage=None
     nav = b['nav_worse']
     if nav <= 0: return f'book {k} has no NAV left'
     blind = sorted({x['reason'] for x in b['incomplete']})
+    if blind and cost_pending_only(b):
+        return f'book {k} cost_pending (a fill commission is not yet received) - no new risk until it is measured'
     if blind: return f'book {k} INCOMPLETE ({", ".join(blind)}) - no new risk until it is measured'
     n = b['lots'] + (b['working'] if working is None else working)
     if not add and n >= max_lots: return f'book {k} full ({n}/{max_lots} lots)'

@@ -834,3 +834,119 @@ def test_an_unowned_payment_replayed_after_a_failed_save_is_recorded_once(monkey
     assert pay(e, amount=-0.4, tran=7) == 'persist_failed' and not e.state.get('funding_seen')
     monkeypatch.undo()
     assert pay(e, amount=-0.4, tran=7) == '1 new' and len(e.state['funding_unowned']) == 1
+
+
+# ------------------------------------------------------------------ Codex S1 + lows ruling 6240768582 / Cowork 6240811913
+import trade_audit as TA
+
+
+def lost_row(e, i='lost'):
+    return row(e, 'B1_FAST', 1.0, id=i, fees_actual=None, fees_actual_partial=['fill_records_lost'])
+
+
+def test_a_book_going_incomplete_is_notified_once_then_every_six_hours(monkeypatch):
+    e, tmp = tb_engine()
+    sent = []
+    monkeypatch.setattr(e, 'notify', lambda m, *a, **k: sent.append(m))
+    real, off = time.time, [0.0]
+    monkeypatch.setattr(E.time, 'time', lambda: real() + off[0])
+    close_row(e, lost_row(e))
+    e.true_books(); e.true_books()
+    assert len(sent) == 1 and 'book B1_FAST INCOMPLETE (fees_actual_missing)' in sent[0] and 'open lots stay managed' in sent[0]
+    e2 = restart(e, tmp); monkeypatch.setattr(e2, 'notify', lambda m, *a, **k: sent.append(m))
+    off[0] = 3 * 3600; e2.true_books()
+    assert len(sent) == 1                                            # a restart does not re-announce it
+    off[0] = 6 * 3600 + 1; e2.true_books()
+    assert len(sent) == 2                                            # still unresolved 6 hours later
+    assert 'B1_FAST' in e2.state['true_books']['inc_note']
+
+
+def test_a_commission_in_flight_blocks_with_its_own_reason_and_is_not_notified(monkeypatch):
+    e, _ = tb_engine()
+    sent = []
+    monkeypatch.setattr(e, 'notify', lambda m, *a, **k: sent.append(m))
+    close_row(e, row(e, 'B1_FAST', 1.0, id='p', fees_actual=None, fees_actual_partial=['fill_records_pending']))
+    b = e.true_books()['B1_FAST']
+    why = TB.admit(b)
+    assert why.startswith('book B1_FAST cost_pending') and TA.reason_code(why) == ('true_book', 'book_cost_pending')
+    assert not sent and not e.state['true_books']['inc_note']
+    close_row(e, lost_row(e))                                        # a hole is not latency
+    why = TB.admit(e.true_books()['B1_FAST'])
+    assert why.startswith('book B1_FAST INCOMPLETE') and TA.reason_code(why) == ('true_book', 'book_incomplete')
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize('text,code', [('book B3_TREND full (4/4 lots)', 'book_full'),
+                                       ('book B3_TREND halted (NAV 0.0 <= 0) - x', 'book_halted'),
+                                       ('book B3_TREND leverage cap: 1 > 2x NAV 3', 'book_leverage_cap'),
+                                       ('book B3_TREND stop-risk cap: 1 > 8% of NAV 3', 'book_stop_risk_cap'),
+                                       ('true books: no open cohort - no new risk until one is open', 'book_no_cohort'),
+                                       ('true books: strategy x has no book (refused, never booked to Discovery)', 'book_unmapped')])
+def test_book_refusals_are_coded_apart_from_strategy_rejections(text, code):
+    assert TA.reason_code(text) == ('true_book', code)
+
+
+def test_several_new_peaks_cost_one_state_save(monkeypatch):
+    e, _ = tb_engine()
+    e.state.pop('true_books', None)
+    saves = []
+    real = e.save_state
+    monkeypatch.setattr(e, 'save_state', lambda: saves.append(1) or real())
+    e.true_books()
+    assert len(saves) == 1 and len(e.state['true_books']['peak']) == 5
+    e.true_books()
+    assert len(saves) == 1                                           # nothing new: no save
+
+
+def test_a_known_conflict_is_not_appended_again_on_every_start():
+    e, tmp = tb_engine()
+    r = row(e, 'B3_TREND', -50.0, id='k')
+    close_row(e, r)
+    e.history[-1] = dict(r, pnl_gross=50.0); e._save_aux('history', e.history)
+    n = []
+    for _ in range(3):
+        e = restart(e, tmp)
+        assert 'row_conflict' in reasons(e.true_books()['B3_TREND'])
+        n.append(sum(1 for _ln in open(e.F['cohort_rows'], encoding='utf-8')))
+    assert n[0] == n[1] == n[2] == 2                                  # first copy + the dispute, once
+
+
+@pytest.mark.parametrize('payment', [dict(tranId=11, time=FUND_T, income='x', asset='USDT', symbol='BTCUSDT'),
+                                     dict(tranId=12, time=None, income='-0.2', asset='USDT', symbol='BTCUSDT')])
+def test_an_unreadable_amount_or_time_with_no_holder_still_contaminates(payment):
+    e, _ = tb_engine()
+    e.trade.income = lambda *a, **k: [payment]
+    assert e.funding_tick(force=True) == '1 new'
+    assert len(e.state['funding_unowned']) == 1
+    assert all('unowned_account_activity' in reasons(b) for b in e.true_books().values())
+
+
+def test_the_notification_mark_alone_is_saved(monkeypatch):
+    e, tmp = tb_engine()
+    sent = []
+    e.true_books()                                                   # peaks saved: nothing else new below
+    close_row(e, row(e, 'B1_FAST', -1.0, id='lost', fees_actual=None, fees_actual_partial=['fill_records_lost']))
+    monkeypatch.setattr(e, 'notify', lambda m, *a, **k: sent.append(m))
+    e.true_books()
+    e2 = restart(e, tmp); monkeypatch.setattr(e2, 'notify', lambda m, *a, **k: sent.append(m))
+    e2.true_books()
+    assert len(sent) == 1
+
+
+def test_an_unreadable_amount_contaminates_every_book_even_with_a_holder():
+    e, _ = tb_engine()
+    close_row(e, funded_row(e))
+    assert pay(e, amount='garbled', tran=13) == '1 new'
+    u = e.state['funding_unowned']
+    assert len(u) == 1 and u[0]['amount'] is None and u[0]['symbol'] == 'BTCUSDT' and u[0]['key']
+    assert all('unowned_account_activity' in reasons(b) for b in e.true_books().values())
+    assert 'unreadable_funding' in e._row_by_id('f1').get('funding_partial', [])       # the holder is marked too
+
+
+def test_only_a_valid_time_strictly_before_the_cohort_is_excluded():
+    e, _ = tb_engine()
+    t0 = int(datetime.fromisoformat(e.state['cohort']['started_utc']).timestamp() * 1000)
+    e.trade.income = lambda *a, **k: [dict(tranId=21, time=t0 - 1, income='-1', asset='USDT', symbol='ETHUSDT'),
+                                      dict(tranId=22, time=t0, income='-1', asset='USDT', symbol='ETHUSDT')]
+    assert e.funding_tick(force=True) == '2 new'
+    assert [u['time_ms'] for u in e.state['funding_unowned']] == [t0]

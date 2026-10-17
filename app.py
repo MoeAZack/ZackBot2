@@ -1001,10 +1001,12 @@ class App:
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
                             else: e._manage_failed(f'mark prices: {ex}')
-                    try:
-                        e.apply_costs(); e.funding_tick()                     # FEE-ASSET-01: observe only, never raise
-                        if e._tb_on(): e.true_books()                         # TRUE-BOOK-01: a book at NAV <= 0 halts now
-                    except Exception as ex: log.debug(f'actual costs tick skipped ({ex})')
+                    for nm, fn in (('actual costs', e.apply_costs), ('funding', e.funding_tick),   # FEE-ASSET-01 (observe)
+                                   ('true books', lambda: e._tb_on() and e.true_books())):   # TRUE-BOOK-01: halts / peaks
+                        try:
+                            fn(); e.resolve(f'accounting|{nm}', f'{nm} tick running again')
+                        except Exception as ex:                      # retried next tick; shown in health, never silent
+                            e.err(f'{nm} tick failed ({type(ex).__name__}: {ex}) - retried next tick', key=f'accounting|{nm}')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
                         with e.lock:
