@@ -44,19 +44,19 @@ def test_raw_from_trades_aggregates_by_asset_and_maker_without_ids():
 
 def test_finalize_reasons_and_complete_total():
     t = dict(cost_refs=['a', 'b'])
-    AC.apply_fill(t, dict(commission_raw=[dict(asset='USDT', maker=False, amount=0.1, n=1)]))
+    AC.apply_fill(t, dict(cost_ref='a', commission_raw=[dict(asset='USDT', maker=False, amount=0.1, n=1)]))
     AC.finalize(t, 'USDT', 2)
     assert t['fees_actual'] is None and t['fees_actual_partial'] == ['fill_records_pending']
-    AC.apply_fill(t, dict(commission_raw=[dict(asset='USDT', maker=True, amount=0.02, n=2)]))
+    AC.apply_fill(t, dict(cost_ref='b', commission_raw=[dict(asset='USDT', maker=True, amount=0.02, n=2)]))
     AC.finalize(t, 'USDT', 3)
     assert t['fees_actual'] is None and t['fees_actual_partial'] == ['fills_without_cost_record']
     AC.finalize(t, 'USDT', 2)
     assert t['fees_actual'] == pytest.approx(0.12) and t['fees_actual_partial'] is False
     assert (t['maker_fills'], t['taker_fills']) == (2, 1)
-    AC.apply_fill(t, dict(commission_missing='timeout')); t['cost_refs'].append('c')
+    AC.apply_fill(t, dict(cost_ref='c', commission_missing='timeout')); t['cost_refs'].append('c')
     AC.finalize(t, 'USDT', 3)
     assert t['fees_actual'] is None and t['fees_actual_partial'] == ['fill_commission_missing']
-    u = dict(cost_refs=['a']); AC.apply_fill(u, dict(commission_raw=[dict(asset='BNB', maker=False, amount=0.001, n=1)]))
+    u = dict(cost_refs=['a']); AC.apply_fill(u, dict(cost_ref='a', commission_raw=[dict(asset='BNB', maker=False, amount=0.001, n=1)]))
     AC.finalize(u, 'USDT', 1)
     assert u['fees_actual'] is None and u['fees_actual_partial'] == ['non_quote_asset'] and u['fees_actual_by_asset'] == {'BNB': 0.001}
 
@@ -215,6 +215,35 @@ def test_funding_attributed_deduped_and_logged_without_ids():
     assert e.history[-1]['funding_actual'] == -0.25                         # carried to the history row
 
 
+def test_funding_during_a_closed_trade_lands_on_its_history_row():
+    e, _ = mk(MX); k = opened(e); e.close_lot(k, 'signal', mark=101.0)
+    h = e.history[-1]; h['opened'] = '2026-10-01T00:00:00+00:00'; h['closed'] = '2026-10-01T10:00:00+00:00'
+    h['fills'] = [['2026-10-01T00:00:00+00:00', 'entry', 1.0, 100.0], ['2026-10-01T10:00:00+00:00', 'exit', 1.0, 101.0]]
+    t_in = int(E.datetime.fromisoformat('2026-10-01T08:00:00+00:00').timestamp() * 1000)
+    e.state['funding_cursor_ms'] = t_in - 1
+    e.trade.income_rows = [frow(1, -0.4, t=t_in), frow(2, -0.9, t=t_in + 3 * 3600 * 1000)]      # second: after the close
+    e.funding_tick(force=True)
+    assert h['funding_actual'] == -0.4 and h['funding_rows'] == 1
+    assert json.load(open(os.path.join(e.dir, 'history.json')))[-1]['funding_actual'] == -0.4
+    st = [json.loads(x)['status'] for x in open(os.path.join(e.dir, 'funding.jsonl'))]
+    assert st == ['attributed', 'unattributed']
+
+
+def test_add_and_exit_fills_link_to_their_lot():
+    e, _ = mk(MX); k = opened(e); lot = e.state['lots'][k]
+    assert e._add_qty(lot, 0.1, 100.0, 'pyramid_add') is not False
+    e.close_lot(k, 'signal', mark=101.0); settle(e)
+    h = e.history[-1]
+    kinds = {r['cost_ref']: r['kind'] for r in recs(e)}
+    assert sorted(kinds[c] for c in h['cost_refs']) == ['entry_market', 'exit', 'pyramid_add']
+    assert h['cost_fills_applied'] == 3 and h['fees_actual_partial'] is False
+
+
+def test_worker_hands_the_enriched_record_to_the_engine():
+    e, _ = mk(MX); k = opened(e); recs(e)
+    assert len(e._cost_q) == 1 and e._cost_q[0]['commission_raw'][0]['asset'] == 'USDT'
+
+
 def test_funding_opposite_sides_ambiguous_and_no_holder_unattributed():
     e, _ = mk(MX, HEDGE=True)
     e.trade.income_rows = [frow(1, -0.1, sym='ETHUSDT')]
@@ -238,3 +267,38 @@ def test_income_wrapper_is_one_audit_read(monkeypatch):
     monkeypatch.setattr(BC.Futures, '_audit_req', lambda self, p, q: calls.append((p, q)) or [])
     f = BC.Futures('k' * 16, 's' * 16, BC.TESTNET)
     assert f.income('FUNDING_FEE', 5) == [] and calls == [('/fapi/v1/income', dict(incomeType='FUNDING_FEE', limit=1000, startTime=5))]
+
+
+# ------------------------------------------------------------------ review r1 regressions
+def test_cost_record_lost_to_a_restart_expires_to_lost_never_pending_forever(monkeypatch):
+    e, _ = mk(MX); e.trade.ut_script = ['empty', 'empty']
+    k = opened(e); lot = e.state['lots'][k]
+    e._cost_q.clear() if hasattr(e, '_cost_q') else None
+    recs(e); e._cost_q.clear()                                # the record never reaches the engine (restart cut it)
+    e._cost_final('lot', lot); assert lot['fees_actual_partial'] == ['fill_records_pending']
+    monkeypatch.setattr(E.Engine, 'COST_WAIT_S', 0); e._cost_swept = 0
+    time.sleep(0.01); e.apply_costs()
+    assert lot['fees_actual_partial'] == ['fill_records_lost'] and lot['fees_actual'] is None
+
+
+def test_funding_read_failure_backs_off_instead_of_every_pass():
+    e, _ = mk(MX); opened(e)
+    def boom(*a, **k): e.trade.income_calls.append(1); raise E.BinanceError(-1001, 'x')
+    e.trade.income = boom
+    assert e.funding_tick() == 'read_failed' and e.funding_tick() == 'not_due' and len(e.trade.income_calls) == 1
+    e.state['funding_polled'] -= E.Engine.FUNDING_RETRY_S + 1
+    assert e.funding_tick() == 'read_failed' and len(e.trade.income_calls) == 2
+
+
+def test_funding_split_uses_quantity_held_at_payment_time():
+    e, _ = mk(MX); a = opened(e)
+    la = e.state['lots'][a]
+    la['fills'] = [['2026-10-01T00:00:00+00:00', 'entry', 10.0, 100.0], ['2026-10-01T10:00:00+00:00', 'tp1', 5.0, 101.0]]
+    la['opened'], la['qty'] = '2026-10-01T00:00:00+00:00', 5.0
+    b = dict(la, fills=[['2026-10-01T00:00:00+00:00', 'entry', 10.0, 100.0], ['2026-10-01T09:00:00+00:00', 'pyramid_add', 30.0, 100.0]],
+             qty=40.0); e.state['lots']['B'] = b
+    t = int(E.datetime.fromisoformat('2026-10-01T08:00:00+00:00').timestamp() * 1000)
+    e.state['funding_cursor_ms'] = t - 1; e.trade.income_rows = [frow(1, -2.0, t=t)]
+    e.funding_tick(force=True)
+    assert la['funding_actual'] == -1.0 and b['funding_actual'] == -1.0          # 10 : 10 then, not 5 : 40 now
+    assert AC.held_at([['bad', 'entry', 1, 1]], t) is None

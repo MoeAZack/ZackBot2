@@ -2678,7 +2678,18 @@ class Engine:
     def _cost_final(self, kind, t):
         quote = _quote_asset(t.get('symbol'))
         booked = len(t.get('fills') or []) if kind == 'lot' else t.get('fills_booked')
-        AC.finalize(t, quote, booked)
+        AC.finalize(t, quote, booked, now_ms=time.time() * 1000, wait_ms=self.COST_WAIT_S * 1000)
+
+    def _cost_sweep(self):
+        """Re-finalize lots / rows whose cost record never came (restart / crash cut the enrichment, or the queue
+        dropped it): 'fill_records_pending' becomes 'fill_records_lost' once COST_WAIT_S has passed. Returns rows changed."""
+        rows = lots = False
+        for kind, ts in (('lot', self.state.get('lots', {}).values()), ('row', self.history[-3000:])):
+            for t in ts:
+                if 'fill_records_pending' not in (t.get('fees_actual_partial') or ()): continue
+                before = t.get('fees_actual_partial'); self._cost_final(kind, t)
+                if t.get('fees_actual_partial') != before: rows, lots = rows or kind == 'row', lots or kind == 'lot'
+        return rows, lots
 
     def apply_costs(self):
         """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
@@ -2696,6 +2707,8 @@ class Engine:
                         continue
                     AC.apply_fill(t, rec); self._cost_final(kind, t)
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                if now - getattr(self, '_cost_swept', 0) > 60:
+                    self._cost_swept = now; r2, l2 = self._cost_sweep(); rows, lots = rows or r2, lots or l2
                 if rows: self._save_aux('history', self.history)
                 if lots: self.save_state()
                 return len(todo) - len(wait)
@@ -2703,21 +2716,26 @@ class Engine:
             log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
             return 0
 
-    FUNDING_POLL_S, FUNDING_SEEN_MAX, FUNDING_LOOKBACK_S = 3600, 5000, 7 * 86400
+    FUNDING_POLL_S, FUNDING_RETRY_S, FUNDING_SEEN_MAX, FUNDING_LOOKBACK_S = 3600, 300, 2000, 7 * 86400
 
     def _funding_holders(self, sym, t_ms):
-        """Lots / history rows that held sym at t_ms: [(('lot'|'row', key), side, qty)] (qty as recorded)."""
+        """Lots / history rows that held sym at t_ms: [(('lot'|'row', key), side, qty held then)]. The quantity is replayed
+        from the booked fills (TP1 / adds after the payment do not move the split); the recorded qty only when a fill time
+        is unreadable. Times are stored to the second, so a lot opened within the payment's second counts as holding."""
         def ms(iso):
             try: return datetime.fromisoformat(iso).timestamp() * 1000
             except (TypeError, ValueError): return None
         out = []
         for key, l in self.state.get('lots', {}).items():
             o = ms(l.get('opened'))
-            if l.get('symbol') == sym and o is not None and o <= t_ms: out.append((('lot', key), l.get('side'), l.get('qty')))
+            if l.get('symbol') == sym and o is not None and o <= t_ms:
+                q = AC.held_at(l.get('fills'), t_ms)
+                out.append((('lot', key), l.get('side'), l.get('qty') if q is None else q))
         for h in self.history[-3000:]:
             o, c = ms(h.get('opened')), ms(h.get('closed'))
             if h.get('symbol') == sym and o is not None and c is not None and o <= t_ms <= c:
-                out.append((('row', h.get('id')), h.get('side'), h.get('qty_max')))
+                q = AC.held_at(h.get('fills'), t_ms)
+                out.append((('row', h.get('id')), h.get('side'), h.get('qty_max') if q is None else q))
         return out
 
     def funding_tick(self, force=False):
@@ -2733,18 +2751,19 @@ class Engine:
         try:
             cur = self.state.get('funding_cursor_ms') or int((now - self.FUNDING_LOOKBACK_S) * 1000)
             rows = inc('FUNDING_FEE', cur)
-        except Exception as ex:
+        except Exception as ex:                                 # retry in FUNDING_RETRY_S, never on every loop pass
+            self.state['funding_polled'] = now - self.FUNDING_POLL_S + self.FUNDING_RETRY_S
             log.debug(f'funding income not read ({type(ex).__name__})'); return 'read_failed'
         rows = [r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)]
         with self.lock:
             self.state['funding_polled'] = now
-            seen = self.state.setdefault('funding_seen', [])
+            seen = self.state.setdefault('funding_seen', []); seen_set = set(seen)
             new, hi, rows_changed = [], int(cur), False
             for r in sorted(rows, key=lambda r: int(_fnum(r.get('time')) or 0)):
                 t = int(_fnum(r.get('time')) or 0); hi = max(hi, t)
                 k = AC.tran_key(r.get('tranId') if r.get('tranId') is not None else (r.get('symbol'), t, r.get('income')))
-                if k in seen: continue
-                seen.append(k)
+                if k in seen_set: continue
+                seen.append(k); seen_set.add(k)
                 amt, asset, sym = _fnum(r.get('income')), r.get('asset'), r.get('symbol')
                 st, shares = AC.attribute_funding(amt, [(key, s, q) for key, s, q in self._funding_holders(sym, t)])
                 for (kind, key), a in shares.items():
@@ -2755,13 +2774,15 @@ class Engine:
                                 shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()]))
             del seen[:-self.FUNDING_SEEN_MAX]
             self.state['funding_cursor_ms'] = hi                 # same-ms rows are re-read next time and deduped by key
+            # Order: evidence log first (a crash after it only repeats a line, deduped by key), then state (seen keys +
+            # cursor + lot amounts), then history - a crash between the last two loses a row's amount, never doubles it.
+            if new:
+                try:
+                    with open(os.path.join(self.dir, 'funding.jsonl'), 'a', encoding='utf-8') as f:
+                        for x in new: f.write(json.dumps(x, separators=(',', ':')) + '\n')
+                except OSError as ex: log.warning(f'funding.jsonl not written ({ex})')
+                self.save_state()
             if rows_changed: self._save_aux('history', self.history)
-            if new: self.save_state()                          # cursor + seen keys + lot amounts persist together
-        if new:
-            try:
-                with open(os.path.join(self.dir, 'funding.jsonl'), 'a', encoding='utf-8') as f:
-                    for x in new: f.write(json.dumps(x, separators=(',', ':')) + '\n')
-            except OSError as ex: log.warning(f'funding.jsonl not written ({ex})')
         return f'{len(new)} new'
 
     def _fill_flush(self, timeout=2.0):

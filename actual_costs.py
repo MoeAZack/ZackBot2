@@ -7,9 +7,10 @@ of the lot is known and charged in the symbol's quote asset, otherwise it is Non
 Funding follows Binance's income sign: negative = paid by the account, positive = received.
 """
 import hashlib, math
+from datetime import datetime
 
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
-               'cost_fills_applied', 'cost_fills_missing', 'funding_actual', 'funding_by_asset', 'funding_rows')
+               'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_actual', 'funding_by_asset', 'funding_rows')
 
 
 def _num(v):
@@ -46,19 +47,32 @@ def apply_fill(target, rec):
         if x.get('maker') is True: target['maker_fills'] = int(target.get('maker_fills') or 0) + int(x.get('n') or 1)
         elif x.get('maker') is False: target['taker_fills'] = int(target.get('taker_fills') or 0) + int(x.get('n') or 1)
     target['cost_fills_applied'] = int(target.get('cost_fills_applied') or 0) + 1
+    if rec.get('cost_ref'): target.setdefault('cost_refs_done', []).append(rec['cost_ref'])
     return target
 
 
-def finalize(target, quote, booked_fills):
+def ref_ms(ref):
+    """The creation time (ms) encoded in a cost_ref ('c<ms>-<pid>-<n>'), else None."""
+    try: return int(str(ref)[1:].split('-')[0])
+    except (TypeError, ValueError): return None
+
+
+def finalize(target, quote, booked_fills, now_ms=None, wait_ms=None):
     """Recompute fees_actual / fees_actual_partial (in place). booked_fills: how many executions the lot itself booked
     (its `fills` entries) - a fill booked outside the order paths (reconcile, restore) has no cost record, so the total
-    can never claim to be complete then."""
+    can never claim to be complete then. A record still not applied wait_ms after its fill is 'fill_records_lost' (an
+    enrichment cut by a restart / crash): the total stays partial for good, never pending forever."""
     by = target.get('fees_actual_by_asset') or {}
     refs = len(target.get('cost_refs') or [])
-    applied, missing = int(target.get('cost_fills_applied') or 0), int(target.get('cost_fills_missing') or 0)
+    missing = int(target.get('cost_fills_missing') or 0)
     why = []
     if missing: why.append('fill_commission_missing')
-    if applied < refs: why.append('fill_records_pending')
+    done = set(target.get('cost_refs_done') or ())
+    for r in (target.get('cost_refs') or ()):
+        if r in done: continue
+        t = ref_ms(r)
+        lost = now_ms is not None and wait_ms is not None and t is not None and now_ms - t > wait_ms
+        why.append('fill_records_lost' if lost else 'fill_records_pending')
     if booked_fills is not None and refs < booked_fills: why.append('fills_without_cost_record')
     if not quote or any(a != quote for a in by): why.append('non_quote_asset')
     if why:
@@ -84,6 +98,21 @@ def attribute_funding(income, side_qty):
     if len({s for _k, s, _q in rows}) > 1: return 'ambiguous', {}
     tot = sum(float(q) for _k, _s, q in rows)
     return 'attributed', {k: round(amt * float(q) / tot, 10) + 0.0 for k, _s, q in rows}
+
+
+OPENING_FILLS = ('entry', 'pyramid_add', 'safety_order')
+
+
+def held_at(fills, t_ms):
+    """Quantity a lot held at t_ms, replayed from its booked fills [[iso, kind, qty, px], ...] (opening kinds add, every
+    other kind reduces). None when a fill time is unreadable (the caller falls back)."""
+    q = 0.0
+    for f in fills or ():
+        try:
+            ts, kind, qty = datetime.fromisoformat(f[0]).timestamp() * 1000, f[1], float(f[2])
+        except (TypeError, ValueError, IndexError): return None
+        if ts <= t_ms: q += qty if kind in OPENING_FILLS else -qty
+    return max(q, 0.0)
 
 
 def apply_funding(target, amount, asset):
