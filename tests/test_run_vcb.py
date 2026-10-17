@@ -156,6 +156,13 @@ def test_own_holdout_guard_independent_of_vc(env, monkeypatch):
     assert not os.path.exists(env['tmp'] / 'p.json')
 
 
+def test_own_window_required_guard_independent_of_vc(env, monkeypatch):
+    monkeypatch.setattr(VC, 'check_window', lambda spec, plan=None: (LO, HI, WARM_LO))
+    for w in (None, ''):
+        with pytest.raises(R.RunnerError, match='^vcb: an explicit --window'):
+            go(env, window=w)
+
+
 def test_window_required_and_warmup_guard(env):
     with pytest.raises(R.RunnerError, match='explicit --window'):
         go(env, window=None)
@@ -168,10 +175,13 @@ def test_dirty_tree_refused(env, tmp_path):
         go(env, repo=VT.git_repo(str(tmp_path / 'dirty'), dirty=True))
 
 
-def test_never_overwrites(env):
+def test_never_overwrites(env, monkeypatch):
     go(env)
-    with pytest.raises(R.RunnerError, match='never overwritten'):
+    reads = []
+    monkeypatch.setattr(R.B, 'read_cache', lambda *a, **k: reads.append(a))
+    with pytest.raises(R.RunnerError, match='exists; a packet is never overwritten'):
         go(env)
+    assert not reads                                                # refused before a single cache byte is read
 
 
 @pytest.mark.parametrize('how', ['gap', 'missing_file', 'duplicate', 'off_grid'])
@@ -325,6 +335,16 @@ def test_blocked_and_skips_reported(env):
     assert st['blocked'] == len(p['blocked']) == p['stats']['long']['blocked'] + p['stats']['short']['blocked']
     for x in p['blocked']:
         assert x['consumed_by'] < x['t_signal']
+
+
+def test_max_dd_uses_exit_order_not_entry_order():
+    mk = lambda sym, t_in, t_out, r: dict(symbol=sym, side='long', quarter='2025Q1', t_in=t_in, t_out=t_out, R_net=r,
+                                          R_gross=r, fee_R=0.0, slip_R=0.0, fund_R=0.0, hold_bars=1, mfe_r=0.0,
+                                          mae_r=0.0, giveback_gross_r=0.0, giveback_net_r=0.0, label='time',
+                                          gap_exit=False, lt_minus1=False)
+    rows = [mk('ETHUSDT', 'a1', 'b3', -1.0), mk('SOLUSDT', 'a2', 'b1', 1.0), mk('SOLUSDT', 'a3', 'b2', -1.0)]
+    st = R.group_stats(rows, [], [], [], ['2025Q1'], VCB.summarize(rows)['total'])
+    assert st['max_dd_R'] == 2.0                                    # exit order: +1, -1, -1 (entry order would give 1.0)
 
 
 def test_max_dd_in_exit_order(env):
