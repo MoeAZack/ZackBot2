@@ -17,6 +17,12 @@ Adapted from the accepted C1 runner (run_lsfvg.py @ 50206bf); the same guards, r
   - clean git tree before a single cache byte is read; packets are never overwritten; JSON sorted, allow_nan False,
     packet_sha256 over the canonical packet; runner_sha256 of this runner, the C2 rule module, the imported runner
     helpers, backtest.py, strategies.py and the pit_run / run_r4 / splits guard modules.
+  - raw open times (Codex 6230537709): before any conversion, truncation or slicing, every row of every requested
+    symbol's file (rows after END and late-excluded symbols included) is read as text; a non-numeric, NaN / inf,
+    non-integer-millisecond or off-4h-grid open time REFUSES the run (never dropped, never truncated onto the grid).
+  - a --symbols run is labelled tier_label SYMBOLS-<n run> with non_decision true and decision.tier_verdict
+    NON_DECISION (the computed verdict is kept as diagnostic_verdict); a --tier run is decision-bearing (non_decision
+    false) and labelled with its eligible count when symbols are excluded.
   - --check-coverage: reports only the first / last cached bar per symbol before END against the required warm-up
     start (nothing past END, no indicator, no signal); no packet.
   - cache: <cache>/<SYMBOL>_4h.csv (app._get_candles format) via B.read_cache, read and hashed whole, then sliced on the
@@ -51,7 +57,9 @@ Usage (PAPER research only, no network, no app settings or credentials):
 """
 import argparse
 import contextlib
+import decimal
 import hashlib
+import io
 import json
 import os
 import sys
@@ -65,6 +73,7 @@ for _p in (ROOT, HERE):
         sys.path.insert(0, _p)
 
 import numpy as np                                                                          # noqa: E402
+import pandas as pd                                                                         # noqa: E402
 
 import vol_compression_breakout as VCB                                                      # noqa: E402
 import run_breadth_candidate as B                                                           # noqa: E402
@@ -198,6 +207,64 @@ def late_listing(df, warm_lo: int, hi: int):
     if first <= warm_lo or (first - warm_lo) % TF_MS:
         return None
     return first
+
+
+# ------------------------------------------------------------------ raw-time integrity (Codex 6230537709)
+def raw_time_problems(raw: bytes) -> dict:
+    """Every row of the raw cache bytes (the whole file, rows at / after END included), read as TEXT before any float
+    conversion, truncation or slicing: an open time that is non-numeric, NaN / inf, not an exact integer millisecond
+    value, or an integer not on the 4h grid is counted. Empty dict = every open time is an exact on-grid integer.
+    A file without a `t` column returns {} (the shared reader refuses it)."""
+    try:
+        col = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False, na_filter=False)
+    except (ValueError, pd.errors.ParserError) as e:
+        return {'unparseable_file': type(e).__name__}
+    if 't' not in col:
+        return {}
+    out, first = {}, None
+    for i, v in enumerate(col['t'].tolist()):
+        try:
+            d = decimal.Decimal(str(v).strip())
+        except decimal.InvalidOperation:
+            k = 'non_numeric'
+        else:
+            if not d.is_finite():
+                k = 'nan_or_inf'
+            elif d != d.to_integral_value():
+                k = 'non_integer_ms'
+            elif int(d) % TF_MS:
+                k = 'off_grid'
+            else:
+                continue
+        out[k] = out.get(k, 0) + 1
+        if first is None:
+            first = f'row {i + 2}: {v!r}'                # csv line number (header = line 1)
+    if out:
+        out['first_bad'] = first
+    return out
+
+
+def read_checked(cache: str, s: str):
+    """B.read_cache, preceded by raw_time_problems on the same file bytes (refuses before any conversion); the bytes
+    checked must be the bytes the shared reader hashed."""
+    path = os.path.join(cache, f'{s}_{TF}.csv')
+    raw = None
+    if os.path.exists(path):
+        try:
+            with open(path, 'rb') as f:
+                raw = f.read()
+        except OSError as e:
+            raise RunnerError(f'vcb: cache file {s}_{TF}.csv unreadable ({type(e).__name__})') from None
+        p = raw_time_problems(raw)
+        if p:
+            raise RunnerError(f'vcb: malformed raw open times in {s}_{TF}.csv ({p}); refused')
+    try:
+        df, rec = B.read_cache(cache, s, TF)
+    except B.RunnerError as e:
+        raise _err(e) from None
+    if raw is not None and rec.get('sha256') != hashlib.sha256(raw).hexdigest():
+        raise RunnerError(f'vcb: cache file {s}_{TF}.csv changed while being read; refused')
+    return df, rec
 
 
 # ------------------------------------------------------------------ signals inside the window only
@@ -375,10 +442,7 @@ def check_coverage(*, cache: str, window, tier=None, symbols=None, plan=None) ->
     _, syms = _syms(tier, symbols)
     out = {}
     for s in syms:
-        try:
-            df, rec = B.read_cache(cache, s, TF)
-        except B.RunnerError as e:
-            raise _err(e) from None
+        df, rec = read_checked(cache, s)
         if df is None:
             out[s] = dict(missing_file=True, first=None, last=None, covers_warmup=False, reaches_end=False, ok=False,
                           late_listed=False)
@@ -414,10 +478,7 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, exclude_late=N
         raise _err(e) from None
     frames, files, comp, bad, excluded_u = {}, {}, {}, [], []
     for s in syms:
-        try:
-            df, rec = B.read_cache(cache, s, TF)
-        except B.RunnerError as e:
-            raise _err(e) from None
+        df, rec = read_checked(cache, s)
         files[s] = rec
         if s in late:
             first = late_listing(df, warm_lo, hi)
@@ -506,11 +567,17 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, exclude_late=N
     for g in groups.values():
         g.pop('_raw')
     rnd = lambda x: {k: (_r(v) if isinstance(v, float) else v) for k, v in x.items()}
-    label = None
-    if tier is not None:
+    non_decision = tier is None                          # Codex 6230537709 Q2: a --symbols run is diagnostic only
+    if non_decision:
+        label = f'SYMBOLS-{len(run_syms)}'
+        dec = dict(dec, diagnostic_verdict=dec['tier_verdict'], tier_verdict='NON_DECISION',
+                   note='--symbols run: decision fields are diagnostic only; no tier gate may treat them as '
+                        'decision-bearing')
+    else:
         label = tier if not excluded_u else f'{tier}-ELIGIBLE-{len(run_syms)}'
+    dec['non_decision'] = non_decision
     pkt = {
-        'format': FORMAT, 'evidence_class': EVIDENCE_CLASS, 'non_promotable': True,
+        'format': FORMAT, 'evidence_class': EVIDENCE_CLASS, 'non_promotable': True, 'non_decision': non_decision,
         'purpose': 'C2 development run (development window only; not evidence for promotion)',
         'candidate': VCB.CANDIDATE, 'family': VCB.FAMILY, 'label': VCB.DEV_LABEL,
         'commit': commit, 'tree': 'clean', 'runner_sha256': runner_digest(),
@@ -521,6 +588,7 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, exclude_late=N
                            'before START are dropped before box consumption and the slot logic (run starts flat and '
                            'unconsumed at START)'},
         'universe': {'digest': static['digest'], 'id': static.get('universe_id'), 'tier': tier, 'tier_label': label,
+                     'non_decision': non_decision,
                      'requested': syms, 'run': run_syms, 'excluded': excluded_u, 'exclusion_rule': EXCLUSION_RULE},
         'cache': {'format': f'app._get_candles CSV <SYMBOL>_{TF}.csv: t(ms),o,h,l,c,v,qv', 'files': files,
                   'completeness': comp, 'incomplete_policy': 'refuse the run'},

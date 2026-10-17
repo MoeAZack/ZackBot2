@@ -197,7 +197,8 @@ def test_incomplete_cache_refused(env, how):
         d.to_csv(path, index=False)
     else:
         os.remove(path)
-    with pytest.raises(R.RunnerError, match='INCOMPLETE'):
+    # an off-grid raw open time is refused before slicing (Codex 6230537709); the rest by completeness
+    with pytest.raises(R.RunnerError, match='malformed raw open times' if how == 'off_grid' else 'INCOMPLETE'):
         go(env)
     assert not os.path.exists(env['tmp'] / 'p.json')
 
@@ -306,7 +307,8 @@ def test_packet_fields_and_summarize_consistency(env):
         assert row['giveback_net_r'] == pytest.approx(row['mfe_r'] - row['R_net'], abs=1e-8)
         assert row['giveback_net_r'] > row['giveback_gross_r']                 # costs are never credited
         assert row['mfe_r'] >= 0 and row['mae_r'] >= 0
-    assert p['decision']['tier_verdict'] in ('CANDIDATE', 'PARK') and 'verdict' not in p['decision']
+    assert p['decision']['tier_verdict'] == 'NON_DECISION' and 'verdict' not in p['decision']     # --symbols (Q2)
+    assert p['decision']['diagnostic_verdict'] in ('CANDIDATE', 'PARK')
     assert p['decision']['final_requires'] == R.FINAL_REQUIRES
     assert p['candidate'] == VCB.CANDIDATE and p['non_promotable'] is True
 
@@ -658,7 +660,7 @@ def test_late_symbol_excluded_when_flagged_and_verified(env):
     assert u['requested'] == SYMS + ['HYPEUSDT'] and u['run'] == SYMS
     assert u['excluded'] == [dict(symbol='HYPEUSDT', reason='late_listed', first_bar=SP.utc(WARM_LO + 40 * H4),
                                   required_warmup_start=SP.utc(WARM_LO))]
-    assert u['tier'] is None and u['tier_label'] is None and u['exclusion_rule'] == R.EXCLUSION_RULE
+    assert u['tier'] is None and u['tier_label'] == 'SYMBOLS-2' and u['non_decision'] is True and u['exclusion_rule'] == R.EXCLUSION_RULE
     assert 'HYPEUSDT' not in p['cache']['completeness'] and 'HYPEUSDT' in p['cache']['files']
     assert set(p['stats']['combined']['concentration']) == set(SYMS)
     assert all(x['symbol'] != 'HYPEUSDT' for x in p['trades'] + p['skips'] + p['blocked'])
@@ -703,7 +705,7 @@ def test_exclude_late_edge_refusals(env):
     d = tape('HYPEUSDT', plan=[], start=40)
     d.loc[0, 't'] += 60_000                                                         # first bar off the 4h grid
     d.to_csv(os.path.join(env['cache'], 'HYPEUSDT_4h.csv'), index=False)
-    with pytest.raises(R.RunnerError, match='not provably late-listed'):
+    with pytest.raises(R.RunnerError, match='malformed raw open times'):          # refused before late detection
         go(env, symbols=SYMS + ['HYPEUSDT'], exclude_late=['HYPEUSDT'])
     _add(env, 'HYPEUSDT', start=40)
     for s in SYMS:
@@ -972,3 +974,105 @@ def test_excursions_intrabar_stop_counts_exit_bar_open():
         x = R.excursions(d, t)
         assert x['mfe_r'] == pytest.approx(5 / 8) and x['mae_r'] == pytest.approx(1.0)
         assert x['giveback_gross_r'] == pytest.approx(5 / 8 + 1.0)
+
+
+# ------------------------------------------------------------------ Codex 6230537709: raw-time integrity + Q2 labels
+BAD_T = {'nan': 'nan', 'inf': 'inf', 'non_numeric': 'abc', 'fractional_ms': '+0.5', 'off_grid': '+1'}
+
+
+def _bad_t(env, sym, row, how):
+    """Rewrite one raw open time as text (no float round-trip), so the malformed value reaches the file verbatim."""
+    path = os.path.join(env['cache'], f'{sym}_4h.csv')
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    head, rest = lines[row + 1].split(',', 1)
+    t = int(float(head))
+    v = BAD_T[how]
+    new = f'{t}.5' if v == '+0.5' else str(t + 1) if v == '+1' else v
+    lines[row + 1] = f'{new},{rest}'
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        f.write('\n'.join(lines))
+    return new
+
+
+def _cli_refuses(env, capsys, syms=SYMS, extra=()):
+    outdir = env['tmp'] / 'outdir'
+    outdir.mkdir()
+    out = str(outdir / 'cli.json')
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(syms), *extra,
+                   '--out', out]) == 2
+    err = capsys.readouterr().err
+    assert 'REFUSED' in err and 'malformed raw open times' in err
+    assert os.listdir(outdir) == []
+    return err
+
+
+@pytest.mark.parametrize('where', ['in_window', 'after_end'])
+@pytest.mark.parametrize('how', sorted(BAD_T))
+def test_malformed_raw_open_time_refused_at_cli(env, capsys, monkeypatch, how, where):
+    _cli_repo(env, monkeypatch)
+    row = IN_WIN if where == 'in_window' else HEAD + NSLICE + TAIL - 3      # after END: never sliced, still refused
+    _bad_t(env, 'SOLUSDT', row, how)
+    assert 'SOLUSDT' in _cli_refuses(env, capsys)
+
+
+@pytest.mark.parametrize('how', ['nan', 'fractional_ms', 'off_grid'])
+def test_malformed_raw_open_time_in_late_excluded_symbol_refused(env, capsys, monkeypatch, how):
+    _cli_repo(env, monkeypatch)
+    _add(env, 'HYPEUSDT', start=40)
+    _bad_t(env, 'HYPEUSDT', len(tape('HYPEUSDT', plan=[], start=40)) - 2, how)    # after END in the excluded symbol
+    assert 'HYPEUSDT' in _cli_refuses(env, capsys, SYMS + ['HYPEUSDT'], ('--exclude-late', 'HYPEUSDT'))
+
+
+def test_malformed_raw_open_time_refused_by_coverage_check(env):
+    _bad_t(env, 'ETHUSDT', HEAD + NSLICE + 2, 'nan')
+    with pytest.raises(R.RunnerError, match='malformed raw open times'):
+        R.check_coverage(cache=env['cache'], window=WINDOW, symbols=SYMS)
+
+
+def test_raw_time_problems_helper():
+    ok = 'x\n'.join(['t,o', f'{WARM_LO}.0,1', f'{WARM_LO + H4},1', f'{float(WARM_LO + 2 * H4)!r},1']) + 'x'
+    assert R.raw_time_problems(ok.replace('x', '').encode()) == {}
+    for v, k in (('nan', 'nan_or_inf'), ('NaN', 'nan_or_inf'), ('-inf', 'nan_or_inf'), ('', 'non_numeric'),
+                 ('1e', 'non_numeric'), (f'{WARM_LO}.5', 'non_integer_ms'), (f'{WARM_LO}.000001', 'non_integer_ms'),
+                 (str(WARM_LO + 1), 'off_grid'), (str(WARM_LO - 1), 'off_grid')):
+        p = R.raw_time_problems(f't,o\n{WARM_LO},1\n{v},1\n'.encode())
+        assert p[k] == 1 and p['first_bad'].startswith('row 3'), (v, p)
+
+
+def test_q2_symbols_run_is_non_decision(env):
+    p = go(env)
+    assert p['universe']['tier_label'] == 'SYMBOLS-2' and p['universe']['non_decision'] is True
+    assert p['non_decision'] is True and p['decision']['non_decision'] is True
+    assert p['decision']['tier_verdict'] == 'NON_DECISION'
+    assert p['decision']['diagnostic_verdict'] in ('CANDIDATE', 'PARK')
+    one = go(env, out='one.json', symbols=['ETHUSDT'])
+    assert one['universe']['tier_label'] == 'SYMBOLS-1' and one['decision']['tier_verdict'] == 'NON_DECISION'
+
+
+def test_q2_symbols_run_with_late_exclusion_counts_run_symbols(env):
+    _add(env, 'HYPEUSDT', start=40)
+    p = go(env, symbols=SYMS + ['HYPEUSDT'], exclude_late=['HYPEUSDT'])
+    assert p['universe']['tier_label'] == 'SYMBOLS-2' and p['non_decision'] is True
+
+
+def test_q2_tier_run_stays_decision_bearing(env):
+    for s in VC.frozen_universe()['core_10']:
+        if s not in SYMS:
+            _add(env, s, start=40 if s == 'HYPEUSDT' else None)
+    p = go(env, symbols=None, tier='CORE-10', exclude_late=['HYPEUSDT'])
+    assert p['universe']['tier_label'] == 'CORE-10-ELIGIBLE-9' and p['universe']['non_decision'] is False
+    assert p['non_decision'] is False and p['decision']['non_decision'] is False
+    assert p['decision']['tier_verdict'] in ('CANDIDATE', 'PARK') and 'diagnostic_verdict' not in p['decision']
+
+
+def test_raw_time_check_must_cover_the_bytes_the_reader_hashed(env, monkeypatch):
+    real = R.B.read_cache
+
+    def swapped(cache, s, tf):                                  # the file changes between the check and the read
+        df, rec = real(cache, s, tf)
+        return df, dict(rec, sha256='0' * 64)
+    monkeypatch.setattr(R.B, 'read_cache', swapped)
+    with pytest.raises(R.RunnerError, match='changed while being read'):
+        go(env)
+    assert not os.path.exists(env['tmp'] / 'p.json')
