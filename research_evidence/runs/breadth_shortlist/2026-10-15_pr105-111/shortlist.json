@@ -1,0 +1,2660 @@
+{
+ "claim": "no edge claim; development window only; registry/PAPER labels per Codex 6199976344",
+ "evidence_class": "candidate-runtime",
+ "format": "zb-breadth-shortlist/1",
+ "incomplete": {
+  "CORE-10 15m": [
+   "HYPEUSDT"
+  ],
+  "CORE-10 4h": [
+   "HYPEUSDT"
+  ],
+  "CORE-20 15m": [
+   "HYPEUSDT",
+   "PUMPUSDT"
+  ],
+  "CORE-20 4h": [
+   "HYPEUSDT",
+   "PUMPUSDT"
+  ]
+ },
+ "non_promotable": true,
+ "packet_sha256": "3d150f7c5e6aeca2ac2b3a1bb434a578f997986ba7c246b103215fe9f7291ec7",
+ "paper_experimental_sides_source": {
+  "BREADTH_BOTH": "L350: BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})",
+  "commit": "87f8465",
+  "file": "engine.py",
+  "rule": "L348-349 comment (Codex ruling 3): long-default strategies whose signal function already emits both sides run 'both' in PAPER; every other strategy keeps its registry sides",
+  "slots": "L397-411: breadth_sleeves(), L411: sides='both' if k in BREADTH_BOTH else st['sides'] (one slot per registry key, breadth_groups L382, L386 keys = sorted(S.STRATEGIES))"
+ },
+ "registered_sides_source": "strategies.STRATEGIES[key]['sides'] (the strategy registry; equals the registry_sides field each packet records). The append-only research ledger research_evidence/ledger/REGISTRY.jsonl registers research families (range_bb_mr, short_breakdown, trend_ema_mom, trend_ema_mom_short, res01_infra), not these runtime keys, so no row below holds a holdout-eligible preregistration.",
+ "rows": [
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "a4964f3fd9e80f6e7e020d2f88bde00e5ed4edfbbae0ea36e61c3e9eac852af6",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "5db5790416287001349d51f2a8164ec559c8d155429dd49c795341a64d7d1e54",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/bear_breakdown_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "09623ec6d08a832d54a605ebd62aa393b6f12fd9c6803075902fcb4f7816aa27",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "35da2df68e34ee8d591fe193882c7d3431b84fd60256db5cd1dabeebaa634d37",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/bear_breakdown_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core20_profit_capture": null,
+   "key": "bear_breakdown",
+   "paper_experimental_sides": "short",
+   "registered_sides": "short",
+   "side": "long",
+   "side_in_paper": false,
+   "side_registered": false,
+   "status": "blocked",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.270877,
+    "max_dd_r": 27.949904,
+    "net_pnl": -4.006883,
+    "net_r": 8.954542,
+    "pf": 0.993796,
+    "source": {
+     "file_sha256": "dbb0ff4d7ca95475ef8af04d92011ad9f4ac8502ce7a6f7a038402a472b0c408",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "238383e5921eb59687dcad6429e1223042daab388d4d3a554d4da8f66cc80eac",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/bear_breakdown_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 267
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.209917,
+    "max_dd_r": 18.52671,
+    "net_pnl": 82.187348,
+    "net_r": 23.991229,
+    "pf": 1.119353,
+    "source": {
+     "file_sha256": "b867867a80c5101907e254f82898af1294ca2cec4a7109d2e31eb9d9f2a96bc2",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "887937a2d39d76512260b59f1e47782cc1ca2fcf50555986b64ba8293e9b15a4",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/bear_breakdown_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 316
+   },
+   "core20_profit_capture": null,
+   "key": "bear_breakdown",
+   "paper_experimental_sides": "short",
+   "registered_sides": "short",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.230645,
+    "max_dd_r": 20.247915,
+    "net_pnl": 1161.516476,
+    "net_r": 151.904546,
+    "pf": 1.718603,
+    "source": {
+     "file_sha256": "742dee5f608d173db49c786fe5d9962708c5d5016b07392b98e68cdcd06a39ac",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "24fce262182e0c359bb867f02ff4bc66b1d8720e4fd173e87b57b63e61094f6b",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/breakout_pyramid_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 283
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.285636,
+    "max_dd_r": 27.687417,
+    "net_pnl": 3895.373056,
+    "net_r": 324.161361,
+    "pf": 2.754714,
+    "source": {
+     "file_sha256": "6bb70f98d82ad53189f7dffd4890b06e007b6ff98eec8c183738fe8f292e9d5c",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "91aadb252a6aaf8cc06a117945240a6944359394d203467e2e04fb8d0f2b46a2",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/breakout_pyramid_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 365
+   },
+   "core20_profit_capture": null,
+   "key": "breakout_pyramid",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.329617,
+    "max_dd_r": 33.216235,
+    "net_pnl": 334.685063,
+    "net_r": 86.7738,
+    "pf": 1.29613,
+    "source": {
+     "file_sha256": "dc530b4a3bb71ec6093f4214e17dbb8e8da0a60ccc9e7fd0388a3ee2e9deca8e",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "e682b432e8d3cc6ad6741a0ef87a7921f9ec3140349ae82af42e2f0a4ce16d65",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/breakout_pyramid_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 270
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.395167,
+    "max_dd_r": 39.97485,
+    "net_pnl": 105.631157,
+    "net_r": 63.440976,
+    "pf": 1.076909,
+    "source": {
+     "file_sha256": "681880313f046226ec8204cf9af2a0ce034880c29032a06d9c053052688fc17a",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "fad612e7084242017140ebff1787473567b98158a8a25f80f2e581071a34b4e6",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/breakout_pyramid_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 379
+   },
+   "core20_profit_capture": null,
+   "key": "breakout_pyramid",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": false,
+   "status": "provisional (unregistered; needs new prereg, no backdating)",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.087979,
+    "max_dd_r": 8.495684,
+    "net_pnl": -23.375321,
+    "net_r": -4.602913,
+    "pf": 0.776755,
+    "source": {
+     "file_sha256": "2b85db302f8eb2d0af59edfedf6ef94163a533c1bc75794261c1b95269063da9",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "3921ac3af51c5d6ba6f9d497b594e642d6b02208be6c6114983dafdef9792c3a",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/dca_dip_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 187
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.106934,
+    "max_dd_r": 10.229564,
+    "net_pnl": -20.831047,
+    "net_r": -3.920169,
+    "pf": 0.855531,
+    "source": {
+     "file_sha256": "9c79998d1e6c3557a6cfcff23d764efcb4f699cb919ef67f4967f833e336ce30",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "ef00df96b0e20203d399d3fd5c87c6ceeb218e51c6a577af167efcc5acbba352",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/dca_dip_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 283
+   },
+   "core20_profit_capture": null,
+   "key": "dca_dip",
+   "paper_experimental_sides": "long",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "dbf5b65287e01422585102b58022e0fbc81a91a121e5732f623a90ccc312740d",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "dfa1f26110e761e2d100b32d8d8d08884bcd6208b5a4339fce5bd69a20b1a8ae",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/dca_dip_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "44a9b936f0ad715a28e673bd93a889a50b998c79ad95c2923450fea862db6dc0",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "e24a8875736d17564e7bf1baac45919b339b67c2fbe61ce32592a9ac738f19e6",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/dca_dip_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core20_profit_capture": null,
+   "key": "dca_dip",
+   "paper_experimental_sides": "long",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": false,
+   "side_registered": false,
+   "status": "blocked",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.242466,
+    "max_dd_r": 21.216737,
+    "net_pnl": 303.43633,
+    "net_r": 54.713014,
+    "pf": 1.564195,
+    "source": {
+     "file_sha256": "0addbeb7e3dc75ea600d6ad2f0622eebc668678c12fdd11729fc4274a0bd44c8",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "e0c7b7a9cd1ebe53b942d15d4066bc11a81e7dcfc9c463431627b58bd266829e",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/donchian_ens_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 215
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.247194,
+    "max_dd_r": 21.815153,
+    "net_pnl": 922.818794,
+    "net_r": 149.157513,
+    "pf": 2.269464,
+    "source": {
+     "file_sha256": "f6f8ad25ac80b44c34680d172b48051bef0d7559354da6579f8ddcbe9fdcad27",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "4148b4594f7f212b74ea0d5d6449d9c98d49463b9f5b3dba94d0a188a93f426c",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/donchian_ens_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 291
+   },
+   "core20_profit_capture": null,
+   "key": "donchian_ens",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.15756,
+    "max_dd_r": 13.727493,
+    "net_pnl": 162.819188,
+    "net_r": 32.746245,
+    "pf": 1.439876,
+    "source": {
+     "file_sha256": "af1593befb8b28863c0ca51dae42ce78eb44efa005ae1b126d96f3de3be65aaa",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "35738cd8f2e9d07c051eef17a6ec7ed38afdf731c185785b23f0bfcf7be36ab0",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/donchian_ens_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 178
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.13653,
+    "max_dd_r": 10.918142,
+    "net_pnl": 124.803484,
+    "net_r": 27.971823,
+    "pf": 1.256281,
+    "source": {
+     "file_sha256": "3ed6728073a31bcdb76a56a0d593d251a7c94ad1987cc0409febb436f277d81f",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "d77f1b1f04258d4ef27a08e115f89975ad55322db1419180c02c7230bd2bae93",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/donchian_ens_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 233
+   },
+   "core20_profit_capture": null,
+   "key": "donchian_ens",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": false,
+   "status": "provisional (unregistered; needs new prereg, no backdating)",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.179241,
+    "max_dd_r": 5.032004,
+    "net_pnl": 345.779537,
+    "net_r": 59.924853,
+    "pf": 2.72848,
+    "source": {
+     "file_sha256": "40d31d9e1e0ee6391490d9c3dfd5555ca9f9c478f8fb4769ec2833b5de0eb7b7",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "53af447c52ef5495a22b672fdd5c1fe4236e1523378f29b88436d69aa21f5a0c",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/ema_mom_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 97
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.196536,
+    "max_dd_r": 7.551214,
+    "net_pnl": 686.743824,
+    "net_r": 101.091624,
+    "pf": 2.773052,
+    "source": {
+     "file_sha256": "7dfeeaa380124733bcdcd6c6949995f61dc557abc0c4658409c9d5c9cbd06043",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "49fb8ad11d8a1c28b8fc884da6b09b1ca111ffd16d7a1100ff03529c739efbca",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/ema_mom_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 160
+   },
+   "core20_profit_capture": null,
+   "key": "ema_mom",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.157917,
+    "max_dd_r": 11.460884,
+    "net_pnl": -26.302563,
+    "net_r": -4.687253,
+    "pf": 0.859051,
+    "source": {
+     "file_sha256": "e85ac14f36ae961d748df94310b0a91feefd61e8ac8821711dd5bc27ea0c9968",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "de276fc1ba372739744cca59a2d24eb8a55675a6db79cac055ae33d07dd79757",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/ema_mom_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 101
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.168262,
+    "max_dd_r": 13.521305,
+    "net_pnl": 4.307131,
+    "net_r": 2.616612,
+    "pf": 1.013232,
+    "source": {
+     "file_sha256": "12a0be8611ea80e447566815376cb9bab7bdb180bf21be59c4366a46d915446e",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "65dfe58749c93e3e933e410a80906e62ef05eb29a28ba054a9c2729e1a8725dd",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/ema_mom_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 188
+   },
+   "core20_profit_capture": null,
+   "key": "ema_mom",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": false,
+   "status": "below-line (unregistered, more evidence needed)",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.244458,
+    "max_dd_r": 12.319153,
+    "net_pnl": 575.972815,
+    "net_r": 92.030301,
+    "pf": 2.23048,
+    "source": {
+     "file_sha256": "9446118746babb841d52a8979e3c5c676a89fd48323f602b65c7830639c0c370",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "f564edbee2d266d35535dd17549160fe1e6576e98207371d02674a52fde3c1b8",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/ema_st_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 132
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.348141,
+    "max_dd_r": 24.255874,
+    "net_pnl": 432.344966,
+    "net_r": 80.544817,
+    "pf": 1.648608,
+    "source": {
+     "file_sha256": "91fa8f7ea4e6734e32e7845b71e021a223212083e9cccdb3680b6d4fad85be7e",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "117180127bd1cb38a131431aee2cdc6e23501f83d3d1e32ab2f9da0924fa5552",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/ema_st_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 181
+   },
+   "core20_profit_capture": null,
+   "key": "ema_st",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.236045,
+    "max_dd_r": 20.142443,
+    "net_pnl": -71.269081,
+    "net_r": -13.571079,
+    "pf": 0.80006,
+    "source": {
+     "file_sha256": "ead20771a6ffaf592ee76e02882b55f968cde6a468981477c0c2fb411eec53d9",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "d92ab460cc6f69720f627d3e18f2d85a7c0080dd50d6c96fbea6052e073fddb4",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/ema_st_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 152
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.284844,
+    "max_dd_r": 26.901746,
+    "net_pnl": -80.553159,
+    "net_r": -14.350087,
+    "pf": 0.847015,
+    "source": {
+     "file_sha256": "ea3dc0e02a868d0dbe21a144f5b1ab84eebfbd3e8c6376bd3d6350cc7d77b2bc",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "adf9bc072848666f708e9b2eebaabf70f6944443c8562cd542efcd0e51d994f5",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/ema_st_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 210
+   },
+   "core20_profit_capture": null,
+   "key": "ema_st",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": false,
+   "status": "below-line (unregistered, more evidence needed)",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.327131,
+    "max_dd_r": 36.629961,
+    "net_pnl": 513.19885,
+    "net_r": 86.685471,
+    "pf": 1.289867,
+    "source": {
+     "file_sha256": "a9524925ce65fffb88b44b15a0a60dd5399bccf331abcb704d719f4156dd9a6b",
+     "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+     "packet_sha256": "4601e49918727ee7c06f64e736d8a4c2a311bb6e859cfa516ad19fdb2aaf032f",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_breakout_long_defaults.json",
+     "pr": "#105",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 489
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.253522,
+    "max_dd_r": 26.721553,
+    "net_pnl": 212.152997,
+    "net_r": 43.034372,
+    "pf": 1.15058,
+    "source": {
+     "file_sha256": "8960c4bb5ed789f05dbc4e4a1c842b83a965bb5ecbdfeec42891fa0d5bc03465",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "f5f61384039ac27a0c203399780661644483631e90d7d35c38d679bade489c3f",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_breakout_long_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 506
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.372271,
+    "max_dd_r": 42.392562,
+    "net_pnl": 454.63742,
+    "net_r": 81.887585,
+    "pf": 1.20221,
+    "source": {
+     "file_sha256": "ed6253623efe359209171b12dc860a89376d21df60034a8b7376acec71128439",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "0158d69af90e80e1b0223e69b8999d57ae4758f58579c93ad8968fd529e79bff",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_breakout_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 586
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.309852,
+    "max_dd_r": 32.734191,
+    "net_pnl": 268.585436,
+    "net_r": 52.210395,
+    "pf": 1.141845,
+    "source": {
+     "file_sha256": "90ef91c031e85f40d3150b4f1993a47d65221259cbb705d1675de0a62a224b8f",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "93eee78a7e5a2279aba66f93493594ab66ef62f2311f3f2a3e9492efc8b68567",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_breakout_long_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 620
+   },
+   "key": "exp_breakout",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.381664,
+    "max_dd_r": 43.375223,
+    "net_pnl": -132.785315,
+    "net_r": -22.157626,
+    "pf": 0.872445,
+    "source": {
+     "file_sha256": "471490f0e0b28963f698fd1871a8537dd10201827272d78cde048518bbc51147",
+     "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+     "packet_sha256": "64b6fcb0a0428c3ff36311d83d66cb42311713450eccc2e2e87ecf5d8408acfe",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_breakout_short_defaults.json",
+     "pr": "#105",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 420
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.277225,
+    "max_dd_r": 28.386973,
+    "net_pnl": -62.478508,
+    "net_r": -7.412467,
+    "pf": 0.939159,
+    "source": {
+     "file_sha256": "e8a278b8ad5c23f3d788de55a68aa1a7f02da7d431f33b5aa047245022f29791",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "98eaad0a345c250ba30d7d1f57a0c11a63bed63c9bb6e50d317163f9f0639847",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_breakout_short_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 439
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.352527,
+    "max_dd_r": 36.305881,
+    "net_pnl": -83.470585,
+    "net_r": -8.029547,
+    "pf": 0.930827,
+    "source": {
+     "file_sha256": "48bd48e0f1f1e240723a427f54f376f4b0b7affc65fa54e769adc2a1604b62c1",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "b46c8cde317e53dba6e0c039e3a44f51109447d4ae639af2ff3759bce78baab5",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_breakout_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 481
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.259632,
+    "max_dd_r": 25.849001,
+    "net_pnl": -19.921808,
+    "net_r": 2.999271,
+    "pf": 0.983065,
+    "source": {
+     "file_sha256": "1bf5bd996de18bff6d1881b91621d3fea6a1a5add3e16f3eb57ab6a199a8e9f6",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "9adc93499c1e09588824732acfac9112c739fec029058a5c65ee0f29bb666a06",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_breakout_short_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 509
+   },
+   "key": "exp_breakout",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "2304af6a37dfea8d69c6137c9bdd37efe773c428c68061dd1eedbdd74ca935cd",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "8bab5a984a7a4cf19ba3f50d16f049f176bda02d0ecce654bcf2bde71a4c6b70",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_mom_short_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "fbee1be514390341c23013336de712e40ffe376ee83cf9b42c2990771be83208",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "13f57623bf404ebb4c1615fec1556ca13fa7221a2d064cb42d6780cb8f7c204a",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_mom_short_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core20_profit_capture": null,
+   "key": "exp_mom_short",
+   "paper_experimental_sides": "short",
+   "registered_sides": "short",
+   "side": "long",
+   "side_in_paper": false,
+   "side_registered": false,
+   "status": "blocked",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.210258,
+    "max_dd_r": 21.338341,
+    "net_pnl": -6.929517,
+    "net_r": 1.468961,
+    "pf": 0.987846,
+    "source": {
+     "file_sha256": "0e942acef44d5dce80f043f78474edcd4e20d127d4fd3edb9937a7522f576642",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "96530ae0bcee10aaf90e6993b0ff91c5f17f9707718aa3a8b226cad3407e84e9",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_mom_short_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 261
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.20251,
+    "max_dd_r": 19.444868,
+    "net_pnl": 60.091349,
+    "net_r": 15.797931,
+    "pf": 1.104488,
+    "source": {
+     "file_sha256": "d8441eaa373278562dfdf562b8d533fe488353d5c163eabb1d5de784d63014f6",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "f5ee3b92702fa04d8dccd471a396f172c3d4f3e914a55eff43c91ac6e2511a15",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_mom_short_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 285
+   },
+   "core20_profit_capture": null,
+   "key": "exp_mom_short",
+   "paper_experimental_sides": "short",
+   "registered_sides": "short",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.39249,
+    "max_dd_r": 42.878125,
+    "net_pnl": -87.631212,
+    "net_r": -11.066287,
+    "pf": 0.942141,
+    "source": {
+     "file_sha256": "ea2294b671da3c6292cd92ea8fed9c2619e7777c31fccf46d6f7c7f401770daf",
+     "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+     "packet_sha256": "8ba7bf569cb1b53b3c0758419e251b4ec6b0dbd4c0bf2625b8e10050803a8333",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_range_long_defaults.json",
+     "pr": "#105",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 606
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.327338,
+    "max_dd_r": 36.572491,
+    "net_pnl": -98.099883,
+    "net_r": -17.865234,
+    "pf": 0.902547,
+    "source": {
+     "file_sha256": "00f5de12dd5ac21f7a5ef388d0ddd71dd1c6eb10f0b794000b3a541cf37afab0",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "889fe9f3aeee74b5a2a1b1a46fcd4b50612dd6c7817f77244738a938509ca7cf",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_range_long_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 702
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.55151,
+    "max_dd_r": 68.875138,
+    "net_pnl": -142.887553,
+    "net_r": -19.947388,
+    "pf": 0.926772,
+    "source": {
+     "file_sha256": "72e9d8a5b07fafc06b8c238b4d98397981e742d8ca0c3c0b07db801d6ee23f7a",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "a5e9b7a772bf9dd3f84eb758e2562aa4d7d51a212b04805633b7334873a90646",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_range_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 905
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.539322,
+    "max_dd_r": 71.638858,
+    "net_pnl": -173.452039,
+    "net_r": -35.616831,
+    "pf": 0.874526,
+    "source": {
+     "file_sha256": "bf2aa797747e2991efd1fb9c385e645b76fb07835c0743211499ec5be5f559ba",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "b0298ed3e9eb78c4324ab84026f5d1902db47aeaa71587f03c678fd854ec4e7c",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_range_long_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1084
+   },
+   "key": "exp_range",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.336195,
+    "max_dd_r": 36.958533,
+    "net_pnl": -121.424165,
+    "net_r": -19.99998,
+    "pf": 0.912119,
+    "source": {
+     "file_sha256": "8095f0cc0a6de500c3816b8d1387746419d49281dcd1d42a90d835234a8f2095",
+     "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+     "packet_sha256": "b9c3ceb8010fd98d5e0747027cdb624aad466badece5df0f8728d245abbd8f3d",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_range_short_defaults.json",
+     "pr": "#105",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 653
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.402977,
+    "max_dd_r": 47.00203,
+    "net_pnl": -200.480239,
+    "net_r": -47.00203,
+    "pf": 0.803866,
+    "source": {
+     "file_sha256": "7632df29ecc437a7934dc252f577a7adaded429afb8f96f2f5f8001ffe1a4263",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "38eeb98fcadf581b40df6c42bedd297b2c1fe72815bafcd822650805dd2bb337",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_range_short_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 725
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.374616,
+    "max_dd_r": 45.162819,
+    "net_pnl": -150.105425,
+    "net_r": -24.181248,
+    "pf": 0.922105,
+    "source": {
+     "file_sha256": "f26258d2cad77feab864a8b3a7be2254217dde1cf30dcde4a07094ee09ceb2f7",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "b706632d32efe74c2159067ff89931fe2bdb6571bfc67a4a978d07c9ffb83162",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_range_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 934
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.418588,
+    "max_dd_r": 47.566618,
+    "net_pnl": -208.312036,
+    "net_r": -47.346913,
+    "pf": 0.853119,
+    "source": {
+     "file_sha256": "db2b87f4194be2f5dea509fefbb701397691d0de577cc897c4779a7432089ca8",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "e27c396bc8bde382dee2a1ff0a9e447153d8981b59c7d3ac9b7e87abff39adb3",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_range_short_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1094
+   },
+   "key": "exp_range",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "9f443ee72ec2e6639049f961c4f607292252e9628160e45dd793a4e212c2f9f7",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "ecefac5f037c06c96fdf89625dcdb5061022cab7b4a7a1c41b728017a3169bd0",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_rip_sell_dca_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "9a5c6453ca928516021dc9c6f194656b71cd3bf0a45c825b2a53a394ca796074",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "63645c81e5be7ae07d828abc3e9d87ca44e88bf4d266638f65e3c2f1cbc048cd",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_rip_sell_dca_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core20_profit_capture": null,
+   "key": "exp_rip_sell_dca",
+   "paper_experimental_sides": "short",
+   "registered_sides": "short",
+   "side": "long",
+   "side_in_paper": false,
+   "side_registered": false,
+   "status": "blocked",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.142982,
+    "max_dd_r": 14.403074,
+    "net_pnl": -61.575288,
+    "net_r": -12.73999,
+    "pf": 0.677862,
+    "source": {
+     "file_sha256": "36dfe15213c9eb2ddae61759ac58402bbc25d4b420b914e008188fba7c7fd20e",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "9096c5ac1e2745801db27245df7d578aebf0683cd7d50777ea43be2a7faf1048",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_rip_sell_dca_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 301
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.11036,
+    "max_dd_r": 10.971223,
+    "net_pnl": -17.569934,
+    "net_r": -3.060037,
+    "pf": 0.927146,
+    "source": {
+     "file_sha256": "6ecb6a12f5c3f6dc8b648be48f05540f8be89592cf9a1f5973dd4a6e8c806612",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "69ef5b9fb5b393a4543b88e5f4c7c049812522df2ef095e711601b4b553781a0",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_rip_sell_dca_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 490
+   },
+   "core20_profit_capture": null,
+   "key": "exp_rip_sell_dca",
+   "paper_experimental_sides": "short",
+   "registered_sides": "short",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-11T00:30:00Z",
+     "trade_number": 1236,
+     "trades_after": 436
+    },
+    "max_dd_equity": -0.912129,
+    "max_dd_r": 230.30721,
+    "net_pnl": -449.857019,
+    "net_r": -215.860432,
+    "pf": 0.720861,
+    "source": {
+     "file_sha256": "08ea329b7273e09e3ca96c510004fa874498ab1104c4b68f6110e671dd776d89",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "10bd58b374718da6fe18d28c30d2be49adc3a130b27fcd260b55988e1a835b00",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_scalp_long_defaults.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1235
+   },
+   "core10_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-11-29T23:00:00Z",
+     "trade_number": 1136,
+     "trades_after": 654
+    },
+    "max_dd_equity": -0.904452,
+    "max_dd_r": 228.752105,
+    "net_pnl": -450.415615,
+    "net_r": -223.059534,
+    "pf": 0.558092,
+    "source": {
+     "file_sha256": "4d285993a10d839cd18b05747818481173ccf541148b24db89c1781c9693bd78",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "64f9736837465a035901597a352e469027658553cce0a95e8673f2548aa1421a",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_scalp_long_profit_capture.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1135
+   },
+   "core20_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-05T16:30:00Z",
+     "trade_number": 1540,
+     "trades_after": 341
+    },
+    "max_dd_equity": -0.917577,
+    "max_dd_r": 228.707675,
+    "net_pnl": -450.120824,
+    "net_r": -208.78699,
+    "pf": 0.722041,
+    "source": {
+     "file_sha256": "94a1741f682876d0f2e199b588c01c121aacd2b8f8ca1755990732bad8b7aa29",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "a812fbf7aa47005efbb271a0566b8d75b688e3d37f32d6bbdc917385736f6999",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_scalp_long_defaults.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1539
+   },
+   "core20_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-11-20T11:00:00Z",
+     "trade_number": 1121,
+     "trades_after": 718
+    },
+    "max_dd_equity": -0.904574,
+    "max_dd_r": 224.433846,
+    "net_pnl": -449.706232,
+    "net_r": -219.58338,
+    "pf": 0.557847,
+    "source": {
+     "file_sha256": "db54acb27ad67ab524e033cd352068dc5476771a1e4d9716c0c425c2c7989957",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "175222c1f13dfeadfade7c413a0489225ab0cfaeb6517233ca04c52b2698ee94",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_scalp_long_profit_capture.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1120
+   },
+   "key": "exp_scalp",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "15m",
+   "timeframe_note": "15m: PRE-BUST ONLY (every 15m slice busts)"
+  },
+  {
+   "core10_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-07T11:30:00Z",
+     "trade_number": 930,
+     "trades_after": 760
+    },
+    "max_dd_equity": -0.900075,
+    "max_dd_r": 215.984903,
+    "net_pnl": -449.635877,
+    "net_r": -215.984903,
+    "pf": 0.661681,
+    "source": {
+     "file_sha256": "1e578803b031a5305cdc64d06c92f24da33be43ad4a3b660bf2d2dff7c875a5d",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "53f9e7cef105df4732df64f7bc2af1cfb6ee6b92763b6dd82722495447acfc90",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_scalp_short_defaults.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 929
+   },
+   "core10_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-01T00:45:00Z",
+     "trade_number": 900,
+     "trades_after": 798
+    },
+    "max_dd_equity": -0.898332,
+    "max_dd_r": 221.038451,
+    "net_pnl": -448.81732,
+    "net_r": -220.643655,
+    "pf": 0.528858,
+    "source": {
+     "file_sha256": "4e300e80e4fa441b0b337df73d1daa74cd8f64229701e1c51feb6713fd248a06",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "48cbbeb501ad2ee75d6b12ab39d199df0f068f0cf1ee355f19855f7e6b6e0496",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_scalp_short_profit_capture.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 899
+   },
+   "core20_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-03T11:15:00Z",
+     "trade_number": 1130,
+     "trades_after": 897
+    },
+    "max_dd_equity": -0.90164,
+    "max_dd_r": 213.391718,
+    "net_pnl": -450.758015,
+    "net_r": -212.156364,
+    "pf": 0.695415,
+    "source": {
+     "file_sha256": "3d9eb17f3be22537263c5e474febc5a26604c228c0c0d2b70478770b880036fc",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "4f4e973b2c0daea6ee974249e97dce0cb3401c956e19f6a03198bf19378c276c",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_scalp_short_defaults.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1129
+   },
+   "core20_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-11-23T10:00:00Z",
+     "trade_number": 1079,
+     "trades_after": 1037
+    },
+    "max_dd_equity": -0.901179,
+    "max_dd_r": 221.056193,
+    "net_pnl": -450.05771,
+    "net_r": -219.69757,
+    "pf": 0.538705,
+    "source": {
+     "file_sha256": "584ba2a0998cb9385ec446e03760d646ffc5b062323380e1e8b8229de6756bfe",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "80cd36d3d39f8ae4c74822a538ddc93c5524af29cb3be13eb657a2c68aaa8d51",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_scalp_short_profit_capture.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1078
+   },
+   "key": "exp_scalp",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "15m",
+   "timeframe_note": "15m: PRE-BUST ONLY (every 15m slice busts)"
+  },
+  {
+   "core10_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-03T10:45:00Z",
+     "trade_number": 1054,
+     "trades_after": 583
+    },
+    "max_dd_equity": -0.907429,
+    "max_dd_r": 226.150803,
+    "net_pnl": -450.114877,
+    "net_r": -216.656116,
+    "pf": 0.703528,
+    "source": {
+     "file_sha256": "72ad7df61227aef5344e6a6146e2a763fdca1287989cf3a147abe300749d6b6f",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "e12c0bf9efc59b85a1735cf9f5e2dc4e2498d7810365b06264297065874cc64f",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_structure_long_defaults.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1053
+   },
+   "core10_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-11-29T08:00:00Z",
+     "trade_number": 1091,
+     "trades_after": 564
+    },
+    "max_dd_equity": -0.901771,
+    "max_dd_r": 222.613628,
+    "net_pnl": -450.032413,
+    "net_r": -221.39982,
+    "pf": 0.578217,
+    "source": {
+     "file_sha256": "ce1989eb083492e94c3ed8efe72001809ebc56735ce3e09964d73a679282e81b",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "ec312d8fcbcbdd8d5e5cdefcc9c6ae206b82753cd5893e31c57d1394e94b2f98",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_structure_long_profit_capture.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1090
+   },
+   "core20_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-02T02:30:00Z",
+     "trade_number": 1208,
+     "trades_after": 546
+    },
+    "max_dd_equity": -0.914988,
+    "max_dd_r": 229.075533,
+    "net_pnl": -449.044908,
+    "net_r": -210.071446,
+    "pf": 0.742871,
+    "source": {
+     "file_sha256": "8f5c7a13de11280a355ed70e1e18290c9fa7a36d347b12150644ff594beafabc",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "816ff23ce2e4ec35dc7cd1f0261a38684e6b59ae4012de97b14fad10c8d85664",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_structure_long_defaults.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1207
+   },
+   "core20_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-11-24T05:30:00Z",
+     "trade_number": 1225,
+     "trades_after": 662
+    },
+    "max_dd_equity": -0.904786,
+    "max_dd_r": 224.77978,
+    "net_pnl": -449.131835,
+    "net_r": -217.675355,
+    "pf": 0.586792,
+    "source": {
+     "file_sha256": "06bdfd62969805f160ccfc8e5339e8d7442b31a873c85b55281cd1a8d496727c",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "fd6be4acb46a7ec65a2713e49b9728d135cfab3f388c4a48e1279162d287a8b2",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_structure_long_profit_capture.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1224
+   },
+   "key": "exp_structure",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "15m",
+   "timeframe_note": "15m: PRE-BUST ONLY (every 15m slice busts)"
+  },
+  {
+   "core10_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-31T08:00:00Z",
+     "trade_number": 1081,
+     "trades_after": 1090
+    },
+    "max_dd_equity": -0.90168,
+    "max_dd_r": 212.67249,
+    "net_pnl": -450.952493,
+    "net_r": -210.942302,
+    "pf": 0.747281,
+    "source": {
+     "file_sha256": "d08d529d8bcf337c1004e61aceaacaec871f8b82002b8dfdf30225108faef596",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "23b57add37978ea6480c1a2014be998cb35f817847484179b9437c427e800bb3",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_structure_short_defaults.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1080
+   },
+   "core10_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2025-01-01T05:15:00Z",
+     "trade_number": 1233,
+     "trades_after": 962
+    },
+    "max_dd_equity": -0.900991,
+    "max_dd_r": 220.100977,
+    "net_pnl": -450.853995,
+    "net_r": -218.870792,
+    "pf": 0.656516,
+    "source": {
+     "file_sha256": "68d262e19fbcdf5d9912437c87f914d9376e849d589f2ef363e993a8f40a1e5f",
+     "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+     "packet_sha256": "719f309f1bdb473e4486eec35589bcfd0113f64285d923f93b6fc25af4584033",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92/exp_structure_short_profit_capture.json",
+     "pr": "#109",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1232
+   },
+   "core20_defaults": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-27T23:45:00Z",
+     "trade_number": 1367,
+     "trades_after": 1049
+    },
+    "max_dd_equity": -0.901899,
+    "max_dd_r": 201.070169,
+    "net_pnl": -449.742305,
+    "net_r": -198.34225,
+    "pf": 0.751173,
+    "source": {
+     "file_sha256": "f45b82826c2b49d6bddb544ae523558a4c4b01a91fc639702ff567bada82c064",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "2447d405181fe4acc4f8465a1f02428afc16f39195e9aa79999f415443151ef0",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_structure_short_defaults.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1366
+   },
+   "core20_profit_capture": {
+    "basis": "pre-bust",
+    "bust": {
+     "busted": true,
+     "time": "2024-12-14T22:15:00Z",
+     "trade_number": 1204,
+     "trades_after": 916
+    },
+    "max_dd_equity": -0.901917,
+    "max_dd_r": 216.347097,
+    "net_pnl": -448.788685,
+    "net_r": -214.572312,
+    "pf": 0.62915,
+    "source": {
+     "file_sha256": "3ba26fae89fba0ef8e5791d3a687bc9c6477d4422a58c5f6fa8b03600458d6af",
+     "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+     "packet_sha256": "1772273ad11771a450d14aae5346660948dfe1a6d50a7827a605fac74af44ad2",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7/exp_structure_short_profit_capture.json",
+     "pr": "#111",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1203
+   },
+   "key": "exp_structure",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "15m",
+   "timeframe_note": "15m: PRE-BUST ONLY (every 15m slice busts)"
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.07988,
+    "max_dd_r": 4.913498,
+    "net_pnl": 147.026251,
+    "net_r": 27.448688,
+    "pf": 1.799639,
+    "source": {
+     "file_sha256": "9db3f82628ebe41b64a61c2beffc7fcdd13bc4f41a3a155ea744085b4972df52",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "e27fbf44da487d3f3c846c6ca533387baa0a95fe24f02449cddef0b720ce7227",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_trend_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 101
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.070063,
+    "max_dd_r": 4.751327,
+    "net_pnl": 172.191184,
+    "net_r": 30.897507,
+    "pf": 2.219804,
+    "source": {
+     "file_sha256": "284027584a9dd0bf491e456ffa1a698c630bdf3381b4362631b589385864bbae",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "ebc8162f49a64e29b339b69397e9e2f62d9379c843ade05c850ec7dbe8068d01",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_trend_long_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 102
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.11141,
+    "max_dd_r": 7.619501,
+    "net_pnl": 344.778207,
+    "net_r": 56.69273,
+    "pf": 1.996836,
+    "source": {
+     "file_sha256": "58be231f8912c3a47ae0b54e57f3107a397d4ffe1828386f35c652af7b0af6fb",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "f6b9661953ed4fef93240419e6dbbcddbce2ab0420d9bd45d4526b2163090c48",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_trend_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 171
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.090683,
+    "max_dd_r": 7.811484,
+    "net_pnl": 290.471102,
+    "net_r": 48.701139,
+    "pf": 2.084733,
+    "source": {
+     "file_sha256": "71c8daca70d16b64b4c68ed8539965c0b3d2d63333c7bce7808f51ef1ee70141",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "e673216b381ed4d42840c027253a26ef2a8d0e011e53f4ebcda1d6a54410744e",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_trend_long_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 171
+   },
+   "key": "exp_trend",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.128744,
+    "max_dd_r": 13.345464,
+    "net_pnl": -3.290955,
+    "net_r": 0.319771,
+    "pf": 0.983163,
+    "source": {
+     "file_sha256": "80f0fab73a7d495f6951ac40044a9353e923cdc3134c3857213a0ebba43ff5bc",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "f2d6a7bcbaccd77bcc1c05e2c03433342915389ac659fea9bd77e92703af9957",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_trend_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 101
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.117726,
+    "max_dd_r": 11.35448,
+    "net_pnl": -39.110533,
+    "net_r": -7.725572,
+    "pf": 0.763318,
+    "source": {
+     "file_sha256": "9e819d585d202c0eccdac8d100d20911e151f7d1a8418ac8bb6ac729618af3bc",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "2486affb4654774551623d43006730ba944550d229844e860a8f8cbfa8fdffbb",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_trend_short_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 101
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.163752,
+    "max_dd_r": 13.492051,
+    "net_pnl": 42.909045,
+    "net_r": 10.189681,
+    "pf": 1.123424,
+    "source": {
+     "file_sha256": "02471609a83cc2405da37bf07bfb5800c7f7e17acc722035af78ea85a5111eae",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "524d6c190a22de3ab531c53e1b07ed5aec475135a9b5fe0339b2a22156c439ae",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_trend_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 189
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.151635,
+    "max_dd_r": 14.283838,
+    "net_pnl": 18.058599,
+    "net_r": 4.851726,
+    "pf": 1.058443,
+    "source": {
+     "file_sha256": "2f1e7ef9881aa7f60e34fbba28368b4cc9152cd487678647b82dc872a9c3ba21",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "d8843442e26596b2d1e6d3a85da16542b1979672ce3289a834feaed23436c2de",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_trend_short_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 190
+   },
+   "key": "exp_trend",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.492322,
+    "max_dd_r": 61.240697,
+    "net_pnl": -158.628047,
+    "net_r": -30.115309,
+    "pf": 0.892362,
+    "source": {
+     "file_sha256": "eb00c96e58135386c5cca18841f0daed9f5a707573b57d5871f2e8380ee4b576",
+     "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+     "packet_sha256": "77d26abc391d1d60cf4f548d7538e630bcb9750ffa9995ffa7835a10fd5eb9a3",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_vwaprev_long_defaults.json",
+     "pr": "#105",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 623
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.437238,
+    "max_dd_r": 54.407933,
+    "net_pnl": -165.992438,
+    "net_r": -36.378367,
+    "pf": 0.833141,
+    "source": {
+     "file_sha256": "e723a62cfdf3d762fbd9e3fed13a526cf37b5f26eccfdcbe28c9d4828fb3b276",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "35391663c3bcef88ba3563e2219205fa2ec8e135c17eca00e0830dbe42436dbe",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_vwaprev_long_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 723
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.559614,
+    "max_dd_r": 70.838516,
+    "net_pnl": -154.614065,
+    "net_r": -23.6367,
+    "pf": 0.922518,
+    "source": {
+     "file_sha256": "4277491ad270c4b0c4964cd1ebe2b2b0f95b9655f679a4b7391daf29ef8c86e0",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "d13741da96a0e75f69f647ac24d4ffe285c7a0c880bf18f099cdb3fb887c1d60",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_vwaprev_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 909
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.554463,
+    "max_dd_r": 74.589091,
+    "net_pnl": -185.656881,
+    "net_r": -39.302304,
+    "pf": 0.865435,
+    "source": {
+     "file_sha256": "a95b317f72966ea8de7fac35bf041135da3507b01a0810882141550eeca47044",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "ee782d36077379c3f7da57e96804725ff2459d25d06549a21139f69a7853b7e2",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_vwaprev_long_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1101
+   },
+   "key": "exp_vwaprev",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.373075,
+    "max_dd_r": 42.44812,
+    "net_pnl": -142.32897,
+    "net_r": -25.472762,
+    "pf": 0.894083,
+    "source": {
+     "file_sha256": "fa83017beae02b3a47aee99d04c694a2c960e390ea1b8c251b2ddda6cc143bff",
+     "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+     "packet_sha256": "0aa1bc280da2839cb22bbc26c0fbf2dbf2dd25d6fc3979ec51269284b17b3873",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_vwaprev_short_defaults.json",
+     "pr": "#105",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 658
+   },
+   "core10_profit_capture": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.378077,
+    "max_dd_r": 43.601989,
+    "net_pnl": -188.044382,
+    "net_r": -42.895754,
+    "pf": 0.816434,
+    "source": {
+     "file_sha256": "ce0650ec1d50407fa67e9acb2f1151ee4fbdcd7620d15b324e1fe142b3d06ccb",
+     "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+     "packet_sha256": "4c1d730a507a467f2b3f0a56e6ca2c2ec6719a6ba0841bdb2b6b977524672582",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3/exp_vwaprev_short_profit_capture.json",
+     "pr": "#107",
+     "runner_commit": "339ba688cf4218af4b520fc2e4e92ed441e40740"
+    },
+    "status": "ok",
+    "trades": 720
+   },
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.465723,
+    "max_dd_r": 54.659988,
+    "net_pnl": -231.557889,
+    "net_r": -50.461581,
+    "pf": 0.865857,
+    "source": {
+     "file_sha256": "e65bda530fe595af87f17829445676548ec7c06001b8ca5600132b9be1892fd1",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "ba28b1bc190a8ccb05443d930cba2074cabea5fc9e88802d973dafe3e3c8bd8a",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_vwaprev_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 940
+   },
+   "core20_profit_capture": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.38888,
+    "max_dd_r": 43.693504,
+    "net_pnl": -193.365981,
+    "net_r": -42.332377,
+    "pf": 0.869293,
+    "source": {
+     "file_sha256": "7a3f39a6d5af6f8e53a0f4b0e37fd5daed402f82a7c58a9cd8c9f78cf921e64a",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "e8f8b904437c3ccb3bf998c95f89a8e5a2b35fa02f7880a7079010934160af63",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_vwaprev_short_profit_capture.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 1069
+   },
+   "key": "exp_vwaprev",
+   "paper_experimental_sides": "both",
+   "registered_sides": "both",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "negative",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.160135,
+    "max_dd_r": 14.976457,
+    "net_pnl": 503.908031,
+    "net_r": 74.671065,
+    "pf": 1.573165,
+    "source": {
+     "file_sha256": "dfa8b6125e542fab4da314d33e4432278de8585a1f7446559100ffa18a32bc14",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "d4311778ef17725615952b001f46e49023e680adda3be6e8dc70ce1a028f1606",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/hot_coin_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 313
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.195959,
+    "max_dd_r": 19.205048,
+    "net_pnl": 579.874627,
+    "net_r": 83.903266,
+    "pf": 1.481134,
+    "source": {
+     "file_sha256": "5250398513d8cedc7adf1764f4ac7590eed52c1db5ad4a7bfb4899aeb36aa9c7",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "fefb2b919b1596c08bc4529b90c0ea20d4af55fc11e849ef45d922491bd12308",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/hot_coin_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 394
+   },
+   "core20_profit_capture": null,
+   "key": "hot_coin",
+   "paper_experimental_sides": "long",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "edf4bdec10f647df5eb8e5a840423bed1c16eb9de253e2d292beebef8fca2477",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "a916e10aa7aba08e1e1b0580d97ecc627379b438981871bcc133572e7c24b406",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/hot_coin_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "a3328c5e5342bbf8d59136fba96d15e69fb01965328fde3f172a8430f4b2585b",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "a621782bad406800821d30b805721934baa0d480486ca300454c9a1d0e5da4b4",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/hot_coin_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core20_profit_capture": null,
+   "key": "hot_coin",
+   "paper_experimental_sides": "long",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": false,
+   "side_registered": false,
+   "status": "blocked",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.159961,
+    "max_dd_r": 15.129997,
+    "net_pnl": 72.819504,
+    "net_r": 15.81621,
+    "pf": 1.140624,
+    "source": {
+     "file_sha256": "68d09ae6a70a5e5b2f812c38596698c0c0e7f698dbd136ed71db6e2b77a6f605",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "8111da9ff76d96611f19628c5fe8aa2243f537c461cfc21087ce4a0ebcfffc57",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/pullback_rsi_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 201
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.187694,
+    "max_dd_r": 15.867431,
+    "net_pnl": 126.5369,
+    "net_r": 25.809906,
+    "pf": 1.186253,
+    "source": {
+     "file_sha256": "003f82f9418b687a80c15554efc2253fe05b1ffefeaf4b14dde2cf0c53c1c029",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "80be4aa780f4774bfe856c92a4c4133f7d284c9299824c3f59f71fec9ae96cd7",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/pullback_rsi_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 268
+   },
+   "core20_profit_capture": null,
+   "key": "pullback_rsi",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.233421,
+    "max_dd_r": 23.646337,
+    "net_pnl": 27.399346,
+    "net_r": 9.174143,
+    "pf": 1.041226,
+    "source": {
+     "file_sha256": "df4639f944e87bdf0dbf4c78f729c298cc11e15b6f7f581a46188d9e2d4605ac",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "96bd5a190f26d13195b57974efb87c37f723580b054debbdaae4f8bcec8808cf",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/pullback_rsi_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 250
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.306065,
+    "max_dd_r": 31.837591,
+    "net_pnl": -36.505252,
+    "net_r": -1.948032,
+    "pf": 0.95771,
+    "source": {
+     "file_sha256": "d9b406fb9f1b89a6be9aa032f3221a7c87cc8ebeeadbfd68a570551f8c93c8d5",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "004fb0d6eb777e623322e98ad3d196a2f90a6dde1e491509da0c021ceabd4367",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/pullback_rsi_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 340
+   },
+   "core20_profit_capture": null,
+   "key": "pullback_rsi",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": false,
+   "status": "below-line (unregistered, more evidence needed)",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.268151,
+    "max_dd_r": 26.528243,
+    "net_pnl": 711.434,
+    "net_r": 115.218806,
+    "pf": 1.504908,
+    "source": {
+     "file_sha256": "7337fa3f2a6f4e00e82273d2bb0c5b7b2f7b286a9cf6bfd8e4d156464ea42637",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "c734d83d6a56e3f15d1a33781b42ef169fd26498a63435be37fc33cc1f861d5c",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/rotation_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 785
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.323973,
+    "max_dd_r": 34.468876,
+    "net_pnl": 448.420798,
+    "net_r": 82.607656,
+    "pf": 1.347995,
+    "source": {
+     "file_sha256": "cda6ae750dcbf23ee7c0a601b40fe591b5a4434f761780b4e71fb355b32f744f",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "3330d888a435c43caedc46b8be01eaa447b646b57a47c1e7387b31881e6af204",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/rotation_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 858
+   },
+   "core20_profit_capture": null,
+   "key": "rotation",
+   "paper_experimental_sides": "long",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "d2aa62799ba92dced1db9999ad34dea32adee7345332ae8af8e3f748fae0fad3",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "31e284a0d8d9e077c455087d3e1f9caa5c5aeae04193a2fe526891e42b8a9edf",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/rotation_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": 0.0,
+    "max_dd_r": null,
+    "net_pnl": 0.0,
+    "net_r": 0.0,
+    "pf": null,
+    "source": {
+     "file_sha256": "63e80da9e58b81ad3ec72acec34518cdd78d835caef1290743b3542c89bdcbb1",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "e594df68ca9a612b39d6574e5342fb12b2aca110a79d3d9f33ca552accb74c9a",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/rotation_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "not emitted",
+    "trades": 0
+   },
+   "core20_profit_capture": null,
+   "key": "rotation",
+   "paper_experimental_sides": "long",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": false,
+   "side_registered": false,
+   "status": "blocked",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.200848,
+    "max_dd_r": 18.359702,
+    "net_pnl": 106.042346,
+    "net_r": 24.118706,
+    "pf": 1.182751,
+    "source": {
+     "file_sha256": "4b2041169525fca040aaa1835423a0a06a2e228fc35bfa5346e6ed2e04193766",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "db50d6963d62c8f469c10c096763ad0fe6618b589dcb6ae3115347d63376eb18",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/squeeze_tp_long_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 205
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.231078,
+    "max_dd_r": 22.726183,
+    "net_pnl": 181.013018,
+    "net_r": 37.288221,
+    "pf": 1.209129,
+    "source": {
+     "file_sha256": "128e7d1565683ef6ef28cb86627fa5cd23dcfb47336e660376df6f84f9461fd0",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "291b402c74b3d5e0e653ee9b68b42f06a9047561c72b44d7a620f64112e729c0",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/squeeze_tp_long_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 291
+   },
+   "core20_profit_capture": null,
+   "key": "squeeze_tp",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "long",
+   "side_in_paper": true,
+   "side_registered": true,
+   "status": "shortlist-candidate",
+   "tf": "4h",
+   "timeframe_note": null
+  },
+  {
+   "core10_defaults": {
+    "basis": "full (bust not recorded; runner before c8c7b92)",
+    "bust": {},
+    "max_dd_equity": -0.219467,
+    "max_dd_r": 21.61076,
+    "net_pnl": 178.517946,
+    "net_r": 34.404402,
+    "pf": 1.267229,
+    "source": {
+     "file_sha256": "596c53fdea7a48356f1673e79c4a68294fb20e6ed05c0a15010431f3ea183c9c",
+     "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+     "packet_sha256": "1fc9effc85644d64b5e3dcb1984ee0b3f7aa638d2023ceec0aceb8b64e91f063",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/squeeze_tp_short_defaults.json",
+     "pr": "#106",
+     "runner_commit": "7690426103544e09df1f008397a28b02c6c3d836"
+    },
+    "status": "ok",
+    "trades": 226
+   },
+   "core10_profit_capture": null,
+   "core20_defaults": {
+    "basis": "full (no bust)",
+    "bust": {
+     "busted": false,
+     "time": null,
+     "trade_number": null,
+     "trades_after": 0
+    },
+    "max_dd_equity": -0.243303,
+    "max_dd_r": 25.062837,
+    "net_pnl": 194.5397,
+    "net_r": 39.504427,
+    "pf": 1.194163,
+    "source": {
+     "file_sha256": "acd8ae51f60e7e0069817c9645cd086db6ad9fd8c4b8bf591eaa38486aa4223e",
+     "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+     "packet_sha256": "951c536dc2a47eb2745c9200f9f58645cbb897cb381687341b658c44ef989aaa",
+     "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/squeeze_tp_short_defaults.json",
+     "pr": "#110",
+     "runner_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8"
+    },
+    "status": "ok",
+    "trades": 327
+   },
+   "core20_profit_capture": null,
+   "key": "squeeze_tp",
+   "paper_experimental_sides": "both",
+   "registered_sides": "long",
+   "side": "short",
+   "side_in_paper": true,
+   "side_registered": false,
+   "status": "provisional (unregistered; needs new prereg, no backdating)",
+   "tf": "4h",
+   "timeframe_note": null
+  }
+ ],
+ "sources": {
+  "CORE-10 15m defaults": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92",
+    "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+    "pr": "#109"
+   }
+  ],
+  "CORE-10 15m profit_capture": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core10_15m_339ba68_batch4/rerun_c8c7b92",
+    "head": "ee51985c031fe60a480e121ce3d562273c781d04",
+    "pr": "#109"
+   }
+  ],
+  "CORE-10 4h defaults": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1",
+    "head": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+    "pr": "#105"
+   },
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2",
+    "head": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+    "pr": "#106"
+   }
+  ],
+  "CORE-10 4h profit_capture": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core10_339ba68_batch3",
+    "head": "e9872eb1346fc1326b5379a55bc55f142b95dfa5",
+    "pr": "#107"
+   }
+  ],
+  "CORE-20 15m defaults": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7",
+    "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+    "pr": "#111"
+   }
+  ],
+  "CORE-20 15m profit_capture": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core20_15m_c8c7b92_batch7",
+    "head": "1a122b1d0c010fc4a48c7f107924299abcd9dc90",
+    "pr": "#111"
+   }
+  ],
+  "CORE-20 4h defaults": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6",
+    "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+    "pr": "#110"
+   }
+  ],
+  "CORE-20 4h profit_capture": [
+   {
+    "dir": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6",
+    "head": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+    "pr": "#110"
+   }
+  ]
+ },
+ "status_rules": {
+  "below-line (unregistered, more evidence needed)": "Codex ruling 6199976344: exactly pullback_rsi short, ema_mom short, ema_st short.",
+  "blocked": "unregistered side not named by the Codex ruling (includes every side whose signal never fires: \"not emitted\").",
+  "negative": "registered side that does not meet the shortlist-candidate rule.",
+  "provisional (unregistered; needs new prereg, no backdating)": "Codex ruling 6199976344: exactly breakout_pyramid short, squeeze_tp short, donchian_ens short.",
+  "shortlist-candidate": "registered side AND defaults net R > 0 in BOTH CORE-10 and CORE-20 (the strategy's own timeframe; 15m keys use pre-bust stats). \"Positive\" = net R (sum of per-trade R) > 0; no other criterion."
+ },
+ "superseded": {
+  "#108": "CORE-20 4h on 13 of 20 symbols; superseded by #110 (full coverage, same runner family)"
+ },
+ "window": {
+  "end": "2026-09-28T00:00:00Z",
+  "end_exclusive": true,
+  "sealed_cutoff": "2026-09-28T00:00:00Z",
+  "start": "2024-10-14T00:00:00Z"
+ }
+}
