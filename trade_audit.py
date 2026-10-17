@@ -42,7 +42,7 @@ STR_MAX = 1000           # any string in an event is capped at this length
 # so the finite ADD set is the whitelist. tests/test_trade_audit.py scans engine.py + grid.py for every add `why`
 # literal and fails if one is missing here; cohort_ledger() also reports qty_mismatch if the fills ever disagree
 # with the lot quantity (an unknown add kind would show up there).
-ENTRY_KINDS = ('entry', 'pyramid_add', 'safety_order', 'entry_fallback', 'grid_buy', 'grid_sell')
+ENTRY_KINDS = ('entry', 'pyramid_add', 'safety_order', 'entry_fallback', 'grid_buy', 'grid_sell', 'br01_add')
 RUNNER_WHY = ('take_profit_1', 'basket_tp_part', 'take_profit_ladder')   # partial take-profits that leave a runner
 # Registered exit / close reason codes (a close fill's `why`, a history record's exit_reason) of the lot paths in engine.py.
 # APPEND-ONLY: a shipped code is never renamed, reordered or reused (audit lines and history keep it for good); grid closes
@@ -1565,6 +1565,7 @@ _PREFIX = (
     ('data file not saved', 'risk_gateway', 'state_untrusted'),
     ('account not confirmed for this data folder', 'risk_gateway', 'account_unconfirmed'),    # AUD-05 r5                 # AUD-05 r2: safety file write failed
     ('entry not sent: its write-ahead record', 'execution', 'write_ahead_failed'),   # AUD-05 r2
+    ('BR-01', 'config', 'br01_staging'),                           # BR-01 (PAPER research): staged-entry refusals
 )
 # wrappers: (prefix, stage, code or None = the inner gate's code, inner is a gate text)
 _WRAP = (

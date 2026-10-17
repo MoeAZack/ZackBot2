@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import strategies as S
 import feasibility as F
+import staging as BR
 
 FEE, SLIP, FUND_PER_BAR = 0.0005, 0.0002, 0.00005
 FEE_MAKER = 0.0002    # maker fee (post-only limit entries)
@@ -187,8 +188,10 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             for s in syms:
                 ap = (book.d[s].atr / book.d[s].c)
                 volr[s] = ap.rolling(180, min_periods=60).rank(pct=True).fillna(0.5).values
+        br = BR.validate(m['br01'], sl['key'], m, sl) if m.get('br01') else None     # BR-01 (PAPER research): staged entry
+        rng = {s: BR.range_flags(book.d[s]) for s in syms} if br and BR.VARIANTS[br['variant']].get('range') else None
         SL.append(dict(cfg=sl, m=m, syms=syms, sigs=sigs, pos={}, pend={}, tpend={}, volr=volr, hist=[],
-                       tps=S.norm_tps(m.get('tps')), pg=sl.get('pump_guard') or pump_guard or None))
+                       tps=S.norm_tps(m.get('tps')), pg=sl.get('pump_guard') or pump_guard or None, br=br, rng=rng))
 
     # ---- shared context for the v3.1 rules (computed only when used)
     RR = {k: _rules_on(risk_rules, k) for k in ('coin_cap', 'open_risk_cap', 'correlated_cap', 'btc_breaker')}
@@ -208,6 +211,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     FEAS = dict(mode='legacy' if XR is None else 'rules', attempts=0, executed=0, rule_blocked=0, skipped={}, by_symbol={}, by_slot={},
                 add_skipped={}, skips=[], unknown_symbols=sorted(s for s in syms_all if XR is not None and s not in XR))
     add_seen = set()
+    BRLOG = dict(events=[], counts={})                    # BR-01: every staged add / refusal / cancel, attributed
     FEAS['zero_partials'] = {}                            # AUD-02 / C25: partial exits that floored to 0 (once per position+event)
     zero_seen = set()
 
@@ -253,14 +257,18 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             if q <= 0: return False
         px = px * (1 - p['side'] * SLIP)
         pnl = p['side'] * (px - p['avg']) * q - q * px * FEE
+        if 'fees' in p: p['fees'] += q * px * FEE           # BR-01 positions only: fees of every leg + exits
         eq += pnl
         p['realized'] += pnl
         p['qty'] -= q
         if step: p['qty'] = max(0.0, F.round_step(p['qty'], step))
         if p['qty'] <= 1e-12:
             sl['hist'].append(p['realized'] / p['risk'])
-            trades.append(dict(sleeve=sl['cfg']['key'], sym=s, side=p['side'], i_in=p['i'], i_out=i,
-                               pnl=p['realized'], R=p['realized'] / p['risk'], why=why))
+            tr = dict(sleeve=sl['cfg']['key'], sym=s, side=p['side'], i_in=p['i'], i_out=i,
+                      pnl=p['realized'], R=p['realized'] / p['risk'], why=why)
+            if p.get('br'):                                    # BR-01: variant, legs filled, staging status (control: absent)
+                tr.update(br=p['br']['v'], legs=len(p['br']['filled']), br_status=p['br']['status'], fees=p['fees'])
+            trades.append(tr)
             return True
         return False
 
@@ -323,16 +331,61 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 blocked[why] = blocked.get(why, 0) + 1; FEAS['rule_blocked'] += 1      # sized fine, refused by a risk rule
                 for grp, key in ((FEAS['by_symbol'], s), (FEAS['by_slot'], sid)): grp[key]['rule_blocked'] = grp[key].get('rule_blocked', 0) + 1
                 return None
+        brs = None
+        if sl['br'] is not None:                            # BR-01: first leg of the SAME risk budget (q_plan = control qty)
+            on = sl['rng'] is None or bool(sl['rng'][s][i - 1])   # range_ladder: confirmed range on the signal candle
+            q1 = qty * sl['br']['legs'][0] if on else qty
+            d1 = F.size_check(q1, q1, px, RULES[s])
+            if not d1['ok']: feas_skip(sl, s, side, i, d1, px, q1); return None
+            brs = BR.new_state(sl['br'], side, qty, d1['qty'], px, stop, atr, i + sl['br']['deadline'], on=on)
+            if not on: _br_ev(sl, s, dict(kind='off', leg=0, v=brs['v'], t=str(pd.Timestamp(T[i])),
+                                          reason='no confirmed range on the signal candle - single entry'))
+            qty = d1['qty']
         FEAS['executed'] += 1
         eq -= qty * px * fee
         p = dict(side=side, qty=qty, q0=qty, avg=px, e0=px, stop=stop, R=stop_dist, risk=risk_usd, i=i,
                  best=px, realized=-qty * px * fee, tp1=False, adds=0, dca=0, atr0=atr, qmax=qty, tps_done=set())
+        if brs is not None: p['br'], p['fees'] = brs, qty * px * fee
         if 'pyramid' in m: p['next_add'] = px + side * m['pyramid']['step_r'] * stop_dist
         if 'dca' in m:
             p['levels'] = lv[1:]; p['w'] = w[1:]
             p['tp'] = px + side * m['dca']['tp_atr'] * atr
         sl['pos'][s] = p
         return p
+
+    def _br_ev(sl, s, ev):
+        if not ev: return
+        ev = dict(ev, slot=sl['cfg'].get('id') or sl['cfg']['key'], sym=s)
+        k = ev['kind'] + (':' + ev['reason'] if ev['kind'] == 'refuse' else '')
+        BRLOG['counts'][k] = BRLOG['counts'].get(k, 0) + 1
+        if len(BRLOG['events']) < 20000: BRLOG['events'].append(ev)
+
+    def br_fill(sl, s, p, i, o, leg, q):
+        """BR-01: fill a leg decided at the previous close at this candle's open (+ slippage, taker fee), through the same
+        add gates as the other adds, then tighten the stop to the risk budget. A refused leg stays armed (logged once)."""
+        nonlocal eq
+        cfg, sd, st = sl['cfg'], p['side'], p['br']
+        px = o * (1 + sd * SLIP)
+        why = BR.admit(st, leg)
+        if why is None:
+            if halted or (RR['btc_breaker'] and i <= breaker_until): why = 'entries halted / BTC breaker'
+            elif notional(sl, i) + q * px > max_lev * eq * cfg['share']: why = 'slot leverage cap'
+            elif rule_block(s, sd, q, px, q * max(0.0, sd * (px - p['stop'])), i, add=True): why = 'portfolio risk rule'   # the engine's add_risk
+        if why is None:
+            d = F.size_check(q, q, px, ADD_RULES[s])        # BT02: the engine's _add_qty check
+            if d['ok'] is False: why = 'below the exchange minimum'
+            else: q = d['qty']
+        if why is None:
+            qn = p['qty'] + q; avg = (p['avg'] * p['qty'] + px * q) / qn
+            ns = BR.cap_stop(sd, qn, avg, p['stop'], st['budget'])
+            if sd * (px - ns) <= 0: why = 'add would need a stop at / through price (risk budget)'
+        if why: _br_ev(sl, s, BR.refusal(st, leg, why, pd.Timestamp(T[i]))); return
+        s0 = p['stop']
+        p['avg'], p['qty'], p['stop'] = avg, qn, ns
+        eq -= q * px * FEE; p['realized'] -= q * px * FEE; p['fees'] += q * px * FEE
+        p['qmax'] = max(p['qmax'], p['qty'])
+        p['br'] = BR.apply_fill(st, q, px, pd.Timestamp(T[i]))
+        _br_ev(sl, s, dict(p['br']['ev'][-1], stop_before=s0, stop_after=ns, risk_after=BR.risk(sd, qn, avg, ns), budget=st['budget']))
 
     def entry_filters(sl, s, side, i):
         """Signal-time filters shared with the engine's entry gate: regime, pump guard, BTC breaker."""
@@ -546,6 +599,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 # 1) gap at the open already through the stop: filled at the open, nothing else (no adds)
                 if (o <= p['stop']) if sd == 1 else (o >= p['stop']):
                     close(sl, s, p, o, 1, i, 'stop'); del sl['pos'][s]; continue
+                pa = p.pop('br_pend', None)                   # BR-01: a leg decided at the previous close fills at this open
+                if pa is not None: br_fill(sl, s, p, i, o, *pa)
                 # 2-5) every intrabar event (stop, DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r, breakeven and
                 # trailing ratchets) in the order of the declared price path - see path_points() and walk_path()
                 if walk_path(sl, s, p, i, o, h, l, c, atr): del sl['pos'][s]; continue
@@ -556,8 +611,19 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     winning = sd * (c - p['avg']) > 0
                     if winning and trend_ok: ex = False                       # winners in a healthy trend are never exited by the signal
                     elif winning and RUN.get('trend_exit') and not trend_ok: ex = True
-                if ex or (m.get('max_bars') and not RUN and i - p['i'] >= m['max_bars']):
+                dl = p.get('br') is not None and BR.deadline_hit(p['br'], i)      # BR-01: staged aggregate deadline
+                if ex or (m.get('max_bars') and not RUN and i - p['i'] >= m['max_bars']) or dl:
+                    if dl and not ex: _br_ev(sl, s, dict(kind='deadline', leg=len(p['br']['filled']), v=p['br']['v'], t=str(pd.Timestamp(T[i])),
+                                                         reason=f"{sl['br']['deadline']}-bar deadline - aggregate closed"))
                     close(sl, s, p, c, 1, i, 'signal' if ex else 'time'); del sl['pos'][s]
+                elif p.get('br') is not None and p['br']['status'] == 'active' and i + 1 < len(T):
+                    when = cfg.get('when', 'any')            # BR-01: one decision on this CLOSED candle, filled next open
+                    bar = dict(t=i, o=o, h=h, l=l, c=c, pc=a['c'][i - 1], range_ok=sl['rng'] is None or bool(sl['rng'][s][i]))
+                    p['br'], ev = BR.decide(p['br'], bar, sd, p['stop'], p['avg'], base_exit=bool(ex),
+                                            regime_ok=RG is None or when in (None, 'any') or bool(RG[when][i]),
+                                            tp_done=bool(p['tp1'] or p['tps_done']))
+                    if ev and ev['kind'] == 'add': p['br_pend'] = (ev['leg'], ev['qty'])
+                    elif ev: _br_ev(sl, s, dict(ev, t=str(pd.Timestamp(T[i]))))
         # ---- liquidation: cross-margin equity at every open position's adverse extreme vs maintenance margin
         if maint_margin:
             allp = [(sl, s, p) for sl in SL for s, p in sl['pos'].items()]
@@ -613,6 +679,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     n_feas = FEAS['executed'] + sum(FEAS['skipped'].values())
     FEAS['executable_pct'] = round(FEAS['executed'] / n_feas * 100, 1) if n_feas else None
     cv.attrs['feasibility'] = FEAS
+    if any(x['br'] for x in SL): cv.attrs['br01'] = BRLOG
     return pd.DataFrame(trades), cv
 
 
