@@ -2796,15 +2796,18 @@ class Engine:
         return None
 
     def _cohort_rev_retry(self):
-        """Write again every revision the disk refused. True when none is left pending."""
+        """Write again every revision the disk refused. True when every one that still exists is durable (a row lost for
+        good stays pending - its book INCOMPLETE - but never stalls the funding cursor)."""
+        ok = True
         for rid in list(self.state.get('cohort_rev_pending') or ()):
             row = self._row_by_id(rid)
-            if row is not None: self._cohort_rev(row)
-        return not self.state.get('cohort_rev_pending')
+            if row is not None: ok = self._cohort_rev(row) and ok
+        return ok
 
     def _row_changed(self, row):
         """A closed row was restated (late fee / funding): bump its cost_rev and append the revision to the evidence store."""
-        row['cost_rev'] = int(row.get('cost_rev') or 0) + 1
+        ev = next((r for r in reversed(getattr(self, 'cohort_rows', None) or ()) if r.get('id') == row.get('id')), None)
+        row['cost_rev'] = max(int(row.get('cost_rev') or 0), int((ev or {}).get('cost_rev') or 0)) + 1   # past every copy
         return self._cohort_rev(row)
 
     def true_books(self, marks=None, persist=True):
@@ -2824,7 +2827,8 @@ class Engine:
             dirty, now, pend, new = False, time.time(), st['halt_pend'], {}
             if on:
                 for k, b in books.items():
-                    if any(x['reason'] == 'peak_unreadable' for x in b['incomplete']): continue   # never overwrite evidence
+                    if any(x['reason'] in ('peak_unreadable', 'mark_missing') for x in b['incomplete']): continue   # evidence
+                    # stays; a lot without a valid mark leaves its loss out of NAV - never a peak to keep
                     old = TB.D(st['peak'].get(k))
                     if old is None or b['peak'] > old: st['peak'][k] = str(b['peak']); dirty = True   # exact, never rounded down
             for k, b in books.items():
@@ -2983,6 +2987,7 @@ class Engine:
             if rows_changed or again: ok = self._save_aux('history', self.history) and ok
             if not ok:
                 self.state['funding_err'] = 'persist_failed'
+                self.state['funding_polled'] = now - self.FUNDING_POLL_S + self.FUNDING_RETRY_S
                 self.save_state()
                 return 'persist_failed'
             seen.extend(keys); del seen[:-self.FUNDING_SEEN_MAX]
@@ -5521,12 +5526,19 @@ class Engine:
                     if isinstance(r, dict) and r.get('cohort_id') == cid: rows.append(r)
         except FileNotFoundError: pass
         self.cohort_rows = TB.merge_rows(rows)                  # every copy of an id folded by the revision rule
-        have = {r.get('id'): r for r in self.cohort_rows}
+        at = {r.get('id'): i for i, r in enumerate(self.cohort_rows)}
         for r in self.history:
             if r.get('cohort_id') != cid: continue
-            if r.get('id') not in have: self._cohort_row(r); have[r.get('id')] = r
-            elif TB.merge_rows([have[r.get('id')], r])[0] != have[r.get('id')]:
-                self._cohort_rev(r, cid)                        # history holds a newer restatement the store missed
+            i = at.get(r.get('id'))
+            if i is None: self._cohort_row(r); at[r.get('id')] = len(self.cohort_rows) - 1; continue
+            m = self.cohort_rows[i]
+            if TB.merge_rows([m, r])[0].get('_conflict'): self._cohort_rev(r, cid); continue   # the dispute stays on record
+            if (TB.D(m.get('cost_rev')) or 0) > (TB.D(r.get('cost_rev')) or 0):
+                for k in TB.REVISABLE:                          # the history file missed a saved restatement: catch it up,
+                    if k in m: r[k] = copy.deepcopy(m[k])       # so a later update never lands on (or wins with) a stale copy
+                    else: r.pop(k, None)
+            elif TB.merge_rows([m, r])[0] != m: self._cohort_rev(r, cid)   # history holds a newer restatement
+            self.cohort_rows[i] = r                             # one live object per trade from here on
 
     def _cohort_row(self, rec):
         """Evidence copy of one closed trade of the open cohort (append-only; a failed write is counted, never raised)."""
@@ -5545,7 +5557,9 @@ class Engine:
         in-memory copy. Only the open cohort's rows (or cid's, while it is being loaded). A failed write keeps the id in
         cohort_rev_pending: that book is INCOMPLETE and the write is retried. True when durable (or not a cohort row)."""
         cid = cid or (self.state.get('cohort') or {}).get('id')
-        if not cid or row.get('cohort_id') != cid: return True
+        if not cid or row.get('cohort_id') != cid:
+            if row.get('id') in (self.state.get('cohort_rev_pending') or ()): self.state['cohort_rev_pending'].remove(row.get('id'))
+            return True
         rows = vars(self).setdefault('cohort_rows', [])
         i = next((j for j in range(len(rows) - 1, -1, -1) if rows[j].get('id') == row.get('id')), None)
         if i is None: rows.append(row)

@@ -722,3 +722,81 @@ def test_a_conflicting_history_copy_flags_the_book_across_restart():
     e.history[-1] = dict(r, pnl_gross=50.0); e._save_aux('history', e.history)
     assert 'row_conflict' in reasons(e.true_books()['B3_TREND'])
     assert 'row_conflict' in reasons(restart(e, tmp).true_books()['B3_TREND'])
+
+
+# ------------------------------------------------------------------ review of r4 (adversarial agent) + mutation survivors
+def test_a_stale_history_file_never_swallows_a_later_update(monkeypatch):
+    e, tmp = tb_engine()
+    ref = f'c{int(time.time() * 1000)}-1-3'
+    close_row(e, funded_row(e, fees=0.9, fees_actual=None, fees_actual_partial=['fill_records_pending'], cost_refs=[ref],
+                            fills_booked=1))
+    e._cost_sink(dict(cost_ref=ref, symbol='BTCUSDT', commission_raw=[dict(asset='USDT', maker=False, amount=0.7, n=1)]))
+    monkeypatch.setattr(e, '_save_aux', lambda *a: False)           # revision written, history file never saved: crash
+    assert e.apply_costs() == 1
+    e2 = restart(e, tmp)
+    assert e2._row_by_id('f1')['fees_actual'] == 0.7                 # the live row caught up with the evidence copy
+    assert len(e2.cohort_rows) == 1 and e2.cohort_rows[0] is e2._row_by_id('f1')
+    assert pay(e2) == '1 new'                                        # a later update lands on the caught-up row
+    e2.history.clear(); e2._save_aux('history', e2.history)
+    b = restart(e2, tmp).true_books()['B3_TREND']
+    assert b['complete'] and b['nav'] == Decimal('2000') + 10 - Decimal('0.7') - Decimal('0.5')
+
+
+def test_a_revision_is_numbered_past_every_copy():
+    e, _ = tb_engine()
+    r = funded_row(e)
+    close_row(e, r)
+    stale = dict(r, cost_rev=0); e.history[-1] = stale                # a copy behind the evidence store
+    e.cohort_rows[-1] = dict(r, cost_rev=4)
+    e._row_changed(stale)
+    assert stale['cost_rev'] == 5
+
+
+def test_restored_evidence_holds_one_row_per_trade_for_the_ledger():
+    e, tmp = tb_engine()
+    close_row(e, funded_row(e))
+    assert pay(e) == '1 new'
+    e.history.clear(); e._save_aux('history', e.history)
+    e2 = restart(e, tmp)
+    assert [r['id'] for r in e2.cohort_rows] == ['f1'] and e2.cohort_rows[0]['funding_actual'] == -0.5
+
+
+def test_a_persist_failure_retries_soon_and_lands_the_pending_revision_first():
+    e, tmp = tb_engine()
+    close_row(e, funded_row(e))
+    path = e.F['cohort_rows']; e.F['cohort_rows'] = tmp
+    assert pay(e) == 'persist_failed'
+    assert e.funding_tick() == 'not_due' and float(e.state['funding_polled']) < time.time() - e.FUNDING_POLL_S + e.FUNDING_RETRY_S + 5
+    e.F['cohort_rows'] = path
+    assert pay(e) == '1 new' and not e.state['cohort_rev_pending'] and e.state['funding_seen']   # no true_books() between
+
+
+def test_a_pending_id_of_another_cohort_never_stalls_funding():
+    e, _ = tb_engine()
+    e.history.append(dict(funded_row(e), id='old', cohort_id='CH-older'))
+    e.state['cohort_rev_pending'] = ['old', 'gone']                  # one from a closed cohort, one lost for good
+    e.state['funding_err'] = 'persist_failed'
+    e.trade.income = lambda *a, **k: []
+    assert e.funding_tick(force=True) == '0 new'
+    assert e.state['cohort_rev_pending'] == ['gone'] and 'funding_err' not in e.state
+
+
+def test_an_unvalued_lot_never_raises_the_persisted_peak():
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='SOLUSDT')   # no mark
+    close_row(e, row(e, 'B3_TREND', 300.0, id='w'))
+    e.state.pop('true_books', None)
+    assert e.true_books()['B3_TREND']['peak'] == 2300                # shown, flagged INCOMPLETE ...
+    assert 'B3_TREND' not in e.state['true_books']['peak']           # ... never kept
+    assert e.state['true_books']['peak']['B2_RANGE'] == '2000'
+
+
+def test_the_halt_confirmation_start_alone_is_saved(monkeypatch):
+    e, tmp = tb_engine()
+    close_row(e, row(e, 'B3_TREND', -1990.0, id='big'))
+    e.state['lots']['x'] = _halt_lot(e); e.save_state()
+    e.true_books({'ETHUSDT': 50.0})                                  # peaks saved: nothing new below
+    saved = []
+    monkeypatch.setattr(e, 'save_state', lambda: saved.append(1) or True)
+    e.true_books({'ETHUSDT': 30.0})
+    assert saved and 'B3_TREND' in e.state['true_books']['halt_pend']
