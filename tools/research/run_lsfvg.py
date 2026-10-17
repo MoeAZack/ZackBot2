@@ -25,7 +25,7 @@ imported, not copied:
 
 Added per side and combined: wins, avg R, max DD R (cumulative net R in exit order), per-quarter net R by ENTRY time
 (own sign, every calendar quarter overlapping the window, empty quarters 0), mean / median hold bars, MFE / MAE /
-giveback (per trade and mean), skip counts (cost_guard, gap_stop, overlap, conflict, no_next_bar), symbol concentration.
+giveback gross / net (per trade and mean), skip counts (cost_guard, gap_stop, overlap, conflict, no_next_bar), symbol concentration.
 
 Decision (Codex reading, per tier; the cross-tier check is a later analyzer): CANDIDATE only if combined PF > 1.0 AND
 combined positive quarters >= 2/3 of the window's quarters AND gross R per trade >= 3 x cost R per trade; else PARK.
@@ -122,7 +122,8 @@ def window_signals(lo_i: int, excluded: list):
 def excursions(df, t) -> dict:
     """MFE / MAE / giveback in R from real prices on the path entry -> exit: the full ranges of bars [entry_i, exit_i),
     plus the entry fill price, the exit bar's open and the exit price (the exit bar's range after the exit is never
-    counted; for an intrabar stop / target only the exit level of that bar counts). giveback = MFE - gross R."""
+    counted; for an intrabar stop / target only the exit level of that bar counts). giveback_gross_r = MFE - gross R,
+    giveback_net_r = MFE - net R (Codex 6228979583: no unqualified giveback field)."""
     e, x, E, X, R = t['entry_i'], t['exit_i'], t['entry'], t['exit'], t['R_unit']
     h = np.asarray(df['h'], dtype=float)
     lw = np.asarray(df['l'], dtype=float)
@@ -131,7 +132,7 @@ def excursions(df, t) -> dict:
     lo = min([E, X, float(o[x])] + list(lw[e:x]))
     fav, adv = (E - lo, hi - E) if t['side'] == 'short' else (hi - E, E - lo)
     mfe, mae = fav / R, adv / R
-    return dict(mfe_r=mfe, mae_r=mae, giveback_r=mfe - t['R_gross'])
+    return dict(mfe_r=mfe, mae_r=mae, giveback_gross_r=mfe - t['R_gross'], giveback_net_r=mfe - t['R_net'])
 
 
 def quarter(ms: int) -> str:
@@ -175,7 +176,8 @@ def group_stats(rows, skips, opens, quarters, summary) -> dict:
         hold_bars_mean=_r(np.mean(hold)) if n else None, hold_bars_median=_r(np.median(hold)) if n else None,
         mfe_r_mean=_r(np.mean([x['mfe_r'] for x in rows])) if n else None,
         mae_r_mean=_r(np.mean([x['mae_r'] for x in rows])) if n else None,
-        giveback_r_mean=_r(np.mean([x['giveback_r'] for x in rows])) if n else None,
+        giveback_gross_r_mean=_r(np.mean([x['giveback_gross_r'] for x in rows])) if n else None,
+        giveback_net_r_mean=_r(np.mean([x['giveback_net_r'] for x in rows])) if n else None,
         exits={k: sum(1 for x in rows if x['label'] == k) for k in LABELS},
         lt_minus1=summary['lt_minus1'], lt_minus1_by_label=dict(summary['lt_minus1_by_label']),
         skips=sk, conflict_events=len({(s['symbol'], s['n']) for s in skips if s['skip'] == 'conflict'}),
@@ -305,7 +307,7 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
             'quarter': 'calendar quarter (UTC) of t_in', 'net_R': 'gross R - slip R - fee R - funding R',
             'mfe_r': 'best favourable excursion on the path entry -> exit in R (bars [entry, exit) full range + entry, '
                      'exit-bar open and exit price; nothing after the exit)',
-            'mae_r': 'worst adverse excursion on the same path, in R', 'giveback_r': 'mfe_r - gross R',
+            'mae_r': 'worst adverse excursion on the same path, in R', 'giveback_gross_r': 'mfe_r - gross R', 'giveback_net_r': 'mfe_r - net R',
             'max_dd_R': 'max drawdown of cumulative net R in exit order',
             'skips': 'skip records; a conflict writes one record per side (conflict_events = distinct symbol / bar)',
             'concentration': 'per symbol: share of the group trades and of the group net R (None when net R is 0)'},

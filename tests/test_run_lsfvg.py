@@ -210,7 +210,7 @@ def test_packet_fields_and_summarize_consistency(env):
             if st[f] is not None:
                 assert st[f] == pytest.approx(ref[k][f], abs=1e-8)
         need = {'wins', 'avg_R', 'max_dd_R', 'quarters', 'positive_quarters', 'hold_bars_mean', 'hold_bars_median',
-                'mfe_r_mean', 'mae_r_mean', 'giveback_r_mean', 'skips', 'conflict_events', 'open_end', 'concentration',
+                'mfe_r_mean', 'mae_r_mean', 'giveback_gross_r_mean', 'giveback_net_r_mean', 'skips', 'conflict_events', 'open_end', 'concentration',
                 'cost_R_per_trade', 'gross_R_per_trade'}
         assert need <= set(st)
         assert set(st['skips']) == set(R.SKIPS)
@@ -225,8 +225,12 @@ def test_packet_fields_and_summarize_consistency(env):
     assert p['open_at_end']['count'] == c['open_end'] == 1
     assert p['open_at_end']['trades'][0]['symbol'] == 'ETHUSDT'
     for row in p['trades']:
-        assert {'symbol', 'side', 't_in', 't_out', 'label', 'R_gross', 'R_net', 'mfe_r', 'mae_r', 'giveback_r'} <= set(row)
-        assert row['giveback_r'] == pytest.approx(row['mfe_r'] - row['R_gross'], abs=1e-8)
+        assert {'symbol', 'side', 't_in', 't_out', 'label', 'R_gross', 'R_net', 'mfe_r', 'mae_r', 'giveback_gross_r',
+                'giveback_net_r'} <= set(row)
+        assert 'giveback_r' not in row
+        assert row['giveback_gross_r'] == pytest.approx(row['mfe_r'] - row['R_gross'], abs=1e-8)
+        assert row['giveback_net_r'] == pytest.approx(row['mfe_r'] - row['R_net'], abs=1e-8)
+        assert row['giveback_net_r'] > row['giveback_gross_r']                 # costs are never credited
         assert row['mfe_r'] >= 0 and row['mae_r'] >= 0
     assert p['decision']['verdict'] in ('CANDIDATE', 'PARK')
 
@@ -257,7 +261,8 @@ def test_excursions_time_exit_ignores_exit_bar_range():
     assert (t['label'], t['exit_i'], t['entry'], t['R_unit']) == ('time', 35, 92.0, 21.0)
     x = R.excursions(d, t)
     assert x['mfe_r'] == pytest.approx(7 / 21) and x['mae_r'] == pytest.approx(3 / 21)   # bar 35 range not counted
-    assert x['giveback_r'] == pytest.approx(7 / 21 - t['R_gross'])
+    assert x['giveback_gross_r'] == pytest.approx(7 / 21 - t['R_gross'])
+    assert x['giveback_net_r'] == pytest.approx(7 / 21 - t['R_net']) and 'giveback_r' not in x
 
 
 def test_excursions_intrabar_stop_caps_at_stop():
@@ -266,7 +271,8 @@ def test_excursions_intrabar_stop_caps_at_stop():
     assert (t['label'], t['exit_i'], t['exit']) == ('stop', 27, 113.0)                 # stop beats target same bar
     x = R.excursions(d, t)
     assert x['mae_r'] == pytest.approx(1.0) and x['mfe_r'] == pytest.approx(4 / 21)
-    assert x['giveback_r'] == pytest.approx(4 / 21 + 1.0)
+    assert x['giveback_gross_r'] == pytest.approx(4 / 21 + 1.0)
+    assert x['giveback_net_r'] == pytest.approx(4 / 21 - t['R_net']) and x['giveback_net_r'] > 4 / 21 + 1.0
 
 
 def test_excursions_long_mirror():
@@ -331,3 +337,24 @@ def test_packet_json_roundtrip(env):
     with open(env['tmp'] / 'p.json', encoding='utf-8') as f:
         p = json.load(f)
     assert p['candidate'] == LS.CANDIDATE and p['non_promotable'] is True
+
+
+# ------------------------------------------------------------------ LS.detect restoration (Codex 6228979583 B)
+def test_detect_restored_after_success():
+    orig = LS.detect
+    ex = []
+    with R.window_signals(23, ex):
+        assert LS.detect is not orig
+        LS.run_symbol(LT.base())
+    assert LS.detect is orig and [g['n'] for g in ex] == [22]
+
+
+def test_detect_restored_after_injected_failure(monkeypatch):
+    """The wrapper is removed even when the detector raises inside run_symbol."""
+    def boom(df, side, atr=None):
+        raise ZeroDivisionError('injected detector failure')
+    monkeypatch.setattr(LS, 'detect', boom)
+    with pytest.raises(ZeroDivisionError, match='injected'):
+        with R.window_signals(5, []):
+            LS.run_symbol(LT.base())
+    assert LS.detect is boom
