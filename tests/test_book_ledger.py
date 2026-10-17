@@ -509,3 +509,66 @@ def test_verify_rejects_a_start_snapshot_that_is_not_the_cohorts():
     root = tempfile.mkdtemp(); c = coh()
     path, _ = RP.write_pack(root, c, {'settings_at_start.json': {'MAX_LEVERAGE': 9}, 'settings_at_end.json': SETS})
     assert any('settings_at_start does not match' in p for p in RP.verify_pack(path)['problems'])
+
+
+# ------------------------------------------------------------------ review r4 regressions
+def test_restart_completing_a_boundary_packs_the_closing_cohorts_rows(monkeypatch):
+    e, tmp = books_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    e.close_lot(next(iter(e.state['lots'])), 'manual')
+    tid, dest = e.history[-1]['id'], tempfile.mkdtemp()
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(OSError('crash before the pack')))
+    with pytest.raises(OSError): e.cohort_boundary(dest)
+    monkeypatch.undo()
+    e2 = restart(e, tmp)                                                   # resumes with an empty in-memory store
+    old = e2.state['cohort_archive'][0]
+    packed = json.load(open(os.path.join(old['pack'], 'history.json')))
+    assert [r['id'] for r in packed] == [tid] and RP.replay_check(old['pack']) == {}
+
+
+def test_pending_boundary_is_never_completed_unless_flat(monkeypatch):
+    e, _ = books_engine()
+    dest = tempfile.mkdtemp()
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(RP.PackRefused('scan')))
+    with pytest.raises(RP.PackRefused): e.cohort_boundary(dest)
+    monkeypatch.undo()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())        # trading went on while it was pending
+    with pytest.raises(RuntimeError, match='pending but not flat'): e.cohort_boundary(dest)
+
+
+def test_pending_boundary_can_be_aborted_only_before_its_pack_exists(monkeypatch):
+    e, _ = books_engine()
+    cid, dest = e.state['cohort']['id'], tempfile.mkdtemp()
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(OSError('gone')))
+    with pytest.raises(OSError): e.cohort_boundary(dest)
+    monkeypatch.undo()
+    assert e.book_ledger_status() is None and e.cohort_boundary_abort() is True
+    assert e.state['cohort']['id'] == cid and e.book_ledger_status() is not None and e.cohort_boundary_abort() is False
+    real_w, calls = e._save_wal, []
+    monkeypatch.setattr(e, '_save_wal', lambda: calls.append(1) or (real_w() if len(calls) == 1 else (_ for _ in ()).throw(OSError('x'))))
+    with pytest.raises(OSError): e.cohort_boundary(dest)                  # pack published, completion save failed
+    monkeypatch.undo()
+    with pytest.raises(RuntimeError, match='already published'): e.cohort_boundary_abort()
+
+
+def test_end_settings_are_frozen_when_the_boundary_is_requested(monkeypatch):
+    e, tmp = books_engine()
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(OSError('crash')))
+    dest = tempfile.mkdtemp()
+    with pytest.raises(OSError): e.cohort_boundary(dest)
+    monkeypatch.undo()
+    e.S['MAX_LEVERAGE'] = 2                                                # changed between the crash and the retry
+    out = e.cohort_boundary(dest)
+    v = RP.verify_pack(out['pack'])
+    assert v['ok'] and v['clean']
+
+
+def test_abort_reloads_the_open_cohorts_evidence_rows(monkeypatch):
+    e, _ = books_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    e.close_lot(next(iter(e.state['lots'])), 'manual')
+    monkeypatch.setattr(RP, 'write_pack', lambda *a, **k: (_ for _ in ()).throw(OSError('gone')))
+    with pytest.raises(OSError): e.cohort_boundary(tempfile.mkdtemp())
+    monkeypatch.undo()
+    e.cohort_rows = []                                                     # as after a restart that could not complete it
+    assert e.cohort_boundary_abort() and e.book_ledger_status()['books']['B3_TREND']['closed'] == 1

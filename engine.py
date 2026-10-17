@@ -5132,10 +5132,10 @@ class Engine:
         self.state['book_ledger'] = None
         self.cohort_rows = []
 
-    def _load_cohort_rows(self):
-        """This cohort's closed rows from cohort_rows.jsonl (deduped by trade id), healed from stamped history rows a failed
-        append missed."""
-        cid, rows, seen = self.state['cohort']['id'], [], set()
+    def _load_cohort_rows(self, cid=None):
+        """A cohort's closed rows from cohort_rows.jsonl (deduped by trade id), healed from stamped history rows a failed
+        append missed. Default: the open cohort."""
+        cid, rows, seen = cid or self.state['cohort']['id'], [], set()
         try:
             with open(self.F['cohort_rows'], encoding='utf-8') as f:
                 for ln in f:
@@ -5277,12 +5277,27 @@ class Engine:
                 raise RuntimeError(f"cohort boundary refused: {', '.join(drift)} changed since the cohort started - "
                                    'pass accept_drift to seal it into the pack as drifted evidence')
             self.state['cohort_closing'] = dict(old=dict(self.state['cohort'], ended_utc=now_utc().isoformat(timespec='seconds')),
-                                                dest=dest_root, note=note, drift=drift)
+                                                dest=dest_root, note=note, drift=drift, settings_end=self._settings_snapshot())
             self._save_wal()                                       # raises when not durable: nothing is written then
             return self._complete_boundary(self.state['cohort_closing'])
 
+    def cohort_boundary_abort(self):
+        """Drop a pending (interrupted) boundary while no pack for it exists; the open cohort simply continues. A published
+        pack can only be completed, never orphaned."""
+        with self.lock:
+            pend = self.state.get('cohort_closing')
+            if not pend: return False
+            if os.path.lexists(os.path.join(pend['dest'], pend['old']['id'])):
+                raise RuntimeError('its pack is already published - complete the boundary instead of aborting it')
+            self.state.pop('cohort_closing'); self._save_wal()
+            self._load_cohort_rows(); self.cohort_drift = self._cohort_drift_now(self.state['cohort'])
+            log.warning(f"RUN-PACK-01 pending boundary of {pend['old']['id']} aborted; the cohort continues")
+            return True
+
     def _complete_boundary(self, pend):
         coh = pend['old']
+        busy = [k for k in self.BOUNDARY_BUSY if self.state.get(k)]
+        if busy: raise RuntimeError(f"cohort boundary pending but not flat ({', '.join(busy)}) - flatten, or abort it")
         final = os.path.join(pend['dest'], coh['id'])
         if os.path.lexists(final):                                 # written before an interruption: it must verify
             v = RP.verify_pack(final)
@@ -5312,12 +5327,13 @@ class Engine:
 
     def _write_cohort_pack(self, pend):
         coh, now = pend['old'], pend['old']['ended_utc']
+        self._load_cohort_rows(coh['id'])               # from the store, never from memory (a restart resumes with none)
         rows = self._ledger_rows(coh)
         led = BL.compute(coh, rows, (), {}, coh['book_cap'], prev=self.state.get('book_ledger'), t=now)
         led['drift'] = list(pend.get('drift') or [])
         docs = {'cohort.json': coh, 'history.json': rows, 'book_ledger_final.json': led, 'note.json': dict(note=pend.get('note') or ''),
                 'book_summary.json': PB.summary(0, coh['book_cap'], (), [r for r in rows if r.get('book')]),
-                'settings_at_end.json': self._settings_snapshot()}
+                'settings_at_end.json': pend.get('settings_end') if isinstance(pend.get('settings_end'), dict) else self._settings_snapshot()}
         if isinstance(self.state.get('cohort_settings'), dict): docs['settings_at_start.json'] = self.state['cohort_settings']
         undrained = []                       # the last close's telemetry must be on disk first: the enricher hands its
         for name, attr in (('enricher', '_enr'), ('fills', '_fillw'), ('audit', '_auditw')):   # jobs to the fills writer,
