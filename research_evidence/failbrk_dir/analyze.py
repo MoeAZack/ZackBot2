@@ -116,6 +116,7 @@ for view in VIEWS:
 out['decision']['rule'] = ('"B improves" only if net R B > A on BOTH tiers AND PF_B >= PF_A on both tiers AND B - A '
                            'quarterly net R is > 0 in >= 2/3 of quarters on both tiers; else "no change". Evaluated per '
                            'side; the fixr view is primary (acct compounds and busts).')
-json.dump(out, open(OUT, 'w'), indent=1, default=str)
+with open(OUT, 'w', newline='\n') as fh:      # LF only (git diff --check)
+    json.dump(out, fh, indent=1, default=str)
 for k, v in out['decision'].items():
     print(k, v if isinstance(v, str) else v['verdict'])

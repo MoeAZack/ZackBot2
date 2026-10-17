@@ -1,0 +1,1061 @@
+{
+ "spec": "https://github.com/MoeAZack/ZackBot2/issues/13#issuecomment-6228353544",
+ "key": "failed_breakout_scalp",
+ "mgmt": "defaults",
+ "window": "2024-10-14T00:00:00Z/2026-09-28T00:00:00Z (development window only)",
+ "arms": {
+  "A": "none",
+  "B": "counter: refuse LONG under btc_below_ema200, SHORT under btc_above_ema200"
+ },
+ "views": {
+  "acct": "app account defaults (compounding, can bust)",
+  "fixr": "--start 1e9 --risk 1e-6 (fixed risk)"
+ },
+ "runs": {
+  "acct/CORE-10_long_none": {
+   "status": "ok",
+   "raw_entry_signals": 11639,
+   "n": 1839,
+   "wins": 671,
+   "net_r": -373.06892100000005,
+   "avg_r": -0.202865,
+   "pf": 0.692816,
+   "max_dd_r": 381.248429,
+   "giveback_r_mean": 0.834322,
+   "net_cash": -490.02808,
+   "bust": true,
+   "bust_time": "2025-01-25T00:00:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "54685582ad34",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.6534003272387162,
+   "decomp": {
+    "gross_before_slip_r": -8.644820613568783,
+    "slip_r": 103.01953564948332,
+    "fee_r": 257.54883912370826,
+    "funding_r": 3.8556797710675443,
+    "net_r": -373.06892100000005,
+    "gap": 9.938937812759008e-06
+   },
+   "quarters": {
+    "2024Q4": -123.3798,
+    "2025Q1": -249.6891
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1259,
+     -249.653
+    ],
+    "btc_below_ema200": [
+     580,
+     -123.416
+    ]
+   }
+  },
+  "acct/CORE-10_long_counter": {
+   "status": "ok",
+   "raw_entry_signals": 11639,
+   "n": 1667,
+   "wins": 607,
+   "net_r": -374.19747499999994,
+   "avg_r": -0.224474,
+   "pf": 0.675152,
+   "max_dd_r": 382.376983,
+   "giveback_r_mean": 0.841546,
+   "net_cash": -489.976748,
+   "bust": true,
+   "bust_time": "2025-01-29T13:00:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "146b8074dbd1",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 5734,
+   "regime_refuse": "counter",
+   "pf_r": 0.6245368948164287,
+   "decomp": {
+    "gross_before_slip_r": -23.460984803911984,
+    "slip_r": 99.14283471537922,
+    "fee_r": 247.857086788448,
+    "funding_r": 3.7365080079787374,
+    "net_r": -374.19747499999994,
+    "gap": 9.59077758144744e-06
+   },
+   "quarters": {
+    "2024Q4": -131.1706,
+    "2025Q1": -144.2596,
+    "2025Q2": -98.7672
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1667,
+     -374.197
+    ]
+   }
+  },
+  "fixr/CORE-10_long_none": {
+   "status": "ok",
+   "raw_entry_signals": 11639,
+   "n": 10489,
+   "wins": 3764,
+   "net_r": -2649.238996,
+   "avg_r": -0.252573,
+   "pf": 0.589221,
+   "max_dd_r": 2659.231267,
+   "giveback_r_mean": 0.872778,
+   "net_cash": -2645744.10114,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "833b0cd08ba1",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.5892062027833259,
+   "decomp": {
+    "gross_before_slip_r": -82.17439307992896,
+    "slip_r": 725.3706007803487,
+    "fee_r": 1813.4265019508716,
+    "funding_r": 28.267500355053766,
+    "net_r": -2649.238996,
+    "gap": 1.0026535157692251e-09
+   },
+   "quarters": {
+    "2024Q4": -160.6306,
+    "2025Q1": -388.181,
+    "2025Q2": -377.7263,
+    "2025Q3": -424.8184,
+    "2025Q4": -353.5145,
+    "2026Q1": -381.9867,
+    "2026Q2": -294.9133,
+    "2026Q3": -267.4681
+   },
+   "regime": {
+    "btc_above_ema200": [
+     5335,
+     -1412.822
+    ],
+    "btc_below_ema200": [
+     5154,
+     -1236.417
+    ]
+   }
+  },
+  "fixr/CORE-10_long_counter": {
+   "status": "ok",
+   "raw_entry_signals": 11639,
+   "n": 5335,
+   "wins": 1911,
+   "net_r": -1412.8219239999999,
+   "avg_r": -0.264821,
+   "pf": 0.573558,
+   "max_dd_r": 1422.81421,
+   "giveback_r_mean": 0.880458,
+   "net_cash": -1411829.982905,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "29473aa957fb",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 5734,
+   "regime_refuse": "counter",
+   "pf_r": 0.5735382813280242,
+   "decomp": {
+    "gross_before_slip_r": -53.3576594015867,
+    "slip_r": 384.1756886364707,
+    "fee_r": 960.4392215911768,
+    "funding_r": 14.849354376734691,
+    "net_r": -1412.8219239999999,
+    "gap": 1.0014145068737434e-09
+   },
+   "quarters": {
+    "2024Q4": -161.0408,
+    "2025Q1": -143.8899,
+    "2025Q2": -307.0162,
+    "2025Q3": -272.0949,
+    "2025Q4": -59.572,
+    "2026Q1": -123.5593,
+    "2026Q2": -129.3422,
+    "2026Q3": -216.3065
+   },
+   "regime": {
+    "btc_above_ema200": [
+     5335,
+     -1412.822
+    ]
+   }
+  },
+  "acct/CORE-10_short_none": {
+   "status": "ok",
+   "raw_entry_signals": 11595,
+   "n": 1780,
+   "wins": 642,
+   "net_r": -375.04592699999995,
+   "avg_r": -0.2107,
+   "pf": 0.663497,
+   "max_dd_r": 376.392398,
+   "giveback_r_mean": 0.865512,
+   "net_cash": -490.012169,
+   "bust": true,
+   "bust_time": "2024-12-28T22:45:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "cd92fdb8b682",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.6478457927951324,
+   "decomp": {
+    "gross_before_slip_r": -26.130128490763582,
+    "slip_r": 98.64445421258628,
+    "fee_r": 246.6111355314657,
+    "funding_r": 3.6602594230729224,
+    "net_r": -375.045927,
+    "gap": 9.710340729607303e-06
+   },
+   "quarters": {
+    "2024Q4": -221.8741,
+    "2025Q1": -153.1718
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1414,
+     -264.443
+    ],
+    "btc_below_ema200": [
+     366,
+     -110.603
+    ]
+   }
+  },
+  "acct/CORE-10_short_counter": {
+   "status": "ok",
+   "raw_entry_signals": 11595,
+   "n": 1648,
+   "wins": 594,
+   "net_r": -373.87484599999993,
+   "avg_r": -0.226866,
+   "pf": 0.583074,
+   "max_dd_r": 373.874837,
+   "giveback_r_mean": 0.880471,
+   "net_cash": -489.933184,
+   "bust": true,
+   "bust_time": "2025-04-01T05:00:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "c13152d87959",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 6386,
+   "regime_refuse": "counter",
+   "pf_r": 0.6282534032663004,
+   "decomp": {
+    "gross_before_slip_r": 10.588782842488357,
+    "slip_r": 108.69547563415517,
+    "fee_r": 271.73868908538793,
+    "funding_r": 4.029616130427433,
+    "net_r": -373.87484599999993,
+    "gap": 9.904951456307654e-06
+   },
+   "quarters": {
+    "2024Q4": -21.6402,
+    "2025Q1": -197.9184,
+    "2025Q2": -51.4273,
+    "2025Q3": -91.9945,
+    "2025Q4": -10.8945
+   },
+   "regime": {
+    "btc_below_ema200": [
+     1648,
+     -373.875
+    ]
+   }
+  },
+  "fixr/CORE-10_short_none": {
+   "status": "ok",
+   "raw_entry_signals": 11595,
+   "n": 10771,
+   "wins": 3897,
+   "net_r": -2667.697062,
+   "avg_r": -0.247674,
+   "pf": 0.600028,
+   "max_dd_r": 2674.414714,
+   "giveback_r_mean": 0.886276,
+   "net_cash": -2664152.937407,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "d3df3f1b0833",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.600017807945892,
+   "decomp": {
+    "gross_before_slip_r": 39.72765440714173,
+    "slip_r": 765.2925017493932,
+    "fee_r": 1913.231254373483,
+    "funding_r": 28.900960196071104,
+    "net_r": -2667.697062,
+    "gap": 1.0026726116052487e-09
+   },
+   "quarters": {
+    "2024Q4": -245.0238,
+    "2025Q1": -334.0791,
+    "2025Q2": -369.9023,
+    "2025Q3": -460.1088,
+    "2025Q4": -334.6485,
+    "2026Q1": -299.5684,
+    "2026Q2": -221.2919,
+    "2026Q3": -403.0743
+   },
+   "regime": {
+    "btc_above_ema200": [
+     5961,
+     -1555.043
+    ],
+    "btc_below_ema200": [
+     4810,
+     -1112.654
+    ]
+   }
+  },
+  "fixr/CORE-10_short_counter": {
+   "status": "ok",
+   "raw_entry_signals": 11595,
+   "n": 4811,
+   "wins": 1756,
+   "net_r": -1111.330645,
+   "avg_r": -0.230998,
+   "pf": 0.620201,
+   "max_dd_r": 1111.330634,
+   "giveback_r_mean": 0.8751,
+   "net_cash": -1110718.290053,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "a03583d8af6c",
+   "incomplete": [
+    "HYPEUSDT"
+   ],
+   "refused": 6386,
+   "regime_refuse": "counter",
+   "pf_r": 0.6202100644175412,
+   "decomp": {
+    "gross_before_slip_r": 83.09403183823562,
+    "slip_r": 337.59637961139265,
+    "fee_r": 843.9909490284816,
+    "funding_r": 12.837348202369057,
+    "net_r": -1111.330645,
+    "gap": 1.001109084519669e-09
+   },
+   "quarters": {
+    "2024Q4": -17.6997,
+    "2025Q1": -250.5511,
+    "2025Q2": -69.947,
+    "2025Q3": -146.6046,
+    "2025Q4": -259.8155,
+    "2026Q1": -176.6391,
+    "2026Q2": -88.6695,
+    "2026Q3": -101.4042
+   },
+   "regime": {
+    "btc_below_ema200": [
+     4811,
+     -1111.331
+    ]
+   }
+  },
+  "acct/CORE-20_long_none": {
+   "status": "ok",
+   "raw_entry_signals": 23153,
+   "n": 2082,
+   "wins": 777,
+   "net_r": -366.059138,
+   "avg_r": -0.175821,
+   "pf": 0.69552,
+   "max_dd_r": 369.334359,
+   "giveback_r_mean": 0.816274,
+   "net_cash": -490.069531,
+   "bust": true,
+   "bust_time": "2025-01-12T06:15:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "140b1a1f2513",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.6992916666517434,
+   "decomp": {
+    "gross_before_slip_r": 42.84611959654893,
+    "slip_r": 115.65763394695121,
+    "fee_r": 289.144084867378,
+    "funding_r": 4.103622008189873,
+    "net_r": -366.05913799999996,
+    "gap": 9.884657650172102e-06
+   },
+   "quarters": {
+    "2024Q4": -162.619,
+    "2025Q1": -203.4402
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1612,
+     -305.533
+    ],
+    "btc_below_ema200": [
+     470,
+     -60.526
+    ]
+   }
+  },
+  "acct/CORE-20_long_counter": {
+   "status": "ok",
+   "raw_entry_signals": 23153,
+   "n": 1821,
+   "wins": 668,
+   "net_r": -369.06207500000005,
+   "avg_r": -0.20267,
+   "pf": 0.677533,
+   "max_dd_r": 372.337302,
+   "giveback_r_mean": 0.832503,
+   "net_cash": -490.001861,
+   "bust": true,
+   "bust_time": "2025-01-21T23:15:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "21b6b8a4592c",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 11253,
+   "regime_refuse": "counter",
+   "pf_r": 0.661176467021817,
+   "decomp": {
+    "gross_before_slip_r": 1.6700436626332262,
+    "slip_r": 104.84926305824739,
+    "fee_r": 262.12315764561845,
+    "funding_r": 3.759645104357503,
+    "net_r": -369.06207500000005,
+    "gap": 9.978949184696884e-06
+   },
+   "quarters": {
+    "2024Q4": -171.1947,
+    "2025Q1": -168.7888,
+    "2025Q2": -29.0786
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1821,
+     -369.062
+    ]
+   }
+  },
+  "fixr/CORE-20_long_none": {
+   "status": "ok",
+   "raw_entry_signals": 23153,
+   "n": 16051,
+   "wins": 5696,
+   "net_r": -4160.955182000001,
+   "avg_r": -0.259233,
+   "pf": 0.586327,
+   "max_dd_r": 4170.792676,
+   "giveback_r_mean": 0.878214,
+   "net_cash": -4152330.180484,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "c8e174461242",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.5862978458576094,
+   "decomp": {
+    "gross_before_slip_r": -187.3554633259606,
+    "slip_r": 1123.4690569718564,
+    "fee_r": 2808.6726424296407,
+    "funding_r": 41.45801914015535,
+    "net_r": -4160.955182000001,
+    "gap": 1.0041721898446099e-09
+   },
+   "quarters": {
+    "2024Q4": -290.73,
+    "2025Q1": -543.9813,
+    "2025Q2": -586.6825,
+    "2025Q3": -599.9871,
+    "2025Q4": -555.6669,
+    "2026Q1": -581.9566,
+    "2026Q2": -522.925,
+    "2026Q3": -479.0257
+   },
+   "regime": {
+    "btc_above_ema200": [
+     8204,
+     -2212.866
+    ],
+    "btc_below_ema200": [
+     7847,
+     -1948.089
+    ]
+   }
+  },
+  "fixr/CORE-20_long_counter": {
+   "status": "ok",
+   "raw_entry_signals": 23153,
+   "n": 8208,
+   "wins": 2912,
+   "net_r": -2215.642479,
+   "avg_r": -0.269937,
+   "pf": 0.573805,
+   "max_dd_r": 2225.480006,
+   "giveback_r_mean": 0.885851,
+   "net_cash": -2213199.909393,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "1d9a3c0da8e6",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 11253,
+   "regime_refuse": "counter",
+   "pf_r": 0.57378559910735,
+   "decomp": {
+    "gross_before_slip_r": -108.95312693813841,
+    "slip_r": 595.6617227100162,
+    "fee_r": 1489.1543067750404,
+    "funding_r": 21.87332251069382,
+    "net_r": -2215.642479,
+    "gap": 1.0022205287896213e-09
+   },
+   "quarters": {
+    "2024Q4": -272.5627,
+    "2025Q1": -240.3507,
+    "2025Q2": -490.2891,
+    "2025Q3": -355.0865,
+    "2025Q4": -92.8589,
+    "2026Q1": -174.8702,
+    "2026Q2": -243.3232,
+    "2026Q3": -346.3012
+   },
+   "regime": {
+    "btc_above_ema200": [
+     8208,
+     -2215.642
+    ]
+   }
+  },
+  "acct/CORE-20_short_none": {
+   "status": "ok",
+   "raw_entry_signals": 23357,
+   "n": 2133,
+   "wins": 808,
+   "net_r": -368.17310100000003,
+   "avg_r": -0.172608,
+   "pf": 0.713235,
+   "max_dd_r": 368.173091,
+   "giveback_r_mean": 0.834667,
+   "net_cash": -489.984729,
+   "bust": true,
+   "bust_time": "2024-12-07T05:30:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "c4660ea1a221",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.7084018445350603,
+   "decomp": {
+    "gross_before_slip_r": 53.58252354645771,
+    "slip_r": 119.30646745122763,
+    "fee_r": 298.26616862806907,
+    "funding_r": 4.182896608894253,
+    "net_r": -368.17310100000003,
+    "gap": 9.751478408981384e-06
+   },
+   "quarters": {
+    "2024Q4": -285.7251,
+    "2025Q1": -82.448
+   },
+   "regime": {
+    "btc_above_ema200": [
+     1849,
+     -308.545
+    ],
+    "btc_below_ema200": [
+     284,
+     -59.628
+    ]
+   }
+  },
+  "acct/CORE-20_short_counter": {
+   "status": "ok",
+   "raw_entry_signals": 23357,
+   "n": 1606,
+   "wins": 566,
+   "net_r": -372.205948,
+   "avg_r": -0.23176,
+   "pf": 0.630851,
+   "max_dd_r": 372.205924,
+   "giveback_r_mean": 0.874576,
+   "net_cash": -490.033947,
+   "bust": true,
+   "bust_time": "2025-03-19T00:15:00Z",
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "599d666cbf7f",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 12922,
+   "regime_refuse": "counter",
+   "pf_r": 0.6231158798690027,
+   "decomp": {
+    "gross_before_slip_r": -28.25706323232984,
+    "slip_r": 97.30775564562731,
+    "fee_r": 243.26938911406825,
+    "funding_r": 3.371754001290485,
+    "net_r": -372.20594800000003,
+    "gap": 9.690837789344542e-06
+   },
+   "quarters": {
+    "2024Q4": -25.9908,
+    "2025Q1": -242.4988,
+    "2025Q2": -61.2925,
+    "2025Q3": -42.4239
+   },
+   "regime": {
+    "btc_below_ema200": [
+     1606,
+     -372.206
+    ]
+   }
+  },
+  "fixr/CORE-20_short_none": {
+   "status": "ok",
+   "raw_entry_signals": 23357,
+   "n": 17220,
+   "wins": 6294,
+   "net_r": -4153.188595,
+   "avg_r": -0.241184,
+   "pf": 0.612813,
+   "max_dd_r": 4160.220401,
+   "giveback_r_mean": 0.878717,
+   "net_cash": -4144596.189748,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "5ff614d97c4f",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 0,
+   "regime_refuse": "none",
+   "pf_r": 0.6127885894232277,
+   "decomp": {
+    "gross_before_slip_r": 179.93098768415695,
+    "slip_r": 1225.463093602232,
+    "fee_r": 3063.65773400558,
+    "funding_r": 43.99875509539646,
+    "net_r": -4153.188595,
+    "gap": 1.004167637930209e-09
+   },
+   "quarters": {
+    "2024Q4": -369.9389,
+    "2025Q1": -451.3071,
+    "2025Q2": -601.6908,
+    "2025Q3": -714.8057,
+    "2025Q4": -513.6475,
+    "2026Q1": -481.1703,
+    "2026Q2": -390.2365,
+    "2026Q3": -630.3918
+   },
+   "regime": {
+    "btc_above_ema200": [
+     9543,
+     -2419.856
+    ],
+    "btc_below_ema200": [
+     7677,
+     -1733.332
+    ]
+   }
+  },
+  "fixr/CORE-20_short_counter": {
+   "status": "ok",
+   "raw_entry_signals": 23357,
+   "n": 7678,
+   "wins": 2839,
+   "net_r": -1732.008523,
+   "avg_r": -0.225581,
+   "pf": 0.630242,
+   "max_dd_r": 1732.008498,
+   "giveback_r_mean": 0.863853,
+   "net_cash": -1730518.533068,
+   "bust": false,
+   "bust_time": null,
+   "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d",
+   "packet": "18023af48e1c",
+   "incomplete": [
+    "HYPEUSDT",
+    "PUMPUSDT"
+   ],
+   "refused": 12922,
+   "regime_refuse": "counter",
+   "pf_r": 0.6302457487060366,
+   "decomp": {
+    "gross_before_slip_r": 175.27855636271883,
+    "slip_r": 539.3245816203721,
+    "fee_r": 1348.31145405093,
+    "funding_r": 19.651043668380552,
+    "net_r": -1732.008523,
+    "gap": 1.0017286999897124e-09
+   },
+   "quarters": {
+    "2024Q4": -29.4956,
+    "2025Q1": -346.149,
+    "2025Q2": -105.1941,
+    "2025Q3": -203.4909,
+    "2025Q4": -409.0918,
+    "2026Q1": -289.7863,
+    "2026Q2": -165.0954,
+    "2026Q3": -183.7054
+   },
+   "regime": {
+    "btc_below_ema200": [
+     7678,
+     -1732.009
+    ]
+   }
+  }
+ },
+ "compare": {
+  "acct/CORE-10_long": {
+   "d_n": -172,
+   "d_net_r": -1.1285539999998946,
+   "d_pf": -0.017664000000000013,
+   "d_max_dd_r": 1.1285540000000083,
+   "refused": 5734,
+   "substitute_entries": 409,
+   "dropped_entries": 581,
+   "common_entries": 1258,
+   "quarters_delta": {
+    "2024Q4": -7.7908,
+    "2025Q1": 105.4295,
+    "2025Q2": -98.7672
+   },
+   "quarters_b_better": 1,
+   "quarters": 3
+  },
+  "fixr/CORE-10_long": {
+   "d_n": -5154,
+   "d_net_r": 1236.4170720000002,
+   "d_pf": -0.015662999999999982,
+   "d_max_dd_r": -1236.417057,
+   "refused": 5734,
+   "substitute_entries": 0,
+   "dropped_entries": 5154,
+   "common_entries": 5335,
+   "quarters_delta": {
+    "2024Q4": -0.4102,
+    "2025Q1": 244.2911,
+    "2025Q2": 70.7101,
+    "2025Q3": 152.7235,
+    "2025Q4": 293.9425,
+    "2026Q1": 258.4274,
+    "2026Q2": 165.5711,
+    "2026Q3": 51.1616
+   },
+   "quarters_b_better": 7,
+   "quarters": 8
+  },
+  "acct/CORE-10_short": {
+   "d_n": -132,
+   "d_net_r": 1.1710810000000151,
+   "d_pf": -0.08042300000000002,
+   "d_max_dd_r": -2.5175610000000006,
+   "refused": 6386,
+   "substitute_entries": 1302,
+   "dropped_entries": 1434,
+   "common_entries": 346,
+   "quarters_delta": {
+    "2024Q4": 200.2339,
+    "2025Q1": -44.7466,
+    "2025Q2": -51.4273,
+    "2025Q3": -91.9945,
+    "2025Q4": -10.8945
+   },
+   "quarters_b_better": 1,
+   "quarters": 5
+  },
+  "fixr/CORE-10_short": {
+   "d_n": -5960,
+   "d_net_r": 1556.3664170000002,
+   "d_pf": 0.020172999999999996,
+   "d_max_dd_r": -1563.08408,
+   "refused": 6386,
+   "substitute_entries": 1,
+   "dropped_entries": 5961,
+   "common_entries": 4810,
+   "quarters_delta": {
+    "2024Q4": 227.3241,
+    "2025Q1": 83.528,
+    "2025Q2": 299.9553,
+    "2025Q3": 313.5042,
+    "2025Q4": 74.833,
+    "2026Q1": 122.9293,
+    "2026Q2": 132.6224,
+    "2026Q3": 301.6701
+   },
+   "quarters_b_better": 8,
+   "quarters": 8
+  },
+  "acct/CORE-20_long": {
+   "d_n": -261,
+   "d_net_r": -3.0029370000000313,
+   "d_pf": -0.017986999999999975,
+   "d_max_dd_r": 3.002943000000016,
+   "refused": 11253,
+   "substitute_entries": 217,
+   "dropped_entries": 478,
+   "common_entries": 1604,
+   "quarters_delta": {
+    "2024Q4": -8.5757,
+    "2025Q1": 34.6514,
+    "2025Q2": -29.0786
+   },
+   "quarters_b_better": 1,
+   "quarters": 3
+  },
+  "fixr/CORE-20_long": {
+   "d_n": -7843,
+   "d_net_r": 1945.3127030000005,
+   "d_pf": -0.012522000000000033,
+   "d_max_dd_r": -1945.3126700000003,
+   "refused": 11253,
+   "substitute_entries": 4,
+   "dropped_entries": 7847,
+   "common_entries": 8204,
+   "quarters_delta": {
+    "2024Q4": 18.1673,
+    "2025Q1": 303.6306,
+    "2025Q2": 96.3934,
+    "2025Q3": 244.9006,
+    "2025Q4": 462.808,
+    "2026Q1": 407.0864,
+    "2026Q2": 279.6018,
+    "2026Q3": 132.7245
+   },
+   "quarters_b_better": 8,
+   "quarters": 8
+  },
+  "acct/CORE-20_short": {
+   "d_n": -527,
+   "d_net_r": -4.032846999999947,
+   "d_pf": -0.0823839999999999,
+   "d_max_dd_r": 4.032832999999982,
+   "refused": 12922,
+   "substitute_entries": 1338,
+   "dropped_entries": 1865,
+   "common_entries": 268,
+   "quarters_delta": {
+    "2024Q4": 259.7343,
+    "2025Q1": -160.0508,
+    "2025Q2": -61.2925,
+    "2025Q3": -42.4239
+   },
+   "quarters_b_better": 1,
+   "quarters": 4
+  },
+  "fixr/CORE-20_short": {
+   "d_n": -9542,
+   "d_net_r": 2421.1800719999997,
+   "d_pf": 0.017428999999999917,
+   "d_max_dd_r": -2428.2119029999994,
+   "refused": 12922,
+   "substitute_entries": 1,
+   "dropped_entries": 9543,
+   "common_entries": 7677,
+   "quarters_delta": {
+    "2024Q4": 340.4433,
+    "2025Q1": 105.1581,
+    "2025Q2": 496.4967,
+    "2025Q3": 511.3148,
+    "2025Q4": 104.5557,
+    "2026Q1": 191.384,
+    "2026Q2": 225.1411,
+    "2026Q3": 446.6864
+   },
+   "quarters_b_better": 8,
+   "quarters": 8
+  }
+ },
+ "baseline_check": {
+  "acct/CORE-10_long": {
+   "match": true,
+   "baseline": {
+    "n": 1839,
+    "net_r": -373.06892100000005,
+    "pf": 0.692816,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 1839,
+    "net_r": -373.06892100000005,
+    "pf": 0.692816,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "fixr/CORE-10_long": {
+   "match": true,
+   "baseline": {
+    "n": 10489,
+    "net_r": -2649.238996,
+    "pf": 0.589221,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 10489,
+    "net_r": -2649.238996,
+    "pf": 0.589221,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "acct/CORE-10_short": {
+   "match": true,
+   "baseline": {
+    "n": 1780,
+    "net_r": -375.04592699999995,
+    "pf": 0.663497,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 1780,
+    "net_r": -375.04592699999995,
+    "pf": 0.663497,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "fixr/CORE-10_short": {
+   "match": true,
+   "baseline": {
+    "n": 10771,
+    "net_r": -2667.697062,
+    "pf": 0.600028,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 10771,
+    "net_r": -2667.697062,
+    "pf": 0.600028,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "acct/CORE-20_long": {
+   "match": true,
+   "baseline": {
+    "n": 2082,
+    "net_r": -366.059138,
+    "pf": 0.69552,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 2082,
+    "net_r": -366.059138,
+    "pf": 0.69552,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "fixr/CORE-20_long": {
+   "match": true,
+   "baseline": {
+    "n": 16051,
+    "net_r": -4160.955182000001,
+    "pf": 0.586327,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 16051,
+    "net_r": -4160.955182000001,
+    "pf": 0.586327,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "acct/CORE-20_short": {
+   "match": true,
+   "baseline": {
+    "n": 2133,
+    "net_r": -368.17310100000003,
+    "pf": 0.713235,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 2133,
+    "net_r": -368.17310100000003,
+    "pf": 0.713235,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  },
+  "fixr/CORE-20_short": {
+   "match": true,
+   "baseline": {
+    "n": 17220,
+    "net_r": -4153.188595,
+    "pf": 0.612813,
+    "commit": "a53a649cc228d74a943f05ab462be6fcfb278473"
+   },
+   "arm_none": {
+    "n": 17220,
+    "net_r": -4153.188595,
+    "pf": 0.612813,
+    "commit": "753dc61aa49be7dcf712d3a6b9ec563dedf12a9d"
+   }
+  }
+ },
+ "decision": {
+  "acct/long": {
+   "net_r_b_gt_a_both_tiers": false,
+   "pf_b_ge_a_both_tiers": false,
+   "b_better_in_2_3_quarters_both_tiers": false,
+   "verdict": "no change"
+  },
+  "acct/short": {
+   "net_r_b_gt_a_both_tiers": false,
+   "pf_b_ge_a_both_tiers": false,
+   "b_better_in_2_3_quarters_both_tiers": false,
+   "verdict": "no change"
+  },
+  "fixr/long": {
+   "net_r_b_gt_a_both_tiers": true,
+   "pf_b_ge_a_both_tiers": false,
+   "b_better_in_2_3_quarters_both_tiers": true,
+   "verdict": "no change"
+  },
+  "fixr/short": {
+   "net_r_b_gt_a_both_tiers": true,
+   "pf_b_ge_a_both_tiers": true,
+   "b_better_in_2_3_quarters_both_tiers": true,
+   "verdict": "B improves"
+  },
+  "rule": "\"B improves\" only if net R B > A on BOTH tiers AND PF_B >= PF_A on both tiers AND B - A quarterly net R is > 0 in >= 2/3 of quarters on both tiers; else \"no change\". Evaluated per side; the fixr view is primary (acct compounds and busts)."
+ }
+}
