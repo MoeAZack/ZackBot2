@@ -2735,8 +2735,11 @@ class Engine:
     def _tb_state(self):
         cid = (self.state.get('cohort') or {}).get('id')
         st = self.state.get('true_books')
-        if not isinstance(st, dict) or st.get('cohort_id') != cid:
-            st = self.state['true_books'] = dict(cohort_id=cid, halted={})   # never carried across cohorts
+        if not isinstance(st, dict):
+            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={})
+        elif cid and st.get('cohort_id') != cid:                       # a NEW cohort: every book starts fresh
+            st.clear(); st.update(cohort_id=cid, halted={}, peak={})
+        st.setdefault('halted', {}); st.setdefault('peak', {})
         return st
 
     def _tb_working(self):
@@ -2756,7 +2759,11 @@ class Engine:
         with self.lock:
             st = self._tb_state()
             books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
-                               marks if marks is not None else (self.marks or {}), self._tb_working(), st['halted'])
+                               marks if marks is not None else (self.marks or {}), self._tb_working(), st['halted'],
+                               peaks=st['peak'])
+            if persist and st['cohort_id']:                          # in memory; saved with the next state save
+                for k, b in books.items():
+                    if b['peak'] > TB.D(st['peak'].get(k) or 0): st['peak'][k] = TB.q(b['peak'])
             new = {k: b['halt'] for k, b in books.items() if b['state'] == 'HALTED' and k not in st['halted']}
             if new and persist and self._tb_on():
                 for k, h in new.items():
@@ -2780,8 +2787,11 @@ class Engine:
         if not cohort_id: return []
         key = lambda r: r.get('id') or f'_{id(r)}'               # an id-less row is never merged with another
         rows = {key(r): r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id}
+        start = (self.state.get('cohort') or {}).get('started_utc') or ''
         for h in self.history:
             if h.get('cohort_id') == cohort_id: rows[key(h)] = h
+            elif not h.get('cohort_id') and h.get('book') not in PB.IDS and str(h.get('closed') or '') >= start:
+                rows[key(h)] = h                                      # unowned activity on the shared account
         return list(rows.values())
 
     def _book_of_working(self, x):

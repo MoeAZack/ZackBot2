@@ -218,7 +218,9 @@ def test_a_new_cohort_starts_every_book_fresh():
     e.history.append(row(e, 'B3_TREND', -2001)); e.true_books()
     e.state['cohort'] = dict(e.state['cohort'], id='CH-next')
     b = e.true_books()['B3_TREND']
-    assert b['state'] == 'ACTIVE' and b['nav'] == 2000 and e.state['true_books'] == dict(cohort_id='CH-next', halted={})
+    st = e.state['true_books']
+    assert b['state'] == 'ACTIVE' and b['nav'] == 2000 and st['cohort_id'] == 'CH-next' and st['halted'] == {}
+    assert set(st['peak'].values()) == {2000.0}
 
 
 # ------------------------------------------------------------------ restart identity, attribution, API
@@ -338,3 +340,54 @@ def test_the_halt_itself_is_saved_at_once():
     e2.S['SLEEVES'] = [T_SL, T2_SL, R_SL]; e2.S['CAP_SINCE'] = e.S['CAP_SINCE']; e2._cohort_init()
     b = e2.true_books()['B3_TREND']
     assert b['nav'] > 0 and b['state'] == 'HALTED'
+
+
+# ------------------------------------------------------------------ Cowork draft attack (6239405013 / 6239421192)
+def test_manual_or_unknown_book_activity_makes_every_book_incomplete():
+    e, _ = tb_engine()
+    e.state['lots']['m'] = fake_lot(e, None, manual=True, cohort_id=None)            # a manual "Take now" lot
+    books = e.true_books()
+    assert all(not b['complete'] and b['incomplete'][-1] == dict(reason='unowned_account_activity', rows=0, lots=1)
+               for b in books.values())
+    e.state['lots'].clear()
+    e.history.append(dict(row(e, None, -500), cohort_id=None, closed='2099-01-01T00:00:00+00:00'))   # manual close since start
+    assert all(b['incomplete'][-1]['reason'] == 'unowned_account_activity' for b in e.true_books().values())
+    b = TB.compute('C', [dict(book='B9_X', cohort_id='C', pnl_gross=-1, fees=0)])['B1_FAST']
+    assert b['incomplete'] == [dict(reason='unowned_account_activity', rows=1, lots=0)]
+
+
+@pytest.mark.parametrize('bad', [None, 'nan', 'abc'])
+def test_unreadable_gross_or_fee_is_incomplete_never_zero(bad):
+    b = TB.compute('C', [dict(book='B1_FAST', cohort_id='C', pnl_gross=bad, fees=0, fees_actual=0)])['B1_FAST']
+    assert not b['complete'] and b['incomplete'][0]['reason'] == 'pnl_unreadable'
+    b = TB.compute('C', [], [dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=1, qty=1, stop=1, realized=1,
+                                  fees=bad, fees_actual=0)], marks={'X': 1})['B1_FAST']
+    assert [x['reason'] for x in b['incomplete']] == ['fees_unreadable']
+
+
+def test_multi_asset_funding_is_incomplete_and_no_funding_is_complete():
+    rows = [dict(book='B1_FAST', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0, funding_actual=None,
+                 funding_by_asset={'USDT': -1.0, 'USDC': -0.5}, funding_rows=2),
+            dict(book='B2_RANGE', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0)]
+    out = TB.compute('C', rows)
+    assert out['B1_FAST']['incomplete'][0] == dict(reason='funding_multi_asset', id=None, assets=['USDC', 'USDT'])
+    assert out['B2_RANGE']['complete']
+
+
+def test_drawdown_sees_an_unrealized_high_through_the_persisted_peak():
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='ETHUSDT', avg=50.0, qty=10, stop=40.0)
+    e.true_books({'ETHUSDT': 100.0})                                                # +500 open: peak 2500 sampled
+    b = e.true_books({'ETHUSDT': 50.0})
+    assert b['B3_TREND']['peak'] == 2500 and b['B3_TREND']['dd'] == Decimal(500) / Decimal(2500)
+    assert e.state['true_books']['peak']['B3_TREND'] == 2500.0
+
+
+def test_an_unreadable_cohort_never_drops_a_sticky_halt():
+    e, _ = tb_engine()
+    e.history.append(row(e, 'B3_TREND', -2001)); e.true_books()
+    coh = e.state['cohort']
+    e.state['cohort'] = None; e.true_books()                                        # transient: conflict / unreadable
+    e.state['cohort'] = coh
+    e.history.append(row(e, 'B3_TREND', 5000))
+    assert e.true_books()['B3_TREND']['state'] == 'HALTED'

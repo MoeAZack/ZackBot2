@@ -53,13 +53,16 @@ def _t(iso):
     except ValueError: return None
 
 
-def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None, start=START):
+def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None, start=START, peaks=None):
     """Pure. {book: doc} for the five books. Only rows / lots stamped with cohort_id count (an older cohort's lots and their
     later exits, fees and funding stay with that cohort). halted: the persisted sticky halts {book: {...}}.
     working: [(book, notional, stop_risk)] for entries placed but not yet a lot (resting maker, unconfirmed): they hold a
-    lot slot and RESERVE their notional and worst loss to stop before any fill (Codex ruling 6238997253 #1)."""
-    marks, halted = marks or {}, halted or {}
-    out = {}
+    lot slot and RESERVE their notional and worst loss to stop before any fill (Codex ruling 6238997253 #1).
+    peaks: persisted mark-to-market NAV peaks {book: number} (sampled by the engine), so DD sees unrealized highs.
+    Anything on the shared account that no book owns (a manual / unknown-book lot or row) makes EVERY book INCOMPLETE
+    (unowned_account_activity); an amount that cannot be read is INCOMPLETE too - never zero-filled."""
+    marks, halted, peaks = marks or {}, halted or {}, peaks or {}
+    out, unowned = {}, dict(rows=0, lots=0)
     for key, name, strategies in PB.BOOKS:
         b = dict(id=key, name=name, start=start, gross_real=Decimal(0), unreal=Decimal(0), fees_act=Decimal(0),
                  fees_est=Decimal(0), funding=Decimal(0), incomplete=[], lots=0, closed=0, notional=Decimal(0),
@@ -67,9 +70,14 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         out[key] = b
     for r in history or ():
         b = out.get(r.get('book'))
-        if b is None or not cohort_id or r.get('cohort_id') != cohort_id: continue
+        if not cohort_id or r.get('cohort_id') not in (cohort_id, None): continue
+        if b is None: unowned['rows'] += 1; continue                       # the engine passes only this cohort's window
+        if r.get('cohort_id') != cohort_id: continue
         b['closed'] += 1
-        g, fe = D(r.get('pnl_gross')) or Decimal(0), D(r.get('fees')) or Decimal(0)
+        g, fe = D(r.get('pnl_gross')), D(r.get('fees'))
+        if g is None: b['incomplete'].append(dict(reason='pnl_unreadable', id=r.get('id'))); g = Decimal(0)
+        if fe is None: b['incomplete'].append(dict(reason='fees_unreadable', id=r.get('id'))); fe = Decimal(0)
+        _funding_gap(b, r)
         fa, fu = D(r.get('fees_actual')), D(r.get('funding_actual')) or Decimal(0)
         b['gross_real'] += g; b['fees_est'] += fe; b['funding'] += fu
         if fa is None:
@@ -91,14 +99,17 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         b['series'].append((str(r.get('closed') or ''), net))
     for lot in lots or ():
         b = out.get(lot.get('book'))
-        if b is None: continue
+        if b is None: unowned['lots'] += 1; continue                       # open on the shared account, owned by no book
         sr = stop_risk(lot)
         b['lots'] += 1                                          # capacity counts every lot of the book (conservative)
         b['notional'] += (D(lot.get('qty')) or Decimal(0)) * (D(lot.get('avg')) or Decimal(0))
         if sr is None: b['incomplete'].append(dict(reason='stop_unknown', symbol=lot.get('symbol')))
         else: b['stop_risk'] += sr
         if lot.get('cohort_id') != cohort_id: continue          # value only: an older cohort's lot is not this NAV's
-        g, fe = D(lot.get('realized')) or Decimal(0), D(lot.get('fees')) or Decimal(0)
+        g, fe = D(lot.get('realized', 0)), D(lot.get('fees', 0))
+        if g is None: b['incomplete'].append(dict(reason='pnl_unreadable', id=lot.get('symbol'))); g = Decimal(0)
+        if fe is None: b['incomplete'].append(dict(reason='fees_unreadable', id=lot.get('symbol'))); fe = Decimal(0)
+        _funding_gap(b, lot)
         fa, fu = D(lot.get('fees_actual')), D(lot.get('funding_actual')) or Decimal(0)
         b['gross_real'] += g; b['fees_est'] += fe; b['funding'] += fu
         if fa is None:
@@ -118,13 +129,15 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         r = D(rr)
         if r is None: b['incomplete'].append(dict(reason='working_stop_unknown'))
         else: b['stop_risk'] += max(Decimal(0), r)
+    if unowned['rows'] or unowned['lots']:
+        for b in out.values(): b['incomplete'].append(dict(reason='unowned_account_activity', **unowned))
     for key, b in out.items():
         base = start + b['gross_real'] + b['unreal'] + b['funding']
         nav_a, nav_e = base - b['fees_act'], base - b['fees_est']
         nav = nav_a
         worse = min(nav_a, nav_e)
         # peak from the ordered close series (realized only) + now: re-derived each time, so a restated fee re-derives it
-        run, peak = start, max(start, nav)
+        run, peak = start, max(start, nav, D(peaks.get(key)) or start)
         for _t0, net in sorted(b['series'], key=lambda x: x[0]):
             run += net; peak = max(peak, run)
         h = halted.get(key)
@@ -135,6 +148,13 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
                                                                    nav=q(worse)) if worse <= 0 else None),
                  nav_basis='estimate_fallback' if fallback else 'actual', complete=not b['incomplete'])
     return out
+
+
+def _funding_gap(b, x):
+    """funding_actual None while funding was booked (several assets): the amount is unknown, never 0."""
+    if x.get('funding_actual') is None and (x.get('funding_by_asset') or x.get('funding_rows')):
+        b['incomplete'].append(dict(reason='funding_multi_asset', id=x.get('id') or x.get('symbol'),
+                                    assets=sorted(x.get('funding_by_asset') or ())))
 
 
 def admit(b, new_notional=None, new_stop_risk=None, add=False, max_leverage=None, max_lots=MAX_LOTS,
