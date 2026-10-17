@@ -31,7 +31,8 @@ def packet(tmp_path, name='alpha', side=1, shift=0.0, start='2026-01-01T00:00:00
     end = (t[0] + pd.Timedelta(days=days)).isoformat().replace('+00:00', 'Z')
     p = {'format': S.INPUT_FORMAT, 'non_promotable': True,
          'window': {'start': t[0].isoformat().replace('+00:00', 'Z'), 'end': end,
-                    'end_exclusive': True, 'tf': '4h'},
+                    'end_exclusive': True, 'tf': '4h', 'guard': 'pit_run.rex_window',
+                    'sealed_cutoff': end},
          'cache': {'files': {'AAAUSDT': {'file': path.name, 'sha256': raw_sha, 'dir': 'cache'}}},
          'costs': {'fee_taker': .0005, 'slip': .0002, 'fund_per_bar': .00001},
          'strategy': {'key': name, 'mgmt_mode': 'defaults'}, 'side': 'long' if side == 1 else 'short',
@@ -89,6 +90,22 @@ def test_cache_or_packet_tamper_refused(tmp_path):
         S.random_entry_control(p, cache, iterations=100, seed=1)
 
 
+def test_sealed_cutoff_and_malformed_trade_refused(tmp_path):
+    _, pp, _ = packet(tmp_path)
+    q = json.loads(open(pp, encoding='utf-8').read())
+    q['window']['sealed_cutoff'] = '2026-01-02T00:00:00Z'
+    q['packet_sha256'] = S._packet_digest(q)
+    open(pp, 'w', encoding='utf-8').write(json.dumps(q))
+    with pytest.raises(S.BenchmarkError, match='sealed development cutoff'):
+        S.load_packet(pp)
+    q['window']['sealed_cutoff'] = q['window']['end']
+    del q['trades'][0]['R']
+    q['packet_sha256'] = S._packet_digest(q)
+    open(pp, 'w', encoding='utf-8').write(json.dumps(q))
+    with pytest.raises(S.BenchmarkError, match='trade 0 is malformed'):
+        S.load_packet(pp)
+
+
 def test_short_cost_direction_and_min_iterations(tmp_path):
     p, _, cache = packet(tmp_path, side=-1)
     with pytest.raises(S.BenchmarkError, match='>= 100'):
@@ -119,14 +136,39 @@ def test_build_write_once_and_optional_ledger_binding(tmp_path, monkeypatch):
     assert doc['multiple_testing']['tests_in_batch'] == 1
     assert doc['multiple_testing']['threshold'] == .05
     out = tmp_path / 'shadow.json'
-    S.write_once(doc, str(out))
-    with pytest.raises(S.BenchmarkError, match='never overwritten'):
-        S.write_once(doc, str(out))
+    assert S.write_once(doc, str(out)) is True
+    assert S.write_once(doc, str(out)) is False
     got = {}
     monkeypatch.setattr(S.LEDGER, 'append', lambda path, **kw: got.update(path=path, **kw) or kw)
     S.append_baseline(str(tmp_path / 'alpha.jsonl'), p, doc, author='codex', cairo_date='2026-10-17', lineage='root')
     assert got['kind'] == 'baseline' and got['split'] == 'development'
     assert got['detail']['packet_sha256'] == p['packet_sha256']
+
+
+def test_duplicate_packet_and_insufficient_batch_trials_refused(tmp_path):
+    _, pp, cache = packet(tmp_path)
+    with pytest.raises(S.BenchmarkError, match='duplicate'):
+        S.build([pp, pp], cache, iterations=100, names=['one', 'two'])
+    base = json.loads(open(pp, encoding='utf-8').read())
+    paths = []
+    for i in range(6):
+        q = json.loads(json.dumps(base))
+        q['strategy']['key'] = f's{i}'
+        q['packet_sha256'] = S._packet_digest(q)
+        path = tmp_path / f's{i}.json'
+        path.write_text(json.dumps(q), encoding='utf-8')
+        paths.append(str(path))
+    with pytest.raises(S.BenchmarkError, match='at least 119'):
+        S.build(paths, cache, iterations=100, names=['a', 'b', 'c', 'd', 'e', 'f'])
+
+
+def test_benchmark_identity_excludes_time_and_local_path(tmp_path):
+    _, pp, cache = packet(tmp_path)
+    a = S.build([pp], cache, iterations=100, seed=9)
+    b = S.build([pp], cache, iterations=100, seed=9)
+    b['created_at_utc'] = '2099-01-01T00:00:00Z'
+    b['inputs'][0]['path'] = 'D:/another/machine/packet.json'
+    assert a['benchmark_sha256'] == b['benchmark_sha256'] == S._benchmark_digest(b)
 
 
 def test_empty_and_missing_common_window_refused(tmp_path):

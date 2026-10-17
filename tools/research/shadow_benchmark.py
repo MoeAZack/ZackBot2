@@ -78,6 +78,13 @@ def _packet_digest(packet: dict) -> str:
     return hashlib.sha256(canonical(body)).hexdigest()
 
 
+def _benchmark_digest(doc: dict) -> str:
+    """Stable result identity: timestamps and machine-local absolute paths are provenance, not evidence."""
+    body = {k: v for k, v in doc.items() if k not in ('benchmark_sha256', 'created_at_utc')}
+    body['inputs'] = [{k: v for k, v in x.items() if k != 'path'} for x in body['inputs']]
+    return hashlib.sha256(canonical(body)).hexdigest()
+
+
 def load_packet(path: str) -> tuple[dict, str]:
     with open(path, encoding='utf-8') as f:
         packet = json.load(f, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
@@ -89,10 +96,33 @@ def load_packet(path: str) -> tuple[dict, str]:
     if packet.get('non_promotable') is not True:
         raise BenchmarkError(f'{path}: candidate packet must be explicitly non-promotable')
     w = packet.get('window') or {}
-    if not (w.get('start') and w.get('end') and w.get('end_exclusive') is True and w.get('tf')):
+    if not (w.get('start') and w.get('end') and w.get('end_exclusive') is True and w.get('tf')
+            and w.get('guard') == 'pit_run.rex_window' and w.get('sealed_cutoff')):
         raise BenchmarkError(f'{path}: incomplete sealed-window identity')
+    try:
+        start_ms, end_ms, cutoff_ms = _ms(w['start']), _ms(w['end']), _ms(w['sealed_cutoff'])
+    except (TypeError, ValueError):
+        raise BenchmarkError(f'{path}: invalid sealed-window timestamps') from None
+    if start_ms >= end_ms:
+        raise BenchmarkError(f'{path}: window start must be before end')
+    if end_ms > cutoff_ms:
+        raise BenchmarkError(f'{path}: window reaches beyond its sealed development cutoff')
     if not isinstance(packet.get('trades'), list):
         raise BenchmarkError(f'{path}: trades must be a list')
+    st = packet.get('strategy')
+    if not isinstance(st, dict) or not all(isinstance(st.get(k), str) and st[k] for k in ('key', 'mgmt_mode')):
+        raise BenchmarkError(f'{path}: strategy key and mgmt_mode are required')
+    if packet.get('side') not in ('long', 'short'):
+        raise BenchmarkError(f'{path}: side must be long or short')
+    for i, tr in enumerate(packet['trades']):
+        try:
+            valid = (isinstance(tr, dict) and isinstance(tr['symbol'], str) and tr['symbol']
+                     and int(tr['side']) in (-1, 1) and math.isfinite(float(tr['R']))
+                     and _ms(tr['t_in']) <= _ms(tr['t_out']))
+        except (KeyError, TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise BenchmarkError(f'{path}: trade {i} is malformed')
     return packet, digest
 
 
@@ -321,6 +351,12 @@ def build(packet_paths: list[str], cache: str, *, cache_extra: str | None = None
     loaded = [load_packet(p) for p in packet_paths]
     packets = [x[0] for x in loaded]
     digests = [x[1] for x in loaded]
+    if len(set(digests)) != len(digests):
+        raise BenchmarkError('duplicate candidate packets are not independent tests')
+    min_iterations = max(MIN_ITERATIONS, 20 * len(packets) - 1)
+    if iterations < min_iterations:
+        raise BenchmarkError(f'{len(packets)} packets need at least {min_iterations} iterations so the minimum empirical '
+                             'p-value can reach the Bonferroni threshold')
     if names is None:
         names = [f"{p['strategy']['key']}:{p['side']}:{p['strategy']['mgmt_mode']}" for p in packets]
     if len(names) != len(packets) or len(set(names)) != len(names):
@@ -341,6 +377,7 @@ def build(packet_paths: list[str], cache: str, *, cache_extra: str | None = None
         'multiple_testing': {
             'method': 'Bonferroni within this benchmark batch', 'alpha': .05,
             'tests_in_batch': len(controls), 'threshold': _num(threshold),
+            'minimum_iterations_for_threshold': min_iterations,
             'passes': {n: bool(c['observed_proxy_net_return_sum'] > 0 and
                                c['empirical_p_one_sided'] <= threshold)
                        for n, c in controls.items()},
@@ -353,16 +390,29 @@ def build(packet_paths: list[str], cache: str, *, cache_extra: str | None = None
             'multiple-testing correction remains required across the complete experiment ledger',
         ],
     }
-    doc['benchmark_sha256'] = hashlib.sha256(canonical(doc)).hexdigest()
+    doc['benchmark_sha256'] = _benchmark_digest(doc)
     return doc
 
 
-def write_once(doc: dict, path: str) -> None:
+def write_once(doc: dict, path: str) -> bool:
     if os.path.exists(path):
-        raise BenchmarkError(f'{path} exists; benchmark artifacts are never overwritten')
+        try:
+            with open(path, encoding='utf-8') as f:
+                old = json.load(f)
+        except (OSError, ValueError):
+            old = None
+        if isinstance(old, dict):
+            try:
+                valid_old = _benchmark_digest(old) == old.get('benchmark_sha256')
+            except (KeyError, TypeError, ValueError):
+                valid_old = False
+            if valid_old and old['benchmark_sha256'] == doc.get('benchmark_sha256'):
+                return False                     # same evidence: recoverable retry after a later ledger failure
+        raise BenchmarkError(f'{path} exists with different evidence; benchmark artifacts are never overwritten')
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, 'x', encoding='utf-8', newline='\n') as f:
         json.dump(doc, f, sort_keys=True, indent=1, allow_nan=False)
+    return True
 
 
 def append_baseline(ledger_path: str, packet: dict, benchmark: dict, *, author: str,
