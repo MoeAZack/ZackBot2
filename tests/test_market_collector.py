@@ -402,6 +402,13 @@ def test_cli_once_symbols_out_and_exit_codes(tmp_path):
     with pytest.raises(SystemExit): T.main(['--every', '1m'])
 
 
+def test_cli_preserves_explicit_usdc_symbols():
+    import collect_market_data as T
+    syms, why = T.resolve_symbols('btcusdc,ETHUSDT,sol')
+    assert syms == ['BTCUSDC', 'ETHUSDT', 'SOLUSDT']
+    assert why == '--symbols'
+
+
 def test_cli_default_universe_is_the_engine_top40():
     import collect_market_data as T, engine
     assert T.top40_from_engine() == engine.TOP40

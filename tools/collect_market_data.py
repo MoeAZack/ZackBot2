@@ -62,7 +62,7 @@ def settings_universe():
 def resolve_symbols(arg):
     if arg:
         syms = [s.strip().upper() for s in arg.split(',') if s.strip()]
-        return [s if s.endswith('USDT') else s + 'USDT' for s in syms], '--symbols'
+        return [s if s.endswith(('USDT', 'USDC')) else s + 'USDT' for s in syms], '--symbols'
     for fn, why in ((settings_universe, 'app settings.json UNIVERSE'), (top40_from_engine, 'engine.py TOP40')):
         u = fn()
         if u: return u, why
