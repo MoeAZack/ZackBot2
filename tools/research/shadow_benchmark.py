@@ -114,10 +114,11 @@ def load_packet(path: str) -> tuple[dict, str]:
         raise BenchmarkError(f'{path}: strategy key and mgmt_mode are required')
     if packet.get('side') not in ('long', 'short'):
         raise BenchmarkError(f'{path}: side must be long or short')
+    expected_side = 1 if packet['side'] == 'long' else -1
     for i, tr in enumerate(packet['trades']):
         try:
             valid = (isinstance(tr, dict) and isinstance(tr['symbol'], str) and tr['symbol']
-                     and int(tr['side']) in (-1, 1) and math.isfinite(float(tr['R']))
+                     and type(tr['side']) is int and tr['side'] == expected_side and math.isfinite(float(tr['R']))
                      and _ms(tr['t_in']) <= _ms(tr['t_out']))
         except (KeyError, TypeError, ValueError):
             valid = False
@@ -142,6 +143,9 @@ def _frame(cache: str, cache_extra: str | None, packet: dict, symbol: str) -> pd
     need = {'t', 'o', 'h', 'l', 'c'}
     if not need.issubset(d.columns):
         raise BenchmarkError(f'{symbol}: candle file lacks {sorted(need - set(d.columns))}')
+    px = d[['o', 'h', 'l', 'c']].to_numpy(float)
+    if not np.isfinite(px).all() or (px <= 0).any():
+        raise BenchmarkError(f'{symbol}: candle prices must be finite and positive')
     d = d.sort_values('t').reset_index(drop=True)
     t = d.t.to_numpy(np.int64)
     if len(t) != len(np.unique(t)) or (len(t) > 1 and np.any(np.diff(t) <= 0)):
@@ -250,7 +254,7 @@ def random_entry_control(packet: dict, cache: str, *, cache_extra: str | None = 
                  'p05': _num(np.quantile(null, .05)), 'median': _num(np.median(null)),
                  'p95': _num(np.quantile(null, .95)), 'max': _num(null.max())},
         'empirical_p_one_sided': _num(p), 'observed_percentile': _num(pct),
-        'beats_random_at_5pct': bool(observed > 0 and p <= .05),
+        'beats_random_proxy_at_5pct': bool(observed > 0 and p <= .05),
     }
 
 
@@ -325,8 +329,8 @@ def portfolio_contribution(named_packets: dict[str, dict], *, weights: dict[str,
         q = frame.iloc[:, keep].to_numpy(float) @ wk
         qs, qdd = float(q.sum()), _max_dd_r(q)
         loo[name] = {'available': True, 'without_r_sum': _num(qs), 'without_max_dd_r': _num(qdd),
-                     'component_delta_r_sum': _num(full_sum - qs),
-                     'component_delta_max_dd_r': _num(full_dd - qdd)}
+                     'weight_reallocation_delta_r_sum': _num(full_sum - qs),
+                     'weight_reallocation_delta_max_dd_r': _num(full_dd - qdd)}
     return {
         'available': True, 'basis': 'daily realised trade R, Cairo exit day, common calendar window',
         'joint_engine_replay': False,
@@ -378,9 +382,9 @@ def build(packet_paths: list[str], cache: str, *, cache_extra: str | None = None
             'method': 'Bonferroni within this benchmark batch', 'alpha': .05,
             'tests_in_batch': len(controls), 'threshold': _num(threshold),
             'minimum_iterations_for_threshold': min_iterations,
-            'passes': {n: bool(c['observed_proxy_net_return_sum'] > 0 and
-                               c['empirical_p_one_sided'] <= threshold)
-                       for n, c in controls.items()},
+            'passes_proxy_bonferroni': {
+                n: bool(c['observed_proxy_net_return_sum'] > 0 and c['empirical_p_one_sided'] <= threshold)
+                for n, c in controls.items()},
             'scope_warning': 'historical ledger trials are additional; this batch correction is a lower bound',
         },
         'portfolio': portfolio_contribution(dict(zip(names, packets))),

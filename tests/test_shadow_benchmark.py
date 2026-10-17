@@ -90,6 +90,23 @@ def test_cache_or_packet_tamper_refused(tmp_path):
         S.random_entry_control(p, cache, iterations=100, seed=1)
 
 
+def test_nonfinite_price_and_side_label_mismatch_refused(tmp_path):
+    p, pp, cache = packet(tmp_path)
+    path = os.path.join(cache, 'AAAUSDT_4h.csv')
+    d = pd.read_csv(path)
+    d.loc[120, 'c'] = np.inf
+    d.to_csv(path, index=False)
+    p['cache']['files']['AAAUSDT']['sha256'] = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+    with pytest.raises(S.BenchmarkError, match='finite and positive'):
+        S.random_entry_control(p, cache, iterations=100, seed=1)
+    q = json.loads(open(pp, encoding='utf-8').read())
+    q['side'] = 'short'
+    q['packet_sha256'] = S._packet_digest(q)
+    open(pp, 'w', encoding='utf-8').write(json.dumps(q))
+    with pytest.raises(S.BenchmarkError, match='trade 0 is malformed'):
+        S.load_packet(pp)
+
+
 def test_sealed_cutoff_and_malformed_trade_refused(tmp_path):
     _, pp, _ = packet(tmp_path)
     q = json.loads(open(pp, encoding='utf-8').read())
