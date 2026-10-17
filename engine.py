@@ -14,6 +14,7 @@ import strategies as S
 import trade_audit as TA
 import paper_books as PB
 import actual_costs as AC
+import true_books as TB
 import book_ledger as BL
 import run_pack as RP
 import feasibility as F
@@ -835,7 +836,7 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        # enables it explicitly. One stop-risk dollar must cover at least FEE_EDGE_MULT x conservative
                        # round-trip fees + slippage, otherwise turnover has no room to pay for itself.
                        FEE_EDGE_GATE=False, FEE_EDGE_MULT=3.0,
-                       PAPER_BOOKS=False, PAPER_BOOK_CAP=2000.0,
+                       PAPER_BOOKS=False, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=False,
                        PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]),
                        CTRL_BIAS='neutral', CTRL_RISK='max_test',   # CTRL-01-LITE (default = today's behaviour)
                        # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
@@ -1330,7 +1331,7 @@ _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_F
                     MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01),
                     FEE_EDGE_MULT=(1.0, 20.0), PAPER_BOOK_CAP=(100.0, 1e7))
 _SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED',
-                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS')
+                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS')
 
 
 def validate_settings(doc):
@@ -2723,6 +2724,104 @@ class Engine:
         except Exception as ex:
             log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
             return 0
+
+    # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
+    # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
+    # cohort (true_books.compute); sizing, the 4-lot cap, leverage and stop-risk use that book's NAV. HALT is sticky for the
+    # cohort (state['true_books']['halted']); other books keep trading. Strategy logic and risk % are unchanged.
+    def _tb_on(self):
+        return bool(getattr(self, 'live', True) is False and self.S.get('TRUE_BOOKS') is True and self.S.get('PAPER_BOOKS') is True)
+
+    def _tb_state(self):
+        cid = (self.state.get('cohort') or {}).get('id')
+        st = self.state.get('true_books')
+        if not isinstance(st, dict):
+            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={})
+        elif cid and st.get('cohort_id') != cid:                       # a NEW cohort: every book starts fresh
+            st.clear(); st.update(cohort_id=cid, halted={}, peak={})
+        st.setdefault('halted', {}); st.setdefault('peak', {})
+        return st
+
+    def _tb_working(self):
+        """Entries placed but not yet a lot (resting maker, unconfirmed): (book, notional, worst loss to stop) reserved."""
+        out = []
+        for x in list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('unconfirmed_entries') or {}).values()):
+            p = x.get('plan') or {}
+            b = self._book_of_working(x)
+            if not b: continue
+            try: qty, px, sd = float(p.get('qty') or x.get('qty')), float(p['px']), float(p['stop_dist'])
+            except (TypeError, ValueError, KeyError): out.append((b, None, None)); continue
+            out.append((b, qty * px, qty * sd))
+        return out
+
+    def true_books(self, marks=None, persist=True):
+        """{book: doc} for the current cohort (pure compute over state); persists a new HALT (sticky) unless persist=False."""
+        with self.lock:
+            st = self._tb_state()
+            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
+                               marks if marks is not None else (self.marks or {}), self._tb_working(), st['halted'],
+                               peaks=st['peak'])
+            if persist and st['cohort_id']:                          # in memory; saved with the next state save
+                for k, b in books.items():
+                    if b['peak'] > TB.D(st['peak'].get(k) or 0): st['peak'][k] = TB.q(b['peak'])
+            new = {k: b['halt'] for k, b in books.items() if b['state'] == 'HALTED' and k not in st['halted']}
+            if new and persist and self._tb_on():
+                for k, h in new.items():
+                    st['halted'][k] = dict(h or {}, at=now_utc().isoformat(timespec='seconds'), scope='book')
+                self.save_state()
+                for k in new: self.notify(f'TRUE-BOOK: book {k} HALTED (NAV <= 0) - no new risk in this book; other books continue')
+            return books
+
+    def _tb_add_block(self, lot, q, px):
+        """An add / fallback remainder is not a new lot, but it is notional and stop-risk inside the book's own NAV."""
+        if not self._tb_on() or lot.get('manual') or lot.get('book') not in PB.IDS: return None
+        if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        b = self.true_books().get(lot['book'])
+        stop = lot.get('stop')
+        return TB.admit(b, q * px, q * abs(px - float(stop)) if stop is not None else None, add=True,
+                        max_leverage=self.S['MAX_LEVERAGE'])
+
+    def _tb_rows(self, cohort_id):
+        """Closed rows of the cohort: the append-only evidence store (never trimmed) overlaid by the trading history
+        (which carries late actual-cost / funding updates) - so NAV never moves when history passes its 3000-row window."""
+        if not cohort_id: return []
+        key = lambda r: r.get('id') or f'_{id(r)}'               # an id-less row is never merged with another
+        rows = {key(r): r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id}
+        start = (self.state.get('cohort') or {}).get('started_utc') or ''
+        for h in self.history:
+            if h.get('cohort_id') == cohort_id: rows[key(h)] = h
+            elif not h.get('cohort_id') and h.get('book') not in PB.IDS and str(h.get('closed') or '') >= start:
+                rows[key(h)] = h                                      # unowned activity on the shared account
+        return list(rows.values())
+
+    def _book_of_working(self, x):
+        b = x.get('book') or (x.get('plan') or {}).get('book')
+        if b: return b
+        sl = next((s for s in self.S.get('SLEEVES', []) if s['id'] == x.get('sleeve')), None)
+        return TB.book_of(sl.get('key')) if sl else None
+
+    def true_book_block(self, sl, size=None, skip_pending=None):
+        """Book-wide gate for a new lot (automatic entries only). None or a reason."""
+        if not self._tb_on() or not sl: return None
+        if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        book = TB.book_of(sl.get('key'))
+        if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
+        b = self.true_books().get(book)
+        trailing = sum(1 for k, p in (self.state.get('pending_entries') or {}).items()   # armed trailing entries hold a slot;
+                       if k != skip_pending and self._book_of_working(p) == book)        # their size is gated when they trigger
+        size = size or {}
+        return TB.admit(b, size.get('notional'), size.get('risk'), max_leverage=self.S['MAX_LEVERAGE'],
+                        working=b['working'] + trailing)
+
+    def true_books_status(self):
+        try:
+            on = self._tb_on()
+            books = self.true_books(persist=False)
+            st = self._tb_state()
+            return dict(on=on, cohort_id=st['cohort_id'], start=float(TB.START), max_lots=TB.MAX_LOTS,
+                        stop_risk_max=float(TB.STOP_RISK_MAX), shared_account=True, books=TB.public(books))
+        except Exception as ex:
+            return dict(on=False, error=f'{type(ex).__name__}: {ex}')
 
     FUNDING_POLL_S, FUNDING_RETRY_S, FUNDING_SEEN_MAX, FUNDING_LOOKBACK_S = 3600, 300, 2000, 7 * 86400
 
@@ -4380,6 +4479,8 @@ class Engine:
         if not sl or (lot.get('key_strategy') and sl['key'] != lot['key_strategy']):
             return 'strategy slot removed or replaced - no more adds (stop and exits still run)'
         book = lot.get('book') if not self.live and Sg.get('PAPER_BOOKS') is True else None
+        tba = self._tb_add_block(lot, q, px)                      # TRUE-BOOK-01: notional + stop-risk inside the book's NAV
+        if tba: return tba
         if book in PB.IDS:
             cap = Sg['MAX_LEVERAGE'] * PB.allocation(self.last_eq or 0, Sg.get('PAPER_BOOK_CAP') or 2000.0)
             used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l.get('book') == book)
@@ -4747,6 +4848,8 @@ class Engine:
                   [r for r in st.get('resting_entries', {}).values() if r['sleeve'] == sl['id']]
         if any(p['symbol'] == sym for p in working): return 'an entry is already working on this coin'
         if len(held) + len(working) >= sl['max_pos']: return f"max positions reached ({sl['max_pos']})"
+        tbb = self.true_book_block(sl, size, skip_pending)          # TRUE-BOOK-01: book-wide, across every strategy in it
+        if tbb: return tbb
         when = sl.get('when') or 'any'
         if when != 'any':
             try:
@@ -5124,6 +5227,12 @@ class Engine:
         book_mode = bool(not manual and not self.live and self.S.get('PAPER_BOOKS') is True)
         book = PB.book_for(sl.get('key')) if book_mode else None
         sleeve_eq = PB.allocation(eq, self.S.get('PAPER_BOOK_CAP') or 2000.0) if book_mode else (eq if manual else eq * sl['share'])
+        if book_mode and self._tb_on():                 # TRUE-BOOK-01: the book's own NAV, never account equity / 5
+            book = TB.book_of(sl.get('key'))
+            b = self.true_books().get(book) if book else None
+            if b is None:
+                self.last_skip = f"true books: strategy {sl.get('key')} has no book"; return False
+            sleeve_eq = float(max(b['nav_worse'], 0))
         risk = risk if risk is not None else sl['risk'] * self.kelly_mult(sl) * self.governor_mult()
         risk_usd = sleeve_eq * risk
         if 'dca' in g:                                  # martingale DCA: a hard basket stop is mandatory, depth/scale bounded
@@ -5147,6 +5256,8 @@ class Engine:
         open_notional = sum(l['qty'] * l['avg'] for l in self.state['lots'].values()
                             if (l.get('book') == book if book_mode
                                 else l['sleeve'] == ('MAN' if manual else sl['id'])))
+        if book_mode and self._tb_on():                 # TRUE-BOOK-01: lots + working entries of the book (as the gate counts)
+            open_notional = float(self.true_books()[book]['notional'])
         lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - open_notional) / px
 
         def _size(ru):
@@ -6207,7 +6318,8 @@ class Engine:
                              None if ok and lot else (self.last_skip or 'maker lot not created'))
             if fallback and rem > 0:
                 blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
-                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if ok and lot else None
+                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))
+                       or self._tb_add_block(lot, rem, px)) if ok and lot else None      # TRUE-BOOK-01: the book's limits too
                 if not (ok and lot): st['fallback_skipped'] = 'maker lot not created'
                 elif blk: st['fallback_blocked'] = blk
                 else:

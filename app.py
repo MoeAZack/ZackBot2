@@ -1001,7 +1001,9 @@ class App:
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
                             else: e._manage_failed(f'mark prices: {ex}')
-                    try: e.apply_costs(); e.funding_tick()                     # FEE-ASSET-01: observe only, never raise
+                    try:
+                        e.apply_costs(); e.funding_tick()                     # FEE-ASSET-01: observe only, never raise
+                        if e._tb_on(): e.true_books()                         # TRUE-BOOK-01: a book at NAV <= 0 halts now
                     except Exception as ex: log.debug(f'actual costs tick skipped ({ex})')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
@@ -1105,7 +1107,8 @@ class App:
         settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
-                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status), ('book_ledger', e.book_ledger_status)):
+                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status), ('book_ledger', e.book_ledger_status),
+                         ('true_books', e.true_books_status)):
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
@@ -1542,9 +1545,9 @@ def settings_update(e, b):
             if not bool(v) and e.install_block():          # AUD-05 r5: resuming never bypasses the account confirmation
                 raise ValueError('cannot resume entries: ' + e.install_block())
             ns[k] = bool(v)
-        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK', 'FEE_EDGE_GATE', 'PAPER_BOOKS'):
+        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS'):
             if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
-            if k == 'PAPER_BOOKS' and v and getattr(e, 'live', True) is not False:
+            if k in ('PAPER_BOOKS', 'TRUE_BOOKS') and v and getattr(e, 'live', True) is not False:
                 raise ValueError('five-book tracking is PAPER only')
             ns[k] = v
         elif k == 'FEE_EDGE_MULT': ns[k] = _num(v, 1, 20, 'fee edge multiple')
