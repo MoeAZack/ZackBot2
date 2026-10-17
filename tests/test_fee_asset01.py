@@ -298,7 +298,12 @@ def test_funding_split_uses_quantity_held_at_payment_time():
     b = dict(la, fills=[['2026-10-01T00:00:00+00:00', 'entry', 10.0, 100.0], ['2026-10-01T09:00:00+00:00', 'pyramid_add', 30.0, 100.0]],
              qty=40.0); e.state['lots']['B'] = b
     t = int(E.datetime.fromisoformat('2026-10-01T08:00:00+00:00').timestamp() * 1000)
-    e.state['funding_cursor_ms'] = t - 1; e.trade.income_rows = [frow(1, -2.0, t=t)]
+    c = dict(id='C', symbol='BTCUSDT', side='LONG', opened='2026-10-01T00:00:00+00:00', closed='2026-10-01T12:00:00+00:00',
+             qty_max=40.0, fills=[['2026-10-01T00:00:00+00:00', 'entry', 10.0, 100.0],
+                                  ['2026-10-01T09:00:00+00:00', 'pyramid_add', 30.0, 100.0],
+                                  ['2026-10-01T12:00:00+00:00', 'exit', 40.0, 101.0]])
+    e.history.append(c)
+    e.state['funding_cursor_ms'] = t - 1; e.trade.income_rows = [frow(1, -3.0, t=t)]
     e.funding_tick(force=True)
-    assert la['funding_actual'] == -1.0 and b['funding_actual'] == -1.0          # 10 : 10 then, not 5 : 40 now
+    assert la['funding_actual'] == b['funding_actual'] == c['funding_actual'] == -1.0   # 10 : 10 : 10 then, not 5 : 40 : 40
     assert AC.held_at([['bad', 'entry', 1, 1]], t) is None
