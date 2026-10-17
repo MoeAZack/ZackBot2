@@ -391,3 +391,9 @@ def test_an_unreadable_cohort_never_drops_a_sticky_halt():
     e.state['cohort'] = coh
     e.history.append(row(e, 'B3_TREND', 5000))
     assert e.true_books()['B3_TREND']['state'] == 'HALTED'
+
+
+@pytest.mark.parametrize('bad', ['abc', 'nan', -5, None])
+def test_an_unreadable_persisted_peak_is_flagged(bad):
+    b = TB.compute('C', [], peaks={'B1_FAST': bad})['B1_FAST']
+    assert not b['complete'] and b['incomplete'][0]['reason'] == 'peak_unreadable' and b['peak'] == 2000

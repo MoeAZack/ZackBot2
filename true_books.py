@@ -137,7 +137,10 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         nav = nav_a
         worse = min(nav_a, nav_e)
         # peak from the ordered close series (realized only) + now: re-derived each time, so a restated fee re-derives it
-        run, peak = start, max(start, nav, D(peaks.get(key)) or start)
+        pk = D(peaks.get(key)) if key in peaks else None
+        if key in peaks and (pk is None or pk <= 0):              # a corrupted persisted peak would under-report DD
+            b['incomplete'].append(dict(reason='peak_unreadable', value=str(peaks.get(key))[:40])); pk = None
+        run, peak = start, max(start, nav, pk or start)
         for _t0, net in sorted(b['series'], key=lambda x: x[0]):
             run += net; peak = max(peak, run)
         h = halted.get(key)
