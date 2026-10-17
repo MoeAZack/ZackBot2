@@ -13,6 +13,7 @@ import pandas as pd
 import strategies as S
 import trade_audit as TA
 import paper_books as PB
+import actual_costs as AC
 import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from binance_client import AuditSkipped
@@ -316,12 +317,13 @@ def enrich_attempt(rec, refs, client):
             if not isinstance(t, dict) or str(t.get('orderId')) != str(r['oid']) or t.get('symbol', sym) != sym: continue
             q, p = _fnum(t.get('qty')), _fnum(t.get('price'))
             if not q or q <= 0 or not p or p <= 0 or t.get('id') is None: continue        # an id-less row is never counted
-            got[str(t['id'])] = (q, p, _fnum(t.get('commission')), t.get('commissionAsset'))
+            got[str(t['id'])] = (q, p, _fnum(t.get('commission')), t.get('commissionAsset'), t.get('maker'))
         if not got: again = True; continue                                                # not visible yet
         r['tq'] = sum(v[0] for v in got.values()); r['tn'] = sum(v[0] * v[1] for v in got.values())
         r['comm'] = sum(v[2] for v in got.values()) if all(v[2] is not None for v in got.values()) else None
         r['rebate'] = any(v[2] is not None and v[2] < 0 for v in got.values())           # a maker rebate (negative fee)
         r['assets'] = {v[3] if isinstance(v[3], str) else None for v in got.values()}
+        r['raw'] = [(v[2], v[3], v[4]) for v in got.values()]                          # FEE-ASSET-01 (ids dropped)
         if _covered(r): r['done'] = True
         else: again = True                                                                # more executions to show
     return again
@@ -355,6 +357,13 @@ def enrich_finish(rec, refs, cut=False):
     if rate is not None:
         rec['commission_rate'] = rec['fee_rate'] = round(rate, 8) + 0.0     # fee_rate: the field EXEC-CAL-01 reads
         rec['commission_asset'] = quote
+    raws = [x for r in refs for x in (r.get('raw') or [])]            # FEE-ASSET-01: raw commission, missingness explicit
+    raw, readable = AC.raw_from_trades(raws)
+    for k in ('commission_raw', 'commission_missing'): rec.pop(k, None)
+    if raw: rec['commission_raw'] = raw
+    miss = ('no_order_ref' if not refs else ('trades_incomplete' if raws else 'timeout' if cut else 'no_trades') if not full
+            else None if readable else 'amount_unreadable')
+    if miss: rec['commission_missing'] = miss
     has_px = bool(_fnum(rec.get('actual')))
     rec['enrich_status'] = ('resolved' if has_px and rate is not None else 'partial' if has_px or rate is not None
                             else 'timeout' if cut else 'missing')
@@ -386,7 +395,7 @@ class FillEnricher:
         return [k for r in refs for k in ((sym, 'o', str(r['oid'])) if r.get('oid') is not None else None,
                                           (sym, 'c', str(r['cid'])) if r.get('cid') else None) if k]
 
-    def submit(self, rec, refs, client, writer):
+    def submit(self, rec, refs, client, writer, sink=None):
         """'queued' | 'duplicate' (this order was already handed off: dropped) | 'refused' (closing / full: the caller
         writes the record now)."""
         keys = self._keys(rec, refs)
@@ -403,7 +412,7 @@ class FillEnricher:
             for k in keys: self.seen[k] = True
             while len(self.seen) > ENRICH_SEEN_MAX: self.seen.popitem(last=False)
             now = _mono()
-            self.jobs.append(dict(rec=copy.deepcopy(rec), refs=[dict(r) for r in refs], client=client, writer=writer,
+            self.jobs.append(dict(rec=copy.deepcopy(rec), refs=[dict(r) for r in refs], client=client, writer=writer, sink=sink,
                                   rec0=copy.deepcopy(rec), refs0=[dict(r) for r in refs],
                                   deadline=now + ENRICH_CAP_S, next_at=now, n=0, written=False))
             self.ctr['submitted'] += 1
@@ -461,6 +470,9 @@ class FillEnricher:
         with self.cv: self.ctr[rec['enrich_status']] = self.ctr.get(rec['enrich_status'], 0) + 1
         try: j['writer'].emit(rec)
         except Exception: pass
+        if j.get('sink'):                                   # FEE-ASSET-01: a queue append only - never a lot or state
+            try: j['sink'](rec)
+            except Exception: pass
 
     def flush(self, timeout=2.0):
         """Wait (bounded) until every handed-off fill is written to its writer's queue. Never call from an order path."""
@@ -2613,19 +2625,144 @@ class Engine:
                 lim = _ref_limit(refs)
                 if self._enrich_on():
                     if refs and all(r.get('oid') is not None or r.get('cid') for r in refs):
-                        if self._enr.submit(rec, refs, self.trade, self._fillw) in ('queued', 'duplicate'): return
+                        got = self._enr.submit(rec, refs, self.trade, self._fillw, sink=self._cost_sink)
+                        if got == 'queued': return
+                        if got == 'duplicate':                    # not written again; its lot still learns it has no cost
+                            self._cost_sink(dict(rec, commission_missing='duplicate')); return
                     rec = enrich_finish(copy.deepcopy(rec), refs); rec['enrich_attempts'] = 0
+                    if rec.get('commission_missing') and refs: rec['commission_missing'] = 'not_read'   # FEE-ASSET-01
                 elif lim:
                     rec = fill_px_fields(dict(rec), lim)                # maker limit improvement, no reads
         except Exception as e:
             log.debug(f'fill enrichment hand-off failed ({type(e).__name__})')
+        if rec.get('cost_ref') and rec.get('outcome') in ('filled', 'partial') and not ('commission_raw' in rec or 'commission_missing' in rec):
+            rec = dict(rec, commission_missing='not_enriched')        # FEE-ASSET-01: written without reads
         try: self._fillw.emit(rec)
         except Exception: pass
+        self._cost_sink(rec)
 
-    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, order=None, **extra):
+    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, order=None, cost_lot=None, **extra):
         rec = self._fill_rec(kind, sym, side, buy, expected, actual, q_req, q_fill, t0, **extra)
+        self._cost_link(rec, cost_lot)
         self._fill_emit(rec, None if order is None else [self._order_ref(order, (rec or {}).get('qty_fill'))])
         return rec
+
+    # ------------------------------------------------------------ FEE-ASSET-01: actual commission / funding (observe only)
+    # Every executed fill record gets a cost_ref (not an exchange id) that its lot lists in cost_refs. The finished record
+    # (enriched by the worker, or written at once) is appended to a queue; apply_costs() folds it into the lot - or into the
+    # trade's history row when it arrives after the close - on the engine's own thread. Estimates (`fees`) never change.
+    COST_WAIT_S = 600                     # an unlinked cost record waits this long for its lot, then counts as orphan
+
+    def _cost_link(self, rec, lot=None):
+        if not rec or rec.get('outcome') not in ('filled', 'partial'): return None
+        self._cost_n = getattr(self, '_cost_n', 0) + 1
+        rec['cost_ref'] = f"c{int(time.time() * 1000)}-{os.getpid() % 10000}-{self._cost_n}"
+        if lot is not None: lot.setdefault('cost_refs', []).append(rec['cost_ref'])
+        return rec['cost_ref']
+
+    def _cost_sink(self, rec):
+        """Thread-safe hand-off of a finished fill record (deque append, no lot, no state, no I/O)."""
+        try:
+            if rec and rec.get('cost_ref'):
+                vars(self).setdefault('_cost_q', collections.deque(maxlen=5000)).append(
+                    {k: copy.deepcopy(rec.get(k)) for k in ('cost_ref', 'symbol', 'commission_raw', 'commission_missing') if k in rec})
+        except Exception: pass
+
+    def _cost_target(self, ref):
+        for key, l in self.state.get('lots', {}).items():
+            if ref in (l.get('cost_refs') or ()): return 'lot', l
+        for h in reversed(self.history):
+            if ref in (h.get('cost_refs') or ()): return 'row', h
+        return None, None
+
+    def _cost_final(self, kind, t):
+        quote = _quote_asset(t.get('symbol'))
+        booked = len(t.get('fills') or []) if kind == 'lot' else t.get('fills_booked')
+        AC.finalize(t, quote, booked)
+
+    def apply_costs(self):
+        """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
+        try:
+            with self.lock:
+                q = vars(self).setdefault('_cost_q', collections.deque(maxlen=5000))
+                wait = vars(self).setdefault('_cost_wait', [])
+                todo, now, rows, lots = wait + [(time.time(), q.popleft()) for _ in range(len(q))], time.time(), False, False
+                wait.clear()
+                for t0, rec in todo:
+                    kind, t = self._cost_target(rec['cost_ref'])
+                    if t is None:
+                        if now - t0 < self.COST_WAIT_S: wait.append((t0, rec))
+                        else: self.state['cost_orphans'] = int(self.state.get('cost_orphans') or 0) + 1
+                        continue
+                    AC.apply_fill(t, rec); self._cost_final(kind, t)
+                    rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                if rows: self._save_aux('history', self.history)
+                if lots: self.save_state()
+                return len(todo) - len(wait)
+        except Exception as ex:
+            log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
+            return 0
+
+    FUNDING_POLL_S, FUNDING_SEEN_MAX, FUNDING_LOOKBACK_S = 3600, 5000, 7 * 86400
+
+    def _funding_holders(self, sym, t_ms):
+        """Lots / history rows that held sym at t_ms: [(('lot'|'row', key), side, qty)] (qty as recorded)."""
+        def ms(iso):
+            try: return datetime.fromisoformat(iso).timestamp() * 1000
+            except (TypeError, ValueError): return None
+        out = []
+        for key, l in self.state.get('lots', {}).items():
+            o = ms(l.get('opened'))
+            if l.get('symbol') == sym and o is not None and o <= t_ms: out.append((('lot', key), l.get('side'), l.get('qty')))
+        for h in self.history[-3000:]:
+            o, c = ms(h.get('opened')), ms(h.get('closed'))
+            if h.get('symbol') == sym and o is not None and c is not None and o <= t_ms <= c:
+                out.append((('row', h.get('id')), h.get('side'), h.get('qty_max')))
+        return out
+
+    def funding_tick(self, force=False):
+        """FEE-ASSET-01 (observe only, PAPER/testnet): poll FUNDING_FEE income on the audit path, dedupe by a hash of the
+        transaction id, attribute each payment to the lots / history rows holding the symbol then (pro-rata by qty; opposite
+        sides = ambiguous, nothing attributed), append it to funding.jsonl and fold it into funding_actual. Never raises,
+        never sizes or gates anything."""
+        if getattr(self, 'live', True) is not False: return 'live'
+        inc = getattr(self.trade, 'income', None)
+        if not inc: return 'no_reader'
+        now = time.time()
+        if not force and now - float(self.state.get('funding_polled') or 0) < self.FUNDING_POLL_S: return 'not_due'
+        try:
+            cur = self.state.get('funding_cursor_ms') or int((now - self.FUNDING_LOOKBACK_S) * 1000)
+            rows = inc('FUNDING_FEE', cur)
+        except Exception as ex:
+            log.debug(f'funding income not read ({type(ex).__name__})'); return 'read_failed'
+        rows = [r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)]
+        with self.lock:
+            self.state['funding_polled'] = now
+            seen = self.state.setdefault('funding_seen', [])
+            new, hi, rows_changed = [], int(cur), False
+            for r in sorted(rows, key=lambda r: int(_fnum(r.get('time')) or 0)):
+                t = int(_fnum(r.get('time')) or 0); hi = max(hi, t)
+                k = AC.tran_key(r.get('tranId') if r.get('tranId') is not None else (r.get('symbol'), t, r.get('income')))
+                if k in seen: continue
+                seen.append(k)
+                amt, asset, sym = _fnum(r.get('income')), r.get('asset'), r.get('symbol')
+                st, shares = AC.attribute_funding(amt, [(key, s, q) for key, s, q in self._funding_holders(sym, t)])
+                for (kind, key), a in shares.items():
+                    tgt = self.state['lots'].get(key) if kind == 'lot' else next((h for h in self.history if h.get('id') == key), None)
+                    if tgt is not None:
+                        AC.apply_funding(tgt, a, asset); rows_changed = rows_changed or kind == 'row'
+                new.append(dict(kind='funding', key=k, symbol=sym, asset=asset, amount=amt, time_ms=t, status=st,
+                                shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()]))
+            del seen[:-self.FUNDING_SEEN_MAX]
+            self.state['funding_cursor_ms'] = hi                 # same-ms rows are re-read next time and deduped by key
+            if rows_changed: self._save_aux('history', self.history)
+            if new: self.save_state()                          # cursor + seen keys + lot amounts persist together
+        if new:
+            try:
+                with open(os.path.join(self.dir, 'funding.jsonl'), 'a', encoding='utf-8') as f:
+                    for x in new: f.write(json.dumps(x, separators=(',', ':')) + '\n')
+            except OSError as ex: log.warning(f'funding.jsonl not written ({ex})')
+        return f'{len(new)} new'
 
     def _fill_flush(self, timeout=2.0):
         """Wait (bounded) until the enrichment worker and then the writer have handled every queued record. Never call
@@ -3154,7 +3291,7 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, reason=why,
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
                        **({'outcome': 'unfilled'} if got == 0 else {}))
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
@@ -3385,6 +3522,12 @@ class Engine:
                    move_pct=round(sd * (exit_avg - lot.get('entry0', lot['e0'])) / lot.get('entry0', lot['e0']) * 100, 2), exit_reason=why,
                    adds=lot.get('adds', 0), dca=lot.get('dca', 0), tp1=lot.get('tp1', False), manual=lot.get('manual', False),
                    fills=lot.get('fills', []))
+        try:                                             # FEE-ASSET-01: actual costs beside the estimate (never replace it)
+            for k in AC.COST_FIELDS:                     # records still queued find this row through cost_refs
+                if k in lot: rec[k] = copy.deepcopy(lot[k])
+            if rec.get('cost_refs') or lot.get('fills'):
+                rec['fills_booked'] = len(lot.get('fills') or []); self._cost_final('row', rec)
+        except Exception as e: log.warning(f'actual costs not carried to history ({e})')
         au = None
         try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
             au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
@@ -3543,7 +3686,8 @@ class Engine:
             q = got
             act = float(o.get('avgPrice') or 0) or None
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
-                                    px, act, q, o.get('executedQty'), t0, order=o, reason=why, fallback_order=(why == 'entry_fallback') or None))
+                                    px, act, q, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
+                                    fallback_order=(why == 'entry_fallback') or None))
             px = act or px
         try:
             self._apply_add(lot, q, px, why)
@@ -5129,7 +5273,7 @@ class Engine:
             self.last_skip = 'entry order not filled'
             self.save_state()
             return False
-        return self._create_lot(plan, got, fill)
+        return self._create_lot(plan, got, fill, cost_ref=((self._last_order or {}).get('rec') or {}).get('cost_ref'))
 
     # ------------------------------------------------------------ AUD-03b: entries whose answer was lost
     # An entry whose order answer is lost (or not final) is remembered with its client order id. Every reconcile pass:
@@ -5319,7 +5463,7 @@ class Engine:
                 log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
                 self.save_state()
 
-    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None):
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None, cost_ref=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
@@ -5333,6 +5477,7 @@ class Engine:
                    opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2),
                    eq_at_entry=round(plan.get('book_eq') or eq, 2), account_eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
+        if cost_ref: lot['cost_refs'] = [cost_ref]                     # FEE-ASSET-01: the entry fill's cost record
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
         if plan.get('lev_exception'): lot['lev_exception'] = True    # T03c r1: entered while Binance leverage stayed above the cap
@@ -5734,7 +5879,7 @@ class Engine:
             mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q,
                                   rec.get('t0'), signal_px=plan['px'], maker_tries=rec['n'])
             st = dict(fallback_skipped=no_fallback) if no_fallback and rem > 0 else {}   # fallback state, only from what actually happened
-            ok = self._create_lot(plan, q, avg, maker_qty=q)
+            ok = self._create_lot(plan, q, avg, maker_qty=q, cost_ref=self._cost_link(mrec))
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
             self._audit_cand(sl, rec['symbol'], rec['side'], plan['sg'], 'taken' if ok and lot else 'not_taken',   # T05a terminal
                              None if ok and lot else (self.last_skip or 'maker lot not created'))
