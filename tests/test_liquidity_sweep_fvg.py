@@ -84,6 +84,11 @@ def test_base_signal_exact_prices_and_time_cap():
     assert t['R_net'] == pytest.approx(-(t['slip_R'] + t['fee_R'] + t['fund_R']))
 
 
+def test_entry_is_open_n_plus_1_not_close_n():
+    (t,), _ = trade(base(extra={23: (93.0, 94.0, 91.0, 92.0)}))     # close[n] 92, open[n+1] 93
+    assert (t['entry_i'], t['entry'], t['R_unit'], t['target']) == (23, 93.0, 20.0, 53.0)
+
+
 def test_cost_constants_are_the_runner_ones():
     import backtest as BT
     assert (LS.FEE, LS.SLIP, LS.FUND_PER_BAR) == (BT.FEE, BT.SLIP, BT.FUND_PER_BAR) == (0.0005, 0.0002, 0.00005)
@@ -177,8 +182,8 @@ def test_swept_failed_setup_pivot_not_reused():                    # fixture 10
 
 
 # ---- entry skips (Cowork a) and cost guard
-@pytest.mark.parametrize('o,why', [(113.0, 'gap_stop'), (114.0, 'gap_stop'), (50.0, 'gap_target'), (112.99, 'cost_guard'), (100.0, None),
-                                   (50.01, None)])
+@pytest.mark.parametrize('o,why', [(113.0, 'gap_stop'), (114.0, 'gap_stop'), (112.99, 'cost_guard'), (100.0, None),
+                                   (50.0, None), (49.0, None)])
 def test_gap_at_entry(o, why):
     tr, sk = trade(base(extra={23: (o, 115.0, 49.0, 92.0)}))
     if why:
@@ -195,6 +200,20 @@ def test_cost_guard_equality(o, ok):                               # fixture 5: 
         assert tr[0]['stop'] == 2521.0 and tr[0]['R_unit'] == 2521.0 - o
     else:
         assert tr == [] and sk[0]['skip'] == 'cost_guard'
+
+
+def test_gap_open_target_rebases_from_actual_entry():
+    # Codex 6228710611: a gap down at entry (open 80 vs close[n] 92) is NOT skipped; R = 113 - 80, target = 80 - 2R
+    (t,), sk = trade(base(extra={23: (80.0, 81.0, 79.0, 80.0)}))
+    assert sk == [] and (t['entry'], t['stop'], t['R_unit'], t['target']) == (80.0, 113.0, 33.0, 14.0)
+    (t,), _ = trade(base(extra={23: (80.0, 81.0, 79.0, 80.0), 24: (80.0, 81.0, 14.0, 20.0)}))
+    assert (t['label'], t['exit'], t['R_gross']) == ('target', 14.0, 2.0)
+
+
+def test_stop_side_gap_skips_both_sides():
+    df = base(extra={23: (113.5, 115.0, 112.0, 113.0)})
+    assert [x['skip'] for x in LS.run_symbol(df)['skips']] == ['gap_stop']
+    assert [x['skip'] for x in LS.run_symbol(flip(df))['skips']] == ['gap_stop']
 
 
 # ---- exits (fixture 7, Codex fix 3, Cowork c/e)

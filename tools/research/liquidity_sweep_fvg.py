@@ -16,11 +16,14 @@ Rules (short; long is the exact price mirror, implemented by running the short c
   pivot high j: H[j] > H[j+-k], k = 1..3 (strict); known only from the close of j+3; eligible at sweep bar s when
     s-60 <= j <= s-4 and not breached (breach = any closed bar k >= j+4, k < s, with H[k] > H[j], strict); the latest
     eligible pivot by (confirmation time, index) is P. A breached pivot is never reused (breach is a pure function of
-    the bars, so a swept / failed / overlap-ignored setup consumes its pivot automatically).
+    the bars, so a swept / failed / overlap-ignored setup consumes its pivot automatically). Note: a full-right-side
+    pivot at j >= s-3 has H[j] > H[s], so it can never be swept at s; the lag is therefore enforced by testing the
+    causal mutation (a left swing judged only on bars < s), which the fixtures reject.
   sweep at s: H[s] > P, H[s] - P >= 0.10 ATR14[s], C[s] < P.
   FVG at n, s+1 <= n <= s+3: L[n-2] > H[n]; bar n-1 bearish (C < O) with O-C >= 0.8 ATR14[n-1]; no close > P in s+1..n.
-  entry: market at open[n+1] = E. stop = max H[s..n] + 0.10 ATR14[n]. Skips: E >= stop (gap_stop); E <= Tref where
-    Tref = C[n] - 2 (stop - C[n]) (gap_target); stop - E < 0.84% E (cost_guard). R = stop - E; target = E - 2R.
+  entry: market at open[n+1] = E. stop = max H[s..n] + 0.10 ATR14[n] (frozen at n). Skips: E >= stop (gap_stop);
+    stop - E < 0.84% E (cost_guard). R = stop - E; target = E - 2R, rebased from the actual entry (Codex 6228710611:
+    no separate open-beyond-target skip; this supersedes Cowork default a's target half).
   exits (bar k >= n+1): pending close-rule exit fills at open[k]; else (k > n+1) open through stop / target fills at
     open[k]; else intrabar stop (H >= stop) beats target (L <= target), both at their level; then at close[k]:
     C[k] > L[n-2] -> invalidation, k == n+12 -> time; invalidation label wins; fills at open[k+1].
@@ -144,9 +147,6 @@ def simulate_trade(df, sig: dict) -> dict:
     stop, E = sig['_stop'], fr(O[e])
     if E >= stop:
         return dict(skip='gap_stop', side=side, n=n)
-    Cn = fr(C[n])
-    if E <= Cn - TARGET_R * (stop - Cn):
-        return dict(skip='gap_target', side=side, n=n)
     Ereal = abs(E)
     R = stop - E
     if R < COST_GUARD * Ereal:
