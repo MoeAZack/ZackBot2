@@ -25,6 +25,11 @@ Generalises tools/research/run_vwaprev_candidate.py (unchanged; its guards and h
     BT.FEE is replaced for the run by an object that multiplies exactly like 0.0005 and only records the close() products.
   - regime split: BTCUSDT close vs its 4h EMA200 (strategies.ema, 200) on the last 4h candle CLOSED at or before the
     entry fill, i.e. causal (for a 4h run: bar i_in - 1, identical to the book's own e200).
+  - --regime-refuse none|counter (research-only, default none = unchanged runner): counter refuses a LONG entry signal
+    when the regime at its fill time is btc_below_ema200 and a SHORT entry signal when it is btc_above_ema200 (regime_at,
+    'n/a' never refuses). Pre-entry: the masked signal never reaches backtest.run (research-local replacement of the
+    book's cached raw signal arrays; backtest.py untouched), so a later signal on the same symbol can still enter.
+    Everything else (signals, stops, exits, mgmt, costs, sizing) is identical. none writes the pre-change packet.
   - packet JSON per (key, side, mgmt): commit, window, symbols, cache digests, runner sha256, params, costs, stats, every
     trade; non_promotable true; never overwritten.
 
@@ -225,8 +230,11 @@ def sleeve(key, side, symbols, mgmt, risk, max_pos) -> dict:
                 symbols=list(symbols), hours=None, vol_max_pct=None, kelly=None)
 
 
-def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos, tf_sec=TF_SEC):
+def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos, tf_sec=TF_SEC,
+             prepare=None):
     book = BT.Book(raw)
+    if prepare is not None:          # research hook (regime refusal): runs on the book before backtest.run reads a signal
+        prepare(book)
     if len(book.t) and _ms(book.t).max() >= hi:
         raise RunnerError('breadth candidate: the book holds a candle at / after END; aborted')
     if book.gaps:
@@ -243,6 +251,43 @@ def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_hal
     finally:
         BT.FEE = old
     return tr, cv, book, probe.pos
+
+
+REGIME_REFUSE = ('none', 'counter')
+COUNTER = {'le': 'btc_below_ema200', 'se': 'btc_above_ema200'}     # entry column -> regime that refuses it
+
+
+def fill_regimes(book, reg) -> list:
+    """Regime label at the fill time of a signal decided on bar i (fill = open of bar i + 1, see backtest.run: 'new
+    signals -> fill next candle'). The last bar has no fill: 'n/a'."""
+    t = _ms(book.t)
+    return [regime_at(reg, int(t[i + 1])) for i in range(len(t) - 1)] + ['n/a']
+
+
+def mask_regime_refuse(book, key, side, symbols, reg, lo, hi, mode='counter') -> dict:
+    """Pre-entry refusal: replace the book's cached raw signals (the exact arrays backtest.run reads via book.raw_sig)
+    with copies whose counter-regime entry bars are False. Exit columns are untouched. Returns the refusal counts
+    (entry signal bars on the run side inside [lo, hi) that were masked)."""
+    if mode not in REGIME_REFUSE:
+        raise RunnerError(f'breadth candidate: --regime-refuse must be one of {REGIME_REFUSE}')
+    rg = np.array(fill_regimes(book, reg), dtype=object)
+    t = _ms(book.t)
+    inwin = (t >= lo) & (t < hi)
+    col = 'le' if side == 'long' else 'se'
+    by_sym = {}
+    for s in symbols:
+        g = dict(book.raw_sig(key, s))
+        for c, bad in COUNTER.items():
+            x = np.array(g[c], dtype=bool, copy=True)
+            hit = x & (rg == bad)
+            if c == col:
+                by_sym[s] = int((hit & inwin).sum())
+            x[hit] = False
+            g[c] = x
+        book._sig[(key, s, str(None))] = g
+    return {'mode': mode, 'rule': 'refuse LONG when btc_below_ema200, SHORT when btc_above_ema200 at the fill time '
+            '(regime_at; n/a never refuses); pre-entry signal mask', 'refused_signals': int(sum(by_sym.values())),
+            'refused_by_symbol': by_sym}
 
 
 def emitted(book, key, side, symbols, lo, hi) -> int:
@@ -341,13 +386,15 @@ def curve_dd(cv) -> float | None:
 
 # ------------------------------------------------------------------ the run
 def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = 'defaults', custom=None, tier=None,
-        symbols=None, regime_cache=None, cache_extra=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
+        symbols=None, regime_cache=None, cache_extra=None, regime_refuse='none', repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
         daily_halt=APP_DEFAULTS['daily_halt'], risk=APP_DEFAULTS['risk'], max_pos=APP_DEFAULTS['max_pos']) -> dict:
     strat = check_key(key)
     if side not in SIDES:
         raise RunnerError('breadth candidate: --side must be long or short')
     mg = build_mgmt(mgmt_mode, custom, key)
     mcheck = mgmt_check(key, mg)
+    if regime_refuse not in REGIME_REFUSE:
+        raise RunnerError(f'breadth candidate: --regime-refuse must be one of {REGIME_REFUSE}')
     tf = strat.get('tf', '4h')
     tf_ms = TFS[tf]
     if tf != TF and not regime_cache:
@@ -399,9 +446,16 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
     VC.assert_bounded({BTC: b4}, warm4, hi)
     reg = btc_regime_frame(b4)
     run_syms = [s for s in syms if s in raw]
+    refusal = {}
+    prepare = None
+    if regime_refuse != 'none':
+        def prepare(bk):
+            refusal['raw_entry_signals_unmasked'] = emitted(bk, key, side, run_syms, lo, hi)
+            refusal.update(mask_regime_refuse(bk, key, side, run_syms, reg, lo, hi, regime_refuse))
     tr, cv, book, pos = simulate(raw, key, side, run_syms, mg, lo, hi, start=start, max_lev=max_lev,
-                                 daily_halt=daily_halt, risk=risk, max_pos=max_pos, tf_sec=tf_ms // 1000)
-    n_sig = emitted(book, key, side, run_syms, lo, hi)
+                                 daily_halt=daily_halt, risk=risk, max_pos=max_pos, tf_sec=tf_ms // 1000,
+                                 prepare=prepare)
+    n_sig = refusal['raw_entry_signals_unmasked'] if refusal else emitted(book, key, side, run_syms, lo, hi)
     if len(tr) and (tr.side != SIDES[side]).any():
         raise RunnerError('breadth candidate: a trade on the filtered-out side; aborted')
     tr = enrich(tr, pos, book, reg)
@@ -472,6 +526,9 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
                   'liquidations': int(cv.attrs.get('liquidations', 0))},
         'trades': trades,
     }
+    if regime_refuse != 'none':        # absent for none: the default packet is byte-identical to the pre-change runner
+        pkt['regime_refuse'] = refusal
+        pkt['config'] = {'regime_refuse': regime_refuse}
     pkt['packet_sha256'] = hashlib.sha256(_canon(pkt)).hexdigest()
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     tmp = out + '.tmp'
@@ -495,6 +552,8 @@ def main(argv=None) -> int:
     ap.add_argument('--regime-cache', default=None, help='the 4h cache dir (BTC regime split); required for non-4h keys')
     for k in CUSTOM:
         ap.add_argument('--' + k.replace('_', '-'), type=CUSTOM[k][2], default=None)
+    ap.add_argument('--regime-refuse', default='none', choices=REGIME_REFUSE,
+                    help='research-only pre-entry refusal: counter = no LONG under BTC<EMA200, no SHORT under BTC>EMA200')
     ap.add_argument('--out', required=True)
     for k, v in APP_DEFAULTS.items():
         ap.add_argument('--' + k.replace('_', '-'), type=type(v), default=v)
@@ -502,12 +561,14 @@ def main(argv=None) -> int:
     try:
         pkt = run(cache=a.cache, window=a.window, out=a.out, key=a.key, side=a.side, mgmt_mode=a.mgmt,
                   custom={k: getattr(a, k) for k in CUSTOM}, tier=a.tier, regime_cache=a.regime_cache, cache_extra=a.cache_extra,
+                  regime_refuse=a.regime_refuse,
                   symbols=a.symbols.split(',') if a.symbols else None, **{k: getattr(a, k) for k in APP_DEFAULTS})
     except RunnerError as e:
         print(f'REFUSED: {e}', file=sys.stderr)
         return 2
     agg = pkt['stats']['aggregate']
     print(f"{a.key} {a.side} {a.mgmt}: {pkt['status']} {agg['trades']} trades, R sum {agg['r_sum']}, PF {agg['pf']}, "
+          f"{'refused ' + str(pkt['regime_refuse']['refused_signals']) + ', ' if 'regime_refuse' in pkt else ''}"
           f"packet {pkt['packet_sha256'][:12]} -> {a.out}")
     return 0
 
