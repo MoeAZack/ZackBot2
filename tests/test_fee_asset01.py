@@ -307,3 +307,20 @@ def test_funding_split_uses_quantity_held_at_payment_time():
     e.funding_tick(force=True)
     assert la['funding_actual'] == b['funding_actual'] == c['funding_actual'] == -1.0   # 10 : 10 : 10 then, not 5 : 40 : 40
     assert AC.held_at([['bad', 'entry', 1, 1]], t) is None
+
+
+# ------------------------------------------------------------------ Cowork F1 (6238935945): fallback-completed entries
+def test_held_at_counts_the_fallback_remainder_as_opening():
+    f = [['2026-10-01T00:00:00+00:00', 'entry', 0.4, 100.0], ['2026-10-01T01:00:00+00:00', 'entry_fallback', 0.6, 100.0]]
+    ms = lambda iso: int(E.datetime.fromisoformat(iso).timestamp() * 1000)
+    assert AC.held_at(f, ms('2026-10-01T02:00:00+00:00')) == pytest.approx(1.0)
+    assert AC.held_at(f, ms('2026-10-01T00:30:00+00:00')) == pytest.approx(0.4)       # funding between the two fills
+    st, sh = AC.attribute_funding(-2.0, [('a', 'LONG', AC.held_at(f, ms('2026-10-01T02:00:00+00:00'))), ('b', 'LONG', 1.0)])
+    assert st == 'attributed' and sh == {'a': -1.0, 'b': -1.0}
+
+
+def test_every_add_path_kind_is_an_opening_fill():
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'engine.py'), encoding='utf-8').read()
+    whys = set(re.findall(r"_add_qty\([^)]*?,\s*'([a-z_]+)'", src))
+    assert {'entry_fallback', 'pyramid_add', 'safety_order'} <= whys and whys <= set(AC.OPENING_FILLS)

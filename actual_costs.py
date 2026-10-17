@@ -100,7 +100,9 @@ def attribute_funding(income, side_qty):
     return 'attributed', {k: round(amt * float(q) / tot, 10) + 0.0 for k, _s, q in rows}
 
 
-OPENING_FILLS = ('entry', 'pyramid_add', 'safety_order')
+# every kind a lot's `fills` books as an increase: the opening fill plus every `why` the engine's _add_qty books
+# (a maker entry completed by the market fallback books its remainder as 'entry_fallback'); anything else reduces.
+OPENING_FILLS = ('entry', 'entry_maker', 'entry_market', 'entry_fallback', 'pyramid_add', 'safety_order')
 
 
 def held_at(fills, t_ms):
