@@ -9,3 +9,7 @@ The 23 closed SC-* trades in PAPER `history.json`, with MFE and giveback from `t
   - BTC 4h series = the app candle cache (`candles/BTCUSDT_4h.csv`, which ends 2026-10-15T00:00Z) plus public Binance USDⓈ-M `/fapi/v1/klines` 4h (600 bars, sha256 `6a087007…c627`). Duplicates go to the fresh klines; a no-gap assert guards the series.
   - Note: the runtime slot gate (`strategies.regime`) uses a different definition (daily vs 200-day EMA).
 - `rows.py` is the exact extractor: `py -3.14 -I rows.py <ZackBot data dir> out.csv btc4h.csv`.
+
+## BTC 4h series (Cowork N2)
+- `btc4h_klines_raw.csv`: the 600 public klines as fetched; content is unchanged apart from LF line endings.
+- `btc4h_merged.csv`: the exact series `rows.py` uses (app cache + klines, klines win on duplicates, no gaps), without the still-forming last bar. It carries the `ema200` column (`ewm(span=200, adjust=False)` over the whole series) so each label can be checked: for the last row with `t + 4h <= entry`, `above` holds iff `c > ema200`.
