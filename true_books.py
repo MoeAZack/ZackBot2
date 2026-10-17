@@ -18,6 +18,7 @@ START = Decimal('2000')
 MAX_LOTS = 4
 STOP_RISK_MAX = Decimal('0.08')            # book open stop-risk cap as a fraction of book NAV (4 x 2 %) - Codex may rule
 Q = Decimal('0.0001')
+UNMEASURED = ('mark_missing', 'stop_unknown', 'working_stop_unknown')   # NAV / risk unknown -> no new risk in that book
 
 
 def D(x):
@@ -66,7 +67,7 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         out[key] = b
     for r in history or ():
         b = out.get(r.get('book'))
-        if b is None or r.get('cohort_id') != cohort_id: continue
+        if b is None or not cohort_id or r.get('cohort_id') != cohort_id: continue
         b['closed'] += 1
         g, fe = D(r.get('pnl_gross')) or Decimal(0), D(r.get('fees')) or Decimal(0)
         fa, fu = D(r.get('fees_actual')), D(r.get('funding_actual')) or Decimal(0)
@@ -143,6 +144,8 @@ def admit(b, new_notional=None, new_stop_risk=None, add=False, max_leverage=None
     if b['state'] == 'HALTED': return f'book {k} halted (NAV {q(b["nav_worse"])} <= 0) - no new risk in this book'
     nav = b['nav_worse']
     if nav <= 0: return f'book {k} has no NAV left'
+    blind = sorted({x['reason'] for x in b['incomplete'] if x['reason'] in UNMEASURED})
+    if blind: return f'book {k} cannot measure its risk ({", ".join(blind)}) - no new risk until it can'
     n = b['lots'] + (b['working'] if working is None else working)
     if not add and n >= max_lots: return f'book {k} full ({n}/{max_lots} lots)'
     if new_notional is not None and max_leverage is not None:

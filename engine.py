@@ -2751,19 +2751,38 @@ class Engine:
             out.append((b, qty * px, qty * sd))
         return out
 
-    def true_books(self, marks=None):
-        """{book: doc} for the current cohort (pure compute over state); persists a new HALT (sticky)."""
+    def true_books(self, marks=None, persist=True):
+        """{book: doc} for the current cohort (pure compute over state); persists a new HALT (sticky) unless persist=False."""
         with self.lock:
             st = self._tb_state()
-            books = TB.compute(st['cohort_id'], self.history, list(self.state.get('lots', {}).values()),
+            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
                                marks if marks is not None else (self.marks or {}), self._tb_working(), st['halted'])
             new = {k: b['halt'] for k, b in books.items() if b['state'] == 'HALTED' and k not in st['halted']}
-            if new and self._tb_on():
+            if new and persist and self._tb_on():
                 for k, h in new.items():
                     st['halted'][k] = dict(h or {}, at=now_utc().isoformat(timespec='seconds'), scope='book')
                 self.save_state()
                 for k in new: self.notify(f'TRUE-BOOK: book {k} HALTED (NAV <= 0) - no new risk in this book; other books continue')
             return books
+
+    def _tb_add_block(self, lot, q, px):
+        """An add / fallback remainder is not a new lot, but it is notional and stop-risk inside the book's own NAV."""
+        if not self._tb_on() or lot.get('manual') or lot.get('book') not in PB.IDS: return None
+        if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        b = self.true_books().get(lot['book'])
+        stop = lot.get('stop')
+        return TB.admit(b, q * px, q * abs(px - float(stop)) if stop is not None else None, add=True,
+                        max_leverage=self.S['MAX_LEVERAGE'])
+
+    def _tb_rows(self, cohort_id):
+        """Closed rows of the cohort: the append-only evidence store (never trimmed) overlaid by the trading history
+        (which carries late actual-cost / funding updates) - so NAV never moves when history passes its 3000-row window."""
+        if not cohort_id: return []
+        key = lambda r: r.get('id') or f'_{id(r)}'               # an id-less row is never merged with another
+        rows = {key(r): r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id}
+        for h in self.history:
+            if h.get('cohort_id') == cohort_id: rows[key(h)] = h
+        return list(rows.values())
 
     def _book_of_working(self, x):
         b = x.get('book') or (x.get('plan') or {}).get('book')
@@ -2774,6 +2793,7 @@ class Engine:
     def true_book_block(self, sl, size=None, skip_pending=None):
         """Book-wide gate for a new lot (automatic entries only). None or a reason."""
         if not self._tb_on() or not sl: return None
+        if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
         book = TB.book_of(sl.get('key'))
         if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
         b = self.true_books().get(book)
@@ -2786,7 +2806,7 @@ class Engine:
     def true_books_status(self):
         try:
             on = self._tb_on()
-            books = self.true_books()
+            books = self.true_books(persist=False)
             st = self._tb_state()
             return dict(on=on, cohort_id=st['cohort_id'], start=float(TB.START), max_lots=TB.MAX_LOTS,
                         stop_risk_max=float(TB.STOP_RISK_MAX), shared_account=True, books=TB.public(books))
@@ -4449,13 +4469,8 @@ class Engine:
         if not sl or (lot.get('key_strategy') and sl['key'] != lot['key_strategy']):
             return 'strategy slot removed or replaced - no more adds (stop and exits still run)'
         book = lot.get('book') if not self.live and Sg.get('PAPER_BOOKS') is True else None
-        if book in PB.IDS and self._tb_on():                      # TRUE-BOOK-01: an add is not a new lot, but it is notional
-            b = self.true_books().get(book)                       # and stop-risk inside the book's own NAV
-            stop = lot.get('stop')
-            if b is None: return f'book {book}: no true-book state'
-            why = TB.admit(b, q * px, q * abs(px - float(stop)) if stop is not None else None, add=True,
-                           max_leverage=Sg['MAX_LEVERAGE'])
-            if why: return why
+        tba = self._tb_add_block(lot, q, px)                      # TRUE-BOOK-01: notional + stop-risk inside the book's NAV
+        if tba: return tba
         if book in PB.IDS:
             cap = Sg['MAX_LEVERAGE'] * PB.allocation(self.last_eq or 0, Sg.get('PAPER_BOOK_CAP') or 2000.0)
             used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l.get('book') == book)
@@ -5231,6 +5246,8 @@ class Engine:
         open_notional = sum(l['qty'] * l['avg'] for l in self.state['lots'].values()
                             if (l.get('book') == book if book_mode
                                 else l['sleeve'] == ('MAN' if manual else sl['id'])))
+        if book_mode and self._tb_on():                 # TRUE-BOOK-01: lots + working entries of the book (as the gate counts)
+            open_notional = float(self.true_books()[book]['notional'])
         lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - open_notional) / px
 
         def _size(ru):
@@ -6291,7 +6308,8 @@ class Engine:
                              None if ok and lot else (self.last_skip or 'maker lot not created'))
             if fallback and rem > 0:
                 blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
-                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if ok and lot else None
+                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))
+                       or self._tb_add_block(lot, rem, px)) if ok and lot else None      # TRUE-BOOK-01: the book's limits too
                 if not (ok and lot): st['fallback_skipped'] = 'maker lot not created'
                 elif blk: st['fallback_blocked'] = blk
                 else:

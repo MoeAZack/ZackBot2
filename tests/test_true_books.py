@@ -207,7 +207,7 @@ def test_halted_book_refuses_new_risk_alone_and_stays_halted_across_restart():
     assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
     e.history.append(row(e, 'B3_TREND', 5000))                                      # a later "recovery" never unhalts
     assert e.true_books()['B3_TREND']['state'] == 'HALTED'
-    e.save_state(); e._save_aux('history', e.history)
+    e._save_aux('history', e.history)                     # no explicit state save: the halt itself was persisted
     e2, _ = mk_engine(tmp=tmp, CAPITAL_CAP=10000.0, PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=True)
     e2.S['SLEEVES'] = [T_SL, T2_SL, R_SL]; e2.S['CAP_SINCE'] = e.S['CAP_SINCE']; e2._cohort_init()
     assert e2.true_books()['B3_TREND']['state'] == 'HALTED'
@@ -238,8 +238,8 @@ def test_restart_reproduces_nav_limits_and_ownership():
 
 def test_per_strategy_attribution_inside_a_book():
     e, _ = tb_engine()
-    e.history += [row(e, 'B3_TREND', 30, fees=1, strategy='ema_mom'), row(e, 'B3_TREND', -10, fees=1, strategy='ema_mom'),
-                  row(e, 'B3_TREND', 5, fees=0.5, strategy='donchian_ens', exit_reason='take_profit')]
+    e.history += [row(e, 'B3_TREND', 30, fees=1, strategy='ema_mom', id='a'), row(e, 'B3_TREND', -10, fees=1, strategy='ema_mom', id='b'),
+                  row(e, 'B3_TREND', 5, fees=0.5, strategy='donchian_ens', exit_reason='take_profit', id='c')]
     st = {b['id']: b for b in e.true_books_status()['books']}['B3_TREND']['strategies']
     assert st['ema_mom']['closed'] == 2 and st['ema_mom']['net'] == 18 and st['ema_mom']['win_rate'] == 0.5
     assert st['ema_mom']['pf'] == pytest.approx(29 / 11, abs=1e-4) and st['ema_mom']['fee_drag'] == 2
@@ -260,3 +260,81 @@ def test_exits_and_stops_are_per_lot_quantities_never_close_position():
     for fn in (BC.Futures.stop, BC.Futures.close):
         src = inspect.getsource(fn)
         assert 'closePosition' not in src and 'quantity' in src
+
+
+# ------------------------------------------------------------------ review r1 regressions
+def test_maker_fallback_remainder_is_gated_by_the_book():
+    from test_v31_engine import Book, age
+    e, _ = tb_engine(ENTRY_ORDER='maker', MAKER_REPRICE=2, MAKER_WAIT_S=30, MAKER_FALLBACK=True)
+    bk = Book(e.trade)
+    assert e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    e.history.append(row(e, 'B3_TREND', -2001)); e.true_books()                    # the book halts while the order rests
+    bk.fill(0.4); age(e); e.manage(e.trade.marks())
+    for _ in range(3): age(e, total=True); e.manage(e.trade.marks())
+    lot = next(iter(e.state['lots'].values()))
+    assert [f[1] for f in lot['fills']] == ['entry']                                # no entry_fallback remainder
+    assert e._fill_flush(5)
+    mk = [json.loads(x) for x in open(e.F['fills']) if '"entry_maker"' in x][-1]
+    assert 'halted' in mk['fallback_blocked'] and not mk.get('fallback_attempted')
+    assert e._tb_add_block(lot, 0.1, 100.0).startswith('book B3_TREND halted')
+
+
+@pytest.mark.parametrize('how', ['none', 'conflict', 'ended'])
+def test_no_open_cohort_means_no_new_risk(how):
+    e, _ = tb_engine()
+    if how == 'none': e.state['cohort'] = None
+    elif how == 'conflict': e._cohort_conflict = True
+    else: e.state['cohort'] = dict(e.state['cohort'], ended_utc='2026-10-17T20:00:00+00:00')
+    assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'no open cohort' in e.last_skip
+
+
+def test_unstamped_rows_never_value_a_book_without_a_cohort():
+    b = TB.compute(None, [dict(book='B1_FAST', pnl_gross=-5000, fees=0, fees_actual=0)])['B1_FAST']
+    assert b['nav'] == 2000 and b['closed'] == 0
+
+
+def test_nav_survives_the_history_window_through_the_cohort_store():
+    e, _ = tb_engine()
+    old = row(e, 'B3_TREND', -300, id='old')
+    e.cohort_rows.append(old)                                   # trimmed out of history, kept in the evidence store
+    e.cohort_rows.append(row(e, 'B3_TREND', 0, id='late', fees=1.0))
+    e.history.append(row(e, 'B3_TREND', 0, id='late', fees=0.5))                   # history carries the late actual fee
+    b = e.true_books()['B3_TREND']
+    assert b['closed'] == 2 and b['nav'] == Decimal('1699.5')
+
+
+def test_unmeasurable_risk_blocks_new_risk_in_that_book_only():
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='SOLUSDT')                  # no mark for this coin
+    assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    assert 'cannot measure its risk (mark_missing)' in e.last_skip
+    assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+
+
+def test_reserved_notional_sizes_down_instead_of_refusing():
+    e, _ = tb_engine(MAX_LEVERAGE=1)
+    free = size_qty = None
+    assert e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()); free = next(iter(e.state['lots'].values()))['qty']
+    e.state['lots'].clear()
+    e.state['resting_entries']['r1'] = dict(symbol='ETHUSDT', side='LONG', qty=1.0, filled=0.0, cost=0.0, n=1, status='open',
+                                            sleeve='U', cid='zbcidy', plan=dict(book='B3_TREND', qty=39.0, px=50.0, stop_dist=0.0))
+    assert e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip   # 1950 of 2000 reserved: 50 left
+    size_qty = next(iter(e.state['lots'].values()))['qty']
+    assert size_qty < free and size_qty * 100 <= 50 + 1e-6
+
+
+def test_status_read_never_persists_a_halt():
+    e, _ = tb_engine()
+    e.history.append(row(e, 'B3_TREND', -2001))
+    s = e.true_books_status()
+    assert {b['id']: b['state'] for b in s['books']}['B3_TREND'] == 'HALTED' and e.state['true_books']['halted'] == {}
+
+
+def test_the_halt_itself_is_saved_at_once():
+    e, tmp = tb_engine()
+    e.history.append(row(e, 'B3_TREND', -2001)); e.true_books()                      # nothing else saves state after this
+    e.history.append(row(e, 'B3_TREND', 5000)); e._save_aux('history', e.history)
+    e2, _ = mk_engine(tmp=tmp, CAPITAL_CAP=10000.0, PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=True)
+    e2.S['SLEEVES'] = [T_SL, T2_SL, R_SL]; e2.S['CAP_SINCE'] = e.S['CAP_SINCE']; e2._cohort_init()
+    b = e2.true_books()['B3_TREND']
+    assert b['nav'] > 0 and b['state'] == 'HALTED'
