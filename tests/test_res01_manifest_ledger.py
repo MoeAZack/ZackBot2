@@ -217,6 +217,9 @@ def stub_envelope_prover(monkeypatch, tmp_path):
     monkeypatch.setattr(L, '_runs_of', lambda d: str(stub))
     monkeypatch.setattr(L, 'recompute_run_digest',
                         lambda r, runs_dir=None: r['run_digest'] if runs_dir else 'no-immutable-runs-store')
+    # BT-EXEC-OBS-01: the promotion boundary resolves the same frozen envelope; it is exercised for real in
+    # tests/test_bt_exec_obs01.py, so the stub store stubs it too.
+    monkeypatch.setattr(L, '_enforce_promotion', lambda *a, **k: None)
 
 
 def rec(path, **kw):
