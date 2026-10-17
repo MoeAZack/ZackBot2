@@ -2191,6 +2191,29 @@ def rex_configs() -> list[dict]:
 REX_RUN = RunProfile('REX-02', RV.CANDIDATE, RV.FAMILY, 'both', 'range_vwap_rev.run_book', RV.PRIMARY.name, None,
                      RE.SEED, REX_SUMMARY_FORMAT, REX_DETAIL_FORMAT, rex_configs, REX_NOT_EVALUATED)
 REX_PROFILES = {REX_RUN.candidate_id: REX_RUN}
+# Development-only candidate rules (Codex 6185035993 point 4). A run is the frozen v1 unless a variant is selected
+# EXPLICITLY (`variant=` / `run_r4.py rex --variant`); there is no default switch. The variant changes nothing of v1's
+# path, config, records or run id: it adds its own `variant` block to the run config (so its run id differs), records
+# its own candidate id on every data_access / variant / baseline record of the family ledger, and is never promotable.
+# It applies to every book the runner opens (X1 primary, the 8 neighbours, B2) and to both cost rows via
+# run_book(entry_rule=...); B0 (range_vwap_rev_eval.b0 / z_table) takes the same entry_rule; B1 (continuous weekly
+# comparator, valued at the boundaries, never split_end) and B3 (cash) open no X1-book lot and are unaffected.
+REX_VARIANTS = {RV.SPLITCUT_CANDIDATE: RV.SPLITCUT}
+
+
+def rex_variant(variant) -> tuple:
+    """(candidate id, variant record) of an explicit selection: None = the frozen v1 (no variant record); a
+    development-only variant id must be named exactly; anything else refuses."""
+    if variant is None or variant == RV.CANDIDATE:
+        return RV.CANDIDATE, None
+    if variant not in REX_VARIANTS:
+        raise PitRunError(f'REX-02: unknown variant {variant!r} (development-only variants: {sorted(REX_VARIANTS)})')
+    return variant, dict(REX_VARIANTS[variant])
+
+
+def _rex_rule(env: dict):
+    v = env.get('variant_record')
+    return None if v is None else v['entry_rule']
 
 
 def rex_plan(repo: str) -> S.SplitPlan:
@@ -2486,7 +2509,7 @@ def rex_split_pass(env: dict, seg: dict, symbols) -> dict:
         for c in rex_configs():
             for row in REX_ROWS:
                 res = RV.run_book(tape, c['cfg'], side, first=seg['first'], end=hi, order=symbols, row=row,
-                                  notices=notices, mode=c['mode'])
+                                  notices=notices, mode=c['mode'], entry_rule=_rex_rule(env))
                 results.setdefault(side, {}).setdefault(c['name'], {})[row] = _jsonable(res)
                 counts.setdefault(side, {}).setdefault(c['name'], {})[row] = {
                     'trades': len(res['trades']), 'status': res['status'],
@@ -2539,19 +2562,22 @@ def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tu
     counts, results, inc = rex_aggregate(splits)
     status = INCOMPLETE if inc else COMPLETE
     man = env['manifest']
-    access = {'kind': 'data_access', 'candidate_id': RV.CANDIDATE, 'split': 'development',
+    cid = env.get('candidate_id', RV.CANDIDATE)
+    access = {'kind': 'data_access', 'candidate_id': cid, 'split': 'development',
               'window': {'start': S.utc(lo), 'end': S.utc(hi)},
               'detail': {'purpose': 'development', 'promotable': False, 'tape_manifest': man['digest'],
                          'file_digests': {k: v['digest'] for k, v in man['series'].items()},
                          'rules_digest': man['rules_digest'], 'source': man.get('source'),
                          'notice_artifact': env['notice_sha256'], 'funding_tail_ms': REX_FUNDING_TAIL_MS,
                          'ledger': env.get('access')}}
-    head = {'candidate_id': RV.CANDIDATE, 'family': RV.FAMILY, 'tier': tier, 'label': DEV_LABEL,
+    head = {'candidate_id': cid, 'family': RV.FAMILY, 'tier': tier, 'label': DEV_LABEL,
             'universe_label': LABEL, 'split': 'development', 'promotable': False, 'provenance': rex_provenance(env),
             'window': {'start': S.utc(lo), 'end': S.utc(hi)}, 'first_decision': S.utc(segs[0]['first']),
             'split_mode': REX_SPLIT_MODE, 'split_keys': [g['key'] for g in segs],
             'cost_rows': list(REX_ROWS), 'funding_window': RV.FUNDING_WINDOW, 'notice_rule': NT.RULE_ID,
             'missing_data_policy': POLICY, 'status': status, 'run': sha(run_config)}
+    if env.get('variant_record') is not None:
+        head['variant'] = env['variant_record']
     if inc:
         head['incomplete'] = inc
     summary = dict(head, format=REX_SUMMARY_FORMAT, counts=counts, splits=[sp['summary'] for sp in splits],
@@ -2563,15 +2589,18 @@ def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tu
 
 def rex_run_config(env: dict, lo: int, hi: int) -> dict:
     man = env['manifest']
-    return {'profile': REX_RUN.binding(), 'configs': [c['name'] for c in rex_configs()], 'rows': list(REX_ROWS),
-            'book': dict(RV.BOOK), 'slip_c': RV.SLIP_C, 'funding_window': RV.FUNDING_WINDOW,
-            'notice_rule': NT.RULE_ID, 'parser_sha': NT.parser_sha(), 'notice_artifact': env['notice_sha256'],
-            'inputs': {k: list(v) for k, v in REX_INPUTS.items()}, 'rules_digest': man['rules_digest'],
-            'source': man.get('source'), 'tape_manifest': man['digest'], 'window': [S.utc(lo), S.utc(hi)],
-            'dev_window': list(REX_DEV_WINDOW), 'funding_tail_ms': REX_FUNDING_TAIL_MS,
-            'cutoff': S.utc(rex_sealed_cutoff(env['plan'])), 'plan_digest': env['plan'].digest,
-            'split_mode': REX_SPLIT_MODE, 'splits': [g['key'] for g in rex_segments(env['plan'], lo, hi)],
-            'provenance': rex_provenance(env)}
+    out = {'profile': REX_RUN.binding(), 'configs': [c['name'] for c in rex_configs()], 'rows': list(REX_ROWS),
+           'book': dict(RV.BOOK), 'slip_c': RV.SLIP_C, 'funding_window': RV.FUNDING_WINDOW,
+           'notice_rule': NT.RULE_ID, 'parser_sha': NT.parser_sha(), 'notice_artifact': env['notice_sha256'],
+           'inputs': {k: list(v) for k, v in REX_INPUTS.items()}, 'rules_digest': man['rules_digest'],
+           'source': man.get('source'), 'tape_manifest': man['digest'], 'window': [S.utc(lo), S.utc(hi)],
+           'dev_window': list(REX_DEV_WINDOW), 'funding_tail_ms': REX_FUNDING_TAIL_MS,
+           'cutoff': S.utc(rex_sealed_cutoff(env['plan'])), 'plan_digest': env['plan'].digest,
+           'split_mode': REX_SPLIT_MODE, 'splits': [g['key'] for g in rex_segments(env['plan'], lo, hi)],
+           'provenance': rex_provenance(env)}
+    if env.get('variant_record') is not None:
+        out['variant'] = env['variant_record']
+    return out
 
 
 def rex_no_holdout(ledger: str) -> None:
@@ -2587,25 +2616,38 @@ def rex_no_holdout(ledger: str) -> None:
 
 def rex_record_trials(env: dict, run: str) -> None:
     """The development variant / baseline records of this run (one per side x registered configuration)."""
+    v = env.get('variant_record')
     for side in RV.SIDES:
         for c in rex_configs():
+            detail = {'purpose': 'REX-02 development screen (not promotable)', 'promotable': False,
+                      'config': c['name'], 'role': c['role'], 'side': side, 'run': run,
+                      'cost_rows': list(REX_ROWS), 'tier': env['tier']}
+            if v is not None:
+                detail = dict(detail, purpose=f'REX-02 development screen, {v["label"]}', variant=v)
             L.append(env['ledger'], kind='baseline' if c['role'] == 'baseline' else 'variant',
-                     candidate_id=RV.CANDIDATE, split='development', window=env['access']['window'],
-                     author=env['author'], cairo_date=env['cairo_date'], manifest_digest=env['access']['manifest'],
-                     detail={'purpose': 'REX-02 development screen (not promotable)', 'promotable': False,
-                             'config': c['name'], 'role': c['role'], 'side': side, 'run': run,
-                             'cost_rows': list(REX_ROWS), 'tier': env['tier']})
+                     candidate_id=env.get('candidate_id', RV.CANDIDATE), split='development',
+                     window=env['access']['window'], author=env['author'], cairo_date=env['cairo_date'],
+                     manifest_digest=env['access']['manifest'], detail=detail)
     rex_no_holdout(env['ledger'])
 
 
-def run_rex(env: dict, out_dir: str, *, window, resume: bool = False, clock=PG.cairo_now) -> str:
+def run_rex(env: dict, out_dir: str, *, window, resume: bool = False, clock=PG.cairo_now, variant=None) -> str:
     """REX-02 development run of `range_vwap_rev.v1` on one tier: window check (explicit, inside REX_DEV_WINDOW) ->
     input preflight (fail closed) -> progress snapshot -> both side books -> sealed summary / detail + final record.
     `env`: tape {symbol: RV.Series}, manifest (rex_tape_manifest), notice_artifact (zb-delist-notice/1 doc),
     notice_sha256 (the digest the run command pinned), symbols (frozen rank order), tier, plan (rex_plan), commit
     (40-hex), universe (64-hex digest or None); from the store loader also ledger / access / author / cairo_date
     (development variant / baseline records) and the `historical` provenance (clean commit); without it the run is
-    synthetic and marked `historical_evidence: False`. Returns the final record path."""
+    synthetic and marked `historical_evidence: False`. `variant`: None = the frozen v1; a development-only candidate
+    rule (REX_VARIANTS) only when named explicitly - a store env must have been loaded for the same variant.
+    Returns the final record path."""
+    cid, vrec = rex_variant(variant)
+    loaded = env.get('variant', RV.CANDIDATE if env.get('ledger') else cid)      # a store env names its variant
+    if loaded != cid:
+        raise PitRunError(f'REX-02: the env was loaded for {loaded!r}, not {cid!r}')
+    env = {k: v for k, v in env.items() if k not in ('candidate_id', 'variant_record')}
+    if vrec is not None:
+        env.update(candidate_id=cid, variant_record=vrec)
     lo, hi = rex_window(window, env['plan'])
     tier = env.get('tier')
     if tier not in RUN_TIERS:
@@ -2716,11 +2758,13 @@ def _rex_read_artifact(path: str, sha256: str) -> dict:
 
 
 def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path: str, notice_sha256: str,
-             author: str, cairo_date: str, plan: S.SplitPlan) -> dict:
+             author: str, cairo_date: str, plan: S.SplitPlan, variant=None) -> dict:
     """The REX-02 loader: window -> CLEAN git tree (exact commit SHA) -> notice artifact (exact pinned digest) -> tier
     symbols + rules -> ledger guard -> StaticDataset -> ledger-recorded development Access (lineage root) -> tape read
     through the Window + its manifest. Returns the run env for run_rex with `historical` provenance (nothing is read
-    before the window, clean-tree, artifact and ledger checks pass)."""
+    before the window, clean-tree, artifact and ledger checks pass). `variant` (explicit, development-only) records
+    the Access under the variant's own candidate id; None = the frozen v1."""
+    cid, vrec = rex_variant(variant)
     lo, hi = rex_window(window, plan)
     if tier not in RUN_TIERS:
         raise PitRunError(f'REX-02: tier must be one of {RUN_TIERS}')
@@ -2734,13 +2778,15 @@ def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path
     ledger = src['ledger']
     rex_no_holdout(ledger)
     ds = StaticDataset(src['manifest'], store, static, symbols)
-    acc = P.Access(ds, plan, ledger, candidate_id=RV.CANDIDATE, author=author, cairo_date=cairo_date, repo=repo)
-    w = acc.open_development(S.utc(lo), S.utc(hi + REX_FUNDING_TAIL_MS), lineage='root',
-                             detail={'purpose': 'REX-02 range_vwap_rev.v1 development screen (no holdout, not '
-                                                'promotable)', 'promotable': False, 'tier': tier,
-                                     'symbols': symbols, 'notice_artifact': notice_sha256, 'commit': commit,
-                                     'decision_window': {'start': S.utc(lo), 'end': S.utc(hi)},
-                                     'funding_tail_ms': REX_FUNDING_TAIL_MS, 'cost_rows': list(REX_ROWS)})
+    acc = P.Access(ds, plan, ledger, candidate_id=cid, author=author, cairo_date=cairo_date, repo=repo)
+    detail = {'purpose': 'REX-02 range_vwap_rev.v1 development screen (no holdout, not promotable)',
+              'promotable': False, 'tier': tier, 'symbols': symbols, 'notice_artifact': notice_sha256,
+              'commit': commit, 'decision_window': {'start': S.utc(lo), 'end': S.utc(hi)},
+              'funding_tail_ms': REX_FUNDING_TAIL_MS, 'cost_rows': list(REX_ROWS)}
+    if vrec is not None:
+        detail = dict(detail, purpose=f'REX-02 {cid} development screen (no holdout), {vrec["label"]}',
+                      variant=vrec)
+    w = acc.open_development(S.utc(lo), S.utc(hi + REX_FUNDING_TAIL_MS), lineage='root', detail=detail)
     tape = {s: rex_series(w, s, src['rules'][s]) for s in symbols}
     source = {'data_manifest': ds.digest, 'universe': static['digest'], 'loader': ds.manifest['loader_version']}
     man = rex_tape_manifest(tape, art, symbols=symbols, source=source)
@@ -2748,4 +2794,5 @@ def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path
             'symbols': symbols, 'commit': commit, 'universe': static['digest'], 'ledger': ledger, 'author': author,
             'cairo_date': cairo_date,
             'provenance': {'class': 'historical', 'commit': commit, 'tree': 'clean'},
-            'access': {'family': RV.FAMILY, 'window': w.window_doc, 'manifest': ds.digest, 'split': 'development'}}
+            'access': {'family': RV.FAMILY, 'window': w.window_doc, 'manifest': ds.digest, 'split': 'development'},
+            **({} if vrec is None else {'variant': cid})}

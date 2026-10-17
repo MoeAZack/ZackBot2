@@ -165,11 +165,17 @@ def weekly_r(series, H: int, end: int, equity0: float = RV.BOOK['equity0']) -> d
 
 
 # ------------------------------------------------------------------ B0 (timing null under X1 admission)
-def z_table(tape, cfg, side, *, first, end, notices=RV.NO_NOTICES) -> dict:
-    """Decision-time z_i of every eligible close in [first, end) (no outcome): {(symbol, close): z}."""
+def z_table(tape, cfg, side, *, first, end, notices=RV.NO_NOTICES, entry_rule=None) -> dict:
+    """Decision-time z_i of every eligible close in [first, end) (no outcome): {(symbol, close): z}. Under the
+    development-only `entry-cutoff/1` (entry_rule=RV.SPLITCUT_RULE) the closes it blocks are not drawable either, so
+    B0 draws from exactly the closes X1 may enter (time / cap / split end only)."""
+    if entry_rule not in RV.ENTRY_RULES:
+        raise RV.RexError(f'entry_rule must be one of {RV.ENTRY_RULES}')
     out = {}
     for s, x in tape.items():
         for t in range(first, end, TF):
+            if entry_rule is not None and not RV.splitcut_allows(t, cfg.cap, end):
+                continue
             if not RV.eligible(x, s, t, notices):
                 continue
             try:
@@ -225,18 +231,24 @@ def b0_park(x1_abs_z, b0_abs_z, shortfall_share) -> list[str]:
     return park
 
 
-def b0(tape, cfg, side, x1: dict, *, first, end, notices=RV.NO_NOTICES, R: int = R_B0, row='base') -> dict:
-    """B0 replicate books after X1 (X1 counts fixed first). Inherits INCOMPLETE from X1 or any replicate."""
+def b0(tape, cfg, side, x1: dict, *, first, end, notices=RV.NO_NOTICES, R: int = R_B0, row='base',
+       entry_rule=None) -> dict:
+    """B0 replicate books after X1 (X1 counts fixed first). Inherits INCOMPLETE from X1 or any replicate.
+    `entry_rule` (development-only `entry-cutoff/1`) must match the X1 run's and is applied to the draw pool and to
+    every replicate book."""
+    if x1.get('entry_rule') != entry_rule:
+        raise RV.RexError('B0 must use the same entry_rule as the X1 run it is matched to')
     if x1['status'] != RV.COMPLETE:
         return {'status': RV.INCOMPLETE, 'inherited': True, 'policy': RV.POLICY, 'incomplete': [{'reason': 'x1'}]}
-    zt = z_table(tape, cfg, side, first=first, end=end, notices=notices)
+    zt = z_table(tape, cfg, side, first=first, end=end, notices=notices, entry_rule=entry_rule)
     seqs = np.random.SeedSequence(SEED).spawn(R)
     x1_mean = (math.fsum(t['r'] for t in x1['trades']) / len(x1['trades'])) if x1['trades'] else None
     k, short, absz, n_sig = 0, 0, [], len(x1['signals'])
     for ss in seqs:
         rng = np.random.Generator(np.random.PCG64(ss))
         draws, s0 = b0_draws(x1, zt, cfg, side, H=first, rng=rng)
-        rep = RV.run_book(tape, cfg, side, first=first, end=end, notices=notices, mode='b0', draws=draws, row=row)
+        rep = RV.run_book(tape, cfg, side, first=first, end=end, notices=notices, mode='b0', draws=draws, row=row,
+                          entry_rule=entry_rule)
         if rep['status'] != RV.COMPLETE:
             return {'status': RV.INCOMPLETE, 'inherited': True, 'policy': RV.POLICY, 'incomplete': rep['incomplete']}
         short += s0 + sum(v for c, v in rep['counts'].items() if c.startswith('b0_shortfall'))
