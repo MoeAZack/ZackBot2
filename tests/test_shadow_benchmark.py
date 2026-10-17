@@ -32,7 +32,7 @@ def packet(tmp_path, name='alpha', side=1, shift=0.0, start='2026-01-01T00:00:00
     p = {'format': S.INPUT_FORMAT, 'non_promotable': True,
          'window': {'start': t[0].isoformat().replace('+00:00', 'Z'), 'end': end,
                     'end_exclusive': True, 'tf': '4h', 'guard': 'pit_run.rex_window',
-                    'sealed_cutoff': end},
+                    'sealed_cutoff': S.VC.SEALED_CUTOFF},
          'cache': {'files': {'AAAUSDT': {'file': path.name, 'sha256': raw_sha, 'dir': 'cache'}}},
          'costs': {'fee_taker': .0005, 'slip': .0002, 'fund_per_bar': .00001},
          'strategy': {'key': name, 'mgmt_mode': 'defaults'}, 'side': 'long' if side == 1 else 'short',
@@ -110,12 +110,14 @@ def test_nonfinite_price_and_side_label_mismatch_refused(tmp_path):
 def test_sealed_cutoff_and_malformed_trade_refused(tmp_path):
     _, pp, _ = packet(tmp_path)
     q = json.loads(open(pp, encoding='utf-8').read())
-    q['window']['sealed_cutoff'] = '2026-01-02T00:00:00Z'
+    q['window']['end'] = '2026-10-01T00:00:00Z'
+    q['window']['sealed_cutoff'] = '2026-10-01T00:00:00Z'
     q['packet_sha256'] = S._packet_digest(q)
     open(pp, 'w', encoding='utf-8').write(json.dumps(q))
-    with pytest.raises(S.BenchmarkError, match='sealed development cutoff'):
+    with pytest.raises(S.BenchmarkError, match='sealed cutoff must equal frozen'):
         S.load_packet(pp)
-    q['window']['sealed_cutoff'] = q['window']['end']
+    q['window']['end'] = '2026-02-10T00:00:00Z'
+    q['window']['sealed_cutoff'] = S.VC.SEALED_CUTOFF
     del q['trades'][0]['R']
     q['packet_sha256'] = S._packet_digest(q)
     open(pp, 'w', encoding='utf-8').write(json.dumps(q))

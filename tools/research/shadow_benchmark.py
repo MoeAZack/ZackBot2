@@ -34,6 +34,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import ledger as LEDGER  # noqa: E402
+import run_vwaprev_candidate as VC  # noqa: E402
 
 FORMAT = 'zb-shadow-benchmark/1'
 INPUT_FORMAT = 'zb-breadth-candidate/1'
@@ -99,6 +100,8 @@ def load_packet(path: str) -> tuple[dict, str]:
     if not (w.get('start') and w.get('end') and w.get('end_exclusive') is True and w.get('tf')
             and w.get('guard') == 'pit_run.rex_window' and w.get('sealed_cutoff')):
         raise BenchmarkError(f'{path}: incomplete sealed-window identity')
+    if w['sealed_cutoff'] != VC.SEALED_CUTOFF:
+        raise BenchmarkError(f'{path}: sealed cutoff must equal frozen {VC.SEALED_CUTOFF}')
     try:
         start_ms, end_ms, cutoff_ms = _ms(w['start']), _ms(w['end']), _ms(w['sealed_cutoff'])
     except (TypeError, ValueError):
@@ -331,11 +334,17 @@ def portfolio_contribution(named_packets: dict[str, dict], *, weights: dict[str,
         loo[name] = {'available': True, 'without_r_sum': _num(qs), 'without_max_dd_r': _num(qdd),
                      'weight_reallocation_delta_r_sum': _num(full_sum - qs),
                      'weight_reallocation_delta_max_dd_r': _num(full_dd - qdd)}
+    drops = {}
+    for name, packet in named_packets.items():
+        outside = [t for t in packet['trades']
+                   if not (start <= pd.Timestamp(t['t_out']).tz_convert(CAIRO).tz_localize(None).normalize() <= end)]
+        drops[name] = {'trades': len(outside), 'r_sum': _num(sum(float(t['R']) for t in outside))}
     return {
         'available': True, 'basis': 'daily realised trade R, Cairo exit day, common calendar window',
         'joint_engine_replay': False,
         'warning': 'separately-run sleeves; research attribution only, not shared-capital execution proof',
         'window': {'start': str(start.date()), 'end': str(end.date()), 'days': len(frame)},
+        'alignment_drops': drops,
         'weights': {n: _num(w[i]) for i, n in enumerate(names)},
         'calendar_zero_correlation': {a: {b: _num(frame.corr().loc[a, b]) for b in names} for a in names},
         'active_overlap_correlation': {a: {b: _num(active_corr.loc[a, b]) for b in names} for a in names},
@@ -408,7 +417,7 @@ def write_once(doc: dict, path: str) -> bool:
         if isinstance(old, dict):
             try:
                 valid_old = _benchmark_digest(old) == old.get('benchmark_sha256')
-            except (KeyError, TypeError, ValueError):
+            except (AttributeError, KeyError, TypeError, ValueError):
                 valid_old = False
             if valid_old and old['benchmark_sha256'] == doc.get('benchmark_sha256'):
                 return False                     # same evidence: recoverable retry after a later ledger failure
