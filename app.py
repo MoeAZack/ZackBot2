@@ -1001,6 +1001,8 @@ class App:
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
                             else: e._manage_failed(f'mark prices: {ex}')
+                    try: e.apply_costs(); e.funding_tick()                     # FEE-ASSET-01: observe only, never raise
+                    except Exception as ex: log.debug(f'actual costs tick skipped ({ex})')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
                         with e.lock:

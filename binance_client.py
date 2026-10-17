@@ -395,6 +395,13 @@ class Futures:
         commissionAsset rows). One attempt; the caller bounds its own retries. Never drives the T05b circuit."""
         return self._audit_req('/fapi/v1/userTrades', dict(symbol=symbol, orderId=order_id))
 
+    def income(self, income_type='FUNDING_FEE', start_ms=None, limit=1000):
+        """FEE-ASSET-01 (read-only audit path): this account's income rows of one type since start_ms (oldest first).
+        One attempt; never drives the T05b circuit."""
+        p = dict(incomeType=income_type, limit=int(limit))
+        if start_ms is not None: p['startTime'] = int(start_ms)
+        return self._audit_req('/fapi/v1/income', p)
+
     def audit_order(self, symbol, cid):
         """EXEC-CAL-00: an order's own record by client id on the audit path (None = not found)."""
         try: return self._audit_req('/fapi/v1/order', dict(symbol=symbol, origClientOrderId=cid))
