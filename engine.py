@@ -2953,11 +2953,12 @@ class Engine:
         try:
             cur = self.state.get('funding_cursor_ms') or int((now - self.FUNDING_LOOKBACK_S) * 1000)
             rows = inc('FUNDING_FEE', cur)
+            if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):   # malformed = not read (Cowork F1)
+                raise ValueError('malformed income reply')
         except Exception as ex:                                 # retry in FUNDING_RETRY_S, never on every loop pass
             self.state['funding_polled'] = now - self.FUNDING_POLL_S + self.FUNDING_RETRY_S
             self.state['funding_err'] = 'read_failed'           # TRUE-BOOK: every holder INCOMPLETE until a read succeeds
             log.debug(f'funding income not read ({type(ex).__name__})'); return 'read_failed'
-        rows = [r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)]
         with self.lock:
             self.state['funding_polled'] = now
             seen = self.state.setdefault('funding_seen', []); seen_set = set(seen)

@@ -950,3 +950,14 @@ def test_only_a_valid_time_strictly_before_the_cohort_is_excluded():
                                       dict(tranId=22, time=t0, income='-1', asset='USDT', symbol='ETHUSDT')]
     assert e.funding_tick(force=True) == '2 new'
     assert [u['time_ms'] for u in e.state['funding_unowned']] == [t0]
+
+
+@pytest.mark.parametrize('reply', [None, 'err', {'code': -1}, ['garbage', None, 42], [dict(tranId=1), 'x']])
+def test_a_malformed_funding_reply_is_a_failed_read_never_a_clean_one(reply):
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='ETHUSDT')
+    t = e.state['funding_read_ms']
+    e.trade.income = lambda *a, **k: reply
+    assert e.funding_tick(force=True) == 'read_failed'
+    assert e.state['funding_read_ms'] == t and e.state['funding_err'] == 'read_failed' and not e.state.get('funding_seen')
+    assert 'funding_unread' in reasons(e.true_books()['B3_TREND'])
