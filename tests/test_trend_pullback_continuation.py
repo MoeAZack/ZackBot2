@@ -357,6 +357,11 @@ def test_cost_guard_equality_passes_on_actual_entry(shift, ok):   # R 22 / E (11
         assert r['trades'] == [] and [s['skip'] for s in r['skips']] == ['cost_guard']
 
 
+def test_skip_reason_order_r_cap_before_cost_guard():
+    r = run(frame(_entry(1154.0), a_b=2.5))                         # stop 1145.5; R 8.5 > 7.5 cap and 8.5/1154 < 1%
+    assert r['trades'] == [] and [s['skip'] for s in r['skips']] == ['quality']
+
+
 def test_cost_guard_denominator_is_actual_entry_not_close_b():
     r = run(frame(_entry(1163.0), shift=937.0))                     # E 2100, C[b] 2101, R 21: 21/2100 = 1% passes
     t, = r['trades']
