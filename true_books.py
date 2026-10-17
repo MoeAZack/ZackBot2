@@ -277,3 +277,84 @@ def public(books):
                         stop_risk=q(b['stop_risk']), fees=q(b['fees_act']), fees_estimate=q(b['fees_est']),
                         funding=q(b['funding']), strategies=st))
     return out
+
+
+MIN_N = 20                 # closes a strategy needs before a "better" claim (Build default; Codex may rule)
+
+
+def _stats(nets, rs, notional, start):
+    n = len(nets)
+    win = [x for x in nets if x > 0]
+    gl = -sum((x for x in nets if x <= 0), Decimal(0))
+    net = sum(nets, Decimal(0))
+    return dict(closed=n, net=q(net), expectancy=q(net / n) if n else None, win_rate=round(len(win) / n, 4) if n else None,
+                pf=q(sum(win, Decimal(0)) / gl) if gl > 0 else None, net_r=q(sum(rs, Decimal(0))),
+                avg_r=q(sum(rs, Decimal(0)) / len(rs)) if rs else None, turnover=q(notional / start) if start else None)
+
+
+def _spread(vals):
+    v = sorted(x for x in vals if x is not None)
+    if not v: return dict(mean=None, median=None, n=0)
+    m = len(v) // 2
+    med = v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2
+    return dict(mean=q(sum(v, Decimal(0)) / len(v)), median=q(med), n=len(v))
+
+
+def _row_complete(r):
+    return D(r.get('fees_actual')) is not None and not r.get('funding_partial') and not r.get('_conflict') \
+        and D(r.get('pnl_gross')) is not None and not (r.get('funding_actual') is None and (r.get('funding_by_asset') or r.get('funding_rows')))
+
+
+def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N):
+    """Pure. The Strategies-tab comparison: one row per book (family) and one per mapped strategy, from the same TRUE-BOOK
+    valuation (books = compute()) and this cohort's merged closed rows. audits: {trade id: {mfe_r, mae_r, giveback_r}}
+    (hindsight, describes finished trades; a close without one counts as audit_missing, never 0). rejections:
+    [(book, strategy_key, code)] of this cohort's not-taken signals. Only rankable rows are ranked (by avg R): a row is
+    rankable when its book is, every one of its closes is complete and it has at least min_n closes."""
+    audits = audits or {}
+    rows = [r for r in merge_rows(rows) if r.get('book') in books]
+    rej = {}
+    for bk, key, code in rejections or ():
+        for k in ((bk, None), (bk, key)):
+            d = rej.setdefault(k, {}); d[code or 'other'] = d.get(code or 'other', 0) + 1
+    fams, strats = [], []
+    for bk, name, keys in PB.BOOKS:
+        b = books[bk]
+        mine = [r for r in rows if r.get('book') == bk]
+        groups = [(None, mine)] + [(k, [r for r in mine if r.get('strategy_key') == k]) for k in sorted(keys)]
+        groups += [(k, [r for r in mine if r.get('strategy_key') == k]) for k in sorted({r.get('strategy_key') or '?' for r in mine} - set(keys))]
+        for key, rs in groups:
+            nets, rr, notional, fees, fund, hours, exits, exc = [], [], Decimal(0), Decimal(0), Decimal(0), Decimal(0), {}, dict(mfe=[], mae=[], gb=[])
+            missing = incomplete = 0
+            for r in sorted(rs, key=lambda x: str(x.get('closed') or '')):
+                g = D(r.get('pnl_gross')) or Decimal(0)
+                fa, fu = D(r.get('fees_actual')), D(r.get('funding_actual')) or Decimal(0)
+                fe = fa if fa is not None else (D(r.get('fees')) or Decimal(0))
+                nets.append(g - fe + fu); fees += fe; fund += fu
+                if D(r.get('r')) is not None: rr.append(D(r.get('r')))
+                notional += abs(D(r.get('notional')) or Decimal(0)); hours += D(r.get('hours')) or Decimal(0)
+                exits[r.get('exit_reason') or '?'] = exits.get(r.get('exit_reason') or '?', 0) + 1
+                incomplete += not _row_complete(r)
+                a = audits.get(r.get('id'))
+                if not a: missing += 1; continue
+                exc['mfe'].append(D(a.get('mfe_r'))); exc['mae'].append(D(a.get('mae_r'))); exc['gb'].append(D(a.get('giveback_r')))
+            s = _stats(nets, rr, notional, b['start'])
+            s.update(fees=q(fees), funding=q(fund), avg_hours=q(hours / len(rs)) if rs else None, exits=exits,
+                     mfe_r=_spread(exc['mfe']), mae_r=_spread(exc['mae']), giveback_r=_spread(exc['gb']), audit_missing=missing,
+                     rejections=rej.get((bk, key), {}), incomplete_closes=incomplete)
+            ok = b['rankable'] and not incomplete
+            if key is None:
+                s.update(id=bk, name=name, nav=q(b['nav']), roi=q(b['roi']), peak=q(b['peak']), dd=q(b['dd']) if b['dd'] is not None else None,
+                         state=b['state'], lots=b['lots'], working=b['working'], notional=q(b['notional']), stop_risk=q(b['stop_risk']),
+                         complete=b['complete'], rankable=ok and s['closed'] >= min_n, incomplete=sorted({x['reason'] for x in b['incomplete']}))
+                fams.append(s)
+            else:
+                s.update(book=bk, key=key, mapped=key in keys, complete=b['complete'] and not incomplete,
+                         rankable=ok and s['closed'] >= min_n and key in keys,
+                         note=None if s['closed'] >= min_n else f'insufficient n ({s["closed"]}/{min_n})')
+                strats.append(s)
+    for lst in (fams, strats):
+        ranked = sorted((x for x in lst if x['rankable'] and x['avg_r'] is not None), key=lambda x: -x['avg_r'])
+        for i, x in enumerate(ranked): x['rank'] = i + 1
+        for x in lst: x.setdefault('rank', None)
+    return dict(min_n=min_n, families=fams, strategies=strats)

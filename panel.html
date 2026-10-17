@@ -552,6 +552,9 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
     <div class="help">One PAPER account, split into five separately tracked strategy plans. Each plan gets one fifth of current equity, up to the target above. Existing, manual and LIVE trades stay outside the books. Binance margin is still shared, so these are clean performance groups—not separate exchange wallets.</div>
     <div class="g3" id="bookRows"></div>
   </div>
+  <div class="card" id="tbCmpCard"><h3>Strategy comparison <span id="tbCmpState" class="tag t-mute"></span><span class="r"><label class="small t2" for="tbCmpFam">Family</label><select id="tbCmpFam" onchange="renderTbCmp()"><option value="">All</option></select></span></h3>
+    <div class="help">Which families (books) and which strategies work, measured on the current clean cohort. Each book started with its own $2,000. Only <b>complete</b> rows with enough closed trades are ranked (by average R). Incomplete rows stay visible, with their reasons, but are never ranked or promoted. MFE / MAE / giveback describe finished trades in hindsight and are never a trading input.</div>
+    <div id="tbCmp"><div class="mute small">Loading…</div></div></div>
   <div class="card"><h3>Profiles <span class="r mix"><label class="small t2" for="mixPct">When combining, the added profile gets</label><input id="mixPct" type="number" value="50" min="5" max="95" step="5" style="width:64px"><span class="small t2">% of capital</span></span></h3>
     <div class="help">"Apply" replaces your slots with the profile. "Combine" keeps your current slots and adds the profile's slots next to them, splitting capital by the % above (e.g. Boost 4h + Active 1h). Each slot trades independently with its own stops. Review, then press Save strategies. Profile numbers are <b>in-sample backtests</b>: the strategies were chosen on the same history they are tested on, so expect live results to be worse.</div>
     <div class="g3" id="presets"></div></div>
@@ -761,6 +764,7 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 
 <script>
 "use strict";
+let TBC=null,TBCT=0;   // TRUE-BOOK comparison (/api/true_books/compare), refreshed at most once a minute on the Strategies tab
 let PF=null,PFT=0;   // BT02: exchange-filter preflight of the profiles (/api/preflight), refreshed at most once a minute on the Strategies tab
 let D=null,META=null,R=null,BTL=null,SLV=null,AN=null,slDirty=false,eqR=30,trView='closed',trR=0,mSide='LONG',calM=null,trDay=null,EXPIRED=false,OFFLINE=false,TC=null;
 const CH={history:[],missed:[],signals:{},states:{},sigTime:null,equity:[],orders:[],logs:[]},REV={},LAST={missed:0,logs:0};
@@ -1355,6 +1359,23 @@ function renderBooks(){const p=D.paper_books||{},rows=p.books||[],on=!!p.enabled
     <div class="small" style="margin-top:6px">Open <b>${b.open}</b> · risk left <b>${usd(b.open_risk)}</b> · closed <b>${b.closed}</b></div>
     <div class="small ${cls(b.net_pnl)}">Net <b>${usd(b.net_pnl)}</b> <span class="mute">after ${usd(b.fees)} fees</span></div>
     <div class="mute" style="font-size:10.5px;margin-top:5px">${(b.strategies||[]).map(libName).map(esc).join(' · ')}</div></div>`).join(''))}
+function renderTbCmp(){const el=$('tbCmp'),c=TBC;if(!el)return;
+  if(!c){setHTML(el,'<div class="mute small">Loading…</div>');return}
+  if(c.error){setHTML(el,`<div class="note bd">Comparison not available: ${esc(c.error)}</div>`);return}
+  $('tbCmpState').className='tag '+(c.on?'t-long':'t-mute');$('tbCmpState').textContent=c.on?'TRUE BOOKS ON':'TRUE BOOKS OFF';
+  const co=c.cohort||{},fsel=$('tbCmpFam'),fv=fsel.value,fams=c.families||[];
+  fsel.innerHTML='<option value="">All</option>'+fams.map(f=>`<option value="${esc(f.id)}"${f.id===fv?' selected':''}>${esc(f.name)}</option>`).join('');
+  const r2=v=>v==null?'–':(v<0?'−':'')+fmt(v,2),sp=x=>x&&x.n?`${r2(x.mean)} <span class="mute">/ ${r2(x.median)}</span>`:'–';
+  const rj=o=>Object.entries(o||{}).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`${esc(k)} ${n}`).join(', ')||'–';
+  const ex=o=>Object.entries(o||{}).map(([k,n])=>`${esc(k)} ${n}`).join(', ')||'–';
+  const tg=x=>x.rankable?`<span class="tag t-long">#${x.rank}</span>`:x.complete===false||(x.incomplete||[]).length?`<span class="tag t-short" title="${esc((x.incomplete||[]).join(', ')||(x.incomplete_closes?x.incomplete_closes+' incomplete closes':''))}">INCOMPLETE</span>`:`<span class="tag t-mute" title="${esc(x.note||'')}">${x.note?'LOW N':'NOT RANKED'}</span>`;
+  const ord=a=>a.slice().sort((x,y)=>(x.rank||1e9)-(y.rank||1e9)||y.closed-x.closed);
+  const ban=co.unowned_activity?`<div class="note bad" role="alert"><b>Unowned activity on the shared account</b> (${co.unowned_activity}) - every book is INCOMPLETE and nothing can be ranked until a clean cohort.</div>`:'';
+  const part=c.rejections_window_partial?'<div class="note wn">Rejection counts cover only the most recent 600 not-taken signals of this cohort.</div>':'';
+  const fh=`<div class="tw"><table><thead><tr><th>Family</th><th>Status</th><th>State</th><th class="num">NAV</th><th class="num">ROI</th><th class="num">DD</th><th class="num">Closed</th><th class="num">Net R</th><th class="num">Avg R</th><th class="num">Expectancy</th><th class="num">PF</th><th class="num">Win</th><th class="num">Fees</th><th class="num">Funding</th><th class="num">Turnover</th><th class="num">Lots</th><th>Rejections</th></tr></thead><tbody>${ord(fams).map(f=>`<tr style="${f.rankable?'':'opacity:.65'}"><td><b>${esc(f.name)}</b></td><td>${tg(f)}</td><td>${esc(f.state)}</td><td class="num">${usd(f.nav)}</td><td class="num ${cls(f.roi)}">${pct(f.roi,2)}</td><td class="num">${f.dd==null?'–':pct(-f.dd,2)}</td><td class="num">${f.closed}</td><td class="num ${cls(f.net_r)}">${r2(f.net_r)}</td><td class="num">${r2(f.avg_r)}</td><td class="num ${cls(f.expectancy)}">${f.expectancy==null?'–':usd(f.expectancy)}</td><td class="num">${r2(f.pf)}</td><td class="num">${f.win_rate==null?'–':pct(f.win_rate,0).replace('+','')}</td><td class="num">${usd(f.fees)}</td><td class="num">${usd(f.funding)}</td><td class="num">${r2(f.turnover)}×</td><td class="num">${f.lots}+${f.working}/4</td><td class="small">${rj(f.rejections)}</td></tr>`).join('')}</tbody></table></div>`;
+  const ss=ord((c.strategies||[]).filter(s=>!fv||s.book===fv));
+  const sh=`<div class="tw" style="margin-top:12px"><table><thead><tr><th>Strategy</th><th>Family</th><th>Status</th><th class="num">Closed</th><th class="num">Net</th><th class="num">Avg R</th><th class="num">Expectancy</th><th class="num">PF</th><th class="num">Win</th><th class="num">Fees</th><th class="num">Funding</th><th class="num">Turnover</th><th class="num">Avg hold h</th><th class="num" title="mean / median, R">MFE R</th><th class="num" title="mean / median, R">MAE R</th><th class="num" title="mean / median, R">Giveback R</th><th>Exits</th><th>Rejections</th></tr></thead><tbody>${ss.map(s=>`<tr style="${s.rankable?'':'opacity:.65'}"><td><b>${esc(libName(s.key)||s.key)}</b>${s.mapped?'':' <span class="tag t-short">UNMAPPED</span>'}</td><td class="small">${esc((fams.find(f=>f.id===s.book)||{}).name||s.book)}</td><td>${tg(s)}</td><td class="num">${s.closed}</td><td class="num ${cls(s.net)}">${usd(s.net)}</td><td class="num">${r2(s.avg_r)}</td><td class="num ${cls(s.expectancy)}">${s.expectancy==null?'–':usd(s.expectancy)}</td><td class="num">${r2(s.pf)}</td><td class="num">${s.win_rate==null?'–':pct(s.win_rate,0).replace('+','')}</td><td class="num">${usd(s.fees)}</td><td class="num">${usd(s.funding)}</td><td class="num">${r2(s.turnover)}×</td><td class="num">${r2(s.avg_hours)}</td><td class="num">${sp(s.mfe_r)}</td><td class="num">${sp(s.mae_r)}</td><td class="num">${sp(s.giveback_r)}${s.audit_missing?` <span class="mute" title="closes without an audit record">(${s.audit_missing} n/a)</span>`:''}</td><td class="small">${ex(s.exits)}</td><td class="small">${rj(s.rejections)}</td></tr>`).join('')}</tbody></table></div>`;
+  setHTML(el,`${ban}${part}<div class="mute small" style="margin-bottom:6px">Cohort <b>${esc(co.id||'none')}</b>${co.started_utc?' since '+esc(co.started_utc):''} · ranked after ${c.min_n} closes${co.evidence_gaps?` · <span class="neg">${co.evidence_gaps} evidence gaps</span>`:''}</div>${fh}${sh}`)}
 const MG=[['stop_atr','Stop (ATR)'],['trail_atr','Trailing stop (ATR)'],['be_r','Breakeven after (R)'],['tp1_r','Partial TP at (R)'],['tp1_frac','Partial TP size (0-1)'],['tp_r','Full TP at (R)'],['max_bars','Time exit (candles)']];
 function btBadge(bt){if(!bt)return '';return `${bt.unverified?`<div class="note bad" role="alert" style="margin:6px 0 0;white-space:normal"><b>UNVERIFIED</b> · ${esc(bt.unverified)}</div>`:''}<div class="mbadge" title="How these numbers were made">${bt.unverified?'<b>Old, unverified</b> · ':''}Backtest ${esc(bt.start||'?')}–${esc(bt.stop||'?')} · ${bt.insample?'in-sample':'out-of-sample'} · compounded · engine ${esc(bt.engine||'?')}</div>
   <div class="small" style="display:flex;gap:10px;flex-wrap:wrap"><span>$500 → <b>${usd(bt.end,0)}</b></span><span>max DD <b class="neg">${bt.dd}%</b></span><span>worst month <b class="neg">${bt.wm}%</b></span><span>~${bt.wk} trades/wk</span></div>`}
@@ -2036,6 +2057,7 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
     if(rv.signals!==REV.signals)jobs.push(api('/api/signals').then(j=>{CH.signals=j.signals||{};CH.states=j.states||{};CH.sigTime=j.time;REV.signals=rv.signals}));
     if(rv.equity!==REV.equity)jobs.push(api('/api/equity').then(j=>{CH.equity=j.equity_hist||[];REV.equity=rv.equity}));
     if(CUR==='strat'&&Date.now()-PFT>60000){PFT=Date.now();jobs.push(api('/api/preflight').then(j=>{PF=j}))}
+    if(CUR==='strat'&&Date.now()-TBCT>60000){TBCT=Date.now();jobs.push(api('/api/true_books/compare').then(j=>{TBC=j}))}
     if(CUR==='logs')jobs.push(Promise.all([api('/api/orders'),api('/api/logs')]).then(([o,l])=>{CH.orders=Array.isArray(o)?o:[];CH.logs=Array.isArray(l)?l:[];LAST.logs=Date.now()}));
     if(CUR==='set')jobs.push(api('/api/analyst').then(a=>{AN=a}));
     const jk=Object.entries(s.jobs||{}).map(([k,j])=>k+':'+j.status+':'+(j.done||0)).join(',');if(BTL===null||jk!==LASTJOBS){LASTJOBS=jk;jobs.push(api('/api/backtests').then(b=>{BTL=b;if(CUR==='bt'){renderBTList();renderStudy()}}))}
@@ -2045,7 +2067,7 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
   catch(e){if(EXPIRED)return;OFFLINE=true;$('status').innerHTML='<i></i>APP OFFLINE';$('status').className='pill p-bad';console.error(e)}
   finally{LOADING=false}}
 function renderAll(){SKIPPED=0;renderHeader();const t=CUR;
-  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderBooks();renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
+  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderBooks();renderTbCmp();renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
     if(t==='strat')renderGrids();
     if(t==='coins')renderCoins();if(t==='sig')renderSignals();if(t==='logs')renderLogs();if(t==='set')renderSet();if(t==='bt'){btSources();labResume();roSum()}}
   finally{renderSafety()}}
