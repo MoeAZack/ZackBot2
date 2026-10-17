@@ -2,6 +2,7 @@
 notional and stop-risk inside its own NAV, halts alone at NAV <= 0, and reports per-strategy attribution. Strategy logic
 and risk % are unchanged; only isolation / accounting / aggregate limits."""
 import copy, inspect, json, time
+from datetime import datetime, timezone
 from decimal import Decimal
 import pytest
 
@@ -16,12 +17,22 @@ T2_SL = E.sleeve('U', 'donchian_ens', 0.5, 0.02, 4, 'all')    # B3_TREND, anothe
 R_SL = E.sleeve('R', 'exp_range', 0.5, 0.02, 4, 'all')        # B2_RANGE
 
 
+FOK = dict(ok=True, why=None, through_ms=None)                # a healthy funding reader (pure tests)
+
+
+def C(*a, **kw):
+    kw.setdefault('funding', FOK)
+    return TB.compute(*a, **kw)
+
+
 def tb_engine(**kw):
     e, tmp = mk_engine(CAPITAL_CAP=10000.0, PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=True, **kw)
     e.S['CAP_SINCE'] = '2026-10-17T13:19:00+00:00'
     e.S['SLEEVES'] = [T_SL, T2_SL, R_SL]
     e._cohort_init()
     e.marks_t = time.time()                                    # a fresh mark feed (a stale one values nothing)
+    e.trade.income = lambda *a, **k: []                        # a funding reader that has read everything (fail-closed otherwise)
+    e.state['funding_read_ms'] = int(time.time() * 1000)
     return e, tmp
 
 
@@ -40,6 +51,12 @@ def fake_lot(e, book, sym='ETHUSDT', side='LONG', avg=100.0, qty=1.0, stop=98.0,
                      fees=0.0, fees_actual=0.0, realized=0.0, opened='2026-10-17T14:00:00+00:00'), **kw)
 
 
+def settle(e):
+    """The enrichment worker delivered every fill's commission (the fake exchange never sends one)."""
+    for l in e.state['lots'].values():
+        l['fees_actual'] = l.get('fees', 0.0); l.pop('fees_actual_partial', None)
+
+
 def size_of(e, sl, side='LONG', sym='BTCUSDT'):
     """Risk the engine would size for this slot now (open, read, close - nothing left behind)."""
     n = len(e.history)
@@ -52,39 +69,39 @@ def size_of(e, sl, side='LONG', sym='BTCUSDT'):
 
 # ------------------------------------------------------------------ pure
 def test_nav_is_start_plus_gross_plus_unrealized_minus_actual_fees_plus_funding():
-    b = TB.compute('C', [dict(book='B1_FAST', cohort_id='C', pnl_gross=30, fees=1.0, fees_actual=0.8, funding_actual=-0.2)],
+    b = C('C', [dict(book='B1_FAST', cohort_id='C', pnl_gross=30, fees=1.0, fees_actual=0.8, funding_actual=-0.2)],
                    [dict(book='B1_FAST', cohort_id='C', symbol='X', side='SHORT', avg=10, qty=2, stop=11, realized=4, fees=0.3,
                          fees_actual=0.25, funding_actual=0.1)], marks={'X': 9})['B1_FAST']
     assert b['nav'] == Decimal('2000') + 30 + 4 + 2 - Decimal('0.8') - Decimal('0.25') - Decimal('0.2') + Decimal('0.1')
-    assert b['nav_basis'] == 'actual' and b['complete'] and b['stop_risk'] == 2 and b['notional'] == 20
+    assert b['nav_basis'] == 'actual' and b['complete'] and b['stop_risk'] == 2 and b['notional'] == 18   # exposure at the mark
 
 
 def test_missing_actual_fee_falls_back_to_estimate_and_is_incomplete():
-    b = TB.compute('C', [dict(book='B2_RANGE', cohort_id='C', pnl_gross=10, fees=1.0, fees_actual=None,
+    b = C('C', [dict(book='B2_RANGE', cohort_id='C', pnl_gross=10, fees=1.0, fees_actual=None,
                               fees_actual_partial=['fill_records_lost'])])['B2_RANGE']
     assert b['nav'] == 2009 and b['nav_basis'] == 'estimate_fallback' and not b['complete']
     assert b['incomplete'][0]['reason'] == 'fees_actual_missing'
 
 
 def test_ambiguous_funding_on_a_row_makes_the_book_incomplete():
-    b = TB.compute('C', [dict(book='B4_BREAKOUT', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0,
+    b = C('C', [dict(book='B4_BREAKOUT', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0,
                               funding_partial=['ambiguous_opposite_side_funding'], funding_unattributed=1)])['B4_BREAKOUT']
     assert not b['complete'] and b['incomplete'][0]['reason'] == 'ambiguous_opposite_side_funding'
 
 
 def test_one_book_loss_never_moves_another_book():
     base = [dict(book=k, cohort_id='C', pnl_gross=5, fees=0, fees_actual=0) for k in PB.IDS]
-    a = TB.compute('C', base)
-    b = TB.compute('C', base + [dict(book='B1_FAST', cohort_id='C', pnl_gross=-700, fees=0, fees_actual=0)])
+    a = C('C', base)
+    b = C('C', base + [dict(book='B1_FAST', cohort_id='C', pnl_gross=-700, fees=0, fees_actual=0)])
     assert b['B1_FAST']['nav'] == a['B1_FAST']['nav'] - 700
     assert all(TB.public({k: a[k]}) == TB.public({k: b[k]}) for k in PB.IDS if k != 'B1_FAST')
 
 
 def test_halt_on_the_worse_basis_and_sticky():
     rows = [dict(book='B5_DISCOVERY', cohort_id='C', pnl_gross=-1999.5, fees=1.0, fees_actual=0.2)]
-    b = TB.compute('C', rows)['B5_DISCOVERY']
+    b = C('C', rows)['B5_DISCOVERY']
     assert b['nav'] > 0 and b['nav_estimate'] < 0 and b['state'] == 'HALTED' and b['halt']['basis'] == 'estimate'
-    b2 = TB.compute('C', [], halted={'B5_DISCOVERY': dict(basis='estimate')})['B5_DISCOVERY']
+    b2 = C('C', [], halted={'B5_DISCOVERY': dict(basis='estimate')})['B5_DISCOVERY']
     assert b2['nav'] == 2000 and b2['state'] == 'HALTED'                              # sticky after a recovery
     assert TB.admit(b2) .startswith('book B5_DISCOVERY halted')
 
@@ -92,7 +109,7 @@ def test_halt_on_the_worse_basis_and_sticky():
 def test_peak_and_dd_rederived_from_the_ordered_close_series():
     rows = [dict(book='B3_TREND', cohort_id='C', pnl_gross=g, fees=0, fees_actual=0, closed=t)
             for g, t in ((100, '2026-10-17T10:00'), (-300, '2026-10-17T11:00'))]
-    b = TB.compute('C', list(reversed(rows)))['B3_TREND']
+    b = C('C', list(reversed(rows)))['B3_TREND']
     assert b['peak'] == 2100 and b['nav'] == 1800 and b['dd'] == 1 - Decimal(1800) / Decimal(2100)
 
 
@@ -104,7 +121,7 @@ def test_stop_risk_uses_the_current_stop_floored_at_zero():
 
 
 def test_other_cohort_lots_hold_capacity_but_never_value():
-    b = TB.compute('NEW', [dict(book='B1_FAST', cohort_id='OLD', pnl_gross=500, fees=0, fees_actual=0)],
+    b = C('NEW', [dict(book='B1_FAST', cohort_id='OLD', pnl_gross=500, fees=0, fees_actual=0)],
                    [dict(book='B1_FAST', cohort_id='OLD', symbol='X', side='LONG', avg=10, qty=1, stop=9, realized=50)],
                    marks={'X': 20})['B1_FAST']
     assert b['nav'] == 2000 and b['closed'] == 0 and b['lots'] == 1 and b['stop_risk'] == 1
@@ -154,7 +171,7 @@ def test_a_resting_entry_holds_a_slot_and_reserves_its_risk():
     e.state['resting_entries']['r1'] = dict(symbol='ETHUSDT', side='LONG', qty=1.0, filled=0.0, cost=0.0, n=1, status='open', sleeve='T',
                                             cid='zbcidx', plan=dict(book='B3_TREND', qty=1.0, px=100.0, stop_dist=2.0))
     b = e.true_books()['B3_TREND']
-    assert b['working'] == 1 and b['stop_risk'] == Decimal('2.03') and b['notional'] == 130     # 3 x 0.01 + 2.0 reserved
+    assert b['working'] == 1 and b['stop_risk'] == Decimal('2.03') and b['notional'] == 115     # 3 x 0.01 + 2.0 reserved; lots at mark 50
     assert not e.open_lot(T2_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'full (4/4' in e.last_skip
 
 
@@ -182,6 +199,8 @@ def test_add_counts_notional_and_stop_risk_not_a_lot():
     for i in range(3): e.state['lots'][f'x{i}'] = fake_lot(e, 'B3_TREND', stop=99.9, qty=0.1)
     assert e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
     k, lot = next((k, l) for k, l in e.state['lots'].items() if l['sleeve'] == 'T')
+    assert e._add_block(lot, 0.001, 100.0).startswith('book B3_TREND INCOMPLETE (fees_actual_missing)')  # fill cost unknown
+    settle(e)
     b = e.true_books()['B3_TREND']
     room = TB.STOP_RISK_MAX * b['nav_worse'] - b['stop_risk']
     gap = abs(100.0 - float(lot['stop']))
@@ -221,7 +240,7 @@ def test_a_new_cohort_starts_every_book_fresh():
     b = e.true_books()['B3_TREND']
     st = e.state['true_books']
     assert b['state'] == 'ACTIVE' and b['nav'] == 2000 and st['cohort_id'] == 'CH-next' and st['halted'] == {}
-    assert set(st['peak'].values()) == {2000.0}
+    assert {float(v) for v in st['peak'].values()} == {2000.0}
 
 
 # ------------------------------------------------------------------ restart identity, attribution, API
@@ -235,6 +254,7 @@ def test_restart_reproduces_nav_limits_and_ownership():
     before = TB.public(e.true_books(marks))
     e2, _ = mk_engine(tmp=tmp, CAPITAL_CAP=10000.0, PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=True)
     e2.S['SLEEVES'] = [T_SL, T2_SL, R_SL]; e2.S['CAP_SINCE'] = e.S['CAP_SINCE']; e2._cohort_init()
+    e2.trade.income = e.trade.income                                                 # funding_read_ms came back with state
     assert TB.public(e2.true_books(marks)) == before
     assert all(l['book'] and l['cohort_id'] == cid(e2) for l in e2.state['lots'].values())
 
@@ -292,7 +312,7 @@ def test_no_open_cohort_means_no_new_risk(how):
 
 
 def test_unstamped_rows_never_value_a_book_without_a_cohort():
-    b = TB.compute(None, [dict(book='B1_FAST', pnl_gross=-5000, fees=0, fees_actual=0)])['B1_FAST']
+    b = C(None, [dict(book='B1_FAST', pnl_gross=-5000, fees=0, fees_actual=0)])['B1_FAST']
     assert b['nav'] == 2000 and b['closed'] == 0
 
 
@@ -301,7 +321,7 @@ def test_nav_survives_the_history_window_through_the_cohort_store():
     old = row(e, 'B3_TREND', -300, id='old')
     e.cohort_rows.append(old)                                   # trimmed out of history, kept in the evidence store
     e.cohort_rows.append(row(e, 'B3_TREND', 0, id='late', fees=1.0))
-    e.history.append(row(e, 'B3_TREND', 0, id='late', fees=0.5))                   # history carries the late actual fee
+    e.history.append(row(e, 'B3_TREND', 0, id='late', fees=1.0, fees_actual=0.5, cost_rev=1))   # late actual fee (revision)
     b = e.true_books()['B3_TREND']
     assert b['closed'] == 2 and b['nav'] == Decimal('1699.5')
 
@@ -310,7 +330,7 @@ def test_unmeasurable_risk_blocks_new_risk_in_that_book_only():
     e, _ = tb_engine()
     e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='SOLUSDT')                  # no mark for this coin
     assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
-    assert 'cannot measure its risk (mark_missing)' in e.last_skip
+    assert 'INCOMPLETE (mark_missing)' in e.last_skip
     assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
 
 
@@ -348,20 +368,20 @@ def test_manual_or_unknown_book_activity_makes_every_book_incomplete():
     e, _ = tb_engine()
     e.state['lots']['m'] = fake_lot(e, None, manual=True, cohort_id=None)            # a manual "Take now" lot
     books = e.true_books()
-    assert all(not b['complete'] and b['incomplete'][-1] == dict(reason='unowned_account_activity', rows=0, lots=1)
+    assert all(not b['complete'] and b['incomplete'][-1] == dict(reason='unowned_account_activity', rows=0, lots=1, working=0)
                for b in books.values())
     e.state['lots'].clear()
     e.history.append(dict(row(e, None, -500), cohort_id=None, closed='2099-01-01T00:00:00+00:00'))   # manual close since start
     assert all(b['incomplete'][-1]['reason'] == 'unowned_account_activity' for b in e.true_books().values())
-    b = TB.compute('C', [dict(book='B9_X', cohort_id='C', pnl_gross=-1, fees=0)])['B1_FAST']
-    assert b['incomplete'] == [dict(reason='unowned_account_activity', rows=1, lots=0)]
+    b = C('C', [dict(book='B9_X', cohort_id='C', pnl_gross=-1, fees=0)])['B1_FAST']
+    assert b['incomplete'] == [dict(reason='unowned_account_activity', rows=1, lots=0, working=0)]
 
 
 @pytest.mark.parametrize('bad', [None, 'nan', 'abc'])
 def test_unreadable_gross_or_fee_is_incomplete_never_zero(bad):
-    b = TB.compute('C', [dict(book='B1_FAST', cohort_id='C', pnl_gross=bad, fees=0, fees_actual=0)])['B1_FAST']
+    b = C('C', [dict(book='B1_FAST', cohort_id='C', pnl_gross=bad, fees=0, fees_actual=0)])['B1_FAST']
     assert not b['complete'] and b['incomplete'][0]['reason'] == 'pnl_unreadable'
-    b = TB.compute('C', [], [dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=1, qty=1, stop=1, realized=1,
+    b = C('C', [], [dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=1, qty=1, stop=1, realized=1,
                                   fees=bad, fees_actual=0)], marks={'X': 1})['B1_FAST']
     assert [x['reason'] for x in b['incomplete']] == ['fees_unreadable']
 
@@ -370,7 +390,7 @@ def test_multi_asset_funding_is_incomplete_and_no_funding_is_complete():
     rows = [dict(book='B1_FAST', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0, funding_actual=None,
                  funding_by_asset={'USDT': -1.0, 'USDC': -0.5}, funding_rows=2),
             dict(book='B2_RANGE', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0)]
-    out = TB.compute('C', rows)
+    out = C('C', rows)
     assert out['B1_FAST']['incomplete'][0] == dict(reason='funding_multi_asset', id=None, assets=['USDC', 'USDT'])
     assert out['B2_RANGE']['complete']
 
@@ -381,7 +401,7 @@ def test_drawdown_sees_an_unrealized_high_through_the_persisted_peak():
     e.true_books({'ETHUSDT': 100.0})                                                # +500 open: peak 2500 sampled
     b = e.true_books({'ETHUSDT': 50.0})
     assert b['B3_TREND']['peak'] == 2500 and b['B3_TREND']['dd'] == Decimal(500) / Decimal(2500)
-    assert e.state['true_books']['peak']['B3_TREND'] == 2500.0
+    assert TB.D(e.state['true_books']['peak']['B3_TREND']) == 2500
 
 
 def test_an_unreadable_cohort_never_drops_a_sticky_halt():
@@ -396,7 +416,7 @@ def test_an_unreadable_cohort_never_drops_a_sticky_halt():
 
 @pytest.mark.parametrize('bad', ['abc', 'nan', -5, None])
 def test_an_unreadable_persisted_peak_is_flagged(bad):
-    b = TB.compute('C', [], peaks={'B1_FAST': bad})['B1_FAST']
+    b = C('C', [], peaks={'B1_FAST': bad})['B1_FAST']
     assert not b['complete'] and b['incomplete'][0]['reason'] == 'peak_unreadable' and b['peak'] == 2000
 
 
@@ -408,12 +428,12 @@ def test_a_stale_mark_feed_values_nothing_and_blocks_that_book():
     e.marks_t = time.time() - E.MARK_FRESH_S - 1                                   # the feed stalled
     b = e.true_books()['B3_TREND']
     assert [x['reason'] for x in b['incomplete']] == ['mark_missing'] and b['unreal'] == 0
-    assert TB.admit(b).startswith('book B3_TREND cannot measure its risk')
+    assert TB.admit(b).startswith('book B3_TREND INCOMPLETE (mark_missing)')
 
 
 @pytest.mark.parametrize('mk', [0, -1, '0'])
 def test_a_zero_or_negative_mark_is_no_price(mk):
-    b = TB.compute('C', [], [dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=100, qty=1, stop=90, fees_actual=0)],
+    b = C('C', [], [dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=100, qty=1, stop=90, fees_actual=0)],
                    marks={'X': mk})['B1_FAST']
     assert b['nav'] == 2000 and b['incomplete'][0]['reason'] == 'mark_missing'
 
@@ -433,7 +453,7 @@ def test_an_unrealized_only_halt_must_hold_before_it_is_sticky(monkeypatch):
 
 def test_compute_dedupes_rows_by_id():
     r = dict(id='a', book='B1_FAST', cohort_id='C', pnl_gross=-100, fees=0, fees_actual=0)
-    assert TB.compute('C', [r, dict(r)])['B1_FAST']['nav'] == 1900
+    assert C('C', [r, dict(r)])['B1_FAST']['nav'] == 1900
 
 
 def test_unowned_activity_blocks_new_risk_in_every_book_but_keeps_lots_managed():
@@ -444,3 +464,261 @@ def test_unowned_activity_blocks_new_risk_in_every_book_but_keeps_lots_managed()
         assert 'unowned_account_activity' in e.last_skip
     e.state['lots'].pop('m')                                                        # closed / reconciled
     assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+
+
+# ------------------------------------------------------------------ Codex consolidated correction 6240139762
+FUND_T = int(datetime(2026, 10, 17, 14, 30, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def reasons(b):
+    return {x['reason'] for x in b['incomplete']}
+
+
+def restart(e, tmp):
+    e2, _ = mk_engine(tmp=tmp, CAPITAL_CAP=10000.0, PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=True)
+    e2.S['SLEEVES'] = [T_SL, T2_SL, R_SL]; e2.S['CAP_SINCE'] = e.S['CAP_SINCE']; e2._cohort_init()
+    e2.trade.income = e.trade.income; e2.marks_t = time.time()
+    return e2
+
+
+def funded_row(e, **kw):
+    return row(e, 'B3_TREND', 10.0, **dict(dict(id='f1', symbol='BTCUSDT', side='LONG', opened='2026-10-17T14:00:00+00:00',
+                                                closed='2026-10-17T15:00:00+00:00', qty_max=1.0,
+                                                fills=[['2026-10-17T14:00:00+00:00', 'entry', 1.0, 100.0],
+                                                       ['2026-10-17T15:00:00+00:00', 'exit', 1.0, 101.0]]), **kw))
+
+
+def close_row(e, r):
+    e.history.append(r); e._cohort_row(r); e._save_aux('history', e.history); e.save_state()
+
+
+def pay(e, amount=-0.5, tran=1):
+    e.trade.income = lambda *a, **k: [dict(tranId=tran, time=FUND_T, income=str(amount), asset='USDT', symbol='BTCUSDT')]
+    return e.funding_tick(force=True)
+
+
+def test_any_incomplete_reason_refuses_new_risk_in_that_book():
+    for extra in (dict(fees_actual=None, fees_actual_partial=['fill_records_lost']), dict(pnl_gross='x'),
+                  dict(funding_partial=['ambiguous_opposite_side_funding'])):
+        out = C('C', [dict(dict(id='a', book='B1_FAST', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0), **extra)])
+        assert TB.admit(out['B1_FAST']).startswith('book B1_FAST INCOMPLETE')
+        assert not out['B1_FAST']['rankable'] and TB.admit(out['B2_RANGE']) is None and out['B2_RANGE']['rankable']
+    assert TB.admit(C('C', [], peaks={'B1_FAST': 'bad'})['B1_FAST']).startswith('book B1_FAST INCOMPLETE (peak_unreadable)')
+
+
+def test_late_fee_and_funding_survive_the_history_trim_and_restart():
+    e, tmp = tb_engine()
+    ref = f'c{int(time.time() * 1000)}-1-1'
+    close_row(e, funded_row(e, fees=0.9, fees_actual=None, fees_actual_partial=['fill_records_pending'], cost_refs=[ref],
+                            fills_booked=1))
+    assert 'fees_actual_missing' in reasons(e.true_books()['B3_TREND'])
+    e._cost_sink(dict(cost_ref=ref, symbol='BTCUSDT', commission_raw=[dict(asset='USDT', maker=False, amount=0.7, n=1)]))
+    assert e.apply_costs() == 1
+    assert pay(e) == '1 new'
+    b = e.true_books()['B3_TREND']
+    assert b['complete'] and b['nav'] == Decimal('2000') + 10 - Decimal('0.7') - Decimal('0.5')
+    e.history.clear(); e._save_aux('history', e.history)                             # the 3000-row window dropped it
+    e2 = restart(e, tmp)
+    b2 = e2.true_books()['B3_TREND']
+    assert b2['complete'] and b2['closed'] == 1 and b2['nav'] == b['nav']             # never the stale first close copy
+
+
+def test_a_late_fee_after_the_trim_lands_on_the_evidence_copy():
+    e, tmp = tb_engine()
+    ref = f'c{int(time.time() * 1000)}-1-2'
+    close_row(e, funded_row(e, fees=0.9, fees_actual=None, fees_actual_partial=['fill_records_pending'], cost_refs=[ref],
+                            fills_booked=1))
+    e.history.clear(); e._save_aux('history', e.history)
+    e._cost_sink(dict(cost_ref=ref, symbol='BTCUSDT', commission_raw=[dict(asset='USDT', maker=True, amount=0.3, n=1)]))
+    assert e.apply_costs() == 1 and e.state.get('cost_orphans') is None
+    assert e.true_books()['B3_TREND']['nav'] == Decimal('2009.7')
+    assert restart(e, tmp).true_books()['B3_TREND']['nav'] == Decimal('2009.7')
+
+
+@pytest.mark.parametrize('how', ['no_reader', 'read_failed', 'stale', 'never_read'])
+def test_funding_reader_missing_failed_or_stale_makes_holders_incomplete(how):
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='ETHUSDT')
+    if how == 'no_reader': del e.trade.income
+    elif how == 'read_failed':
+        def boom(*a, **k): raise OSError('down')
+        e.trade.income = boom
+        assert e.funding_tick(force=True) == 'read_failed'
+    elif how == 'stale': e.state['funding_read_ms'] -= (e.FUNDING_POLL_S + e.FUNDING_RETRY_S + 601) * 1000
+    else: e.state.pop('funding_read_ms')
+    books = e.true_books()
+    assert [x['why'] for x in books['B3_TREND']['incomplete'] if x['reason'] == 'funding_unread'] == [how]   # never exact 0
+    assert books['B2_RANGE']['complete']                                             # holds nothing: unaffected
+    assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and 'funding_unread' in e.last_skip
+    assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    if how == 'read_failed':
+        e.trade.income = lambda *a, **k: []
+        assert e.funding_tick(force=True) == '0 new' and 'funding_unread' not in reasons(e.true_books()['B3_TREND'])
+
+
+def test_funding_coverage_flags_only_rows_closed_after_the_last_read():
+    rows = [dict(id=i, book='B1_FAST', cohort_id='C', pnl_gross=1, fees=0, fees_actual=0, closed=c)
+            for i, c in (('a', '2026-10-17T10:00:00+00:00'), ('b', '2026-10-17T16:00:00+00:00'))]
+    b = TB.compute('C', rows, funding=dict(ok=False, why='read_failed', through_ms=FUND_T))['B1_FAST']
+    assert [x['id'] for x in b['incomplete']] == ['b']
+    assert len(TB.compute('C', rows)['B1_FAST']['incomplete']) == 2                  # no reader state at all: fail closed
+
+
+def test_funding_crash_after_the_row_is_durable_before_the_cursor_converges_once(monkeypatch):
+    e, tmp = tb_engine()
+    close_row(e, funded_row(e))
+    monkeypatch.setattr(e, 'save_state', lambda: True)              # the process dies before state reaches the disk
+    assert pay(e) == '1 new' and e._row_by_id('f1')['funding_actual'] == -0.5
+    e2 = restart(e, tmp)                                            # disk: old cursor / seen; history row has the payment
+    assert not e2.state.get('funding_seen')
+    assert pay(e2) == '1 new' and pay(e2) == '0 new'
+    assert e2._row_by_id('f1')['funding_actual'] == -0.5 and e2._row_by_id('f1')['funding_rows'] == 1   # once, not twice
+    assert e2.true_books()['B3_TREND']['funding'] == Decimal('-0.5')
+
+
+def test_funding_crash_between_the_evidence_revision_and_the_history_file(monkeypatch):
+    e, tmp = tb_engine()
+    close_row(e, funded_row(e))
+    monkeypatch.setattr(e, '_save_aux', lambda *a: False)           # history never reaches the disk ...
+    monkeypatch.setattr(e, 'save_state', lambda: True)              # ... nor state: the process dies
+    assert pay(e) == 'persist_failed'
+    e2 = restart(e, tmp)                                            # store: revision with the payment; history: stale copy
+    assert pay(e2) == '1 new'
+    assert e2._row_by_id('f1')['funding_actual'] == -0.5
+    b = e2.true_books()['B3_TREND']
+    assert b['funding'] == Decimal('-0.5') and b['complete']
+    e2.history.clear(); e2._save_aux('history', e2.history)
+    assert restart(e2, tmp).true_books()['B3_TREND']['funding'] == Decimal('-0.5')
+
+
+def test_a_failed_row_save_keeps_the_cursor_and_blocks_until_it_lands(monkeypatch):
+    e, tmp = tb_engine()
+    close_row(e, funded_row(e))
+    cur = e.state.get('funding_cursor_ms')
+    monkeypatch.setattr(e, '_save_aux', lambda *a: False)
+    assert pay(e) == 'persist_failed' and e.state.get('funding_cursor_ms') == cur and not e.state.get('funding_seen')
+    assert e._tb_funding()['why'] == 'persist_failed'                                # open holders: funding_unread
+    assert e.true_books()['B3_TREND']['funding'] == Decimal('-0.5')                  # the evidence revision is durable
+    monkeypatch.undo()
+    assert pay(e) == '1 new' and e._row_by_id('f1')['funding_rows'] == 1           # applied once, saved now
+    assert e.state['funding_seen'] and e.true_books()['B3_TREND']['complete']
+    e.history.clear()
+    assert restart(e, tmp).true_books()['B3_TREND']['funding'] == Decimal('-0.5')   # the history file has it
+
+
+def test_a_revision_the_disk_refused_blocks_the_book_and_is_retried():
+    e, tmp = tb_engine()
+    close_row(e, funded_row(e))
+    path = e.F['cohort_rows']; e.F['cohort_rows'] = tmp                               # a directory: every append fails
+    assert pay(e) == 'persist_failed' and e.state['cohort_rev_pending'] == ['f1']
+    assert 'evidence_revision_pending' in reasons(e.true_books()['B3_TREND'])
+    e.F['cohort_rows'] = path
+    assert 'evidence_revision_pending' not in reasons(e.true_books()['B3_TREND']) and not e.state['cohort_rev_pending']
+    assert pay(e) == '1 new' and e.true_books()['B3_TREND']['complete']
+    e.history.clear(); e._save_aux('history', e.history)
+    assert restart(e, tmp).true_books()['B3_TREND']['funding'] == Decimal('-0.5')
+
+
+def test_a_new_peak_is_durable_before_it_is_returned():
+    e, tmp = tb_engine()
+    close_row(e, row(e, 'B3_TREND', 300.0, id='w'))
+    e.state.pop('true_books', None)
+    assert e.true_books()['B3_TREND']['peak'] == 2300                                 # saved before this returned
+    e.history.clear(); e.cohort_rows.clear()
+    open(e.F['cohort_rows'], 'w').close(); e._save_aux('history', e.history)          # the realized series is gone too
+    b = restart(e, tmp).true_books()['B3_TREND']
+    assert b['peak'] == 2300 and b['dd'] == Decimal(300) / Decimal(2300)              # restart never lowers DD
+
+
+def test_a_status_read_also_saves_a_new_peak():
+    e, tmp = tb_engine()
+    close_row(e, row(e, 'B3_TREND', 100.0, id='w'))
+    e.state.pop('true_books', None)
+    e.true_books_status()
+    e.history.clear(); open(e.F['cohort_rows'], 'w').close(); e._save_aux('history', e.history)
+    assert restart(e, tmp).true_books()['B3_TREND']['peak'] == 2100
+
+
+def test_a_book_state_that_cannot_be_saved_blocks_every_book(monkeypatch):
+    e, _ = tb_engine()
+    e.state.pop('true_books', None)
+    monkeypatch.setattr(e, 'save_state', lambda: False)
+    books = e.true_books()
+    assert all('true_book_state_not_durable' in reasons(b) and TB.admit(b) for b in books.values())
+
+
+def test_leverage_uses_the_current_mark_not_the_entry_average():
+    lot = dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=100, qty=10, stop=100, fees_actual=0)
+    b = C('C', [], [lot], marks={'X': 150})['B1_FAST']
+    assert b['notional'] == 1500 and b['nav'] == 2500
+    assert TB.admit(b, 1000, 0, max_leverage=1) is None                               # 1500 + 1000 = 1 x NAV 2500
+    assert 'leverage cap' in TB.admit(b, Decimal('1000.01'), 0, max_leverage=1)
+    s = C('C', [], [dict(lot, side='SHORT', stop=100)], marks={'X': 150})['B1_FAST']  # NAV 1500, exposure 1500
+    assert s['notional'] == 1500 and 'leverage cap' in TB.admit(s, Decimal('0.01'), 0, max_leverage=1)
+
+
+def _halt_lot(e):
+    return fake_lot(e, 'B3_TREND', sym='ETHUSDT', avg=50.0, stop=1.0, qty=1)
+
+
+def test_restarts_cannot_postpone_an_unrealized_only_halt(monkeypatch):
+    e, tmp = tb_engine()
+    real, off = time.time, [0.0]
+    monkeypatch.setattr(E.time, 'time', lambda: real() + off[0])
+    close_row(e, row(e, 'B3_TREND', -1990.0, id='big'))                                # NAV 10 realized
+    e.state['lots']['x'] = _halt_lot(e); e.save_state()
+    marks = {'ETHUSDT': 30.0}                                                          # -20 open: NAV -10 on marks only
+    assert e.true_books(marks)['B3_TREND']['state'] == 'HALTED' and e.state['true_books']['halted'] == {}
+    t0 = e.state['true_books']['halt_pend']['B3_TREND']
+    for step in (10, 20):
+        off[0] = step; e = restart(e, tmp); e.state['lots'].setdefault('x', _halt_lot(e))
+        e.true_books(marks)
+        assert e.state['true_books']['halted'] == {} and e.state['true_books']['halt_pend']['B3_TREND'] == t0
+    off[0] = 31; e = restart(e, tmp); e.state['lots'].setdefault('x', _halt_lot(e))
+    e.true_books(marks)
+    assert e.state['true_books']['halted']['B3_TREND']['confirmed_s'] >= 30
+
+
+@pytest.mark.parametrize('where', ['resting_entries', 'unconfirmed_entries', 'pending_entries'])
+def test_an_unknown_or_manual_working_order_blocks_every_book(where):
+    e, _ = tb_engine()
+    w = dict(symbol='ETHUSDT', side='LONG', qty=1.0, sleeve='ZZ', plan=dict(qty=1.0, px=100.0, stop_dist=2.0))
+    e.state.setdefault(where, {})['w'] = w
+    assert all('unowned_account_activity' in reasons(b) for b in e.true_books().values())
+    assert TB.admit(e.true_books()['B2_RANGE']).startswith('book B2_RANGE INCOMPLETE (unowned_account_activity)')
+    e.state[where]['w'] = dict(w, sleeve='T', manual=True)                             # manual even on a known sleeve
+    assert all('unowned_account_activity' in reasons(b) for b in e.true_books().values())
+    e.state[where]['w'] = dict(w, sleeve='T')                                          # an owned one is not
+    assert 'unowned_account_activity' not in reasons(e.true_books()['B2_RANGE'])
+
+
+def test_identical_replay_is_idempotent_and_a_cost_revision_is_last_wins():
+    r = dict(id='a', book='B1_FAST', cohort_id='C', pnl_gross=-100, fees=1.0, fees_actual=None,
+             fees_actual_partial=['fill_records_pending'])
+    rev = dict(r, fees_actual=0.6, fees_actual_partial=False, cost_rev=1)
+    assert C('C', [r, dict(r)])['B1_FAST']['nav'] == 1899
+    b = C('C', [r, rev, dict(r)])['B1_FAST']                       # a stale copy after the revision never wins
+    assert b['nav'] == Decimal('1899.4') and b['complete'] and b['closed'] == 1
+    assert C('C', [rev, r])['B1_FAST']['nav'] == Decimal('1899.4')
+    rev2 = dict(rev, fees_actual=0.65, cost_rev=1)                                   # same revision number: the later copy
+    assert C('C', [r, rev, rev2])['B1_FAST']['nav'] == Decimal('1899.35')
+    assert 'cost_rev' not in r and r['fees_actual'] is None                          # the caller's rows are never mutated
+
+
+def test_a_conflicting_duplicate_is_flagged_never_silently_chosen():
+    r = dict(id='a', book='B1_FAST', cohort_id='C', pnl_gross=-100, fees=0, fees_actual=0)
+    out = C('C', [r, dict(r, pnl_gross=100, cost_rev=5)])
+    b = out['B1_FAST']
+    assert b['nav'] == 1900 and [x['fields'] for x in b['incomplete'] if x['reason'] == 'row_conflict'] == [['pnl_gross']]
+    assert TB.admit(b).startswith('book B1_FAST INCOMPLETE (row_conflict)') and out['B2_RANGE']['complete']
+    moved = C('C', [r, dict(r, book='B2_RANGE')])                                    # a disputed owner: every book
+    assert all('row_conflict' in reasons(x) for x in moved.values())
+
+
+def test_a_conflicting_history_copy_flags_the_book_across_restart():
+    e, tmp = tb_engine()
+    r = row(e, 'B3_TREND', -50.0, id='k')
+    close_row(e, r)
+    e.history[-1] = dict(r, pnl_gross=50.0); e._save_aux('history', e.history)
+    assert 'row_conflict' in reasons(e.true_books()['B3_TREND'])
+    assert 'row_conflict' in reasons(restart(e, tmp).true_books()['B3_TREND'])

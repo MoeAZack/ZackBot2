@@ -234,6 +234,14 @@ def _fnum(v):
     return x if math.isfinite(x) else None
 
 
+def _funding_once(target, key):
+    """FEE-ASSET-01 / TRUE-BOOK-01: True the first time this funding payment key reaches this lot / row (then recorded)."""
+    keys = target.setdefault('funding_keys', [])
+    if key in keys: return False
+    keys.append(key)
+    return True
+
+
 def _quote_asset(sym):
     """The quote currency a commission must be charged in to be normalised to a rate (None = unknown -> stays missing)."""
     for q in ('USDT', 'USDC'):
@@ -2487,9 +2495,11 @@ class Engine:
         raise there: the in-memory list stays complete and the whole list is written again on the next save."""
         try:
             save_json(self.F[name], obj)
+            return True
         except Exception as ex:
             try: self.err(f'{name}.json cannot be written ({type(ex).__name__}) - kept in memory, saved again next time', key=f'save|{name}')
             except Exception: pass
+            return False
 
     @contextlib.contextmanager
     def _stage(self, key, lot, name, failed, add=False):
@@ -2682,6 +2692,8 @@ class Engine:
             if ref in (l.get('cost_refs') or ()): return 'lot', l
         for h in reversed(self.history):
             if ref in (h.get('cost_refs') or ()): return 'row', h
+        for h in reversed(getattr(self, 'cohort_rows', None) or ()):
+            if ref in (h.get('cost_refs') or ()): return 'row', h
         return None, None
 
     def _cost_final(self, kind, t):
@@ -2697,7 +2709,9 @@ class Engine:
             for t in ts:
                 if 'fill_records_pending' not in (t.get('fees_actual_partial') or ()): continue
                 before = t.get('fees_actual_partial'); self._cost_final(kind, t)
-                if t.get('fees_actual_partial') != before: rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                if t.get('fees_actual_partial') != before:
+                    rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                    if kind == 'row': self._row_changed(t)
         return rows, lots
 
     def apply_costs(self):
@@ -2707,7 +2721,7 @@ class Engine:
                 q = vars(self).setdefault('_cost_q', collections.deque(maxlen=5000))
                 wait = vars(self).setdefault('_cost_wait', [])
                 todo, now, rows, lots = wait + [(time.time(), q.popleft()) for _ in range(len(q))], time.time(), False, False
-                wait.clear()
+                wait.clear(); revised = {}
                 for t0, rec in todo:
                     kind, t = self._cost_target(rec['cost_ref'])
                     if t is None:
@@ -2716,8 +2730,10 @@ class Engine:
                         continue
                     AC.apply_fill(t, rec); self._cost_final(kind, t)
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                    if kind == 'row': revised[id(t)] = t
                 if now - getattr(self, '_cost_swept', 0) > 60:
                     self._cost_swept = now; r2, l2 = self._cost_sweep(); rows, lots = rows or r2, lots or l2
+                for t in revised.values(): self._row_changed(t)     # evidence revision first, then the history file
                 if rows: self._save_aux('history', self.history)
                 if lots: self.save_state()
                 return len(todo) - len(wait)
@@ -2738,49 +2754,98 @@ class Engine:
         cid = (self.state.get('cohort') or {}).get('id')
         st = self.state.get('true_books')
         if not isinstance(st, dict):
-            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={})
+            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={}, halt_pend={})
         elif cid and st.get('cohort_id') != cid:                       # a NEW cohort: every book starts fresh
-            st.clear(); st.update(cohort_id=cid, halted={}, peak={})
-        st.setdefault('halted', {}); st.setdefault('peak', {})
+            st.clear(); st.update(cohort_id=cid, halted={}, peak={}, halt_pend={})
+        for k in ('halted', 'peak', 'halt_pend'):
+            if not isinstance(st.get(k), dict): st[k] = {}
         return st
 
     def _tb_working(self):
-        """Entries placed but not yet a lot (resting maker, unconfirmed): (book, notional, worst loss to stop) reserved."""
+        """Entries placed but not yet a lot (resting maker, unconfirmed): (book, notional, worst loss to stop) reserved.
+        A manual or unmapped working entry (any of resting / unconfirmed / armed) is (None, ...): owned by no book, so
+        every book is INCOMPLETE until it is gone (Codex 6240139762 #7) - never skipped."""
         out = []
         for x in list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('unconfirmed_entries') or {}).values()):
             p = x.get('plan') or {}
-            b = self._book_of_working(x)
-            if not b: continue
+            b = None if x.get('manual') or p.get('manual') else self._book_of_working(x)
+            if b not in PB.IDS: out.append((None, None, None)); continue
             try: qty, px, sd = float(p.get('qty') or x.get('qty')), float(p['px']), float(p['stop_dist'])
             except (TypeError, ValueError, KeyError): out.append((b, None, None)); continue
             out.append((b, qty * px, qty * sd))
+        for p in (self.state.get('pending_entries') or {}).values():     # armed trailing entries: ownership only here
+            if p.get('manual') or self._book_of_working(p) not in PB.IDS: out.append((None, None, None))
         return out
 
+    def _tb_funding(self):
+        """Funding coverage (Codex 6240139762 #3): ok only with a reader, the last read successful and recent."""
+        if not getattr(self.trade, 'income', None): return dict(ok=False, why='no_reader', through_ms=None)
+        t, err = self.state.get('funding_read_ms'), self.state.get('funding_err')
+        if err: return dict(ok=False, why=err, through_ms=t)
+        if not t: return dict(ok=False, why='never_read', through_ms=None)
+        if time.time() * 1000 - float(t) > (self.FUNDING_POLL_S + self.FUNDING_RETRY_S + 600) * 1000:
+            return dict(ok=False, why='stale', through_ms=t)
+        return dict(ok=True, why=None, through_ms=t)
+
+    def _row_by_id(self, rid):
+        """A closed row by id: the trading history first (live copy), then the cohort evidence store (past the trim)."""
+        for h in reversed(self.history):
+            if h.get('id') == rid: return h
+        for h in reversed(getattr(self, 'cohort_rows', None) or ()):
+            if h.get('id') == rid: return h
+        return None
+
+    def _cohort_rev_retry(self):
+        """Write again every revision the disk refused. True when none is left pending."""
+        for rid in list(self.state.get('cohort_rev_pending') or ()):
+            row = self._row_by_id(rid)
+            if row is not None: self._cohort_rev(row)
+        return not self.state.get('cohort_rev_pending')
+
+    def _row_changed(self, row):
+        """A closed row was restated (late fee / funding): bump its cost_rev and append the revision to the evidence store."""
+        row['cost_rev'] = int(row.get('cost_rev') or 0) + 1
+        return self._cohort_rev(row)
+
     def true_books(self, marks=None, persist=True):
-        """{book: doc} for the current cohort (pure compute over state); persists a new HALT (sticky) unless persist=False."""
+        """{book: doc} for the current cohort (pure compute over state). Durable before it returns (Codex 6240139762 #4/#6):
+        every new mark-to-market peak, an unrealized-only halt's confirmation start and a sticky HALT are saved to state
+        first - a restart can neither lower DD nor restart the 30 s confirmation. persist=False (status) saves peaks only:
+        it never starts a confirmation or halts. A save that fails makes every book INCOMPLETE (no new risk)."""
         with self.lock:
             st = self._tb_state()
+            on = self._tb_on() and bool(st['cohort_id'])
+            if on: self._cohort_rev_retry()
             if marks is None:                                        # never value a book on a stalled mark feed
                 marks = (self.marks or {}) if time.time() - (getattr(self, 'marks_t', 0) or 0) <= MARK_FRESH_S else {}
             books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
-                               marks, self._tb_working(), st['halted'],
-                               peaks=st['peak'])
-            if persist and st['cohort_id']:                          # in memory; saved with the next state save
+                               marks, self._tb_working(), st['halted'], peaks=st['peak'], funding=self._tb_funding(),
+                               unsaved=self.state.get('cohort_rev_pending') or ())
+            dirty, now, pend, new = False, time.time(), st['halt_pend'], {}
+            if on:
                 for k, b in books.items():
-                    if b['peak'] > TB.D(st['peak'].get(k) or 0): st['peak'][k] = TB.q(b['peak'])
-            now, pend = time.time(), vars(self).setdefault('_tb_halt_pend', {})
-            new = {}
+                    if any(x['reason'] == 'peak_unreadable' for x in b['incomplete']): continue   # never overwrite evidence
+                    old = TB.D(st['peak'].get(k))
+                    if old is None or b['peak'] > old: st['peak'][k] = str(b['peak']); dirty = True   # exact, never rounded down
             for k, b in books.items():
-                if b['state'] != 'HALTED' or k in st['halted']: pend.pop(k, None); continue
+                if b['state'] != 'HALTED' or k in st['halted']:
+                    if persist and on and pend.pop(k, None) is not None: dirty = True
+                    continue
                 if b['nav_worse'] - b['unreal'] <= 0: new[k] = b['halt']; continue        # realized alone: at once
-                t0 = pend.setdefault(k, now)                         # mark-to-market only: confirm on a later tick
+                if not (persist and on): continue
+                if TB.D(pend.get(k)) is None: pend[k] = now; dirty = True    # mark-to-market only: confirm on a later tick
+                t0 = float(TB.D(pend[k]))
                 if now - t0 >= self.TB_HALT_CONFIRM_S: new[k] = dict(b['halt'] or {}, confirmed_s=round(now - t0))
-            if new and persist and self._tb_on():
-                for k in new: pend.pop(k, None)
+            if new and persist and on:
                 for k, h in new.items():
+                    pend.pop(k, None)
                     st['halted'][k] = dict(h or {}, at=now_utc().isoformat(timespec='seconds'), scope='book')
-                self.save_state()
-                for k in new: self.notify(f'TRUE-BOOK: book {k} HALTED (NAV <= 0) - no new risk in this book; other books continue')
+                dirty = True
+            else: new = {}
+            if dirty and not self.save_state():
+                for b in books.values():
+                    b['incomplete'].append(dict(reason='true_book_state_not_durable')); b['complete'] = b['rankable'] = False
+            for k in new: self.notify(f'TRUE-BOOK: book {k} HALTED (NAV <= 0) - no new risk in this book; other books continue')
             return books
 
     def _tb_add_block(self, lot, q, px):
@@ -2793,17 +2858,17 @@ class Engine:
                         max_leverage=self.S['MAX_LEVERAGE'])
 
     def _tb_rows(self, cohort_id):
-        """Closed rows of the cohort: the append-only evidence store (never trimmed) overlaid by the trading history
-        (which carries late actual-cost / funding updates) - so NAV never moves when history passes its 3000-row window."""
+        """Closed rows of the cohort: the evidence store (never trimmed; late restatements appended as revisions) then the
+        trading history copies (live). TB.merge_rows folds them by the revision rule, so NAV never moves when history passes
+        its 3000-row window and a stale first copy never wins."""
         if not cohort_id: return []
-        key = lambda r: r.get('id') or f'_{id(r)}'               # an id-less row is never merged with another
-        rows = {key(r): r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id}
+        rows = [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id]
         start = (self.state.get('cohort') or {}).get('started_utc') or ''
         for h in self.history:
-            if h.get('cohort_id') == cohort_id: rows[key(h)] = h
+            if h.get('cohort_id') == cohort_id: rows.append(h)
             elif not h.get('cohort_id') and h.get('book') not in PB.IDS and str(h.get('closed') or '') >= start:
-                rows[key(h)] = h                                      # unowned activity on the shared account
-        return list(rows.values())
+                rows.append(h)                                        # unowned activity on the shared account
+        return rows
 
     def _book_of_working(self, x):
         b = x.get('book') or (x.get('plan') or {}).get('book')
@@ -2849,7 +2914,8 @@ class Engine:
             if l.get('symbol') == sym and o is not None and o <= t_ms:
                 q = AC.held_at(l.get('fills'), t_ms)
                 out.append((('lot', key), l.get('side'), l.get('qty') if q is None else q))
-        for h in self.history[-3000:]:
+        ids = {h.get('id') for h in self.history[-3000:]}
+        for h in self.history[-3000:] + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]:
             o, c = ms(h.get('opened')), ms(h.get('closed'))
             if h.get('symbol') == sym and o is not None and c is not None and o <= t_ms <= c:
                 q = AC.held_at(h.get('fills'), t_ms)
@@ -2871,44 +2937,58 @@ class Engine:
             rows = inc('FUNDING_FEE', cur)
         except Exception as ex:                                 # retry in FUNDING_RETRY_S, never on every loop pass
             self.state['funding_polled'] = now - self.FUNDING_POLL_S + self.FUNDING_RETRY_S
+            self.state['funding_err'] = 'read_failed'           # TRUE-BOOK: every holder INCOMPLETE until a read succeeds
             log.debug(f'funding income not read ({type(ex).__name__})'); return 'read_failed'
         rows = [r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)]
         with self.lock:
             self.state['funding_polled'] = now
             seen = self.state.setdefault('funding_seen', []); seen_set = set(seen)
-            new, hi, rows_changed = [], int(cur), False
+            new, hi, keys, rows_changed = [], int(cur), [], {}
+            tgt_of = lambda kind, key: self.state['lots'].get(key) if kind == 'lot' else self._row_by_id(key)
             for r in sorted(rows, key=lambda r: int(_fnum(r.get('time')) or 0)):
                 t = int(_fnum(r.get('time')) or 0); hi = max(hi, t)
                 k = AC.tran_key(r.get('tranId') if r.get('tranId') is not None else (r.get('symbol'), t, r.get('income')))
                 if k in seen_set: continue
-                seen.append(k); seen_set.add(k)
+                keys.append(k); seen_set.add(k)
                 amt, asset, sym = _fnum(r.get('income')), r.get('asset'), r.get('symbol')
                 hs = self._funding_holders(sym, t)
                 st, shares = AC.attribute_funding(amt, [(key, s, q) for key, s, q in hs])
                 if st in ('ambiguous', 'unreadable'):           # never estimated, never netted: every holder is incomplete
                     why = 'ambiguous_opposite_side_funding' if st == 'ambiguous' else 'unreadable_funding'
                     for (kind, key), _s, _q in hs:
-                        tgt = self.state['lots'].get(key) if kind == 'lot' else next((h for h in self.history if h.get('id') == key), None)
-                        if tgt is not None:
-                            AC.mark_funding_gap(tgt, why); rows_changed = rows_changed or kind == 'row'
+                        tgt = tgt_of(kind, key)
+                        if tgt is not None and _funding_once(tgt, k):
+                            AC.mark_funding_gap(tgt, why)
+                            if kind == 'row': rows_changed[id(tgt)] = tgt
                 for (kind, key), a in shares.items():
-                    tgt = self.state['lots'].get(key) if kind == 'lot' else next((h for h in self.history if h.get('id') == key), None)
-                    if tgt is not None:
-                        AC.apply_funding(tgt, a, asset); rows_changed = rows_changed or kind == 'row'
+                    tgt = tgt_of(kind, key)
+                    if tgt is not None and _funding_once(tgt, k):
+                        AC.apply_funding(tgt, a, asset)
+                        if kind == 'row': rows_changed[id(tgt)] = tgt
                 new.append(dict(kind='funding', key=k, symbol=sym, asset=asset, amount=amt, time_ms=t, status=st,
                                 shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()],
                                 **({'holders': [dict(kind=kk, id=kid, side=s) for (kk, kid), s, _q in hs]} if not shares else {})))
-            del seen[:-self.FUNDING_SEEN_MAX]
-            self.state['funding_cursor_ms'] = hi                 # same-ms rows are re-read next time and deduped by key
-            # Order: evidence log first (a crash after it only repeats a line, deduped by key), then state (seen keys +
-            # cursor + lot amounts), then history - a crash between the last two loses a row's amount, never doubles it.
+            # Crash order (Codex 6240139762 #3): each payment is applied at most once per lot / row (its funding_keys), and the
+            # rows are made durable (evidence revision + history file) BEFORE the seen keys / cursor that stop a replay are
+            # saved with the lots. A crash anywhere replays from the old cursor: a target that kept the key skips it, one
+            # that lost it (not yet saved) gets it once. A failed row save keeps the cursor and the error (open holders INCOMPLETE).
             if new:
                 try:
                     with open(os.path.join(self.dir, 'funding.jsonl'), 'a', encoding='utf-8') as f:
                         for x in new: f.write(json.dumps(x, separators=(',', ':')) + '\n')
                 except OSError as ex: log.warning(f'funding.jsonl not written ({ex})')
+            again = self.state.get('funding_err') == 'persist_failed'   # rows of a failed tick are in memory only
+            ok = all([self._row_changed(t) for t in rows_changed.values()])
+            if again: ok = self._cohort_rev_retry() and ok
+            if rows_changed or again: ok = self._save_aux('history', self.history) and ok
+            if not ok:
+                self.state['funding_err'] = 'persist_failed'
                 self.save_state()
-            if rows_changed: self._save_aux('history', self.history)
+                return 'persist_failed'
+            seen.extend(keys); del seen[:-self.FUNDING_SEEN_MAX]
+            self.state['funding_cursor_ms'] = hi                 # same-ms rows are re-read next time and deduped by key
+            self.state['funding_read_ms'] = int(now * 1000); self.state.pop('funding_err', None)
+            self.save_state()
         return f'{len(new)} new'
 
     def _fill_flush(self, timeout=2.0):
@@ -5432,17 +5512,21 @@ class Engine:
     def _load_cohort_rows(self, cid=None):
         """A cohort's closed rows from cohort_rows.jsonl (deduped by trade id), healed from stamped history rows a failed
         append missed. Default: the open cohort."""
-        cid, rows, seen = cid or self.state['cohort']['id'], [], set()
+        cid, rows = cid or self.state['cohort']['id'], []
         try:
             with open(self.F['cohort_rows'], encoding='utf-8') as f:
                 for ln in f:
                     try: r = json.loads(ln)
                     except ValueError: continue
-                    if isinstance(r, dict) and r.get('cohort_id') == cid and r.get('id') not in seen: rows.append(r); seen.add(r.get('id'))
+                    if isinstance(r, dict) and r.get('cohort_id') == cid: rows.append(r)
         except FileNotFoundError: pass
-        self.cohort_rows = rows
+        self.cohort_rows = TB.merge_rows(rows)                  # every copy of an id folded by the revision rule
+        have = {r.get('id'): r for r in self.cohort_rows}
         for r in self.history:
-            if r.get('cohort_id') == cid and r.get('id') not in seen: self._cohort_row(r); seen.add(r.get('id'))
+            if r.get('cohort_id') != cid: continue
+            if r.get('id') not in have: self._cohort_row(r); have[r.get('id')] = r
+            elif TB.merge_rows([have[r.get('id')], r])[0] != have[r.get('id')]:
+                self._cohort_rev(r, cid)                        # history holds a newer restatement the store missed
 
     def _cohort_row(self, rec):
         """Evidence copy of one closed trade of the open cohort (append-only; a failed write is counted, never raised)."""
@@ -5452,7 +5536,31 @@ class Engine:
                 f.write(json.dumps(rec, sort_keys=True, separators=(',', ':'), default=str) + '\n')
         except Exception as ex:
             self.state['cohort_rows_gap'] = int(self.state.get('cohort_rows_gap') or 0) + 1
+            pend = self.state.setdefault('cohort_rev_pending', [])
+            if rec.get('id') not in pend: pend.append(rec.get('id'))
             log.warning(f'cohort evidence row not written ({type(ex).__name__}) - healed from history at the next start')
+
+    def _cohort_rev(self, row, cid=None):
+        """TRUE-BOOK-01: append a revision of a closed row (late fee / funding) to the evidence store and fold it into the
+        in-memory copy. Only the open cohort's rows (or cid's, while it is being loaded). A failed write keeps the id in
+        cohort_rev_pending: that book is INCOMPLETE and the write is retried. True when durable (or not a cohort row)."""
+        cid = cid or (self.state.get('cohort') or {}).get('id')
+        if not cid or row.get('cohort_id') != cid: return True
+        rows = vars(self).setdefault('cohort_rows', [])
+        i = next((j for j in range(len(rows) - 1, -1, -1) if rows[j].get('id') == row.get('id')), None)
+        if i is None: rows.append(row)
+        elif rows[i] is not row: rows[i] = TB.merge_rows([rows[i], row])[0]
+        pend = self.state.setdefault('cohort_rev_pending', [])
+        try:
+            with open(self.F['cohort_rows'], 'a', encoding='utf-8') as f:
+                f.write(json.dumps({k: v for k, v in row.items() if k != '_conflict'}, sort_keys=True, separators=(',', ':'),
+                                   default=str) + '\n')
+        except Exception as ex:
+            if row.get('id') not in pend: pend.append(row.get('id'))
+            log.warning(f'cohort evidence revision not written ({type(ex).__name__}) - book INCOMPLETE, retried')
+            return False
+        if row.get('id') in pend: pend.remove(row.get('id'))
+        return True
 
     def _ledger_rows(self, coh):
         """Stamped rows from the evidence store + (cohort 0 only) unstamped legacy rows from the trading history."""
