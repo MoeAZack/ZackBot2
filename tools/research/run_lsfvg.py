@@ -7,7 +7,10 @@ imported, not copied:
     holdout check: any END after HOLDOUT_START (2026-09-28T00:00:00Z) is refused.
   - universe: the frozen static tiers (CORE-10 / CORE-20) or an explicit --symbols list inside the frozen universe.
   - clean git tree before a single cache byte is read; packets are never overwritten; JSON sorted, allow_nan False,
-    packet_sha256 over the canonical packet; runner sha256 of every file the numbers depend on.
+    packet_sha256 over the canonical packet; runner_sha256 of this runner, the C1 rule module, the imported runner
+    helpers, backtest.py, strategies.py and the pit_run / run_r4 / splits guard modules.
+  - --check-coverage: reports only the first / last cached bar per symbol before END against the required warm-up
+    start (nothing past END, no indicator, no signal); no packet.
   - cache: <cache>/<SYMBOL>_4h.csv (app._get_candles format) via B.read_cache, sliced on the raw rows to
     [warm-up start, END) before any indicator exists (VC.slice_frame + VC.assert_bounded), completeness on the 4h grid
     (B.completeness). STRICTER than breadth: any requested symbol with a missing file or an incomplete slice REFUSES the
@@ -65,6 +68,15 @@ assert LS.TF == TF and WARMUP_BARS >= 200
 SKIPS = ('cost_guard', 'gap_stop', 'overlap', 'conflict', 'no_next_bar')
 LABELS = ('stop', 'target', 'invalidation', 'time')
 ND = 9                                      # float rounding in the packet
+FINAL_REQUIRES = 'CANDIDATE on both CORE-10 and CORE-20 (combined sides)'
+# Codex 6229030001 freeze of Cowork 6228999316 (i)-(iii): the implemented v0 semantics, verbatim (no rule change)
+FROZEN_V0_SEMANTICS = (
+    'first qualifying FVG owns the setup; if that entry is skipped for guard/slot/conflict, the setup dies and does '
+    'not re-arm;',
+    'earliest sweep owns a shared FVG bar; later sweeps are dropped and do not retry;',
+    'displacement body uses ATR14[n\u22121].',
+)
+NET_EPS = 1e-9                              # |group net R| below this: net_R_share is null
 
 _num, _utc, _ms, _canon = VC._num, VC._utc, VC._ms, VC._canon
 
@@ -81,8 +93,13 @@ def _err(e) -> RunnerError:
     return RunnerError(str(e).replace('VWAPREV candidate', 'lsfvg').replace('breadth candidate', 'lsfvg'))
 
 
+DIGEST_MODULES = (sys.modules[__name__], LS, B, VC, VC.BT, VC.ST, VC.PR, VC.G, VC.SP)
+
+
 def runner_digest() -> dict:
-    return {os.path.basename(m.__file__): B._sha(os.path.abspath(m.__file__)) for m in (sys.modules[__name__], LS, B, VC)}
+    """sha256 of every module the packet numbers or guards depend on: this runner, the C1 rules, the breadth / VWAPREV
+    helpers, backtest (cost constants), strategies (ATR14), pit_run / run_r4 / splits (window, universe, clean tree)."""
+    return {os.path.basename(m.__file__): B._sha(os.path.abspath(m.__file__)) for m in DIGEST_MODULES}
 
 
 # ------------------------------------------------------------------ guards
@@ -180,6 +197,9 @@ def group_stats(rows, skips, opens, quarters, summary) -> dict:
         giveback_net_r_mean=_r(np.mean([x['giveback_net_r'] for x in rows])) if n else None,
         exits={k: sum(1 for x in rows if x['label'] == k) for k in LABELS},
         lt_minus1=summary['lt_minus1'], lt_minus1_by_label=dict(summary['lt_minus1_by_label']),
+        gap_exit_by_label={k: sum(1 for x in rows if x['label'] == k and x['gap_exit']) for k in LABELS},
+        skips_by_symbol={sym: {k: sum(1 for s in skips if s['symbol'] == sym and s['skip'] == k)
+                               for k in ('conflict', 'overlap')} for sym in sorted({s['symbol'] for s in skips})},
         skips=sk, conflict_events=len({(s['symbol'], s['n']) for s in skips if s['skip'] == 'conflict'}),
         open_end=len(opens))
 
@@ -191,11 +211,13 @@ def concentration(rows, symbols) -> dict:
         sel = [x for x in rows if x['symbol'] == s]
         v = sum(x['R_net'] for x in sel)
         out[s] = dict(n=len(sel), trade_share=_r(len(sel) / n) if n else None, net_R=_r(v),
-                      net_R_share=_r(v / net) if net != 0 else None)
+                      net_R_share=_r(v / net) if abs(net) >= NET_EPS else None)
     return out
 
 
 def decision(c: dict, quarters) -> dict:
+    """CANDIDATE (per tier) only if combined PF > 1.0 AND combined own quarterly net R > 0 in >= 2/3 of the window
+    quarters AND gross R per trade >= 3 x cost R per trade; otherwise PARK. Final: CANDIDATE on both tiers."""
     n, nq = c['n'], len(quarters)
     pf_ok = n > 0 and ((c['pf'] is not None and c['pf'] > 1.0) or (c['pf'] is None and c['losses'] == 0 and c['wins'] > 0))
     q_ok = nq > 0 and 3 * c['positive_quarters'] >= 2 * nq
@@ -205,12 +227,66 @@ def decision(c: dict, quarters) -> dict:
              'AND gross R per trade >= 3 x cost R per trade; otherwise PARK (Codex reading; cross-tier check later)',
         pf=c['pf'], pf_ok=bool(pf_ok), positive_quarters=c['positive_quarters'], quarters=nq, quarters_ok=bool(q_ok),
         gross_R_per_trade=c['gross_R_per_trade'], cost_R_per_trade=c['cost_R_per_trade'], cost_ok=bool(cost_ok),
-        verdict='CANDIDATE' if (pf_ok and q_ok and cost_ok) else 'PARK')
+        tier_verdict='CANDIDATE' if (pf_ok and q_ok and cost_ok) else 'PARK', final_requires=FINAL_REQUIRES)
+
+
+# ------------------------------------------------------------------ pre-registration (fixed before any data is read)
+def prereg() -> dict:
+    """Cowork 6228948749: the accounting and reporting commitments, built from code constants only (no cache input)."""
+    return {
+        'source': 'Cowork 6228948749',
+        'written_before_data': True,
+        'funding': 'charged as a cost on both sides (FUND_PER_BAR x close of every managed bar entry..exit, including '
+                   'the exit bar x on open fills), never credited',
+        'pf_and_quarters_use': 'R_net (gross R - slip R - fee R - funding R)',
+        'frozen_v0_semantics': list(FROZEN_V0_SEMANTICS),
+        'frozen_v0_semantics_source': 'Codex 6229030001 (freeze of Cowork 6228999316 (i)-(iii))',
+        'decision_rule': decision.__doc__,
+        'final_requires': FINAL_REQUIRES,
+        'reported_counts': ['gap_exit_by_label', 'lt_minus1_by_label', 'skips_by_symbol (conflict / overlap)',
+                            'skips_by_reason (cost_guard / gap_stop / overlap / conflict / no_next_bar)', 'open_end',
+                            'giveback_gross_r / giveback_net_r (per trade and mean)'],
+        'rule_text': LS.__doc__,
+        'rule_text_sha256': hashlib.sha256(LS.__doc__.encode('utf-8')).hexdigest(),
+    }
+
+
+# ------------------------------------------------------------------ coverage pre-check (no computation)
+def check_coverage(*, cache: str, window, tier=None, symbols=None, plan=None) -> dict:
+    """First / last cached bar before END per symbol vs the required warm-up start. Nothing past END is reported; no
+    indicator, signal or trade is computed and no packet is written."""
+    lo, hi, warm_lo = check_window(window, plan)
+    try:
+        syms = VC.pick_symbols(VC.frozen_universe(), tier, symbols)
+    except VC.RunnerError as e:
+        raise _err(e) from None
+    out = {}
+    for s in syms:
+        try:
+            df, rec = B.read_cache(cache, s, TF)
+        except B.RunnerError as e:
+            raise _err(e) from None
+        if df is None:
+            out[s] = dict(missing_file=True, first=None, last=None, covers_warmup=False, reaches_end=False, ok=False)
+            continue
+        t = df.t.to_numpy(np.int64)
+        t = np.sort(t[t < hi])                           # nothing at / after END is ever reported
+        first, last = (int(t[0]), int(t[-1])) if len(t) else (None, None)
+        r = dict(missing_file=False, first=_utc(first) if first is not None else None,
+                 last=_utc(last) if last is not None else None,
+                 covers_warmup=first is not None and first <= warm_lo,
+                 reaches_end=last is not None and last == hi - TF_MS)
+        r['ok'] = r['covers_warmup'] and r['reaches_end']
+        out[s] = r
+    return {'window': {'start': _utc(lo), 'end': _utc(hi), 'end_exclusive': True},
+            'required_warmup_start': _utc(warm_lo), 'symbols': out,
+            'late_or_short': sorted(s for s, v in out.items() if not v['ok'])}
 
 
 # ------------------------------------------------------------------ the run
 def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC.ROOT, plan=None) -> dict:
     lo, hi, warm_lo = check_window(window, plan)
+    pre = prereg()                                       # fixed before a single cache byte is read
     try:
         static = VC.frozen_universe()
         syms = VC.pick_symbols(static, tier, symbols)
@@ -245,7 +321,8 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
         d = frames[s]
         t = _ms(d.t)
         lo_i = int(np.searchsorted(t, lo))
-        assert lo_i == WARMUP_BARS
+        if lo_i != WARMUP_BARS:
+            raise RunnerError(f'lsfvg: {s} slice has {lo_i} warm-up bars, expected {WARMUP_BARS}; aborted')
         ex = []
         with window_signals(lo_i, ex):
             res = LS.run_symbol(d)
@@ -254,7 +331,8 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
         for k in res['skips']:
             skips.append(dict(symbol=s, side=k['side'], n=int(k['n']), skip=k['skip'], t_signal=_utc(t[k['n']])))
         for x in res['trades']:
-            assert x['n'] >= lo_i
+            if x['n'] < lo_i:
+                raise RunnerError(f"lsfvg: {s} traded a pre-window signal (n={x['n']}); aborted")
             base = dict(symbol=s, side=x['side'], t_signal=_utc(t[x['n']]), t_in=_utc(t[x['entry_i']]),
                         quarter=quarter(int(t[x['entry_i']])), entry=x['entry'], stop=x['stop'], target=x['target'],
                         R_unit=x['R_unit'])
@@ -307,12 +385,15 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
             'quarter': 'calendar quarter (UTC) of t_in', 'net_R': 'gross R - slip R - fee R - funding R',
             'mfe_r': 'best favourable excursion on the path entry -> exit in R (bars [entry, exit) full range + entry, '
                      'exit-bar open and exit price; nothing after the exit)',
-            'mae_r': 'worst adverse excursion on the same path, in R', 'giveback_gross_r': 'mfe_r - gross R', 'giveback_net_r': 'mfe_r - net R',
+            'mae_r': 'worst adverse excursion on the same path, in R', 'giveback_gross_r': 'mfe_r - gross R',
+            'giveback_net_r': 'mfe_r - net R',
             'max_dd_R': 'max drawdown of cumulative net R in exit order',
             'skips': 'skip records; a conflict writes one record per side (conflict_events = distinct symbol / bar)',
             'concentration': 'per symbol: share of the group trades and of the group net R (None when net R is 0)'},
         'stats': groups,
+        'prereg': pre,
         'decision': decision(groups['combined'], quarters),
+        'skips_by_reason': {k: sum(1 for x in skips if x['skip'] == k) for k in SKIPS},
         'skips': skips,
         'trades': trades,
     }
@@ -332,8 +413,21 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument('--tier', choices=('CORE-10', 'CORE-20'))
     g.add_argument('--symbols')
-    ap.add_argument('--out', required=True)
+    ap.add_argument('--out', default=None, help='packet path (required unless --check-coverage)')
+    ap.add_argument('--check-coverage', action='store_true',
+                    help='only report first / last bar per symbol vs the warm-up start; computes nothing else')
     a = ap.parse_args(argv)
+    syms = a.symbols.split(',') if a.symbols else None
+    if a.check_coverage:
+        try:
+            cov = check_coverage(cache=a.cache, window=a.window, tier=a.tier, symbols=syms)
+        except RunnerError as e:
+            print(f'REFUSED: {e}', file=sys.stderr)
+            return 2
+        print(json.dumps(cov, sort_keys=True, indent=1))
+        return 0
+    if not a.out:
+        ap.error('--out is required unless --check-coverage')
     try:
         pkt = run(cache=a.cache, window=a.window, out=a.out, tier=a.tier,
                   symbols=a.symbols.split(',') if a.symbols else None)
@@ -341,7 +435,7 @@ def main(argv=None) -> int:
         print(f'REFUSED: {e}', file=sys.stderr)
         return 2
     c = pkt['stats']['combined']
-    print(f"{LS.CANDIDATE}: {c['n']} trades, net R {c['net_R']}, PF {c['pf']}, {pkt['decision']['verdict']}, "
+    print(f"{LS.CANDIDATE}: {c['n']} trades, net R {c['net_R']}, PF {c['pf']}, {pkt['decision']['tier_verdict']}, "
           f"packet {pkt['packet_sha256'][:12]} -> {a.out}")
     return 0
 
