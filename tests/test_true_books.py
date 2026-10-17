@@ -434,3 +434,13 @@ def test_an_unrealized_only_halt_must_hold_before_it_is_sticky(monkeypatch):
 def test_compute_dedupes_rows_by_id():
     r = dict(id='a', book='B1_FAST', cohort_id='C', pnl_gross=-100, fees=0, fees_actual=0)
     assert TB.compute('C', [r, dict(r)])['B1_FAST']['nav'] == 1900
+
+
+def test_unowned_activity_blocks_new_risk_in_every_book_but_keeps_lots_managed():
+    e, _ = tb_engine()
+    e.state['lots']['m'] = fake_lot(e, None, manual=True, cohort_id=None)
+    for sl in (T_SL, R_SL):
+        assert not e.open_lot(sl, 'BTCUSDT', 'LONG', SG, None, e.equity())
+        assert 'unowned_account_activity' in e.last_skip
+    e.state['lots'].pop('m')                                                        # closed / reconciled
+    assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip

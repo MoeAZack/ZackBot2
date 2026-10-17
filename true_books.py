@@ -18,7 +18,9 @@ START = Decimal('2000')
 MAX_LOTS = 4
 STOP_RISK_MAX = Decimal('0.08')            # book open stop-risk cap as a fraction of book NAV (4 x 2 %) - Codex may rule
 Q = Decimal('0.0001')
-UNMEASURED = ('mark_missing', 'stop_unknown', 'working_stop_unknown')   # NAV / risk unknown -> no new risk in that book
+# risk / ownership unknown -> no new risk in that book (existing lots stay managed and closable). Unowned / manual
+# activity contaminates the shared account: every book stops new risk until a clean cohort (Codex ruling 6240131523).
+UNMEASURED = ('mark_missing', 'stop_unknown', 'working_stop_unknown', 'unowned_account_activity')
 
 
 def D(x):
