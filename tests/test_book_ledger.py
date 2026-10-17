@@ -391,3 +391,10 @@ def test_missing_sidecar_is_rewritten_and_a_disagreeing_one_stops_stamping():
     assert 'cohort_id' not in next(iter(e.state['lots'].values()))
     e.close_lot(next(iter(e.state['lots'])), 'manual')
     with pytest.raises(RuntimeError, match='disputed'): e.cohort_boundary(tempfile.mkdtemp())
+
+
+def test_unreadable_sidecar_is_a_dispute_and_is_never_overwritten():
+    e, _ = books_engine()
+    with open(e.F['cohort'], 'w') as f: f.write('{"id": "CH-trunc')               # truncated / damaged
+    e._cohort_init()
+    assert open(e.F['cohort']).read() == '{"id": "CH-trunc' and e.book_ledger_status() is None

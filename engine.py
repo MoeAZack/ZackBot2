@@ -5117,7 +5117,9 @@ class Engine:
     def _cohort_sidecar(self, any_state=False):
         try:
             with open(self.F['cohort'], encoding='utf-8') as f: side = json.load(f)
-        except (OSError, ValueError): return None
+        except FileNotFoundError: return None
+        except (OSError, ValueError):                  # locked / damaged: evidence of a dispute, never overwritten
+            return {} if any_state else None
         if any_state: return side if isinstance(side, dict) else {}
         return side if not RP.validate_cohort(side) and not side.get('ended_utc') else None
 
@@ -5147,8 +5149,9 @@ class Engine:
                 side = self._cohort_sidecar(any_state=True)
                 if side is None: self._save_aux('cohort', rec)       # older install / failed first write: mirror it now
                 elif side.get('id') != rec['id']:
-                    self._integrity_alert('integrity|cohort', f"cohort.json holds {side.get('id')} but state holds {rec['id']} - "
-                                                              'state may be an older backup; book lots are not stamped')
+                    self._integrity_alert('integrity|cohort', f"cohort.json holds {side.get('id') or 'nothing readable'} but state holds {rec['id']} - "
+                                                              'unreadable, or state may be an older backup; book lots are not stamped until the '
+                                                              'files agree and the bot restarts')
                     bad = ['state and cohort.json disagree']; self._cohort_conflict = True
             if bad:
                 self._integrity_alert('integrity|cohort', f"PAPER cohort record damaged ({'; '.join(bad)}) - book lots are not "
