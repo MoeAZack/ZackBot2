@@ -997,6 +997,7 @@ class App:
                             if (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries')
                                     or e.state.get('unconfirmed_entries')): e.manage(marks)   # AUD-03b: settle + protect them
                             else: e.marks, e.marks_t = marks, now
+                            e.book_ledger_tick()                     # BOOK-LEDGER-01: observe-only snapshot (never raises)
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
                             else: e._manage_failed(f'mark prices: {ex}')
@@ -1102,7 +1103,7 @@ class App:
         settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
-                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status)):
+                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status), ('book_ledger', e.book_ledger_status)):
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
