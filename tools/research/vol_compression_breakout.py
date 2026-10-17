@@ -129,7 +129,8 @@ def detect(df, side: str, atr=None) -> list[dict]:
         if not a1 <= RATIO_MAX * median_fr(w):
             continue
         stop = (hb + lb) / 2 - STOP_ATR * fr(A[b])
-        out.append(dict(side=side, b=b, box_hi=float(_real(side, hb)), box_lo=float(_real(side, lb)),
+        bx_hi, bx_lo = (hb, lb) if side == 'long' else (-lb, -hb)                # public box in real prices, hi >= lo
+        out.append(dict(side=side, b=b, box_hi=float(bx_hi), box_lo=float(bx_lo),
                         stop=float(_real(side, stop)), atr_prev=float(A[b - 1]), atr_b=float(A[b]),
                         _stop=stop, _hb=hb))
     return out

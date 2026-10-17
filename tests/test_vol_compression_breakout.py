@@ -348,6 +348,15 @@ def test_long_short_mirror(extra):
         assert st[k] == 200 - lt[k], k
 
 
+def test_short_box_metadata_is_real_high_low_ordered():          # Codex 6229780524
+    df = frame({125: (100.0, 101.0, 95.0, 100.0)})                # long box hi 101, lo 95
+    lg, = run(df)['signals']
+    sg, = run(flip(df))['signals']
+    assert sg['side'] == 'short' and sg['box_hi'] >= sg['box_lo']
+    assert (sg['box_hi'], sg['box_lo']) == (200 - lg['box_lo'], 200 - lg['box_hi']) == (105.0, 99.0)
+    assert sg['stop'] == 200 - lg['stop']
+
+
 def test_mirror_cost_guard_uses_real_entry():                     # R / E differs under K - p; each side on its own E
     rows = [(1000.0, 1001.0, 999.0, 1000.0)] * 130 + [(1000.0, 1006.0, 999.0, 1005.0)] + [(1005.0, 1006.0, 1004.0,
                                                                                            1005.0)] * 29
