@@ -931,3 +931,44 @@ def test_entry_exactly_on_quarter_boundary(env):
     assert R.quarter(SP.parse_utc('2025-04-01T00:00:00Z') - 1) == '2025Q1'
     for m in ('01', '04', '07', '10'):
         assert R.quarter(SP.parse_utc(f'2025-{m}-01T00:00:00Z')) == f'2025Q{(int(m) - 1) // 3 + 1}'
+
+
+# ------------------------------------------------------------------ review mutants (window boundary, late order, MFE open)
+def test_breakout_on_first_in_window_bar_is_counted(env):
+    """A qualifying breakout exactly at b == W (the first in-window bar) is an in-window signal: traded, not excluded."""
+    d = tape('ETHUSDT', plan=[(W, 'long', 'time')])
+    d.to_csv(os.path.join(env['cache'], 'ETHUSDT_4h.csv'), index=False)
+    s = VC.slice_frame(d, WARM_LO, HI)
+    assert [g['b'] for g in VCB.run_symbol(s)['trades']] == [W]
+    ex = []
+    with R.window_signals(W, ex):
+        r = VCB.run_symbol(s)
+    assert [t['b'] for t in r['trades']] == [W] and ex == []
+    p = go(env, symbols=['ETHUSDT'])
+    assert p['warmup']['signals_excluded'] == {'long': 0, 'short': 0}
+    assert [x['t_signal'] for x in p['trades']] == [p['window']['start']]
+    assert p['stats']['combined']['n'] == 1
+
+
+def test_late_symbol_unsorted_rows_refused_via_cli(env, capsys, monkeypatch):
+    """A late-listed symbol whose listed rows are all present and valid but out of order is refused: the flag needs the
+    exact strictly increasing 4h grid, not just the right set of bars."""
+    _cli_repo(env, monkeypatch)
+    d = tape('HYPEUSDT', plan=[], start=40)
+    i = W + 30
+    d.iloc[[i, i + 1]] = d.iloc[[i + 1, i]].to_numpy()                # swap two listed rows: same set, wrong order
+    d.to_csv(os.path.join(env['cache'], 'HYPEUSDT_4h.csv'), index=False)
+    out = str(env['tmp'] / 'cli.json')
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(SYMS + ['HYPEUSDT']),
+                   '--exclude-late', 'HYPEUSDT', '--out', out]) == 2
+    err = capsys.readouterr().err
+    assert 'REFUSED' in err and 'HYPEUSDT' in err and not os.path.exists(out)
+
+
+def test_excursions_intrabar_stop_counts_exit_bar_open():
+    """Intrabar stop whose exit bar opens beyond every earlier extreme: that open is on the path and sets the MFE."""
+    for d, t in _both({135: (110.0, 111.0, 96.0, 100.0)}):
+        assert (t['label'], t['exit_i'], t['R_gross'], t['gap_exit']) == ('stop', 135, -1.0, False)
+        x = R.excursions(d, t)
+        assert x['mfe_r'] == pytest.approx(5 / 8) and x['mae_r'] == pytest.approx(1.0)
+        assert x['giveback_gross_r'] == pytest.approx(5 / 8 + 1.0)
