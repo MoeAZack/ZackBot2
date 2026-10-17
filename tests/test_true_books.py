@@ -1,7 +1,7 @@
 """TRUE-BOOK-01 (PAPER/testnet): five isolated $2,000 books. Each book sizes from its own NAV, holds at most 4 lots, keeps
 notional and stop-risk inside its own NAV, halts alone at NAV <= 0, and reports per-strategy attribution. Strategy logic
 and risk % are unchanged; only isolation / accounting / aggregate limits."""
-import copy, inspect, json
+import copy, inspect, json, time
 from decimal import Decimal
 import pytest
 
@@ -21,6 +21,7 @@ def tb_engine(**kw):
     e.S['CAP_SINCE'] = '2026-10-17T13:19:00+00:00'
     e.S['SLEEVES'] = [T_SL, T2_SL, R_SL]
     e._cohort_init()
+    e.marks_t = time.time()                                    # a fresh mark feed (a stale one values nothing)
     return e, tmp
 
 
@@ -397,3 +398,39 @@ def test_an_unreadable_cohort_never_drops_a_sticky_halt():
 def test_an_unreadable_persisted_peak_is_flagged(bad):
     b = TB.compute('C', [], peaks={'B1_FAST': bad})['B1_FAST']
     assert not b['complete'] and b['incomplete'][0]['reason'] == 'peak_unreadable' and b['peak'] == 2000
+
+
+# ------------------------------------------------------------------ Cowork 6240046426 (pure-layer probes)
+def test_a_stale_mark_feed_values_nothing_and_blocks_that_book():
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='ETHUSDT', avg=50.0, stop=49.0, qty=1)
+    assert e.true_books()['B3_TREND']['complete']
+    e.marks_t = time.time() - E.MARK_FRESH_S - 1                                   # the feed stalled
+    b = e.true_books()['B3_TREND']
+    assert [x['reason'] for x in b['incomplete']] == ['mark_missing'] and b['unreal'] == 0
+    assert TB.admit(b).startswith('book B3_TREND cannot measure its risk')
+
+
+@pytest.mark.parametrize('mk', [0, -1, '0'])
+def test_a_zero_or_negative_mark_is_no_price(mk):
+    b = TB.compute('C', [], [dict(book='B1_FAST', cohort_id='C', symbol='X', side='LONG', avg=100, qty=1, stop=90, fees_actual=0)],
+                   marks={'X': mk})['B1_FAST']
+    assert b['nav'] == 2000 and b['incomplete'][0]['reason'] == 'mark_missing'
+
+
+def test_an_unrealized_only_halt_must_hold_before_it_is_sticky(monkeypatch):
+    e, _ = tb_engine()
+    e.state['lots']['x'] = fake_lot(e, 'B3_TREND', sym='ETHUSDT', avg=50.0, stop=1.0, qty=100)
+    b = e.true_books({'ETHUSDT': 29.0})['B3_TREND']                                 # -2100 open: NAV < 0 on marks only
+    assert b['state'] == 'HALTED' and e.state['true_books']['halted'] == {}       # refused now, not yet sticky
+    assert e.true_books({'ETHUSDT': 50.0})['B3_TREND']['state'] == 'ACTIVE'        # a one-tick print: no halt
+    e.true_books({'ETHUSDT': 29.0})
+    monkeypatch.setattr(E.Engine, 'TB_HALT_CONFIRM_S', 0)
+    e.true_books({'ETHUSDT': 29.0})
+    assert e.state['true_books']['halted']['B3_TREND']['confirmed_s'] >= 0
+    assert e.true_books({'ETHUSDT': 50.0})['B3_TREND']['state'] == 'HALTED'        # sticky once confirmed
+
+
+def test_compute_dedupes_rows_by_id():
+    r = dict(id='a', book='B1_FAST', cohort_id='C', pnl_gross=-100, fees=0, fees_actual=0)
+    assert TB.compute('C', [r, dict(r)])['B1_FAST']['nav'] == 1900

@@ -2729,6 +2729,8 @@ class Engine:
     # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
     # cohort (true_books.compute); sizing, the 4-lot cap, leverage and stop-risk use that book's NAV. HALT is sticky for the
     # cohort (state['true_books']['halted']); other books keep trading. Strategy logic and risk % are unchanged.
+    TB_HALT_CONFIRM_S = 30           # an unrealized-only NAV <= 0 must persist this long before the halt is made sticky
+
     def _tb_on(self):
         return bool(getattr(self, 'live', True) is False and self.S.get('TRUE_BOOKS') is True and self.S.get('PAPER_BOOKS') is True)
 
@@ -2758,14 +2760,23 @@ class Engine:
         """{book: doc} for the current cohort (pure compute over state); persists a new HALT (sticky) unless persist=False."""
         with self.lock:
             st = self._tb_state()
+            if marks is None:                                        # never value a book on a stalled mark feed
+                marks = (self.marks or {}) if time.time() - (getattr(self, 'marks_t', 0) or 0) <= MARK_FRESH_S else {}
             books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
-                               marks if marks is not None else (self.marks or {}), self._tb_working(), st['halted'],
+                               marks, self._tb_working(), st['halted'],
                                peaks=st['peak'])
             if persist and st['cohort_id']:                          # in memory; saved with the next state save
                 for k, b in books.items():
                     if b['peak'] > TB.D(st['peak'].get(k) or 0): st['peak'][k] = TB.q(b['peak'])
-            new = {k: b['halt'] for k, b in books.items() if b['state'] == 'HALTED' and k not in st['halted']}
+            now, pend = time.time(), vars(self).setdefault('_tb_halt_pend', {})
+            new = {}
+            for k, b in books.items():
+                if b['state'] != 'HALTED' or k in st['halted']: pend.pop(k, None); continue
+                if b['nav_worse'] - b['unreal'] <= 0: new[k] = b['halt']; continue        # realized alone: at once
+                t0 = pend.setdefault(k, now)                         # mark-to-market only: confirm on a later tick
+                if now - t0 >= self.TB_HALT_CONFIRM_S: new[k] = dict(b['halt'] or {}, confirmed_s=round(now - t0))
             if new and persist and self._tb_on():
+                for k in new: pend.pop(k, None)
                 for k, h in new.items():
                     st['halted'][k] = dict(h or {}, at=now_utc().isoformat(timespec='seconds'), scope='book')
                 self.save_state()

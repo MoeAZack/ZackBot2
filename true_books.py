@@ -68,7 +68,11 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
                  fees_est=Decimal(0), funding=Decimal(0), incomplete=[], lots=0, closed=0, notional=Decimal(0),
                  stop_risk=Decimal(0), working=0, strategies={}, series=[])
         out[key] = b
+    seen = set()
     for r in history or ():
+        if r.get('id') is not None:
+            if r['id'] in seen: continue
+            seen.add(r['id'])
         b = out.get(r.get('book'))
         if not cohort_id or r.get('cohort_id') not in (cohort_id, None): continue
         if b is None: unowned['rows'] += 1; continue                       # the engine passes only this cohort's window
@@ -119,7 +123,7 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         for why in lot.get('funding_partial') or ():
             b['incomplete'].append(dict(reason=why, id=lot.get('symbol'), n=lot.get('funding_unattributed')))
         mk, avg, qty = D(marks.get(lot.get('symbol'))), D(lot.get('avg')), D(lot.get('qty')) or Decimal(0)
-        if mk is None or avg is None: b['incomplete'].append(dict(reason='mark_missing', symbol=lot.get('symbol')))
+        if mk is None or mk <= 0 or avg is None: b['incomplete'].append(dict(reason='mark_missing', symbol=lot.get('symbol')))
         else: b['unreal'] += (1 if lot.get('side') == 'LONG' else -1) * (mk - avg) * qty
     for k, nn, rr in working or ():
         b = out.get(k)
