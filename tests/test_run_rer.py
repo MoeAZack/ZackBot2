@@ -903,7 +903,7 @@ def test_gapped_or_invalid_non_late_symbol_still_refuses(env, how):
     if how == 'gap':
         d = d.drop(index=HEAD + W + 30)
     else:
-        d.loc[HEAD + W + 30, 'c'] = float('nan')
+        d.loc[HEAD + W + 30, 'c'] = -1.0                           # finite text, OHLC-invalid (NaN text: raw check)
     d.to_csv(path, index=False)
     with pytest.raises(R.RunnerError, match='not provably late-listed'):
         go(env, exclude_late=['SOLUSDT'])                          # the flag cannot drop a non-late symbol
@@ -1283,7 +1283,8 @@ def test_invalid_price_refused_by_the_runner_before_the_module(env, capsys, monk
     calls = []
     for f in ('run_symbol', 'detect', 'simulate_trade', 'indicators', '_arrays'):
         monkeypatch.setattr(RX, f, lambda *a, _f=f, **k: calls.append(_f))
-    with pytest.raises(R.RunnerError, match='^rer: OHLC sanity failed for .*SOLUSDT') as e:
+    with pytest.raises(R.RunnerError, match=r'^rer: (OHLC sanity failed for .*|malformed raw prices / volumes in )'
+                                            r'SOLUSDT') as e:
         go(env)
     assert 'prices must be' not in str(e.value) and not calls and not os.path.exists(env['tmp'] / 'p.json')
     outdir = env['tmp'] / 'outdir'
@@ -1291,7 +1292,8 @@ def test_invalid_price_refused_by_the_runner_before_the_module(env, capsys, monk
     assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(SYMS),
                    '--out', str(outdir / 'cli.json')]) == 2
     err = capsys.readouterr().err
-    assert 'REFUSED: rer: OHLC sanity' in err and 'prices must be' not in err and not calls and os.listdir(outdir) == []
+    assert ('REFUSED: rer: OHLC sanity' in err or 'REFUSED: rer: malformed raw prices' in err)
+    assert 'prices must be' not in err and not calls and os.listdir(outdir) == []
 
 
 # ------------------------------------------------------------------ OHLC sanity
@@ -1314,21 +1316,21 @@ IN_WIN = BG                                                         # a csv row 
                               'inf_open', 'high_below_body_top', 'low_above_body_bottom'])
 def test_ohlc_sanity_refuses(env, vals):
     _poke(env, IN_WIN, **vals)
-    with pytest.raises(R.RunnerError, match='OHLC sanity'):
+    with pytest.raises(R.RunnerError, match='OHLC sanity|malformed raw prices'):     # NaN / inf text: the raw check
         go(env)
     assert not os.path.exists(env['tmp'] / 'p.json')
 
 
 def test_ohlc_sanity_covers_warmup(env):
-    _poke(env, HEAD + 3, c=float('nan'))                            # inside [warm-up start, START)
+    _poke(env, HEAD + 3, c=-1.0)                                    # inside [warm-up start, START)
     with pytest.raises(R.RunnerError, match='OHLC sanity'):
         go(env)
 
 
 def test_ohlc_sanity_ignores_bars_before_warmup_and_after_end(env):
-    _poke(env, HEAD - 1, c=float('nan'))                            # before the warm-up start
+    _poke(env, HEAD - 1, c=-3.0)                                    # before the warm-up start (finite text)
     for k in range(HEAD + NSLICE, HEAD + NSLICE + 5):               # at / after END (the holdout side)
-        _poke(env, k, h=-5.0, l=-9.0, c=float('nan'))
+        _poke(env, k, h=-5.0, l=-9.0, c=-1.0)
     assert go(env)['stats']['combined']['n'] == 7
 
 
@@ -1349,6 +1351,107 @@ def test_ohlc_equality_bars_are_valid(env):
 def test_ohlc_problems_inverted_counted():
     d = pd.DataFrame(dict(t=pd.to_datetime([0], unit='ms'), o=[1.0], h=[0.9], l=[1.1], c=[1.0]))
     assert R.ohlc_problems(d)['h_below_l'] == 1
+
+
+@pytest.mark.parametrize('col', ['o', 'h', 'l', 'c'])
+@pytest.mark.parametrize('v', [float('nan'), float('inf'), 0.0])
+def test_ohlc_problems_non_finite_or_non_positive_each_column(col, v):
+    """The in-memory sanity check stays a full guard behind the raw-text check (defence in depth)."""
+    d = pd.DataFrame(dict(t=pd.to_datetime([0], unit='ms'), o=[1.0], h=[2.0], l=[0.5], c=[1.5]))
+    d.loc[0, col] = v
+    assert R.ohlc_problems(d)['non_finite_or_non_positive'] == 1
+
+
+# ------------------------------------------------------------------ non-numeric price / volume text (review of 0a80b82)
+BAD_V = {'abc': ('o', 'abc'), 'hex': ('h', '0x10'), 'empty': ('c', ''), 'vol_abc': ('v', 'abc'), 'qv_hex': ('qv', '0x10'),
+         'nan_text': ('l', 'nan'), 'inf_text': ('c', 'inf'), 'underscore': ('o', '1_0')}
+COLS = ['t', 'o', 'h', 'l', 'c', 'v', 'qv']
+
+
+def _bad_v(env, sym, row, col, val):
+    """Rewrite one raw price / volume field as text (no float round-trip), so the malformed value reaches the file."""
+    path = os.path.join(env['cache'], f'{sym}_4h.csv')
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    assert lines[0].split(',') == COLS
+    cells = lines[row + 1].split(',')
+    cells[COLS.index(col)] = val
+    lines[row + 1] = ','.join(cells)
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        f.write('\n'.join(lines))
+
+
+@pytest.mark.parametrize('where', ['in_window', 'warmup', 'before_warmup', 'after_end', 'late_excluded'])
+@pytest.mark.parametrize('how', sorted(BAD_V))
+def test_non_numeric_price_text_refused_at_cli(env, capsys, monkeypatch, how, where):
+    """Non-numeric / non-finite price or volume text anywhere in a requested file (late-excluded symbol included) is a
+    clean refusal: exit 2, REFUSED on stderr, no packet, no traceback from the shared reader's float conversion."""
+    _cli_repo(env, monkeypatch)
+    col, val = BAD_V[how]
+    syms, extra = SYMS, []
+    if where == 'late_excluded':
+        _add(env, 'HYPEUSDT', start=40)
+        syms, extra = SYMS + ['HYPEUSDT'], ['--exclude-late', 'HYPEUSDT']
+        _bad_v(env, 'HYPEUSDT', W + 30, col, val)
+    else:
+        row = {'in_window': IN_WIN, 'warmup': HEAD + 3, 'before_warmup': HEAD - 2,
+               'after_end': HEAD + NSLICE + TAIL - 3}[where]
+        _bad_v(env, 'SOLUSDT', row, col, val)
+    outdir = env['tmp'] / 'outdir'
+    outdir.mkdir()
+    rc = R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(syms), *extra,
+                 '--out', str(outdir / 'cli.json')])
+    err = capsys.readouterr().err
+    assert rc == 2 and 'REFUSED: rer: malformed raw prices / volumes' in err and 'Traceback' not in err
+    assert ('HYPEUSDT' if where == 'late_excluded' else 'SOLUSDT') in err and os.listdir(outdir) == []
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(syms),
+                   '--check-coverage']) == 2                         # the coverage check refuses it too
+    assert 'malformed raw prices / volumes' in capsys.readouterr().err
+
+
+def test_shared_reader_value_error_is_a_refusal(env, capsys, monkeypatch):
+    """Defence in depth: with the raw value check bypassed, the shared reader's float-conversion ValueError on 'abc'
+    still becomes a clean RunnerError (exit 2, no packet), never a traceback."""
+    _cli_repo(env, monkeypatch)
+    _bad_v(env, 'SOLUSDT', HEAD + NSLICE + TAIL - 3, 'o', 'abc')
+    monkeypatch.setattr(R, 'raw_value_problems', lambda raw: {})
+    with pytest.raises(R.RunnerError, match='failed conversion in the shared reader'):
+        go(env)
+    outdir = env['tmp'] / 'outdir'
+    outdir.mkdir()
+    assert R.main(['--cache', env['cache'], '--window', WINDOW, '--symbols', ','.join(SYMS),
+                   '--out', str(outdir / 'cli.json')]) == 2
+    assert 'REFUSED: rer: cache file SOLUSDT_4h.csv failed conversion' in capsys.readouterr().err
+    assert os.listdir(outdir) == []
+
+
+def test_raw_value_problems_helper():
+    ok = b't,o,h,l,c,v,qv\n0,1,2.5,.5,1e0, 3 ,+4.0\n'
+    assert R.raw_value_problems(ok) == {}
+    assert R.raw_value_problems(b't,o\n0,1\n') == {}                 # columns the file lacks are not checked
+    for v, k in (('abc', 'non_numeric'), ('0x10', 'non_numeric'), ('', 'non_numeric'), ('1_0', 'non_numeric'),
+                 ('1,5', 'non_numeric'), ('nan', 'non_finite'), ('-inf', 'non_finite'), ('1e400', 'non_finite')):
+        raw = f't,o,c\n0,1,1\n{H4},1,{v}\n'.encode() if v != '1,5' else f't,o,c\n0,1,1\n{H4},1,"1,5"\n'.encode()
+        p = R.raw_value_problems(raw)
+        assert p[k] == 1 and p['first_bad'].startswith('column c data row 2'), (v, p)
+
+
+# ------------------------------------------------------------------ END exactly at the holdout start (review M11)
+HO_WINDOW = '2026-07-27T00:00:00Z/2026-09-28T00:00:00Z'
+
+
+def test_end_exactly_at_holdout_start_is_accepted(env):
+    """END == HOLDOUT_START (2026-09-28T00:00:00Z, end-exclusive) is the last legal END: accepted, not refused."""
+    lo, hi = (SP.parse_utc(x) for x in HO_WINDOW.split('/'))
+    assert SP.utc(hi) == R.HOLDOUT_START == '2026-09-28T00:00:00Z'
+    t = np.arange(lo - (R.WARMUP_BARS + HEAD) * H4, hi + TAIL * H4, H4, dtype=np.int64)
+    a = np.array([doji(100.0, 0.6)] * len(t))
+    pd.DataFrame(dict(t=t.astype(float), o=a[:, 0], h=a[:, 1], l=a[:, 2], c=a[:, 3], v=1000.0, qv=100000.0)).to_csv(
+        os.path.join(env['cache'], 'ETHUSDT_4h.csv'), index=False)
+    assert R.check_window(HO_WINDOW)[1] == hi
+    p = go(env, window=HO_WINDOW, symbols=['ETHUSDT'])
+    assert p['window']['end'] == '2026-09-28T00:00:00Z' and p['window']['holdout_start'] == R.HOLDOUT_START
+    assert p['stats']['combined']['n'] == 0
 
 
 # ------------------------------------------------------------------ Cowork 6230180232 pre-staged attacks
@@ -1398,11 +1501,11 @@ def test_post_end_spike_does_not_leak(env):
     assert p['packet_sha256'] != base['packet_sha256']
 
 
-@pytest.mark.parametrize('bars', [dict(o=1e300, h=1e301, l=1e-300, c=5e300), dict(o=0.0, h=-1.0, l=7.0, c=float('nan')),
-                                  dict(o=float('inf'), h=float('-inf'), l=float('nan'), c=-3.0)],
-                         ids=['absurd', 'invalid', 'non_finite'])
+@pytest.mark.parametrize('bars', [dict(o=1e300, h=1e301, l=1e-300, c=5e300), dict(o=0.0, h=-1.0, l=7.0, c=-2.0)],
+                         ids=['absurd', 'invalid'])
 def test_post_end_absurd_or_invalid_bars_do_not_leak(env, bars):
-    """Absurd or OHLC-invalid bars planted at / after END are never checked or read: the run is unchanged."""
+    """Absurd or OHLC-invalid (finite) bars planted at / after END are never checked or read: the run is unchanged.
+    Non-finite / non-numeric TEXT anywhere in the file is refused by the raw check (test_non_numeric_price_text_*)."""
     base = go(env, out='base.json')
     for s in SYMS:
         path = os.path.join(env['cache'], f'{s}_4h.csv')

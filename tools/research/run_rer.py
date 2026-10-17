@@ -76,6 +76,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -320,9 +321,46 @@ def raw_time_problems(raw: bytes) -> dict:
     return out
 
 
+VALUE_COLS = ('o', 'h', 'l', 'c', 'v', 'qv')     # every price / volume field the shared reader converts to float
+_DEC = re.compile(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?')
+
+
+def raw_value_problems(raw: bytes) -> dict:
+    """Every o / h / l / c / v / qv field of every row of the raw cache bytes (the whole file, rows before the warm-up
+    and at / after END included), read as TEXT before any float conversion: a field that is not a plain ASCII decimal
+    (empty, 'abc', '0x10', '1_0', ...) is counted as non_numeric; NaN / inf text, or a decimal that overflows a float,
+    as non_finite. Empty dict = every price / volume field is a finite decimal (so the shared reader's float conversion
+    cannot raise). Columns the file does not carry are not checked (the shared reader handles them)."""
+    try:
+        col = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False, na_filter=False)
+    except (ValueError, pd.errors.ParserError) as e:
+        return {'unparseable_file': type(e).__name__}
+    out, first = {}, None
+    for name in VALUE_COLS:
+        if name not in col:
+            continue
+        for i, v in enumerate(col[name].tolist()):
+            txt = str(v).strip()
+            if _DEC.fullmatch(txt):
+                if np.isfinite(float(txt)):
+                    continue
+                k = 'non_finite'
+            elif txt.lower().lstrip('+-') in ('nan', 'inf', 'infinity'):
+                k = 'non_finite'
+            else:
+                k = 'non_numeric'
+            out[k] = out.get(k, 0) + 1
+            if first is None:
+                first = f'column {name} data row {i + 1}: {v!r}'
+    if out:
+        out['first_bad'] = first
+    return out
+
+
 def read_checked(cache: str, s: str):
-    """B.read_cache, preceded by raw_time_problems on the same file bytes (refuses before any conversion); the bytes
-    checked must be the bytes the shared reader hashed."""
+    """B.read_cache, preceded by raw_time_problems and raw_value_problems on the same file bytes (refuses before any
+    conversion); the bytes checked must be the bytes the shared reader hashed. A ValueError the shared reader still
+    raises (any conversion failure the raw checks missed) is a refusal too, never a traceback."""
     path = os.path.join(cache, f'{s}_{TF}.csv')
     raw = None
     if os.path.exists(path):
@@ -334,10 +372,16 @@ def read_checked(cache: str, s: str):
         p = raw_time_problems(raw)
         if p:
             raise RunnerError(f'rer: malformed raw open times in {s}_{TF}.csv ({p}); refused')
+        p = raw_value_problems(raw)
+        if p:
+            raise RunnerError(f'rer: malformed raw prices / volumes in {s}_{TF}.csv ({p}); refused')
     try:
         df, rec = B.read_cache(cache, s, TF)
     except B.RunnerError as e:
         raise _err(e) from None
+    except ValueError as e:                              # defence in depth: never a traceback from the float conversion
+        raise RunnerError(f'rer: cache file {s}_{TF}.csv failed conversion in the shared reader '
+                          f'({type(e).__name__}: {e}); refused') from None
     if raw is None:                                      # absent at check time: the reader must also have found nothing
         if df is not None or rec.get('sha256') is not None or not rec.get('missing_file'):
             raise RunnerError(f'rer: cache file {s}_{TF}.csv appeared after the raw-time check; refused')
