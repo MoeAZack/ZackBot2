@@ -503,9 +503,11 @@ IN_WIN = HEAD + W + 30                                              # a csv row 
 
 @pytest.mark.parametrize('vals', [dict(c=float('nan')), dict(o=0.0, h=0.0, l=0.0, c=0.0), dict(h=98.0, l=99.0),
                                   dict(h=104.5, c=105.0), dict(l=150.5), dict(l=-1.0),
-                                  dict(o=float('inf'))],
+                                  dict(o=float('inf')),
+                                  dict(o=150.0, c=151.0, h=150.5, l=149.0),        # high inside the body (above open)
+                                  dict(o=151.0, c=150.0, h=152.0, l=150.5)],       # low inside the body (below open)
                          ids=['nan_close', 'zero_bar', 'h_below_l', 'h_below_close', 'l_above_close', 'negative_low',
-                              'inf_open'])
+                              'inf_open', 'high_below_body_top', 'low_above_body_bottom'])
 def test_ohlc_sanity_refuses(env, vals):
     _poke(env, IN_WIN, **vals)
     with pytest.raises(R.RunnerError, match='OHLC sanity'):
@@ -533,3 +535,82 @@ def test_ohlc_problems_helper_counts():
     p = R.ohlc_problems(d)
     assert p == {'h_below_max_oc': 1, 'l_above_min_oc': 1, 'first_bad': SP.utc(H4)}
     assert R.ohlc_problems(d.iloc[[0, 3]]) == {}
+
+
+def test_ohlc_equality_bars_are_valid(env):
+    _poke(env, IN_WIN, o=150.0, h=150.0, l=150.0, c=150.0)         # flat bar: h == l == o == c
+    _poke(env, IN_WIN + 1, o=150.0, h=151.0, l=149.0, c=151.0)     # h == close
+    _poke(env, IN_WIN + 2, o=149.0, h=151.0, l=149.0, c=150.0)     # l == open
+    assert go(env)['stats']['combined']['n'] >= 8
+
+
+def test_ohlc_problems_inverted_counted():
+    d = pd.DataFrame(dict(t=pd.to_datetime([0], unit='ms'), o=[1.0], h=[0.9], l=[1.1], c=[1.0]))
+    assert R.ohlc_problems(d)['h_below_l'] == 1
+
+
+def test_two_writers_same_out(env, monkeypatch):
+    """Two runs race for one --out: the second finishes first and wins; the first is refused and leaves its bytes."""
+    out = env['tmp'] / 'p.json'
+    real = LS.summarize
+    state = {'inner': None}
+
+    def first_writer_pauses(trades):
+        if state['inner'] is None:
+            state['inner'] = 'running'
+            monkeypatch.setattr(LS, 'summarize', real)
+            state['inner'] = R.run(out=str(out), cache=env['cache'], window=WINDOW, symbols=SYMS, repo=env['repo'])
+        return real(trades)
+    monkeypatch.setattr(LS, 'summarize', first_writer_pauses)
+    with pytest.raises(R.RunnerError, match='created during the run'):
+        go(env)
+    with open(out, 'rb') as f:
+        body = f.read()
+    assert json.loads(body)['packet_sha256'] == state['inner']['packet_sha256']
+    assert sorted(os.listdir(env['tmp'])) == sorted(['candles', 'repo', 'p.json'])
+
+
+# ------------------------------------------------------------------ raw decision arithmetic (Codex 6229136349 3)
+EPS = 1e-12
+
+
+def _raw(**kw):
+    c = dict(n=10, wins=5, losses=5, positive_quarters=2, pf=1.5, gross_R=3.0, cost_R=1.0)
+    c.update(kw)
+    return c
+
+
+@pytest.mark.parametrize('pf, ok', [(1.0 - EPS, False), (1.0, False), (1.0 + EPS, True)])
+def test_decision_pf_boundary_unrounded(pf, ok):
+    d = R.decision(_raw(pf=pf), ['Q1', 'Q2', 'Q3'])
+    assert d['pf_ok'] is ok and d['tier_verdict'] == ('CANDIDATE' if ok else 'PARK')
+
+
+@pytest.mark.parametrize('gross, ok', [(3.0 - 1e-13, False), (3.0, True), (3.0 + 1e-13, True)])
+def test_decision_cost_boundary_unrounded(gross, ok):
+    d = R.decision(_raw(gross_R=gross, cost_R=1.0), ['Q1', 'Q2', 'Q3'])
+    assert d['cost_ok'] is ok
+
+
+@pytest.mark.parametrize('pos, nq, ok', [(1, 2, False), (2, 3, True), (3, 4, True), (1, 3, False)])
+def test_decision_quarter_fraction_boundary(pos, nq, ok):
+    d = R.decision(_raw(positive_quarters=pos), ['Q%d' % i for i in range(nq)])
+    assert d['quarters_ok'] is ok
+
+
+@pytest.mark.parametrize('qnet, positive', [(-EPS, False), (0.0, False), (EPS, True)])
+def test_quarter_sign_on_unrounded_sum(qnet, positive):
+    rows = [dict(symbol='ETHUSDT', side='short', quarter='2025Q1', t_in='a', t_out='b', R_net=qnet, R_gross=qnet,
+                 fee_R=0.0, slip_R=0.0, fund_R=0.0, hold_bars=1, mfe_r=0.0, mae_r=0.0, giveback_gross_r=0.0,
+                 giveback_net_r=0.0, label='time', gap_exit=False, lt_minus1=False)]
+    st = R.group_stats(rows, [], [], ['2025Q1'], LS.summarize(rows)['total'])
+    assert st['positive_quarters'] == (1 if positive else 0)
+    assert st['quarters']['2025Q1'] == 0.0                          # serialized value is rounded
+
+
+def test_decision_uses_raw_not_rounded_group_fields():
+    """group_stats rounds pf / gross / cost for the packet; the decision reads the unrounded _raw values."""
+    c = dict(n=10, wins=5, losses=5, positive_quarters=3, pf=1.0, gross_R=3.0, cost_R=1.0,
+             _raw=dict(pf=1.0 + EPS, gross_R=3.0 - 1e-13, cost_R=1.0))
+    d = R.decision(c, ['Q1', 'Q2', 'Q3'])
+    assert d['pf_ok'] is True and d['cost_ok'] is False

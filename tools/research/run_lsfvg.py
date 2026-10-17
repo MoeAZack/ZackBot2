@@ -15,12 +15,12 @@ imported, not copied:
     [warm-up start, END) before any indicator exists (VC.slice_frame + VC.assert_bounded), completeness on the 4h grid
     (B.completeness). STRICTER than breadth: any requested symbol with a missing file or an incomplete slice REFUSES the
     whole run (breadth drops such a symbol from the book); C1 has no BTC regime split, so BTCUSDT is not loaded.
-    The whole cache file is read and hashed (sha256 of its bytes) BEFORE slicing; the slice then drops every row at /
-    after END, so no post-END row reaches any statistic, check or report.
-  - OHLC sanity (Cowork 6229112441): any bar in [warm-up start, END) with a non-finite or non-positive o/h/l/c, or
-    h < max(o, c), or l > min(o, c) REFUSES the whole run (same policy as a missing candle). Bars at / after END are
+    Cache files are read and hashed whole (sha256 of the file bytes) BEFORE slicing; rows at / after END are then
+    sliced off before any indicator, signal, sanity check or statistic, so no post-END row reaches the packet.
+  - OHLC sanity (Cowork 6229112441, Codex 6229136349), checked before any indicator: any bar in [warm-up start, END)
+    with a non-finite or non-positive o/h/l/c, h < l, h < max(o, c) or l > min(o, c) (equality valid) REFUSES the whole run (same policy as a missing candle). Bars at / after END are
     never checked.
-  - packet write: built in a unique temp file, then linked to --out exclusively (os.link fails if --out exists), so a
+  - packet write: written and fsynced in a unique temp file in the --out directory (same volume), then linked to --out exclusively (os.link fails if --out exists), so a
     file created at --out during the run is never replaced (RunnerError); the temp file is always removed.
   - warm-up: the 220 bars before START feed ATR14 and the pivots only. Signals whose FVG bar n opens before START are
     removed BEFORE the one-slot-per-symbol logic (the run starts flat at START, like backtest.run(t0=START)); they are
@@ -193,6 +193,7 @@ def group_stats(rows, skips, opens, quarters, summary) -> dict:
     hold = [x['hold_bars'] for x in rows]
     sk = {k: sum(1 for s in skips if s['skip'] == k) for k in SKIPS}
     return dict(
+        _raw=dict(pf=summary['pf'], gross_R=summary['gross_R'], cost_R=cost),    # unrounded; popped before serializing
         n=summary['n'], wins=sum(1 for v in net if v > 0), losses=sum(1 for v in net if v < 0),
         net_R=_r(summary['net_R']), gross_R=_r(summary['gross_R']), fee_R=_r(summary['fee_R']),
         slip_R=_r(summary['slip_R']), fund_R=_r(summary['fund_R']), cost_R=_r(cost), pf=_r(summary['pf']),
@@ -228,33 +229,39 @@ def concentration(rows, symbols) -> dict:
 def decision(c: dict, quarters) -> dict:
     """CANDIDATE (per tier) only if combined PF > 1.0 AND combined own quarterly net R > 0 in >= 2/3 of the window
     quarters AND gross R per trade >= 3 x cost R per trade; otherwise PARK. Final: CANDIDATE on both tiers."""
-    n, nq = c['n'], len(quarters)
-    pf_ok = n > 0 and ((c['pf'] is not None and c['pf'] > 1.0) or (c['pf'] is None and c['losses'] == 0 and c['wins'] > 0))
+    # every threshold is evaluated on UNROUNDED values (c['_raw'] from group_stats, else c itself); only the serialized
+    # fields below are rounded. positive_quarters is already counted on the raw quarterly sums.
+    raw = c.get('_raw', c)
+    n, nq, pf, gross, cost = c['n'], len(quarters), raw['pf'], raw['gross_R'], raw['cost_R']
+    pf_ok = n > 0 and ((pf is not None and pf > 1.0) or (pf is None and c['losses'] == 0 and c['wins'] > 0))
     q_ok = nq > 0 and 3 * c['positive_quarters'] >= 2 * nq
-    cost_ok = n > 0 and c['gross_R'] >= 3 * c['cost_R']
+    cost_ok = n > 0 and gross >= 3 * cost
     return dict(
         rule='CANDIDATE only if combined PF > 1.0 AND combined own quarterly net R > 0 in >= 2/3 of the window quarters '
              'AND gross R per trade >= 3 x cost R per trade; otherwise PARK (Codex reading; cross-tier check later)',
-        pf=c['pf'], pf_ok=bool(pf_ok), positive_quarters=c['positive_quarters'], quarters=nq, quarters_ok=bool(q_ok),
-        gross_R_per_trade=c['gross_R_per_trade'], cost_R_per_trade=c['cost_R_per_trade'], cost_ok=bool(cost_ok),
+        pf=_r(pf), pf_ok=bool(pf_ok), positive_quarters=c['positive_quarters'], quarters=nq, quarters_ok=bool(q_ok),
+        gross_R_per_trade=_r(gross / n) if n else None, cost_R_per_trade=_r(cost / n) if n else None,
+        cost_ok=bool(cost_ok), evaluated_on='unrounded values (serialized fields rounded to 9 dp)',
         tier_verdict='CANDIDATE' if (pf_ok and q_ok and cost_ok) else 'PARK', final_requires=FINAL_REQUIRES)
 
 
 # ------------------------------------------------------------------ OHLC sanity
 def ohlc_problems(d) -> dict:
     """Counts of insane bars in a slice already bounded to [warm_lo, END): non-finite / non-positive o/h/l/c,
-    h < max(o, c), l > min(o, c). Empty dict = sane."""
+    h < l, h < max(o, c), l > min(o, c); equality is valid. Empty dict = sane. (For finite bars h < l always
+    also trips one of the body checks; it is kept as its own named count.)"""
     o, h, lw, c = (d[k].to_numpy(float) for k in ('o', 'h', 'l', 'c'))
     with np.errstate(invalid='ignore'):
         bad_val = ~(np.isfinite(o) & np.isfinite(h) & np.isfinite(lw) & np.isfinite(c)) | (o <= 0) | (h <= 0) | \
             (lw <= 0) | (c <= 0)
+        inv = ~bad_val & (h < lw)
         hi_bad = ~bad_val & (h < np.maximum(o, c))
         lo_bad = ~bad_val & (lw > np.minimum(o, c))
-    out = {k: int(v.sum()) for k, v in (('non_finite_or_non_positive', bad_val), ('h_below_max_oc', hi_bad),
-                                        ('l_above_min_oc', lo_bad)) if v.any()}
+    out = {k: int(v.sum()) for k, v in (('non_finite_or_non_positive', bad_val), ('h_below_l', inv),
+                                        ('h_below_max_oc', hi_bad), ('l_above_min_oc', lo_bad)) if v.any()}
     if out:
         t = _ms(d.t)
-        out['first_bad'] = _utc(int(t[np.flatnonzero(bad_val | hi_bad | lo_bad)[0]]))
+        out['first_bad'] = _utc(int(t[np.flatnonzero(bad_val | inv | hi_bad | lo_bad)[0]]))
     return out
 
 
@@ -387,6 +394,9 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
                                 [o for o in opens if sel is None or o['side'] == sel], quarters,
                                 summ['total' if sel is None else sel])
         groups[g]['concentration'] = concentration(rs, syms)
+    dec = decision(groups['combined'], quarters)                 # on the unrounded values
+    for g in groups.values():
+        g.pop('_raw')
     trades = [{k: (_r(v) if isinstance(v, float) else v) for k, v in x.items()} for x in rows]
     pkt = {
         'format': FORMAT, 'evidence_class': EVIDENCE_CLASS, 'non_promotable': True,
@@ -423,7 +433,7 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
             'concentration': 'per symbol: share of the group trades and of the group net R (None when net R is 0)'},
         'stats': groups,
         'prereg': pre,
-        'decision': decision(groups['combined'], quarters),
+        'decision': dec,
         'skips_by_reason': {k: sum(1 for x in skips if x['skip'] == k) for k in SKIPS},
         'skips': skips,
         'trades': trades,
@@ -435,6 +445,8 @@ def run(*, cache: str, window, out: str, tier=None, symbols=None, repo: str = VC
     try:
         with os.fdopen(fd, 'wb') as f:
             f.write(json.dumps(pkt, sort_keys=True, indent=1, allow_nan=False).encode())
+            f.flush()
+            os.fsync(f.fileno())                         # the temp is complete on disk before the final name exists
         try:
             os.link(tmp, out)                            # exclusive: fails if --out appeared during the run
         except FileExistsError:
