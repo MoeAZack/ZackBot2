@@ -270,3 +270,98 @@ def test_boundary_packs_verifies_replays_and_cannot_mix_cohorts():
     assert all(b['closed'] == 0 and b['nav'] == 2000 for b in new['books'].values())
     assert new['excluded']['foreign'] == len(e.history)
     assert e.state['cohort_archive'][-1]['pack_sha'] == out['pack_sha']
+
+
+# ------------------------------------------------------------------ review r1 regressions
+def test_history_trim_never_drops_open_cohort_rows():
+    e, _ = books_engine()
+    cid = e.state['cohort']['id']
+    old = [row('B1_FAST', 100, fees=0, cohort_id='CH-old') for _ in range(500)]
+    own = [row('B1_FAST', 1, fees=0, cohort_id=cid) for _ in range(3200)]
+    kept = e._trim_history(old + own)
+    assert sum(r.get('cohort_id') == cid for r in kept) == 3200 and len(kept) == 3200
+    e.history = kept
+    assert e.book_ledger_status()['books']['B1_FAST']['nav'] == 2000 + 3200
+    e.COHORT_KEEP_MAX = 3100
+    assert len(e._trim_history(own)) == 3100 and e.state['history_truncated'] == cid
+    assert e.book_ledger_status()['history_truncated'] is True
+
+
+def test_boundary_flushes_writers_and_packs_rotated_runtime_files():
+    e, tmp = books_engine()
+    calls = []
+    for w in (e._fillw, e._auditw, e._enr): w.flush = (lambda n: (lambda *a, **k: calls.append(n)))(type(w).__name__)
+    with open(e.F['fills'] + '.1', 'w') as f: f.write('{"kind":"exit"}\n')
+    out = e.cohort_boundary(tempfile.mkdtemp())
+    assert len(calls) == 3
+    names = os.listdir(out['pack'])
+    assert 'fills.1.jsonl' in names and 'scope.json' in names and RP.verify_pack(out['pack'])['ok']
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='case-insensitive paths are a Windows property')
+def test_boundary_outside_runtime_check_is_case_insensitive():
+    e, tmp = books_engine()
+    with pytest.raises(RuntimeError, match='outside the runtime'):
+        e.cohort_boundary(os.path.join(tmp.swapcase(), 'packs'))
+
+
+def test_lost_state_record_restored_from_sidecar_and_cap_since_move_is_drift():
+    e, tmp = books_engine()
+    cid = e.state['cohort']['id']
+    e.state['cohort'] = None
+    e.S['CAP_SINCE'] = '2026-10-20T00:00:00+00:00'                          # capital fresh start after the cohort began
+    e._cohort_init()
+    assert e.state['cohort']['id'] == cid and 'started_utc' in e.cohort_drift
+
+
+def test_status_reads_copies_while_lots_change(monkeypatch):
+    e, _ = books_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    real = BL.compute
+    def racing(c, hist, lots, *a, **k):
+        it = iter(lots); first = next(it)
+        e.state['lots']['added-mid-read'] = dict(first)                    # the loop thread opens a lot meanwhile
+        return real(c, hist, [first] + list(it), *a, **k)
+    monkeypatch.setattr(BL, 'compute', racing)
+    assert e.book_ledger_status()['books']['B3_TREND']['open'] == 1
+
+
+def test_settings_pack_drops_telegram_and_workspace_id_is_forbidden():
+    e, _ = books_engine()
+    e.S['TELEGRAM_CHAT'] = '123456'
+    assert not any(k.startswith('TELEGRAM') for k in RP.sanitize_settings(e.S, e._settings_allow()))
+    e.cfg['ANTHROPIC_WORKSPACE_ID'] = 'wrkspc-0123456789'
+    e.history.append(dict(book=None, note='wrkspc-0123456789', closed=E.now_utc().isoformat(timespec='seconds')))
+    with pytest.raises(RP.PackRefused, match='credential value'): e.cohort_boundary(tempfile.mkdtemp())
+
+
+def test_tick_persists_bucket_before_line_so_a_failed_write_never_repeats(monkeypatch):
+    e, _ = books_engine()
+    monkeypatch.setattr(E.time, 'time', lambda: 1_800_000_000.0)
+    real_open = open
+    def boom(p, *a, **k):
+        if str(p) == e.F['book_ledger']: raise OSError('disk full')
+        return real_open(p, *a, **k)
+    monkeypatch.setattr('builtins.open', boom)
+    assert e.book_ledger_tick() is False
+    monkeypatch.setattr('builtins.open', real_open)
+    assert e.state['book_ledger']['last_bucket'] == 1_800_000_000 // 900 * 900 and e.book_ledger_tick() is False
+
+
+def test_verify_pack_checks_folder_name_and_absent_files():
+    root = tempfile.mkdtemp(); c = coh()
+    path, _ = RP.write_pack(root, c, {'a.json': {}}, {'gone.jsonl': None})
+    with open(os.path.join(path, 'gone.jsonl'), 'w') as f: f.write('')
+    assert any('absent but present' in p for p in RP.verify_pack(path)['problems'])
+    os.remove(os.path.join(path, 'gone.jsonl'))
+    moved = os.path.join(root, 'renamed'); os.rename(path, moved)
+    assert any('folder name' in p for p in RP.verify_pack(moved)['problems'])
+
+
+def test_closing_a_trade_keeps_every_open_cohort_row_beyond_the_history_cap():
+    e, _ = books_engine()
+    cid = e.state['cohort']['id']
+    e.history = [row('B1_FAST', 5, cohort_id='CH-old') for _ in range(200)] + [row('B1_FAST', 1, cohort_id=cid) for _ in range(3000)]
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    e.close_lot(next(iter(e.state['lots'])), 'manual')
+    assert sum(r.get('cohort_id') == cid for r in e.history) == 3001 and len(e.history) == 3001

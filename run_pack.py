@@ -146,7 +146,13 @@ def verify_pack(path):
         if len(b) != x['bytes'] or sha256_bytes(b) != x['sha256']: probs.append(f'{name}: checksum mismatch')
     extra = sorted(set(os.listdir(path)) - set(listed) - {MANIFEST})
     if extra: probs.append(f'unlisted files: {", ".join(extra)}')
+    bad = sorted(n for n in list(listed) + list(man.get('absent') or []) if os.path.basename(n) != n or n in ('', '.', '..'))
+    if bad: probs.append(f'bad file names: {", ".join(bad)}')
+    here = sorted(n for n in man.get('absent') or [] if n in os.listdir(path))
+    if here: probs.append(f'listed absent but present: {", ".join(here)}')
     probs += [f'cohort: {p}' for p in validate_cohort(man.get('cohort'))]
+    if (man.get('cohort') or {}).get('id') != os.path.basename(os.path.normpath(path)):
+        probs.append('folder name does not match the cohort id')
     return dict(ok=not probs, pack_sha=sha256_bytes(raw), problems=probs, cohort_id=(man.get('cohort') or {}).get('id'))
 
 

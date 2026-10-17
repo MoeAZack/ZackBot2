@@ -1582,7 +1582,7 @@ class Engine:
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
         self.F = {k: os.path.join(data_dir, f) for k, f in dict(state='state.json', trades='trades.csv', settings='settings.json', history='history.json', missed='missed.json',
                                                                 equity='equity.json', fills='fills.jsonl', audit='trade_audit.jsonl',
-                                                                book_ledger='book_ledger.jsonl').items()}
+                                                                book_ledger='book_ledger.jsonl', cohort='cohort.json').items()}
         self.live = cfg.get('MODE') == 'live'
         self.lock = threading.RLock()
         self.trade = Futures(cfg.get('API_KEY', ''), cfg.get('API_SECRET', ''), MAINNET if self.live else TESTNET)
@@ -3398,7 +3398,7 @@ class Engine:
                 au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed'])
                 self._audit_emit(au)
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
-        self.history.append(rec); self.history = self.history[-3000:]
+        self.history.append(rec); self.history = self._trim_history(self.history)
         self._save_aux('history', self.history)
         self._ml_label(key, rec, lot, au)                          # ML-SHADOW-01 close label (observe only, never raises)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
@@ -5078,6 +5078,24 @@ class Engine:
                     books=PB.summary(eq, cap, view, self.history))
 
     # ------------------------------------------------------------ RUN-PACK-01 / BOOK-LEDGER-01 (PAPER books, observe only)
+    HISTORY_KEEP, COHORT_KEEP_MAX = 3000, 50000
+
+    def _trim_history(self, hist):
+        """Keep the last HISTORY_KEEP rows, but never drop a row of the open cohort (its ledger is rebuilt from them).
+        A cohort beyond COHORT_KEEP_MAX rows loses its oldest ones and the ledger reports history_truncated."""
+        if len(hist) <= self.HISTORY_KEEP: return hist
+        coh = self.state.get('cohort') if self._cohort_ok() else None
+        if not coh: return hist[-self.HISTORY_KEEP:]
+        own = [BL.membership(r, coh, 'closed') != 'foreign' for r in hist]
+        n_own = sum(own)
+        if n_own > self.COHORT_KEEP_MAX: self.state['history_truncated'] = coh['id']
+        keep_other, keep_own = max(0, self.HISTORY_KEEP - min(n_own, self.HISTORY_KEEP)), self.COHORT_KEEP_MAX
+        out = []
+        for r, o in zip(reversed(hist), reversed(own)):
+            if o and keep_own > 0: out.append(r); keep_own -= 1
+            elif not o and keep_other > 0: out.append(r); keep_other -= 1
+        return out[::-1]
+
     COHORT_CODE = ('engine.py', 'strategies.py', 'paper_books.py', 'book_ledger.py', 'backtest.py')
     COHORT_VOLATILE = ('CAP_ADJ', 'CAP_CYCLES', 'CAP_SINCE')
 
@@ -5094,7 +5112,13 @@ class Engine:
                     book_cap=float(self.S.get('PAPER_BOOK_CAP') or 2000.0))
 
     def _settings_allow(self):
-        return sorted(set(GLOBAL_DEFAULTS) | {'SLEEVES', 'schema_version'})
+        return sorted(k for k in set(GLOBAL_DEFAULTS) | {'SLEEVES', 'schema_version'} if not k.startswith('TELEGRAM'))
+
+    def _cohort_sidecar(self):
+        try:
+            with open(self.F['cohort'], encoding='utf-8') as f: side = json.load(f)
+        except (OSError, ValueError): return None
+        return side if not RP.validate_cohort(side) and not side.get('ended_utc') else None
 
     def _cohort_ok(self):
         return self._books_on() and not RP.validate_cohort(self.state.get('cohort')) and not self.state['cohort'].get('ended_utc')
@@ -5106,8 +5130,14 @@ class Engine:
             if not self._books_on(): return
             idn, rec = self._cohort_identity(), self.state.get('cohort')
             if rec is None:
+                side = self._cohort_sidecar()
+                if side:
+                    self.state['cohort'] = rec = side             # state lost: the sidecar keeps the same immutable id
+                    log.warning(f"RUN-PACK-01 cohort {rec['id']} restored from cohort.json")
+            if rec is None:
                 start = self.S.get('CAP_SINCE') or now_utc().isoformat(timespec='seconds')
                 self.state['cohort'] = RP.new_cohort(start, seq=len(self.state.get('cohort_archive') or []), **idn)
+                self._save_aux('cohort', self.state['cohort'])
                 log.info(f"RUN-PACK-01 cohort {self.state['cohort']['id']} (started {start})")
                 return
             bad = RP.validate_cohort(rec)
@@ -5115,7 +5145,8 @@ class Engine:
                 self._integrity_alert('integrity|cohort', f"PAPER cohort record damaged ({'; '.join(bad)}) - book lots are not "
                                                           'stamped and the ledger is not written until a cohort boundary')
                 return
-            self.cohort_drift = RP.drift(rec, **idn)
+            now_id = dict(idn, started_utc=self.S.get('CAP_SINCE')) if not rec['seq'] else idn   # cohort 0 began at CAP_SINCE
+            self.cohort_drift = RP.drift(rec, **now_id)
             if self.cohort_drift:
                 log.warning(f"RUN-PACK-01 cohort {rec['id']}: {', '.join(self.cohort_drift)} changed since it started - "
                             'evidence after this point mixes versions unless a cohort boundary is taken')
@@ -5125,11 +5156,14 @@ class Engine:
     def book_ledger_status(self, persist=False):
         """Observe-only per-book NAV for the open cohort (None when books are off). Never changes sizing."""
         if not self._cohort_ok(): return None
-        coh = self.state['cohort']
-        doc = BL.compute(coh, self.history, self.state.get('lots', {}).values(), self.marks, coh['book_cap'],
-                         prev=self.state.get('book_ledger'), t=now_utc().isoformat(timespec='seconds'))
-        doc['parity'] = BL.parity(doc, coh, self.history, self.state.get('lots', {}).values())
+        coh = dict(self.state['cohort'])
+        lots = [dict(l) for l in list(self.state.get('lots', {}).values())]   # copies: the status thread runs unlocked
+        hist, marks = list(self.history), dict(self.marks or {})
+        doc = BL.compute(coh, hist, lots, marks, coh['book_cap'], prev=self.state.get('book_ledger'),
+                         t=now_utc().isoformat(timespec='seconds'))
+        doc['parity'] = BL.parity(doc, coh, hist, lots)
         doc['drift'] = list(self.cohort_drift)
+        doc['history_truncated'] = self.state.get('history_truncated') == coh['id']
         if persist:
             self.state['book_ledger'] = dict(cohort_id=doc['cohort_id'], t=doc['t'], last_bucket=(self.state.get('book_ledger') or {}).get('last_bucket'),
                                              books={k: {x: b[x] for x in ('peak', 'state', 'would_freeze_at') if x in b}
@@ -5137,8 +5171,8 @@ class Engine:
         return doc
 
     def book_ledger_tick(self, bucket_s=900):
-        """At most one ledger snapshot line per closed 15-minute bucket (the bucket is persisted, so a restart does not
-        double-write it). Never raises into the loop."""
+        """At most one ledger snapshot line per 15-minute wall-clock bucket (stamped with the current bucket; the bucket is
+        persisted before the line, so a restart never writes it twice). Never raises into the loop."""
         try:
             with self.lock:
                 if self._books_on() and self.state.get('cohort') is None: self._cohort_init()   # books switched on later
@@ -5148,10 +5182,10 @@ class Engine:
                 if (self.state.get('book_ledger') or {}).get('cohort_id') == self.state['cohort']['id'] and last == b: return False
                 doc = self.book_ledger_status(persist=True)
                 doc['bucket'] = b
+                self.state['book_ledger']['last_bucket'] = b
+                self.save_state()                        # bucket first: a crash can drop one observe-only line, never repeat it
                 with open(self.F['book_ledger'], 'a', encoding='utf-8') as f:
                     f.write(json.dumps(doc, sort_keys=True, separators=(',', ':'), default=str) + '\n')
-                self.state['book_ledger']['last_bucket'] = b
-                self.save_state()
                 return True
         except Exception as ex:
             log.warning(f'book ledger snapshot skipped ({type(ex).__name__}: {ex})')
@@ -5167,8 +5201,9 @@ class Engine:
             busy = [k for k in ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries') if self.state.get(k)]
             if busy: raise RuntimeError(f"cohort boundary refused: not flat ({', '.join(busy)})")
             if RP.validate_cohort(self.state.get('cohort')): raise RuntimeError('cohort record damaged - inspect before a boundary')
-            here = os.path.abspath(self.dir)
-            if os.path.abspath(dest_root) == here or os.path.abspath(dest_root).startswith(here + os.sep):
+            norm = lambda p: os.path.normcase(os.path.realpath(os.path.abspath(p)))
+            here, dest = norm(self.dir), norm(dest_root)
+            if os.path.splitdrive(here)[0] == os.path.splitdrive(dest)[0] and os.path.commonpath([here, dest]) == here:
                 raise RuntimeError('the evidence pack must be written outside the runtime folder')
             now = now_utc().isoformat(timespec='seconds')
             coh = dict(self.state['cohort'], ended_utc=now)
@@ -5177,13 +5212,22 @@ class Engine:
             docs = {'cohort.json': coh, 'history.json': rows, 'book_ledger_final.json': led, 'note.json': dict(note=note),
                     'book_summary.json': PB.summary(0, coh['book_cap'], (), [r for r in rows if r.get('book')]),
                     'settings_allowlist.json': RP.sanitize_settings(self.S, self._settings_allow())}
-            srcs = {'book_ledger.jsonl': self.F['book_ledger'], 'fills.jsonl': self.F['fills'],
-                    'trade_audit.jsonl': self.F['audit'], 'equity.json': self.F['equity']}
-            forbid = [str(self.cfg.get(k) or '') for k in ('API_KEY', 'API_SECRET', 'TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY')]
+            for w in (self._fillw, self._auditw, self._enr):        # the last close's telemetry must be on disk first
+                try: w.flush()
+                except Exception as ex: log.warning(f'pack: writer flush failed ({ex})')
+            srcs = {}
+            for name, p in (('book_ledger.jsonl', self.F['book_ledger']), ('fills.jsonl', self.F['fills']),
+                            ('trade_audit.jsonl', self.F['audit'])):
+                srcs[name], srcs[name.replace('.jsonl', '.1.jsonl')] = p, p + '.1'
+            srcs['equity.json'] = self.F['equity']
+            docs['scope.json'] = dict(cohort_filtered=['history.json', 'book_ledger_final.json', 'book_summary.json'],
+                                      runtime_wide=sorted(srcs), note='runtime-wide files are raw copies; filter by cohort_id / time')
+            forbid = [str(self.cfg.get(k) or '') for k in ('API_KEY', 'API_SECRET', 'TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_WORKSPACE_ID')]
             path, sha = RP.write_pack(dest_root, coh, docs, srcs, forbid=forbid)
             arch = self.state.setdefault('cohort_archive', [])
             arch.append(dict(id=coh['id'], started_utc=coh['started_utc'], ended_utc=now, pack_sha=sha, pack=path))
             self.state['cohort'] = RP.new_cohort(now, seq=len(arch), **self._cohort_identity())
+            self._save_aux('cohort', self.state['cohort'])
             self.state['book_ledger'] = None
             self.cohort_drift = []
             self.save_state()
