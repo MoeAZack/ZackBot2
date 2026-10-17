@@ -133,3 +133,45 @@ def test_the_audit_reader_waits_for_a_whole_line_and_follows_a_rotation():
     with open(e.F['audit'], 'w', encoding='utf-8') as f: f.write(rec('t2', 1.5) + '\n')
     s = strat(e.true_books_compare(), 'ema_mom')
     assert s['audit_missing'] == 0 and s['giveback_r']['mean'] == 1.0
+
+
+def test_a_close_without_r_cannot_rank_and_a_keyless_close_is_counted():
+    k = sorted(PB.BOOKS[2][2])[0]
+    rows = rows_for('B3_TREND', k, 20)
+    rows[0] = dict(rows[0], r=None)
+    rows.append(dict(rows_for('B3_TREND', 'x', 1)[0], id='nokey', strategy_key=None))
+    out = TB.compare(C('C', rows), rows)
+    s = strat(out, k)
+    assert s['closed'] == 20 and s['incomplete_closes'] == 1 and not s['rankable'] and s['rank'] is None
+    assert strat(out, '?')['closed'] == 1 and not strat(out, '?')['mapped']
+
+
+def test_avg_hold_ignores_closes_without_hours():
+    k = sorted(PB.BOOKS[1][2])[0]
+    rows = rows_for('B2_RANGE', k, 2)
+    rows[1] = dict(rows[1], hours=None)
+    assert strat(TB.compare(C('C', rows), rows), k)['avg_hours'] == 2.0
+
+
+def test_a_rotation_to_a_larger_file_is_still_detected():
+    e, _ = tb_engine()
+    close_row(e, row(e, 'B3_TREND', 20.0, id='t1', strategy='ema_mom'))
+    close_row(e, row(e, 'B3_TREND', 20.0, id='t2', strategy='ema_mom'))
+    rec = lambda i: json.dumps(dict(kind='trade_audit', id=i, giveback_r=1.0)) + '\n'
+    with open(e.F['audit'], 'a', encoding='utf-8') as f: f.write(rec('t1'))
+    assert strat(e.true_books_compare(), 'ema_mom')['audit_missing'] == 1
+    os.replace(e.F['audit'], e.F['audit'] + '.1')
+    time.sleep(0.01)
+    with open(e.F['audit'], 'w', encoding='utf-8') as f: f.write(rec('t2') + json.dumps(dict(kind='funnel', pad='y' * 5000)) + '\n')   # t2 lies before the old offset
+    assert strat(e.true_books_compare(), 'ema_mom')['audit_missing'] == 0
+
+
+def test_concurrent_reads_never_double_the_offset():
+    import threading
+    e, _ = tb_engine()
+    with open(e.F['audit'], 'a', encoding='utf-8') as f:
+        for i in range(2000): f.write(json.dumps(dict(kind='trade_audit', id=f'z{i}', giveback_r=0.1)) + '\n')
+    ts = [threading.Thread(target=e._tb_excursions) for _ in range(4)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    assert e._tb_exc['off'][e.F['audit']] == os.path.getsize(e.F['audit']) and len(e._tb_exc['ids']) == 2000

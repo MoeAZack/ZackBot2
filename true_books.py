@@ -322,9 +322,10 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
         b = books[bk]
         mine = [r for r in rows if r.get('book') == bk]
         groups = [(None, mine)] + [(k, [r for r in mine if r.get('strategy_key') == k]) for k in sorted(keys)]
-        groups += [(k, [r for r in mine if r.get('strategy_key') == k]) for k in sorted({r.get('strategy_key') or '?' for r in mine} - set(keys))]
+        groups += [(k, [r for r in mine if (r.get('strategy_key') or '?') == k])
+                   for k in sorted({r.get('strategy_key') or '?' for r in mine} - set(keys))]
         for key, rs in groups:
-            nets, rr, notional, fees, fund, hours, exits, exc = [], [], Decimal(0), Decimal(0), Decimal(0), Decimal(0), {}, dict(mfe=[], mae=[], gb=[])
+            nets, rr, notional, fees, fund, hours, exits, exc = [], [], Decimal(0), Decimal(0), Decimal(0), [], {}, dict(mfe=[], mae=[], gb=[])
             missing = incomplete = 0
             for r in sorted(rs, key=lambda x: str(x.get('closed') or '')):
                 g = D(r.get('pnl_gross')) or Decimal(0)
@@ -332,14 +333,15 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
                 fe = fa if fa is not None else (D(r.get('fees')) or Decimal(0))
                 nets.append(g - fe + fu); fees += fe; fund += fu
                 if D(r.get('r')) is not None: rr.append(D(r.get('r')))
-                notional += abs(D(r.get('notional')) or Decimal(0)); hours += D(r.get('hours')) or Decimal(0)
+                notional += abs(D(r.get('notional')) or Decimal(0))
+                if D(r.get('hours')) is not None: hours.append(D(r.get('hours')))
                 exits[r.get('exit_reason') or '?'] = exits.get(r.get('exit_reason') or '?', 0) + 1
-                incomplete += not _row_complete(r)
+                incomplete += not _row_complete(r) or D(r.get('r')) is None   # no R (risk unknown): cannot rank on R
                 a = audits.get(r.get('id'))
                 if not a: missing += 1; continue
                 exc['mfe'].append(D(a.get('mfe_r'))); exc['mae'].append(D(a.get('mae_r'))); exc['gb'].append(D(a.get('giveback_r')))
             s = _stats(nets, rr, notional, b['start'])
-            s.update(fees=q(fees), funding=q(fund), avg_hours=q(hours / len(rs)) if rs else None, exits=exits,
+            s.update(fees=q(fees), funding=q(fund), avg_hours=q(sum(hours, Decimal(0)) / len(hours)) if hours else None, exits=exits,
                      mfe_r=_spread(exc['mfe']), mae_r=_spread(exc['mae']), giveback_r=_spread(exc['gb']), audit_missing=missing,
                      rejections=rej.get((bk, key), {}), incomplete_closes=incomplete)
             ok = b['rankable'] and not incomplete
@@ -350,6 +352,7 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
                 fams.append(s)
             else:
                 s.update(book=bk, key=key, mapped=key in keys, complete=b['complete'] and not incomplete,
+                         incomplete=sorted({x['reason'] for x in b['incomplete']}),
                          rankable=ok and s['closed'] >= min_n and key in keys,
                          note=None if s['closed'] >= min_n else f'insufficient n ({s["closed"]}/{min_n})')
                 strats.append(s)

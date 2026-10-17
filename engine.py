@@ -2911,11 +2911,16 @@ class Engine:
         """{trade id: {mfe_r, mae_r, giveback_r}} from the T05a close records in trade_audit.jsonl (+ its rotated .1). Read
         incrementally from a saved offset per file (only new lines); a rotation (the file got shorter) re-reads both. Never
         raises; hindsight only - never a trading input."""
-        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}))
+        with vars(self).setdefault('_tb_exc_lock', threading.Lock()):     # one reader at a time (HTTP threads)
+            return self._tb_excursions_read()
+
+    def _tb_excursions_read(self):
+        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, fid=None))
         cur = self.F['audit']
-        try: size = os.path.getsize(cur)
-        except OSError: size = 0
-        if size < c['off'].get(cur, 0): c['off'].clear(); c['ids'].clear()
+        try: stt = os.stat(cur); size, fid = stt.st_size, (stt.st_ino, stt.st_ctime_ns)
+        except OSError: size, fid = 0, None
+        if fid != c.get('fid') or size < c['off'].get(cur, 0):           # rotated / replaced (not only shorter): re-read both
+            c['off'].clear(); c['ids'].clear(); c['fid'] = fid
         for path in (cur + '.1', cur):
             try:
                 with open(path, 'rb') as f:
