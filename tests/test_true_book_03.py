@@ -124,3 +124,14 @@ def test_maker_remainder_fallback_is_blocked_by_an_opposite_side():
     e, _ = tb_engine()
     e.state['lots']['m'] = fake_lot(e, None, sym='BTCUSDT', side='SHORT', stop=102.0, manual=True, sleeve='MAN')
     assert e._tb_on() and e._tb_opposite('BTCUSDT', 'LONG')
+
+
+def test_manual_lot_stays_byte_identical_and_manual_entries_are_never_gated():
+    e, _ = tb_engine()
+    e.state['lots']['m'] = fake_lot(e, None, sym='BTCUSDT', side='SHORT', stop=102.0, manual=True, sleeve='MAN')
+    before = copy.deepcopy(e.state['lots']['m'])
+    assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and e.last_skip == OPP
+    assert e.state['lots']['m'] == before                             # the manual trade is never altered
+    e.state['lots'].clear()
+    e.state['lots']['x'] = fake_lot(e, 'B2_RANGE', sym='BTCUSDT', side='SHORT', stop=102.0)
+    assert e.entry_block(None, 'BTCUSDT', 'LONG', manual=True) != OPP   # a hand trade is the owner's call, never this gate
