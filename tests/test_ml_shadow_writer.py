@@ -372,3 +372,19 @@ def test_writers_of_different_folders_never_block_each_other(tmp_path):
     b = MLW.LedgerWriter(ledgers(tmp_path / 'b'), {}, key=str(tmp_path / 'b'))
     assert a.submit('decision', dec_row('2026-10-01 00:00:00')) and b.submit('decision', dec_row('2026-10-01 00:00:00'))
     assert a.close(10) and b.close(10)
+
+
+def test_rotation_keeps_every_row_readable_and_unique_through_the_writer(tmp_path):
+    small = lambda: (MLS.JsonlLedger(str(tmp_path / 'd.jsonl'), 3000, 3), MLS.JsonlLedger(str(tmp_path / 'l.jsonl'), 3000, 3))
+    ctr = {}
+    w = MLW.LedgerWriter(small, ctr)
+    d = [dec_row(f'2026-10-{k:02d} 00:00:00') for k in range(1, 13)]
+    for r in d: w.submit('decision', r)
+    assert w.flush(10)
+    for r in d[-6:]: w.submit('decision', r)                # replay of retained rows (incl. in .1): deduped
+    assert w.close(10)
+    files = [tmp_path / n for n in ('d.jsonl.2', 'd.jsonl.1', 'd.jsonl') if (tmp_path / n).exists()]
+    assert len(files) >= 2                                  # it really rotated
+    got = [json.loads(x)['decision_id'] for f in files for x in open(f, encoding='utf-8') if x.strip()]
+    assert len(got) == len(set(got)) and ctr['write_errors'] == 0 and ctr['decisions'] == len(d)
+    assert got == [r['decision_id'] for r in d][-len(got):]  # oldest dropped by the size bound, order kept
