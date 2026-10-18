@@ -296,11 +296,13 @@ def load_all(usdt_klines, usdc_klines, usdt_accounting, usdc_accounting):
 
 
 # ------------------------------------------------------------------ simulation
-def run_cell(raw, quote, key, side):
+def run_cell(raw, quote, key, side, tf_sec=None):
     """One strategy-side cell on one quote: the app backtest (backtest.run) with the opt-in fill log. BTC<quote> is the
     book's first symbol (its BTC context). The legacy min-notional floor (backtest.MIN_NOTIONAL) lists USDT symbols
     only; for the run each <base><quote> gets its USDT twin's floor, so both quotes face the same entry floor and no
-    quote-only episode comes from the table."""
+    quote-only episode comes from the table. `tf_sec` (default: the 4h reference tf) only scales the legacy per-bar
+    funding of a non-4h book (wave-2 runner); the v0 call is unchanged."""
+    tf_sec = BC.TF_SEC if tf_sec is None else int(tf_sec)
     ctx = 'BTC' + quote
     symbols = [b + quote for b in BASES]
     if list(raw) != symbols:
@@ -323,7 +325,7 @@ def run_cell(raw, quote, key, side):
         log = []
         tr, cv = BT.run(book, cfg, start=SIM['start'], max_lev=SIM['max_lev'], daily_halt=SIM['daily_halt'],
                         warmup=int((t < START).sum()), t0=np.datetime64(START, 'ms'), t1=np.datetime64(END, 'ms'),
-                        fund_per_bar=BT.FUND_PER_BAR * BC.TF_SEC / 14400, exchange_rules=None, fill_log=log)
+                        fund_per_bar=BT.FUND_PER_BAR * tf_sec / 14400, exchange_rules=None, fill_log=log)
     finally:
         BT.MIN_NOTIONAL = old
     if book.syms[0] != ctx:
@@ -450,7 +452,7 @@ def _held(deltas, j, phases):
     return sum(d for b, ph, d in deltas if b < j or (b == j and ph in phases))
 
 
-def funding_paid(side, deltas, events, marks, bar_ms):
+def funding_paid(side, deltas, events, marks, bar_ms, tf_ms=None):
     """Exact funding on the held quantity (+ = paid). An event at a candle boundary T = open of bar j is paid on what was
     held through T: every fill of earlier bars except a close-of-bar exit at T settles after it, and an entry at the open
     of bar j fills after it. An event inside bar j with path fills in that bar charges the worse of the quantity before
@@ -459,7 +461,7 @@ def funding_paid(side, deltas, events, marks, bar_ms):
     order), zero included: a stop that may have filled before the slot never turns into a funding credit."""
     paid, rows = 0.0, []
     lo = bar_ms[min(b for b, _, _ in deltas)]
-    hi = bar_ms[max(b for b, _, _ in deltas)] + BC.TF_MS
+    hi = bar_ms[max(b for b, _, _ in deltas)] + (BC.TF_MS if tf_ms is None else int(tf_ms))
     sd = 'long' if side == 1 else 'short'
     for T, slot, rate in events:
         if not lo < slot <= hi:
@@ -485,28 +487,31 @@ def funding_paid(side, deltas, events, marks, bar_ms):
     return paid, rows
 
 
-def price_position(r, fills, arr, bar_ms, acc, tick, quote):
+def price_position(r, fills, arr, bar_ms, acc, tick, quote, *, taker=None, tf_ms=None, slip_bars=None):
     """View A: every fill re-priced with slip-v1 (15 causally closed 4h bars, c = SLIP_C), the 5 bp taker fee and adverse
-    tick rounding; exact funding on the held quantity. Never uses the backtest's own P&L."""
+    tick rounding; exact funding on the held quantity. Never uses the backtest's own P&L. Wave-2 options (defaults =
+    v0): `taker` fee rate, `tf_ms` of the book, `slip_bars` closed bars of the book's own tf read by slip-v1."""
+    taker = C.TAKER if taker is None else float(taker)
+    nbars = C.SLIP_BARS if slip_bars is None else int(slip_bars)
     side = fills[0]['side']
     gross_ref = cash = fees = slip = notional = 0.0
     deltas = []
     for f in fills:
         i, ph = f['i'], _phase(f, arr['o'][f['i']])
         e = i if ph == 'close' else i - 1                          # the last candle closed when the fill happens
-        if e - C.SLIP_BARS + 1 < 0:
+        if e - nbars + 1 < 0:
             raise PairRunnerError(f'{quote}: no slip history for a {f["sym"]} fill at bar {i}')
-        bars = [_Bar(arr['h'][k], arr['l'][k], arr['c'][k]) for k in range(e - C.SLIP_BARS + 1, e + 1)]
+        bars = [_Bar(arr['h'][k], arr['l'][k], arr['c'][k]) for k in range(e - nbars + 1, e + 1)]
         bps = C.slip_bps(bars, SLIP_C, SCEN.vol)
         px = C.fill_price(f['ref'], f['action'], bps, SCEN, gap=f['gap'], tick=tick)
         sgn = 1 if f['action'] == 'sell' else -1
         cash += sgn * px * f['qty']
         gross_ref += sgn * f['ref'] * f['qty']
         slip += abs(px - f['ref']) * f['qty']
-        fees += C.TAKER * px * f['qty'] * SCEN.fee_mult
+        fees += taker * px * f['qty'] * SCEN.fee_mult
         notional += px * f['qty']
         deltas.append((i, ph, f['qty'] if f['kind'] != 'exit' else -f['qty']))
-    fund, rows = funding_paid(side, deltas, acc['events'], acc['marks'], bar_ms)
+    fund, rows = funding_paid(side, deltas, acc['events'], acc['marks'], bar_ms, tf_ms)
     net = cash - fees - fund
     risk, dist, e0 = fills[0]['risk'], fills[0]['stop_dist'], fills[0]['ref']
     i_in, i_out = int(r.i_in), int(r.i_out)
@@ -522,7 +527,8 @@ def price_position(r, fills, arr, bar_ms, acc, tick, quote):
             'R': net / risk, 'gross_r': gross_ref / risk, 'slip_r': slip / risk, 'fee_r': fees / risk,
             'funding_r': fund / risk, 'funding_events': len(rows), 'net': net, 'start_equity_pct': net / SIM['start'] * 100,
             'spread_r': {str(b): (net - notional * b / 2 / 1e4) / risk for b in SPREAD_BPS},
-            'mfe_r': mfe, 'mae_r': mae, 'giveback_r': mfe - move, 'why': fills[-1]['why']}
+            'mfe_r': mfe, 'mae_r': mae, 'giveback_r': mfe - move, 'why': fills[-1]['why'], 'risk': risk,
+            'turnover': notional}
 
 
 def accounting_index(acc_sym):
@@ -534,9 +540,9 @@ def accounting_index(acc_sym):
             'marks': dict(zip(mk.open_time.to_numpy(np.int64).tolist(), mk.close.to_numpy(float).tolist()))}
 
 
-def price_cell(cell, quote, accounting):
+def price_cell(cell, quote, accounting, **pricing):
     """Every closed position of the cell priced under view A; positions still open at the window end are listed, never
-    priced or zero-filled."""
+    priced or zero-filled. `pricing` (taker / tf_ms / slip_bars) passes through to price_position."""
     closed, still_open = positions(cell)
     book, eps = cell['book'], []
     idx = {}
@@ -545,7 +551,7 @@ def price_cell(cell, quote, accounting):
         if sym not in idx:
             idx[sym] = accounting_index(accounting[sym])
         tick = float(accounting[sym]['rules']['filters']['PRICE_FILTER']['tickSize'])
-        e = price_position(r, fills, book.arr[sym], cell['bar_ms'], idx[sym], tick, quote)
+        e = price_position(r, fills, book.arr[sym], cell['bar_ms'], idx[sym], tick, quote, **pricing)
         e.update(strategy=cell['key'], side=cell['side'])
         eps.append(e)
     return {'status': 'complete', 'episodes': eps, 'open_at_end': still_open, 'costs': cost_summary(eps),
