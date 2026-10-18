@@ -40,7 +40,7 @@ def cadence_s(data_dir, sym):
                     hours = int(float(r['fundingIntervalHours']))
     except (OSError, ValueError):
         return None
-    return hours * 3600
+    return hours * 3600 if hours >= 1 else None           # a nonsense listing is "unknown", never a recorded cadence
 
 
 def read_funding(data_dir, sym, after_ms=None):

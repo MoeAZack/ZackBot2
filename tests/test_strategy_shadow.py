@@ -668,3 +668,35 @@ def test_f2_engine_feeds_the_schedule_and_retries_an_incomplete_feed(tmp_path, m
     monkeypatch.setattr(SSH.ShadowBook, 'on_funding', real)
     e._shadow_funding_feed(sb)                                    # same file mtime: still retried (Cowork F2)
     assert len(sb.funding_seen) == 1
+
+
+def test_n1_rejected_cadence_is_recorded_once_not_on_every_flush(tmp_path):
+    b = book(tmp_path)
+    for _ in range(5): b.on_cadence(symbol='BTCUSDT', interval_s=1800, source='test')
+    lines = [l for l in open(b.path, encoding='utf-8') if '"cadence"' in l]
+    assert len(lines) == 1 and b.snapshot()['coverage']['gaps'].count('bad_cadence:BTCUSDT') == 1
+    b2 = book(tmp_path)                                           # restart: the dedupe survives replay
+    b2.on_cadence(symbol='BTCUSDT', interval_s=1800, source='test')
+    assert sum('"cadence"' in l for l in open(b.path, encoding='utf-8')) == 1
+
+
+def test_n1_collector_never_reports_a_sub_hour_listing(tmp_path):
+    e = _eng(tmp_path)
+    e.S['UNIVERSE'] = ['BTCUSDT']
+    tr = FakeTestnet({}, info=[dict(symbol='BTCUSDT', fundingIntervalHours=0, adjustedFundingRateCap='0.02',
+                                    adjustedFundingRateFloor='-0.02')])
+    SF.ShadowFunding(lambda: e, e.dir, transport_factory=lambda: tr).run_once()
+    assert SF.cadence_s(e.dir, 'BTCUSDT') is None
+
+
+def test_n2_cadence_widening_mid_episode_never_turns_it_complete(tmp_path):
+    b = book(tmp_path)
+    b.on_cadence(symbol='BTCUSDT', interval_s=4 * 3600, source='test')
+    enter(b, slot())                                              # 01:00, held to 17:00
+    for h in (8, 16): _fund(b, h)
+    bar(b, 16 * 60, o=100, h=100.5, l=99.5, c=100.1)
+    assert not b.compute()['strategies'][0]['complete']
+    b.on_cadence(symbol='BTCUSDT', interval_s=8 * 3600, source='test')   # exchange moves it to 8h
+    row = b.compute()['strategies'][0]
+    assert sorted(row['incomplete']) == ['funding_unread:BTCUSDT@2026-10-18T04:00:00+00:00',
+                                         'funding_unread:BTCUSDT@2026-10-18T12:00:00+00:00']

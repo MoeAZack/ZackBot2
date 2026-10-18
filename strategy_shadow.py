@@ -130,6 +130,7 @@ class ShadowBook:
         self.instances, self.episodes, self.gaps = {}, {}, []
         self.cycles, self.funding_seen, self.nav_path, self.pending, self.last_bar = {}, {}, {}, {}, {}
         self.funding_by_sym, self.funding_conflicted, self.cadence = {}, set(), {}
+        self.cadence_last, self.cadence_all = {}, {}     # last value received (even rejected) / every accepted interval
         self.seq, self.clock = 0, None
         d = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(d, exist_ok=True)
@@ -220,8 +221,9 @@ class ShadowBook:
 
     def on_cadence(self, symbol, interval_s, source):
         """The symbol's funding settlement interval from the exchange's own schedule (testnet /fapi/v1/fundingInfo; a symbol
-        absent from a successful answer settles on the 8h default). Never inferred from the funding records being audited."""
-        if self.cadence.get(symbol) == int(interval_s): return dict(seq=self.seq, replay=True)
+        absent from a successful answer settles on the 8h default). Never inferred from the funding records being audited.
+        A value equal to the last one received - accepted or rejected - appends nothing (Cowork N1)."""
+        if self.cadence_last.get(symbol) == int(interval_s): return dict(seq=self.seq, replay=True)
         return self._record('cadence', symbol=symbol, interval_s=int(interval_s), source=str(source))
 
     def complete_cycle(self, cycle_id, tf, decision_time, instance_ids):
@@ -490,8 +492,12 @@ class ShadowBook:
         return dict(seq=self.seq)
 
     def _a_cadence(self, rec):
-        if int(rec['interval_s']) >= 3600: self.cadence[rec['symbol']] = int(rec['interval_s'])
-        else: self.gaps.append(f'bad_cadence:{rec["symbol"]}')
+        sym, iv = rec['symbol'], int(rec['interval_s'])
+        self.cadence_last[sym] = iv
+        if iv >= 3600:
+            self.cadence[sym] = iv
+            self.cadence_all.setdefault(sym, set()).add(iv)
+        else: self.gaps.append(f'bad_cadence:{sym}')
         return dict(seq=self.seq)
 
     def _a_incomplete(self, rec):
@@ -547,9 +553,11 @@ class ShadowBook:
     def _grid(self, sym):
         """Settlement grid of a symbol (aligned on 00:00 UTC): the exchange schedule fed through on_cadence, tightened (never
         widened) when the recorded instants themselves are closer together. None until the schedule is known - the
-        records being audited can never prove their own completeness (Cowork F1)."""
-        g = self.cadence.get(sym)
-        if g is None: return None
+        records being audited can never prove their own completeness (Cowork F1). The schedule has no effective-from time,
+        so the TIGHTEST interval ever received is used: after a 4h -> 8h move the 4h-era instants stay checked, and later
+        exposure at the dropped instants reads funding_unread (INCOMPLETE, fail-closed) instead of complete (Cowork N2)."""
+        if not self.cadence_all.get(sym): return None
+        g = min(self.cadence_all[sym])
         ts = sorted(t for t in self.funding_by_sym.get(sym, ()) if t is not None)
         d = [b - a for a, b in zip(ts, ts[1:]) if b - a >= 3600]
         if d: g = min(g, max(3600, round(min(d) / 3600) * 3600))
