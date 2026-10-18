@@ -2069,7 +2069,7 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
   catch(e){if(EXPIRED)return;OFFLINE=true;$('status').innerHTML='<i></i>APP OFFLINE';$('status').className='pill p-bad';console.error(e)}
   finally{LOADING=false}}
 function renderAll(){SKIPPED=0;renderHeader();const t=CUR;
-  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderBooks();renderTbCmp();renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
+  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderBooks();renderPresets();renderTbCmp();if(!slDirty)renderSleeves();else updUnsaved()}
     if(t==='strat')renderGrids();
     if(t==='coins')renderCoins();if(t==='sig')renderSignals();if(t==='logs')renderLogs();if(t==='set')renderSet();if(t==='bt'){btSources();labResume();roSum()}}
   finally{renderSafety()}}

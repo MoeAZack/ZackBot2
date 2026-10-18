@@ -116,7 +116,7 @@ def test_the_route_and_strategies_tab_card_are_wired():
     html = open(os.path.join(ROOT, 'panel.html'), encoding='utf-8').read()
     assert "if p == '/api/true_books/compare': return self._json(APP.engine.true_books_compare())" in app
     assert 'id="tbCmpCard"' in html and 'id="tbCmp"' in html and "api('/api/true_books/compare')" in html
-    assert 'renderBooks();renderTbCmp();' in html
+    assert 'renderBooks();renderPresets();renderTbCmp();' in html
     assert 'never ranked or promoted' in html and "Date.now()-TBCT>60000" in html
 
 
