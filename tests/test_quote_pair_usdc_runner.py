@@ -346,51 +346,153 @@ def _q(e):
     return Q._quarter(e['t_entry'])
 
 
-def test_a_cell_runs_on_its_own_quote_with_btc_context(tmp_path):
-    k, _ = Q.load_all(**both(tmp_path))
+def test_a_cell_runs_on_its_own_quote_with_btc_context_and_prices_every_fill(tmp_path):
+    k, a = Q.load_all(**both(tmp_path))
     cell = Q.run_cell(k['USDC'][1], 'USDC', 'exp_trend', 'long')
-    assert cell['context_symbol'] == 'BTCUSDC' and set(cell['signals']) == set(Q.BASES)
-    assert all(e['side'] == 'long' and Q.START <= e['t_entry'] < Q.END for e in cell['episodes'])
+    assert cell['context_symbol'] == 'BTCUSDC' and cell['book'].syms[0] == 'BTCUSDC' and set(cell['signals']) == set(Q.BASES)
+    assert len(cell['trades']) >= 5 and cell['fills']
+    p = Q.price_cell(cell, 'USDC', a['USDC'][1])
+    assert p['status'] == 'complete' and len(p['episodes']) == len(cell['trades'])
+    assert all(e['side'] == 'long' and Q.START <= e['t_entry'] < Q.END for e in p['episodes'])
+    assert all(e['fee_r'] > 0 and e['slip_r'] > 0 and e['R'] < e['gross_r'] for e in p['episodes'])
+    assert all(e['spread_r']['5'] < e['spread_r']['0'] == pytest.approx(e['R']) for e in p['episodes'])
+    assert sum(e['funding_events'] for e in p['episodes']) > 0
+    assert p['costs']['n'] == len(p['episodes']) and set(p['spread_rows']) == {'0', '1', '2', '5'}
+    assert {r['label'] for r in p['spread_rows'].values()} == {'SPREAD-UNCALIBRATED'}
     shuffled = dict(reversed(list(k['USDC'][1].items())))
     with pytest.raises(Q.PairRunnerError, match='BTC context first'):
         Q.run_cell(shuffled, 'USDC', 'exp_trend', 'long')
 
 
+def _cell(tmp_path, key='breakout_pyramid', side='long'):
+    k, a = Q.load_all(**both(tmp_path))
+    return Q.run_cell(k['USDT'][1], 'USDT', key, side), a['USDT'][1]
+
+
+def test_an_unlogged_fill_path_fails_the_study(tmp_path):
+    cell, acc = _cell(tmp_path)
+    assert any(f['kind'] == 'add' for f in cell['fills']), 'fixture must pyramid'
+    Q.positions(cell)
+    for drop in ('add', 'exit', 'entry'):
+        bad = dict(cell, fills=[f for f in cell['fills'] if f is not next(x for x in cell['fills'] if x['kind'] == drop)])
+        with pytest.raises(Q.PairRunnerError, match='unlogged|closed without a trade record'):
+            Q.price_cell(bad, 'USDT', acc)
+    gone = dict(cell, trades=cell['trades'].iloc[1:])                         # a logged close with no trade record
+    with pytest.raises(Q.PairRunnerError, match='closed without a trade record'):
+        Q.positions(gone)
+    maker = dict(cell, fills=[dict(f, liq='maker') if f['kind'] == 'entry' else f for f in cell['fills']])
+    with pytest.raises(Q.PairRunnerError, match='non-taker'):
+        Q.positions(maker)
+
+
+def test_view_a_never_reads_the_backtest_pnl(tmp_path):
+    cell, acc = _cell(tmp_path)
+    base = Q.price_cell(cell, 'USDT', acc)['episodes']
+    fake = dict(cell, trades=cell['trades'].assign(pnl=1e9, R=1e9))
+    assert Q.price_cell(fake, 'USDT', acc)['episodes'] == base
+
+
+def _fill(kind, i, action, ref, qty, why=None, gap=False):
+    return dict(kind=kind, sym='BTCUSDT', pos_i=20, side=1, i=i, action=action, ref=ref, qty=qty, why=why, gap=gap,
+                liq='taker', risk=10.0, stop_dist=5.0)
+
+
+def test_one_position_is_priced_by_hand():
+    n, B = 40, Q.BC.TF_MS
+    bar_ms = Q.START + np.arange(n) * B
+    arr = {'o': np.full(n, 100.0), 'h': np.full(n, 101.0), 'l': np.full(n, 99.0), 'c': np.full(n, 100.0)}
+    # TR-SMA14 = 2 -> 0.05 x 2 / 100 = 10 bp (> the 2 bp floor); tick 0.1, adverse rounding
+    fills = [_fill('entry', 20, 'buy', 100.0, 2.0), _fill('add', 22, 'buy', 102.0, 1.0),
+             _fill('exit', 24, 'sell', 110.0, 3.0, why='time')]
+    slot = lambda j: int(bar_ms[j])
+    events = [(slot(j), slot(j), 0.001) for j in range(0, n, 2)]           # 8h grid on 4h bars: every other open
+    marks = {slot(j) - Q.HOUR: 50.0 for j in range(0, n, 2)}
+    r = pd.Series({'sym': 'BTCUSDT', 'i_in': 20, 'i_out': 24})
+    e = Q.price_position(r, fills, arr, bar_ms, {'events': events, 'marks': marks}, 0.1, 'USDT')
+    px = [100.1, 102.2, 109.8]                                              # 100*1.001 -> 100.1 ; 102.102 -> 102.2 ; 109.89 -> 109.8
+    fees = 0.0005 * (px[0] * 2 + px[1] + px[2] * 3)
+    # boundaries 22 (held 2: the add at 22 is intrabar, after) and 24 (held 3: the time exit at 24's close settles later)
+    fund = 0.001 * 50.0 * 2 + 0.001 * 50.0 * 3
+    net = px[2] * 3 - px[0] * 2 - px[1] - fees - fund
+    assert e['R'] == pytest.approx(net / 10.0) and e['funding_r'] == pytest.approx(fund / 10.0)
+    assert e['gross_r'] == pytest.approx((110 * 3 - 100 * 2 - 102) / 10.0) and e['funding_events'] == 2
+    assert e['slip_r'] == pytest.approx((0.1 * 2 + 0.2 + 0.2 * 3) / 10.0) and e['fee_r'] == pytest.approx(fees / 10.0)
+    assert e['spread_r']['2'] == pytest.approx((net - (px[0] * 2 + px[1] + px[2] * 3) * 1e-4) / 10.0)
+    assert (e['mfe_r'], e['mae_r'], e['hold_bars']) == (pytest.approx(0.2), pytest.approx(0.2), 4)
+
+
+def test_funding_settlement_timing_at_and_inside_candles():
+    B = Q.BC.TF_MS
+    bar_ms = Q.START + np.arange(10) * B
+    ev = lambda T: [(int(T), int(T), 0.001)]
+    m = lambda T: {int(T) - Q.HOUR: 100.0}
+    # entry at the open of bar 2 is after the settlement at that open: nothing paid
+    assert Q.funding_paid(1, [(2, 'open', 1.0), (3, 'close', -1.0)], ev(bar_ms[2]), m(bar_ms[2]), bar_ms)[0] == 0
+    # an exit at the close of bar 3 (= open of bar 4) is after that settlement: paid on the full quantity
+    assert Q.funding_paid(1, [(2, 'open', 1.0), (3, 'close', -1.0)], ev(bar_ms[4]), m(bar_ms[4]),
+                          bar_ms)[0] == pytest.approx(0.1)
+    # a stop gapped at the open of bar 4 settles after the event at that open: still paid
+    assert Q.funding_paid(1, [(2, 'open', 1.0), (4, 'open', -1.0)], ev(bar_ms[4]), m(bar_ms[4]),
+                          bar_ms)[0] == pytest.approx(0.1)
+    # an interior (1h) event in a bar with a path add: the worse of before / after; favourable rate -> the smaller
+    T = bar_ms[3] + Q.HOUR
+    d = [(2, 'open', 1.0), (3, 'intra', 2.0), (5, 'close', -3.0)]
+    assert Q.funding_paid(1, d, ev(T), m(T), bar_ms)[0] == pytest.approx(0.3)
+    assert Q.funding_paid(1, d, [(int(T), int(T), -0.001)], m(T), bar_ms)[0] == pytest.approx(-0.1)
+    # a short receives a positive rate; the mark is the 1h bar ending at the slot, never a later one
+    assert Q.funding_paid(-1, [(2, 'open', 1.0), (5, 'close', -1.0)], ev(bar_ms[4]), m(bar_ms[4]),
+                          bar_ms)[0] == pytest.approx(-0.1)
+    with pytest.raises(Q.PairRunnerError, match='funding mark missing'):
+        Q.funding_paid(1, [(2, 'open', 1.0), (5, 'close', -1.0)], ev(bar_ms[4]), {int(bar_ms[4]): 100.0}, bar_ms)
+
+
 def test_both_quotes_face_the_same_min_notional_floor(tmp_path, monkeypatch):
     seen = {}
 
-    def fake(raw, key, side, symbols, *a, **k):
-        seen[symbols[0]] = {s: Q.BC.BT.legacy_rule(s)['min_notional'] for s in symbols}
-        raise Q.BC.RunnerError('stop here')
-    monkeypatch.setattr(Q.BC, 'simulate', fake)
+    def fake(book, cfg, **kw):
+        seen[book.syms[0]] = {s: Q.BT.legacy_rule(s)['min_notional'] for s in book.syms}
+        assert kw['fill_log'] == [] and kw['exchange_rules'] is None
+        raise RuntimeError('stop here')
+    monkeypatch.setattr(Q.BT, 'run', fake)
     k, _ = Q.load_all(**both(tmp_path))
-    before = dict(Q.BC.BT.MIN_NOTIONAL)
+    before = dict(Q.BT.MIN_NOTIONAL)
     for q in Q.QUOTES:
-        with pytest.raises(Q.PairRunnerError, match='stop here'):
+        with pytest.raises(RuntimeError, match='stop here'):
             Q.run_cell(k[q][1], q, 'exp_trend', 'long')
     assert list(seen['BTCUSDC'].values()) == list(seen['BTCUSDT'].values()) and seen['BTCUSDC']['BTCUSDC'] == 50
-    assert Q.BC.BT.MIN_NOTIONAL == before                                    # restored after the run
+    assert Q.BT.MIN_NOTIONAL == before                                     # restored after the run
 
 
-def test_no_packet_while_any_cell_is_incomplete(tmp_path, monkeypatch):
+def test_no_packet_while_pricing_is_off_or_any_cell_is_incomplete(tmp_path, monkeypatch):
     monkeypatch.setattr(Q.VC, 'clean_commit', lambda repo: 'c0ffee')
     sims = []
-    monkeypatch.setattr(Q, 'run_cell', lambda raw, q, key, side: sims.append(q) or {'episodes': [], 'signals': {}})
+    monkeypatch.setattr(Q, 'run_cell', lambda raw, q, key, side: sims.append(q) or {'signals': {}})
     out = tmp_path / 'pkt.json'
-    with pytest.raises(Q.PairRunnerError, match='nothing simulated'):          # pricing not ready: refused up front
+    monkeypatch.setattr(Q, 'PRICING_READY', False)
+    with pytest.raises(Q.PairRunnerError, match='nothing simulated'):          # pricing off: refused up front
         Q.run(out=str(out), **both(tmp_path))
     assert not out.exists() and sims == []
     monkeypatch.setattr(Q, 'PRICING_READY', True)
+    monkeypatch.setattr(Q, 'price_cell', lambda cell, q, acc: {'status': 'INCOMPLETE', 'reason': 'x'})
     with pytest.raises(Q.PairRunnerError, match='INCOMPLETE, no packet written'):
-        Q.run(out=str(out), **both(tmp_path / 'stub'))
+        Q.run(out=str(out), **both(tmp_path / 'inc'))
     monkeypatch.setattr(Q, 'price_cell', lambda cell, q, acc: {'status': 'complete'})    # a bare status is not enough
     with pytest.raises(Q.PairRunnerError, match='priced cell lacks'):
         Q.run(out=str(out), **both(tmp_path / 'bare'))
     assert not out.exists()
-    monkeypatch.setattr(Q, 'price_cell', lambda cell, q, acc: dict.fromkeys(Q.PRICED_KEYS, []) | {'status': 'complete'})
-    p = Q.run(out=str(out), **both(tmp_path / 'ok'))
-    assert p['cells']['exp_trend.long']['pairing'] == {'paired': [], 'only_usdt': [], 'only_usdc': []}
-    assert out.exists() and p['usdc_better'].startswith('UNAVAILABLE') and p['verdict'] is None
+
+
+def test_a_complete_study_writes_one_packet_with_no_verdict(tmp_path, monkeypatch):
+    monkeypatch.setattr(Q.VC, 'clean_commit', lambda repo: 'c0ffee')
+    out = tmp_path / 'pkt.json'
+    p = Q.run(out=str(out), **both(tmp_path))
+    assert out.exists() and json.loads(out.read_text())['packet_sha256'] == p['packet_sha256']
+    assert p['usdc_better'].startswith('UNAVAILABLE') and p['verdict'] is None and set(p['cells']) == \
+        {f'{k}.{s}' for k, s in Q.CELLS}
+    c = p['cells']['exp_trend.long']
+    assert c['priced']['USDC']['costs']['n'] > 0 and 'episodes' not in c['priced']['USDC']
+    assert c['paired']['n'] == len(c['pairing']['paired']) == c['sufficiency']['paired']
+    assert set(c['agreement']) >= {'both', 'only_usdt', 'only_usdc', 'lead_lag_bars', 'jaccard'}
     with pytest.raises(Q.PairRunnerError, match='never overwritten'):
         Q.run(out=str(out), **both(tmp_path / 'again'))
 

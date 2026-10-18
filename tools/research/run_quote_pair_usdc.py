@@ -8,6 +8,7 @@ No packet or verdict is written unless every required cell is complete, and `USD
 (the CI recipe is not frozen). No routing, runtime file, strategy change or install.
 """
 import argparse
+import collections
 import hashlib
 import io
 import json
@@ -23,6 +24,7 @@ for _p in (ROOT, HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import backtest as BT  # noqa: E402
 import costs as C  # noqa: E402
 import run_breadth_candidate as BC  # noqa: E402
 import run_vwaprev_candidate as VC  # noqa: E402
@@ -50,7 +52,9 @@ FUNDING_RATE_ABS_MAX = 0.05            # sanity bound per event (Binance caps ar
 FILTER_FIELDS = {'PRICE_FILTER': 'tickSize', 'LOT_SIZE': 'stepSize', 'MARKET_LOT_SIZE': 'stepSize',
                  'MIN_NOTIONAL': 'notional'}
 PRICED_KEYS = ('status', 'episodes', 'costs', 'spread_rows')    # what a complete priced cell must carry
-PRICING_READY = False                  # price_cell is a stub until Codex rules on 6245780479: refuse before simulating
+PRICING_READY = True                   # view A (Codex 6245962231); False refuses before any simulation
+SLIP_C = 0.05                          # slip-v1 c (SLIP-C-UNFITTED), as range_vwap_rev
+SCEN = C.STRESS['base']
 
 
 class PairRunnerError(RuntimeError):
@@ -293,9 +297,10 @@ def load_all(usdt_klines, usdc_klines, usdt_accounting, usdc_accounting):
 
 # ------------------------------------------------------------------ simulation
 def run_cell(raw, quote, key, side):
-    """One strategy-side cell on one quote. BTC<quote> is the book's first symbol (its BTC context). The legacy
-    min-notional floor (backtest.MIN_NOTIONAL) lists USDT symbols only; for the run each <base><quote> gets its USDT
-    twin's floor, so both quotes face the same entry floor and no quote-only episode comes from the table."""
+    """One strategy-side cell on one quote: the app backtest (backtest.run) with the opt-in fill log. BTC<quote> is the
+    book's first symbol (its BTC context). The legacy min-notional floor (backtest.MIN_NOTIONAL) lists USDT symbols
+    only; for the run each <base><quote> gets its USDT twin's floor, so both quotes face the same entry floor and no
+    quote-only episode comes from the table."""
     ctx = 'BTC' + quote
     symbols = [b + quote for b in BASES]
     if list(raw) != symbols:
@@ -304,26 +309,60 @@ def run_cell(raw, quote, key, side):
         VC.assert_bounded(raw, WARM, END)
     except VC.RunnerError as e:
         raise PairRunnerError(str(e)) from None
-    floor = {b + quote: BC.BT.MIN_NOTIONAL.get(b + 'USDT', 5) for b in BASES}
-    old = BC.BT.MIN_NOTIONAL
-    BC.BT.MIN_NOTIONAL = floor
+    floor = {b + quote: BT.MIN_NOTIONAL.get(b + 'USDT', 5) for b in BASES}
+    old = BT.MIN_NOTIONAL
+    BT.MIN_NOTIONAL = floor
     try:
-        tr, cv, book, pos = BC.simulate(raw, key, side, symbols, {}, START, END, tf_sec=BC.TF_SEC, **SIM)
-    except BC.RunnerError as e:
-        raise PairRunnerError(str(e)) from None
+        book = BT.Book(raw)
+        t = VC._ms(book.t)
+        if len(t) and t.max() >= END:
+            raise PairRunnerError(f'{quote}: the book holds a candle at / after END')
+        if book.gaps:
+            raise PairRunnerError(f'{quote}: book gaps {book.gaps} after completeness screening')
+        cfg = [BC.sleeve(key, side, symbols, {}, SIM['risk'], SIM['max_pos'])]
+        log = []
+        tr, cv = BT.run(book, cfg, start=SIM['start'], max_lev=SIM['max_lev'], daily_halt=SIM['daily_halt'],
+                        warmup=int((t < START).sum()), t0=np.datetime64(START, 'ms'), t1=np.datetime64(END, 'ms'),
+                        fund_per_bar=BT.FUND_PER_BAR * BC.TF_SEC / 14400, exchange_rules=None, fill_log=log)
     finally:
-        BC.BT.MIN_NOTIONAL = old
+        BT.MIN_NOTIONAL = old
     if book.syms[0] != ctx:
         raise PairRunnerError(f'{quote}: backtest did not use quote-local BTC context')
-    t = VC._ms(book.t)
-    eps = [{'strategy': key, 'side': side, 'base': r.sym[:-len(quote)], 't_entry': int(t[int(r.i_in)]),
-            'i_in': int(r.i_in), 'i_out': int(r.i_out), 'R': float(r.R), 'pnl': float(r.pnl), 'why': str(r.why)}
-           for r in tr.itertuples() if r.side == side]
     col = 'le' if side == 'long' else 'se'
     m = (t >= START) & (t < END)
-    sig = {s[:-len(quote)]: [int(x) for x in t[np.asarray(book.raw_sig(key, s)[col], bool) & m]] for s in symbols}
-    return {'status': 'simulated', 'context_symbol': ctx, 'episodes': eps, 'signals': sig, 'trades': tr, 'curve': cv,
-            'bar_ms': t}
+    sig = {s_[:-len(quote)]: [int(x) for x in t[np.asarray(book.raw_sig(key, s_)[col], bool) & m]] for s_ in symbols}
+    return {'status': 'simulated', 'context_symbol': ctx, 'key': key, 'side': side, 'quote': quote, 'trades': tr,
+            'curve': cv, 'book': book, 'bar_ms': t, 'fills': log, 'signals': sig}
+
+
+def positions(cell):
+    """Group the fill log per position and prove it complete: every closed trade has its entry first, its exit last on
+    the trade's exit candle and exit quantity == entry + adds; every other logged position is still open at the end.
+    Any mismatch means a fill path went unlogged -> the whole study fails."""
+    q, tr = cell['quote'], cell['trades']
+    groups = {}
+    for f in cell['fills']:
+        if f['liq'] != 'taker':
+            raise PairRunnerError(f'{q}: a non-taker fill in a market-entry cell ({f["kind"]} {f["sym"]})')
+        groups.setdefault((f['sym'], f['pos_i']), []).append(f)
+    closed = []
+    for r in (tr.itertuples() if len(tr) else ()):
+        fills = groups.pop((r.sym, int(r.i_in)), None)
+        qin = sum(f['qty'] for f in fills or () if f['kind'] != 'exit')
+        qout = sum(f['qty'] for f in fills or () if f['kind'] == 'exit')
+        if (not fills or fills[0]['kind'] != 'entry' or fills[-1]['kind'] != 'exit' or fills[-1]['i'] != int(r.i_out)
+                or not abs(qin - qout) <= 1e-9 * max(qin, 1e-12)):
+            raise PairRunnerError(f'{q}: fill log does not account for the {r.sym} trade entered at bar {r.i_in} '
+                                  '(a fill path is unlogged)')
+        closed.append((r, fills))
+    still_open = []
+    for (sym, i_in), fills in groups.items():
+        qin = sum(f['qty'] for f in fills if f['kind'] != 'exit')
+        qout = sum(f['qty'] for f in fills if f['kind'] == 'exit')
+        if fills[0]['kind'] != 'entry' or not qin - qout > 1e-9 * qin:
+            raise PairRunnerError(f'{q}: logged {sym} position at bar {i_in} closed without a trade record')
+        still_open.append({'base': sym[:-len(q)], 't_entry': int(cell['bar_ms'][i_in])})
+    return closed, still_open
 
 
 # ------------------------------------------------------------------ pairing
@@ -394,12 +433,162 @@ def sufficiency(pairing):
                    f'>= {MIN_SYMBOLS} symbols'}
 
 
-# ------------------------------------------------------------------ pricing (pending Codex A/B ruling 6245780479)
+# ------------------------------------------------------------------ pricing (view A, Codex 6245962231)
+_Bar = collections.namedtuple('_Bar', 'high low close')
+
+
+def _phase(f, o):
+    """When a fill happens inside its candle: 'open' (entry, or a stop gapped at the open), 'close' (signal / time exit
+    at the close) or 'intra' (every path event)."""
+    if f['kind'] == 'entry' or (f['kind'] == 'exit' and f['gap'] and f['why'] == 'stop' and f['ref'] == o):
+        return 'open'
+    return 'close' if f['kind'] == 'exit' and f['why'] in ('signal', 'time') else 'intra'
+
+
+def _held(deltas, j, phases):
+    return sum(d for b, ph, d in deltas if b < j or (b == j and ph in phases))
+
+
+def funding_paid(side, deltas, events, marks, bar_ms):
+    """Exact funding on the held quantity (+ = paid). An event at a candle boundary T = open of bar j is paid on what was
+    held through T: every fill of earlier bars except a close-of-bar exit at T settles after it, and an entry at the open
+    of bar j fills after it. An event inside bar j with path fills in that bar charges the worse of the quantity before
+    and after those fills (their instant is unknown). Mark = funding-mark proxy v1: the close of the 1h mark bar ending
+    at the event's grid slot."""
+    paid, rows = 0.0, []
+    lo = bar_ms[min(b for b, _, _ in deltas)]
+    hi = bar_ms[max(b for b, _, _ in deltas)] + BC.TF_MS
+    sd = 'long' if side == 1 else 'short'
+    for T, slot, rate in events:
+        if not lo < slot <= hi:
+            continue
+        j = int(np.searchsorted(bar_ms, slot, side='right')) - 1
+        if j < len(bar_ms) and bar_ms[j] == slot:
+            qs = [_held([(b, ph, d) for b, ph, d in deltas if not (b == j - 1 and ph == 'close')], j, ())]
+        else:
+            qs = [_held(deltas, j, ('open',)), _held(deltas, j, ('open', 'intra'))]
+        qs = [q for q in qs if q > 1e-12]
+        if not qs:
+            continue
+        mark = marks.get(slot - HOUR)
+        if mark is None:
+            raise PairRunnerError(f'funding mark missing at {slot}')
+        c = max(C.funding_cost(sd, q, [(slot, rate, mark)], SCEN) for q in qs)
+        paid += c
+        rows.append((slot, rate, mark, c))
+    return paid, rows
+
+
+def price_position(r, fills, arr, bar_ms, acc, tick, quote):
+    """View A: every fill re-priced with slip-v1 (15 causally closed 4h bars, c = SLIP_C), the 5 bp taker fee and adverse
+    tick rounding; exact funding on the held quantity. Never uses the backtest's own P&L."""
+    side = fills[0]['side']
+    gross_ref = cash = fees = slip = notional = 0.0
+    deltas = []
+    for f in fills:
+        i, ph = f['i'], _phase(f, arr['o'][f['i']])
+        e = i if ph == 'close' else i - 1                          # the last candle closed when the fill happens
+        if e - C.SLIP_BARS + 1 < 0:
+            raise PairRunnerError(f'{quote}: no slip history for a {f["sym"]} fill at bar {i}')
+        bars = [_Bar(arr['h'][k], arr['l'][k], arr['c'][k]) for k in range(e - C.SLIP_BARS + 1, e + 1)]
+        bps = C.slip_bps(bars, SLIP_C, SCEN.vol)
+        px = C.fill_price(f['ref'], f['action'], bps, SCEN, gap=f['gap'], tick=tick)
+        sgn = 1 if f['action'] == 'sell' else -1
+        cash += sgn * px * f['qty']
+        gross_ref += sgn * f['ref'] * f['qty']
+        slip += abs(px - f['ref']) * f['qty']
+        fees += C.TAKER * px * f['qty'] * SCEN.fee_mult
+        notional += px * f['qty']
+        deltas.append((i, ph, f['qty'] if f['kind'] != 'exit' else -f['qty']))
+    fund, rows = funding_paid(side, deltas, acc['events'], acc['marks'], bar_ms)
+    net = cash - fees - fund
+    risk, dist, e0 = fills[0]['risk'], fills[0]['stop_dist'], fills[0]['ref']
+    i_in, i_out = int(r.i_in), int(r.i_out)
+    hi, lo = arr['h'][i_in:i_out + 1], arr['l'][i_in:i_out + 1]
+    mfe = float(max(0.0, (hi.max() - e0) if side == 1 else (e0 - lo.min())) / dist)
+    mae = float(max(0.0, (e0 - lo.min()) if side == 1 else (hi.max() - e0)) / dist)
+    move = side * (fills[-1]['ref'] - e0) / dist
+    return {'strategy': None, 'side': None, 'base': r.sym[:-len(quote)], 't_entry': int(bar_ms[i_in]),
+            'i_in': i_in, 'i_out': i_out, 'hold_bars': i_out - i_in, 'n_fills': len(fills),
+            'R': net / risk, 'gross_r': gross_ref / risk, 'slip_r': slip / risk, 'fee_r': fees / risk,
+            'funding_r': fund / risk, 'funding_events': len(rows), 'net': net, 'equity_pct': net / SIM['start'] * 100,
+            'spread_r': {str(b): (net - notional * b / 2 / 1e4) / risk for b in SPREAD_BPS},
+            'mfe_r': mfe, 'mae_r': mae, 'giveback_r': mfe - move, 'why': fills[-1]['why']}
+
+
+def accounting_index(acc_sym):
+    f, mk = acc_sym['funding'], acc_sym['mark']
+    step = acc_sym['cadence_h'] * HOUR
+    t = f.fundingTime.to_numpy(np.int64)
+    slots = np.rint(t / step).astype(np.int64) * step
+    return {'events': list(zip(t.tolist(), slots.tolist(), f.fundingRate.to_numpy(float).tolist())),
+            'marks': dict(zip(mk.open_time.to_numpy(np.int64).tolist(), mk.close.to_numpy(float).tolist()))}
+
+
 def price_cell(cell, quote, accounting):
-    """Re-prices every fill at the 5 bp conservative taker fee, slip-v1, exact funding with the causal mark proxy and
-    the 0/1/2/5 bp SPREAD-UNCALIBRATED rows. Not implemented until Codex rules on the fill-log design, so a cell is
-    never complete and no packet can be written (PRICING_READY stays False)."""
-    return {'status': 'INCOMPLETE', 'reason': 'cost re-pricing pending Codex ruling 6245780479 (fill-log A / B)'}
+    """Every closed position of the cell priced under view A; positions still open at the window end are listed, never
+    priced or zero-filled."""
+    closed, still_open = positions(cell)
+    book, eps = cell['book'], []
+    idx = {}
+    for r, fills in closed:
+        sym = r.sym
+        if sym not in idx:
+            idx[sym] = accounting_index(accounting[sym])
+        tick = float(accounting[sym]['rules']['filters']['PRICE_FILTER']['tickSize'])
+        e = price_position(r, fills, book.arr[sym], cell['bar_ms'], idx[sym], tick, quote)
+        e.update(strategy=cell['key'], side=cell['side'])
+        eps.append(e)
+    return {'status': 'complete', 'episodes': eps, 'open_at_end': still_open, 'costs': cost_summary(eps),
+            'spread_rows': {str(b): {'label': SPREAD_LABEL, 'half_spread_per_fill_bps': b / 2,
+                                     'net_r_sum': _r(sum(e['spread_r'][str(b)] for e in eps))} for b in SPREAD_BPS}}
+
+
+def _r(x):
+    return BC._num(float(x)) if x is not None else None
+
+
+def cost_summary(eps):
+    """Per-quote metrics of a priced cell: net / gross R, cost components, PF, max DD (R, by exit order), MFE / MAE /
+    giveback / hold means, quote-equity %."""
+    if not eps:
+        return {'n': 0}
+    net = np.array([e['R'] for e in eps])
+    order = np.argsort([e['i_out'] for e in eps], kind='stable')
+    cum = np.cumsum(net[order])
+    dd = float((np.maximum.accumulate(np.r_[0.0, cum]) - np.r_[0.0, cum]).max())
+    win, loss = net[net > 0].sum(), -net[net < 0].sum()
+    mean = lambda k: _r(np.mean([e[k] for e in eps]))
+    return {'n': len(eps), 'net_r_sum': _r(net.sum()), 'net_r_mean': _r(net.mean()),
+            'gross_r_sum': _r(sum(e['gross_r'] for e in eps)), 'slip_r_sum': _r(sum(e['slip_r'] for e in eps)),
+            'fee_r_sum': _r(sum(e['fee_r'] for e in eps)), 'funding_r_sum': _r(sum(e['funding_r'] for e in eps)),
+            'pf': _r(win / loss) if loss > 0 else None, 'max_dd_r': _r(dd), 'win_rate': _r((net > 0).mean()),
+            'mfe_r_mean': mean('mfe_r'), 'mae_r_mean': mean('mae_r'), 'giveback_r_mean': mean('giveback_r'),
+            'hold_bars_mean': mean('hold_bars'), 'equity_pct_sum': _r(sum(e['equity_pct'] for e in eps))}
+
+
+def paired_metrics(pairing):
+    """USDC minus USDT on the exactly paired episodes only: net / gross R and cost deltas, by quarter and by symbol, and
+    the symbol concentration of the absolute net-R delta."""
+    p = pairing['paired']
+    if not p:
+        return {'n': 0}
+    d = {k: [y[k] - x[k] for x, y in p] for k in ('R', 'gross_r', 'slip_r', 'fee_r', 'funding_r', 'equity_pct')}
+    by_q, by_s = {}, {}
+    for (x, y), dr in zip(p, d['R']):
+        for grp, k in ((by_q, _quarter(x['t_entry'])), (by_s, x['base'])):
+            g = grp.setdefault(k, {'n': 0, 'net_r_delta_sum': 0.0})
+            g['n'] += 1; g['net_r_delta_sum'] += dr
+    for grp in (by_q, by_s):
+        for g in grp.values():
+            g['net_r_delta_sum'] = _r(g['net_r_delta_sum'])
+    absum = sum(abs(v) for v in d['R'])
+    top = max(by_s, key=lambda k: sum(abs(dr) for (x, _), dr in zip(p, d['R']) if x['base'] == k))
+    return {'n': len(p), **{f'{k}_delta_sum': _r(sum(v)) for k, v in d.items()},
+            'net_r_delta_mean': _r(np.mean(d['R'])), 'by_quarter': dict(sorted(by_q.items())),
+            'by_symbol': dict(sorted(by_s.items())), 'top_symbol': top,
+            'top_symbol_abs_share': _r(sum(abs(dr) for (x, _), dr in zip(p, d['R']) if x['base'] == top) / absum)
+            if absum > 0 else None}
 
 
 # ------------------------------------------------------------------ run
@@ -412,16 +601,17 @@ def run(*, usdt_klines, usdc_klines, usdt_accounting, usdc_accounting, out, repo
         raise PairRunnerError(str(e)) from None
     k, a = load_all(usdt_klines, usdc_klines, usdt_accounting, usdc_accounting)      # refuses before any simulation
     if not PRICING_READY:
-        raise PairRunnerError('INCOMPLETE, no packet written: cost re-pricing pending Codex ruling 6245780479 '
+        raise PairRunnerError('INCOMPLETE, no packet written: view-A pricing disabled (PRICING_READY) '
                               '(inputs validated; nothing simulated)')
     cells, incomplete = {}, []
     for key, side in CELLS:
         name = f'{key}.{side}'
         sim = {q: run_cell(k[q][1], q, key, side) for q in QUOTES}
         priced = {q: price_cell(sim[q], q, a[q][1]) for q in QUOTES}
-        pairing = pair_episodes(sim['USDT']['episodes'], sim['USDC']['episodes'])
-        cells[name] = {'priced': priced, 'agreement': agreement(sim['USDT']['signals'], sim['USDC']['signals']),
-                       'sufficiency': sufficiency(pairing),
+        pairing = pair_episodes(*(priced[q].get('episodes', []) for q in QUOTES))
+        cells[name] = {'priced': {q: {k_: v for k_, v in p.items() if k_ != 'episodes'} for q, p in priced.items()},
+                       'agreement': agreement(sim['USDT']['signals'], sim['USDC']['signals']),
+                       'paired': paired_metrics(pairing), 'sufficiency': sufficiency(pairing),
                        'pairing': {'paired': [[x['t_entry'], x['base'], x['R'], y['R']] for x, y in pairing['paired']],
                                    'only_usdt': [[e['t_entry'], e['base'], e['R']] for e in pairing['only_usdt']],
                                    'only_usdc': [[e['t_entry'], e['base'], e['R']] for e in pairing['only_usdc']]}}
