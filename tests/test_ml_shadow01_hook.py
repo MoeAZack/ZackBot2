@@ -52,8 +52,8 @@ def run_fixture(tmp, monkeypatch, ml_on, boom=False):
         setattr(e.trade, name, wrap)
     if boom:
         def raise_(*a, **k): raise RuntimeError('ml boom')
-        monkeypatch.setattr(MLS, 'record_decision', raise_)
-        monkeypatch.setattr(MLS, 'record_label', raise_)
+        monkeypatch.setattr(MLS, 'build_decision_record', raise_)
+        monkeypatch.setattr(MLS, 'build_label_record', raise_)
     frames = {'BTCUSDT': frame(100.0), 'ETHUSDT': frame(50.0)}
     for _t, sigs in SCRIPT:
         e.compute_signals = lambda tf, syms, extra=(), sigs=sigs: ({f'A|{s}': dict(v) for s, v in sigs.items()}, frames)
@@ -67,6 +67,7 @@ def run_fixture(tmp, monkeypatch, ml_on, boom=False):
 
 
 def ledger_rows(e, kind):
+    assert e.ml_flush(5.0)                                  # #104: rows are written by the background writer
     p = e.ml_paths()[kind]
     return [json.loads(x) for x in open(p, encoding='utf-8')] if os.path.exists(p) else []
 
@@ -76,7 +77,7 @@ def test_close_excursions_only_labelled_when_audit_is_fully_observed(tmp_path, m
     e.S['ML_SHADOW'] = True
     e._ml_ledgers = lambda: (object(), object())
     captured = []
-    monkeypatch.setattr(MLS, 'record_label', lambda *a, **kw: (captured.append(kw), kw)[1])
+    monkeypatch.setattr(MLS, 'build_label_record', lambda *a, **kw: (captured.append(kw), kw)[1])
     lot = {'ml_decision_id': 'd' * 32}
     rec = dict(r=1.0, pnl=5.0, exit_reason='take_profit', closed='2026-10-17T00:00:00+00:00')
     metrics = {'mfe': {'r': 2.0}, 'mae': {'r': -0.5}}
