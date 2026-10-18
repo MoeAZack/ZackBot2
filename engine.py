@@ -2907,6 +2907,63 @@ class Engine:
         return TB.admit(b, size.get('notional'), size.get('risk'), max_leverage=self.S['MAX_LEVERAGE'],
                         working=b['working'] + trailing)
 
+    def _tb_excursions(self):
+        """{trade id: {mfe_r, mae_r, giveback_r}} from the T05a close records in trade_audit.jsonl (+ its rotated .1). Read
+        incrementally from a saved offset per file (only new lines); a rotation (the file got shorter) re-reads both. Never
+        raises; hindsight only - never a trading input."""
+        with vars(self).setdefault('_tb_exc_lock', threading.Lock()):     # one reader at a time (HTTP threads)
+            return self._tb_excursions_read()
+
+    def _tb_excursions_read(self):
+        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, fid=None))
+        cur = self.F['audit']
+        try: stt = os.stat(cur); size, fid = stt.st_size, (stt.st_ino, stt.st_ctime_ns)
+        except OSError: size, fid = 0, None
+        if fid != c.get('fid') or size < c['off'].get(cur, 0):           # rotated / replaced (not only shorter): re-read both
+            c['off'].clear(); c['ids'].clear(); c['fid'] = fid
+        for path in (cur + '.1', cur):
+            try:
+                with open(path, 'rb') as f:
+                    f.seek(c['off'].get(path, 0))
+                    for ln in f:
+                        if not ln.endswith(b'\n'): break                   # a line still being written: next time
+                        c['off'][path] = c['off'].get(path, 0) + len(ln)
+                        if b'"trade_audit"' not in ln: continue
+                        try: r = json.loads(ln)
+                        except ValueError: continue
+                        if not isinstance(r, dict) or r.get('kind') != 'trade_audit' or not r.get('id'): continue
+                        m = r.get('metrics') if isinstance(r.get('metrics'), dict) else {}
+                        c['ids'][r['id']] = dict(mfe_r=(m.get('mfe') or {}).get('r'), mae_r=(m.get('mae') or {}).get('r'),
+                                                 giveback_r=r.get('giveback_r'))
+            except OSError: continue
+        return c['ids']
+
+    def true_books_compare(self):
+        """Strategies-tab comparison (read-only, PAPER): families = the five books, strategies = every mapped strategy, from
+        the same TRUE-BOOK valuation as the status. Incomplete rows are shown with their reasons and never ranked."""
+        try:
+            with self.lock:
+                on, books = self._tb_on(), self.true_books(persist=False)
+                st, coh = self._tb_state(), self.state.get('cohort') or {}
+                cid, t0 = st['cohort_id'], TB._ms(coh.get('started_utc'))
+                rows = [r for r in self._tb_rows(cid) if r.get('cohort_id') == cid] if cid else []
+                keys = {s['id']: s.get('key') for s in self.S.get('SLEEVES', [])}
+                rej, missed = [], list(self.missed)
+                for m in missed:
+                    t = TB._ms(m.get('logged'))
+                    if m.get('kind') or t is None or t0 is None or t < t0: continue
+                    k = keys.get(m.get('sleeve')); b = TB.book_of(k)
+                    if b: rej.append((b, k, m.get('code') or TA.reason_code(m.get('reason'))[1]))
+                partial = len(missed) >= 600 and t0 is not None and (TB._ms(missed[0].get('logged')) or 0) > t0
+                unowned = len({x.get('key') or x.get('id') or x.get('symbol') for b in books.values() for x in b['incomplete']
+                               if x['reason'] == 'unowned_account_activity'})
+            out = TB.compare(books, rows, self._tb_excursions(), rej)
+            return dict(on=on, cohort=dict(id=cid, started_utc=coh.get('started_utc'), unowned_activity=unowned,
+                                           evidence_gaps=int(self.state.get('cohort_rows_gap') or 0)),
+                        rejections_window_partial=partial, **out)
+        except Exception as ex:
+            return dict(on=False, error=f'{type(ex).__name__}: {ex}')
+
     def true_books_status(self):
         try:
             on = self._tb_on()
