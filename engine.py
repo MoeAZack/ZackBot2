@@ -3424,26 +3424,33 @@ class Engine:
         return True
 
     STOP_FILL_WAIT_S = 60            # a vanished stop without a readable execution record waits this long, then is booked unconfirmed
+    STOP_FILL_TRIES = 3              # ... and only after this many reads by this process (a restart never skips the wait)
 
     def _stop_fill(self, l):
         """A vanished exchange stop's own execution (Codex 6243423221) -> ('ok', avg price, order record) when Binance reports
         it FILLED for the lot's quantity; ('wait', None, None) while it is unreadable / ambiguous for less than
         STOP_FILL_WAIT_S; then ('none', None, None): booked at the stop price as exit_px_unconfirmed (the row stays
         INCOMPLETE - never a zero fee, never the configured stop price as exchange truth). A client without stop_fill
-        (no record source) is 'none' at once. The order record stays in memory only (ids are never written)."""
+        (no record source) is 'none' at once. The order record stays in memory only (ids are never written). While it
+        waits, lot['stop_gone'] = [stop tag, t0] holds the lot out of manage() (no add, stop move or close on a position
+        Binance already closed); a different stop tag (restored / replaced stop) is a new wait, never an old timer."""
         fn = getattr(self.trade, 'stop_fill', None)
         if not callable(fn): return 'none', None, None
         o = None
+        tries = vars(self).setdefault('_sf_tries', {})                 # memory only: reads per stop tag in this process
+        tries[l['stop_id']] = tries.get(l['stop_id'], 0) + 1
         try: o = fn(l['symbol'], l['stop_id'])
-        except Exception as ex: log.info(f"{l['symbol']} stop {l['stop_id']} execution unreadable ({type(ex).__name__}) - re-checked next pass")
+        except Exception as ex: log.info(f"{l['symbol']} {l['side']} stop execution unreadable ({type(ex).__name__}) - re-checked next pass")
         try: q = float((o or {}).get('executedQty') or 0)
         except (TypeError, ValueError): q = 0.0
         px = self._fill_px(o) if o else None
         tol = self._qty_tol(self.rules[l['symbol']]['step']) if l['symbol'] in self.rules else 1e-9
         if o and str(o.get('status') or '').upper() == 'FILLED' and px and abs(q - l['qty']) <= tol:
-            return 'ok', px, o
-        t0 = l.setdefault('stop_gone_t', time.time())
-        return ('wait', None, None) if time.time() - t0 < self.STOP_FILL_WAIT_S else ('none', None, None)
+            tries.pop(l['stop_id'], None); return 'ok', px, o
+        sg = l.get('stop_gone')
+        if not (isinstance(sg, list) and len(sg) == 2 and sg[0] == l['stop_id']): sg = l['stop_gone'] = [l['stop_id'], time.time()]
+        if time.time() - sg[1] < self.STOP_FILL_WAIT_S or tries[l['stop_id']] < self.STOP_FILL_TRIES: return 'wait', None, None
+        tries.pop(l['stop_id'], None); return 'none', None, None
 
     def _tp_record(self, lot):
         """Order record of a classic resting TP by its client id -> dict(state 'ok'|'notfound'|'unknown', exec, px, final).
@@ -4032,6 +4039,7 @@ class Engine:
                 tick = self.rules[lot['symbol']]['tick'] if lot['symbol'] in self.rules else 1e-8
                 ge = lambda lvl: sd * (m - lvl) >= 0           # price at/through a favourable level
                 if lot.get('pending'): continue                # waiting for the exchange to confirm an unanswered order
+                if lot.get('stop_gone') and lot['stop_gone'][0] == lot.get('stop_id'): continue   # its stop fired: reconcile books it
                 if lot.get('restored_from_bak') and lot.get('restored_mismatch'): continue   # AUD-05 r1: stale copy - owner review
                 try:                                           # T05a: excursions, path, state, online policies (observe only)
                     t_ = now_utc().isoformat(timespec='seconds')   # memory only: NO save_state / disk / network here; the
@@ -4762,10 +4770,11 @@ class Engine:
                 l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], px])
                 l['fees'] = l.get('fees', 0.0) + l['qty'] * px * FEE_EST
                 if how == 'ok':                                         # cost record + userTrades commission (FEE-ASSET-01)
-                    self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'], l['qty'], order=o, cost_lot=l)
+                    self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'], _fnum(o.get('executedQty')) or l['qty'],
+                               order=o, cost_lot=l)
                 else:                                                   # no exchange record: the row stays INCOMPLETE
                     l['exit_px_unconfirmed'] = int(l.get('exit_px_unconfirmed') or 0) + 1
-                l.pop('stop_gone_t', None)
+                l.pop('stop_gone', None)
                 expected -= l['qty']; self._finish(k, 'stop')
                 self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {px}")
                 if have >= expected - tol: break

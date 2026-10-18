@@ -71,7 +71,7 @@ def test_an_unreadable_stop_record_waits_then_books_unconfirmed_and_incomplete(m
     for _ in range(3):
         e.reconcile(500)
         assert k in e.state['lots'] and e.state['lots'][k]['qty'] == qty    # waiting: never booked, never resized
-    assert e.state['lots'][k]['stop_gone_t']
+    assert e.state['lots'][k]['stop_gone']
     monkeypatch.setattr(E.Engine, 'STOP_FILL_WAIT_S', 0)
     e.reconcile(500)
     h = e.history[-1]
@@ -89,7 +89,7 @@ def test_an_ambiguous_record_is_never_taken_as_the_fill(monkeypatch, kind):
     l = e.state['lots'][k]; qty, stop = l['qty'], l['stop']
     tag = fire(e, k, stop - 0.5, **dict(qty=dict(qty=qty / 2), status=dict(status='EXPIRED'), none={})[kind])
     if kind == 'none': e.trade.stop_fills[tag] = None
-    e.reconcile(500)
+    for _ in range(3): e.reconcile(500)
     assert k in e.state['lots']
     monkeypatch.setattr(E.Engine, 'STOP_FILL_WAIT_S', 0)
     e.reconcile(500)
@@ -141,9 +141,39 @@ def test_client_stop_fill_classic_algo_and_missing():
     c = client([dict(algoId=7, algoStatus='FINISHED', actualOrderId=55), dict(orderId=55, status='FILLED')])
     assert c.stop_fill('BTCUSDT', 'a:7')['orderId'] == 55
     assert [x[1:3] for x in c._req.calls] == [('/fapi/v1/algoOrder', dict(algoId='7')), ('/fapi/v1/order', dict(symbol='BTCUSDT', orderId=55))]
-    c = client([dict(clientAlgoId='za1', algoStatus='CANCELED', actualOrderId='')])
-    assert c.stop_fill('BTCUSDT', 'ac:za1') is None and len(c._req.calls) == 1   # never triggered: no order behind it
+    for aid in ('', None, 0, '0', -1, '-1'):
+        c = client([dict(clientAlgoId='za1', algoStatus='CANCELED', actualOrderId=aid)])
+        assert c.stop_fill('BTCUSDT', 'ac:za1') is None and len(c._req.calls) == 1   # never triggered: no order behind it
+    c = client([dict(clientAlgoId='za1', algoStatus='NEW')])
+    assert c.stop_fill('BTCUSDT', 'ac:za1') is None and c._req.calls[0][2] == dict(clientAlgoId='za1')
     assert client([BC.BinanceError(-2013, 'Order does not exist.')]).stop_fill('BTCUSDT', 'c:x') is None
     with pytest.raises(BC.BinanceError):
         client([BC.BinanceError(-1001, 'disconnected')]).stop_fill('BTCUSDT', 'o:5')   # transient: unknown, not "none"
     assert client([]).stop_fill('BTCUSDT', 'bogus') is None
+
+
+def test_a_waiting_lot_is_never_managed(monkeypatch):
+    e, _ = mk(SX); k = opened(e); settle(e)
+    l = e.state['lots'][k]
+    tag = fire(e, k, l['stop'] - 0.5); e.trade.stop_fills[tag] = None
+    e.reconcile(500)
+    assert e.state['lots'][k]['stop_gone'][0] == tag
+    for flag in ('stop_dirty', 'force_close'):                         # each would make manage place a stop / close
+        e.state['lots'][k][flag] = True; n = len(e.trade.calls)
+        e.manage(e.trade.marks())
+        assert k in e.state['lots'] and not [c for c in e.trade.calls[n:] if c in ('close', 'open', 'stop', 'cancel')]
+        e.state['lots'][k].pop(flag)
+
+
+def test_a_new_stop_is_a_new_wait_and_a_restart_never_skips_it(monkeypatch):
+    e, _ = mk(SX); k = opened(e); settle(e)
+    l = e.state['lots'][k]
+    l['stop_gone'] = ['o:old', 1.0]                                    # an old timer for a stop that was replaced
+    tag = fire(e, k, l['stop'] - 0.5); e.trade.stop_fills[tag] = None
+    e.reconcile(500)
+    assert k in e.state['lots'] and l['stop_gone'][0] == tag and l['stop_gone'][1] > 1.0
+    l['stop_gone'][1] = 1.0; e._sf_tries.clear()                       # a restart long after the stop fired
+    e.reconcile(500); e.reconcile(500)
+    assert k in e.state['lots']                                        # 2 reads by this process: still waiting
+    e.reconcile(500)
+    assert k not in e.state['lots'] and e.history[-1]['exit_px_unconfirmed'] == 1
