@@ -74,13 +74,14 @@ class JsonlLedger:
                 with open(self.path, 'rb') as fb:       # off first, so the next row never lands on the fragment
                     fb.seek(-1, os.SEEK_END)
                     if fb.read(1) != b'\n': line = '\n' + line
+            self._tail_ok = False                       # Codex 154 review: a write that fails part-way leaves a fragment
             with open(self.path, 'a', encoding='utf-8') as fh:
                 # Only sanitize_row output reaches this sink: fixed field allow-list, every string through
                 # redact_text, raw trade ids hashed (corr_id_of). Proven by tests/test_ml_shadow01.py redaction probes
                 # (planted keys/tokens/ids across ctx, features, reason, exit_reason and rotated files).
                 fh.write(line)  # lgtm[py/clear-text-storage-sensitive-data]  # codeql[py/clear-text-storage-sensitive-data]
                 fh.flush()
-            self._tail_ok = True                        # every row we write ends in a newline
+            self._tail_ok = True                        # only after the whole newline-terminated row is written + flushed
             self._seen.add(rid)
         return row
 

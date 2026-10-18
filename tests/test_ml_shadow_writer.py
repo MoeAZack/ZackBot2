@@ -217,6 +217,36 @@ def test_torn_tail_never_swallows_the_next_row(tmp_path):
     assert [json.loads(x)['decision_id'] for x in lines[1:-1]] == [a['decision_id'], b['decision_id']]
 
 
+def test_partial_write_never_swallows_the_next_row(tmp_path, monkeypatch):
+    import ml_shadow.ledger as LM
+    real_open, fail = builtins.open, [True]
+    class Short:                                            # writes half the row, then the disk gives up
+        def __init__(self, fh): self.fh = fh
+        def __enter__(self): return self
+        def __exit__(self, *a): self.fh.close()
+        def write(self, s):
+            self.fh.write(s[:len(s) // 2]); self.fh.flush(); raise OSError(28, 'No space left on device')
+        def flush(self): self.fh.flush()
+    def fake_open(p, mode='r', *a, **k):
+        fh = real_open(p, mode, *a, **k)
+        if 'a' in mode and fail[0]:
+            fail[0] = False; return Short(fh)
+        return fh
+    ctr = {}
+    w = MLW.LedgerWriter(ledgers(tmp_path), ctr)
+    a, b, c = (dec_row(f'2026-10-0{k} 00:00:00') for k in (1, 2, 3))
+    assert w.submit('decision', a) and w.flush(5)            # one good append: the tail is known clean
+    fail[0] = True
+    monkeypatch.setattr(LM, 'open', fake_open, raising=False)
+    assert w.submit('decision', b) and w.flush(5)            # fragment written, then the write raises
+    assert w.submit('decision', c) and w.close(10)
+    assert ctr['write_errors'] == 1 and ctr['decisions'] == 2
+    lines = open(tmp_path / 'd.jsonl', encoding='utf-8').read().split('\n')
+    assert lines[-1] == '' and len(lines) == 4                 # a, the fragment, c
+    assert json.loads(lines[0])['decision_id'] == a['decision_id'] and json.loads(lines[2])['decision_id'] == c['decision_id']
+    with pytest.raises(ValueError): json.loads(lines[1])      # the failed row stays invalid evidence, never claimed written
+
+
 def test_known_ids_seeded_from_disk_with_torn_last_line(tmp_path):
     d = dec_row('2026-10-01 00:00:00')
     w = MLW.LedgerWriter(ledgers(tmp_path), {}); w.submit('decision', d); assert w.close(10)
