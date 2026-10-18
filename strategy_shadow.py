@@ -129,7 +129,7 @@ class ShadowBook:
         self._lock = threading.RLock()
         self.instances, self.episodes, self.gaps = {}, {}, []
         self.cycles, self.funding_seen, self.nav_path, self.pending, self.last_bar = {}, {}, {}, {}, {}
-        self.funding_by_sym, self.funding_conflicted = {}, set()
+        self.funding_by_sym, self.funding_conflicted, self.cadence = {}, set(), {}
         self.seq, self.clock = 0, None
         d = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(d, exist_ok=True)
@@ -217,6 +217,12 @@ class ShadowBook:
         if prev is not None and (prev[:2] == (rate, mark) or key in self.funding_conflicted):
             return dict(seq=self.seq, replay=True)        # an exact replay, or a conflict already on record, appends nothing
         return self._record('funding', symbol=symbol, at=at, rate=rate, mark=mark)
+
+    def on_cadence(self, symbol, interval_s, source):
+        """The symbol's funding settlement interval from the exchange's own schedule (testnet /fapi/v1/fundingInfo; a symbol
+        absent from a successful answer settles on the 8h default). Never inferred from the funding records being audited."""
+        if self.cadence.get(symbol) == int(interval_s): return dict(seq=self.seq, replay=True)
+        return self._record('cadence', symbol=symbol, interval_s=int(interval_s), source=str(source))
 
     def complete_cycle(self, cycle_id, tf, decision_time, instance_ids):
         return self._record('cycle', cycle_id=cycle_id, tf=tf, decision_time=decision_time,
@@ -483,6 +489,11 @@ class ShadowBook:
                 inst['absent_since'] = None
         return dict(seq=self.seq)
 
+    def _a_cadence(self, rec):
+        if int(rec['interval_s']) >= 3600: self.cadence[rec['symbol']] = int(rec['interval_s'])
+        else: self.gaps.append(f'bad_cadence:{rec["symbol"]}')
+        return dict(seq=self.seq)
+
     def _a_incomplete(self, rec):
         inst = self.instances.get(rec['instance_id'])
         if inst is None: self.gaps.append(f'unknown_instance:{rec["instance_id"]}')
@@ -519,6 +530,12 @@ class ShadowBook:
         end = ep['exit_t'] if ep['exit_t'] is not None else self.clock
         if end is None: return []
         g = self._grid(ep['symbol'])
+        if g is None:                                    # schedule unknown: any exposure at a whole hour is unprovable
+            b = (int(ep['t_ref'] // 3600) + 1) * 3600
+            while b <= end:
+                if self._qty_at(ep, b) > 0: return [f'funding_cadence_unknown:{ep["symbol"]}']
+                b += 3600
+            return []
         b = (int(ep['t_ref'] // g) + 1) * g
         out = []
         while b <= end:
@@ -528,12 +545,15 @@ class ShadowBook:
         return out
 
     def _grid(self, sym):
-        """Settlement grid of a symbol: the smallest spacing of its recorded instants (1h / 4h / 8h, all aligned on 00:00
-        UTC), FUNDING_GRID_S (8h) until two records are known. A 4h / 1h symbol therefore has every instant checked."""
+        """Settlement grid of a symbol (aligned on 00:00 UTC): the exchange schedule fed through on_cadence, tightened (never
+        widened) when the recorded instants themselves are closer together. None until the schedule is known - the
+        records being audited can never prove their own completeness (Cowork F1)."""
+        g = self.cadence.get(sym)
+        if g is None: return None
         ts = sorted(t for t in self.funding_by_sym.get(sym, ()) if t is not None)
         d = [b - a for a, b in zip(ts, ts[1:]) if b - a >= 3600]
-        g = min(d) if d else FUNDING_GRID_S
-        return int(min(FUNDING_GRID_S, max(3600, round(g / 3600) * 3600)))
+        if d: g = min(g, max(3600, round(min(d) / 3600) * 3600))
+        return int(g)
 
     def _row(self, iid):
         inst = self.instances[iid]

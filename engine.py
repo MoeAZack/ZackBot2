@@ -4032,16 +4032,21 @@ class Engine:
         seen = self.__dict__.setdefault('_shadow_fmtime', {})
         syms = sorted({x['symbol'] for x in shadow.snapshot()['episodes'].values() if x.get('qty_hist')})
         for sym in syms:
+            cad = SF.cadence_s(self.dir, sym)
+            if cad is not None:
+                try: shadow.on_cadence(symbol=sym, interval_s=cad, source='testnet fundingInfo')
+                except Exception: self._shadow_err()        # noqa: BLE001 - schedule unknown -> funding_cadence_unknown
             try: mt = os.path.getmtime(SF.series_file(self.dir, sym))
             except OSError: continue                        # nothing collected yet: exposure stays funding_unread
-            if seen.get(sym) == mt: continue                # unchanged since the last feed
-            seen[sym] = mt
+            if seen.get(sym) == mt: continue                # unchanged since the last complete feed
+            ok = True
             for t, rate, mk in SF.read_funding(self.dir, sym, cur.get(sym)):
                 try:
                     shadow.on_funding(symbol=sym, at=datetime.fromtimestamp(t / 1000, timezone.utc).isoformat(), rate=rate, mark=mk)
                 except Exception:                           # noqa: BLE001 - not advanced: retried on the next bar
-                    self._shadow_err(); break
+                    self._shadow_err(); ok = False; break
                 cur[sym] = t
+            if ok: seen[sym] = mt                           # Cowork F2: only a COMPLETE feed marks the file as read
 
     def _shadow_bar(self, tf, frames, sigs):
         """Feed the just-closed candle of every symbol of this timeframe (+ the exit signals per instance) to the observer."""

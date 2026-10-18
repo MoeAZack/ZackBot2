@@ -27,6 +27,22 @@ def series_file(data_dir, sym):
     return MD.series_path(out_dir(data_dir), 'funding_rate', sym, None)
 
 
+def cadence_s(data_dir, sym):
+    """Settlement interval (s) of sym from the last SUCCESSFUL testnet fundingInfo answer: its latest listed interval, or
+    the 8h default when the symbol is not listed. None when no answer has been received yet."""
+    if not os.path.exists(os.path.join(out_dir(data_dir), 'funding_info', 'fetched.json')): return None
+    hours = 8
+    try:
+        import csv
+        with open(os.path.join(out_dir(data_dir), 'funding_info', 'ALL.csv'), encoding='utf-8', newline='') as f:
+            for r in csv.DictReader(f):                    # a change log, oldest first: the last row of sym wins
+                if r.get('symbol') == sym and str(r.get('fundingIntervalHours') or '').strip():
+                    hours = int(float(r['fundingIntervalHours']))
+    except (OSError, ValueError):
+        return None
+    return hours * 3600
+
+
 def read_funding(data_dir, sym, after_ms=None):
     """[(fundingTime ms, rate str|None, markPrice str|None)] sorted, strictly after after_ms."""
     rows = MD.read_rows(series_file(data_dir, sym), 'fundingTime')
@@ -84,6 +100,12 @@ class ShadowFunding:
                              clock=self.clock, weight_per_min=self.WEIGHT_PER_MIN, min_gap=0.7, gate=self.gate,
                              max_run_s=self.MAX_RUN_S)
             c.t0 = self.clock()                              # the run-time limit counts from here
+            try:
+                c.snapshot_funding_info()                    # the settlement schedule (fundingIntervalHours per symbol)
+                MD.atomic_write_json(os.path.join(self.out, 'funding_info', 'fetched.json'),
+                                     dict(fetched_utc=MD.utc_iso(MD.now_ms(self.clock)), source=MD.TESTNET))
+            except (MD.Transient, MD.Refused, MD.RateLimited, OSError) as ex:
+                log.debug(f'shadow funding: fundingInfo {ex}')
             start, added, errs = self._start_ms(e), 0, 0
             for sym in symbols:
                 if self.gate(): break
