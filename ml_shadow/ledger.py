@@ -21,6 +21,7 @@ class JsonlLedger:
             raise ValueError('max_files and max_bytes must be >= 1')
         self.path, self.max_bytes, self.max_files, self.id_field = str(path), int(max_bytes), int(max_files), id_field
         self._lock = threading.Lock()
+        self._tail_ok = False                           # the active file's last byte has not been checked yet
         d = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(d, exist_ok=True)
         self._seen = {r.get(id_field) for r in self.rows()}
@@ -68,13 +69,18 @@ class JsonlLedger:
                 return None
             size = os.path.getsize(self.path) if os.path.exists(self.path) else 0
             if size and size + len(line.encode('utf-8')) > self.max_bytes:
-                self._rotate()
+                self._rotate(); size = 0
+            if size and not self._tail_ok:            # #104 / Cowork T1: a torn last line (crash mid-append) is closed
+                with open(self.path, 'rb') as fb:       # off first, so the next row never lands on the fragment
+                    fb.seek(-1, os.SEEK_END)
+                    if fb.read(1) != b'\n': line = '\n' + line
             with open(self.path, 'a', encoding='utf-8') as fh:
                 # Only sanitize_row output reaches this sink: fixed field allow-list, every string through
                 # redact_text, raw trade ids hashed (corr_id_of). Proven by tests/test_ml_shadow01.py redaction probes
                 # (planted keys/tokens/ids across ctx, features, reason, exit_reason and rotated files).
                 fh.write(line)  # lgtm[py/clear-text-storage-sensitive-data]  # codeql[py/clear-text-storage-sensitive-data]
                 fh.flush()
+            self._tail_ok = True                        # every row we write ends in a newline
             self._seen.add(rid)
         return row
 

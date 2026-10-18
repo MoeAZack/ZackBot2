@@ -207,6 +207,16 @@ def test_restart_replay_never_duplicates_rows(tmp_path):
     assert len(rows(tmp_path / 'd.jsonl')) == 1 and len(rows(tmp_path / 'l.jsonl')) == 1
 
 
+def test_torn_tail_never_swallows_the_next_row(tmp_path):
+    with open(tmp_path / 'd.jsonl', 'w', encoding='utf-8') as f: f.write('{"decision_id": "torn-partial", "kin')
+    w = MLW.LedgerWriter(ledgers(tmp_path), {})
+    a, b = dec_row('2026-10-01 00:00:00'), dec_row('2026-10-02 00:00:00')
+    w.submit('decision', a); w.submit('decision', b); assert w.close(10)
+    lines = open(tmp_path / 'd.jsonl', encoding='utf-8').read().split('\n')
+    assert lines[0] == '{"decision_id": "torn-partial", "kin' and lines[-1] == ''
+    assert [json.loads(x)['decision_id'] for x in lines[1:-1]] == [a['decision_id'], b['decision_id']]
+
+
 def test_known_ids_seeded_from_disk_with_torn_last_line(tmp_path):
     d = dec_row('2026-10-01 00:00:00')
     w = MLW.LedgerWriter(ledgers(tmp_path), {}); w.submit('decision', d); assert w.close(10)
