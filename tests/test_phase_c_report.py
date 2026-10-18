@@ -105,7 +105,7 @@ def test_freeze_copies_only_the_whitelist_and_pins_every_file(tmp_path):
     (lambda s, m: m.write_text(json.dumps(dict(json.loads(m.read_text()), snapshot_utc=None))), 'snapshot_utc'),
     (lambda s, m: m.write_text(json.dumps(dict(json.loads(m.read_text()),
                                                files=dict(json.loads(m.read_text())['files'], **{'../x': dict(sha256='0')}))))
-     , 'escapes'),
+     , 'escapes|not a Phase-C artifact'),
 ])
 def test_preflight_refusals_write_an_incomplete_only_record(tmp_path, breakit, msg):
     s, man, rec = frozen(tmp_path, rows=[row(1, None)])
@@ -573,3 +573,43 @@ def test_a_manifest_entry_that_is_not_a_pin_record_is_refused(tmp_path):
     s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
     m = json.loads(man.read_text()); m['files']['history.json'] = 'deadbeef'; man.write_text(json.dumps(m))
     with pytest.raises(P.PhaseCError, match='not a pin record'): P.build(str(s), str(man), [rec['id']])
+
+
+# ------------------------------------------------------------------ Cowork pre-run 6251437744 / 6251442729
+def test_shadow_records_after_the_snapshot_fail_the_shadow_stream_closed(tmp_path):
+    cid = cohort()['id']
+    rows = [row(i, cid) for i in range(16)] + [row(i, cid, gross=-5, r=-0.6) for i in range(16, 20)]
+    s, man, _ = frozen(tmp_path, rows=rows, shadow=both(episodes(10), episodes(10, t0=4000)))   # 10 after SNAP
+    b = P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
+    sh = b['rank'][0]['shadow']
+    assert sh['late_episodes'] == 10 and 'records_after_snapshot' in sh['coverage']['gaps'] and not sh['coverage']['complete']
+    x = {r['key']: r for r in sh['strategies']}['exp_scalp']
+    assert x['closed'] == 20 and not x['complete'] and not x['rankable'] and 'records_after_snapshot' in x['incomplete']
+    assert b['report_status'] == 'INCOMPLETE'
+    assert {r['key']: r for r in b['shortlist']['rows']}['exp_scalp']['cls'] != 'keep_executable'
+
+
+def test_shadow_records_at_or_before_the_snapshot_are_complete(tmp_path):
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)], shadow=episodes(20))
+    sh = P.build(str(s), str(man), [cid])['rank'][0]['shadow']
+    assert sh['late_episodes'] == 0 and sh['coverage']['complete']
+
+
+@pytest.mark.parametrize('rel', ['config.env', 'settings.json', 'strategy_shadow/funding_testnet/x.jsonl', 'logs/bot.log'])
+def test_a_manifest_pinning_a_non_phase_c_file_is_refused(tmp_path, rel):
+    s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
+    f = s / rel; f.parent.mkdir(parents=True, exist_ok=True); f.write_text('API_KEY=secret\n')
+    m = json.loads(man.read_text()); m['files'][rel] = dict(sha256=P.sha_file(f)); man.write_text(json.dumps(m))
+    with pytest.raises(P.PhaseCError, match='not a Phase-C artifact'): P.build(str(s), str(man), [rec['id']])
+
+
+def test_window_upper_bound_is_inclusive_everywhere(tmp_path):
+    rows = [row(1, 'c')]
+    d = P.defects_section(rows, [], {}, [dict(kind='coverage', id=rows[0]['id'], symbol='BTCUSDT', t=SNAP)], {}, [], {}, (START, SNAP))
+    assert d['queue'][0]['code'] == 'coverage_partial'
+
+
+def test_unbounded_pf_is_named_in_the_keep_reason():
+    assert 'unbounded' in P.classify('k', X(pf=None), [X()], set())[1]
+    assert 'unbounded' not in P.classify('k', X(), [X()], set())[1]

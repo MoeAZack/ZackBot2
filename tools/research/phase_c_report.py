@@ -130,6 +130,13 @@ def scrub_check(obj, path='$'):
 
 
 # ------------------------------------------------------------------ freeze (Integration)
+def allowed(rel):
+    """Only the whitelisted artifacts and top-level strategy_shadow/*.jsonl ledgers may be pinned (never config/keys)."""
+    if rel in WHITELIST: return True
+    parts = rel.split('/')
+    return len(parts) == 2 and parts[0] == SHADOW_DIR and parts[1].endswith('.jsonl') and parts[1] not in ('.jsonl',)
+
+
 def _rel_files(src):
     out = [r for r in WHITELIST if os.path.isfile(os.path.join(src, r))]
     sd = os.path.join(src, SHADOW_DIR)
@@ -195,6 +202,7 @@ def preflight(snapshot, manifest_path, wave2=None, wave2_sha256=None):
     root = os.path.abspath(snapshot)
     for rel, rec in sorted(man['files'].items()):
         if not isinstance(rec, dict): raise PhaseCError(f'manifest entry {rel} is not a pin record')
+        if not allowed(rel): raise PhaseCError(f'manifest pins {rel}, which is not a Phase-C artifact')
         p = os.path.abspath(os.path.join(root, rel))
         if os.path.commonpath([root, p]) != root or '..' in rel.replace('\\', '/').split('/'):
             raise PhaseCError(f'manifest path {rel} escapes the snapshot')
@@ -363,12 +371,30 @@ def _quote(sym):
 
 
 # ------------------------------------------------------------------ section 2: shadow, rejected signals, counterfactuals
-def shadow_section(path, cid):
-    """Replay the cohort's write-ahead ledger through the shared reducer (no re-derivation). -> (doc, episodes)."""
+def _late(e, cut):
+    for k in ('decision_time', 'exit_time'):
+        try: t = SSH._ts(e.get(k))
+        except (TypeError, ValueError): t = None
+        if t is not None and t > cut: return True
+    return False
+
+
+def shadow_section(path, cid, cutoff_utc=None):
+    """Replay the cohort's write-ahead ledger through the shared reducer (no re-derivation). -> (doc, episodes).
+    Causality (Cowork F1): the reducer replays the whole file, so a ledger holding any bar / entry / funding / episode
+    after the snapshot instant is not cut silently - every shadow row becomes INCOMPLETE (records_after_snapshot) and the
+    late episodes are counted; a frozen snapshot of the live ledger never has them."""
     if path is None:
         return dict(available=False, reason='no shadow ledger pinned for this cohort', strategies=[]), []
     sb = SSH.ShadowBook(path, cid, SHADOW_MODEL, min_n=MIN_N)
     doc = sb.compute()
+    cut = None if cutoff_utc is None else _utc_ms(cutoff_utc, 'snapshot_utc') / 1000.0
+    late_eps = 0 if cut is None else sum(1 for e in sb.episodes.values() if _late(e, cut))
+    late = cut is not None and ((sb.clock is not None and sb.clock > cut) or late_eps > 0)
+    if late:
+        doc['coverage'] = dict(complete=False, gaps=list(doc['coverage']['gaps']) + ['records_after_snapshot'])
+        for r in doc['strategies']:
+            r['complete'] = False; r['incomplete'] = list(r['incomplete']) + ['records_after_snapshot']
     rows = []
     for r in doc['strategies']:
         rows.append(dict(key=r['key'], family=family_of(r['key']), config_digest=r['config_digest'],
@@ -384,7 +410,8 @@ def shadow_section(path, cid):
                          note=None if r['closed'] >= MIN_N else f'insufficient n ({r["closed"]}/{MIN_N})'))
     rows.sort(key=lambda x: (x['family'], x['key'], x['config_digest']))
     return dict(available=True, model_hash=doc['model']['hash'], coverage=dict(complete=doc['coverage']['complete'],
-                gaps=sorted({str(g).split(':')[0] for g in doc['coverage']['gaps']})), strategies=rows), list(sb.episodes.values())
+                gaps=sorted({str(g).split(':')[0] for g in doc['coverage']['gaps']})), late_episodes=late_eps,
+                strategies=rows), list(sb.episodes.values())
 
 
 def _decision(e):
@@ -500,7 +527,7 @@ def defects_section(rows, shadow_rows, shadow_cov, audit, state, cohort_status, 
     lo, hi = window
     for a in audit:
         t = str(a.get('t') or '')
-        if a.get('kind') == 'coverage' and lo and t >= lo and (hi is None or t < hi):
+        if a.get('kind') == 'coverage' and lo and t >= lo and (hi is None or t <= hi):
             r = ids.get(a.get('id')) or {}
             add('trade_audit_coverage', 'coverage_partial', r.get('strategy_key'), a.get('symbol'), t)
         if a.get('kind') == 'trade_audit' and a.get('id') in ids:
@@ -532,7 +559,8 @@ def classify(key, ex, shs, defects):
     # PF is undefined (None) only when there is no losing close: with closes and expectancy > 0 that is an unbounded PF
     pf_ok = lambda r: D(r['pf']) >= KEEP_PF if r.get('pf') is not None else bool(r.get('closed')) and pos(r)
     if exr and shr and pos(ex) and pos(sh) and pf_ok(ex) and pf_ok(sh) and not defects:
-        return 'keep_executable', 'both streams rankable, expectancy > 0 and PF >= 1.10 in both, no attributed defect', ins
+        unb = ' (PF unbounded: no losing close)' if ex.get('pf') is None or sh.get('pf') is None else ''
+        return 'keep_executable', 'both streams rankable, expectancy > 0 and PF >= 1.10 in both, no attributed defect' + unb, ins
     if defects:
         return 'repair', 'attributed defect(s): ' + ', '.join(sorted(defects)), ins
     if exr and shr and pos(ex) != pos(sh) and not (ex['expectancy'] == 0 or sh['expectancy'] == 0):
@@ -580,7 +608,7 @@ def ml_section(snap, window):
     if not snap['ml_dec'] and not snap['ml_lab']:
         return dict(available=False, reason='ML ledger not present in the snapshot (ML_SHADOW off or not pinned)')
     lo, hi = window
-    dec = [d for d in snap['ml_dec'] if lo and str(d.get('ts_utc') or '') >= lo and (hi is None or str(d.get('ts_utc')) < hi)]
+    dec = [d for d in snap['ml_dec'] if lo and str(d.get('ts_utc') or '') >= lo and (hi is None or str(d.get('ts_utc')) <= hi)]
     lab = {l.get('decision_id'): l for l in snap['ml_lab']}
     grp = {}
     for d in dec:
@@ -641,10 +669,10 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
         rows, late = cohort_closes(snap, cid, man['snapshot_utc'], rec.get('started_utc'))
         ex = dict(executed_section(rows), excluded_outside_window_or_untimed=late)
         sp, rel = shadow_path(snapshot, man, cid)
-        sh, eps = shadow_section(sp, cid)
+        sh, eps = shadow_section(sp, cid, man['snapshot_utc'])
         df = defects_section(rows, sh.get('strategies') or [], sh.get('coverage') or {}, snap['audit'], snap['state'],
                              cst if cid in rank else [], snap['torn'], window, snap['audit_duplicates'], late)
-        return dict(cohort_id=cid, window=dict(from_utc=window[0], to_utc_exclusive=window[1]), shadow_ledger=rel,
+        return dict(cohort_id=cid, window=dict(from_utc=window[0], to_utc_inclusive=window[1]), shadow_ledger=rel,
                     executed=ex, shadow=sh, rejected_signals=rejected_section(eps),
                     counterfactual_exits=counterfactual_section(rows, snap['audit']), defects=df, ml=ml_section(snap, window))
 
