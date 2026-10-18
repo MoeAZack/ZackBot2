@@ -3921,8 +3921,8 @@ class Engine:
         return dict(dir=d, decisions=os.path.join(d, 'decisions.jsonl'), labels=os.path.join(d, 'labels.jsonl'))
 
     def _ml_health(self):
-        return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0, dropped=0, refused=0,
-                                                        write_errors=0, lost=0))
+        return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0, dropped=0, missing_decision=0,
+                                                        refused_skipped=0, write_errors=0, lost=0))
 
     def _ml_ledgers(self):
         with self.__dict__.setdefault('_ml_led_lock', threading.Lock()):     # the writer thread and readers share them
@@ -3942,6 +3942,14 @@ class Engine:
             w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health()))
         return w
 
+    def ml_close(self, timeout=2.0):
+        """Flush (bounded) and stop this engine's ML writer before another engine takes over the same data folder.
+        Rows that could not be written are counted as lost. True when no writer thread remains."""
+        w = self.__dict__.get('_ml_w')
+        if w is None: return True
+        from ml_shadow import writer as MLW
+        return MLW.unregister(w) and w.close(timeout)
+
     def ml_flush(self, timeout=2.0):
         """Wait (bounded) for queued ML rows to reach disk. True when nothing is left queued."""
         w = self.__dict__.get('_ml_w')
@@ -3951,8 +3959,9 @@ class Engine:
         """#104: set lot['ml_decision_id'] BEFORE the open path's own save_state(), so the lot and its link land in the
         same atomic state write (a crash after that save can no longer leave the trade unlabelled). A direct entry
         (opened inside the cycle that is about to record it as 'taken') is always linked; a filled pending entry is
-        linked unless its decision is known to be absent. No reconstruction: an id without a decision row is never
-        labelled (refused at the label stage and counted)."""
+        linked unless its decision is known to be absent. The id stays on the lot even if its row is later dropped
+        (Codex 6254070622); such a close is refused at the label stage and counted as missing_decision - never
+        reconstructed or relinked."""
         try:
             if self.S.get('ML_SHADOW') is not True or plan.get('manual') or not plan.get('sl'): return
             import ml_shadow as MLS

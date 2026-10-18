@@ -103,6 +103,45 @@ def test_open_failure_is_retried_on_the_next_row(tmp_path):
     assert w.close(10) and ctr['decisions'] >= 1 and len(rows(tmp_path / 'd.jsonl')) == ctr['decisions']
 
 
+def test_failed_open_never_reports_disk_ids_absent(tmp_path):
+    d = dec_row('2026-10-01 00:00:00')
+    w = MLW.LedgerWriter(ledgers(tmp_path), {}); w.submit('decision', d); assert w.close(10)
+    n = []
+    def opener():
+        n.append(1)
+        if len(n) <= 2: raise OSError('locked by a scanner')
+        return ledgers(tmp_path)()
+    w2 = MLW.LedgerWriter(opener, {})
+    w2.submit('label', lab_row('0' * 32)); assert w2.flush(5)          # start + retry both failed (row counted as write error)
+    assert w2.known(d['decision_id']) is None                           # unknown, not 'absent': a pending fill still links
+    w2.submit('decision', dec_row('2026-10-02 00:00:00')); assert w2.flush(5)
+    assert w2.known(d['decision_id']) is True
+    assert w2.close(10)
+
+
+def test_engine_restart_closes_the_old_writer_first(tmp_path):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['ML_SHADOW'] = True
+    gate = threading.Event()
+    real = e._ml_ledgers
+    def slow():
+        gate.wait(0.3); return real()
+    e._ml_ledgers = slow
+    w = e._ml_writer()
+    for k in range(1, 4): w.submit('decision', dec_row(f'2026-10-0{k} 00:00:00'))
+    assert e.ml_close(10) and not w.alive() and w not in MLW._WRITERS
+    assert len(ledger_rows(e, 'decisions')) == 3                        # drained before the next engine opens the files
+    assert not w.submit('decision', dec_row('2026-10-05 00:00:00'))    # a stopped writer accepts nothing (counted)
+    assert e.health['ml_shadow']['dropped'] == 1 and e.health['ml_shadow']['lost'] == 0
+
+
+def test_app_start_engine_closes_the_previous_ml_writer():
+    import inspect, app as A
+    src = inspect.getsource(A.App.start_engine)
+    i, j = src.index('old.lock.acquire()'), src.index('Engine(cfg, DATA)')
+    assert 'old.ml_close()' in src[i:j]                                 # under the old lock, before the new engine exists
+
+
 def test_shutdown_flushes_queued_rows(tmp_path):
     ctr = {}
     w = MLW.LedgerWriter(ledgers(tmp_path), ctr)
@@ -134,8 +173,29 @@ def test_label_for_unknown_or_skipped_decision_refused_and_counted(tmp_path):
     w.submit('decision', sk); w.submit('decision', tk)
     for did in ('0' * 32, sk['decision_id'], tk['decision_id']): w.submit('label', lab_row(did))
     assert w.close(10)
-    assert ctr['refused'] == 2 and ctr['labels'] == 1
+    assert ctr['missing_decision'] == 1 and ctr['refused_skipped'] == 1 and ctr['labels'] == 1
     assert [l['decision_id'] for l in rows(tmp_path / 'l.jsonl')] == [tk['decision_id']]
+
+
+def test_dropped_decision_never_label_eligible_but_lot_keeps_id(tmp_path):
+    gate = threading.Event()
+    def opener():
+        gate.wait(30); return ledgers(tmp_path)()
+    ctr = {}
+    w = MLW.LedgerWriter(opener, ctr, maxsize=1)
+    first, dropped = dec_row('2026-10-01 00:00:00'), dec_row('2026-10-02 00:00:00')
+    assert w.submit('decision', first)
+    time.sleep(0.3)                                         # the thread holds `first`; the queue (size 1) is free
+    w.submit('decision', dec_row('2026-10-03 00:00:00'))    # fills the queue
+    assert not w.submit('decision', dropped) and ctr['dropped'] >= 1
+    assert w.known(dropped['decision_id']) is None          # still loading: a pending fill would keep the id on its lot
+    gate.set(); assert w.flush(10)
+    assert w.known(dropped['decision_id']) is False         # loaded: a dropped decision is known absent
+    assert w.submit('label', lab_row(dropped['decision_id'])) and w.flush(5)
+    assert w.submit('label', lab_row(first['decision_id']))
+    assert w.close(10)
+    assert ctr['missing_decision'] == 1 and ctr['labels'] == 1
+    assert [l['decision_id'] for l in rows(tmp_path / 'l.jsonl')] == [first['decision_id']]
 
 
 def test_restart_replay_never_duplicates_rows(tmp_path):

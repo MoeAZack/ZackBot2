@@ -7,7 +7,8 @@ counts it - the engine never waits for a slow or failing disk.
 
 Decision ids: ids accepted into the queue are known at once (in memory); ids already on disk are loaded by the writer
 thread when it starts. known(id) answers True / False, or None while that load has not finished (the label stage still
-checks the decision ledger on disk, so an id that has no decision row never gets a label: it is refused and counted).
+checks the decision ledger on disk, so an id that has no decision row never gets a label: it is refused and counted as
+missing_decision - explicit incomplete evidence, never reconstructed or relinked (Codex 6254070622).
 """
 import atexit, logging, queue, threading, time
 
@@ -20,11 +21,12 @@ QUEUE_MAX = 1024
 class LedgerWriter:
     def __init__(self, open_ledgers, counters=None, maxsize=QUEUE_MAX):
         """open_ledgers() -> (decision_ledger, label_ledger); called once, on the writer thread (it reads the files).
-        counters: a dict whose keys decisions / labels / refused / write_errors this thread increments (the engine
-        health block); dropped is incremented by submit()."""
+        counters: a dict whose keys decisions / labels / missing_decision / refused_skipped / write_errors this thread
+        increments (the engine health block); dropped by submit(), lost by close()."""
         self.open_ledgers = open_ledgers
         self.ctr = counters if counters is not None else {}
-        for k in ('decisions', 'labels', 'refused', 'write_errors', 'dropped', 'lost'): self.ctr.setdefault(k, 0)
+        for k in ('decisions', 'labels', 'missing_decision', 'refused_skipped', 'write_errors', 'dropped', 'lost'):
+            self.ctr.setdefault(k, 0)
         self.q = queue.Queue(maxsize)
         self.lock, self.stop_ev = threading.Lock(), threading.Event()
         self.closing, self.thread, self.loaded = False, None, False
@@ -64,22 +66,23 @@ class LedgerWriter:
             return
         did = row.get('decision_id')
         src = next((r for r in dec.rows() if r.get('decision_id') == did), None)
-        if src is None or not labelable(src):              # unknown / skipped decision: no label, counted
-            self.ctr['refused'] += 1; return
+        if src is None:                                    # dropped / never written / rotated out: incomplete evidence
+            self.ctr['missing_decision'] += 1; return
+        if not labelable(src):                             # a skipped signal never gets a label
+            self.ctr['refused_skipped'] += 1; return
         if lab.append(row) is not None: self.ctr['labels'] += 1
 
     def _open(self):
-        """Open the ledgers and merge the decision ids already on disk. None (retried on the next row) on failure."""
+        """Open the ledgers and merge the decision ids already on disk. None (retried on the next row) on failure -
+        and then the ids stay 'not loaded' (known() -> None), never 'absent'."""
         try:
             led = self.open_ledgers()
             on_disk = {r.get('decision_id') for r in led[0].rows()}
-            with self.lock: self.ids |= on_disk
+            with self.lock: self.ids |= on_disk; self.loaded = True
             return led
         except Exception as e:                              # noqa: BLE001
             log.warning('ml_shadow: ledgers not opened (%s)', type(e).__name__)
             return None
-        finally:
-            with self.lock: self.loaded = True
 
     def _run(self):
         led = self._open()
@@ -129,6 +132,12 @@ _WRITERS, _WRITERS_LOCK = [], threading.Lock()
 def register(w):
     with _WRITERS_LOCK: _WRITERS.append(w)
     return w
+
+
+def unregister(w):
+    with _WRITERS_LOCK:
+        if w in _WRITERS: _WRITERS.remove(w)
+    return True
 
 
 def close_all(timeout=2.0):
