@@ -23,7 +23,7 @@ def raw_pack(tmp, info_sha_ok=True):
     root = tmp / 'raw'
     for d in ('funding_rate', 'mark_klines', 'exchange_info'):
         (root / d).mkdir(parents=True)
-    syms = []
+    syms, series = [], {}
     for q in Q.QUOTES:
         for j, b in enumerate(Q.BASES):
             s = b + q
@@ -39,16 +39,19 @@ def raw_pack(tmp, info_sha_ok=True):
                 [f'{t},{rate},{100 + j + (q == "USDC") * 0.01},x' for t in ft] + \
                 [f'{Q.END},HOLDOUT,HOLDOUT,x', 'not-a-time,HOLDOUT,HOLDOUT,x']        # never parsed
             (root / 'funding_rate' / f'{s}.csv').write_text('\n'.join(lines) + '\n')
+            series[f'funding_rate/{s}'] = {'file': f'funding_rate/{s}.csv', 'symbol': s, 'first_ts': int(ft[0])}
             mt = np.arange(Q.WARM - 5 * H, Q.END, H)
             mp = 100 + j + (q == 'USDC') * 0.02
             lines = ['open_time,open,high,low,close,close_time,time_utc'] + \
                 [f'{t},{mp},{mp + 1},{mp - 1},{mp},{t + H - 1},x' for t in mt] + [f'{Q.END},HOLDOUT,,,,,x']
             (root / 'mark_klines' / f'{s}_1h.csv').write_text('\n'.join(lines) + '\n')
+            series[f'mark_klines/{s}/1h'] = {'file': f'mark_klines/{s}_1h.csv', 'symbol': s, 'first_ts': int(mt[0])}
     info = json.dumps({'symbols': syms}).encode()
     (root / 'exchange_info' / 'latest.json').write_bytes(info)
     sha = hashlib.sha256(info).hexdigest() if info_sha_ok else '0' * 64
-    (root / 'manifest.json').write_text(json.dumps({'series': {'exchange_info/mainnet': {
-        'file': 'exchange_info/latest.json', 'sha256': sha, 'fetched_utc': '2026-10-18T05:10:10Z'}}}))
+    series['exchange_info/mainnet'] = {'file': 'exchange_info/latest.json', 'sha256': sha,
+                                       'fetched_utc': '2026-10-18T05:10:10Z'}
+    (root / 'manifest.json').write_text(json.dumps({'series': series}))
     return root, hashlib.sha256(info).hexdigest()
 
 
@@ -106,3 +109,27 @@ def test_a_gap_in_the_raw_series_is_written_as_is_and_refused_by_the_runner(tmp_
     with pytest.raises(Q.PairRunnerError, match='mark grid'):
         Q.load_accounting(p['USDT'], 'USDT')
     pd.read_csv(tmp_path / 'out' / 'usdt' / 'BNBUSDT_markPriceKlines_1h.csv')     # the adapter never fills it
+
+
+def test_a_raw_file_the_raw_manifest_does_not_vouch_for_refuses(tmp_path):
+    root, _ = raw_pack(tmp_path)
+    f, g = root / 'funding_rate' / 'ETHUSDC.csv', root / 'funding_rate' / 'ETHUSDT.csv'
+    lines = g.read_text().splitlines()
+    f.write_text('\n'.join(lines[:1] + lines[2:]) + '\n')                  # another file, one row shorter at the start
+    with pytest.raises(A.BuildError, match='swapped or edited raw file'):
+        A.build(str(root), str(tmp_path / 'a'))
+    root2, _ = raw_pack(tmp_path / 'm')
+    m = json.loads((root2 / 'manifest.json').read_text())
+    del m['series']['mark_klines/SOLUSDT/1h']
+    (root2 / 'manifest.json').write_text(json.dumps(m))
+    with pytest.raises(A.BuildError, match='not recorded in the raw manifest'):
+        A.build(str(root2), str(tmp_path / 'b'))
+
+
+def test_the_first_row_at_the_cutoff_is_never_split_beyond_its_time(tmp_path, monkeypatch):
+    root, _ = raw_pack(tmp_path)
+    seen = []
+    real = A.csv.reader
+    monkeypatch.setattr(A.csv, 'reader', lambda rows, *a, **k: seen.extend(rows) or real(rows, *a, **k))
+    A.build(str(root), str(tmp_path / 'out'))
+    assert seen and not any('HOLDOUT' in r for r in seen)

@@ -313,7 +313,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             if sum(1 for s_ in same if corr(s, s_, i) > rho) >= n: return 'correlated_cap'
         return None
 
-    def open_pos(sl, s, side, px, atr, i, sl_eq, fee, ref=None, liq='taker'):
+    def open_pos(sl, s, side, px, atr, i, sl_eq, fee, ref=None, liq='taker', why=None):
         """Size and open a position (same rules as the live engine). Returns the position or None."""
         nonlocal eq
         m, cfg = sl['m'], sl['cfg']
@@ -345,7 +345,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             p['levels'] = lv[1:]; p['w'] = w[1:]
             p['tp'] = px + side * m['dca']['tp_atr'] * atr
         sl['pos'][s] = p
-        flog('entry', sl, s, p, i, 'buy' if side == 1 else 'sell', px if ref is None else ref, qty, liq=liq)
+        flog('entry', sl, s, p, i, 'buy' if side == 1 else 'sell', px if ref is None else ref, qty, why, liq=liq)
         return p
 
     def entry_filters(sl, s, side, i):
@@ -419,7 +419,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 if ev == 'stop':
                     px = st if sd * (a_ - st) >= 0 else a_                     # already through it -> filled where price is
                     close(sl, s, p, px, 1, i, 'stop', gap=px != st); return True
-                lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
+                lvl0 = lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                 lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)              # gapped through the level -> filled where price is
                 if RR['btc_breaker'] and i <= breaker_until:                 # same breaker policy as live
                     pol = RR['btc_breaker'].get('dca', 'pause')
@@ -430,7 +430,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 d = F.size_check(q, q, lvl, ADD_RULES[s])     # BT02: the engine's _add_qty check (floor to step, minimums)
                 if d['ok'] is False: feas_skip(sl, s, sd, i, d, lvl, q, add=('dca', p['i'], p['dca'])); blocked_['dca'] = True; continue
                 q = d['qty']
-                flog('dca', sl, s, p, i, 'buy' if sd == 1 else 'sell', lvl, q)
+                flog('dca', sl, s, p, i, 'buy' if sd == 1 else 'sell', lvl, q, gap=lvl != lvl0)
                 p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                 eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
                 p['qmax'] = max(p['qmax'], p['qty'])
@@ -547,7 +547,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 te['ext'] = ext
                 if fill is None: continue
                 del sl['tpend'][s]
-                p = open_pos(sl, s, sd, fill * (1 + sd * SLIP), te['atr'], i, eq * cfg['share'], FEE, ref=fill)
+                p = open_pos(sl, s, sd, fill * (1 + sd * SLIP), te['atr'], i, eq * cfg['share'], FEE, ref=fill, why='trail_entry')
                 if p is not None: p['skip_i'] = i                 # filled mid-candle: managed from the next candle on
         # ---- manage open positions
         for sl in SL:

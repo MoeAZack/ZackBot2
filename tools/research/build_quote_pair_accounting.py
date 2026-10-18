@@ -44,26 +44,40 @@ def trim(path, tcol, cols, lo):
         f = open(path, newline='', encoding='utf-8')
     except OSError:
         raise BuildError(f'{path}: missing') from None
+    first = None
     with f:
-        r = csv.reader(f)
-        head = next(r, None)
-        if head is None or any(c not in head for c in cols):
-            raise BuildError(f'{path}: columns {head} lack {cols}')
-        ix, ti = [head.index(c) for c in cols], head.index(tcol)
-        for row in r:
+        head = next(csv.reader([f.readline()]), None)
+        if not head or head[0] != tcol or any(c not in head for c in cols):
+            raise BuildError(f'{path}: columns {head} must start with {tcol} and hold {cols}')
+        ix = [head.index(c) for c in cols]
+        for line in f:
             try:
-                t = int(row[ti])
-            except (ValueError, IndexError):
+                t = int(line.split(',', 1)[0])          # only the time field is read before the cutoff check
+            except ValueError:
                 raise BuildError(f'{path}: unreadable time after {prev}') from None
             if prev is not None and t <= prev:
                 raise BuildError(f'{path}: not strictly time ordered at {t}')
             prev = t
+            first = t if first is None else first
             if t >= Q.END:
-                break                                   # sealed: nothing at / after the cutoff is read further
+                break                                   # sealed: nothing at / after the cutoff is parsed or read further
             if t >= lo:
+                row = next(csv.reader([line]))
                 w.writerow([row[k] for k in ix])
                 n += 1
-    return out.getvalue().encode('utf-8'), n
+    return out.getvalue().encode('utf-8'), n, first
+
+
+def provenance(rm, folder, sym, name):
+    """The raw manifest's record of one series file. It must exist and name this file; the raw pack carries no
+    per-file sha256, so the first row time is the strongest check available without reading past the cutoff."""
+    series = rm.get('series') or {}
+    rec = series.get(f'{folder}/{sym}') or series.get(f'{folder}/{sym}/1h')
+    if not isinstance(rec, dict) or rec.get('file') != f'{folder}/{name}':
+        raise BuildError(f'{folder}/{name}: not recorded in the raw manifest')
+    if rec.get('symbol', sym) != sym:
+        raise BuildError(f'{folder}/{name}: raw manifest names symbol {rec.get("symbol")}')
+    return rec
 
 
 def rules_for(info, sym):
@@ -100,7 +114,11 @@ def build(raw, out, pin_info_sha=None):
             sym = base + quote
             for series, folder, pat, tcol, cols in SERIES:
                 lo = Q.WARM - C.FUNDING_TIME_TOLERANCE_MS if series == 'fundingRate' else Q.WARM
-                data, n = trim(os.path.join(raw, folder, pat.format(sym=sym)), tcol, cols, lo)
+                data, n, first = trim(os.path.join(raw, folder, pat.format(sym=sym)), tcol, cols, lo)
+                rec = provenance(rm, folder, sym, pat.format(sym=sym))
+                if rec is not None and rec.get('first_ts') is not None and int(rec['first_ts']) != first:
+                    raise BuildError(f'{folder}/{pat.format(sym=sym)}: first row {first} is not the raw manifest '
+                                     f'first_ts {rec["first_ts"]} (swapped or edited raw file)')
                 name = f'{sym}_{series}.csv'
                 staged[os.path.join(quote.lower(), name)] = data
                 files[f'{sym}/{series}'] = {'symbol': sym, 'series': series, 'status': 'complete', 'file': name,

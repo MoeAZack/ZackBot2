@@ -1,7 +1,8 @@
 """USDC-PAIR-RUNNER view A (Codex 6245962231): backtest.run(fill_log=...) records every fill before the legacy slippage.
 Absent (the default) the run is byte-identical; present, it changes nothing, and the logged fills re-priced with the
 legacy constants rebuild every trade's P&L exactly - so no fill path (entry, DCA, pyramid add, partial or full exit,
-gap or path stop, liquidation) goes unlogged."""
+gap or path stop) goes unlogged. Liquidation and trail entries go through the same close() / open_pos() and are covered
+by the same flog calls; legacy identity against the previous backtest is also proven by the unchanged full suite."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -108,3 +109,22 @@ def test_the_default_run_is_unchanged_with_funding_on():
     tr0, cv0 = go(CASES[0])
     tr1, cv1 = go(CASES[0], fill_log=[])
     assert tr0.equals(tr1) and cv0.equals(cv1)
+
+
+def test_dca_and_trail_entry_fills_carry_their_gap_and_origin():
+    log = []
+    go(CASES[3], fill_log=log, fund_per_bar=0.0)
+    assert {f['gap'] for f in log if f['kind'] == 'dca'} == {True, False}
+    case = dict(CASES[2], key='exp_trend')
+    bk = BT.Book(raw())
+    cfg = [dict(key='exp_trend', share=1.0, risk=0.02, max_pos=3, sides='long', mgmt={}, symbols=list(SYMS),
+                trail_entry={'dev_atr': 0.5, 'max_bars': 3})]
+    log = []
+    tr, _ = BT.run(bk, cfg, start=1000.0, max_lev=20.0, daily_halt=1.0, fill_log=log, fund_per_bar=0.0)
+    ents = [f for f in log if f['kind'] == 'entry']
+    assert ents and all(f['why'] == 'trail_entry' for f in ents) and case
+    pos = {}
+    for f in log:
+        pos.setdefault((f['sleeve'], f['sym'], f['pos_i']), []).append(f)
+    for r in tr.itertuples():
+        assert legacy_pnl(pos[(r.sleeve, r.sym, r.i_in)]) == pytest.approx(r.pnl, rel=1e-9, abs=1e-9)

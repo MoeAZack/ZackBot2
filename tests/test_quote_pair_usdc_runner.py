@@ -418,7 +418,44 @@ def test_one_position_is_priced_by_hand():
     assert e['gross_r'] == pytest.approx((110 * 3 - 100 * 2 - 102) / 10.0) and e['funding_events'] == 2
     assert e['slip_r'] == pytest.approx((0.1 * 2 + 0.2 + 0.2 * 3) / 10.0) and e['fee_r'] == pytest.approx(fees / 10.0)
     assert e['spread_r']['2'] == pytest.approx((net - (px[0] * 2 + px[1] + px[2] * 3) * 1e-4) / 10.0)
-    assert (e['mfe_r'], e['mae_r'], e['hold_bars']) == (pytest.approx(0.2), pytest.approx(0.2), 4)
+    assert (e['mfe_r'], e['mae_r'], e['hold_bars']) == (pytest.approx(2.0), pytest.approx(0.2), 4)   # the exit at 110 is on the path
+
+
+def test_slip_reads_only_the_15_bars_closed_before_the_fill():
+    n, B = 40, Q.BC.TF_MS
+    bar_ms = Q.START + np.arange(n) * B
+    rng = np.arange(n, dtype=float)
+    arr = {'o': np.full(n, 100.0), 'c': np.full(n, 100.0), 'h': 100 + 0.05 * rng, 'l': 100 - 0.05 * rng}
+    acc = {'events': [], 'marks': {}}
+
+    def bps(e):                                                             # TR-SMA14 of the 15 bars ending at e
+        tr = [max(arr['h'][k] - arr['l'][k], abs(arr['h'][k] - 100), abs(arr['l'][k] - 100)) for k in range(e - 13, e + 1)]
+        return max(2.0, 0.05 * 1e4 * (sum(tr) / 14) / 100)
+    for why, i, e in (('stop', 30, 29), ('time', 30, 30)):
+        fills = [_fill('entry', 20, 'buy', 100.0, 1.0), _fill('exit', i, 'sell', 100.0, 1.0, why=why)]
+        r = pd.Series({'sym': 'BTCUSDT', 'i_in': 20, 'i_out': i})
+        got = Q.price_position(r, fills, arr, bar_ms, acc, None, 'USDT')
+        assert got['slip_r'] * 10 == pytest.approx(bps(19) / 1e4 * 100 + bps(e) / 1e4 * 100)
+
+
+def test_mfe_never_reads_the_exit_bar_past_an_intrabar_exit():
+    n, B = 30, Q.BC.TF_MS
+    bar_ms = Q.START + np.arange(n) * B
+    arr = {'o': np.full(n, 100.0), 'h': np.full(n, 100.5), 'l': np.full(n, 99.5), 'c': np.full(n, 100.0)}
+    arr['h'][24] = 130.0                                                    # the rally comes after the stop in bar 24
+    fills = [_fill('entry', 20, 'buy', 100.0, 1.0), _fill('exit', 24, 'sell', 98.0, 1.0, why='stop')]
+    r = pd.Series({'sym': 'BTCUSDT', 'i_in': 20, 'i_out': 24})
+    e = Q.price_position(r, fills, arr, bar_ms, {'events': [], 'marks': {}}, None, 'USDT')
+    assert e['mfe_r'] == pytest.approx(0.1) and e['mae_r'] == pytest.approx(0.4)
+    timed = [fills[0], _fill('exit', 24, 'sell', 100.0, 1.0, why='time')]       # a close-of-bar exit sees the whole bar
+    assert Q.price_position(r, timed, arr, bar_ms, {'events': [], 'marks': {}}, None, 'USDT')['mfe_r'] == pytest.approx(6.0)
+
+
+def test_a_trail_entry_fills_inside_its_candle():
+    assert Q._phase(dict(kind='entry', why='trail_entry', gap=False, ref=101.0), 100.0) == 'intra'
+    assert Q._phase(dict(kind='entry', why=None, gap=False, ref=100.0), 100.0) == 'open'
+    assert Q._phase(dict(kind='exit', why='stop', gap=True, ref=100.0), 100.0) == 'open'
+    assert Q._phase(dict(kind='exit', why='stop', gap=True, ref=99.0), 100.0) == 'intra'
 
 
 def test_funding_settlement_timing_at_and_inside_candles():
@@ -439,6 +476,12 @@ def test_funding_settlement_timing_at_and_inside_candles():
     d = [(2, 'open', 1.0), (3, 'intra', 2.0), (5, 'close', -3.0)]
     assert Q.funding_paid(1, d, ev(T), m(T), bar_ms)[0] == pytest.approx(0.3)
     assert Q.funding_paid(1, d, [(int(T), int(T), -0.001)], m(T), bar_ms)[0] == pytest.approx(-0.1)
+    # inside a bar the worst quantity over the running path counts, and a stop before the slot is never a credit
+    peak = [(0, 'open', 1.0), (3, 'intra', 1.0), (3, 'intra', -2.0)]
+    assert Q.funding_paid(1, peak, ev(T), m(T), bar_ms)[0] == pytest.approx(0.2)
+    stopped = [(0, 'open', 1.0), (3, 'intra', -1.0)]
+    assert Q.funding_paid(1, stopped, [(int(T), int(T), -0.001)], m(T), bar_ms)[0] == 0.0
+    assert Q.funding_paid(1, stopped, ev(T), m(T), bar_ms)[0] == pytest.approx(0.1)
     # a short receives a positive rate; the mark is the 1h bar ending at the slot, never a later one
     assert Q.funding_paid(-1, [(2, 'open', 1.0), (5, 'close', -1.0)], ev(bar_ms[4]), m(bar_ms[4]),
                           bar_ms)[0] == pytest.approx(-0.1)

@@ -440,7 +440,8 @@ _Bar = collections.namedtuple('_Bar', 'high low close')
 def _phase(f, o):
     """When a fill happens inside its candle: 'open' (entry, or a stop gapped at the open), 'close' (signal / time exit
     at the close) or 'intra' (every path event)."""
-    if f['kind'] == 'entry' or (f['kind'] == 'exit' and f['gap'] and f['why'] == 'stop' and f['ref'] == o):
+    if (f['kind'] == 'entry' and f['why'] != 'trail_entry') or (
+            f['kind'] == 'exit' and f['gap'] and f['why'] == 'stop' and f['ref'] == o):
         return 'open'
     return 'close' if f['kind'] == 'exit' and f['why'] in ('signal', 'time') else 'intra'
 
@@ -454,7 +455,8 @@ def funding_paid(side, deltas, events, marks, bar_ms):
     held through T: every fill of earlier bars except a close-of-bar exit at T settles after it, and an entry at the open
     of bar j fills after it. An event inside bar j with path fills in that bar charges the worse of the quantity before
     and after those fills (their instant is unknown). Mark = funding-mark proxy v1: the close of the 1h mark bar ending
-    at the event's grid slot."""
+    at the event's grid slot. Inside a bar the worst quantity is taken over the running path (fills are logged in path
+    order), zero included: a stop that may have filled before the slot never turns into a funding credit."""
     paid, rows = 0.0, []
     lo = bar_ms[min(b for b, _, _ in deltas)]
     hi = bar_ms[max(b for b, _, _ in deltas)] + BC.TF_MS
@@ -466,14 +468,18 @@ def funding_paid(side, deltas, events, marks, bar_ms):
         if j < len(bar_ms) and bar_ms[j] == slot:
             qs = [_held([(b, ph, d) for b, ph, d in deltas if not (b == j - 1 and ph == 'close')], j, ())]
         else:
-            qs = [_held(deltas, j, ('open',)), _held(deltas, j, ('open', 'intra'))]
-        qs = [q for q in qs if q > 1e-12]
-        if not qs:
+            q0 = _held(deltas, j, ('open',))
+            qs = [q0]
+            for b, ph, d in deltas:
+                if b == j and ph == 'intra':
+                    qs.append(qs[-1] + d)
+        qs = [max(q, 0.0) for q in qs]
+        if max(qs) <= 1e-12:
             continue
         mark = marks.get(slot - HOUR)
         if mark is None:
             raise PairRunnerError(f'funding mark missing at {slot}')
-        c = max(C.funding_cost(sd, q, [(slot, rate, mark)], SCEN) for q in qs)
+        c = max(C.funding_cost(sd, q, [(slot, rate, mark)], SCEN) if q > 1e-12 else 0.0 for q in qs)
         paid += c
         rows.append((slot, rate, mark, c))
     return paid, rows
@@ -504,14 +510,17 @@ def price_position(r, fills, arr, bar_ms, acc, tick, quote):
     net = cash - fees - fund
     risk, dist, e0 = fills[0]['risk'], fills[0]['stop_dist'], fills[0]['ref']
     i_in, i_out = int(r.i_in), int(r.i_out)
-    hi, lo = arr['h'][i_in:i_out + 1], arr['l'][i_in:i_out + 1]
-    mfe = float(max(0.0, (hi.max() - e0) if side == 1 else (e0 - lo.min())) / dist)
-    mae = float(max(0.0, (e0 - lo.min()) if side == 1 else (hi.max() - e0)) / dist)
+    x = fills[-1]['ref']
+    full = _phase(fills[-1], arr['o'][i_out]) == 'close'          # an intrabar / open exit sees its bar only up to x
+    hs = list(arr['h'][i_in:i_out + (1 if full else 0)]) + [e0, x]
+    ls = list(arr['l'][i_in:i_out + (1 if full else 0)]) + [e0, x]
+    mfe = float(max(0.0, (max(hs) - e0) if side == 1 else (e0 - min(ls))) / dist)
+    mae = float(max(0.0, (e0 - min(ls)) if side == 1 else (max(hs) - e0)) / dist)
     move = side * (fills[-1]['ref'] - e0) / dist
     return {'strategy': None, 'side': None, 'base': r.sym[:-len(quote)], 't_entry': int(bar_ms[i_in]),
             'i_in': i_in, 'i_out': i_out, 'hold_bars': i_out - i_in, 'n_fills': len(fills),
             'R': net / risk, 'gross_r': gross_ref / risk, 'slip_r': slip / risk, 'fee_r': fees / risk,
-            'funding_r': fund / risk, 'funding_events': len(rows), 'net': net, 'equity_pct': net / SIM['start'] * 100,
+            'funding_r': fund / risk, 'funding_events': len(rows), 'net': net, 'start_equity_pct': net / SIM['start'] * 100,
             'spread_r': {str(b): (net - notional * b / 2 / 1e4) / risk for b in SPREAD_BPS},
             'mfe_r': mfe, 'mae_r': mae, 'giveback_r': mfe - move, 'why': fills[-1]['why']}
 
@@ -564,7 +573,7 @@ def cost_summary(eps):
             'fee_r_sum': _r(sum(e['fee_r'] for e in eps)), 'funding_r_sum': _r(sum(e['funding_r'] for e in eps)),
             'pf': _r(win / loss) if loss > 0 else None, 'max_dd_r': _r(dd), 'win_rate': _r((net > 0).mean()),
             'mfe_r_mean': mean('mfe_r'), 'mae_r_mean': mean('mae_r'), 'giveback_r_mean': mean('giveback_r'),
-            'hold_bars_mean': mean('hold_bars'), 'equity_pct_sum': _r(sum(e['equity_pct'] for e in eps))}
+            'hold_bars_mean': mean('hold_bars'), 'start_equity_pct_sum': _r(sum(e['start_equity_pct'] for e in eps))}
 
 
 def paired_metrics(pairing):
@@ -573,7 +582,7 @@ def paired_metrics(pairing):
     p = pairing['paired']
     if not p:
         return {'n': 0}
-    d = {k: [y[k] - x[k] for x, y in p] for k in ('R', 'gross_r', 'slip_r', 'fee_r', 'funding_r', 'equity_pct')}
+    d = {k: [y[k] - x[k] for x, y in p] for k in ('R', 'gross_r', 'slip_r', 'fee_r', 'funding_r', 'start_equity_pct')}
     by_q, by_s = {}, {}
     for (x, y), dr in zip(p, d['R']):
         for grp, k in ((by_q, _quarter(x['t_entry'])), (by_s, x['base'])):
