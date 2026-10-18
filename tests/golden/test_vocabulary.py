@@ -8,7 +8,7 @@ Behaviour registry (schema.BEHAVIOUR_MEANING, Codex golden r3 residual ruling po
 meanings pinned too; a case whose `behaviours` holds an unknown or duplicated ID is a CaseError. The registry is data
 (BEHAVIOURS.json, Codex golden r5 ruling #1) and its real anchor is the base tree (test_ledger rule 8); the extension rule is
 unit-tested here on synthetic registries."""
-import copy, os, re, sys
+import ast, copy, os, re, sys
 
 import pytest
 
@@ -54,11 +54,12 @@ def engine_exit_reasons():
 def backtest_exit_reasons():
     """Every literal `why` of backtest.close(sl, s, p, px, frac, i, why) (incl. `'a' if x else 'b'`)."""
     out = set()
-    for line in _src('backtest.py').splitlines():
-        m = re.search(r'\bclose\(sl, s, p, .*?,\s*i,\s*(.+)\)', line)
-        if m:
-            out |= set(re.findall(r"'(\w+)'(?=\s+if|\s*\)|\s*$)", m.group(1).rstrip(') ;')))
-            out |= set(re.findall(r"else\s+'(\w+)'", m.group(1)))
+    for node in ast.walk(ast.parse(_src('backtest.py'))):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != 'close' or len(node.args) < 7:
+            continue
+        why = node.args[6]
+        vals = (why.body, why.orelse) if isinstance(why, ast.IfExp) else (why,)
+        out |= {v.value for v in vals if isinstance(v, ast.Constant) and isinstance(v.value, str)}
     return out
 
 
