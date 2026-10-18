@@ -47,8 +47,6 @@ class LedgerWriter:
                 if self.thread is None:
                     if not claim(self):                     # an earlier writer of these files is still alive
                         self.ctr['blocked_prior_writer'] += 1; self.ctr['dropped'] += 1; return False
-                    self.thread = threading.Thread(target=self._run, name='ml-shadow-writer', daemon=True)
-                    self.thread.start()
                 try:
                     self.q.put_nowait((kind, row))
                 except queue.Full:
@@ -141,12 +139,16 @@ _OWNERS = {}                                                 # ledger folder -> 
 
 
 def claim(w):
-    """Make w the writer of its folder. False while a different writer of that folder still has a live thread."""
-    if w.key is None: return True
+    """Make w the writer of its folder AND start its thread, in one step under the registry lock (no window in which
+    a third writer could see the new owner as not yet alive). False while a different writer of that folder still
+    has a live thread."""
     with _WRITERS_LOCK:
-        cur = _OWNERS.get(w.key)
-        if cur is not None and cur is not w and cur.alive(): return False
-        _OWNERS[w.key] = w
+        if w.key is not None:
+            cur = _OWNERS.get(w.key)
+            if cur is not None and cur is not w and cur.alive(): return False
+            _OWNERS[w.key] = w
+        w.thread = threading.Thread(target=w._run, name='ml-shadow-writer', daemon=True)
+        w.thread.start()
         return True
 
 

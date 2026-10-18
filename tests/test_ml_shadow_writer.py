@@ -366,6 +366,30 @@ def test_timed_out_close_never_lets_two_writers_share_the_files(tmp_path):
     assert e2.ml_close(10)
 
 
+def test_claim_and_thread_start_are_one_step(tmp_path, monkeypatch):
+    # Adversarial review #1: between B's claim and B's thread start, a third writer C of the same folder must not win.
+    key = str(tmp_path)
+    b = MLW.LedgerWriter(ledgers(tmp_path), {}, key=key)
+    c = MLW.LedgerWriter(ledgers(tmp_path), {}, key=key)
+    real_start, seen = threading.Thread.start, []
+    def start_then_race(th):
+        if th is b.thread and not seen:                     # C tries while B is mid-start
+            seen.append(1)
+            got = []
+            t = threading.Thread(target=lambda: got.append(c.submit('decision', dec_row('2026-10-02 00:00:00'))))
+            real_start(t); t.join(0.3)
+            seen.append(got)
+        return real_start(th)
+    monkeypatch.setattr(threading.Thread, 'start', start_then_race)
+    assert b.submit('decision', dec_row('2026-10-01 00:00:00'))
+    monkeypatch.setattr(threading.Thread, 'start', real_start)
+    time.sleep(0.5)
+    assert c.thread is None or not c.alive()                # C never ran next to B
+    assert b.close(10)
+    assert c.ctr['blocked_prior_writer'] == 1 and c.ctr['dropped'] == 1
+    c.close(1)
+
+
 def test_writers_of_different_folders_never_block_each_other(tmp_path):
     a = MLW.LedgerWriter(ledgers(tmp_path / 'a'), {}, key=str(tmp_path / 'a'))
     (tmp_path / 'b').mkdir(); (tmp_path / 'a').mkdir(exist_ok=True)
@@ -388,3 +412,26 @@ def test_rotation_keeps_every_row_readable_and_unique_through_the_writer(tmp_pat
     got = [json.loads(x)['decision_id'] for f in files for x in open(f, encoding='utf-8') if x.strip()]
     assert len(got) == len(set(got)) and ctr['write_errors'] == 0 and ctr['decisions'] == len(d)
     assert got == [r['decision_id'] for r in d][-len(got):]  # oldest dropped by the size bound, order kept
+
+
+def test_reconcile_retries_one_transient_tail_read_error(tmp_path, monkeypatch):
+    import ml_shadow.ledger as LM
+    led = MLS.JsonlLedger(str(tmp_path / 'd.jsonl'))
+    real_open, state = builtins.open, dict(late=True, rb_fail=1)
+    class LateFail:
+        def __init__(self, fh): self.fh = fh
+        def __enter__(self): return self
+        def __exit__(self, *a): self.fh.close()
+        def write(self, s): self.fh.write(s); self.fh.flush()
+        def flush(self): raise OSError(5, 'I/O error after the data was written')
+    def fake_open(p, mode='r', *a, **k):
+        if mode == 'rb' and state['rb_fail']:
+            state['rb_fail'] -= 1; raise PermissionError('scanner lock')
+        fh = real_open(p, mode, *a, **k)
+        if 'a' in mode and state['late']:
+            state['late'] = False; return LateFail(fh)
+        return fh
+    monkeypatch.setattr(LM, 'open', fake_open, raising=False)
+    r = dec_row('2026-10-01 00:00:00')
+    assert led.append(r) is not None and led.reconciled == 1          # read retried once, row reconciled
+    assert led.append(r) is None and len(rows(tmp_path / 'd.jsonl')) == 1

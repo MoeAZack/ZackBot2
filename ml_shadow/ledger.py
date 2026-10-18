@@ -45,17 +45,20 @@ class JsonlLedger:
                         log.warning('ml_shadow: skipping corrupt ledger line in %s', p)
 
     def _landed(self, text):
-        """True when the active file ends with this complete row (newline included). Never raises."""
-        try:
-            b = text.replace('\n', os.linesep).encode('utf-8')     # text-mode append writes os.linesep
-            with open(self.path, 'rb') as fb:
-                fb.seek(0, os.SEEK_END)
-                n = fb.tell()
-                if n < len(b): return False
-                fb.seek(n - len(b))
-                return fb.read(len(b)) == b
-        except Exception:                                   # noqa: BLE001 - unknown stays "not written"
-            return False
+        """True when the active file ends with this complete row (newline included). One retry on a read error;
+        still unreadable -> False (the row stays an explicit write error). Never raises."""
+        b = text.replace('\n', os.linesep).encode('utf-8')         # text-mode append writes os.linesep
+        for _ in range(2):
+            try:
+                with open(self.path, 'rb') as fb:
+                    fb.seek(0, os.SEEK_END)
+                    n = fb.tell()
+                    if n < len(b): return False
+                    fb.seek(n - len(b))
+                    return fb.read(len(b)) == b
+            except Exception:                               # noqa: BLE001 - unknown stays "not written"
+                pass
+        return False
 
     def __contains__(self, rid):
         return rid in self._seen

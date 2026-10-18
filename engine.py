@@ -3941,7 +3941,7 @@ class Engine:
         if w is None:
             from ml_shadow import writer as MLW
             w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health(),
-                                                           key=os.path.normcase(os.path.abspath(self.ml_paths()['dir']))))
+                                                           key=os.path.normcase(os.path.realpath(self.ml_paths()['dir']))))
         return w
 
     def ml_close(self, timeout=2.0):
