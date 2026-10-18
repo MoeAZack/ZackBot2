@@ -2897,12 +2897,14 @@ class Engine:
 
     def _tb_opposite(self, sym, side, skip_pending=None):
         """TRUE-BOOK-03 (#147): True when the symbol already carries exposure on the OTHER side - an open lot (any book,
-        manual included), an armed trailing entry (except the one now triggering), a resting maker or an unconfirmed entry.
-        Funding paid on a symbol held both ways cannot be assigned to either lot, so a new opposite entry is never opened."""
+        manual included), an armed trailing entry (except the one now triggering), a resting maker, an unconfirmed entry or an
+        untracked exchange position. Funding paid on a symbol held both ways cannot be assigned to either lot, so a new
+        opposite entry is never opened."""
         opp = 'SHORT' if side == 'LONG' else 'LONG'
         st = self.state
         recs = list(st['lots'].values()) + [p for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending] \
             + list((st.get('resting_entries') or {}).values()) + list((st.get('unconfirmed_entries') or {}).values())
+        if f'{sym}|{opp}' in (getattr(self, 'untracked', None) or {}): return True
         return any(x.get('symbol') == sym and x.get('side') == opp for x in recs)
 
     def true_book_block(self, sl, size=None, skip_pending=None, sym=None, side=None):
@@ -6760,6 +6762,8 @@ class Engine:
             if fallback and rem > 0:
                 blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
                        or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))
+                       or (self._tb_on() and self._tb_opposite(rec['symbol'], rec['side'])     # TRUE-BOOK-03: no remainder into
+                           and 'true_book/opposite_side_funding_ambiguity')                     # an opposite-side symbol
                        or self._tb_add_block(lot, rem, px)) if ok and lot else None      # TRUE-BOOK-01: the book's limits too
                 if not (ok and lot): st['fallback_skipped'] = 'maker lot not created'
                 elif blk: st['fallback_blocked'] = blk

@@ -99,3 +99,28 @@ def test_funding_holders_stay_one_sided_under_overlapping_signals():
     t = int(time.time() * 1000) + 1
     sides = {s for _, s, _ in e._funding_holders('BTCUSDT', t)}
     assert sides == {'SHORT'}                                         # attribution never becomes ambiguous
+
+
+def test_untracked_opposite_exchange_position_refuses():
+    e, _ = tb_engine()
+    e.untracked = {'BTCUSDT|SHORT': 1.0}
+    assert e.true_book_block(T_SL, None, None, 'BTCUSDT', 'LONG') == OPP
+    e.untracked = {'BTCUSDT|LONG': 1.0}
+    assert e.true_book_block(T_SL, None, None, 'BTCUSDT', 'LONG') is None
+
+
+def test_trailing_trigger_goes_through_the_gate_with_its_own_key_skipped():
+    e, _ = tb_engine()
+    e.state['pending_entries']['T|BTCUSDT'] = _working(side='LONG', sleeve='T')
+    e.state['lots']['x'] = fake_lot(e, 'B2_RANGE', sym='BTCUSDT', side='SHORT', stop=102.0)
+    assert e.entry_block(T_SL, 'BTCUSDT', 'LONG', sg=SG, skip_pending='T|BTCUSDT') == OPP
+
+
+def test_maker_remainder_fallback_is_blocked_by_an_opposite_side():
+    import inspect
+    src = inspect.getsource(E.Engine)
+    i = src.index("blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)")
+    assert "self._tb_opposite(rec['symbol'], rec['side'])" in src[i:i + 600]   # the remainder is a new-entry leg
+    e, _ = tb_engine()
+    e.state['lots']['m'] = fake_lot(e, None, sym='BTCUSDT', side='SHORT', stop=102.0, manual=True, sleeve='MAN')
+    assert e._tb_on() and e._tb_opposite('BTCUSDT', 'LONG')
