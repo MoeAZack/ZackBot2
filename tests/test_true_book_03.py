@@ -135,3 +135,9 @@ def test_manual_lot_stays_byte_identical_and_manual_entries_are_never_gated():
     e.state['lots'].clear()
     e.state['lots']['x'] = fake_lot(e, 'B2_RANGE', sym='BTCUSDT', side='SHORT', stop=102.0)
     assert e.entry_block(None, 'BTCUSDT', 'LONG', manual=True) != OPP   # a hand trade is the owner's call, never this gate
+
+
+def test_untracked_position_seen_once_already_refuses():
+    e, _ = tb_engine()
+    e.state['over_seen'] = {'BTCUSDT|SHORT': 1}                       # first reconcile pass, not alerted yet
+    assert e.true_book_block(T_SL, None, None, 'BTCUSDT', 'LONG') == OPP

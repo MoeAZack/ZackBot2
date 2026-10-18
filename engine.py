@@ -2904,7 +2904,8 @@ class Engine:
         st = self.state
         recs = list(st['lots'].values()) + [p for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending] \
             + list((st.get('resting_entries') or {}).values()) + list((st.get('unconfirmed_entries') or {}).values())
-        if f'{sym}|{opp}' in (getattr(self, 'untracked', None) or {}): return True
+        k = f'{sym}|{opp}'                               # untracked: alerted after 2 passes; over_seen from the first (Cowork)
+        if k in (getattr(self, 'untracked', None) or {}) or k in (st.get('over_seen') or {}): return True
         return any(x.get('symbol') == sym and x.get('side') == opp for x in recs)
 
     def true_book_block(self, sl, size=None, skip_pending=None, sym=None, side=None):
