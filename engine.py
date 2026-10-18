@@ -3559,9 +3559,20 @@ class Engine:
             changed = changed or res not in ('none', 'unknown')
         return changed
 
+    @staticmethod
+    def _stop_fired_guard(lot):
+        """Codex 6243761037 F1: a lot whose stop fired and whose fill is not booked yet (stop_gone on its current stop)
+        sends no close - Binance already closed it, so the order would take a sibling lot's size or overshoot. Same
+        deferred contract as `pending`: the caller keeps the lot, reconcile books the stop fill, nothing is sent."""
+        sg = lot.get('stop_gone')
+        if sg and sg[0] == lot.get('stop_id'):
+            raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: its stop fired on Binance and the fill is being "
+                               "booked - nothing is sent")
+
     def _market_close(self, lot, qty, why, mark=None, post=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
+        self._stop_fired_guard(lot)                                 # every close path, partial ones included
         sym, r = lot['symbol'], self.rules[lot['symbol']]
         qty = self._rd(qty, r['step'])
         if qty <= 0: return 0.0

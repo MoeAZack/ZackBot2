@@ -6,7 +6,7 @@ import json, os, sys
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from test_safety import mk_engine, opened                                # noqa: E402
+from test_safety import mk_engine, opened, SG                            # noqa: E402
 from test_exec_cal00_enrich import OID0, QUOTE_FEE, mk, recs, fast       # noqa: E402,F401
 from test_fee_asset01 import MX, settle                                  # noqa: E402
 import binance_client as BC                                              # noqa: E402
@@ -194,3 +194,48 @@ def test_manage_and_the_stop_verifier_send_no_order_while_the_fill_is_unreadable
     assert k in e.state['lots'] and e.state['lots'][k]['qty'] == qty and sent == []
     assert 'tags' in e.trade.calls[n:] and e.state['lots'][k].get('stop_miss', 0) >= 1   # the verifier did look at it
     assert e.trade.pos.get(('BTCUSDT', 'LONG'), 0) <= 1e-12                             # no new exposure
+
+
+def two_lots(e):
+    """Two lots on BTCUSDT LONG (different sleeves): lot 1's stop fires, its fill record is unreadable."""
+    k1 = opened(e); settle(e)
+    sl2 = E.sleeve('U', 'ema_mom', 0.5, 0.02, 2, 'all')
+    e.S['SLEEVES'] = list(e.S['SLEEVES']) + [sl2]
+    assert e.open_lot(sl2, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+    k2 = next(k for k in e.state['lots'] if k != k1); settle(e)
+    tag = fire(e, k1, e.state['lots'][k1]['stop'] - 0.5); e.trade.stop_fills[tag] = BC.BinanceError(-1001, 'disconnected')
+    for k in (k1, k2): e.state['lots'][k]['last_order_t'] = 0
+    e.reconcile(500)
+    assert e.state['lots'][k1]['stop_gone'][0] == tag and not e.state['lots'][k2].get('stop_gone')
+    return k1, k2
+
+
+def test_a_waiting_lot_never_closes_a_sibling_lots_size(monkeypatch):
+    """Codex 6243761037 F1: exit signal / time exit (direct close_lot) and flatten() send no close for the waiting lot;
+    the sibling's exchange position and state are unchanged; reconcile then books the fired stop exactly once."""
+    e, _ = mk(SX); k1, k2 = two_lots(e)
+    pos0, q2, n = e.trade.pos[('BTCUSDT', 'LONG')], e.state['lots'][k2]['qty'], len(e.trade.calls)
+    for why in ('exit_signal', 'time_exit'):
+        with pytest.raises(RuntimeError, match='stop fired'): e.close_lot(k1, why, 100.0)
+    with pytest.raises(RuntimeError, match='stop fired'): e._market_close(e.state['lots'][k1], 0.001, 'take_profit_1', 100.0)
+    res = e.flatten()
+    assert [f[0] for f in res['failed']] == [k1] and res['closed'] == [k2]                  # only the sibling's own close
+    closes = [c for c in e.trade.calls[n:] if c == 'close']
+    assert len(closes) == 1 and float(e.trade.order_log[-1][3]) == pytest.approx(q2)         # exactly the sibling's size
+    assert e.trade.pos[('BTCUSDT', 'LONG')] == pytest.approx(pos0 - q2) and k1 in e.state['lots']
+    monkeypatch.setattr(E.Engine, 'STOP_FILL_WAIT_S', 0)
+    e.reconcile(500); e.reconcile(500)
+    stops = [h for h in e.history if h['id'] == k1]
+    assert k1 not in e.state['lots'] and len(stops) == 1 and stops[0]['exit_reason'] == 'stop'
+
+
+def test_the_candle_exit_path_defers_the_waiting_lot_without_an_order(monkeypatch):
+    """The real cycle() exit-signal caller: the waiting lot's exit is deferred (no order), the sibling is untouched."""
+    e, _ = mk(SX); k1, k2 = two_lots(e)
+    l1 = e.state['lots'][k1]; tf = l1['tf']
+    monkeypatch.setattr(e, 'compute_signals', lambda tf_, syms, extra=None: ({f"{l1['sleeve']}|BTCUSDT": dict(SG, lx=True)}, {}))
+    e.S['ENTRIES_PAUSED'] = True
+    pos0, q2, n = e.trade.pos[('BTCUSDT', 'LONG')], e.state['lots'][k2]['qty'], len(e.trade.calls)
+    e.cycle(tf)
+    assert 'close' not in e.trade.calls[n:] and e.trade.pos[('BTCUSDT', 'LONG')] == pos0
+    assert k1 in e.state['lots'] and e.state['lots'][k2]['qty'] == q2
