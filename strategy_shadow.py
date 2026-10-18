@@ -78,6 +78,12 @@ def ref_lag_s(tf):
     return min(MAX_REF_LAG_S, TF_S.get(tf, 14400) / 2)
 
 
+def _fat(x):
+    """A funding instant snapped to the whole second (Binance stamps some fundingTime values a few ms after the hour)."""
+    t = _ts(x)
+    return None if t is None else float(round(t))
+
+
 def _num(x):
     try: v = float(x)
     except (TypeError, ValueError): return None
@@ -123,7 +129,7 @@ class ShadowBook:
         self._lock = threading.RLock()
         self.instances, self.episodes, self.gaps = {}, {}, []
         self.cycles, self.funding_seen, self.nav_path, self.pending, self.last_bar = {}, {}, {}, {}, {}
-        self.funding_by_sym = {}
+        self.funding_by_sym, self.funding_conflicted = {}, set()
         self.seq, self.clock = 0, None
         d = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(d, exist_ok=True)
@@ -206,6 +212,10 @@ class ShadowBook:
         return self._record('bar', tf=tf, bars=bars, signals=signals or {})
 
     def on_funding(self, symbol, at, rate, mark):
+        key = (symbol, _fat(at))
+        prev = self.funding_seen.get(key)
+        if prev is not None and (prev[:2] == (rate, mark) or key in self.funding_conflicted):
+            return dict(seq=self.seq, replay=True)        # an exact replay, or a conflict already on record, appends nothing
         return self._record('funding', symbol=symbol, at=at, rate=rate, mark=mark)
 
     def complete_cycle(self, cycle_id, tf, decision_time, instance_ids):
@@ -414,12 +424,13 @@ class ShadowBook:
         return dict(seq=self.seq)
 
     def _a_funding(self, rec):
-        sym, at, rate, mk = rec['symbol'], _ts(rec.get('at')), _num(rec.get('rate')), _num(rec.get('mark'))
+        sym, at, rate, mk = rec['symbol'], _fat(rec.get('at')), _num(rec.get('rate')), _num(rec.get('mark'))
         key = (sym, at)
         prev = self.funding_seen.get(key)
         body = (rec.get('rate'), rec.get('mark'), rec.get('at'))
         if prev is not None:
-            if prev != body: self.gaps.append(f'conflicting_funding:{sym}@{rec.get("at")}')
+            if prev[:2] != body[:2]:
+                self.gaps.append(f'conflicting_funding:{sym}@{rec.get("at")}'); self.funding_conflicted.add(key)
             return dict(seq=self.seq, replay=True)
         self.funding_seen[key] = body
         self.funding_by_sym.setdefault(sym, []).append(at)
@@ -507,13 +518,22 @@ class ShadowBook:
         if not ep.get('qty_hist'): return []
         end = ep['exit_t'] if ep['exit_t'] is not None else self.clock
         if end is None: return []
-        b = (int(ep['t_ref'] // FUNDING_GRID_S) + 1) * FUNDING_GRID_S
+        g = self._grid(ep['symbol'])
+        b = (int(ep['t_ref'] // g) + 1) * g
         out = []
         while b <= end:
             if self._qty_at(ep, b) > 0 and (ep['symbol'], float(b)) not in self.funding_seen:
                 out.append(f'funding_unread:{ep["symbol"]}@{self._iso(b)}')
-            b += FUNDING_GRID_S
+            b += g
         return out
+
+    def _grid(self, sym):
+        """Settlement grid of a symbol: the smallest spacing of its recorded instants (1h / 4h / 8h, all aligned on 00:00
+        UTC), FUNDING_GRID_S (8h) until two records are known. A 4h / 1h symbol therefore has every instant checked."""
+        ts = sorted(t for t in self.funding_by_sym.get(sym, ()) if t is not None)
+        d = [b - a for a, b in zip(ts, ts[1:]) if b - a >= 3600]
+        g = min(d) if d else FUNDING_GRID_S
+        return int(min(FUNDING_GRID_S, max(3600, round(g / 3600) * 3600)))
 
     def _row(self, iid):
         inst = self.instances[iid]

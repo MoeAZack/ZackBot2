@@ -442,3 +442,176 @@ def test_r1_app_flushes_queued_candidates_while_flat():
     src = open(os.path.join(os.path.dirname(E.__file__), 'app.py'), encoding='utf-8').read()
     seg = src.split('else:\n                                e.marks, e.marks_t = marks, now', 1)[1][:200]
     assert 'e._shadow_flush()' in seg
+
+
+# ------------------------------------------------------------------ testnet funding timeline (shadow_funding.py) + engine feed
+import market_data as MD                                   # noqa: E402
+import shadow_funding as SF                                # noqa: E402
+
+
+class FakeTestnet:
+    """/fapi/v1/fundingRate pages; records every request so the source and the symbols are checkable."""
+    def __init__(self, rows):
+        self.rows, self.calls = rows, []
+
+    def get(self, path, params):
+        self.calls.append((path, dict(params)))
+        if path != '/fapi/v1/fundingRate': raise MD.Refused(400, 'unexpected')
+        return [r for r in self.rows.get(params['symbol'], []) if r['fundingTime'] >= params['startTime']][:params['limit']]
+
+
+def _eng(tmp_path, on=True, live=False):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = on
+    e.S['UNIVERSE'] = ['BTCUSDT']
+    e.live = live
+    e.state['cohort'] = dict(id='CH-F', started_utc='2026-10-18T00:00:00+00:00')
+    return e
+
+
+def _fr(t_iso, rate, mark='100.0'):
+    t = int(datetime.fromisoformat(t_iso).timestamp() * 1000)
+    return dict(symbol='BTCUSDT', fundingTime=t, fundingRate=rate, markPrice=mark)
+
+
+def test_funding_collector_reads_testnet_only_from_the_cohort_start(tmp_path):
+    e = _eng(tmp_path)
+    tr = FakeTestnet({'BTCUSDT': [_fr('2026-10-17T16:00:00+00:00', '0.0002'), _fr('2026-10-18T08:00:00+00:00', '0.0001')]})
+    sf = SF.ShadowFunding(lambda: e, str(tmp_path), transport_factory=lambda: tr)
+    sf.FIRST_DELAY_S = 0
+    out = sf.run_once()
+    assert out is not None, sf.status()
+    assert out['rows_added'] == 1 and out['errors'] == 0
+    assert all(p == '/fapi/v1/fundingRate' for p, _ in tr.calls)
+    assert tr.calls[0][1]['startTime'] == int(datetime(2026, 10, 18, tzinfo=timezone.utc).timestamp() * 1000)
+    rows = SF.read_funding(str(tmp_path), 'BTCUSDT')
+    assert [(r[1], r[2]) for r in rows] == [('0.0001', '100.0')]
+    assert MD.read_json(os.path.join(SF.out_dir(str(tmp_path)), 'manifest.json'))['series']['funding_rate/BTCUSDT']['source'] == MD.TESTNET
+
+
+@pytest.mark.parametrize('on,live', [(False, False), (True, True)])
+def test_funding_collector_is_off_unless_paper_and_shadow_on(tmp_path, on, live):
+    e = _eng(tmp_path, on=on, live=live)
+    tr = FakeTestnet({})
+    sf = SF.ShadowFunding(lambda: e, str(tmp_path), transport_factory=lambda: tr)
+    assert sf.run_once() is None and tr.calls == [] and sf.status()['skipped'] == 1
+
+
+def test_funding_collector_default_transport_is_testnet():
+    sf = SF.ShadowFunding(lambda: None, tempfile.mkdtemp())
+    t = sf.transport_factory()
+    assert getattr(t, 'base', None) == MD.TESTNET or MD.TESTNET in repr(vars(t))
+
+
+def test_engine_feeds_collected_funding_once_and_settles_the_exposed_episode(tmp_path, monkeypatch):
+    e = _eng(tmp_path)
+    sb = e._shadow_book()
+    sb.on_signal(slot=slot(), symbol='BTCUSDT', side='LONG', signal=dict(time='2026-10-18T04:00:00+00:00', close=100, atr=2),
+                 mark=dict(time='2026-10-18T04:00:05+00:00', price=100.0), live_decision=dict(status='skipped', reason='x'))
+    tr = FakeTestnet({'BTCUSDT': [_fr('2026-10-18T08:00:00+00:00', '0.001')]})
+    SF.ShadowFunding(lambda: e, e.dir, transport_factory=lambda: tr).run_once()
+    fr = frame(100.0, t0='2026-09-15')                              # last candle opens 2026-10-18 08:00 -> closes 12:00
+    fr = fr[fr.t <= pd.Timestamp('2026-10-18 08:00:00')]
+    e._shadow_bar('4h', {'BTCUSDT': fr}, {})
+    e._shadow_bar('4h', {'BTCUSDT': fr}, {})                        # second feed: cursor -> nothing new
+    x = next(iter(sb.snapshot()['episodes'].values()))
+    assert x['funding'] == pytest.approx(-x['q0'] * 100.0 * 0.001)
+    funding_recs = [l for l in open(sb.path, encoding='utf-8') if '"kind":"funding"' in l]
+    assert len(funding_recs) == 1
+    row = sb.compute()['strategies'][0]
+    assert not any(w.startswith('funding_unread') for w in row['incomplete'])
+    e.__dict__.pop('_shadow_fcur')                                  # restart: cursor lost, exact replay appends nothing
+    e._shadow_bar('4h', {'BTCUSDT': fr}, {})
+    assert len([l for l in open(sb.path, encoding='utf-8') if '"kind":"funding"' in l]) == 1
+    assert e.health['strategy_shadow']['errors'] == 0
+
+
+def test_engine_funding_feed_failure_never_blocks_the_bar(tmp_path, monkeypatch):
+    e = _eng(tmp_path)
+    sb = e._shadow_book()
+    SF.ShadowFunding(lambda: e, e.dir, transport_factory=lambda: FakeTestnet(
+        {'BTCUSDT': [_fr('2026-10-18T08:00:00+00:00', '0.001')]})).run_once()
+    def boom(*a, **k): raise OSError('unreadable')
+    monkeypatch.setattr(SF, 'read_funding', boom)
+    sb.on_signal(slot=slot(), symbol='BTCUSDT', side='LONG', signal=dict(time='2026-10-18T04:00:00+00:00', close=100, atr=2),
+                 mark=dict(time='2026-10-18T04:00:05+00:00', price=100.0), live_decision=dict(status='skipped', reason='x'))
+    fr = frame(100.0, t0='2026-09-15')
+    fr = fr[fr.t <= pd.Timestamp('2026-10-18 04:00:00')]
+    e._shadow_bar('4h', {'BTCUSDT': fr}, {})
+    assert e.health['strategy_shadow']['errors'] == 1 and e.health['strategy_shadow']['bars'] == 1
+
+
+# ------------------------------------------------------------------ funding review regressions
+def test_f2_funding_time_a_few_ms_after_the_hour_still_covers_the_grid(tmp_path):
+    b = book(tmp_path)
+    enter(b, slot())
+    bar(b, 8 * 60, o=100, h=100.5, l=99.5, c=100.1)
+    b.on_funding(symbol='BTCUSDT', at=int(datetime(2026, 10, 18, 8, tzinfo=timezone.utc).timestamp() * 1000) + 2,
+                 rate=0.0001, mark=100.0)
+    row = b.compute()['strategies'][0]
+    assert row['complete'] and row['funding'] < 0
+
+
+def test_f2_four_hour_cadence_symbol_has_every_instant_checked(tmp_path):
+    b = book(tmp_path)
+    for h in (0, 4):                                              # two records 4h apart: the grid is 4h
+        b.on_funding(symbol='BTCUSDT', at=datetime(2026, 10, 18, h, tzinfo=timezone.utc).isoformat(), rate=0.0001, mark=100.0)
+    enter(b, slot())                                              # 01:00, held past 04:00 and 08:00
+    bar(b, 8 * 60, o=100, h=100.5, l=99.5, c=100.1)
+    b.on_funding(symbol='BTCUSDT', at=datetime(2026, 10, 18, 8, tzinfo=timezone.utc).isoformat(), rate=0.0001, mark=100.0)
+    assert b.compute()['strategies'][0]['complete']
+    b2 = book(tmp_path, 'b2.jsonl')
+    for h in (0, 4):
+        b2.on_funding(symbol='BTCUSDT', at=datetime(2026, 10, 18, h, tzinfo=timezone.utc).isoformat(), rate=0.0001, mark=100.0)
+    enter(b2, slot())
+    bar(b2, 8 * 60, o=100, h=100.5, l=99.5, c=100.1)
+    b2.on_funding(symbol='BTCUSDT', at=datetime(2026, 10, 18, 8, tzinfo=timezone.utc).isoformat(), rate=0.0001, mark=100.0)
+    b2.on_funding(symbol='BTCUSDT', at=datetime(2026, 10, 18, 12, tzinfo=timezone.utc).isoformat(), rate=0.0001, mark=100.0)
+    bar(b2, 12 * 60, o=100, h=100.5, l=99.5, c=100.1)
+    assert b2.compute()['strategies'][0]['complete']
+    b3 = book(tmp_path, 'b3.jsonl')                               # same 4h symbol, the 04:00 record never came
+    for h in (0, 8, 12):
+        b3.on_funding(symbol='BTCUSDT', at=datetime(2026, 10, 18, h, tzinfo=timezone.utc).isoformat(), rate=0.0001, mark=100.0)
+    enter(b3, slot())
+    bar(b3, 8 * 60, o=100, h=100.5, l=99.5, c=100.1)
+    row = b3.compute()['strategies'][0]
+    assert any(w == 'funding_unread:BTCUSDT@2026-10-18T04:00:00+00:00' for w in row['incomplete'])
+
+
+def test_f2_conflicting_funding_is_recorded_once_across_restarts(tmp_path):
+    b = book(tmp_path)
+    b.on_funding(symbol='BTCUSDT', at=iso(), rate=0.001, mark=100.0)
+    b.on_funding(symbol='BTCUSDT', at=iso(), rate=0.002, mark=100.0)
+    n = sum(1 for _ in open(b.path, encoding='utf-8'))
+    again = book(tmp_path)
+    again.on_funding(symbol='BTCUSDT', at=iso(), rate=0.002, mark=100.0)
+    assert sum(1 for _ in open(b.path, encoding='utf-8')) == n
+    assert not again.snapshot()['coverage']['complete']
+
+
+def test_f2_feed_skips_unchanged_files(tmp_path, monkeypatch):
+    e = _eng(tmp_path)
+    sb = e._shadow_book()
+    sb.on_signal(slot=slot(), symbol='BTCUSDT', side='LONG', signal=dict(time='2026-10-18T04:00:00+00:00', close=100, atr=2),
+                 mark=dict(time='2026-10-18T04:00:05+00:00', price=100.0), live_decision=dict(status='skipped', reason='x'))
+    SF.ShadowFunding(lambda: e, e.dir, transport_factory=lambda: FakeTestnet(
+        {'BTCUSDT': [_fr('2026-10-18T08:00:00+00:00', '0.001')]})).run_once()
+    reads = []
+    real = SF.read_funding
+    monkeypatch.setattr(SF, 'read_funding', lambda *a, **k: (reads.append(a), real(*a, **k))[1])
+    e._shadow_funding_feed(sb); e._shadow_funding_feed(sb)
+    assert len(reads) == 1
+
+
+def test_f2_collector_survives_a_locked_csv(tmp_path, monkeypatch):
+    e = _eng(tmp_path)
+    e.S['UNIVERSE'] = ['BTCUSDT', 'ETHUSDT']
+    tr = FakeTestnet({'BTCUSDT': [_fr('2026-10-18T08:00:00+00:00', '0.001')],
+                      'ETHUSDT': [dict(_fr('2026-10-18T08:00:00+00:00', '0.001'), symbol='ETHUSDT')]})
+    real = MD.Collector.collect_forward
+    def flaky(self, ds, sym, per, start):
+        if sym == 'BTCUSDT': raise PermissionError('file in use')
+        return real(self, ds, sym, per, start)
+    monkeypatch.setattr(MD.Collector, 'collect_forward', flaky)
+    out = SF.ShadowFunding(lambda: e, str(tmp_path), transport_factory=lambda: tr).run_once()
+    assert out == dict(rows_added=1, errors=1, symbols=2)

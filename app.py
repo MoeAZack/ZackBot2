@@ -1077,7 +1077,8 @@ class App:
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
                     audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
-                    market_collector=self.collector.status() if getattr(self, 'collector', None) else None)
+                    market_collector=self.collector.status() if getattr(self, 'collector', None) else None,
+                    shadow_funding=self.shadow_funding.status() if getattr(self, 'shadow_funding', None) else None)
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
@@ -1907,7 +1908,7 @@ def selftest(path):
         zoneinfo.ZoneInfo('Africa/Cairo')
         for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
-        import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data    # noqa: F401  (every module the app loads lazily)
+        import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data, strategy_shadow, shadow_funding   # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
         res['ok'] = True
     except Exception as e:
@@ -1943,6 +1944,9 @@ def main():
     threading.Thread(target=APP.analyst_loop, daemon=True).start()     # ML-SHADOW-01: no-op unless CLAUDE_SHADOW_ANALYST (PAPER)
     APP.collector = MC.MarketCollector(lambda: APP.engine, os.path.join(DATA, 'market_data'))   # observe-only, own thread + folder
     APP.collector.start()
+    import shadow_funding as SF                      # TRUE-BOOK-02: keyless TESTNET funding timeline (observe only, own thread)
+    APP.shadow_funding = SF.ShadowFunding(lambda: APP.engine, DATA)
+    APP.shadow_funding.start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
     APP.engine.notify(f'▶️ ZackBot {VERSION} started ({"LIVE" if APP.engine.live else "paper"}).')
     if '--no-window' in sys.argv:

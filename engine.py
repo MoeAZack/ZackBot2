@@ -4023,11 +4023,33 @@ class Engine:
         x = x.tz_localize('UTC') if x.tzinfo is None else x.tz_convert('UTC')
         return x + pd.Timedelta(seconds=TF_SEC.get(tf, 14400))
 
+    def _shadow_funding_feed(self, shadow):
+        """New rows of the collected TESTNET funding timeline (shadow_funding.py, its own thread and folder) for every symbol
+        the shadow has held, handed to the observer here on the engine thread - the ledger keeps one writer. Never account
+        income, never mainnet. A row without a usable rate / mark makes the exposed episodes INCOMPLETE in the ledger."""
+        import shadow_funding as SF
+        cur = self.__dict__.setdefault('_shadow_fcur', {})
+        seen = self.__dict__.setdefault('_shadow_fmtime', {})
+        syms = sorted({x['symbol'] for x in shadow.snapshot()['episodes'].values() if x.get('qty_hist')})
+        for sym in syms:
+            try: mt = os.path.getmtime(SF.series_file(self.dir, sym))
+            except OSError: continue                        # nothing collected yet: exposure stays funding_unread
+            if seen.get(sym) == mt: continue                # unchanged since the last feed
+            seen[sym] = mt
+            for t, rate, mk in SF.read_funding(self.dir, sym, cur.get(sym)):
+                try:
+                    shadow.on_funding(symbol=sym, at=datetime.fromtimestamp(t / 1000, timezone.utc).isoformat(), rate=rate, mark=mk)
+                except Exception:                           # noqa: BLE001 - not advanced: retried on the next bar
+                    self._shadow_err(); break
+                cur[sym] = t
+
     def _shadow_bar(self, tf, frames, sigs):
         """Feed the just-closed candle of every symbol of this timeframe (+ the exit signals per instance) to the observer."""
         try:
             shadow = self._shadow_book()
             if shadow is None: return
+            try: self._shadow_funding_feed(shadow)
+            except Exception: self._shadow_err()           # noqa: BLE001 - funding feed failure: the bar still goes in
             import strategy_shadow as SSH
             bars = {}
             for s, d in (frames or {}).items():
