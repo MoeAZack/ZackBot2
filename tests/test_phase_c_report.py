@@ -561,3 +561,15 @@ def test_a_pinned_file_reported_as_a_link_is_refused(tmp_path, monkeypatch):
     real = os.path.islink
     monkeypatch.setattr(P.os.path, 'islink', lambda p: p.endswith('history.json') or real(p))
     with pytest.raises(P.PhaseCError, match='link'): P.build(str(s), str(man), [rec['id']])
+
+
+def test_missing_rank_shadow_ledger_is_a_named_missing_input(tmp_path):
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)])
+    assert f'missing_input:strategy_shadow/{cid}.jsonl' in P.build(str(s), str(man), [cid])['cohort_status']
+
+
+def test_a_manifest_entry_that_is_not_a_pin_record_is_refused(tmp_path):
+    s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
+    m = json.loads(man.read_text()); m['files']['history.json'] = 'deadbeef'; man.write_text(json.dumps(m))
+    with pytest.raises(P.PhaseCError, match='not a pin record'): P.build(str(s), str(man), [rec['id']])
