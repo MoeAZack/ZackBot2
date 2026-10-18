@@ -102,7 +102,21 @@ def fnum(x, nd=6):
 
 
 def family_of(key):
-    return TB.book_of(key) or 'UNMAPPED'
+    """The engine's family of a strategy key (paper_books.book_for: an unlisted key is B5_DISCOVERY)."""
+    return PB.book_for(key)
+
+
+def mapped(key):
+    return TB.book_of(key) is not None
+
+
+def _utc_ms(iso, what):
+    """Epoch ms of an ISO instant that carries an explicit UTC offset (a naive time would be read as local time)."""
+    from datetime import datetime
+    try: d = datetime.fromisoformat(str(iso))
+    except (TypeError, ValueError): raise PhaseCError(f'{what} is not an ISO time')
+    if d.tzinfo is None: raise PhaseCError(f'{what} has no UTC offset')
+    return d.timestamp() * 1000
 
 
 def scrub_check(obj, path='$'):
@@ -127,6 +141,7 @@ def _rel_files(src):
 def freeze(src, dst, snapshot_utc, label='paper'):
     """Copy the whitelisted artifacts into a NEW dir; each file is copied until its source hash is stable across the copy
     (the engine may be appending). Returns the manifest (also written write-once as MANIFEST.phase-c-snapshot.json)."""
+    _utc_ms(snapshot_utc, 'snapshot_utc')
     if os.path.exists(dst): raise PhaseCError(f'{dst} exists; a snapshot is never overwritten')
     os.makedirs(dst)
     files = {}
@@ -176,12 +191,16 @@ def preflight(snapshot, manifest_path, wave2=None, wave2_sha256=None):
     if not isinstance(man, dict) or man.get('format') != SNAPSHOT_FORMAT or not isinstance(man.get('files'), dict):
         raise PhaseCError('snapshot manifest has the wrong format')
     if not man.get('snapshot_utc'): raise PhaseCError('snapshot manifest has no snapshot_utc')
+    _utc_ms(man['snapshot_utc'], 'snapshot_utc')
     root = os.path.abspath(snapshot)
     for rel, rec in sorted(man['files'].items()):
+        if not isinstance(rec, dict): raise PhaseCError(f'manifest entry {rel} is not a pin record')
         p = os.path.abspath(os.path.join(root, rel))
         if os.path.commonpath([root, p]) != root or '..' in rel.replace('\\', '/').split('/'):
             raise PhaseCError(f'manifest path {rel} escapes the snapshot')
         if not os.path.isfile(p): raise PhaseCError(f'pinned file {rel} is missing')
+        if os.path.islink(p) or os.path.normcase(os.path.realpath(p)) != os.path.normcase(os.path.realpath(root) + p[len(root):]):
+            raise PhaseCError(f'pinned file {rel} is a link; refused')
         if sha_file(p) != (rec or {}).get('sha256'): raise PhaseCError(f'pinned file {rel} hash mismatch')
     mp = os.path.abspath(manifest_path)
     pinned = {os.path.normcase(os.path.abspath(os.path.join(root, r))) for r in man['files']} | {os.path.normcase(mp)}
@@ -296,23 +315,35 @@ def exec_stats(rows, start=TB.START):
     return s
 
 
-def cohort_closes(snap, cid, snapshot_utc):
-    """(closes of the cohort at or before the snapshot instant, count excluded as later or with no readable close time)."""
+def cohort_closes(snap, cid, snapshot_utc, start_utc=None):
+    """(closes of the cohort inside [cohort start, snapshot], count excluded as outside it or with no readable close time)."""
     rows = TB.merge_rows([r for r in snap['cohort_rows'] if r.get('cohort_id') == cid] +
                          [r for r in snap['history'] if r.get('cohort_id') == cid])
     cut = TB._ms(snapshot_utc)
-    keep = [r for r in rows if TB._ms(r.get('closed')) is not None and cut is not None and TB._ms(r.get('closed')) <= cut]
+    lo = TB._ms(start_utc) if start_utc else None
+    keep = [r for r in rows if TB._ms(r.get('closed')) is not None and cut is not None and TB._ms(r.get('closed')) <= cut
+            and (lo is None or TB._ms(r.get('closed')) >= lo)]
     return keep, len(rows) - len(keep)
+
+
+def _key(r):
+    return r.get('strategy_key') or '?'
+
+
+def book_mismatch(r):
+    """A close whose stamped book is not its strategy's family (one strategy is ONE stream, never split by a stray book)."""
+    return r.get('book') != family_of(_key(r))
 
 
 def executed_section(rows):
     fams, strats, cells = [], [], []
-    for bk, name, keys in PB.BOOKS + (('UNMAPPED', 'not in any book', frozenset()),):
-        mine = [r for r in rows if (r.get('book') if r.get('book') in PB.IDS else 'UNMAPPED') == bk]
+    for bk, name, keys in PB.BOOKS:
+        mine = [r for r in rows if family_of(_key(r)) == bk]
         fams.append(dict(exec_stats(mine), family=bk, name=name))
-        for key in sorted({r.get('strategy_key') or '?' for r in mine} | set(keys)):
-            rs = [r for r in mine if (r.get('strategy_key') or '?') == key]
-            strats.append(dict(exec_stats(rs), family=bk, key=key, mapped=key in keys))
+        for key in sorted({_key(r) for r in mine} | set(keys)):
+            rs = [r for r in mine if _key(r) == key]
+            strats.append(dict(exec_stats(rs), family=bk, key=key, mapped=mapped(key),
+                               book_mismatch=sum(1 for r in rs if book_mismatch(r))))
             for sym in sorted({str(r.get('symbol')) for r in rs}):
                 cells.append(dict(exec_stats([r for r in rs if str(r.get('symbol')) == sym]), family=bk, key=key, symbol=sym))
     by_quote = {}
@@ -460,7 +491,8 @@ def defects_section(rows, shadow_rows, shadow_cov, audit, state, cohort_status, 
 
     for r in rows:
         for w in _close_reasons(r):
-            add('executed_close', w, r.get('strategy_key') or '?', str(r.get('symbol')), r.get('closed'), class_input=True)
+            add('executed_close', w, _key(r), str(r.get('symbol')), r.get('closed'), class_input=True)
+        if book_mismatch(r): add('executed_close', 'book_mismatch', _key(r), str(r.get('symbol')), r.get('closed'), class_input=True)
     for s in shadow_rows:
         for w in s['incomplete']: add('shadow', w, s['key'], class_input=True)
     for g in shadow_cov.get('gaps') or (): add('shadow_ledger', g)
@@ -480,7 +512,7 @@ def defects_section(rows, shadow_rows, shadow_cov, audit, state, cohort_status, 
     for code in cohort_status: add('cohort', code)
     for rel, n in sorted(torn.items()): add('snapshot', f'torn_lines:{rel}', n=n)
     if dup: add('snapshot', 'duplicate_audit_lines', n=dup)
-    if late: add('snapshot', 'closes_after_snapshot_or_untimed', n=late)
+    if late: add('snapshot', 'closes_outside_window_or_untimed', n=late)
     items = sorted(q_.values(), key=lambda d: (-d['count'], d['source'], d['code'], d['key'] or '', d['symbol'] or ''))
     return dict(queue=items, class_inputs='executed_close and shadow items attributed to a strategy make it "repair"; '
                                           'tracking / coverage / unowned items are operational only')
@@ -570,9 +602,17 @@ def ml_section(snap, window):
 
 
 # ------------------------------------------------------------------ build
-def cohort_status(snap, rank, recs):
+REQUIRED = ('state.json', 'cohort.json', 'trade_audit.jsonl')
+
+
+def cohort_status(snap, rank, recs, man=None, snapshot=None):
     why = []
     if not rank: return ['no_clean_rank_cohort']
+    files = set((man or {}).get('files') or ())
+    why += [f'missing_input:{rel}' for rel in REQUIRED if rel not in files]
+    if not files & {'history.json', 'cohort_rows.jsonl'}: why.append('missing_input:history.json|cohort_rows.jsonl')
+    for cid in rank:
+        if shadow_path(snapshot, man, cid)[0] is None: why.append(f'missing_input:{shadow_path(snapshot, man, cid)[1]}')
     for cid in rank:
         rec = recs.get(cid)
         if rec is None: why.append('rank_cohort_record_missing'); continue
@@ -589,7 +629,7 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
     man, pins = preflight(snapshot, manifest_path, wave2, wave2_sha256)
     snap = load_snapshot(snapshot, man)
     recs = cohort_records(snap)
-    cst = cohort_status(snap, rank, recs)
+    cst = cohort_status(snap, rank, recs, man, snapshot)
     tfs = _tfs()
     body = dict(format=FORMAT, contract=CONTRACT, authority='READ_ONLY; NO_EXECUTION_ROUTING_OR_PROMOTION_AUTHORITY',
                 pins=pins, snapshot_utc=man['snapshot_utc'], holdout_read=False, research_data_read=False,
@@ -598,8 +638,8 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
     def per_cohort(cid):
         rec = recs.get(cid) or {}
         window = (rec.get('started_utc'), rec.get('ended_utc') or man['snapshot_utc'])
-        rows, late = cohort_closes(snap, cid, man['snapshot_utc'])
-        ex = dict(executed_section(rows), excluded_after_snapshot_or_untimed=late)
+        rows, late = cohort_closes(snap, cid, man['snapshot_utc'], rec.get('started_utc'))
+        ex = dict(executed_section(rows), excluded_outside_window_or_untimed=late)
         sp, rel = shadow_path(snapshot, man, cid)
         sh, eps = shadow_section(sp, cid)
         df = defects_section(rows, sh.get('strategies') or [], sh.get('coverage') or {}, snap['audit'], snap['state'],
@@ -656,10 +696,12 @@ def run(snapshot, manifest, out_dir, rank=(), diagnostic=(), wave2=None, wave2_s
         if os.path.exists(os.path.join(out_dir, n)): raise PhaseCError(f'{n} exists in {out_dir}; never overwritten')
     try:
         body = build(snapshot, manifest, rank, diagnostic, wave2, wave2_sha256)
-    except PhaseCError as e:
+    except Exception as e:                       # any failure (incl. a reducer / Wave-2 error) leaves an INCOMPLETE record
+        msg = str(e) if isinstance(e, PhaseCError) else f'{type(e).__name__}: {str(e)[:200]}'
         write_once(os.path.join(out_dir, 'INCOMPLETE.json'),
-                   dumps(dict(format=FORMAT, report_status='INCOMPLETE', refused=str(e), non_promotable=True)))
-        raise
+                   dumps(dict(format=FORMAT, report_status='INCOMPLETE', refused=msg, non_promotable=True)))
+        if isinstance(e, PhaseCError): raise
+        raise PhaseCError(msg) from e
     write_once(os.path.join(out_dir, 'report.json'), dumps(body))
     write_once(os.path.join(out_dir, 'report.md'), markdown(body))
     return body

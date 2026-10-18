@@ -147,7 +147,7 @@ def test_closes_after_the_snapshot_or_untimed_are_excluded_and_counted(tmp_path)
     rows = [row(1, cid), row(2, cid, closed='2026-10-22T00:00:00+00:00'), row(3, cid, closed=None)]
     s, man, _ = frozen(tmp_path, rows=rows)
     ex = P.build(str(s), str(man), [cid])['rank'][0]['executed']
-    assert ex['excluded_after_snapshot_or_untimed'] == 2 and {f['family']: f['closed'] for f in ex['families']}['B1_FAST'] == 1
+    assert ex['excluded_outside_window_or_untimed'] == 2 and {f['family']: f['closed'] for f in ex['families']}['B1_FAST'] == 1
 
 
 def test_commission_missing_is_incomplete():
@@ -287,7 +287,7 @@ def test_inherited_open_lots_block_the_rank_cohort(tmp_path):
 
 def test_rank_cohort_must_validate_and_cannot_also_be_diagnostic(tmp_path):
     s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
-    assert P.build(str(s), str(man), ['CH-unknown'])['cohort_status'] == ['rank_cohort_record_missing']
+    assert 'rank_cohort_record_missing' in P.build(str(s), str(man), ['CH-unknown'])['cohort_status']
     with pytest.raises(P.PhaseCError, match='both'): P.build(str(s), str(man), [rec['id']], [rec['id']])
     bad = dict(rec); bad.pop('code_sha')
     s2 = tmp_path / 'b'; s2.mkdir()
@@ -446,3 +446,118 @@ def test_ml_ledger_is_descriptive_and_never_changes_classes(tmp_path):
     assert ml['decisions_in_window'] == 2 and ml['rows'][0]['taken_unlabelled'] == 1 and ml['complete'] is False
     assert b1['shortlist'] == b2['shortlist']
     assert '"d1"' not in json.dumps(b1)
+
+
+# ------------------------------------------------------------------ review round 1 (adversarial review + mutation survivors)
+def test_a_stray_book_never_replaces_a_strategys_stream_and_is_a_defect(tmp_path):
+    cid = cohort()['id']
+    rows = [row(i, cid) for i in range(16)] + [row(i, cid, gross=-5, r=-0.6) for i in range(16, 20)] + [row(20, cid, book=None)]
+    s, man, _ = frozen(tmp_path, rows=rows, shadow=both(episodes(16), episodes(4, win=False, t0=1000)))
+    b = P.build(str(s), str(man), [cid])
+    ex = {x['key']: x for x in b['rank'][0]['executed']['strategies']}
+    assert ex['exp_scalp']['closed'] == 21 and ex['exp_scalp']['book_mismatch'] == 1
+    sl = {r['key']: r for r in b['shortlist']['rows']}
+    assert sl['exp_scalp']['cls'] == 'repair' and 'book_mismatch' in sl['exp_scalp']['why']
+
+
+def test_unlisted_strategy_is_discovery_like_the_engine():
+    ex = P.executed_section([row(0, 'c', key='brand_new', book='B5_DISCOVERY')])
+    x = next(s for s in ex['strategies'] if s['key'] == 'brand_new')
+    assert x['family'] == 'B5_DISCOVERY' and x['mapped'] is False and x['book_mismatch'] == 0
+
+
+@pytest.mark.parametrize('drop', [('state.json',), ('cohort.json',), ('trade_audit.jsonl',), ('history.json', 'cohort_rows.jsonl')])
+def test_missing_required_inputs_make_the_rank_build_incomplete_and_undecided(tmp_path, drop):
+    cid = cohort()['id']
+    d, rec = live_dir(tmp_path, rows=[row(i, cid) for i in range(20)], lots={'L': dict(cohort_id='CH-old')}, shadow=episodes(20))
+    for f in drop: (d / f).unlink()
+    P.freeze(str(d), str(tmp_path / 'snap'), SNAP)
+    s = tmp_path / 'snap'
+    b = P.build(str(s), str(s / 'MANIFEST.phase-c-snapshot.json'), [cid], wave2=str(wave2_packet(tmp_path)))
+    assert any(c.startswith('missing_input:') for c in b['cohort_status']) and b['report_status'] == 'INCOMPLETE'
+    assert {r['cls'] for r in b['shortlist']['rows']} <= {'UNDECIDED'}
+
+
+def test_naive_snapshot_time_is_refused(tmp_path):
+    d, _ = live_dir(tmp_path, rows=[row(1, 'x')])
+    with pytest.raises(P.PhaseCError, match='UTC offset'): P.freeze(str(d), str(tmp_path / 's'), '2026-10-21T09:00:00')
+    (tmp_path / 'x').mkdir()
+    s, man, rec = frozen(tmp_path / 'x', rows=[row(1, 'x')])
+    man.write_text(json.dumps(dict(json.loads(man.read_text()), snapshot_utc='2026-10-21T09:00:00')))
+    with pytest.raises(P.PhaseCError, match='UTC offset'): P.build(str(s), str(man), [rec['id']])
+
+
+def test_an_unexpected_failure_still_writes_the_incomplete_record(tmp_path):
+    cid = cohort()['id']
+    d, rec = live_dir(tmp_path, rows=[row(1, cid)], shadow=episodes(1))
+    led = d / 'strategy_shadow' / f'{cid}.jsonl'
+    first = json.loads(led.read_text().splitlines()[0])
+    with open(led, 'a') as f: f.write(json.dumps(dict(first, seq=999, kind='future_kind')) + '\n')
+    P.freeze(str(d), str(tmp_path / 'snap'), SNAP)
+    s = tmp_path / 'snap'
+    with pytest.raises(P.PhaseCError, match='AttributeError'):
+        P.run(str(s), str(s / 'MANIFEST.phase-c-snapshot.json'), str(tmp_path / 'o'), [cid])
+    assert json.loads((tmp_path / 'o' / 'INCOMPLETE.json').read_text())['report_status'] == 'INCOMPLETE'
+
+
+def test_closes_before_the_cohort_start_are_excluded_and_counted(tmp_path):
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(1, cid), row(2, cid, closed='2026-10-18T23:00:00+00:00')])
+    assert P.build(str(s), str(man), [cid])['rank'][0]['executed']['excluded_outside_window_or_untimed'] == 1
+
+
+def test_a_linked_pinned_file_is_refused(tmp_path):
+    s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
+    tgt = tmp_path / 'elsewhere.json'; tgt.write_bytes((s / 'history.json').read_bytes())
+    (s / 'history.json').unlink()
+    try: os.symlink(tgt, s / 'history.json')
+    except (OSError, NotImplementedError): pytest.skip('symlinks not permitted here')
+    with pytest.raises(P.PhaseCError, match='link'): P.build(str(s), str(man), [rec['id']])
+
+
+def test_incomplete_shadow_stream_is_never_rankable(tmp_path, monkeypatch):
+    class FakeBook:
+        def __init__(self, *a, **k): self.episodes = {}
+        def compute(self):
+            return dict(model=dict(hash='h'), coverage=dict(complete=False, gaps=['x:1']), strategies=[dict(
+                key='exp_scalp', config_digest='d', closed=25, open=0, held=0, episodes=25, realized=10.0, fees=1.0, funding=0.0,
+                roi=0.0, max_dd=0.0, pf=2.0, expectancy=1.0, avg_r=0.5, net_r=12.5, win_rate=0.6, turnover=1.0,
+                excursions_excluded=0, mfe_r={}, mae_r={}, giveback_r={}, exits={}, live_decisions={},
+                incomplete=['funding_unread:BTCUSDT@x'], complete=False)])
+    monkeypatch.setattr(P.SSH, 'ShadowBook', FakeBook)
+    doc, _ = P.shadow_section('p', 'c')
+    assert doc['strategies'][0]['rankable'] is False and doc['strategies'][0]['incomplete'] == ['funding_unread']
+
+
+def test_shadow_only_needs_a_positive_shadow():
+    assert P.classify('k', X(closed=5), [X(exp=-1, pf=0.5)], set())[0] == 'UNDECIDED'
+
+
+def test_wave2_cell_must_match_its_summary_pin(tmp_path):
+    d = wave2_packet(tmp_path)
+    sm = json.loads((d / 'summary.json').read_text())
+    sm['cells']['candidate.x.long.15m']['cell_sha256'] = '0' * 64
+    (d / 'summary.json').write_text(json.dumps(sm))
+    with pytest.raises(P.PhaseCError, match='summary pin'): P.wave2_section(str(d))
+
+
+def test_unknown_counterfactual_kind_is_unevaluated_never_a_policy_result():
+    rows = [row(1, 'c')]
+    cf = P.counterfactual_section(rows, [dict(kind='trade_audit', id=rows[0]['id'],
+                                              counterfactuals=[dict(kind='what_if', rule='cap', vs_actual=5.0)])])
+    assert cf['policies'][0]['evaluated'] == 0 and cf['policies'][0]['unevaluated'] == 1
+
+
+def test_incomplete_shadow_coverage_keeps_the_report_incomplete_even_with_wave2(tmp_path, monkeypatch):
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)], shadow=episodes(20))
+    monkeypatch.setattr(P, 'SHADOW_MODEL', dict(P.SHADOW_MODEL, fee_rate=0.0004))
+    b = P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
+    assert b['cohort_status'] == [] and b['report_status'] == 'INCOMPLETE'
+
+
+def test_a_pinned_file_reported_as_a_link_is_refused(tmp_path, monkeypatch):
+    s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
+    real = os.path.islink
+    monkeypatch.setattr(P.os.path, 'islink', lambda p: p.endswith('history.json') or real(p))
+    with pytest.raises(P.PhaseCError, match='link'): P.build(str(s), str(man), [rec['id']])
