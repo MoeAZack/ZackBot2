@@ -131,12 +131,12 @@ def test_bar_at_or_before_the_entry_is_never_managed(tmp_path):
 
 def test_unsupported_management_is_incomplete_and_unmanaged(tmp_path):
     b = book(tmp_path)
-    r = b.on_signal(slot=dict(slot('dca_dip'), mgmt={}), symbol='BTCUSDT', side='LONG',
+    r = b.on_signal(slot=slot(runner={'be_r': 2.0}), symbol='BTCUSDT', side='LONG',
                     signal=dict(time=iso(), close=100, atr=2, le=True), mark=dict(time=iso(), price=100),
                     live_decision=dict(status='taken', reason=''))
     bar(b, 10, o=100, h=200, l=1, c=100)
-    row = next(x for x in b.compute()['strategies'] if x['key'] == 'dca_dip')
-    assert any(w.startswith('unsupported_mgmt:dca') for w in row['incomplete']) and not row['complete']
+    row = b.compute()['strategies'][0]
+    assert any(w.startswith('unsupported_mgmt:runner') for w in row['incomplete']) and not row['complete']
     assert ep(b, r)['bars'] == 0
 
 
@@ -644,6 +644,161 @@ def test_f2_collector_survives_a_locked_csv(tmp_path, monkeypatch):
     assert out == dict(rows_added=1, errors=1, symbols=2)
 
 
+# ------------------------------------------------------------------ DCA baskets and pyramid adds (backtest.walk_path parity)
+def dca_slot(key='dca_dip', sid='DCA'):
+    return dict(id=sid, key=key, tf='4h', sides='both', risk=0.02, max_pos=1, share=1.0, params={}, mgmt={})
+
+
+def test_dca_safety_order_fills_on_the_adverse_leg_and_the_basket_tp_closes_it(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot())
+    e = ep(b, r)
+    q0 = 40 / 49                                           # risk_qty: 40 / sum(w_k * |level_k - stop|) = 40 / 49 ATR-units
+    assert e['qty'] == pytest.approx(q0) and e['stop'] == pytest.approx(E0 - 10) and e['tp'] == pytest.approx(E0 + 2)
+    bar(b, 10, o=100, h=100.5, l=97, c=97.5)               # red: o -> h -> l: level 1 (E0 - 2) fills, level 2 not reached
+    e = ep(b, r)
+    avg = (E0 + (E0 - 2) * 1.5) / 2.5
+    assert e['dca'] == 1 and e['qty'] == pytest.approx(2.5 * q0) and e['avg'] == pytest.approx(avg)
+    assert e['tp'] == pytest.approx(avg + 2)               # basket TP recomputed from the new average, entry ATR
+    bar(b, 20, o=98, h=101, l=97.8, c=100.9)
+    e = ep(b, r)
+    x = (avg + 2) * (1 - SLIP)
+    assert e['exit_reason'] == 'tp' and e['exit'] == pytest.approx(x)
+    assert e['gross'] == pytest.approx(2.5 * q0 * (x - avg))
+    assert e['fees'] == pytest.approx(FEE * (q0 * E0 + 1.5 * q0 * (E0 - 2) + 2.5 * q0 * x))
+
+
+def test_dca_gap_through_a_level_fills_at_the_open(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot())
+    bar(b, 10, o=97, h=97.5, l=96.5, c=97.2)               # opens below level 1, above level 2 (E0 - 4)
+    e = ep(b, r)
+    assert e['dca'] == 1 and e['avg'] == pytest.approx((E0 + 97 * 1.5) / 2.5)
+
+
+def test_dca_stop_closes_the_whole_basket_after_every_level_met_first(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot())
+    bar(b, 10, o=100, h=100.2, l=89, c=89.5)               # all 3 levels, then the stop E0 - 10
+    e = ep(b, r)
+    assert e['dca'] == 3 and e['exit_reason'] == 'stop' and e['exit'] == pytest.approx((E0 - 10) * (1 - SLIP))
+    assert e['q_max'] == pytest.approx((1 + 1.5 + 2.25 + 3.375) * 40 / 49)
+
+
+def test_dca_short_mirror(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot('exp_rip_sell_dca', 'RIP'), side='SHORT')
+    e0 = 100.0 * (1 - SLIP)
+    bar(b, 10, o=100, h=103, l=99.5, c=102.5)              # green: o -> l -> h: level 1 (e0 + 2) fills
+    e = ep(b, r)
+    assert e['dca'] == 1 and e['avg'] == pytest.approx((e0 + (e0 + 2) * 1.5) / 2.5)
+
+
+def test_pyramid_add_on_the_favourable_leg_then_trail(tmp_path):
+    b = book(tmp_path); r = enter(b, dict(slot('breakout_pyramid', 'BP'), mgmt={}))
+    e = ep(b, r)
+    assert e['qty'] == pytest.approx(10.0) and e['next_add'] == pytest.approx(E0 + 4)   # stop_atr 2 -> R = 4
+    bar(b, 10, o=100, h=105, l=99.5, c=104.5)              # green: add at E0 + 4, trail 3 ATR from 105
+    e = ep(b, r)
+    assert e['adds'] == 1 and e['qty'] == pytest.approx(15.0)
+    assert e['avg'] == pytest.approx((E0 * 10 + (E0 + 4) * 5) / 15) and e['next_add'] == pytest.approx(E0 + 8)
+    assert e['stop'] == pytest.approx(99.0)
+
+
+def test_pyramid_add_still_fires_in_a_stop_first_candle(tmp_path):
+    b = book(tmp_path); r = enter(b, dict(slot('breakout_pyramid', 'BP'), mgmt={}))
+    bar(b, 10, o=100, h=105, l=95, c=96)                   # red: o -> h (add) -> l (stop raised to 99 by the trail)
+    e = ep(b, r)
+    assert e['adds'] == 1 and e['q_max'] == pytest.approx(15.0)
+    assert e['exit_reason'] == 'stop' and e['exit'] == pytest.approx(99.0 * (1 - SLIP))
+
+
+def test_add_refused_by_the_exchange_filter_is_skipped_for_the_candle(tmp_path):
+    b = book(tmp_path)
+    r = b.on_signal(slot=dict(slot('breakout_pyramid', 'BP'), mgmt={}), symbol='BTCUSDT', side='LONG',
+                    signal=dict(time=iso(), close=100, atr=2), mark=dict(time=iso(), price=100),
+                    live_decision=dict(status='skipped', reason='x'), rule=dict(step=10.0, min_qty=10.0, min_notional=0.0))
+    bar(b, 10, o=100, h=105, l=99.5, c=104.5)              # the 5-unit add floors to 0 < min_qty
+    e = ep(b, r)
+    assert e['adds'] == 0 and e['qty'] == 10.0 and e['status'] == 'open'
+
+
+def test_all_22_installed_strategies_except_none_are_modelled():
+    r = E.with_scalp_slots(E.breadth_sleeves())
+    r = r[0] if isinstance(r, tuple) else r
+    bad = [sl['key'] for sl in r if any(k in SSH.config_of(sl)['mgmt'] or k in SSH.config_of(sl) for k in SSH.UNSUPPORTED)]
+    assert bad == [] and len(r) == 22
+
+
+# ------------------------------------------------------------------ differential parity: shadow reducer vs backtest.run
+import backtest as BT                                      # noqa: E402
+import strategies as S                                     # noqa: E402
+
+PARITY_KEYS = ('dca_dip', 'exp_rip_sell_dca', 'breakout_pyramid', 'pullback_rsi', 'squeeze_tp', 'exp_trend',
+               'bear_breakdown', 'donchian_ens', 'hot_coin', 'exp_mom_short', 'ema_mom', 'exp_range')
+
+
+def _synthetic_book(seed=3, n=600):
+    rng = np.random.default_rng(seed); t = pd.date_range('2024-01-01', periods=n, freq='4h'); out = {}
+    for j, s in enumerate(('BTCUSDT', 'ETHUSDT', 'SOLUSDT')):
+        r = rng.standard_t(4, n) * 0.012 + 0.004 * np.sin(np.arange(n) / (15 + 9 * j))
+        c = 100 * (j + 1) * np.exp(np.cumsum(r)); o = np.r_[c[0], c[:-1]] * (1 + rng.normal(0, 0.002, n))
+        w = np.abs(rng.normal(0, 0.008, n)) * c
+        out[s] = pd.DataFrame(dict(t=t, o=o, h=np.maximum(o, c) + w, l=np.minimum(o, c) - w, c=c, v=1000.0))
+    return BT.Book(out)
+
+
+@pytest.fixture(scope='module')
+def synth():
+    return _synthetic_book()
+
+
+def _ts_iso(x):
+    return pd.Timestamp(x).tz_localize('UTC').isoformat()
+
+
+adds_seen = {}
+
+
+@pytest.mark.parametrize('key', PARITY_KEYS)
+def test_shadow_replays_every_backtest_trade_to_the_same_exit(tmp_path, synth, key):
+    """Each closed backtest.run trade (pessimistic='path', no funding, no leverage cap) replayed through an isolated shadow
+    episode - decision mark = the fill candle's open, the strategy's own exit signals - ends on the same candle, for the
+    same reason, with the same R (R is size-free: sizing differs, the per-unit path does not)."""
+    sl = dict(key=key, share=1.0, risk=.02, max_pos=10, sides=S.STRATEGIES[key]['sides'], mgmt={})
+    flog = []
+    trades, _cv = BT.run(synth, [sl], start=2000.0, max_lev=1e9, daily_halt=1.0, warmup=220, fund_per_bar=0.0,
+                         maint_margin=0, fill_log=flog)
+    assert BT.SLIP * 1e4 == pytest.approx(SSH.MODEL_V1['adverse_slippage_bps']) and BT.FEE == SSH.MODEL_V1['fee_rate']
+    trades = trades.to_dict('records') if hasattr(trades, 'to_dict') else list(trades)
+    if not trades: pytest.skip(f'{key}: no trades on the synthetic book')
+    T = synth.t.values
+    step = pd.Timedelta('4h')
+    for n, tr in enumerate(trades):
+        sym, i, j_out = tr['sym'], tr['i_in'], tr['i_out']
+        a, sg = synth.arr[sym], synth.raw_sig(key, sym, None)
+        b = SSH.ShadowBook(tmp_path / f'{key}_{n}.jsonl', 'P', dict(SSH.MODEL_V1))
+        t_dec = _ts_iso(T[i])                                  # close of the decision candle i-1 = open of the fill candle
+        side = 'LONG' if tr['side'] == 1 else 'SHORT'
+        r = b.on_signal(slot=dict(sl, id='X', tf='4h'), symbol=sym, side=side,
+                        signal=dict(time=t_dec, close=float(a['c'][i - 1]), atr=BT._sig_atr(sg, i - 1, a['atr'][i - 1])),
+                        mark=dict(time=t_dec, price=float(a['o'][i])), live_decision=dict(status='skipped', reason='x'))
+        for j in range(i, j_out + 1):
+            b.on_bar(tf='4h', bars={sym: dict(time=_ts_iso(pd.Timestamp(T[j]) + step), o=float(a['o'][j]), h=float(a['h'][j]),
+                                             l=float(a['l'][j]), c=float(a['c'][j]), atr=float(a['atr'][j]))},
+                     signals={key: {sym: dict(lx=bool(sg['lx'][j]), sx=bool(sg['sx'][j]))}})
+            if b.snapshot()['episodes'][r['candidate_id']]['status'] != 'open': break
+        e = b.snapshot()['episodes'][r['candidate_id']]
+        want = 'tp' if tr['why'] in ('tp', 'tpr') else tr['why']
+        assert (e['status'], e['exit_reason'], j) == ('closed', want, j_out), (key, n, tr)
+        net = e['gross'] - e['fees'] + e['funding']
+        assert net / e['risk'] == pytest.approx(tr['R'], rel=1e-6, abs=1e-9), (key, n, tr)
+        mine = [f for f in flog if f['sym'] == sym and f['pos_i'] == i]
+        q0 = next(f['qty'] for f in mine if f['kind'] == 'entry')
+        want_fills = [(f['ref'], f['qty'] / q0) for f in mine if f['kind'] in ('dca', 'add')]
+        assert len(e['fills']) == len(want_fills), (key, n, e['fills'], want_fills)   # every add, same level, same size
+        for (px, w), (px2, w2) in zip(e['fills'], want_fills):
+            assert px == pytest.approx(px2, rel=1e-12) and w == pytest.approx(w2, rel=1e-9)
+        adds_seen[key] = adds_seen.get(key, 0) + len(want_fills)
+    if key in ('dca_dip', 'exp_rip_sell_dca', 'breakout_pyramid'):
+        assert adds_seen.get(key, 0) > 0, f'{key}: the synthetic book never exercised a safety order / add'
+
 def test_f2_cadence_comes_from_testnet_funding_info(tmp_path):
     e = _eng(tmp_path)
     e.S['UNIVERSE'] = ['BTCUSDT', 'ETHUSDT']
@@ -669,6 +824,58 @@ def test_f2_engine_feeds_the_schedule_and_retries_an_incomplete_feed(tmp_path, m
     e._shadow_funding_feed(sb)                                    # same file mtime: still retried (Cowork F2)
     assert len(sb.funding_seen) == 1
 
+
+# ------------------------------------------------------------------ DCA / pyramid review regressions (forced edge paths)
+def test_dca_tie_safety_level_equal_to_stop_fills_first_then_stops(tmp_path):
+    b = book(tmp_path)
+    sl = dict(dca_slot(), mgmt={'dca': {'n': 1, 'step_atr': 1.0, 'scale': 1.0, 'tp_atr': 1.0, 'stop_atr': 0.0}})
+    r = enter(b, sl)                                       # stop_atr 0: the stop sits exactly on the last safety level
+    e = ep(b, r)
+    assert e['levels'][-1] == pytest.approx(e['stop'])
+    bar(b, 10, o=100, h=100.2, l=97, c=97.5)
+    e = ep(b, r)
+    assert e['dca'] == 1 and e['exit_reason'] == 'stop' and e['q_max'] == pytest.approx(2 * e['q0'])
+
+
+def test_dca_gap_stop_at_open_takes_no_pending_level(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot())
+    bar(b, 10, o=89, h=89.5, l=88, c=88.5)                 # opens through every level AND the stop: filled at the open
+    e = ep(b, r)
+    assert e['dca'] == 0 and e['exit_reason'] == 'stop' and e['exit'] == pytest.approx(89 * (1 - SLIP))
+
+
+def test_dca_signal_exit_while_levels_remain(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot())
+    bar(b, 10, o=100, h=100.5, l=97, c=97.5, sig=dict(lx=True), key='dca_dip')
+    e = ep(b, r)
+    assert e['dca'] == 1 and e['exit_reason'] == 'signal' and e['exit'] == pytest.approx(97.5 * (1 - SLIP))
+
+
+def test_basket_episodes_are_left_out_of_per_unit_excursions(tmp_path):
+    b = book(tmp_path); r = enter(b, dca_slot())
+    bar(b, 10, o=100, h=100.5, l=97, c=97.5)
+    bar(b, 20, o=98, h=101, l=97.8, c=100.9)
+    row = b.compute()['strategies'][0]
+    assert ep(b, r)['status'] == 'closed' and row['excursions_excluded'] == 1 and row['mfe_r']['n'] == 0
+
+
+def test_pyramid_gap_through_the_add_level_fills_at_the_open(tmp_path):
+    b = book(tmp_path); r = enter(b, dict(slot('breakout_pyramid', 'BP'), mgmt={}))
+    bar(b, 10, o=106, h=106.5, l=105.5, c=106.2)           # opens past next_add (E0 + 4): the add fills at the open
+    e = ep(b, r)
+    assert e['adds'] == 1 and e['fills'] == [(106.0, 0.5)]
+
+
+def test_dca_safety_order_refused_by_the_exchange_filter_is_skipped_for_the_candle(tmp_path):
+    b = book(tmp_path)
+    r = b.on_signal(slot=dict(dca_slot(), risk=0.0246), symbol='BTCUSDT', side='LONG',
+                    signal=dict(time=iso(), close=100, atr=2), mark=dict(time=iso(), price=100),
+                    live_decision=dict(status='skipped', reason='x'), rule=dict(step=1.0, min_qty=0.0, min_notional=99.0))
+    e = ep(b, r)
+    assert e['q0'] == 1.0                                  # the entry passes: 1 x 100 >= 99
+    bar(b, 10, o=100, h=100.2, l=97.5, c=97.8)             # level 1 (98.02): 1.5 floors to 1, 1 x 98.02 < 99 -> refused
+    e = ep(b, r)
+    assert e['dca'] == 0 and e['qty'] == 1.0 and e['status'] == 'open'
 
 def test_n1_rejected_cadence_is_recorded_once_not_on_every_flush(tmp_path):
     b = book(tmp_path)
