@@ -177,3 +177,20 @@ def test_a_new_stop_is_a_new_wait_and_a_restart_never_skips_it(monkeypatch):
     assert k in e.state['lots']                                        # 2 reads by this process: still waiting
     e.reconcile(500)
     assert k not in e.state['lots'] and e.history[-1]['exit_px_unconfirmed'] == 1
+
+
+def test_manage_and_the_stop_verifier_send_no_order_while_the_fill_is_unreadable():
+    """Codex 6243712172: through the whole unreadable interval only evidence reconciliation may act - repeated manage()
+    passes and forced AUD-04 verifier passes send no order (no stop, add, close or cancel) and open no exposure."""
+    e, _ = mk(SX); k = opened(e); settle(e)
+    l = e.state['lots'][k]; qty = l['qty']
+    tag = fire(e, k, l['stop'] - 0.5); e.trade.stop_fills[tag] = BC.BinanceError(-1001, 'disconnected')
+    l['stop_placed_t'] = 0; l['last_order_t'] = 0                       # past every grace: the verifier treats it as missing
+    n = len(e.trade.calls)
+    for i in range(6):
+        if i % 2: e.state['lots'][k]['stop_dirty'] = True                 # a pending stop move (trail / BE / DCA re-stop)
+        e._stopv_due('BTCUSDT', 0); e.manage(e.trade.marks()); e.verify_stops('test')
+    sent = [c for c in e.trade.calls[n:] if c in ('close', 'open', 'stop', 'cancel', 'leverage')]
+    assert k in e.state['lots'] and e.state['lots'][k]['qty'] == qty and sent == []
+    assert 'tags' in e.trade.calls[n:] and e.state['lots'][k].get('stop_miss', 0) >= 1   # the verifier did look at it
+    assert e.trade.pos.get(('BTCUSDT', 'LONG'), 0) <= 1e-12                             # no new exposure
