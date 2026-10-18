@@ -845,6 +845,7 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        # round-trip fees + slippage, otherwise turnover has no room to pay for itself.
                        FEE_EDGE_GATE=False, FEE_EDGE_MULT=3.0,
                        PAPER_BOOKS=False, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=False,
+                       STRATEGY_SHADOW=False,        # TRUE-BOOK-02 observer (PAPER only, observe only)
                        PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]),
                        CTRL_BIAS='neutral', CTRL_RISK='max_test',   # CTRL-01-LITE (default = today's behaviour)
                        # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
@@ -1339,7 +1340,7 @@ _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_F
                     MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01),
                     FEE_EDGE_MULT=(1.0, 20.0), PAPER_BOOK_CAP=(100.0, 1e7))
 _SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED',
-                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS')
+                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS', 'STRATEGY_SHADOW')
 
 
 def validate_settings(doc):
@@ -3987,6 +3988,161 @@ class Engine:
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
+    # ------------------------------------------------------------ TRUE-BOOK-02: strategy shadow observer (observe only)
+    STRAT_SHADOW_DIR = 'strategy_shadow'
+    SHADOW_Q_MAX = 5000
+
+    def _shadow_health(self):
+        return self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
+
+    def _shadow_err(self):
+        """Count an observer failure and withhold this cycle's watermark (the next one then shows a missed-cycle gap)."""
+        try:
+            self._shadow_health()['errors'] += 1
+            self._shadow_failed = True
+        except Exception: pass
+
+    def _shadow_book(self):
+        """The cohort's strategy_shadow.ShadowBook under <data>/strategy_shadow, or None. PAPER only and off unless
+        S['STRATEGY_SHADOW'] is True. It receives plain values; nothing in the trading code reads what it returns or
+        writes. May raise - every caller is exception-contained."""
+        if getattr(self, 'live', True) is not False or self.S.get('STRATEGY_SHADOW') is not True: return None
+        cid = (self.state.get('cohort') or {}).get('id')
+        if not cid: return None
+        sb = getattr(self, '_sshadow', None)
+        if sb is None or sb.cohort_id != str(cid):
+            import strategy_shadow as SSH
+            name = re.sub(r'[^A-Za-z0-9_.-]', '_', str(cid)) + '.jsonl'
+            sb = self._sshadow = SSH.ShadowBook(os.path.join(self.dir, self.STRAT_SHADOW_DIR, name), str(cid),
+                                                dict(SSH.MODEL_V1, fee_rate=FEE_EST, adverse_slippage_bps=TA.EXEC_SLIP_BPS))
+        return sb
+
+    @staticmethod
+    def _shadow_close_t(t, tf):
+        x = pd.Timestamp(t)
+        x = x.tz_localize('UTC') if x.tzinfo is None else x.tz_convert('UTC')
+        return x + pd.Timedelta(seconds=TF_SEC.get(tf, 14400))
+
+    def _shadow_funding_feed(self, shadow):
+        """New rows of the collected TESTNET funding timeline (shadow_funding.py, its own thread and folder) for every symbol
+        the shadow has held, handed to the observer here on the engine thread - the ledger keeps one writer. Never account
+        income, never mainnet. A row without a usable rate / mark makes the exposed episodes INCOMPLETE in the ledger."""
+        import shadow_funding as SF
+        cur = self.__dict__.setdefault('_shadow_fcur', {})
+        seen = self.__dict__.setdefault('_shadow_fmtime', {})
+        syms = sorted({x['symbol'] for x in shadow.snapshot()['episodes'].values() if x.get('qty_hist')})
+        for sym in syms:
+            cad = SF.cadence_s(self.dir, sym)
+            if cad is not None:
+                try: shadow.on_cadence(symbol=sym, interval_s=cad, source='testnet fundingInfo')
+                except Exception: self._shadow_err()        # noqa: BLE001 - schedule unknown -> funding_cadence_unknown
+            try: mt = os.path.getmtime(SF.series_file(self.dir, sym))
+            except OSError: continue                        # nothing collected yet: exposure stays funding_unread
+            if seen.get(sym) == mt: continue                # unchanged since the last complete feed
+            ok = True
+            for t, rate, mk in SF.read_funding(self.dir, sym, cur.get(sym)):
+                try:
+                    shadow.on_funding(symbol=sym, at=datetime.fromtimestamp(t / 1000, timezone.utc).isoformat(), rate=rate, mark=mk)
+                except Exception:                           # noqa: BLE001 - not advanced: retried on the next bar
+                    self._shadow_err(); ok = False; break
+                cur[sym] = t
+            if ok: seen[sym] = mt                           # Cowork F2: only a COMPLETE feed marks the file as read
+
+    def _shadow_bar(self, tf, frames, sigs):
+        """Feed the just-closed candle of every symbol of this timeframe (+ the exit signals per instance) to the observer."""
+        try:
+            shadow = self._shadow_book()
+            if shadow is None: return
+            try: self._shadow_funding_feed(shadow)
+            except Exception: self._shadow_err()           # noqa: BLE001 - funding feed failure: the bar still goes in
+            import strategy_shadow as SSH
+            bars = {}
+            for s, d in (frames or {}).items():
+                if d is None or not len(d): continue
+                r = d.iloc[-1]
+                bars[s] = dict(time=self._shadow_close_t(r.t, tf).isoformat(), o=float(r.o), h=float(r.h), l=float(r.l),
+                               c=float(r.c), atr=float(r.atr) if 'atr' in d else None, source='closed_kline')
+            exits = {}
+            for sl in self.S['SLEEVES']:
+                if sl.get('tf') != tf or sl.get('key') not in S.STRATEGIES: continue
+                iid = SSH.identity(sl)[0]
+                for s in bars:
+                    x = (sigs or {}).get(f"{sl['id']}|{s}")
+                    if x and (x.get('lx') or x.get('sx')): exits.setdefault(iid, {})[s] = dict(lx=bool(x['lx']), sx=bool(x['sx']))
+            shadow.on_bar(tf=tf, bars=bars, signals=exits)
+            self._shadow_health()['bars'] += 1
+        except Exception:                                   # noqa: BLE001 - an observer never alters trading
+            self._shadow_err()
+
+    def _shadow_signal(self, sl, sym, side, sg, status, reason):
+        """Write the candidate ahead (every status, after the engine decided), then queue it: it is handed over with the
+        first mark observed at or after the decision close (_shadow_flush) - never an earlier price, never a later candle
+        open. A candidate lost from the queue (restart, overflow) stays visible as unresolved in the ledger."""
+        try:
+            shadow = self._shadow_book()
+            if shadow is None: return
+            q = self.__dict__.setdefault('_shadow_q', [])
+            tc = self._shadow_close_t(sg['time'], sl['tf'])
+            it = dict(slot=copy.deepcopy(sl), symbol=sym, side=side, t_close=tc.timestamp(), tf=sl['tf'], fails=0,
+                      signal=dict(time=tc.isoformat(), close=float(sg['close']), atr=float(sg['atr']), le=bool(sg.get('le')),
+                                  se=bool(sg.get('se')), lx=bool(sg.get('lx')), sx=bool(sg.get('sx'))),
+                      live_decision=dict(status=status, reason=scrub(str(reason or ''))),
+                      rule=dict((self.rules.get(sym) or {}).items()) or None)
+            shadow.on_candidate(slot=it['slot'], symbol=sym, side=side, signal=it['signal'], live_decision=it['live_decision'],
+                                rule=it['rule'])
+            if len(q) >= self.SHADOW_Q_MAX:
+                self._shadow_health()['dropped'] += 1; return
+            q.append(it)
+            self._shadow_flush()
+        except Exception:                                   # noqa: BLE001
+            self._shadow_err()
+
+    def _shadow_flush(self):
+        """Hand queued candidates to the observer with the first mark observed at/after their decision close; one with no
+        such mark within strategy_shadow.MAX_REF_LAG_S goes over with mark=None (an explicit INCOMPLETE episode)."""
+        try:
+            q = self.__dict__.get('_shadow_q')
+            if not q: return
+            shadow = self._shadow_book()
+            if shadow is None: q.clear(); return
+            import strategy_shadow as SSH
+            mt = self.marks_t or 0.0
+            for it in list(q):
+                px = (self.marks or {}).get(it['symbol'])
+                if px and mt >= it['t_close']:
+                    mark = dict(time=datetime.fromtimestamp(mt, timezone.utc).isoformat(), price=float(px), source='premiumIndex')
+                elif time.time() - it['t_close'] > SSH.ref_lag_s(it['tf']):
+                    mark = None
+                else:
+                    continue
+                try:
+                    shadow.on_signal(slot=it['slot'], symbol=it['symbol'], side=it['side'], signal=it['signal'], mark=mark,
+                                     live_decision=it['live_decision'], rule=it['rule'])
+                except Exception:                           # noqa: BLE001 - one bad item never blocks the queue
+                    self._shadow_err()
+                    it['fails'] += 1
+                    if it['fails'] >= 3:
+                        q.remove(it); self._shadow_health()['dropped'] += 1        # stays unresolved in the ledger
+                    continue
+                q.remove(it)
+                self._shadow_health()['signals'] += 1
+        except Exception:                                   # noqa: BLE001
+            self._shadow_err()
+
+    def _shadow_cycle(self, tf, frames):
+        """Cycle watermark: every instance of this timeframe was evaluated on this decision close."""
+        try:
+            shadow = self._shadow_book()
+            if shadow is None or not frames: return
+            import strategy_shadow as SSH
+            tc = max(self._shadow_close_t(d.t.iloc[-1], tf) for d in frames.values() if d is not None and len(d))
+            ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
+            if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
+            shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
+            self._shadow_health()['cycles'] += 1
+        except Exception:                                   # noqa: BLE001
+            self._shadow_err()
+
     def miss(self, sl, sym, side, sg, reason, kind=None):
         """Record a signal that was not taken (kind None) or a risk-rule warning on a trade that WAS taken (kind 'warning')."""
         k = (sl['id'], sym, sg['time'], kind)
@@ -4066,6 +4222,7 @@ class Engine:
     def manage(self, marks):
         with self.lock:
             self.marks, self.marks_t = dict(marks), time.time()
+            self._shadow_flush()                               # TRUE-BOOK-02: queued candidates take this post-close mark
             changed = False
             if self.state.get('orphans') and not self.dry:          # stale stops whose cancel failed earlier
                 keep = []
@@ -4932,6 +5089,7 @@ class Engine:
             sigs, frames = self.compute_signals(tf, syms, extra=self._orphan_sleeves(tf))
             self.signals.update(sigs); self.signals_time = now_utc().isoformat(timespec='seconds')
             self._audit_regime_cache(tf, frames)               # T05a: closed-candle trend snapshots (memory only, observe only)
+            self._shadow_bar(tf, frames, sigs)                 # TRUE-BOOK-02 (observe only)
             # refresh ATR for trailing + signal/time exits
             for k, l in list(st['lots'].items()):
                 if l.get('tf') != tf or l.get('manual'): continue
@@ -4989,6 +5147,7 @@ class Engine:
                             log.info(f"TRAIL ENTRY armed {s} {side} [{sl['id']}] rebound {te['dev_atr']} ATR from the extreme")
                             self._audit_cand(sl, s, side, sg, 'armed_trailing')
                             self._ml_decision(sl, s, side, sg, frames, 'pending', 'trailing entry armed', len(held))   # ML-SHADOW-01 (observe only)
+                            self._shadow_signal(sl, s, side, sg, 'pending', 'trailing entry armed')                    # TRUE-BOOK-02
                             held.append(s); continue
                     if why is None:
                         self.last_skip = ''
@@ -5000,6 +5159,7 @@ class Engine:
                                 mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'   # maker rests
                                 self._ml_decision(sl, s, side, sg, frames, mst, self.last_skip if mst == 'pending' else '', len(held),
                                                   lk if lk != lk0 else None)                    # ML-SHADOW-01 (observe only)
+                                self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')   # TRUE-BOOK-02
                                 held.append(s); continue
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
@@ -5007,6 +5167,8 @@ class Engine:
                     self.miss(sl, s, side, sg, why)
                     self._ml_decision(sl, s, side, sg, frames, 'pending' if why == 'maker entry working' else 'skipped',
                                       why, len(held))                                       # ML-SHADOW-01 (observe only)
+                    self._shadow_signal(sl, s, side, sg, 'pending' if why == 'maker entry working' else 'skipped', why)   # TRUE-BOOK-02
+            self._shadow_cycle(tf, frames)                     # TRUE-BOOK-02 (observe only)
             try: self.grids.on_cycle(tf)
             except Exception as e: self.err(f'grid cycle {tf}: {e}')
             st['last_cycle'][tf] = now_utc().isoformat(timespec='minutes')
