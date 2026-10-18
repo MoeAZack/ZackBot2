@@ -996,7 +996,9 @@ class App:
                             marks = e.data.marks()
                             if (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries')
                                     or e.state.get('unconfirmed_entries')): e.manage(marks)   # AUD-03b: settle + protect them
-                            else: e.marks, e.marks_t = marks, now
+                            else:
+                                e.marks, e.marks_t = marks, now
+                                e._shadow_flush()                    # TRUE-BOOK-02: queued candidates take this mark (never raises)
                             e.book_ledger_tick()                     # BOOK-LEDGER-01: observe-only snapshot (never raises)
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')

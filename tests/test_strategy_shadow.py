@@ -276,3 +276,168 @@ def test_observer_is_paper_only_and_off_by_default(tmp_path):
     e.state['cohort'] = dict(id='CH')
     e.live = True
     assert e._shadow_book() is None
+
+
+# ------------------------------------------------------------------ review round 1 regressions (one per finding)
+def test_r1_same_instance_same_symbol_while_open_is_held_not_stacked(tmp_path):
+    b = book(tmp_path); a = enter(b, slot(), t=0); c = enter(b, slot(), t=5)
+    assert ep(b, a)['status'] == 'open' and ep(b, c)['status'] == 'held' and ep(b, c).get('qty') is None
+    row = b.compute()['strategies'][0]
+    assert row['held'] == 1 and row['open'] == 1 and row['complete']
+
+
+def test_r1_nan_values_never_poison_a_record(tmp_path):
+    b = book(tmp_path); r = enter(b, slot(tp_r=1.0))
+    bar(b, 10, o=100, h=103, l=99, c=99.5, atr=float('nan'))       # NaN ATR (short history) - the bar still lands
+    assert ep(b, r)['exit_reason'] == 'tp'
+    x = b.on_signal(slot=slot('donchian_ens', 'D'), symbol='ETHUSDT', side='LONG',
+                    signal=dict(time=iso(), close=50, atr=float('nan')), mark=dict(time=iso(), price=50),
+                    live_decision=dict(status='skipped', reason='x'))
+    assert ep(b, x)['incomplete'] == ['missing_signal_atr']
+    assert SSH.ShadowBook(tmp_path / 's.jsonl', 'C1', dict(SSH.MODEL_V1)).snapshot()['coverage']['complete']
+
+
+def test_r1_unresolved_write_ahead_candidate_is_incomplete_after_its_window(tmp_path):
+    b = book(tmp_path)
+    b.on_candidate(slot=slot(), symbol='BTCUSDT', side='LONG', signal=dict(time=iso(), close=100, atr=2),
+                   live_decision=dict(status='skipped', reason='x'))
+    again = book(tmp_path)                                          # restart: the in-memory queue is gone
+    assert again.snapshot()['coverage']['pending'] == 1
+    assert again.compute()['strategies'][0]['complete']             # still inside the mark window
+    bar(again, 10, o=100, h=101, l=99, c=100)                       # the clock passes the window
+    row = again.compute()['strategies'][0]
+    assert not row['complete'] and any(w.startswith('candidate_unresolved:BTCUSDT') for w in row['incomplete'])
+
+
+def test_r1_candidate_resolved_by_signal_is_not_unresolved(tmp_path):
+    b = book(tmp_path)
+    b.on_candidate(slot=slot(), symbol='BTCUSDT', side='LONG', signal=dict(time=iso(), close=100, atr=2),
+                   live_decision=dict(status='skipped', reason='x'))
+    enter(b, slot())
+    bar(b, 10, o=100, h=100.5, l=99.5, c=100)
+    assert b.snapshot()['coverage']['pending'] == 0 and b.compute()['strategies'][0]['complete']
+
+
+def test_r1_mark_window_is_capped_at_half_a_short_candle():
+    assert SSH.ref_lag_s('4h') == SSH.MAX_REF_LAG_S == 300 and SSH.ref_lag_s('5m') == 150 and SSH.ref_lag_s('1m') == 30
+
+
+def test_r1_bar_recorded_before_a_late_entry_is_incomplete(tmp_path):
+    b = book(tmp_path)
+    bar(b, 1, o=100, h=101, l=99, c=100)                            # the next candle landed before the late signal
+    r = b.on_signal(slot=slot(), symbol='BTCUSDT', side='LONG', signal=dict(time=iso(0), close=100, atr=2),
+                    mark=dict(time=iso(0.5), price=100), live_decision=dict(status='skipped', reason='x'))
+    assert ep(b, r)['incomplete'] == ['bar_recorded_before_entry']
+
+
+def close_win20(b, sl, n, sym='BTCUSDT'):
+    t = 20 * n
+    b.on_signal(slot=sl, symbol=sym, side='LONG', signal=dict(time=iso(t), close=100, atr=2),
+                mark=dict(time=iso(t), price=100), live_decision=dict(status='skipped', reason='x'))
+    b.on_bar(tf='4h', bars={sym: dict(time=iso(t + 10), o=100, h=104, l=99, c=103)}, signals={})
+
+
+def test_r1_retired_instance_does_not_spoil_the_others(tmp_path):
+    b = book(tmp_path)
+    old, keep = slot('ema_mom', 'A'), slot('donchian_ens', 'D', tp_r=1.0)
+    for k in range(20): close_win20(b, keep, k)
+    enter(b, old, sym='ETHUSDT', t=400)
+    ids = sorted(b.snapshot()['instances'])
+    oid = SSH.identity(old)[0]
+    b.complete_cycle(cycle_id='4h|a', tf='4h', decision_time=iso(500), instance_ids=ids)
+    b.complete_cycle(cycle_id='4h|b', tf='4h', decision_time=iso(510), instance_ids=[i for i in ids if i != oid])
+    kept = next(r for r in b.compute()['strategies'] if r['key'] == 'donchian_ens')
+    gone = next(r for r in b.compute()['strategies'] if r['instance_id'] == oid)
+    assert kept['complete'] and kept['rankable'] and not gone['complete']     # gone had an open episode when it vanished
+    assert not b.snapshot()['coverage']['complete']
+
+
+def test_r1_returning_instance_gets_its_own_gap(tmp_path):
+    b = book(tmp_path); a, d = slot('ema_mom', 'A'), slot('donchian_ens', 'D')
+    enter(b, a, sym='ETHUSDT'); enter(b, d)
+    bar(b, 10, o=100, h=100, l=100, c=100, sym='ETHUSDT'); bar(b, 10, o=100, h=100, l=100, c=100)
+    ia, idd = SSH.identity(a)[0], SSH.identity(d)[0]
+    b.complete_cycle(cycle_id='1', tf='4h', decision_time=iso(1), instance_ids=[ia, idd])
+    b.complete_cycle(cycle_id='2', tf='4h', decision_time=iso(2), instance_ids=[idd])
+    b.complete_cycle(cycle_id='3', tf='4h', decision_time=iso(3), instance_ids=[ia, idd])
+    rows = {r['instance_id']: r for r in b.compute()['strategies']}
+    assert any('absent' in w for w in rows[ia]['incomplete']) and not any('absent' in w for w in rows[idd]['incomplete'])
+
+
+def test_r1_missing_bar_for_an_open_episode_is_visible(tmp_path):
+    b = book(tmp_path); r = enter(b, slot())
+    bar(b, 10, o=50, h=51, l=49, c=50, sym='ETHUSDT')               # BTC candle fetch failed this cycle
+    assert ep(b, r)['incomplete'] == ['bar_missing:BTCUSDT@' + iso(10)]
+
+
+def test_r1_conflicting_signal_replay_is_a_gap(tmp_path):
+    b = book(tmp_path); enter(b, slot())
+    b.on_signal(slot=slot(sid='B'), symbol='BTCUSDT', side='LONG', signal=dict(time=iso(), close=100, atr=2.0, le=True,
+                se=False, lx=False, sx=False), mark=dict(time=iso(), price=101.0, source='premiumIndex'),
+                live_decision=dict(status='skipped', reason='x'))
+    assert not b.compute()['strategies'][0]['complete']
+    assert any('conflicting_signal_replay' in g for g in b.snapshot()['coverage']['gaps'])
+
+
+def test_r1_tp1_partial_is_floored_to_the_exchange_step(tmp_path):
+    b = book(tmp_path)
+    r = b.on_signal(slot=slot(tp1_r=1.0, tp1_frac=0.5), symbol='BTCUSDT', side='LONG',
+                    signal=dict(time=iso(), close=100, atr=2), mark=dict(time=iso(), price=100),
+                    live_decision=dict(status='skipped', reason='x'), rule=dict(step=7.0, min_qty=0.0, min_notional=0.0))
+    assert ep(b, r)['qty'] == 14.0                                  # ~20 risk-sized -> floored to the 7 step
+    bar(b, 10, o=100, h=102.5, l=99.5, c=102)
+    assert ep(b, r)['qty'] == 7.0 and ep(b, r)['tp1']
+
+
+def test_r1_tp1_part_that_floors_to_zero_is_retried_not_taken(tmp_path):
+    b = book(tmp_path)
+    r = b.on_signal(slot=slot(tp1_r=1.0, tp1_frac=0.1), symbol='BTCUSDT', side='LONG',
+                    signal=dict(time=iso(), close=100, atr=2), mark=dict(time=iso(), price=100),
+                    live_decision=dict(status='skipped', reason='x'), rule=dict(step=7.0, min_qty=0.0, min_notional=0.0))
+    bar(b, 10, o=100, h=102.5, l=99.5, c=102)
+    assert ep(b, r)['qty'] == 14.0 and not ep(b, r)['tp1'] and ep(b, r)['status'] == 'open'
+
+
+def test_r1_entry_filters_are_part_of_the_identity():
+    a = slot()
+    assert SSH.identity(a)[0] != SSH.identity(dict(a, hours=[13, 14]))[0]
+    assert SSH.identity(a)[0] != SSH.identity(dict(a, vol_max_pct=0.9))[0]
+
+
+def test_r1_one_bad_queue_item_never_blocks_the_rest(tmp_path, monkeypatch):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-Q')
+    sb = e._shadow_book()
+    real = SSH.ShadowBook.on_signal
+
+    def picky(self, **kw):
+        if kw['symbol'] == 'BAD': raise ValueError('poison')
+        return real(self, **kw)
+    monkeypatch.setattr(SSH.ShadowBook, 'on_signal', picky)
+    monkeypatch.setattr(E.time, 'time', lambda: 1.9e9 + 10)
+    e.marks, e.marks_t = {'BAD': 1.0, 'BTCUSDT': 100.0}, 1.9e9 + 5
+    t0 = datetime.fromtimestamp(1.9e9, timezone.utc).isoformat()
+    mk = lambda s: dict(slot=slot(), symbol=s, side='LONG', t_close=1.9e9, tf='4h', fails=0, rule=None,
+                        signal=dict(time=t0, close=100, atr=2), live_decision=dict(status='skipped', reason='x'))
+    e._shadow_q = [mk('BAD'), mk('BTCUSDT')]
+    e._shadow_flush()
+    assert [x['symbol'] for x in e._shadow_q] == ['BAD'] and e._shadow_q[0]['fails'] == 1
+    e._shadow_flush(); e._shadow_flush()
+    assert e._shadow_q == [] and e.health['strategy_shadow']['dropped'] == 1
+    assert len(sb.snapshot()['episodes']) == 1
+
+
+def test_r1_observer_failure_withholds_the_cycle_watermark(tmp_path, monkeypatch):
+    e, _ = run_fixture(tmp_path / 'on', monkeypatch, True)
+    n = e.health['strategy_shadow']['cycles']
+    assert n == len(SCRIPT)
+    e._shadow_failed = True
+    e._shadow_cycle('4h', {'BTCUSDT': frame(100.0)})
+    assert e.health['strategy_shadow']['cycles'] == n and not getattr(e, '_shadow_failed', False)
+
+
+def test_r1_app_flushes_queued_candidates_while_flat():
+    src = open(os.path.join(os.path.dirname(E.__file__), 'app.py'), encoding='utf-8').read()
+    seg = src.split('else:\n                                e.marks, e.marks_t = marks, now', 1)[1][:200]
+    assert 'e._shadow_flush()' in seg

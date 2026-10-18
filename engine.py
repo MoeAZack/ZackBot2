@@ -3995,6 +3995,13 @@ class Engine:
     def _shadow_health(self):
         return self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
 
+    def _shadow_err(self):
+        """Count an observer failure and withhold this cycle's watermark (the next one then shows a missed-cycle gap)."""
+        try:
+            self._shadow_health()['errors'] += 1
+            self._shadow_failed = True
+        except Exception: pass
+
     def _shadow_book(self):
         """The cohort's strategy_shadow.ShadowBook under <data>/strategy_shadow, or None. PAPER only and off unless
         S['STRATEGY_SHADOW'] is True. It receives plain values; nothing in the trading code reads what it returns or
@@ -4038,27 +4045,30 @@ class Engine:
             shadow.on_bar(tf=tf, bars=bars, signals=exits)
             self._shadow_health()['bars'] += 1
         except Exception:                                   # noqa: BLE001 - an observer never alters trading
-            try: self._shadow_health()['errors'] += 1
-            except Exception: pass
+            self._shadow_err()
 
     def _shadow_signal(self, sl, sym, side, sg, status, reason):
-        """Queue one candidate (every status, after the engine decided); it is handed over with the first mark observed at
-        or after the decision close (_shadow_flush) - never an earlier price, never a later candle open."""
+        """Write the candidate ahead (every status, after the engine decided), then queue it: it is handed over with the
+        first mark observed at or after the decision close (_shadow_flush) - never an earlier price, never a later candle
+        open. A candidate lost from the queue (restart, overflow) stays visible as unresolved in the ledger."""
         try:
-            if self._shadow_book() is None: return
+            shadow = self._shadow_book()
+            if shadow is None: return
             q = self.__dict__.setdefault('_shadow_q', [])
+            tc = self._shadow_close_t(sg['time'], sl['tf'])
+            it = dict(slot=copy.deepcopy(sl), symbol=sym, side=side, t_close=tc.timestamp(), tf=sl['tf'], fails=0,
+                      signal=dict(time=tc.isoformat(), close=float(sg['close']), atr=float(sg['atr']), le=bool(sg.get('le')),
+                                  se=bool(sg.get('se')), lx=bool(sg.get('lx')), sx=bool(sg.get('sx'))),
+                      live_decision=dict(status=status, reason=scrub(str(reason or ''))),
+                      rule=dict((self.rules.get(sym) or {}).items()) or None)
+            shadow.on_candidate(slot=it['slot'], symbol=sym, side=side, signal=it['signal'], live_decision=it['live_decision'],
+                                rule=it['rule'])
             if len(q) >= self.SHADOW_Q_MAX:
                 self._shadow_health()['dropped'] += 1; return
-            tc = self._shadow_close_t(sg['time'], sl['tf'])
-            q.append(dict(slot=copy.deepcopy(sl), symbol=sym, side=side, t_close=tc.timestamp(),
-                          signal=dict(time=tc.isoformat(), close=float(sg['close']), atr=float(sg['atr']), le=bool(sg.get('le')),
-                                      se=bool(sg.get('se')), lx=bool(sg.get('lx')), sx=bool(sg.get('sx'))),
-                          live_decision=dict(status=status, reason=scrub(str(reason or ''))),
-                          rule=dict((self.rules.get(sym) or {}).items()) or None))
+            q.append(it)
             self._shadow_flush()
         except Exception:                                   # noqa: BLE001
-            try: self._shadow_health()['errors'] += 1
-            except Exception: pass
+            self._shadow_err()
 
     def _shadow_flush(self):
         """Hand queued candidates to the observer with the first mark observed at/after their decision close; one with no
@@ -4074,17 +4084,23 @@ class Engine:
                 px = (self.marks or {}).get(it['symbol'])
                 if px and mt >= it['t_close']:
                     mark = dict(time=datetime.fromtimestamp(mt, timezone.utc).isoformat(), price=float(px), source='premiumIndex')
-                elif time.time() - it['t_close'] > SSH.MAX_REF_LAG_S:
+                elif time.time() - it['t_close'] > SSH.ref_lag_s(it['tf']):
                     mark = None
                 else:
                     continue
-                shadow.on_signal(slot=it['slot'], symbol=it['symbol'], side=it['side'], signal=it['signal'], mark=mark,
-                                 live_decision=it['live_decision'], rule=it['rule'])
+                try:
+                    shadow.on_signal(slot=it['slot'], symbol=it['symbol'], side=it['side'], signal=it['signal'], mark=mark,
+                                     live_decision=it['live_decision'], rule=it['rule'])
+                except Exception:                           # noqa: BLE001 - one bad item never blocks the queue
+                    self._shadow_err()
+                    it['fails'] += 1
+                    if it['fails'] >= 3:
+                        q.remove(it); self._shadow_health()['dropped'] += 1        # stays unresolved in the ledger
+                    continue
                 q.remove(it)
                 self._shadow_health()['signals'] += 1
         except Exception:                                   # noqa: BLE001
-            try: self._shadow_health()['errors'] += 1
-            except Exception: pass
+            self._shadow_err()
 
     def _shadow_cycle(self, tf, frames):
         """Cycle watermark: every instance of this timeframe was evaluated on this decision close."""
@@ -4094,11 +4110,11 @@ class Engine:
             import strategy_shadow as SSH
             tc = max(self._shadow_close_t(d.t.iloc[-1], tf) for d in frames.values() if d is not None and len(d))
             ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
+            if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
             shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
             self._shadow_health()['cycles'] += 1
         except Exception:                                   # noqa: BLE001
-            try: self._shadow_health()['errors'] += 1
-            except Exception: pass
+            self._shadow_err()
 
     def miss(self, sl, sym, side, sg, reason, kind=None):
         """Record a signal that was not taken (kind None) or a risk-rule warning on a trade that WAS taken (kind 'warning')."""

@@ -64,6 +64,20 @@ def _ts(x):
     return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).timestamp()
 
 
+def _clean(x):
+    """Non-finite floats -> None, recursively (a NaN ATR on a new listing must not poison the whole record)."""
+    if isinstance(x, float): return x if x == x and x not in (float('inf'), float('-inf')) else None
+    if isinstance(x, dict): return {k: _clean(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)): return [_clean(v) for v in x]
+    return x
+
+
+def ref_lag_s(tf):
+    """How late the decision mark may be: MAX_REF_LAG_S, but never more than half a candle (a 5m book must not take a
+    mark from inside the next candle)."""
+    return min(MAX_REF_LAG_S, TF_S.get(tf, 14400) / 2)
+
+
 def _num(x):
     try: v = float(x)
     except (TypeError, ValueError): return None
@@ -79,7 +93,7 @@ def config_of(slot):
     cfg = dict(key=key, tf=slot.get('tf', '4h'), sides=sorted(sides) if isinstance(sides, (list, tuple)) else sides,
                symbols=sorted(sym) if isinstance(sym, (list, tuple)) else sym, risk=float(slot['risk']),
                mgmt=S.merge_mgmt(key, slot.get('mgmt')), params={**(st.get('params') or {}), **(slot.get('params') or {})})
-    for k in ('trail_entry', 'when', 'pump_guard'):
+    for k in ('trail_entry', 'when', 'pump_guard', 'hours', 'vol_max_pct'):
         if slot.get(k) is not None: cfg[k] = slot[k]
     return cfg
 
@@ -108,7 +122,8 @@ class ShadowBook:
         self.model_hash = _h(self.model)
         self._lock = threading.RLock()
         self.instances, self.episodes, self.gaps = {}, {}, []
-        self.cycles, self.funding_seen, self.nav_path, self.marks = {}, {}, {}, {}
+        self.cycles, self.funding_seen, self.nav_path, self.pending, self.last_bar = {}, {}, {}, {}, {}
+        self.funding_by_sym = {}
         self.seq, self.clock = 0, None
         d = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(d, exist_ok=True)
@@ -140,7 +155,7 @@ class ShadowBook:
     def _record(self, kind, **body):
         """Write-ahead: the record is durable before the reducer sees it (a failed write changes nothing in memory)."""
         with self._lock:
-            rec = dict(seq=self.seq + 1, cohort=self.cohort_id, model=self.model_hash, kind=kind, **body)
+            rec = dict(seq=self.seq + 1, cohort=self.cohort_id, model=self.model_hash, kind=kind, **_clean(body))
             self._append(rec)
             self.seq += 1
             return self._apply(rec)
@@ -176,6 +191,17 @@ class ShadowBook:
                             candidate_id=cid, symbol=symbol, side=side, signal=signal, mark=mark,
                             live_decision=live_decision, rule=rule)
 
+    def on_candidate(self, slot, symbol, side, signal, live_decision, rule=None):
+        """Write-ahead of a candidate whose decision mark is not observed yet. on_signal resolves it; one that is never
+        resolved (restart, dropped queue) makes its instance INCOMPLETE once the mark window has passed."""
+        iid, dg, cfg = identity(slot)
+        dt = (signal or {}).get('time')
+        cid = _h(dict(i=iid, s=symbol, d=side, t=dt), 24)
+        if cid in self.episodes or cid in self.pending:
+            return dict(candidate_id=cid, instance_id=iid, replay=True)
+        return self._record('candidate', slot_id=slot.get('id'), config=cfg, instance_id=iid, config_digest=dg,
+                            candidate_id=cid, symbol=symbol, side=side, signal=signal, live_decision=live_decision)
+
     def on_bar(self, tf, bars, signals=None):
         return self._record('bar', tf=tf, bars=bars, signals=signals or {})
 
@@ -190,29 +216,50 @@ class ShadowBook:
         return self._record('incomplete', instance_id=instance_id, reason=str(reason))
 
     # ------------------------------------------------------------------ reducer
-    def _a_signal(self, rec):
+    def _register(self, rec):
         iid, cfg = rec['instance_id'], rec['config']
         inst = self.instances.get(iid)
         if inst is None:
             inst = self.instances[iid] = dict(instance_id=iid, key=cfg['key'], config_digest=rec['config_digest'],
-                                              config=cfg, tf=cfg['tf'], sleeve_ids=[], incomplete=[],
-                                              first_seen=_ts(rec['signal'].get('time')) if rec.get('signal') else None)
+                                              config=cfg, tf=cfg['tf'], sleeve_ids=[], incomplete=[], gaps=[],
+                                              absent_since=None,
+                                              first_seen=_ts((rec.get('signal') or {}).get('time')))
             bad = [k for k in UNSUPPORTED if k in cfg['mgmt'] or k in cfg]
             if bad: inst['incomplete'].append('unsupported_mgmt:' + ','.join(bad))
         if rec.get('slot_id') not in inst['sleeve_ids']:
             inst['sleeve_ids'].append(rec.get('slot_id')); inst['sleeve_ids'].sort(key=str)
+        return inst
+
+    def _a_candidate(self, rec):
+        self._register(rec)
         cid = rec['candidate_id']
+        if cid not in self.episodes and cid not in self.pending:
+            self.pending[cid] = dict(instance_id=rec['instance_id'], symbol=rec['symbol'], side=rec['side'],
+                                     t_dec=_ts((rec.get('signal') or {}).get('time')), tf=rec['config']['tf'])
+        return dict(candidate_id=cid, instance_id=rec['instance_id'], status='pending')
+
+    def _a_signal(self, rec):
+        inst = self._register(rec)
+        iid, cfg = rec['instance_id'], rec['config']
+        cid = rec['candidate_id']
+        self.pending.pop(cid, None)
+        src = _h(dict(signal=rec.get('signal'), mark=rec.get('mark')))
         doc = dict(candidate_id=cid, instance_id=iid, config_digest=rec['config_digest'], key=cfg['key'],
                    symbol=rec['symbol'], side=rec['side'], decision_time=rec['signal'].get('time'))
         if cid in self.episodes:
+            if self.episodes[cid]['src'] != src: inst['gaps'].append(f'conflicting_signal_replay:{cid}')
             return dict(doc, status=self.episodes[cid]['status'])
         ep = self.episodes[cid] = dict(candidate_id=cid, instance_id=iid, key=cfg['key'], symbol=rec['symbol'],
-                                       side=rec['side'], decision_time=doc['decision_time'],
+                                       side=rec['side'], decision_time=doc['decision_time'], src=src,
                                        live_decision=rec.get('live_decision'), incomplete=[], status='incomplete',
                                        entry_ref=None, entry_ref_time=None, entry=None, exit=None, exit_time=None,
                                        exit_reason=None, gross=0.0, fees=0.0, funding=0.0, bars=0)
-        why = self._entry(ep, cfg, rec)
-        if why: ep['incomplete'].append(why)
+        if any(e['status'] == 'open' and e['instance_id'] == iid and e['symbol'] == rec['symbol']
+               for e in self.episodes.values() if e is not ep):
+            ep.update(status='held', exit_reason='instance_already_holds_symbol')   # backtest parity: one position per coin
+        else:
+            why = self._entry(ep, cfg, rec)
+            if why: ep['incomplete'].append(why)
         doc['status'] = ep['status']
         return doc
 
@@ -225,7 +272,9 @@ class ShadowBook:
         if not mk: return 'missing_decision_mark'
         t_ref, ref = _ts(mk.get('time')), _num(mk.get('price'))
         if t_ref is None or ref is None or ref <= 0: return 'missing_decision_mark'
-        if t_ref < t_dec or t_ref - t_dec > MAX_REF_LAG_S: return 'stale_decision_mark'
+        if t_ref < t_dec or t_ref - t_dec > ref_lag_s(cfg['tf']): return 'stale_decision_mark'
+        lb = self.last_bar.get((cfg['tf'], rec['symbol']))
+        if lb is not None and lb > t_ref: return 'bar_recorded_before_entry'      # a candle this entry would own was missed
         atr = _num(sig.get('atr'))
         if atr is None or atr <= 0: return 'missing_signal_atr'
         m = cfg['mgmt']
@@ -245,7 +294,7 @@ class ShadowBook:
         ep.update(status='open', sd=sd, entry_ref=ref, entry_ref_time=mk.get('time'), t_ref=t_ref, entry=px, e0=px,
                   avg=px, qty=qty, q0=qty, stop=z['stop'], R=z['R'], risk=risk_usd, best=px, worst=px, tp1=False,
                   atr=atr, last=ref, last_t=t_ref, fees=qty * px * self.fee, notional=qty * px, qty_hist=[(t_ref, qty)],
-                  funded={}, exit_t=None)
+                  funded={}, exit_t=None, rule=rule)
         self._tick(t_ref)
         return None
 
@@ -254,6 +303,10 @@ class ShadowBook:
         sd = ep['sd']
         tt = t if why in ('signal', 'time') else t - 1e-3
         q = ep['qty'] if frac >= 1 else ep['qty'] * frac
+        step = (ep.get('rule') or {}).get('step')
+        if frac < 1 and step:
+            q = F.round_step(q, step)
+            if q <= 0: return None                          # a partial that floors to 0 sends nothing
         px = px_level * (1 - sd * self.slip)
         ep['gross'] += sd * (px - ep['avg']) * q
         ep['fees'] += q * px * self.fee
@@ -263,6 +316,7 @@ class ShadowBook:
             ep.update(qty=0.0, status='closed', exit=px, exit_time=self._iso(t), exit_t=tt, exit_reason=why, last=px)
             ep['qty_hist'].append((tt, 0.0))
             return True
+        if step: ep['qty'] = max(0.0, F.round_step(ep['qty'], step))
         ep['qty_hist'].append((tt, ep['qty']))
         return False
 
@@ -291,6 +345,7 @@ class ShadowBook:
         fav = lambda lv, x: sd * (x - lv) >= 0
         adv = lambda lv, x: sd * (lv - x) >= 0
         stop_in_candle = adv(ep['stop'], l if sd == 1 else h)
+        tp1_blocked = False
         pts = path_points(o, h, l, c, sd)
         for k in range(len(pts)):
             a_, b_ = pts[max(0, k - 1)], pts[k]
@@ -302,7 +357,7 @@ class ShadowBook:
             if (k == 0 or mv > 0) and not stop_in_candle:
                 while True:
                     cand = []
-                    if m.get('tp1_r') and not ep['tp1']:
+                    if m.get('tp1_r') and not ep['tp1'] and not tp1_blocked:
                         lv = ep['e0'] + sd * m['tp1_r'] * ep['R']
                         if fav(lv, b_): cand.append((sd * lv, 2, 'tp1', lv))
                     if m.get('tp_r'):
@@ -312,8 +367,10 @@ class ShadowBook:
                     _, _, ev, lv = min(cand)
                     fill = lv                                    # backtest parity: target exits fill AT the level (gaps too)
                     if ev == 'tp1':
+                        done = self._close(ep, fill, m.get('tp1_frac', 0.5), 'tp1', t)
+                        if done is None: tp1_blocked = True; continue         # zero part: retried next candle
                         ep['tp1'] = True
-                        if self._close(ep, fill, m.get('tp1_frac', 0.5), 'tp1', t):
+                        if done:
                             ep['best'] = max(ep['best'], fill) if sd == 1 else min(ep['best'], fill); return
                     else:
                         ep['best'] = max(ep['best'], fill) if sd == 1 else min(ep['best'], fill)
@@ -326,9 +383,15 @@ class ShadowBook:
 
     def _a_bar(self, rec):
         tf, bars, sigs = rec['tf'], rec.get('bars') or {}, rec.get('signals') or {}
+        bt = [x for x in (_ts((b or {}).get('time')) for b in bars.values()) if x is not None]
+        t_rec = max(bt) if bt else None
         for ep in self.episodes.values():
             inst = self.instances[ep['instance_id']]
-            if ep['status'] != 'open' or inst['tf'] != tf or ep['symbol'] not in bars: continue
+            if ep['status'] != 'open' or inst['tf'] != tf: continue
+            if ep['symbol'] not in bars:
+                if t_rec is not None and t_rec > ep['last_t']:
+                    ep['incomplete'].append(f'bar_missing:{ep["symbol"]}@{self._iso(t_rec)}')
+                continue
             b = bars[ep['symbol']]
             t = _ts(b.get('time'))
             if t is None or t <= ep['last_t']: continue                 # a bar closed at/before the entry or replayed
@@ -341,8 +404,10 @@ class ShadowBook:
                 if a and a > 0: ep['atr'] = a                            # ATR of this closed candle: used from the NEXT one
             else:
                 ep['last_t'] = t
-        for b in bars.values():
-            self._tick(_ts((b or {}).get('time')))
+        for sym, b in bars.items():
+            t = _ts((b or {}).get('time'))
+            self._tick(t)
+            if t is not None and t > self.last_bar.get((tf, sym), float('-inf')): self.last_bar[(tf, sym)] = t
         self._settle_known()
         for iid in {e['instance_id'] for e in self.episodes.values()}:
             self.nav_path.setdefault(iid, []).append(self._nav(iid))
@@ -357,18 +422,21 @@ class ShadowBook:
             if prev != body: self.gaps.append(f'conflicting_funding:{sym}@{rec.get("at")}')
             return dict(seq=self.seq, replay=True)
         self.funding_seen[key] = body
+        self.funding_by_sym.setdefault(sym, []).append(at)
         self._tick(at)
-        self._settle_known()
+        self._settle_known(sym)
         return dict(seq=self.seq)
 
-    def _settle_known(self):
+    def _settle_known(self, only=None):
         """Settle every recorded funding instant on every episode holding the symbol at that instant - once per episode and
         instant, also when the record arrives after the episode closed (the collector may lag the bars)."""
         for ep in self.episodes.values():
-            if not ep.get('qty_hist'): continue
-            for (sym, at), (rate, mk, raw) in self.funding_seen.items():
+            if not ep.get('qty_hist') or (only is not None and ep['symbol'] != only): continue
+            sym = ep['symbol']
+            for at in self.funding_by_sym.get(sym, ()):
+                rate, mk, raw = self.funding_seen[(sym, at)]
                 rate, mk = _num(rate), _num(mk)
-                if sym != ep['symbol'] or at is None or at in ep['funded']: continue
+                if at is None or at in ep['funded']: continue
                 if ep['exit_t'] is None and (self.clock is None or at > self.clock): continue
                 q = self._qty_at(ep, at)
                 if q <= 0: continue
@@ -386,13 +454,22 @@ class ShadowBook:
         prev = [v for v in self.cycles.values() if v[0] == rec['tf']]
         self.cycles[cid] = body
         t = _ts(rec['decision_time'])
+        missed = None
         if prev and rec['tf'] in TF_S:
             last = max(_ts(v[1]) for v in prev)
-            if t - last > TF_S[rec['tf']] * 1.5: self.gaps.append(f'missed_cycle:{rec["tf"]} after {last:.0f}')
+            if t - last > TF_S[rec['tf']] * 1.5: missed = f'missed_cycle:{rec["tf"]} {self._iso(last)} -> {self._iso(t)}'
         seen = set(rec['instance_ids'])
         for iid, inst in self.instances.items():
-            if inst['tf'] == rec['tf'] and (inst['first_seen'] is None or inst['first_seen'] <= t) and iid not in seen:
-                self.gaps.append(f'instance {iid} absent from cycle {cid}')
+            if inst['tf'] != rec['tf'] or (inst['first_seen'] is not None and inst['first_seen'] > t): continue
+            if missed: inst['gaps'].append(missed)
+            if iid not in seen:
+                if inst['absent_since'] is None:
+                    inst['absent_since'] = t
+                    if any(e['status'] == 'open' for e in self.episodes.values() if e['instance_id'] == iid):
+                        inst['gaps'].append(f'instance {iid} absent from cycle {cid} with open episodes')
+            elif inst['absent_since'] is not None:              # back after an absence: its record has a hole
+                inst['gaps'].append(f'instance {iid} absent from cycles {self._iso(inst["absent_since"])} -> {cid}')
+                inst['absent_since'] = None
         return dict(seq=self.seq)
 
     def _a_incomplete(self, rec):
@@ -411,9 +488,19 @@ class ShadowBook:
 
     def snapshot(self):
         with self._lock:
+            gaps = self._all_gaps()
             return dict(instances={k: dict(v) for k, v in self.instances.items()},
                         episodes={k: dict(v) for k, v in self.episodes.items()},
-                        coverage=dict(complete=not self.gaps, gaps=list(self.gaps), records=self.seq))
+                        coverage=dict(complete=not gaps, gaps=gaps, records=self.seq, pending=len(self.pending)))
+
+    def _all_gaps(self):
+        return list(self.gaps) + [g for iid in sorted(self.instances) for g in self.instances[iid]['gaps']]
+
+    def _unresolved(self, iid):
+        """Write-ahead candidates of this instance never resolved with a mark although their window has passed."""
+        return sorted(f'candidate_unresolved:{p["symbol"]}@{self._iso(p["t_dec"])}' for p in self.pending.values()
+                      if p['instance_id'] == iid and p['t_dec'] is not None and self.clock is not None
+                      and self.clock > p['t_dec'] + ref_lag_s(p['tf']))
 
     def _funding_unread(self, ep):
         """Settlement-grid instants this episode was exposed at with no funding record for its symbol: never a silent zero."""
@@ -432,7 +519,8 @@ class ShadowBook:
         inst = self.instances[iid]
         eps = [e for e in self.episodes.values() if e['instance_id'] == iid]
         closed = [e for e in eps if e['status'] == 'closed']
-        why = list(inst['incomplete']) + sorted({w for e in eps for w in e['incomplete'] + self._funding_unread(e)})
+        why = list(inst['incomplete']) + list(inst['gaps']) + self._unresolved(iid) + \
+            sorted({w for e in eps for w in e['incomplete'] + self._funding_unread(e)})
         nets = [e['gross'] - e['fees'] + e['funding'] for e in closed]
         rs = [n / e['risk'] for n, e in zip(nets, closed) if e.get('risk')]
         gross = sum(e['gross'] for e in eps)
@@ -463,7 +551,8 @@ class ShadowBook:
                     turnover=sum(e.get('notional', 0.0) for e in eps) / self.start,
                     hold_bars=_spread([e['bars'] for e in closed]), mfe_r=_spread(mfe), mae_r=_spread(mae),
                     giveback_r=_spread([a - b for a, b in zip(mfe, exit_r) if a is not None and b is not None]),
-                    exits=exits, live_decisions=rej, incomplete=why, complete=not why and not self.gaps)
+                    held=sum(1 for e in eps if e['status'] == 'held'), exits=exits, live_decisions=rej, incomplete=why,
+                    complete=not why and not self.gaps)
 
     def compute(self):
         with self._lock:
@@ -475,4 +564,4 @@ class ShadowBook:
                 r['rankable'] = r['instance_id'] in rk
                 r['rank'] = rk.get(r['instance_id'])
             return dict(model=dict(self.model, hash=self.model_hash), min_n=self.min_n, cohort_id=self.cohort_id,
-                        coverage=dict(complete=not self.gaps, gaps=list(self.gaps)), strategies=rows)
+                        coverage=dict(complete=not self._all_gaps(), gaps=self._all_gaps()), strategies=rows)
