@@ -121,7 +121,7 @@ def test_an_unpinned_file_or_a_live_dir_is_refused(tmp_path):
     s, man, rec = frozen(tmp_path, rows=[row(1, None)])
     (s / 'ml_shadow').mkdir(); (s / 'ml_shadow' / 'decisions.jsonl').write_text('{"strategy":"x","ts_utc":"2026-10-20"}\n')
     with pytest.raises(P.PhaseCError, match='unpinned file'): P.build(str(s), str(man), [rec['id']])
-    with pytest.raises(P.PhaseCError, match='unpinned file'): P.build(str(tmp_path / 'live'), str(man), [rec['id']])
+    with pytest.raises(P.PhaseCError, match='unpinned file|hash mismatch'): P.build(str(tmp_path / 'live'), str(man), [rec['id']])
 
 
 def test_output_inside_the_snapshot_is_refused_and_the_snapshot_is_never_written(tmp_path):
@@ -251,8 +251,9 @@ def test_class_boundaries(ex, sh, defects, cls):
 
 
 def test_no_losing_close_is_an_unbounded_pf_not_a_missing_one():
-    assert P.classify('k', X(pf=None), [X(pf=None)], set())[0] == 'keep_executable'
-    assert P.classify('k', X(pf=None, exp=0.0), [X(pf=None)], set())[0] == 'UNDECIDED'
+    assert P.classify('k', X(pf='no_losses'), [X(pf='no_losses')], set())[0] == 'keep_executable'
+    assert P.classify('k', X(pf='no_losses', exp=0.0), [X(pf='no_losses')], set())[0] == 'UNDECIDED'
+    assert P.classify('k', X(pf=None), [X()], set())[0] == 'UNDECIDED'          # undefined PF never passes the gate
 
 
 def test_keep_requires_executed_rankable_and_multiple_lineages_are_undecided():
@@ -411,6 +412,11 @@ def wave2_packet(tmp, tamper=False):
     return d
 
 
+def W2(tmp):
+    d = wave2_packet(tmp)
+    return dict(wave2=str(d), wave2_sha256=P.sha_file(d / 'summary.json'))
+
+
 def test_wave2_is_copied_verbatim_with_costs_separated(tmp_path):
     w = P.wave2_section(str(wave2_packet(tmp_path)))
     assert w['packet_status'] == 'INCOMPLETE' and w['usdc_better'] == 'USDC BETTER: UNAVAILABLE' and w['verdict'] is None
@@ -426,7 +432,7 @@ def test_tampered_wave2_cell_is_refused(tmp_path):
 def test_complete_report_needs_clean_cohort_complete_shadow_and_wave2(tmp_path):
     cid = cohort()['id']
     s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)], shadow=episodes(20))
-    b = P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
+    b = P.build(str(s), str(man), [cid], **W2(tmp_path))
     assert b['report_status'] == 'COMPLETE' and b['pins']['wave2_summary_sha256'] and b['non_promotable']
 
 
@@ -473,7 +479,7 @@ def test_missing_required_inputs_make_the_rank_build_incomplete_and_undecided(tm
     for f in drop: (d / f).unlink()
     P.freeze(str(d), str(tmp_path / 'snap'), SNAP)
     s = tmp_path / 'snap'
-    b = P.build(str(s), str(s / 'MANIFEST.phase-c-snapshot.json'), [cid], wave2=str(wave2_packet(tmp_path)))
+    b = P.build(str(s), str(s / 'MANIFEST.phase-c-snapshot.json'), [cid], **W2(tmp_path))
     assert any(c.startswith('missing_input:') for c in b['cohort_status']) and b['report_status'] == 'INCOMPLETE'
     assert {r['cls'] for r in b['shortlist']['rows']} <= {'UNDECIDED'}
 
@@ -525,7 +531,8 @@ def test_incomplete_shadow_stream_is_never_rankable(tmp_path, monkeypatch):
                 excursions_excluded=0, mfe_r={}, mae_r={}, giveback_r={}, exits={}, live_decisions={},
                 incomplete=['funding_unread:BTCUSDT@x'], complete=False)])
     monkeypatch.setattr(P.SSH, 'ShadowBook', FakeBook)
-    doc, _ = P.shadow_section('p', 'c')
+    led = tmp_path / 'l.jsonl'; led.write_text('')
+    doc, _ = P.shadow_section(str(led), 'c')
     assert doc['strategies'][0]['rankable'] is False and doc['strategies'][0]['incomplete'] == ['funding_unread']
 
 
@@ -552,7 +559,7 @@ def test_incomplete_shadow_coverage_keeps_the_report_incomplete_even_with_wave2(
     cid = cohort()['id']
     s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)], shadow=episodes(20))
     monkeypatch.setattr(P, 'SHADOW_MODEL', dict(P.SHADOW_MODEL, fee_rate=0.0004))
-    b = P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
+    b = P.build(str(s), str(man), [cid], **W2(tmp_path))
     assert b['cohort_status'] == [] and b['report_status'] == 'INCOMPLETE'
 
 
@@ -575,25 +582,47 @@ def test_a_manifest_entry_that_is_not_a_pin_record_is_refused(tmp_path):
     with pytest.raises(P.PhaseCError, match='not a pin record'): P.build(str(s), str(man), [rec['id']])
 
 
-# ------------------------------------------------------------------ Cowork pre-run 6251437744 / 6251442729
-def test_shadow_records_after_the_snapshot_fail_the_shadow_stream_closed(tmp_path):
+# ------------------------------------------------------------------ Cowork pre-run 6251437744 / 6251442729 + Codex 6251456639
+def test_shadow_records_after_the_snapshot_never_enter_the_reducer(tmp_path):
     cid = cohort()['id']
     rows = [row(i, cid) for i in range(16)] + [row(i, cid, gross=-5, r=-0.6) for i in range(16, 20)]
     s, man, _ = frozen(tmp_path, rows=rows, shadow=both(episodes(10), episodes(10, t0=4000)))   # 10 after SNAP
-    b = P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
+    b = P.build(str(s), str(man), [cid], **W2(tmp_path))
     sh = b['rank'][0]['shadow']
-    assert sh['late_episodes'] == 10 and 'records_after_snapshot' in sh['coverage']['gaps'] and not sh['coverage']['complete']
+    assert sh['window_records']['excluded_after_snapshot'] == 20          # 10 signals + 10 bars
     x = {r['key']: r for r in sh['strategies']}['exp_scalp']
-    assert x['closed'] == 20 and not x['complete'] and not x['rankable'] and 'records_after_snapshot' in x['incomplete']
-    assert b['report_status'] == 'INCOMPLETE'
+    assert x['closed'] == 10 and not x['rankable']
     assert {r['key']: r for r in b['shortlist']['rows']}['exp_scalp']['cls'] != 'keep_executable'
 
 
-def test_shadow_records_at_or_before_the_snapshot_are_complete(tmp_path):
+def test_shadow_records_before_the_cohort_start_are_excluded_and_counted(tmp_path):
+    cid = cohort('2026-10-19T02:00:00+00:00')['id']
+    rec = cohort('2026-10-19T02:00:00+00:00')
+    s, man, _ = frozen(tmp_path, rows=[row(5, cid)], rec=rec, shadow=both(episodes(2), episodes(3, t0=200)))  # 2 before 02:00
+    sh = P.build(str(s), str(man), [cid])['rank'][0]['shadow']
+    assert sh['window_records']['excluded_before_cohort'] == 4
+    assert {r['key']: r for r in sh['strategies']}['exp_scalp']['closed'] == 3
+
+
+def test_a_shadow_record_exactly_at_the_snapshot_is_excluded():
+    import tempfile
+    d = tempfile.mkdtemp()
+    src, out = os.path.join(d, 'a.jsonl'), os.path.join(d, 'b.jsonl')
+    with open(src, 'w') as f:
+        for r in (dict(kind='funding', at=SNAP), dict(kind='cycle', decision_time='2026-10-21T08:59:59+00:00'),
+                  dict(kind='bar', bars={}), dict(kind='cadence', symbol='X', interval_s=1),
+                  dict(kind='candidate', signal=dict(time='2026-10-20T00:00:00+00:00')),
+                  dict(kind='candidate', signal=dict(time='2026-10-22T00:00:00+00:00'))):
+            f.write(json.dumps(r) + '\n')
+    n = P.window_ledger(src, out, None, P._utc_ms(SNAP, 's') / 1000.0)
+    assert n == dict(kept=3, excluded_after_snapshot=2, excluded_before_cohort=0, excluded_untimed=1)
+
+
+def test_shadow_records_inside_the_window_are_complete(tmp_path):
     cid = cohort()['id']
     s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)], shadow=episodes(20))
     sh = P.build(str(s), str(man), [cid])['rank'][0]['shadow']
-    assert sh['late_episodes'] == 0 and sh['coverage']['complete']
+    assert sh['window_records']['excluded_after_snapshot'] == 0 and sh['coverage']['complete']
 
 
 @pytest.mark.parametrize('rel', ['config.env', 'settings.json', 'strategy_shadow/funding_testnet/x.jsonl', 'logs/bot.log'])
@@ -604,12 +633,55 @@ def test_a_manifest_pinning_a_non_phase_c_file_is_refused(tmp_path, rel):
     with pytest.raises(P.PhaseCError, match='not a Phase-C artifact'): P.build(str(s), str(man), [rec['id']])
 
 
-def test_window_upper_bound_is_inclusive_everywhere(tmp_path):
+def test_window_upper_bound_is_exclusive_everywhere(tmp_path):
     rows = [row(1, 'c')]
     d = P.defects_section(rows, [], {}, [dict(kind='coverage', id=rows[0]['id'], symbol='BTCUSDT', t=SNAP)], {}, [], {}, (START, SNAP))
-    assert d['queue'][0]['code'] == 'coverage_partial'
+    assert d['queue'] == []
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(1, cid), row(2, cid, closed=SNAP)])
+    b = P.build(str(s), str(man), [cid])
+    assert b['rank'][0]['executed']['excluded_outside_window_or_untimed'] == 1 and 'to_utc_exclusive' in b['rank'][0]['window']
 
 
-def test_unbounded_pf_is_named_in_the_keep_reason():
-    assert 'unbounded' in P.classify('k', X(pf=None), [X()], set())[1]
-    assert 'unbounded' not in P.classify('k', X(), [X()], set())[1]
+def test_no_losses_pf_is_named_not_none():
+    s = P.exec_stats([row(i, 'c') for i in range(3)])
+    assert s['pf'] == 'no_losses' and s['pf_exact'] is None
+    assert 'no_losses' in P.classify('k', X(pf='no_losses'), [X()], set())[1]
+    assert 'no_losses' not in P.classify('k', X(), [X()], set())[1]
+    assert P.exec_stats([])['pf'] is None
+
+
+def test_pf_gate_uses_the_exact_pf_not_the_rounded_one():
+    s = P.exec_stats([row(0, 'c', gross=11.9999, fee=1), row(1, 'c', gross=-9, fee=1)])
+    assert s['pf'] == 1.1 and s['pf_exact'].startswith('1.09999')
+    assert P.classify('k', dict(X(), pf=1.1, pf_exact='1.09999'), [X()], set())[0] == 'UNDECIDED'
+    assert P.classify('k', dict(X(), pf=1.1, pf_exact='1.1'), [X()], set())[0] == 'keep_executable'
+
+
+def test_wave2_packet_without_its_pin_is_refused(tmp_path):
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(1, cid)])
+    with pytest.raises(P.PhaseCError, match='expected summary.json sha256'):
+        P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
+
+
+def test_source_cutoffs_are_recorded(tmp_path):
+    cid = cohort()['id']
+    s, man, _ = frozen(tmp_path, rows=[row(1, cid), row(3, cid)], shadow=episodes(2))
+    sc = P.build(str(s), str(man), [cid])['source_cutoffs']
+    assert sc['holdout_floor_utc'] == '2026-09-28T00:00:00+00:00'
+    assert sc['sources']['history.json'] == dict(records=2, first_utc='2026-10-19T01:30:00+00:00', last_utc='2026-10-19T03:30:00+00:00')
+    assert sc['sources'][f'strategy_shadow/{cid}.jsonl']['records'] == 4
+
+
+def test_freeze_keeps_only_the_state_keys_the_report_reads(tmp_path):
+    s, man, rec = frozen(tmp_path, rows=[row(1, 'x')])
+    assert set(json.loads((s / 'state.json').read_text())) == set(P.STATE_KEYS)
+
+
+def test_markdown_cells_are_escaped():
+    b = dict(snapshot_utc=SNAP, report_status='INCOMPLETE', rank_cohorts=[], diagnostic_cohorts=[], cohort_status=[],
+             shortlist=dict(rows=[dict(key='a|b\nc', family='B1_FAST', tf=None, cls='UNDECIDED', why='x|y', note=None)]),
+             rank=[], diagnostic=[], usdt_vs_usdc=dict(available=False))
+    line = [l for l in P.markdown(b).splitlines() if l.startswith('| a')][0]
+    assert line == '| a/b c | B1_FAST |  | UNDECIDED | x/y |'

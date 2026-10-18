@@ -157,9 +157,15 @@ def freeze(src, dst, snapshot_utc, label='paper'):
         os.makedirs(os.path.dirname(d), exist_ok=True)
         for _ in range(5):
             before = sha_file(s)
-            shutil.copyfile(s, d)
+            if rel == 'state.json':                 # only the keys the report reads; the rest never leaves the data dir
+                st = _read_json(s, 'state.json')
+                if os.path.exists(d): os.remove(d)
+                with open(d, 'x', encoding='utf-8', newline='\n') as f:
+                    f.write(dumps({k: st.get(k) for k in STATE_KEYS} if isinstance(st, dict) else {}))
+            else:
+                shutil.copyfile(s, d)
             got = sha_file(d)
-            if got == before == sha_file(s): break
+            if before == sha_file(s): break
         else:
             raise PhaseCError(f'{rel} kept changing during the copy; snapshot refused')
         files[rel] = dict(sha256=got, bytes=os.path.getsize(d))
@@ -224,6 +230,7 @@ def preflight(snapshot, manifest_path, wave2=None, wave2_sha256=None):
         pins['wave2_summary_sha256'] = sha_file(sp)
         if wave2_sha256 and pins['wave2_summary_sha256'] != wave2_sha256:
             raise PhaseCError('Wave-2 summary.json does not match the expected pin')
+        if not wave2_sha256: raise PhaseCError('a Wave-2 packet needs its expected summary.json sha256 (--wave2-sha256)')
     elif wave2_sha256:
         raise PhaseCError('a Wave-2 pin was given without a packet')
     return man, pins
@@ -303,6 +310,16 @@ def _max_dd(nets, start):
     return dd
 
 
+NO_LOSSES = 'no_losses'
+
+
+def _pf_show(pf, closed, expectancy):
+    """PF for display: 'no_losses' (effectively infinite) when there are closes, a positive expectancy and no losing
+    close; None when undefined for any other reason (no closes, or nothing won and nothing lost)."""
+    if pf is not None: return fnum(pf)
+    return NO_LOSSES if closed and expectancy is not None and expectancy > 0 else None
+
+
 def exec_stats(rows, start=TB.START):
     rows = sorted(rows, key=lambda r: (str(r.get('closed') or ''), ref(r.get('id')) or ''))
     nets, rs, notional, fees, fund, why, exits = [], [], Decimal(0), Decimal(0), Decimal(0), {}, {}
@@ -314,6 +331,9 @@ def exec_stats(rows, start=TB.START):
         for w in _close_reasons(r): why[w] = why.get(w, 0) + 1
         exits[r.get('exit_reason') or '?'] = exits.get(r.get('exit_reason') or '?', 0) + 1
     s = TB._stats(nets, rs, notional, start)
+    loss = -sum((x for x in nets if x <= 0), Decimal(0))
+    s['pf_exact'] = str(sum((x for x in nets if x > 0), Decimal(0)) / loss) if loss > 0 else None
+    s['pf'] = _pf_show(s['pf'], s['closed'], s['expectancy'])
     s.update(fees=q(fees), funding=q(fund), roi=q(sum(nets, Decimal(0)) / start) if start else None,
              max_dd=q(_max_dd(nets, start)), exits=dict(sorted(exits.items())), incomplete=dict(sorted(why.items())),
              complete=not why, first_close=str(rows[0].get('closed')) if rows else None,
@@ -329,7 +349,7 @@ def cohort_closes(snap, cid, snapshot_utc, start_utc=None):
                          [r for r in snap['history'] if r.get('cohort_id') == cid])
     cut = TB._ms(snapshot_utc)
     lo = TB._ms(start_utc) if start_utc else None
-    keep = [r for r in rows if TB._ms(r.get('closed')) is not None and cut is not None and TB._ms(r.get('closed')) <= cut
+    keep = [r for r in rows if TB._ms(r.get('closed')) is not None and cut is not None and TB._ms(r.get('closed')) < cut
             and (lo is None or TB._ms(r.get('closed')) >= lo)]
     return keep, len(rows) - len(keep)
 
@@ -371,36 +391,73 @@ def _quote(sym):
 
 
 # ------------------------------------------------------------------ section 2: shadow, rejected signals, counterfactuals
-def _late(e, cut):
-    for k in ('decision_time', 'exit_time'):
-        try: t = SSH._ts(e.get(k))
-        except (TypeError, ValueError): t = None
-        if t is not None and t > cut: return True
-    return False
+TIMED_KINDS = ('candidate', 'signal', 'bar', 'funding', 'cycle')   # windowed; cadence / incomplete / unknown kinds are kept
 
 
-def shadow_section(path, cid, cutoff_utc=None):
+def record_time(rec):
+    """Event time (epoch s) of a shadow ledger record, None when it has none: candidate = decision close; signal = the
+    later of decision close and the observed entry mark; bar = its (close-stamped) bar time; funding = settlement
+    instant; cycle = decision time."""
+    k = rec.get('kind')
+    try:
+        if k == 'candidate': ts = [(rec.get('signal') or {}).get('time')]
+        elif k == 'signal': ts = [(rec.get('signal') or {}).get('time'), (rec.get('mark') or {}).get('time')]
+        elif k == 'bar': ts = [(b or {}).get('time') for b in (rec.get('bars') or {}).values()]
+        elif k == 'funding': ts = [rec.get('at')]
+        elif k == 'cycle': ts = [rec.get('decision_time')]
+        else: return None
+        v = [SSH._ts(t) for t in ts if t is not None]
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return max(v) if v else None
+
+
+def window_ledger(path, out, lo_s, hi_s):
+    """Copy the ledger lines whose event time is in [lo, hi) to out (line bytes unchanged; torn lines are kept so the
+    reducer still reports them). -> counts of what was excluded."""
+    n = dict(kept=0, excluded_after_snapshot=0, excluded_before_cohort=0, excluded_untimed=0)
+    with open(path, 'rb') as f, open(out, 'xb') as g:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                g.write(line); continue
+            if not isinstance(rec, dict) or rec.get('kind') not in TIMED_KINDS:   # timeless / unknown: the reducer decides
+                g.write(line); n['kept'] += 1; continue
+            t = record_time(rec)
+            if t is None: n['excluded_untimed'] += 1; continue
+            if t >= hi_s: n['excluded_after_snapshot'] += 1; continue
+            if lo_s is not None and t < lo_s: n['excluded_before_cohort'] += 1; continue
+            g.write(line); n['kept'] += 1
+    return n
+
+
+def shadow_section(path, cid, cutoff_utc=None, start_utc=None):
     """Replay the cohort's write-ahead ledger through the shared reducer (no re-derivation). -> (doc, episodes).
-    Causality (Cowork F1): the reducer replays the whole file, so a ledger holding any bar / entry / funding / episode
-    after the snapshot instant is not cut silently - every shadow row becomes INCOMPLETE (records_after_snapshot) and the
-    late episodes are counted; a frozen snapshot of the live ledger never has them."""
+    Causality (Codex 6251456639 #1): only records with cohort start <= event time < snapshot_utc enter the reducer - the
+    same half-open window as the executed closes; later, earlier and untimed records are excluded and counted. The
+    filtered copy lives in a private temp dir (never the snapshot) and is removed after the replay."""
     if path is None:
         return dict(available=False, reason='no shadow ledger pinned for this cohort', strategies=[]), []
-    sb = SSH.ShadowBook(path, cid, SHADOW_MODEL, min_n=MIN_N)
-    doc = sb.compute()
-    cut = None if cutoff_utc is None else _utc_ms(cutoff_utc, 'snapshot_utc') / 1000.0
-    late_eps = 0 if cut is None else sum(1 for e in sb.episodes.values() if _late(e, cut))
-    late = cut is not None and ((sb.clock is not None and sb.clock > cut) or late_eps > 0)
-    if late:
-        doc['coverage'] = dict(complete=False, gaps=list(doc['coverage']['gaps']) + ['records_after_snapshot'])
-        for r in doc['strategies']:
-            r['complete'] = False; r['incomplete'] = list(r['incomplete']) + ['records_after_snapshot']
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix='phase_c_shadow_')
+    try:
+        lp = os.path.join(tmp, 'ledger.jsonl')
+        hi = _utc_ms(cutoff_utc, 'snapshot_utc') / 1000.0 if cutoff_utc else float('inf')
+        lo = TB._ms(start_utc) / 1000.0 if start_utc and TB._ms(start_utc) is not None else None
+        excl = window_ledger(path, lp, lo, hi)
+        sb = SSH.ShadowBook(lp, cid, SHADOW_MODEL, min_n=MIN_N)
+        doc = sb.compute()
+        eps = list(sb.episodes.values())
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     rows = []
     for r in doc['strategies']:
         rows.append(dict(key=r['key'], family=family_of(r['key']), config_digest=r['config_digest'],
                          closed=r['closed'], open=r['open'], held=r['held'], episodes=r['episodes'],
                          net=fnum(r['realized']), fees=fnum(r['fees']), funding=fnum(r['funding']), roi=fnum(r['roi']),
-                         max_dd=fnum(r['max_dd']), pf=fnum(r['pf']), expectancy=fnum(r['expectancy']),
+                         max_dd=fnum(r['max_dd']), pf=_pf_show(r['pf'], r['closed'], r['expectancy']),
+                         pf_exact=None if r['pf'] is None else repr(float(r['pf'])), expectancy=fnum(r['expectancy']),
                          avg_r=fnum(r['avg_r']), net_r=fnum(r['net_r']), win_rate=fnum(r['win_rate'], 4),
                          turnover=fnum(r['turnover']), excursions_excluded=r['excursions_excluded'],
                          mfe_r=r['mfe_r'], mae_r=r['mae_r'], giveback_r=r['giveback_r'], exits=r['exits'],
@@ -410,8 +467,8 @@ def shadow_section(path, cid, cutoff_utc=None):
                          note=None if r['closed'] >= MIN_N else f'insufficient n ({r["closed"]}/{MIN_N})'))
     rows.sort(key=lambda x: (x['family'], x['key'], x['config_digest']))
     return dict(available=True, model_hash=doc['model']['hash'], coverage=dict(complete=doc['coverage']['complete'],
-                gaps=sorted({str(g).split(':')[0] for g in doc['coverage']['gaps']})), late_episodes=late_eps,
-                strategies=rows), list(sb.episodes.values())
+                gaps=sorted({str(g).split(':')[0] for g in doc['coverage']['gaps']})), window_records=excl,
+                strategies=rows), eps
 
 
 def _decision(e):
@@ -527,7 +584,7 @@ def defects_section(rows, shadow_rows, shadow_cov, audit, state, cohort_status, 
     lo, hi = window
     for a in audit:
         t = str(a.get('t') or '')
-        if a.get('kind') == 'coverage' and lo and t >= lo and (hi is None or t <= hi):
+        if a.get('kind') == 'coverage' and lo and t >= lo and (hi is None or t < hi):
             r = ids.get(a.get('id')) or {}
             add('trade_audit_coverage', 'coverage_partial', r.get('strategy_key'), a.get('symbol'), t)
         if a.get('kind') == 'trade_audit' and a.get('id') in ids:
@@ -550,16 +607,19 @@ def classify(key, ex, shs, defects):
     """One strategy's class with every input shown. ex: executed strategy row or None; shs: its shadow rows (one per
     config lineage); defects: its class-input defect codes."""
     sh = shs[0] if len(shs) == 1 else None
-    ins = dict(executed=None if ex is None else {k: ex.get(k) for k in ('closed', 'complete', 'rankable', 'expectancy', 'pf', 'avg_r', 'net')},
-               shadow=None if sh is None else {k: sh.get(k) for k in ('closed', 'complete', 'rankable', 'expectancy', 'pf', 'avg_r', 'net')},
+    ins = dict(executed=None if ex is None else {k: ex.get(k) for k in ('closed', 'complete', 'rankable', 'expectancy', 'pf', 'pf_exact', 'avg_r', 'net')},
+               shadow=None if sh is None else {k: sh.get(k) for k in ('closed', 'complete', 'rankable', 'expectancy', 'pf', 'pf_exact', 'avg_r', 'net')},
                shadow_lineages=len(shs), defects=sorted(defects))
     exr = bool(ex and ex['rankable']); shr = bool(sh and sh['rankable'])
     pos = lambda r: r.get('expectancy') is not None and r['expectancy'] > 0
     neg = lambda r: r.get('expectancy') is not None and r['expectancy'] < 0
     # PF is undefined (None) only when there is no losing close: with closes and expectancy > 0 that is an unbounded PF
-    pf_ok = lambda r: D(r['pf']) >= KEEP_PF if r.get('pf') is not None else bool(r.get('closed')) and pos(r)
+    def pf_ok(r):                               # the exact PF, never the 4-decimal display value (Cowork G1)
+        if r.get('pf') == NO_LOSSES: return bool(r.get('closed')) and pos(r)
+        x = D(r.get('pf_exact')) if r.get('pf_exact') is not None else D(r.get('pf'))
+        return x is not None and x >= KEEP_PF
     if exr and shr and pos(ex) and pos(sh) and pf_ok(ex) and pf_ok(sh) and not defects:
-        unb = ' (PF unbounded: no losing close)' if ex.get('pf') is None or sh.get('pf') is None else ''
+        unb = ' (PF no_losses: effectively infinite)' if NO_LOSSES in (ex.get('pf'), sh.get('pf')) else ''
         return 'keep_executable', 'both streams rankable, expectancy > 0 and PF >= 1.10 in both, no attributed defect' + unb, ins
     if defects:
         return 'repair', 'attributed defect(s): ' + ', '.join(sorted(defects)), ins
@@ -608,7 +668,7 @@ def ml_section(snap, window):
     if not snap['ml_dec'] and not snap['ml_lab']:
         return dict(available=False, reason='ML ledger not present in the snapshot (ML_SHADOW off or not pinned)')
     lo, hi = window
-    dec = [d for d in snap['ml_dec'] if lo and str(d.get('ts_utc') or '') >= lo and (hi is None or str(d.get('ts_utc')) <= hi)]
+    dec = [d for d in snap['ml_dec'] if lo and str(d.get('ts_utc') or '') >= lo and (hi is None or str(d.get('ts_utc')) < hi)]
     lab = {l.get('decision_id'): l for l in snap['ml_lab']}
     grp = {}
     for d in dec:
@@ -631,6 +691,35 @@ def ml_section(snap, window):
 
 # ------------------------------------------------------------------ build
 REQUIRED = ('state.json', 'cohort.json', 'trade_audit.jsonl')
+
+
+HOLDOUT_FLOOR_UTC = '2026-09-28T00:00:00+00:00'
+
+
+def _iso_s(t):
+    from datetime import datetime, timezone
+    return None if t is None else datetime.fromtimestamp(t, timezone.utc).isoformat()
+
+
+def source_cutoffs(snap, snapshot, man):
+    """Per pinned source: records and first / last event time (Codex Q1: record source cutoffs). Forward PAPER artifacts
+    after the research holdout floor are operational evidence; no research dataset is read."""
+    def span(vals):
+        v = sorted(t for t in vals if t is not None)
+        return dict(records=len(v), first_utc=_iso_s(v[0]) if v else None, last_utc=_iso_s(v[-1]) if v else None)
+    sec = lambda iso: (TB._ms(iso) / 1000.0) if TB._ms(iso) is not None else None
+    out = {}
+    if 'history.json' in man['files']: out['history.json'] = span(sec(r.get('closed')) for r in snap['history'])
+    if 'cohort_rows.jsonl' in man['files']: out['cohort_rows.jsonl'] = span(sec(r.get('closed')) for r in snap['cohort_rows'])
+    if any(r.startswith('trade_audit') for r in man['files']): out['trade_audit'] = span(sec(a.get('t')) for a in snap['audit'])
+    if 'ml_shadow/decisions.jsonl' in man['files']: out['ml_shadow/decisions.jsonl'] = span(sec(d.get('ts_utc')) for d in snap['ml_dec'])
+    for rel in sorted(r for r in man['files'] if r.startswith(SHADOW_DIR + '/')):
+        ts = []
+        rows, _n = _jsonl(os.path.join(snapshot, rel))
+        for rec in rows: ts.append(record_time(rec))
+        out[rel] = span(ts)
+    return dict(holdout_floor_utc=HOLDOUT_FLOOR_UTC, basis='forward PAPER runtime artifacts (Codex Q1 in scope); '
+                'event times per source, untimed records not counted', sources=out)
 
 
 def cohort_status(snap, rank, recs, man=None, snapshot=None):
@@ -661,7 +750,8 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
     tfs = _tfs()
     body = dict(format=FORMAT, contract=CONTRACT, authority='READ_ONLY; NO_EXECUTION_ROUTING_OR_PROMOTION_AUTHORITY',
                 pins=pins, snapshot_utc=man['snapshot_utc'], holdout_read=False, research_data_read=False,
-                rank_cohorts=rank, diagnostic_cohorts=diagnostic, cohort_status=cst, min_n=MIN_N, non_promotable=True)
+                rank_cohorts=rank, diagnostic_cohorts=diagnostic, cohort_status=cst, min_n=MIN_N, non_promotable=True,
+                source_cutoffs=source_cutoffs(snap, snapshot, man))
 
     def per_cohort(cid):
         rec = recs.get(cid) or {}
@@ -669,10 +759,10 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
         rows, late = cohort_closes(snap, cid, man['snapshot_utc'], rec.get('started_utc'))
         ex = dict(executed_section(rows), excluded_outside_window_or_untimed=late)
         sp, rel = shadow_path(snapshot, man, cid)
-        sh, eps = shadow_section(sp, cid, man['snapshot_utc'])
+        sh, eps = shadow_section(sp, cid, man['snapshot_utc'], rec.get('started_utc'))
         df = defects_section(rows, sh.get('strategies') or [], sh.get('coverage') or {}, snap['audit'], snap['state'],
                              cst if cid in rank else [], snap['torn'], window, snap['audit_duplicates'], late)
-        return dict(cohort_id=cid, window=dict(from_utc=window[0], to_utc_inclusive=window[1]), shadow_ledger=rel,
+        return dict(cohort_id=cid, window=dict(from_utc=window[0], to_utc_exclusive=window[1]), shadow_ledger=rel,
                     executed=ex, shadow=sh, rejected_signals=rejected_section(eps),
                     counterfactual_exits=counterfactual_section(rows, snap['audit']), defects=df, ml=ml_section(snap, window))
 
@@ -695,6 +785,10 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
     return body
 
 
+def _md(x):
+    return '' if x is None else str(x).replace('|', '/').replace('\r', ' ').replace('\n', ' ')
+
+
 def markdown(b):
     L = [f'# Phase C evidence read - snapshot {b["snapshot_utc"]}', '',
          f'Status: **{b["report_status"]}** · rank cohorts: {", ".join(b["rank_cohorts"]) or "none"} · '
@@ -702,7 +796,8 @@ def markdown(b):
          '', 'Read-only. No class authorizes routing, sizing or promotion.', '', '## Shortlist', '',
          '| strategy | family | tf | class | why |', '|---|---|---|---|---|']
     for r in b['shortlist']['rows']:
-        L.append(f'| {r["key"]} | {r["family"]} | {r["tf"] or ""} | {r["cls"]} | {r["why"]}{" - " + r["note"] if r["note"] else ""} |')
+        L.append(f'| {_md(r["key"])} | {_md(r["family"])} | {_md(r["tf"])} | {_md(r["cls"])} | {_md(r["why"])}'
+                 f'{" - " + _md(r["note"]) if r["note"] else ""} |')
     for c in b['rank'] + b['diagnostic']:
         L += ['', f'## Cohort {c["cohort_id"]}{" (DIAGNOSTIC)" if c.get("use") else ""}', '',
               '| family | closes | net | PF | exp | avg R | max DD | complete |', '|---|---|---|---|---|---|---|---|']
