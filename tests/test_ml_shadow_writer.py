@@ -247,6 +247,33 @@ def test_partial_write_never_swallows_the_next_row(tmp_path, monkeypatch):
     with pytest.raises(ValueError): json.loads(lines[1])      # the failed row stays invalid evidence, never claimed written
 
 
+def test_row_durable_although_flush_raised_is_reconciled_never_duplicated(tmp_path, monkeypatch):
+    import ml_shadow.ledger as LM
+    real_open, fail = builtins.open, [False]
+    class LateFail:                                         # the whole row reaches the file, then flush raises
+        def __init__(self, fh): self.fh = fh
+        def __enter__(self): return self
+        def __exit__(self, *a): self.fh.close()
+        def write(self, s): self.fh.write(s); self.fh.flush()
+        def flush(self): raise OSError(5, 'I/O error reported after the data was written')
+    def fake_open(p, mode='r', *a, **k):
+        fh = real_open(p, mode, *a, **k)
+        if 'a' in mode and fail[0]:
+            fail[0] = False; return LateFail(fh)
+        return fh
+    monkeypatch.setattr(LM, 'open', fake_open, raising=False)
+    ctr = {}
+    w = MLW.LedgerWriter(ledgers(tmp_path), ctr)
+    a, b = dec_row('2026-10-01 00:00:00'), dec_row('2026-10-02 00:00:00')
+    assert w.submit('decision', a) and w.flush(5)
+    fail[0] = True
+    assert w.submit('decision', b) and w.flush(5)            # durable, but the call raised
+    assert w.submit('decision', b) and w.submit('decision', a)   # same-process replay
+    assert w.close(10)
+    assert [r['decision_id'] for r in rows(tmp_path / 'd.jsonl')] == [a['decision_id'], b['decision_id']]   # no duplicate
+    assert ctr['decisions'] == 2 and ctr['reconciled'] == 1 and ctr['write_errors'] == 0   # counters == durable evidence
+
+
 def test_known_ids_seeded_from_disk_with_torn_last_line(tmp_path):
     d = dec_row('2026-10-01 00:00:00')
     w = MLW.LedgerWriter(ledgers(tmp_path), {}); w.submit('decision', d); assert w.close(10)

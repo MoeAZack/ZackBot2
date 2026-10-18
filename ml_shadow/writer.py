@@ -29,7 +29,7 @@ class LedgerWriter:
         self.open_ledgers, self.key = open_ledgers, key
         self.ctr = counters if counters is not None else {}
         for k in ('decisions', 'labels', 'missing_decision', 'refused_skipped', 'write_errors', 'dropped', 'lost',
-                  'blocked_prior_writer'):
+                  'blocked_prior_writer', 'reconciled'):
             self.ctr.setdefault(k, 0)
         self.q = queue.Queue(maxsize)
         self.lock, self.stop_ev = threading.Lock(), threading.Event()
@@ -67,6 +67,10 @@ class LedgerWriter:
     # ---------------------------------------------------------------- writer thread
     def _write(self, led, kind, row):
         dec, lab = led
+        try: self._do_write(dec, lab, kind, row)
+        finally: self.ctr['reconciled'] = getattr(dec, 'reconciled', 0) + getattr(lab, 'reconciled', 0)
+
+    def _do_write(self, dec, lab, kind, row):
         if kind == 'decision':
             if dec.append(row) is not None: self.ctr['decisions'] += 1
             return

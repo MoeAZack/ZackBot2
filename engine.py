@@ -3923,7 +3923,7 @@ class Engine:
     def _ml_health(self):
         return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0, dropped=0, missing_decision=0,
                                                         refused_skipped=0, write_errors=0, lost=0,
-                                                        blocked_prior_writer=0))
+                                                        blocked_prior_writer=0, reconciled=0))
 
     def _ml_ledgers(self):
         with self.__dict__.setdefault('_ml_led_lock', threading.Lock()):     # the writer thread and readers share them
