@@ -312,12 +312,14 @@ def _close_gaps(r):
     """Why one close's actual cost is not proven (sorted, empty = proven)."""
     why, refs = set(), r.get('cost_refs')
     try: fb = None if r.get('fills_booked') is None else int(r.get('fills_booked'))
-    except (TypeError, ValueError): fb = -1                              # unreadable count: never a match
+    except (TypeError, ValueError, OverflowError): fb = -1               # unreadable count: never a match
+    # either direction: fewer records than fills (a fill booked without one) or more (a record linked, its fill not booked)
     if fb is not None and fb != len(refs if isinstance(refs, (list, tuple)) else ()): why.add('fills_cost_refs_mismatch')
     if r.get('exit_px_unconfirmed'): why.add('exit_px_unconfirmed')
     p = r.get('fees_actual_partial')
     if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
     elif p: why.add('fees_actual_partial')
+    if not why and D(r.get('fees_actual')) is None: why.add('fees_actual_missing')   # never finalized: unknown is not proven
     return sorted(why)
 
 

@@ -96,3 +96,9 @@ def test_a_strategy_counts_only_its_own_gaps():
     out = TB.compare(C('C', rows), rows)
     s = {x['key']: x['cost_gaps'] for x in out['strategies'] if x['book'] == 'B3_TREND'}
     assert s[K] == 1 and s[k2] == 0 and next(x for x in out['families'] if x['id'] == 'B3_TREND')['cost_gaps'] == 1
+
+
+def test_an_unknown_cost_is_never_reported_as_proven_and_a_bad_count_never_crashes():
+    raw = dict(id='n1', book='B3_TREND', cohort_id='C', strategy_key=K, pnl_gross=1.0, fees=0.1, r=0.1)   # finalize never ran
+    g = TB.cost_gaps([raw, close(2, fills_booked=float('inf'))])
+    assert [r['reasons'] for r in g['rows']] == [['fees_actual_missing'], ['fills_cost_refs_mismatch']]
