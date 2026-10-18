@@ -852,6 +852,9 @@ class App:
         old = self.engine
         if old is not None: old.lock.acquire()          # let a running cycle finish and save before the new engine reads state
         try:
+            if old is not None:                          # #104: the old ML writer drains + stops before a new one opens the files
+                try: old.ml_close()
+                except Exception as e: log.warning(f'ml shadow writer not closed ({type(e).__name__})')
             cfg = load_cfg()
             if cfg.pop('_plain', False):
                 try: write_cfg({}); log.info('API keys are now stored encrypted (Windows DPAPI)')

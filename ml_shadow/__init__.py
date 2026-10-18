@@ -14,3 +14,5 @@ from .scoring import score
 __all__ = ['SCHEMA_VERSION', 'redact', 'canonical_json', 'sha256_hex', 'JsonlLedger', 'decision_id', 'record_decision',
            'build_decision_record', 'features_at', 'FEATURE_NAMES', 'record_label', 'build_label_record', 'train',
            'walk_forward_splits', 'cairo_day', 'score']
+from .writer import LedgerWriter                           # noqa: E402  (#104: ledger writes off the engine cycle lock)
+__all__.append('LedgerWriter')

@@ -3921,16 +3921,58 @@ class Engine:
         return dict(dir=d, decisions=os.path.join(d, 'decisions.jsonl'), labels=os.path.join(d, 'labels.jsonl'))
 
     def _ml_health(self):
-        return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0))
+        return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0, dropped=0, missing_decision=0,
+                                                        refused_skipped=0, write_errors=0, lost=0))
 
     def _ml_ledgers(self):
-        led = self.__dict__.get('_ml_led')
-        if led is None:
+        with self.__dict__.setdefault('_ml_led_lock', threading.Lock()):     # the writer thread and readers share them
+            led = self.__dict__.get('_ml_led')
+            if led is None:
+                import ml_shadow as MLS
+                p = self.ml_paths()
+                led = self._ml_led = (MLS.JsonlLedger(p['decisions'], self.ML_MAX_BYTES, self.ML_MAX_FILES),
+                                      MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
+            return led
+
+    def _ml_writer(self):
+        """#104: the one background writer of this engine's ML ledgers (created on first use; no file I/O here)."""
+        w = self.__dict__.get('_ml_w')
+        if w is None:
+            from ml_shadow import writer as MLW
+            w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health()))
+        return w
+
+    def ml_close(self, timeout=2.0):
+        """Flush (bounded) and stop this engine's ML writer before another engine takes over the same data folder.
+        Rows that could not be written are counted as lost. True when no writer thread remains."""
+        w = self.__dict__.get('_ml_w')
+        if w is None: return True
+        from ml_shadow import writer as MLW
+        return MLW.unregister(w) and w.close(timeout)
+
+    def ml_flush(self, timeout=2.0):
+        """Wait (bounded) for queued ML rows to reach disk. True when nothing is left queued."""
+        w = self.__dict__.get('_ml_w')
+        return True if w is None else w.flush(timeout)
+
+    def _ml_link(self, lot, plan):
+        """#104: set lot['ml_decision_id'] BEFORE the open path's own save_state(), so the lot and its link land in the
+        same atomic state write (a crash after that save can no longer leave the trade unlabelled). A direct entry
+        (opened inside the cycle that is about to record it as 'taken') is always linked; a filled pending entry is
+        linked unless its decision is known to be absent. The id stays on the lot even if its row is later dropped
+        (Codex 6254070622); such a close is refused at the label stage and counted as missing_decision - never
+        reconstructed or relinked."""
+        try:
+            if self.S.get('ML_SHADOW') is not True or plan.get('manual') or not plan.get('sl'): return
             import ml_shadow as MLS
-            p = self.ml_paths()
-            led = self._ml_led = (MLS.JsonlLedger(p['decisions'], self.ML_MAX_BYTES, self.ML_MAX_FILES),
-                                  MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
-        return led
+            sl, t = plan['sl'], (plan.get('sg') or {}).get('time')
+            if not t: return
+            did = MLS.decision_id(sl['id'], sl.get('key'), plan['sym'], plan['side'], sl.get('tf'), t)
+            direct = self.__dict__.get('_ml_direct') == (sl['id'], plan['sym'], plan['side'], str(t))
+            if direct or self._ml_writer().known(did) is not False: lot['ml_decision_id'] = did
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
 
     def _ml_decision(self, sl, sym, side, sg, frames, status, reason, exposure=None, lot_key=None):
         """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (status taken | skipped | pending + the existing
@@ -3940,7 +3982,6 @@ class Engine:
         try:
             if self.S.get('ML_SHADOW') is not True: return
             import ml_shadow as MLS
-            dec, _lab = self._ml_ledgers()
             df = (frames or {}).get(sym)
             ctx = {'exposure_count': exposure}
             btc = (frames or {}).get('BTCUSDT')
@@ -3951,30 +3992,12 @@ class Engine:
                 r = self.rotation_status()
                 if r.get('on'): rg = f"{r['index'] + 1}/{r['groups']}"
             except Exception: pass
-            row = MLS.record_decision(dec, sleeve=sl['id'], strategy=sl.get('key'), family=_bfam(sl.get('key')), symbol=sym,
-                                      side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken', status=status,
-                                      reason=scrub(str(reason or '')), rotation_group=rg, trade_id=lot_key, **kw)
-            h = self._ml_health()
-            if row is not None: h['decisions'] += 1
-            lot = self.state['lots'].get(lot_key) if status == 'taken' and lot_key else None
-            if lot is not None:
-                lot['ml_decision_id'] = MLS.decision_id(sl['id'], sl.get('key'), sym, side, sl.get('tf'), sg['time'])
+            row = MLS.build_decision_record(sleeve=sl['id'], strategy=sl.get('key'), family=_bfam(sl.get('key')), symbol=sym,
+                                            side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken',
+                                            status=status, reason=scrub(str(reason or '')), rotation_group=rg,
+                                            trade_id=lot_key, **kw)
+            self._ml_writer().submit('decision', row)        # #104: O(1) hand-off; the disk write is off the cycle lock
         except Exception:                                   # noqa: BLE001 - an observer never alters trading
-            try: self._ml_health()['errors'] += 1
-            except Exception: pass
-
-    def _ml_link_pending(self, lot, plan):
-        """A pending decision (maker resting / trailing armed) that fills: tag the new lot with that decision id. No new
-        decision row is written. Only ids already in the decision ledger are linked."""
-        try:
-            if self.S.get('ML_SHADOW') is not True or plan.get('manual') or not plan.get('sl'): return
-            import ml_shadow as MLS
-            sl, t = plan['sl'], (plan.get('sg') or {}).get('time')
-            if not t: return
-            did = MLS.decision_id(sl['id'], sl.get('key'), plan['sym'], plan['side'], sl.get('tf'), t)
-            dec, _lab = self._ml_ledgers()
-            if did in dec: lot['ml_decision_id'] = did
-        except Exception:                                   # noqa: BLE001
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
@@ -3986,18 +4009,17 @@ class Engine:
             did = (lot or {}).get('ml_decision_id')
             if not isinstance(did, str): return
             import ml_shadow as MLS
-            dec, lab = self._ml_ledgers()
             m = (audit or {}).get('metrics') or {}
             mfe, mae = m.get('mfe') or {}, m.get('mae') or {}
             full = (audit or {}).get('coverage') == 'full'
             touched = (audit or {}).get('target_touch_t')
             target_known = full and (audit or {}).get('target') is not None and int((audit or {}).get('observations') or 0) > 0
-            row = MLS.record_label(lab, dec, decision_id=did, net_r=rec.get('r'), net_pnl=rec.get('pnl'),
-                                   exit_reason=rec.get('exit_reason'), mfe_r=mfe.get('r') if full else None,
-                                   mae_r=mae.get('r') if full else None,
-                                   target_before_stop=(bool(touched) if target_known else None), trade_id=key,
-                                   closed_at=rec.get('closed'))
-            if row is not None: self._ml_health()['labels'] += 1
+            row = MLS.build_label_record(decision_id=did, net_r=rec.get('r'), net_pnl=rec.get('pnl'),
+                                         exit_reason=rec.get('exit_reason'), mfe_r=mfe.get('r') if full else None,
+                                         mae_r=mae.get('r') if full else None,
+                                         target_before_stop=(bool(touched) if target_known else None), trade_id=key,
+                                         closed_at=rec.get('closed'))
+            self._ml_writer().submit('label', row)           # #104: the writer checks the decision ledger, then appends
         except Exception:                                   # noqa: BLE001
             try: self._ml_health()['errors'] += 1
             except Exception: pass
@@ -5167,7 +5189,10 @@ class Engine:
                         self.last_skip = ''
                         lk0 = getattr(self, '_last_lot_key', None)
                         try:
-                            if self.open_lot(sl, s, side, sg, frames.get(s), eq):
+                            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))   # #104: this decision's own lot
+                            try: opened = self.open_lot(sl, s, side, sg, frames.get(s), eq)
+                            finally: self._ml_direct = None
+                            if opened:
                                 self._audit_opened(sl, s, side, sg)     # T05a: 'taken', or 'order_placed' (maker)
                                 lk = getattr(self, '_last_lot_key', None)
                                 mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'   # maker rests
@@ -6371,7 +6396,7 @@ class Engine:
                 lot['ap'] = ap
         except Exception: pass
         if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
-        self._ml_link_pending(lot, plan)                          # ML-SHADOW-01: a filled pending entry keeps its decision id
+        self._ml_link(lot, plan)                                  # ML-SHADOW-01 / #104: decision link persisted by the save below
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
