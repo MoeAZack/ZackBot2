@@ -278,6 +278,7 @@ def test_direct_entry_link_is_in_the_first_state_save(tmp_path):
     assert lot['ml_decision_id'] == want
     dec = ledger_rows(e, 'decisions')
     assert [(r['decision_id'], r['status']) for r in dec] == [(want, 'taken')]
+    assert e.ml_close(10)                                   # the old process is gone (its writer drained + stopped)
     e2, _ = mk_engine(str(tmp_path))                        # restart from that state: the close labels exactly once
     e2.trade.pos.update(e.trade.pos); e2.trade.stops.update(e.trade.stops)
     e2.S['ML_SHADOW'] = True
@@ -310,3 +311,37 @@ def test_pending_fill_not_linked_when_decision_known_absent(tmp_path):
     assert lot['ml_decision_id'] == MLS.decision_id('A', 'ema_mom', 'BTCUSDT', 'LONG', '4h', '2026-10-02 00:00:00')
     lot2 = {}; e.S['ML_SHADOW'] = False; e._ml_link(lot2, plan)
     assert lot2 == {}                                       # OFF: no field at all
+
+
+# ------------------------------------------------------------------ Codex activation gate: one live writer per ledger folder
+def test_timed_out_close_never_lets_two_writers_share_the_files(tmp_path):
+    gate = threading.Event()
+    e, _ = mk_engine(str(tmp_path))
+    e.S['ML_SHADOW'] = True
+    real = e._ml_ledgers
+    def stuck():
+        gate.wait(30); return real()
+    e._ml_ledgers = stuck
+    old = e._ml_writer()
+    old.submit('decision', dec_row('2026-10-01 00:00:00'))
+    assert e.ml_close(0.3) is False and old.alive()          # close timed out: the old daemon is still running
+    e2, _ = mk_engine(str(tmp_path))                         # the app builds the next engine on the same data folder
+    e2.S['ML_SHADOW'] = True
+    w2 = e2._ml_writer()
+    assert not w2.submit('decision', dec_row('2026-10-02 00:00:00'))
+    h2 = e2.health['ml_shadow']
+    assert h2['blocked_prior_writer'] == 1 and h2['dropped'] == 1 and not w2.alive()   # never started, counted
+    gate.set(); old.thread.join(10)
+    assert not old.alive()
+    assert w2.submit('decision', dec_row('2026-10-03 00:00:00')) and e2.ml_flush(5)    # takes over once the old one is gone
+    ids = [r['decision_id'] for r in ledger_rows(e2, 'decisions')]
+    assert ids == [dec_row('2026-10-01 00:00:00')['decision_id'], dec_row('2026-10-03 00:00:00')['decision_id']]
+    assert e2.ml_close(10)
+
+
+def test_writers_of_different_folders_never_block_each_other(tmp_path):
+    a = MLW.LedgerWriter(ledgers(tmp_path / 'a'), {}, key=str(tmp_path / 'a'))
+    (tmp_path / 'b').mkdir(); (tmp_path / 'a').mkdir(exist_ok=True)
+    b = MLW.LedgerWriter(ledgers(tmp_path / 'b'), {}, key=str(tmp_path / 'b'))
+    assert a.submit('decision', dec_row('2026-10-01 00:00:00')) and b.submit('decision', dec_row('2026-10-01 00:00:00'))
+    assert a.close(10) and b.close(10)

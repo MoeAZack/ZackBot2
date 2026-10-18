@@ -306,6 +306,7 @@ def test_restart_between_fill_and_close_still_labels(tmp_path):
     e, k, lot = maker_setup(tmp_path)
     e.save_state()
     pos, stops = dict(e.trade.pos), dict(e.trade.stops)
+    assert e.ml_close(10)                                              # #104: the old process (and its ML writer) is gone
     e2, _ = mk_engine(str(tmp_path))                                   # new process: same data folder, fresh ledgers
     e2.trade.pos.update(pos); e2.trade.stops.update(stops)
     e2.S['ML_SHADOW'] = True
