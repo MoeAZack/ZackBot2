@@ -2895,10 +2895,21 @@ class Engine:
         sl = next((s for s in self.S.get('SLEEVES', []) if s['id'] == x.get('sleeve')), None)
         return TB.book_of(sl.get('key')) if sl else None
 
-    def true_book_block(self, sl, size=None, skip_pending=None):
+    def _tb_opposite(self, sym, side, skip_pending=None):
+        """TRUE-BOOK-03 (#147): True when the symbol already carries exposure on the OTHER side - an open lot (any book,
+        manual included), an armed trailing entry (except the one now triggering), a resting maker or an unconfirmed entry.
+        Funding paid on a symbol held both ways cannot be assigned to either lot, so a new opposite entry is never opened."""
+        opp = 'SHORT' if side == 'LONG' else 'LONG'
+        st = self.state
+        recs = list(st['lots'].values()) + [p for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending] \
+            + list((st.get('resting_entries') or {}).values()) + list((st.get('unconfirmed_entries') or {}).values())
+        return any(x.get('symbol') == sym and x.get('side') == opp for x in recs)
+
+    def true_book_block(self, sl, size=None, skip_pending=None, sym=None, side=None):
         """Book-wide gate for a new lot (automatic entries only). None or a reason."""
         if not self._tb_on() or not sl: return None
         if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        if sym and side and self._tb_opposite(sym, side, skip_pending): return 'true_book/opposite_side_funding_ambiguity'
         book = TB.book_of(sl.get('key'))
         if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
         b = self.true_books().get(book)
@@ -5238,7 +5249,7 @@ class Engine:
                   [r for r in st.get('resting_entries', {}).values() if r['sleeve'] == sl['id']]
         if any(p['symbol'] == sym for p in working): return 'an entry is already working on this coin'
         if len(held) + len(working) >= sl['max_pos']: return f"max positions reached ({sl['max_pos']})"
-        tbb = self.true_book_block(sl, size, skip_pending)          # TRUE-BOOK-01: book-wide, across every strategy in it
+        tbb = self.true_book_block(sl, size, skip_pending, sym, side)   # TRUE-BOOK-01/03: book-wide + opposite-side funding
         if tbb: return tbb
         when = sl.get('when') or 'any'
         if when != 'any':
