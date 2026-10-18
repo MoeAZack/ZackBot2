@@ -738,6 +738,29 @@ class Futures:
             raise
         return str(st).upper() if st else None
 
+    def stop_fill(self, symbol, tag):
+        """Read-only. The executed order behind ONE stop tag, so a vanished exchange stop is booked at its actual fill:
+        'o:' / 'c:' -> GET /fapi/v1/order; 'a:' / 'ac:' -> GET /fapi/v1/algoOrder, then the order it triggered
+        (actualOrderId). Returns that order's record (orderId, status, executedQty, avgPrice, ...), or None when there is
+        none (not triggered, unknown id, endpoint unsupported). Failures raise: the caller treats them as unknown."""
+        kind, _, oid = (tag or '').partition(':')
+        if not oid: return None
+        try:
+            if kind in ('a', 'ac'):
+                r = self._req('GET', '/fapi/v1/algoOrder', dict(algoId=oid) if kind == 'a' else dict(clientAlgoId=oid),
+                              signed=True, retry=False)
+                aid = r.get('actualOrderId') if isinstance(r, dict) else None
+                if aid in (None, '', 0, '0', -1, '-1'): return None
+                kind, oid = 'o', aid
+            if kind not in ('o', 'c'): return None
+            q = dict(symbol=symbol, orderId=oid) if kind == 'o' else dict(symbol=symbol, origClientOrderId=oid)
+            r = self._req('GET', '/fapi/v1/order', q, signed=True, retry=False)
+            return r if isinstance(r, dict) else None
+        except BinanceError as e:
+            if isinstance(e, ExchangeUnavailable) or is_transient(e): raise
+            if e.code in (-2013,) + ALGO_UNSUPPORTED or 'not exist' in str(e.msg).lower(): return None
+            raise
+
     def cancel_all(self, symbol):
         for path in ('/fapi/v1/allOpenOrders', '/fapi/v1/algoOpenOrders'):
             try: self._req('DELETE', path, dict(symbol=symbol), signed=True)

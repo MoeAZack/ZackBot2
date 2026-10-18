@@ -3423,6 +3423,28 @@ class Engine:
             lot.update(old)                               # not placeable right now: kept, retried by the verifier
         return True
 
+    STOP_FILL_WAIT_S = 60            # a vanished stop without a readable execution record waits this long, then is booked unconfirmed
+
+    def _stop_fill(self, l):
+        """A vanished exchange stop's own execution (Codex 6243423221) -> ('ok', avg price, order record) when Binance reports
+        it FILLED for the lot's quantity; ('wait', None, None) while it is unreadable / ambiguous for less than
+        STOP_FILL_WAIT_S; then ('none', None, None): booked at the stop price as exit_px_unconfirmed (the row stays
+        INCOMPLETE - never a zero fee, never the configured stop price as exchange truth). A client without stop_fill
+        (no record source) is 'none' at once. The order record stays in memory only (ids are never written)."""
+        fn = getattr(self.trade, 'stop_fill', None)
+        if not callable(fn): return 'none', None, None
+        o = None
+        try: o = fn(l['symbol'], l['stop_id'])
+        except Exception as ex: log.info(f"{l['symbol']} stop {l['stop_id']} execution unreadable ({type(ex).__name__}) - re-checked next pass")
+        try: q = float((o or {}).get('executedQty') or 0)
+        except (TypeError, ValueError): q = 0.0
+        px = self._fill_px(o) if o else None
+        tol = self._qty_tol(self.rules[l['symbol']]['step']) if l['symbol'] in self.rules else 1e-9
+        if o and str(o.get('status') or '').upper() == 'FILLED' and px and abs(q - l['qty']) <= tol:
+            return 'ok', px, o
+        t0 = l.setdefault('stop_gone_t', time.time())
+        return ('wait', None, None) if time.time() - t0 < self.STOP_FILL_WAIT_S else ('none', None, None)
+
     def _tp_record(self, lot):
         """Order record of a classic resting TP by its client id -> dict(state 'ok'|'notfound'|'unknown', exec, px, final).
         'unknown': no record source (algo TP, a client without get_order) or a failed read - never read as 'gone'."""
@@ -4726,18 +4748,28 @@ class Engine:
                 if acted or have >= expected - tol: continue            # booked: the rest is re-read next pass (fresh tags)
             gone = [k for k in keys if st['lots'][k].get('stop_id') and st['lots'][k]['stop_id'] not in open_tags]
             gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
+            waiting = False
             for k in gone:
                 l = st['lots'][k]
-                pnl = sd * (l['stop'] - l['avg']) * l['qty']
-                log.info(f"STOPPED {sym} {side} [{l['sleeve']}] stop {l['stop']} ~pnl {pnl:+.2f}")
+                how, px, o = self._stop_fill(l)                         # the stop's own execution decides the exit price
+                if how == 'wait': waiting = True; continue
+                px = px if how == 'ok' else l['stop']
+                pnl = sd * (px - l['avg']) * l['qty']
+                log.info(f"STOPPED {sym} {side} [{l['sleeve']}] stop {l['stop']} fill {px if how == 'ok' else 'unconfirmed'} pnl {pnl:+.2f}")
                 self.log_trade(time=now_utc().isoformat(timespec='seconds'), event='stop', sleeve=l['sleeve'], symbol=sym,
-                               side=side, qty=l['qty'], price=l['stop'], pnl=round(pnl, 4), equity=round(eq, 2))
+                               side=side, qty=l['qty'], price=px, pnl=round(pnl, 4), equity=round(eq, 2))
                 l['realized'] = l.get('realized', 0.0) + pnl
-                l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], l['stop']])
-                l['fees'] = l.get('fees', 0.0) + l['qty'] * l['stop'] * FEE_EST
+                l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], px])
+                l['fees'] = l.get('fees', 0.0) + l['qty'] * px * FEE_EST
+                if how == 'ok':                                         # cost record + userTrades commission (FEE-ASSET-01)
+                    self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'], l['qty'], order=o, cost_lot=l)
+                else:                                                   # no exchange record: the row stays INCOMPLETE
+                    l['exit_px_unconfirmed'] = int(l.get('exit_px_unconfirmed') or 0) + 1
+                l.pop('stop_gone_t', None)
                 expected -= l['qty']; self._finish(k, 'stop')
-                self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {l['stop']}")
+                self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {px}")
                 if have >= expected - tol: break
+            if waiting: continue                                        # never resize lots around an unbooked stop fill
             rest = [k for k in keys if k in st['lots']]
             if rest and have < expected - tol:
                 # every stop is still open but the position is smaller: only act after it is seen twice in a row and no order
