@@ -52,7 +52,8 @@ E0 = 100.0 * (1 + SLIP)                                    # long entry at the o
 # ------------------------------------------------------------------ exit parity (backtest.walk_path semantics)
 def test_stop_first_when_the_opens_stop_is_inside_the_candle(tmp_path):
     b = book(tmp_path); r = enter(b, slot(tp_r=1.0))
-    bar(b, 10, o=100, h=103, l=97, c=101)                  # target 102.02 AND stop 98.02 inside: stop-first convention
+    bar(b, 10, o=100, h=103, l=97, c=98)                   # red: the path meets the target first, but the open's stop
+                                                           # (98.02) is inside the candle -> stop-first convention
     e = ep(b, r)
     assert e['exit_reason'] == 'stop' and e['exit'] == pytest.approx((E0 - 2) * (1 - SLIP))
 
@@ -66,7 +67,7 @@ def test_red_candle_path_reaches_the_target_first(tmp_path):
 
 def test_gap_through_stop_fills_at_the_open(tmp_path):
     b = book(tmp_path); r = enter(b, slot(tp_r=1.0))
-    bar(b, 10, o=97, h=99, l=96, c=98)
+    bar(b, 10, o=97, h=99, l=97, c=98.5)                   # opens through the stop, never trades lower afterwards
     assert ep(b, r)['exit_reason'] == 'stop' and ep(b, r)['exit'] == pytest.approx(97 * (1 - SLIP))
 
 
