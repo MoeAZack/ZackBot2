@@ -16,8 +16,14 @@ never a later bar open. Fill = ref adjusted by the frozen adverse slippage; fee 
 Management (DECISION 1): an isolated reducer over the research primitives - backtest.path_points is THE intrabar path
 policy; the per-leg order (gap through the stop at the open, adverse leg -> stop, favourable leg -> tp1 / tp_r, stop-first
 when the open's stop is inside the candle, ratchet after each leg: be_r, trail_atr; signal / time exits at the close; the
-trail uses the ATR of the last CLOSED candle) mirrors backtest.run's walk_path. Not modelled in v1: DCA baskets, pyramid
-adds, runner, trailing TP, the TP ladder, trailing entries - an instance using one is INCOMPLETE (unsupported_mgmt:<x>).
+trail uses the ATR of the last CLOSED candle) mirrors backtest.run's walk_path, including DCA safety orders (adverse leg,
+in price order with the stop; tie: the safety order first; basket TP recomputed after each fill) and pyramid adds
+(favourable leg; allowed in a stop-first candle). Not modelled in v1: runner, trailing TP, the TP ladder, trailing entries -
+an instance using one is INCOMPLETE (unsupported_mgmt:<x>). Live-only gates (halt, breaker, leverage cap, risk rules) never
+suppress a shadow add; the exchange size check does (floored to the step, skipped for that candle when it fails). Adds
+fill AT their level (or where a gap left price) with the fee but no slippage - backtest parity. MFE / MAE / giveback are
+per-unit R from the first fill, so episodes with a safety order or add are left out of them (counted in
+`excursions_excluded`); their net R (net / risk) is exact.
 
 Funding: settled on every open episode exposed at the funding instant from the supplied (testnet) timeline; a missing rate
 makes only the exposed episodes INCOMPLETE. Never account income, never a silent substitute.
@@ -41,7 +47,7 @@ MANAGEMENT = 'research-primitives-v1'
 START = 2000.0
 MIN_N = 20
 MAX_REF_LAG_S = 300                  # decision mark observed at most this long after the decision close
-UNSUPPORTED = ('dca', 'pyramid', 'runner', 'ttp', 'tps', 'trail_entry')
+UNSUPPORTED = ('runner', 'ttp', 'tps', 'trail_entry')
 FUNDING_GRID_S = 8 * 3600              # Binance USD-M default settlement grid (00/08/16 UTC): exposure across it needs a record
 MODEL_V1 = dict(version=MODEL_VERSION, management=MANAGEMENT, fee_rate=0.0005, adverse_slippage_bps=2.0,
                 entry_reference='observed_post_close_mark')
@@ -312,7 +318,11 @@ class ShadowBook:
         ep.update(status='open', sd=sd, entry_ref=ref, entry_ref_time=mk.get('time'), t_ref=t_ref, entry=px, e0=px,
                   avg=px, qty=qty, q0=qty, stop=z['stop'], R=z['R'], risk=risk_usd, best=px, worst=px, tp1=False,
                   atr=atr, last=ref, last_t=t_ref, fees=qty * px * self.fee, notional=qty * px, qty_hist=[(t_ref, qty)],
-                  funded={}, exit_t=None, rule=rule)
+                  funded={}, exit_t=None, rule=rule, atr0=atr, dca=0, adds=0, q_max=qty, fills=[])
+        if 'dca' in m:
+            ep.update(levels=z['levels'][1:], w=z['weights'][1:], tp=px + sd * m['dca']['tp_atr'] * atr)
+        if 'pyramid' in m:
+            ep['next_add'] = px + sd * m['pyramid']['step_r'] * z['R']
         self._tick(t_ref)
         return None
 
@@ -350,49 +360,94 @@ class ShadowBook:
         if m.get('trail_atr'):
             ep['stop'] = tighten(ep['best'] - sd * m['trail_atr'] * ep['atr'])
 
+    def _add(self, ep, lvl, q, t):
+        """One safety order / pyramid add at lvl: floored to the exchange step (None when the check refuses it)."""
+        rule = ep.get('rule')
+        if rule is not None:
+            d = F.size_check(q, q, lvl, rule)
+            if d['ok'] is False: return None
+            q = d['qty']
+        if q <= 0: return None
+        ep['avg'] = (ep['avg'] * ep['qty'] + lvl * q) / (ep['qty'] + q)
+        ep['qty'] += q
+        ep['fees'] += q * lvl * self.fee
+        ep['notional'] += q * lvl
+        ep['q_max'] = max(ep['q_max'], ep['qty'])
+        ep['fills'].append((round(lvl, 12), q / ep['q0']))
+        ep['qty_hist'].append((t - 1e-3, ep['qty']))
+        return q
+
     def _manage(self, ep, m, b, t, sig):
-        """One closed candle for one open episode: backtest.run's walk_path order for the v1 exit set."""
+        """One closed candle for one open episode: backtest.run's walk_path order for the v1 event set."""
         sd = ep['sd']
         o, h, l, c = (_num(b.get(k)) for k in ('o', 'h', 'l', 'c'))
         if None in (o, h, l, c): ep['incomplete'].append('bad_bar'); return
         ep['bars'] += 1
         ep['worst'] = min(ep['worst'], l) if sd == 1 else max(ep['worst'], h)
-        if (o <= ep['stop']) if sd == 1 else (o >= ep['stop']):
+        if (o <= ep['stop']) if sd == 1 else (o >= ep['stop']):           # gap through the stop: at the open, no adds
             ep['best'] = max(ep['best'], o) if sd == 1 else min(ep['best'], o)
             self._close(ep, o, 1, 'stop', t); return
         fav = lambda lv, x: sd * (x - lv) >= 0
         adv = lambda lv, x: sd * (lv - x) >= 0
-        stop_in_candle = adv(ep['stop'], l if sd == 1 else h)
-        tp1_blocked = False
+        stop_open = ep['stop']
+        stop_in_candle = adv(stop_open, l if sd == 1 else h)
+        blocked = dict(dca=False, add=False, tp1=False)
+        dc, py = m.get('dca'), m.get('pyramid')
         pts = path_points(o, h, l, c, sd)
         for k in range(len(pts)):
             a_, b_ = pts[max(0, k - 1)], pts[k]
             mv = sd * (b_ - a_)
-            if k and mv < 0 and adv(ep['stop'], b_):
-                st = ep['stop']
-                ep['best'] = max(ep['best'], a_) if sd == 1 else min(ep['best'], a_)
-                self._close(ep, st if sd * (a_ - st) >= 0 else a_, 1, 'stop', t); return
-            if (k == 0 or mv > 0) and not stop_in_candle:
+            if k == 0 or mv < 0:                                           # adverse leg: safety orders and the stop
                 while True:
                     cand = []
-                    if m.get('tp1_r') and not ep['tp1'] and not tp1_blocked:
+                    if dc and not blocked['dca'] and ep['dca'] < len(ep['levels']) and adv(ep['levels'][ep['dca']], b_):
+                        cand.append((sd * ep['levels'][ep['dca']], 1, 'dca'))
+                    if k and adv(ep['stop'], b_):
+                        cand.append((sd * ep['stop'], 0, 'stop'))
+                    if not cand: break
+                    ev = max(cand)[2]
+                    if ev == 'stop':
+                        st = ep['stop']
+                        ep['best'] = max(ep['best'], a_) if sd == 1 else min(ep['best'], a_)
+                        self._close(ep, st if sd * (a_ - st) >= 0 else a_, 1, 'stop', t); return
+                    lvl = ep['levels'][ep['dca']]
+                    lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)         # gapped through the level -> where price is
+                    if self._add(ep, lvl, ep['q0'] * ep['w'][ep['dca']], t) is None:
+                        blocked['dca'] = True; continue
+                    ep['dca'] += 1
+                    ep['tp'] = ep['avg'] + sd * dc['tp_atr'] * ep['atr0']    # new basket TP: only later moves reach it
+            if k == 0 or mv > 0:                                           # favourable leg: basket TP, adds, tp1, tp_r
+                while True:
+                    cand = []
+                    if dc and fav(ep['tp'], b_):
+                        cand.append((sd * ep['tp'], 0, 'tp', ep['tp']))
+                    if py and not blocked['add'] and ep['adds'] < py['n'] and fav(ep['next_add'], b_):
+                        cand.append((sd * ep['next_add'], 1, 'add', ep['next_add']))
+                    if m.get('tp1_r') and not ep['tp1'] and not blocked['tp1']:
                         lv = ep['e0'] + sd * m['tp1_r'] * ep['R']
                         if fav(lv, b_): cand.append((sd * lv, 2, 'tp1', lv))
                     if m.get('tp_r'):
                         lv = ep['e0'] + sd * m['tp_r'] * ep['R']
-                        if fav(lv, b_): cand.append((sd * lv, 4, 'tp', lv))
+                        if fav(lv, b_): cand.append((sd * lv, 4, 'tpr', lv))
+                    if stop_in_candle: cand = [x for x in cand if x[2] == 'add']   # stop-first: adds only, no exits
                     if not cand: break
                     _, _, ev, lv = min(cand)
-                    fill = lv                                    # backtest parity: target exits fill AT the level (gaps too)
+                    if ev == 'add':
+                        lvl = max(lv, a_) if sd == 1 else min(lv, a_)        # gapped through the add level -> where price is
+                        if self._add(ep, lvl, ep['q0'] * py['frac'], t) is None:
+                            blocked['add'] = True; continue
+                        ep['adds'] += 1
+                        ep['next_add'] += sd * py['step_r'] * ep['R']
+                        continue
                     if ev == 'tp1':
-                        done = self._close(ep, fill, m.get('tp1_frac', 0.5), 'tp1', t)
-                        if done is None: tp1_blocked = True; continue         # zero part: retried next candle
+                        done = self._close(ep, lv, m.get('tp1_frac', 0.5), 'tp1', t)
+                        if done is None: blocked['tp1'] = True; continue      # zero part: retried next candle
                         ep['tp1'] = True
                         if done:
-                            ep['best'] = max(ep['best'], fill) if sd == 1 else min(ep['best'], fill); return
-                    else:
-                        ep['best'] = max(ep['best'], fill) if sd == 1 else min(ep['best'], fill)
-                        self._close(ep, fill, 1, 'tp', t); return
+                            ep['best'] = max(ep['best'], lv) if sd == 1 else min(ep['best'], lv); return
+                        continue
+                    ep['best'] = max(ep['best'], lv) if sd == 1 else min(ep['best'], lv)
+                    self._close(ep, lv, 1, 'tp', t); return                # backtest parity: target exits fill AT the level
             ep['best'] = max(ep['best'], b_) if sd == 1 else min(ep['best'], b_)
             if k: self._ratchet(ep, m)
         ex = bool(sig and sig.get('lx' if sd == 1 else 'sx'))
@@ -582,9 +637,10 @@ class ShadowBook:
         wins = [x for x in nets if x > 0]
         loss = -sum(x for x in nets if x <= 0)
         r_of = lambda e, px: e['sd'] * (px - e['e0']) / e['R'] if e.get('R') else None
-        mfe = [r_of(e, e['best']) for e in closed]
-        mae = [r_of(e, e['worst']) for e in closed]
-        exit_r = [r_of(e, e['exit'] / (1 - e['sd'] * self.slip)) for e in closed]
+        single = [e for e in closed if not e.get('dca') and not e.get('adds')]   # per-unit R is meaningless for baskets
+        mfe = [r_of(e, e['best']) for e in single]
+        mae = [r_of(e, e['worst']) for e in single]
+        exit_r = [r_of(e, e['exit'] / (1 - e['sd'] * self.slip)) for e in single]
         exits, rej = {}, {}
         for e in closed: exits[e['exit_reason']] = exits.get(e['exit_reason'], 0) + 1
         for e in eps:
@@ -599,6 +655,7 @@ class ShadowBook:
                     turnover=sum(e.get('notional', 0.0) for e in eps) / self.start,
                     hold_bars=_spread([e['bars'] for e in closed]), mfe_r=_spread(mfe), mae_r=_spread(mae),
                     giveback_r=_spread([a - b for a, b in zip(mfe, exit_r) if a is not None and b is not None]),
+                    excursions_excluded=len(closed) - len(single),
                     held=sum(1 for e in eps if e['status'] == 'held'), exits=exits, live_decisions=rej, incomplete=why,
                     complete=not why and not self.gaps)
 
