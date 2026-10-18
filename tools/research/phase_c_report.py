@@ -343,15 +343,56 @@ def exec_stats(rows, start=TB.START):
     return s
 
 
+def ev_ms(x):
+    """Epoch ms of an event time: an ISO string WITH a UTC offset, or epoch s / ms. A naive ISO time (which a parser would
+    read as local time) or anything unreadable is untimed (None) - never guessed."""
+    from datetime import datetime
+    if isinstance(x, bool) or x is None: return None
+    if isinstance(x, (int, float)): return float(x) if x > 1e11 else float(x) * 1000.0
+    try: d = datetime.fromisoformat(str(x).replace('Z', '+00:00'))
+    except (TypeError, ValueError): return None
+    return None if d.tzinfo is None else d.timestamp() * 1000.0
+
+
+def _iso_ms(t):
+    from datetime import datetime, timezone
+    return None if t is None else datetime.fromtimestamp(t / 1000.0, timezone.utc).isoformat()
+
+
+def window_stats():
+    return dict(accepted=0, first_utc=None, last_utc=None, excluded_before_cohort=0, excluded_at_or_after_snapshot=0,
+                excluded_untimed=0)
+
+
+def _place(st, t, lo, hi):
+    """Count one record into st; True when it is inside [lo, hi)."""
+    if t is None: st['excluded_untimed'] += 1; return False
+    if hi is not None and t >= hi: st['excluded_at_or_after_snapshot'] += 1; return False
+    if lo is not None and t < lo: st['excluded_before_cohort'] += 1; return False
+    st['accepted'] += 1
+    st['_lo'] = t if st.get('_lo') is None else min(st['_lo'], t)
+    st['_hi'] = t if st.get('_hi') is None else max(st['_hi'], t)
+    return True
+
+
+def _close_stats(st):
+    st['first_utc'], st['last_utc'] = _iso_ms(st.pop('_lo', None)), _iso_ms(st.pop('_hi', None))
+    return st
+
+
+def split_window(items, t_of, lo, hi):
+    """(items with lo <= event time < hi, accepted min/max + counts excluded before / at-or-after / untimed)."""
+    st, keep = window_stats(), []
+    for x in items:
+        if _place(st, t_of(x), lo, hi): keep.append(x)
+    return keep, _close_stats(st)
+
+
 def cohort_closes(snap, cid, snapshot_utc, start_utc=None):
-    """(closes of the cohort inside [cohort start, snapshot], count excluded as outside it or with no readable close time)."""
+    """(closes of the cohort with cohort start <= close < snapshot_utc, window stats)."""
     rows = TB.merge_rows([r for r in snap['cohort_rows'] if r.get('cohort_id') == cid] +
                          [r for r in snap['history'] if r.get('cohort_id') == cid])
-    cut = TB._ms(snapshot_utc)
-    lo = TB._ms(start_utc) if start_utc else None
-    keep = [r for r in rows if TB._ms(r.get('closed')) is not None and cut is not None and TB._ms(r.get('closed')) < cut
-            and (lo is None or TB._ms(r.get('closed')) >= lo)]
-    return keep, len(rows) - len(keep)
+    return split_window(rows, lambda r: ev_ms(r.get('closed')), ev_ms(start_utc), ev_ms(snapshot_utc))
 
 
 def _key(r):
@@ -414,8 +455,10 @@ def record_time(rec):
 
 def window_ledger(path, out, lo_s, hi_s):
     """Copy the ledger lines whose event time is in [lo, hi) to out (line bytes unchanged; torn lines are kept so the
-    reducer still reports them). -> counts of what was excluded."""
-    n = dict(kept=0, excluded_after_snapshot=0, excluded_before_cohort=0, excluded_untimed=0)
+    reducer still reports them). -> window stats (+ kept_timeless: cadence / incomplete / unknown kinds, kept)."""
+    st = dict(window_stats(), kept_timeless=0)
+    lo = None if lo_s is None else lo_s * 1000.0
+    hi = None if hi_s is None or hi_s == float('inf') else hi_s * 1000.0
     with open(path, 'rb') as f, open(out, 'xb') as g:
         for line in f:
             try:
@@ -423,13 +466,10 @@ def window_ledger(path, out, lo_s, hi_s):
             except ValueError:
                 g.write(line); continue
             if not isinstance(rec, dict) or rec.get('kind') not in TIMED_KINDS:   # timeless / unknown: the reducer decides
-                g.write(line); n['kept'] += 1; continue
+                g.write(line); st['kept_timeless'] += 1; continue
             t = record_time(rec)
-            if t is None: n['excluded_untimed'] += 1; continue
-            if t >= hi_s: n['excluded_after_snapshot'] += 1; continue
-            if lo_s is not None and t < lo_s: n['excluded_before_cohort'] += 1; continue
-            g.write(line); n['kept'] += 1
-    return n
+            if _place(st, None if t is None else t * 1000.0, lo, hi): g.write(line)
+    return _close_stats(st)
 
 
 def shadow_section(path, cid, cutoff_utc=None, start_utc=None):
@@ -444,7 +484,7 @@ def shadow_section(path, cid, cutoff_utc=None, start_utc=None):
     try:
         lp = os.path.join(tmp, 'ledger.jsonl')
         hi = _utc_ms(cutoff_utc, 'snapshot_utc') / 1000.0 if cutoff_utc else float('inf')
-        lo = TB._ms(start_utc) / 1000.0 if start_utc and TB._ms(start_utc) is not None else None
+        lo = ev_ms(start_utc) / 1000.0 if ev_ms(start_utc) is not None else None
         excl = window_ledger(path, lp, lo, hi)
         sb = SSH.ShadowBook(lp, cid, SHADOW_MODEL, min_n=MIN_N)
         doc = sb.compute()
@@ -581,10 +621,10 @@ def defects_section(rows, shadow_rows, shadow_cov, audit, state, cohort_status, 
         for w in s['incomplete']: add('shadow', w, s['key'], class_input=True)
     for g in shadow_cov.get('gaps') or (): add('shadow_ledger', g)
     ids = {r.get('id'): r for r in rows}
-    lo, hi = window
-    for a in audit:
-        t = str(a.get('t') or '')
-        if a.get('kind') == 'coverage' and lo and t >= lo and (hi is None or t < hi):
+    audit_w, _st = split_window(audit, lambda a: ev_ms(a.get('t')), ev_ms(window[0]), ev_ms(window[1]))
+    for a in audit_w:
+        t = a.get('t')
+        if a.get('kind') == 'coverage':
             r = ids.get(a.get('id')) or {}
             add('trade_audit_coverage', 'coverage_partial', r.get('strategy_key'), a.get('symbol'), t)
         if a.get('kind') == 'trade_audit' and a.get('id') in ids:
@@ -667,8 +707,7 @@ def _tfs():
 def ml_section(snap, window):
     if not snap['ml_dec'] and not snap['ml_lab']:
         return dict(available=False, reason='ML ledger not present in the snapshot (ML_SHADOW off or not pinned)')
-    lo, hi = window
-    dec = [d for d in snap['ml_dec'] if lo and str(d.get('ts_utc') or '') >= lo and (hi is None or str(d.get('ts_utc')) < hi)]
+    dec, _st = split_window(snap['ml_dec'], lambda d: ev_ms(d.get('ts_utc')), ev_ms(window[0]), ev_ms(window[1]))
     lab = {l.get('decision_id'): l for l in snap['ml_lab']}
     grp = {}
     for d in dec:
@@ -694,32 +733,6 @@ REQUIRED = ('state.json', 'cohort.json', 'trade_audit.jsonl')
 
 
 HOLDOUT_FLOOR_UTC = '2026-09-28T00:00:00+00:00'
-
-
-def _iso_s(t):
-    from datetime import datetime, timezone
-    return None if t is None else datetime.fromtimestamp(t, timezone.utc).isoformat()
-
-
-def source_cutoffs(snap, snapshot, man):
-    """Per pinned source: records and first / last event time (Codex Q1: record source cutoffs). Forward PAPER artifacts
-    after the research holdout floor are operational evidence; no research dataset is read."""
-    def span(vals):
-        v = sorted(t for t in vals if t is not None)
-        return dict(records=len(v), first_utc=_iso_s(v[0]) if v else None, last_utc=_iso_s(v[-1]) if v else None)
-    sec = lambda iso: (TB._ms(iso) / 1000.0) if TB._ms(iso) is not None else None
-    out = {}
-    if 'history.json' in man['files']: out['history.json'] = span(sec(r.get('closed')) for r in snap['history'])
-    if 'cohort_rows.jsonl' in man['files']: out['cohort_rows.jsonl'] = span(sec(r.get('closed')) for r in snap['cohort_rows'])
-    if any(r.startswith('trade_audit') for r in man['files']): out['trade_audit'] = span(sec(a.get('t')) for a in snap['audit'])
-    if 'ml_shadow/decisions.jsonl' in man['files']: out['ml_shadow/decisions.jsonl'] = span(sec(d.get('ts_utc')) for d in snap['ml_dec'])
-    for rel in sorted(r for r in man['files'] if r.startswith(SHADOW_DIR + '/')):
-        ts = []
-        rows, _n = _jsonl(os.path.join(snapshot, rel))
-        for rec in rows: ts.append(record_time(rec))
-        out[rel] = span(ts)
-    return dict(holdout_floor_utc=HOLDOUT_FLOOR_UTC, basis='forward PAPER runtime artifacts (Codex Q1 in scope); '
-                'event times per source, untimed records not counted', sources=out)
 
 
 def cohort_status(snap, rank, recs, man=None, snapshot=None):
@@ -751,18 +764,29 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
     body = dict(format=FORMAT, contract=CONTRACT, authority='READ_ONLY; NO_EXECUTION_ROUTING_OR_PROMOTION_AUTHORITY',
                 pins=pins, snapshot_utc=man['snapshot_utc'], holdout_read=False, research_data_read=False,
                 rank_cohorts=rank, diagnostic_cohorts=diagnostic, cohort_status=cst, min_n=MIN_N, non_promotable=True,
-                source_cutoffs=source_cutoffs(snap, snapshot, man))
+                source_cutoffs=dict(holdout_floor_utc=HOLDOUT_FLOOR_UTC, window='cohort start <= event time < snapshot_utc',
+                                    basis='forward PAPER runtime artifacts (Codex Q1 in scope); accepted min/max event time '
+                                          'and exclusion counts per logical source are in each cohort block; file mtimes '
+                                          'are never evidence time'))
 
     def per_cohort(cid):
         rec = recs.get(cid) or {}
-        window = (rec.get('started_utc'), rec.get('ended_utc') or man['snapshot_utc'])
-        rows, late = cohort_closes(snap, cid, man['snapshot_utc'], rec.get('started_utc'))
+        window = (rec.get('started_utc'), man['snapshot_utc'])
+        rows, st_ex = cohort_closes(snap, cid, man['snapshot_utc'], rec.get('started_utc'))
+        late = st_ex['excluded_before_cohort'] + st_ex['excluded_at_or_after_snapshot'] + st_ex['excluded_untimed']
         ex = dict(executed_section(rows), excluded_outside_window_or_untimed=late)
         sp, rel = shadow_path(snapshot, man, cid)
         sh, eps = shadow_section(sp, cid, man['snapshot_utc'], rec.get('started_utc'))
         df = defects_section(rows, sh.get('strategies') or [], sh.get('coverage') or {}, snap['audit'], snap['state'],
                              cst if cid in rank else [], snap['torn'], window, snap['audit_duplicates'], late)
-        return dict(cohort_id=cid, window=dict(from_utc=window[0], to_utc_exclusive=window[1]), shadow_ledger=rel,
+        lo, hi = ev_ms(window[0]), ev_ms(window[1])
+        cut = dict(executed_closes=st_ex,
+                   trade_audit=split_window(snap['audit'], lambda a: ev_ms(a.get('t')), lo, hi)[1],
+                   ml_decisions=split_window(snap['ml_dec'], lambda d: ev_ms(d.get('ts_utc')), lo, hi)[1]
+                   if snap['ml_dec'] else None,
+                   shadow_ledger=sh.get('window_records'))
+        return dict(cohort_id=cid, window=dict(from_utc=window[0], to_utc_exclusive=window[1]), source_cutoffs=cut,
+                    shadow_ledger=rel,
                     executed=ex, shadow=sh, rejected_signals=rejected_section(eps),
                     counterfactual_exits=counterfactual_section(rows, snap['audit']), defects=df, ml=ml_section(snap, window))
 
@@ -785,8 +809,14 @@ def build(snapshot, manifest_path, rank=(), diagnostic=(), wave2=None, wave2_sha
     return body
 
 
+MD_ESC = {'|': '\\|', '`': '\\`', '<': '&lt;', '>': '&gt;', '&': '&amp;', '*': '\\*', '_': '\\_', '[': '\\[',
+          ']': '\\]', '\\': '\\\\'}
+
+
 def _md(x):
-    return '' if x is None else str(x).replace('|', '/').replace('\r', ' ').replace('\n', ' ')
+    """A markdown table cell: markup characters escaped, every control character (C0, DEL, C1) replaced by '?'."""
+    if x is None: return ''
+    return ''.join('?' if (ord(c) < 32 or 127 <= ord(c) < 160) else MD_ESC.get(c, c) for c in str(x))
 
 
 def markdown(b):

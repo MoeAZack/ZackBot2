@@ -589,7 +589,7 @@ def test_shadow_records_after_the_snapshot_never_enter_the_reducer(tmp_path):
     s, man, _ = frozen(tmp_path, rows=rows, shadow=both(episodes(10), episodes(10, t0=4000)))   # 10 after SNAP
     b = P.build(str(s), str(man), [cid], **W2(tmp_path))
     sh = b['rank'][0]['shadow']
-    assert sh['window_records']['excluded_after_snapshot'] == 20          # 10 signals + 10 bars
+    assert sh['window_records']['excluded_at_or_after_snapshot'] == 20          # 10 signals + 10 bars
     x = {r['key']: r for r in sh['strategies']}['exp_scalp']
     assert x['closed'] == 10 and not x['rankable']
     assert {r['key']: r for r in b['shortlist']['rows']}['exp_scalp']['cls'] != 'keep_executable'
@@ -615,14 +615,15 @@ def test_a_shadow_record_exactly_at_the_snapshot_is_excluded():
                   dict(kind='candidate', signal=dict(time='2026-10-22T00:00:00+00:00'))):
             f.write(json.dumps(r) + '\n')
     n = P.window_ledger(src, out, None, P._utc_ms(SNAP, 's') / 1000.0)
-    assert n == dict(kept=3, excluded_after_snapshot=2, excluded_before_cohort=0, excluded_untimed=1)
+    assert n == dict(accepted=2, first_utc='2026-10-20T00:00:00+00:00', last_utc='2026-10-21T08:59:59+00:00', kept_timeless=1,
+                     excluded_before_cohort=0, excluded_at_or_after_snapshot=2, excluded_untimed=1)
 
 
 def test_shadow_records_inside_the_window_are_complete(tmp_path):
     cid = cohort()['id']
     s, man, _ = frozen(tmp_path, rows=[row(i, cid) for i in range(20)], shadow=episodes(20))
     sh = P.build(str(s), str(man), [cid])['rank'][0]['shadow']
-    assert sh['window_records']['excluded_after_snapshot'] == 0 and sh['coverage']['complete']
+    assert sh['window_records']['excluded_at_or_after_snapshot'] == 0 and sh['coverage']['complete']
 
 
 @pytest.mark.parametrize('rel', ['config.env', 'settings.json', 'strategy_shadow/funding_testnet/x.jsonl', 'logs/bot.log'])
@@ -665,13 +666,31 @@ def test_wave2_packet_without_its_pin_is_refused(tmp_path):
         P.build(str(s), str(man), [cid], wave2=str(wave2_packet(tmp_path)))
 
 
-def test_source_cutoffs_are_recorded(tmp_path):
-    cid = cohort()['id']
-    s, man, _ = frozen(tmp_path, rows=[row(1, cid), row(3, cid)], shadow=episodes(2))
-    sc = P.build(str(s), str(man), [cid])['source_cutoffs']
-    assert sc['holdout_floor_utc'] == '2026-09-28T00:00:00+00:00'
-    assert sc['sources']['history.json'] == dict(records=2, first_utc='2026-10-19T01:30:00+00:00', last_utc='2026-10-19T03:30:00+00:00')
-    assert sc['sources'][f'strategy_shadow/{cid}.jsonl']['records'] == 4
+def test_source_cutoffs_are_windowed_per_logical_source_with_exclusion_counts(tmp_path):
+    rec = cohort('2026-10-19T01:00:00+00:00')
+    cid = rec['id']
+    rows = [row(1, cid), row(3, cid), row(4, cid, closed='2026-10-19T00:30:00+00:00'), row(5, cid, closed=SNAP),
+            row(6, cid, closed='2026-10-20T00:00:00')]                                     # before / at snapshot / naive
+    audit = [dict(kind='coverage', t='2026-10-19T02:00:00+00:00'), dict(kind='coverage', t='2026-10-22T00:00:00+00:00'),
+             dict(kind='coverage', t=None)]
+    dec = [dict(decision_id='a', strategy='exp_scalp', ts_utc='2026-10-19T05:00:00+00:00'),
+           dict(decision_id='b', strategy='exp_scalp', ts_utc='2026-10-18T05:00:00+00:00')]
+    s, man, _ = frozen(tmp_path, rows=rows, rec=rec, audit=audit, shadow=both(episodes(2), episodes(1, t0=4000)), ml=(dec, []))
+    b = P.build(str(s), str(man), [cid])
+    assert b['source_cutoffs']['holdout_floor_utc'] == '2026-09-28T00:00:00+00:00' and 'mtime' in b['source_cutoffs']['basis']
+    sc = b['rank'][0]['source_cutoffs']
+    assert sc['executed_closes'] == dict(accepted=2, first_utc='2026-10-19T01:30:00+00:00', last_utc='2026-10-19T03:30:00+00:00',
+                                         excluded_before_cohort=1, excluded_at_or_after_snapshot=1, excluded_untimed=1)
+    assert sc['trade_audit'] == dict(accepted=1, first_utc='2026-10-19T02:00:00+00:00', last_utc='2026-10-19T02:00:00+00:00',
+                                     excluded_before_cohort=0, excluded_at_or_after_snapshot=1, excluded_untimed=1)
+    assert sc['ml_decisions']['accepted'] == 1 and sc['ml_decisions']['excluded_before_cohort'] == 1
+    assert sc['shadow_ledger']['accepted'] == 4 and sc['shadow_ledger']['excluded_at_or_after_snapshot'] == 2
+    assert sc['shadow_ledger']['first_utc'] == '2026-10-19T01:00:00+00:00'
+
+
+def test_naive_or_unreadable_event_times_are_untimed():
+    assert P.ev_ms('2026-10-19T01:00:00') is None and P.ev_ms('x') is None and P.ev_ms(None) is None and P.ev_ms(True) is None
+    assert P.ev_ms('2026-10-19T01:00:00Z') == P.ev_ms('2026-10-19T03:00:00+02:00') == P.ev_ms(1792371600) == P.ev_ms(1792371600000)
 
 
 def test_freeze_keeps_only_the_state_keys_the_report_reads(tmp_path):
@@ -684,4 +703,5 @@ def test_markdown_cells_are_escaped():
              shortlist=dict(rows=[dict(key='a|b\nc', family='B1_FAST', tf=None, cls='UNDECIDED', why='x|y', note=None)]),
              rank=[], diagnostic=[], usdt_vs_usdc=dict(available=False))
     line = [l for l in P.markdown(b).splitlines() if l.startswith('| a')][0]
-    assert line == '| a/b c | B1_FAST |  | UNDECIDED | x/y |'
+    assert line == '| a\\|b?c | B1\\_FAST |  | UNDECIDED | x\\|y |'
+    assert P._md('a\x1b[31m\x00\tb`c`<script>\x85') == 'a?\\[31m??b\\`c\\`&lt;script&gt;?'
