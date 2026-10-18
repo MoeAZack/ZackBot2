@@ -11,7 +11,7 @@ from datetime import datetime
 
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
-               'funding_keys')
+               'funding_keys', 'exit_px_unconfirmed')
 
 
 def _num(v):
@@ -78,6 +78,7 @@ def finalize(target, quote, booked_fills, now_ms=None, wait_ms=None):
     if booked_fills is not None and refs < booked_fills: why.append('fills_without_cost_record')
     if not refs and booked_fills is None: why.append('no_cost_records')
     if not quote or any(a != quote for a in by): why.append('non_quote_asset')
+    if target.get('exit_px_unconfirmed'): why.append('exit_px_unconfirmed')   # an exit price that is not exchange truth
     if why:
         target['fees_actual'], target['fees_actual_partial'] = None, sorted(set(why))
     else:
