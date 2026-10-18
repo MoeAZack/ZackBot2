@@ -305,6 +305,43 @@ def _row_complete(r):
         and D(r.get('pnl_gross')) is not None and not (r.get('funding_actual') is None and (r.get('funding_by_asset') or r.get('funding_rows')))
 
 
+COST_GAP_ROWS = 50                   # closes listed in full by cost_gaps (the counts always cover every close)
+
+
+def _close_gaps(r):
+    """Why one close's actual cost is not proven (sorted, empty = proven)."""
+    why, refs = set(), r.get('cost_refs')
+    try: fb = None if r.get('fills_booked') is None else int(r.get('fills_booked'))
+    except (TypeError, ValueError): fb = -1                              # unreadable count: never a match
+    if fb is not None and fb != len(refs if isinstance(refs, (list, tuple)) else ()): why.add('fills_cost_refs_mismatch')
+    if r.get('exit_px_unconfirmed'): why.add('exit_px_unconfirmed')
+    p = r.get('fees_actual_partial')
+    if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
+    elif p: why.add('fees_actual_partial')
+    return sorted(why)
+
+
+def cost_gaps(rows):
+    """Pure, read-only (STOP-COST-SMOKE, Codex 6245287466). Per close of the cohort, the reasons its actual cost is not
+    proven: fills booked without a matching cost record (fills_booked != len(cost_refs)), an exit price that is not
+    exchange truth (exit_px_unconfirmed) and every fees_actual_partial reason. Revisions are folded first (merge_rows),
+    so a close counts once, as its latest revision. Changes no row, rank or trading decision.
+    -> dict(closes, with_gaps, by_reason, by_book, by_strategy {'book|key'}, rows [<= COST_GAP_ROWS], truncated)."""
+    rows = merge_rows(rows)
+    out, by_reason, by_book, by_key = [], {}, {}, {}
+    for r in rows:
+        why = _close_gaps(r)
+        if not why: continue
+        bk, k = r.get('book'), r.get('strategy_key') or '?'
+        for w in why: by_reason[w] = by_reason.get(w, 0) + 1
+        by_book[bk] = by_book.get(bk, 0) + 1
+        by_key[f'{bk}|{k}'] = by_key.get(f'{bk}|{k}', 0) + 1
+        out.append(dict(id=r.get('id'), book=bk, strategy_key=k, symbol=r.get('symbol'), exit_reason=r.get('exit_reason'),
+                        closed=r.get('closed'), reasons=why))
+    return dict(closes=len(rows), with_gaps=len(out), by_reason=dict(sorted(by_reason.items())), by_book=by_book,
+                by_strategy=by_key, rows=out[:COST_GAP_ROWS], truncated=len(out) > COST_GAP_ROWS)
+
+
 def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N):
     """Pure. The Strategies-tab comparison: one row per book (family) and one per mapped strategy, from the same TRUE-BOOK
     valuation (books = compute()) and this cohort's merged closed rows. audits: {trade id: {mfe_r, mae_r, giveback_r}}
@@ -314,6 +351,7 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
     and avg R > 0; Codex 6243268587). Order: avg R, then after-cost net. Losing rows stay visible and unranked."""
     audits = audits or {}
     rows = [r for r in merge_rows(rows) if r.get('book') in books]
+    cg = cost_gaps(rows)                                                 # read-only evidence, never a rank input
     rej = {}
     for bk, key, code in rejections or ():
         for k in ((bk, None), (bk, key)):
@@ -344,7 +382,8 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
             s = _stats(nets, rr, notional, b['start'])
             s.update(fees=q(fees), funding=q(fund), avg_hours=q(sum(hours, Decimal(0)) / len(hours)) if hours else None, exits=exits,
                      mfe_r=_spread(exc['mfe']), mae_r=_spread(exc['mae']), giveback_r=_spread(exc['gb']), audit_missing=missing,
-                     rejections=rej.get((bk, key), {}), incomplete_closes=incomplete)
+                     rejections=rej.get((bk, key), {}), incomplete_closes=incomplete,
+                     cost_gaps=cg['by_book'].get(bk, 0) if key is None else cg['by_strategy'].get(f'{bk}|{key}', 0))
             ok = b['rankable'] and not incomplete
             if key is None:
                 s.update(id=bk, name=name, nav=q(b['nav']), roi=q(b['roi']), peak=q(b['peak']), dd=q(b['dd']) if b['dd'] is not None else None,
@@ -364,4 +403,5 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
         ranked = sorted((x for x in lst if x['rankable']), key=lambda x: (-x['avg_r'], -x['net']))
         for i, x in enumerate(ranked): x['rank'] = i + 1
         for x in lst: x.setdefault('rank', None)
-    return dict(min_n=min_n, families=fams, strategies=strats)
+    return dict(min_n=min_n, families=fams, strategies=strats,
+                cost_evidence={k: v for k, v in cg.items() if k not in ('by_book', 'by_strategy')})
