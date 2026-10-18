@@ -87,7 +87,12 @@ SIDES = ('long', 'short')
 # A negative-gross CONTROL on a tf with no routed twin data is recorded as NOT_RUN (never simulated, never counted);
 # a CANDIDATE on such a tf refuses the run.
 UNROUTED_CONTROL_STATUS = 'NOT_RUN_UNROUTED_TF'
-CODE_FILES = ('tools/research/run_quote_pair_wave2.py', 'tools/research/run_quote_pair_usdc.py', 'backtest.py')
+CODE_FILES = ('tools/research/run_quote_pair_wave2.py', 'tools/research/run_quote_pair_usdc.py', 'backtest.py',
+              'feasibility.py', 'tools/research/costs.py', 'tools/research/run_breadth_candidate.py',
+              'tools/research/run_vwaprev_candidate.py')                 # every module the simulation / pricing imports
+# exchange_filter_refusals: backtest.run with exchange_rules=None (legacy mode) - ONE USDT-twin min-notional floor applied
+# to both quotes; USDC lot / min-notional rules are loaded and pinned but only tickSize prices fills. Symmetric, not per-quote.
+FILTER_BASIS = 'legacy_usdt_twin_min_notional_floor_both_quotes'
 REGISTRY_FILE = 'strategies.py'
 
 
@@ -179,6 +184,10 @@ def git_state(repo):
     return {'head': head, 'tree': tree, 'clean': True}
 
 
+def _iso(ms):
+    return _dt.datetime.fromtimestamp(ms / 1000, _dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
 def _ms(iso):
     return int(_dt.datetime.strptime(iso, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=_dt.timezone.utc).timestamp() * 1000)
 
@@ -220,8 +229,12 @@ def check_fee_scenarios(fs):
                     raise Wave2Error(f'fee scenario {sid}: {q} taker is null but status is not INCOMPLETE')
             elif isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v < 100:
                 raise Wave2Error(f'fee scenario {sid}: {q} taker {v!r} is not a bps rate')
+        eff = None
+        if d.get('effective_from') is not None:
+            try: eff = _ms(d['effective_from'])
+            except (TypeError, ValueError): raise Wave2Error(f'fee scenario {sid}: unreadable effective_from') from None
         out[sid] = {'definition': d, 'sha256': got, 'status': d['status'], 'use': FEE_USE[d['status']],
-                    'taker_bps': dict(tk)}
+                    'taker_bps': dict(tk), 'effective_from_ms': eff}
     return out
 
 
@@ -431,6 +444,24 @@ def _feas(cv):
     return {k: f.get(k) for k in ('mode', 'attempts', 'executed', 'rule_blocked', 'skipped', 'add_skipped')}
 
 
+def causal_window(p, eff_ms, tf_ms):
+    """Codex 6248825944 #2: a schedule with effective_from prices ONLY episodes whose entry and every charged event
+    (fills, funding, exit) are at / after it. Episodes entered before it are excluded - including one that straddles it -
+    and positions still open that were entered before it. The same rule, on the same exact keys, runs for both twins."""
+    keep, before, straddle = [], 0, 0
+    for e in p['episodes']:
+        if e['t_entry'] >= eff_ms: keep.append(e)
+        elif e['t_entry'] + e['hold_bars'] * tf_ms >= eff_ms: straddle += 1
+        else: before += 1
+    still = [o for o in p['open_at_end'] if o['t_entry'] >= eff_ms]
+    out = dict(p, episodes=keep, open_at_end=still, costs=Q.cost_summary(keep),
+               spread_rows={str(b): {'label': Q.SPREAD_LABEL, 'half_spread_per_fill_bps': b / 2,
+                                     'net_r_sum': Q._r(sum(e['spread_r'][str(b)] for e in keep))} for b in Q.SPREAD_BPS})
+    return out, {'from_utc': _iso(eff_ms), 'to_utc_exclusive': Q.END_S, 'rule': 'entry and every charged event >= from',
+                 'kept': len(keep), 'excluded_entered_before': before, 'excluded_straddling': straddle,
+                 'excluded_open_entered_before': len(p['open_at_end']) - len(still)}
+
+
 def _ep(e):
     return dict(e, episode_key=[e['strategy'], e['side'], e['base'], e['t_entry']])
 
@@ -448,10 +479,17 @@ def compute_cell(spec, datas, accounting, fees, preflight_sha):
                 quotes[q] = {'status': 'INCOMPLETE', 'reason': f'no {q} taker rate in {sid}'}
                 continue
             p = Q.price_cell(sim[q], q, accounting[q], taker=rate / 1e4, tf_ms=tf_ms, slip_bars=nb)
+            win = None
+            if fs.get('effective_from_ms') is not None:          # never applied retroactively (Codex ruling #2)
+                p, win = causal_window(p, fs['effective_from_ms'], tf_ms)
             priced[q] = p
-            quotes[q] = {'status': 'complete', 'taker_bps': rate, 'metrics': quote_metrics(p, tf),
+            quotes[q] = {'status': 'complete', 'taker_bps': rate, 'fee_window': win, 'metrics': quote_metrics(p, tf),
                          'spread_rows': p['spread_rows'], 'episodes': [_ep(e) for e in p['episodes']],
                          'open_at_end': p['open_at_end']}
+        wins = {q: quotes[q].get('fee_window') for q in priced}
+        if len({json.dumps({k: v for k, v in (w or {}).items() if k not in ('kept', 'excluded_entered_before',
+                'excluded_straddling', 'excluded_open_entered_before')}, sort_keys=True) for w in wins.values()}) > 1:
+            raise Wave2Error(f'{spec["name"]} {sid}: twin fee windows differ')     # symmetric windowing or nothing
         row = {'status': fs['status'], 'use': fs['use'], 'definition_sha256': fs['sha256'], 'quotes': quotes,
                'slip': slip_label(tf), 'paired': None}
         if fs['status'] != 'INCOMPLETE' and set(priced) == set(Q.QUOTES):
@@ -524,13 +562,20 @@ def build_summary(pins, preflight_sha, run_id, cells, fees, done, run_record):
                                   'definition_sha256': v['sha256']} for k, v in fees.items()},
             'spread': {'bps': list(Q.SPREAD_BPS), 'label': Q.SPREAD_LABEL},
             'slip': {tf: slip_label(tf) for tf in TFS},
-            'cells': {}, 'controls_not_run': [], 'verdict': None, 'usdc_better': USDC_BETTER,
+            'cells': {}, 'controls_not_run': [], 'controls_incomplete': False, 'unrouted_control_count': 0,
+            'packet_status': 'COMPLETE', 'global_verdict_available': False, 'exchange_filter_basis': FILTER_BASIS,
+            'resume_binding': 'cell hash + name + preflight hash: detects corruption / foreign cells, not a deliberate '
+                              're-hashed edit (no secret); resumed cells are counted in run_record',
+            'verdict': None, 'usdc_better': USDC_BETTER,
             'usdc_better_reason': 'CI recipe not frozen; provisional / incomplete fee rows are never verdict inputs',
             'non_promotable': True, 'routing_or_config_changes': None, 'variable_fields': list(VARIABLE_FIELDS),
             'run_record': run_record}
     for c in cells:
         if c.get('status') == UNROUTED_CONTROL_STATUS:
             body['controls_not_run'].append({k: c[k] for k in ('name', 'role', 'strategy', 'side', 'tf', 'status')})
+            body['controls_incomplete'] = True                # an explicit, counted coverage hole (controls only)
+            body['unrouted_control_count'] += 1
+            body['packet_status'] = 'INCOMPLETE'              # Codex 6248825944 #1: cell rows usable, packet is not
             continue
         env = done[c['name']]
         body['cells'][c['name']] = dict(_strip(env['content']), cell_file=f'cells/{c["name"]}.json',
@@ -565,7 +610,9 @@ def run(*, candidates, wave2_15m, usdt_4h, usdc_4h, usdt_accounting, usdc_accoun
     stage, run_id, pins, completed = 'preflight', None, None, []
     try:
         rp = os.path.abspath(repo)
-        if os.path.commonpath([rp, out_dir]) == rp:
+        try: inside = os.path.commonpath([rp, out_dir]) == rp
+        except ValueError: inside = False                     # another drive: cannot be inside the repository
+        if inside:
             raise Wave2Error('--out-dir is inside the repository (would dirty the pinned tree)')
         pins, cells, fees, datas, acc = preflight(candidates=candidates, wave2_15m=wave2_15m, usdt_4h=usdt_4h,
                                                   usdc_4h=usdc_4h, usdt_accounting=usdt_accounting,

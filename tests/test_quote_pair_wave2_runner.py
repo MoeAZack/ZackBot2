@@ -304,6 +304,20 @@ def test_controls_are_labelled_control_never_rescued(done):
     assert all(c['role'] == 'candidate' for n, c in s['cells'].items() if n.startswith('candidate.'))
     assert s['controls_not_run'] == [{'name': 'control.dca_dip.long.1h', 'role': 'control', 'strategy': 'dca_dip',
                                       'side': 'long', 'tf': '1h', 'status': W.UNROUTED_CONTROL_STATUS}]
+    assert s['controls_incomplete'] is True                    # the hole is flagged at the top level, never silent
+    assert s['unrouted_control_count'] == 1 and s['packet_status'] == 'INCOMPLETE'
+    assert s['global_verdict_available'] is False and s['verdict'] is None and s['non_promotable'] is True
+
+
+def test_filter_basis_and_resume_binding_are_stated(done):
+    s = done['summary']
+    assert s['exchange_filter_basis'] == W.FILTER_BASIS and 'not a deliberate' in s['resume_binding']
+
+
+def test_every_imported_simulation_module_is_pinned():
+    for f in ('feasibility.py', 'tools/research/costs.py', 'tools/research/run_breadth_candidate.py',
+              'tools/research/run_vwaprev_candidate.py', 'backtest.py'):
+        assert f in W.CODE_FILES
 
 
 def test_paired_rows_use_the_exact_episode_key(done):
@@ -417,6 +431,18 @@ CASES = {
                           'data.4h route'),
     'timestamp mismatch': (dict(combined_edit=lambda m: m['pairs']['DOGE'].update(exact_timestamp_match=False)), None,
                            'timestamp mismatch'),
+    'cell listed twice': (dict(cand_edit=lambda m: m['controls_negative_gross_only'].append(
+        {k: m['candidates'][0][k] for k in ('strategy', 'side', 'tf')})), None, 'listed twice'),
+    'per-quote 15m manifest sha': (dict(combined_edit=lambda m: m['quotes']['USDC'].update(manifest_sha256='0' * 64)),
+                                   None, 'combined manifest record'),
+    'per-file 15m sha disagrees': (dict(combined_edit=lambda m: m['quotes']['USDC']['files']['ETHUSDC'].update(
+        sha256='0' * 64)), None, 'disagree'),
+    'row at the sealed end': (dict(mutate=lambda kind, quote, sym, df: (
+        df.assign(t=df.t.where(df.index != len(df) - 1, Q.END)) if kind == 'klines15' and sym == 'ETHUSDC' else df)),
+        None, 'sealed end'),
+    'off-grid 15m candle': (dict(mutate=lambda kind, quote, sym, df: (
+        df.assign(t=df.t.where(df.index != 100, df.t + 1)) if kind == 'klines15' and sym == 'ETHUSDC' else df)),
+        None, 'frozen window'),
     'window changed': (dict(cand_edit=lambda m: m['window'].update(fetch_start='2026-08-01T00:00:00Z')), None, 'window'),
 }
 
@@ -483,3 +509,98 @@ def test_main_returns_non_zero_on_refusal(tmp_path, monkeypatch, capsys):
     _patch(monkeypatch, dict(expected, wave2_15m='0' * 64))
     argv = sum([[f'--{k.replace("_", "-")}', v] for k, v in args.items()], []) + ['--out-dir', str(tmp_path / 'out')]
     assert W.main(argv) == 2 and 'INCOMPLETE' in capsys.readouterr().err
+
+
+def test_out_dir_on_another_drive_is_not_refused_as_inside_the_repo(tmp_path, monkeypatch):
+    _set_window(monkeypatch)
+    args, expected = build(tmp_path / 'in')
+    _patch(monkeypatch, expected)
+    real = os.path.commonpath
+    def other_drive(paths):
+        if str(tmp_path / 'out') in [str(x) for x in paths]: raise ValueError("Paths don't have the same drive")
+        return real(paths)
+    monkeypatch.setattr(W.os.path, 'commonpath', other_drive)
+    code, path = W.run(**args, out_dir=str(tmp_path / 'out'), repo=str(tmp_path / 'in'))
+    reason = json.loads(open(path, encoding='utf-8').read()).get('reason', '') if code else ''
+    assert 'inside the repository' not in reason and 'same drive' not in reason
+
+
+
+def test_write_once_never_overwrites(tmp_path):
+    p = str(tmp_path / 'x.json')
+    W.write_once(p, 'a')
+    with pytest.raises(W.Wave2Error, match='never overwritten'):
+        W.write_once(p, 'b')
+    assert open(p, encoding='utf-8').read() == 'a'
+
+
+# ------------------------------------------------------------------ Codex 6248825944 #2: the advertised schedule is causal
+def _eps(*rows):
+    return [dict(t_entry=t, hold_bars=h, spread_r={str(b): 0.0 for b in Q.SPREAD_BPS}, R=0.0, gross_r=0.0, slip_r=0.0,
+                 fee_r=0.0, funding_r=0.0, net=0.0, start_equity_pct=0.0, mfe_r=0.0, mae_r=0.0, giveback_r=0.0,
+                 base='BTC', risk=1.0, turnover=0.0, i_in=0, i_out=h) for t, h in rows]
+
+
+def test_advertised_schedule_is_never_applied_retroactively():
+    eff, tf = 1_000_000, 100
+    p = dict(episodes=_eps((eff - 500, 2), (eff - 150, 2), (eff, 3), (eff + 400, 1)),
+             open_at_end=[dict(base='BTC', t_entry=eff - 1), dict(base='ETH', t_entry=eff + 1)])
+    out, w = W.causal_window(p, eff, tf)
+    assert [e['t_entry'] for e in out['episodes']] == [eff, eff + 400]          # nothing entered before it is priced
+    assert w['excluded_entered_before'] == 1 and w['excluded_straddling'] == 1   # the straddler is excluded, not mixed
+    assert w['excluded_open_entered_before'] == 1 and [o['t_entry'] for o in out['open_at_end']] == [eff + 1]
+    assert out['costs']['n'] == 2
+
+
+def test_advertised_rows_cover_only_the_causal_window_on_both_twins(done):
+    fees = json.loads(open(done['args']['candidates'], encoding='utf-8').read())['fee_scenarios']
+    eff = W._ms(next(f['definition']['effective_from'] for f in fees if f['definition']['id'] == 'advertised_regular_user'))
+    for name in done['summary']['cells']:
+        d = os.path.join(os.path.dirname(done['path']), 'cells', f'{name}.json')
+        sc = json.loads(open(d, encoding='utf-8').read())['content']['scenarios']
+        adv, eq = sc['advertised_regular_user'], sc['equal_5bp']
+        wins = [adv['quotes'][q]['fee_window'] for q in Q.QUOTES]
+        assert wins[0]['from_utc'] == wins[1]['from_utc'] and wins[0]['rule'] == wins[1]['rule']   # symmetric
+        for q in Q.QUOTES:
+            assert all(e['t_entry'] >= eff for e in adv['quotes'][q]['episodes'])
+            assert eq['quotes'][q]['fee_window'] is None                            # equal_5bp stays full-window
+        if adv['paired']:
+            assert all(e['episode_key'][3] >= eff for e in adv['paired']['episodes'])
+
+
+def test_asymmetric_twin_fee_windows_refuse(tmp_path, monkeypatch):
+    _set_window(monkeypatch)
+    args, expected = build(tmp_path / 'in')
+    _patch(monkeypatch, expected)
+    real, calls = W.causal_window, []
+    def skew(p, eff, tf):                                          # the USDC twin gets a different window
+        calls.append(1)
+        out, w = real(p, eff, tf)
+        return out, (dict(w, from_utc='1999-01-01T00:00:00Z') if len(calls) % 2 == 0 else w)
+    monkeypatch.setattr(W, 'causal_window', skew)
+    code, path = W.run(**args, out_dir=str(tmp_path / 'out'))
+    assert code == 2 and 'twin fee windows differ' in json.loads(open(path, encoding='utf-8').read())['reason']
+
+
+def test_a_mid_window_effective_from_really_excludes_earlier_episodes(tmp_path, monkeypatch):
+    _set_window(monkeypatch)
+    args, expected = build(tmp_path / 'in')
+    _patch(monkeypatch, expected)
+    mid = W._ms('2026-09-18T00:00:00Z')                          # inside the synthetic window (all of it is post-2025-12-10)
+    real = W.check_fee_scenarios
+    monkeypatch.setattr(W, 'check_fee_scenarios', lambda fs: {
+        k: (dict(v, effective_from_ms=mid) if v['effective_from_ms'] is not None else v) for k, v in real(fs).items()})
+    code, path = W.run(**args, out_dir=str(tmp_path / 'out'))
+    assert code == 0, open(path, encoding='utf-8').read()[:400]
+    before = kept = 0
+    for name in json.loads(open(path, encoding='utf-8').read())['cells']:
+        sc = json.loads(open(os.path.join(os.path.dirname(path), 'cells', f'{name}.json'), encoding='utf-8').read())
+        sc = sc['content']['scenarios']
+        for q in Q.QUOTES:
+            adv, eq = sc['advertised_regular_user']['quotes'][q], sc['equal_5bp']['quotes'][q]
+            assert all(e['t_entry'] >= mid for e in adv['episodes'])
+            before += sum(e['t_entry'] < mid for e in eq['episodes'])
+            kept += len(adv['episodes'])
+            assert adv['fee_window']['excluded_entered_before'] + adv['fee_window']['excluded_straddling'] + len(
+                adv['episodes']) == len(eq['episodes'])
+    assert before > 0 and kept > 0, (before, kept)              # the boundary really splits the synthetic trades
