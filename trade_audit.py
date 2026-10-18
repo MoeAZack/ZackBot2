@@ -1608,6 +1608,7 @@ def reason_info(reason, _depth=0):
             word = r[5:].split(' ', 1)[1]
             return dict(stage='true_book', code=next((c for w, c in _BOOK if word.startswith(w)), 'book_other'))
         if r.startswith('true books: '): return dict(stage='true_book', code='book_no_cohort' if 'cohort' in r else 'book_unmapped')
+        if r == 'true_book/opposite_side_funding_ambiguity': return dict(stage='true_book', code='opposite_side_funding_ambiguity')
         if r.startswith('risk rule '):
             name, _, msg = r[len('risk rule '):].partition(':')
             return dict(stage='risk_gateway', code=_slug(name), detail=msg.strip()[:160])
