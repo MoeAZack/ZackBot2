@@ -239,3 +239,30 @@ def test_the_candle_exit_path_defers_the_waiting_lot_without_an_order(monkeypatc
     e.cycle(tf)
     assert 'close' not in e.trade.calls[n:] and e.trade.pos[('BTCUSDT', 'LONG')] == pos0
     assert k1 in e.state['lots'] and e.state['lots'][k2]['qty'] == q2
+
+
+def test_the_panel_close_and_flatten_defer_the_waiting_lot(monkeypatch):
+    """Cowork 6243799034: the panel's 'close' and 'flatten' actions reach the same guard - no order for the waiting lot."""
+    import app as A
+    e, _ = mk(SX); k1, k2 = two_lots(e)
+    app = A.App.__new__(A.App); app.engine = e; app.preview = lambda: None; app.cfg = {}; app.tg = None
+    monkeypatch.setattr(A, 'APP', app, raising=False)
+    pos0, n = e.trade.pos[('BTCUSDT', 'LONG')], len(e.trade.calls)
+    with pytest.raises(RuntimeError, match='stop fired'): A.handle('/api/action', dict(action='close', key=k1))
+    assert 'close' not in e.trade.calls[n:] and e.trade.pos[('BTCUSDT', 'LONG')] == pos0 and k1 in e.state['lots']
+    with pytest.raises(ValueError, match='1 FAILED'): A.handle('/api/action', dict(action='flatten'))
+    assert e.trade.calls[n:].count('close') == 1 and k1 in e.state['lots'] and k2 not in e.state['lots']
+
+
+def test_every_close_order_goes_through_the_guarded_market_close():
+    """Only _market_close sends a close order (panel, Telegram, grid, flatten and every exit call it), so its guard
+    covers every caller."""
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for f in ('engine.py', 'app.py', 'telegram_ctl.py', 'grid.py'):
+        src = open(os.path.join(root, f), encoding='utf-8').read()
+        hits = [m.start() for m in re.finditer(r'\.trade\.close\(', src)]
+        if f != 'engine.py': assert not hits, f
+        else:
+            mc = src.index('    def _market_close('); nxt = src.index('\n    def ', mc + 10)
+            assert hits and all(mc < h < nxt for h in hits) and '        self._stop_fired_guard(lot)' in src[mc:nxt]
