@@ -3976,6 +3976,33 @@ class Engine:
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
+    def _ml_context(self, sl, sym, sg, frames):
+        """MLDATA-01: the cross-sectional decision context (ml_shadow.context) for this candidate - funding settled at or
+        before the decision candle close, the 42-bar return rank and the EMA50 breadth across this cycle's frames, and the
+        open lots of other coins whose 30-bar return correlation is >= 0.7. Each piece None when unavailable. Never raises."""
+        try:
+            from ml_shadow import context as MLC
+            rows = None
+            try:
+                import shadow_funding as SF
+                rows = SF.read_funding(self.dir, sym)
+            except Exception:                               # noqa: BLE001 - no series: funding stays None
+                rows = None
+            others = [l['symbol'] for l in self.state['lots'].values()]
+            return MLC.decision_context(sym, sg['time'], TF_SEC.get(sl.get('tf'), 14400), frames, rows, others)
+        except Exception:                                   # noqa: BLE001
+            return {}
+
+    def _ml_coverage(self, row):
+        """MLDATA-01: per-feature coverage counters [present, total] in health['ml_shadow']['coverage']."""
+        try:
+            cov = self._ml_health().setdefault('coverage', {})
+            for k, v in (row.get('features') or {}).items():
+                c = cov.setdefault(k, [0, 0]); c[1] += 1
+                if v is not None: c[0] += 1
+        except Exception:                                   # noqa: BLE001
+            pass
+
     def _ml_decision(self, sl, sym, side, sg, frames, status, reason, exposure=None, lot_key=None):
         """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (status taken | skipped | pending + the existing
         reason), after the engine has decided. Writes only under <data>/ml_shadow (plus the decision id on a lot it just
@@ -3988,6 +4015,7 @@ class Engine:
             ctx = {'exposure_count': exposure}
             btc = (frames or {}).get('BTCUSDT')
             if btc is not None and sym != 'BTCUSDT': ctx['btc_df'] = btc
+            ctx.update(self._ml_context(sl, sym, sg, frames))     # MLDATA-01: funding / rank / breadth / corr_count, causal
             kw = dict(df=df, i=len(df) - 1, ctx=ctx) if df is not None and len(df) else dict(features={'features': {}})
             rg = None
             try:
@@ -3998,6 +4026,7 @@ class Engine:
                                             side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken',
                                             status=status, reason=scrub(str(reason or '')), rotation_group=rg,
                                             trade_id=lot_key, **kw)
+            self._ml_coverage(row)
             self._ml_writer().submit('decision', row)        # #104: O(1) hand-off; the disk write is off the cycle lock
         except Exception:                                   # noqa: BLE001 - an observer never alters trading
             try: self._ml_health()['errors'] += 1
