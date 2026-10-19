@@ -4031,7 +4031,26 @@ class Engine:
     SHADOW_Q_MAX = 5000
 
     def _shadow_health(self):
-        return self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
+        h = self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
+        h.setdefault('pre_cohort', 0)
+        return h
+
+    def _shadow_in_cohort(self, decision_time):
+        """Only admit evidence whose decision close belongs to the active cohort.
+
+        A restart commonly evaluates the last already-closed candle before the first fresh candle arrives.  That candle
+        predates a newly-created cohort and therefore is neither a missed observation nor usable evidence for it.
+        Missing/late observations *after* the boundary still flow through the normal fail-closed path.
+        """
+        start = (self.state.get('cohort') or {}).get('started_utc')
+        if not start: return True                           # compatibility with old/source-created cohort records
+        try:
+            t0 = pd.Timestamp(start)
+            t0 = t0.tz_localize('UTC') if t0.tzinfo is None else t0.tz_convert('UTC')
+            return pd.Timestamp(decision_time) >= t0
+        except Exception:                                  # a damaged boundary must not silently discard evidence
+            self._shadow_err()
+            return True
 
     def _shadow_err(self):
         """Count an observer failure and withhold this cycle's watermark (the next one then shows a missed-cycle gap)."""
@@ -4098,8 +4117,13 @@ class Engine:
             for s, d in (frames or {}).items():
                 if d is None or not len(d): continue
                 r = d.iloc[-1]
-                bars[s] = dict(time=self._shadow_close_t(r.t, tf).isoformat(), o=float(r.o), h=float(r.h), l=float(r.l),
+                tc = self._shadow_close_t(r.t, tf)
+                if not self._shadow_in_cohort(tc): continue
+                bars[s] = dict(time=tc.isoformat(), o=float(r.o), h=float(r.h), l=float(r.l),
                                c=float(r.c), atr=float(r.atr) if 'atr' in d else None, source='closed_kline')
+            if not bars:
+                self._shadow_health()['pre_cohort'] += 1
+                return
             exits = {}
             for sl in self.S['SLEEVES']:
                 if sl.get('tf') != tf or sl.get('key') not in S.STRATEGIES: continue
@@ -4121,6 +4145,9 @@ class Engine:
             if shadow is None: return
             q = self.__dict__.setdefault('_shadow_q', [])
             tc = self._shadow_close_t(sg['time'], sl['tf'])
+            if not self._shadow_in_cohort(tc):
+                self._shadow_health()['pre_cohort'] += 1
+                return
             it = dict(slot=copy.deepcopy(sl), symbol=sym, side=side, t_close=tc.timestamp(), tf=sl['tf'], fails=0,
                       signal=dict(time=tc.isoformat(), close=float(sg['close']), atr=float(sg['atr']), le=bool(sg.get('le')),
                                   se=bool(sg.get('se')), lx=bool(sg.get('lx')), sx=bool(sg.get('sx'))),
@@ -4174,6 +4201,9 @@ class Engine:
             if shadow is None or not frames: return
             import strategy_shadow as SSH
             tc = max(self._shadow_close_t(d.t.iloc[-1], tf) for d in frames.values() if d is not None and len(d))
+            if not self._shadow_in_cohort(tc):
+                self._shadow_health()['pre_cohort'] += 1
+                return
             ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
             if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
             shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
