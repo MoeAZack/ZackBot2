@@ -149,6 +149,8 @@ class ReasonCode(enum.StrEnum):
     FILTER_TRADFI_SESSION = 'filter.tradfi_session'
     CONFIG_TRADFI_POLICY = 'config.tradfi_policy'
     CAPACITY_GOLD_FAMILY_CAP = 'capacity.gold_family_cap'
+    # AIREL-01 AI review refusal under the fail-closed policy - appended (registry is append-only)
+    FILTER_AI_UNAVAILABLE = 'filter.ai_unavailable'
 
     @property
     def namespace(self):
@@ -278,6 +280,7 @@ MEANING = {
     R.FILTER_TRADFI_SESSION: 'the US cash session is closed or unknown for this stock strategy family, so no new entry',
     R.CONFIG_TRADFI_POLICY: 'this strategy is not an approved TradFi mapping for the symbol (e.g. DCA, scalp, high-beta range)',
     R.CAPACITY_GOLD_FAMILY_CAP: 'XAUUSDT + PAXGUSDT share one gold-family position / risk / notional budget that is full',
+    R.FILTER_AI_UNAVAILABLE: 'the AI review was unusable and the fail-closed policy refuses the entry (never the PAPER default)',
 }
 del R
 

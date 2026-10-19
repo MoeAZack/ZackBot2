@@ -5744,6 +5744,9 @@ class Engine:
                                     e200=float(df.e200.iloc[-1]), st_dir=int(df.st.iloc[-1]), ret42=float(df.ret42.iloc[-1]), ret180=float(df.ret180.iloc[-1])),
                                     last, funding, tf=sl.get('tf', '4h'), side=side)
             log.info(f'AI review {sym} {side} [{sl["id"]} {sl.get("tf", "4h")}]: {dec} - {why} | {meta}')
+            if dec == 'skip' and meta.get('failed'):     # AIREL-01: fail-closed policy - an unusable review, not a veto
+                self.last_skip = why
+                return False
             if dec == 'skip':
                 self.log_trade(time=sg['time'], event='ai_veto', sleeve=sl['id'], symbol=sym, side=side, qty=qty, price=px, note=why)
                 self.last_skip = f'Claude review vetoed: {why}'

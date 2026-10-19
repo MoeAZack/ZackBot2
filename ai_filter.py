@@ -1,6 +1,12 @@
 """Optional Claude review of each entry signal. Claude can only VETO a trade, never create or resize one.
-If the API key is missing or the call fails, the trade is taken (the backtested rules stay in charge)."""
-import json, re, requests
+If the API key is missing or the call fails, the trade is taken (the backtested rules stay in charge).
+
+AIREL-01 reliability: every failed review carries a fixed failure label (FAILURES), the stop_reason, the content block type
+names, the attempt count and a short sha256 of the response bytes - never the body itself. A retryable failure is retried
+ONCE inside the same 60 s budget. CIRCUIT_N consecutive failed reviews open a circuit: the API is skipped for CIRCUIT_COOL_S
+and the review reports 'degraded'. What a failure means is an explicit policy (fail_policy): PAPER fails OPEN (take by the
+rules, as before); a live mode fails CLOSED unless AI_FAIL_POLICY says otherwise - no live mode is enabled here."""
+import hashlib, json, re, threading, time, requests
 
 PROMPT_VERSION = 'v3-structured'
 PROMPT = """You are a cautious second reader for a systematic crypto futures bot. Its backtested rules already produced
@@ -68,15 +74,128 @@ def _decision(text):
     return dec, reason.strip()
 
 
+BUDGET_S = 60.0              # one review, retry included, never takes longer than the single call always could
+RETRY_MIN_LEFT_S = 10.0      # no retry when less than this is left of the budget
+CIRCUIT_N = 3                # consecutive failed reviews that open the circuit
+CIRCUIT_COOL_S = 900.0       # how long an open circuit skips the API
+FAILURES = ('http_error', 'malformed_response', 'incomplete_response', 'not_json', 'schema_mismatch', 'timeout', 'network',
+            'circuit_open', 'internal')
+_RETRYABLE = {'malformed_response', 'incomplete_response', 'not_json', 'schema_mismatch', 'timeout', 'network'}
+_RETRY_HTTP = {429, 500, 502, 503, 504, 529}
+_LOCK = threading.Lock()
+_STATE = {}
+
+
+def _reset():
+    """Fresh process-wide review health (tests; a new process starts fresh anyway)."""
+    with _LOCK:
+        _STATE.clear()
+        _STATE.update(calls=0, ok=0, failed=0, retries=0, consecutive=0, open_until=0.0, opened=0, last_failure=None,
+                      last_ok=None, by_failure={})
+
+
+_reset()
+
+
+def health(now=None):
+    """Counters for /api/status: calls, ok, failed, retries, consecutive failures, degraded (circuit open), by_failure."""
+    now = time.time() if now is None else now
+    with _LOCK:
+        s = dict(_STATE, by_failure=dict(_STATE['by_failure']))
+    s['degraded'] = s['open_until'] > now
+    s['open_for_s'] = max(0, int(s['open_until'] - now)) if s['degraded'] else 0
+    return s
+
+
+def fail_policy(cfg):
+    """'open' (take by the rules) or 'closed' (refuse the entry) when the review is unusable. AI_FAIL_POLICY wins when valid;
+    otherwise PAPER/testnet = 'open' and any live mode = 'closed' (the live default is never fail-open)."""
+    p = str(cfg.get('AI_FAIL_POLICY') or '').strip().lower()
+    if p in ('open', 'closed'): return p
+    return 'closed' if str(cfg.get('MODE') or '').strip().lower() == 'live' else 'open'
+
+
+def _failure(e):
+    if isinstance(e, APIReviewError): return str(e) if str(e) in FAILURES else 'http_error'
+    if isinstance(e, json.JSONDecodeError): return 'not_json'
+    if isinstance(e, requests.Timeout): return 'timeout'
+    if isinstance(e, requests.RequestException): return 'network'
+    return 'internal'
+
+
+def _sha(r):
+    try:
+        b = r.content if isinstance(getattr(r, 'content', None), (bytes, bytearray)) else json.dumps(r.json(), sort_keys=True).encode()
+        return hashlib.sha256(b).hexdigest()[:12]
+    except Exception:                                   # noqa: BLE001 - a hash is telemetry only
+        return None
+
+
+def _block_types(body):
+    blocks = body.get('content') if isinstance(body, dict) else None
+    if not isinstance(blocks, list): return None
+    return [t if isinstance(t, str) and _ERR_TYPE.fullmatch(t) else '?' for t in
+            (x.get('type') if isinstance(x, dict) else None for x in blocks)][:8]
+
+
+def _note(ok, failure=None, now=None):
+    now = time.time() if now is None else now
+    with _LOCK:
+        if ok:
+            _STATE['ok'] += 1; _STATE['consecutive'] = 0; _STATE['last_ok'] = now
+            return
+        _STATE['failed'] += 1; _STATE['consecutive'] += 1; _STATE['last_failure'] = failure
+        _STATE['by_failure'][failure] = _STATE['by_failure'].get(failure, 0) + 1
+        if _STATE['consecutive'] >= CIRCUIT_N and _STATE['open_until'] <= now:
+            _STATE['open_until'] = now + CIRCUIT_COOL_S; _STATE['opened'] += 1
+
+
+def _failed(cfg, meta, why):
+    """The unusable-review outcome under the configured policy."""
+    meta['policy'] = pol = fail_policy(cfg)
+    meta['failed'] = True
+    if pol == 'closed':
+        return 'skip', f'AI review unavailable ({why}) - fail-closed policy, entry refused', meta
+    return 'take', f'AI review failed ({why}) - taking trade by rules', meta
+
+
 def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
-    """-> (decision, reason, meta). meta = model, prompt version, latency, error - logged by the engine."""
-    import time
+    """-> (decision, reason, meta). meta = model, prompt version, latency, error, failure, attempts - logged by the engine."""
     key = cfg.get('ANTHROPIC_API_KEY')
     if not key or cfg.get('AI_FILTER', 'on') != 'on':
         return 'take', 'AI filter off', {}
     model = cfg.get('ANTHROPIC_MODEL') or DEFAULT_MODEL
     meta = dict(model=model, prompt=PROMPT_VERSION, tf=tf)
     t0 = time.time()
+    with _LOCK:
+        _STATE['calls'] += 1
+        open_until, n = _STATE['open_until'], _STATE['consecutive']
+    if open_until > t0:                                 # circuit open: no API call at all
+        meta.update(failure='circuit_open', degraded=True, attempts=0, latency_s=0.0)
+        return _failed(cfg, meta, f'degraded: {n} consecutive failures, retry in {int(open_until - t0)}s')
+    attempt = 0
+    while True:
+        attempt += 1
+        meta.pop('http_status', None); meta.pop('api_error', None)
+        dec, why, meta, failure = _attempt(cfg, key, model, meta, symbol, sleeve, sig, candles, funding, tf, side,
+                                           timeout=max(1.0, BUDGET_S - (time.time() - t0)))
+        meta['attempts'] = attempt
+        if failure is None:
+            _note(True)
+            meta['latency_s'] = round(time.time() - t0, 1)
+            return dec, why, meta
+        meta['failure'] = failure
+        retry = (attempt == 1 and BUDGET_S - (time.time() - t0) >= RETRY_MIN_LEFT_S and
+                 (failure in _RETRYABLE or meta.get('http_status') in _RETRY_HTTP))
+        if not retry: break
+        with _LOCK: _STATE['retries'] += 1
+    _note(False, failure)
+    meta['latency_s'] = round(time.time() - t0, 1)
+    return _failed(cfg, meta, why)
+
+
+def _attempt(cfg, key, model, meta, symbol, sleeve, sig, candles, funding, tf, side, timeout=BUDGET_S):
+    """One API call -> (decision, reason, meta, failure label or None)."""
     try:
         st = sig.get('st_dir')
         st = 'up' if st is not None and float(st) > 0 else ('down' if st is not None else 'unavailable')
@@ -87,25 +206,29 @@ def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
                             ret180=_percent(sig, 'ret180'))
         payload = dict(model=model, max_tokens=400, messages=[{'role': 'user', 'content': msg}],
                        output_config={'format': {'type': 'json_schema', 'schema': OUTPUT_SCHEMA}})
-        r = requests.post('https://api.anthropic.com/v1/messages', timeout=60, headers={
+        r = requests.post('https://api.anthropic.com/v1/messages', timeout=timeout, headers={
             'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
             json=payload)
         meta['http_status'] = r.status_code
+        meta['resp_sha'] = _sha(r)
         err = api_error_type(r)
         if err:
             meta['api_error'] = err
-            raise APIReviewError(err)
+            raise APIReviewError(err if err == 'malformed_response' else 'http_error')
         body = r.json()
-        if body.get('stop_reason') not in (None, 'end_turn'):
+        meta['blocks'] = _block_types(body)
+        sr = body.get('stop_reason')
+        meta['stop_reason'] = sr if isinstance(sr, str) and _ERR_TYPE.fullmatch(sr) else (None if sr is None else '?')
+        if sr not in (None, 'end_turn'):
             raise APIReviewError('incomplete_response')
         dec, reason = _decision(_text_block(body))
-        meta['latency_s'] = round(time.time() - t0, 1)
-        return dec, reason, meta
+        meta.pop('error', None)
+        return dec, reason, meta, None
     except Exception as e:
-        meta.update(latency_s=round(time.time() - t0, 1), error=e.__class__.__name__)
+        meta['error'] = e.__class__.__name__
         why = (f"http {meta['http_status']} {meta.get('api_error', e.__class__.__name__)}" if 'http_status' in meta
                else e.__class__.__name__)
-        return 'take', f'AI review failed ({why}) - taking trade by rules', meta
+        return 'take', why, meta, _failure(e)
 
 
 class APIReviewError(Exception):

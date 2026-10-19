@@ -114,3 +114,4 @@ filter.tradfi_off
 filter.tradfi_session
 config.tradfi_policy
 capacity.gold_family_cap
+filter.ai_unavailable

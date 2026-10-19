@@ -1059,6 +1059,7 @@ class App:
         def ms_iso(t):
             try: return datetime.fromisoformat(t).timestamp()
             except Exception: return 0.0
+        import ai_filter as AF                                             # AIREL-01: review health for the panel
         h = e.health
         if hasattr(e, '_sweep_incidents'): e._sweep_incidents()        # T05b: one-off errors stop being "open" when idle
         now = time.time()
@@ -1081,7 +1082,8 @@ class App:
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
                     audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
                     market_collector=self.collector.status() if getattr(self, 'collector', None) else None,
-                    shadow_funding=self.shadow_funding.status() if getattr(self, 'shadow_funding', None) else None)
+                    shadow_funding=self.shadow_funding.status() if getattr(self, 'shadow_funding', None) else None,
+                    ai_review=AF.health() if e.S.get('AI_FILTER') else None)        # AIREL-01: degraded / counters
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
