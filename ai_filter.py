@@ -79,7 +79,7 @@ RETRY_MIN_LEFT_S = 10.0      # no retry when less than this is left of the budge
 CIRCUIT_N = 3                # consecutive failed reviews that open the circuit
 CIRCUIT_COOL_S = 900.0       # how long an open circuit skips the API
 FAILURES = ('http_error', 'malformed_response', 'incomplete_response', 'not_json', 'schema_mismatch', 'timeout', 'network',
-            'circuit_open', 'internal')
+            'circuit_open', 'no_key', 'internal')
 _RETRYABLE = {'malformed_response', 'incomplete_response', 'not_json', 'schema_mismatch', 'timeout', 'network'}
 _RETRY_HTTP = {429, 500, 502, 503, 504, 529}
 _LOCK = threading.Lock()
@@ -162,7 +162,10 @@ def _failed(cfg, meta, why):
 def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
     """-> (decision, reason, meta). meta = model, prompt version, latency, error, failure, attempts - logged by the engine."""
     key = cfg.get('ANTHROPIC_API_KEY')
-    if not key or cfg.get('AI_FILTER', 'on') != 'on':
+    if cfg.get('AI_FILTER', 'on') != 'on':
+        return 'take', 'AI filter off', {}
+    if not key:                                         # filter on but no key: a fail-closed policy refuses (Cowork 6263506265)
+        if fail_policy(cfg) == 'closed': return _failed(cfg, dict(failure='no_key', attempts=0), 'no API key')
         return 'take', 'AI filter off', {}
     model = cfg.get('ANTHROPIC_MODEL') or DEFAULT_MODEL
     meta = dict(model=model, prompt=PROMPT_VERSION, tf=tf)

@@ -144,3 +144,11 @@ def test_engine_fail_closed_is_not_logged_as_a_veto(monkeypatch):
 def test_new_reason_code_is_registered():
     from newcore.domain.reasons import ReasonCode, MEANING
     assert ReasonCode('filter.ai_unavailable') in MEANING
+
+
+def test_missing_key_follows_the_fail_policy(monkeypatch):
+    monkeypatch.setattr(A.requests, 'post', lambda *a, **k: pytest.fail('must not call the API'))
+    assert A.review({'AI_FILTER': 'on'}, 'BTCUSDT', 'X', SIG, [], 0) == ('take', 'AI filter off', {})
+    dec, why, meta = A.review({'AI_FILTER': 'on', 'MODE': 'live'}, 'BTCUSDT', 'X', SIG, [], 0)
+    assert dec == 'skip' and why.startswith('AI review unavailable (no API key)') and meta['failure'] == 'no_key'
+    assert A.review({'AI_FILTER': 'off', 'MODE': 'live'}, 'BTCUSDT', 'X', SIG, [], 0)[0] == 'take'   # filter off stays off
