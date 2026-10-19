@@ -19,13 +19,17 @@ QUEUE_MAX = 1024
 
 
 class LedgerWriter:
-    def __init__(self, open_ledgers, counters=None, maxsize=QUEUE_MAX):
+    def __init__(self, open_ledgers, counters=None, maxsize=QUEUE_MAX, key=None):
         """open_ledgers() -> (decision_ledger, label_ledger); called once, on the writer thread (it reads the files).
         counters: a dict whose keys decisions / labels / missing_decision / refused_skipped / write_errors this thread
-        increments (the engine health block); dropped by submit(), lost by close()."""
-        self.open_ledgers = open_ledgers
+        increments (the engine health block); dropped / blocked_prior_writer by submit(), lost by close().
+        key: the ledger folder this writer owns. Only ONE live writer per key in the process: while an earlier writer
+        of the same folder is still alive (e.g. its close() timed out on an engine restart), this one never starts -
+        its rows are dropped and counted as blocked_prior_writer - so two writers never append to the same files."""
+        self.open_ledgers, self.key = open_ledgers, key
         self.ctr = counters if counters is not None else {}
-        for k in ('decisions', 'labels', 'missing_decision', 'refused_skipped', 'write_errors', 'dropped', 'lost'):
+        for k in ('decisions', 'labels', 'missing_decision', 'refused_skipped', 'write_errors', 'dropped', 'lost',
+                  'blocked_prior_writer', 'reconciled'):
             self.ctr.setdefault(k, 0)
         self.q = queue.Queue(maxsize)
         self.lock, self.stop_ev = threading.Lock(), threading.Event()
@@ -41,8 +45,8 @@ class LedgerWriter:
                 if self.closing:
                     self.ctr['dropped'] += 1; return False
                 if self.thread is None:
-                    self.thread = threading.Thread(target=self._run, name='ml-shadow-writer', daemon=True)
-                    self.thread.start()
+                    if not claim(self):                     # an earlier writer of these files is still alive
+                        self.ctr['blocked_prior_writer'] += 1; self.ctr['dropped'] += 1; return False
                 try:
                     self.q.put_nowait((kind, row))
                 except queue.Full:
@@ -61,6 +65,10 @@ class LedgerWriter:
     # ---------------------------------------------------------------- writer thread
     def _write(self, led, kind, row):
         dec, lab = led
+        try: self._do_write(dec, lab, kind, row)
+        finally: self.ctr['reconciled'] = getattr(dec, 'reconciled', 0) + getattr(lab, 'reconciled', 0)
+
+    def _do_write(self, dec, lab, kind, row):
         if kind == 'decision':
             if dec.append(row) is not None: self.ctr['decisions'] += 1
             return
@@ -127,6 +135,21 @@ class LedgerWriter:
 
 
 _WRITERS, _WRITERS_LOCK = [], threading.Lock()
+_OWNERS = {}                                                 # ledger folder -> the writer that last started on it
+
+
+def claim(w):
+    """Make w the writer of its folder AND start its thread, in one step under the registry lock (no window in which
+    a third writer could see the new owner as not yet alive). False while a different writer of that folder still
+    has a live thread."""
+    with _WRITERS_LOCK:
+        if w.key is not None:
+            cur = _OWNERS.get(w.key)
+            if cur is not None and cur is not w and cur.alive(): return False
+            _OWNERS[w.key] = w
+        w.thread = threading.Thread(target=w._run, name='ml-shadow-writer', daemon=True)
+        w.thread.start()
+        return True
 
 
 def register(w):

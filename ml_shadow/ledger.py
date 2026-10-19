@@ -22,6 +22,7 @@ class JsonlLedger:
         self.path, self.max_bytes, self.max_files, self.id_field = str(path), int(max_bytes), int(max_files), id_field
         self._lock = threading.Lock()
         self._tail_ok = False                           # the active file's last byte has not been checked yet
+        self.reconciled = 0                             # rows durable on disk although their write call raised
         d = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(d, exist_ok=True)
         self._seen = {r.get(id_field) for r in self.rows()}
@@ -42,6 +43,22 @@ class JsonlLedger:
                         yield json.loads(line)
                     except ValueError:
                         log.warning('ml_shadow: skipping corrupt ledger line in %s', p)
+
+    def _landed(self, text):
+        """True when the active file ends with this complete row (newline included). One retry on a read error;
+        still unreadable -> False (the row stays an explicit write error). Never raises."""
+        b = text.replace('\n', os.linesep).encode('utf-8')         # text-mode append writes os.linesep
+        for _ in range(2):
+            try:
+                with open(self.path, 'rb') as fb:
+                    fb.seek(0, os.SEEK_END)
+                    n = fb.tell()
+                    if n < len(b): return False
+                    fb.seek(n - len(b))
+                    return fb.read(len(b)) == b
+            except Exception:                               # noqa: BLE001 - unknown stays "not written"
+                pass
+        return False
 
     def __contains__(self, rid):
         return rid in self._seen
@@ -75,13 +92,18 @@ class JsonlLedger:
                     fb.seek(-1, os.SEEK_END)
                     if fb.read(1) != b'\n': line = '\n' + line
             self._tail_ok = False                       # Codex 154 review: a write that fails part-way leaves a fragment
-            with open(self.path, 'a', encoding='utf-8') as fh:
-                # Only sanitize_row output reaches this sink: fixed field allow-list, every string through
-                # redact_text, raw trade ids hashed (corr_id_of). Proven by tests/test_ml_shadow01.py redaction probes
-                # (planted keys/tokens/ids across ctx, features, reason, exit_reason and rotated files).
-                fh.write(line)  # lgtm[py/clear-text-storage-sensitive-data]  # codeql[py/clear-text-storage-sensitive-data]
-                fh.flush()
-            self._tail_ok = True                        # only after the whole newline-terminated row is written + flushed
+            try:
+                with open(self.path, 'a', encoding='utf-8') as fh:
+                    # Only sanitize_row output reaches this sink: fixed field allow-list, every string through
+                    # redact_text, raw trade ids hashed (corr_id_of). Proven by tests/test_ml_shadow01.py redaction probes
+                    # (planted keys/tokens/ids across ctx, features, reason, exit_reason and rotated files).
+                    fh.write(line)  # lgtm[py/clear-text-storage-sensitive-data]  # codeql[py/clear-text-storage-sensitive-data]
+                    fh.flush()
+            except Exception:
+                if not self._landed(line.lstrip('\n')): raise
+                self.reconciled += 1                    # #104 gate 2: the complete row IS on disk although the write /
+                log.warning('ml_shadow: write raised after the row was durable (reconciled as written)')   # flush / close raised
+            self._tail_ok = True                        # only after the whole newline-terminated row is on disk
             self._seen.add(rid)
         return row
 

@@ -3922,7 +3922,8 @@ class Engine:
 
     def _ml_health(self):
         return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0, dropped=0, missing_decision=0,
-                                                        refused_skipped=0, write_errors=0, lost=0))
+                                                        refused_skipped=0, write_errors=0, lost=0,
+                                                        blocked_prior_writer=0, reconciled=0))
 
     def _ml_ledgers(self):
         with self.__dict__.setdefault('_ml_led_lock', threading.Lock()):     # the writer thread and readers share them
@@ -3939,7 +3940,8 @@ class Engine:
         w = self.__dict__.get('_ml_w')
         if w is None:
             from ml_shadow import writer as MLW
-            w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health()))
+            w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health(),
+                                                           key=os.path.normcase(os.path.realpath(self.ml_paths()['dir']))))
         return w
 
     def ml_close(self, timeout=2.0):

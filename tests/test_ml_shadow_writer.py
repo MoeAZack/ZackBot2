@@ -247,6 +247,33 @@ def test_partial_write_never_swallows_the_next_row(tmp_path, monkeypatch):
     with pytest.raises(ValueError): json.loads(lines[1])      # the failed row stays invalid evidence, never claimed written
 
 
+def test_row_durable_although_flush_raised_is_reconciled_never_duplicated(tmp_path, monkeypatch):
+    import ml_shadow.ledger as LM
+    real_open, fail = builtins.open, [False]
+    class LateFail:                                         # the whole row reaches the file, then flush raises
+        def __init__(self, fh): self.fh = fh
+        def __enter__(self): return self
+        def __exit__(self, *a): self.fh.close()
+        def write(self, s): self.fh.write(s); self.fh.flush()
+        def flush(self): raise OSError(5, 'I/O error reported after the data was written')
+    def fake_open(p, mode='r', *a, **k):
+        fh = real_open(p, mode, *a, **k)
+        if 'a' in mode and fail[0]:
+            fail[0] = False; return LateFail(fh)
+        return fh
+    monkeypatch.setattr(LM, 'open', fake_open, raising=False)
+    ctr = {}
+    w = MLW.LedgerWriter(ledgers(tmp_path), ctr)
+    a, b = dec_row('2026-10-01 00:00:00'), dec_row('2026-10-02 00:00:00')
+    assert w.submit('decision', a) and w.flush(5)
+    fail[0] = True
+    assert w.submit('decision', b) and w.flush(5)            # durable, but the call raised
+    assert w.submit('decision', b) and w.submit('decision', a)   # same-process replay
+    assert w.close(10)
+    assert [r['decision_id'] for r in rows(tmp_path / 'd.jsonl')] == [a['decision_id'], b['decision_id']]   # no duplicate
+    assert ctr['decisions'] == 2 and ctr['reconciled'] == 1 and ctr['write_errors'] == 0   # counters == durable evidence
+
+
 def test_known_ids_seeded_from_disk_with_torn_last_line(tmp_path):
     d = dec_row('2026-10-01 00:00:00')
     w = MLW.LedgerWriter(ledgers(tmp_path), {}); w.submit('decision', d); assert w.close(10)
@@ -278,6 +305,7 @@ def test_direct_entry_link_is_in_the_first_state_save(tmp_path):
     assert lot['ml_decision_id'] == want
     dec = ledger_rows(e, 'decisions')
     assert [(r['decision_id'], r['status']) for r in dec] == [(want, 'taken')]
+    assert e.ml_close(10)                                   # the old process is gone (its writer drained + stopped)
     e2, _ = mk_engine(str(tmp_path))                        # restart from that state: the close labels exactly once
     e2.trade.pos.update(e.trade.pos); e2.trade.stops.update(e.trade.stops)
     e2.S['ML_SHADOW'] = True
@@ -310,3 +338,100 @@ def test_pending_fill_not_linked_when_decision_known_absent(tmp_path):
     assert lot['ml_decision_id'] == MLS.decision_id('A', 'ema_mom', 'BTCUSDT', 'LONG', '4h', '2026-10-02 00:00:00')
     lot2 = {}; e.S['ML_SHADOW'] = False; e._ml_link(lot2, plan)
     assert lot2 == {}                                       # OFF: no field at all
+
+
+# ------------------------------------------------------------------ Codex activation gate: one live writer per ledger folder
+def test_timed_out_close_never_lets_two_writers_share_the_files(tmp_path):
+    gate = threading.Event()
+    e, _ = mk_engine(str(tmp_path))
+    e.S['ML_SHADOW'] = True
+    real = e._ml_ledgers
+    def stuck():
+        gate.wait(30); return real()
+    e._ml_ledgers = stuck
+    old = e._ml_writer()
+    old.submit('decision', dec_row('2026-10-01 00:00:00'))
+    assert e.ml_close(0.3) is False and old.alive()          # close timed out: the old daemon is still running
+    e2, _ = mk_engine(str(tmp_path))                         # the app builds the next engine on the same data folder
+    e2.S['ML_SHADOW'] = True
+    w2 = e2._ml_writer()
+    assert not w2.submit('decision', dec_row('2026-10-02 00:00:00'))
+    h2 = e2.health['ml_shadow']
+    assert h2['blocked_prior_writer'] == 1 and h2['dropped'] == 1 and not w2.alive()   # never started, counted
+    gate.set(); old.thread.join(10)
+    assert not old.alive()
+    assert w2.submit('decision', dec_row('2026-10-03 00:00:00')) and e2.ml_flush(5)    # takes over once the old one is gone
+    ids = [r['decision_id'] for r in ledger_rows(e2, 'decisions')]
+    assert ids == [dec_row('2026-10-01 00:00:00')['decision_id'], dec_row('2026-10-03 00:00:00')['decision_id']]
+    assert e2.ml_close(10)
+
+
+def test_claim_and_thread_start_are_one_step(tmp_path, monkeypatch):
+    # Adversarial review #1: between B's claim and B's thread start, a third writer C of the same folder must not win.
+    key = str(tmp_path)
+    b = MLW.LedgerWriter(ledgers(tmp_path), {}, key=key)
+    c = MLW.LedgerWriter(ledgers(tmp_path), {}, key=key)
+    real_start, seen = threading.Thread.start, []
+    def start_then_race(th):
+        if th is b.thread and not seen:                     # C tries while B is mid-start
+            seen.append(1)
+            got = []
+            t = threading.Thread(target=lambda: got.append(c.submit('decision', dec_row('2026-10-02 00:00:00'))))
+            real_start(t); t.join(0.3)
+            seen.append(got)
+        return real_start(th)
+    monkeypatch.setattr(threading.Thread, 'start', start_then_race)
+    assert b.submit('decision', dec_row('2026-10-01 00:00:00'))
+    monkeypatch.setattr(threading.Thread, 'start', real_start)
+    time.sleep(0.5)
+    assert c.thread is None or not c.alive()                # C never ran next to B
+    assert b.close(10)
+    assert c.ctr['blocked_prior_writer'] == 1 and c.ctr['dropped'] == 1
+    c.close(1)
+
+
+def test_writers_of_different_folders_never_block_each_other(tmp_path):
+    a = MLW.LedgerWriter(ledgers(tmp_path / 'a'), {}, key=str(tmp_path / 'a'))
+    (tmp_path / 'b').mkdir(); (tmp_path / 'a').mkdir(exist_ok=True)
+    b = MLW.LedgerWriter(ledgers(tmp_path / 'b'), {}, key=str(tmp_path / 'b'))
+    assert a.submit('decision', dec_row('2026-10-01 00:00:00')) and b.submit('decision', dec_row('2026-10-01 00:00:00'))
+    assert a.close(10) and b.close(10)
+
+
+def test_rotation_keeps_every_row_readable_and_unique_through_the_writer(tmp_path):
+    small = lambda: (MLS.JsonlLedger(str(tmp_path / 'd.jsonl'), 3000, 3), MLS.JsonlLedger(str(tmp_path / 'l.jsonl'), 3000, 3))
+    ctr = {}
+    w = MLW.LedgerWriter(small, ctr)
+    d = [dec_row(f'2026-10-{k:02d} 00:00:00') for k in range(1, 13)]
+    for r in d: w.submit('decision', r)
+    assert w.flush(10)
+    for r in d[-6:]: w.submit('decision', r)                # replay of retained rows (incl. in .1): deduped
+    assert w.close(10)
+    files = [tmp_path / n for n in ('d.jsonl.2', 'd.jsonl.1', 'd.jsonl') if (tmp_path / n).exists()]
+    assert len(files) >= 2                                  # it really rotated
+    got = [json.loads(x)['decision_id'] for f in files for x in open(f, encoding='utf-8') if x.strip()]
+    assert len(got) == len(set(got)) and ctr['write_errors'] == 0 and ctr['decisions'] == len(d)
+    assert got == [r['decision_id'] for r in d][-len(got):]  # oldest dropped by the size bound, order kept
+
+
+def test_reconcile_retries_one_transient_tail_read_error(tmp_path, monkeypatch):
+    import ml_shadow.ledger as LM
+    led = MLS.JsonlLedger(str(tmp_path / 'd.jsonl'))
+    real_open, state = builtins.open, dict(late=True, rb_fail=1)
+    class LateFail:
+        def __init__(self, fh): self.fh = fh
+        def __enter__(self): return self
+        def __exit__(self, *a): self.fh.close()
+        def write(self, s): self.fh.write(s); self.fh.flush()
+        def flush(self): raise OSError(5, 'I/O error after the data was written')
+    def fake_open(p, mode='r', *a, **k):
+        if mode == 'rb' and state['rb_fail']:
+            state['rb_fail'] -= 1; raise PermissionError('scanner lock')
+        fh = real_open(p, mode, *a, **k)
+        if 'a' in mode and state['late']:
+            state['late'] = False; return LateFail(fh)
+        return fh
+    monkeypatch.setattr(LM, 'open', fake_open, raising=False)
+    r = dec_row('2026-10-01 00:00:00')
+    assert led.append(r) is not None and led.reconciled == 1          # read retried once, row reconciled
+    assert led.append(r) is None and len(rows(tmp_path / 'd.jsonl')) == 1
