@@ -83,7 +83,7 @@ FAILURES = ('http_error', 'malformed_response', 'incomplete_response', 'not_json
 _RETRYABLE = {'malformed_response', 'incomplete_response', 'not_json', 'schema_mismatch', 'timeout', 'network'}
 _RETRY_HTTP = {429, 500, 502, 503, 504, 529}
 _ATTEMPT_KEYS = ('http_status', 'api_error', 'resp_sha', 'blocks', 'stop_reason', 'error', 'failure')   # one try's fields
-_TRY_KEYS = ('http_status', 'api_error', 'stop_reason', 'resp_sha')     # the bounded, non-secret per-attempt record
+_TRY_KEYS = ('http_status', 'api_error', 'stop_reason', 'blocks', 'resp_sha')     # the bounded, non-secret per-attempt record
 _LOCK = threading.Lock()
 _STATE = {}
 

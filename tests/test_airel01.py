@@ -166,10 +166,12 @@ def test_malformed_then_network_keeps_no_stale_response_fields(monkeypatch):
         assert k not in meta, k
     assert meta['tries'][0]['failure'] == 'malformed_response' and meta['tries'][0]['http_status'] == 200
     assert len(meta['tries'][0]['resp_sha']) == 12 and meta['tries'][1] == {'failure': 'network'}
+    assert meta['tries'][0]['blocks'] == ['thinking']                       # Codex 6263780286: block types kept per attempt
     assert 'recovered' not in meta
 
 
 def test_single_success_has_one_clean_try(monkeypatch):
     (dec, _, meta), _ = run(monkeypatch, Resp(200, OK))
     assert dec == 'skip' and meta['attempts'] == 1 and 'failure' not in meta and 'recovered' not in meta
-    assert meta['tries'] == [{'http_status': 200, 'stop_reason': 'end_turn', 'resp_sha': meta['resp_sha'], 'failure': None}]
+    assert meta['tries'] == [{'http_status': 200, 'stop_reason': 'end_turn', 'blocks': ['text'], 'resp_sha': meta['resp_sha'],
+                              'failure': None}]
