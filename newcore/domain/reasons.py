@@ -149,6 +149,9 @@ class ReasonCode(enum.StrEnum):
     FILTER_TRADFI_SESSION = 'filter.tradfi_session'
     CONFIG_TRADFI_POLICY = 'config.tradfi_policy'
     CAPACITY_GOLD_FAMILY_CAP = 'capacity.gold_family_cap'
+    # MAXQTY-01 (#158) venue order-size refusals - appended (registry is append-only)
+    EXEC_SIZE_MAX = 'execution.size_max'
+    EXEC_LEV_TIER = 'execution.lev_tier'
 
     @property
     def namespace(self):
@@ -278,6 +281,8 @@ MEANING = {
     R.FILTER_TRADFI_SESSION: 'the US cash session is closed or unknown for this stock strategy family, so no new entry',
     R.CONFIG_TRADFI_POLICY: 'this strategy is not an approved TradFi mapping for the symbol (e.g. DCA, scalp, high-beta range)',
     R.CAPACITY_GOLD_FAMILY_CAP: 'XAUUSDT + PAXGUSDT share one gold-family position / risk / notional budget that is full',
+    R.EXEC_SIZE_MAX: 'the size is above the venue maximum order quantity (refused, never cut down)',
+    R.EXEC_LEV_TIER: 'the coin position would exceed the venue notional cap for the leverage in use (Binance -2027)',
 }
 del R
 

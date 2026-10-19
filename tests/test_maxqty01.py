@@ -173,3 +173,9 @@ def test_grid_order_over_the_leverage_tier_is_not_sent():
     G.GridManager(e)._order_ok(g, 500, 0.2)                              # 100 USDT: fine
     with pytest.raises(ValueError, match='leverage tier'):
         G.GridManager(e)._order_ok(g, 501, 0.2)
+
+
+def test_new_reason_codes_are_registered_in_the_stable_taxonomy():
+    from newcore.domain.reasons import ReasonCode, MEANING
+    for code in ('execution.size_max', 'execution.lev_tier'):
+        assert ReasonCode(code) in MEANING and ReasonCode(code).namespace == 'execution'
