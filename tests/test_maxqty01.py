@@ -162,13 +162,13 @@ def test_engine_entry_over_the_leverage_tier_is_skipped_without_an_order():
 
 def test_unknown_bracket_schedule_never_blocks():
     e = _tier_engine(20); e._brk.clear()
-    assert e._tier_block('BTCUSDT', 1e9) is None
+    assert e._tier_block('BTCUSDT', 1e9, 100.0) is None
 
 
 def test_grid_order_over_the_leverage_tier_is_not_sent():
     import grid as G
     e = types.SimpleNamespace(persist_block=lambda: None, rules={'STRKUSDT': dict(step=1.0, min_qty=1.0, tick=0.00001, min_notional=5.0)},
-                              _tier_block=lambda s, n: 'leverage tier: STRKUSDT over' if n > 100 else None)
+                              _tier_block=lambda s, n, p: 'leverage tier: STRKUSDT over' if n > 100 else None)
     g = dict(sym='STRKUSDT', stop_lo=0.1, stop_hi=0.3, capital=1e6, cfg={}, hi=0.25, lo=0.15)
     G.GridManager(e)._order_ok(g, 500, 0.2)                              # 100 USDT: fine
     with pytest.raises(ValueError, match='leverage tier'):
@@ -179,3 +179,27 @@ def test_new_reason_codes_are_registered_in_the_stable_taxonomy():
     from newcore.domain.reasons import ReasonCode, MEANING
     for code in ('execution.size_max', 'execution.lev_tier'):
         assert ReasonCode(code) in MEANING and ReasonCode(code).namespace == 'execution'
+
+
+def test_tier_values_held_lots_at_the_current_price_after_a_rise():
+    """Codex repro (6262131819): cap 200, 1 unit held from 50, price now 100, order 150 -> 250 > 200 must be refused."""
+    e = _tier_engine(10)
+    e.state['lots']['X'] = dict(symbol='BTCUSDT', side='LONG', qty=1.0, avg=50.0)
+    assert e._tier_block('BTCUSDT', 150.0, 100.0).startswith('leverage tier: BTCUSDT position 250')
+    assert e._tier_block('BTCUSDT', 50.0, 100.0) is None                    # 100 + 50 = 150 <= 200
+    e.state['lots']['X']['avg'] = 120.0                                     # price fell: the higher entry value is kept
+    assert e._tier_block('BTCUSDT', 90.0, 100.0) is not None                # 120 + 90 = 210 > 200
+
+
+def test_tier_counts_resting_entry_orders_of_the_coin():
+    e = _tier_engine(10)
+    e.state['resting_entries']['ME|A|BTCUSDT|LONG'] = dict(symbol='BTCUSDT', side='LONG', qty=1.0, filled=0.0, plan=dict(px=100.0))
+    assert e._tier_block('BTCUSDT', 150.0, 100.0) is not None               # 100 resting + 150 > 200
+    assert e._tier_block('BTCUSDT', 100.0, 100.0) is None
+    e.state['resting_entries']['ME|A|ETHUSDT|LONG'] = dict(symbol='ETHUSDT', side='LONG', qty=50.0, plan=dict(px=100.0))
+    assert e._tier_block('BTCUSDT', 100.0, 100.0) is None                   # another coin's order does not count
+
+
+def test_reduce_only_exits_do_not_consult_the_tier_check():
+    src = open(os.path.join(ROOT, 'engine.py'), encoding='utf-8').read()
+    assert src.count('self._tier_block(') == 2                              # the entry gate and _add_qty only

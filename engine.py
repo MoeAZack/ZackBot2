@@ -4205,7 +4205,7 @@ class Engine:
         if not d['ok']: return False
         q = d['qty']
         if not self.dry:
-            if self._tier_block(lot['symbol'], q * px): return False     # MAXQTY-01: Binance -2027, nothing sent
+            if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
@@ -5344,17 +5344,23 @@ class Engine:
         self._brk[sym] = (time.time(), b)
         return b
 
-    def _tier_block(self, sym, notional):
-        """MAXQTY-01: reason text when the coin's position notional after this order (every open lot of the coin, both sides -
-        conservative) would exceed what Binance allows at the leverage in use (feasibility.tier_notional_cap; Binance
-        answers -2027), else None. Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown -> None."""
+    def _tier_block(self, sym, notional, px):
+        """MAXQTY-01: reason text when the coin's position notional after this order would exceed what Binance allows at the
+        leverage in use (feasibility.tier_notional_cap; Binance answers -2027), else None. Counted conservatively: every open
+        lot of the coin (both sides) and every resting entry order of the coin (its full quantity, filled part included), each
+        valued at the HIGHER of the current order price px and its own entry/limit price - never at a stale lower average
+        (a price rise must not hide notional). Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown
+        -> None. Reduce-only exits never pass through here."""
         try:
             b = self._brackets(sym, fetch=False)
             if not b: return None
             lev = min(max(1, int(self.S['MAX_LEVERAGE'])), float(b[0]['lev']))
             cap = F.tier_notional_cap(b, lev)
             if cap is None: return None
-            held = sum(l['qty'] * l['avg'] for l in self.state['lots'].values() if l['symbol'] == sym)
+            px = float(px)
+            held = sum(float(l['qty']) * max(px, float(l['avg'])) for l in self.state['lots'].values() if l['symbol'] == sym)
+            held += sum(float(r['qty']) * max(px, float((r.get('plan') or {}).get('px') or 0.0))
+                        for r in (self.state.get('resting_entries') or {}).values() if r.get('symbol') == sym)
             if held + notional <= cap: return None
             return (f'leverage tier: {sym} position {held + notional:,.0f} USDT would exceed the Binance maximum '
                     f'{cap:,.0f} USDT at {lev:g}x')
@@ -5777,7 +5783,7 @@ class Engine:
             log.warning(f'{sym}: {self.last_skip}')
             if manual: raise ValueError(self.last_skip)
             return False
-        tb = self._tier_block(sym, qty * px)              # MAXQTY-01: Binance -2027 refused locally, nothing sent
+        tb = self._tier_block(sym, qty * px, px)              # MAXQTY-01: Binance -2027 refused locally, nothing sent
         if tb:
             self.last_skip = tb
             if manual: raise ValueError(tb)

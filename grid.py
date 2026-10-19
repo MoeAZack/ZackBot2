@@ -923,7 +923,7 @@ class GridManager:
         if q * m > cap: raise ValueError(f"order {q:g} @ {m:g} exceeds the grid's own capital - not sent")
         if F.above_max(q, self.e.rules.get(g['sym'])):                       # MAXQTY-01: Binance would refuse it (-4005)
             raise ValueError(f"order {q:g} is above Binance's maximum order quantity - not sent")
-        tb = getattr(self.e, '_tier_block', lambda *a: None)(g['sym'], q * m)   # MAXQTY-01: Binance -2027 leverage tier
+        tb = getattr(self.e, '_tier_block', lambda *a: None)(g['sym'], q * m, m)   # MAXQTY-01: Binance -2027 leverage tier
         if tb: raise ValueError(f'{tb} - not sent')
 
     def _stop_ok(self, g, side, m):
