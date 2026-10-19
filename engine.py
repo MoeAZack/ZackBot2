@@ -5859,6 +5859,8 @@ class Engine:
         now_id = dict(self._cohort_identity())
         if not rec.get('seq'): now_id['started_utc'] = self.S.get('CAP_SINCE')     # cohort 0 began at CAP_SINCE
         out = RP.drift(rec, **now_id)
+        if 'code_sha' in out and None in (now_id.get('code_sha'), rec.get('code_sha')):   # COHORT-SHA-01: one side could
+            out[out.index('code_sha')] = 'code_sha_unavailable'   # not read its sources - not a proven code change; say which
         snap = self.state.get('cohort_settings')
         if not isinstance(snap, dict) or RP.sha256_doc(snap)[:16] != rec.get('settings_sha'): out.append('settings_snapshot')
         return sorted(set(out))

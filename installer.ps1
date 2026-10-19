@@ -535,6 +535,11 @@ function Invoke-BuildSteps {
         '--add-data', ([IO.Path]::Combine($src, 'panel.html') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'research') + ';research'),
         '--add-data', ($rulesKept + ';data'),
+        # COHORT-SHA-01: the RUN-PACK-01 cohort code identity hashes these sources next to engine.py; a onefile exe has no
+        # .py files, so without them the exe records code_sha=None and a source-run boundary looks like code drift.
+        '--add-data', ([IO.Path]::Combine($src, 'engine.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'strategies.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'paper_books.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'book_ledger.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'backtest.py') + ';.'),
         '--collect-data', 'tzdata',
         '--distpath', [IO.Path]::Combine($s.Stage, 'dist'), '--workpath', [IO.Path]::Combine($s.Stage, 'work'),
         '--specpath', [IO.Path]::Combine($s.Stage, 'work'), [IO.Path]::Combine($src, 'app.py'))

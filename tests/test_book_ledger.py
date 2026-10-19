@@ -623,3 +623,17 @@ def test_failed_intent_save_leaves_no_pending_boundary_in_memory(monkeypatch):
     assert 'cohort_closing' not in e.state and os.listdir(dest) == []
     assert e.persist_block() is None and e.book_ledger_status() is not None and e.state['cohort']['id'] == cid
     assert e.cohort_boundary(dest)['closed'] == cid                       # a plain retry is a normal boundary
+
+
+# ------------------------------------------------------------------ COHORT-SHA-01: frozen exe vs source-run code identity
+def test_unreadable_code_identity_is_labelled_unavailable_not_code_drift(monkeypatch):
+    e, _ = books_engine()
+    rec = e.state['cohort']
+    assert rec['code_sha'] and e.cohort_drift == []                 # source run: the five sources are hashable
+    def no_sources(paths): raise FileNotFoundError('onefile exe: no .py next to engine')
+    monkeypatch.setattr(RP, 'code_sha', no_sources)
+    assert e._cohort_drift_now(rec) == ['code_sha_unavailable']     # exe evaluating a source-run cohort
+    monkeypatch.undo()
+    exe_rec = dict(rec, code_sha=None)
+    assert e._cohort_drift_now(exe_rec) == ['code_sha_unavailable']  # source run evaluating an exe-made cohort
+    assert e._cohort_drift_now(dict(rec, code_sha='0' * 16)) == ['code_sha']   # a real, readable change stays code_sha
