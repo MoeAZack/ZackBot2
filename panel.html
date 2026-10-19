@@ -1162,7 +1162,8 @@ function hideOnb(){LS.set('zb_onb_off','1');renderOnb();toast('Checklist hidden 
 function showOnb(){LS.del('zb_onb_off');tab('dash')}
 
 // ---------------- dashboard
-function renderDash(){const S=D.settings,eq=D.equity||0,H=CH.history,st=statsOf(H);renderOnb();
+function dashboardHistory(d,h){const cid=d.book_ledger&&d.book_ledger.cohort_id;return {cid:cid||null,history:cid?h.filter(x=>x.cohort_id===cid):h}}
+function renderDash(){const S=D.settings,eq=D.equity||0,dh=dashboardHistory(D,CH.history),cid=dh.cid,H=dh.history,st=statsOf(H);renderOnb();
   const eh=CH.equity.map(p=>[p[0]*1000,p[1]]);const risk=D.lots.reduce((a,p)=>a+Math.max(0,p.risk_to_stop||0),0);
   const day=D.day_start&&eq?eq-D.day_start:null;
   const upnl=D.lots.reduce((a,p)=>a+(p.pnl||0),0),dpct=D.day_start&&eq?eq/D.day_start-1:null,sp=eh.slice(-120).map(p=>p[1]);
@@ -1173,7 +1174,7 @@ function renderDash(){const S=D.settings,eq=D.equity||0,H=CH.history,st=statsOf(
      <div class="big">${usd(eq)}</div><span class="chip ${cls(day)}">${day==null?'–':(day>=0?'▲ ':'▼ ')+susd(day)+' · '+pct(dpct,2)} today</span>${hsp}
      <div class="hs"><div><span>Binance account</span><b>${usd(D.balance,0)}</b></div><div><span>Trades sized on</span><b>${usd(D.sizing_equity,0)}</b></div><div><span>Open P&amp;L</span><b class="${cls(upnl)}">${susd(upnl)}</b></div></div></div>`
    +tile('Today',susd(day),pct(dpct,2)+' since midnight Cairo',cls(day))
-   +tile('Net P&L (closed)',susd(st.net),`${st.n} trades · fees ${usd(st.fees)}`,cls(st.net),'Realized profit after estimated fees, all closed trades.',spark(cum.slice(-60),CSS('--s6')))
+   +tile(cid?'Current cohort P&L':'Net P&L (closed)',susd(st.net),`${st.n} trades · fees ${usd(st.fees)}`,cls(st.net),cid?'Realized profit after estimated fees for the active evidence cohort. All-time results remain in Trades.':'Realized profit after estimated fees, all closed trades.',spark(cum.slice(-60),CSS('--s6')))
    +tile('Win rate',st.n?(st.win*100).toFixed(0)+'%':'–',st.pf?`profit factor ${st.pf.toFixed(2)}`:'profit factor –','','Trend systems usually win 30-45% of trades but make more on winners than they lose on losers.',ring(st.win,null,'win'))
    +tile('Open positions',D.lots.length,`${longs} long · ${D.lots.length-longs} short`,'','',D.lots.length?ring(longs/D.lots.length,'#22c55e','pos'):'')
    +tile('Risk to stops',usd(risk),eq?(risk/eq*100).toFixed(1)+'% of bot capital':'','','What you lose if every open trade hits its stop right now.')
