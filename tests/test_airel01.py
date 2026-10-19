@@ -63,7 +63,10 @@ def test_stop_reason_block_types_and_response_hash_are_recorded_without_the_body
 
 def test_retry_recovers_and_counts(monkeypatch):
     (dec, why, meta), calls = run(monkeypatch, text('not json'), Resp(200, OK))
-    assert (dec, why) == ('skip', 'stretched 3 ATR above EMA20') and meta['attempts'] == 2 and 'failure' in meta
+    assert (dec, why) == ('skip', 'stretched 3 ATR above EMA20') and meta['attempts'] == 2
+    assert 'failure' not in meta and 'error' not in meta and meta['recovered'] is True and meta['first_failure'] == 'not_json'
+    assert [t['failure'] for t in meta['tries']] == ['not_json', None] and meta['stop_reason'] == 'end_turn'
+    assert meta['resp_sha'] == meta['tries'][1]['resp_sha'] != meta['tries'][0]['resp_sha']    # the final fields are attempt 2's
     assert len(calls) == 2 and calls[1] <= A.BUDGET_S                    # the retry stays inside the one budget
     h = A.health()
     assert h['ok'] == 1 and h['failed'] == 0 and h['retries'] == 1 and h['consecutive'] == 0
@@ -152,3 +155,21 @@ def test_missing_key_follows_the_fail_policy(monkeypatch):
     dec, why, meta = A.review({'AI_FILTER': 'on', 'MODE': 'live'}, 'BTCUSDT', 'X', SIG, [], 0)
     assert dec == 'skip' and why.startswith('AI review unavailable (no API key)') and meta['failure'] == 'no_key'
     assert A.review({'AI_FILTER': 'off', 'MODE': 'live'}, 'BTCUSDT', 'X', SIG, [], 0)[0] == 'take'   # filter off stays off
+
+
+def test_malformed_then_network_keeps_no_stale_response_fields(monkeypatch):
+    """Codex 6263583505: the final record describes the final attempt only; attempt 1 lives in tries[0]."""
+    (dec, why, meta), calls = run(monkeypatch, Resp(200, {'content': [{'type': 'thinking'}], 'stop_reason': 'end_turn'}),
+                                  A.requests.ConnectionError('x'))
+    assert dec == 'take' and len(calls) == 2 and meta['failure'] == 'network' and meta['error'] == 'ConnectionError'
+    for k in ('http_status', 'api_error', 'resp_sha', 'blocks', 'stop_reason'):
+        assert k not in meta, k
+    assert meta['tries'][0]['failure'] == 'malformed_response' and meta['tries'][0]['http_status'] == 200
+    assert len(meta['tries'][0]['resp_sha']) == 12 and meta['tries'][1] == {'failure': 'network'}
+    assert 'recovered' not in meta
+
+
+def test_single_success_has_one_clean_try(monkeypatch):
+    (dec, _, meta), _ = run(monkeypatch, Resp(200, OK))
+    assert dec == 'skip' and meta['attempts'] == 1 and 'failure' not in meta and 'recovered' not in meta
+    assert meta['tries'] == [{'http_status': 200, 'stop_reason': 'end_turn', 'resp_sha': meta['resp_sha'], 'failure': None}]

@@ -82,6 +82,8 @@ FAILURES = ('http_error', 'malformed_response', 'incomplete_response', 'not_json
             'circuit_open', 'no_key', 'internal')
 _RETRYABLE = {'malformed_response', 'incomplete_response', 'not_json', 'schema_mismatch', 'timeout', 'network'}
 _RETRY_HTTP = {429, 500, 502, 503, 504, 529}
+_ATTEMPT_KEYS = ('http_status', 'api_error', 'resp_sha', 'blocks', 'stop_reason', 'error', 'failure')   # one try's fields
+_TRY_KEYS = ('http_status', 'api_error', 'stop_reason', 'resp_sha')     # the bounded, non-secret per-attempt record
 _LOCK = threading.Lock()
 _STATE = {}
 
@@ -176,15 +178,17 @@ def review(cfg, symbol, sleeve, sig, candles, funding, tf='4h', side='LONG'):
     if open_until > t0:                                 # circuit open: no API call at all
         meta.update(failure='circuit_open', degraded=True, attempts=0, latency_s=0.0)
         return _failed(cfg, meta, f'degraded: {n} consecutive failures, retry in {int(open_until - t0)}s')
-    attempt = 0
+    attempt, tries = 0, []
     while True:
         attempt += 1
-        meta.pop('http_status', None); meta.pop('api_error', None)
+        for k in _ATTEMPT_KEYS: meta.pop(k, None)      # every attempt starts clean: no field outlives its own try
         dec, why, meta, failure = _attempt(cfg, key, model, meta, symbol, sleeve, sig, candles, funding, tf, side,
                                            timeout=max(1.0, BUDGET_S - (time.time() - t0)))
-        meta['attempts'] = attempt
+        tries.append(dict({k: meta[k] for k in _TRY_KEYS if k in meta}, failure=failure))
+        meta.update(attempts=attempt, tries=tries)
         if failure is None:
             _note(True)
+            if attempt > 1: meta.update(recovered=True, first_failure=tries[0]['failure'])
             meta['latency_s'] = round(time.time() - t0, 1)
             return dec, why, meta
         meta['failure'] = failure
