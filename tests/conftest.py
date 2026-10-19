@@ -49,6 +49,14 @@ def _no_log_file_outside_test_tmp():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_ai_review_health():
+    """AIREL-01: the AI review circuit is process-wide; every test starts with a closed circuit and zero counters."""
+    import sys
+    if 'ai_filter' in sys.modules: sys.modules['ai_filter']._reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _close_fill_writers():
     """T05: every test leaves no telemetry writer thread behind."""
     yield

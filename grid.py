@@ -107,6 +107,7 @@ import pandas as pd
 
 import strategies as S
 import backtest as B
+import feasibility as F
 
 log = logging.getLogger('zackbot')
 FEE, SLIP, FUND_PER_BAR = B.FEE, B.SLIP, B.FUND_PER_BAR
@@ -920,6 +921,10 @@ class GridManager:
         if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
         cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05
         if q * m > cap: raise ValueError(f"order {q:g} @ {m:g} exceeds the grid's own capital - not sent")
+        if F.above_max(q, self.e.rules.get(g['sym'])):                       # MAXQTY-01: Binance would refuse it (-4005)
+            raise ValueError(f"order {q:g} is above Binance's maximum order quantity - not sent")
+        tb = getattr(self.e, '_tier_block', lambda *a: None)(g['sym'], q * m, m)   # MAXQTY-01: Binance -2027 leverage tier
+        if tb: raise ValueError(f'{tb} - not sent')
 
     def _stop_ok(self, g, side, m):
         """AUD-05 r5: the side's stop-out ROUNDED to the tick (what the lot's exchange stop will be) must be > 0, on the

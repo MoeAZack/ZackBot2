@@ -1,9 +1,11 @@
 """Exchange-filter feasibility (BT02, issue #14) - ONE pure module shared by the backtester / replay, the live engine's
 entry and add gates, and the panel's preset preflight. No I/O, no clock, no network: callers pass everything in.
 
-Binance USD-M filters modelled (per symbol): MARKET_LOT_SIZE stepSize / minQty, MIN_NOTIONAL notional, PRICE_FILTER tick.
+Binance USD-M filters modelled (per symbol): MARKET_LOT_SIZE stepSize / minQty / maxQty, MIN_NOTIONAL notional, PRICE_FILTER tick.
 Safety rule (never changed here): a quantity is only ever rounded DOWN to the step. If the risk-sized quantity is below the
 exchange minimum the order is SKIPPED with a reason - it is never rounded up, because that would exceed the declared risk.
+MAXQTY-01: a quantity above the exchange's per-order maximum (MARKET_LOT_SIZE maxQty) is also SKIPPED locally - it is never
+sent (Binance answers -4005) and never silently cut to the maximum (that would trade a size the strategy did not ask for).
 
 Snapshots (versioned JSON, see exchange_rules.py for the file builder):
   {"schema": SCHEMA, "version": int, "environment": "testnet"|"mainnet", "source": str, "fetched_at": ISO-8601 UTC or null,
@@ -26,6 +28,7 @@ TRUSTED_SOURCES = {'testnet': 'https://testnet.binancefuture.com/fapi/v1/exchang
 # engine skip texts (unchanged wording - the panel and the trade history show them)
 REASON_LEV_CAP = 'leverage cap reached for this slot'
 REASON_BELOW_MIN = 'size below Binance minimum (raise capital or risk)'
+REASON_ABOVE_MAX = 'size above Binance maximum order quantity (lower capital or risk)'    # MAXQTY-01
 REASON_LEV_PLAN = 'the slot leverage cap is already used by the entry and earlier orders (more capital does not help)'
 REASON_NOT_REACHED = 'not reached: an earlier order of this sequence is skipped, so the engine never places this one'
 
@@ -66,14 +69,26 @@ def rules_from_exchange_info(info, allow_tradfi=False):
         out[s['symbol']] = dict(step=float(f['MARKET_LOT_SIZE']['stepSize']), min_qty=float(f['MARKET_LOT_SIZE']['minQty']),
                                 tick=float(f['PRICE_FILTER']['tickSize']),
                                 min_notional=float(f.get('MIN_NOTIONAL', {}).get('notional', DEFAULT_MIN_NOTIONAL)))
+        mx = _max_qty(f['MARKET_LOT_SIZE'].get('maxQty'))
+        if mx: out[s['symbol']]['max_qty'] = mx          # MAXQTY-01: only a real positive maximum (absent/0/bad = no key)
         if tradfi: out[s['symbol']]['kind'] = 'tradfi'
     return out
+
+
+def _max_qty(x):
+    """maxQty text -> a finite positive float, else None (absent, '', 0, negative, NaN/inf or unparseable)."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) and v > 0 else None
 
 
 def exchange_info_from_rules(rules):
     """The inverse (for simulated exchanges, e.g. replay.py): {symbol: rule} -> a minimal exchangeInfo dict."""
     return {'symbols': [{'symbol': s, 'contractType': 'PERPETUAL', 'status': 'TRADING', 'filters': [
-        {'filterType': 'MARKET_LOT_SIZE', 'stepSize': repr(float(r['step'])), 'minQty': repr(float(r['min_qty']))},
+        dict({'filterType': 'MARKET_LOT_SIZE', 'stepSize': repr(float(r['step'])), 'minQty': repr(float(r['min_qty']))},
+             **({'maxQty': repr(float(r['max_qty']))} if r.get('max_qty') else {})),
         {'filterType': 'PRICE_FILTER', 'tickSize': repr(float(r.get('tick') or 1e-6))},
         {'filterType': 'MIN_NOTIONAL', 'notional': repr(float(r['min_notional']))}]} for s, r in rules.items()]}
 
@@ -144,7 +159,7 @@ def diff_snapshots(old, new):
     a, b = snapshot_rules(old) or {}, snapshot_rules(new) or {}
     out = dict(changed={}, added=sorted(set(b) - set(a)), removed=sorted(set(a) - set(b)))
     for s in sorted(set(a) & set(b)):
-        ch = {k: (a[s].get(k), b[s].get(k)) for k in ('step', 'min_qty', 'min_notional', 'tick') if a[s].get(k) != b[s].get(k)}
+        ch = {k: (a[s].get(k), b[s].get(k)) for k in ('step', 'min_qty', 'max_qty', 'min_notional', 'tick') if a[s].get(k) != b[s].get(k)}
         if ch: out['changed'][s] = ch
     return out
 
@@ -169,10 +184,12 @@ def risk_qty(mgmt, risk_usd, px, atr, sd):
 # ------------------------------------------------------------------ THE order-size check
 def size_check(qty_raw, qty, px, rule):
     """Can this order be placed? qty_raw: the risk-sized quantity; qty: after the leverage cap (<= qty_raw); px: price.
-    rule: dict(step, min_qty, min_notional) or None (no rule known for the symbol).
-    Rounds qty DOWN to the step (step falsy -> no rounding) and checks minQty / minNotional - never rounds up.
+    rule: dict(step, min_qty, min_notional[, max_qty]) or None (no rule known for the symbol).
+    Rounds qty DOWN to the step (step falsy -> no rounding) and checks minQty / minNotional - never rounds up - and, when the
+    rule has one, the per-order maximum max_qty (MAXQTY-01: an oversized order is refused, never cut down to the maximum).
     -> dict(ok: True/False/None, qty: the quantity to send, code, reason)
-       code 'ok' | 'below_min_qty' | 'below_min_notional' | 'leverage_cap' | 'unknown' (rule None: ok=None, qty unchanged).
+       code 'ok' | 'below_min_qty' | 'below_min_notional' | 'leverage_cap' | 'above_max_qty' | 'unknown'
+       (rule None: ok=None, qty unchanged).
     'leverage_cap' = the risk-sized quantity itself would pass the minimums, only the leverage cap made it too small
     (checked on the unrounded qty_raw, exactly like the engine always did)."""
     if rule is None: return dict(ok=None, qty=qty, code='unknown', reason='no exchange rule for this symbol')
@@ -182,7 +199,26 @@ def size_check(qty_raw, qty, px, rule):
     if q < mq or q * px < mn:
         if qty_raw * px >= mn and qty_raw >= mq: return dict(ok=False, qty=q, code='leverage_cap', reason=REASON_LEV_CAP)
         return dict(ok=False, qty=q, code='below_min_qty' if q < mq else 'below_min_notional', reason=REASON_BELOW_MIN)
+    if above_max(q, rule): return dict(ok=False, qty=q, code='above_max_qty', reason=REASON_ABOVE_MAX)
     return dict(ok=True, qty=q, code='ok', reason='')
+
+
+def above_max(q, rule):
+    """MAXQTY-01: True when the order quantity q exceeds the rule's per-order maximum (no rule / no max_qty -> False)."""
+    mx = _max_qty((rule or {}).get('max_qty'))
+    return bool(mx) and q > mx * (1 + 1e-12)
+
+
+def tier_notional_cap(brackets, lev):
+    """MAXQTY-01 (leverage tier, Binance -2027 'Exceeded the maximum allowable position at current leverage'): the largest
+    position notional Binance allows at leverage `lev` = the highest notional cap of the brackets whose initial leverage is
+    >= lev. brackets: the validated schedule (engine.check_brackets: dicts with 'cap' and 'lev'). None when unknown."""
+    try:
+        caps = [float(x['cap']) for x in brackets or () if float(x['lev']) >= float(lev)]
+    except (KeyError, TypeError, ValueError):
+        return None
+    caps = [c for c in caps if math.isfinite(c) and c > 0]
+    return max(caps) if caps else None
 
 
 def required_qty(px, rule):

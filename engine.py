@@ -4205,6 +4205,7 @@ class Engine:
         if not d['ok']: return False
         q = d['qty']
         if not self.dry:
+            if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
@@ -5343,6 +5344,29 @@ class Engine:
         self._brk[sym] = (time.time(), b)
         return b
 
+    def _tier_block(self, sym, notional, px):
+        """MAXQTY-01: reason text when the coin's position notional after this order would exceed what Binance allows at the
+        leverage in use (feasibility.tier_notional_cap; Binance answers -2027), else None. Counted conservatively: every open
+        lot of the coin (both sides) and every resting entry order of the coin (its full quantity, filled part included), each
+        valued at the HIGHER of the current order price px and its own entry/limit price - never at a stale lower average
+        (a price rise must not hide notional). Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown
+        -> None. Reduce-only exits never pass through here."""
+        try:
+            b = self._brackets(sym, fetch=False)
+            if not b: return None
+            lev = min(max(1, int(self.S['MAX_LEVERAGE'])), float(b[0]['lev']))
+            cap = F.tier_notional_cap(b, lev)
+            if cap is None: return None
+            px = float(px)
+            held = sum(float(l['qty']) * max(px, float(l['avg'])) for l in self.state['lots'].values() if l['symbol'] == sym)
+            held += sum(float(r['qty']) * max(px, float((r.get('plan') or {}).get('px') or 0.0))
+                        for r in (self.state.get('resting_entries') or {}).values() if r.get('symbol') == sym)
+            if held + notional <= cap: return None
+            return (f'leverage tier: {sym} position {held + notional:,.0f} USDT would exceed the Binance maximum '
+                    f'{cap:,.0f} USDT at {lev:g}x')
+        except Exception:                                   # noqa: BLE001  a feasibility hint never raises into trading
+            return None
+
     def _lev_max(self, sym, fetch=True):
         """The coin's maximum initial leverage (first bracket), or None if unknown/invalid."""
         try:
@@ -5713,9 +5737,10 @@ class Engine:
                 if qty != db['qty']:
                     self._ctrl_log('scale', sl, sym, side, ce, factor, f'size {db["qty"]:g} -> {qty:g}', base_qty=db['qty'], qty=qty)
         if not d['ok']:
-            log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} below Binance minimum")
+            log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} {'above Binance maximum' if d['code'] == 'above_max_qty' else 'below Binance minimum'}")
             # same texts as feasibility.REASON_* (kept literal here: the trade-audit reason scan reads them from this file)
             self.last_skip = ('leverage cap reached for this slot' if d['code'] == 'leverage_cap'
+                              else 'size above Binance maximum order quantity (lower capital or risk)' if d['code'] == 'above_max_qty'
                               else 'size below Binance minimum (raise capital or risk)')
             return False
         block = self.entry_block(sl, sym, side, manual, size=dict(notional=qty * px, risk=risk_usd * qty / qty_raw if qty_raw else 0), sg=sg)
@@ -5744,6 +5769,9 @@ class Engine:
                                     e200=float(df.e200.iloc[-1]), st_dir=int(df.st.iloc[-1]), ret42=float(df.ret42.iloc[-1]), ret180=float(df.ret180.iloc[-1])),
                                     last, funding, tf=sl.get('tf', '4h'), side=side)
             log.info(f'AI review {sym} {side} [{sl["id"]} {sl.get("tf", "4h")}]: {dec} - {why} | {meta}')
+            if dec == 'skip' and meta.get('failed'):     # AIREL-01: fail-closed policy - an unusable review, not a veto
+                self.last_skip = why
+                return False
             if dec == 'skip':
                 self.log_trade(time=sg['time'], event='ai_veto', sleeve=sl['id'], symbol=sym, side=side, qty=qty, price=px, note=why)
                 self.last_skip = f'Claude review vetoed: {why}'
@@ -5757,6 +5785,11 @@ class Engine:
             self.last_skip = f'could not set leverage/margin on Binance: {e}'
             log.warning(f'{sym}: {self.last_skip}')
             if manual: raise ValueError(self.last_skip)
+            return False
+        tb = self._tier_block(sym, qty * px, px)              # MAXQTY-01: Binance -2027 refused locally, nothing sent
+        if tb:
+            self.last_skip = tb
+            if manual: raise ValueError(tb)
             return False
         for w_ in warns:                                 # risk rules in 'warn' mode: logged, the trade still goes ahead
             log.warning(f'RISK WARNING {sym} {side}: {w_}')
