@@ -218,12 +218,13 @@ def _attempt(cfg, key, model, meta, symbol, sleeve, sig, candles, funding, tf, s
             json=payload)
         meta['http_status'] = r.status_code
         meta['resp_sha'] = _sha(r)
+        try: meta['blocks'] = _block_types(r.json())    # recorded before any check, so a malformed answer keeps them too
+        except Exception: meta['blocks'] = None         # noqa: BLE001 - not JSON: no block types
         err = api_error_type(r)
         if err:
             meta['api_error'] = err
             raise APIReviewError(err if err == 'malformed_response' else 'http_error')
         body = r.json()
-        meta['blocks'] = _block_types(body)
         sr = body.get('stop_reason')
         meta['stop_reason'] = sr if isinstance(sr, str) and _ERR_TYPE.fullmatch(sr) else (None if sr is None else '?')
         if sr not in (None, 'end_turn'):
