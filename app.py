@@ -1913,6 +1913,9 @@ def selftest(path):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
         import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data, strategy_shadow, shadow_funding   # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
+        import engine as _E, run_pack as _RP                   # COHORT-SHA-01: the cohort code identity must be computable
+        here = os.path.dirname(os.path.abspath(_E.__file__))
+        res['code_sha'] = _RP.code_sha([os.path.join(here, f) for f in _E.Engine.COHORT_CODE])
         res['ok'] = True
     except Exception as e:
         res['error'] = f'{type(e).__name__}: {e}'

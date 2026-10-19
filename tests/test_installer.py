@@ -1099,3 +1099,18 @@ def test_upgrade_mirror_preserves_collected_market_data():
         assert os.path.exists(os.path.join(dst, 'data_market', 'manifest.json'))
         assert open(os.path.join(dst, 'app.py')).read() == 'new' and not os.path.exists(os.path.join(dst, 'old_module.py'))
         assert not os.path.exists(os.path.join(dst, '.git')), 'the staged .git pointer must not be mirrored'
+
+
+def test_cohort_code_identity_sources_are_bundled_into_the_exe():
+    """COHORT-SHA-01: a --onefile exe ships no .py files, so Engine._cohort_identity could not hash its sources and
+    recorded code_sha=None; a cohort started by a source run then showed false code drift in the exe. Every file the
+    identity hashes must be bundled next to engine.py (';.'), and the exe self-test must compute the hash."""
+    import engine as E
+    src = _read('installer.ps1').decode('utf-8')
+    build = src[src.index("@('-m', 'PyInstaller'"):]
+    build = build[:build.index("Stop-Install 'PyInstaller failed")]
+    for f in E.Engine.COHORT_CODE:
+        assert f"'--add-data', ([IO.Path]::Combine($src, '{f}') + ';.')" in build, f'{f} is not bundled next to engine.py'
+    app = _read('app.py').decode('utf-8')
+    st = app[app.index('def selftest('):app.index('def main():')]
+    assert "res['code_sha'] = _RP.code_sha(" in st and 'Engine.COHORT_CODE' in st
