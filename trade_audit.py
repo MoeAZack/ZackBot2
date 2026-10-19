@@ -1558,6 +1558,8 @@ _PREFIX = (
     ('DCA basket without a hard stop', 'config', 'dca_no_stop'),
     ('DCA settings out of range', 'config', 'dca_range'),
     ('size below Binance minimum', 'execution', 'size_min'),
+    ('size above Binance maximum', 'execution', 'size_max'),           # MAXQTY-01: per-order maxQty, refused locally
+    ('leverage tier:', 'execution', 'lev_tier'),                       # MAXQTY-01: Binance -2027 position cap at the leverage
     ('fee_edge:', 'risk_gateway', 'cost_to_stop'),
     ('control: direction bias', 'filter', 'ctrl_bias'),                 # CTRL-01-LITE: bias x0 disables this side
     ('control: scaled size', 'execution', 'ctrl_size_min'),             # CTRL-01-LITE: scaled below the exchange minimum
