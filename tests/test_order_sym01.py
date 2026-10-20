@@ -20,13 +20,13 @@ from test_fee_asset01 import MX                                         # noqa: 
 import engine as E                                                      # noqa: E402
 import true_books as TB                                                 # noqa: E402
 
-XFAIL = pytest.mark.xfail(strict=True, reason='ORDER-SYM-01: deferred same-candle reconsideration not implemented')
+XFAIL = pytest.mark.xfail(strict=True, reason='ORDER-SYM-01: contract conflict reported to Codex (fixture, not the deferral)')
 A, B, C, X1, X2 = 'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT'
 PX = {A: 100.0, B: 50.0, C: 20.0, X1: 2.0, X2: 1.0}
 P_SL = E.sleeve('P', 'exp_scalp', 0.5, 0.02, 4, [A], tf='15m')          # B1_FAST
 Q_SL = E.sleeve('Q', 'exp_scalp', 0.5, 0.02, 4, [B], tf='15m')          # B1_FAST
 R_SL = E.sleeve('R', 'exp_scalp', 0.5, 0.02, 4, [C], tf='15m')          # B1_FAST
-F_SL = E.sleeve('F', 'exp_scalp', 0.5, 0.02, 4, [X1, X2], tf='4h')      # B1_FAST filler lots (outside the 15m cycle)
+F_SL = E.sleeve('F', 'exp_scalp', 0.5, 0.01, 4, [X1, X2], tf='4h')      # B1_FAST filler lots, 1% risk: 1+1+2+2 < 8% stop-risk room
 T_SL = E.sleeve('T', 'ema_mom', 0.5, 0.02, 4, [B], tf='4h')             # B3_TREND
 ORDERS = {'AB': ([P_SL, Q_SL], A, B), 'BA': ([Q_SL, P_SL], B, A)}       # sleeve order = candidate iteration order
 TF = 900
@@ -153,7 +153,6 @@ def test_unresolved_commission_fails_closed_in_both_orders(order, eng):
 
 
 # ------------------------------------------------------------------ deferred reconsideration (missing on master)
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
 def test_resolved_commission_lets_the_deferred_candidate_open_in_the_same_candle(order, eng):
     sleeves, first, second = ORDERS[order]
@@ -166,7 +165,6 @@ def test_resolved_commission_lets_the_deferred_candidate_open_in_the_same_candle
     assert held(e) == sorted([A, B]), f'deferred {second} not reconsidered: {held(e)}'
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
 def test_reconsideration_never_duplicates_an_order(order, eng):
     sleeves, first, second = ORDERS[order]
@@ -197,7 +195,6 @@ def test_limited_room_never_exceeds_the_book_cap(order, eng):
     assert b1(e)['lots'] <= 4 and len(opens(e)) <= 4                   # never 2 extra opens
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ROOM)
 def test_limited_room_reconsiders_the_earliest_deferred_first(order, eng):
     sleeves, first, d1, d2 = ROOM[order]
@@ -333,6 +330,18 @@ def test_only_cost_pending_refusals_are_deferred(order, eng):
     assert opens(e) == [second, first] and held(e) == sorted([A, B])
 
 
+def test_cohort_boundary_clears_the_deferred_set(eng):
+    """A cohort boundary drops every deferred record (one terminal miss each) and nothing opens from it afterwards."""
+    e = eng([P_SL, Q_SL]); rows = spy(e)
+    one_cycle(e, {A, B})
+    assert opens(e) == [A] and [r['sym'] for r in e._deferred] == [B]
+    c = e.state['cohort']; e._start_cohort(c['started_utc'], c['seq'] + 1)
+    assert e._deferred == [] and misses(rows, B) == ['cohort boundary']
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    assert opens(e) == [A] and held(e) == [A]
+
+
 @pytest.mark.parametrize('order', ORDERS)
 def test_restart_mid_deferral_never_opens_the_deferred_candidate(order, eng, monkeypatch):
     """Guard: deferral is memory-only. A fresh Engine on the same folder / account gets the first fill's commission and is
@@ -389,7 +398,6 @@ def pending(why):
     return any(w in why for w in PENDING)
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
 def test_ledger_defer_resolve_open_is_one_pending_then_one_taken(order, eng):
     sleeves, first, second = ORDERS[order]
@@ -419,7 +427,6 @@ def test_ledger_a_dropped_deferral_is_recorded_once(order, end, eng):
     assert opens(e) == [first]
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
 @pytest.mark.parametrize('end', ['roll', 'lost'])
 def test_ledger_a_dropped_deferral_records_its_terminal_reason_once(order, end, eng):
@@ -435,7 +442,6 @@ def test_ledger_a_dropped_deferral_records_its_terminal_reason_once(order, end, 
     assert status(rows, '_ml_decision', second) == ['pending', 'skipped']
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
 def test_reconsideration_calls_open_lot_exactly_once(order, eng):
     """open_lot is the normal path (AI review, fee edge, admit run inside it): one more call for the deferred coin."""
@@ -449,7 +455,6 @@ def test_reconsideration_calls_open_lot_exactly_once(order, eng):
     assert calls == [second], calls
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
 @pytest.mark.parametrize('change', ['fee_edge', 'paused'])
 def test_a_state_change_while_deferred_is_the_recorded_recheck_reason(order, change, eng):
@@ -466,15 +471,16 @@ def test_a_state_change_while_deferred_is_the_recorded_recheck_reason(order, cha
     assert len(ms) == 1 and ms[0].startswith(want), ms                   # ONE terminal miss: the re-check reason
 
 
-@XFAIL
 @pytest.mark.parametrize('order', ORDERS)
-def test_race_at_the_roll_opens_once_from_the_fresh_signal(order, eng):
+def test_race_at_the_roll_opens_once_from_the_fresh_signal(order, eng, monkeypatch):
     """T0 deferred; the T1 cycle runs with the commission STILL in flight (T1 refused pending, T0 dropped); the commission
     lands within T1 -> exactly one open, keyed to T1."""
     sleeves, first, second = ORDERS[order]
     e = eng(sleeves); rows = spy(e)
     one_cycle(e, {A, B})
+    monkeypatch.setattr(E.Engine, 'COST_WAIT_S', 3 * TF)               # still IN FLIGHT at T1 (not yet fill_records_lost)
     eng.clock[0] += TF
+    e.marks_t = eng.clock[0]; e.state['funding_read_ms'] = int(eng.clock[0] * 1000)          # fresh feeds at T1
     one_cycle(e, {second}, t=T1)
     assert opens(e) == [first] and status(rows, '_ml_decision', second)[-1] == 'pending'   # T1 deferred, not a miss
     deliver(e)
@@ -511,3 +517,30 @@ def test_ledger_hook_signatures_are_the_ones_the_spies_index():
     assert sig(E.Engine._ml_decision)[:7] == ['self', 'sl', 'sym', 'side', 'sg', 'frames', 'status']
     assert sig(E.Engine._shadow_signal)[:6] == ['self', 'sl', 'sym', 'side', 'sg', 'status']
     assert sig(E.Engine._audit_cand)[:6] == ['self', 'sl', 'sym', 'side', 'sg', 'decision']
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_no_retry_while_the_commission_is_still_in_flight(order, eng):
+    """A still-pending book is checked cheaply: open_lot (AI review, fee edge, admit) is not re-run on every tick."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves)
+    one_cycle(e, {A, B})
+    calls, real = [], e.open_lot
+    e.open_lot = lambda sl, sym, *a, **k: (calls.append(sym), real(sl, sym, *a, **k))[1]
+    for _ in range(3): app_pass(e)                                       # commission still held by the gate
+    assert calls == [] and len(e._deferred) == 1
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_reconsideration_never_re_enters_itself(order, eng):
+    """A nested apply_costs() from inside the retried open_lot never starts a second reconsideration pass."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves)
+    one_cycle(e, {A, B})
+    calls, real = [], e.open_lot
+    def nested(sl, sym, *a, **k):
+        calls.append(sym); e.apply_costs()                               # a future nested caller
+        return real(sl, sym, *a, **k)
+    e.open_lot = nested
+    deliver(e); app_pass(e)
+    assert calls == [second] and opens(e).count(second) == 1

@@ -2715,7 +2715,7 @@ class Engine:
                     if kind == 'row': self._row_changed(t)
         return rows, lots
 
-    def apply_costs(self):
+    def apply_costs(self, reconsider=True):
         """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
         try:
             with self.lock:
@@ -2737,7 +2737,9 @@ class Engine:
                 for t in revised.values(): self._row_changed(t)     # evidence revision first, then the history file
                 if rows: self._save_aux('history', self.history)
                 if lots: self.save_state()
-                return len(todo) - len(wait)
+                n = len(todo) - len(wait)
+            if reconsider: self._reconsider()         # ORDER-SYM-01: a measured book lets its deferred candidates retry
+            return n
         except Exception as ex:
             log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
             return 0
@@ -2914,7 +2916,7 @@ class Engine:
         if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
         # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
         # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
-        self.apply_costs()
+        self.apply_costs(reconsider=False)              # ORDER-SYM-01: inside entry_block - never a nested open_lot
         if sym and side and self._tb_opposite(sym, side, skip_pending): return 'true_book/opposite_side_funding_ambiguity'
         book = TB.book_of(sl.get('key'))
         if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
@@ -5222,6 +5224,7 @@ class Engine:
                             self._shadow_signal(sl, s, side, sg, 'pending', 'trailing entry armed')                    # TRUE-BOOK-02
                             held.append(s); continue
                     if why is None:
+                        if getattr(self, '_deferred', None): self.apply_costs()   # ORDER-SYM-01: earlier deferred ones go first
                         self.last_skip = ''
                         lk0 = getattr(self, '_last_lot_key', None)
                         try:
@@ -5239,6 +5242,8 @@ class Engine:
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
+                        if 'cost_pending' in why:                # ORDER-SYM-01: commission in flight - deferred, not missed
+                            self._defer(sl, s, side, sg, frames, len(held), why); continue
                     self.miss(sl, s, side, sg, why)
                     self._ml_decision(sl, s, side, sg, frames, 'pending' if why == 'maker entry working' else 'skipped',
                                       why, len(held))                                       # ML-SHADOW-01 (observe only)
@@ -5250,6 +5255,64 @@ class Engine:
             self.health['last_cycle_ok'][tf] = now_utc().isoformat(timespec='seconds')
             self.save_state()
             self.record_equity(self.guard_eq or eq)
+
+    # ORDER-SYM-01 (Codex 6290806436 / 6291113027 / 6291322988): a candidate refused only because its book's fill commission
+    # is in flight is deferred (memory only, never persisted) and retried through open_lot, in the original order, once the
+    # book is measured - within its own candle. Ledger: one 'pending', then one 'taken' or ONE terminal miss + 'skipped'.
+    def _defer(self, sl, s, side, sg, frames, n, why):
+        dq = vars(self).setdefault('_deferred', [])      # a stale same-coin record is dropped by its candle expiry first
+        row = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], symbol=s, side=side,
+                   strategy=sl.get('name', sl['id']), price=sg['close'], reason=scrub(str(why)), deferred=True)
+        self.missed.append(row); self.missed = self.missed[-600:]   # visible while deferred; replaced at its outcome, never miss()
+        dq.append(dict(sl=sl, sym=s, side=side, sg=sg, frames=frames, n=n, row=row))
+        self._ml_decision(sl, s, side, sg, frames, 'pending', why, n)               # ML-SHADOW-01 (observe only)
+        self._shadow_signal(sl, s, side, sg, 'pending', why)                        # TRUE-BOOK-02
+
+    def _defer_unrow(self, r):
+        self._deferred.remove(r); self.missed = [m for m in self.missed if m is not r['row']]
+
+    def _defer_drop(self, r, why):
+        self._defer_unrow(r)
+        sl, s, side, sg = r['sl'], r['sym'], r['side'], r['sg']
+        self.miss(sl, s, side, sg, why)
+        self._ml_decision(sl, s, side, sg, r['frames'], 'skipped', why, r['n'])
+        self._shadow_signal(sl, s, side, sg, 'skipped', why)
+
+    def _reconsider(self):
+        """Retry deferred candidates (original order, each at most once per call) whose book is no longer cost_pending."""
+        if not getattr(self, '_deferred', None) or getattr(self, '_defer_busy', False): return
+        with self.lock:
+            self._defer_busy = True                    # open_lot below never re-enters this
+            try:
+                for r in list(self._deferred):
+                    if r not in self._deferred: continue
+                    sl = next((x for x in self.S['SLEEVES'] if x['id'] == r['sl']['id']), None)
+                    t = pd.Timestamp(r['sg']['time']); t = t.tz_localize('UTC') if t.tzinfo is None else t
+                    if time.time() >= t.timestamp() + 2 * TF_SEC.get(r['sl']['tf'], 14400):   # its decision candle is gone
+                        self._defer_drop(r, 'signal candle closed while the book commission was pending'); continue
+                    if sl is None: self._defer_drop(r, 'strategy slot removed'); continue
+                    b = self.true_books(persist=False).get(TB.book_of(sl.get('key')))
+                    if b is not None and TB.cost_pending_only(b): continue
+                    s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
+                    self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
+                    try:
+                        self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
+                        try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
+                        finally: self._ml_direct = None
+                    except Exception as e:
+                        self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
+                    why = '' if opened else self.last_skip or 'order failed'
+                    if 'cost_pending' in why: continue        # another fill's commission in flight: still deferred
+                    if not opened: self._defer_drop(r, why); continue
+                    self._defer_unrow(r); self._save_aux('missed', self.missed)
+                    self._audit_opened(sl, s, side, sg)
+                    lk = getattr(self, '_last_lot_key', None)
+                    mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'
+                    self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
+                                      lk if lk != lk0 else None)
+                    self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')
+            finally:
+                self._defer_busy = False
 
     def reentry_lock(self, sl, sym, side, sg):
         """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an
@@ -5912,6 +5975,7 @@ class Engine:
                 and not self.state.get('cohort_closing') and not getattr(self, '_cohort_conflict', False))
 
     def _start_cohort(self, start, seq):
+        for r in list(getattr(self, '_deferred', None) or ()): self._defer_drop(r, 'cohort boundary')   # ORDER-SYM-01
         self.state['cohort'] = RP.new_cohort(start, seq=seq, **self._cohort_identity())
         self.state['cohort_settings'] = self._settings_snapshot()
         self.state['book_ledger'] = None
