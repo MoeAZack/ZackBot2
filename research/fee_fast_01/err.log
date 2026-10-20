@@ -1,0 +1,34 @@
+15m 6 syms 2024-09-07 08:00:00 -> 2026-09-27 23:45:00 gaps {}
+4h 40 syms 2024-09-14 04:00:00 -> 2026-09-27 20:00:00 gaps {}
+ema_st long 327
+ema_mom long 288
+donchian_ens long 505
+breakout_pyramid long 625
+squeeze_tp long 494
+pullback_rsi long 439
+dca_dip long 606
+bear_breakdown short 515
+rotation long 1158
+hot_coin long 540
+exp_trend long 317
+exp_trend short 412
+exp_range long 1706
+exp_range short 1542
+exp_breakout long 1000
+exp_breakout short 762
+exp_scalp long 1279
+exp_scalp short 1313
+exp_structure long 1326
+exp_structure short 1802
+exp_mom_short short 332
+exp_rip_sell_dca short 1069
+exp_vwaprev long 0
+exp_vwaprev short 0
+range_scalp long 926
+range_scalp short 995
+failed_breakout_scalp long 1673
+failed_breakout_scalp short 1312
+momentum_burst_scalp long 2288
+momentum_burst_scalp short 2712
+quick_bank_runner long 917
+quick_bank_runner short 1052
