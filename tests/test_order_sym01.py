@@ -240,9 +240,8 @@ def test_a_commission_that_never_arrives_drops_the_deferred_candidate(order, eng
     assert not TB.cost_pending_only(b1(e))
 
 
-@pytest.mark.xfail(strict=True, reason='ORDER-SYM-01 finding: an entry lot is never finalized before its first cost record, '
-                                       'so _cost_sweep never turns it into fill_records_lost')
 def test_a_commission_that_never_arrives_is_marked_lost(eng):
+    """Was a strict-xfail finding on d5e3491 (entry lot never finalized before its first cost record); fixed by #163."""
     e = eng([P_SL])
     one_cycle(e, {A})
     eng.clock[0] += E.Engine.COST_WAIT_S + 60
@@ -457,13 +456,14 @@ def test_a_state_change_while_deferred_is_the_recorded_recheck_reason(order, cha
     sleeves, first, second = ORDERS[order]
     e = eng(sleeves); rows = spy(e)
     one_cycle(e, {A, B})
-    assert pending(misses(rows, second)[-1])
+    assert status(rows, '_ml_decision', second) == ['pending'] and misses(rows, second) == []   # deferred: pending, no miss
     e.S.update(dict(FEE_EDGE_GATE=True, FEE_EDGE_MULT=20.0) if change == 'fee_edge' else dict(ENTRIES_PAUSED=True))
     deliver(e)
     for _ in range(3): app_pass(e)
     assert opens(e) == [first]
     want = 'fee_edge' if change == 'fee_edge' else 'entries paused'
-    assert misses(rows, second)[-1].startswith(want), misses(rows, second)
+    ms = misses(rows, second)
+    assert len(ms) == 1 and ms[0].startswith(want), ms                   # ONE terminal miss: the re-check reason
 
 
 @XFAIL
@@ -476,10 +476,12 @@ def test_race_at_the_roll_opens_once_from_the_fresh_signal(order, eng):
     one_cycle(e, {A, B})
     eng.clock[0] += TF
     one_cycle(e, {second}, t=T1)
-    assert opens(e) == [first] and pending(misses(rows, second)[-1])
+    assert opens(e) == [first] and status(rows, '_ml_decision', second)[-1] == 'pending'   # T1 deferred, not a miss
     deliver(e)
     for _ in range(3): app_pass(e)
     assert opens(e).count(second) == 1 and taken(rows, second) == [T1], (opens(e), taken(rows, second))
+    ms = misses(rows, second)
+    assert len(ms) == 1 and not pending(ms[0]), ms                     # only T0's terminal (candle-roll) miss
 
 
 @pytest.mark.parametrize('order', ROOM)
@@ -499,3 +501,13 @@ def test_stop_risk_room_holds_the_deferred_candidates_out(order, eng):
     b = b1(e)
     assert 'stop-risk cap' in (TB.admit(b, 0, r) or ''), TB.admit(b, 0, r)
     assert held(e, 'B1_FAST') == sorted([X1, first]) and b['stop_risk'] <= cap
+
+
+def test_ledger_hook_signatures_are_the_ones_the_spies_index():
+    """Cowork nit: misses()/status()/taken() read positional args; an arity change must fail here, by name."""
+    import inspect
+    sig = lambda f: list(inspect.signature(f).parameters)
+    assert sig(E.Engine.miss)[:7] == ['self', 'sl', 'sym', 'side', 'sg', 'reason', 'kind']
+    assert sig(E.Engine._ml_decision)[:7] == ['self', 'sl', 'sym', 'side', 'sg', 'frames', 'status']
+    assert sig(E.Engine._shadow_signal)[:6] == ['self', 'sl', 'sym', 'side', 'sg', 'status']
+    assert sig(E.Engine._audit_cand)[:6] == ['self', 'sl', 'sym', 'side', 'sg', 'decision']
