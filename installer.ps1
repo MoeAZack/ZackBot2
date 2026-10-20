@@ -457,10 +457,11 @@ function Invoke-Step1Stage {
         $s.StageWorktree = $true                                 # from here on Invoke-Main unregisters it, success or failure
         $r = Invoke-Git @('-C', $s.Src, 'worktree', 'add', '--detach', $s.StageSrc, $s.SrcCommit)
         if ($r.Code -ne 0) { Stop-Install 'staging the committed source failed (git worktree add) - nothing was changed; the reason is in the log' }
-        # The installer-private files stay out of the staged tree exactly as the plain-folder copy below leaves them out
-        # (the staged tests skip the launcher checks; nothing nests a real installer run). skip-worktree first, so their
-        # absence is not an uncommitted change: the staged tree stays a CLEAN checkout of the commit.
-        $priv = @('build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat')
+        # Keep installer.ps1 through the safety tests: COHORT-SHA-01 inspects its exact PyInstaller recipe. The launchers
+        # remain absent so a staged test can never nest a real install. installer.ps1 is removed immediately after pytest,
+        # before PyInstaller and the runtime mirror, so installer-private implementation is never shipped.
+        # skip-worktree first, so deleting the launchers leaves this detached staging checkout clean.
+        $priv = @('build_app.bat', 'rollback_drill.bat', 'setup_git.bat')
         $r = Invoke-Git (@('-C', $s.StageSrc, 'update-index', '--skip-worktree', '--') + $priv)
         if ($r.Code -ne 0) { Stop-Install 'staging the committed source failed (git update-index) - nothing was changed; the reason is in the log' }
         foreach ($f in $priv) {
@@ -476,7 +477,7 @@ function Invoke-Step1Stage {
         # made the staged tree a dirty checkout of the real repository (BUILD-FIX-01).
         $r = Invoke-Logged 'robocopy' @(($s.Src.TrimEnd('\') + '\.'), $s.StageSrc, '/MIR',
             '/XD', '__pycache__', '.git', '.git_failed_*', 'dev_out', 'data_market',
-            '/XF', '.git', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', '*.log', 'session.json',
+            '/XF', '.git', 'build_app.bat', 'rollback_drill.bat', 'setup_git.bat', 'config.env', '*.log', 'session.json',
             '*.tmp', '*.pkl', 'build_info.py', '/NFL', '/NDL', '/NJH', '/NJS')
         if ($r.Code -ge 8) { Stop-Install 'copying the source failed' }
     }
@@ -512,6 +513,11 @@ function Invoke-BuildSteps {
     Start-Step 'safety_tests'
     $r = Invoke-Logged $bpy @('-m', 'pytest', '-q', '-p', 'no:cacheprovider', '-m', 'not slow', 'tests') $s.StageSrc
     if ($r.Code -ne 0) { Stop-Install 'the safety tests FAILED - this build is not safe to install' }
+    # The staged suite needs the committed recipe above, but neither the frozen executable nor installed source does.
+    $installerPrivate = [IO.Path]::Combine($s.StageSrc, 'installer.ps1')
+    try { if ([IO.File]::Exists($installerPrivate)) { [IO.File]::Delete($installerPrivate) } }
+    catch { Stop-Install 'could not remove installer.ps1 from staging after the safety tests' }
+    if ([IO.File]::Exists($installerPrivate)) { Stop-Install 'could not remove installer.ps1 from staging after the safety tests' }
     # The exe bundles ONE runtime file from data\ (the testnet exchange rules). The cleanup below deletes the whole staged
     # data\ folder, so keep that file aside first (BUILD-FIX-01: deleting it made PyInstaller fail on 2026-10-08).
     $rulesSrc = [IO.Path]::Combine($s.StageSrc, 'data', 'exchange_rules_testnet.json')
@@ -535,6 +541,11 @@ function Invoke-BuildSteps {
         '--add-data', ([IO.Path]::Combine($src, 'panel.html') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'research') + ';research'),
         '--add-data', ($rulesKept + ';data'),
+        # COHORT-SHA-01: the RUN-PACK-01 cohort code identity hashes these sources next to engine.py; a onefile exe has no
+        # .py files, so without them the exe records code_sha=None and a source-run boundary looks like code drift.
+        '--add-data', ([IO.Path]::Combine($src, 'engine.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'strategies.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'paper_books.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'book_ledger.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'backtest.py') + ';.'),
         '--collect-data', 'tzdata',
         '--distpath', [IO.Path]::Combine($s.Stage, 'dist'), '--workpath', [IO.Path]::Combine($s.Stage, 'work'),
         '--specpath', [IO.Path]::Combine($s.Stage, 'work'), [IO.Path]::Combine($src, 'app.py'))

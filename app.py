@@ -1059,6 +1059,7 @@ class App:
         def ms_iso(t):
             try: return datetime.fromisoformat(t).timestamp()
             except Exception: return 0.0
+        import ai_filter as AF                                             # AIREL-01: review health for the panel
         h = e.health
         if hasattr(e, '_sweep_incidents'): e._sweep_incidents()        # T05b: one-off errors stop being "open" when idle
         now = time.time()
@@ -1081,7 +1082,8 @@ class App:
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
                     audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
                     market_collector=self.collector.status() if getattr(self, 'collector', None) else None,
-                    shadow_funding=self.shadow_funding.status() if getattr(self, 'shadow_funding', None) else None)
+                    shadow_funding=self.shadow_funding.status() if getattr(self, 'shadow_funding', None) else None,
+                    ai_review=AF.health() if e.S.get('AI_FILTER') else None)        # AIREL-01: degraded / counters
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
@@ -1178,6 +1180,7 @@ class App:
         e = self.engine; marks = e.marks or {}
         out = []
         for m in e.missed[-300:][::-1]:
+            if m.get('kind') == 'deferred': continue     # ORDER-SYM-01: a candidate still waiting is not a missed trade
             mk = marks.get(m['symbol']); sd = 1 if m['side'] == 'LONG' else -1
             out.append(dict(m, now=mk, move_pct=round(sd * (mk - m['price']) / m['price'] * 100, 2) if mk else None))
         return out
@@ -1913,6 +1916,9 @@ def selftest(path):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
         import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data, strategy_shadow, shadow_funding   # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
+        import engine as _E, run_pack as _RP                   # COHORT-SHA-01: the cohort code identity must be computable
+        here = os.path.dirname(os.path.abspath(_E.__file__))
+        res['code_sha'] = _RP.code_sha([os.path.join(here, f) for f in _E.Engine.COHORT_CODE])
         res['ok'] = True
     except Exception as e:
         res['error'] = f'{type(e).__name__}: {e}'

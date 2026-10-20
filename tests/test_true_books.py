@@ -199,7 +199,7 @@ def test_add_counts_notional_and_stop_risk_not_a_lot():
     for i in range(3): e.state['lots'][f'x{i}'] = fake_lot(e, 'B3_TREND', stop=99.9, qty=0.1)
     assert e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
     k, lot = next((k, l) for k, l in e.state['lots'].items() if l['sleeve'] == 'T')
-    assert e._add_block(lot, 0.001, 100.0).startswith('book B3_TREND INCOMPLETE (fees_actual_missing)')  # fill cost unknown
+    assert e._add_block(lot, 0.001, 100.0).startswith('book B3_TREND cost_pending')  # fill cost still in flight
     settle(e)
     b = e.true_books()['B3_TREND']
     room = TB.STOP_RISK_MAX * b['nav_worse'] - b['stop_risk']
@@ -874,6 +874,21 @@ def test_a_commission_in_flight_blocks_with_its_own_reason_and_is_not_notified(m
     why = TB.admit(e.true_books()['B1_FAST'])
     assert why.startswith('book B1_FAST INCOMPLETE') and TA.reason_code(why) == ('true_book', 'book_incomplete')
     assert len(sent) == 1
+
+
+def test_true_book_gate_folds_a_resolved_commission_before_the_next_candidate():
+    e, _ = tb_engine()
+    lot = fake_lot(e, 'B3_TREND', cost_refs=['fee-1'],
+                   fills=[['2026-10-17T14:00:00+00:00', 'entry', 1.0, 100.0]])
+    lot.pop('fees_actual')
+    e._cost_final('lot', lot)
+    e.state['lots']['x'] = lot
+    assert lot['fees_actual_partial'] == ['fill_records_pending']
+    e._cost_sink(dict(cost_ref='fee-1', symbol='ETHUSDT',
+                      commission_raw=[dict(asset='USDT', maker=False, amount=0.05, n=1)]))
+
+    assert e.true_book_block(T_SL, sym='BTCUSDT', side='LONG') is None
+    assert lot['fees_actual'] == pytest.approx(0.05) and lot['fees_actual_partial'] is False
 
 
 @pytest.mark.parametrize('text,code', [('book B3_TREND full (4/4 lots)', 'book_full'),
