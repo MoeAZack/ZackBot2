@@ -335,7 +335,7 @@ def test_only_cost_pending_refusals_are_deferred(order, eng):
 
 
 @pytest.mark.parametrize('order', ORDERS)
-def test_restart_mid_deferral_never_opens_the_deferred_candidate(order, eng):
+def test_restart_mid_deferral_never_opens_the_deferred_candidate(order, eng, monkeypatch):
     """Guard: deferral is memory-only. A fresh Engine on the same folder / account gets the first fill's commission and is
     then fully measured - the deferred candidate of the dead process never opens, and no deferred key is persisted."""
     sleeves, first, second = ORDERS[order]
@@ -345,7 +345,7 @@ def test_restart_mid_deferral_never_opens_the_deferred_candidate(order, eng):
     keys = lambda x: set(json.load(open(x.F['state'], encoding='utf-8')))
     assert ctl.save_state() and keys(e) == keys(ctl)                   # nothing new appears in the saved state
     assert 'defer' not in open(e.F['state'], encoding='utf-8').read().lower()
-    E.Futures = lambda *a, **k: e.trade                                # restart: same data folder, same (fake) account
+    monkeypatch.setattr(E, 'Futures', lambda *a, **k: e.trade)        # restart: same data folder, same (fake) account
     e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), e.dir)
     e2.data, e2._enr = e2.trade, E.FillEnricher()
     e2.S.update({k: e.S[k] for k in ('CAPITAL_CAP', 'PAPER_BOOKS', 'PAPER_BOOK_CAP', 'TRUE_BOOKS', 'CAP_SINCE', 'UNIVERSE',
@@ -359,3 +359,143 @@ def test_restart_mid_deferral_never_opens_the_deferred_candidate(order, eng):
     assert b1(e2)['complete'], b1(e2)['incomplete']
     app_pass(e2); app_pass(e2)
     assert opens(e) == [first] and sorted(l['symbol'] for l in e2.state['lots'].values()) == [first]
+
+
+# ------------------------------------------------------------------ decision-ledger truth (Codex 6291113027, Cowork 6291124835)
+def spy(e):
+    """Record every decision hook call (miss, ML row, shadow row, T05a audit) - the calls ARE the ledger rows."""
+    rows = []
+    for n in ('miss', '_ml_decision', '_shadow_signal', '_audit_cand'):
+        real = getattr(e, n)
+        def w(*a, _r=real, _n=n, **k):
+            rows.append((_n, a, k)); return _r(*a, **k)
+        setattr(e, n, w)
+    return rows
+
+
+def misses(rows, sym):
+    return [a[4] for n, a, k in rows if n == 'miss' and a[1] == sym and (k.get('kind') if 'kind' in k else (a[5] if len(a) > 5 else None)) is None]
+
+
+def status(rows, hook, sym):
+    i = {'_ml_decision': 5, '_shadow_signal': 4}[hook]
+    return [a[i] for n, a, k in rows if n == hook and a[1] == sym]
+
+
+def taken(rows, sym):
+    return [a[3].get('time') for n, a, k in rows if n == '_audit_cand' and a[1] == sym and a[4] == 'taken']
+
+
+def pending(why):
+    return any(w in why for w in PENDING)
+
+
+@XFAIL
+@pytest.mark.parametrize('order', ORDERS)
+def test_ledger_defer_resolve_open_is_one_pending_then_one_taken(order, eng):
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); rows = spy(e)
+    one_cycle(e, {A, B}); deliver(e)
+    for _ in range(3): app_pass(e)
+    assert misses(rows, second) == [] and not [m for m in e.missed if m['symbol'] == second], misses(rows, second)
+    assert status(rows, '_ml_decision', second) == ['pending', 'taken']
+    assert status(rows, '_shadow_signal', second) == ['pending', 'taken']
+    assert taken(rows, second) == [T0] and held(e) == sorted([A, B])
+
+
+@pytest.mark.parametrize('order', ORDERS)
+@pytest.mark.parametrize('end', ['roll', 'lost'])
+def test_ledger_a_dropped_deferral_is_recorded_once(order, end, eng):
+    """Guard: a deferral dropped at the candle roll / after COST_WAIT_S leaves ONE final miss + ONE skipped row, never one
+    per manage tick (master: the original refusal is that one record)."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); rows = spy(e)
+    one_cycle(e, {A, B})
+    eng.clock[0] += TF if end == 'roll' else E.Engine.COST_WAIT_S + 60
+    e.state['funding_read_ms'] = int(eng.clock[0] * 1000)
+    if end == 'roll': one_cycle(e, set(), t=T1); deliver(e)
+    for _ in range(5): app_pass(e)
+    assert len(misses(rows, second)) == 1 and len([m for m in e.missed if m['symbol'] == second]) == 1
+    assert status(rows, '_ml_decision', second).count('skipped') <= 1 and status(rows, '_shadow_signal', second).count('skipped') <= 1
+    assert opens(e) == [first]
+
+
+@XFAIL
+@pytest.mark.parametrize('order', ORDERS)
+@pytest.mark.parametrize('end', ['roll', 'lost'])
+def test_ledger_a_dropped_deferral_records_its_terminal_reason_once(order, end, eng):
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); rows = spy(e)
+    one_cycle(e, {A, B})
+    eng.clock[0] += TF if end == 'roll' else E.Engine.COST_WAIT_S + 60
+    e.state['funding_read_ms'] = int(eng.clock[0] * 1000)
+    if end == 'roll': one_cycle(e, set(), t=T1); deliver(e)
+    for _ in range(5): app_pass(e)
+    ms = misses(rows, second)
+    assert len(ms) == 1 and not pending(ms[0]), ms                     # the terminal reason, not the cost_pending one
+    assert status(rows, '_ml_decision', second) == ['pending', 'skipped']
+
+
+@XFAIL
+@pytest.mark.parametrize('order', ORDERS)
+def test_reconsideration_calls_open_lot_exactly_once(order, eng):
+    """open_lot is the normal path (AI review, fee edge, admit run inside it): one more call for the deferred coin."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves)
+    one_cycle(e, {A, B})
+    calls, real = [], e.open_lot
+    e.open_lot = lambda sl, sym, *a, **k: (calls.append(sym), real(sl, sym, *a, **k))[1]
+    deliver(e)
+    for _ in range(3): app_pass(e); deliver(e)
+    assert calls == [second], calls
+
+
+@XFAIL
+@pytest.mark.parametrize('order', ORDERS)
+@pytest.mark.parametrize('change', ['fee_edge', 'paused'])
+def test_a_state_change_while_deferred_is_the_recorded_recheck_reason(order, change, eng):
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); rows = spy(e)
+    one_cycle(e, {A, B})
+    assert pending(misses(rows, second)[-1])
+    e.S.update(dict(FEE_EDGE_GATE=True, FEE_EDGE_MULT=20.0) if change == 'fee_edge' else dict(ENTRIES_PAUSED=True))
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    assert opens(e) == [first]
+    want = 'fee_edge' if change == 'fee_edge' else 'entries paused'
+    assert misses(rows, second)[-1].startswith(want), misses(rows, second)
+
+
+@XFAIL
+@pytest.mark.parametrize('order', ORDERS)
+def test_race_at_the_roll_opens_once_from_the_fresh_signal(order, eng):
+    """T0 deferred; the T1 cycle runs with the commission STILL in flight (T1 refused pending, T0 dropped); the commission
+    lands within T1 -> exactly one open, keyed to T1."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); rows = spy(e)
+    one_cycle(e, {A, B})
+    eng.clock[0] += TF
+    one_cycle(e, {second}, t=T1)
+    assert opens(e) == [first] and pending(misses(rows, second)[-1])
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    assert opens(e).count(second) == 1 and taken(rows, second) == [T1], (opens(e), taken(rows, second))
+
+
+@pytest.mark.parametrize('order', ROOM)
+def test_stop_risk_room_holds_the_deferred_candidates_out(order, eng):
+    """Guard: lot slots left (2 of 4) but the book's stop-risk room (STOP_RISK_MAX x NAV) cannot take another lot."""
+    sleeves, first, d1, d2 = ROOM[order]
+    e = eng(sleeves + [F_SL], held=False)
+    fill_book(e, 1); e.trade.gate.clear()
+    one_cycle(e, {A, B, C})
+    b = b1(e); r = next(l for l in e.state['lots'].values() if l['symbol'] == first)['risk_usd']
+    cap = TB.STOP_RISK_MAX * b['nav_worse']
+    f = next(l for l in e.state['lots'].values() if l['symbol'] == X1)
+    f['stop'] = f['avg'] - (float(cap - b['stop_risk']) - r / 2 + float(TB.stop_risk(f))) / f['qty']   # room left = r/2
+    assert f['stop'] > 0 and b1(e)['lots'] == 2
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    b = b1(e)
+    assert 'stop-risk cap' in (TB.admit(b, 0, r) or ''), TB.admit(b, 0, r)
+    assert held(e, 'B1_FAST') == sorted([X1, first]) and b['stop_risk'] <= cap
