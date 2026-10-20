@@ -1,0 +1,531 @@
+{
+ "author": "claude-code",
+ "cairo_date": "2026-10-15",
+ "candidate_id": "breadth_static40.v1",
+ "code": {
+  "digest": "88ad1580ab424c2cb18054aa8f22210f2751325f894ab6551edd7f5dcf00bab0",
+  "runner_commit": "c8c7b92",
+  "sha256": {
+   "backtest.py": "40456e94741854350101547b519f2abbeee922ff2a489afcfefef986cb09bc75",
+   "engine.py": "40ae636eab315d5b844aea0692f3233791aafc3227807349d6da059d7ef57a32",
+   "market_data.py": "aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148",
+   "strategies.py": "0e28e823894ecadf5bc1d634f4f9fa5e3fe934b4f2a53ae68386d7c6cce27c18",
+   "tools/research/breadth_eval.py": "b0bae06e8e8a369d2dc9131544d5d9b9b4c1a2a0e3a9f626f870ea79be9ae2fb",
+   "tools/research/collect_klines_research.py": "b6a2a70a59d805f67541be42019e393a6677a954e0be889bfb06eb1f66a46856",
+   "tools/research/run_breadth_candidate.py": "dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2",
+   "tools/research/run_vwaprev_candidate.py": "c2f43564cc1da4cd79e12253ece82d10b3f82c1ecdbbc11aeafa80202060d23e"
+  }
+ },
+ "config": {
+  "account": {
+   "daily_halt": 0.08,
+   "max_lev": 10.0,
+   "max_pos": 4,
+   "risk": 0.01,
+   "start": 500.0
+  },
+  "bust_frac": 0.1,
+  "costs": {
+   "fee_taker": 0.0005,
+   "fund_per_bar_4h": 5e-05,
+   "note": "every fill taker; adverse slip both sides; funding charged per held 4h bar",
+   "slip": 0.0002
+  },
+  "digest": "30bf780e84bbf092bfea000234f96af32cb8d5c5bfa331a7cf246c2f4fd60872",
+  "mgmt_mode": "defaults",
+  "mgmt_override": {},
+  "runner_entry": "run_breadth_candidate.run (frozen; same sleeve/Book path)",
+  "runner_format": "zb-breadth-candidate/1",
+  "tf": "4h",
+  "warmup_bars": 220
+ },
+ "data": {
+  "collector": "tools/research/collect_klines_research.py (zb-klines-research/1 manifest)",
+  "dev_manifest_sha256": "4f778e3bad364aaf7c01ff7c3fd018b71756cc2df30dd16ae6464886c3004330",
+  "holdout_fetch": "warm-up (220 bars) + holdout, endTime = holdout end - 1 ms, collected only after the holdout end, into a research cache outside the repo; manifest committed with source, UTC bounds, rows, gaps and sha256 before any evaluation",
+  "interval": "4h",
+  "source": "https://fapi.binance.com/fapi/v1/klines (public Binance USD-M trade klines, no key)"
+ },
+ "development": {
+  "end": "2026-09-28T00:00:00Z",
+  "end_exclusive": true,
+  "start": "2024-10-14T00:00:00Z",
+  "status": "DEVELOPMENT-ONLY: cannot promote or reject"
+ },
+ "family": "breadth_static40",
+ "format": "zb-breadth-prereg/1",
+ "gate": {
+  "data": "complete_and_accountable",
+  "max_dd_r_lt": 60.0,
+  "min_closed_trades": 30,
+  "net_cash_gt": 0.0,
+  "no_bust": true,
+  "pf_gt": 1.05,
+  "rule": "per hypothesis, all must hold: packet status ok and every book symbol complete or excluded by the incomplete rule; bust.busted false; closed trades >= 30; after-cost net cash > 0; PF > 1.05; max drawdown < 60R; and Holm-adjusted sign-flip p <= alpha"
+ },
+ "holdout": {
+  "end": "2027-10-18T00:00:00Z",
+  "end_exclusive": true,
+  "reveal": "once, atomically, after the end; no interim looks; one evaluation per hypothesis",
+  "sealed": true,
+  "start": "2026-10-19T00:00:00Z",
+  "weeks": 52
+ },
+ "hypotheses": [
+  {
+   "fn": "sig_breakout_pyramid",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/breakout_pyramid.long",
+   "key": "breakout_pyramid",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/breakout_pyramid_long_defaults.json",
+    "dev_packet_sha256": "7874fd5dd95521d7a283c64dd8c3bdfafa208bce9c3eb902f136eeb484eac03c",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "pyramid": {
+     "frac": 0.5,
+     "n": 2,
+     "step_r": 1.0
+    },
+    "stop_atr": 2.0,
+    "trail_atr": 3.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_donchian_ens",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/donchian_ens.long",
+   "key": "donchian_ens",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/donchian_ens_long_defaults.json",
+    "dev_packet_sha256": "5550e6fe23230bd82455306a1fafeaf92ac11176aa7bce6ee62c4c8e772ffe59",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "stop_atr": 3.0,
+    "trail_atr": 4.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_ema_mom",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/ema_mom.long",
+   "key": "ema_mom",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/ema_mom_long_defaults.json",
+    "dev_packet_sha256": "54d6a0445148b8694a2e84e9056c9f4b6035aed299a65036efca8260c6e5aceb",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "stop_atr": 2.5
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_ema_st",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/ema_st.long",
+   "key": "ema_st",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/ema_st_long_defaults.json",
+    "dev_packet_sha256": "abe7c630ca81fd545094638420f4f7643240e3062591f58cd2f1c762c7b7be8d",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "stop_atr": 2.5
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_exp_breakout",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/exp_breakout.long",
+   "key": "exp_breakout",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/exp_breakout_long_defaults.json",
+    "dev_packet_sha256": "9267a7594aa9bdfa37e3c470c25c04a46246ce98699fb8aa21d791bbd1115fb4",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "max_bars": 60,
+    "stop_atr": 2.0,
+    "tp_r": 3.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "both",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_exp_trend",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/exp_trend.long",
+   "key": "exp_trend",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/exp_trend_long_defaults.json",
+    "dev_packet_sha256": "33a092e1fc8e75f5f3cb502efb16f4e091d03a99a713b79d19acf660897fca1e",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "max_bars": 180,
+    "stop_atr": 2.5,
+    "tp_r": 3.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "both",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_hot_coin",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/hot_coin.long",
+   "key": "hot_coin",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/hot_coin_long_defaults.json",
+    "dev_packet_sha256": "dc47f68468304761429f756b42bbe2e547e9b2a8e0725208de8caf6009087279",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp1_frac": 0.5,
+    "tp1_r": 2.0,
+    "trail_atr": 2.5
+   },
+   "paper_experimental_sides": "long",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_trend_pullback_rsi",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/pullback_rsi.long",
+   "key": "pullback_rsi",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/pullback_rsi_long_defaults.json",
+    "dev_packet_sha256": "5a7550792d30f2c54127627df2c060522ea9df39392f18614566feeefe590afd",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "be_r": 1.0,
+    "max_bars": 60,
+    "stop_atr": 2.0,
+    "tp1_frac": 0.5,
+    "tp1_r": 1.0,
+    "tp_r": 3.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_rotation",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/rotation.long",
+   "key": "rotation",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/rotation_long_defaults.json",
+    "dev_packet_sha256": "7e8ee4f4383e6605d046fd9cf7bcdc2f1f1511ee08639dd5f4070d74a4e55c1f",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "stop_atr": 3.0
+   },
+   "paper_experimental_sides": "long",
+   "params": {
+    "k": 5
+   },
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_squeeze",
+   "formal_basis": "registry side",
+   "id": "breadth_static40.v1/squeeze_tp.long",
+   "key": "squeeze_tp",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/squeeze_tp_long_defaults.json",
+    "dev_packet_sha256": "92faff1a7a0e1886fb6d3307b487616d0c46f4fb1f7c72bad0fa6de40ccb2661",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "be_r": 1.5,
+    "stop_atr": 2.0,
+    "tp1_frac": 0.5,
+    "tp1_r": 1.5,
+    "trail_atr": 3.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "long",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_donchian_ens",
+   "formal_basis": "registered here (PAPER experiment until this prereg; Codex 6200595681 / 6200896386)",
+   "id": "breadth_static40.v1/donchian_ens.short",
+   "key": "donchian_ens",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/donchian_ens_short_defaults.json",
+    "dev_packet_sha256": "dcc684c8bad4205d4a038b135d4e4ebbacec5b23d4034d7384b063edd9743214",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "stop_atr": 3.0,
+    "trail_atr": 4.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "short",
+   "tf": "4h"
+  },
+  {
+   "fn": "sig_squeeze",
+   "formal_basis": "registered here (PAPER experiment until this prereg; Codex 6200595681 / 6200896386)",
+   "id": "breadth_static40.v1/squeeze_tp.short",
+   "key": "squeeze_tp",
+   "lineage": {
+    "dev_packet": "research_evidence/runs/breadth_candidate/2026-10-15_static40_c8c7b92/squeeze_tp_short_defaults.json",
+    "dev_packet_sha256": "e0a48622438334a7ddb611406eb6739824cdb02c8a4d4a0cc259f2538e410a22",
+    "dev_prs": [
+     "#105",
+     "#106",
+     "#110",
+     "#114"
+    ],
+    "informational_only": true,
+    "shortlist": "#112",
+    "spend": null
+   },
+   "mgmt": {
+    "be_r": 1.5,
+    "stop_atr": 2.0,
+    "tp1_frac": 0.5,
+    "tp1_r": 1.5,
+    "trail_atr": 3.0
+   },
+   "paper_experimental_sides": "both",
+   "params": {},
+   "reentry_lock": false,
+   "registry_sides": "long",
+   "side": "short",
+   "tf": "4h"
+  }
+ ],
+ "registration": {
+  "authoritative_time": "X chronology: the final master merge time of X; Y lands on master before the holdout start",
+  "binds": [
+   "prereg_sha256",
+   "accepted_commit (the master commit holding the accepted prereg, validator and evaluator)",
+   "accepted_tree"
+  ],
+  "evaluation_guard": "collect / packets / spend run only at HEAD == the pinned Y, evaluate only at R; clean worktree; Y introduced the 12 records; the only parent of Y is X; the tree of Y minus the two ledger files equals the tree of X; the ledger records verify; packets bind commit Y, a clean tree, their packet_sha256, the holdout window, a recomputed aggregate and the holdout manifest digests",
+  "family": "breadth_static40",
+  "kind": "variant",
+  "ledger": "research_evidence/ledger/breadth_static40.jsonl",
+  "records": 12,
+  "registration_commit": "Y: accepted_commit X is its only, direct parent and its diff from X touches only the family ledger and REGISTRY.jsonl (the family declaration); master is frozen between X and Y",
+  "role": "preregistration",
+  "runbook": "research_evidence/breadth_prereg/RUNBOOK.md",
+  "time": "registered_at_utc (ms) taken internally at registration; refused at or after 2026-10-19T00:00:00Z",
+  "y_tag": "the integration owner (Codex) creates an immutable tag on Y after acceptance; the evaluator takes it as --registration (Build never self-binds Y)"
+ },
+ "reporting": {
+  "claims": "no edge claim beyond the gate result",
+  "context": "BTC side-matched passive",
+  "per_hypothesis": [
+   "trades",
+   "pf",
+   "r_sum",
+   "pnl",
+   "max_dd_r",
+   "max_dd_equity",
+   "win_rate",
+   "bust",
+   "incomplete",
+   "n_days",
+   "sign_flip_p",
+   "holm_adjusted_p",
+   "gate_rows",
+   "verdict"
+  ],
+  "verdict": "PASS only when every gate row holds; otherwise FAIL naming the rows"
+ },
+ "rules": {
+  "deferred": [
+   "holdout evaluation",
+   "mainnet",
+   "tuning",
+   "breakout_pyramid short"
+  ],
+  "no_retune": "no parameter, mgmt, cost, universe, window or code change after registration; the ledger family may never hold a variant / grid_point / baseline record besides the 12 registration records (verify_registration)",
+  "one_evaluation": "one evaluation spend for the family: a window_spent record (role evaluation_spend) binding the exact packets, manifest and output location (eval_digest), committed as R = the only, ledger-only child of Y BEFORE any verdict is computed; evaluate runs only at R on exactly those inputs, once",
+  "supersession": "none: a new family and window; trend_ema_mom.v1 records are untouched"
+ },
+ "ruling": "https://github.com/MoeAZack/ZackBot2/issues/13#issuecomment-6200896386",
+ "statistics": {
+  "alternative": "greater",
+  "context_only": "BTCUSDT side-matched passive (buy-and-hold for longs, short-and-hold for shorts) over the holdout with the same costs: reported, never a gate",
+  "method": "monte_carlo",
+  "multiplicity": {
+   "alpha": 0.05,
+   "m": 12,
+   "method": "Holm step-down",
+   "ties": "equal p-values keep hypothesis order"
+  },
+  "n_flips": 100000,
+  "p_value": "(1 + #{flips with T* >= T}) / (n_flips + 1)",
+  "rng": "sign bits = SHA-256(seed + \"|\" + flip index + \"|\" + block) big-endian bit stream, bit 1 = flip",
+  "seed": "<hypothesis id>",
+  "statistic": "T = sum of daily P&L",
+  "test": "one-sided day-level sign-flip (randomization) test of after-cost daily P&L vs 0",
+  "unit": "UTC calendar day of trade exit (t_out); daily P&L = sum of net cash pnl (after fees, slippage, funding) of trades closed that day, in integer micro-USDT; days without a close are omitted"
+ },
+ "status": "FROZEN v1: 12 hypotheses, one holdout spend, one 12-test Holm family. Registration appends 12 zb-ledger/1 records to research_evidence/ledger/breadth_static40.jsonl before the holdout start; any byte change voids the binding.",
+ "universe": {
+  "book": "all 40 symbols, rank order",
+  "dev_incomplete": [
+   "AKEUSDT",
+   "BRUSDT",
+   "HYPEUSDT",
+   "MUBARAKUSDT",
+   "PENGUUSDT",
+   "PUMPUSDT",
+   "TRUMPUSDT"
+  ],
+  "digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+  "id": "static-top40-minhist365-contract-20261011",
+  "incomplete_rule": "a symbol with any missing / off-grid / duplicate 4h bar over warm-up + holdout is INCOMPLETE: excluded from the book, never filled; recorded in the packet",
+  "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+  "path": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+  "rotation_note": "rotation ranks within the run book",
+  "sha256": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031"
+ }
+}

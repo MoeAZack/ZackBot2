@@ -12,10 +12,18 @@ import pandas as pd
 
 import strategies as S
 import trade_audit as TA
+import paper_books as PB
+import actual_costs as AC
+import true_books as TB
+import book_ledger as BL
+import run_pack as RP
 import feasibility as F
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
+from binance_client import AuditSkipped
 from ai_filter import review
 import grid as GRID
+import tradfi_universe as TU, tradfi_session as TS
+from shadow_analyst import DEFAULT_MODEL as _SHADOW_MODEL   # constant only; the analyst never runs in the engine
 
 log = logging.getLogger('zackbot')
 from time import monotonic as _mono, sleep as _sleep   # T05 writer: real clock even when replay swaps E.time
@@ -203,6 +211,324 @@ def close_fill_writers(timeout=2.0):
 
 atexit.register(close_fill_writers, 2.0)
 
+
+# ---- EXEC-CAL-00: fill-audit enrichment (observe only, PAPER/testnet) ---------------------------------------------------
+# A fill record whose order answer has no average price (or, always, no commission) is handed to ONE process-wide worker
+# with the order's ids held in memory only. The worker reads the order's own record / its userTrades (bounded retries,
+# wall-clock cap), folds price + commission into the record and writes it once through the fill writer. The order path
+# only does a non-blocking hand-off: enrichment never sends, retries, cancels or resizes an order, never touches a lot,
+# and what it cannot resolve stays explicitly missing (enrich_status), never a synthetic price or an assumed fee.
+ENRICH_ATTEMPTS = 3               # read rounds per fill, at most
+ENRICH_BACKOFF_S = (0.5, 1.5)     # wait before round 2 / 3 (trades not visible yet, 429 / 5xx / timeout)
+ENRICH_CAP_S = 10.0               # from hand-off: no round starts after it (an in-flight read keeps its client timeout)
+ENRICH_QUEUE_MAX = 200            # pending fills; beyond this the record is written at once, missingness explicit
+ENRICH_SEEN_MAX = 2000            # order keys remembered (memory only) so a duplicate hand-off is never recorded twice
+ENRICH_STATUSES = ('resolved', 'partial', 'missing', 'timeout')
+_MAKER_FILL_KINDS = ('entry_maker',)
+
+
+def _fnum(v):
+    if isinstance(v, bool): return None
+    try: x = float(v)
+    except (TypeError, ValueError): return None
+    return x if math.isfinite(x) else None
+
+
+def _funding_once(target, key):
+    """FEE-ASSET-01 / TRUE-BOOK-01: True the first time this funding payment key reaches this lot / row (then recorded)."""
+    keys = target.setdefault('funding_keys', [])
+    if key in keys: return False
+    keys.append(key)
+    return True
+
+
+def _quote_asset(sym):
+    """The quote currency a commission must be charged in to be normalised to a rate (None = unknown -> stays missing)."""
+    for q in ('USDT', 'USDC'):
+        if isinstance(sym, str) and sym.endswith(q) and len(sym) > len(q): return q
+    return None
+
+
+def _bps(act, ref, sign):
+    """(act - ref) / ref in bps times sign; None unless both prices are real (> 0) - missing is never 0."""
+    act, ref = _fnum(act), _fnum(ref)
+    if not act or not ref or act <= 0 or ref <= 0: return None
+    return round((act - ref) / ref * 1e4 * sign, 2) + 0.0
+
+
+def fill_px_fields(rec, lim=None):
+    """Pure: the derived price fields of a fill record from its `actual` (in place). decision_slippage_bps = actual vs the
+    decision price (signal_px, else expected), adverse = positive. limit_improvement_bps (maker kinds only, diagnostic,
+    never netted against cost) = actual vs the limit it rested at, better than the limit = positive."""
+    sgn = 1 if rec.get('buy') else -1
+    act = rec.get('actual')
+    rec['slip_bps'] = _bps(act, rec.get('expected'), sgn)
+    ref = rec.get('signal_px') if (_fnum(rec.get('signal_px')) or 0) > 0 else rec.get('expected')
+    for k, v in (('decision_slippage_bps', _bps(act, ref, sgn)),
+                 ('limit_improvement_bps', _bps(act, lim, -sgn) if rec.get('kind') in _MAKER_FILL_KINDS else None)):
+        if v is None: rec.pop(k, None)
+        else: rec[k] = v
+    return rec
+
+
+def fill_px_unknown(rec):
+    """EXEC-CAL-00: the record's price is not an exchange-reported execution price (e.g. a maker fill answered without
+    avgPrice, booked at its limit): `actual` and every bps field derived from it are cleared (in place) until the
+    audit reads resolve them. Booking is untouched - this only changes what the audit record claims."""
+    rec['actual'] = None
+    return fill_px_fields(rec)
+
+
+def _px_known(refs):
+    return all((_fnum(r.get('opx')) or 0) > 0 for r in refs)
+
+
+def _ref_limit(refs):
+    if not refs or not all(_fnum(r.get('lpx')) for r in refs): return None
+    q = sum(r['exec'] for r in refs)
+    return sum(r['lpx'] * r['exec'] for r in refs) / q if q > 0 else None
+
+
+def _covered(r):
+    tq, ex = r.get('tq'), r.get('exec') or 0
+    return tq is not None and tq + 1e-12 >= ex * (1 - 1e-6)
+
+
+def enrich_attempt(rec, refs, client):
+    """One read round for every order of the fill not complete yet (memory-only refs: oid / cid / exec / opx / lpx).
+    Read-only: the order's own record (only when its exchange id is not known) and its userTrades. Returns True when
+    another round may help (a transient failure, or trades not visible / not complete yet), False when done. Each round
+    re-reads the full trade list of an order (deduplicated by trade id), so a repeated row is never counted twice."""
+    sym, again = rec.get('symbol'), False
+    blocked = getattr(client, 'audit_blocked', None)
+    for r in refs:
+        if r.get('done'): continue
+        try:
+            why = blocked() if blocked else None
+            if why: raise AuditSkipped(f'audit read not sent ({why})')
+            if r.get('oid') is None:
+                g = getattr(client, 'audit_order', None) or getattr(client, 'get_order', None)
+                if not (g and r.get('cid')): r['done'] = True; continue                  # nothing to correlate with
+                o = g(sym, r['cid'])
+                if not o: again = True; continue                                         # not visible yet
+                r['oid'] = o.get('orderId')
+                if not r.get('opx'): r['opx'] = Engine._fill_px(o)
+                if r['oid'] is None: r['done'] = True; continue
+            rows = client.user_trades(sym, r['oid'])
+        except Exception as e:
+            if getattr(e, 'audit_stop', False):                                          # cooldown / 418 / 429: stop the job
+                for x in refs: x['done'] = True
+                rec['enrich_reason'] = getattr(e, 'reason', 'cooldown')
+                return False
+            if isinstance(e, BinanceError) and not is_transient(e): r['done'] = True      # a definitive refusal: no retry
+            else: again = True                                                           # 429 / 5xx / timeout / outage
+            continue
+        got = {}
+        for t in rows if isinstance(rows, list) else ():
+            if not isinstance(t, dict) or str(t.get('orderId')) != str(r['oid']) or t.get('symbol', sym) != sym: continue
+            q, p = _fnum(t.get('qty')), _fnum(t.get('price'))
+            if not q or q <= 0 or not p or p <= 0 or t.get('id') is None: continue        # an id-less row is never counted
+            got[str(t['id'])] = (q, p, _fnum(t.get('commission')), t.get('commissionAsset'), t.get('maker'))
+        if not got: again = True; continue                                                # not visible yet
+        r['tq'] = sum(v[0] for v in got.values()); r['tn'] = sum(v[0] * v[1] for v in got.values())
+        r['comm'] = sum(v[2] for v in got.values()) if all(v[2] is not None for v in got.values()) else None
+        r['rebate'] = any(v[2] is not None and v[2] < 0 for v in got.values())           # a maker rebate (negative fee)
+        r['assets'] = {v[3] if isinstance(v[3], str) else None for v in got.values()}
+        r['raw'] = [(v[2], v[3], v[4]) for v in got.values()]                          # FEE-ASSET-01 (ids dropped)
+        if _covered(r): r['done'] = True
+        else: again = True                                                                # more executions to show
+    return again
+
+
+def enrich_finish(rec, refs, cut=False):
+    """Pure: fold what the reads found into the record (in place) and set enrich_status. The price comes only from
+    complete evidence: every order's trades cover its executed quantity (qty-weighted over all of them), else every order's
+    own reported average; otherwise the record keeps the price it was built with (or none). The commission becomes a rate
+    only when every trade is charged in the symbol's quote asset; otherwise commission_rate / commission_asset stay absent.
+    A rebate (any negative commission) is flagged commission_rebate and leaves commission_rate / fee_rate absent.
+    cut: the cap (or a shutdown) ended the reads - 'timeout' instead of 'missing' when nothing was found."""
+    refs = refs or []
+    full = bool(refs) and all(_covered(r) for r in refs)
+    px = None
+    if full:
+        tq, tn = sum(r['tq'] for r in refs), sum(r['tn'] for r in refs)
+        px = tn / tq if tq > 0 else None
+    elif refs and all(_fnum(r.get('opx')) for r in refs):
+        q = sum(r['exec'] for r in refs)
+        px = sum(r['opx'] * r['exec'] for r in refs) / q if q > 0 else None
+    if px: rec['actual'] = round(px, 10) + 0.0
+    fill_px_fields(rec, _ref_limit(refs))
+    rate, quote = None, _quote_asset(rec.get('symbol'))
+    if full and quote and all(r.get('comm') is not None and r.get('assets') == {quote} for r in refs):
+        tn = sum(r['tn'] for r in refs)
+        if tn > 0: rate = sum(r['comm'] for r in refs) / tn
+    for k in ('commission_rate', 'fee_rate', 'commission_asset', 'commission_rebate'): rec.pop(k, None)
+    if rate is not None and (rate < 0 or any(r.get('rebate') for r in refs)):
+        rec['commission_rebate'], rec['commission_asset'], rate = True, quote, None   # never a negative fee_rate
+    if rate is not None:
+        rec['commission_rate'] = rec['fee_rate'] = round(rate, 8) + 0.0     # fee_rate: the field EXEC-CAL-01 reads
+        rec['commission_asset'] = quote
+    raws = [x for r in refs for x in (r.get('raw') or [])]            # FEE-ASSET-01: raw commission, missingness explicit
+    raw, readable = AC.raw_from_trades(raws)
+    for k in ('commission_raw', 'commission_missing'): rec.pop(k, None)
+    if raw: rec['commission_raw'] = raw
+    miss = ('no_order_ref' if not refs else ('trades_incomplete' if raws else 'timeout' if cut else 'no_trades') if not full
+            else None if readable else 'amount_unreadable')
+    if miss: rec['commission_missing'] = miss
+    has_px = bool(_fnum(rec.get('actual')))
+    rec['enrich_status'] = ('resolved' if has_px and rate is not None else 'partial' if has_px or rate is not None
+                            else 'timeout' if cut else 'missing')
+    return rec
+
+
+class FillEnricher:
+    """EXEC-CAL-00: the ONE enrichment worker of this process (lazy thread, like FillWriter). submit() is the only call an
+    order path makes: a non-blocking hand-off under a lock (no I/O). Each job is in exactly one place - the queue or the
+    worker's hands - and is written exactly once (by the worker, or by close() for what is still queued), so a duplicate
+    hand-off, an engine replaced by a settings restart or a shutdown mid-enrichment never records a fill twice.
+    Shutdown writes EVERY pending job at once (queued and in flight, as cut short) before the fill writers close; a read
+    still in flight then finishes into nothing (its job is already claimed). Ids are marked seen and a job is queued only
+    once the worker thread is confirmed running; if it cannot start, the caller writes the record now, once.
+    Limitation: the seen-set is memory only (ids are never persisted), so a replay of the same fill after a process
+    restart can write a second record for that order."""
+
+    def __init__(self):
+        self.cv = threading.Condition()
+        self.jobs, self.busy, self.closing, self.thread = [], 0, False, None
+        self.inflight = []                                  # the job the worker is reading right now (at most one)
+        self.seen = collections.OrderedDict()              # memory only: (symbol, 'o'|'c', id) of orders handed off
+        self.ctr = dict(submitted=0, duplicates=0, refused=0, start_failed=0, dropped_late=0,
+                        **{s: 0 for s in ENRICH_STATUSES})
+
+    @staticmethod
+    def _keys(rec, refs):
+        sym = rec.get('symbol')                             # both ids when known: a re-hand-off by either one is a duplicate
+        return [k for r in refs for k in ((sym, 'o', str(r['oid'])) if r.get('oid') is not None else None,
+                                          (sym, 'c', str(r['cid'])) if r.get('cid') else None) if k]
+
+    def submit(self, rec, refs, client, writer, sink=None):
+        """'queued' | 'duplicate' (this order was already handed off: dropped) | 'refused' (closing / full: the caller
+        writes the record now)."""
+        keys = self._keys(rec, refs)
+        with self.cv:
+            if self.closing: self.ctr['refused'] += 1; return 'refused'
+            if any(k in self.seen for k in keys): self.ctr['duplicates'] += 1; return 'duplicate'
+            if len(self.jobs) + self.busy >= ENRICH_QUEUE_MAX: self.ctr['refused'] += 1; return 'refused'
+            if self.thread is None or not self.thread.is_alive():
+                try:
+                    t = threading.Thread(target=self._run, name='fill-enrich', daemon=True); t.start()
+                except Exception:                           # no worker: nothing queued, nothing seen - the caller writes now
+                    self.ctr['start_failed'] += 1; self.ctr['refused'] += 1; return 'refused'
+                self.thread = t
+            for k in keys: self.seen[k] = True
+            while len(self.seen) > ENRICH_SEEN_MAX: self.seen.popitem(last=False)
+            now = _mono()
+            self.jobs.append(dict(rec=copy.deepcopy(rec), refs=[dict(r) for r in refs], client=client, writer=writer, sink=sink,
+                                  rec0=copy.deepcopy(rec), refs0=[dict(r) for r in refs],
+                                  deadline=now + ENRICH_CAP_S, next_at=now, n=0, written=False))
+            self.ctr['submitted'] += 1
+            self.cv.notify_all()
+        return 'queued'
+
+    def _run(self):
+        while True:
+            with self.cv:
+                while True:
+                    if self.closing: return
+                    if self.jobs:
+                        j = min(self.jobs, key=lambda x: x['next_at'])
+                        wait = j['next_at'] - _mono()
+                        if wait <= 0: break
+                    else:
+                        wait = 0.5
+                    self.cv.wait(min(0.5, wait))
+                self.jobs.remove(j); self.busy += 1; self.inflight.append(j)
+            try:
+                self._step(j)
+            except Exception as e:
+                log.debug(f'fill enrichment step failed ({type(e).__name__})')
+            finally:
+                with self.cv:
+                    self.busy -= 1
+                    if j in self.inflight: self.inflight.remove(j)
+                    self.cv.notify_all()
+
+    def _step(self, j):
+        if _mono() >= j['deadline']: return self._finish(j, cut=True)
+        j['n'] += 1
+        try: again = enrich_attempt(j['rec'], j['refs'], j['client'])
+        except Exception: again = True
+        if not again or j['n'] >= ENRICH_ATTEMPTS: return self._finish(j, cut=False)
+        nxt = _mono() + ENRICH_BACKOFF_S[min(j['n'] - 1, len(ENRICH_BACKOFF_S) - 1)]
+        if nxt >= j['deadline']: return self._finish(j, cut=True)
+        with self.cv:
+            if not self.closing:
+                j['next_at'] = nxt; self.jobs.append(j); self.cv.notify_all(); return
+        self._finish(j, cut=True)
+
+    def _finish(self, j, cut, snapshot=False):
+        """Write the job's record exactly once: the first caller claims it (under the lock); a later one is dropped.
+        snapshot (shutdown with a read in flight): the worker may still be mutating rec/refs, so the pristine copies taken
+        at hand-off are written instead, as cut short."""
+        with self.cv:
+            if j.get('written'): self.ctr['dropped_late'] += 1; return
+            j['written'] = True
+            rec, refs = (copy.deepcopy(j['rec0']), [dict(r) for r in j['refs0']]) if snapshot else (j['rec'], j['refs'])
+        n = j['n']
+        try: enrich_finish(rec, refs, cut)
+        except Exception: rec['enrich_status'] = 'timeout' if cut else 'missing'
+        rec['enrich_attempts'] = n
+        with self.cv: self.ctr[rec['enrich_status']] = self.ctr.get(rec['enrich_status'], 0) + 1
+        try: j['writer'].emit(rec)
+        except Exception: pass
+        if j.get('sink'):                                   # FEE-ASSET-01: a queue append only - never a lot or state
+            try: j['sink'](rec)
+            except Exception: pass
+
+    def flush(self, timeout=2.0):
+        """Wait (bounded) until every handed-off fill is written to its writer's queue. Never call from an order path."""
+        end = _mono() + timeout
+        with self.cv:
+            while (self.jobs or self.busy) and _mono() < end: self.cv.wait(min(0.05, max(0.0, end - _mono())))
+            return not (self.jobs or self.busy)
+
+    def close(self, timeout=2.0):
+        """Stop accepting and write EVERY pending record now, once, as cut short: the queued ones and the one whose read
+        is still in flight (from its hand-off snapshot) - all before close_fill_writers runs. The in-flight read's later
+        result is dropped. Then the worker is waited for (bounded). True when no worker thread remains."""
+        end = _mono() + timeout
+        with self.cv:
+            self.closing = True; left, self.jobs = self.jobs, []; busy = list(self.inflight); self.cv.notify_all()
+        for j in left: self._finish(j, cut=True)
+        for j in busy: self._finish(j, cut=True, snapshot=True)
+        with self.cv:
+            while self.busy and _mono() < end: self.cv.wait(min(0.05, max(0.0, end - _mono())))
+        if self.thread is not None: self.thread.join(max(0.0, end - _mono()) + 0.3)
+        return not (self.thread is not None and self.thread.is_alive())
+
+    def summary(self):
+        with self.cv: return dict(self.ctr, queued=len(self.jobs), busy=self.busy, closing=self.closing)
+
+
+_ENRICHER, _ENRICHER_LOCK = None, threading.Lock()
+
+
+def fill_enricher():
+    """The process-wide enrichment worker (a new one only when none exists or the old one was closed)."""
+    global _ENRICHER
+    with _ENRICHER_LOCK:
+        if _ENRICHER is None or _ENRICHER.closing: _ENRICHER = FillEnricher()
+        return _ENRICHER
+
+
+def close_fill_enricher(timeout=2.0):
+    with _ENRICHER_LOCK: en = _ENRICHER
+    return True if en is None else en.close(timeout)
+
+
+atexit.register(close_fill_enricher, 1.0)      # registered after close_fill_writers: runs FIRST at exit (LIFO), so cut-
+#                                                short records still reach the fill writer before it closes
+
 LEV_REFUSAL_COOLDOWN_S = 1800     # T03c: after Binance refuses a leverage change, no new change request for this coin for 30 min
 LEV_MARGIN_RATIO_MAX = 0.5        # T03c: worst-case account margin ratio (every stop filled) allowed for an above-cap entry
 LEV_STOP_SLIP = 1.5               # T03c: every stop loss in that worst case (open lots, reserved orders, the new entry) is 1.5x worse
@@ -325,14 +651,207 @@ for _p in PRESETS.values():
         if not _p['note'].startswith(UNVERIFIED_NOTE): _p['note'] = UNVERIFIED_NOTE + _p['note']
 del _p
 
+# BREADTH-01 B2 (Codex rulings): an AUTOMATIC PAPER rotation so every accepted family gets entry opportunities, six slots at
+# a time. SETTINGS['SLEEVES'] holds one slot per registry strategy (all of them, always), so every open lot keeps its own
+# slot - stop, exits, adds and management run exactly as for any slot. The rotation only decides which slots are ELIGIBLE
+# FOR NEW ENTRIES: the active group is a pure function of UTC time (no stored counter, restart-safe). Not in PRESETS (no
+# backtest/UI/governor loop over it); PAPER/testnet only - in live mode every entry of this profile is refused (fail closed).
+ROTATION_PRESET = 'breadth_rotation'
+ROTATION_NAME = 'Breadth rotation (PAPER, 6 slots at a time)'
+ROTATION_PERIOD_S = 8 * 3600           # active group advances every 8 h (00/08/16 UTC): 3 groups -> each gets an entry window daily (Cowork 6187025398)
+ROTATION_MAX_ACTIVE = 6                # Codex ruling 2: at most 6 active slots, equal shares
+BREADTH_RISK, BREADTH_MAX_POS = 0.02, 4
+BREADTH_FAMILIES = ('Trend', 'Momentum', 'Range', 'Breakout', 'Scalp', 'Rotation', 'Dip-DCA')
+BREADTH_FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_trend': 'Trend',
+                  'pullback_rsi': 'Momentum', 'hot_coin': 'Momentum',
+                  'exp_range': 'Range', 'exp_vwaprev': 'Range',
+                  'breakout_pyramid': 'Breakout', 'squeeze_tp': 'Breakout', 'bear_breakdown': 'Breakout',
+                  'exp_breakout': 'Breakout', 'exp_structure': 'Breakout',
+                  'exp_scalp': 'Scalp', 'rotation': 'Rotation', 'dca_dip': 'Dip-DCA',
+                  'exp_mom_short': 'Momentum', 'exp_rip_sell_dca': 'Dip-DCA'}   # unknown keys -> 'Other' (still rotated)
+# Codex ruling 3: long-default strategies whose signal function already emits both sides run 'both' in PAPER; every other
+# strategy keeps its registry sides (dca_dip / hot_coin long, bear_breakdown short; rotation shorts need params.shorts).
+BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})
+BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-sectional ranks: whole universe, others core 8
+# SCALP-4 (PAPER): four 15m scalp strategies run as INDEPENDENT slots of the breadth rotation profile. They are NOT part of
+# the 6-slot rotation: breadth_groups() leaves their keys out (so the existing groups / schedule stay byte-identical) and a
+# scalp slot is eligible for new entries whenever its own `enabled` flag is on. PAPER/testnet only: every new entry of a
+# scalp strategy is refused in live mode, whatever the profile (scalp_block). Default enabled: False (Codex ruling
+# 6212617801: negative dev evidence) - the owner switches each slot on in PAPER; sized small (1 % risk on a 1/6 share, max 2 open).
+SCALP_SLOTS = {'SC-RANGE': 'range_scalp', 'SC-FAILBRK': 'failed_breakout_scalp', 'SC-MBURST': 'momentum_burst_scalp',
+               'SC-QBANK': 'quick_bank_runner'}                    # slot id (<= 12 chars) -> strategy key
+SCALP_KEYS = frozenset(SCALP_SLOTS.values())
+SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, SCALP_DEFAULT_ENABLED = 1 / 6, 0.01, 2, False
+
+
+def scalp_sleeves():
+    """The four PAPER scalp slots (core 8, both sides, the strategy's own timeframe), in SCALP_SLOTS order."""
+    return [sleeve(i, k, SCALP_SHARE, SCALP_RISK, SCALP_MAX_POS, 'core8', sides='both', tf=S.STRATEGIES[k].get('tf', '15m'),
+                   enabled=SCALP_DEFAULT_ENABLED) for i, k in SCALP_SLOTS.items()]
+
+
+def with_scalp_slots(sleeves):
+    """(sleeves + the missing scalp slots, ids added). Existing entries are returned as the SAME objects, untouched; a slot
+    is missing when no slot carries its id. Idempotent."""
+    have = {x.get('id') for x in sleeves or []}
+    add = [x for x in scalp_sleeves() if x['id'] not in have]
+    return list(sleeves or []) + add, [x['id'] for x in add]
+
+
+# TRADFI-01 T4 (Codex ruling c + 6186554256 mapping): with S['TRADFI_ENABLED'] (PAPER only) the SAME rotation gains these
+# slots - one rotation, max six active. Symbol tiers resolve to [] whenever TRADFI is off, so a stale slot never trades.
+TRADFI_RANGE_STOCKS = ('SPYUSDT', 'QQQUSDT', 'AMZNUSDT', 'METAUSDT', 'GOOGLUSDT', 'MUUSDT')     # mega caps (no high beta)
+TRADFI_TIERS = ('gold', 'stocks12', 'tradfi', 'tradfi_mom', 'tradfi_range')
+TRADFI_SLOTS = {'TF-TREND': dict(key='ema_st', symbols='tradfi'),              # gold + 12 stocks
+                'TF-BRK': dict(key='breakout_pyramid', symbols='tradfi'),      # gold + 12 stocks
+                'TF-MOM': dict(key='ema_mom', symbols='tradfi_mom'),            # 12 stocks (gold: trend/breakout/range only)
+                'TF-RANGE': dict(key='exp_vwaprev', symbols='tradfi_range')}   # gold + mega caps; range gate (RG) in the signal
+# strategy keys a NEW automatic entry may use per TradFi class (any slot, incl. hand-made symbol lists). No DCA anywhere.
+TRADFI_KEYS_GOLD = frozenset({'ema_st', 'breakout_pyramid', 'exp_vwaprev', 'exp_range'})
+TRADFI_KEYS_MEGA = frozenset({'ema_st', 'breakout_pyramid', 'ema_mom', 'exp_vwaprev', 'exp_range'})
+TRADFI_KEYS_HIGH_BETA = frozenset({'ema_st', 'breakout_pyramid', 'ema_mom'})
+# Codex ruling d: XAUUSDT + PAXGUSDT share ONE budget (risk / notional / positions), checked before every gold entry.
+GOLD_FAMILY_MAX_POS = 2                 # at most one long + one (hedge) short across the pair
+GOLD_FAMILY_RISK_EQ = 0.01              # open gold risk_usd + new risk <= 1 % of equity
+GOLD_FAMILY_NOTIONAL_SLOTS = 1          # open gold notional + new <= MAX_LEVERAGE x equity x this / ROTATION_MAX_ACTIVE
+
+
+def tradfi_tier_symbols(tier):
+    gold, stocks = list(TU.TRADFI_GOLD), list(TU.TRADFI_STOCKS)
+    return dict(gold=gold, stocks12=stocks, tradfi=gold + stocks, tradfi_mom=stocks,
+                tradfi_range=gold + list(TRADFI_RANGE_STOCKS))[tier]
+
+
+def _bfam(k):
+    return BREADTH_FAMILY.get(TRADFI_SLOTS[k]['key'] if k in TRADFI_SLOTS else k, 'Other')
+
+
+def breadth_groups(keys=None, tradfi=False):
+    """Deterministic groups of <= ROTATION_MAX_ACTIVE strategy keys. Keys are ordered by family, then dealt round-robin
+    into ceil(n / 6) groups, so each family is spread across the groups and group sizes differ by at most one.
+    tradfi=True (TRADFI-01 T4) adds the TRADFI_SLOTS ids to the same pool."""
+    keys = (sorted(k for k in S.STRATEGIES if k not in SCALP_KEYS) + (sorted(TRADFI_SLOTS) if tradfi else [])) \
+        if keys is None else list(keys)                  # SCALP-4: scalp slots are independent, never in a rotation group
+    fo = {f: i for i, f in enumerate(BREADTH_FAMILIES)}
+    order = sorted(keys, key=lambda k: (fo.get(_bfam(k), len(fo)), k))
+    n = max(1, -(-len(order) // ROTATION_MAX_ACTIVE))
+    return [order[i::n] for i in range(n)]
+
+
+def breadth_id(key):
+    return key[:12]                                     # app.validate_sleeve: [A-Za-z0-9_-]{1,12}
+
+
+# Rotation management overlay (PAPER): per strategy key, the profit-capture overrides a breadth slot keeps as its sleeve
+# `mgmt`. Setting ROTATION_MGMT_OVERLAY = {strategy_key: {be_r, tp1_r, tp1_frac, max_bars}}. Only these four keys; the
+# bounds and the 0 = off rule are app.MG_NUM / app.clean_mgmt's (tests/test_rotation_mgmt_overlay pins them equal).
+ROTATION_MGMT_KEYS = dict(be_r=(0.1, 50), tp1_r=(0.1, 50), tp1_frac=(0.05, 1), max_bars=(1, 5000))
+# Strategy keys whose NEW automatic entries the PAPER breadth rotation refuses (Codex 6207997736, 2026-10-16: exp_structure
+# has no pre-cost edge on the dev window and loses in every quarter/regime/side). Open lots keep full management (stops,
+# exits, adds); the strategy stays registered and research-visible.
+ROTATION_ENTRY_DISABLED = frozenset({'exp_structure'})
+ROTATION_OVERLAY_STRATS = frozenset({'exp_trend', 'exp_range', 'exp_breakout', 'exp_scalp', 'exp_structure', 'exp_vwaprev'})
+
+
+def clean_rotation_overlay(ov):
+    """Validated copy of a ROTATION_MGMT_OVERLAY ({strategy_key: mgmt}); raises ValueError on anything else."""
+    if not isinstance(ov, dict): raise ValueError('rotation management overlay must be an object')
+    out = {}
+    for key, m in ov.items():
+        if not isinstance(key, str) or key not in S.STRATEGIES: raise ValueError(f'rotation overlay: unknown strategy {str(key)[:30]!r}')
+        if key not in ROTATION_OVERLAY_STRATS:
+            raise ValueError(f'rotation overlay: {key} is not one of the experimental keys ({", ".join(sorted(ROTATION_OVERLAY_STRATS))})')
+        if not isinstance(m, dict): raise ValueError(f'rotation overlay {key}: management must be an object')
+        g = {}
+        for k, v in m.items():
+            if k not in ROTATION_MGMT_KEYS:
+                raise ValueError(f'rotation overlay {key}: {str(k)[:20]!r} is not allowed (only {", ".join(ROTATION_MGMT_KEYS)})')
+            if v is None: continue
+            if isinstance(v, bool): raise ValueError(f'rotation overlay {key}.{k} must be a number')
+            if k in ('be_r', 'tp1_r', 'max_bars') and v in (0, '0', 0.0): g[k] = 0; continue      # 0 = off (clean_mgmt)
+            try: x = float(v)
+            except (TypeError, ValueError): raise ValueError(f'rotation overlay {key}.{k} must be a number')
+            lo, hi = ROTATION_MGMT_KEYS[k]
+            if not (lo <= x <= hi) or x != x: raise ValueError(f'rotation overlay {key}.{k} must be between {lo} and {hi}')
+            g[k] = x
+        if g: out[key] = g
+    return out
+
+
+def rotation_overlay_from(sleeves):
+    """The per-key overlay held by a sleeve list (the owner's custom sleeves, or a rotation already carrying one):
+    every non-empty `mgmt` of the six experimental keys (ROTATION_OVERLAY_STRATS), by strategy key; a mgmt on any other
+    key is ignored with a warning. Refused (ValueError) on a disallowed key/value or on two slots of the same key with
+    different management."""
+    ov = {}
+    for sl in sleeves or []:
+        m = sl.get('mgmt') or {}
+        if not m: continue
+        if sl.get('key') not in ROTATION_OVERLAY_STRATS:
+            log.warning(f"rotation overlay: management of slot {str(sl.get('id'))[:12]} ({str(sl.get('key'))[:30]}) not carried "
+                        '- only the six experimental keys keep overrides in the rotation')
+            continue
+        c = clean_rotation_overlay({sl.get('key'): m}).get(sl.get('key'), {})
+        if sl['key'] in ov and ov[sl['key']] != c:
+            raise ValueError(f"rotation overlay: slots of {sl['key']} carry different management - make them equal first")
+        if c: ov[sl['key']] = c
+    return ov
+
+
+def breadth_sleeves(tradfi=False, overlay=None):
+    """One slot per registry strategy; share = 1 / size of its group (equal shares within the active group).
+    tradfi=True also builds the TRADFI_SLOTS (TRADFI-01 T4). overlay = a validated ROTATION_MGMT_OVERLAY: a slot whose
+    strategy key is in it gets that management as its `mgmt`; every other slot stays defaults-only."""
+    out = []
+    for g in breadth_groups(tradfi=tradfi):
+        for k in g:
+            if k in TRADFI_SLOTS:
+                key = TRADFI_SLOTS[k]['key']; st = S.STRATEGIES[key]
+                out.append(sleeve(k, key, 1 / len(g), BREADTH_RISK, BREADTH_MAX_POS, TRADFI_SLOTS[k]['symbols'],
+                                  sides='both' if key in BREADTH_BOTH else st['sides'], tf=st.get('tf', '4h')))
+                continue
+            st = S.STRATEGIES[k]
+            out.append(sleeve(breadth_id(k), k, 1 / len(g), BREADTH_RISK, BREADTH_MAX_POS,
+                              'all' if k in BREADTH_ALL_SYMBOLS else 'core8',
+                              sides='both' if k in BREADTH_BOTH else st['sides'], tf=st.get('tf', '4h')))
+    for x in out:
+        if x['key'] in (overlay or {}): x['mgmt'] = copy.deepcopy(overlay[x['key']])
+    out = with_scalp_slots(out)[0]                      # SCALP-4: independent PAPER scalp slots after the rotation slots
+    ids = [x['id'] for x in out]
+    assert len(set(ids)) == len(ids), 'breadth slot ids collide'
+    return out
+
+
+def rotation_at(ts=None, tradfi=False):
+    """The rotation at unix time ts (default now): active group index, its slot ids/keys/families, window start / next switch."""
+    groups = breadth_groups(tradfi=tradfi)
+    t = int(time.time() if ts is None else ts)
+    epoch = t // ROTATION_PERIOD_S
+    idx = epoch % len(groups)
+    iso = lambda s: datetime.fromtimestamp(s, timezone.utc).isoformat(timespec='seconds')
+    return dict(index=idx, groups=len(groups), keys=list(groups[idx]), active=[breadth_id(k) for k in groups[idx]],
+                families=sorted({_bfam(k) for k in groups[idx]}), share=round(1 / len(groups[idx]), 6),
+                since=iso(epoch * ROTATION_PERIOD_S), next_switch=iso((epoch + 1) * ROTATION_PERIOD_S),
+                period_h=ROTATION_PERIOD_S // 3600)
+
 GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
-                       ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original',
+                       ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original', ROTATION_MGMT_OVERLAY={},
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
                        MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
                        # v3.1 - all off by default (risk rules only WARN: they log, never block, until set to 'enforce')
                        ENTRY_ORDER='market', MAKER_FALLBACK=True, MAKER_REPRICE=3, MAKER_WAIT_S=40, FEE_MAKER=0.0002,
+                       # PAPER fee-economics gate. Off by default for backward compatibility; the five-book experiment
+                       # enables it explicitly. One stop-risk dollar must cover at least FEE_EDGE_MULT x conservative
+                       # round-trip fees + slippage, otherwise turnover has no room to pay for itself.
+                       FEE_EDGE_GATE=False, FEE_EDGE_MULT=3.0,
+                       PAPER_BOOKS=False, PAPER_BOOK_CAP=2000.0, TRUE_BOOKS=False,
+                       STRATEGY_SHADOW=False,        # TRUE-BOOK-02 observer (PAPER only, observe only)
                        PUMP_GUARD={}, RISK_RULES={}, GOVERNOR=dict(mode='off', rules=[]),
-                       CTRL_BIAS='neutral', CTRL_RISK='max_test')   # CTRL-01-LITE (default = today's behaviour)
+                       CTRL_BIAS='neutral', CTRL_RISK='max_test',   # CTRL-01-LITE (default = today's behaviour)
+                       # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
+                       # Both OFF by default; independent of AI_FILTER; nothing in trading code ever reads their output.
+                       ML_SHADOW=False, CLAUDE_SHADOW_ANALYST=False, CLAUDE_SHADOW_MODEL=_SHADOW_MODEL,
+                       CLAUDE_DAILY_BUDGET_USD=18.0, CLAUDE_MONTHLY_BUDGET_USD=198.0)   # USD ceilings, not expected spend
 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(
@@ -628,6 +1147,11 @@ def _validate_lot(k, l):
     _str(l.get('stop_foreign'), w + '.stop_foreign', _TAG_RE, opt=True)
     _num(l.get('stop_confirmed_t'), w + '.stop_confirmed_t', opt=True)
     _bool(l.get('restored_from_bak'), w + '.restored_from_bak', opt=True)
+    _str(l.get('tp_id'), w + '.tp_id', _TAG_RE, opt=True)                 # resting take-profit (mgmt.resting_tp)
+    _str(l.get('tp_cid'), w + '.tp_cid', _CID_RE, opt=True); _str(l.get('tp_acid'), w + '.tp_acid', _CID_RE, opt=True)
+    _num(l.get('tp_px'), w + '.tp_px', gt=0, opt=True); _num(l.get('tp_qty'), w + '.tp_qty', lo=0, opt=True)
+    _num(l.get('tp_done'), w + '.tp_done', lo=0, opt=True); _num(l.get('tp_placed_t'), w + '.tp_placed_t', opt=True)
+    _str(l.get('tp_failed'), w + '.tp_failed', opt=True)
     pd_ = l.get('pending')
     if pd_ is not None:
         _dict(pd_, w + '.pending')
@@ -813,8 +1337,10 @@ def validate_state(doc):
 
 
 _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_FLATTEN=(0.0, 1.0), CAPITAL_CAP=(0.0, 1e12),
-                    MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01))
-_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND')
+                    MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01),
+                    FEE_EDGE_MULT=(1.0, 20.0), PAPER_BOOK_CAP=(100.0, 1e7))
+_SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED',
+                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS', 'STRATEGY_SHADOW')
 
 
 def validate_settings(doc):
@@ -827,6 +1353,9 @@ def validate_settings(doc):
         if k in doc: _num(doc[k], k, lo, hi)
     for k in _SETTING_BOOL:
         if k in doc: _bool(doc[k], k)
+    if 'TRADFI_OIL_ENABLED' in doc:                                   # TRADFI-01: oil stays hard OFF
+        try: TU.check_oil_flag(doc['TRADFI_OIL_ENABLED'])
+        except ValueError as ex: _bad('TRADFI_OIL_ENABLED', str(ex))
     if 'ENTRY_ORDER' in doc: _str(doc['ENTRY_ORDER'], 'ENTRY_ORDER', choices=('market', 'maker'))
     if 'UNIVERSE' in doc:
         if not isinstance(doc['UNIVERSE'], list): _bad('UNIVERSE', 'not a list')
@@ -1027,6 +1556,19 @@ PROV_PENDING_S = 60          # AUD-04 r2: a provisional stop whose answer was lo
 STOP_TYPES = ('STOP_MARKET', 'STOP')
 BOT_STOP_CID_RE = re.compile(r'z[ab][0-9a-f]{22}')   # exact new_cid('zb'|'za') shape of the bot's own stop client ids
 #   (classic / algo); any other client id (manual, web, other bots, malformed) is never adopted or cancelled
+TP_CID_RE = re.compile(r'z[tq][0-9a-f]{22}')        # resting take-profit client ids: new_cid('zt') classic / ('zq') algo
+TP_EXIT = 'take_profit_resting'                       # exit reason of a lot closed by its resting exchange take-profit
+TP_EXCLUDE = ('runner', 'ttp', 'tp1_r', 'tps', 'dca', 'grid')   # any of these makes the exit more than a plain fixed tp_r
+
+
+def resting_tp_eligible(g):
+    """mgmt.resting_tp (default OFF) applies only to a plain fixed tp_r exit: no runner, trailing take-profit, partial tp1,
+    ladder, DCA basket, grid or pyramid add (each of those changes the exit or the size the target must close)."""
+    g = g if isinstance(g, dict) else {}
+    if g.get('resting_tp') is not True or not g.get('tp_r'): return False
+    if any(g.get(k) for k in TP_EXCLUDE): return False
+    py = g.get('pyramid')
+    return not (isinstance(py, dict) and (py.get('n') or 0) > 0)
 STOP_MISS_ORDER = ('owner_check', 'restoring', 'checking')       # lot['stop_miss_why'] values, most severe first
 STOP_MISSING_BLOCKS = dict(
     checking='protective stop not found on Binance for this coin - re-checking it; no new entries or adds until it is confirmed',
@@ -1061,7 +1603,9 @@ class Engine:
     def __init__(self, cfg, data_dir, dry=False):
         self.cfg, self.dir, self.dry = cfg, data_dir, dry
         self.F = {k: os.path.join(data_dir, f) for k, f in dict(state='state.json', trades='trades.csv', settings='settings.json', history='history.json', missed='missed.json',
-                                                                equity='equity.json', fills='fills.jsonl', audit='trade_audit.jsonl').items()}
+                                                                equity='equity.json', fills='fills.jsonl', audit='trade_audit.jsonl',
+                                                                book_ledger='book_ledger.jsonl', cohort='cohort.json',
+                                                                cohort_rows='cohort_rows.jsonl').items()}
         self.live = cfg.get('MODE') == 'live'
         self.lock = threading.RLock()
         self.trade = Futures(cfg.get('API_KEY', ''), cfg.get('API_SECRET', ''), MAINNET if self.live else TESTNET)
@@ -1113,6 +1657,8 @@ class Engine:
         self.hedge = False
         self.run_now = threading.Event()
         self.history = self._load_list('history'); self.missed = self._load_list('missed')
+        self.cohort_drift = []                   # RUN-PACK-01: identity parts changed since the cohort started (warning only)
+        self._cohort_init()
         self.last_account, self.last_skip, self.corr = {}, '', None
         self.error = None
         self.connected = False
@@ -1124,6 +1670,8 @@ class Engine:
         self._lev = {}                            # leverage already set per symbol
         self.lev_refusals = {}                    # T03a: Binance leverage refusals per symbol (count, outcome, last error)
         self._fillw = fill_writer(self.F['fills'])   # T05: process-wide telemetry writer for this file (lazy thread)
+        self._enr = fill_enricher()               # EXEC-CAL-00: process-wide fill-audit enrichment worker (lazy thread)
+        self._mk_refs = {}                        # EXEC-CAL-00: resting maker entry -> its filled orders (memory only, ids never saved)
         self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
@@ -1433,6 +1981,8 @@ class Engine:
         does not). None = fine."""
         unt = getattr(self, 'state_untrusted', None)
         if unt: return f"data file not saved ({', '.join(sorted(unt))}.json) - no new risk until it saves again"
+        if (getattr(self, 'state', None) or {}).get('cohort_closing'):         # RUN-PACK-01: nothing may open between cohorts
+            return 'PAPER cohort boundary pending - no new risk until it completes or is aborted'
         return self.install_block()
 
     def install_block(self):
@@ -1479,8 +2029,18 @@ class Engine:
         if status != 'ok': s['ENTRIES_PAUSED'] = True
         s.pop('schema_version', None)
         for k in SECRET_SETTING_KEYS: s.pop(k, None)              # AUD-05 r2: never in S (the app migrated it to the config)
+        try: s['ROTATION_MGMT_OVERLAY'] = clean_rotation_overlay(s.get('ROTATION_MGMT_OVERLAY') or {})
+        except ValueError as ex:                                  # invalid on disk -> defaults-only (today's behaviour)
+            log.warning(f'rotation management overlay ignored: {ex}')
+            if hasattr(self, '_integrity_alert'):
+                self._integrity_alert('integrity|rotation-overlay', f'settings ROTATION_MGMT_OVERLAY invalid ({str(ex)[:120]}) '
+                                      '- ignored, rotation slots use strategy defaults')
+            s['ROTATION_MGMT_OVERLAY'] = {}
         if 'SLEEVES' not in s:
-            s['SLEEVES'] = copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves'])
+            s['SLEEVES'] = (breadth_sleeves(tradfi=s.get('TRADFI_ENABLED') is True and getattr(self, 'live', True) is False,
+                                            overlay=s['ROTATION_MGMT_OVERLAY'])
+                            if s.get('PRESET') == ROTATION_PRESET
+                            else copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves']))
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
             s.pop(k, None)                                       # v1 keys
         s['SYMBOLS_ON'] = {sym: s.get('SYMBOLS_ON', {}).get(sym, True) for sym in s['UNIVERSE']}
@@ -1526,17 +2086,153 @@ class Engine:
             for k, v in ns.items():
                 if k not in self.S or self.S[k] != v: self.S[k] = v
 
-    def apply_preset(self, name):
+    def apply_preset(self, name, overlay=None):
+        """overlay (rotation only): explicit ROTATION_MGMT_OVERLAY; None = taken from the current sleeves when they are
+        the owner's custom sleeves or an earlier rotation and carry one (a named profile's built-in management is not
+        carried); otherwise the stored ROTATION_MGMT_OVERLAY is kept - a stored overlay is never silently wiped."""
+        ov = None
+        if name == ROTATION_PRESET:
+            if getattr(self, 'live', True) is not False:      # BREADTH-01 B2: PAPER/testnet only, fail closed
+                raise ValueError('the breadth rotation is PAPER/testnet only - refused in live mode')
+            if overlay is not None: ov = clean_rotation_overlay(overlay)
+            else:
+                ov = (rotation_overlay_from(self.S.get('SLEEVES'))
+                      if self.S.get('PRESET') in ('custom', ROTATION_PRESET) else {})
+                if not ov: ov = clean_rotation_overlay(self.S.get('ROTATION_MGMT_OVERLAY') or {})
+            sleeves, label = breadth_sleeves(tradfi=self.tradfi_on(), overlay=ov), ROTATION_NAME
+        else:
+            sleeves, label = copy.deepcopy(PRESETS[name]['sleeves']), PRESETS[name]['name']
         with self.lock:
-            self.S['SLEEVES'] = copy.deepcopy(PRESETS[name]['sleeves'])
+            self.S['SLEEVES'] = sleeves
             self.S['PRESET'] = name
+            if ov is not None: self.S['ROTATION_MGMT_OVERLAY'] = ov
             self.save_settings()
-        log.info(f'preset applied: {PRESETS[name]["name"]} (open trades keep their own management)')
+        if ov: log.info(f'rotation management overlay: {ov}')
+        log.info(f'preset applied: {label} (open trades keep their own management)')
+
+    def rotation_block(self, sl, ts=None):
+        """BREADTH-01 B2: why a NEW automatic entry of this slot is refused by the breadth rotation, or None. Only new
+        entries consult it - stops, exits, adds and management of open lots never do. Live mode refuses every entry."""
+        if self.S.get('PRESET') != ROTATION_PRESET: return None
+        if getattr(self, 'live', True) is not False: return 'breadth rotation is PAPER/testnet only - no entries in live mode'
+        if (sl or {}).get('key') in ROTATION_ENTRY_DISABLED:
+            return f"rotation: {sl['key']} disabled for new entries (no dev-window edge) - open lots stay managed"
+        r = rotation_at(ts, **self._rot_kw())
+        if (sl or {}).get('id') not in r['active']:
+            return f"rotation: slot not in the active group {r['index'] + 1}/{r['groups']} (next switch {r['next_switch']})"
+        return None
+
+    def rotation_status(self, ts=None):
+        """Current breadth rotation (for the status snapshot). on=False when another profile is active."""
+        return dict(rotation_at(ts, **self._rot_kw()), on=self.S.get('PRESET') == ROTATION_PRESET, paper_only=True,
+                    live_refused=getattr(self, 'live', True) is not False, tradfi=self.tradfi_on())
+
+    # ------------------------------------------------------------ TRADFI-01 T3/T4
+    def tradfi_on(self):
+        """TradFi (gold + 12 US stock perps) is opt-in AND PAPER/testnet only: S['TRADFI_ENABLED'] is True and not live.
+        In live mode the flag is ignored (refused, fail closed)."""
+        return self.S.get('TRADFI_ENABLED') is True and getattr(self, 'live', True) is False
+
+    def _rot_kw(self):
+        return dict(tradfi=True) if self.tradfi_on() else {}          # off: the exact B2 call
+
+    def sync_tradfi_slots(self):
+        """Rotation profile + TRADFI on: add the missing TRADFI_SLOTS and refresh every rotation slot's share to the new
+        group sizes. Never removes a slot (open lots keep their owner); with TRADFI off their tiers resolve to [] and they are
+        in no active group, so they never open anything. Returns the ids added."""
+        if self.S.get('PRESET') != ROTATION_PRESET or not self.tradfi_on(): return []
+        want = {x['id']: x for x in breadth_sleeves(tradfi=True, overlay=self.S.get('ROTATION_MGMT_OVERLAY') or {})}
+        with self.lock:
+            have = {x['id'] for x in self.S['SLEEVES']}
+            add = [want[i] for i in want if i not in have]
+            if not add: return []
+            for x in self.S['SLEEVES']:
+                if x['id'] in want: x['share'] = want[x['id']]['share']
+            self.S['SLEEVES'].extend(add)
+            self.save_settings()
+        log.info(f"TRADFI: rotation slots added {[x['id'] for x in add]}")
+        return [x['id'] for x in add]
+
+    # ------------------------------------------------------------ SCALP-4 (PAPER)
+    def scalp_block(self, sl, ts=None):
+        """Rotation gate for a NEW automatic entry, with the SCALP-4 slots folded in. A scalp-strategy slot: refused in live
+        mode (any profile, fail closed); in PAPER always eligible (it is not part of the rotation - its own `enabled` flag,
+        checked before this, switches it). Every other slot: exactly rotation_block. Open lots never consult it."""
+        if (sl or {}).get('key') in SCALP_KEYS:
+            if getattr(self, 'live', True) is not False: return 'scalp slots are PAPER/testnet only - no entries in live mode'
+            return None
+        return self.rotation_block(sl, ts)
+
+    def sync_scalp_slots(self):
+        """Rotation profile in PAPER: add the scalp slots an installed bot's saved SLEEVES lack (saved before SCALP-4).
+        Only appends - existing slot entries (ids, shares, enabled flags, mgmt) are never touched; idempotent. Returns the
+        ids added."""
+        if self.S.get('PRESET') != ROTATION_PRESET or getattr(self, 'live', True) is not False: return []
+        with self.lock:
+            new, added = with_scalp_slots(self.S.get('SLEEVES'))
+            if not added: return []
+            self.S['SLEEVES'][len(self.S['SLEEVES']):] = new[len(self.S['SLEEVES']):]
+            self.save_settings()
+        log.info(f'SCALP-4: PAPER scalp slots added {added}')
+        return added
+
+    def is_tradfi(self, sym):
+        return sym in TU.GOLD_FAMILY or sym in TU.STOCK_SET or sym in TU.OIL_SET or \
+            (getattr(self, 'rules', None) or {}).get(sym, {}).get('kind') == 'tradfi'
+
+    def tradfi_block(self, sl, sym, side, size=None, ts=None, manual=False):
+        """TRADFI-01 admission for a NEW entry (stops / exits / adds / management never consult it). Reason or None.
+        Non-TradFi symbols -> None. PAXGUSDT is an ordinary perp: with TRADFI off it is untouched (B2 behaviour)."""
+        if sym in TU.OIL_SET: return 'TRADFI oil is disabled'
+        if not self.is_tradfi(sym): return None
+        if sym == 'PAXGUSDT' and not self.tradfi_on(): return None
+        if getattr(self, 'live', True) is not False: return 'TRADFI is PAPER/testnet only - refused in live mode'
+        if not self.tradfi_on(): return 'TRADFI disabled - no new entries on this symbol (open trades stay managed)'
+        if not manual:
+            key = (sl or {}).get('key')
+            fam = BREADTH_FAMILY.get(key, 'Other')   # real B2 labels; tradfi_session normalises case, unknown -> session-only
+            t = time.time() if ts is None else ts
+            if not TS.entry_allowed(sym, fam, t):
+                return f'tradfi_session: US cash session {TS.us_cash_session(t)} - no new {fam} entry on {sym}'
+            allowed = (TRADFI_KEYS_GOLD if sym in TU.GOLD_FAMILY else TRADFI_KEYS_HIGH_BETA if sym in TU.HIGH_BETA
+                       else TRADFI_KEYS_MEGA)
+            if key not in allowed or 'dca' in self.mgmt(sl):
+                return f'tradfi_policy: {key} is not an approved strategy for {sym}'
+        if sym in TU.GOLD_FAMILY: return self._gold_family_block(side, size)
+        return None
+
+    def _gold_family_block(self, side, size=None):
+        """Codex ruling d: XAUUSDT + PAXGUSDT = ONE family. A second same-direction gold position is refused; the opposite
+        direction needs hedge mode and must fit the shared position / risk / notional budget."""
+        st = self.state
+        lots = [l for l in st['lots'].values() if l['symbol'] in TU.GOLD_FAMILY]
+        work = [p for p in list(st.get('pending_entries', {}).values()) + list(st.get('resting_entries', {}).values())
+                if p.get('symbol') in TU.GOLD_FAMILY]
+        if any(x.get('side') == side for x in lots + work):
+            return f'gold_family_cap: a {side} gold position (XAUUSDT/PAXGUSDT) is already open or working'
+        if (lots or work) and not self.hedge: return 'gold_family_cap: opposite gold position needs hedge mode'
+        if len(lots) + len(work) >= GOLD_FAMILY_MAX_POS: return f'gold_family_cap: family max positions ({GOLD_FAMILY_MAX_POS})'
+        if size: return self._gold_family_budget(lots, float(size.get('risk') or 0.0), float(size.get('notional') or 0.0))
+        return None
+
+    def _gold_family_budget(self, lots, add_risk, add_notional):
+        """Shared XAU+PAXG risk / notional budget (ruling d) for new entries AND adds (pyramid / DCA) on gold lots."""
+        eq = self.guard_eq or self.last_eq or 0.0
+        if eq <= 0: return 'gold_family_cap: equity unknown'
+        risk = sum(float(l.get('risk_usd') or 0.0) for l in lots) + add_risk
+        notional = sum(l['qty'] * l['avg'] for l in lots) + add_notional
+        if risk > GOLD_FAMILY_RISK_EQ * eq + 1e-9:
+            return f'gold_family_cap: family risk {risk:.2f} > {GOLD_FAMILY_RISK_EQ:.0%} of equity'
+        cap = self.S['MAX_LEVERAGE'] * eq * GOLD_FAMILY_NOTIONAL_SLOTS / ROTATION_MAX_ACTIVE
+        if notional > cap + 1e-9: return f'gold_family_cap: family notional {notional:.2f} > {cap:.2f}'
+        return None
 
     def sleeve_symbols(self, sl, include_off=False):
         u = [s for s in self.S['UNIVERSE'] if s in self.rules]
         if sl['symbols'] == 'core8': base = [s for s in CORE8 if s in u]
-        elif sl['symbols'] == 'all': base = u
+        elif sl['symbols'] == 'all': base = [s for s in u if self.rules[s].get('kind') != 'tradfi']   # TRADFI-01: crypto only
+        elif isinstance(sl['symbols'], str) and sl['symbols'] in TRADFI_TIERS:
+            base = [s for s in tradfi_tier_symbols(sl['symbols']) if s in self.rules] if self.tradfi_on() else []
         else: base = [s for s in sl['symbols'] if s in self.rules]
         return [s for s in base if include_off or self.S['SYMBOLS_ON'].get(s, True)]
 
@@ -1546,7 +2242,16 @@ class Engine:
     # ------------------------------------------------------------ exchange setup
     def connect(self):
         info = self.trade.exchange_info()
-        self.rules = F.rules_from_exchange_info(info)          # BT02: the one shared parser (same filters / defaults as before)
+        on = self.tradfi_on()                                  # TRADFI-01: opt-in, PAPER only (ignored in live)
+        if self.S.get('TRADFI_ENABLED') and not on: log.warning('TRADFI_ENABLED ignored: TradFi is PAPER/testnet only')
+        held = set() if self.live else ({l['symbol'] for l in (getattr(self, 'state', None) or {}).get('lots', {}).values()}
+                                        & set(TU.TRADFI_ALLOW_LIST))          # restart with TRADFI off: still manage these
+        if on or held:
+            self.rules = F.rules_from_exchange_info(info, allow_tradfi=True)
+            if not on: self.rules = {k: v for k, v in self.rules.items() if v.get('kind') != 'tradfi' or k in held}
+        else:
+            self.rules = F.rules_from_exchange_info(info)      # BT02: the one shared parser (same filters / defaults as before)
+        self.tradfi_universe = [s for s in TU.TRADFI_ALLOW_LIST if s in self.rules] if on else []
         self.rules_meta = dict(source='exchangeInfo (live connection)', environment='mainnet' if self.live else 'testnet',
                                fetched_at=now_utc().isoformat(timespec='seconds'), verified=True)
         missing = [s for s in self.S['UNIVERSE'] if s not in self.rules]
@@ -1565,6 +2270,8 @@ class Engine:
                 log.warning(f'hedge mode check failed: {e}')
             self.equity()
         self.connected = True
+        if on: self.sync_tradfi_slots()
+        self.sync_scalp_slots()                         # SCALP-4: PAPER rotation only; appends missing slots, idempotent
 
     # ------------------------------------------------------------ helpers
     @staticmethod
@@ -1787,11 +2494,14 @@ class Engine:
     def _save_aux(self, name, obj):
         """AUD-01: history / missed-signal files are written from order and management paths. A failed write must never
         raise there: the in-memory list stays complete and the whole list is written again on the next save."""
+        if name == 'missed': obj = [m for m in obj if m.get('kind') != 'deferred']   # ORDER-SYM-01: display rows never persist
         try:
             save_json(self.F[name], obj)
+            return True
         except Exception as ex:
             try: self.err(f'{name}.json cannot be written ({type(ex).__name__}) - kept in memory, saved again next time', key=f'save|{name}')
             except Exception: pass
+            return False
 
     @contextlib.contextmanager
     def _stage(self, key, lot, name, failed, add=False):
@@ -1905,24 +2615,495 @@ class Engine:
                        expected=exp, actual=act, slip_bps=slip, qty_req=q_req, qty_fill=qf, outcome=outcome,
                        wait_s=round(max(0.0, time.time() - t0), 2) if t0 else None)
             rec.update({k: v for k, v in extra.items() if v is not None})
-            return rec
+            return fill_px_fields(rec)                                  # EXEC-CAL-00: + decision_slippage_bps
         except Exception as e:
             log.warning(f'fill telemetry record not built ({e})'); return None
 
-    def _fill_emit(self, rec):
-        """Hand a finished record to the writer without ever waiting (a full queue or a closing writer drops it, counted)."""
+    def _enrich_on(self):
+        """EXEC-CAL-00: enrichment reads run only for the PAPER/testnet client, and only when it declares user_trades."""
+        return not self.live and not self.dry and callable(getattr(self.trade, 'user_trades', None))
+
+    @staticmethod
+    def _order_ref(o, exec_qty=None, limit=None, cid=None):
+        """EXEC-CAL-00: memory-only correlation of one executed order (its ids are NEVER written to any file), its
+        executed quantity, its own reported average (opx) and, for a resting maker order, its limit (lpx)."""
+        o = o if isinstance(o, dict) else {}
+        ex = _fnum(o.get('executedQty') if exec_qty is None else exec_qty)
+        if not ex or ex <= 0: return None
+        return dict(oid=o.get('orderId'), cid=o.get('clientOrderId') or cid, exec=ex, opx=Engine._fill_px(o), lpx=_fnum(limit))
+
+    def _fill_emit(self, rec, refs=None):
+        """Hand a finished record to the writer without ever waiting (a full queue or a closing writer drops it, counted).
+        EXEC-CAL-00: with refs (the executed orders behind it) on the PAPER/testnet client, a filled record goes to the
+        enrichment worker instead (non-blocking; it writes the record once, enriched or explicitly missing). A record
+        that cannot be handed off is written now with its missingness explicit. The caller's dict is never changed."""
         if not rec: return
+        try:
+            if refs is not None and rec.get('outcome') in ('filled', 'partial'):
+                refs = [r for r in refs if r]
+                if rec.get('actual') is not None and not (refs and _px_known(refs)):
+                    rec = fill_px_unknown(dict(rec))                    # no exchange price: never the limit as `actual`
+                lim = _ref_limit(refs)
+                if self._enrich_on():
+                    if refs and all(r.get('oid') is not None or r.get('cid') for r in refs):
+                        got = self._enr.submit(rec, refs, self.trade, self._fillw, sink=self._cost_sink)
+                        if got == 'queued': return
+                        if got == 'duplicate':                    # not written again; its lot still learns it has no cost
+                            self._cost_sink(dict(rec, commission_missing='duplicate')); return
+                    rec = enrich_finish(copy.deepcopy(rec), refs); rec['enrich_attempts'] = 0
+                    if rec.get('commission_missing') and refs: rec['commission_missing'] = 'not_read'   # FEE-ASSET-01
+                elif lim:
+                    rec = fill_px_fields(dict(rec), lim)                # maker limit improvement, no reads
+        except Exception as e:
+            log.debug(f'fill enrichment hand-off failed ({type(e).__name__})')
+        if rec.get('cost_ref') and rec.get('outcome') in ('filled', 'partial') and not ('commission_raw' in rec or 'commission_missing' in rec):
+            rec = dict(rec, commission_missing='not_enriched')        # FEE-ASSET-01: written without reads
         try: self._fillw.emit(rec)
         except Exception: pass
+        self._cost_sink(rec)
 
-    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, **extra):
+    def _fill(self, kind, sym, side, buy, expected, actual, q_req, q_fill, t0=None, order=None, cost_lot=None, **extra):
         rec = self._fill_rec(kind, sym, side, buy, expected, actual, q_req, q_fill, t0, **extra)
-        self._fill_emit(rec)
+        self._cost_link(rec, cost_lot)
+        self._fill_emit(rec, None if order is None else [self._order_ref(order, (rec or {}).get('qty_fill'))])
         return rec
 
+    # ------------------------------------------------------------ FEE-ASSET-01: actual commission / funding (observe only)
+    # Every executed fill record gets a cost_ref (not an exchange id) that its lot lists in cost_refs. The finished record
+    # (enriched by the worker, or written at once) is appended to a queue; apply_costs() folds it into the lot - or into the
+    # trade's history row when it arrives after the close - on the engine's own thread. Estimates (`fees`) never change.
+    COST_WAIT_S = 600                     # an unlinked cost record waits this long for its lot, then counts as orphan
+
+    def _cost_link(self, rec, lot=None):
+        if not rec or rec.get('outcome') not in ('filled', 'partial'): return None
+        self._cost_n = getattr(self, '_cost_n', 0) + 1
+        rec['cost_ref'] = f"c{int(time.time() * 1000)}-{os.getpid() % 10000}-{self._cost_n}"
+        if lot is not None: lot.setdefault('cost_refs', []).append(rec['cost_ref'])
+        return rec['cost_ref']
+
+    def _cost_sink(self, rec):
+        """Thread-safe hand-off of a finished fill record (deque append, no lot, no state, no I/O)."""
+        try:
+            if rec and rec.get('cost_ref'):
+                vars(self).setdefault('_cost_q', collections.deque(maxlen=5000)).append(
+                    {k: copy.deepcopy(rec.get(k)) for k in ('cost_ref', 'symbol', 'commission_raw', 'commission_missing') if k in rec})
+        except Exception: pass
+
+    def _cost_target(self, ref):
+        for key, l in self.state.get('lots', {}).items():
+            if ref in (l.get('cost_refs') or ()): return 'lot', l
+        for h in reversed(self.history):
+            if ref in (h.get('cost_refs') or ()): return 'row', h
+        for h in reversed(getattr(self, 'cohort_rows', None) or ()):
+            if ref in (h.get('cost_refs') or ()): return 'row', h
+        return None, None
+
+    def _cost_final(self, kind, t):
+        quote = _quote_asset(t.get('symbol'))
+        booked = len(t.get('fills') or []) if kind == 'lot' else t.get('fills_booked')
+        AC.finalize(t, quote, booked, now_ms=time.time() * 1000, wait_ms=self.COST_WAIT_S * 1000)
+
+    def _cost_sweep(self):
+        """Re-finalize lots / rows whose cost record never came (restart / crash cut the enrichment, or the queue
+        dropped it): 'fill_records_pending' becomes 'fill_records_lost' once COST_WAIT_S has passed. Returns rows changed."""
+        rows = lots = False
+        for kind, ts in (('lot', self.state.get('lots', {}).values()), ('row', self.history[-3000:])):
+            for t in ts:
+                if 'fill_records_pending' not in (t.get('fees_actual_partial') or ()): continue
+                before = t.get('fees_actual_partial'); self._cost_final(kind, t)
+                if t.get('fees_actual_partial') != before:
+                    rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                    if kind == 'row': self._row_changed(t)
+        return rows, lots
+
+    def apply_costs(self, reconsider=True):
+        """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
+        try:
+            with self.lock:
+                q = vars(self).setdefault('_cost_q', collections.deque(maxlen=5000))
+                wait = vars(self).setdefault('_cost_wait', [])
+                todo, now, rows, lots = wait + [(time.time(), q.popleft()) for _ in range(len(q))], time.time(), False, False
+                wait.clear(); revised = {}
+                for t0, rec in todo:
+                    kind, t = self._cost_target(rec['cost_ref'])
+                    if t is None:
+                        if now - t0 < self.COST_WAIT_S: wait.append((t0, rec))
+                        else: self.state['cost_orphans'] = int(self.state.get('cost_orphans') or 0) + 1
+                        continue
+                    AC.apply_fill(t, rec); self._cost_final(kind, t)
+                    rows, lots = rows or kind == 'row', lots or kind == 'lot'
+                    if kind == 'row': revised[id(t)] = t
+                if now - getattr(self, '_cost_swept', 0) > 60:
+                    self._cost_swept = now; r2, l2 = self._cost_sweep(); rows, lots = rows or r2, lots or l2
+                for t in revised.values(): self._row_changed(t)     # evidence revision first, then the history file
+                if rows: self._save_aux('history', self.history)
+                if lots: self.save_state()
+                n = len(todo) - len(wait)
+        except Exception as ex:
+            log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
+            n = 0
+        if reconsider: self._reconsider()             # ORDER-SYM-01: a measured book lets its deferred candidates retry
+        return n
+
+    # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
+    # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
+    # cohort (true_books.compute); sizing, the 4-lot cap, leverage and stop-risk use that book's NAV. HALT is sticky for the
+    # cohort (state['true_books']['halted']); other books keep trading. Strategy logic and risk % are unchanged.
+    TB_HALT_CONFIRM_S = 30           # an unrealized-only NAV <= 0 must persist this long before the halt is made sticky
+    TB_INCOMPLETE_NOTIFY_S = 6 * 3600   # a book that stays INCOMPLETE (refusing new risk) is reported again every 6 h
+
+    def _tb_on(self):
+        return bool(getattr(self, 'live', True) is False and self.S.get('TRUE_BOOKS') is True and self.S.get('PAPER_BOOKS') is True)
+
+    def _tb_state(self):
+        cid = (self.state.get('cohort') or {}).get('id')
+        st = self.state.get('true_books')
+        if not isinstance(st, dict):
+            st = self.state['true_books'] = dict(cohort_id=cid, halted={}, peak={}, halt_pend={}, inc_note={})
+        elif cid and st.get('cohort_id') != cid:                       # a NEW cohort: every book starts fresh
+            st.clear(); st.update(cohort_id=cid, halted={}, peak={}, halt_pend={}, inc_note={})
+        for k in ('halted', 'peak', 'halt_pend', 'inc_note'):
+            if not isinstance(st.get(k), dict): st[k] = {}
+        return st
+
+    def _tb_working(self):
+        """Entries placed but not yet a lot (resting maker, unconfirmed): (book, notional, worst loss to stop) reserved.
+        A manual or unmapped working entry (any of resting / unconfirmed / armed) is (None, ...): owned by no book, so
+        every book is INCOMPLETE until it is gone (Codex 6240139762 #7) - never skipped."""
+        out = []
+        for x in list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('unconfirmed_entries') or {}).values()):
+            p = x.get('plan') or {}
+            b = None if x.get('manual') or p.get('manual') else self._book_of_working(x)
+            if b not in PB.IDS: out.append((None, None, None)); continue
+            try: qty, px, sd = float(p.get('qty') or x.get('qty')), float(p['px']), float(p['stop_dist'])
+            except (TypeError, ValueError, KeyError): out.append((b, None, None)); continue
+            out.append((b, qty * px, qty * sd))
+        for p in (self.state.get('pending_entries') or {}).values():     # armed trailing entries: ownership only here
+            if p.get('manual') or self._book_of_working(p) not in PB.IDS: out.append((None, None, None))
+        return out
+
+    def _tb_funding(self):
+        """Funding coverage (Codex 6240139762 #3): ok only with a reader, the last read successful and recent."""
+        if not getattr(self.trade, 'income', None): return dict(ok=False, why='no_reader', through_ms=None)
+        t, err = self.state.get('funding_read_ms'), self.state.get('funding_err')
+        if err: return dict(ok=False, why=err, through_ms=t)
+        if not t: return dict(ok=False, why='never_read', through_ms=None)
+        if time.time() * 1000 - float(t) > (self.FUNDING_POLL_S + self.FUNDING_RETRY_S + 600) * 1000:
+            return dict(ok=False, why='stale', through_ms=t)
+        return dict(ok=True, why=None, through_ms=t)
+
+    def _row_by_id(self, rid):
+        """A closed row by id: the trading history first (live copy), then the cohort evidence store (past the trim)."""
+        for h in reversed(self.history):
+            if h.get('id') == rid: return h
+        for h in reversed(getattr(self, 'cohort_rows', None) or ()):
+            if h.get('id') == rid: return h
+        return None
+
+    def _cohort_rev_retry(self):
+        """Write again every revision the disk refused. True when every one that still exists is durable (a row lost for
+        good stays pending - its book INCOMPLETE - but never stalls the funding cursor)."""
+        ok = True
+        for rid in list(self.state.get('cohort_rev_pending') or ()):
+            row = self._row_by_id(rid)
+            if row is not None: ok = self._cohort_rev(row) and ok
+        return ok
+
+    def _row_changed(self, row):
+        """A closed row was restated (late fee / funding): bump its cost_rev and append the revision to the evidence store."""
+        ev = next((r for r in reversed(getattr(self, 'cohort_rows', None) or ()) if r.get('id') == row.get('id')), None)
+        row['cost_rev'] = max(int(row.get('cost_rev') or 0), int((ev or {}).get('cost_rev') or 0)) + 1   # past every copy
+        return self._cohort_rev(row)
+
+    def true_books(self, marks=None, persist=True):
+        """{book: doc} for the current cohort (pure compute over state). Durable before it returns (Codex 6240139762 #4/#6):
+        every new mark-to-market peak, an unrealized-only halt's confirmation start and a sticky HALT are saved to state
+        first - a restart can neither lower DD nor restart the 30 s confirmation. persist=False (status) saves peaks only:
+        it never starts a confirmation or halts. A save that fails makes every book INCOMPLETE (no new risk)."""
+        with self.lock:
+            st = self._tb_state()
+            on = self._tb_on() and bool(st['cohort_id'])
+            if on: self._cohort_rev_retry()
+            if marks is None:                                        # never value a book on a stalled mark feed
+                marks = (self.marks or {}) if time.time() - (getattr(self, 'marks_t', 0) or 0) <= MARK_FRESH_S else {}
+            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
+                               marks, self._tb_working(), st['halted'], peaks=st['peak'], funding=self._tb_funding(),
+                               unsaved=self.state.get('cohort_rev_pending') or (),
+                               unowned_funding=[u for u in self.state.get('funding_unowned') or () if u.get('cohort_id') == st['cohort_id']])
+            dirty, now, pend, new = False, time.time(), st['halt_pend'], {}
+            if on:
+                for k, b in books.items():
+                    if any(x['reason'] in ('peak_unreadable', 'mark_missing') for x in b['incomplete']): continue   # evidence
+                    # stays; a lot without a valid mark leaves its loss out of NAV - never a peak to keep
+                    old = TB.D(st['peak'].get(k))
+                    if old is None or b['peak'] > old: st['peak'][k] = str(b['peak']); dirty = True   # exact, never rounded down
+            for k, b in books.items():
+                if b['state'] != 'HALTED' or k in st['halted']:
+                    if persist and on and pend.pop(k, None) is not None: dirty = True
+                    continue
+                if b['nav_worse'] - b['unreal'] <= 0: new[k] = b['halt']; continue        # realized alone: at once
+                if not (persist and on): continue
+                if TB.D(pend.get(k)) is None: pend[k] = now; dirty = True    # mark-to-market only: confirm on a later tick
+                t0 = float(TB.D(pend[k]))
+                if now - t0 >= self.TB_HALT_CONFIRM_S: new[k] = dict(b['halt'] or {}, confirmed_s=round(now - t0))
+            notes = []
+            if persist and on:                                       # the owner hears when a book goes quiet (Codex S1 #2)
+                for k, b in books.items():
+                    if not b['incomplete'] or TB.cost_pending_only(b):  # complete, or only a commission in flight
+                        if st['inc_note'].pop(k, None) is not None: dirty = True
+                        continue
+                    if now - float(TB.D(st['inc_note'].get(k)) or 0) >= self.TB_INCOMPLETE_NOTIFY_S:
+                        st['inc_note'][k] = now; dirty = True
+                        notes.append((k, sorted({x['reason'] for x in b['incomplete']})))
+            if new and persist and on:
+                for k, h in new.items():
+                    pend.pop(k, None)
+                    st['halted'][k] = dict(h or {}, at=now_utc().isoformat(timespec='seconds'), scope='book')
+                dirty = True
+            else: new = {}
+            if dirty and not self.save_state():
+                for b in books.values():
+                    b['incomplete'].append(dict(reason='true_book_state_not_durable')); b['complete'] = b['rankable'] = False
+            for k in new: self.notify(f'TRUE-BOOK: book {k} HALTED (NAV <= 0) - no new risk in this book; other books continue')
+            for k, why in notes:
+                self.notify(f'TRUE-BOOK: book {k} INCOMPLETE ({", ".join(why)}) - no new risk in this book until it is '
+                            'measured; its open lots stay managed; other books continue')
+            return books
+
+    def _tb_add_block(self, lot, q, px):
+        """An add / fallback remainder is not a new lot, but it is notional and stop-risk inside the book's own NAV."""
+        if not self._tb_on() or lot.get('manual') or lot.get('book') not in PB.IDS: return None
+        if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        b = self.true_books().get(lot['book'])
+        stop = lot.get('stop')
+        return TB.admit(b, q * px, q * abs(px - float(stop)) if stop is not None else None, add=True,
+                        max_leverage=self.S['MAX_LEVERAGE'])
+
+    def _tb_rows(self, cohort_id):
+        """Closed rows of the cohort: the evidence store (never trimmed; late restatements appended as revisions) then the
+        trading history copies (live). TB.merge_rows folds them by the revision rule, so NAV never moves when history passes
+        its 3000-row window and a stale first copy never wins."""
+        if not cohort_id: return []
+        rows = [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id]
+        start = (self.state.get('cohort') or {}).get('started_utc') or ''
+        for h in self.history:
+            if h.get('cohort_id') == cohort_id: rows.append(h)
+            elif not h.get('cohort_id') and h.get('book') not in PB.IDS and str(h.get('closed') or '') >= start:
+                rows.append(h)                                        # unowned activity on the shared account
+        return rows
+
+    def _book_of_working(self, x):
+        b = x.get('book') or (x.get('plan') or {}).get('book')
+        if b: return b
+        sl = next((s for s in self.S.get('SLEEVES', []) if s['id'] == x.get('sleeve')), None)
+        return TB.book_of(sl.get('key')) if sl else None
+
+    def _tb_opposite(self, sym, side, skip_pending=None):
+        """TRUE-BOOK-03 (#147): True when the symbol already carries exposure on the OTHER side - an open lot (any book,
+        manual included), an armed trailing entry (except the one now triggering), a resting maker, an unconfirmed entry or an
+        untracked exchange position. Funding paid on a symbol held both ways cannot be assigned to either lot, so a new
+        opposite entry is never opened."""
+        opp = 'SHORT' if side == 'LONG' else 'LONG'
+        st = self.state
+        recs = list(st['lots'].values()) + [p for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending] \
+            + list((st.get('resting_entries') or {}).values()) + list((st.get('unconfirmed_entries') or {}).values())
+        k = f'{sym}|{opp}'                               # untracked: alerted after 2 passes; over_seen from the first (Cowork)
+        if k in (getattr(self, 'untracked', None) or {}) or k in (st.get('over_seen') or {}): return True
+        return any(x.get('symbol') == sym and x.get('side') == opp for x in recs)
+
+    def true_book_block(self, sl, size=None, skip_pending=None, sym=None, side=None):
+        """Book-wide gate for a new lot (automatic entries only). None or a reason."""
+        if not self._tb_on() or not sl: return None
+        if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
+        # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
+        self.apply_costs(reconsider=False)              # ORDER-SYM-01: inside entry_block - never a nested open_lot
+        if sym and side and self._tb_opposite(sym, side, skip_pending): return 'true_book/opposite_side_funding_ambiguity'
+        book = TB.book_of(sl.get('key'))
+        if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
+        b = self.true_books().get(book)
+        trailing = sum(1 for k, p in (self.state.get('pending_entries') or {}).items()   # armed trailing entries hold a slot;
+                       if k != skip_pending and self._book_of_working(p) == book)        # their size is gated when they trigger
+        size = size or {}
+        return TB.admit(b, size.get('notional'), size.get('risk'), max_leverage=self.S['MAX_LEVERAGE'],
+                        working=b['working'] + trailing)
+
+    def _tb_excursions(self):
+        """{trade id: {mfe_r, mae_r, giveback_r}} from the T05a close records in trade_audit.jsonl (+ its rotated .1). Read
+        incrementally from a saved offset per file (only new lines); a rotation (the file got shorter) re-reads both. Never
+        raises; hindsight only - never a trading input."""
+        with vars(self).setdefault('_tb_exc_lock', threading.Lock()):     # one reader at a time (HTTP threads)
+            return self._tb_excursions_read()
+
+    def _tb_excursions_read(self):
+        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, fid=None))
+        cur = self.F['audit']
+        try: stt = os.stat(cur); size, fid = stt.st_size, (stt.st_ino, stt.st_ctime_ns)
+        except OSError: size, fid = 0, None
+        if fid != c.get('fid') or size < c['off'].get(cur, 0):           # rotated / replaced (not only shorter): re-read both
+            c['off'].clear(); c['ids'].clear(); c['fid'] = fid
+        for path in (cur + '.1', cur):
+            try:
+                with open(path, 'rb') as f:
+                    f.seek(c['off'].get(path, 0))
+                    for ln in f:
+                        if not ln.endswith(b'\n'): break                   # a line still being written: next time
+                        c['off'][path] = c['off'].get(path, 0) + len(ln)
+                        if b'"trade_audit"' not in ln: continue
+                        try: r = json.loads(ln)
+                        except ValueError: continue
+                        if not isinstance(r, dict) or r.get('kind') != 'trade_audit' or not r.get('id'): continue
+                        m = r.get('metrics') if isinstance(r.get('metrics'), dict) else {}
+                        c['ids'][r['id']] = dict(mfe_r=(m.get('mfe') or {}).get('r'), mae_r=(m.get('mae') or {}).get('r'),
+                                                 giveback_r=r.get('giveback_r'))
+            except OSError: continue
+        return c['ids']
+
+    def true_books_compare(self):
+        """Strategies-tab comparison (read-only, PAPER): families = the five books, strategies = every mapped strategy, from
+        the same TRUE-BOOK valuation as the status. Incomplete rows are shown with their reasons and never ranked."""
+        try:
+            with self.lock:
+                on, books = self._tb_on(), self.true_books(persist=False)
+                st, coh = self._tb_state(), self.state.get('cohort') or {}
+                cid, t0 = st['cohort_id'], TB._ms(coh.get('started_utc'))
+                rows = [r for r in self._tb_rows(cid) if r.get('cohort_id') == cid] if cid else []
+                keys = {s['id']: s.get('key') for s in self.S.get('SLEEVES', [])}
+                rej, missed = [], list(self.missed)
+                for m in missed:
+                    t = TB._ms(m.get('logged'))
+                    if m.get('kind') or t is None or t0 is None or t < t0: continue
+                    k = keys.get(m.get('sleeve')); b = TB.book_of(k)
+                    if b: rej.append((b, k, m.get('code') or TA.reason_code(m.get('reason'))[1]))
+                partial = len(missed) >= 600 and t0 is not None and (TB._ms(missed[0].get('logged')) or 0) > t0
+                unowned = len({x.get('key') or x.get('id') or x.get('symbol') for b in books.values() for x in b['incomplete']
+                               if x['reason'] == 'unowned_account_activity'})
+            out = TB.compare(books, rows, self._tb_excursions(), rej)
+            return dict(on=on, cohort=dict(id=cid, started_utc=coh.get('started_utc'), unowned_activity=unowned,
+                                           evidence_gaps=int(self.state.get('cohort_rows_gap') or 0)),
+                        rejections_window_partial=partial, **out)
+        except Exception as ex:
+            return dict(on=False, error=f'{type(ex).__name__}: {ex}')
+
+    def true_books_status(self):
+        try:
+            on = self._tb_on()
+            books = self.true_books(persist=False)
+            st = self._tb_state()
+            return dict(on=on, cohort_id=st['cohort_id'], start=float(TB.START), max_lots=TB.MAX_LOTS,
+                        stop_risk_max=float(TB.STOP_RISK_MAX), shared_account=True, books=TB.public(books))
+        except Exception as ex:
+            return dict(on=False, error=f'{type(ex).__name__}: {ex}')
+
+    FUNDING_POLL_S, FUNDING_RETRY_S, FUNDING_SEEN_MAX, FUNDING_LOOKBACK_S = 3600, 300, 2000, 7 * 86400
+
+    def _funding_holders(self, sym, t_ms):
+        """Lots / history rows that held sym at t_ms: [(('lot'|'row', key), side, qty held then)]. The quantity is replayed
+        from the booked fills (TP1 / adds after the payment do not move the split); the recorded qty only when a fill time
+        is unreadable. Times are stored to the second, so a lot opened within the payment's second counts as holding."""
+        def ms(iso):
+            try: return datetime.fromisoformat(iso).timestamp() * 1000
+            except (TypeError, ValueError): return None
+        out = []
+        for key, l in self.state.get('lots', {}).items():
+            o = ms(l.get('opened'))
+            if l.get('symbol') == sym and o is not None and o <= t_ms:
+                q = AC.held_at(l.get('fills'), t_ms)
+                out.append((('lot', key), l.get('side'), l.get('qty') if q is None else q))
+        ids = {h.get('id') for h in self.history[-3000:]}
+        for h in self.history[-3000:] + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]:
+            o, c = ms(h.get('opened')), ms(h.get('closed'))
+            if h.get('symbol') == sym and o is not None and c is not None and o <= t_ms <= c:
+                q = AC.held_at(h.get('fills'), t_ms)
+                out.append((('row', h.get('id')), h.get('side'), h.get('qty_max') if q is None else q))
+        return out
+
+    def funding_tick(self, force=False):
+        """FEE-ASSET-01 (observe only, PAPER/testnet): poll FUNDING_FEE income on the audit path, dedupe by a hash of the
+        transaction id, attribute each payment to the lots / history rows holding the symbol then (pro-rata by qty; opposite
+        sides = ambiguous, nothing attributed), append it to funding.jsonl and fold it into funding_actual. Never raises,
+        never sizes or gates anything."""
+        if getattr(self, 'live', True) is not False: return 'live'
+        inc = getattr(self.trade, 'income', None)
+        if not inc: return 'no_reader'
+        now = time.time()
+        if not force and now - float(self.state.get('funding_polled') or 0) < self.FUNDING_POLL_S: return 'not_due'
+        try:
+            cur = self.state.get('funding_cursor_ms') or int((now - self.FUNDING_LOOKBACK_S) * 1000)
+            rows = inc('FUNDING_FEE', cur)
+            if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):   # malformed = not read (Cowork F1)
+                raise ValueError('malformed income reply')
+        except Exception as ex:                                 # retry in FUNDING_RETRY_S, never on every loop pass
+            self.state['funding_polled'] = now - self.FUNDING_POLL_S + self.FUNDING_RETRY_S
+            self.state['funding_err'] = 'read_failed'           # TRUE-BOOK: every holder INCOMPLETE until a read succeeds
+            log.debug(f'funding income not read ({type(ex).__name__})'); return 'read_failed'
+        with self.lock:
+            self.state['funding_polled'] = now
+            seen = self.state.setdefault('funding_seen', []); seen_set = set(seen)
+            new, hi, keys, rows_changed = [], int(cur), [], {}
+            tgt_of = lambda kind, key: self.state['lots'].get(key) if kind == 'lot' else self._row_by_id(key)
+            for r in sorted(rows, key=lambda r: int(_fnum(r.get('time')) or 0)):
+                t = int(_fnum(r.get('time')) or 0); hi = max(hi, t)
+                k = AC.tran_key(r.get('tranId') if r.get('tranId') is not None else (r.get('symbol'), t, r.get('income')))
+                if k in seen_set: continue
+                keys.append(k); seen_set.add(k)
+                amt, asset, sym = _fnum(r.get('income')), r.get('asset'), r.get('symbol')
+                hs = self._funding_holders(sym, t)
+                st, shares = AC.attribute_funding(amt, [(key, s, q) for key, s, q in hs])
+                if st in ('ambiguous', 'unreadable'):           # never estimated, never netted: every holder is incomplete
+                    why = 'ambiguous_opposite_side_funding' if st == 'ambiguous' else 'unreadable_funding'
+                    for (kind, key), _s, _q in hs:
+                        tgt = tgt_of(kind, key)
+                        if tgt is not None and _funding_once(tgt, k):
+                            AC.mark_funding_gap(tgt, why)
+                            if kind == 'row': rows_changed[id(tgt)] = tgt
+                for (kind, key), a in shares.items():
+                    tgt = tgt_of(kind, key)
+                    if tgt is not None and _funding_once(tgt, k):
+                        AC.apply_funding(tgt, a, asset)
+                        if kind == 'row': rows_changed[id(tgt)] = tgt
+                if st in ('unattributed', 'unreadable'):        # a payment no lot / row can own or account (ruling (c),
+                    # Codex 6240869316): an unreadable amount or time contaminates every book, holders or not
+                    coh = self.state.get('cohort') or {}
+                    t0 = TB._ms(coh.get('started_utc'))
+                    un = self.state.setdefault('funding_unowned', [])
+                    if coh.get('id') and (t0 is None or t <= 0 or t >= t0) and all(u.get('key') != k for u in un):
+                        un.append(dict(cohort_id=coh['id'], key=k, symbol=sym, asset=asset, amount=amt, time_ms=t))
+                        del un[:-200]                           # saved with the cursor (one state save)
+                new.append(dict(kind='funding', key=k, symbol=sym, asset=asset, amount=amt, time_ms=t, status=st,
+                                shares=[dict(kind=kk, id=kid, amount=a) for (kk, kid), a in shares.items()],
+                                **({'holders': [dict(kind=kk, id=kid, side=s) for (kk, kid), s, _q in hs]} if not shares else {})))
+            # Crash order (Codex 6240139762 #3): each payment is applied at most once per lot / row (its funding_keys), and the
+            # rows are made durable (evidence revision + history file) BEFORE the seen keys / cursor that stop a replay are
+            # saved with the lots. A crash anywhere replays from the old cursor: a target that kept the key skips it, one
+            # that lost it (not yet saved) gets it once. A failed row save keeps the cursor and the error (open holders INCOMPLETE).
+            if new:
+                try:
+                    with open(os.path.join(self.dir, 'funding.jsonl'), 'a', encoding='utf-8') as f:
+                        for x in new: f.write(json.dumps(x, separators=(',', ':')) + '\n')
+                except OSError as ex: log.warning(f'funding.jsonl not written ({ex})')
+            again = self.state.get('funding_err') == 'persist_failed'   # rows of a failed tick are in memory only
+            ok = all([self._row_changed(t) for t in rows_changed.values()])
+            if again: ok = self._cohort_rev_retry() and ok
+            if rows_changed or again: ok = self._save_aux('history', self.history) and ok
+            if not ok:
+                self.state['funding_err'] = 'persist_failed'
+                self.state['funding_polled'] = now - self.FUNDING_POLL_S + self.FUNDING_RETRY_S
+                self.save_state()
+                return 'persist_failed'
+            seen.extend(keys); del seen[:-self.FUNDING_SEEN_MAX]
+            self.state['funding_cursor_ms'] = hi                 # same-ms rows are re-read next time and deduped by key
+            self.state['funding_read_ms'] = int(now * 1000); self.state.pop('funding_err', None)
+            self.save_state()
+        return f'{len(new)} new'
+
     def _fill_flush(self, timeout=2.0):
-        """Wait (bounded) until the writer has handled every queued record. Never call from an order path."""
-        return self._fillw.flush(timeout)
+        """Wait (bounded) until the enrichment worker and then the writer have handled every queued record. Never call
+        from an order path."""
+        end = _mono() + timeout
+        try: self._enr.flush(timeout)
+        except Exception: pass
+        return self._fillw.flush(max(0.0, end - _mono()))
 
     def fill_summary(self):
         """Per-kind counts, average/worst slippage (bps) and average wait over the last FILL_WINDOW written records, the
@@ -2077,7 +3258,8 @@ class Engine:
         missed list. The window holds slimmed records (TA.slim_record) and the attribution is cached until the window or
         the missed list changes, so /api/status polls stay cheap. Read-only and bounded; never raises."""
         try:
-            w, ms, hs = self._auditw, self.missed, self.history
+            w, hs = self._auditw, self.history
+            ms = [m for m in self.missed if m.get('kind') != 'deferred']   # ORDER-SYM-01: a deferral is not a final decision
             last = ms[-1] if ms else None
             with w.lock: ctr, n, wl = dict(w.ctr), len(w.win), (w.win[-1] if w.win else None)
             key = (ctr['invalid_records'], n, id(wl), len(ms), id(last), last.get('logged') if isinstance(last, dict) else None,
@@ -2236,11 +3418,240 @@ class Engine:
         if old and old != new: self._cancel_or_park(lot['symbol'], old)
         fx = lot.pop('stop_foreign', None)                 # AUD-04: Move stop took over from a stop placed outside the bot
         if fx and fx not in (old, new): self._cancel_or_park(lot['symbol'], fx)
+        if lot.get('tp_id'):                               # resting TP (mgmt.resting_tp): AFTER the stop is done, kept at
+            try: self._tp_sync(lot)                        # the lot's size - it never changes what the stop did
+            except Exception as ex: log.warning(f"{lot['symbol']} resting take-profit resize failed ({ex}) - retried by the verifier")
         return True
+
+    # ------------------------------------------------------------ resting exchange take-profit (mgmt.resting_tp, default OFF)
+    # A plain fixed tp_r target can rest on Binance as a reduce-only TAKE_PROFIT_MARKET (mark-price trigger) instead of being
+    # checked on the manage poll and closed at market. The protective stop is never touched, widened or delayed for it: the TP
+    # is placed only AFTER the stop is confirmed, and a TP that cannot be placed falls back to the poll path for good.
+    _TP_FIELDS = ('tp_id', 'tp_cid', 'tp_acid', 'tp_px', 'tp_qty', 'tp_done', 'tp_placed_t')
+
+    def _tp_wanted(self, lot):
+        return not self.dry and not lot.get('manual') and not lot.get('tp_failed') and resting_tp_eligible(lot.get('mgmt'))
+
+    def _tp_price(self, lot):
+        """e0 + tp_r * R on the tick grid, rounded TOWARD the entry (a long's sell target down, a short's buy target up):
+        the resting order triggers no later than the poll path would."""
+        tick, sd = self.rules[lot['symbol']]['tick'], (1 if lot['side'] == 'LONG' else -1)
+        lvl = lot['e0'] + sd * lot['mgmt']['tp_r'] * lot['R']
+        q = self._rd(lvl, tick)
+        if sd == -1 and q < lvl - tick * 1e-6: q = self._rd(q + tick, tick)
+        return q
+
+    def _tp_clear(self, lot):
+        for f in self._TP_FIELDS: lot.pop(f, None)
+
+    def _tp_fail(self, lot, why):
+        """Placement failed: logged, and this lot keeps the poll-based market close (today's path). The stop is untouched."""
+        self._tp_clear(lot); lot['tp_failed'] = str(why)[:160]
+        self.err(f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: resting take-profit not placed ({str(why)[:120]}) - the bot "
+                 "watches the target and closes at market instead; the stop is unchanged")
+
+    def _place_tp(self, lot):
+        """Place the lot's resting take-profit for its whole quantity (same order client and write-ahead client-id scheme
+        as the stop: zt<hex> classic / zq<hex> algo fallback, recorded durably BEFORE the send). Only once the stop is
+        confirmed placed. Returns True when a TP is placed (or owned after a lost answer)."""
+        if not self._tp_wanted(lot) or lot.get('tp_id') or lot.get('pending'): return False
+        if lot.get('stop_dirty') or not lot.get('stop_id') or lot.get('stop_miss_why') == 'owner_check': return False
+        sym = lot['symbol']; r = self.rules.get(sym)
+        fn = getattr(self.trade, 'take_profit', None)
+        if r is None or not callable(fn):
+            self._tp_fail(lot, 'no take-profit order on this exchange client'); return False
+        px, qty = self._tp_price(lot), self._rd(lot['qty'], r['step'])
+        if qty <= 0 or px <= 0:
+            self._tp_fail(lot, f'target {px} / quantity {qty} not placeable'); return False
+        cid, acid = new_cid('zt'), new_cid('zq')
+        lot['tp_cid'], lot['tp_acid'] = cid, acid
+        try:
+            self._save_wal()
+        except Exception as ex:
+            lot.pop('tp_cid', None); lot.pop('tp_acid', None)
+            self.err(f"{sym} [{lot['sleeve']}] resting take-profit NOT sent - its write-ahead record could not be saved "
+                     f"({type(ex).__name__}); retried later", key=f'tp-wal|{sym}')
+            return False
+        try:
+            tag = self._send(fn, sym, lot['side'], self._fmt(qty, r['step']), self._fmt(px, r['tick']), reduce_only=True,
+                             cid=cid, acid=acid)
+        except AmbiguousOrder as ex:                      # it may be live: owned by its client id, the verifier decides
+            tag = ex.tag or f'c:{cid}'
+            self.err(f"{sym} [{lot['sleeve']}] resting take-profit answer lost ({tag}) - owned, its status is checked")
+        except BinanceError as ex:
+            self._tp_fail(lot, 'target already reached' if ex.code == -2021 else ex); return False
+        except Exception as ex:
+            self._tp_fail(lot, ex); return False
+        lot.update(tp_id=tag, tp_px=px, tp_qty=qty, tp_done=0.0, tp_placed_t=self.clock())
+        self.save_state()
+        log.info(f"{sym} {lot['side']} [{lot['sleeve']}] resting take-profit {tag}: {qty} @ {px}")
+        return True
+
+    def _tp_sync(self, lot):
+        """A live resting TP is never larger than its lot (after a partial close / resync the stop was resized): a TP for
+        the lot's quantity is placed first, then the old one is cancelled (parked + retried if the cancel fails)."""
+        tag = lot.get('tp_id')
+        if not tag or self.dry or lot.get('pending') or lot['symbol'] not in self.rules: return False
+        left = (lot.get('tp_qty') or 0.0) - (lot.get('tp_done') or 0.0)
+        if abs(left - lot['qty']) <= self._qty_tol(self.rules[lot['symbol']]['step']): return False
+        old = {f: lot[f] for f in self._TP_FIELDS if f in lot}
+        self._tp_clear(lot)
+        if self._place_tp(lot) or lot.get('tp_failed'):
+            self._cancel_or_park(lot['symbol'], tag)      # replaced, or fell back to the poll path: the old one must go
+        else:
+            lot.update(old)                               # not placeable right now: kept, retried by the verifier
+        return True
+
+    STOP_FILL_WAIT_S = 60            # a vanished stop without a readable execution record waits this long, then is booked unconfirmed
+    STOP_FILL_TRIES = 3              # ... and only after this many reads by this process (a restart never skips the wait)
+
+    def _stop_fill(self, l):
+        """A vanished exchange stop's own execution (Codex 6243423221) -> ('ok', avg price, order record) when Binance reports
+        it FILLED for the lot's quantity; ('wait', None, None) while it is unreadable / ambiguous for less than
+        STOP_FILL_WAIT_S; then ('none', None, None): booked at the stop price as exit_px_unconfirmed (the row stays
+        INCOMPLETE - never a zero fee, never the configured stop price as exchange truth). A client without stop_fill
+        (no record source) is 'none' at once. The order record stays in memory only (ids are never written). While it
+        waits, lot['stop_gone'] = [stop tag, t0] holds the lot out of manage() (no add, stop move or close on a position
+        Binance already closed); a different stop tag (restored / replaced stop) is a new wait, never an old timer."""
+        fn = getattr(self.trade, 'stop_fill', None)
+        if not callable(fn): return 'none', None, None
+        o = None
+        tries = vars(self).setdefault('_sf_tries', {})                 # memory only: reads per stop tag in this process
+        tries[l['stop_id']] = tries.get(l['stop_id'], 0) + 1
+        try: o = fn(l['symbol'], l['stop_id'])
+        except Exception as ex: log.info(f"{l['symbol']} {l['side']} stop execution unreadable ({type(ex).__name__}) - re-checked next pass")
+        try: q = float((o or {}).get('executedQty') or 0)
+        except (TypeError, ValueError): q = 0.0
+        px = self._fill_px(o) if o else None
+        tol = self._qty_tol(self.rules[l['symbol']]['step']) if l['symbol'] in self.rules else 1e-9
+        if o and str(o.get('status') or '').upper() == 'FILLED' and px and abs(q - l['qty']) <= tol:
+            tries.pop(l['stop_id'], None); return 'ok', px, o
+        sg = l.get('stop_gone')
+        if not (isinstance(sg, list) and len(sg) == 2 and sg[0] == l['stop_id']): sg = l['stop_gone'] = [l['stop_id'], time.time()]
+        if time.time() - sg[1] < self.STOP_FILL_WAIT_S or tries[l['stop_id']] < self.STOP_FILL_TRIES: return 'wait', None, None
+        tries.pop(l['stop_id'], None); return 'none', None, None
+
+    def _tp_record(self, lot):
+        """Order record of a classic resting TP by its client id -> dict(state 'ok'|'notfound'|'unknown', exec, px, final).
+        'unknown': no record source (algo TP, a client without get_order) or a failed read - never read as 'gone'."""
+        tag, cid = str(lot.get('tp_id') or ''), lot.get('tp_cid')
+        fn = getattr(self.trade, 'get_order', None)
+        if not cid or not callable(fn) or not tag.startswith(('o:', 'c:')): return dict(state='unknown')
+        try:
+            o = fn(lot['symbol'], cid)
+        except Exception:
+            return dict(state='unknown')
+        if not o: return dict(state='notfound')
+        try: ex = float(o.get('executedQty') or 0)
+        except (TypeError, ValueError): return dict(state='unknown')
+        ex = min(self._rd(ex, self.rules[lot['symbol']]['step']), lot.get('tp_qty') or lot['qty'])
+        return dict(state='ok', exec=ex, px=self._fill_px(o) or lot.get('tp_px'), oid=o.get('orderId'),
+                    final=str(o.get('status') or '').upper() in ORDER_FINAL)
+
+    def _tp_settle(self, k, tags, short=None, replace=True):
+        """Settle a lot's resting TP: its order record decides (classic); without one, a position SHORTFALL (`short`, from
+        reconcile) is the TP's fill only while the lot's stop is still listed. A fill is booked as 'take_profit_resting';
+        a full fill finishes the lot (its stop is cancelled), a partial one keeps the rest with its stop resized exactly
+        like a partial stop fill. A TP that ended without a fill is placed again (replace=False, from reconcile: left to the
+        verifier, which places it once the stop is confirmed). -> 'filled'|'partial'|'gone'|'none'|'unknown'."""
+        l = self.state['lots'][k]; tag = l.get('tp_id')
+        if not tag: return 'none'
+        sym, step, listed = l['symbol'], self.rules[l['symbol']]['step'], tag in tags
+        rec = self._tp_record(l)
+        if rec['state'] == 'ok':
+            new, px, final = self._rd(max(0.0, rec['exec'] - (l.get('tp_done') or 0.0)), step), rec['px'], rec['final']
+            if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
+        elif rec['state'] == 'notfound' and not listed:
+            new, px, final = 0.0, None, True                       # Binance has no such order: it never existed
+        elif short is not None and not listed and l.get('stop_id') in tags:
+            new, px, final = min(self._rd(short, step), l['qty']), l.get('tp_px'), True
+        else:
+            return 'unknown'
+        if new > 0:
+            self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
+            l['tp_done'] = (l.get('tp_done') or 0.0) + new
+            self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
+        if l['qty'] <= 0:
+            self._tp_clear(l)                                       # filled: nothing left to cancel
+            self._finish(k, TP_EXIT); self.save_state()             # the stop is cancelled there (never a stale stop)
+            return 'filled'
+        if final: self._tp_clear(l)                                  # that order is over: a new one covers what is left
+        if new > 0:
+            l['stop_dirty'] = True                                   # stop resized to what is left (new first, then old cancelled)
+            try: self._replace_stop(l)
+            except Exception as ex: log.warning(f"{sym} stop resize after a partial take-profit failed ({ex}) - retried next pass")
+            if final and replace: self._place_tp(l)
+            self.save_state(); return 'partial'
+        if final:
+            log.info(f"{sym} {l['side']} [{l['sleeve']}] resting take-profit {tag} ended without a fill - placing it again")
+            if replace: self._place_tp(l)
+            self.save_state(); return 'gone'
+        return 'none'
+
+    def _tp_by_position(self, k, tags):
+        """No order record for a missing TP: one critical positions read decides - the position intact -> the TP is gone
+        (placed again); smaller -> settled as its fill while the stop is listed, else left to reconcile."""
+        l = self.state['lots'][k]; sym, side = l['symbol'], l['side']
+        try: live = self._positions_critical()
+        except Exception: return 'unknown'
+        have = live.get((sym, side), 0.0)
+        expected = sum(x['qty'] for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side)
+        if have >= expected - self._qty_tol(self.rules[sym]['step']):
+            self._tp_clear(l); self._place_tp(l); self.save_state(); return 'gone'
+        return self._tp_settle(k, tags, short=expected - have)
+
+    def _verify_tps(self, sym, rows, tags):
+        """Resting take-profits of one symbol, from the verifier's open-order read: a bot TP (zt/zq client id) that no lot
+        owns is cancelled; an eligible lot with a confirmed stop and no TP gets one; a listed TP of the wrong size is
+        resized; a missing one is settled from its order record (filled / partial / gone -> placed again). Returns changed."""
+        changed, now = False, self.clock()
+        lots = [(k, l) for k, l in self.state['lots'].items() if l['symbol'] == sym]
+        owned = {v for _, l in lots for v in (l.get('tp_id'), l.get('tp_cid'), l.get('tp_acid')) if v}
+        orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}
+        by_cid = {}
+        for r in rows:
+            cid = str(r.get('client_id') or '')
+            if not TP_CID_RE.fullmatch(cid): continue
+            by_cid[cid] = r
+            if r['tag'] in owned or cid in owned or r['tag'] in orph: continue
+            ik = f"tp-orphan|{sym}|{r['tag']}"
+            self.err(f"{sym}: resting take-profit {r['tag']} is not owned by any trade - cancelled", key=ik)
+            if self._cancel_or_park(sym, r['tag']): self.resolve(ik, f"{sym}: orphaned take-profit {r['tag']} cancelled")
+            changed = True
+        for k, l in lots:
+            if k not in self.state['lots'] or l.get('pending'): continue
+            tag = l.get('tp_id')
+            if not tag:
+                if self._tp_wanted(l) and l.get('stop_id') in tags and not l.get('stop_dirty'): changed = self._place_tp(l) or changed
+                continue
+            if tag not in tags:
+                row = by_cid.get(l.get('tp_cid') or '') or by_cid.get(l.get('tp_acid') or '')
+                if row: l['tp_id'] = tag = row['tag']; changed = True       # a lost answer: listed under its client id
+            if tag in tags:
+                changed = self._tp_sync(l) or changed
+                continue
+            if now - (l.get('tp_placed_t') or -1e18) < STOP_LIST_GRACE_S:
+                self._stopv_due(sym, now + STOP_RECHECK_S); continue        # just placed: not listed yet is not a miss
+            res = self._tp_settle(k, tags)
+            if res == 'unknown': res = self._tp_by_position(k, tags)
+            if res == 'unknown': self._stopv_due(sym, now + STOP_RECHECK_S)
+            changed = changed or res not in ('none', 'unknown')
+        return changed
+
+    @staticmethod
+    def _stop_fired_guard(lot):
+        """Codex 6243761037 F1: a lot whose stop fired and whose fill is not booked yet (stop_gone on its current stop)
+        sends no close - Binance already closed it, so the order would take a sibling lot's size or overshoot. Same
+        deferred contract as `pending`: the caller keeps the lot, reconcile books the stop fill, nothing is sent."""
+        sg = lot.get('stop_gone')
+        if sg and sg[0] == lot.get('stop_id'):
+            raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: its stop fired on Binance and the fill is being "
+                               "booked - nothing is sent")
 
     def _market_close(self, lot, qty, why, mark=None, post=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
+        self._stop_fired_guard(lot)                                 # every close path, partial ones included
         sym, r = lot['symbol'], self.rules[lot['symbol']]
         qty = self._rd(qty, r['step'])
         if qty <= 0: return 0.0
@@ -2254,7 +3665,7 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, reason=why,
+            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
                        **({'outcome': 'unfilled'} if got == 0 else {}))
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
@@ -2464,14 +3875,17 @@ class Engine:
         if not lot: return
         self.resolve(f'stop-missing|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - stop check ended")
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
+        if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
+            self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
         self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
-        closes = [f for f in lot.get('fills', []) if f[1] not in ('entry', 'pyramid_add', 'safety_order')]
+        closes = [f for f in lot.get('fills', []) if f[1] not in TA.ENTRY_KINDS]      # entry_fallback is an entry
         cq = sum(f[2] for f in closes) or 1e-12
         exit_avg = sum(f[2] * f[3] for f in closes) / cq if closes else lot['avg']
         gross = lot.get('realized', 0.0); fees = lot.get('fees', 0.0); net = gross - fees
         opened = datetime.fromisoformat(lot['opened']); closed = now_utc()
-        rec = dict(id=key, sleeve=lot['sleeve'], strategy=(next((x['name'] for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
+        rec = dict(id=key, sleeve=lot['sleeve'], book=lot.get('book'),
+                   strategy_key=lot.get('key_strategy'), strategy=(next((x['name'] for x in self.S['SLEEVES'] if x['id'] == lot['sleeve']), None)
                    or ('Manual' if lot.get('manual') else lot.get('key_strategy'))), symbol=lot['symbol'], side=lot['side'], tf=lot.get('tf'),
                    opened=lot['opened'], closed=closed.isoformat(timespec='seconds'), hours=round((closed - opened).total_seconds() / 3600, 1),
                    entry=lot.get('entry0', lot['e0']), avg_entry=lot['avg'], exit=exit_avg, qty_max=lot.get('qty_max', lot['q0']),
@@ -2482,13 +3896,356 @@ class Engine:
                    move_pct=round(sd * (exit_avg - lot.get('entry0', lot['e0'])) / lot.get('entry0', lot['e0']) * 100, 2), exit_reason=why,
                    adds=lot.get('adds', 0), dca=lot.get('dca', 0), tp1=lot.get('tp1', False), manual=lot.get('manual', False),
                    fills=lot.get('fills', []))
+        try:                                             # FEE-ASSET-01: actual costs beside the estimate (never replace it)
+            for k in AC.COST_FIELDS:                     # records still queued find this row through cost_refs
+                if k in lot: rec[k] = copy.deepcopy(lot[k])
+            if rec.get('cost_refs') or lot.get('fills'):
+                rec['fills_booked'] = len(lot.get('fills') or []); self._cost_final('row', rec)
+        except Exception as e: log.warning(f'actual costs not carried to history ({e})')
+        if lot.get('cohort_id'): rec['cohort_id'] = lot['cohort_id']     # RUN-PACK-01: carried, never re-derived
+        au = None
         try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
             au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
-            if au: au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed']); self._audit_emit(au)
+            if au:
+                au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed'])
+                self._audit_emit(au)
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
+        if rec.get('cohort_id') and self._cohort_ok() and rec['cohort_id'] == self.state['cohort']['id']:
+            self._cohort_row(rec)                                  # RUN-PACK-01 evidence copy (never read by trading)
         self._save_aux('history', self.history)
+        self._ml_label(key, rec, lot, au)                          # ML-SHADOW-01 close label (observe only, never raises)
         self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
+
+    # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
+    # The lot -> decision link lives in the lot record itself (lot['ml_decision_id'], survives restarts with state.json).
+    # Lots opened while ML_SHADOW was off carry no id and never get a label. Pending decisions (resting maker / armed
+    # trailing entry) are linked when they fill; if they are cancelled or expire nothing more is written (stay unlabeled).
+    ML_DIR, ML_MAX_BYTES, ML_MAX_FILES = 'ml_shadow', 2_000_000, 5
+
+    def ml_paths(self):
+        d = os.path.join(self.dir, self.ML_DIR)
+        return dict(dir=d, decisions=os.path.join(d, 'decisions.jsonl'), labels=os.path.join(d, 'labels.jsonl'))
+
+    def _ml_health(self):
+        return self.health.setdefault('ml_shadow', dict(decisions=0, labels=0, errors=0, dropped=0, missing_decision=0,
+                                                        refused_skipped=0, write_errors=0, lost=0,
+                                                        blocked_prior_writer=0, reconciled=0))
+
+    def _ml_ledgers(self):
+        with self.__dict__.setdefault('_ml_led_lock', threading.Lock()):     # the writer thread and readers share them
+            led = self.__dict__.get('_ml_led')
+            if led is None:
+                import ml_shadow as MLS
+                p = self.ml_paths()
+                led = self._ml_led = (MLS.JsonlLedger(p['decisions'], self.ML_MAX_BYTES, self.ML_MAX_FILES),
+                                      MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
+            return led
+
+    def _ml_writer(self):
+        """#104: the one background writer of this engine's ML ledgers (created on first use; no file I/O here)."""
+        w = self.__dict__.get('_ml_w')
+        if w is None:
+            from ml_shadow import writer as MLW
+            w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health(),
+                                                           key=os.path.normcase(os.path.realpath(self.ml_paths()['dir']))))
+        return w
+
+    def ml_close(self, timeout=2.0):
+        """Flush (bounded) and stop this engine's ML writer before another engine takes over the same data folder.
+        Rows that could not be written are counted as lost. True when no writer thread remains."""
+        w = self.__dict__.get('_ml_w')
+        if w is None: return True
+        from ml_shadow import writer as MLW
+        return MLW.unregister(w) and w.close(timeout)
+
+    def ml_flush(self, timeout=2.0):
+        """Wait (bounded) for queued ML rows to reach disk. True when nothing is left queued."""
+        w = self.__dict__.get('_ml_w')
+        return True if w is None else w.flush(timeout)
+
+    def _ml_link(self, lot, plan):
+        """#104: set lot['ml_decision_id'] BEFORE the open path's own save_state(), so the lot and its link land in the
+        same atomic state write (a crash after that save can no longer leave the trade unlabelled). A direct entry
+        (opened inside the cycle that is about to record it as 'taken') is always linked; a filled pending entry is
+        linked unless its decision is known to be absent. The id stays on the lot even if its row is later dropped
+        (Codex 6254070622); such a close is refused at the label stage and counted as missing_decision - never
+        reconstructed or relinked."""
+        try:
+            if self.S.get('ML_SHADOW') is not True or plan.get('manual') or not plan.get('sl'): return
+            import ml_shadow as MLS
+            sl, t = plan['sl'], (plan.get('sg') or {}).get('time')
+            if not t: return
+            did = MLS.decision_id(sl['id'], sl.get('key'), plan['sym'], plan['side'], sl.get('tf'), t)
+            direct = self.__dict__.get('_ml_direct') == (sl['id'], plan['sym'], plan['side'], str(t))
+            if direct or self._ml_writer().known(did) is not False: lot['ml_decision_id'] = did
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
+
+    def _ml_context(self, sl, sym, sg, frames):
+        """MLDATA-01: the cross-sectional decision context (ml_shadow.context) for this candidate - funding settled at or
+        before the decision candle close, the 42-bar return rank and the EMA50 breadth across this cycle's frames, and the
+        open lots of other coins whose 30-bar return correlation is >= 0.7. Each piece None when unavailable. Never raises."""
+        try:
+            from ml_shadow import context as MLC
+            rows = None
+            try:
+                import shadow_funding as SF
+                rows = SF.read_funding(self.dir, sym)
+            except Exception:                               # noqa: BLE001 - no series: funding stays None
+                rows = None
+            others = [l['symbol'] for l in self.state['lots'].values()]
+            return MLC.decision_context(sym, sg['time'], TF_SEC.get(sl.get('tf')), frames, rows, others)   # unknown tf: funding None
+        except Exception:                                   # noqa: BLE001
+            return {}
+
+    def _ml_coverage(self, row):
+        """MLDATA-01: per-feature coverage counters [present, total] in health['ml_shadow']['coverage']."""
+        try:
+            cov = self._ml_health().setdefault('coverage', {})
+            for k, v in (row.get('features') or {}).items():
+                c = cov.setdefault(k, [0, 0]); c[1] += 1
+                if v is not None: c[0] += 1
+        except Exception:                                   # noqa: BLE001
+            pass
+
+    def _ml_decision(self, sl, sym, side, sg, frames, status, reason, exposure=None, lot_key=None):
+        """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (status taken | skipped | pending + the existing
+        reason), after the engine has decided. Writes only under <data>/ml_shadow (plus the decision id on a lot it just
+        opened), returns nothing, swallows every exception (counted in health['ml_shadow']). Off unless S['ML_SHADOW'] is
+        True. Nothing in the trading code reads what it writes."""
+        try:
+            if self.S.get('ML_SHADOW') is not True: return
+            import ml_shadow as MLS
+            df = (frames or {}).get(sym)
+            ctx = {'exposure_count': exposure}
+            btc = (frames or {}).get('BTCUSDT')
+            if btc is not None and sym != 'BTCUSDT': ctx['btc_df'] = btc
+            ctx.update(self._ml_context(sl, sym, sg, frames))     # MLDATA-01: funding / rank / breadth / corr_count, causal
+            kw = dict(df=df, i=len(df) - 1, ctx=ctx) if df is not None and len(df) else dict(features={'features': {}})
+            rg = None
+            try:
+                r = self.rotation_status()
+                if r.get('on'): rg = f"{r['index'] + 1}/{r['groups']}"
+            except Exception: pass
+            row = MLS.build_decision_record(sleeve=sl['id'], strategy=sl.get('key'), family=_bfam(sl.get('key')), symbol=sym,
+                                            side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken',
+                                            status=status, reason=scrub(str(reason or '')), rotation_group=rg,
+                                            trade_id=lot_key, **kw)
+            self._ml_coverage(row)
+            self._ml_writer().submit('decision', row)        # #104: O(1) hand-off; the disk write is off the cycle lock
+        except Exception:                                   # noqa: BLE001 - an observer never alters trading
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
+
+    def _ml_label(self, key, rec, lot, audit=None):
+        """ML-SHADOW-01 close hook: one label (realized R / pnl / exit reason) for a lot carrying an ml_decision_id.
+        Never raises, never changes the trade record."""
+        try:
+            if self.S.get('ML_SHADOW') is not True: return
+            did = (lot or {}).get('ml_decision_id')
+            if not isinstance(did, str): return
+            import ml_shadow as MLS
+            m = (audit or {}).get('metrics') or {}
+            mfe, mae = m.get('mfe') or {}, m.get('mae') or {}
+            full = (audit or {}).get('coverage') == 'full'
+            touched = (audit or {}).get('target_touch_t')
+            target_known = full and (audit or {}).get('target') is not None and int((audit or {}).get('observations') or 0) > 0
+            row = MLS.build_label_record(decision_id=did, net_r=rec.get('r'), net_pnl=rec.get('pnl'),
+                                         exit_reason=rec.get('exit_reason'), mfe_r=mfe.get('r') if full else None,
+                                         mae_r=mae.get('r') if full else None,
+                                         target_before_stop=(bool(touched) if target_known else None), trade_id=key,
+                                         closed_at=rec.get('closed'))
+            self._ml_writer().submit('label', row)           # #104: the writer checks the decision ledger, then appends
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
+
+    # ------------------------------------------------------------ TRUE-BOOK-02: strategy shadow observer (observe only)
+    STRAT_SHADOW_DIR = 'strategy_shadow'
+    SHADOW_Q_MAX = 5000
+
+    def _shadow_health(self):
+        h = self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
+        h.setdefault('pre_cohort', 0)
+        return h
+
+    def _shadow_in_cohort(self, decision_time):
+        """Only admit evidence whose decision close belongs to the active cohort.
+
+        A restart commonly evaluates the last already-closed candle before the first fresh candle arrives.  That candle
+        predates a newly-created cohort and therefore is neither a missed observation nor usable evidence for it.
+        Missing/late observations *after* the boundary still flow through the normal fail-closed path.
+        """
+        start = (self.state.get('cohort') or {}).get('started_utc')
+        if not start: return True                           # compatibility with old/source-created cohort records
+        try:
+            t0 = pd.Timestamp(start)
+            t0 = t0.tz_localize('UTC') if t0.tzinfo is None else t0.tz_convert('UTC')
+            return pd.Timestamp(decision_time) >= t0
+        except Exception:                                  # a damaged boundary must not silently discard evidence
+            self._shadow_err()
+            return True
+
+    def _shadow_err(self):
+        """Count an observer failure and withhold this cycle's watermark (the next one then shows a missed-cycle gap)."""
+        try:
+            self._shadow_health()['errors'] += 1
+            self._shadow_failed = True
+        except Exception: pass
+
+    def _shadow_book(self):
+        """The cohort's strategy_shadow.ShadowBook under <data>/strategy_shadow, or None. PAPER only and off unless
+        S['STRATEGY_SHADOW'] is True. It receives plain values; nothing in the trading code reads what it returns or
+        writes. May raise - every caller is exception-contained."""
+        if getattr(self, 'live', True) is not False or self.S.get('STRATEGY_SHADOW') is not True: return None
+        cid = (self.state.get('cohort') or {}).get('id')
+        if not cid: return None
+        sb = getattr(self, '_sshadow', None)
+        if sb is None or sb.cohort_id != str(cid):
+            import strategy_shadow as SSH
+            name = re.sub(r'[^A-Za-z0-9_.-]', '_', str(cid)) + '.jsonl'
+            sb = self._sshadow = SSH.ShadowBook(os.path.join(self.dir, self.STRAT_SHADOW_DIR, name), str(cid),
+                                                dict(SSH.MODEL_V1, fee_rate=FEE_EST, adverse_slippage_bps=TA.EXEC_SLIP_BPS))
+        return sb
+
+    @staticmethod
+    def _shadow_close_t(t, tf):
+        x = pd.Timestamp(t)
+        x = x.tz_localize('UTC') if x.tzinfo is None else x.tz_convert('UTC')
+        return x + pd.Timedelta(seconds=TF_SEC.get(tf, 14400))
+
+    def _shadow_funding_feed(self, shadow):
+        """New rows of the collected TESTNET funding timeline (shadow_funding.py, its own thread and folder) for every symbol
+        the shadow has held, handed to the observer here on the engine thread - the ledger keeps one writer. Never account
+        income, never mainnet. A row without a usable rate / mark makes the exposed episodes INCOMPLETE in the ledger."""
+        import shadow_funding as SF
+        cur = self.__dict__.setdefault('_shadow_fcur', {})
+        seen = self.__dict__.setdefault('_shadow_fmtime', {})
+        syms = sorted({x['symbol'] for x in shadow.snapshot()['episodes'].values() if x.get('qty_hist')})
+        for sym in syms:
+            cad = SF.cadence_s(self.dir, sym)
+            if cad is not None:
+                try: shadow.on_cadence(symbol=sym, interval_s=cad, source='testnet fundingInfo')
+                except Exception: self._shadow_err()        # noqa: BLE001 - schedule unknown -> funding_cadence_unknown
+            try: mt = os.path.getmtime(SF.series_file(self.dir, sym))
+            except OSError: continue                        # nothing collected yet: exposure stays funding_unread
+            if seen.get(sym) == mt: continue                # unchanged since the last complete feed
+            ok = True
+            for t, rate, mk in SF.read_funding(self.dir, sym, cur.get(sym)):
+                try:
+                    shadow.on_funding(symbol=sym, at=datetime.fromtimestamp(t / 1000, timezone.utc).isoformat(), rate=rate, mark=mk)
+                except Exception:                           # noqa: BLE001 - not advanced: retried on the next bar
+                    self._shadow_err(); ok = False; break
+                cur[sym] = t
+            if ok: seen[sym] = mt                           # Cowork F2: only a COMPLETE feed marks the file as read
+
+    def _shadow_bar(self, tf, frames, sigs):
+        """Feed the just-closed candle of every symbol of this timeframe (+ the exit signals per instance) to the observer."""
+        try:
+            shadow = self._shadow_book()
+            if shadow is None: return
+            try: self._shadow_funding_feed(shadow)
+            except Exception: self._shadow_err()           # noqa: BLE001 - funding feed failure: the bar still goes in
+            import strategy_shadow as SSH
+            bars = {}
+            for s, d in (frames or {}).items():
+                if d is None or not len(d): continue
+                r = d.iloc[-1]
+                tc = self._shadow_close_t(r.t, tf)
+                if not self._shadow_in_cohort(tc): continue
+                bars[s] = dict(time=tc.isoformat(), o=float(r.o), h=float(r.h), l=float(r.l),
+                               c=float(r.c), atr=float(r.atr) if 'atr' in d else None, source='closed_kline')
+            if not bars:
+                self._shadow_health()['pre_cohort'] += 1
+                return
+            exits = {}
+            for sl in self.S['SLEEVES']:
+                if sl.get('tf') != tf or sl.get('key') not in S.STRATEGIES: continue
+                iid = SSH.identity(sl)[0]
+                for s in bars:
+                    x = (sigs or {}).get(f"{sl['id']}|{s}")
+                    if x and (x.get('lx') or x.get('sx')): exits.setdefault(iid, {})[s] = dict(lx=bool(x['lx']), sx=bool(x['sx']))
+            shadow.on_bar(tf=tf, bars=bars, signals=exits)
+            self._shadow_health()['bars'] += 1
+        except Exception:                                   # noqa: BLE001 - an observer never alters trading
+            self._shadow_err()
+
+    def _shadow_signal(self, sl, sym, side, sg, status, reason):
+        """Write the candidate ahead (every status, after the engine decided), then queue it: it is handed over with the
+        first mark observed at or after the decision close (_shadow_flush) - never an earlier price, never a later candle
+        open. A candidate lost from the queue (restart, overflow) stays visible as unresolved in the ledger."""
+        try:
+            shadow = self._shadow_book()
+            if shadow is None: return
+            q = self.__dict__.setdefault('_shadow_q', [])
+            tc = self._shadow_close_t(sg['time'], sl['tf'])
+            if not self._shadow_in_cohort(tc):
+                self._shadow_health()['pre_cohort'] += 1
+                return
+            it = dict(slot=copy.deepcopy(sl), symbol=sym, side=side, t_close=tc.timestamp(), tf=sl['tf'], fails=0,
+                      signal=dict(time=tc.isoformat(), close=float(sg['close']), atr=float(sg['atr']), le=bool(sg.get('le')),
+                                  se=bool(sg.get('se')), lx=bool(sg.get('lx')), sx=bool(sg.get('sx'))),
+                      live_decision=dict(status=status, reason=scrub(str(reason or ''))),
+                      rule=dict((self.rules.get(sym) or {}).items()) or None)
+            shadow.on_candidate(slot=it['slot'], symbol=sym, side=side, signal=it['signal'], live_decision=it['live_decision'],
+                                rule=it['rule'])
+            if len(q) >= self.SHADOW_Q_MAX:
+                self._shadow_health()['dropped'] += 1; return
+            q.append(it)
+            self._shadow_flush()
+        except Exception:                                   # noqa: BLE001
+            self._shadow_err()
+
+    def _shadow_flush(self):
+        """Hand queued candidates to the observer with the first mark observed at/after their decision close; one with no
+        such mark within strategy_shadow.MAX_REF_LAG_S goes over with mark=None (an explicit INCOMPLETE episode)."""
+        try:
+            q = self.__dict__.get('_shadow_q')
+            if not q: return
+            shadow = self._shadow_book()
+            if shadow is None: q.clear(); return
+            import strategy_shadow as SSH
+            mt = self.marks_t or 0.0
+            for it in list(q):
+                px = (self.marks or {}).get(it['symbol'])
+                if px and mt >= it['t_close']:
+                    mark = dict(time=datetime.fromtimestamp(mt, timezone.utc).isoformat(), price=float(px), source='premiumIndex')
+                elif time.time() - it['t_close'] > SSH.ref_lag_s(it['tf']):
+                    mark = None
+                else:
+                    continue
+                try:
+                    shadow.on_signal(slot=it['slot'], symbol=it['symbol'], side=it['side'], signal=it['signal'], mark=mark,
+                                     live_decision=it['live_decision'], rule=it['rule'])
+                except Exception:                           # noqa: BLE001 - one bad item never blocks the queue
+                    self._shadow_err()
+                    it['fails'] += 1
+                    if it['fails'] >= 3:
+                        q.remove(it); self._shadow_health()['dropped'] += 1        # stays unresolved in the ledger
+                    continue
+                q.remove(it)
+                self._shadow_health()['signals'] += 1
+        except Exception:                                   # noqa: BLE001
+            self._shadow_err()
+
+    def _shadow_cycle(self, tf, frames):
+        """Cycle watermark: every instance of this timeframe was evaluated on this decision close."""
+        try:
+            shadow = self._shadow_book()
+            if shadow is None or not frames: return
+            import strategy_shadow as SSH
+            tc = max(self._shadow_close_t(d.t.iloc[-1], tf) for d in frames.values() if d is not None and len(d))
+            if not self._shadow_in_cohort(tc):
+                self._shadow_health()['pre_cohort'] += 1
+                return
+            ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
+            if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
+            shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
+            self._shadow_health()['cycles'] += 1
+        except Exception:                                   # noqa: BLE001
+            self._shadow_err()
 
     def miss(self, sl, sym, side, sg, reason, kind=None):
         """Record a signal that was not taken (kind None) or a risk-rule warning on a trade that WAS taken (kind 'warning')."""
@@ -2514,6 +4271,7 @@ class Engine:
         if not d['ok']: return False
         q = d['qty']
         if not self.dry:
+            if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
@@ -2544,7 +4302,8 @@ class Engine:
             q = got
             act = float(o.get('avgPrice') or 0) or None
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
-                                    px, act, q, o.get('executedQty'), t0, reason=why, fallback_order=(why == 'entry_fallback') or None))
+                                    px, act, q, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
+                                    fallback_order=(why == 'entry_fallback') or None))
             px = act or px
         try:
             self._apply_add(lot, q, px, why)
@@ -2568,6 +4327,7 @@ class Engine:
     def manage(self, marks):
         with self.lock:
             self.marks, self.marks_t = dict(marks), time.time()
+            self._shadow_flush()                               # TRUE-BOOK-02: queued candidates take this post-close mark
             changed = False
             if self.state.get('orphans') and not self.dry:          # stale stops whose cancel failed earlier
                 keep = []
@@ -2609,6 +4369,7 @@ class Engine:
                 tick = self.rules[lot['symbol']]['tick'] if lot['symbol'] in self.rules else 1e-8
                 ge = lambda lvl: sd * (m - lvl) >= 0           # price at/through a favourable level
                 if lot.get('pending'): continue                # waiting for the exchange to confirm an unanswered order
+                if lot.get('stop_gone') and lot['stop_gone'][0] == lot.get('stop_id'): continue   # its stop fired: reconcile books it
                 if lot.get('restored_from_bak') and lot.get('restored_mismatch'): continue   # AUD-05 r1: stale copy - owner review
                 try:                                           # T05a: excursions, path, state, online policies (observe only)
                     t_ = now_utc().isoformat(timespec='seconds')   # memory only: NO save_state / disk / network here; the
@@ -2686,7 +4447,8 @@ class Engine:
                               if lot['qty'] <= 0: break
                           if lot['qty'] <= 0: self._finish(key, 'take_profit_ladder'); continue
                           if fired: self._replace_stop(lot)
-                    if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R']):
+                    if (g.get('tp_r') and not g.get('runner') and not g.get('ttp') and ge(lot['e0'] + sd * g['tp_r'] * lot['R'])
+                            and not lot.get('tp_id')):         # a resting exchange TP owns this exit while it is placed
                       with self._stage(key, lot, 'take_profit', failed):
                           self.close_lot(key, 'take_profit', m); changed = True; continue
                     if key not in self.state['lots']: continue   # AUD-02: finished by a stage (or its recovery)
@@ -2974,6 +4736,9 @@ class Engine:
                 log.info(f"{sym} {l['side']} [{l['sleeve']}] stop {l['stop_id']} not listed (status {st or 'unknown'}, "
                          f"miss {l['stop_miss']}) - re-checking before any restore"); continue
             self._restore_missing_stop(k, l, st, extras, foreign)
+        if (any(l['symbol'] == sym and (l.get('tp_id') or self._tp_wanted(l)) for l in self.state['lots'].values())
+                or any(TP_CID_RE.fullmatch(str(r.get('client_id') or '')) for r in rows)):
+            changed = self._verify_tps(sym, rows, tags) or changed    # resting take-profits (mgmt.resting_tp)
         clean = all(l.get('stop_id') in tags and not l.get('stop_dirty') for l in self.state['lots'].values()
                     if l['symbol'] == sym and not l.get('pending'))
         claims = self._side_entries(sym)
@@ -3138,7 +4903,11 @@ class Engine:
             steps.append(f"take {g.get('tp1_frac', 0.5) * 100:.0f}% profit at {p(lvl)} (+{g['tp1_r']:g}R)"); nxt = nxt or f'partial take-profit at {p(lvl)}'
         if g.get('tp_r') and not g.get('runner') and not g.get('ttp') and R:
             lvl = e0 + sd * g['tp_r'] * R
-            title = title or f'Fixed target {p(lvl)}'; steps.append(f"close everything at {p(lvl)} (+{g['tp_r']:g}R)")
+            title = title or f'Fixed target {p(lvl)}'
+            if resting_tp_eligible(g) and not l.get('tp_failed') and not l.get('manual'):
+                steps.append(f"close everything at {p(l.get('tp_px') or lvl)} (+{g['tp_r']:g}R) - resting exchange target on Binance")
+            else:
+                steps.append(f"close everything at {p(lvl)} (+{g['tp_r']:g}R)")
         if g.get('be_r') and R and sd * (l['stop'] - l['avg']) < 0:
             lvl = e0 + sd * g['be_r'] * R; steps.append(f"stop moves to breakeven once price reaches {p(lvl)} (+{g['be_r']:g}R)")
             nxt = nxt or f'breakeven trigger at {p(lvl)}'
@@ -3176,6 +4945,11 @@ class Engine:
         blk = self.stop_missing_block(lot['symbol'])               # AUD-04: a stop on this coin is missing on Binance
         if blk: return blk
         if lot.get('manual'): return 'manual trade (no adds)'
+        if lot['symbol'] in TU.GOLD_FAMILY and (lot['symbol'] != 'PAXGUSDT' or self.tradfi_on()):   # TRADFI-01 ruling d
+            gl = [l for l in st['lots'].values() if l['symbol'] in TU.GOLD_FAMILY]
+            stop = lot.get('stop')
+            gb = self._gold_family_budget(gl, q * abs(px - float(stop)) if stop is not None else 0.0, q * px)
+            if gb: return gb
         lx = self._lev_exception_block(lot['symbol'])             # T03c r1: the above-cap exception admitted the entry only
         if lx: return lx
         if self._breaker_add_mult(lot) == 0.0:
@@ -3183,10 +4957,22 @@ class Engine:
         sl = next((x for x in Sg['SLEEVES'] if x['id'] == lot['sleeve']), None)
         if not sl or (lot.get('key_strategy') and sl['key'] != lot['key_strategy']):
             return 'strategy slot removed or replaced - no more adds (stop and exits still run)'
-        share = min(float(sl['share']), float(lot.get('share', sl['share'])))
-        cap = Sg['MAX_LEVERAGE'] * (self.last_eq or 0) * share
-        used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l['sleeve'] == lot['sleeve'])
-        if used + q * px > cap: return f'slot leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
+        book = lot.get('book') if not self.live and Sg.get('PAPER_BOOKS') is True else None
+        tba = self._tb_add_block(lot, q, px)                      # TRUE-BOOK-01: notional + stop-risk inside the book's NAV
+        if tba: return tba
+        if book in PB.IDS:
+            cap = Sg['MAX_LEVERAGE'] * PB.allocation(self.last_eq or 0, Sg.get('PAPER_BOOK_CAP') or 2000.0)
+            used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l.get('book') == book)
+            cap_name = 'book'
+        else:
+            share = min(float(sl['share']), float(lot.get('share', sl['share'])))
+            cap = Sg['MAX_LEVERAGE'] * (self.last_eq or 0) * share
+            used = sum(l['qty'] * l['avg'] for l in st['lots'].values() if l['sleeve'] == lot['sleeve'])
+            cap_name = 'slot'
+        if cap_name == 'book':
+            if used + q * px > cap: return f'book leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
+        else:
+            if used + q * px > cap: return f'slot leverage cap ({used + q * px:.0f} > {cap:.0f} USDT)'
         sd = 1 if lot['side'] == 'LONG' else -1
         add_risk = 0.0 if lot.get('levels') else q * max(0.0, sd * (px - lot['stop']))   # DCA levels are already in open risk
         hits = self._rules_eval(sl, lot['symbol'], lot['side'], dict(notional=q * px, risk=add_risk), add=True)
@@ -3291,20 +5077,38 @@ class Engine:
             self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
             self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
             self._stops_seen(sym, open_tags)                            # AUD-04: listed stops are confirmed now
+            if any(st['lots'][k].get('tp_id') for k in keys):           # a resting TP fill shrinks the position too: its
+                acted = False                                           # record (or, without one, the listed stop) decides
+                for k in [k for k in keys if st['lots'][k].get('tp_id')]:
+                    if k in st['lots'] and have < expected - tol:
+                        acted = self._tp_settle(k, open_tags, short=expected - have, replace=False) in ('filled', 'partial') or acted
+                        keys = [k for k in keys if k in st['lots']]; expected = sum(st['lots'][k]['qty'] for k in keys)
+                if acted or have >= expected - tol: continue            # booked: the rest is re-read next pass (fresh tags)
             gone = [k for k in keys if st['lots'][k].get('stop_id') and st['lots'][k]['stop_id'] not in open_tags]
             gone.sort(key=lambda k: -sd * st['lots'][k]['stop'])       # highest long stop triggers first
+            waiting = False
             for k in gone:
                 l = st['lots'][k]
-                pnl = sd * (l['stop'] - l['avg']) * l['qty']
-                log.info(f"STOPPED {sym} {side} [{l['sleeve']}] stop {l['stop']} ~pnl {pnl:+.2f}")
+                how, px, o = self._stop_fill(l)                         # the stop's own execution decides the exit price
+                if how == 'wait': waiting = True; continue
+                px = px if how == 'ok' else l['stop']
+                pnl = sd * (px - l['avg']) * l['qty']
+                log.info(f"STOPPED {sym} {side} [{l['sleeve']}] stop {l['stop']} fill {px if how == 'ok' else 'unconfirmed'} pnl {pnl:+.2f}")
                 self.log_trade(time=now_utc().isoformat(timespec='seconds'), event='stop', sleeve=l['sleeve'], symbol=sym,
-                               side=side, qty=l['qty'], price=l['stop'], pnl=round(pnl, 4), equity=round(eq, 2))
+                               side=side, qty=l['qty'], price=px, pnl=round(pnl, 4), equity=round(eq, 2))
                 l['realized'] = l.get('realized', 0.0) + pnl
-                l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], l['stop']])
-                l['fees'] = l.get('fees', 0.0) + l['qty'] * l['stop'] * FEE_EST
+                l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], px])
+                l['fees'] = l.get('fees', 0.0) + l['qty'] * px * FEE_EST
+                if how == 'ok':                                         # cost record + userTrades commission (FEE-ASSET-01)
+                    self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'], _fnum(o.get('executedQty')) or l['qty'],
+                               order=o, cost_lot=l)
+                else:                                                   # no exchange record: the row stays INCOMPLETE
+                    l['exit_px_unconfirmed'] = int(l.get('exit_px_unconfirmed') or 0) + 1
+                l.pop('stop_gone', None)
                 expected -= l['qty']; self._finish(k, 'stop')
-                self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {l['stop']}")
+                self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {px}")
                 if have >= expected - tol: break
+            if waiting: continue                                        # never resize lots around an unbooked stop fill
             rest = [k for k in keys if k in st['lots']]
             if rest and have < expected - tol:
                 # every stop is still open but the position is smaller: only act after it is seen twice in a row and no order
@@ -3390,6 +5194,7 @@ class Engine:
             sigs, frames = self.compute_signals(tf, syms, extra=self._orphan_sleeves(tf))
             self.signals.update(sigs); self.signals_time = now_utc().isoformat(timespec='seconds')
             self._audit_regime_cache(tf, frames)               # T05a: closed-candle trend snapshots (memory only, observe only)
+            self._shadow_bar(tf, frames, sigs)                 # TRUE-BOOK-02 (observe only)
             # refresh ATR for trailing + signal/time exits
             for k, l in list(st['lots'].items()):
                 if l.get('tf') != tf or l.get('manual'): continue
@@ -3428,6 +5233,7 @@ class Engine:
                     why = None
                     if not Sg['SYMBOLS_ON'].get(s, True): why = 'coin switched off'
                     elif not sl['enabled']: why = 'strategy slot switched off'
+                    elif self.scalp_block(sl): why = self.scalp_block(sl)              # BREADTH-01 B2 + SCALP-4: new entries only
                     elif Sg['ENTRIES_PAUSED']: why = 'entries paused'
                     elif st['halted']: why = 'daily loss halt'
                     elif s in held: why = 'already in a trade on this coin'
@@ -3445,23 +5251,116 @@ class Engine:
                                 until=time.time() + int(te.get('max_bars', 3)) * TF_SEC.get(sl['tf'], 14400))
                             log.info(f"TRAIL ENTRY armed {s} {side} [{sl['id']}] rebound {te['dev_atr']} ATR from the extreme")
                             self._audit_cand(sl, s, side, sg, 'armed_trailing')
+                            self._ml_decision(sl, s, side, sg, frames, 'pending', 'trailing entry armed', len(held))   # ML-SHADOW-01 (observe only)
+                            self._shadow_signal(sl, s, side, sg, 'pending', 'trailing entry armed')                    # TRUE-BOOK-02
                             held.append(s); continue
                     if why is None:
+                        if getattr(self, '_deferred', None): self.apply_costs()   # ORDER-SYM-01: earlier deferred ones go first
                         self.last_skip = ''
+                        lk0 = getattr(self, '_last_lot_key', None)
                         try:
-                            if self.open_lot(sl, s, side, sg, frames.get(s), eq):
+                            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))   # #104: this decision's own lot
+                            try: opened = self.open_lot(sl, s, side, sg, frames.get(s), eq)
+                            finally: self._ml_direct = None
+                            if opened:
                                 self._audit_opened(sl, s, side, sg)     # T05a: 'taken', or 'order_placed' (maker)
+                                lk = getattr(self, '_last_lot_key', None)
+                                mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'   # maker rests
+                                self._ml_decision(sl, s, side, sg, frames, mst, self.last_skip if mst == 'pending' else '', len(held),
+                                                  lk if lk != lk0 else None)                    # ML-SHADOW-01 (observe only)
+                                self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')   # TRUE-BOOK-02
                                 held.append(s); continue
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
+                        if 'cost_pending' in why:                # ORDER-SYM-01: commission in flight - deferred, not missed
+                            self._defer(sl, s, side, sg, frames, len(held), why); continue
                     self.miss(sl, s, side, sg, why)
+                    self._ml_decision(sl, s, side, sg, frames, 'pending' if why == 'maker entry working' else 'skipped',
+                                      why, len(held))                                       # ML-SHADOW-01 (observe only)
+                    self._shadow_signal(sl, s, side, sg, 'pending' if why == 'maker entry working' else 'skipped', why)   # TRUE-BOOK-02
+            self._shadow_cycle(tf, frames)                     # TRUE-BOOK-02 (observe only)
             try: self.grids.on_cycle(tf)
             except Exception as e: self.err(f'grid cycle {tf}: {e}')
             st['last_cycle'][tf] = now_utc().isoformat(timespec='minutes')
             self.health['last_cycle_ok'][tf] = now_utc().isoformat(timespec='seconds')
             self.save_state()
             self.record_equity(self.guard_eq or eq)
+
+    # ORDER-SYM-01 (Codex 6290806436 / 6291113027 / 6291322988): a candidate refused only because its book's fill commission
+    # is in flight is deferred (memory only, never persisted) and retried through open_lot, in the original order, once the
+    # book is measured - within its own candle. Ledger: one 'pending', then one 'taken' or ONE terminal miss + 'skipped'.
+    def _defer(self, sl, s, side, sg, frames, n, why):
+        dq = vars(self).setdefault('_deferred', [])      # a stale same-coin record is dropped by its candle expiry first
+        row = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], symbol=s, side=side,
+                   strategy=sl.get('name', sl['id']), price=sg['close'], reason=scrub(str(why)), kind='deferred')
+        self.missed.append(row); self.missed = self.missed[-600:]   # visible while deferred; replaced at its outcome, never miss()
+        dq.append(dict(sl=sl, sym=s, side=side, sg=sg, frames=frames, n=n, row=row))
+        self._ml_decision(sl, s, side, sg, frames, 'pending', why, n)               # ML-SHADOW-01 (observe only)
+        self._shadow_signal(sl, s, side, sg, 'pending', why)                        # TRUE-BOOK-02
+
+    def _defer_unrow(self, r):
+        self._deferred.remove(r); self.missed = [m for m in self.missed if m is not r['row']]
+
+    def _defer_drop(self, r, why):
+        self._defer_unrow(r)
+        sl, s, side, sg = r['sl'], r['sym'], r['side'], r['sg']
+        self.miss(sl, s, side, sg, why)
+        self._ml_decision(sl, s, side, sg, r['frames'], 'skipped', why, r['n'])
+        self._shadow_signal(sl, s, side, sg, 'skipped', why)
+
+    def _reconsider(self):
+        """Retry deferred candidates (original order, each at most once per call) whose book is no longer cost_pending."""
+        if not getattr(self, '_deferred', None) or getattr(self, '_defer_busy', False): return
+        try:
+            self._reconsider_all()
+        except Exception as ex:                        # never into the candle cycle / apply_costs' callers
+            log.warning(f'deferred entries not reconsidered ({type(ex).__name__}: {ex})')
+
+    def _reconsider_all(self):
+        with self.lock:
+            self._defer_busy = True                    # open_lot below never re-enters this
+            try:
+                for r in list(self._deferred):
+                    if r not in self._deferred: continue
+                    try: self._reconsider_one(r)
+                    except Exception as ex:                # one bad record never blocks the others or retries forever
+                        log.warning(f'deferred entry dropped ({type(ex).__name__}: {ex})')
+                        try: self._defer_drop(r, f'deferred entry failed: {type(ex).__name__}')
+                        except Exception:
+                            if r in self._deferred: self._deferred.remove(r)
+                            self.missed = [m for m in self.missed if m is not r.get('row')]
+            finally:
+                self._defer_busy = False
+
+    def _reconsider_one(self, r):
+        sl = next((x for x in self.S['SLEEVES'] if x['id'] == r['sl']['id']), None)
+        t = pd.Timestamp(r['sg']['time']); t = t.tz_localize('UTC') if t.tzinfo is None else t
+        if time.time() >= t.timestamp() + 2 * TF_SEC.get(r['sl']['tf'], 14400):   # its decision candle is gone
+            self._defer_drop(r, 'signal candle closed while the book commission was pending'); return
+        if sl is None: self._defer_drop(r, 'strategy slot removed'); return
+        b = self.true_books(persist=False).get(TB.book_of(sl.get('key')))
+        if b is not None and TB.cost_pending_only(b): return
+        s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
+        self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
+        try:
+            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
+            try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
+            finally: self._ml_direct = None
+        except Exception as e:
+            self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
+        why = '' if opened else self.last_skip or 'order failed'
+        if 'cost_pending' in why: return        # another fill's commission in flight: still deferred
+        if not opened: self._defer_drop(r, why); return
+        self._defer_unrow(r); self._save_aux('missed', self.missed)
+        lk = getattr(self, '_last_lot_key', None)
+        mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'
+        for hook in (lambda: self._audit_opened(sl, s, side, sg),          # observe-only: one failing never undoes the open
+                     lambda: self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
+                                               lk if lk != lk0 else None),
+                     lambda: self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')):
+            try: hook()
+            except Exception as ex: log.warning(f'deferred entry opened; a decision record failed ({type(ex).__name__})')
 
     def reentry_lock(self, sl, sym, side, sg):
         """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an
@@ -3505,10 +5404,17 @@ class Engine:
         if blk: return blk
         if f'{sym}|{side}' in self.untracked: return 'Binance holds an untracked position on this coin/side - resolve it first'
         if (sym, side) in self._unconfirmed_claims(): return 'an earlier entry on this coin/side is not confirmed yet'
-        if manual: return self._rules_block(sl, sym, side, size, manual=True)
+        if manual:
+            tb = self.tradfi_block(sl, sym, side, size, manual=True)    # TRADFI-01: oil / live / off / gold-family cap
+            if tb: return tb
+            return self._rules_block(sl, sym, side, size, manual=True)
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
+        rb = self.scalp_block(sl)                                   # BREADTH-01 B2 + SCALP-4 (manual / adds never get here)
+        if rb: return rb
+        tb = self.tradfi_block(sl, sym, side, size)                 # TRADFI-01 T3/T4: session, mapping, gold-family cap
+        if tb: return tb
         held = [l for l in st['lots'].values() if l['sleeve'] == sl['id']]
         if any(l['symbol'] == sym for l in held): return 'already in a trade on this coin'
         if sg is not None:
@@ -3518,6 +5424,8 @@ class Engine:
                   [r for r in st.get('resting_entries', {}).values() if r['sleeve'] == sl['id']]
         if any(p['symbol'] == sym for p in working): return 'an entry is already working on this coin'
         if len(held) + len(working) >= sl['max_pos']: return f"max positions reached ({sl['max_pos']})"
+        tbb = self.true_book_block(sl, size, skip_pending, sym, side)   # TRUE-BOOK-01/03: book-wide + opposite-side funding
+        if tbb: return tbb
         when = sl.get('when') or 'any'
         if when != 'any':
             try:
@@ -3579,6 +5487,29 @@ class Engine:
         except Exception as e: raise LevReject('brackets', f'{sym} leverage brackets unavailable or malformed ({e})')
         self._brk[sym] = (time.time(), b)
         return b
+
+    def _tier_block(self, sym, notional, px):
+        """MAXQTY-01: reason text when the coin's position notional after this order would exceed what Binance allows at the
+        leverage in use (feasibility.tier_notional_cap; Binance answers -2027), else None. Counted conservatively: every open
+        lot of the coin (both sides) and every resting entry order of the coin (its full quantity, filled part included), each
+        valued at the HIGHER of the current order price px and its own entry/limit price - never at a stale lower average
+        (a price rise must not hide notional). Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown
+        -> None. Reduce-only exits never pass through here."""
+        try:
+            b = self._brackets(sym, fetch=False)
+            if not b: return None
+            lev = min(max(1, int(self.S['MAX_LEVERAGE'])), float(b[0]['lev']))
+            cap = F.tier_notional_cap(b, lev)
+            if cap is None: return None
+            px = float(px)
+            held = sum(float(l['qty']) * max(px, float(l['avg'])) for l in self.state['lots'].values() if l['symbol'] == sym)
+            held += sum(float(r['qty']) * max(px, float((r.get('plan') or {}).get('px') or 0.0))
+                        for r in (self.state.get('resting_entries') or {}).values() if r.get('symbol') == sym)
+            if held + notional <= cap: return None
+            return (f'leverage tier: {sym} position {held + notional:,.0f} USDT would exceed the Binance maximum '
+                    f'{cap:,.0f} USDT at {lev:g}x')
+        except Exception:                                   # noqa: BLE001  a feasibility hint never raises into trading
+            return None
 
     def _lev_max(self, sym, fetch=True):
         """The coin's maximum initial leverage (first bracket), or None if unknown/invalid."""
@@ -3892,7 +5823,15 @@ class Engine:
             g = dict(stop_atr=stop_atr or 2.5)
             if tp_r: g['tp_r'] = tp_r
         sd = 1 if side == 'LONG' else -1
-        sleeve_eq = eq if manual else eq * sl['share']
+        book_mode = bool(not manual and not self.live and self.S.get('PAPER_BOOKS') is True)
+        book = PB.book_for(sl.get('key')) if book_mode else None
+        sleeve_eq = PB.allocation(eq, self.S.get('PAPER_BOOK_CAP') or 2000.0) if book_mode else (eq if manual else eq * sl['share'])
+        if book_mode and self._tb_on():                 # TRUE-BOOK-01: the book's own NAV, never account equity / 5
+            book = TB.book_of(sl.get('key'))
+            b = self.true_books().get(book) if book else None
+            if b is None:
+                self.last_skip = f"true books: strategy {sl.get('key')} has no book"; return False
+            sleeve_eq = float(max(b['nav_worse'], 0))
         risk = risk if risk is not None else sl['risk'] * self.kelly_mult(sl) * self.governor_mult()
         risk_usd = sleeve_eq * risk
         if 'dca' in g:                                  # martingale DCA: a hard basket stop is mandatory, depth/scale bounded
@@ -3913,8 +5852,12 @@ class Engine:
         risk_usd = base_risk_usd * factor                # the risk-sized position scales; the stop below does not
         px = self.trade.marks().get(sym) if not self.dry else sg['close']
         atr = sg['atr']
-        lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - sum(
-            l['qty'] * l['avg'] for l in self.state['lots'].values() if l['sleeve'] == ('MAN' if manual else sl['id']))) / px
+        open_notional = sum(l['qty'] * l['avg'] for l in self.state['lots'].values()
+                            if (l.get('book') == book if book_mode
+                                else l['sleeve'] == ('MAN' if manual else sl['id'])))
+        if book_mode and self._tb_on():                 # TRUE-BOOK-01: lots + working entries of the book (as the gate counts)
+            open_notional = float(self.true_books()[book]['notional'])
+        lev_room = max(0.0, self.S['MAX_LEVERAGE'] * sleeve_eq - open_notional) / px
 
         def _size(ru):
             z_ = F.risk_qty(g, ru, px, atr, sd)          # BT02: shared sizing (DCA basket or stop_atr), same formula as before
@@ -3938,9 +5881,10 @@ class Engine:
                 if qty != db['qty']:
                     self._ctrl_log('scale', sl, sym, side, ce, factor, f'size {db["qty"]:g} -> {qty:g}', base_qty=db['qty'], qty=qty)
         if not d['ok']:
-            log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} below Binance minimum")
+            log.info(f"SKIP {sym} [{sl['id'] if sl else 'MAN'}] size {qty} {'above Binance maximum' if d['code'] == 'above_max_qty' else 'below Binance minimum'}")
             # same texts as feasibility.REASON_* (kept literal here: the trade-audit reason scan reads them from this file)
             self.last_skip = ('leverage cap reached for this slot' if d['code'] == 'leverage_cap'
+                              else 'size above Binance maximum order quantity (lower capital or risk)' if d['code'] == 'above_max_qty'
                               else 'size below Binance minimum (raise capital or risk)')
             return False
         block = self.entry_block(sl, sym, side, manual, size=dict(notional=qty * px, risk=risk_usd * qty / qty_raw if qty_raw else 0), sg=sg)
@@ -3948,6 +5892,16 @@ class Engine:
             self.last_skip = block
             if manual: raise ValueError(block)
             return False
+        if not manual and self.S.get('FEE_EDGE_GATE') is True:
+            actual_risk = risk_usd * qty / qty_raw if qty_raw else 0.0
+            # Conservative and deterministic: assume both fills are taker plus the audit's adverse slippage on each side.
+            # A maker fill can only improve this estimate; a maker->market fallback therefore cannot invalidate the gate.
+            round_trip = qty * px * (2 * FEE_EST + 2 * TA.EXEC_SLIP_BPS / 1e4)
+            mult = float(self.S.get('FEE_EDGE_MULT') or 3.0)
+            if actual_risk <= mult * round_trip:
+                self.last_skip = (f'fee_edge: stop risk ${actual_risk:.2f} does not cover {mult:g}x conservative '
+                                  f'round-trip cost ${round_trip:.2f}')
+                return False
         warns = list(self._rule_warns)
         reason = 'manual' if manual else 'signal'
         if not manual and self.S.get('AI_FILTER'):
@@ -3959,6 +5913,9 @@ class Engine:
                                     e200=float(df.e200.iloc[-1]), st_dir=int(df.st.iloc[-1]), ret42=float(df.ret42.iloc[-1]), ret180=float(df.ret180.iloc[-1])),
                                     last, funding, tf=sl.get('tf', '4h'), side=side)
             log.info(f'AI review {sym} {side} [{sl["id"]} {sl.get("tf", "4h")}]: {dec} - {why} | {meta}')
+            if dec == 'skip' and meta.get('failed'):     # AIREL-01: fail-closed policy - an unusable review, not a veto
+                self.last_skip = why
+                return False
             if dec == 'skip':
                 self.log_trade(time=sg['time'], event='ai_veto', sleeve=sl['id'], symbol=sym, side=side, qty=qty, price=px, note=why)
                 self.last_skip = f'Claude review vetoed: {why}'
@@ -3973,12 +5930,18 @@ class Engine:
             log.warning(f'{sym}: {self.last_skip}')
             if manual: raise ValueError(self.last_skip)
             return False
+        tb = self._tier_block(sym, qty * px, px)              # MAXQTY-01: Binance -2027 refused locally, nothing sent
+        if tb:
+            self.last_skip = tb
+            if manual: raise ValueError(tb)
+            return False
         for w_ in warns:                                 # risk rules in 'warn' mode: logged, the trade still goes ahead
             log.warning(f'RISK WARNING {sym} {side}: {w_}')
             if sl and not manual: self.miss(sl, sym, side, sg, 'WARNING: ' + w_, kind='warning')
         plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name', 'share') if k in sl}, sym=sym, side=side, qty=qty,
                     stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
-                    sg=dict(time=sg.get('time'), close=sg.get('close')))
+                    sg=dict(time=sg.get('time'), close=sg.get('close')), book=book,
+                    book_eq=sleeve_eq if book_mode else None)
         if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
         if not manual and self.S.get('ENTRY_ORDER') == 'maker' and how != 'exposure':
             return self._maker_start(plan)
@@ -3994,6 +5957,346 @@ class Engine:
         sls = self.S.get('SLEEVES') or []
         return dict(bias=b, risk=k, current=ctrl_effect(b, k, sls), table=ctrl_table(sls),
                     bias_levels=[[x, v[0]] for x, v in CTRL_BIAS.items()], risk_levels=[[x, v[0]] for x, v in CTRL_RISK.items()])
+
+    def paper_books_status(self):
+        eq = self.last_eq or 0.0
+        cap = self.S.get('PAPER_BOOK_CAP') or 2000.0
+        view = []
+        for lot in self.state.get('lots', {}).values():
+            row = dict(lot)
+            mark, stop = (self.marks or {}).get(lot.get('symbol')), lot.get('stop')
+            if mark is not None and stop is not None:
+                sd = 1 if lot.get('side') == 'LONG' else -1
+                row['risk_current'] = max(0.0, sd * (float(mark) - float(stop)) * float(lot.get('qty') or 0))
+            view.append(row)
+        return dict(enabled=self.S.get('PAPER_BOOKS') is True and not self.live, shared_account=True,
+                    note='books share Binance margin; attribution is separate, liquidation is account-wide',
+                    target_total=round(5 * float(cap), 2), effective_total=round(5 * PB.allocation(eq, cap), 2),
+                    books=PB.summary(eq, cap, view, self.history))
+
+    # ------------------------------------------------------------ RUN-PACK-01 / BOOK-LEDGER-01 (PAPER books, observe only)
+    # Evidence never feeds trading: self.history keeps its 3000-row trading window untouched; the open cohort's closed rows
+    # live in their own append-only cohort_rows.jsonl (self.cohort_rows), which only the ledger and the pack read.
+    COHORT_CODE = ('engine.py', 'strategies.py', 'paper_books.py', 'book_ledger.py', 'backtest.py')
+    COHORT_VOLATILE = ('CAP_ADJ', 'CAP_CYCLES', 'CAP_SINCE')
+    BOUNDARY_BUSY = ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries', 'grids')
+
+    def _books_on(self):
+        return self.S.get('PAPER_BOOKS') is True and not self.live
+
+    def _settings_allow(self):
+        return sorted(k for k in set(GLOBAL_DEFAULTS) | {'SLEEVES', 'schema_version'} if not k.startswith('TELEGRAM'))
+
+    def _settings_snapshot(self):
+        """The causal settings a cohort is judged under (allow-listed, non-secret, without capital bookkeeping)."""
+        return RP.sanitize_settings(self.S, [k for k in self._settings_allow() if k not in self.COHORT_VOLATILE])
+
+    def _cohort_identity(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        try: code = RP.code_sha([os.path.join(here, f) for f in self.COHORT_CODE])
+        except OSError: code = None
+        return dict(code_sha=code, settings_sha=RP.sha256_doc(self._settings_snapshot())[:16],
+                    book_version=BL.book_version(), fee_model_sha=RP.sha256_doc(dict(FEE_EST=FEE_EST))[:16],
+                    book_cap=float(self.S.get('PAPER_BOOK_CAP') or 2000.0))
+
+    def _cohort_drift_now(self, rec):
+        now_id = dict(self._cohort_identity())
+        if not rec.get('seq'): now_id['started_utc'] = self.S.get('CAP_SINCE')     # cohort 0 began at CAP_SINCE
+        out = RP.drift(rec, **now_id)
+        if 'code_sha' in out and None in (now_id.get('code_sha'), rec.get('code_sha')):   # COHORT-SHA-01: one side could
+            out[out.index('code_sha')] = 'code_sha_unavailable'   # not read its sources - not a proven code change; say which
+        snap = self.state.get('cohort_settings')
+        if not isinstance(snap, dict) or RP.sha256_doc(snap)[:16] != rec.get('settings_sha'): out.append('settings_snapshot')
+        return sorted(set(out))
+
+    def _cohort_sidecar(self, any_state=False):
+        try:
+            with open(self.F['cohort'], encoding='utf-8') as f: side = json.load(f)
+        except FileNotFoundError: return None
+        except (OSError, ValueError):                  # locked / damaged: evidence of a dispute, never overwritten
+            return {} if any_state else None
+        if any_state: return side if isinstance(side, dict) else {}
+        return side if not RP.validate_cohort(side) and not side.get('ended_utc') else None
+
+    def _cohort_ok(self):
+        return (self._books_on() and not RP.validate_cohort(self.state.get('cohort')) and not self.state['cohort'].get('ended_utc')
+                and not self.state.get('cohort_closing') and not getattr(self, '_cohort_conflict', False))
+
+    def _start_cohort(self, start, seq):
+        for r in list(getattr(self, '_deferred', None) or ()): self._defer_drop(r, 'cohort boundary')   # ORDER-SYM-01
+        self.state['cohort'] = RP.new_cohort(start, seq=seq, **self._cohort_identity())
+        self.state['cohort_settings'] = self._settings_snapshot()
+        self.state['book_ledger'] = None
+        self.cohort_rows = []
+
+    def _load_cohort_rows(self, cid=None):
+        """A cohort's closed rows from cohort_rows.jsonl (deduped by trade id), healed from stamped history rows a failed
+        append missed. Default: the open cohort."""
+        cid, rows = cid or self.state['cohort']['id'], []
+        try:
+            with open(self.F['cohort_rows'], encoding='utf-8') as f:
+                for ln in f:
+                    try: r = json.loads(ln)
+                    except ValueError: continue
+                    if isinstance(r, dict) and r.get('cohort_id') == cid: rows.append(r)
+        except FileNotFoundError: pass
+        self.cohort_rows = TB.merge_rows(rows)                  # every copy of an id folded by the revision rule
+        at = {r.get('id'): i for i, r in enumerate(self.cohort_rows)}
+        for r in self.history:
+            if r.get('cohort_id') != cid: continue
+            i = at.get(r.get('id'))
+            if i is None: self._cohort_row(r); at[r.get('id')] = len(self.cohort_rows) - 1; continue
+            m = self.cohort_rows[i]
+            c = TB.merge_rows([m, r])[0].get('_conflict')
+            if c:                                               # the dispute stays on record - once, not once per start
+                if not set(c) <= set(m.get('_conflict') or ()): self._cohort_rev(r, cid)
+                continue
+            if (TB.D(m.get('cost_rev')) or 0) > (TB.D(r.get('cost_rev')) or 0):
+                for k in TB.REVISABLE:                          # the history file missed a saved restatement: catch it up,
+                    if k in m: r[k] = copy.deepcopy(m[k])       # so a later update never lands on (or wins with) a stale copy
+                    else: r.pop(k, None)
+            elif TB.merge_rows([m, r])[0] != m: self._cohort_rev(r, cid)   # history holds a newer restatement
+            self.cohort_rows[i] = r                             # one live object per trade from here on
+
+    def _cohort_row(self, rec):
+        """Evidence copy of one closed trade of the open cohort (append-only; a failed write is counted, never raised)."""
+        self.cohort_rows.append(rec)
+        try:
+            with open(self.F['cohort_rows'], 'a', encoding='utf-8') as f:
+                f.write(json.dumps(rec, sort_keys=True, separators=(',', ':'), default=str) + '\n')
+        except Exception as ex:
+            self.state['cohort_rows_gap'] = int(self.state.get('cohort_rows_gap') or 0) + 1
+            pend = self.state.setdefault('cohort_rev_pending', [])
+            if rec.get('id') not in pend: pend.append(rec.get('id'))
+            log.warning(f'cohort evidence row not written ({type(ex).__name__}) - healed from history at the next start')
+
+    def _cohort_rev(self, row, cid=None):
+        """TRUE-BOOK-01: append a revision of a closed row (late fee / funding) to the evidence store and fold it into the
+        in-memory copy. Only the open cohort's rows (or cid's, while it is being loaded). A failed write keeps the id in
+        cohort_rev_pending: that book is INCOMPLETE and the write is retried. True when durable (or not a cohort row)."""
+        cid = cid or (self.state.get('cohort') or {}).get('id')
+        if not cid or row.get('cohort_id') != cid:
+            if row.get('id') in (self.state.get('cohort_rev_pending') or ()): self.state['cohort_rev_pending'].remove(row.get('id'))
+            return True
+        rows = vars(self).setdefault('cohort_rows', [])
+        i = next((j for j in range(len(rows) - 1, -1, -1) if rows[j].get('id') == row.get('id')), None)
+        if i is None: rows.append(row)
+        elif rows[i] is not row: rows[i] = TB.merge_rows([rows[i], row])[0]
+        pend = self.state.setdefault('cohort_rev_pending', [])
+        try:
+            with open(self.F['cohort_rows'], 'a', encoding='utf-8') as f:
+                f.write(json.dumps({k: v for k, v in row.items() if k != '_conflict'}, sort_keys=True, separators=(',', ':'),
+                                   default=str) + '\n')
+        except Exception as ex:
+            if row.get('id') not in pend: pend.append(row.get('id'))
+            log.warning(f'cohort evidence revision not written ({type(ex).__name__}) - book INCOMPLETE, retried')
+            return False
+        if row.get('id') in pend: pend.remove(row.get('id'))
+        return True
+
+    def _ledger_rows(self, coh):
+        """Stamped rows from the evidence store + (cohort 0 only) unstamped legacy rows from the trading history."""
+        legacy = [r for r in list(self.history) if BL.membership(r, coh, 'closed') == 'legacy']   # unstamped only
+        return [r for r in list(getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == coh['id']] + legacy
+
+    def _cohort_init(self):
+        """Create the cohort record once (start = the capital fresh-start time, so a lost record is re-created identically);
+        an existing record is never rewritten - a changed identity is only reported (cohort_drift). A boundary that was
+        interrupted is completed first (same pack, same transition)."""
+        self.cohort_rows = getattr(self, 'cohort_rows', None) or []
+        try:
+            if not self._books_on(): return
+            pend = self.state.get('cohort_closing')
+            if pend:
+                try:
+                    out = self._complete_boundary(pend)
+                    log.warning(f"RUN-PACK-01 interrupted boundary completed: {out['closed']} -> {out['new']}")
+                except Exception as ex:
+                    self._integrity_alert('integrity|cohort', f'PAPER cohort boundary interrupted and not completable ({ex}) - '
+                                                              'book lots are not stamped until it is resolved')
+                    return
+            rec = self.state.get('cohort')
+            if rec is None:
+                side = self._cohort_sidecar()
+                if side:
+                    self.state['cohort'] = rec = side             # state lost: the sidecar keeps the same immutable id
+                    log.warning(f"RUN-PACK-01 cohort {rec['id']} restored from cohort.json")
+            if rec is None:
+                start = self.S.get('CAP_SINCE') or now_utc().isoformat(timespec='seconds')
+                self._start_cohort(start, len(self.state.get('cohort_archive') or []))
+                self._save_aux('cohort', self.state['cohort'])
+                log.info(f"RUN-PACK-01 cohort {self.state['cohort']['id']} (started {start})")
+                return
+            bad = RP.validate_cohort(rec)
+            if not bad:
+                side = self._cohort_sidecar(any_state=True)
+                archived = {a.get('id') for a in self.state.get('cohort_archive') or []}
+                if side is None or (side.get('id') in archived and side.get('id') != rec['id']):
+                    self._save_aux('cohort', rec)    # missing, or left behind by a boundary that already archived it
+                elif side.get('id') != rec['id']:
+                    self._integrity_alert('integrity|cohort', f"cohort.json holds {side.get('id') or 'nothing readable'} but state holds {rec['id']} - "
+                                                              'unreadable, or state may be an older backup; book lots are not stamped until the '
+                                                              'files agree and the bot restarts')
+                    bad = ['state and cohort.json disagree']; self._cohort_conflict = True
+            if bad:
+                self._integrity_alert('integrity|cohort', f"PAPER cohort record damaged ({'; '.join(bad)}) - book lots are not "
+                                                          'stamped and the ledger is not written until a cohort boundary')
+                return
+            self._load_cohort_rows()
+            self.cohort_drift = self._cohort_drift_now(rec)
+            if self.cohort_drift:
+                log.warning(f"RUN-PACK-01 cohort {rec['id']}: {', '.join(self.cohort_drift)} changed since it started - "
+                            'a boundary must record it (accept_drift) before this evidence is sealed')
+        except Exception as ex:
+            log.warning(f'cohort init skipped ({type(ex).__name__}: {ex})')
+
+    def book_ledger_status(self, persist=False):
+        """Observe-only per-book NAV for the open cohort (None when books are off). Never changes sizing."""
+        if not self._cohort_ok(): return None
+        coh = dict(self.state['cohort'])
+        lots = [dict(l) for l in list(self.state.get('lots', {}).values())]   # copies: the status thread runs unlocked
+        rows, marks = self._ledger_rows(coh), dict(self.marks or {})
+        doc = BL.compute(coh, rows, lots, marks, coh['book_cap'], prev=self.state.get('book_ledger'),
+                         t=now_utc().isoformat(timespec='seconds'))
+        doc['parity'] = BL.parity(doc, coh, rows, lots)
+        doc['drift'] = list(self.cohort_drift)
+        doc['evidence_gaps'] = int(self.state.get('cohort_rows_gap') or 0)
+        if persist:
+            self.state['book_ledger'] = dict(cohort_id=doc['cohort_id'], t=doc['t'], last_bucket=(self.state.get('book_ledger') or {}).get('last_bucket'),
+                                             books={k: {x: b[x] for x in ('peak', 'state', 'would_freeze_at') if x in b}
+                                                    for k, b in doc['books'].items()})
+        return doc
+
+    def book_ledger_tick(self, bucket_s=900):
+        """At most one ledger snapshot line per 15-minute wall-clock bucket (stamped with the current bucket; the bucket is
+        persisted before the line, so a restart never writes it twice). Never raises into the loop."""
+        try:
+            with self.lock:
+                if self._books_on() and self.state.get('cohort') is None: self._cohort_init()   # books switched on later
+                if not self._cohort_ok(): return False
+                b = int(time.time() // bucket_s) * bucket_s
+                last = (self.state.get('book_ledger') or {}).get('last_bucket')
+                if (self.state.get('book_ledger') or {}).get('cohort_id') == self.state['cohort']['id'] and last == b: return False
+                doc = self.book_ledger_status(persist=True)
+                doc['bucket'] = b
+                self.state['book_ledger']['last_bucket'] = b
+                self.save_state()                        # bucket first: a crash can drop one observe-only line, never repeat it
+                with open(self.F['book_ledger'], 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(doc, sort_keys=True, separators=(',', ':'), default=str) + '\n')
+                return True
+        except Exception as ex:
+            log.warning(f'book ledger snapshot skipped ({type(ex).__name__}: {ex})')
+            return False
+
+    def cohort_boundary(self, dest_root, note='', accept_drift=False):
+        """RUN-PACK-01 reset rule: close the open cohort, write its evidence pack outside the runtime, start a new cohort.
+        PAPER only and only flat (no lots, pending / resting / unconfirmed entries or grids), so two cohorts never share a
+        position. Refused while the identity drifted unless accept_drift (the drift is then sealed into the pack).
+        Crash-safe: the closing intent is made durable before anything is written; a retry or restart verifies an existing
+        pack and completes the same transition."""
+        with self.lock:
+            if self.live: raise RuntimeError('cohort boundary is PAPER only')
+            if not self._books_on(): raise RuntimeError('five-book tracking is off')
+            norm = lambda p: os.path.normcase(os.path.realpath(os.path.abspath(p)))
+            here, dest = norm(self.dir), norm(dest_root)
+            if os.path.splitdrive(here)[0] == os.path.splitdrive(dest)[0] and os.path.commonpath([here, dest]) == here:
+                raise RuntimeError('the evidence pack must be written outside the runtime folder')
+            pend = self.state.get('cohort_closing')
+            if pend:
+                if norm(pend['dest']) != dest: raise RuntimeError(f"an interrupted boundary is pending for {pend['dest']} - complete it there")
+                return self._complete_boundary(pend)
+            busy = [k for k in self.BOUNDARY_BUSY if self.state.get(k)]
+            if busy: raise RuntimeError(f"cohort boundary refused: not flat ({', '.join(busy)})")
+            if RP.validate_cohort(self.state.get('cohort')) or getattr(self, '_cohort_conflict', False):
+                raise RuntimeError('cohort record damaged or disputed - inspect before a boundary')
+            drift = self._cohort_drift_now(self.state['cohort'])
+            if drift and not accept_drift:
+                raise RuntimeError(f"cohort boundary refused: {', '.join(drift)} changed since the cohort started - "
+                                   'pass accept_drift to seal it into the pack as drifted evidence')
+            self.state['cohort_closing'] = dict(old=dict(self.state['cohort'], ended_utc=now_utc().isoformat(timespec='seconds')),
+                                                dest=dest_root, note=note, drift=drift, settings_end=self._settings_snapshot())
+            try: self._save_wal()                                  # raises when not durable: nothing is written then
+            except BaseException:
+                self.state.pop('cohort_closing', None); raise          # memory never holds an intent the disk does not
+            return self._complete_boundary(self.state['cohort_closing'])
+
+    def cohort_boundary_abort(self):
+        """Drop a pending (interrupted) boundary while no pack for it exists; the open cohort simply continues. A published
+        pack can only be completed, never orphaned."""
+        with self.lock:
+            pend = self.state.get('cohort_closing')
+            if not pend: return False
+            if os.path.lexists(os.path.join(pend['dest'], pend['old']['id'])):
+                raise RuntimeError('its pack is already published - complete the boundary instead of aborting it')
+            self.state.pop('cohort_closing')
+            try: self._save_wal()
+            except BaseException:
+                self.state['cohort_closing'] = pend; raise         # memory never drops an intent the disk still holds
+            self._load_cohort_rows(); self.cohort_drift = self._cohort_drift_now(self.state['cohort'])
+            log.warning(f"RUN-PACK-01 pending boundary of {pend['old']['id']} aborted; the cohort continues")
+            return True
+
+    def _complete_boundary(self, pend):
+        coh = pend['old']
+        busy = [k for k in self.BOUNDARY_BUSY if self.state.get(k)]
+        if busy: raise RuntimeError(f"cohort boundary pending but not flat ({', '.join(busy)}) - flatten, then retry the boundary "
+                                    "(or abort it while no pack is published)")
+        final = os.path.join(pend['dest'], coh['id'])
+        if os.path.lexists(final):                                 # written before an interruption: it must verify
+            v = RP.verify_pack(final)
+            if not v['ok'] or v['cohort_id'] != coh['id']:
+                raise RuntimeError(f"existing pack {final} does not verify ({'; '.join(v['problems'])}) - inspect it")
+            path, sha = final, v['pack_sha']
+        else:
+            path, sha = self._write_cohort_pack(pend)
+        keys = ('cohort', 'cohort_settings', 'book_ledger', 'cohort_archive', 'cohort_closing', 'cohort_rows_gap')
+        undo = ({k: copy.deepcopy(self.state[k]) for k in keys if k in self.state}, self.cohort_rows, self.cohort_drift)
+        try:                                                       # memory moves only together with the durable state
+            arch = self.state.setdefault('cohort_archive', [])
+            if not any(a.get('id') == coh['id'] for a in arch):
+                arch.append(dict(id=coh['id'], started_utc=coh['started_utc'], ended_utc=coh['ended_utc'], pack_sha=sha, pack=path,
+                                 drift=pend.get('drift') or []))
+            self._start_cohort(coh['ended_utc'], len(arch))
+            self.state.pop('cohort_closing', None); self.state.pop('cohort_rows_gap', None)
+            self.cohort_drift = []
+            self._save_wal()
+        except BaseException:
+            for k in keys: self.state.pop(k, None)
+            self.state.update(undo[0]); self.cohort_rows, self.cohort_drift = undo[1], undo[2]
+            raise
+        try: self._save_aux('cohort', self.state['cohort'])          # committed above: a sidecar failure is recoverable (a
+        except Exception as ex:                                       # stale archived id is rewritten at the next start)
+            log.warning(f'cohort.json not written after the boundary ({type(ex).__name__}) - rewritten at the next start')
+        log.info(f"RUN-PACK-01 cohort {coh['id']} closed, pack {path} sha256 {sha}; new cohort {self.state['cohort']['id']}")
+        return dict(closed=coh['id'], pack=path, pack_sha=sha, new=self.state['cohort']['id'])
+
+    def _write_cohort_pack(self, pend):
+        coh, now = pend['old'], pend['old']['ended_utc']
+        self._load_cohort_rows(coh['id'])               # from the store, never from memory (a restart resumes with none)
+        rows = self._ledger_rows(coh)
+        led = BL.compute(coh, rows, (), {}, coh['book_cap'], prev=self.state.get('book_ledger'), t=now)
+        led['drift'] = list(pend.get('drift') or [])
+        docs = {'cohort.json': coh, 'history.json': rows, 'book_ledger_final.json': led, 'note.json': dict(note=pend.get('note') or ''),
+                'book_summary.json': PB.summary(0, coh['book_cap'], (), [r for r in rows if r.get('book')]),
+                'settings_at_end.json': pend.get('settings_end') if isinstance(pend.get('settings_end'), dict) else self._settings_snapshot()}
+        if isinstance(self.state.get('cohort_settings'), dict): docs['settings_at_start.json'] = self.state['cohort_settings']
+        undrained = []                       # the last close's telemetry must be on disk first: the enricher hands its
+        for name, attr in (('enricher', '_enr'), ('fills', '_fillw'), ('audit', '_auditw')):   # jobs to the fills writer,
+            w = getattr(self, attr, None)                                                        # so it goes first
+            if w is None: continue
+            try: ok = w.flush()
+            except Exception as ex: ok = False; log.warning(f'pack: {name} flush failed ({ex})')
+            if ok is False: undrained.append(name)
+        srcs = {}
+        for name, p in (('book_ledger.jsonl', self.F['book_ledger']), ('fills.jsonl', self.F['fills']),
+                        ('trade_audit.jsonl', self.F['audit']), ('cohort_rows.jsonl', self.F['cohort_rows'])):
+            srcs[name], srcs[name.replace('.jsonl', '.1.jsonl')] = p, p + '.1'
+        srcs['equity.json'] = self.F['equity']
+        docs['scope.json'] = dict(cohort_filtered=['history.json', 'book_ledger_final.json', 'book_summary.json'],
+                                  runtime_wide=sorted(srcs), undrained_writers=undrained,
+                                  note='runtime-wide files are raw copies; filter by cohort_id / time')
+        forbid = [str(self.cfg.get(k) or '') for k in ('API_KEY', 'API_SECRET', 'TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_WORKSPACE_ID')]
+        return RP.write_pack(pend['dest'], coh, docs, srcs, forbid=forbid, meta=dict(drift=list(pend.get('drift') or [])))
 
     def _ctrl_log(self, what, sl, sym, side, ce, factor, why, **kw):
         """CTRL-01-LITE: one line for every control-caused scale / reject decision (never when the control had no effect)."""
@@ -4037,7 +6340,7 @@ class Engine:
         fill = act or plan['px']
         got = self._exec_of(o, plan['qty'], r['step'])                    # AUD-03: exchange truth, never the request
         self._last_order = dict(rec=self._fill('entry_fallback' if plan.get('fallback') else 'entry_market', sym, side, side == 'LONG',
-                                               plan['px'], act, plan['qty'], o.get('executedQty'), t0, signal_px=plan.get('signal_px'),
+                                               plan['px'], act, plan['qty'], o.get('executedQty'), t0, order=o, signal_px=plan.get('signal_px'),
                                                maker_tries=plan.get('maker_tries'), fallback_order=plan.get('fallback') or None,
                                                manual=plan.get('manual') or None, **({'outcome': 'unfilled'} if got == 0 else {})))
         if got is None:                                                   # answered, not final: like a lost answer
@@ -4053,7 +6356,7 @@ class Engine:
             self.last_skip = 'entry order not filled'
             self.save_state()
             return False
-        return self._create_lot(plan, got, fill)
+        return self._create_lot(plan, got, fill, cost_ref=((self._last_order or {}).get('rec') or {}).get('cost_ref'))
 
     # ------------------------------------------------------------ AUD-03b: entries whose answer was lost
     # An entry whose order answer is lost (or not final) is remembered with its client order id. Every reconcile pass:
@@ -4243,7 +6546,7 @@ class Engine:
                 log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
                 self.save_state()
 
-    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None):
+    def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None, cost_ref=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
@@ -4251,10 +6554,16 @@ class Engine:
         key = f"{'MAN' if manual else sl['id']}|{sym}|{side}|{int(time.time())}"
         fee = maker_qty * fill * float(self.S.get('FEE_MAKER', 0.0002)) + (qty - maker_qty) * fill * FEE_EST
         lot = dict(symbol=sym, side=side, sleeve='MAN' if manual else sl['id'], key_strategy=None if manual else sl['key'],
+                   book=plan.get('book'),
                    qty=qty, q0=qty, avg=fill, e0=fill, entry0=fill, R=abs(fill - stop), stop=stop, stop_id=None, stop_dirty=True, tp1=False, adds=0, dca=0,
                    best=fill, atr0=atr, atr_now=atr, mgmt=g, tf=(sl['tf'] if sl else '4h'), manual=manual,
-                   opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2), eq_at_entry=round(eq, 2),
+                   opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2),
+                   eq_at_entry=round(plan.get('book_eq') or eq, 2), account_eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
+        if cost_ref:
+            lot['cost_refs'] = [cost_ref]                              # FEE-ASSET-01: the entry fill's cost record
+            self._cost_final('lot', lot)                               # explicit latency, never a false INCOMPLETE hole
+        if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
         if plan.get('lev_exception'): lot['lev_exception'] = True    # T03c r1: entered while Binance leverage stayed above the cap
@@ -4271,6 +6580,7 @@ class Engine:
                 lot['ap'] = ap
         except Exception: pass
         if adopt_stop: lot['stop_id'] = adopt_stop               # AUD-03b: the provisional stop is replaced (new first, then cancelled)
+        self._ml_link(lot, plan)                                  # ML-SHADOW-01 / #104: decision link persisted by the save below
         self.state['lots'][key] = lot; self.save_state()          # recorded BEFORE the stop: a crash here can never orphan the position
         self._last_lot_key = key
         if not self._replace_stop(lot):
@@ -4282,6 +6592,9 @@ class Engine:
                 self.err(f'{sym}: stop AND safety close failed ({e}) - kept as unprotected, retrying every few seconds')
                 self.notify(f'🆘 {side} {sym} has NO stop on Binance (stop and close both failed). The bot keeps retrying - check it.')
                 return True
+        if self._tp_wanted(lot):                                  # mgmt.resting_tp: only after the stop is placed
+            try: self._place_tp(lot)
+            except Exception as e: self._tp_fail(lot, e)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event='entry', sleeve=lot['sleeve'], symbol=sym, side=side,
                        qty=qty, price=fill, stop=stop, equity=round(eq, 2), note=reason)
         log.info(f"ENTRY {sym} {side} [{lot['sleeve']}] {qty} @ {fill} stop {stop}")
@@ -4589,11 +6902,19 @@ class Engine:
         except BinanceError as e:                                                   # e.g. -5022 post-only would take: re-price
             log.info(f'maker entry {sym} rejected: {e}'); rec['status'] = 'between'
 
+    @staticmethod
+    def _mk_key(rec):
+        return (rec.get('symbol'), rec.get('side'), rec.get('t0'))
+
     def _maker_done_order(self, rec, o):
         ex = float(o.get('executedQty') or 0)
         if ex > 0:
             px = float(o.get('avgPrice') or 0) or rec['price']
             rec['filled'] += ex; rec['cost'] += ex * px
+            if not float(o.get('avgPrice') or 0): rec['px_unknown'] = True    # EXEC-CAL-00: booked at the limit (audit only)
+            try:                                                     # EXEC-CAL-00: memory only (ids are never saved)
+                self._mk_refs.setdefault(self._mk_key(rec), []).append(self._order_ref(o, ex, rec['price'], rec.get('cid')))
+            except Exception: pass
         rec['status'] = 'between'
 
     def _maker_poll(self, k, marks):
@@ -4632,6 +6953,9 @@ class Engine:
     def _maker_finalize(self, k, rem, small, px, no_fallback=None):
         rec = self.state['resting_entries'].pop(k)
         plan, r = rec['plan'], self.rules[rec['symbol']]
+        mrefs = self._mk_refs.pop(self._mk_key(rec), None)               # EXEC-CAL-00: None after a restart (not known)
+        if mrefs is not None and (not all(mrefs) or abs(sum(x['exec'] for x in mrefs) - rec['filled']) > 1e-9 * max(1.0, rec['filled'])):
+            mrefs = None                                                 # incomplete correlation: no enrichment, no limit diagnostic
         sl = next((x for x in self.S['SLEEVES'] if x['id'] == rec['sleeve']), None) or dict(plan['sl'], enabled=False, max_pos=0)
         sg = dict(plan['sg'], close=px)
         fallback = bool(self.S.get('MAKER_FALLBACK', True)) and not small and not no_fallback
@@ -4641,13 +6965,16 @@ class Engine:
             mrec = self._fill_rec('entry_maker', rec['symbol'], rec['side'], buy, rec.get('px0') or rec.get('price'), avg, plan['qty'], q,
                                   rec.get('t0'), signal_px=plan['px'], maker_tries=rec['n'])
             st = dict(fallback_skipped=no_fallback) if no_fallback and rem > 0 else {}   # fallback state, only from what actually happened
-            ok = self._create_lot(plan, q, avg, maker_qty=q)
+            ok = self._create_lot(plan, q, avg, maker_qty=q, cost_ref=self._cost_link(mrec))
             lot = self.state['lots'].get(getattr(self, '_last_lot_key', None))
             self._audit_cand(sl, rec['symbol'], rec['side'], plan['sg'], 'taken' if ok and lot else 'not_taken',   # T05a terminal
                              None if ok and lot else (self.last_skip or 'maker lot not created'))
             if fallback and rem > 0:
                 blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
-                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if ok and lot else None
+                       or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))
+                       or (self._tb_on() and self._tb_opposite(rec['symbol'], rec['side'])     # TRUE-BOOK-03: no remainder into
+                           and 'true_book/opposite_side_funding_ambiguity')                     # an opposite-side symbol
+                       or self._tb_add_block(lot, rem, px)) if ok and lot else None      # TRUE-BOOK-01: the book's limits too
                 if not (ok and lot): st['fallback_skipped'] = 'maker lot not created'
                 elif blk: st['fallback_blocked'] = blk
                 else:
@@ -4661,7 +6988,8 @@ class Engine:
                         else: st['fallback_unconfirmed'] = 'Binance answered without an executed quantity'
                         self._replace_stop(lot)
             if mrec: mrec.update(st)
-            self._fill_emit(mrec)
+            if mrec and rec.get('px_unknown'): fill_px_unknown(mrec)     # EXEC-CAL-00: the limit is not an executed price
+            self._fill_emit(mrec, mrefs)
             return
         blk = (self.entry_block(sl, rec['symbol'], rec['side'], sg=sg)
                or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))) if fallback else None

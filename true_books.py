@@ -1,0 +1,409 @@
+"""TRUE-BOOK-01: five isolated $2,000 PAPER portfolios on one testnet account (PAPER/testnet only).
+
+Pure. The engine supplies lots, closed history rows, marks and funding gaps; nothing here reads files or the exchange.
+Each book's NAV is its own: start + realized gross + unrealized gross - fees + net funding, from the lots and rows of the
+current cohort that carry that book. Sizing, the 4-lot cap, notional and stop-risk limits are all measured against that
+NAV - never account equity / 5 and never another book's surplus. Money is Decimal end to end (quantized only for JSON).
+
+Fees: a row/lot's actual commission (FEE-ASSET-01 `fees_actual`) when complete; otherwise its estimate, and the book is
+INCOMPLETE with the reason (`nav_basis: estimate_fallback`) - never a silent zero. HALT is decided on the worse of the
+actual-basis and estimate-basis NAV and is sticky for the cohort (the engine persists it).
+
+ANY incomplete reason refuses new risk in that book (Codex 6240139762 #1): an unknown fee, funding, pnl, peak, mark, stop,
+row revision or account owner is never ranked or traded through. Existing lots stay managed and closable.
+
+Row revisions (#2/#8): a closed row is written once at the close and again whenever a late fee / funding restates it.
+merge_rows() folds the copies of one id: an identical copy is a replay (ignored); the cost fields (REVISABLE) come from the
+copy with the highest cost_rev (ties: the later copy); a copy whose trade facts (IMMUTABLE) differ is a conflict - the first
+copy's facts stay and the book is INCOMPLETE (row_conflict), never a silent first- or last-wins.
+"""
+import copy
+from decimal import Decimal, InvalidOperation
+from datetime import datetime
+
+import actual_costs as AC
+import paper_books as PB
+
+START = Decimal('2000')
+MAX_LOTS = 4
+STOP_RISK_MAX = Decimal('0.08')            # book open stop-risk cap as a fraction of book NAV (4 x 2 %) - Codex may rule
+Q = Decimal('0.0001')
+# the facts of a closed trade: a later copy that changes one is a conflict, never a restatement
+IMMUTABLE = ('book', 'strategy_key', 'symbol', 'side', 'cohort_id', 'opened', 'closed', 'avg_entry', 'exit', 'qty_max',
+             'pnl_gross', 'fees', 'r', 'hours', 'exit_reason', 'manual')
+REVISABLE = tuple(AC.COST_FIELDS) + ('cost_rev', 'fills_booked')     # late actual-cost / funding restatements
+
+
+def D(x):
+    """Decimal from a JSON number / string; None when unreadable or not finite."""
+    if x is None or isinstance(x, bool): return None
+    try: d = Decimal(str(x))
+    except (InvalidOperation, ValueError): return None
+    return d if d.is_finite() else None
+
+
+def q(d):
+    return None if d is None else float(d.quantize(Q))
+
+
+def book_of(strategy):
+    """The book of a strategy key, or None when unmapped (TRUE-BOOK refuses it - never parked in Discovery)."""
+    for key, _n, strategies in PB.BOOKS:
+        if strategy in strategies: return key
+    return None
+
+
+def stop_risk(lot):
+    """Open loss to the CURRENT stop: max(0, (avg - stop) * side * qty). A breakeven / profit-locked stop risks 0."""
+    avg, stop, qty = D(lot.get('avg')), D(lot.get('stop')), D(lot.get('qty'))
+    if avg is None or stop is None or qty is None: return None
+    sd = 1 if lot.get('side') == 'LONG' else -1
+    return max(Decimal(0), (avg - stop) * sd * qty)
+
+
+def _ms(iso):
+    try: return datetime.fromisoformat(str(iso)).timestamp() * 1000
+    except (TypeError, ValueError): return None
+
+
+def _same(a, b):
+    if a == b: return True
+    da, db = D(a), D(b)
+    return da is not None and da == db
+
+
+def merge_rows(rows):
+    """Pure, deterministic. One row per id, in first-seen order (id-less rows are never merged). The caller's dicts are
+    never mutated: a revised row is a new dict."""
+    out, at = [], {}
+    for r in rows or ():
+        if not isinstance(r, dict): continue
+        i = r.get('id')
+        if i is None: out.append(r); continue
+        if i not in at: at[i] = len(out); out.append(r); continue
+        m = out[at[i]]
+        if r is m or r == m: continue                                  # identical replay: idempotent
+        bad = [k for k in IMMUTABLE if not _same(m.get(k), r.get(k))]
+        m = out[at[i]] = dict(m)
+        if bad: m['_conflict'] = sorted(set(m.get('_conflict') or ()) | set(bad)); continue
+        if (D(r.get('cost_rev')) or 0) >= (D(m.get('cost_rev')) or 0):
+            for k in REVISABLE:
+                if k in r: m[k] = copy.deepcopy(r[k])
+                else: m.pop(k, None)
+    return out
+
+
+def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None, start=START, peaks=None, funding=None,
+            unsaved=(), unowned_funding=()):
+    """Pure. {book: doc} for the five books. Only rows / lots stamped with cohort_id count (an older cohort's lots and their
+    later exits, fees and funding stay with that cohort). halted: the persisted sticky halts {book: {...}}.
+    working: [(book, notional, stop_risk)] for entries placed but not yet a lot (resting maker, unconfirmed): they hold a
+    lot slot and RESERVE their notional and worst loss to stop before any fill (Codex ruling 6238997253 #1).
+    peaks: persisted mark-to-market NAV peaks {book: number} (sampled by the engine), so DD sees unrealized highs.
+    Anything on the shared account that no book owns (a manual / unknown-book lot, row or working entry: book None) makes
+    EVERY book INCOMPLETE (unowned_account_activity); an amount that cannot be read is INCOMPLETE too - never zero-filled.
+    funding: {ok, why, through_ms} from the engine's funding reader. Not ok (no reader / read failed / stale / never read):
+    every open lot of the cohort and every row closed after through_ms is INCOMPLETE (funding_unread), never exact zero.
+    unsaved: row ids whose latest revision is not yet durable (evidence_revision_pending).
+    unowned_funding: this cohort's funding payments no lot / row could own -> every book unowned_account_activity
+    (subtype funding_unattributed, with the payment's hashed key / symbol / asset / amount / time)."""
+    marks, halted, peaks = marks or {}, halted or {}, peaks or {}
+    funding, unsaved = funding or dict(ok=False, why='unknown', through_ms=None), set(unsaved or ())
+    fund_t = funding.get('through_ms') if not funding.get('ok') else None
+    out, unowned, conflicts = {}, dict(rows=0, lots=0, working=0), []
+    for key, name, strategies in PB.BOOKS:
+        b = dict(id=key, name=name, start=start, gross_real=Decimal(0), unreal=Decimal(0), fees_act=Decimal(0),
+                 fees_est=Decimal(0), funding=Decimal(0), incomplete=[], lots=0, closed=0, notional=Decimal(0),
+                 stop_risk=Decimal(0), working=0, strategies={}, series=[])
+        out[key] = b
+    for r in merge_rows(history):
+        b = out.get(r.get('book'))
+        if not cohort_id or r.get('cohort_id') not in (cohort_id, None): continue
+        if r.get('_conflict'): conflicts.append((b, r))
+        if b is None: unowned['rows'] += 1; continue                       # the engine passes only this cohort's window
+        if r.get('cohort_id') != cohort_id: continue
+        b['closed'] += 1
+        if r.get('id') in unsaved: b['incomplete'].append(dict(reason='evidence_revision_pending', id=r.get('id')))
+        if not funding.get('ok'):
+            c = _ms(r.get('closed'))
+            if fund_t is None or c is None or c > fund_t:
+                b['incomplete'].append(dict(reason='funding_unread', id=r.get('id'), why=funding.get('why')))
+        g, fe = D(r.get('pnl_gross')), D(r.get('fees'))
+        if g is None: b['incomplete'].append(dict(reason='pnl_unreadable', id=r.get('id'))); g = Decimal(0)
+        if fe is None: b['incomplete'].append(dict(reason='fees_unreadable', id=r.get('id'))); fe = Decimal(0)
+        _funding_gap(b, r)
+        fa, fu = D(r.get('fees_actual')), D(r.get('funding_actual')) or Decimal(0)
+        b['gross_real'] += g; b['fees_est'] += fe; b['funding'] += fu
+        if fa is None:
+            b['fees_act'] += fe
+            b['incomplete'].append(dict(reason='fees_actual_missing', id=r.get('id'), why=r.get('fees_actual_partial')))
+        else: b['fees_act'] += fa
+        for why in r.get('funding_partial') or ():
+            b['incomplete'].append(dict(reason=why, id=r.get('id'), n=r.get('funding_unattributed')))
+        s = b['strategies'].setdefault(r.get('strategy_key') or '?', dict(closed=0, net=Decimal(0), wins=0, gross_win=Decimal(0),
+                                                                          gross_loss=Decimal(0), fees=Decimal(0), funding=Decimal(0),
+                                                                          r_sum=Decimal(0), hours=Decimal(0), exits={}))
+        net = g - (fa if fa is not None else fe) + fu
+        s['closed'] += 1; s['net'] += net; s['fees'] += fa if fa is not None else fe; s['funding'] += fu
+        s['wins'] += net > 0
+        if net > 0: s['gross_win'] += net
+        else: s['gross_loss'] -= net
+        s['r_sum'] += D(r.get('r')) or Decimal(0); s['hours'] += D(r.get('hours')) or Decimal(0)
+        s['exits'][r.get('exit_reason') or '?'] = s['exits'].get(r.get('exit_reason') or '?', 0) + 1
+        b['series'].append((str(r.get('closed') or ''), net))
+    for lot in lots or ():
+        b = out.get(lot.get('book'))
+        if b is None: unowned['lots'] += 1; continue                       # open on the shared account, owned by no book
+        sr = stop_risk(lot)
+        b['lots'] += 1                                          # capacity counts every lot of the book (conservative)
+        mk, avg, qty = D(marks.get(lot.get('symbol'))), D(lot.get('avg')), D(lot.get('qty')) or Decimal(0)
+        if mk is None or mk <= 0 or avg is None:                # exposure / value unknown: INCOMPLETE (blocks admission)
+            b['incomplete'].append(dict(reason='mark_missing', symbol=lot.get('symbol'))); mk = None
+        b['notional'] += abs(qty) * (mk if mk is not None else (avg or Decimal(0)))   # exposure at the CURRENT mark
+        if sr is None: b['incomplete'].append(dict(reason='stop_unknown', symbol=lot.get('symbol')))
+        else: b['stop_risk'] += sr
+        if lot.get('cohort_id') != cohort_id: continue          # value only: an older cohort's lot is not this NAV's
+        if not funding.get('ok') and qty > 0:
+            b['incomplete'].append(dict(reason='funding_unread', id=lot.get('symbol'), why=funding.get('why')))
+        g, fe = D(lot.get('realized', 0)), D(lot.get('fees', 0))
+        if g is None: b['incomplete'].append(dict(reason='pnl_unreadable', id=lot.get('symbol'))); g = Decimal(0)
+        if fe is None: b['incomplete'].append(dict(reason='fees_unreadable', id=lot.get('symbol'))); fe = Decimal(0)
+        _funding_gap(b, lot)
+        fa, fu = D(lot.get('fees_actual')), D(lot.get('funding_actual')) or Decimal(0)
+        b['gross_real'] += g; b['fees_est'] += fe; b['funding'] += fu
+        if fa is None:
+            b['fees_act'] += fe
+            b['incomplete'].append(dict(reason='fees_actual_missing', id=lot.get('symbol'), why=lot.get('fees_actual_partial')))
+        else: b['fees_act'] += fa
+        for why in lot.get('funding_partial') or ():
+            b['incomplete'].append(dict(reason=why, id=lot.get('symbol'), n=lot.get('funding_unattributed')))
+        if mk is not None: b['unreal'] += (1 if lot.get('side') == 'LONG' else -1) * (mk - avg) * qty
+    for k, nn, rr in working or ():
+        b = out.get(k)
+        if b is None: unowned['working'] += 1; continue          # unmapped / manual working order on the shared account
+        b['working'] += 1
+        b['notional'] += D(nn) or Decimal(0)
+        r = D(rr)
+        if r is None: b['incomplete'].append(dict(reason='working_stop_unknown'))
+        else: b['stop_risk'] += max(Decimal(0), r)
+    if unowned['rows'] or unowned['lots'] or unowned['working']:
+        for b in out.values(): b['incomplete'].append(dict(reason='unowned_account_activity', **unowned))
+    for u in list(unowned_funding or ())[:20]:
+        for b in out.values():
+            b['incomplete'].append(dict(reason='unowned_account_activity', subtype='funding_unattributed',
+                                        **{k: u.get(k) for k in ('key', 'symbol', 'asset', 'amount', 'time_ms')}))
+    for b, r in conflicts:                                      # a disputed owner contaminates every book
+        for bb in (out.values() if b is None or 'book' in r['_conflict'] else (b,)):
+            bb['incomplete'].append(dict(reason='row_conflict', id=r.get('id'), fields=r['_conflict']))
+    for key, b in out.items():
+        base = start + b['gross_real'] + b['unreal'] + b['funding']
+        nav_a, nav_e = base - b['fees_act'], base - b['fees_est']
+        nav = nav_a
+        worse = min(nav_a, nav_e)
+        # peak from the ordered close series (realized only) + now: re-derived each time, so a restated fee re-derives it
+        pk = D(peaks.get(key)) if key in peaks else None
+        if key in peaks and (pk is None or pk <= 0):              # a corrupted persisted peak would under-report DD
+            b['incomplete'].append(dict(reason='peak_unreadable', value=str(peaks.get(key))[:40])); pk = None
+        run, peak = start, max(start, nav, pk or start)
+        for _t0, net in sorted(b['series'], key=lambda x: x[0]):
+            run += net; peak = max(peak, run)
+        h = halted.get(key)
+        state = 'HALTED' if h or worse <= 0 else 'ACTIVE'
+        fallback = any(x['reason'] == 'fees_actual_missing' for x in b['incomplete'])
+        b.update(nav=nav, nav_estimate=nav_e, nav_worse=worse, peak=peak, dd=(1 - nav / peak) if peak > 0 else None,
+                 roi=nav / start - 1, state=state, halt=h or (dict(basis='actual' if nav_a <= nav_e else 'estimate',
+                                                                   nav=q(worse)) if worse <= 0 else None),
+                 nav_basis='estimate_fallback' if fallback else 'actual', complete=not b['incomplete'],
+                 rankable=not b['incomplete'] and state == 'ACTIVE')
+    return out
+
+
+def _funding_gap(b, x):
+    """funding_actual None while funding was booked (several assets): the amount is unknown, never 0."""
+    if x.get('funding_actual') is None and (x.get('funding_by_asset') or x.get('funding_rows')):
+        b['incomplete'].append(dict(reason='funding_multi_asset', id=x.get('id') or x.get('symbol'),
+                                    assets=sorted(x.get('funding_by_asset') or ())))
+
+
+def cost_pending_only(b):
+    """True when the book's only incompleteness is fill commissions still in flight (fill_records_pending): accounting
+    latency, not a hole. Anything else - including fill_records_lost / fills_without_cost_record - is not."""
+    inc = b['incomplete']
+    return bool(inc) and all(x['reason'] == 'fees_actual_missing' and set(x.get('why') or ()) == {'fill_records_pending'}
+                             for x in inc)
+
+
+def admit(b, new_notional=None, new_stop_risk=None, add=False, max_leverage=None, max_lots=MAX_LOTS,
+          stop_risk_max=STOP_RISK_MAX, working=None):
+    """The book's own gate for one new lot (add=False) or an add to an existing lot (add=True). None or a reason."""
+    k = b['id']
+    if b['state'] == 'HALTED': return f'book {k} halted (NAV {q(b["nav_worse"])} <= 0) - no new risk in this book'
+    nav = b['nav_worse']
+    if nav <= 0: return f'book {k} has no NAV left'
+    blind = sorted({x['reason'] for x in b['incomplete']})
+    if blind and cost_pending_only(b):
+        return f'book {k} cost_pending (a fill commission is not yet received) - no new risk until it is measured'
+    if blind: return f'book {k} INCOMPLETE ({", ".join(blind)}) - no new risk until it is measured'
+    n = b['lots'] + (b['working'] if working is None else working)
+    if not add and n >= max_lots: return f'book {k} full ({n}/{max_lots} lots)'
+    if new_notional is not None and max_leverage is not None:
+        nn = D(new_notional) or Decimal(0)
+        if b['notional'] + nn > D(max_leverage) * nav:
+            return f'book {k} leverage cap: {q(b["notional"] + nn)} > {max_leverage}x NAV {q(nav)}'
+    if new_stop_risk is not None:
+        nr = D(new_stop_risk) or Decimal(0)
+        if b['stop_risk'] + nr > stop_risk_max * nav:
+            return f'book {k} stop-risk cap: {q(b["stop_risk"] + nr)} > {q(stop_risk_max * 100)}% of NAV {q(nav)}'
+    return None
+
+
+def public(books):
+    """JSON view: money quantized, per-strategy stats derived."""
+    out = []
+    for b in books.values():
+        st = {}
+        for s, x in b['strategies'].items():
+            n = x['closed']
+            st[s] = dict(closed=n, net=q(x['net']), win_rate=round(x['wins'] / n, 4) if n else None,
+                         expectancy=q(x['net'] / n) if n else None, avg_r=q(x['r_sum'] / n) if n else None,
+                         pf=q(x['gross_win'] / x['gross_loss']) if x['gross_loss'] > 0 else None,
+                         fee_drag=q(x['fees']), funding=q(x['funding']), avg_hours=q(x['hours'] / n) if n else None,
+                         roi=q(x['net'] / b['start']), exits=x['exits'])
+        out.append(dict(id=b['id'], name=b['name'], start=q(b['start']), nav=q(b['nav']), nav_estimate=q(b['nav_estimate']),
+                        peak=q(b['peak']), dd=q(b['dd']) if b['dd'] is not None else None, roi=q(b['roi']), state=b['state'],
+                        halt=b['halt'], nav_basis=b['nav_basis'], complete=b['complete'], rankable=b['rankable'],
+                        incomplete=b['incomplete'][:50],
+                        incomplete_n=len(b['incomplete']), lots=b['lots'], working=b['working'], closed=b['closed'], notional=q(b['notional']),
+                        stop_risk=q(b['stop_risk']), fees=q(b['fees_act']), fees_estimate=q(b['fees_est']),
+                        funding=q(b['funding']), strategies=st))
+    return out
+
+
+MIN_N = 20                 # closes a strategy needs before a "better" claim (Build default; Codex may rule)
+
+
+def _stats(nets, rs, notional, start):
+    n = len(nets)
+    win = [x for x in nets if x > 0]
+    gl = -sum((x for x in nets if x <= 0), Decimal(0))
+    net = sum(nets, Decimal(0))
+    return dict(closed=n, net=q(net), expectancy=q(net / n) if n else None, win_rate=round(len(win) / n, 4) if n else None,
+                pf=q(sum(win, Decimal(0)) / gl) if gl > 0 else None, net_r=q(sum(rs, Decimal(0))),
+                avg_r=q(sum(rs, Decimal(0)) / len(rs)) if rs else None, turnover=q(notional / start) if start else None)
+
+
+def _spread(vals):
+    v = sorted(x for x in vals if x is not None)
+    if not v: return dict(mean=None, median=None, n=0)
+    m = len(v) // 2
+    med = v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2
+    return dict(mean=q(sum(v, Decimal(0)) / len(v)), median=q(med), n=len(v))
+
+
+def _row_complete(r):
+    return D(r.get('fees_actual')) is not None and not r.get('funding_partial') and not r.get('_conflict') \
+        and D(r.get('pnl_gross')) is not None and not (r.get('funding_actual') is None and (r.get('funding_by_asset') or r.get('funding_rows')))
+
+
+COST_GAP_ROWS = 50                   # closes listed in full by cost_gaps (the counts always cover every close)
+
+
+def _close_gaps(r):
+    """Why one close's actual cost is not proven (sorted, empty = proven)."""
+    why, refs = set(), r.get('cost_refs')
+    try: fb = None if r.get('fills_booked') is None else int(r.get('fills_booked'))
+    except (TypeError, ValueError, OverflowError): fb = -1               # unreadable count: never a match
+    # either direction: fewer records than fills (a fill booked without one) or more (a record linked, its fill not booked)
+    if fb is not None and fb != len(refs if isinstance(refs, (list, tuple)) else ()): why.add('fills_cost_refs_mismatch')
+    if r.get('exit_px_unconfirmed'): why.add('exit_px_unconfirmed')
+    p = r.get('fees_actual_partial')
+    if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
+    elif p: why.add('fees_actual_partial')
+    if not why and D(r.get('fees_actual')) is None: why.add('fees_actual_missing')   # never finalized: unknown is not proven
+    return sorted(why)
+
+
+def cost_gaps(rows):
+    """Pure, read-only (STOP-COST-SMOKE, Codex 6245287466). Per close of the cohort, the reasons its actual cost is not
+    proven: fills booked without a matching cost record (fills_booked != len(cost_refs)), an exit price that is not
+    exchange truth (exit_px_unconfirmed) and every fees_actual_partial reason. Revisions are folded first (merge_rows),
+    so a close counts once, as its latest revision. Changes no row, rank or trading decision.
+    -> dict(closes, with_gaps, by_reason, by_book, by_strategy {'book|key'}, rows [<= COST_GAP_ROWS], truncated)."""
+    rows = merge_rows(rows)
+    out, by_reason, by_book, by_key = [], {}, {}, {}
+    for r in rows:
+        why = _close_gaps(r)
+        if not why: continue
+        bk, k = r.get('book'), r.get('strategy_key') or '?'
+        for w in why: by_reason[w] = by_reason.get(w, 0) + 1
+        by_book[bk] = by_book.get(bk, 0) + 1
+        by_key[f'{bk}|{k}'] = by_key.get(f'{bk}|{k}', 0) + 1
+        out.append(dict(id=r.get('id'), book=bk, strategy_key=k, symbol=r.get('symbol'), exit_reason=r.get('exit_reason'),
+                        closed=r.get('closed'), reasons=why))
+    return dict(closes=len(rows), with_gaps=len(out), by_reason=dict(sorted(by_reason.items())), by_book=by_book,
+                by_strategy=by_key, rows=out[:COST_GAP_ROWS], truncated=len(out) > COST_GAP_ROWS)
+
+
+def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N):
+    """Pure. The Strategies-tab comparison: one row per book (family) and one per mapped strategy, from the same TRUE-BOOK
+    valuation (books = compute()) and this cohort's merged closed rows. audits: {trade id: {mfe_r, mae_r, giveback_r}}
+    (hindsight, describes finished trades; a close without one counts as audit_missing, never 0). rejections:
+    [(book, strategy_key, code)] of this cohort's not-taken signals. Only rankable rows are ranked: a row is rankable when
+    its book is, every one of its closes is complete, it has at least min_n closes and it is positive after costs (net > 0
+    and avg R > 0; Codex 6243268587). Order: avg R, then after-cost net. Losing rows stay visible and unranked."""
+    audits = audits or {}
+    rows = [r for r in merge_rows(rows) if r.get('book') in books]
+    cg = cost_gaps(rows)                                                 # read-only evidence, never a rank input
+    rej = {}
+    for bk, key, code in rejections or ():
+        for k in ((bk, None), (bk, key)):
+            d = rej.setdefault(k, {}); d[code or 'other'] = d.get(code or 'other', 0) + 1
+    fams, strats = [], []
+    for bk, name, keys in PB.BOOKS:
+        b = books[bk]
+        mine = [r for r in rows if r.get('book') == bk]
+        groups = [(None, mine)] + [(k, [r for r in mine if r.get('strategy_key') == k]) for k in sorted(keys)]
+        groups += [(k, [r for r in mine if (r.get('strategy_key') or '?') == k])
+                   for k in sorted({r.get('strategy_key') or '?' for r in mine} - set(keys))]
+        for key, rs in groups:
+            nets, rr, notional, fees, fund, hours, exits, exc = [], [], Decimal(0), Decimal(0), Decimal(0), [], {}, dict(mfe=[], mae=[], gb=[])
+            missing = incomplete = 0
+            for r in sorted(rs, key=lambda x: str(x.get('closed') or '')):
+                g = D(r.get('pnl_gross')) or Decimal(0)
+                fa, fu = D(r.get('fees_actual')), D(r.get('funding_actual')) or Decimal(0)
+                fe = fa if fa is not None else (D(r.get('fees')) or Decimal(0))
+                nets.append(g - fe + fu); fees += fe; fund += fu
+                if D(r.get('r')) is not None: rr.append(D(r.get('r')))
+                notional += abs(D(r.get('notional')) or Decimal(0))
+                if D(r.get('hours')) is not None: hours.append(D(r.get('hours')))
+                exits[r.get('exit_reason') or '?'] = exits.get(r.get('exit_reason') or '?', 0) + 1
+                incomplete += not _row_complete(r) or D(r.get('r')) is None   # no R (risk unknown): cannot rank on R
+                a = audits.get(r.get('id'))
+                if not a: missing += 1; continue
+                exc['mfe'].append(D(a.get('mfe_r'))); exc['mae'].append(D(a.get('mae_r'))); exc['gb'].append(D(a.get('giveback_r')))
+            s = _stats(nets, rr, notional, b['start'])
+            s.update(fees=q(fees), funding=q(fund), avg_hours=q(sum(hours, Decimal(0)) / len(hours)) if hours else None, exits=exits,
+                     mfe_r=_spread(exc['mfe']), mae_r=_spread(exc['mae']), giveback_r=_spread(exc['gb']), audit_missing=missing,
+                     rejections=rej.get((bk, key), {}), incomplete_closes=incomplete,
+                     cost_gaps=cg['by_book'].get(bk, 0) if key is None else cg['by_strategy'].get(f'{bk}|{key}', 0))
+            ok = b['rankable'] and not incomplete
+            if key is None:
+                s.update(id=bk, name=name, nav=q(b['nav']), roi=q(b['roi']), peak=q(b['peak']), dd=q(b['dd']) if b['dd'] is not None else None,
+                         state=b['state'], lots=b['lots'], working=b['working'], notional=q(b['notional']), stop_risk=q(b['stop_risk']),
+                         complete=b['complete'], rankable=ok and s['closed'] >= min_n, incomplete=sorted({x['reason'] for x in b['incomplete']}))
+                fams.append(s)
+            else:
+                s.update(book=bk, key=key, mapped=key in keys, complete=b['complete'] and not incomplete,
+                         incomplete=sorted({x['reason'] for x in b['incomplete']}),
+                         rankable=ok and s['closed'] >= min_n and key in keys,
+                         note=None if s['closed'] >= min_n else f'insufficient n ({s["closed"]}/{min_n})')
+                strats.append(s)
+    for lst in (fams, strats):
+        for x in lst:
+            if x['rankable'] and not (x['net'] is not None and x['net'] > 0 and x['avg_r'] is not None and x['avg_r'] > 0):
+                x['rankable'] = False; x['note'] = 'not positive after costs'   # comparison only, never a promotion
+        ranked = sorted((x for x in lst if x['rankable']), key=lambda x: (-x['avg_r'], -x['net']))
+        for i, x in enumerate(ranked): x['rank'] = i + 1
+        for x in lst: x.setdefault('rank', None)
+    return dict(min_n=min_n, families=fams, strategies=strats,
+                cost_evidence={k: v for k, v in cg.items() if k not in ('by_book', 'by_strategy')})

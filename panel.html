@@ -411,6 +411,8 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
   <h1 id="pageTitle">Dashboard</h1>
   <span id="status" class="pill p-mute" role="status"><i></i>CONNECTING</span>
   <span id="presetlbl" class="pill p-mute"></span>
+  <span id="mlstate" class="pill p-mute" role="status" title="Claude shadow research analyst; separate from entry filtering"><i></i>ML OFF</span>
+  <span id="apistate" class="pill p-mute" role="status" title="Whether an Anthropic API key is loaded"><i></i>API OFF</span>
   <div class="hk" id="money">
     <div><span>Binance account <span class="q" data-t="The whole USDT futures wallet on Binance (margin balance). It can include money the bot does not trade with.">?</span></span><b id="k_bal">–</b></div>
     <div><span>Bot capital <span class="q" data-t="What the bot trades with and what the safety limits watch: start amount + closed P&amp;L + open P&amp;L − withdrawals + deposits.">?</span></span><b id="k_eq">–</b></div>
@@ -546,6 +548,13 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 <!-- ======================= STRATEGIES ======================= -->
 <section class="tab" id="t_strat" role="tabpanel" aria-labelledby="n_strat">
   <div class="help">A <b>profile</b> loads a whole set of strategies in one click. Below it, each <b>slot</b> is one strategy with its own share of capital, risk per trade, coins, direction and timeframe. "Advanced" opens trade management: stops, trailing, partial take-profit, pyramiding (adding to winners), DCA safety orders, and the optional filters. Changes apply after "Save strategies"; open trades keep the rules they were opened with.</div>
+  <div class="card"><h3>Five paper test books <span id="bookState" class="tag t-mute"></span><span class="r"><label class="small t2" for="bookCap">Target per book $</label><input id="bookCap" type="number" min="100" max="10000000" step="100" style="width:90px" onchange="saveBooks()"><label class="sw" title="Enable for new automatic PAPER trades"><input type="checkbox" id="bookOn" onchange="saveBooks()"><span></span></label></span></h3>
+    <div class="help">One PAPER account, split into five separately tracked strategy plans. Each plan gets one fifth of current equity, up to the target above. Existing, manual and LIVE trades stay outside the books. Binance margin is still shared, so these are clean performance groups—not separate exchange wallets.</div>
+    <div class="g3" id="bookRows"></div>
+  </div>
+  <div class="card" id="tbCmpCard"><h3>Strategy comparison <span id="tbCmpState" class="tag t-mute"></span><span class="r"><label class="small t2" for="tbCmpFam">Family</label><select id="tbCmpFam" onchange="renderTbCmp()"><option value="">All</option></select></span></h3>
+    <div class="help">Which families (books) and which strategies work, measured on the current clean cohort. Each book started with its own $2,000. Only <b>complete</b> rows with enough closed trades that are positive after costs are ranked (by average R, then net). Incomplete rows stay visible, with their reasons, but are never ranked or promoted. MFE / MAE / giveback describe finished trades in hindsight and are never a trading input.</div>
+    <div id="tbCmp"><div class="mute small">Loading…</div></div></div>
   <div class="card"><h3>Profiles <span class="r mix"><label class="small t2" for="mixPct">When combining, the added profile gets</label><input id="mixPct" type="number" value="50" min="5" max="95" step="5" style="width:64px"><span class="small t2">% of capital</span></span></h3>
     <div class="help">"Apply" replaces your slots with the profile. "Combine" keeps your current slots and adds the profile's slots next to them, splitting capital by the % above (e.g. Boost 4h + Active 1h). Each slot trades independently with its own stops. Review, then press Save strategies. Profile numbers are <b>in-sample backtests</b>: the strategies were chosen on the same history they are tested on, so expect live results to be worse.</div>
     <div class="g3" id="presets"></div></div>
@@ -714,6 +723,14 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
     <div class="card"><h3>Claude review key (optional) <span class="r" id="aistate"></span></h3>
       <div class="row"><label class="t2" for="k_ai">Anthropic API key</label><input id="k_ai" type="password" placeholder="leave blank to keep" style="width:270px" autocomplete="off"></div>
       <div class="row"><span></span><button onclick="saveAI()">Save</button></div></div>
+    <div class="card"><h3>Claude research <span class="r" id="anstate"></span></h3>
+      <div class="help">Report-only PAPER research. Claude reviews sanitized trade and backtest statistics at most every three hours and after new tests (no call when nothing changed); it cannot place, close or resize trades. The limits below are ceilings that stop calls, not expected spend.</div>
+      <div class="row"><div class="l"><b id="lb_mls">Record strategy decisions</b><small>collect candidate and outcome data locally</small></div><label class="sw"><input type="checkbox" id="sw_mls" aria-labelledby="lb_mls" onchange="setS({ML_SHADOW:this.checked})"><span></span></label></div>
+      <div class="row"><div class="l"><b id="lb_ca">Promotional Claude research boost</b><small>At most every 3 hours at :15 Cairo + after new backtest results</small></div><label class="sw"><input type="checkbox" id="sw_ca" aria-labelledby="lb_ca" onchange="setS({CLAUDE_SHADOW_ANALYST:this.checked})"><span></span></label></div>
+      <div class="row"><label class="t2" for="an_daily">Daily ceiling</label><span><input id="an_daily" type="number" min="0" max="1000" step="0.5" style="width:90px"> USD</span></div>
+      <div class="row"><label class="t2" for="an_monthly">Monthly ceiling</label><span><input id="an_monthly" type="number" min="0" max="1000" step="1" style="width:90px"> USD</span></div>
+      <div class="row"><span></span><span class="btns"><button onclick="saveAnalystBudget()">Save ceilings</button><button onclick="analystTest()">Test API</button><button class="b-pri" onclick="analystNow()">Analyse now</button></span></div>
+      <div id="anusage" class="small t2" aria-live="polite"></div></div>
     <div class="card"><h3>App</h3>
       <div class="row"><span class="t2">Version</span><b id="ver"></b></div>
       <div class="row"><span class="t2">Setup checklist on the Dashboard</span><button class="sm" onclick="showOnb()">Show again</button></div>
@@ -747,8 +764,9 @@ tr.wrnrow td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 
 <script>
 "use strict";
+let TBC=null,TBCT=0;   // TRUE-BOOK comparison (/api/true_books/compare), refreshed at most once a minute on the Strategies tab
 let PF=null,PFT=0;   // BT02: exchange-filter preflight of the profiles (/api/preflight), refreshed at most once a minute on the Strategies tab
-let D=null,META=null,R=null,BTL=null,SLV=null,slDirty=false,eqR=30,trView='closed',trR=0,mSide='LONG',calM=null,trDay=null,EXPIRED=false,OFFLINE=false,TC=null;
+let D=null,META=null,R=null,BTL=null,SLV=null,AN=null,slDirty=false,eqR=30,trView='closed',trR=0,mSide='LONG',calM=null,trDay=null,EXPIRED=false,OFFLINE=false,TC=null;
 const CH={history:[],missed:[],signals:{},states:{},sigTime:null,equity:[],orders:[],logs:[]},REV={},LAST={missed:0,logs:0};
 const EXP=new Set(),SORT={},PAGE={},RER={},ADV=new Set();
 const $=id=>document.getElementById(id);
@@ -1066,6 +1084,11 @@ function statusPill(){const h=D.health||{};if(OFFLINE)return ['APP OFFLINE','p-b
 function renderHeader(){const S=D.settings,eq=D.equity,h=D.health||{};
   const[t,c]=statusPill();$('status').innerHTML='<i></i>'+t;$('status').className='pill '+c;
   $('presetlbl').textContent='Profile · '+(D.presets[S.PRESET]?D.presets[S.PRESET].name:'Custom');
+  const ml=!!S.CLAUDE_SHADOW_ANALYST,api=!!D.ai_key,mlc=ml?(api&&D.mode==='PAPER'?'p-ok':'p-warn'):'p-mute',apic=api?'p-ok':(ml?'p-warn':'p-mute');
+  $('mlstate').innerHTML='<i></i>ML '+(ml?'ON':'OFF');$('mlstate').className='pill '+mlc;
+  $('mlstate').title=ml?(api?(D.mode==='PAPER'?'Claude shadow research analyst is enabled (report-only)':'Shadow analyst is enabled but refuses non-PAPER mode'):'Shadow analyst is enabled but no Anthropic API key is loaded'):'Claude shadow research analyst is off; the entry-review filter is separate';
+  $('apistate').innerHTML='<i></i>API '+(api?'ON':'OFF');$('apistate').className='pill '+apic;
+  $('apistate').title=api?'Anthropic API key is loaded':'No Anthropic API key is loaded';
   $('k_bal').textContent=usd(D.balance);$('k_eq').textContent=usd(eq);$('k_size').textContent=usd(D.sizing_equity);
   const day=D.day_start&&eq!=null?eq-D.day_start:null,dp=D.day_start&&eq!=null?eq/D.day_start-1:null;$('k_day').textContent=day==null?'–':`${susd(day)} · ${pct(dp,2)}`;$('k_day').className=cls(day);
   const up=D.lots.reduce((a,p)=>a+(p.pnl||0),0);$('k_upnl').textContent=susd(up);$('k_upnl').className=cls(up);
@@ -1139,7 +1162,8 @@ function hideOnb(){LS.set('zb_onb_off','1');renderOnb();toast('Checklist hidden 
 function showOnb(){LS.del('zb_onb_off');tab('dash')}
 
 // ---------------- dashboard
-function renderDash(){const S=D.settings,eq=D.equity||0,H=CH.history,st=statsOf(H);renderOnb();
+function dashboardHistory(d,h){const cid=d.book_ledger&&d.book_ledger.cohort_id;return {cid:cid||null,history:cid?h.filter(x=>x.cohort_id===cid):h}}
+function renderDash(){const S=D.settings,eq=D.equity||0,dh=dashboardHistory(D,CH.history),cid=dh.cid,H=dh.history,st=statsOf(H);renderOnb();
   const eh=CH.equity.map(p=>[p[0]*1000,p[1]]);const risk=D.lots.reduce((a,p)=>a+Math.max(0,p.risk_to_stop||0),0);
   const day=D.day_start&&eq?eq-D.day_start:null;
   const upnl=D.lots.reduce((a,p)=>a+(p.pnl||0),0),dpct=D.day_start&&eq?eq/D.day_start-1:null,sp=eh.slice(-120).map(p=>p[1]);
@@ -1150,7 +1174,7 @@ function renderDash(){const S=D.settings,eq=D.equity||0,H=CH.history,st=statsOf(
      <div class="big">${usd(eq)}</div><span class="chip ${cls(day)}">${day==null?'–':(day>=0?'▲ ':'▼ ')+susd(day)+' · '+pct(dpct,2)} today</span>${hsp}
      <div class="hs"><div><span>Binance account</span><b>${usd(D.balance,0)}</b></div><div><span>Trades sized on</span><b>${usd(D.sizing_equity,0)}</b></div><div><span>Open P&amp;L</span><b class="${cls(upnl)}">${susd(upnl)}</b></div></div></div>`
    +tile('Today',susd(day),pct(dpct,2)+' since midnight Cairo',cls(day))
-   +tile('Net P&L (closed)',susd(st.net),`${st.n} trades · fees ${usd(st.fees)}`,cls(st.net),'Realized profit after estimated fees, all closed trades.',spark(cum.slice(-60),CSS('--s6')))
+   +tile(cid?'Current cohort P&L':'Net P&L (closed)',susd(st.net),`${st.n} trades · fees ${usd(st.fees)}`,cls(st.net),cid?'Realized profit after estimated fees for the active evidence cohort. All-time results remain in Trades.':'Realized profit after estimated fees, all closed trades.',spark(cum.slice(-60),CSS('--s6')))
    +tile('Win rate',st.n?(st.win*100).toFixed(0)+'%':'–',st.pf?`profit factor ${st.pf.toFixed(2)}`:'profit factor –','','Trend systems usually win 30-45% of trades but make more on winners than they lose on losers.',ring(st.win,null,'win'))
    +tile('Open positions',D.lots.length,`${longs} long · ${D.lots.length-longs} short`,'','',D.lots.length?ring(longs/D.lots.length,'#22c55e','pos'):'')
    +tile('Risk to stops',usd(risk),eq?(risk/eq*100).toFixed(1)+'% of bot capital':'','','What you lose if every open trade hits its stop right now.')
@@ -1328,6 +1352,33 @@ function updUnsaved(){const n=slDiff();$('usStrat').classList.toggle('on',n>0);$
 function discardSleeves(){if(!confirm('Discard your unsaved strategy changes?'))return;slDirty=false;SLV=null;ADV.clear();renderSleeves(true);updUnsaved()}
 
 // ---------------- strategies
+async function saveBooks(){try{await post('/api/settings',{PAPER_BOOKS:$('bookOn').checked,PAPER_BOOK_CAP:+$('bookCap').value});toast('Paper books saved');load()}catch(e){toast(e.message,true);load()}}
+function renderBooks(){const p=D.paper_books||{},rows=p.books||[],on=!!p.enabled;
+  $('bookOn').checked=on;$('bookOn').disabled=D.mode==='LIVE';$('bookCap').value=D.settings.PAPER_BOOK_CAP||2000;
+  $('bookState').className='tag '+(on?'t-long':'t-mute');$('bookState').textContent=on?'TRACKING NEW TRADES':'OFF';
+  setHTML($('bookRows'),rows.map(b=>`<div class="preset"><div style="display:flex;justify-content:space-between"><b>${esc(b.name)}</b><span class="tag t-mute">${usd(b.allocation,0)}</span></div>
+    <div class="small" style="margin-top:6px">Open <b>${b.open}</b> · risk left <b>${usd(b.open_risk)}</b> · closed <b>${b.closed}</b></div>
+    <div class="small ${cls(b.net_pnl)}">Net <b>${usd(b.net_pnl)}</b> <span class="mute">after ${usd(b.fees)} fees</span></div>
+    <div class="mute" style="font-size:10.5px;margin-top:5px">${(b.strategies||[]).map(libName).map(esc).join(' · ')}</div></div>`).join(''))}
+function renderTbCmp(){const el=$('tbCmp'),c=TBC;if(!el)return;
+  if(!c){setHTML(el,'<div class="mute small">Loading…</div>');return}
+  if(c.error){$('tbCmpState').className='tag t-mute';$('tbCmpState').textContent='UNAVAILABLE';setHTML(el,`<div class="note bd">Comparison not available: ${esc(c.error)}</div>`);return}
+  $('tbCmpState').className='tag '+(c.on?'t-long':'t-mute');$('tbCmpState').textContent=c.on?'TRUE BOOKS ON':'TRUE BOOKS OFF';
+  const co=c.cohort||{},ce=c.cost_evidence||{},fsel=$('tbCmpFam'),fv=fsel.value,fams=c.families||[];
+  const opts='<option value="">All</option>'+fams.map(f=>`<option value="${esc(f.id)}"${f.id===fv?' selected':''}>${esc(f.name)}</option>`).join('');
+  if(fsel.dataset.o!==opts){fsel.innerHTML=opts;fsel.dataset.o=opts}   // rebuilt only when the families change (an open list stays open)
+  const pf=x=>x.pf!=null?r2(x.pf):x.closed&&x.win_rate===1?'∞':'–';
+  const r2=v=>v==null?'–':(v<0?'−':'')+fmt(v,2),sp=x=>x&&x.n?`${r2(x.mean)} <span class="mute">/ ${r2(x.median)}</span>`:'–';
+  const rj=o=>Object.entries(o||{}).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`${esc(k)} ${n}`).join(', ')||'–';
+  const ex=o=>Object.entries(o||{}).map(([k,n])=>`${esc(k)} ${n}`).join(', ')||'–';
+  const tg=x=>x.rankable?`<span class="tag t-long">#${x.rank}</span>`:x.complete===false||(x.incomplete||[]).length?`<span class="tag t-short" title="${esc((x.incomplete||[]).join(', ')||(x.incomplete_closes?x.incomplete_closes+' incomplete closes':''))}">INCOMPLETE</span>`:`<span class="tag t-mute" title="${esc(x.note||'')}">${(x.note||'').startsWith('insufficient')?'LOW N':'NOT RANKED'}</span>`;
+  const ord=a=>a.slice().sort((x,y)=>(x.rank||1e9)-(y.rank||1e9)||y.closed-x.closed);
+  const ban=co.unowned_activity?`<div class="note bad" role="alert"><b>Unowned activity on the shared account</b> (${co.unowned_activity}) - every book is INCOMPLETE and nothing can be ranked until a clean cohort.</div>`:'';
+  const part=c.rejections_window_partial?'<div class="note wn">Rejection counts cover only the most recent 600 not-taken signals of this cohort.</div>':'';
+  const fh=`<div class="tw"><table><thead><tr><th>Family</th><th>Status</th><th>State</th><th class="num">NAV</th><th class="num">ROI</th><th class="num">DD</th><th class="num">Closed</th><th class="num">Net R</th><th class="num">Avg R</th><th class="num">Expectancy</th><th class="num">PF</th><th class="num">Win</th><th class="num">Fees</th><th class="num">Funding</th><th class="num" title="closed-trade turnover: closed entry notional / book start">Closed turnover</th><th class="num">Lots</th><th>Rejections</th></tr></thead><tbody>${ord(fams).map(f=>`<tr style="${f.rankable?'':'opacity:.65'}"><td><b>${esc(f.name)}</b></td><td>${tg(f)}</td><td>${esc(f.state)}</td><td class="num">${usd(f.nav)}</td><td class="num ${cls(f.roi)}">${pct(f.roi,2)}</td><td class="num">${f.dd==null?'–':pct(-f.dd,2)}</td><td class="num">${f.closed}</td><td class="num ${cls(f.net_r)}">${r2(f.net_r)}</td><td class="num">${r2(f.avg_r)}</td><td class="num ${cls(f.expectancy)}">${f.expectancy==null?'–':usd(f.expectancy)}</td><td class="num">${pf(f)}</td><td class="num">${f.win_rate==null?'–':pct(f.win_rate,0).replace('+','')}</td><td class="num">${usd(f.fees)}</td><td class="num">${usd(f.funding)}</td><td class="num">${r2(f.turnover)}×</td><td class="num">${f.lots}+${f.working}/4</td><td class="small">${rj(f.rejections)}</td></tr>`).join('')}</tbody></table></div>`;
+  const ss=ord((c.strategies||[]).filter(s=>!fv||s.book===fv));
+  const sh=`<div class="tw" style="margin-top:12px"><table><thead><tr><th>Strategy</th><th>Family</th><th>Status</th><th class="num">Closed</th><th class="num">Net</th><th class="num">Avg R</th><th class="num">Expectancy</th><th class="num">PF</th><th class="num">Win</th><th class="num">Fees</th><th class="num">Funding</th><th class="num" title="closed-trade turnover: closed entry notional / book start">Closed turnover</th><th class="num">Avg hold h</th><th class="num" title="mean / median, R">MFE R</th><th class="num" title="mean / median, R">MAE R</th><th class="num" title="mean / median, R">Giveback R</th><th>Exits</th><th>Rejections</th></tr></thead><tbody>${ss.map(s=>`<tr style="${s.rankable?'':'opacity:.65'}"><td><b>${esc(libName(s.key)||s.key)}</b>${s.mapped?'':' <span class="tag t-short">UNMAPPED</span>'}</td><td class="small">${esc((fams.find(f=>f.id===s.book)||{}).name||s.book)}</td><td>${tg(s)}</td><td class="num">${s.closed}</td><td class="num ${cls(s.net)}">${usd(s.net)}</td><td class="num">${r2(s.avg_r)}</td><td class="num ${cls(s.expectancy)}">${s.expectancy==null?'–':usd(s.expectancy)}</td><td class="num">${pf(s)}</td><td class="num">${s.win_rate==null?'–':pct(s.win_rate,0).replace('+','')}</td><td class="num">${usd(s.fees)}</td><td class="num">${usd(s.funding)}</td><td class="num">${r2(s.turnover)}×</td><td class="num">${r2(s.avg_hours)}</td><td class="num">${sp(s.mfe_r)}</td><td class="num">${sp(s.mae_r)}</td><td class="num">${sp(s.giveback_r)}${s.audit_missing?` <span class="mute" title="closes without an audit record">(${s.audit_missing} n/a)</span>`:''}</td><td class="small">${ex(s.exits)}</td><td class="small">${rj(s.rejections)}</td></tr>`).join('')}</tbody></table></div>`;
+  setHTML(el,`${ban}${part}<div class="mute small" style="margin-bottom:6px">Cohort <b>${esc(co.id||'none')}</b>${co.started_utc?' since '+esc(co.started_utc):''} · ranked after ${c.min_n} closes${ce.with_gaps?` · <span class="neg" title="${esc(Object.entries(ce.by_reason||{}).map(([k,n])=>k+' '+n).join(', '))}">${ce.with_gaps} of ${ce.closes} closes with cost-evidence gaps</span>`:ce.closes?` · <span class="pos">cost evidence complete (${ce.closes} closes)</span>`:''}${co.evidence_gaps?` · <span class="neg">${co.evidence_gaps} evidence gaps</span>`:''}</div>${fh}${sh}`)}
 const MG=[['stop_atr','Stop (ATR)'],['trail_atr','Trailing stop (ATR)'],['be_r','Breakeven after (R)'],['tp1_r','Partial TP at (R)'],['tp1_frac','Partial TP size (0-1)'],['tp_r','Full TP at (R)'],['max_bars','Time exit (candles)']];
 function btBadge(bt){if(!bt)return '';return `${bt.unverified?`<div class="note bad" role="alert" style="margin:6px 0 0;white-space:normal"><b>UNVERIFIED</b> · ${esc(bt.unverified)}</div>`:''}<div class="mbadge" title="How these numbers were made">${bt.unverified?'<b>Old, unverified</b> · ':''}Backtest ${esc(bt.start||'?')}–${esc(bt.stop||'?')} · ${bt.insample?'in-sample':'out-of-sample'} · compounded · engine ${esc(bt.engine||'?')}</div>
   <div class="small" style="display:flex;gap:10px;flex-wrap:wrap"><span>$500 → <b>${usd(bt.end,0)}</b></span><span>max DD <b class="neg">${bt.dd}%</b></span><span>worst month <b class="neg">${bt.wm}%</b></span><span>~${bt.wk} trades/wk</span></div>`}
@@ -1552,12 +1603,21 @@ async function copyDiag(){let lines=CH.logs;try{lines=await api('/api/logs')}cat
 function renderSet(){const S=D.settings;$('keystate').innerHTML=D.keys?'<span class="tag t-long">keys saved</span>':'<span class="tag t-short">no keys</span>';$('ver').textContent=D.version+(D.build&&D.build!=='dev'?' · build '+D.build:'');
   if(document.activeElement.id!=='k_mode')$('k_mode').value=D.mode==='LIVE'?'live':'paper';if(document.activeElement.id!=='tg_chat'&&!$('tg_chat').value)$('tg_chat').value=S.TELEGRAM_CHAT||'';
   $('tgstate').innerHTML=S.TELEGRAM_TOKEN_SET?'<span class="tag t-long">token saved ✓</span>':'<span class="tag t-mute">no token</span>';$('tg_token').placeholder=S.TELEGRAM_TOKEN_SET?'saved ✓ — leave blank to keep':'123456:ABC...';
-  $('aistate').innerHTML=D.ai_key?'<span class="tag t-long">key saved ✓</span>':'';renderTC();renderTgCtl()}
+  $('aistate').innerHTML=D.ai_key?'<span class="tag t-long">key saved ✓</span>':'';renderTC();renderTgCtl();renderAnalyst()}
+function renderAnalyst(){if(!AN)return;const S=D.settings,u=AN.usage||{},b=AN.budget||{},d=u.day||{},m=u.month||{},latest=AN.latest||{};
+  const sw=(id,v)=>{const x=$(id);if(document.activeElement!==x)x.checked=!!v};sw('sw_mls',S.ML_SHADOW);sw('sw_ca',S.CLAUDE_SHADOW_ANALYST);
+  if(document.activeElement!==$('an_daily'))$('an_daily').value=b.daily_limit_usd??18;if(document.activeElement!==$('an_monthly'))$('an_monthly').value=b.monthly_limit_usd??198;
+  $('anstate').innerHTML=AN.enabled?(AN.model_price_known===false?'<span class="tag t-warn">model not priced</span>':AN.key_set?'<span class="tag t-long">active</span>':'<span class="tag t-warn">key needed</span>'):'<span class="tag t-mute">off</span>';
+  const lr=latest.status==='OK'?(latest.cached?'latest report cached':'latest report ready'):'no report: '+(latest.reason||'none');
+  setHTML($('anusage'),`<div class="rv" style="margin-top:8px"><span>Today</span><b>${d.calls||0} calls · ${fmt(d.input_tokens||0,0)} in / ${fmt(d.output_tokens||0,0)} out · ${usd(d.est_cost_usd||0,4)}</b><span>This month</span><b>${m.calls||0} calls · ${usd(m.est_cost_usd||0,4)} estimated</b><span>Left under ceiling</span><b>${usd(b.daily_remaining_usd||0,2)} today · ${usd(b.monthly_remaining_usd||0,2)} month</b><span>Status</span><b>${esc(lr)}</b></div>`)}
 function renderTC(){const el=$('tcOut');if(!TC){setHTML(el,'');return}if(TC.busy){setHTML(el,'<div class="mute small">Testing the connection…</div>');return}if(TC.err){setHTML(el,`<div class="note bd">${esc(TC.err)}</div>`);return}
   const m=TC.msg||{};setHTML(el,`<div class="small t2" style="margin-top:8px">Mode: <b>${esc(m.mode||'')}</b> · tested ${fTime(TC.t)}</div>`+(m.checks||[]).map(c=>`<div><span class="ic ${c.ok?'ok':'bd'}" style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:900;flex-shrink:0" aria-hidden="true">${c.ok?'✓':'✕'}</span><div><b>${esc(c.name)}</b><span class="sr">${c.ok?' passed':' failed'}</span><div class="mute small">${esc(c.detail||'')}</div></div></div>`).join(''))}
 async function testConn(){TC={busy:1};renderTC();$('tcBtn').disabled=true;try{const m=await post('/api/action',{action:'test_connection'});TC={msg:m,t:new Date()};if((m.checks||[]).length&&m.checks.every(c=>c.ok))LS.set('zb_conn_ok','1')}catch(e){TC={err:e.message}}$('tcBtn').disabled=false;renderTC();if(D&&CUR==='dash')renderOnb()}
 async function saveKeys(){const b={MODE:$('k_mode').value,API_KEY:$('k_key').value,API_SECRET:$('k_secret').value,CONFIRM:$('k_confirm').value};if(b.MODE==='live'&&!confirm('Switch to LIVE trading with real money?'))return;try{toast(await post('/api/keys',b));['k_key','k_secret','k_confirm'].forEach(i=>$(i).value='');TC=null;setTimeout(load,1500)}catch(e){toast(e.message,true)}}
 async function saveAI(){try{toast(await post('/api/keys',{ANTHROPIC_API_KEY:$('k_ai').value}));$('k_ai').value='';setTimeout(load,1500)}catch(e){toast(e.message,true)}}
+async function saveAnalystBudget(){await setS({CLAUDE_DAILY_BUDGET_USD:+$('an_daily').value,CLAUDE_MONTHLY_BUDGET_USD:+$('an_monthly').value})}
+async function analystTest(){try{const r=await post('/api/analyst/auth_self_test',{});toast(r.status==='accepted'?'Claude API connected':'Claude API test: '+r.status,r.status!=='accepted');AN=await api('/api/analyst');renderAnalyst()}catch(e){toast(e.message,true)}}
+async function analystNow(){try{const r=await post('/api/analyst/analyze_now',{});toast(r.status==='OK'?'Claude analysis completed':'No analysis: '+(r.reason||'unknown'),r.status!=='OK');AN=await api('/api/analyst');renderAnalyst()}catch(e){toast(e.message,true)}}
 function saveTG(){const o={TELEGRAM_CHAT:$('tg_chat').value};if($('tg_token').value)o.TELEGRAM_TOKEN=$('tg_token').value;setS(o);$('tg_token').value=''}
 
 // ---------------- help / glossary
@@ -2000,7 +2060,9 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
     if(rv.signals!==REV.signals)jobs.push(api('/api/signals').then(j=>{CH.signals=j.signals||{};CH.states=j.states||{};CH.sigTime=j.time;REV.signals=rv.signals}));
     if(rv.equity!==REV.equity)jobs.push(api('/api/equity').then(j=>{CH.equity=j.equity_hist||[];REV.equity=rv.equity}));
     if(CUR==='strat'&&Date.now()-PFT>60000){PFT=Date.now();jobs.push(api('/api/preflight').then(j=>{PF=j}))}
+    if(CUR==='strat'&&Date.now()-TBCT>60000){TBCT=Date.now();jobs.push(api('/api/true_books/compare').then(j=>{TBC=j}))}
     if(CUR==='logs')jobs.push(Promise.all([api('/api/orders'),api('/api/logs')]).then(([o,l])=>{CH.orders=Array.isArray(o)?o:[];CH.logs=Array.isArray(l)?l:[];LAST.logs=Date.now()}));
+    if(CUR==='set')jobs.push(api('/api/analyst').then(a=>{AN=a}));
     const jk=Object.entries(s.jobs||{}).map(([k,j])=>k+':'+j.status+':'+(j.done||0)).join(',');if(BTL===null||jk!==LASTJOBS){LASTJOBS=jk;jobs.push(api('/api/backtests').then(b=>{BTL=b;if(CUR==='bt'){renderBTList();renderStudy()}}))}
     const res=await Promise.allSettled(jobs);if(EXPIRED)return;if(!META)throw new Error((res.find(r=>r.status==='rejected')||{}).reason||'no meta');
     D=Object.assign(s,{presets:META.presets,library:META.library,core8:META.core8,top40:META.top40,tradable:META.tradable,history:CH.history,missed:CH.missed,signals:CH.signals,states:CH.states,equity_hist:CH.equity,trades:CH.orders,logs:CH.logs});
@@ -2008,7 +2070,7 @@ async function load(){if(EXPIRED||LOADING)return;LOADING=true;
   catch(e){if(EXPIRED)return;OFFLINE=true;$('status').innerHTML='<i></i>APP OFFLINE';$('status').className='pill p-bad';console.error(e)}
   finally{LOADING=false}}
 function renderAll(){SKIPPED=0;renderHeader();const t=CUR;
-  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderPresets();if(!slDirty)renderSleeves();else updUnsaved()}
+  try{if(t==='dash')renderDash();if(t==='trades')renderTrades();if(t==='risk')renderRisk();if(t==='strat'){renderBooks();renderPresets();renderTbCmp();if(!slDirty)renderSleeves();else updUnsaved()}
     if(t==='strat')renderGrids();
     if(t==='coins')renderCoins();if(t==='sig')renderSignals();if(t==='logs')renderLogs();if(t==='set')renderSet();if(t==='bt'){btSources();labResume();roSum()}}
   finally{renderSafety()}}

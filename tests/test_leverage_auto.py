@@ -494,7 +494,7 @@ def test_g4_maker_remainder_is_not_sent_at_market_after_a_partial_fill(monkeypat
     k, plan = maker_plan(e)
     rec = e.state['resting_entries'][k]; rec['filled'] = plan['qty'] / 2; rec['cost'] = rec['filled'] * 100.0
     e.trade.pos[('BTCUSDT', 'LONG')] = rec['filled']
-    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r: emitted.append(r))
+    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r, *a, **k: emitted.append(r))
     n_open = e.trade.calls.count('open')
     e._maker_finalize(k, plan['qty'] / 2, False, 100.0)
     assert e.trade.calls.count('open') == n_open, 'no market remainder'
@@ -507,7 +507,7 @@ def test_g4_unfilled_maker_entry_gets_no_market_fallback(monkeypatch):
     e = refusing()
     t = [1000.0]; monkeypatch.setattr(E.time, 'time', lambda: t[0])
     k, plan = maker_plan(e)
-    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r: emitted.append(r))
+    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r, *a, **k: emitted.append(r))
     n_open = e.trade.calls.count('open')
     e._maker_finalize(k, plan['qty'], False, 100.0)
     assert e.trade.calls.count('open') == n_open and not e.state['lots']
@@ -520,7 +520,7 @@ def test_g4_maker_fallback_runs_normally_once_leverage_was_set(monkeypatch):
     t = [1000.0]; monkeypatch.setattr(E.time, 'time', lambda: t[0])
     k, plan = maker_plan(e)
     e._lev['BTCUSDT'] = 10
-    monkeypatch.setattr(e, '_fill_emit', lambda r: None)
+    monkeypatch.setattr(e, '_fill_emit', lambda r, *a, **k: None)
     e._maker_finalize(k, plan['qty'], False, 100.0)
     assert 'open' in e.trade.calls and e.state['lots']
 
@@ -533,7 +533,7 @@ def test_legacy_exceptional_resting_entry_is_repriced_without_recheck(monkeypatc
     if lev_back: e._lev['BTCUSDT'] = 10
     placed, emitted = [], []
     monkeypatch.setattr(e, '_maker_place', lambda rec: placed.append(rec['key']))
-    monkeypatch.setattr(e, '_fill_emit', lambda r: emitted.append(r))
+    monkeypatch.setattr(e, '_fill_emit', lambda r, *a, **k: emitted.append(r))
     k = 'ME|T|BTCUSDT|LONG'
     plan = dict(sl=dict(id='T'), sym='BTCUSDT', side='LONG', qty=1.0, px=100.0, stop_dist=5.0, lev_exception=True, sg=dict(time=SG['time'], close=100.0))
     e.state['resting_entries'][k] = dict(key=k, sleeve='T', symbol='BTCUSDT', side='LONG', qty=1.0, filled=0.0, cost=0.0, n=1,
@@ -553,7 +553,7 @@ def test_legacy_exceptional_open_maker_order_is_cancelled_and_its_fill_becomes_a
     order = dict(status='NEW', executedQty='0')
     e.trade.get_order = lambda s, cid: dict(order)
     monkeypatch.setattr(e, '_maker_place', lambda r: pytest.fail('a legacy exceptional record must not be re-priced'))
-    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r: emitted.append(r))
+    emitted = []; monkeypatch.setattr(e, '_fill_emit', lambda r, *a, **k: emitted.append(r))
     n_open = e.trade.calls.count('open')
     assert e._maker_poll(k, {'BTCUSDT': 100.0})
     assert rec['status'] == 'cancelling' and 'cancel' in e.trade.calls          # cancelled at once, not at the slice end
