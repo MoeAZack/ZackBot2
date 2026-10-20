@@ -763,23 +763,25 @@ def run_pit(repo: str, *, store: str, out_dir: str, author: str, cairo_date: str
 
 
 def run_rex(repo: str, *, window, tier: str, out_dir: str, loader=None, resume: bool = False,
-            clock=PG.cairo_now) -> str:
+            clock=PG.cairo_now, variant=None) -> str:
     """REX-02 entry point of `range_vwap_rev.v1` (pit_run.run_rex). The window is checked FIRST against the frozen
     development window of the committed split plan (no default; nothing is read on a refusal), then
     `loader(repo, tier, window)` returns the run env (pit_run.rex_load: attested manifest -> development Access ->
     bounded tape, its manifest, the pinned zb-delist-notice/1 artifact, frozen symbols, commit); the runner's input
-    preflight refuses any missing series / column / rule / artifact. `loader=None` (no --store) refuses (exit 3)."""
+    preflight refuses any missing series / column / rule / artifact. `loader=None` (no --store) refuses (exit 3).
+    `variant`: None = the frozen v1; a development-only candidate rule only when named explicitly (--variant)."""
     import pit_run as PR                                                                    # noqa: E402
+    PR.rex_variant(variant)
     plan = PR.rex_plan(repo)
     PR.rex_window(window, plan)
     if loader is None:
         raise GateError('rex: no attested REX store bound (pass --store, --notice, --notice-sha256, --author and '
                         '--cairo-date)')
     env = dict(loader(repo, tier, window), plan=plan, tier=tier)
-    return PR.run_rex(env, out_dir, window=window, resume=resume, clock=clock)
+    return PR.run_rex(env, out_dir, window=window, resume=resume, clock=clock, variant=variant)
 
 
-def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str):
+def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str, cairo_date: str, variant=None):
     """The real REX loader (pit_run.rex_load over pit_run.rex_sources: committed manifest / universe / rules / ledger).
     A dirty git tree refuses FIRST, before the committed sources are read or any Access is opened; rex_load re-proves
     it and records the exact clean commit SHA (Codex 6172596212 c)."""
@@ -789,7 +791,7 @@ def rex_store_loader(*, store: str, notice: str, notice_sha256: str, author: str
         PR.rex_clean_commit(repo)
         return PR.rex_load(PR.rex_sources(repo), repo=repo, store=store, tier=tier, window=window,
                            notice_path=notice, notice_sha256=notice_sha256, author=author, cairo_date=cairo_date,
-                           plan=PR.rex_plan(repo))
+                           plan=PR.rex_plan(repo), variant=variant)
     return load
 
 
@@ -846,8 +848,10 @@ def main(argv=None) -> int:
     x = sub.add_parser('rex', help='REX-02 range_vwap_rev.v1 development run (explicit window, no default)')
     x.add_argument('--window', required=True, help='START/END UTC on the 4h grid, before the sealed cutoff')
     x.add_argument('--tier', required=True, choices=['CORE-10', 'CORE-20'])
-    x.add_argument('--out-dir', default=os.path.join(M.REPO, 'research_evidence', 'runs', 'rex'))
+    x.add_argument('--out-dir', default=None, help='default research_evidence/runs/rex (v1), rex-splitcut (variant)')
     x.add_argument('--resume', action='store_true')
+    x.add_argument('--variant', default=None, choices=['range_vwap_rev.v1-splitcut'],
+                   help='a DEVELOPMENT-ONLY, non-promotable candidate rule (explicit; omitted = the frozen v1)')
     x.add_argument('--store', default=None, help='the binance_um archive store of the attested manifest')
     x.add_argument('--notice', default=None, help='the committed zb-delist-notice/1 artifact (JSON)')
     x.add_argument('--notice-sha256', default=None, help='the artifact digest pinned by this run command')
@@ -884,8 +888,11 @@ def main(argv=None) -> int:
                 if need:
                     raise ValueError(f'rex --store also needs {need}')
                 loader = rex_store_loader(store=a.store, notice=a.notice, notice_sha256=a.notice_sha256,
-                                          author=a.author, cairo_date=a.cairo_date)
-            final = run_rex(M.REPO, window=a.window, tier=a.tier, out_dir=a.out_dir, loader=loader, resume=a.resume)
+                                          author=a.author, cairo_date=a.cairo_date, variant=a.variant)
+            out = a.out_dir or os.path.join(M.REPO, 'research_evidence', 'runs',
+                                            'rex' if a.variant is None else 'rex-splitcut')
+            final = run_rex(M.REPO, window=a.window, tier=a.tier, out_dir=out, loader=loader, resume=a.resume,
+                            variant=a.variant)
             print(final)
             if pit_incomplete([final]):         # missing-data policy: sealed for audit, never evidence
                 print('INCOMPLETE (no evidence; development only, never promotable): ' + final, file=sys.stderr)
