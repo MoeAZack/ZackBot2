@@ -79,6 +79,8 @@ def test_enrich_finish_marks_missing_commission_explicitly():
 # ------------------------------------------------------------------ engine: fills -> lot -> history
 def test_entry_commission_lands_on_the_lot_beside_the_estimate():
     e, _ = mk(MX); k = opened(e)
+    assert e.state['lots'][k]['fees_actual'] is None
+    assert e.state['lots'][k]['fees_actual_partial'] == ['fill_records_pending']
     est = e.state['lots'][k]['fees']
     assert settle(e) == 1
     lot, r = e.state['lots'][k], recs(e, 'entry_market')[0]

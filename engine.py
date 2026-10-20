@@ -2912,6 +2912,9 @@ class Engine:
         """Book-wide gate for a new lot (automatic entries only). None or a reason."""
         if not self._tb_on() or not sl: return None
         if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
+        # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
+        self.apply_costs()
         if sym and side and self._tb_opposite(sym, side, skip_pending): return 'true_book/opposite_side_funding_ambiguity'
         book = TB.book_of(sl.get('key'))
         if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
@@ -6445,7 +6448,9 @@ class Engine:
                    opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2),
                    eq_at_entry=round(plan.get('book_eq') or eq, 2), account_eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
-        if cost_ref: lot['cost_refs'] = [cost_ref]                     # FEE-ASSET-01: the entry fill's cost record
+        if cost_ref:
+            lot['cost_refs'] = [cost_ref]                              # FEE-ASSET-01: the entry fill's cost record
+            self._cost_final('lot', lot)                               # explicit latency, never a false INCOMPLETE hole
         if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
