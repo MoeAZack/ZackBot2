@@ -116,3 +116,4 @@ config.tradfi_policy
 capacity.gold_family_cap
 execution.size_max
 execution.lev_tier
+filter.ai_unavailable

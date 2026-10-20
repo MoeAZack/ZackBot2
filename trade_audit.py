@@ -1577,6 +1577,7 @@ _WRAP = (
     ('order failed', 'execution', 'order_failed', False),
     ('could not set leverage/margin on Binance', 'execution', 'leverage', False),
     ('Claude review vetoed', 'filter', 'ai_veto', False),
+    ('AI review unavailable', 'filter', 'ai_unavailable', False),          # AIREL-01: fail-closed policy refusal
 )
 
 

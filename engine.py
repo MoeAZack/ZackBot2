@@ -2494,6 +2494,7 @@ class Engine:
     def _save_aux(self, name, obj):
         """AUD-01: history / missed-signal files are written from order and management paths. A failed write must never
         raise there: the in-memory list stays complete and the whole list is written again on the next save."""
+        if name == 'missed': obj = [m for m in obj if m.get('kind') != 'deferred']   # ORDER-SYM-01: display rows never persist
         try:
             save_json(self.F[name], obj)
             return True
@@ -2715,7 +2716,7 @@ class Engine:
                     if kind == 'row': self._row_changed(t)
         return rows, lots
 
-    def apply_costs(self):
+    def apply_costs(self, reconsider=True):
         """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
         try:
             with self.lock:
@@ -2737,10 +2738,12 @@ class Engine:
                 for t in revised.values(): self._row_changed(t)     # evidence revision first, then the history file
                 if rows: self._save_aux('history', self.history)
                 if lots: self.save_state()
-                return len(todo) - len(wait)
+                n = len(todo) - len(wait)
         except Exception as ex:
             log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
-            return 0
+            n = 0
+        if reconsider: self._reconsider()             # ORDER-SYM-01: a measured book lets its deferred candidates retry
+        return n
 
     # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
     # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
@@ -2912,6 +2915,9 @@ class Engine:
         """Book-wide gate for a new lot (automatic entries only). None or a reason."""
         if not self._tb_on() or not sl: return None
         if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
+        # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
+        # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
+        self.apply_costs(reconsider=False)              # ORDER-SYM-01: inside entry_block - never a nested open_lot
         if sym and side and self._tb_opposite(sym, side, skip_pending): return 'true_book/opposite_side_funding_ambiguity'
         book = TB.book_of(sl.get('key'))
         if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
@@ -3252,7 +3258,8 @@ class Engine:
         missed list. The window holds slimmed records (TA.slim_record) and the attribution is cached until the window or
         the missed list changes, so /api/status polls stay cheap. Read-only and bounded; never raises."""
         try:
-            w, ms, hs = self._auditw, self.missed, self.history
+            w, hs = self._auditw, self.history
+            ms = [m for m in self.missed if m.get('kind') != 'deferred']   # ORDER-SYM-01: a deferral is not a final decision
             last = ms[-1] if ms else None
             with w.lock: ctr, n, wl = dict(w.ctr), len(w.win), (w.win[-1] if w.win else None)
             key = (ctr['invalid_records'], n, id(wl), len(ms), id(last), last.get('logged') if isinstance(last, dict) else None,
@@ -3976,6 +3983,33 @@ class Engine:
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
+    def _ml_context(self, sl, sym, sg, frames):
+        """MLDATA-01: the cross-sectional decision context (ml_shadow.context) for this candidate - funding settled at or
+        before the decision candle close, the 42-bar return rank and the EMA50 breadth across this cycle's frames, and the
+        open lots of other coins whose 30-bar return correlation is >= 0.7. Each piece None when unavailable. Never raises."""
+        try:
+            from ml_shadow import context as MLC
+            rows = None
+            try:
+                import shadow_funding as SF
+                rows = SF.read_funding(self.dir, sym)
+            except Exception:                               # noqa: BLE001 - no series: funding stays None
+                rows = None
+            others = [l['symbol'] for l in self.state['lots'].values()]
+            return MLC.decision_context(sym, sg['time'], TF_SEC.get(sl.get('tf')), frames, rows, others)   # unknown tf: funding None
+        except Exception:                                   # noqa: BLE001
+            return {}
+
+    def _ml_coverage(self, row):
+        """MLDATA-01: per-feature coverage counters [present, total] in health['ml_shadow']['coverage']."""
+        try:
+            cov = self._ml_health().setdefault('coverage', {})
+            for k, v in (row.get('features') or {}).items():
+                c = cov.setdefault(k, [0, 0]); c[1] += 1
+                if v is not None: c[0] += 1
+        except Exception:                                   # noqa: BLE001
+            pass
+
     def _ml_decision(self, sl, sym, side, sg, frames, status, reason, exposure=None, lot_key=None):
         """ML-SHADOW-01 decision hook: ONE ledger row per candidate signal (status taken | skipped | pending + the existing
         reason), after the engine has decided. Writes only under <data>/ml_shadow (plus the decision id on a lot it just
@@ -3988,6 +4022,7 @@ class Engine:
             ctx = {'exposure_count': exposure}
             btc = (frames or {}).get('BTCUSDT')
             if btc is not None and sym != 'BTCUSDT': ctx['btc_df'] = btc
+            ctx.update(self._ml_context(sl, sym, sg, frames))     # MLDATA-01: funding / rank / breadth / corr_count, causal
             kw = dict(df=df, i=len(df) - 1, ctx=ctx) if df is not None and len(df) else dict(features={'features': {}})
             rg = None
             try:
@@ -3998,6 +4033,7 @@ class Engine:
                                             side=side, tf=sl.get('tf'), candle_time=sg['time'], taken=status == 'taken',
                                             status=status, reason=scrub(str(reason or '')), rotation_group=rg,
                                             trade_id=lot_key, **kw)
+            self._ml_coverage(row)
             self._ml_writer().submit('decision', row)        # #104: O(1) hand-off; the disk write is off the cycle lock
         except Exception:                                   # noqa: BLE001 - an observer never alters trading
             try: self._ml_health()['errors'] += 1
@@ -4031,7 +4067,26 @@ class Engine:
     SHADOW_Q_MAX = 5000
 
     def _shadow_health(self):
-        return self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
+        h = self.health.setdefault('strategy_shadow', dict(signals=0, bars=0, cycles=0, errors=0, dropped=0))
+        h.setdefault('pre_cohort', 0)
+        return h
+
+    def _shadow_in_cohort(self, decision_time):
+        """Only admit evidence whose decision close belongs to the active cohort.
+
+        A restart commonly evaluates the last already-closed candle before the first fresh candle arrives.  That candle
+        predates a newly-created cohort and therefore is neither a missed observation nor usable evidence for it.
+        Missing/late observations *after* the boundary still flow through the normal fail-closed path.
+        """
+        start = (self.state.get('cohort') or {}).get('started_utc')
+        if not start: return True                           # compatibility with old/source-created cohort records
+        try:
+            t0 = pd.Timestamp(start)
+            t0 = t0.tz_localize('UTC') if t0.tzinfo is None else t0.tz_convert('UTC')
+            return pd.Timestamp(decision_time) >= t0
+        except Exception:                                  # a damaged boundary must not silently discard evidence
+            self._shadow_err()
+            return True
 
     def _shadow_err(self):
         """Count an observer failure and withhold this cycle's watermark (the next one then shows a missed-cycle gap)."""
@@ -4098,8 +4153,13 @@ class Engine:
             for s, d in (frames or {}).items():
                 if d is None or not len(d): continue
                 r = d.iloc[-1]
-                bars[s] = dict(time=self._shadow_close_t(r.t, tf).isoformat(), o=float(r.o), h=float(r.h), l=float(r.l),
+                tc = self._shadow_close_t(r.t, tf)
+                if not self._shadow_in_cohort(tc): continue
+                bars[s] = dict(time=tc.isoformat(), o=float(r.o), h=float(r.h), l=float(r.l),
                                c=float(r.c), atr=float(r.atr) if 'atr' in d else None, source='closed_kline')
+            if not bars:
+                self._shadow_health()['pre_cohort'] += 1
+                return
             exits = {}
             for sl in self.S['SLEEVES']:
                 if sl.get('tf') != tf or sl.get('key') not in S.STRATEGIES: continue
@@ -4121,6 +4181,9 @@ class Engine:
             if shadow is None: return
             q = self.__dict__.setdefault('_shadow_q', [])
             tc = self._shadow_close_t(sg['time'], sl['tf'])
+            if not self._shadow_in_cohort(tc):
+                self._shadow_health()['pre_cohort'] += 1
+                return
             it = dict(slot=copy.deepcopy(sl), symbol=sym, side=side, t_close=tc.timestamp(), tf=sl['tf'], fails=0,
                       signal=dict(time=tc.isoformat(), close=float(sg['close']), atr=float(sg['atr']), le=bool(sg.get('le')),
                                   se=bool(sg.get('se')), lx=bool(sg.get('lx')), sx=bool(sg.get('sx'))),
@@ -4174,6 +4237,9 @@ class Engine:
             if shadow is None or not frames: return
             import strategy_shadow as SSH
             tc = max(self._shadow_close_t(d.t.iloc[-1], tf) for d in frames.values() if d is not None and len(d))
+            if not self._shadow_in_cohort(tc):
+                self._shadow_health()['pre_cohort'] += 1
+                return
             ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
             if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
             shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
@@ -5189,6 +5255,7 @@ class Engine:
                             self._shadow_signal(sl, s, side, sg, 'pending', 'trailing entry armed')                    # TRUE-BOOK-02
                             held.append(s); continue
                     if why is None:
+                        if getattr(self, '_deferred', None): self.apply_costs()   # ORDER-SYM-01: earlier deferred ones go first
                         self.last_skip = ''
                         lk0 = getattr(self, '_last_lot_key', None)
                         try:
@@ -5206,6 +5273,8 @@ class Engine:
                         except Exception as e:                     # one failed order never stops the other entries
                             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); self.last_skip = f'order failed: {e}'
                         why = self.last_skip or 'order failed'
+                        if 'cost_pending' in why:                # ORDER-SYM-01: commission in flight - deferred, not missed
+                            self._defer(sl, s, side, sg, frames, len(held), why); continue
                     self.miss(sl, s, side, sg, why)
                     self._ml_decision(sl, s, side, sg, frames, 'pending' if why == 'maker entry working' else 'skipped',
                                       why, len(held))                                       # ML-SHADOW-01 (observe only)
@@ -5217,6 +5286,81 @@ class Engine:
             self.health['last_cycle_ok'][tf] = now_utc().isoformat(timespec='seconds')
             self.save_state()
             self.record_equity(self.guard_eq or eq)
+
+    # ORDER-SYM-01 (Codex 6290806436 / 6291113027 / 6291322988): a candidate refused only because its book's fill commission
+    # is in flight is deferred (memory only, never persisted) and retried through open_lot, in the original order, once the
+    # book is measured - within its own candle. Ledger: one 'pending', then one 'taken' or ONE terminal miss + 'skipped'.
+    def _defer(self, sl, s, side, sg, frames, n, why):
+        dq = vars(self).setdefault('_deferred', [])      # a stale same-coin record is dropped by its candle expiry first
+        row = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], symbol=s, side=side,
+                   strategy=sl.get('name', sl['id']), price=sg['close'], reason=scrub(str(why)), kind='deferred')
+        self.missed.append(row); self.missed = self.missed[-600:]   # visible while deferred; replaced at its outcome, never miss()
+        dq.append(dict(sl=sl, sym=s, side=side, sg=sg, frames=frames, n=n, row=row))
+        self._ml_decision(sl, s, side, sg, frames, 'pending', why, n)               # ML-SHADOW-01 (observe only)
+        self._shadow_signal(sl, s, side, sg, 'pending', why)                        # TRUE-BOOK-02
+
+    def _defer_unrow(self, r):
+        self._deferred.remove(r); self.missed = [m for m in self.missed if m is not r['row']]
+
+    def _defer_drop(self, r, why):
+        self._defer_unrow(r)
+        sl, s, side, sg = r['sl'], r['sym'], r['side'], r['sg']
+        self.miss(sl, s, side, sg, why)
+        self._ml_decision(sl, s, side, sg, r['frames'], 'skipped', why, r['n'])
+        self._shadow_signal(sl, s, side, sg, 'skipped', why)
+
+    def _reconsider(self):
+        """Retry deferred candidates (original order, each at most once per call) whose book is no longer cost_pending."""
+        if not getattr(self, '_deferred', None) or getattr(self, '_defer_busy', False): return
+        try:
+            self._reconsider_all()
+        except Exception as ex:                        # never into the candle cycle / apply_costs' callers
+            log.warning(f'deferred entries not reconsidered ({type(ex).__name__}: {ex})')
+
+    def _reconsider_all(self):
+        with self.lock:
+            self._defer_busy = True                    # open_lot below never re-enters this
+            try:
+                for r in list(self._deferred):
+                    if r not in self._deferred: continue
+                    try: self._reconsider_one(r)
+                    except Exception as ex:                # one bad record never blocks the others or retries forever
+                        log.warning(f'deferred entry dropped ({type(ex).__name__}: {ex})')
+                        try: self._defer_drop(r, f'deferred entry failed: {type(ex).__name__}')
+                        except Exception:
+                            if r in self._deferred: self._deferred.remove(r)
+                            self.missed = [m for m in self.missed if m is not r.get('row')]
+            finally:
+                self._defer_busy = False
+
+    def _reconsider_one(self, r):
+        sl = next((x for x in self.S['SLEEVES'] if x['id'] == r['sl']['id']), None)
+        t = pd.Timestamp(r['sg']['time']); t = t.tz_localize('UTC') if t.tzinfo is None else t
+        if time.time() >= t.timestamp() + 2 * TF_SEC.get(r['sl']['tf'], 14400):   # its decision candle is gone
+            self._defer_drop(r, 'signal candle closed while the book commission was pending'); return
+        if sl is None: self._defer_drop(r, 'strategy slot removed'); return
+        b = self.true_books(persist=False).get(TB.book_of(sl.get('key')))
+        if b is not None and TB.cost_pending_only(b): return
+        s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
+        self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
+        try:
+            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
+            try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
+            finally: self._ml_direct = None
+        except Exception as e:
+            self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
+        why = '' if opened else self.last_skip or 'order failed'
+        if 'cost_pending' in why: return        # another fill's commission in flight: still deferred
+        if not opened: self._defer_drop(r, why); return
+        self._defer_unrow(r); self._save_aux('missed', self.missed)
+        lk = getattr(self, '_last_lot_key', None)
+        mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'
+        for hook in (lambda: self._audit_opened(sl, s, side, sg),          # observe-only: one failing never undoes the open
+                     lambda: self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
+                                               lk if lk != lk0 else None),
+                     lambda: self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')):
+            try: hook()
+            except Exception as ex: log.warning(f'deferred entry opened; a decision record failed ({type(ex).__name__})')
 
     def reentry_lock(self, sl, sym, side, sg):
         """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an
@@ -5769,6 +5913,9 @@ class Engine:
                                     e200=float(df.e200.iloc[-1]), st_dir=int(df.st.iloc[-1]), ret42=float(df.ret42.iloc[-1]), ret180=float(df.ret180.iloc[-1])),
                                     last, funding, tf=sl.get('tf', '4h'), side=side)
             log.info(f'AI review {sym} {side} [{sl["id"]} {sl.get("tf", "4h")}]: {dec} - {why} | {meta}')
+            if dec == 'skip' and meta.get('failed'):     # AIREL-01: fail-closed policy - an unusable review, not a veto
+                self.last_skip = why
+                return False
             if dec == 'skip':
                 self.log_trade(time=sg['time'], event='ai_veto', sleeve=sl['id'], symbol=sym, side=side, qty=qty, price=px, note=why)
                 self.last_skip = f'Claude review vetoed: {why}'
@@ -5876,6 +6023,7 @@ class Engine:
                 and not self.state.get('cohort_closing') and not getattr(self, '_cohort_conflict', False))
 
     def _start_cohort(self, start, seq):
+        for r in list(getattr(self, '_deferred', None) or ()): self._defer_drop(r, 'cohort boundary')   # ORDER-SYM-01
         self.state['cohort'] = RP.new_cohort(start, seq=seq, **self._cohort_identity())
         self.state['cohort_settings'] = self._settings_snapshot()
         self.state['book_ledger'] = None
@@ -6412,7 +6560,9 @@ class Engine:
                    opened=now_utc().isoformat(timespec='seconds'), risk_usd=round(risk_usd, 2),
                    eq_at_entry=round(plan.get('book_eq') or eq, 2), account_eq_at_entry=round(eq, 2),
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
-        if cost_ref: lot['cost_refs'] = [cost_ref]                     # FEE-ASSET-01: the entry fill's cost record
+        if cost_ref:
+            lot['cost_refs'] = [cost_ref]                              # FEE-ASSET-01: the entry fill's cost record
+            self._cost_final('lot', lot)                               # explicit latency, never a false INCOMPLETE hole
         if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty

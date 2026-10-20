@@ -263,11 +263,17 @@ def test_installer_uses_no_cmdlets():
 
 
 @needs_installer
-def test_staging_copy_excludes_the_installer_and_private_files():
+def test_staging_copy_keeps_recipe_for_tests_but_excludes_other_private_files():
     src = open(INSTALLER, encoding='utf-8').read()
     xf = re.search(r"'/XF',(.*?)'/NFL'", src, re.S).group(1)
-    for f in ('.git', 'build_app.bat', 'rollback_drill.bat', 'installer.ps1', 'setup_git.bat', 'config.env', 'session.json', '*.log'):
+    for f in ('.git', 'build_app.bat', 'rollback_drill.bat', 'setup_git.bat', 'config.env', 'session.json', '*.log'):
         assert f"'{f}'" in xf, f'{f} must not be copied into the build'
+    assert "'installer.ps1'" not in xf, 'the safety suite must inspect the committed PyInstaller recipe'
+    pytest_at = src.index("@('-m', 'pytest'")
+    cleanup_at = src.index("$installerPrivate = [IO.Path]::Combine($s.StageSrc, 'installer.ps1')")
+    build_at = src.index("@('-m', 'PyInstaller'")
+    assert pytest_at < cleanup_at < build_at
+    assert "[IO.File]::Delete($installerPrivate)" in src[cleanup_at:build_at]
 
 
 @needs_installer
@@ -596,7 +602,7 @@ def test_flow_clean_git_source_is_staged_as_a_detached_worktree_of_its_commit():
     assert 'stage' not in c, 'a git checkout is never robocopied (no git metadata -> the committed-state tests fail)'
     assert c[:5] == ['git-status', 'worktree-remove', 'worktree-prune', 'rmdir', 'worktree-prune'], c
     _order(c, 'rmdir', f'worktree-add:--detach:{SHA}',
-           'skip-worktree:build_app.bat,rollback_drill.bat,installer.ps1,setup_git.bat', 'pytest', 'pyinstaller', 'mirror')
+           'skip-worktree:build_app.bat,rollback_drill.bat,setup_git.bat', 'pytest', 'pyinstaller', 'mirror')
     assert 'private-files-in-stage' not in c, 'the installer-private files must be gone before the safety tests'
     assert c[-2:] == ['worktree-remove', 'worktree-prune'], 'the staging worktree is unregistered after the build'
     assert f'source commit {SHA}' in f['log'] and f['rec']['source_commit'] == SHA

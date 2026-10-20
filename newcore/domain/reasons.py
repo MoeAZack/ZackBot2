@@ -152,6 +152,8 @@ class ReasonCode(enum.StrEnum):
     # MAXQTY-01 (#158) venue order-size refusals - appended (registry is append-only)
     EXEC_SIZE_MAX = 'execution.size_max'
     EXEC_LEV_TIER = 'execution.lev_tier'
+    # AIREL-01 AI review refusal under the fail-closed policy - appended (registry is append-only)
+    FILTER_AI_UNAVAILABLE = 'filter.ai_unavailable'
 
     @property
     def namespace(self):
@@ -283,6 +285,7 @@ MEANING = {
     R.CAPACITY_GOLD_FAMILY_CAP: 'XAUUSDT + PAXGUSDT share one gold-family position / risk / notional budget that is full',
     R.EXEC_SIZE_MAX: 'the size is above the venue maximum order quantity (refused, never cut down)',
     R.EXEC_LEV_TIER: 'the coin position would exceed the venue notional cap for the leverage in use (Binance -2027)',
+    R.FILTER_AI_UNAVAILABLE: 'the AI review was unusable and the fail-closed policy refuses the entry (never the PAPER default)',
 }
 del R
 

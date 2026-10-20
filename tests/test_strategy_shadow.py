@@ -439,6 +439,50 @@ def test_r1_observer_failure_withholds_the_cycle_watermark(tmp_path, monkeypatch
     assert e.health['strategy_shadow']['cycles'] == n and not getattr(e, '_shadow_failed', False)
 
 
+@pytest.mark.parametrize('tf,opened', [('15m', '2026-10-18T00:45:00+00:00'),
+                                       ('4h', '2026-10-17T21:00:00+00:00')])
+def test_new_cohort_excludes_already_closed_startup_candidate(tmp_path, tf, opened):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-START', started_utc='2026-10-18T01:00:30+00:00')
+    sl = dict(slot(), tf=tf)
+    e._shadow_signal(sl, 'BTCUSDT', 'LONG', sig(opened, le=True), 'skipped', 'startup replay')
+    assert getattr(e, '_shadow_q', []) == []
+    assert e._shadow_book().snapshot()['episodes'] == {}
+    assert e._shadow_book().snapshot()['coverage']['pending'] == 0
+    assert e.health['strategy_shadow']['pre_cohort'] == 1
+
+
+def test_new_cohort_excludes_pre_boundary_bar_and_cycle_but_accepts_first_fresh_one(tmp_path):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.S['SLEEVES'] = [dict(SLA, tf='15m')]
+    e.state['cohort'] = dict(id='CH-START', started_utc='2026-10-18T01:00:30+00:00')
+    old = {'BTCUSDT': frame(100.0, n=1, t0='2026-10-18 00:45')}  # closes exactly at 01:00, before start
+    e._shadow_bar('15m', old, {})
+    e._shadow_cycle('15m', old)
+    assert e._shadow_book().snapshot()['coverage']['records'] == 0
+
+    fresh = sig('2026-10-18T00:45:30+00:00', le=True)       # this 15m candle closes exactly at cohort start
+    e.marks, e.marks_t = {'BTCUSDT': 100.0}, datetime(2026, 10, 18, 1, 0, 30, tzinfo=timezone.utc).timestamp()
+    e._shadow_signal(e.S['SLEEVES'][0], 'BTCUSDT', 'LONG', fresh, 'skipped', 'test')
+    snap = e._shadow_book().snapshot()
+    assert len(snap['episodes']) == 1 and snap['coverage']['pending'] == 0
+    assert next(iter(snap['episodes'].values()))['incomplete'] == []
+
+
+def test_in_cohort_candidate_still_fails_closed_when_decision_mark_is_missing(tmp_path, monkeypatch):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-START', started_utc='2026-10-18T01:00:00+00:00')
+    decision = datetime(2026, 10, 17, 21, 1, tzinfo=timezone.utc)  # 4h candle closes at 01:01, inside cohort
+    monkeypatch.setattr(E.time, 'time', lambda: decision.timestamp() + 4 * 3600 + SSH.MAX_REF_LAG_S + 1)
+    e.marks, e.marks_t = {}, 0.0
+    e._shadow_signal(SLA, 'BTCUSDT', 'LONG', sig(decision.isoformat(), le=True), 'skipped', 'test')
+    episode = next(iter(e._shadow_book().snapshot()['episodes'].values()))
+    assert episode['incomplete'] == ['missing_decision_mark']
+
+
 def test_r1_app_flushes_queued_candidates_while_flat():
     src = open(os.path.join(os.path.dirname(E.__file__), 'app.py'), encoding='utf-8').read()
     seg = src.split('else:\n                                e.marks, e.marks_t = marks, now', 1)[1][:200]

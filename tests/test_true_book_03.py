@@ -83,7 +83,9 @@ def test_rejected_entry_is_still_a_shadow_candidate(tmp_path):
     e, _ = tb_engine(STRATEGY_SHADOW=True)
     e.state['lots']['x'] = fake_lot(e, 'B2_RANGE', sym='BTCUSDT', side='SHORT', stop=102.0)
     assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
-    e._shadow_signal(dict(T_SL, tf='4h'), 'BTCUSDT', 'LONG', dict(SG, time='2026-10-04T00:00:00+00:00'), 'skipped', e.last_skip)
+    # The candle closes at 16:00 UTC, after this fixture's 13:19 UTC cohort boundary.  A rejected executable entry is
+    # still shadow evidence when its decision belongs to the cohort; pre-cohort startup replays are intentionally excluded.
+    e._shadow_signal(dict(T_SL, tf='4h'), 'BTCUSDT', 'LONG', dict(SG, time='2026-10-17T12:00:00+00:00'), 'skipped', e.last_skip)
     sb = e._shadow_book()
     assert sb is not None
     recs = [json.loads(l) for l in open(sb.path, encoding='utf-8') if l.strip()]
