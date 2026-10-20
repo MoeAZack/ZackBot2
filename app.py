@@ -1180,6 +1180,7 @@ class App:
         e = self.engine; marks = e.marks or {}
         out = []
         for m in e.missed[-300:][::-1]:
+            if m.get('kind') == 'deferred': continue     # ORDER-SYM-01: a candidate still waiting is not a missed trade
             mk = marks.get(m['symbol']); sd = 1 if m['side'] == 'LONG' else -1
             out.append(dict(m, now=mk, move_pct=round(sd * (mk - m['price']) / m['price'] * 100, 2) if mk else None))
         return out

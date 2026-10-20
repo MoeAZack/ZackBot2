@@ -5283,6 +5283,12 @@ class Engine:
     def _reconsider(self):
         """Retry deferred candidates (original order, each at most once per call) whose book is no longer cost_pending."""
         if not getattr(self, '_deferred', None) or getattr(self, '_defer_busy', False): return
+        try:
+            self._reconsider_all()
+        except Exception as ex:                        # never into the candle cycle / apply_costs' callers
+            log.warning(f'deferred entries not reconsidered ({type(ex).__name__}: {ex})')
+
+    def _reconsider_all(self):
         with self.lock:
             self._defer_busy = True                    # open_lot below never re-enters this
             try:
@@ -5318,12 +5324,14 @@ class Engine:
         if 'cost_pending' in why: return        # another fill's commission in flight: still deferred
         if not opened: self._defer_drop(r, why); return
         self._defer_unrow(r); self._save_aux('missed', self.missed)
-        self._audit_opened(sl, s, side, sg)
         lk = getattr(self, '_last_lot_key', None)
         mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'
-        self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
-                          lk if lk != lk0 else None)
-        self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')
+        for hook in (lambda: self._audit_opened(sl, s, side, sg),          # observe-only: one failing never undoes the open
+                     lambda: self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
+                                               lk if lk != lk0 else None),
+                     lambda: self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')):
+            try: hook()
+            except Exception as ex: log.warning(f'deferred entry opened; a decision record failed ({type(ex).__name__})')
 
     def reentry_lock(self, sl, sym, side, sg):
         """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an

@@ -608,3 +608,34 @@ def test_the_audit_summary_ignores_a_deferral(order, eng):
             out = e.audit_summary(); out.pop('telemetry', None); return json.dumps(out, sort_keys=True, default=str)
         finally: e.missed = keep
     assert summary(e.missed) == summary([m for m in e.missed if m.get('kind') != 'deferred'])
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_the_missed_view_never_counts_a_waiting_candidate(order, eng):
+    """Cowork 6292557019 #1: /api/missed (tiles, avg move, list) shows final misses only, never a deferral."""
+    import types, app as AP
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); one_cycle(e, {A, B})
+    assert any(m.get('kind') == 'deferred' for m in e.missed)
+    assert not [m for m in AP.App.missed_view(types.SimpleNamespace(engine=e)) if m.get('kind') == 'deferred']
+
+
+def test_reconsideration_never_raises_into_its_caller(eng, monkeypatch):
+    """Cowork #2: a failure outside the per-record guard is logged; apply_costs() / the cycle never see it."""
+    sleeves, first, second = ORDERS['AB']
+    e = eng(sleeves); one_cycle(e, {A, B})
+    monkeypatch.setattr(e, '_reconsider_all', lambda: 1 / 0)
+    assert e.apply_costs() >= 0
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_a_failing_decision_hook_after_the_open_still_records_taken(order, eng, monkeypatch):
+    """Cowork #3: the open is final; a failing observe-only hook never strands the lot without its 'taken' rows."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); rows = spy(e)
+    one_cycle(e, {A, B})
+    monkeypatch.setattr(e, '_audit_opened', lambda *a, **k: 1 / 0)
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    assert held(e) == sorted([A, B]) and not e._deferred
+    assert status(rows, '_ml_decision', second)[-1] == 'taken' and status(rows, '_shadow_signal', second)[-1] == 'taken'
