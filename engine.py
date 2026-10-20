@@ -2494,6 +2494,7 @@ class Engine:
     def _save_aux(self, name, obj):
         """AUD-01: history / missed-signal files are written from order and management paths. A failed write must never
         raise there: the in-memory list stays complete and the whole list is written again on the next save."""
+        if name == 'missed': obj = [m for m in obj if m.get('kind') != 'deferred']   # ORDER-SYM-01: display rows never persist
         try:
             save_json(self.F[name], obj)
             return True
@@ -2738,11 +2739,11 @@ class Engine:
                 if rows: self._save_aux('history', self.history)
                 if lots: self.save_state()
                 n = len(todo) - len(wait)
-            if reconsider: self._reconsider()         # ORDER-SYM-01: a measured book lets its deferred candidates retry
-            return n
         except Exception as ex:
             log.warning(f'actual cost records not applied ({type(ex).__name__}: {ex})')
-            return 0
+            n = 0
+        if reconsider: self._reconsider()             # ORDER-SYM-01: a measured book lets its deferred candidates retry
+        return n
 
     # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
     # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
@@ -3257,7 +3258,8 @@ class Engine:
         missed list. The window holds slimmed records (TA.slim_record) and the attribution is cached until the window or
         the missed list changes, so /api/status polls stay cheap. Read-only and bounded; never raises."""
         try:
-            w, ms, hs = self._auditw, self.missed, self.history
+            w, hs = self._auditw, self.history
+            ms = [m for m in self.missed if m.get('kind') != 'deferred']   # ORDER-SYM-01: a deferral is not a final decision
             last = ms[-1] if ms else None
             with w.lock: ctr, n, wl = dict(w.ctr), len(w.win), (w.win[-1] if w.win else None)
             key = (ctr['invalid_records'], n, id(wl), len(ms), id(last), last.get('logged') if isinstance(last, dict) else None,
@@ -5262,7 +5264,7 @@ class Engine:
     def _defer(self, sl, s, side, sg, frames, n, why):
         dq = vars(self).setdefault('_deferred', [])      # a stale same-coin record is dropped by its candle expiry first
         row = dict(candle=sg['time'], logged=now_utc().isoformat(timespec='seconds'), sleeve=sl['id'], symbol=s, side=side,
-                   strategy=sl.get('name', sl['id']), price=sg['close'], reason=scrub(str(why)), deferred=True)
+                   strategy=sl.get('name', sl['id']), price=sg['close'], reason=scrub(str(why)), kind='deferred')
         self.missed.append(row); self.missed = self.missed[-600:]   # visible while deferred; replaced at its outcome, never miss()
         dq.append(dict(sl=sl, sym=s, side=side, sg=sg, frames=frames, n=n, row=row))
         self._ml_decision(sl, s, side, sg, frames, 'pending', why, n)               # ML-SHADOW-01 (observe only)
@@ -5286,33 +5288,42 @@ class Engine:
             try:
                 for r in list(self._deferred):
                     if r not in self._deferred: continue
-                    sl = next((x for x in self.S['SLEEVES'] if x['id'] == r['sl']['id']), None)
-                    t = pd.Timestamp(r['sg']['time']); t = t.tz_localize('UTC') if t.tzinfo is None else t
-                    if time.time() >= t.timestamp() + 2 * TF_SEC.get(r['sl']['tf'], 14400):   # its decision candle is gone
-                        self._defer_drop(r, 'signal candle closed while the book commission was pending'); continue
-                    if sl is None: self._defer_drop(r, 'strategy slot removed'); continue
-                    b = self.true_books(persist=False).get(TB.book_of(sl.get('key')))
-                    if b is not None and TB.cost_pending_only(b): continue
-                    s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
-                    self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
-                    try:
-                        self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
-                        try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
-                        finally: self._ml_direct = None
-                    except Exception as e:
-                        self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
-                    why = '' if opened else self.last_skip or 'order failed'
-                    if 'cost_pending' in why: continue        # another fill's commission in flight: still deferred
-                    if not opened: self._defer_drop(r, why); continue
-                    self._defer_unrow(r); self._save_aux('missed', self.missed)
-                    self._audit_opened(sl, s, side, sg)
-                    lk = getattr(self, '_last_lot_key', None)
-                    mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'
-                    self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
-                                      lk if lk != lk0 else None)
-                    self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')
+                    try: self._reconsider_one(r)
+                    except Exception as ex:                # one bad record never blocks the others or retries forever
+                        log.warning(f'deferred entry dropped ({type(ex).__name__}: {ex})')
+                        try: self._defer_drop(r, f'deferred entry failed: {type(ex).__name__}')
+                        except Exception:
+                            if r in self._deferred: self._deferred.remove(r)
+                            self.missed = [m for m in self.missed if m is not r.get('row')]
             finally:
                 self._defer_busy = False
+
+    def _reconsider_one(self, r):
+        sl = next((x for x in self.S['SLEEVES'] if x['id'] == r['sl']['id']), None)
+        t = pd.Timestamp(r['sg']['time']); t = t.tz_localize('UTC') if t.tzinfo is None else t
+        if time.time() >= t.timestamp() + 2 * TF_SEC.get(r['sl']['tf'], 14400):   # its decision candle is gone
+            self._defer_drop(r, 'signal candle closed while the book commission was pending'); return
+        if sl is None: self._defer_drop(r, 'strategy slot removed'); return
+        b = self.true_books(persist=False).get(TB.book_of(sl.get('key')))
+        if b is not None and TB.cost_pending_only(b): return
+        s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
+        self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
+        try:
+            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
+            try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
+            finally: self._ml_direct = None
+        except Exception as e:
+            self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
+        why = '' if opened else self.last_skip or 'order failed'
+        if 'cost_pending' in why: return        # another fill's commission in flight: still deferred
+        if not opened: self._defer_drop(r, why); return
+        self._defer_unrow(r); self._save_aux('missed', self.missed)
+        self._audit_opened(sl, s, side, sg)
+        lk = getattr(self, '_last_lot_key', None)
+        mst = 'taken' if lk != lk0 or self.last_skip != 'maker entry working' else 'pending'
+        self._ml_decision(sl, s, side, sg, fr, mst, self.last_skip if mst == 'pending' else '', r['n'],
+                          lk if lk != lk0 else None)
+        self._shadow_signal(sl, s, side, sg, mst, self.last_skip if mst == 'pending' else '')
 
     def reentry_lock(self, sl, sym, side, sg):
         """VWAPREV re-entry lock (Codex 6172827142 / 6173810806), ONLY for strategies registered with reentry_lock=True: an

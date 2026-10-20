@@ -544,3 +544,67 @@ def test_reconsideration_never_re_enters_itself(order, eng):
     e.open_lot = nested
     deliver(e); app_pass(e)
     assert calls == [second] and opens(e).count(second) == 1
+
+
+def _disk_missed(e):
+    return json.load(open(e.F['missed'], encoding='utf-8'))
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_a_real_miss_while_deferred_never_persists_the_deferred_row(order, eng, monkeypatch):
+    """Codex 6292151455: B is deferred, an unrelated real miss writes missed.json, the process restarts from that folder ->
+    the real miss survives, no deferred row and no retry survive."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); one_cycle(e, {A, B})
+    assert [m for m in e.missed if m['symbol'] == second and m.get('kind') == 'deferred']
+    sl = next(x for x in sleeves if first in x['symbols'])
+    e.miss(sl, X1, 'LONG', sig(X1, T0), 'volatility filter')            # an unrelated, final refusal -> missed.json written
+    disk = _disk_missed(e)
+    assert any(m['symbol'] == X1 for m in disk) and not [m for m in disk if m.get('kind') == 'deferred' or m['symbol'] == second]
+    monkeypatch.setattr(E, 'Futures', lambda *a, **k: e.trade)
+    e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), e.dir)
+    assert any(m['symbol'] == X1 for m in e2.missed) and not [m for m in e2.missed if m['symbol'] == second]
+    assert not getattr(e2, '_deferred', None)
+
+
+@pytest.mark.parametrize('order', ORDERS)
+@pytest.mark.parametrize('end', ['open', 'drop'])
+def test_the_outcome_leaves_exactly_the_durable_final_rows(order, end, eng):
+    """Open -> no durable miss for the deferred coin; drop -> exactly ONE durable final miss (the display row replaced)."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); one_cycle(e, {A, B})
+    if end == 'drop': e.S['ENTRIES_PAUSED'] = True
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    mem = [m for m in e.missed if m['symbol'] == second]; disk = [m for m in _disk_missed(e) if m['symbol'] == second]
+    if end == 'open':
+        assert held(e) == sorted([A, B]) and mem == [] and disk == []
+    else:
+        assert len(mem) == 1 and len(disk) == 1 and not mem[0].get('kind') and disk[0]['reason'].startswith('entries paused')
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_one_bad_deferred_record_is_dropped_and_the_rest_still_run(order, eng):
+    """Cowork 6292194211 #2: a record that raises is dropped with a terminal reason; the others are still reconsidered."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); one_cycle(e, {A, B})
+    bad = dict(e._deferred[0], sg=dict(e._deferred[0]['sg'], time='not a time'), row=None)
+    e._deferred.insert(0, bad)                                          # poisoned, and first in line
+    deliver(e)
+    for _ in range(3): app_pass(e)
+    assert bad not in e._deferred and held(e) == sorted([A, B])
+    assert any(m['reason'].startswith('deferred entry failed') for m in e.missed)
+
+
+@pytest.mark.parametrize('order', ORDERS)
+def test_the_audit_summary_ignores_a_deferral(order, eng):
+    """A deferred display row is not a final decision: audit attribution / missed-short are those of the final rows only."""
+    sleeves, first, second = ORDERS[order]
+    e = eng(sleeves); one_cycle(e, {A, B})
+    assert any(m.get('kind') == 'deferred' for m in e.missed)
+    def summary(missed):
+        keep = e.missed; e.missed = missed; e._audit_cache = None
+        try:
+            out = e.audit_summary(); out.pop('telemetry', None); return json.dumps(out, sort_keys=True, default=str)
+        finally: e.missed = keep
+    assert summary(e.missed) == summary([m for m in e.missed if m.get('kind') != 'deferred'])
