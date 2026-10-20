@@ -431,3 +431,26 @@ def test_report_is_self_digested_and_tamper_evident(fx, plan):
     for edit in ({'purpose': 'x'}, {'files_read': []}, {'provenance': {'commit': 'd' * 40, 'tree': 'clean'}}):
         with pytest.raises(GI.InventoryError, match='sha256'):
             GI.verify(dict(rep, **edit))
+
+
+def _hole(start, end, store_files=()):
+    return dict(symbol='AAAUSDT', series='klines', interval='1h', start_ms=start, end_ms=end, store_files=list(store_files))
+
+
+def test_no_archive_file_reaching_past_the_sealed_end_is_ever_planned():
+    """Cowork 6301261896: a hole ending at the cutoff must not plan the 2026-09 monthly zip (it holds 09-28..30 rows)."""
+    ms = lambda s: GI.S.parse_utc(s)
+    sealed = ms(BF.SEALED_END)
+    c = BF.candidates(_hole(ms('2026-09-27T20:00:00Z'), sealed))
+    assert ('monthly', '2026-09') not in c and c == [('daily', '2026-09-27')]
+    for f, p in BF.candidates(_hole(ms('2026-08-30T00:00:00Z'), sealed)):   # month-straddling hole up to the cutoff
+        assert int(BF._period_end(f, p).timestamp()) * 1000 <= sealed
+    assert ('monthly', '2026-08') in BF.candidates(_hole(ms('2026-08-30T00:00:00Z'), ms('2026-08-31T00:00:00Z')))
+
+
+def test_percent_encoded_dot_segments_are_refused():
+    """Cowork low note: %2e%2e is decoded before the '..' check."""
+    base = 'https://data.binance.vision/data/futures/um/'
+    for bad in (base + '%2e%2e/spot/x.zip', base + '%2E%2E/x.zip', base + 'monthly/%2e%2e/%2e%2e/x.zip'):
+        assert not BF.archive_url_ok(bad)
+    assert BF.archive_url_ok(base + 'monthly/klines/AAAUSDT/1h/AAAUSDT-1h-2026-08.zip')

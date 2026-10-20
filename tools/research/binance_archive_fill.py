@@ -37,7 +37,7 @@ import sys
 import time
 import urllib.parse
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rex_gap_inventory as GI                                                              # noqa: E402
@@ -86,7 +86,7 @@ def archive_url_ok(url) -> bool:
     except (ValueError, TypeError, AttributeError):
         return False
     return (u.scheme == 'https' and u.hostname == HOST and u.netloc == HOST and port is None
-            and u.path.startswith(PATH_PREFIX) and '..' not in u.path.split('/'))
+            and u.path.startswith(PATH_PREFIX) and '..' not in urllib.parse.unquote(u.path).split('/'))   # %2e%2e too
 
 
 # ------------------------------------------------------------------ report + plan
@@ -135,17 +135,32 @@ def _store_months(h: dict) -> set:
     return out
 
 
+def _period_end(freq: str, period: str) -> datetime:
+    """Exclusive UTC end of an archive file's period (first instant it does NOT cover)."""
+    if freq == 'daily':
+        return datetime.strptime(period, '%Y-%m-%d').replace(tzinfo=timezone.utc) + timedelta(days=1)
+    y, m = map(int, period.split('-'))
+    return datetime(y + (m == 12), m % 12 + 1, 1, tzinfo=timezone.utc)
+
+
+def candidates(h: dict) -> list:
+    """(freq, period) zips that may hold h's missing opens. A file whose period runs past SEALED_END is never planned
+    (Cowork 6301261896: the 2026-09 monthly zip holds sealed rows); the daily zips of every touched day still cover h."""
+    a, b = h['start_ms'], h['end_ms']
+    months = sorted({_utc(t).strftime('%Y-%m') for t in (a, b - 1)} |
+                    {_utc(t).strftime('%Y-%m') for t in range(a - a % DAY, b, DAY)})
+    days = [_utc(d).strftime('%Y-%m-%d') for d in range(a - a % DAY, b, DAY)]
+    sealed = GI.S.parse_utc(SEALED_END)
+    cands = [('monthly', m) for m in months if m not in _store_months(h)] + [('daily', d) for d in days]
+    return [(f, p) for f, p in cands if int(_period_end(f, p).timestamp()) * 1000 <= sealed]
+
+
 def plan(rep: dict) -> list:
     """Deterministic request list: one entry per distinct zip, with the hole ids it may fill."""
     check_report(rep)
     reqs: dict = {}
     for h in rep['holes']:
-        a, b = h['start_ms'], h['end_ms']
-        months = sorted({_utc(t).strftime('%Y-%m') for t in (a, b - 1)} |
-                        {_utc(t).strftime('%Y-%m') for t in range(a - a % DAY, b, DAY)})
-        days = [_utc(d).strftime('%Y-%m-%d') for d in range(a - a % DAY, b, DAY)]
-        cands = [('monthly', m) for m in months if m not in _store_months(h)] + [('daily', d) for d in days]
-        for freq, period in cands:
+        for freq, period in candidates(h):
             u = url_for(freq, h['series'], h['symbol'], h['interval'], period)
             r = reqs.setdefault(u, {'url': u, 'checksum_url': u + '.CHECKSUM', 'freq': freq, 'series': h['series'],
                                     'symbol': h['symbol'], 'interval': h['interval'], 'period': period,
