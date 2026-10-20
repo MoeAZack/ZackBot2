@@ -119,3 +119,14 @@ def test_time_resolution_and_int_ms_frames_slice_identically():
         poisoned = {s: d.assign(c=np.where(d.t > t, d.c * 50, d.c)) for s, d in fr.items()}   # rows after T must not count
         got = C.decision_context('BBB', t, H, {s: d.assign(t=conv(d.t)) for s, d in poisoned.items()}, others=['AAA'])
         assert got == want
+
+
+@pytest.mark.parametrize('bad', [np.nan, np.inf])
+@pytest.mark.parametrize('where', ['last', 'mid'])
+def test_breadth_never_counts_a_non_finite_candle_as_below(bad, where):
+    """Cowork 6295235148: a NaN/inf close (last bar, or one that poisons the EMA) is unmeasured, never 'not above'."""
+    up = trend(80, 0.01)
+    c = up.copy(); c[-1 if where == 'last' else 40] = bad
+    closes = {'A': up, 'B': up * 1.1, 'C': c}
+    assert C.breadth_at(closes) == 1.0
+    assert C.breadth_at({'A': up, 'C': c}) is None                     # one measurable symbol is below MIN_SYMBOLS

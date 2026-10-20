@@ -71,7 +71,8 @@ def rank_at(closes, sym):
 
 def breadth_at(closes):
     """Share of symbols whose close is above their EMA50 at T; None with fewer than MIN_SYMBOLS measurable symbols."""
-    above = [c[-1] > e for c in closes.values() if c is not None for e in [_ema_last(c, BREADTH_EMA)] if e is not None]
+    above = [c[-1] > e for c in closes.values() if c is not None for e in [_ema_last(c, BREADTH_EMA)]
+             if e is not None and math.isfinite(e) and math.isfinite(float(c[-1]))]   # a NaN/inf candle is unmeasured, never "below"
     return (sum(above) / len(above)) if len(above) >= MIN_SYMBOLS else None
 
 
