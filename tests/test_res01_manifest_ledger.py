@@ -217,6 +217,9 @@ def stub_envelope_prover(monkeypatch, tmp_path):
     monkeypatch.setattr(L, '_runs_of', lambda d: str(stub))
     monkeypatch.setattr(L, 'recompute_run_digest',
                         lambda r, runs_dir=None: r['run_digest'] if runs_dir else 'no-immutable-runs-store')
+    # BT-EXEC-OBS-01: the promotion boundary resolves the same frozen envelope; it is exercised for real in
+    # tests/test_bt_exec_obs01.py, so the stub store stubs it too.
+    monkeypatch.setattr(L, '_enforce_promotion', lambda *a, **k: None)
 
 
 def rec(path, **kw):
@@ -362,7 +365,8 @@ def _base():
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
     out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
-    assert sorted(out) == ['range_bb_mr', 'res01_infra', 'short_breakdown', 'trend_ema_mom', 'trend_ema_mom_short']
+    assert sorted(out) == ['breadth_static40', 'range_bb_mr', 'res01_infra', 'short_breakdown', 'trend_ema_mom',
+                           'trend_ema_mom_short']
     # R3: the infrastructure family holds only development-split shape/coverage smokes (no trials, no holdout)
     infra = out.pop('res01_infra')
     assert {(r['kind'], r['split']) for r in infra} == {('data_access', 'development')} and L.n_trials(infra) == 0
@@ -371,6 +375,11 @@ def test_committed_family_ledgers_mark_legacy_window_spent():
     short = out.pop('trend_ema_mom_short')
     assert [r['kind'] for r in short[:17]] == ['variant'] + ['grid_point'] * 12 + ['baseline'] * 4
     assert not any(r['kind'] in L.SPEND_KINDS for r in short)
+    # zb-breadth-prereg/1 (Y ec8249e): breadth_static40 is a preregistration family of exactly 12 development-split
+    # variant records (one per hypothesis); it is not legacy research, so it carries no legacy window_spent record.
+    breadth = out.pop('breadth_static40')
+    assert len(breadth) == 12 and {(r['kind'], r['split']) for r in breadth} == {('variant', 'development')}
+    assert not any(r['kind'] in L.SPEND_KINDS for r in breadth)
     for fam, recs in out.items():
         spent = [r['window'] for r in recs if r['kind'] == 'window_spent']
         assert any(w['start'] <= '2025-01-01T00:00:00Z' and w['end'] >= '2026-10-04T00:00:00Z' for w in spent), fam

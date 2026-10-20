@@ -144,6 +144,16 @@ class ReasonCode(enum.StrEnum):
     RECONCILE_EXTERNAL_CLOSE = 'reconcile.external_close'      # r3a ruling 2: the booking reason, never a send
     FILTER_CTRL_BIAS = 'filter.ctrl_bias'
     EXEC_CTRL_SIZE_MIN = 'execution.ctrl_size_min'
+    # TRADFI-01 T3/T4 (#102) entry refusals - appended (registry is append-only)
+    FILTER_TRADFI_OFF = 'filter.tradfi_off'
+    FILTER_TRADFI_SESSION = 'filter.tradfi_session'
+    CONFIG_TRADFI_POLICY = 'config.tradfi_policy'
+    CAPACITY_GOLD_FAMILY_CAP = 'capacity.gold_family_cap'
+    # MAXQTY-01 (#158) venue order-size refusals - appended (registry is append-only)
+    EXEC_SIZE_MAX = 'execution.size_max'
+    EXEC_LEV_TIER = 'execution.lev_tier'
+    # AIREL-01 AI review refusal under the fail-closed policy - appended (registry is append-only)
+    FILTER_AI_UNAVAILABLE = 'filter.ai_unavailable'
 
     @property
     def namespace(self):
@@ -269,6 +279,13 @@ MEANING = {
                                 'fact from venue trades; never permission to send)',
     R.FILTER_CTRL_BIAS: 'the saved direction-bias control disabled this side for a new automatic entry',
     R.EXEC_CTRL_SIZE_MIN: 'the risk or direction control reduced the order below the venue minimum size',
+    R.FILTER_TRADFI_OFF: 'TradFi is disabled or not PAPER, so no new entry on a gold / stock / oil symbol',
+    R.FILTER_TRADFI_SESSION: 'the US cash session is closed or unknown for this stock strategy family, so no new entry',
+    R.CONFIG_TRADFI_POLICY: 'this strategy is not an approved TradFi mapping for the symbol (e.g. DCA, scalp, high-beta range)',
+    R.CAPACITY_GOLD_FAMILY_CAP: 'XAUUSDT + PAXGUSDT share one gold-family position / risk / notional budget that is full',
+    R.EXEC_SIZE_MAX: 'the size is above the venue maximum order quantity (refused, never cut down)',
+    R.EXEC_LEV_TIER: 'the coin position would exceed the venue notional cap for the leverage in use (Binance -2027)',
+    R.FILTER_AI_UNAVAILABLE: 'the AI review was unusable and the fail-closed policy refuses the entry (never the PAPER default)',
 }
 del R
 

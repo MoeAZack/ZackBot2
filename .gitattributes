@@ -17,3 +17,4 @@ research_evidence/prereg/*.json text eol=lf
 # REX-03: the zb-delist-notice/1 artifacts and their coverage sidecars are byte-pinned by tests (LF only).
 research_evidence/notices/*.json text eol=lf
 research_evidence/notices/*.md text eol=lf
+research_evidence/breadth_prereg/*.json text eol=lf

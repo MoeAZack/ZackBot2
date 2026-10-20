@@ -234,6 +234,31 @@ def sig_exp_structure(d, p, ctx):
                           lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
 
 
+# ------------------------------------------------------------------ BREADTH-01 B3: short-only mirrors (EXPERIMENTAL / testnet-only)
+# Codex ruling 6186050896 pt 4. Each is the exact price mirror of an existing long-only strategy (same thresholds, same
+# mgmt, no new parameters, no tuning). Short side only; the long columns never fire.
+def sig_exp_mom_short(d, p, ctx):
+    """Short mirror of hot_coin: a 'cold coin' (bottom-3 7-day mover = mirror of top-3) dumping on a volume surge
+    (vol_ratio > 1.5) through its prior 20-candle low and below EMA50. Exit on a close back above EMA20 (mirror of
+    hot_coin's close below EMA20). Unranked coins (rank7 = 999 fill) are never cold. 'Bottom 3' is among the symbols
+    ranked at that candle (rank7_n), not the full universe, so late listings / gaps don't hide the true bottom-3."""
+    r7 = ctx['rank7']
+    nb = ctx['rank7_n'] if 'rank7_n' in ctx else ctx['n_symbols']
+    cold = (r7 > nb - 3) & (r7 <= nb)
+    never = d.c < -1
+    return _one_side(dict(le=never, se=cold & (d.vol_ratio > 1.5) & (d.c < d.ll20) & (d.c < d.e50),
+                          lx=never, sx=d.c > d.e20))
+
+
+def sig_exp_rip_sell_dca(d, p, ctx):
+    """Short mirror of dca_dip: in a downtrend (EMA50 < EMA200) sell a stretched rip above EMA20 (first close more than
+    1.5 ATR above EMA20); the basket adds safety orders UP and takes profit below (mgmt dca, side-aware)."""
+    dn = (d.e50 < d.e200)
+    stretch = (d.c - d.e20) / d.atr
+    never = d.c < -1
+    return _one_side(dict(le=never, se=dn & (stretch > 1.5) & (stretch.shift() <= 1.5), lx=never, sx=never))
+
+
 # ------------------------------------------------------------------ VWAPREV: REX-01 runtime adapter (EXPERIMENTAL / PAPER)
 # The sixth PAPER family: `range_vwap_rev.v1` X1 (frozen contract RANGE-EXIT-01, tools/research/range_vwap_rev.py) on
 # closed 4h candles. The research decision logic (`indicators` / `entry_x1` / `mean_close` / `invalidated`) is mirrored
@@ -318,6 +343,91 @@ def sig_exp_vwaprev(d, p, ctx):
     return s
 
 
+
+# ------------------------------------------------------------------ SCALP-4: PAPER scalp package (EXPERIMENTAL / PAPER-only)
+# Four simple 15m scalps (the engine's shortest timeframe: engine.TF_SEC has 15m / 1h / 4h; there is no 5m candle path).
+# Each is a frozen rule on CLOSED candles, symmetric by construction (the short rule is the price mirror of the long rule),
+# wrapped in _one_side (an ambiguous candle takes neither side). Constants are documented defaults, NOT optimised; no edge
+# is claimed. Reference ranges / averages exclude the decision candle (shift), so a decision reads only closed candles.
+SCALP_TAG = 'EXPERIMENTAL / PAPER-only scalp'
+SCALP_RT_COST = 2 * (0.0005 + 0.0002)   # round trip as a fraction of price: taker fee + slippage per fill (backtest FEE / SLIP)
+RS = dict(n=32, adx_max=20.0, w_min=2.0, w_max=6.0, edge=0.25, inval_atr=0.5)       # range_scalp
+FB = dict(n=20, w=3, buf_atr=0.1, min_atr=0.5)                                      # failed_breakout_scalp
+MB = dict(n=20, rng_x=2.0, vol_x=2.0, body=0.75, stop_atr=1.5, cost_x=3.0)          # momentum_burst_scalp
+QB = dict(stop_atr=1.0, tp1_r=0.8, tp1_frac=0.7, be_r=0.8, tp_r=2.0, max_bars=12)   # quick_bank_runner management
+
+
+def sig_range_scalp(d, p, ctx):
+    """Confirmed-range edge reversion (15m). Range = high / low of the n candles BEFORE the decision candle; confirmed when
+    ADX < adx_max and the range is w_min..w_max ATR wide. Long: close inside the bottom `edge` of the range (above the
+    range low) on a bullish candle; short: the mirror at the top on a bearish candle. Invalidation: a close more than
+    inval_atr ATR outside its range in the last n candles (this one included) blocks entries and exits an open trade.
+    Target: exit at the range middle."""
+    n = int(p.get('n', RS['n']))
+    hi, lo, a = d.h.rolling(n).max().shift(), d.l.rolling(n).min().shift(), d.atr
+    w, mid = hi - lo, (hi + lo) / 2
+    out_ = X((d.c > hi + RS['inval_atr'] * a) | (d.c < lo - RS['inval_atr'] * a))
+    broken = out_.astype(int).rolling(n, min_periods=1).max() > 0
+    ok = (d.adx < RS['adx_max']) & (w >= RS['w_min'] * a) & (w <= RS['w_max'] * a) & ~broken
+    le = ok & (d.c > lo) & (d.c <= lo + RS['edge'] * w) & (d.c > d.o)
+    se = ok & (d.c < hi) & (d.c >= hi - RS['edge'] * w) & (d.c < d.o)
+    return _one_side(dict(le=le, se=se, lx=(d.c >= mid) | broken, sx=(d.c <= mid) | broken))
+
+
+def sig_failed_breakout_scalp(d, p, ctx):
+    """Failed range break (15m). Reference range = high / low of the n candles ending w + 1 candles before the decision
+    candle. Short: the previous candle closed above the range high, the close w + 1 candles back was still inside (the
+    break is at most w candles old), and this candle closes back inside. Long = the mirror below the range low. The stop
+    sits beyond the break extreme (highest high / lowest low of the last w + 1 candles incl. this one) + buf_atr ATR, at
+    least min_atr ATR away: returned as the signal's `atr` (stop distance, mgmt stop_atr = 1). Exit: a close beyond the
+    range again."""
+    n, w = int(p.get('n', FB['n'])), int(p.get('w', FB['w']))
+    hi, lo = d.h.rolling(n).max().shift(w + 1), d.l.rolling(n).min().shift(w + 1)
+    a, c = d.atr, d.c
+    se = (c.shift() > hi) & (c < hi) & (c > lo) & (c.shift(w + 1) <= hi)
+    le = (c.shift() < lo) & (c > lo) & (c < hi) & (c.shift(w + 1) >= lo)
+    buf, floor = FB['buf_atr'] * a, FB['min_atr'] * a
+    stop_s = np.maximum(d.h.rolling(w + 1).max() - c + buf, floor)
+    stop_l = np.maximum(c - d.l.rolling(w + 1).min() + buf, floor)
+    s = _one_side(dict(le=le, se=se, lx=c < lo, sx=c > hi))
+    dist = np.where(s['se'], stop_s, np.where(s['le'], stop_l, a)).astype(float)
+    s['atr'] = np.where(np.isfinite(dist) & (dist > 0), dist, np.nan)
+    return s
+
+
+def scalp_cost_ok(d, stop_atr=None, cost_x=None):
+    """Liquidity / cost gate: the stop distance (stop_atr x ATR) must be >= cost_x x the round-trip cost (fees + slippage)
+    so a 1R loss is not mostly cost. Boolean Series (False where ATR is undefined)."""
+    k = MB['stop_atr'] if stop_atr is None else stop_atr
+    m = MB['cost_x'] if cost_x is None else cost_x
+    return X(k * d.atr >= m * SCALP_RT_COST * d.c)
+
+
+def sig_momentum_burst_scalp(d, p, ctx):
+    """Price + volume impulse (15m). The candle's range >= rng_x x and its volume >= vol_x x their n-candle averages (over
+    the candles BEFORE it), it closes in the outer `body` of its range in its own direction, and it passes scalp_cost_ok.
+    Long on an up-impulse, short on the mirror. Exit on a close back through EMA9; mgmt time cap 4 candles (1 h)."""
+    n = int(p.get('n', MB['n']))
+    rng = d.h - d.l
+    avg_v = d.v.rolling(n).mean().shift()
+    big = (rng >= MB['rng_x'] * rng.rolling(n).mean().shift()) & (d.v > 0) & (avg_v > 0) & (d.v >= MB['vol_x'] * avg_v)  # 0 >= 2x0 is no burst
+    pos = (d.c - d.l) / rng.where(rng > 0)
+    gate = big & scalp_cost_ok(d)
+    le = gate & (d.c > d.o) & (pos >= MB['body'])
+    se = gate & (d.c < d.o) & (pos <= 1 - MB['body'])
+    return _one_side(dict(le=le, se=se, lx=d.c < d.e9, sx=d.c > d.e9))
+
+
+def sig_quick_bank_runner(d, p, ctx):
+    """Fast EMA-pullback continuation (15m): with EMA20 above EMA50 and the close above EMA50, the candle dips to EMA9
+    (low <= EMA9) and closes back above it as a bullish candle -> long; exact mirror for shorts. Management (QB): 70 %
+    banked at 0.8R with the stop moved to breakeven, the 30 % runner capped at 2R / 12 candles. Exit on an EMA20/50 flip."""
+    up, dn = d.e20 > d.e50, d.e20 < d.e50
+    le = up & (d.c > d.e50) & (d.l <= d.e9) & (d.c > d.e9) & (d.c > d.o)
+    se = dn & (d.c < d.e50) & (d.h >= d.e9) & (d.c < d.e9) & (d.c < d.o)
+    return _one_side(dict(le=le, se=se, lx=dn, sx=up))
+
+
 # ------------------------------------------------------------------ registry
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
@@ -378,6 +488,20 @@ STRATEGIES = {
                                'Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure '
                                'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
                           mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
+    # ---- BREADTH-01 B3: short-only mirrors of hot_coin / dca_dip (EXPERIMENTAL / testnet-only, no demonstrated edge)
+    'exp_mom_short': dict(name='[TESTNET EXP] Mom Short (dump)', style='aggressive', fn=sig_exp_mom_short,
+                          sides='short', tf='4h',
+                          desc=EXP_TAG + ': short-only mirror of Hot-coin momentum chase. Bottom-3 7-day movers breaking below the '
+                               'prior 20-candle low and EMA50 on a volume surge (> 1.5x the 42-candle average). Stop 2 ATR above, '
+                               'half off at 2R, 2.5 ATR trail, exit on a close back above EMA20. 4h.',
+                          mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
+    'exp_rip_sell_dca': dict(name='[TESTNET EXP] Rip-sell DCA S', style='aggressive', fn=sig_exp_rip_sell_dca,
+                             sides='short', tf='4h',
+                             desc=EXP_TAG + ': UNVERIFIED DCA / martingale basket (never backtested). Short-only mirror of DCA dip '
+                                  'buyer: with EMA50 below EMA200, sells the first close > 1.5 ATR above EMA20; up to 3 safety '
+                                  'orders 1 ATR apart ABOVE (1.5x each), basket TP 1 ATR below the average, hard basket stop 2 ATR '
+                                  'above the last order, 60-candle cap. 4h.',
+                             mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60)),
     'exp_vwaprev': dict(name='[TESTNET EXP] VWAP Rev L/S', style='balanced', fn=sig_exp_vwaprev, sides='both', tf='4h',
                         params=dict(n=42, k=2.0, rg=1.0), reentry_lock=True,
                         desc=EXP_TAG + ': VWAPREV = range_vwap_rev.v1 X1 (RANGE-EXIT-01). VWAP42 from quote volume / volume, ATR = '
@@ -385,6 +509,31 @@ STRATEGIES = {
                              'over 6 candles; short mirrored. Target = close back at VWAP, exit if the range breaks, stop 1.5 TR-SMA14 '
                              'ATR, 30-candle cap. No entry without quote volume or a gap-free 48-candle window. 4h only.',
                         mgmt=dict(stop_atr=1.5, max_bars=30)),
+    # ---- SCALP-4: EXPERIMENTAL / PAPER-only scalps. Independent, always-eligible PAPER slots of the breadth rotation (never
+    #      rotated, never in breadth_groups); refused in live mode (engine.scalp_block). No demonstrated edge.
+    'range_scalp': dict(name='[PAPER EXP] Range scalp L/S 15m', style='aggressive', fn=sig_range_scalp, sides='both', tf='15m',
+                        desc=SCALP_TAG + ': confirmed 32-candle range (ADX < 20, 2-6 ATR wide, no close > 0.5 ATR outside it in '
+                             'the last 32 candles). Long from the bottom quarter on a bullish candle, short from the top quarter on '
+                             'a bearish one. Exit at mid-range or on invalidation; stop 1.25 ATR, 2R cap, 16-candle (4h) cap.',
+                        mgmt=dict(stop_atr=1.25, tp_r=2.0, max_bars=16)),
+    'failed_breakout_scalp': dict(name='[PAPER EXP] Failed breakout L/S 15m', style='aggressive', fn=sig_failed_breakout_scalp,
+                                  sides='both', tf='15m',
+                                  desc=SCALP_TAG + ': a close back inside a 20-candle range after a break of at most 3 candles. '
+                                       'Short after a failed upside break, long after a failed downside break. Stop just beyond the '
+                                       'break extreme (+0.1 ATR, min 0.5 ATR), target 1.5R, exit on a close beyond the range again, '
+                                       '12-candle (3h) cap.',
+                                  mgmt=dict(stop_atr=1.0, tp_r=1.5, max_bars=12)),
+    'momentum_burst_scalp': dict(name='[PAPER EXP] Momentum burst L/S 15m', style='aggressive', fn=sig_momentum_burst_scalp,
+                                 sides='both', tf='15m',
+                                 desc=SCALP_TAG + ': impulse candle (range and volume >= 2x their 20-candle averages, close in the '
+                                      'outer quarter) in its own direction; skipped unless the 1.5 ATR stop is >= 3x the round-trip '
+                                      'fee + slippage. Stop 1.5 ATR, target 1.5R, exit on a close back through EMA9, 4-candle (1h) cap.',
+                                 mgmt=dict(stop_atr=MB['stop_atr'], tp_r=1.5, max_bars=4)),
+    'quick_bank_runner': dict(name='[PAPER EXP] Quick bank + runner L/S 15m', style='aggressive', fn=sig_quick_bank_runner,
+                              sides='both', tf='15m',
+                              desc=SCALP_TAG + ': EMA9 pullback in an EMA20/50 trend. Banks 70% at 0.8R and moves the stop to '
+                                   'breakeven; the 30% runner targets 2R, exits on an EMA20/50 flip or after 12 candles (3h). Stop 1 ATR.',
+                              mgmt=dict(QB)),
 }
 
 
@@ -395,13 +544,16 @@ def build_context(dfs, btc_key='BTCUSDT'):
     ra = pd.DataFrame({s: pd.Series((d.ret180 / (d.c.pct_change().rolling(180).std() * np.sqrt(180))).values, index=d.t)
                        for s, d in dfs.items()})
     rank = ra.rank(axis=1, ascending=False)
-    r7 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()}).rank(axis=1, ascending=False)
+    r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
+    r7 = r42.rank(axis=1, ascending=False)
+    r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
     out = {}
     for s, d in dfs.items():
         t = d.t
         out[s] = dict(btc_down=btc_down.reindex(t).fillna(False).astype(bool).values,
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
+                      rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
                       n_symbols=len(dfs))
     return out
 

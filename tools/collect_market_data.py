@@ -18,7 +18,7 @@ source tree an installer upgrade mirrors, so an upgrade can never delete collect
 plus manifest.json (rows, first/last timestamp, last run, source) and collector.log.
 Exit code: 0 ok, 1 finished with errors, 2 bad arguments, 3 stopped (IP ban / rate limit / another run holds the lock).
 """
-import argparse, ast, json, os, random, sys, time
+import argparse, ast, json, os, random, re, sys, time
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -61,8 +61,15 @@ def settings_universe():
 
 def resolve_symbols(arg):
     if arg:
-        syms = [s.strip().upper() for s in arg.split(',') if s.strip()]
-        return [s if s.endswith('USDT') else s + 'USDT' for s in syms], '--symbols'
+        resolved = []
+        for raw in (s.strip().upper() for s in arg.split(',') if s.strip()):
+            explicit = raw.endswith(('USDT', 'USDC'))
+            symbol = raw if explicit else raw + 'USDT'
+            if not re.fullmatch(r'[A-Z0-9]{2,20}(?:USDT|USDC)', symbol):
+                raise ValueError(f'invalid --symbols item: {raw!r}')
+            if symbol not in resolved:
+                resolved.append(symbol)
+        return resolved, '--symbols'
     for fn, why in ((settings_universe, 'app settings.json UNIVERSE'), (top40_from_engine, 'engine.py TOP40')):
         u = fn()
         if u: return u, why
