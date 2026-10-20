@@ -3996,7 +3996,7 @@ class Engine:
             except Exception:                               # noqa: BLE001 - no series: funding stays None
                 rows = None
             others = [l['symbol'] for l in self.state['lots'].values()]
-            return MLC.decision_context(sym, sg['time'], TF_SEC.get(sl.get('tf'), 14400), frames, rows, others)
+            return MLC.decision_context(sym, sg['time'], TF_SEC.get(sl.get('tf')), frames, rows, others)   # unknown tf: funding None
         except Exception:                                   # noqa: BLE001
             return {}
 

@@ -130,3 +130,45 @@ def test_breadth_never_counts_a_non_finite_candle_as_below(bad, where):
     closes = {'A': up, 'B': up * 1.1, 'C': c}
     assert C.breadth_at(closes) == 1.0
     assert C.breadth_at({'A': up, 'C': c}) is None                     # one measurable symbol is below MIN_SYMBOLS
+
+
+@pytest.mark.parametrize('unit', ['s', 'ms'])
+def test_integer_second_and_ms_frames_match_datetime_frames_under_future_poison(unit):
+    """Codex ruling 6296820637 #1: integer epoch seconds are never read as ms (1970 would let every future row through)."""
+    fr = {'AAA': frame(trend(80, 0.004, wiggle=0.01, seed=5)), 'BBB': frame(trend(80, 0.001, wiggle=0.01, seed=6))}
+    t = fr['AAA'].t.iloc[59]
+    want = C.decision_context('BBB', t, H, {s: d.iloc[:60] for s, d in fr.items()}, others=['AAA'])
+    div = 10 ** 9 if unit == 's' else 10 ** 6
+    poisoned = {s: d.assign(c=np.where(d.t > t, d.c * 50, d.c)) for s, d in fr.items()}
+    as_int = {s: d.assign(t=d.t.astype('datetime64[ns, UTC]').astype('int64') // div) for s, d in poisoned.items()}
+    assert C.decision_context('BBB', t, H, as_int, others=['AAA']) == want
+    assert C.decision_context('BBB', int(t.value // div), H, as_int, others=['AAA']) == want   # integer decision time too
+
+
+def test_unsupported_integer_magnitudes_are_unmeasured_never_guessed():
+    fr = {'AAA': frame(trend(80, 0.004)), 'BBB': frame(trend(80, 0.001))}
+    t = fr['AAA'].t.iloc[-1]
+    ns = {s: d.assign(t=d.t.astype('datetime64[ns, UTC]').astype('int64')) for s, d in fr.items()}   # epoch ns: out of range
+    assert C.decision_context('BBB', t, H, ns)['rank'] is None and C.decision_context('BBB', t, H, ns)['breadth'] is None
+    assert C.decision_context('BBB', int(t.value), H, fr) == dict(funding=None, rank=None, breadth=None, corr_count=None)
+    assert C.decision_context('BBB', -1, H, fr)['rank'] is None
+    secs = {k: d.t.astype('datetime64[ns, UTC]').astype('int64') // 10 ** 9 for k, d in fr.items()}
+    mixed = {k: d.assign(t=np.where(np.arange(len(d)) % 2, secs[k] * 1000, secs[k])) for k, d in fr.items()}   # s and ms
+    neg = {k: d.assign(t=-secs[k]) for k, d in fr.items()}
+    for bad in (mixed, neg):                                           # straddling / negative epochs: never guessed
+        assert C.decision_context('BBB', t, H, bad)['rank'] is None and C.decision_context('BBB', t, H, bad)['breadth'] is None
+
+
+def test_unknown_timeframe_leaves_funding_unmeasured_but_keeps_the_rest(monkeypatch):
+    """Codex ruling 6296820637 #2: no silent 4h fallback; funding None, rank/breadth/corr still measured."""
+    import test_safety as TS
+    e, _ = TS.mk_engine()
+    fr = {'BTCUSDT': frame(trend(80, 0.002)), 'ETHUSDT': frame(trend(80, 0.001))}
+    t = fr['ETHUSDT'].t.iloc[-1]
+    close_ms = int(t.value // 1_000_000)
+    import shadow_funding as SF
+    monkeypatch.setattr(SF, 'read_funding', lambda *a, **k: [(close_ms + 4 * 3600 * 1000, '0.0007', None)])
+    ctx = e._ml_context(dict(id='A', tf='7m'), 'ETHUSDT', dict(time=t), fr)
+    assert ctx['funding'] is None and ctx['rank'] == 2 and ctx['breadth'] == 1.0 and ctx['corr_count'] == 0
+    assert e._ml_context(dict(id='A', tf='1h'), 'ETHUSDT', dict(time=t), fr)['funding'] is None   # 1h close excludes it
+    assert C.decision_context('ETHUSDT', t, None, fr, [(close_ms, '0.0001', None)])['funding'] is None

@@ -20,13 +20,29 @@ CORR_MIN = 0.7         # an open lot counts as correlated at or above this
 MIN_SYMBOLS = 2        # rank / breadth need at least this many symbols with enough history at T
 
 
+_S_MAX, _MS_MAX = 10 ** 11, 10 ** 14   # epoch seconds stay below 1e11 and epoch ms below 1e14 until year 5138
+
+
+def _int_unit(lo, hi):
+    """'s' or 'ms' for integer epoch values spanning [lo, hi]; None when they are negative, out of range, or straddle
+    both units. (Epoch ms below 1e11 would be 1970-73, never a market-data frame.)"""
+    if lo < 0: return None
+    if hi < _S_MAX: return 's'
+    if lo >= _S_MAX and hi < _MS_MAX: return 'ms'
+    return None
+
+
 def _upto(df, t_ns):
     """Closes of df with open time <= T (int ns), or None."""
     if df is None or not len(df) or 'c' not in df or 't' not in df: return None
     col = df['t']
-    try:                                                # vectorised; ints are epoch MILLISECONDS (common.to_utc's rule)
-        ts = (pd.to_datetime(col, unit='ms', utc=True) if pd.api.types.is_integer_dtype(col)
-              else pd.to_datetime(col, utc=True))
+    try:                                                # vectorised; integer epochs: seconds or ms by magnitude, else unmeasured
+        if pd.api.types.is_integer_dtype(col):
+            unit = _int_unit(int(col.min()), int(col.max()))
+            if unit is None: return None
+            ts = pd.to_datetime(col, unit=unit, utc=True)
+        else:
+            ts = pd.to_datetime(col, utc=True)
         keep = (ts <= pd.Timestamp(t_ns, tz='UTC')).to_numpy()   # compared as datetimes: any resolution (ns/us/ms) is safe
     except Exception:
         return None
@@ -98,7 +114,12 @@ def decision_context(sym, t, tf_s, frames, funding_rows=None, others=()):
     unavailable). tf_s: candle length in seconds (the decision candle closes at t + tf_s)."""
     out = dict(funding=None, rank=None, breadth=None, corr_count=None)
     try:
-        t_ns = to_utc(t).value
+        if isinstance(t, (int, np.integer)) and not isinstance(t, (bool, np.bool_)):
+            unit = _int_unit(int(t), int(t))           # never read epoch seconds as ms (1970 would admit every row)
+            if unit is None: return out
+            t_ns = pd.Timestamp(int(t), unit=unit, tz='UTC').value
+        else:
+            t_ns = to_utc(t).value
     except Exception:
         return out
     closes = {}
