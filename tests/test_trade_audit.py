@@ -595,6 +595,7 @@ REASONS = {
     'DCA settings out of range (n 1-8, scale 1-3)': ('config', 'dca_range'),
     'leverage cap reached for this slot': ('capacity', 'leverage_cap'),
     'size below Binance minimum (raise capital or risk)': ('execution', 'size_min'),
+    'size above Binance maximum order quantity (lower capital or risk)': ('execution', 'size_max'),
     'Claude review vetoed: weak trend': ('filter', 'ai_veto'),
     'could not set leverage/margin on Binance: leverage 20x refused': ('execution', 'leverage'),
     'entry order unconfirmed': ('execution', 'entry_unconfirmed'),

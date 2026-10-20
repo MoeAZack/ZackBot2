@@ -44,6 +44,13 @@ STR_MAX = 1000           # any string in an event is capped at this length
 # with the lot quantity (an unknown add kind would show up there).
 ENTRY_KINDS = ('entry', 'pyramid_add', 'safety_order', 'entry_fallback', 'grid_buy', 'grid_sell')
 RUNNER_WHY = ('take_profit_1', 'basket_tp_part', 'take_profit_ladder')   # partial take-profits that leave a runner
+# Registered exit / close reason codes (a close fill's `why`, a history record's exit_reason) of the lot paths in engine.py.
+# APPEND-ONLY: a shipped code is never renamed, reordered or reused (audit lines and history keep it for good); grid closes
+# stay open-ended ('grid_<reason>'). tests/test_resting_tp.py pins the order.
+EXIT_REASONS = ('stop', 'take_profit', 'take_profit_1', 'take_profit_ladder', 'basket_tp', 'basket_tp_part', 'stop_crossed',
+                'stop_failed', 'exit_signal', 'time_exit', 'flatten', 'resync', 'manual_close', 'closed_from_panel',
+                'closed_from_telegram',
+                'take_profit_resting')    # mgmt.resting_tp: the lot's resting exchange take-profit filled (full or partial)
 TRAIL_ATR_DEFAULT = 2.0        # predeclared: trailing stop k x ATR behind the running best when the lot has no trail_atr
 TIME_CAP_BARS_DEFAULT = 48     # predeclared: close at the first observation at/after entry + N bars
 RULE_TARGET = 'close the remainder at the planned target'
@@ -1542,11 +1549,18 @@ _PREFIX = (
     ('Binance holds an untracked position', 'risk_gateway', 'untracked_position'),
     ('max positions reached', 'capacity', 'max_positions'),
     ('regime: ', 'regime', 'regime'),
+    ('gold_family_cap', 'capacity', 'gold_family_cap'),            # TRADFI-01 T3: XAU+PAXG share one family budget
+    ('tradfi_session', 'filter', 'tradfi_session'),                # TRADFI-01 T2/T4: US cash-session entry gate
+    ('tradfi_policy', 'config', 'tradfi_policy'),                  # TRADFI-01 T4: strategy not mapped for this symbol
+    ('TRADFI', 'filter', 'tradfi_off'),                            # TRADFI-01: off / live / oil
     ('regime unknown', 'regime', 'regime_unknown'),
     ('pump guard', 'risk_gateway', 'pump_guard'),
     ('DCA basket without a hard stop', 'config', 'dca_no_stop'),
     ('DCA settings out of range', 'config', 'dca_range'),
     ('size below Binance minimum', 'execution', 'size_min'),
+    ('size above Binance maximum', 'execution', 'size_max'),           # MAXQTY-01: per-order maxQty, refused locally
+    ('leverage tier:', 'execution', 'lev_tier'),                       # MAXQTY-01: Binance -2027 position cap at the leverage
+    ('fee_edge:', 'risk_gateway', 'cost_to_stop'),
     ('control: direction bias', 'filter', 'ctrl_bias'),                 # CTRL-01-LITE: bias x0 disables this side
     ('control: scaled size', 'execution', 'ctrl_size_min'),             # CTRL-01-LITE: scaled below the exchange minimum
     ('trailing entry expired', 'trailing', 'expired'),
@@ -1563,12 +1577,18 @@ _WRAP = (
     ('order failed', 'execution', 'order_failed', False),
     ('could not set leverage/margin on Binance', 'execution', 'leverage', False),
     ('Claude review vetoed', 'filter', 'ai_veto', False),
+    ('AI review unavailable', 'filter', 'ai_unavailable', False),          # AIREL-01: fail-closed policy refusal
 )
 
 
 def _slug(s):
     s = ''.join(c if c.isalnum() or c == '_' else '_' for c in str(s).strip().lower())[:40].strip('_')
     return s or 'unnamed'
+
+
+_BOOK = (('halted', 'book_halted'), ('cost_pending', 'book_cost_pending'), ('INCOMPLETE', 'book_incomplete'),
+         ('full', 'book_full'), ('leverage cap', 'book_leverage_cap'), ('stop-risk cap', 'book_stop_risk_cap'),
+         ('has no NAV', 'book_no_nav'))
 
 
 def reason_info(reason, _depth=0):
@@ -1587,6 +1607,11 @@ def reason_info(reason, _depth=0):
                 elif rest: out['detail'] = rest[:160]
                 if out['code'] is None: out['code'] = 'other'
                 return out
+        if r.startswith('book B') and ' ' in r[5:]:                    # TRUE-BOOK-01 book-local refusals
+            word = r[5:].split(' ', 1)[1]
+            return dict(stage='true_book', code=next((c for w, c in _BOOK if word.startswith(w)), 'book_other'))
+        if r.startswith('true books: '): return dict(stage='true_book', code='book_no_cohort' if 'cohort' in r else 'book_unmapped')
+        if r == 'true_book/opposite_side_funding_ambiguity': return dict(stage='true_book', code='opposite_side_funding_ambiguity')
         if r.startswith('risk rule '):
             name, _, msg = r[len('risk rule '):].partition(':')
             return dict(stage='risk_gateway', code=_slug(name), detail=msg.strip()[:160])

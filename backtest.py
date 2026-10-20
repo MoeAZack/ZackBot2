@@ -139,7 +139,7 @@ def path_points(o, h, l, c, side, worst=False):
 
 def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=None, warmup=220, fund_per_bar=None, pessimistic='path',
         entry_order='market', fee_maker=None, maker_fallback=True, pump_guard=None, risk_rules=None, governor=None,
-        maint_margin=0.005, btc1h=None, exchange_rules=None):
+        maint_margin=0.005, btc1h=None, exchange_rules=None, fill_log=None):
     """pessimistic: how a stop tightened during a candle (breakeven / trailing / runner) is checked against that same candle.
     'path' (default): the declared price path (path_points: candle colour, doji = worst case for the side); 'worst': the
     worst-case path (favourable extreme first, adverse last) on every candle; False: never (old v2).
@@ -158,6 +158,9 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                   below minQty / minNotional (feasibility.size_check, the engine's own check). None (default) = the legacy
                   floor (notional only, MIN_NOTIONAL), unchanged results; symbols missing from a snapshot also use the legacy
                   floor and are listed as 'unknown'. Skips are counted in cv.attrs['feasibility'].
+      fill_log    None (default) or a list: when a list, every fill (entry / dca / add / partial and full exit) is appended
+                  as a dict with its reference price BEFORE the legacy slippage (research re-pricing, Codex 6245962231).
+                  Recording only - the run's trades and curve are identical with or without it.
     sleeve extras: 'when' ('any'|'bull'|'bear'|'range'), 'trail_entry' {'dev_atr','max_bars'}, 'pump_guard', mgmt 'tps', 'ttp'."""
     FPB = FUND_PER_BAR if fund_per_bar is None else fund_per_bar
     FM = FEE_MAKER if fee_maker is None else fee_maker
@@ -241,7 +244,16 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     try: days = pd.to_datetime(T).tz_localize('UTC').tz_convert('Africa/Cairo').date      # trading day = Cairo day, like live
     except Exception: days = (pd.to_datetime(T) + pd.Timedelta(hours=3)).date
 
-    def close(sl, s, p, px, frac, i, why):
+    def flog(kind, sl, s, p, i, action, ref, qty, why=None, gap=False, liq='taker'):
+        """USDC-PAIR-RUNNER view A (Codex 6245962231): opt-in record of one fill BEFORE the legacy slippage - the
+        reference price the fill was decided at, its quantity and candle - so a research runner can re-price every fill.
+        Never read by the backtest itself: with fill_log None (the default) nothing is recorded and nothing changes."""
+        if fill_log is not None:
+            fill_log.append(dict(kind=kind, sleeve=sl['cfg']['key'], sym=s, pos_i=int(p['i']), side=int(p['side']),
+                                 i=int(i), action=action, ref=float(ref), qty=float(qty), why=why, gap=bool(gap),
+                                 liq=liq, risk=float(p['risk']), stop_dist=float(p['R'])))
+
+    def close(sl, s, p, px, frac, i, why, gap=False):
         """Close frac of the position at px. BT02 engine parity (_market_close / _apply_close): a PARTIAL close is floored
         to the symbol's step and a partial that floors to 0 sends nothing; the remainder is floored to the step. A full
         close (frac >= 1) and the legacy rule (step None) are unchanged."""
@@ -251,6 +263,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         if frac < 1 and step:
             q = F.round_step(q, step)
             if q <= 0: return False
+        flog('exit', sl, s, p, i, 'sell' if p['side'] == 1 else 'buy', px, q, why, gap)
         px = px * (1 - p['side'] * SLIP)
         pnl = p['side'] * (px - p['avg']) * q - q * px * FEE
         eq += pnl
@@ -300,7 +313,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             if sum(1 for s_ in same if corr(s, s_, i) > rho) >= n: return 'correlated_cap'
         return None
 
-    def open_pos(sl, s, side, px, atr, i, sl_eq, fee):
+    def open_pos(sl, s, side, px, atr, i, sl_eq, fee, ref=None, liq='taker', why=None):
         """Size and open a position (same rules as the live engine). Returns the position or None."""
         nonlocal eq
         m, cfg = sl['m'], sl['cfg']
@@ -332,6 +345,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             p['levels'] = lv[1:]; p['w'] = w[1:]
             p['tp'] = px + side * m['dca']['tp_atr'] * atr
         sl['pos'][s] = p
+        flog('entry', sl, s, p, i, 'buy' if side == 1 else 'sell', px if ref is None else ref, qty, why, liq=liq)
         return p
 
     def entry_filters(sl, s, side, i):
@@ -404,8 +418,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 ev = max(cand)[2]                            # first level met on the way (tie: the safety order, then the stop)
                 if ev == 'stop':
                     px = st if sd * (a_ - st) >= 0 else a_                     # already through it -> filled where price is
-                    close(sl, s, p, px, 1, i, 'stop'); return True
-                lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
+                    close(sl, s, p, px, 1, i, 'stop', gap=px != st); return True
+                lvl0 = lvl = p['levels'][p['dca']]; q = p['q0'] * p['w'][p['dca']]
                 lvl = min(lvl, a_) if sd == 1 else max(lvl, a_)              # gapped through the level -> filled where price is
                 if RR['btc_breaker'] and i <= breaker_until:                 # same breaker policy as live
                     pol = RR['btc_breaker'].get('dca', 'pause')
@@ -416,6 +430,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 d = F.size_check(q, q, lvl, ADD_RULES[s])     # BT02: the engine's _add_qty check (floor to step, minimums)
                 if d['ok'] is False: feas_skip(sl, s, sd, i, d, lvl, q, add=('dca', p['i'], p['dca'])); blocked_['dca'] = True; continue
                 q = d['qty']
+                flog('dca', sl, s, p, i, 'buy' if sd == 1 else 'sell', lvl, q, gap=lvl != lvl0)
                 p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                 eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['dca'] += 1
                 p['qmax'] = max(p['qmax'], p['qty'])
@@ -463,6 +478,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     d = F.size_check(q, q, lvl, ADD_RULES[s])  # BT02: the engine's _add_qty check
                     if d['ok'] is False: feas_skip(sl, s, sd, i, d, lvl, q, add=('add', p['i'], p['adds'])); blocked_['add'] = True; continue
                     q = d['qty']
+                    flog('add', sl, s, p, i, 'buy' if sd == 1 else 'sell', lvl, q, gap=lvl != lv)
                     p['avg'] = (p['avg'] * p['qty'] + lvl * q) / (p['qty'] + q); p['qty'] += q
                     eq -= q * lvl * FEE; p['realized'] -= q * lvl * FEE; p['adds'] += 1
                     p['qmax'] = max(p['qmax'], p['qty'])
@@ -502,18 +518,18 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             sl_eq = eq * cfg['share']
             for s, side in list(sl['pend'].items()):
                 if len(sl['pos']) >= cfg['max_pos'] or halted: break
-                a = book.arr[s]; atr = a['atr'][i - 1]
+                a = book.arr[s]; atr = _sig_atr(sl['sigs'][s], i - 1, a['atr'][i - 1])   # engine parity (B1 finding)
                 if entry_order == 'maker':
                     lim = a['c'][i - 1]
                     if (a['l'][i] < lim) if side == 1 else (a['h'][i] > lim):
-                        px, fee = (min(lim, a['o'][i]) if side == 1 else max(lim, a['o'][i])), FM
+                        px, fee, liq = (min(lim, a['o'][i]) if side == 1 else max(lim, a['o'][i])), FM, 'maker'
                     elif maker_fallback:
-                        px, fee = a['o'][i] * (1 + side * SLIP), FEE
+                        px, fee, liq = a['o'][i] * (1 + side * SLIP), FEE, 'taker'
                     else:
                         continue
                 else:
-                    px, fee = a['o'][i] * (1 + side * SLIP), FEE
-                open_pos(sl, s, side, px, atr, i, sl_eq, fee)
+                    px, fee, liq = a['o'][i] * (1 + side * SLIP), FEE, 'taker'
+                open_pos(sl, s, side, px, atr, i, sl_eq, fee, ref=px if liq == 'maker' else a['o'][i], liq=liq)
             sl['pend'] = {}
             # trailing entries: enter when price rebounds dev_atr ATR from the extreme since the signal (candle path)
             for s, te in list(sl['tpend'].items()):
@@ -531,7 +547,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 te['ext'] = ext
                 if fill is None: continue
                 del sl['tpend'][s]
-                p = open_pos(sl, s, sd, fill * (1 + sd * SLIP), te['atr'], i, eq * cfg['share'], FEE)
+                p = open_pos(sl, s, sd, fill * (1 + sd * SLIP), te['atr'], i, eq * cfg['share'], FEE, ref=fill, why='trail_entry')
                 if p is not None: p['skip_i'] = i                 # filled mid-candle: managed from the next candle on
         # ---- manage open positions
         for sl in SL:
@@ -545,7 +561,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                 eq -= p['qty'] * c * FPB; p['realized'] -= p['qty'] * c * FPB
                 # 1) gap at the open already through the stop: filled at the open, nothing else (no adds)
                 if (o <= p['stop']) if sd == 1 else (o >= p['stop']):
-                    close(sl, s, p, o, 1, i, 'stop'); del sl['pos'][s]; continue
+                    close(sl, s, p, o, 1, i, 'stop', gap=True); del sl['pos'][s]; continue
                 # 2-5) every intrabar event (stop, DCA fills, basket TP, pyramid adds, tp1 / ladder / tp_r, breakeven and
                 # trailing ratchets) in the order of the declared price path - see path_points() and walk_path()
                 if walk_path(sl, s, p, i, o, h, l, c, atr): del sl['pos'][s]; continue
@@ -597,7 +613,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                         if why: blocked[why] = blocked.get(why, 0) + 1; continue
                     te = cfg.get('trail_entry')
                     if te and te.get('dev_atr'):
-                        sl['tpend'][s] = dict(side=side, ext=book.arr[s]['c'][i], atr=book.arr[s]['atr'][i],
+                        sl['tpend'][s] = dict(side=side, ext=book.arr[s]['c'][i], atr=_sig_atr(sl['sigs'][s], i, book.arr[s]['atr'][i]),
                                               dev=te['dev_atr'], until=i + int(te.get('max_bars', 3)))
                     else:
                         sl['pend'][s] = side
@@ -617,6 +633,14 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
 
 
 norm_tps = S.norm_tps
+
+
+def _sig_atr(sig, i, fallback):
+    """Stop ATR for a signal decided at candle i - the same rule as engine._sig_atr: the strategy's own ATR series when it
+    supplies one (VWAPREV: TR-SMA14 of the decision candle) and the value is finite and > 0, else the book's engine ATR."""
+    a = sig.get('atr')
+    if a is not None and 0 <= i < len(a) and np.isfinite(a[i]) and a[i] > 0: return float(a[i])
+    return float(fallback)
 
 
 def martingale_risk(mgmt, atr_pct, fee=FEE, slip=SLIP):

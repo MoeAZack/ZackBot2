@@ -182,6 +182,22 @@ def is_transient(e):
     return c is not None and (c in TRANSIENT or c in (-418, -429) or -599 <= c <= -500 or -1599 <= c <= -1500)
 
 
+AUDIT_TIMEOUT_S = 3.0         # EXEC-CAL-00 audit read: per-request timeout, well below the 10 s enrichment cap
+AUDIT_COOL_S = 60.0           # EXEC-CAL-00: shared audit-read pause after a 418 / 429 (or longer, per Retry-After)
+AUDIT_RATE_CODES = (-1003, -1015)                           # too many requests / orders
+
+
+class AuditSkipped(BinanceError):
+    """EXEC-CAL-00: an audit read was not sent (T05b outage or the audit cooldown). Nothing went to the network."""
+    audit_stop, reason = True, 'cooldown'
+    def __init__(self, msg): super().__init__(-1007, msg)
+
+
+class AuditRateLimited(BinanceError):
+    """EXEC-CAL-00: an audit read was answered 418 / 429: that job stops and every audit read pauses (shared cooldown)."""
+    audit_stop, reason = True, 'rate_limit'
+
+
 def new_cid(prefix='zb'):
     return f'{prefix}{uuid.uuid4().hex[:22]}'
 
@@ -222,12 +238,17 @@ def _bool_field(row, key, default=_MISSING):
 class Futures:
     def __init__(self, key='', secret='', base=TESTNET, recv_window=6000):
         self.key, self.secret, self.base, self.rw = key, (secret or '').encode(), base, recv_window
-        self.s = requests.Session()
-        if key: self.s.headers['X-MBX-APIKEY'] = key
+        self.s = self._new_session()
         self.offset = 0
         self.last_ok = 0.0
         try: self.sync_time()
         except Exception: pass
+
+    def _new_session(self):
+        """The one constructor + auth path of every HTTP session of this client (trading and EXEC-CAL-00 audit reads)."""
+        s = requests.Session()
+        if self.key: s.headers['X-MBX-APIKEY'] = self.key
+        return s
 
     @property
     def health(self):
@@ -240,14 +261,14 @@ class Futures:
         st = self.s.get(self.base + '/fapi/v1/time', timeout=10).json()['serverTime']
         self.offset = st - int(time.time() * 1000)
 
-    def _once(self, method, url, params, signed):
+    def _once(self, method, url, params, signed, sess=None, timeout=15):
         p = dict(params)
         if signed:                                   # re-signed on every attempt (fresh timestamp)
             p['timestamp'] = int(time.time() * 1000) + self.offset
             p['recvWindow'] = self.rw
             q = urllib.parse.urlencode(p)
             p['signature'] = hmac.new(self.secret, q.encode(), hashlib.sha256).hexdigest()
-        r = self.s.request(method, url, params=p, timeout=15)
+        r = (sess or self.s).request(method, url, params=p, timeout=timeout)
         try:
             data = r.json() if r.content else {}
         except ValueError:
@@ -319,6 +340,73 @@ class Futures:
                              critical=True)      # T05b: an order's own confirmation is never skipped by the circuit
         except BinanceError as e:
             if e.code == -2013: return None             # order does not exist
+            raise
+
+    # ---- EXEC-CAL-00 audit reads (observe only) -----------------------------------------------------------------------
+    # A path of their own, separate from _req: own requests.Session (same constructor / auth as trading, built lazily on
+    # the enrichment worker), one attempt, a short timeout, and they NEVER call health.ok() / fail() or touch any circuit
+    # telemetry (state, counters, last_ok). They obey the T05b outage (no read while it is open) and a shared audit
+    # cooldown that a 418 / 429 / Retry-After sets, so one rate limit pauses every pending enrichment.
+    def _audit_state(self):
+        st = self.__dict__.get('_audit')
+        if st is None: st = self.__dict__.setdefault('_audit', dict(lock=threading.Lock(), s=None, until=0.0))
+        return st
+
+    def _audit_session(self):
+        st = self._audit_state()
+        with st['lock']:
+            if st['s'] is None: st['s'] = self._new_session()
+            return st['s']
+
+    def audit_blocked(self):
+        """None when an audit read may be sent; else why not ('cooldown': a T05b outage or the audit cooldown is active).
+        A peek only: it never counts a fail-fast or moves the outage probe."""
+        if self.health.state == 'outage': return 'cooldown'
+        st = self._audit_state()
+        with st['lock']:
+            return 'cooldown' if time.monotonic() < st['until'] else None
+
+    def _audit_cool(self, seconds):
+        st = self._audit_state()
+        with st['lock']: st['until'] = max(st['until'], time.monotonic() + max(0.0, float(seconds or 0)))
+
+    def _audit_req(self, path, params):
+        if self.audit_blocked():
+            raise AuditSkipped(f'audit read {path} not sent (cooldown)')
+        try:
+            r, data = self._once('GET', self.base + path, params, True, sess=self._audit_session(), timeout=AUDIT_TIMEOUT_S)
+        except requests.RequestException as ex:
+            raise _scrubbed(ex) from None
+        code = data.get('code') if isinstance(data, dict) else None
+        ra = retry_after(getattr(r, 'headers', None))
+        if r.status_code in (418, 429) or code in AUDIT_RATE_CODES:
+            self._audit_cool(max(AUDIT_COOL_S, ra))
+            raise AuditRateLimited(-r.status_code if r.status_code in (418, 429) else code,
+                                   data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
+        if ra: self._audit_cool(ra)                     # any other Retry-After is honoured too
+        if r.status_code >= 500 or code in TRANSIENT:
+            raise BinanceError(code if isinstance(code, int) and code in TRANSIENT else -r.status_code, f'HTTP {r.status_code}')
+        if isinstance(data, dict) and code not in (None, 0, 200):
+            raise BinanceError(code, data.get('msg'))
+        return data
+
+    def user_trades(self, symbol, order_id):
+        """EXEC-CAL-00 (read-only audit path): this account's executions of ONE order (price, qty, commission,
+        commissionAsset rows). One attempt; the caller bounds its own retries. Never drives the T05b circuit."""
+        return self._audit_req('/fapi/v1/userTrades', dict(symbol=symbol, orderId=order_id))
+
+    def income(self, income_type='FUNDING_FEE', start_ms=None, limit=1000):
+        """FEE-ASSET-01 (read-only audit path): this account's income rows of one type since start_ms (oldest first).
+        One attempt; never drives the T05b circuit."""
+        p = dict(incomeType=income_type, limit=int(limit))
+        if start_ms is not None: p['startTime'] = int(start_ms)
+        return self._audit_req('/fapi/v1/income', p)
+
+    def audit_order(self, symbol, cid):
+        """EXEC-CAL-00: an order's own record by client id on the audit path (None = not found)."""
+        try: return self._audit_req('/fapi/v1/order', dict(symbol=symbol, origClientOrderId=cid))
+        except BinanceError as e:
+            if e.code == -2013: return None
             raise
 
     def _order(self, params):
@@ -530,6 +618,30 @@ class Futures:
                 raise AmbiguousOrder(f'algo stop unconfirmed: {ex}', f'ac:{acid}')
             return f"a:{r['algoId']}"
 
+    def take_profit(self, symbol, pos_side, qty, price, reduce_only=True, cid=None, acid=None):
+        """Resting exchange take-profit (TAKE_PROFIT_MARKET, mark-price trigger) for qty of the given position side, sent
+        through the same idempotent client-id path and algo fallback as stop(). Returns 'o:<id>' or 'a:<algoId>'.
+        Reduce-only: in hedge mode (positionSide LONG/SHORT) the close side of that position side IS reduce-only and Binance
+        refuses an explicit reduceOnly there (-1106), so the flag is only sent for a one-way (BOTH) position."""
+        if not reduce_only: raise ValueError('a resting take-profit is always reduce-only')
+        side = 'SELL' if pos_side == 'LONG' else 'BUY'
+        extra = {} if pos_side in ('LONG', 'SHORT') else dict(reduceOnly='true')
+        try:
+            r = self._order(self._cid(dict(symbol=symbol, side=side, positionSide=pos_side, type='TAKE_PROFIT_MARKET',
+                                           quantity=qty, stopPrice=price, workingType='MARK_PRICE', **extra), cid))
+            return f"o:{r['orderId']}"
+        except BinanceError as e:
+            if e.code not in (-4120, -1116, -1102, -4136):
+                raise
+            acid = acid or new_cid('zq')
+            try:
+                r = self._req('POST', '/fapi/v1/algoOrder', dict(algoType='CONDITIONAL', symbol=symbol, side=side, clientAlgoId=acid,
+                              positionSide=pos_side, type='TAKE_PROFIT_MARKET', quantity=qty, triggerPrice=price,
+                              workingType='MARK_PRICE', **extra), signed=True, retry=False)
+            except (requests.RequestException, AmbiguousOrder) as ex:
+                raise AmbiguousOrder(f'algo take-profit unconfirmed: {ex}', f'ac:{acid}')
+            return f"a:{r['algoId']}"
+
     def cancel(self, symbol, tag):
         """Cancel one stop. Returns True if cancelled or already gone; raises on other errors (rate limit, network)."""
         if not tag: return True
@@ -625,6 +737,29 @@ class Futures:
             if e.code in (-2013,) + ALGO_UNSUPPORTED or 'not exist' in str(e.msg).lower(): return None
             raise
         return str(st).upper() if st else None
+
+    def stop_fill(self, symbol, tag):
+        """Read-only. The executed order behind ONE stop tag, so a vanished exchange stop is booked at its actual fill:
+        'o:' / 'c:' -> GET /fapi/v1/order; 'a:' / 'ac:' -> GET /fapi/v1/algoOrder, then the order it triggered
+        (actualOrderId). Returns that order's record (orderId, status, executedQty, avgPrice, ...), or None when there is
+        none (not triggered, unknown id, endpoint unsupported). Failures raise: the caller treats them as unknown."""
+        kind, _, oid = (tag or '').partition(':')
+        if not oid: return None
+        try:
+            if kind in ('a', 'ac'):
+                r = self._req('GET', '/fapi/v1/algoOrder', dict(algoId=oid) if kind == 'a' else dict(clientAlgoId=oid),
+                              signed=True, retry=False)
+                aid = r.get('actualOrderId') if isinstance(r, dict) else None
+                if aid in (None, '', 0, '0', -1, '-1'): return None
+                kind, oid = 'o', aid
+            if kind not in ('o', 'c'): return None
+            q = dict(symbol=symbol, orderId=oid) if kind == 'o' else dict(symbol=symbol, origClientOrderId=oid)
+            r = self._req('GET', '/fapi/v1/order', q, signed=True, retry=False)
+            return r if isinstance(r, dict) else None
+        except BinanceError as e:
+            if isinstance(e, ExchangeUnavailable) or is_transient(e): raise
+            if e.code in (-2013,) + ALGO_UNSUPPORTED or 'not exist' in str(e.msg).lower(): return None
+            raise
 
     def cancel_all(self, symbol):
         for path in ('/fapi/v1/allOpenOrders', '/fapi/v1/algoOpenOrders'):

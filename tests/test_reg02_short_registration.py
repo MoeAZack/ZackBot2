@@ -308,14 +308,14 @@ def make_repo(tmp_path, *, long_registered=True, name='repo'):
     led.mkdir(parents=True)
     gen = None
     if long_registered:
+        with open(os.path.join(ROOT, LEDGER_DIR, L.REGISTRY), 'rb') as f:  # the pre-REG-02 registry prefix: cut before
+            lines = f.read().splitlines(keepends=True)                        # the short family's first line, so later
+        cut = next(i for i, x in enumerate(lines) if b'"trend_ema_mom_short"' in x)  # families (e.g. breadth_static40)
+        (led / L.REGISTRY).write_bytes(b''.join(lines[:cut]))                 # never break the sequential chain
+        fams = {json.loads(x)['family'] for x in lines[:cut]}
         for n in sorted(os.listdir(os.path.join(ROOT, LEDGER_DIR))):
-            if n.endswith('.jsonl') and not n.startswith(G.SHORT_FAMILY):
-                if n == L.REGISTRY:
-                    with open(os.path.join(ROOT, LEDGER_DIR, n), 'rb') as f:   # the pre-REG-02 registry prefix
-                        lines = [x for x in f.read().splitlines(keepends=True) if b'"trend_ema_mom_short"' not in x]
-                    (led / n).write_bytes(b''.join(lines))
-                else:
-                    _copy(r, f'{LEDGER_DIR}/{n}')
+            if n.endswith('.jsonl') and n != L.REGISTRY and n[:-len('.jsonl')] in fams:
+                _copy(r, f'{LEDGER_DIR}/{n}')
     else:
         L.append(str(led / 'trend_ema_mom.jsonl'), kind='window_spent', candidate_id=T.RULE_ID, split='development',
                  window={'start': '2021-12-19T00:00:00Z', 'end': '2026-10-05T00:00:00Z'}, author='t',

@@ -61,6 +61,9 @@ TRIAL_KINDS = ('variant', 'grid_point', 'baseline')
 COMPONENT_KINDS = ('data_access', 'variant', 'grid_point', 'baseline')
 TUNING_KINDS = ('variant', 'grid_point')
 SPEND_KINDS = ('holdout_reveal', 'window_spent')
+# Records that register a run for promotion (BT-EXEC-OBS-01, Codex 6225951309 item 4): `append` runs the promotion
+# boundary (report.enforce_promotion) on the run's frozen envelope BEFORE the lock or any write.
+PROMOTION_KINDS = ('holdout_reveal', 'holdout_rerun', 'window_spent')
 KEYS = {'format', 'seq', 'prev', 'family', 'kind', 'candidate_id', 'split', 'window', 'manifest_digest', 'run_digest',
         'detail', 'author', 'cairo_date'}
 REG_KEYS = {'format', 'seq', 'prev', 'kind', 'family', 'ref'}
@@ -274,10 +277,41 @@ def _next(data: bytes, rec: dict) -> bytes:
     return line_of(rec)
 
 
+def _enforce_promotion(d: str, run_digest, exec_manifest=None, exec_store=None, ledger_path=None) -> None:
+    """The promotion boundary for a PROMOTION_KINDS record (Codex 6226591731 item 1, Cowork 6226614247). A record that
+    names a run must prove it: the frozen envelope is resolved from the runs store beside the ledger and must pass
+    report.enforce_promotion WITH the caller's bound execution evidence (`exec_manifest` read under `exec_store`; a /3
+    run bound to a manifest is verified against it, files re-hashed). No runs store, an unreadable envelope or a
+    malformed digest REFUSES (`promotion_refused:...`) - never a silent admit. A record with run_digest null (e.g. a
+    `window_spent` that burns a window without promoting any run, breadth_eval's evaluation spend) names no run to
+    promote and is outside this boundary BY DESIGN; the ledger's own record checks still apply to it."""
+    if run_digest is None:
+        return
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import report as R
+    EO = R._exec_obs()
+    # these refusals are ALSO LedgerErrors: the ledger's own record checks refuse the same cases with this wording
+    refused = type('LedgerPromotionRefused', (EO.PromotionRefused, LedgerError), {})
+    if not isinstance(run_digest, str) or not HEX64.match(run_digest):
+        raise refused(['run_digest_invalid'])
+    runs = _runs_of(d)
+    if runs is None:
+        raise refused(['runs_store_missing: a promotion record needs the immutable runs store beside the ledger'])
+    try:
+        env = R.load_envelope(runs, run_digest)
+    except R.ReportError as e:
+        raise refused([f'run_envelope_unreadable: no readable frozen run envelope for the record ({e})'])
+    R.enforce_promotion(env, exec_manifest=exec_manifest, exec_store=exec_store, ledger_path=ledger_path)
+
+
 def append(path: str, *, kind, candidate_id, split, window, author, cairo_date, manifest_digest=None, run_digest=None,
-           detail=None, lineage=None) -> dict:
-    """Append one record. A new family needs `lineage`: 'root' (an independent hypothesis) or its parent family."""
+           detail=None, lineage=None, exec_manifest=None, exec_store=None) -> dict:
+    """Append one record. A new family needs `lineage`: 'root' (an independent hypothesis) or its parent family.
+    A promotion record (PROMOTION_KINDS) is refused before any mutation unless its run passes the promotion boundary;
+    a /3 run bound to execution observations needs its manifest (`exec_manifest`) and store (`exec_store`)."""
     d = _dir_of(path)
+    if kind in PROMOTION_KINDS:
+        _enforce_promotion(d, run_digest, exec_manifest, exec_store, ledger_path=path)
     family = os.path.splitext(os.path.basename(path))[0]
     lock = os.path.join(d, LOCK)
     try:

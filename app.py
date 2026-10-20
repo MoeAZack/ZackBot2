@@ -3,7 +3,7 @@
 Run:  python app.py            (or ZackBot.exe after building)
       python app.py --no-window  (server only; open http://localhost:8765 yourself)
 """
-import atexit, base64, copy, csv, glob, gzip, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
+import atexit, base64, collections, copy, csv, glob, gzip, heapq, hmac, json, logging, logging.handlers, math, os, queue, random, re, secrets, shutil, subprocess, sys, threading, time, traceback, uuid, socket
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
@@ -81,13 +81,17 @@ from engine import RISK_RULE_DEFAULTS, GOV_MULT_MAX, EXCHANGE_DOWN   # noqa: E40
 from telegram_ctl import TelegramControl, clean_setting as tg_clean_setting   # noqa: E402
 import market_collector as MC     # noqa: E402
 import engine as ENG              # noqa: E402
+import ai_filter                   # noqa: E402  (DEFAULT_MODEL for the non-secret ai_model read-back)
+import shadow_analyst as SA       # noqa: E402  ML-SHADOW-01: report-only analyst (never feeds trading)
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
-CFG_KEYS = ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'TELEGRAM_TOKEN')
-CFG_SECRET = ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'TELEGRAM_TOKEN')
+CFG_KEYS = ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'TELEGRAM_TOKEN',
+            'ANTHROPIC_WORKSPACE_ID')
+CFG_SECRET = ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'TELEGRAM_TOKEN', 'ANTHROPIC_WORKSPACE_ID')   # ML-SHADOW-01: DPAPI too
 CFG_RULES = dict(MODE=r'paper|live', LIVE_CONFIRM=r'(YES_REAL_MONEY)?', API_KEY=r'[A-Za-z0-9]{8,128}', API_SECRET=r'[A-Za-z0-9]{8,128}',
-                 ANTHROPIC_API_KEY=r'[A-Za-z0-9_\-]{8,200}', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN=r'\d{5,15}:[A-Za-z0-9_\-]{20,80}')
+                 ANTHROPIC_API_KEY=r'[A-Za-z0-9_\-]{8,200}', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN=r'\d{5,15}:[A-Za-z0-9_\-]{20,80}',
+                 ANTHROPIC_WORKSPACE_ID=r'[A-Za-z0-9_\-]{1,128}')
 
 
 def cfg_value_ok(k, v):
@@ -380,6 +384,13 @@ def run_backtest_job(job_id, req):
         fz['promotable'] = fz['execution_realistic']
         save_json(os.path.join(DATA, 'backtests', f'{job_id}.json'), res)
         job.update(status='done', result=res)
+        # PAPER-only, report-only critique of the newly completed deterministic result. The result is already marked
+        # done; the critique is only QUEUED (non-blocking, coalesced) on the analyst's own thread, so analyst latency or
+        # failure never holds the single research worker. Spend/auth/safety guards remain inside shadow_analyst.
+        try:
+            request_backtest_review()
+        except Exception as ex:
+            log.warning(f'backtest analyst review not queued ({type(ex).__name__})')
     except Exception as e:
         log.error('backtest failed: ' + traceback.format_exc())
         job.update(status='error', error=str(e))
@@ -593,6 +604,239 @@ def migrate_settings_secrets(cfg, data_dir=None):
     ENG.redact_settings_files(data_dir)
 
 
+# ------------------------------------------------------------------ ML-SHADOW-01: shadow analyst wiring (report only)
+ANALYST_TICK_S = 300
+# Serialises the analyst's persisted state and its API call (timer, manual action, review thread). Never held while the
+# local evidence files are scanned: ml_aggregate() runs before the lock is taken.
+ANALYST_LOCK = threading.Lock()
+BT_SCAN_MAX_ENTRIES = 50000                   # directory entries stat'ed (cheap, no open), at most
+BT_SCAN_MAX_FILES = 24                        # newest result files opened, at most (size checked BEFORE any JSON parse)
+BT_FILE_MAX_BYTES = 4 * 1024 * 1024           # a larger result file is skipped unread
+BT_EVIDENCE_MAX = SA.MAX_BACKTESTS
+
+
+def _recent_backtests(bt_dir):
+    """Newest non-lab backtest results as allow-listed numeric summaries (see SA.BT_FIELDS). Bounded: at most
+    BT_SCAN_MAX_ENTRIES directory entries, BT_SCAN_MAX_FILES files opened, each <= BT_FILE_MAX_BYTES read before parsing."""
+    def entries(it):
+        for n, de in enumerate(it):
+            if n >= BT_SCAN_MAX_ENTRIES:
+                return
+            try:
+                if de.name.endswith('.json') and de.is_file(follow_symlinks=False):
+                    st = de.stat(follow_symlinks=False)
+                    yield st.st_mtime, st.st_size, de.path
+            except OSError:
+                continue
+    try:
+        with os.scandir(bt_dir) as it:              # newest by mtime, whatever the listing order (NTFS lists by name)
+            newest = heapq.nlargest(BT_SCAN_MAX_FILES, entries(it))
+    except OSError:
+        return []
+    out = []
+    for _, size, path in newest:
+        if len(out) >= BT_EVIDENCE_MAX:
+            break
+        if size > BT_FILE_MAX_BYTES:
+            continue
+        try:
+            with open(path, 'rb') as f:
+                blob = f.read(BT_FILE_MAX_BYTES + 1)
+            if len(blob) > BT_FILE_MAX_BYTES:
+                continue                                  # grew after the stat: still never parsed
+            r = json.loads(blob.decode('utf-8'))
+            if not isinstance(r, dict) or r.get('lab') or not isinstance(r.get('stats'), dict):
+                continue
+            st, oo, fz = r['stats'], r.get('oos') or {}, r.get('feasibility') or {}
+            oo, fz = (oo if isinstance(oo, dict) else {}), (fz if isinstance(fz, dict) else {})
+            req = r.get('request') if isinstance(r.get('request'), dict) else {}
+            out.append(dict(name=r.get('name'), trades=st.get('trades'), days=req.get('days'), ret=st.get('ret'),
+                            pf=st.get('pf'), maxdd=st.get('maxdd'), win=st.get('win'), sharpe=st.get('sharpe'),
+                            worst_month=st.get('worst_month'), liquidations=st.get('liquidations'), busted=st.get('busted'),
+                            oos_ret_first=oo.get('ret_first'), oos_ret=oo.get('ret_last'), oos_dd=oo.get('dd_last'),
+                            executable_pct=fz.get('executable_pct'), rule_blocked=fz.get('rule_blocked'),
+                            rules_applied=fz.get('rules_applied'), realistic=bool(fz.get('execution_realistic')),
+                            promotable=bool(fz.get('promotable'))))
+        except (OSError, ValueError, TypeError, UnicodeDecodeError, RecursionError):
+            continue
+    return out
+
+
+def ml_aggregate(e):
+    """Counts-only aggregate of the engine's ML ledgers for shadow_analyst.build_aggregate (no raw rows, ids or prices)."""
+    p = e.ml_paths()
+    import ml_shadow as MLS
+    dec = list(MLS.JsonlLedger(p['decisions'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['decisions']) else []
+    lab = list(MLS.JsonlLedger(p['labels'], e.ML_MAX_BYTES, e.ML_MAX_FILES).rows()) if os.path.exists(p['labels']) else []
+    taken = {r.get('decision_id'): r for r in dec if r.get('taken')}
+    trades = [(taken[l['decision_id']], l) for l in lab if l.get('decision_id') in taken and isinstance(l.get('net_r'), (int, float))]
+
+    def perf(rs):
+        if not rs: return None
+        pos, neg = sum(x for x in rs if x > 0), -sum(x for x in rs if x < 0)
+        out = dict(n=len(rs), net_r=round(sum(rs), 3), win_rate=round(sum(1 for x in rs if x > 0) / len(rs), 3), avg_r=round(sum(rs) / len(rs), 3))
+        if neg > 0: out['pf'] = round(pos / neg, 3)
+        return out
+    performance = {'all': perf([l['net_r'] for _, l in trades])} if trades else {}
+    for strat in sorted({d.get('strategy') or '?' for d, _ in trades}):
+        performance[str(strat)] = perf([l['net_r'] for d, l in trades if (d.get('strategy') or '?') == strat])
+    counts = {}
+    for g in ('strategy', 'family', 'side'):
+        c = collections.Counter(str(d.get(g) or '?') for d in taken.values())
+        counts[g] = dict(c.most_common(30))
+    counts['regime'] = dict(collections.Counter(str((d.get('features') or {}).get('regime') or '?') for d in taken.values()).most_common(10))
+    skips = collections.Counter(str(r.get('reason') or '?').split(' - ')[0].split(':')[0][:40] for r in dec if not r.get('taken'))
+    exits = collections.Counter(str(l.get('exit_reason') or '?')[:40] for _, l in trades)
+    times = sorted(str(r.get('candle_time')) for r in dec if r.get('candle_time'))
+    miss = collections.Counter(k for r in dec for k in (r.get('missing') or []))
+    mfes = [float(l['mfe_r']) for _, l in trades if isinstance(l.get('mfe_r'), (int, float))]
+    maes = [float(l['mae_r']) for _, l in trades if isinstance(l.get('mae_r'), (int, float))]
+    givebacks = [float(l['mfe_r']) - float(l['net_r']) for _, l in trades
+                 if isinstance(l.get('mfe_r'), (int, float)) and isinstance(l.get('net_r'), (int, float))]
+    diagnostic = dict(
+        avg_mfe_r=round(sum(mfes) / len(mfes), 3) if mfes else 0,
+        avg_mae_r=round(sum(maes) / len(maes), 3) if maes else 0,
+        avg_giveback_r=round(sum(givebacks) / len(givebacks), 3) if givebacks else 0,
+        profitable_then_lost=sum(1 for _, l in trades if isinstance(l.get('mfe_r'), (int, float)) and
+                                 isinstance(l.get('net_r'), (int, float)) and l['mfe_r'] > 0.5 and l['net_r'] < 0),
+    )
+    # Compact evidence from the newest deterministic runs, as allow-listed NUMERIC fields (F5) - no candle rows, paths,
+    # configuration, credentials or identifiers. Bound to this engine instance's folder (production: DATA == e.dir).
+    bts = _recent_backtests(os.path.join(e.dir, 'backtests'))
+    bt_n = max([b['trades'] for b in bts if isinstance(b.get('trades'), int) and not isinstance(b['trades'], bool)] or [0])
+    raw = dict(n_trades=max(len(trades), bt_n), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
+               mfe_mae_coverage=dict(mfe=round(len(mfes) / len(trades), 3), mae=round(len(maes) / len(trades), 3)) if trades else {},
+               outcome_diagnostics=diagnostic, backtests=bts,
+               missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {},
+               notes=[f'exit {k}: {v}' for k, v in exits.most_common(12)])
+    if times: raw['window'] = dict(start=times[0], end=times[-1])
+    return raw
+
+
+_ANALYST_INIT = threading.Lock()
+
+
+def _analyst(app):
+    """One ShadowAnalyst per engine folder. Creation is locked: two threads must never each load (and later save) their
+    own copy of the persisted state, or usage counters could be lost."""
+    with _ANALYST_INIT:
+        a = getattr(app, '_analyst', None)
+        if a is None or getattr(a, '_zb_dir', None) != app.engine.dir:
+            a = SA.ShadowAnalyst(os.path.join(app.engine.dir, 'analyst'))
+            a._zb_dir = app.engine.dir
+            app._analyst = a
+        return a
+
+
+def _analyst_args(app):
+    e = app.engine
+    return dict(api_key=app.cfg.get('ANTHROPIC_API_KEY') or None, cfg=e.S, trading_mode='LIVE' if e.live else 'PAPER',
+                workspace_id=app.cfg.get('ANTHROPIC_WORKSPACE_ID') or None)
+
+
+def analyst_tick(app, now=None):
+    """Timer body: runs only on a due Cairo slot and only when CLAUDE_SHADOW_ANALYST is on (the analyst checks both)."""
+    try:
+        if not SA.is_enabled(app.engine.S): return None
+        now = now or datetime.now(timezone.utc)
+        if not SA.due_slots(now, _analyst(app).state.get('slots_run')): return None     # cheap pre-check, no file scan
+        raw = ml_aggregate(app.engine)                                                   # file scan: lock NOT held
+        with ANALYST_LOCK:
+            return _analyst(app).run_scheduled(raw, now_utc=now, **_analyst_args(app))
+    except Exception as ex:
+        log.warning(f'shadow analyst tick failed ({type(ex).__name__})'); return None
+
+
+def analyst_backtest_review():
+    """Review the newest finished backtests when the running app is confirmed PAPER and the analyst is enabled.
+    Runs on the analyst review thread (never on the research worker)."""
+    app = globals().get('APP')
+    if not app or not getattr(app, 'engine', None):
+        return None
+    e = app.engine
+    if e.live or not SA.is_enabled(e.S):
+        return None
+    raw = ml_aggregate(e)                                     # file scan: lock NOT held
+    with ANALYST_LOCK:
+        return _analyst(app).analyze_now(raw, now_utc=datetime.now(timezone.utc), **_analyst_args(app))
+
+
+# Bounded, non-trading dispatch for the post-backtest critique: ONE daemon thread and a queue of ONE pending request.
+# Requests made while one is pending coalesce (the aggregate is built when the review runs, so it already covers every
+# backtest finished meanwhile). A slow or failing analyst therefore never blocks the research worker, and a burst of
+# backtests costs at most one in-flight call plus one queued call.
+ANALYST_REVIEW_Q = queue.Queue(maxsize=1)
+_ANALYST_REVIEW_THREAD = None
+_ANALYST_REVIEW_START = threading.Lock()
+
+
+def _analyst_review_worker():
+    while True:
+        ANALYST_REVIEW_Q.get()
+        try:
+            analyst_backtest_review()
+        except Exception as ex:
+            log.warning(f'backtest analyst review failed ({type(ex).__name__})')
+        finally:
+            ANALYST_REVIEW_Q.task_done()
+
+
+def request_backtest_review():
+    """Non-blocking: queue a review (or coalesce into the pending one) and return at once. -> True when newly queued."""
+    global _ANALYST_REVIEW_THREAD
+    app = globals().get('APP')
+    if not app or not getattr(app, 'engine', None) or app.engine.live or not SA.is_enabled(app.engine.S):
+        return False
+    with _ANALYST_REVIEW_START:
+        if _ANALYST_REVIEW_THREAD is None or not _ANALYST_REVIEW_THREAD.is_alive():
+            _ANALYST_REVIEW_THREAD = threading.Thread(target=_analyst_review_worker, name='analyst-review', daemon=True)
+            _ANALYST_REVIEW_THREAD.start()
+    try:
+        ANALYST_REVIEW_Q.put_nowait(1)
+        return True
+    except queue.Full:
+        return False
+
+
+def analyst_view(app, now=None):
+    """GET /api/analyst: latest report + usage. Only set/unset flags for the key and workspace id - never their values."""
+    e, now = app.engine, now or datetime.now(timezone.utc)
+    a = _analyst(app)
+    return dict(enabled=SA.is_enabled(e.S), model=str(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL),
+                mode='LIVE' if e.live else 'PAPER', key_set=bool(app.cfg.get('ANTHROPIC_API_KEY')),
+                workspace_id_set=bool(app.cfg.get('ANTHROPIC_WORKSPACE_ID')), ml_shadow=bool(e.S.get('ML_SHADOW')),
+                ml_health=dict(e.health.get('ml_shadow') or {}), latest=a.latest(now), usage=a.usage(now), budget=a._budget(e.S, now),
+                schedule_cairo=[f'{h:02d}:15' for h, _ in SA.SLOTS],
+                model_price_known=SA.model_price(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL) is not None)
+
+
+def analyst_action(app, path, b, now=None):
+    e = app.engine
+    if path == '/api/analyst/analyze_now':
+        raw = ml_aggregate(e)                                 # file scan: lock NOT held
+        with ANALYST_LOCK:
+            return _analyst(app).analyze_now(raw, now_utc=now, **_analyst_args(app))
+    if path == '/api/analyst/auth_self_test':
+        if e.live: raise ValueError('the Claude shadow analyst is PAPER only')
+        args = _analyst_args(app)
+        if not args['api_key']: return dict(status=SA.AUTH_UNAVAILABLE, request_id=None)
+        if not SA.valid_workspace_id(args['workspace_id']): return dict(status=SA.AUTH_REJECTED, request_id=None)
+        with ANALYST_LOCK:
+            r = _analyst(app).auth_self_test(args['api_key'], args['workspace_id'], now_utc=now)
+        return dict(status=r.get('status'), request_id=r.get('request_id'))
+    if path == '/api/analyst/workspace':
+        v = b.get('ANTHROPIC_WORKSPACE_ID')
+        v = '' if v is None else v
+        if not isinstance(v, str) or not SA.valid_workspace_id(v.strip()):
+            raise ValueError('workspace id: letters, digits, dash and underscore only (max 128)')
+        v = v.strip()
+        write_cfg({'ANTHROPIC_WORKSPACE_ID': v})                       # DPAPI-protected like the other secrets
+        if v: app.cfg['ANTHROPIC_WORKSPACE_ID'] = v
+        else: app.cfg.pop('ANTHROPIC_WORKSPACE_ID', None)
+        return 'workspace id saved' if v else 'workspace id cleared'
+    raise ValueError('unknown analyst action')
+
+
 class App:
     def __init__(self):
         self.engine = None
@@ -608,6 +852,9 @@ class App:
         old = self.engine
         if old is not None: old.lock.acquire()          # let a running cycle finish and save before the new engine reads state
         try:
+            if old is not None:                          # #104: the old ML writer drains + stops before a new one opens the files
+                try: old.ml_close()
+                except Exception as e: log.warning(f'ml shadow writer not closed ({type(e).__name__})')
             cfg = load_cfg()
             if cfg.pop('_plain', False):
                 try: write_cfg({}); log.info('API keys are now stored encrypted (Windows DPAPI)')
@@ -705,6 +952,11 @@ class App:
 
     states = {}
 
+    def analyst_loop(self):
+        while True:
+            time.sleep(ANALYST_TICK_S)
+            analyst_tick(self)
+
     def loop(self):
         e0 = self.engine
         last_bar, last_manage, last_eq, last_guard = {}, 0, 0, 0
@@ -747,10 +999,19 @@ class App:
                             marks = e.data.marks()
                             if (e.state['lots'] or e.state.get('grids') or e.state.get('pending_entries') or e.state.get('resting_entries')
                                     or e.state.get('unconfirmed_entries')): e.manage(marks)   # AUD-03b: settle + protect them
-                            else: e.marks, e.marks_t = marks, now
+                            else:
+                                e.marks, e.marks_t = marks, now
+                                e._shadow_flush()                    # TRUE-BOOK-02: queued candidates take this mark (never raises)
+                            e.book_ledger_tick()                     # BOOK-LEDGER-01: observe-only snapshot (never raises)
                         except Exception as ex:                     # T05b final: Binance down -> the one exchange-down incident
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
                             else: e._manage_failed(f'mark prices: {ex}')
+                    for nm, fn in (('actual costs', e.apply_costs), ('funding', e.funding_tick),   # FEE-ASSET-01 (observe)
+                                   ('true books', lambda: e._tb_on() and e.true_books())):   # TRUE-BOOK-01: halts / peaks
+                        try:
+                            fn(); e.resolve(f'accounting|{nm}', f'{nm} tick running again')
+                        except Exception as ex:                      # retried next tick; shown in health, never silent
+                            e.err(f'{nm} tick failed ({type(ex).__name__}: {ex}) - retried next tick', key=f'accounting|{nm}')
                     if now - last_guard > 60:                               # daily halt / drawdown checked between candles too
                         last_guard = now
                         with e.lock:
@@ -787,7 +1048,7 @@ class App:
         for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
             pnl = sd * (m - l['avg']) * l['qty'] if m else None
-            lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
+            lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'book', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
                              tp=l.get('tp'), add_blocked=l.get('add_blocked'), **_stop_view(e, l),     # AUD-04: fresh confirmation
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
@@ -798,6 +1059,7 @@ class App:
         def ms_iso(t):
             try: return datetime.fromisoformat(t).timestamp()
             except Exception: return 0.0
+        import ai_filter as AF                                             # AIREL-01: review health for the panel
         h = e.health
         if hasattr(e, '_sweep_incidents'): e._sweep_incidents()        # T05b: one-off errors stop being "open" when idle
         now = time.time()
@@ -819,7 +1081,9 @@ class App:
                         [i for i in list((h.get('incidents') or {}).values()) if i.get('open')],   # snapshot: loop thread mutates
                         key=lambda i: (i.get('key') != 'exchange-down', -ms_iso(i.get('last'))))][:20],
                     audit=e.audit_summary() if hasattr(e, 'audit_summary') else None,
-                    market_collector=self.collector.status() if getattr(self, 'collector', None) else None)
+                    market_collector=self.collector.status() if getattr(self, 'collector', None) else None,
+                    shadow_funding=self.shadow_funding.status() if getattr(self, 'shadow_funding', None) else None,
+                    ai_review=AF.health() if e.S.get('AI_FILTER') else None)        # AIREL-01: degraded / counters
 
     def revs(self, e):
         hl = e.history[-1]['id'] if e.history else ''
@@ -853,11 +1117,13 @@ class App:
         settings['TELEGRAM_PIN_SET'] = bool(e.S.get('TELEGRAM_PIN'))
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
-                         ('ctrl', e.ctrl_status)):          # CTRL-01-LITE: current controls + the preview table (ctrl_effect)
+                         ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status), ('book_ledger', e.book_ledger_status),
+                         ('true_books', e.true_books_status)):
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
         return dict(version=VERSION, build=BUILD_ID, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
+                    ai_model=e.cfg.get('ANTHROPIC_MODEL') or ai_filter.DEFAULT_MODEL,
                     error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,
                     balance=e.last_balance, day_start=st.get('day_start_equity'), peak=st.get('peak_equity'), halted=st.get('halted'),
                     last_cycle=st.get('last_cycle'), next_cycle=getattr(e, 'next_cycle', None), settings=settings, lots=lots,
@@ -914,6 +1180,7 @@ class App:
         e = self.engine; marks = e.marks or {}
         out = []
         for m in e.missed[-300:][::-1]:
+            if m.get('kind') == 'deferred': continue     # ORDER-SYM-01: a candidate still waiting is not a missed trade
             mk = marks.get(m['symbol']); sd = 1 if m['side'] == 'LONG' else -1
             out.append(dict(m, now=mk, move_pct=round(sd * (mk - m['price']) / m['price'] * 100, 2) if mk else None))
         return out
@@ -1054,6 +1321,7 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/status': return self._json(APP.snapshot())
             if p == '/api/meta': return self._json(APP.meta())
             if p == '/api/preflight': return self._json(APP.preflight())
+            if p == '/api/true_books/compare': return self._json(APP.engine.true_books_compare())   # TRUE-BOOK comparison (read-only)
             if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
                 e = APP.engine
                 return self._json(e.audit_summary() if hasattr(e, 'audit_summary') else dict(error='no audit'))
@@ -1068,6 +1336,7 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/candles':
                 return self._json(APP.candles_view((q.get('symbol') or [''])[0], (q.get('tf') or ['4h'])[0], (q.get('n') or ['160'])[0]))
             if p == '/api/research': return self._json(APP.research)
+            if p == '/api/analyst': return self._json(analyst_view(APP))
             if p == '/api/backtests': return self._json(list_backtests())
             if p.startswith('/api/backtest/'):
                 bid = p.rsplit('/', 1)[1]
@@ -1128,6 +1397,9 @@ def clean_mgmt(m):
         if k in MG_NUM:
             if k in ('be_r', 'tp1_r', 'tp_r', 'max_bars', 'trail_atr') and v in (0, '0', 0.0): out[k] = 0; continue   # 0 = off
             out[k] = _num(v, *MG_NUM[k], k)
+        elif k == 'resting_tp':                                # resting exchange take-profit (default OFF): strict bool
+            if not isinstance(v, bool): raise ValueError('resting_tp must be true or false')
+            out[k] = v
         elif k == 'tps':
             if not isinstance(v, list) or len(v) > 8: raise ValueError('take-profit ladder: up to 8 levels')
             lv = []
@@ -1146,7 +1418,7 @@ def clean_mgmt(m):
 
 
 def clean_symbols(v):
-    if v in ('all', 'core8'): return v
+    if v in ('all', 'core8') or v in ENG.TRADFI_TIERS: return v       # TRADFI-01 tiers resolve to [] unless TRADFI is on
     if not isinstance(v, list) or len(v) > 80: raise ValueError('coin list must be all, core8 or a list of up to 80 coins')
     for x in v:
         if not isinstance(x, str) or not SYM.match(x): raise ValueError(f'bad coin symbol: {str(x)[:20]}')
@@ -1203,6 +1475,41 @@ def clean_governor(v):
     return dict(mode=mode, rules=out)
 
 
+# UI-SLEEVE-CAP-01 (Codex 6218761375): the slot cap follows the registry - the largest set the engine itself builds (every
+# rotation strategy + TradFi + SCALP slots) - instead of a fixed 12. Shared by /api/sleeves and the backtest slice.
+MAX_SLEEVES = max(12, len(ENG.breadth_sleeves(tradfi=True)))
+
+
+def rotation_share_groups(sleeves):
+    """{slot id: rotation group index} for the breadth rotation; slots in no rotation group (SCALP-4) share one extra group.
+    The grouping follows the STORED slot set (TradFi slots present = TradFi groups), not the engine's current tradfi_on():
+    TradFi slots are never removed when TradFi goes off (or in live), and their shares keep the TradFi group sizes."""
+    tradfi = any(x.get('id') in ENG.TRADFI_SLOTS for x in sleeves or [])
+    out = {}
+    for gi, g in enumerate(ENG.breadth_groups(tradfi=tradfi)):
+        for k in g: out[k if k in ENG.TRADFI_SLOTS else ENG.breadth_id(k)] = gi
+    return out
+
+
+def check_rotation_sleeves(e, sl):
+    """UI-SLEEVE-CAP-01: under the breadth rotation the panel may edit slots, never the slot set. The posted id->key set
+    must equal the current one (nothing added, removed or re-keyed) and each rotation group's enabled shares - SCALP as
+    its own group - must stay <= 100%. Raises before anything is saved."""
+    cur = {x.get('id'): x.get('key') for x in e.S.get('SLEEVES') or []}
+    new = {x['id']: x['key'] for x in sl}
+    if new != cur:
+        extra = sorted(set(new) - set(cur)); gone = sorted(set(cur) - set(new))
+        rekey = sorted(i for i in set(new) & set(cur) if new[i] != cur[i])
+        raise ValueError('the breadth rotation keeps its slot set - '
+                         + '; '.join(f'{w}: {", ".join(v)[:80]}' for w, v in
+                                     (('added', extra), ('removed', gone), ('strategy changed', rekey)) if v)
+                         + ' (apply another profile to change slots)')
+    grp, tot = rotation_share_groups(e.S.get('SLEEVES')), {}
+    for x in sl:
+        if x['enabled']: g = grp.get(x['id'], 'other'); tot[g] = tot.get(g, 0) + x['share']
+    if any(v > 1.0001 for v in tot.values()): raise ValueError('capital shares of a rotation group add up to more than 100%')
+
+
 def validate_sleeve(sl, i):
     if not isinstance(sl, dict) or sl.get('key') not in S.STRATEGIES: raise ValueError(f'unknown strategy {str(sl.get("key"))[:30]}')
     sid = str(sl.get('id') or f'S{i + 1}')[:12]
@@ -1250,7 +1557,23 @@ def settings_update(e, b):
             if not bool(v) and e.install_block():          # AUD-05 r5: resuming never bypasses the account confirmation
                 raise ValueError('cannot resume entries: ' + e.install_block())
             ns[k] = bool(v)
-        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK'): ns[k] = bool(v)
+        elif k in ('AI_FILTER', 'RUN_IN_BACKGROUND', 'TELEGRAM_ON', 'MAKER_FALLBACK', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS'):
+            if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
+            if k in ('PAPER_BOOKS', 'TRUE_BOOKS') and v and getattr(e, 'live', True) is not False:
+                raise ValueError('five-book tracking is PAPER only')
+            ns[k] = v
+        elif k == 'FEE_EDGE_MULT': ns[k] = _num(v, 1, 20, 'fee edge multiple')
+        elif k == 'PAPER_BOOK_CAP': ns[k] = _num(v, 100, 1e7, 'paper book capital')
+        elif k in ('ML_SHADOW', 'CLAUDE_SHADOW_ANALYST'):          # ML-SHADOW-01: observation / report only, independent of AI_FILTER
+            if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
+            if v and k == 'CLAUDE_SHADOW_ANALYST' and getattr(e, 'live', True) is not False:
+                raise ValueError('the Claude shadow analyst is PAPER only')
+            ns[k] = v
+        elif k == 'CLAUDE_SHADOW_MODEL':
+            if not isinstance(v, str) or not re.fullmatch(r'[A-Za-z0-9.\-_]{0,80}', v): raise ValueError('shadow analyst model: letters, digits, dot, dash only')
+            ns[k] = v or SA.DEFAULT_MODEL
+        elif k in ('CLAUDE_DAILY_BUDGET_USD', 'CLAUDE_MONTHLY_BUDGET_USD'):
+            ns[k] = _num(v, 0, 1000, k.lower())
         elif k == 'MARKET_COLLECTOR':
             if not isinstance(v, bool): raise ValueError('market data collector switch must be true or false')
             ns[k] = v
@@ -1302,6 +1625,7 @@ def settings_update(e, b):
 
 def handle(path, b):
     e = APP.engine
+    if path.startswith('/api/analyst/'): return analyst_action(APP, path, b)       # ML-SHADOW-01 (report only)
     if path == '/api/settings':
         with e.lock:
             ns, after = settings_update(e, b)      # AUD-05: EVERY key validated on a copy - any error: nothing applied or saved
@@ -1323,17 +1647,23 @@ def handle(path, b):
         if b.get('CONFIRM') != 'THIS_ACCOUNT': raise ValueError('type THIS_ACCOUNT to confirm the account of this data folder')
         return e.confirm_install()
     if path == '/api/sleeves':
-        if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > 12: raise ValueError('1-12 strategy slots')
+        if not isinstance(b.get('sleeves'), list) or len(b['sleeves']) > MAX_SLEEVES: raise ValueError(f'1-{MAX_SLEEVES} strategy slots')
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]
         if len({x['id'] for x in sl}) != len(sl): raise ValueError('each strategy slot needs a unique name')
-        gshare = sum(g.get('share', 0) for g in e.S.get('GRID_SLOTS', []) if g.get('enabled'))
-        if sum(x['share'] for x in sl if x['enabled']) + gshare > 1.0001: raise ValueError('capital shares of active strategies (and grids) add up to more than 100%')
         with e.lock:
-            e.S['SLEEVES'] = sl; e.S['PRESET'] = 'custom'; e.save_settings()
+            rot = e.S.get('PRESET') == ENG.ROTATION_PRESET
+            if rot: check_rotation_sleeves(e, sl)          # UI-SLEEVE-CAP-01: the rotation (PAPER) stays the rotation
+            else:
+                gshare = sum(g.get('share', 0) for g in e.S.get('GRID_SLOTS', []) if g.get('enabled'))
+                if sum(x['share'] for x in sl if x['enabled']) + gshare > 1.0001: raise ValueError('capital shares of active strategies (and grids) add up to more than 100%')
+            e.S['SLEEVES'] = sl; e.S['PRESET'] = ENG.ROTATION_PRESET if rot else 'custom'; e.save_settings()
         log.info('strategies updated from panel: ' + ', '.join(f"{x['id']}={x['key']}@{x['risk']:.1%}" + ('' if x['enabled'] else '(off)') for x in sl))
         APP.preview()
         return 'strategies saved'
     if path == '/api/preset':
+        if b.get('name') == ENG.ROTATION_PRESET:           # BREADTH-01 B2: PAPER-only rotation (apply_preset refuses live)
+            e.apply_preset(b['name']); APP.preview()
+            return f"preset {ENG.ROTATION_NAME} applied"
         if b.get('name') not in PRESETS: raise ValueError('unknown profile')
         e.apply_preset(b['name']); APP.preview()
         return f"preset {PRESETS[b['name']]['name']} applied"
@@ -1344,6 +1674,10 @@ def handle(path, b):
             if v:
                 if not cfg_value_ok(k, v): raise ValueError(f'{k.replace("_", " ").lower()}: unexpected characters - copy it again from Binance/Anthropic')
                 upd[k] = v
+        if 'ANTHROPIC_MODEL' in b:                         # AI_FILTER model id - not a secret; '' = built-in default
+            v = str(b.get('ANTHROPIC_MODEL') or '').strip()
+            if not cfg_value_ok('ANTHROPIC_MODEL', v): raise ValueError('model: letters, digits, dot, dash and underscore only (max 80)')
+            upd['ANTHROPIC_MODEL'] = v
         if b.get('MODE') in ('paper', 'live'):
             if b['MODE'] == 'live' and b.get('CONFIRM') != 'YES_REAL_MONEY': raise ValueError('type YES_REAL_MONEY to switch to live')
             upd['MODE'] = b['MODE']; upd['LIVE_CONFIRM'] = 'YES_REAL_MONEY' if b['MODE'] == 'live' else ''
@@ -1360,7 +1694,7 @@ def handle(path, b):
                    max_lev=_num(b.get('max_lev', 10), 1, 50, 'max leverage'), daily_halt=_num(b.get('daily_halt', 0.08), 0.01, 1, 'daily halt'),
                    universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
         if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
-        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:12])]
+        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:MAX_SLEEVES])]
         if b.get('run_options'): req['run_options'] = LAB._validate_run_options(b['run_options'])
         JOBS[jid] = dict(id=jid, status='queued')
         try: enqueue(run_backtest_job, jid, req)
@@ -1580,8 +1914,11 @@ def selftest(path):
         zoneinfo.ZoneInfo('Africa/Cairo')
         for f in ('panel.html', 'research', os.path.join('data', 'exchange_rules_testnet.json')):
             if not os.path.exists(os.path.join(BUNDLE, f)): raise RuntimeError(f'{f} missing from the bundle')
-        import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data    # noqa: F401  (every module the app loads lazily)
+        import lab, grid, telegram_ctl, ai_filter, instance, market_collector, market_data, strategy_shadow, shadow_funding   # noqa: F401  (every module the app loads lazily)
         if not PRESETS or not S.STRATEGIES: raise RuntimeError('presets/strategies missing')
+        import engine as _E, run_pack as _RP                   # COHORT-SHA-01: the cohort code identity must be computable
+        here = os.path.dirname(os.path.abspath(_E.__file__))
+        res['code_sha'] = _RP.code_sha([os.path.join(here, f) for f in _E.Engine.COHORT_CODE])
         res['ok'] = True
     except Exception as e:
         res['error'] = f'{type(e).__name__}: {e}'
@@ -1613,8 +1950,12 @@ def main():
     APP = App()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=APP.loop, daemon=True).start()
+    threading.Thread(target=APP.analyst_loop, daemon=True).start()     # ML-SHADOW-01: no-op unless CLAUDE_SHADOW_ANALYST (PAPER)
     APP.collector = MC.MarketCollector(lambda: APP.engine, os.path.join(DATA, 'market_data'))   # observe-only, own thread + folder
     APP.collector.start()
+    import shadow_funding as SF                      # TRUE-BOOK-02: keyless TESTNET funding timeline (observe only, own thread)
+    APP.shadow_funding = SF.ShadowFunding(lambda: APP.engine, DATA)
+    APP.shadow_funding.start()
     log.info(f'control panel at http://127.0.0.1:{PORT} (opens from the ZackBot shortcut)')
     APP.engine.notify(f'▶️ ZackBot {VERSION} started ({"LIVE" if APP.engine.live else "paper"}).')
     if '--no-window' in sys.argv:
