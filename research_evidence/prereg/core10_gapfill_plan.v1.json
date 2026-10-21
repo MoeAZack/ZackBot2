@@ -1,0 +1,1129 @@
+{
+ "digest": "fb9e5744b3d4f684f753fd8ac0bd2f121eb2709c7dca5735fb5a9951582215e3",
+ "fetches": 154,
+ "format": "zb-rex-gap-fill-plan/1",
+ "holes": 182,
+ "inventory_digest": "7d3bdc9ce4b99de20fb3ad346ca4aa97c0541f981fc2b09d5d6c7b7752d442bd",
+ "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+ "min_gap_s": 1.0,
+ "requests": [
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "NEARUSDT-4h-2022-02-26.csv",
+   "period": "2022-02-26",
+   "series": "klines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "NEARUSDT-4h-2022-02-27.csv",
+   "period": "2022-02-27",
+   "series": "klines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-28.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "NEARUSDT-4h-2022-02-28.csv",
+   "period": "2022-02-28",
+   "series": "klines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-28.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "NEARUSDT-4h-2022-04-01.csv",
+   "period": "2022-04-01",
+   "series": "klines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "NEARUSDT-4h-2022-04-02.csv",
+   "period": "2022-04-02",
+   "series": "klines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "SOLUSDT-4h-2022-02-26.csv",
+   "period": "2022-02-26",
+   "series": "klines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "SOLUSDT-4h-2022-02-27.csv",
+   "period": "2022-02-27",
+   "series": "klines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-28.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "SOLUSDT-4h-2022-02-28.csv",
+   "period": "2022-02-28",
+   "series": "klines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-28.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "SOLUSDT-4h-2022-04-01.csv",
+   "period": "2022-04-01",
+   "series": "klines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "SOLUSDT-4h-2022-04-02.csv",
+   "period": "2022-04-02",
+   "series": "klines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "XRPUSDT-4h-2022-02-26.csv",
+   "period": "2022-02-26",
+   "series": "klines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "XRPUSDT-4h-2022-02-27.csv",
+   "period": "2022-02-27",
+   "series": "klines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-28.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "XRPUSDT-4h-2022-02-28.csv",
+   "period": "2022-02-28",
+   "series": "klines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-28.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "XRPUSDT-4h-2022-04-01.csv",
+   "period": "2022-04-01",
+   "series": "klines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "XRPUSDT-4h-2022-04-02.csv",
+   "period": "2022-04-02",
+   "series": "klines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "ZECUSDT-4h-2022-02-26.csv",
+   "period": "2022-02-26",
+   "series": "klines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "ZECUSDT-4h-2022-02-27.csv",
+   "period": "2022-02-27",
+   "series": "klines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-28.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|klines|4h|1645833600000"
+   ],
+   "interval": "4h",
+   "member": "ZECUSDT-4h-2022-02-28.csv",
+   "period": "2022-02-28",
+   "series": "klines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-28.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "ZECUSDT-4h-2022-04-01.csv",
+   "period": "2022-04-01",
+   "series": "klines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|klines|4h|1648771200000"
+   ],
+   "interval": "4h",
+   "member": "ZECUSDT-4h-2022-04-02.csv",
+   "period": "2022-04-02",
+   "series": "klines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1625122800000",
+    "BTCUSDT|markPriceKlines|1h|1625151600000",
+    "BTCUSDT|markPriceKlines|1h|1625180400000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2021-07-01.csv",
+   "period": "2021-07-01",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1627110000000",
+    "BTCUSDT|markPriceKlines|1h|1627138800000",
+    "BTCUSDT|markPriceKlines|1h|1627167600000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2021-07-24.csv",
+   "period": "2021-07-24",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-25.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1627196400000",
+    "BTCUSDT|markPriceKlines|1h|1627225200000",
+    "BTCUSDT|markPriceKlines|1h|1627254000000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2021-07-25.csv",
+   "period": "2021-07-25",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-25.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1627282800000",
+    "BTCUSDT|markPriceKlines|1h|1627311600000",
+    "BTCUSDT|markPriceKlines|1h|1627340400000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2021-07-26.csv",
+   "period": "2021-07-26",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1627369200000",
+    "BTCUSDT|markPriceKlines|1h|1627398000000",
+    "BTCUSDT|markPriceKlines|1h|1627426800000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2021-07-27.csv",
+   "period": "2021-07-27",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-07-31.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1659250800000",
+    "BTCUSDT|markPriceKlines|1h|1659279600000",
+    "BTCUSDT|markPriceKlines|1h|1659308400000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2022-07-31.csv",
+   "period": "2022-07-31",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-07-31.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1664694000000",
+    "BTCUSDT|markPriceKlines|1h|1664722800000",
+    "BTCUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1677222000000",
+    "BTCUSDT|markPriceKlines|1h|1677250800000",
+    "BTCUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "BTCUSDT|markPriceKlines|1h|1782716400000",
+    "BTCUSDT|markPriceKlines|1h|1782745200000",
+    "BTCUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "BTCUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "BTCUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "DOGEUSDT|markPriceKlines|1h|1664694000000",
+    "DOGEUSDT|markPriceKlines|1h|1664722800000",
+    "DOGEUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "DOGEUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "DOGEUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "DOGEUSDT|markPriceKlines|1h|1677222000000",
+    "DOGEUSDT|markPriceKlines|1h|1677250800000",
+    "DOGEUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "DOGEUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "DOGEUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "DOGEUSDT|markPriceKlines|1h|1782716400000",
+    "DOGEUSDT|markPriceKlines|1h|1782745200000",
+    "DOGEUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "DOGEUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "DOGEUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ETHUSDT|markPriceKlines|1h|1664694000000",
+    "ETHUSDT|markPriceKlines|1h|1664722800000",
+    "ETHUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "ETHUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "ETHUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ETHUSDT|markPriceKlines|1h|1677222000000",
+    "ETHUSDT|markPriceKlines|1h|1677250800000",
+    "ETHUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "ETHUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "ETHUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ETHUSDT|markPriceKlines|1h|1782716400000",
+    "ETHUSDT|markPriceKlines|1h|1782745200000",
+    "ETHUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "ETHUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "ETHUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/HYPEUSDT/1h/HYPEUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "HYPEUSDT|markPriceKlines|1h|1782702000000",
+    "HYPEUSDT|markPriceKlines|1h|1782716400000",
+    "HYPEUSDT|markPriceKlines|1h|1782730800000",
+    "HYPEUSDT|markPriceKlines|1h|1782745200000",
+    "HYPEUSDT|markPriceKlines|1h|1782759600000",
+    "HYPEUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "HYPEUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "HYPEUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/HYPEUSDT/1h/HYPEUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1625122800000",
+    "NEARUSDT|markPriceKlines|1h|1625151600000",
+    "NEARUSDT|markPriceKlines|1h|1625180400000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2021-07-01.csv",
+   "period": "2021-07-01",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1627110000000",
+    "NEARUSDT|markPriceKlines|1h|1627138800000",
+    "NEARUSDT|markPriceKlines|1h|1627167600000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2021-07-24.csv",
+   "period": "2021-07-24",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-25.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1627196400000",
+    "NEARUSDT|markPriceKlines|1h|1627225200000",
+    "NEARUSDT|markPriceKlines|1h|1627254000000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2021-07-25.csv",
+   "period": "2021-07-25",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-25.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1627282800000",
+    "NEARUSDT|markPriceKlines|1h|1627311600000",
+    "NEARUSDT|markPriceKlines|1h|1627340400000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2021-07-26.csv",
+   "period": "2021-07-26",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1627369200000",
+    "NEARUSDT|markPriceKlines|1h|1627398000000",
+    "NEARUSDT|markPriceKlines|1h|1627426800000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2021-07-27.csv",
+   "period": "2021-07-27",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1664694000000",
+    "NEARUSDT|markPriceKlines|1h|1664722800000",
+    "NEARUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1677222000000",
+    "NEARUSDT|markPriceKlines|1h|1677250800000",
+    "NEARUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "NEARUSDT|markPriceKlines|1h|1782716400000",
+    "NEARUSDT|markPriceKlines|1h|1782745200000",
+    "NEARUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "NEARUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "NEARUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1625122800000",
+    "SOLUSDT|markPriceKlines|1h|1625151600000",
+    "SOLUSDT|markPriceKlines|1h|1625180400000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2021-07-01.csv",
+   "period": "2021-07-01",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1627110000000",
+    "SOLUSDT|markPriceKlines|1h|1627138800000",
+    "SOLUSDT|markPriceKlines|1h|1627167600000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2021-07-24.csv",
+   "period": "2021-07-24",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-25.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1627196400000",
+    "SOLUSDT|markPriceKlines|1h|1627225200000",
+    "SOLUSDT|markPriceKlines|1h|1627254000000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2021-07-25.csv",
+   "period": "2021-07-25",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-25.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1627282800000",
+    "SOLUSDT|markPriceKlines|1h|1627311600000",
+    "SOLUSDT|markPriceKlines|1h|1627340400000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2021-07-26.csv",
+   "period": "2021-07-26",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1627369200000",
+    "SOLUSDT|markPriceKlines|1h|1627398000000",
+    "SOLUSDT|markPriceKlines|1h|1627426800000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2021-07-27.csv",
+   "period": "2021-07-27",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1664694000000",
+    "SOLUSDT|markPriceKlines|1h|1664722800000",
+    "SOLUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1677222000000",
+    "SOLUSDT|markPriceKlines|1h|1677250800000",
+    "SOLUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SOLUSDT|markPriceKlines|1h|1782716400000",
+    "SOLUSDT|markPriceKlines|1h|1782745200000",
+    "SOLUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "SOLUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "SOLUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SUIUSDT/1h/SUIUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "SUIUSDT|markPriceKlines|1h|1782716400000",
+    "SUIUSDT|markPriceKlines|1h|1782745200000",
+    "SUIUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "SUIUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "SUIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SUIUSDT/1h/SUIUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1625122800000",
+    "UNIUSDT|markPriceKlines|1h|1625151600000",
+    "UNIUSDT|markPriceKlines|1h|1625180400000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2021-07-01.csv",
+   "period": "2021-07-01",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1627110000000",
+    "UNIUSDT|markPriceKlines|1h|1627138800000",
+    "UNIUSDT|markPriceKlines|1h|1627167600000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2021-07-24.csv",
+   "period": "2021-07-24",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-25.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1627196400000",
+    "UNIUSDT|markPriceKlines|1h|1627225200000",
+    "UNIUSDT|markPriceKlines|1h|1627254000000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2021-07-25.csv",
+   "period": "2021-07-25",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-25.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1627282800000",
+    "UNIUSDT|markPriceKlines|1h|1627311600000",
+    "UNIUSDT|markPriceKlines|1h|1627340400000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2021-07-26.csv",
+   "period": "2021-07-26",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1627369200000",
+    "UNIUSDT|markPriceKlines|1h|1627398000000",
+    "UNIUSDT|markPriceKlines|1h|1627426800000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2021-07-27.csv",
+   "period": "2021-07-27",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1664694000000",
+    "UNIUSDT|markPriceKlines|1h|1664722800000",
+    "UNIUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1677222000000",
+    "UNIUSDT|markPriceKlines|1h|1677250800000",
+    "UNIUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "UNIUSDT|markPriceKlines|1h|1782716400000",
+    "UNIUSDT|markPriceKlines|1h|1782745200000",
+    "UNIUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "UNIUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "UNIUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1625122800000",
+    "XRPUSDT|markPriceKlines|1h|1625151600000",
+    "XRPUSDT|markPriceKlines|1h|1625180400000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2021-07-01.csv",
+   "period": "2021-07-01",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1627110000000",
+    "XRPUSDT|markPriceKlines|1h|1627138800000",
+    "XRPUSDT|markPriceKlines|1h|1627167600000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2021-07-24.csv",
+   "period": "2021-07-24",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-25.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1627196400000",
+    "XRPUSDT|markPriceKlines|1h|1627225200000",
+    "XRPUSDT|markPriceKlines|1h|1627254000000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2021-07-25.csv",
+   "period": "2021-07-25",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-25.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1627282800000",
+    "XRPUSDT|markPriceKlines|1h|1627311600000",
+    "XRPUSDT|markPriceKlines|1h|1627340400000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2021-07-26.csv",
+   "period": "2021-07-26",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1627369200000",
+    "XRPUSDT|markPriceKlines|1h|1627398000000",
+    "XRPUSDT|markPriceKlines|1h|1627426800000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2021-07-27.csv",
+   "period": "2021-07-27",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1664694000000",
+    "XRPUSDT|markPriceKlines|1h|1664722800000",
+    "XRPUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1677222000000",
+    "XRPUSDT|markPriceKlines|1h|1677250800000",
+    "XRPUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "XRPUSDT|markPriceKlines|1h|1782716400000",
+    "XRPUSDT|markPriceKlines|1h|1782745200000",
+    "XRPUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "XRPUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "XRPUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2026-06-29.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-01.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1625122800000",
+    "ZECUSDT|markPriceKlines|1h|1625151600000",
+    "ZECUSDT|markPriceKlines|1h|1625180400000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2021-07-01.csv",
+   "period": "2021-07-01",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-01.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1627110000000",
+    "ZECUSDT|markPriceKlines|1h|1627138800000",
+    "ZECUSDT|markPriceKlines|1h|1627167600000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2021-07-24.csv",
+   "period": "2021-07-24",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-25.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1627196400000",
+    "ZECUSDT|markPriceKlines|1h|1627225200000",
+    "ZECUSDT|markPriceKlines|1h|1627254000000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2021-07-25.csv",
+   "period": "2021-07-25",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-25.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-26.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1627282800000",
+    "ZECUSDT|markPriceKlines|1h|1627311600000",
+    "ZECUSDT|markPriceKlines|1h|1627340400000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2021-07-26.csv",
+   "period": "2021-07-26",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-26.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-27.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1627369200000",
+    "ZECUSDT|markPriceKlines|1h|1627398000000",
+    "ZECUSDT|markPriceKlines|1h|1627426800000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2021-07-27.csv",
+   "period": "2021-07-27",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-27.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-10-02.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1664694000000",
+    "ZECUSDT|markPriceKlines|1h|1664722800000",
+    "ZECUSDT|markPriceKlines|1h|1664751600000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2022-10-02.csv",
+   "period": "2022-10-02",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-10-02.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2023-02-24.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1677222000000",
+    "ZECUSDT|markPriceKlines|1h|1677250800000",
+    "ZECUSDT|markPriceKlines|1h|1677279600000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2023-02-24.csv",
+   "period": "2023-02-24",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2023-02-24.zip"
+  },
+  {
+   "checksum_url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2026-06-29.zip.CHECKSUM",
+   "freq": "daily",
+   "holes": [
+    "ZECUSDT|markPriceKlines|1h|1782716400000",
+    "ZECUSDT|markPriceKlines|1h|1782745200000",
+    "ZECUSDT|markPriceKlines|1h|1782774000000"
+   ],
+   "interval": "1h",
+   "member": "ZECUSDT-1h-2026-06-29.csv",
+   "period": "2026-06-29",
+   "series": "markPriceKlines",
+   "symbol": "ZECUSDT",
+   "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2026-06-29.zip"
+  }
+ ]
+}
