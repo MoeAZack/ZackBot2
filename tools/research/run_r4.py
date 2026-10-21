@@ -49,6 +49,7 @@ beforehand).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -65,6 +66,7 @@ import manifest as M                                                            
 import missing_data as MD                                                                   # noqa: E402
 import progress as PG                                                                       # noqa: E402
 import report as R                                                                          # noqa: E402
+import runlock as RL                                                                        # noqa: E402
 import static_universe as SU                                                                # noqa: E402
 import splits as S                                                                          # noqa: E402
 import trend_ema_mom as T                                                                   # noqa: E402
@@ -850,6 +852,24 @@ def pit_incomplete(finals, folds: int | None = None) -> list[str]:
     return bad
 
 
+# RUNLOCK-01: a one-shot command's lock identity is its WHOLE parsed command minus these fields - out-dir, author,
+# Cairo date and --resume never make a different trial - so any identity-bearing argument added later enters the key
+# automatically. Path arguments are canonicalised (realpath + case) so spellings of one input collide.
+LOCK_EXCLUDED = frozenset({'cmd', 'out_dir', 'author', 'cairo_date', 'resume'})
+LOCK_PATHS = frozenset({'store', 'notice', 'addon', 'addon_report', 'addon_zips'})
+
+
+def run_lock_identity(a) -> tuple[str, dict]:
+    """RUNLOCK-01: the run-lock kind + canonical identity of a one-shot command (m3 / pit / rex)."""
+    ident = {k: RL.canon_path(v) if k in LOCK_PATHS else v for k, v in vars(a).items() if k not in LOCK_EXCLUDED}
+    if a.cmd == 'rex':                                  # one window, one spelling
+        lo, sep, hi = a.window.partition('/')
+        if not sep:
+            raise ValueError(f'rex --window must be START/END, got {a.window!r}')
+        ident['window'] = [S.parse_utc(lo), S.parse_utc(hi)]
+    return a.cmd, ident
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='RES-01 R4: gated M3 reproduction and PIT run of trend_ema_mom.v1')
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -890,6 +910,7 @@ def main(argv=None) -> int:
     x.add_argument('--addon-zips', default=None, help='the verified archive zips kept by binance_archive_fill --zips '
                                                       '(every add-on row is re-proved from them)')
     a = ap.parse_args(argv)
+    held = contextlib.ExitStack()                       # RUNLOCK-01: released on every exit path (finally below)
     try:
         if a.cmd == 'check':
             prof = PROFILES[a.candidate]
@@ -906,6 +927,7 @@ def main(argv=None) -> int:
                 print(f'program Holm family n = {n["program"]} {n["by_family"]} '
                       f'(own-family {len(recs)}: reporting only)')
             return 0
+        held.enter_context(RL.hold(M.REPO, *run_lock_identity(a), argv=sys.argv[1:] if argv is None else argv))
         if a.cmd == 'm3':
             rows = ('base', '2x') if a.cost == 'both' else (a.cost,)
             for path in run_m3(M.REPO, store=a.store, rows=rows, out_dir=a.out_dir, author=a.author,
@@ -946,13 +968,18 @@ def main(argv=None) -> int:
                   + ', '.join(bad), file=sys.stderr)
             return 4
         return 0
+    except RL.RunActive as e:                           # another live process holds this run: nothing was written
+        print(str(e), file=sys.stderr)
+        return 5
     except GateError as e:
         print(str(e), file=sys.stderr)
         return 3
     except (L.LedgerError, R.ReportError, M.ManifestError, C.CostError, S.SplitError, PG.ProgressError,
-            ValueError) as e:
+            RL.RunLockError, ValueError) as e:
         print(f'error: {e}', file=sys.stderr)
         return 2
+    finally:
+        held.close()
 
 
 if __name__ == '__main__':

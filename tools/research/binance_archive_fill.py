@@ -29,6 +29,7 @@ Usage (repo root):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import io
 import json
@@ -42,6 +43,9 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rex_gap_inventory as GI                                                              # noqa: E402
+import runlock as RL                                                                        # noqa: E402
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 BASE = 'https://data.binance.vision/data/futures/um'
 PLAN_FORMAT = 'zb-rex-gap-fill-plan/1'
@@ -367,6 +371,18 @@ def http_fetcher(url: str):                                  # the real network 
         return e.code, b'', e.geturl() or url
 
 
+# RUNLOCK-01: a fetch's lock identity is its whole parsed command minus where it writes (--out / --zips) and the report
+# PATH, which is replaced by the report's byte digest; any identity-bearing argument added later enters automatically.
+# It is NOT commit-bound (bind_commit=False): one report's shared zips/output are one resource on every commit.
+LOCK_EXCLUDED = frozenset({'out', 'zips', 'report'})
+
+
+def lock_identity(a, report_bytes: bytes) -> dict:
+    ident = {k: v for k, v in vars(a).items() if k not in LOCK_EXCLUDED}
+    ident['report_sha256'] = hashlib.sha256(report_bytes).hexdigest()
+    return ident
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--report', required=True)
@@ -380,11 +396,23 @@ def main(argv=None) -> int:
     if a.fetch and not a.zips:
         ap.error('--fetch needs --zips DIR (the verified zips the loader re-proves rows from)')
     with open(a.report, 'rb') as f:
-        rep = check_report(json.loads(f.read()))
-    doc = fill(rep, http_fetcher, keep_dir=a.zips) if a.fetch else plan_doc(rep)
-    with open(a.out, 'w', newline='\n') as f:
-        json.dump(doc, f, sort_keys=True, indent=1)
-        f.write('\n')
+        raw = f.read()
+    rep = check_report(json.loads(raw))
+    try:                                # RUNLOCK-01: active -> 5; any lock-infrastructure failure fails closed -> 2
+        with contextlib.ExitStack() as held:
+            if a.fetch:                 # one live fetch per report across every worktree, before any network
+                held.enter_context(RL.hold(REPO, 'archive_fill', lock_identity(a, raw), bind_commit=False,
+                                           argv=sys.argv[1:] if argv is None else argv))
+            doc = fill(rep, http_fetcher, keep_dir=a.zips) if a.fetch else plan_doc(rep)
+            with open(a.out, 'w', newline='\n') as f:
+                json.dump(doc, f, sort_keys=True, indent=1)
+                f.write('\n')
+    except RL.RunActive as e:
+        print(str(e), file=sys.stderr)
+        return 5
+    except RL.RunLockError as e:
+        print(f'error: {e}', file=sys.stderr)
+        return 2
     if a.fetch:
         print(f'{len(doc["rows"])} row(s) filled, {len(doc["genuine_gaps"])} genuine gap(s), stopped={doc["stopped"]}'
               f' -> {a.out}')
