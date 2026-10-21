@@ -52,10 +52,17 @@ def test_two_equal_orders_in_the_window_are_ambiguous_never_picked():
     assert (st, raw) == ('ambiguous', None)
 
 
-def test_an_order_reaching_outside_the_window_is_not_a_candidate():
+def test_an_order_straddling_the_window_fails_closed_never_skipped():
+    """Cowork H1: the fill's own order straddles hi while a same-side same-qty sibling lies wholly inside - skipping the
+    straddler would book the sibling's fee. A straddling candidate makes the match ambiguous."""
     lo, _hi = E.Engine._cost_recover_window(TP_REC)
-    st, _, _k = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', lo, ms('2026-10-20T19:24:35.300+00:00'))  # 2nd exec outside
-    assert st == 'no_match'
+    hi = ms('2026-10-20T19:24:35.300+00:00')                                     # the TP's 2nd execution is outside
+    st, _, _k = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', lo, hi)
+    assert st == 'ambiguous'
+    sib = AKE + [tr(5, 14, 48013, '0.7448', ms('2026-10-20T19:24:00+00:00'), True)]   # a resolved sibling inside
+    assert AC.match_fill(sib, 'AKEUSDT', True, 48013, 'USDT', lo, hi) == ('ambiguous', None, None)
+    other = [tr(1, 11, 30000, '0.4', lo - 5, True), tr(2, 11, 18000, '0.3', lo + 5, True)]   # a different qty straddles
+    assert AC.match_fill(other + [AKE[3]], 'AKEUSDT', True, 48013, 'USDT', lo, hi)[0] == 'no_match'
 
 
 @pytest.mark.parametrize('rows,want', [

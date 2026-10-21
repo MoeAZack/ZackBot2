@@ -77,7 +77,10 @@ def match_fill(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit=None):
         rows = list(rows.values())
         qs, tms = [_num(t.get('qty')) for t in rows], [_num(t.get('time')) for t in rows]
         if any(x is None or x <= 0 for x in qs) or any(x is None for x in tms): return 'unreadable', None, None
-        if abs(sum(qs) - q0) > 1e-9 * max(1.0, q0) or not all(lo_ms <= x <= hi_ms for x in tms): continue
+        if abs(sum(qs) - q0) > 1e-9 * max(1.0, q0): continue
+        inside = [lo_ms <= x <= hi_ms for x in tms]
+        if any(inside) and not all(inside): return 'ambiguous', None, None   # straddles the window: never skip it (H1)
+        if not all(inside): continue
         cands.append(rows)
     if not cands: return 'no_match', None, None
     if len(cands) > 1: return 'ambiguous', None, None
