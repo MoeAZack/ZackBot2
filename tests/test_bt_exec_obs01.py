@@ -1124,9 +1124,40 @@ def test_every_registered_v2_envelope_and_run_digest_is_golden():
     for d in digests:                                                   # every cited digest has its envelope
         env = R.load_envelope(os.path.join(ROOT, 'research_evidence', 'runs'), d)
         assert R.run_digest(env['run']) == d
-    diff = subprocess.run(['git', '-C', ROOT, 'diff', '--quiet', '0944547', '--', 'research_evidence'],
-                          stdin=subprocess.DEVNULL)
-    assert diff.returncode == 0                                         # no registered evidence byte changed
+    out = subprocess.run(['git', '-C', ROOT, 'diff', '--no-renames', '--name-status', '0944547', '--', 'research_evidence'],
+                         stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True).stdout
+    assert _append_only_violations(out) == []                           # no registered evidence byte changed
+
+
+# Codex 6307485958: research_evidence is append-only since 0944547. Every file that existed there stays byte-identical
+# (no M / D / T; --no-renames turns a rename into D + A); the only additions allowed are new preregistrations, which the
+# envelope scan above still covers like every other tracked evidence file.
+APPEND_ONLY_DIRS = ('research_evidence/prereg/',)
+
+
+def _append_only_violations(name_status: str) -> list:
+    bad = []
+    for line in name_status.splitlines():
+        if not line.strip():
+            continue
+        status, _, rel = line.partition('\t')
+        if status != 'A' or not rel.startswith(APPEND_ONLY_DIRS):
+            bad.append(line)
+    return bad
+
+
+@pytest.mark.parametrize('name_status, ok', [
+    ('', True),
+    ('A\tresearch_evidence/prereg/core10_gapfill_plan.v1.json\n', True),
+    ('M\tresearch_evidence/prereg/r4_gate.json\n', False),                 # an existing prereg changed
+    ('D\tresearch_evidence/notices/zb-delist-notice-core-10-20261014.json\n', False),
+    ('T\tresearch_evidence/prereg/r4_gate.json\n', False),
+    ('A\tresearch_evidence/runs/rex/CORE-10/detail.json\n', False),        # new evidence outside prereg
+    ('A\tresearch_evidence/prereg_extra/x.json\n', False),                 # prefix look-alike
+    ('A\tresearch_evidence/prereg/a.json\nM\tresearch_evidence/manifests/m.json.gz\n', False),
+])
+def test_research_evidence_is_append_only_for_new_preregs_only(name_status, ok):
+    assert (_append_only_violations(name_status) == []) is ok
 
 
 def test_test_fixture_v2_envelopes_keep_their_shape(tmp_path):
