@@ -2686,7 +2686,7 @@ class Engine:
         try:
             if rec and rec.get('cost_ref'):
                 vars(self).setdefault('_cost_q', collections.deque(maxlen=5000)).append(
-                    {k: copy.deepcopy(rec.get(k)) for k in ('cost_ref', 'symbol', 'commission_raw', 'commission_missing') if k in rec})
+                    {k: copy.deepcopy(rec.get(k)) for k in ('cost_ref', 'symbol', 'commission_raw', 'commission_missing', 'actual') if k in rec})
         except Exception: pass
 
     def _cost_target(self, ref):
@@ -2702,6 +2702,53 @@ class Engine:
         quote = _quote_asset(t.get('symbol'))
         booked = len(t.get('fills') or []) if kind == 'lot' else t.get('fills_booked')
         AC.finalize(t, quote, booked, now_ms=time.time() * 1000, wait_ms=self.COST_WAIT_S * 1000)
+        AC.finalize_px(t, 1 if t.get('side') == 'LONG' else -1, TA.ENTRY_KINDS, now_ms=time.time() * 1000,
+                       wait_ms=self.COST_WAIT_S * 1000)             # FILL-PNL-01: measured-price P&L correction
+
+    def _px_unmeasured(self, lot):
+        """FILL-PNL-01: a fill of this lot was booked at a price that is not exchange truth and has no record to bring one."""
+        if lot is None: return
+        try: AC.px_unmeasured(lot); self._cost_final('lot', lot)
+        except Exception as e: log.warning(f'unmeasured fill price not recorded ({e})')
+
+    PX_RECOVER_AGE_S = 120                # a fill record this old cannot still be in enrichment (ENRICH_CAP_S)
+
+    def _px_recover(self, now):
+        """FILL-PNL-01 restart path: a linked fill whose record never reached apply_costs (a restart dropped the in-memory
+        queue) takes its exchange price from its own fills.jsonl record, found by cost_ref - read once per ref per process,
+        local file only, never an exchange read. Returns (rows changed, lots changed)."""
+        tried = vars(self).setdefault('_px_tried', set())
+        want = {}
+        for kind, ts in (('lot', self.state.get('lots', {}).values()), ('row', self.history[-3000:])):
+            for t in ts:
+                p = t.get('fill_px_partial') or ()
+                if 'fill_px_pending' not in p and 'fill_px_lost' not in p: continue
+                done = set(t.get('px_actual') or ()) | set(t.get('px_missing') or ())
+                for _i, r in t.get('fill_refs') or ():
+                    if r in done or r in tried or (AC.ref_ms(r) or now * 1000) > (now - self.PX_RECOVER_AGE_S) * 1000: continue
+                    want[r] = (kind, t)
+        if not want: return False, False
+        tried.update(want)
+        rows = lots = False
+        for r, rec in self._cost_recover_scan(set(want)).items():
+            kind, t = want[r]
+            if AC.apply_px(t, rec):
+                self._px_log(t, rec); self._cost_final(kind, t)
+                if kind == 'row': self._row_changed(t); rows = True
+                else: lots = True
+        return rows, lots
+
+    @staticmethod
+    def _px_log(t, rec):
+        """FILL-PNL-01: say when a fill's exchange price differs from the price it was booked at (never raises)."""
+        try:
+            i = next(i for i, r in t.get('fill_refs') or () if r == rec.get('cost_ref'))
+            f, px = t['fills'][i], (t.get('px_actual') or {}).get(rec['cost_ref'])
+            if px is None:
+                log.warning(f"{t.get('symbol')} {f[1]} fill has no exchange price - its P&L stays INCOMPLETE (fill_px_missing)")
+            elif px != f[3]:
+                log.info(f"FILL-PNL {t.get('symbol')} {t.get('side')} {f[1]} {f[2]} booked @ {f[3]}, measured @ {px}")
+        except Exception: pass
 
     def _cost_sweep(self):
         """Re-finalize lots / rows whose cost record never came (restart / crash cut the enrichment, or the queue
@@ -2709,12 +2756,14 @@ class Engine:
         rows = lots = False
         for kind, ts in (('lot', self.state.get('lots', {}).values()), ('row', self.history[-3000:])):
             for t in ts:
-                if 'fill_records_pending' not in (t.get('fees_actual_partial') or ()): continue
-                before = t.get('fees_actual_partial'); self._cost_final(kind, t)
-                if t.get('fees_actual_partial') != before:
+                if ('fill_records_pending' not in (t.get('fees_actual_partial') or ())
+                        and 'fill_px_pending' not in (t.get('fill_px_partial') or ())): continue
+                before = (t.get('fees_actual_partial'), t.get('fill_px_partial')); self._cost_final(kind, t)
+                if (t.get('fees_actual_partial'), t.get('fill_px_partial')) != before:
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
                     if kind == 'row': self._row_changed(t)
-        return rows, lots
+        r2, l2 = self._px_recover(time.time())                    # FILL-PNL-01: records a restart dropped
+        return rows or r2, lots or l2
 
     def apply_costs(self, reconsider=True):
         """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
@@ -2730,7 +2779,9 @@ class Engine:
                         if now - t0 < self.COST_WAIT_S: wait.append((t0, rec))
                         else: self.state['cost_orphans'] = int(self.state.get('cost_orphans') or 0) + 1
                         continue
-                    AC.apply_fill(t, rec); self._cost_final(kind, t)
+                    AC.apply_fill(t, rec)
+                    if AC.apply_px(t, rec): self._px_log(t, rec)             # FILL-PNL-01: the measured price
+                    self._cost_final(kind, t)
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
                     if kind == 'row': revised[id(t)] = t
                 if now - getattr(self, '_cost_swept', 0) > 60:
@@ -3742,6 +3793,7 @@ class Engine:
             return 'unknown'
         if new > 0:
             self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
+            if not px: self._px_unmeasured(l)                            # FILL-PNL-01: booked at the TP limit
             l['tp_done'] = (l.get('tp_done') or 0.0) + new
             self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
         if l['qty'] <= 0:
@@ -3837,9 +3889,9 @@ class Engine:
                 lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
-            act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
-                       **({'outcome': 'unfilled'} if got == 0 else {}))
+            act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
+            ref = (self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
+                       **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
                 raise UnfilledOrder(f"{sym} {why}: Binance {o.get('status')} - nothing executed, the position is unchanged")
@@ -3850,9 +3902,9 @@ class Engine:
                 short = 0.0
             qty, px = got, act or px
         else:
-            short = 0.0
+            short, ref = 0.0, None
         try:
-            pnl = self._apply_close(lot, qty, px, why)
+            pnl = self._apply_close(lot, qty, px, why, ref=ref)
         except Exception as ex:
             self._after_fill_failed(lot, post, why, ex); raise
         if short > 0 and lot['qty'] > 0:
@@ -3860,12 +3912,13 @@ class Engine:
                                "the rest is closed on a later pass")
         return pnl
 
-    def _apply_close(self, lot, qty, px, why):
+    def _apply_close(self, lot, qty, px, why, ref=None):
         sym, r = lot['symbol'], self.rules[lot['symbol']]
         sd = 1 if lot['side'] == 'LONG' else -1
         pnl = sd * (px - lot['avg']) * qty
         lot['realized'] = lot.get('realized', 0.0) + pnl
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, qty, px])
+        AC.link_px(lot, ref)                                       # FILL-PNL-01: its exchange price arrives with ref
         lot['fees'] = lot.get('fees', 0.0) + qty * px * FEE_EST
         lot['qty'] = max(0.0, self._rd(lot['qty'] - qty, r['step']))
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=sym,
@@ -3891,6 +3944,7 @@ class Engine:
             if got < pd_['qty']: fin = None                              # a partial full-close finishes nothing
             if pd_['kind'] == 'close': self._apply_close(l, got, px, pd_['why'])
             else: self._apply_add(l, got, px, pd_['why'])
+            if not fr['px']: self._px_unmeasured(l)                     # FILL-PNL-01: booked at the planned price
             l.update(post)
             if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
                 sd = 1 if l['side'] == 'LONG' else -1
@@ -3921,6 +3975,7 @@ class Engine:
                 self._apply_close(l, pd_['qty'], pd_['px'], pd_['why'])
             else:
                 self._apply_add(l, pd_['qty'], pd_['px'], pd_['why'])
+            self._px_unmeasured(l)                                       # FILL-PNL-01: the position has no price
             post = dict(pd_.get('post') or {})
             fin = post.pop('finish', None)
             l.update(post)
@@ -4081,6 +4136,8 @@ class Engine:
             au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
             if au:
                 au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed'])
+                if lot.get('fill_refs'):                 # FILL-PNL-01: measured-price correction known at the close
+                    au.update(pnl_fill_adj=lot.get('pnl_fill_adj'), fill_px_partial=lot.get('fill_px_partial'))
                 self._audit_emit(au)
         except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
@@ -4442,7 +4499,7 @@ class Engine:
         r = self.rules[lot['symbol']]
         d = F.size_check(q, q, px, r)                    # BT02: the shared check (floor to the step, minQty, minNotional)
         if not d['ok']: return False
-        q = d['qty']
+        q, ref = d['qty'], None
         if not self.dry:
             if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
@@ -4473,23 +4530,24 @@ class Engine:
                            px, None, q, o.get('executedQty'), t0, reason=why, outcome='unfilled')
                 raise UnfilledOrder(f"{lot['symbol']} {why}: Binance {o.get('status')} - nothing executed, the lot is unchanged")
             q = got
-            act = float(o.get('avgPrice') or 0) or None
+            act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
                                     px, act, q, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
                                     fallback_order=(why == 'entry_fallback') or None))
-            px = act or px
+            px, ref = act or px, (self._last_order.get('rec') or {}).get('cost_ref')
         try:
-            self._apply_add(lot, q, px, why)
+            self._apply_add(lot, q, px, why, ref=ref)
         except Exception as ex:
             self._after_fill_failed(lot, post, why, ex); raise
         return True
 
-    def _apply_add(self, lot, q, px, why, fee=None):
+    def _apply_add(self, lot, q, px, why, fee=None, ref=None):
         r = self.rules[lot['symbol']]
         lot['avg'] = (lot['avg'] * lot['qty'] + px * q) / (lot['qty'] + q)
         lot['qty'] = self._rd(lot['qty'] + q, r['step'])
         lot['qty_max'] = max(lot.get('qty_max', 0), lot['qty'])
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, q, px])
+        AC.link_px(lot, ref)                                       # FILL-PNL-01
         lot['fees'] = lot.get('fees', 0.0) + q * px * (FEE_EST if fee is None else fee)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=lot['symbol'],
                        side=lot['side'], qty=q, price=px, stop=lot['stop'], equity=round(self.last_eq or 0, 2))
@@ -5273,10 +5331,11 @@ class Engine:
                 l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], px])
                 l['fees'] = l.get('fees', 0.0) + l['qty'] * px * FEE_EST
                 if how == 'ok':                                         # cost record + userTrades commission (FEE-ASSET-01)
-                    self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'], _fnum(o.get('executedQty')) or l['qty'],
-                               order=o, cost_lot=l)
+                    AC.link_px(l, (self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'],
+                                              _fnum(o.get('executedQty')) or l['qty'], order=o, cost_lot=l) or {}).get('cost_ref'))
                 else:                                                   # no exchange record: the row stays INCOMPLETE
                     l['exit_px_unconfirmed'] = int(l.get('exit_px_unconfirmed') or 0) + 1
+                    self._px_unmeasured(l)                                  # FILL-PNL-01
                 l.pop('stop_gone', None)
                 expected -= l['qty']; self._finish(k, 'stop')
                 self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {px}")
@@ -5303,7 +5362,9 @@ class Engine:
                     l = st['lots'][k]
                     newq = newqs[k]
                     gone_q = l['qty'] - newq
-                    if gone_q > 0: self._apply_close(l, gone_q, mk or l['stop'], 'resync')    # book what left at the market price
+                    if gone_q > 0:
+                        self._apply_close(l, gone_q, mk or l['stop'], 'resync')    # book what left at the market price
+                        self._px_unmeasured(l)                                   # FILL-PNL-01: not an exchange price
                     if l['qty'] <= 0: self._finish(k, 'resync')
                     else: self._replace_stop(l)
                 self.err(f'{sym} {side}: exchange holds less than expected ({have} vs {expected:.6g}) - lots resized to match')
@@ -6691,6 +6752,7 @@ class Engine:
                     px = fr['px'] or plan['px']
                     log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
                     self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
+                    if not fr['px']: self._px_unmeasured(self.state['lots'].get(self._last_lot_key))   # FILL-PNL-01
                 else:
                     log.info(f"ENTRY {sym} {side} unconfirmed -> its order record shows nothing executed")
                     if u.get('prov'): self._cancel_or_park(sym, u['prov'])
@@ -6712,6 +6774,7 @@ class Engine:
                     self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
                              f"the position ({extra} @ mark {px})")
                     self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
+                    self._px_unmeasured(self.state['lots'].get(self._last_lot_key))   # FILL-PNL-01: adopted at the mark
                     self.save_state()
             elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
                 ue.pop(uk, None)
@@ -6735,6 +6798,7 @@ class Engine:
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
         if cost_ref:
             lot['cost_refs'] = [cost_ref]                              # FEE-ASSET-01: the entry fill's cost record
+            lot['fill_refs'] = [[0, cost_ref]]                         # FILL-PNL-01: ... and its exchange price
             self._cost_final('lot', lot)                               # explicit latency, never a false INCOMPLETE hole
         if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)

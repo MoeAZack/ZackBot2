@@ -52,9 +52,11 @@ def fake_lot(e, book, sym='ETHUSDT', side='LONG', avg=100.0, qty=1.0, stop=98.0,
 
 
 def settle(e):
-    """The enrichment worker delivered every fill's commission (the fake exchange never sends one)."""
+    """The enrichment worker delivered every fill's commission (the fake exchange never sends one) - and, with the same
+    record, its exchange price (FILL-PNL-01: here equal to the booked one)."""
     for l in e.state['lots'].values():
         l['fees_actual'] = l.get('fees', 0.0); l.pop('fees_actual_partial', None)
+        if l.get('fill_px_partial'): l['fill_px_partial'] = False
 
 
 def size_of(e, sl, side='LONG', sym='BTCUSDT'):

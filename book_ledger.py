@@ -43,7 +43,7 @@ def _f(x):
 def _blank(k, name, nav_start):
     return dict(id=k, name=name, nav_start=nav_start, closed=0, open=0, realized_net=0.0, realized_gross=0.0, fees_est=0.0,
                 open_booked_net=0.0, unrealized=0.0, marks_missing=0, fees_actual=0.0, fees_actual_missing=0,
-                funding_actual=0.0, funding_missing=0, symbols=[])
+                funding_actual=0.0, funding_missing=0, fill_px_unresolved=0, symbols=[])
 
 
 def compute(cohort, history=(), lots=(), marks=None, nav_start=2000.0, prev=None, floor=0.0, t=None):
@@ -66,8 +66,10 @@ def compute(cohort, history=(), lots=(), marks=None, nav_start=2000.0, prev=None
         b = target(row, 'closed')
         if b is None: continue
         b['closed'] += 1
-        b['realized_net'] += _f(row.get('pnl')) or 0.0
-        b['realized_gross'] += _f(row.get('pnl_gross')) or 0.0
+        adj = _f(row.get('pnl_fill_adj')) or 0.0                 # FILL-PNL-01: measured fill prices
+        if row.get('fill_px_partial'): b['fill_px_unresolved'] += 1
+        b['realized_net'] += (_f(row.get('pnl')) or 0.0) + adj
+        b['realized_gross'] += (_f(row.get('pnl_gross')) or 0.0) + adj
         b['fees_est'] += _f(row.get('fees')) or 0.0
         fa, fu = _f(row.get('fees_actual')), _f(row.get('funding_actual'))
         if fa is None: b['fees_actual_missing'] += 1
@@ -80,12 +82,13 @@ def compute(cohort, history=(), lots=(), marks=None, nav_start=2000.0, prev=None
         b['open'] += 1
         sym = lot.get('symbol')
         if sym not in b['symbols']: b['symbols'].append(sym)
-        booked, fees = _f(lot.get('realized')) or 0.0, _f(lot.get('fees')) or 0.0
+        booked, fees = (_f(lot.get('realized')) or 0.0) + (_f(lot.get('pnl_fill_adj')) or 0.0), _f(lot.get('fees')) or 0.0
+        if lot.get('fill_px_partial'): b['fill_px_unresolved'] += 1
         b['open_booked_net'] += booked - fees
         b['fees_est'] += fees
         mk, avg, qty = _f(marks.get(sym)), _f(lot.get('avg')), _f(lot.get('qty')) or 0.0
         if mk is None or avg is None: b['marks_missing'] += 1
-        else: b['unrealized'] += (1 if lot.get('side') == 'LONG' else -1) * (mk - avg) * qty
+        else: b['unrealized'] += (1 if lot.get('side') == 'LONG' else -1) * (mk - avg - (_f(lot.get('avg_fill_adj')) or 0.0)) * qty
     pb = (prev or {}).get('books') or {}
     if (prev or {}).get('cohort_id') != cohort['id']: pb = {}     # peaks / freezes never leak across cohorts
     for k, b in books.items():
