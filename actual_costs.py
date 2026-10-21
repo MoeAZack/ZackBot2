@@ -11,7 +11,7 @@ from datetime import datetime
 
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
-               'funding_keys', 'exit_px_unconfirmed')
+               'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered')
 
 
 def _num(v):
@@ -51,6 +51,58 @@ def apply_fill(target, rec):
     target['cost_fills_applied'] = int(target.get('cost_fills_applied') or 0) + 1
     if rec.get('cost_ref'): target.setdefault('cost_refs_done', []).append(rec['cost_ref'])
     return target
+
+
+def match_fill(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit=None):
+    """FEE-RECOVER-01 (pure): the commission of ONE booked fill whose own reads timed out, proven from a time-window
+    userTrades read. trades: the account's executions of `symbol` over a span padded around [lo_ms, hi_ms] (so an order
+    reaching outside the window is seen whole). A candidate is one exchange order on the booked side whose executions
+    (deduplicated by trade id, split executions summed) total exactly the booked quantity and all lie inside the window.
+    Returns ('ok', commission_raw) only for exactly one candidate whose every amount is readable and charged in `quote`;
+    otherwise (status, None) - never a guess: unreadable / too_many_rows / bad_evidence / no_match / ambiguous /
+    amount_unreadable / non_quote_asset."""
+    q0 = _num(qty)
+    if not q0 or q0 <= 0 or buy not in (True, False) or not quote or not symbol: return 'bad_evidence', None
+    if not isinstance(trades, list): return 'unreadable', None
+    if limit and len(trades) >= limit: return 'too_many_rows', None          # the span may hold more than was returned
+    groups = {}
+    for t in trades:
+        if not isinstance(t, dict): return 'unreadable', None
+        if t.get('symbol', symbol) != symbol or t.get('buyer') is not buy: continue
+        if t.get('orderId') is None or t.get('id') is None: return 'unreadable', None
+        groups.setdefault(str(t['orderId']), {})[str(t['id'])] = t
+    cands = []
+    for rows in groups.values():
+        rows = list(rows.values())
+        qs, tms = [_num(t.get('qty')) for t in rows], [_num(t.get('time')) for t in rows]
+        if any(x is None or x <= 0 for x in qs) or any(x is None for x in tms): return 'unreadable', None
+        if abs(sum(qs) - q0) > 1e-9 * max(1.0, q0) or not all(lo_ms <= x <= hi_ms for x in tms): continue
+        cands.append(rows)
+    if not cands: return 'no_match', None
+    if len(cands) > 1: return 'ambiguous', None
+    raw, complete = raw_from_trades((t.get('commission'), t.get('commissionAsset'), t.get('maker')) for t in cands[0])
+    if not complete or not raw: return 'amount_unreadable', None
+    if any(x['asset'] != quote for x in raw): return 'non_quote_asset', None
+    return 'ok', raw
+
+
+def recover_fill(target, ref, raw):
+    """FEE-RECOVER-01: fold a recovered commission into the lot / row that applied `ref` as missing (in place). True when
+    applied; False (nothing changed) when ref is not this target's, was never applied, is already recovered, or no
+    missing fill remains. `fees` (the estimate) and every trade fact stay as they are."""
+    if ref in (target.get('cost_refs_recovered') or ()): return False
+    if ref not in (target.get('cost_refs') or ()) or ref not in (target.get('cost_refs_done') or ()): return False
+    if int(target.get('cost_fills_missing') or 0) < 1: return False
+    by = target.setdefault('fees_actual_by_asset', {})
+    for x in raw:
+        a = _num(x.get('amount'))
+        if a is None or not isinstance(x.get('asset'), str): continue
+        by[x['asset']] = round(by.get(x['asset'], 0.0) + a, 10) + 0.0
+        if x.get('maker') is True: target['maker_fills'] = int(target.get('maker_fills') or 0) + int(x.get('n') or 1)
+        elif x.get('maker') is False: target['taker_fills'] = int(target.get('taker_fills') or 0) + int(x.get('n') or 1)
+    target['cost_fills_missing'] = int(target['cost_fills_missing']) - 1
+    target.setdefault('cost_refs_recovered', []).append(ref)
+    return True
 
 
 def ref_ms(ref):

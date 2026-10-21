@@ -1007,6 +1007,7 @@ class App:
                             if e._exchange_down(ex): e._manage_failed(f'mark prices: {EXCHANGE_DOWN}', key='exchange-down')
                             else: e._manage_failed(f'mark prices: {ex}')
                     for nm, fn in (('actual costs', e.apply_costs), ('funding', e.funding_tick),   # FEE-ASSET-01 (observe)
+                                   ('cost recovery', e.cost_recover_tick),   # FEE-RECOVER-01: timed-out commissions
                                    ('true books', lambda: e._tb_on() and e.true_books())):   # TRUE-BOOK-01: halts / peaks
                         try:
                             fn(); e.resolve(f'accounting|{nm}', f'{nm} tick running again')

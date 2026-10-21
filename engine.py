@@ -2745,6 +2745,131 @@ class Engine:
         if reconsider: self._reconsider()             # ORDER-SYM-01: a measured book lets its deferred candidates retry
         return n
 
+    # ------------------------------------------------------------ FEE-RECOVER-01: commissions whose reads timed out (#172)
+    # A fill whose enrichment ended commission_missing (timeout / outage) left its lot / row fees_actual_partial for good,
+    # and TRUE-BOOK admission refused its whole book. PAPER/testnet only: the missing fill's own evidence (symbol, side,
+    # quantity, time, from its fills.jsonl record found by cost_ref) is matched against ONE bounded userTrades time-window
+    # read per tick, outside the lock (as funding_tick). Only a unique, complete, quote-asset match is applied - as a
+    # revision (cost_rev + cohort evidence), idempotent per cost_ref (cost_refs_recovered). Anything else fails closed and the
+    # row stays INCOMPLETE. Progress lives in state['cost_recover'] (a restart neither repeats nor double-counts).
+    COST_RECOVER_POLL_S, COST_RECOVER_PRE_S, COST_RECOVER_POST_S, COST_RECOVER_PAD_S = 120, 120, 10, 600
+    COST_RECOVER_TRIES, COST_RECOVER_LIMIT, COST_RECOVER_KEEP = 8, 1000, 500
+    COST_RECOVER_RETRY = ('read_failed', 'no_match', 'no_evidence')      # may clear later; every other status is final
+
+    def _cost_recover_scan(self, want):
+        """{cost_ref: fill record} for the wanted refs, from fills.jsonl.1 then fills.jsonl (raw lines; never raises)."""
+        out = {}
+        for p in (self.F['fills'] + '.1', self.F['fills']):
+            try:
+                with open(p, encoding='utf-8') as f:
+                    for ln in f:
+                        if '"cost_ref"' not in ln: continue
+                        try: r = json.loads(ln)
+                        except ValueError: continue
+                        if isinstance(r, dict) and r.get('cost_ref') in want: out[r['cost_ref']] = r
+            except OSError: continue
+        return out
+
+    def _cost_recover_discover(self):
+        """Under the lock: add every applied-as-missing fill of a lot / row (fill_commission_missing) to state['cost_recover']
+        with its window, from its own fill record. True when the state changed."""
+        st = self.state.setdefault('cost_recover', {})
+        want, ids = set(), {h.get('id') for h in self.history[-3000:]}
+        rows = self.history[-3000:] + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]
+        for t in list(self.state.get('lots', {}).values()) + rows:
+            if 'fill_commission_missing' not in (t.get('fees_actual_partial') or ()): continue
+            done, rec = set(t.get('cost_refs_done') or ()), set(t.get('cost_refs_recovered') or ())
+            for r in t.get('cost_refs') or ():
+                e = st.get(r)
+                if r in done and r not in rec and (e is None or (e.get('status') == 'no_evidence' and
+                                                                  int(e.get('tries') or 0) < self.COST_RECOVER_TRIES)):
+                    want.add(r)
+        if not want: return False
+        recs = self._cost_recover_scan(want)
+        for r in want:
+            rec = recs.get(r)
+            if rec is None:                                  # not on disk (yet): a few scans, then final
+                e = st.setdefault(r, dict(status='no_evidence', tries=0))
+                e['tries'] = int(e.get('tries') or 0) + 1
+                if e['tries'] >= self.COST_RECOVER_TRIES: e.update(status='failed', why='no_evidence')
+                continue
+            if not rec.get('commission_missing'):
+                st[r] = dict(status='not_missing'); continue
+            if rec.get('commission_raw'):                    # part of it was folded already: a total would double-count
+                st[r] = dict(status='failed', why='partial_raw_recorded'); continue
+            try:
+                t_ms = int(datetime.fromisoformat(rec['time']).timestamp() * 1000)
+                wait = max(0.0, float(rec.get('wait_s') or 0))
+                qty = float(rec['qty_fill'])
+            except (KeyError, TypeError, ValueError):
+                st[r] = dict(status='failed', why='bad_evidence'); continue
+            st[r] = dict(status='pending', symbol=rec.get('symbol'), buy=rec.get('buy'), qty=qty, tries=0, next_s=0,
+                         lo_ms=int(t_ms - (wait + self.COST_RECOVER_PRE_S) * 1000),
+                         hi_ms=int(t_ms + (self.COST_RECOVER_POST_S + 1) * 1000), missing=rec.get('commission_missing'))
+        while len(st) > self.COST_RECOVER_KEEP:              # oldest settled entries go first; pending ones stay
+            old = next((k for k, v in st.items() if v.get('status') not in ('pending', 'no_evidence')), None)
+            if old is None: break
+            del st[old]
+        return True
+
+    def cost_recover_tick(self, force=False):
+        """FEE-RECOVER-01: one missing commission per tick (PAPER/testnet only). Never raises into the loop's caller beyond
+        what funding_tick does; never sizes, orders or touches a position."""
+        if getattr(self, 'live', True) is not False: return 'live'
+        if getattr(self.trade, 'base', TESTNET) != TESTNET: return 'not_testnet'
+        rd = getattr(self.trade, 'user_trades_window', None)
+        if not rd: return 'no_reader'
+        now = time.time()
+        if not force and now - float(self.state.get('cost_recover_polled') or 0) < self.COST_RECOVER_POLL_S: return 'not_due'
+        with self.lock:
+            self.state['cost_recover_polled'] = now
+            changed = self._cost_recover_discover()
+            job = next(((r, dict(e)) for r, e in (self.state.get('cost_recover') or {}).items()
+                        if e.get('status') == 'pending' and float(e.get('next_s') or 0) <= now), None)
+            if job is None:
+                if changed: self.save_state()
+                return 'idle'
+        ref, e = job
+        pad = self.COST_RECOVER_PAD_S * 1000
+        try:
+            got = rd(e['symbol'], e['lo_ms'] - pad, e['hi_ms'] + pad, self.COST_RECOVER_LIMIT)
+            status, raw = AC.match_fill(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']), e['lo_ms'],
+                                        e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
+        except Exception as ex:                              # outage / cooldown / 429: retried with backoff, never guessed
+            status, raw = 'read_failed', None
+            log.debug(f'commission recovery read failed ({type(ex).__name__})')
+        with self.lock:
+            cur = (self.state.get('cost_recover') or {}).get(ref)
+            if cur is None or cur.get('status') != 'pending': return 'stale'
+            cur['tries'] = int(cur.get('tries') or 0) + 1
+            kind, t = self._cost_target(ref)
+            if status == 'ok' and t is not None and ref in (t.get('cost_refs_recovered') or ()):
+                cur.update(status='recovered', why='already_applied')          # a crash after the row was saved
+            elif status == 'ok':
+                if t is None or not AC.recover_fill(t, ref, raw):
+                    cur.update(status='failed', why='target_gone' if t is None else 'not_applicable')
+                else:
+                    self._cost_final(kind, t)
+                    ok = True
+                    if kind == 'row': ok = self._row_changed(t) and self._save_aux('history', self.history)
+                    cur.update(status='recovered', amount={x['asset']: x['amount'] for x in raw},
+                               fees_actual=t.get('fees_actual'), durable=bool(ok))
+                    try:
+                        with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
+                            f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
+                                                    id=t.get('id') if kind == 'row' else t.get('symbol'),
+                                                    symbol=e['symbol'], raw=raw, fees_actual=t.get('fees_actual'),
+                                                    cost_rev=t.get('cost_rev'), time_ms=int(now * 1000)),
+                                               separators=(',', ':')) + '\n')
+                    except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
+                    if not ok: log.warning('recovered commission applied in memory; durable save retried by later saves')
+            elif status in self.COST_RECOVER_RETRY and cur['tries'] < self.COST_RECOVER_TRIES:
+                cur.update(why=status, next_s=now + min(3600, 300 * 2 ** (cur['tries'] - 1)))
+            else:
+                cur.update(status='failed', why=status)
+            self.save_state()
+        return status
+
     # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
     # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
     # cohort (true_books.compute); sizing, the 4-lot cap, leverage and stop-risk use that book's NAV. HALT is sticky for the
