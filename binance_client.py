@@ -395,6 +395,12 @@ class Futures:
         commissionAsset rows). One attempt; the caller bounds its own retries. Never drives the T05b circuit."""
         return self._audit_req('/fapi/v1/userTrades', dict(symbol=symbol, orderId=order_id))
 
+    def user_trades_window(self, symbol, start_ms, end_ms, limit=1000):
+        """FEE-RECOVER-01 (read-only audit path): this account's executions of one symbol inside [start_ms, end_ms]
+        (Binance caps the span at 7 days). One attempt; never drives the T05b circuit."""
+        return self._audit_req('/fapi/v1/userTrades', dict(symbol=symbol, startTime=int(start_ms), endTime=int(end_ms),
+                                                           limit=int(limit)))
+
     def income(self, income_type='FUNDING_FEE', start_ms=None, limit=1000):
         """FEE-ASSET-01 (read-only audit path): this account's income rows of one type since start_ms (oldest first).
         One attempt; never drives the T05b circuit."""
