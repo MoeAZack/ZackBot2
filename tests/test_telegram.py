@@ -1,6 +1,6 @@
 """Telegram two-way control: auth, every command, confirm flows, PIN, persistence, rate limit, backoff, token hygiene.
 No network: a fake Bot API serves scripted getUpdates and records every call."""
-import io, json, logging, os, sys, time, threading
+import hashlib, io, json, logging, os, sys, time, threading
 import pytest, requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -315,10 +315,29 @@ def test_thread_start_stop_restart():
 
 
 # ------------------------------------------------------------------ settings helpers
+def _assert_pin_hash(h, pin):
+    """Deterministic storage check: the stored value is the pbkdf2 schema, no field is the raw PIN, the digest
+    recomputes from its own salt, and check_pin accepts the PIN and rejects a neighbour. (A substring test on the
+    random hex is invalid: '2468' can legitimately occur inside a salt or digest.)"""
+    assert T._is_hash(h) and h != pin
+    algo, iters, salt, digest = h.split('$')
+    assert algo == 'pbkdf2_sha256' and pin not in (iters, salt, digest)
+    assert digest == hashlib.pbkdf2_hmac('sha256', pin.encode(), salt.encode(), int(iters)).hex()
+    assert T.check_pin(h, pin) and not T.check_pin(h, str(int(pin) + 1))
+
+
+def test_pin_hash_check_is_independent_of_the_random_hex(monkeypatch):
+    """Regression (#168 verify-fast flake): a salt containing the PIN digits is valid storage, not a leak."""
+    monkeypatch.setattr(T.secrets, 'token_hex', lambda n: '24682468')
+    h = T.clean_setting('TELEGRAM_PIN', '2468')
+    assert '2468' in h                                   # the old substring assertion would have failed here
+    _assert_pin_hash(h, '2468')
+
+
 def test_clean_setting_and_pin_hash():
     assert T.clean_setting('TELEGRAM_CONTROL', 1) is True and T.clean_setting('TELEGRAM_CONTROL', 0) is False
     h = T.clean_setting('TELEGRAM_PIN', '2468')
-    assert h.startswith('pbkdf2_sha256$') and '2468' not in h and T.check_pin(h, '2468') and not T.check_pin(h, '2469')
+    _assert_pin_hash(h, '2468')
     assert T.clean_setting('TELEGRAM_PIN', h, current='keep') == 'keep'
     assert T.clean_setting('TELEGRAM_PIN', '••••', current=h) == h
     assert T.clean_setting('TELEGRAM_PIN', '') == ''
