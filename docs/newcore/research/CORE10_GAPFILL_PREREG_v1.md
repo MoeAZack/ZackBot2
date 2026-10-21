@@ -50,7 +50,8 @@ and that posted value is the one passed as `--addon-sha256`.
 
 - Fetch outputs: `C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/` (`addon.json`, `zips/`). Never inside the repo, never the sealed v1 dir.
   **One-shot:** step 1 may start only if this dir does not exist (the tool itself overwrites `--out` and `--zips` silently, so the
-  guard in §6 enforces it). After any step-1 start, including exit 3 or an interruption, the dir is frozen and step 1 is never re-run in this run.
+  guard in §6 enforces it). After any step-1 start, including exit 3 or an interruption, the dir is frozen and step 1 is never re-run under this registered trial;
+  a later attempt needs a new accepted run record and a new output directory.
 - Evaluation output: `research_evidence/runs/rex-core10-gapfill-splitcut-v1/` (artifacts land in `research_evidence/runs/rex-core10-gapfill-splitcut-v1/CORE-10/`). Step 2 may start only if this dir does not exist;
   `pit_run._state` treats an existing dir without progress as new, so the §6 guard enforces it, not the tool.
 - **No `--resume` in this run.** An exception seals an aborted final (resume refuses); a hard kill followed by resume would
@@ -74,6 +75,8 @@ and that posted value is the one passed as `--addon-sha256`.
 | Only verified-404 gaps remain unfilled | evaluation may proceed only if the add-on is non-empty and the loader accepts it; incompleteness reported per reason |
 
 ## 6. One-shot commands (run once, after Codex acceptance)
+
+Run from Git Bash (POSIX shell) at the repo root: the `test ! -e` guards are POSIX syntax.
 
 ```
 # step 0: reproduce the frozen report (equality rule in §1)
