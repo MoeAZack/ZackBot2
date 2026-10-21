@@ -523,10 +523,11 @@
   }
  ],
  "format": "zb-fundgap-scan/1",
+ "in_window_defect_count": 0,
  "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
  "provenance": {
   "clean": true,
-  "commit": "c219fc8e8b10b76e49e6490bda18bb4ff3058f5e"
+  "commit": "62aafb9f3ffd54005cfc5e84385021d7ceb4bcaa"
  },
  "purpose": "FUND-GAP-01 FG-1 fundingRate continuity inventory (no evaluation)",
  "rules": {
@@ -546,65 +547,77 @@
  "symbols": {
   "BTCUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-01-01T00:00:00Z",
    "rows_scanned": 1094
   },
   "DOGEUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-07-10T08:00:00Z",
    "rows_scanned": 1094
   },
   "ETHUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-01-01T00:00:00Z",
    "rows_scanned": 1094
   },
   "HYPEUSDT": {
    "defects": [
     {
-     "detail": "first stored funding row 2025-05-30T12:00:00Z is after the scan start",
+     "detail": "first stored funding row 2025-05-30T12:00:00Z is after the scan start and after the window end: not listed in the window, non-causal",
+     "in_window": false,
      "kind": "data_start",
      "t_ms": 1748606400006,
      "utc": "2025-05-30T12:00:00Z"
     }
    ],
+   "first_clipped_row_utc": null,
    "first_row_utc": "2025-05-30T12:00:00Z",
    "rows_scanned": 0
   },
   "NEARUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-10-14T16:00:00Z",
    "rows_scanned": 1094
   },
   "SOLUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-09-13T16:00:00Z",
    "rows_scanned": 1169
   },
   "SUIUSDT": {
    "defects": [
     {
-     "detail": "first stored funding row 2023-05-03T16:00:00Z is after the scan start",
+     "detail": "first stored funding row 2023-05-03T16:00:00Z is after the scan start and after the window end: not listed in the window, non-causal",
+     "in_window": false,
      "kind": "data_start",
      "t_ms": 1683129600011,
      "utc": "2023-05-03T16:00:00Z"
     }
    ],
+   "first_clipped_row_utc": null,
    "first_row_utc": "2023-05-03T16:00:00Z",
    "rows_scanned": 0
   },
   "UNIUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-09-17T08:00:00Z",
    "rows_scanned": 1094
   },
   "XRPUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-01-06T08:00:00Z",
    "rows_scanned": 1094
   },
   "ZECUSDT": {
    "defects": [],
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
    "first_row_utc": "2020-02-04T08:00:00Z",
    "rows_scanned": 1094
   }
