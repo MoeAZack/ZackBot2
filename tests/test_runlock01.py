@@ -285,11 +285,28 @@ def test_a_live_owner_with_missing_or_wrong_metadata_is_never_stolen(tmp_path, w
 def test_the_owner_file_carries_bounded_metadata_and_no_argv(worktrees):
     wt1, _ = worktrees
     with RL.hold(wt1, 'rex', P, argv=['rex', '--secret-looking', 'value']) as owner:
-        assert set(owner) == {'format', 'state', 'key', 'kind', 'commit', 'repo', 'identity', 'pid', 'process_start',
-                              'acquired_utc', 'acquired_cairo', 'worktree', 'argv_sha256'}
+        assert set(owner) == {'format', 'state', 'key', 'kind', 'commit', 'repo', 'identity_sha256', 'pid',
+                              'process_start', 'acquired_utc', 'acquired_cairo', 'worktree', 'argv_sha256'}
+        assert owner['identity_sha256'] == RL.identity_digest(P)
         assert owner['acquired_utc'].endswith('Z') and owner['acquired_cairo'][-6:] in ('+02:00', '+03:00')
         assert owner['process_start'] is None or owner['process_start'].startswith(('win-filetime:', 'linux-ticks:'))
         assert 'value' not in json.dumps(owner)
+
+
+def test_a_secret_shaped_identity_value_is_never_persisted(worktrees):
+    """Identity is auto-derived from every CLI argument, so a future token/key argument must stay in memory only."""
+    wt1, _ = worktrees
+    secret = 'sk_live_' + 'Q' * 40
+    ident = dict(P, api_token=secret)
+    with RL.hold(wt1, 'rex', ident) as owner:
+        assert secret not in json.dumps(owner)
+    base = _base(wt1, 'rex', ident)
+    for suffix in ('.owner.json', '.audit.jsonl'):
+        with open(base + suffix, encoding='utf-8') as f:
+            text = f.read()
+        assert secret not in text and 'api_token' not in text
+    assert _key(wt1, 'rex', ident) != _key(wt1, 'rex', dict(P, api_token='sk_live_' + 'R' * 40))
+    assert RL.identity_digest(ident) != RL.identity_digest(dict(P, api_token='other'))
 
 
 # ---------------------------------------------------------------- fail closed
@@ -433,6 +450,64 @@ def test_the_same_report_spelled_elsewhere_is_the_same_fetch(tmp_path, monkeypat
                                                      '--fetch', '--zips', str(tmp_path / z)])[2]
            for r, o, z in (('r1.json', 'a', 'za'), ('r2.json', 'b', 'zb'))]
     assert ids[0] == ids[1]
+
+
+def _fetch_argv(tmp_path, monkeypatch, calls):
+    (tmp_path / 'report.json').write_bytes(b'{"format": "stub"}')
+    monkeypatch.setattr(BF, 'check_report', lambda d: d)
+    monkeypatch.setattr(BF, 'http_fetcher', lambda url: pytest.fail('no network in this test'))
+    def fill(*a, **k):
+        calls.append('fill')
+        return {'rows': [], 'genuine_gaps': [], 'stopped': None}
+    monkeypatch.setattr(BF, 'fill', fill)
+    return ['--report', str(tmp_path / 'report.json'), '--out', str(tmp_path / 'addon.json'), '--fetch', '--zips',
+            str(tmp_path / 'zips')]
+
+
+@pytest.mark.parametrize('where', ['repo', 'root', 'lock', 'owner'])
+def test_an_archive_fetch_lock_acquisition_failure_exits_2_before_any_work(tmp_path, monkeypatch, capsys, where):
+    calls = []
+    argv = _fetch_argv(tmp_path, monkeypatch, calls)
+    real = RL.hold
+    if where == 'repo':
+        monkeypatch.setattr(RL, 'repo_identity', lambda repo: (_ for _ in ()).throw(RL.RunLockError('run lock: x')))
+    elif where == 'root':
+        (tmp_path / 'blocker').write_text('x')
+        monkeypatch.setattr(RL, 'hold', lambda *a, **k: real(*a, root=str(tmp_path / 'blocker' / 'l'), **k))
+    elif where == 'lock':
+        monkeypatch.setattr(RL, 'hold', lambda *a, **k: real(*a, root=str(tmp_path / 'locks'), **k))
+        def boom(*a):
+            raise OSError(errno.EBADF, 'bad file descriptor')
+        if sys.platform == 'win32':
+            import msvcrt
+            monkeypatch.setattr(msvcrt, 'locking', boom)
+        else:
+            import fcntl
+            monkeypatch.setattr(fcntl, 'flock', boom)
+    else:
+        monkeypatch.setattr(RL, 'hold', lambda *a, **k: real(*a, root=str(tmp_path / 'locks'), **k))
+        monkeypatch.setattr(RL, '_write_owner', lambda *a: (_ for _ in ()).throw(OSError(errno.ENOSPC, 'disk full')))
+    assert BF.main(argv) == 2
+    err = capsys.readouterr().err
+    assert err.startswith('error: run lock: ') and 'Traceback' not in err
+    assert calls == [] and not (tmp_path / 'addon.json').exists() and not (tmp_path / 'zips').exists()
+
+
+def test_an_archive_fetch_release_record_failure_exits_2(tmp_path, monkeypatch, capsys):
+    calls = []
+    argv = _fetch_argv(tmp_path, monkeypatch, calls)
+    real, writes = RL.hold, []
+    monkeypatch.setattr(RL, 'hold', lambda *a, **k: real(*a, root=str(tmp_path / 'locks'), **k))
+    real_write = RL._write_owner
+    def write(path, doc):
+        writes.append(doc['state'])
+        if doc['state'] == 'released':
+            raise OSError(errno.ENOSPC, 'disk full')
+        real_write(path, doc)
+    monkeypatch.setattr(RL, '_write_owner', write)
+    assert BF.main(argv) == 2
+    assert capsys.readouterr().err.startswith('error: run lock: cannot record the release')
+    assert calls == ['fill'] and writes == ['held', 'released']
 
 
 def test_plan_only_takes_no_lock(tmp_path, monkeypatch):

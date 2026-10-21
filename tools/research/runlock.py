@@ -16,9 +16,9 @@ Rules:
   * the `.lock` file is never unlinked (that races a concurrent opener into a second "holder"); its single seed
     byte is written by the first holder only;
   * owner metadata `<key>.owner.json` (pid, OS process start time where exposed, Africa/Cairo + UTC time, worktree,
-    kind, identity, argv digest; never secrets or argv text) and `<key>.audit.jsonl` are written ONLY while the OS
-    lock is held. A free lock whose owner file still says `held` proves that owner died without releasing: the
-    takeover is audited as `recovered`;
+    kind, identity digest, argv digest; never secrets, raw identity or argv text) and `<key>.audit.jsonl` are
+    written ONLY while the OS lock is held. A free lock whose owner file still says `held` proves that owner died
+    without releasing: the takeover is audited as `recovered`;
   * release (normal exit and handled failure) marks the owner `released`, audits it and unlocks. A sealed run stays
     refused by the run's own immutable-output rules after the transient lock is gone;
   * the loser raises `RunActive` ("run already active: ...") having only opened (at most created) the lock file;
@@ -69,6 +69,12 @@ def repo_identity(repo: str) -> str:
     """The Git common dir, identical for every worktree of one repository."""
     common = _git(repo, 'rev-parse', '--git-common-dir')
     return canon_path(common if os.path.isabs(common) else os.path.join(repo, common))
+
+
+def identity_digest(identity: dict) -> str:
+    """What the owner record keeps of the identity: a digest only - the raw values (any future argument, including a
+    secret-shaped one) stay in memory for the key and are never written."""
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
 def run_key(repo_id: str, kind: str, commit: str, identity: dict) -> str:
@@ -176,7 +182,7 @@ def hold(repo: str, kind: str, identity: dict, *, argv=None, root: str | None = 
         try:
             now = datetime.now(timezone.utc)
             owner = {'format': FORMAT, 'state': 'held', 'key': key, 'kind': kind, 'commit': commit, 'repo': repo_id,
-                     'identity': identity, 'pid': os.getpid(), 'process_start': process_start(),
+                     'identity_sha256': identity_digest(identity), 'pid': os.getpid(), 'process_start': process_start(),
                      'acquired_utc': _utc(now), 'acquired_cairo': now.astimezone(CAIRO).isoformat(timespec='seconds'),
                      'worktree': canon_path(_git(repo, 'rev-parse', '--show-toplevel')),
                      'argv_sha256': hashlib.sha256(json.dumps(list(argv or [])).encode()).hexdigest()}
@@ -191,7 +197,8 @@ def hold(repo: str, kind: str, identity: dict, *, argv=None, root: str | None = 
                 _audit(base + '.audit.jsonl', 'acquired', pid=owner['pid'], process_start=owner['process_start'],
                        worktree=owner['worktree'])
             except OSError as e:
-                raise RunLockError(f'run lock: cannot record the owner of {key[:12]} ({e}); refusing to start') from None
+                raise RunLockError(f'run lock: cannot record the owner of {key[:12]} ({e}); '
+                                   'refusing to start') from None
             try:
                 yield owner
             finally:

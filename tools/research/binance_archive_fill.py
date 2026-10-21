@@ -397,18 +397,21 @@ def main(argv=None) -> int:
     with open(a.report, 'rb') as f:
         raw = f.read()
     rep = check_report(json.loads(raw))
-    with contextlib.ExitStack() as held:
-        if a.fetch:                     # RUNLOCK-01: one live fetch per report across every worktree, before any network
-            try:
+    try:                                # RUNLOCK-01: active -> 5; any lock-infrastructure failure fails closed -> 2
+        with contextlib.ExitStack() as held:
+            if a.fetch:                 # one live fetch per report across every worktree, before any network
                 held.enter_context(RL.hold(REPO, 'archive_fill', lock_identity(a, raw),
                                            argv=sys.argv[1:] if argv is None else argv))
-            except RL.RunActive as e:
-                print(str(e), file=sys.stderr)
-                return 5
-        doc = fill(rep, http_fetcher, keep_dir=a.zips) if a.fetch else plan_doc(rep)
-        with open(a.out, 'w', newline='\n') as f:
-            json.dump(doc, f, sort_keys=True, indent=1)
-            f.write('\n')
+            doc = fill(rep, http_fetcher, keep_dir=a.zips) if a.fetch else plan_doc(rep)
+            with open(a.out, 'w', newline='\n') as f:
+                json.dump(doc, f, sort_keys=True, indent=1)
+                f.write('\n')
+    except RL.RunActive as e:
+        print(str(e), file=sys.stderr)
+        return 5
+    except RL.RunLockError as e:
+        print(f'error: {e}', file=sys.stderr)
+        return 2
     if a.fetch:
         print(f'{len(doc["rows"])} row(s) filled, {len(doc["genuine_gaps"])} genuine gap(s), stopped={doc["stopped"]}'
               f' -> {a.out}')
