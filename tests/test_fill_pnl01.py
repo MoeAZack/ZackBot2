@@ -229,3 +229,41 @@ def test_the_176_ainusdt_full_close_flips_from_a_booked_win_to_a_measured_loss()
     fam = next(x for x in TB.compare({'B1_FAST': b, **{k: v for k, v in TB.compute('C', funding=FOK).items()
                                                        if k != 'B1_FAST'}}, rows=[row])['families'] if x['id'] == 'B1_FAST')
     assert float(fam['net']) == pytest.approx(-3.7197, abs=2e-4)                           # the Strategies tab too
+
+
+@pytest.mark.parametrize('name,side,fills,meas,fees_actual,gross,net', [
+    # Codex 6328899763, MOVUSDT SC-MBURST time exit: entry and exit both measured 1.226 -> gross 0, net = -fees (booked
+    # +0.5092 net; the booked prices / qty here are illustrative, the measured result is exact)
+    ('mburst_time_exit', 'LONG', [['t0', 'entry', 1000.0, 1.2250], ['t1', 'time_exit', 1000.0, 1.2275]],
+     [1.226, 1.226], 1.66577846, 0.0, -1.66577846),
+    # MOVUSDT SC-QBANK: TP1 1,425.65 measured 1.226 -> 1.220 (+8.5539), remainder measured flat at 1.226; fees 2.49265595
+    # -> net +6.0612 (booked +13.0602 gross: TP1 at 1.2183 vs avg 1.2270226, remainder booked 1.2265843; remainder qty
+    # illustrative)
+    ('qbank_full_close', 'SHORT', [['t0', 'entry', 2851.3, 1.2270226], ['t1', 'take_profit_1', 1425.65, 1.2183],
+                                   ['t2', 'stop', 1425.65, 1.2265843]],
+     [1.226, 1.220, 1.226], 2.49265595, 8.5539, 6.06124405),
+])
+def test_176_full_close_shapes_are_measured(name, side, fills, meas, fees_actual, gross, net):
+    sd = 1 if side == 'LONG' else -1
+    t = dict(side=side, fills=fills, fill_refs=[[i, f'c1-1-{i}'] for i in range(len(fills))])
+    for i, px in enumerate(meas):
+        AC.apply_px(t, dict(cost_ref=f'c1-1-{i}', actual=px))
+    AC.finalize_px(t, sd, TA.ENTRY_KINDS)
+    booked, _ = AC._replay(fills, sd, TA.ENTRY_KINDS, {})
+    assert t['fill_px_partial'] is False
+    assert booked + t['pnl_fill_adj'] == pytest.approx(gross, abs=1e-6)
+    assert booked + t['pnl_fill_adj'] - fees_actual == pytest.approx(net, abs=1e-6)
+    if name == 'qbank_full_close':
+        assert booked == pytest.approx(13.0602, abs=1e-4)                # the pre-fix cohort gross
+
+
+def test_176_open_short_basis_is_corrected_from_its_first_fill():
+    """Codex 6328899763: 1000PEPEUSDT SC-MBURST short, lot basis 0.0046182, measured entry 0.0046053641."""
+    lot = dict(side='SHORT', avg=0.0046182, qty=10000.0, realized=0.0, fills=[['t0', 'entry', 10000.0, 0.0046182]],
+               fill_refs=[[0, 'c1-1-0']])
+    AC.apply_px(lot, dict(cost_ref='c1-1-0', actual=0.0046053641)); AC.finalize_px(lot, -1, TA.ENTRY_KINDS)
+    assert lot['avg'] + lot['avg_fill_adj'] == pytest.approx(0.0046053641, rel=1e-9) and lot['pnl_fill_adj'] == 0.0
+    bl = dict(lot, book='B1_FAST', cohort_id='C', symbol='X', fees_actual=0.0, stop=0.0047)
+    want = -(0.0046 - 0.0046053641) * 10000.0                            # unrealized on the MEASURED basis
+    assert float(TB.compute('C', lots=[bl], marks={'X': 0.0046}, funding=FOK)['B1_FAST']['unreal']) == pytest.approx(want, abs=1e-4)
+    assert BL.compute(dict(id='C'), lots=[bl], marks={'X': 0.0046})['books']['B1_FAST']['unrealized'] == pytest.approx(want, abs=1e-4)
