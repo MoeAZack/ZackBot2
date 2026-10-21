@@ -2770,6 +2770,49 @@ class Engine:
             except OSError: continue
         return out
 
+    @classmethod
+    def _cost_recover_window(cls, rec):
+        """[lo_ms, hi_ms] in which the fill's executions must lie: from its record time (seconds, written after the fill)
+        back over its own wait plus COST_RECOVER_PRE_S, forward to the end of that second plus COST_RECOVER_POST_S."""
+        t_ms = int(datetime.fromisoformat(rec['time']).timestamp() * 1000)
+        wait = max(0.0, float(rec.get('wait_s') or 0))
+        return int(t_ms - (wait + cls.COST_RECOVER_PRE_S) * 1000), int(t_ms + (cls.COST_RECOVER_POST_S + 1) * 1000)
+
+    def _cost_recover_commit(self, ref, cur, raw, now):
+        """Under the lock: apply a PROVEN commission (raw) to its lot / row and make it durable. Durable -> 'recovered';
+        a failed history / cohort write -> 'apply_pending' with raw kept in state, retried every tick and after a restart
+        (memory still holding it: save only; a restart that lost it: the stored raw is applied to the disk row) - never a
+        new read, never applied twice (cost_refs_recovered). Returns the resulting status."""
+        kind, t = self._cost_target(ref)
+        if t is None:                                        # a few ticks for a restart to load it, then final
+            cur['commit_tries'] = int(cur.get('commit_tries') or 0) + 1
+            if cur['commit_tries'] >= self.COST_RECOVER_TRIES:
+                cur.update(status='failed', why='target_gone'); cur.pop('raw', None); return 'failed'
+            cur.update(status='apply_pending', raw=raw, why='target_not_loaded'); return 'apply_pending'
+        fresh = ref not in (t.get('cost_refs_recovered') or ())
+        if fresh and not AC.recover_fill(t, ref, raw):
+            cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
+        if fresh: self._cost_final(kind, t)
+        ok = True
+        if kind == 'row':
+            ok = self._row_changed(t)
+            ok = self._save_aux('history', self.history) and ok
+        if not ok:
+            cur.update(status='apply_pending', raw=raw, why='persist_failed')
+            log.warning('recovered commission not durable yet; retried next tick')
+            return 'apply_pending'
+        cur.update(status='recovered', amount={x['asset']: x['amount'] for x in raw}, fees_actual=t.get('fees_actual'),
+                   **({} if fresh else {'why': 'already_applied'}))
+        cur.pop('raw', None)
+        try:
+            with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
+                f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
+                                        id=t.get('id') if kind == 'row' else t.get('symbol'), symbol=cur.get('symbol'),
+                                        raw=raw, fees_actual=t.get('fees_actual'), cost_rev=t.get('cost_rev'),
+                                        time_ms=int(now * 1000)), separators=(',', ':')) + '\n')
+        except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
+        return 'recovered'
+
     def _cost_recover_discover(self):
         """Under the lock: add every applied-as-missing fill of a lot / row (fill_commission_missing) to state['cost_recover']
         with its window, from its own fill record. True when the state changed."""
@@ -2798,14 +2841,12 @@ class Engine:
             if rec.get('commission_raw'):                    # part of it was folded already: a total would double-count
                 st[r] = dict(status='failed', why='partial_raw_recorded'); continue
             try:
-                t_ms = int(datetime.fromisoformat(rec['time']).timestamp() * 1000)
-                wait = max(0.0, float(rec.get('wait_s') or 0))
+                lo_ms, hi_ms = self._cost_recover_window(rec)
                 qty = float(rec['qty_fill'])
             except (KeyError, TypeError, ValueError):
                 st[r] = dict(status='failed', why='bad_evidence'); continue
             st[r] = dict(status='pending', symbol=rec.get('symbol'), buy=rec.get('buy'), qty=qty, tries=0, next_s=0,
-                         lo_ms=int(t_ms - (wait + self.COST_RECOVER_PRE_S) * 1000),
-                         hi_ms=int(t_ms + (self.COST_RECOVER_POST_S + 1) * 1000), missing=rec.get('commission_missing'))
+                         lo_ms=lo_ms, hi_ms=hi_ms, missing=rec.get('commission_missing'))
         while len(st) > self.COST_RECOVER_KEEP:              # oldest settled entries go first; pending ones stay
             old = next((k for k, v in st.items() if v.get('status') not in ('pending', 'no_evidence')), None)
             if old is None: break
@@ -2823,7 +2864,11 @@ class Engine:
         if not force and now - float(self.state.get('cost_recover_polled') or 0) < self.COST_RECOVER_POLL_S: return 'not_due'
         with self.lock:
             self.state['cost_recover_polled'] = now
-            changed = self._cost_recover_discover()
+            changed = False
+            for r, c in list((self.state.get('cost_recover') or {}).items()):   # proven but not durable yet: first
+                if c.get('status') == 'apply_pending' and isinstance(c.get('raw'), list):
+                    self._cost_recover_commit(r, c, c['raw'], now); changed = True
+            changed = self._cost_recover_discover() or changed
             job = next(((r, dict(e)) for r, e in (self.state.get('cost_recover') or {}).items()
                         if e.get('status') == 'pending' and float(e.get('next_s') or 0) <= now), None)
             if job is None:
@@ -2842,27 +2887,8 @@ class Engine:
             cur = (self.state.get('cost_recover') or {}).get(ref)
             if cur is None or cur.get('status') != 'pending': return 'stale'
             cur['tries'] = int(cur.get('tries') or 0) + 1
-            kind, t = self._cost_target(ref)
-            if status == 'ok' and t is not None and ref in (t.get('cost_refs_recovered') or ()):
-                cur.update(status='recovered', why='already_applied')          # a crash after the row was saved
-            elif status == 'ok':
-                if t is None or not AC.recover_fill(t, ref, raw):
-                    cur.update(status='failed', why='target_gone' if t is None else 'not_applicable')
-                else:
-                    self._cost_final(kind, t)
-                    ok = True
-                    if kind == 'row': ok = self._row_changed(t) and self._save_aux('history', self.history)
-                    cur.update(status='recovered', amount={x['asset']: x['amount'] for x in raw},
-                               fees_actual=t.get('fees_actual'), durable=bool(ok))
-                    try:
-                        with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
-                            f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
-                                                    id=t.get('id') if kind == 'row' else t.get('symbol'),
-                                                    symbol=e['symbol'], raw=raw, fees_actual=t.get('fees_actual'),
-                                                    cost_rev=t.get('cost_rev'), time_ms=int(now * 1000)),
-                                               separators=(',', ':')) + '\n')
-                    except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
-                    if not ok: log.warning('recovered commission applied in memory; durable save retried by later saves')
+            if status == 'ok':
+                self._cost_recover_commit(ref, cur, raw, now)
             elif status in self.COST_RECOVER_RETRY and cur['tries'] < self.COST_RECOVER_TRIES:
                 cur.update(why=status, next_s=now + min(3600, 300 * 2 ** (cur['tries'] - 1)))
             else:

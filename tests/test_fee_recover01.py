@@ -1,6 +1,7 @@
 """FEE-RECOVER-01 (#172, PAPER/testnet): a fill whose commission reads timed out is recovered from ONE bounded userTrades
 time-window read - only a unique, complete, quote-asset match, applied once as a revision (cost_rev), never a guess."""
 import json, os, sys, time
+from datetime import datetime
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -9,7 +10,8 @@ from test_exec_cal00_enrich import EX, mk, recs, fast                    # noqa:
 import actual_costs as AC                                                # noqa: E402
 import engine as E                                                       # noqa: E402
 
-T0 = 1_792_522_859_000
+def ms(iso):
+    return int(datetime.fromisoformat(iso).timestamp() * 1000)
 
 
 def tr(i, oid, qty, comm, t, buyer, asset='USDT', sym='AKEUSDT', maker=False):
@@ -17,20 +19,32 @@ def tr(i, oid, qty, comm, t, buyer, asset='USDT', sym='AKEUSDT', maker=False):
                 commissionAsset=asset, time=t, buyer=buyer, maker=maker)
 
 
-# The #172 shape: entry SELL 96,026; TP BUY 48,013 split 164 + 47,849 under one order; stop BUY 48,013 (resolved).
-AKE = [tr(1, 11, 96026, '1.48320319', T0, False),
-       tr(2, 12, 164, '0.00252162', T0 + 1_500_000, True, maker=True),
-       tr(3, 12, 47849, '0.73569142', T0 + 1_500_200, True, maker=True),
-       tr(4, 13, 48013, '0.74485447', T0 + 3_520_000, True)]
+# The #172 evidence (Codex 6317688635): exact quantities and per-execution commissions; exchange ids synthetic. Record
+# times as persisted (20 Oct, Cairo UTC+3): entry 22:00:59, TP 22:24:36, close 22:59:40; wait_s 0.44 gives Codex's windows.
+# Execution times are placed inside their record's window in the real order (the exact exchange ms are not in #172).
+ENTRY_REC = dict(time='2026-10-20T19:00:59+00:00', wait_s=0.44)
+TP_REC = dict(time='2026-10-20T19:24:36+00:00', wait_s=0.44)
+T0 = ms('2026-10-20T19:00:58.900+00:00')
+AKE = [tr(1, 11, 96026, '1.48320319', T0, False),                                           # entry SELL 96,026
+       tr(2, 12, 164, '0.00251075', ms('2026-10-20T19:24:35.200+00:00'), True, maker=True),     # TP BUY 48,013 =
+       tr(3, 12, 47849, '0.73570229', ms('2026-10-20T19:24:35.400+00:00'), True, maker=True),   # 164 + 47,849, one order
+       tr(4, 13, 48013, '0.74485447', ms('2026-10-20T19:59:39.500+00:00'), True)]               # stop BUY (resolved)
 
 
 # ------------------------------------------------------------------ pure matching
-def test_the_172_shape_recovers_entry_and_split_tp_uniquely():
-    st, raw = AC.match_fill(AKE, 'AKEUSDT', False, 96026, 'USDT', T0 - 130_000, T0 + 11_000)
+def test_the_runtime_windows_are_the_persisted_record_windows():
+    assert E.Engine._cost_recover_window(ENTRY_REC) == (ms('2026-10-20T18:58:58.560+00:00'),
+                                                       ms('2026-10-20T19:01:10+00:00'))       # 21:58:58.56-22:01:10 Cairo
+    assert E.Engine._cost_recover_window(TP_REC) == (ms('2026-10-20T19:22:35.560+00:00'),
+                                                    ms('2026-10-20T19:24:47+00:00'))          # 22:22:35.56-22:24:47 Cairo
+
+
+def test_the_172_evidence_recovers_entry_and_split_tp_uniquely():
+    st, raw = AC.match_fill(AKE, 'AKEUSDT', False, 96026, 'USDT', *E.Engine._cost_recover_window(ENTRY_REC))
     assert st == 'ok' and raw == [dict(asset='USDT', maker=False, amount=1.48320319, n=1)]
-    st, raw = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', T0 + 1_380_000, T0 + 1_511_000)
-    assert st == 'ok' and raw == [dict(asset='USDT', maker=True, amount=pytest.approx(0.73821304), n=2)]
-    assert round(1.48320319 + 0.73821304 + 0.74485447, 8) == 2.9662707          # the #172 complete total
+    st, raw = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', *E.Engine._cost_recover_window(TP_REC))
+    assert st == 'ok' and raw == [dict(asset='USDT', maker=True, amount=0.73821304, n=2)]   # 0.00251075 + 0.73570229
+    assert round(1.48320319 + raw[0]['amount'] + 0.74485447, 8) == 2.9662707          # the #172 complete total
 
 
 def test_two_equal_orders_in_the_window_are_ambiguous_never_picked():
@@ -39,7 +53,8 @@ def test_two_equal_orders_in_the_window_are_ambiguous_never_picked():
 
 
 def test_an_order_reaching_outside_the_window_is_not_a_candidate():
-    st, _ = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', T0 + 1_400_000, T0 + 1_500_100)   # TP's 2nd trade outside
+    lo, _hi = E.Engine._cost_recover_window(TP_REC)
+    st, _ = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', lo, ms('2026-10-20T19:24:35.300+00:00'))  # 2nd exec outside
     assert st == 'no_match'
 
 
@@ -216,3 +231,70 @@ def test_window_reader_is_one_bounded_audit_read(monkeypatch):
     monkeypatch.setattr(BC.Futures, '_audit_req', lambda self, path, p: seen.append((path, p)) or [])
     assert c.user_trades_window('AKEUSDT', 1, 2) == []
     assert seen == [('/fapi/v1/userTrades', dict(symbol='AKEUSDT', startTime=1, endTime=2, limit=1000))]
+
+
+# ------------------------------------------------------------------ P1 (Codex 6317688635): durable commit protocol
+def failing_writes(monkeypatch):
+    on, rev, aux = {'v': True}, E.Engine._cohort_rev, E.Engine._save_aux
+    monkeypatch.setattr(E.Engine, '_cohort_rev', lambda self, row, cid=None: False if on['v'] else rev(self, row, cid))
+    monkeypatch.setattr(E.Engine, '_save_aux',
+                        lambda self, n, o: False if on['v'] and n == 'history' else aux(self, n, o))
+    return on
+
+
+def closed_missing(e):
+    k = missing_entry(e)
+    e.close_lot(k, 'signal', mark=101.0); recs(e); e.apply_costs()
+    h = e.history[-1]
+    assert h['fees_actual'] is None and h['cost_fills_missing'] == 1
+    return k, h['cost_refs'][0]
+
+
+def disk_row(tmp):
+    return json.load(open(os.path.join(tmp, 'history.json')))[-1]
+
+
+def test_failed_durable_writes_then_restart_commit_from_state_without_a_read(monkeypatch):
+    e, tmp = mk(RX); k, ref = closed_missing(e)
+    on = failing_writes(monkeypatch)
+    assert e.cost_recover_tick(force=True) == 'ok'
+    st = e.state['cost_recover'][ref]
+    assert st['status'] == 'apply_pending' and st['why'] == 'persist_failed' and st['raw']   # never terminal in memory only
+    assert disk_row(tmp)['fees_actual'] is None and disk_row(tmp)['cost_fills_missing'] == 1
+    on['v'] = False
+    e2, _ = mk(RX, tmp=tmp); e2.trade.rows = e.trade.rows             # restart: the in-memory revision is gone
+    h = e2.history[-1]
+    assert h['id'] == k and h['fees_actual'] is None and h['cost_fills_missing'] == 1
+    assert e2.cost_recover_tick(force=True) == 'idle' and e2.trade.win_calls == []    # the stored proof, no new read
+    st = e2.state['cost_recover'][ref]
+    assert st['status'] == 'recovered' and 'raw' not in st
+    assert h['fees_actual'] == pytest.approx(truth(e)) and h['cost_fills_missing'] == 0 and h['cost_refs_recovered'] == [ref]
+    assert disk_row(tmp)['fees_actual'] == pytest.approx(truth(e)) and disk_row(tmp)['cost_refs_recovered'] == [ref]
+    e3, _ = mk(RX, tmp=tmp)                                            # a further restart: nothing left, nothing doubled
+    assert e3.cost_recover_tick(force=True) == 'idle' and e3.trade.win_calls == []
+    assert e3.history[-1]['fees_actual'] == pytest.approx(truth(e)) and e3.history[-1]['cost_fills_missing'] == 0
+
+
+def test_failed_durable_writes_without_restart_retry_the_save_only(monkeypatch):
+    e, tmp = mk(RX); k, ref = closed_missing(e)
+    on = failing_writes(monkeypatch)
+    assert e.cost_recover_tick(force=True) == 'ok'
+    h = e.history[-1]; fa, rev = h['fees_actual'], h['cost_rev']
+    assert fa == pytest.approx(truth(e)) and e.state['cost_recover'][ref]['status'] == 'apply_pending'
+    assert e.cost_recover_tick(force=True) == 'idle'                   # still failing: still pending, applied once
+    assert e.state['cost_recover'][ref]['status'] == 'apply_pending' and h['cost_fills_missing'] == 0
+    on['v'] = False
+    assert e.cost_recover_tick(force=True) == 'idle' and len(e.trade.win_calls) == 1
+    assert e.state['cost_recover'][ref]['status'] == 'recovered' and h['fees_actual'] == pytest.approx(fa)
+    assert h['cost_rev'] > rev and disk_row(tmp)['fees_actual'] == pytest.approx(fa)
+
+
+def test_a_commit_whose_target_never_loads_ends_final_and_frees_the_queue():
+    e, _ = mk(RX); k, ref = closed_missing(e)
+    e.state.setdefault('cost_recover', {})[ref] = dict(status='apply_pending', raw=[dict(asset='USDT', maker=False, amount=1.0, n=1)],
+                                        symbol='BTCUSDT')
+    e.history.clear(); e.cohort_rows = []
+    for _ in range(E.Engine.COST_RECOVER_TRIES):
+        e.cost_recover_tick(force=True)
+    assert e.state['cost_recover'][ref] == dict(status='failed', why='target_gone', symbol='BTCUSDT',
+                                                commit_tries=E.Engine.COST_RECOVER_TRIES)
