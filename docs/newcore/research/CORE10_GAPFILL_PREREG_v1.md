@@ -23,7 +23,7 @@ py -3.14 tools/research/binance_archive_fill.py --report <S>/gap_report.json --o
 
 **Step-0 equality rule.** The report embeds `provenance.commit`, so its self-sha changes with the head it runs at.
 Step 0 regenerates the report at the **protected master merge commit of this PR** and requires every field to equal the frozen file **except** `provenance.commit`
-(must equal that merge commit, tree clean) and the derived `sha256`. Verified at `89fb082`: those two are the only differing fields.
+(must equal that merge commit, tree clean) and the derived `sha256`.
 The fill always uses the **frozen** report (§6), so the plan digest and the add-on's pinned report do not move.
 
 ## 2. Exact scope
@@ -49,9 +49,13 @@ and that posted value is the one passed as `--addon-sha256`.
 ## 4. Output and run identity
 
 - Fetch outputs: `C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/` (`addon.json`, `zips/`). Never inside the repo, never the sealed v1 dir.
-- Evaluation output: `research_evidence/runs/rex-core10-gapfill-splitcut-v1/` (new dir; refuse if it exists at first start).
-- `--resume` is allowed **only** after an interrupted evaluation with the exact same frozen identity, progress present and no final artifact;
-  it continues the same single trial. A sealed/final run is never resumed.
+  **One-shot:** step 1 may start only if this dir does not exist (the tool itself overwrites `--out` and `--zips` silently, so the
+  guard in §6 enforces it). After any step-1 start, including exit 3 or an interruption, the dir is frozen and step 1 is never re-run in this run.
+- Evaluation output: `research_evidence/runs/rex-core10-gapfill-splitcut-v1/` (artifacts land in `research_evidence/runs/rex-core10-gapfill-splitcut-v1/CORE-10/`). Step 2 may start only if this dir does not exist;
+  `pit_run._state` treats an existing dir without progress as new, so the §6 guard enforces it, not the tool.
+- **No `--resume` in this run.** An exception seals an aborted final (resume refuses); a hard kill followed by resume would
+  re-open Access and append a second data_access + second trial set to the ledger. So any interruption of step 2 **ends this
+  registered run**. A retry needs a separately accepted run record, which must state that the ledger already holds the first attempt's records.
 - Run identity: `rex-core10-gapfill-splitcut-v1`, variant `range_vwap_rev.v1-splitcut`, commit = **protected master merge commit of this PR** (never an unmerged branch), clean tree. Non-promotable evidence.
 
 ## 5. Acceptance / refusal table
@@ -60,7 +64,7 @@ and that posted value is the one passed as `--addon-sha256`.
 |---|---|
 | Step-0 report differs from §1 in any field other than `provenance.commit` / `sha256` | **STOP**, no fetch; report the diff |
 | HTTP 429 / 418 / 403, HTML body, redirect off `data.binance.vision` | **STOP** the whole fetch; post status; no retry |
-| `addon.stopped` is not null (any stop above), even if the partial add-on is loadable | **no evaluation**; post the stopped state; this registered run ends |
+| `addon.stopped` is not null (step 1 exits 3), even if the partial add-on is loadable | **no evaluation**; post the stopped state; this registered run ends |
 | Verified HTTP 404 on a planned file | hole stays **archive_missing** = genuine gap under MISSING_DATA_POLICY_v1 |
 | Any other unresolved outcome: HTTP 5xx, timeout/network error, bad zip, schema or `.CHECKSUM` failure | holes **unresolved**; **no evaluation and no retry in this run**; a future attempt needs a separately accepted run record |
 | Zip row outside its hole's missing set | never enters the add-on (`extract()` keeps only missing opens) |
@@ -75,10 +79,14 @@ and that posted value is the one passed as `--addon-sha256`.
 # step 0: reproduce the frozen report (equality rule in §1)
 py -3.14 tools/research/rex_gap_inventory.py --store C:/Dev/ZackBot2_data/binance_um --tier CORE-10 \
    --window 2021-01-04T00:00:00Z/2026-09-28T00:00:00Z --out <S>/gap_report.json
-# step 1: fetch (network)
+# step 1: fetch (network), one-shot guard first
+test ! -e C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1 || { echo 'fetch dir exists: STOP'; exit 1; }
 py -3.14 tools/research/binance_archive_fill.py --report research_evidence/prereg/core10_gapfill_report.v1.json \
    --out C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/addon.json --fetch --zips C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/zips
-# step 2: post addon sha256 + zip listing on the PR, then evaluate
+# step 2a: pre-evaluation gate (must print GATE PASS; anything else = no evaluation, run ends)
+py -3.14 -c "import json,sys; a=json.load(open(sys.argv[1])); bad=[a['stopped'] is not None, not a['rows'], any(h['status']=='unresolved' for h in a['holes']), any(f['status'] in ('error','rejected_checksum') for f in a['files'])]; print('GATE FAIL' if any(bad) else 'GATE PASS', bad)" C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/addon.json
+# step 2b: post addon sha256 + zip listing on the PR, then evaluate (one-shot guard first, no --resume)
+test ! -e research_evidence/runs/rex-core10-gapfill-splitcut-v1 || { echo 'evidence dir exists: STOP'; exit 1; }
 py -3.14 tools/research/run_r4.py rex --window 2021-01-04T00:00:00Z/2026-09-28T00:00:00Z --tier CORE-10 \
    --variant range_vwap_rev.v1-splitcut --store C:/Dev/ZackBot2_data/binance_um --out-dir research_evidence/runs/rex-core10-gapfill-splitcut-v1 \
    --notice research_evidence/notices/zb-delist-notice-core-10-20261014.json \
@@ -93,4 +101,6 @@ py -3.14 tools/research/run_r4.py rex --window 2021-01-04T00:00:00Z/2026-09-28T0
 1. Window: confirmed equal to the sealed v1 run window (§2).
 2. Variant: exactly `range_vwap_rev.v1-splitcut` (the accepted development-only causal cutoff from #91). No other variant is run.
 3. Multiplicity: exactly one additional rex-family trial. It tests the accepted remedy; it is not a strategy-selection or promotion trial.
+   This is the multiplicity accounting, not the ledger record count: one run writes 1 data_access + 20 trial records
+   (2 sides x (primary + 8 neighbours + baseline B2) = 18 variant + 2 baseline), and together they count as this one trial.
 4. Execution commit: the protected master merge commit of this PR; all commands in §6 run there.
