@@ -1,0 +1,2930 @@
+{
+ "addon": {
+  "addon_sha256": "f4a808f404f0db5a807066b0464eec87cc83722f40ca12ef2bd88616c95e4d93",
+  "base_manifest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+  "digest": "e52f377075e6dfd0c678c5c0e89bb9fba8c444b7cdad9505f4b4ae608f8c91dd",
+  "filled": {
+   "BTCUSDT|markPriceKlines": 27,
+   "DOGEUSDT|markPriceKlines": 9,
+   "ETHUSDT|markPriceKlines": 9,
+   "HYPEUSDT|markPriceKlines": 6,
+   "NEARUSDT|klines": 30,
+   "NEARUSDT|markPriceKlines": 24,
+   "SOLUSDT|klines": 30,
+   "SOLUSDT|markPriceKlines": 24,
+   "SUIUSDT|markPriceKlines": 3,
+   "UNIUSDT|markPriceKlines": 24,
+   "XRPUSDT|klines": 30,
+   "XRPUSDT|markPriceKlines": 24,
+   "ZECUSDT|klines": 30,
+   "ZECUSDT|markPriceKlines": 24
+  },
+  "format": "zb-rex-gap-fill/1",
+  "gap_report": "7d3bdc9ce4b99de20fb3ad346ca4aa97c0541f981fc2b09d5d6c7b7752d442bd",
+  "rule": "add-on rows fill only exact holes of the pinned signed gap report, only where no base row exists; each row re-proved byte for byte from its checksum-verified archive zip; no overwrite, no interpolation; uncovered holes stay holes",
+  "source_files": [
+   {
+    "rows": 6,
+    "sha256": "c4f042332877b40de23f129ef080005575a84e2c14f174cd6c574b6ec9f84bb8",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-26.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "098e45f0cfc3747fd8047c05df9c83da0650b1ffcafc61dc765b90397058b9ef",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-27.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "fbc8cab1f35dd197120b6ca88bdd47281e09785330228a590674618ea3d317b0",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02-28.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "bbca21dd6d49854b1160025165d28373b31aa8907ea1996a8427c5e935920c62",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04-01.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "d8258bc0d22bfa028b84f255b2a3e488cd5ade30c57d66ee0ec4e01908b27f32",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04-02.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "54e5cea5043642df926abb0766894f762e0d3227b9104d95b755dcf792f90565",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-26.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "d07755cf80892725619c7fb3746413e9cadd622e1d1113878cc6a4a609096f0e",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-27.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "24e5fd715875cf03bc7dd3547cf3f9e39f226b2707c4c022b82127de53cc5035",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02-28.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "30a1fc5e63fc88f48a1ce8bbe06b60f20dff5e0a42c4e3b1c1856b6ba4efc380",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04-01.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "a27edac90678a83f2c66e1f59d3b319f98fc1a710090aa58b24a53494d86f639",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04-02.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "2e5fe309aa22012df3cd22bfbb873f793d0fd3e1d39e67a13bc5139e8f6bf92b",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-26.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "7affa96bf59c395aabbb1591a6b5710bc3abc3df77324df7cbbb61a9bf9ef3dc",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-27.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "e0a707efb76c42dfbb2fd89b17710ff4b0d522e98f64aced2ed2bf9c595f385c",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02-28.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "9f19d3be8e9dd391d9eff24e6c8dcfed92f25db17cd81c385424e03c0de01211",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04-01.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "528f233b8eaeb86193f9a1fb11aa47c431e3de3e7cbcd27fb7026b041ac3d839",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04-02.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "79feee62d4a5e7c4d91d16e7b1c28b07b6bc648070208c3219d9b83eb56abc6d",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-26.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "1da12ac077842e18dc7c0f67a7b58b05b7db6a5edb84ee062ada48b688e2d00c",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-27.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "a95952ded1b55e080e046ec03cb27a7bbe0702a7f0af74c579aab1e05bf0eab7",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02-28.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "5d4915ad6a2092a3341aaefd0f577b61691df7164f384e2b2184d78e6e46b101",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04-01.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "56dcff7252728a0d8112c3ae1b50feb8d258b9b4919cc21a33594ffadb6dc6f8",
+    "url": "https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "231ed215935a1fc3a6da4d070403a25db75338ed61c45ef082343aac2b214aef",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-01.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "920e7592ea11fe2bd5d2fba9fc76cb955a40eccdf74c25e25ee8f92b3eedcfc7",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "a0bc1410fd38b9e75b98647de17787ee089baa5786d0fd6be79752356c5991fc",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-25.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "b4e9e023889d89b63824774f8589e5139872341e05a0e6dc81f35f4d5688de94",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-26.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "b95041bc59b91bcb82ca3b3c70d3b8ffea99d3aae5ced415876dc20e1695d4ce",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-07-27.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "584162b049132f77de5e27af98e48c36d5df159cea10bba8aac4925d5a715d52",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-07-31.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "e7126ba8c0cf0be7fac7072aeb7bfdade421d69ebb92ab966aa69b61be1350c8",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "63c0acc05aa90e702975a9a3b3f23612267c2ad5d9328a11c5e96f222d9b541c",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "122fd96f8693a9794e2dbdb4491858078676045170acce68046e32f32f7b4068",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "bb2b07897a55eeef80bd61562ce33fc58c1ae54eb572fb07666fa8ebb421abce",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "f7c8827f3224a03c2c98890ea134c775a4e3a9beac85d5dde90ede234fa4b547",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "cc9a614a649061a40c910aa09634891bb13490a0e78ce6f7aba4de2e7d8531e3",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "94d0e57c728f658c7f14d3cae57184037b6229faa76325c9ae38c79cba25c3de",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "4a48e5821dd7d2926286de92fa98103840cdd71179632cfd0130b3102c40cc3f",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "29ef5b9ab185b18c7bcb73fd7ba12d14ebcef404367c886ad13705592ef99c20",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 6,
+    "sha256": "920b922306856f8d446cc2c7f03707b022ce398b23d0b781ce863ce05514bbc5",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/HYPEUSDT/1h/HYPEUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "45c7008e3a2c41c6180895470703e0c2319026ac35ff2974224189cf0c24475f",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-01.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "fe54daf4f4eeacc459ca1771f35dfe5d5cbac95aedfe8e252a2730647504bc55",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "fa265995816bfb87e847cf07e1739c2cd4d98894caf94933b6539b32cf7d11d5",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-25.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "b25c4315e5c73a609ec39e85ab05ce49de6776b5da6edf4c0cfe6723864bf486",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-26.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "f7a28d32d5d637098c44ab40899dd27da6a238a09d2b8d39598517a532e9cddf",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-07-27.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "7642dc8be24c46867ef9dcae69a689bfb71444e8ec7e2f2c2a0e553ce5ab7ede",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "f6bb57a86fd5070a90db379479988987dc45bd66cd1ecc7e5610f1f6b7d89ec3",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "0642297d7269ad204dbb909ba6dd236f5182964d0e70bc1eec7fe617dcd9f38f",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "28670dcee3f7f725eb9c9e3f45c6dd3d859e621ff883d5c3436db83859e573bd",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-01.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "b21686f918e6d94fbdbb4334f2dd1a434ad12fabb18631a5c88806bef4264327",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "dbf3f1831508aa34d664b18c3b64ff653230dffe16edf5911b550d9dd43302b5",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-25.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "4ee0e5d71db1aa902d0c3d6a4572ef710b2fc13b8d64212a324ef63bc645ed62",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-26.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "8b75a797f7fd2f68a6539f3ce86c738a0d6dbe07684e6e0373e96a672bd6f552",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-07-27.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "7c18155374c6845aa3ee27ed014faebfba090f2d6b66464e61d4e4fc9f8682d3",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "082dbca2a71fbc5bc87c8ef0599f0105d09b0a38bd2e239afc62da17475522f0",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "fb823a930164896410b30cd46682bfedb9b938cb0c2518de9ef206e230f7306d",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "5a02bb08cac22f2b3ddaa142499aa5d86a56bda510ae434bdd0e7cc4b5042774",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/SUIUSDT/1h/SUIUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "f94dbb7c61bd2698ffb9f61bd0139fff8bbabdc2ec77e5b2379ce8f4c86ce7d1",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-01.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "6d46f1776a3f0d3841c48aea6d9ca4c7feb38a17ea62de1268e70fa2e131ba3f",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "3576a3a636febad8810c6a1eaabca1e3acd528ce3c9df258d1cd748f385dddd1",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-25.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "fb69f4d8eef84c76db951b69e287f97be708b8d13fb1a7b918aa7d0adcbc4493",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-26.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "eed721037d75e2ff115fd57a9a999f1d79272e11062e43ce75ed04f2efb192cc",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-07-27.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "b6a94a856e3fc38749b7780d502367ba42737385c26be61d71e4c32cb161f669",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "8cf27d2c0f216bd073bcaabd09b5d8817d1ca81bbb7c7a9a26d41469280d3fca",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "1dbff30d3c241e748d498a97144dde8fd070a3a22129fc5911bf0741976e8fe9",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "07975434b0a3e045a01998fc9344b02fcb0cfab9a93c1aa0d22feab347ae3e54",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-01.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "1b93379ac840af73cb17afa784d0dfd98572e6e18c7ef8b3c389509838357375",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "913bcd029505a707120bbd0318f20f1a2db8ae80d21c080c3698f14755e09aca",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-25.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "884b8cc3cc5d47b3ab2649f505d27f578df8d83c81f3e6e3c2f201ef9190673f",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-26.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "d2d3bb68b2213cdb8d10baafe36b1511c4156cb733a48fd1559104a17378f0ed",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-07-27.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "334f5b1fa5274ae3ecb3206c1e5005f9fd771f3dc1e3dad9ff9b061fc61fa396",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "18cc0a642fcb1f7e80e7d692e90d7ed3eb3b2263032f8c58d18ac41ac121d42b",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "1b94be0070cd35f4d9ade6f28353a3bfef644eeb9553e8cca4a6ad5d2d34be36",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2026-06-29.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "da58c384415ccaa617d868f4c6293a14323e9681812f7d914f2a7c68e212d61d",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-01.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "2be8649f533bdde563ad8820b1e8cb5ec6d1d2d62801720ddf5b07752d9f860f",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "82fab64239bad230c4e23a54eb516c5f0a2b70625d8e41fc793f0435e11177e3",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-25.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "964c166cf7d4930f4a9c2da0454ec368b43be9292f1cc6b373de68363cdeae4b",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-26.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "5257c81ad4fe0315d3f1f90021ce49c5a0a5aec7dff63e74d9ccec4e4c4fe503",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-07-27.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "ffdf93ebe74f8610ec88f9c7e2511f8260ef6895de94a0069512b2d761ae6945",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-10-02.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "2e80723d63ee4a5bd5010f664f850a8a2ac6f7c8616a558d0be119a90d296ebb",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2023-02-24.zip"
+   },
+   {
+    "rows": 3,
+    "sha256": "a8655f0bab270deff32f9e5ef14ba634208138a7ce20fa13dce2fe401a3f05ac",
+    "url": "https://data.binance.vision/data/futures/um/daily/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2026-06-29.zip"
+   }
+  ]
+ },
+ "candidate_id": "range_vwap_rev.v1-splitcut",
+ "cost_rows": [
+  "base",
+  "fees_slip_x2"
+ ],
+ "counts": {
+  "long": {
+   "B2": {
+    "base": {
+     "net": -22895.665360773073,
+     "r": -269.2142564535809,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "INCOMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "INCOMPLETE",
+     "trades": 1620
+    },
+    "fees_slip_x2": {
+     "net": -30923.60373410252,
+     "r": -416.2957757626821,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "INCOMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "INCOMPLETE",
+     "trades": 1636
+    }
+   },
+   "range_vwap_rev.v1.k+0.5": {
+    "base": {
+     "net": -15377.253548434266,
+     "r": -165.40626389741257,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1312
+    },
+    "fees_slip_x2": {
+     "net": -23395.78884434859,
+     "r": -287.83198639495924,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1329
+    }
+   },
+   "range_vwap_rev.v1.k-0.5": {
+    "base": {
+     "net": -22037.903391197106,
+     "r": -264.34733193475097,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1988
+    },
+    "fees_slip_x2": {
+     "net": -31504.25775380325,
+     "r": -438.09720445768755,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 2011
+    }
+   },
+   "range_vwap_rev.v1.n+12": {
+    "base": {
+     "net": -18870.7200550082,
+     "r": -214.30698771962847,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1703
+    },
+    "fees_slip_x2": {
+     "net": -27304.324853625265,
+     "r": -354.11059806380604,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1712
+    }
+   },
+   "range_vwap_rev.v1.n-12": {
+    "base": {
+     "net": -10560.601089280477,
+     "r": -107.93158701307651,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1501
+    },
+    "fees_slip_x2": {
+     "net": -20944.786331934458,
+     "r": -251.66335479071228,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1513
+    }
+   },
+   "range_vwap_rev.v1.rg+0.5": {
+    "base": {
+     "net": -17391.305668211648,
+     "r": -185.9374854133164,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "INCOMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "INCOMPLETE",
+     "trades": 1752
+    },
+    "fees_slip_x2": {
+     "net": -27378.090591328008,
+     "r": -347.79451657416894,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "INCOMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "INCOMPLETE",
+     "trades": 1763
+    }
+   },
+   "range_vwap_rev.v1.rg-0.5": {
+    "base": {
+     "net": -9737.042068606574,
+     "r": -101.46686440999595,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1015
+    },
+    "fees_slip_x2": {
+     "net": -17167.882264442524,
+     "r": -198.29421092597335,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1025
+    }
+   },
+   "range_vwap_rev.v1.stop_atr+0.5": {
+    "base": {
+     "net": -11290.802565762424,
+     "r": -114.48638372545496,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1474
+    },
+    "fees_slip_x2": {
+     "net": -19182.35887656923,
+     "r": -221.99489664245743,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1488
+    }
+   },
+   "range_vwap_rev.v1.stop_atr-0.5": {
+    "base": {
+     "net": -19751.490634135524,
+     "r": -217.7626221050558,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1829
+    },
+    "fees_slip_x2": {
+     "net": -33681.57714277719,
+     "r": -482.4482983071684,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1850
+    }
+   },
+   "range_vwap_rev.v1.x1_mean": {
+    "base": {
+     "net": -15153.688192264908,
+     "r": -159.15038800253058,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1651
+    },
+    "fees_slip_x2": {
+     "net": -25286.28545665854,
+     "r": -314.597689078231,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1666
+    }
+   }
+  },
+  "short": {
+   "B2": {
+    "base": {
+     "net": -20843.099637607647,
+     "r": -243.18365587359563,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1730
+    },
+    "fees_slip_x2": {
+     "net": -31997.9342716895,
+     "r": -445.5157930040176,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1748
+    }
+   },
+   "range_vwap_rev.v1.k+0.5": {
+    "base": {
+     "net": -14523.707034934314,
+     "r": -163.49490341971068,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1448
+    },
+    "fees_slip_x2": {
+     "net": -23580.017825969127,
+     "r": -300.69813635987754,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1463
+    }
+   },
+   "range_vwap_rev.v1.k-0.5": {
+    "base": {
+     "net": -20147.40846909547,
+     "r": -253.68144336210622,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 2183
+    },
+    "fees_slip_x2": {
+     "net": -31211.357456162958,
+     "r": -456.47625721870315,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 2209
+    }
+   },
+   "range_vwap_rev.v1.n+12": {
+    "base": {
+     "net": -17726.939141430346,
+     "r": -203.8349243638885,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1817
+    },
+    "fees_slip_x2": {
+     "net": -27927.84062133571,
+     "r": -376.7099919755447,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1840
+    }
+   },
+   "range_vwap_rev.v1.n-12": {
+    "base": {
+     "net": -16480.74316894421,
+     "r": -189.2955669402571,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1680
+    },
+    "fees_slip_x2": {
+     "net": -26598.691420482253,
+     "r": -351.9252124162663,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1697
+    }
+   },
+   "range_vwap_rev.v1.rg+0.5": {
+    "base": {
+     "net": -17097.25311278352,
+     "r": -221.49574315472947,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1917
+    },
+    "fees_slip_x2": {
+     "net": -27506.66169893716,
+     "r": -393.7358198211682,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1935
+    }
+   },
+   "range_vwap_rev.v1.rg-0.5": {
+    "base": {
+     "net": -9385.569133468609,
+     "r": -106.5948831654337,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1074
+    },
+    "fees_slip_x2": {
+     "net": -17555.87442768754,
+     "r": -211.98964212924207,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1080
+    }
+   },
+   "range_vwap_rev.v1.stop_atr+0.5": {
+    "base": {
+     "net": -14101.24290401999,
+     "r": -168.49842206420902,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1651
+    },
+    "fees_slip_x2": {
+     "net": -22633.91221946034,
+     "r": -295.4172926429928,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1666
+    }
+   },
+   "range_vwap_rev.v1.stop_atr-0.5": {
+    "base": {
+     "net": -23315.443114480982,
+     "r": -311.2061324836226,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 2035
+    },
+    "fees_slip_x2": {
+     "net": -36049.8836123524,
+     "r": -579.2186955121244,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 2042
+    }
+   },
+   "range_vwap_rev.v1.x1_mean": {
+    "base": {
+     "net": -16473.86601836138,
+     "r": -209.3601893959259,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1821
+    },
+    "fees_slip_x2": {
+     "net": -26605.99378133564,
+     "r": -370.80631748228797,
+     "splits": {
+      "train": "COMPLETE",
+      "walk_forward[0]": "COMPLETE",
+      "walk_forward[1]": "COMPLETE",
+      "walk_forward[2]": "COMPLETE",
+      "walk_forward[3]": "COMPLETE",
+      "walk_forward[4]": "COMPLETE"
+     },
+     "status": "COMPLETE",
+     "trades": 1834
+    }
+   }
+  }
+ },
+ "family": "range_vwap_rev",
+ "first_decision": "2021-01-14T00:00:00Z",
+ "format": "zb-rex02-run-summary/1",
+ "funding_window": "funding-window/2",
+ "incomplete": [
+  {
+   "class": "funding_rate_gap",
+   "config": "range_vwap_rev.v1.rg+0.5",
+   "reason": "incomplete.funding",
+   "row": "base",
+   "secondary": false,
+   "side": "long",
+   "split": "walk_forward[0]"
+  },
+  {
+   "class": "funding_rate_gap",
+   "config": "range_vwap_rev.v1.rg+0.5",
+   "reason": "incomplete.funding",
+   "row": "fees_slip_x2",
+   "secondary": false,
+   "side": "long",
+   "split": "walk_forward[0]"
+  },
+  {
+   "class": "funding_rate_gap",
+   "config": "B2",
+   "reason": "incomplete.funding",
+   "row": "base",
+   "secondary": false,
+   "side": "long",
+   "split": "walk_forward[0]"
+  },
+  {
+   "class": "funding_rate_gap",
+   "config": "B2",
+   "reason": "incomplete.funding",
+   "row": "fees_slip_x2",
+   "secondary": false,
+   "side": "long",
+   "split": "walk_forward[0]"
+  }
+ ],
+ "label": "DEVELOPMENT-ONLY",
+ "missing_data_policy": "zb-missing-data/1",
+ "not_evaluated": [
+  "B0 matched random entries and B1 weekly book (range_vwap_rev_eval; holdout-protocol quantities)",
+  "X2 / X3 tape-level overlays (SCOUT-EXIT-01 comparison, TAPE-LEVEL only)",
+  "EDGE-00 verdict rows (holdout only; development can neither promote nor reject)"
+ ],
+ "notice_rule": "zb-delist-notice/1",
+ "promotable": false,
+ "provenance": {
+  "class": "historical",
+  "commit": "d93f9bc619faf877f6207da869a16a65bbbcb358",
+  "historical_evidence": true,
+  "tree": "clean"
+ },
+ "run": "b5c4d6b6d5e838f8e2a2f481b3cbcb66424f8c4d65279726f2c05348fe828cd6",
+ "split": "development",
+ "split_keys": [
+  "train",
+  "walk_forward[0]",
+  "walk_forward[1]",
+  "walk_forward[2]",
+  "walk_forward[3]",
+  "walk_forward[4]"
+ ],
+ "split_mode": "per-split reset at the train / WF boundaries of the committed plan; aggregate derived from the splits",
+ "splits": [
+  {
+   "counts": {
+    "long": {
+     "B2": {
+      "base": {
+       "net": -3447.6988171763396,
+       "r": -39.48313850231875,
+       "status": "COMPLETE",
+       "trades": 229
+      },
+      "fees_slip_x2": {
+       "net": -4523.316130950849,
+       "r": -57.322300925699416,
+       "status": "COMPLETE",
+       "trades": 230
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -555.9265942161805,
+       "r": -2.773381761639235,
+       "status": "COMPLETE",
+       "trades": 189
+      },
+      "fees_slip_x2": {
+       "net": -1732.6263316384964,
+       "r": -16.186347579331244,
+       "status": "COMPLETE",
+       "trades": 188
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -3161.899981535041,
+       "r": -35.299358070488864,
+       "status": "COMPLETE",
+       "trades": 303
+      },
+      "fees_slip_x2": {
+       "net": -4690.118267998714,
+       "r": -60.779621915872276,
+       "status": "COMPLETE",
+       "trades": 310
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -2825.705442174181,
+       "r": -30.508708643107884,
+       "status": "COMPLETE",
+       "trades": 263
+      },
+      "fees_slip_x2": {
+       "net": -4264.542791202505,
+       "r": -53.0536377873517,
+       "status": "COMPLETE",
+       "trades": 267
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": 740.2800975464241,
+       "r": 10.017055110797248,
+       "status": "COMPLETE",
+       "trades": 213
+      },
+      "fees_slip_x2": {
+       "net": -1034.982647189728,
+       "r": -8.129696407015945,
+       "status": "COMPLETE",
+       "trades": 218
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -1805.6826839914122,
+       "r": -17.039184478923058,
+       "status": "COMPLETE",
+       "trades": 249
+      },
+      "fees_slip_x2": {
+       "net": -3600.6858771900306,
+       "r": -41.86040448171224,
+       "status": "COMPLETE",
+       "trades": 251
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -2298.5396402118763,
+       "r": -25.298317557471524,
+       "status": "COMPLETE",
+       "trades": 163
+      },
+      "fees_slip_x2": {
+       "net": -3710.5275134663875,
+       "r": -45.482307044546225,
+       "status": "COMPLETE",
+       "trades": 167
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -963.3255182713702,
+       "r": -8.508791925059576,
+       "status": "COMPLETE",
+       "trades": 205
+      },
+      "fees_slip_x2": {
+       "net": -2108.715124356616,
+       "r": -22.275398071898497,
+       "status": "COMPLETE",
+       "trades": 208
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -3289.683926609923,
+       "r": -35.56303519901107,
+       "status": "COMPLETE",
+       "trades": 275
+      },
+      "fees_slip_x2": {
+       "net": -5056.238226454765,
+       "r": -66.34080822629096,
+       "status": "COMPLETE",
+       "trades": 280
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -1692.2801516438453,
+       "r": -15.985544937160363,
+       "status": "COMPLETE",
+       "trades": 240
+      },
+      "fees_slip_x2": {
+       "net": -3369.2965507137797,
+       "r": -38.46092621997869,
+       "status": "COMPLETE",
+       "trades": 244
+      }
+     }
+    },
+    "short": {
+     "B2": {
+      "base": {
+       "net": -5401.231463437022,
+       "r": -74.58562103243258,
+       "status": "COMPLETE",
+       "trades": 315
+      },
+      "fees_slip_x2": {
+       "net": -6497.518203289317,
+       "r": -101.82738726324673,
+       "status": "COMPLETE",
+       "trades": 317
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -4203.590975889376,
+       "r": -52.430039404101024,
+       "status": "COMPLETE",
+       "trades": 268
+      },
+      "fees_slip_x2": {
+       "net": -5371.215509778786,
+       "r": -74.74070796998018,
+       "status": "COMPLETE",
+       "trades": 271
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -5811.812540834911,
+       "r": -84.46852358240422,
+       "status": "COMPLETE",
+       "trades": 378
+      },
+      "fees_slip_x2": {
+       "net": -6963.887053532353,
+       "r": -116.55457249266898,
+       "status": "COMPLETE",
+       "trades": 383
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -4893.299296689114,
+       "r": -63.384073018773705,
+       "status": "COMPLETE",
+       "trades": 323
+      },
+      "fees_slip_x2": {
+       "net": -6158.858403180465,
+       "r": -92.0500010035276,
+       "status": "COMPLETE",
+       "trades": 330
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -3049.0414547721025,
+       "r": -34.23638934588686,
+       "status": "COMPLETE",
+       "trades": 302
+      },
+      "fees_slip_x2": {
+       "net": -4599.983727397053,
+       "r": -59.58756178150558,
+       "status": "COMPLETE",
+       "trades": 305
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -5932.032438104852,
+       "r": -87.27099596653134,
+       "status": "COMPLETE",
+       "trades": 349
+      },
+      "fees_slip_x2": {
+       "net": -6929.669870083473,
+       "r": -115.46678999284183,
+       "status": "COMPLETE",
+       "trades": 353
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -3658.9164375161663,
+       "r": -44.43529424998071,
+       "status": "COMPLETE",
+       "trades": 181
+      },
+      "fees_slip_x2": {
+       "net": -4540.466173719904,
+       "r": -59.39315525968358,
+       "status": "COMPLETE",
+       "trades": 182
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -4829.261330598946,
+       "r": -64.06333220618026,
+       "status": "COMPLETE",
+       "trades": 288
+      },
+      "fees_slip_x2": {
+       "net": -5645.134730052564,
+       "r": -81.16582365223766,
+       "status": "COMPLETE",
+       "trades": 290
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -6868.427648223284,
+       "r": -112.56898562728037,
+       "status": "COMPLETE",
+       "trades": 366
+      },
+      "fees_slip_x2": {
+       "net": -8057.887411830255,
+       "r": -160.24706106934454,
+       "status": "COMPLETE",
+       "trades": 368
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -5752.780934862441,
+       "r": -83.1024981877367,
+       "status": "COMPLETE",
+       "trades": 329
+      },
+      "fees_slip_x2": {
+       "net": -6691.421623919707,
+       "r": -108.02942932591053,
+       "status": "COMPLETE",
+       "trades": 331
+      }
+     }
+    }
+   },
+   "first_decision": "2021-01-14T00:00:00Z",
+   "fold": null,
+   "key": "train",
+   "name": "train",
+   "status": "COMPLETE",
+   "window": {
+    "end": "2021-12-20T00:00:00Z",
+    "start": "2021-01-04T00:00:00Z"
+   }
+  },
+  {
+   "counts": {
+    "long": {
+     "B2": {
+      "base": {
+       "net": -4060.5847631678844,
+       "r": -47.66157335738473,
+       "status": "INCOMPLETE",
+       "trades": 280
+      },
+      "fees_slip_x2": {
+       "net": -5396.652667113979,
+       "r": -73.03331780551505,
+       "status": "INCOMPLETE",
+       "trades": 281
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -2514.5718544187307,
+       "r": -26.003180402863933,
+       "status": "COMPLETE",
+       "trades": 235
+      },
+      "fees_slip_x2": {
+       "net": -4085.0666725848223,
+       "r": -49.740048556736845,
+       "status": "COMPLETE",
+       "trades": 237
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -3572.504368925193,
+       "r": -41.17698827824765,
+       "status": "COMPLETE",
+       "trades": 337
+      },
+      "fees_slip_x2": {
+       "net": -5059.499589878206,
+       "r": -67.55754552563378,
+       "status": "COMPLETE",
+       "trades": 338
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -3107.139519637728,
+       "r": -33.46259279896301,
+       "status": "COMPLETE",
+       "trades": 312
+      },
+      "fees_slip_x2": {
+       "net": -4576.018033117321,
+       "r": -57.633089845919805,
+       "status": "COMPLETE",
+       "trades": 314
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -2236.718090540264,
+       "r": -22.547731879380947,
+       "status": "COMPLETE",
+       "trades": 264
+      },
+      "fees_slip_x2": {
+       "net": -3834.7151979940336,
+       "r": -45.67481102371828,
+       "status": "COMPLETE",
+       "trades": 266
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -2583.6055780822485,
+       "r": -26.24057163977514,
+       "status": "INCOMPLETE",
+       "trades": 293
+      },
+      "fees_slip_x2": {
+       "net": -4139.298496209074,
+       "r": -49.993580989147084,
+       "status": "INCOMPLETE",
+       "trades": 294
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -422.42954452279344,
+       "r": -2.98991520356485,
+       "status": "COMPLETE",
+       "trades": 169
+      },
+      "fees_slip_x2": {
+       "net": -1702.5879857676152,
+       "r": -17.365155310448,
+       "status": "COMPLETE",
+       "trades": 170
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -981.6556416210972,
+       "r": -8.38446461412104,
+       "status": "COMPLETE",
+       "trades": 257
+      },
+      "fees_slip_x2": {
+       "net": -2354.922709236522,
+       "r": -24.939338621977626,
+       "status": "COMPLETE",
+       "trades": 259
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -1225.143767512164,
+       "r": -7.639447436749142,
+       "status": "COMPLETE",
+       "trades": 311
+      },
+      "fees_slip_x2": {
+       "net": -4302.229610965784,
+       "r": -51.13954948809312,
+       "status": "COMPLETE",
+       "trades": 312
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -1411.9726447923813,
+       "r": -12.153506379599635,
+       "status": "COMPLETE",
+       "trades": 285
+      },
+      "fees_slip_x2": {
+       "net": -3225.252971528226,
+       "r": -36.005628472129416,
+       "status": "COMPLETE",
+       "trades": 286
+      }
+     }
+    },
+    "short": {
+     "B2": {
+      "base": {
+       "net": -1863.7795285146733,
+       "r": -17.083669751563836,
+       "status": "COMPLETE",
+       "trades": 245
+      },
+      "fees_slip_x2": {
+       "net": -4002.685130482316,
+       "r": -47.57472675777373,
+       "status": "COMPLETE",
+       "trades": 249
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -730.8923590034099,
+       "r": -5.639426677905743,
+       "status": "COMPLETE",
+       "trades": 185
+      },
+      "fees_slip_x2": {
+       "net": -2370.543106786968,
+       "r": -25.212443113410057,
+       "status": "COMPLETE",
+       "trades": 185
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": 199.82815402767596,
+       "r": 4.727289120816919,
+       "status": "COMPLETE",
+       "trades": 304
+      },
+      "fees_slip_x2": {
+       "net": -2143.514409930206,
+       "r": -21.518478747487507,
+       "status": "COMPLETE",
+       "trades": 307
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -1393.0815255746502,
+       "r": -12.42246204476403,
+       "status": "COMPLETE",
+       "trades": 239
+      },
+      "fees_slip_x2": {
+       "net": -3167.7913525754993,
+       "r": -35.55718034064056,
+       "status": "COMPLETE",
+       "trades": 244
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -546.0823771981782,
+       "r": -3.0937260502393142,
+       "status": "COMPLETE",
+       "trades": 231
+      },
+      "fees_slip_x2": {
+       "net": -2404.397773074931,
+       "r": -25.0083101435533,
+       "status": "COMPLETE",
+       "trades": 235
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": 543.7437409590806,
+       "r": 8.212387916455032,
+       "status": "COMPLETE",
+       "trades": 258
+      },
+      "fees_slip_x2": {
+       "net": -1738.7271501904318,
+       "r": -16.228757163108693,
+       "status": "COMPLETE",
+       "trades": 261
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -175.41822488785215,
+       "r": -0.29491415718083963,
+       "status": "COMPLETE",
+       "trades": 156
+      },
+      "fees_slip_x2": {
+       "net": -1771.0978920762254,
+       "r": -18.07896983390735,
+       "status": "COMPLETE",
+       "trades": 157
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": 368.64148272821063,
+       "r": 5.45294373310902,
+       "status": "COMPLETE",
+       "trades": 223
+      },
+      "fees_slip_x2": {
+       "net": -1016.7540928360318,
+       "r": -8.983485882223231,
+       "status": "COMPLETE",
+       "trades": 224
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -2265.243408610538,
+       "r": -21.035857630701408,
+       "status": "COMPLETE",
+       "trades": 272
+      },
+      "fees_slip_x2": {
+       "net": -4839.43340296015,
+       "r": -61.79080867811745,
+       "status": "COMPLETE",
+       "trades": 276
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -23.5671620828424,
+       "r": 2.4897380318874993,
+       "status": "COMPLETE",
+       "trades": 242
+      },
+      "fees_slip_x2": {
+       "net": -2086.821001711995,
+       "r": -20.75847687132333,
+       "status": "COMPLETE",
+       "trades": 245
+      }
+     }
+    }
+   },
+   "first_decision": "2021-12-30T00:00:00Z",
+   "fold": 0,
+   "incomplete": [
+    {
+     "class": "funding_rate_gap",
+     "config": "range_vwap_rev.v1.rg+0.5",
+     "reason": "incomplete.funding",
+     "row": "base",
+     "secondary": false,
+     "side": "long",
+     "split": "walk_forward[0]"
+    },
+    {
+     "class": "funding_rate_gap",
+     "config": "range_vwap_rev.v1.rg+0.5",
+     "reason": "incomplete.funding",
+     "row": "fees_slip_x2",
+     "secondary": false,
+     "side": "long",
+     "split": "walk_forward[0]"
+    },
+    {
+     "class": "funding_rate_gap",
+     "config": "B2",
+     "reason": "incomplete.funding",
+     "row": "base",
+     "secondary": false,
+     "side": "long",
+     "split": "walk_forward[0]"
+    },
+    {
+     "class": "funding_rate_gap",
+     "config": "B2",
+     "reason": "incomplete.funding",
+     "row": "fees_slip_x2",
+     "secondary": false,
+     "side": "long",
+     "split": "walk_forward[0]"
+    }
+   ],
+   "key": "walk_forward[0]",
+   "name": "walk_forward",
+   "status": "INCOMPLETE",
+   "window": {
+    "end": "2022-12-19T00:00:00Z",
+    "start": "2021-12-20T00:00:00Z"
+   }
+  },
+  {
+   "counts": {
+    "long": {
+     "B2": {
+      "base": {
+       "net": -5202.978093730698,
+       "r": -70.0161917969299,
+       "status": "COMPLETE",
+       "trades": 257
+      },
+      "fees_slip_x2": {
+       "net": -6339.5976799427635,
+       "r": -97.06080702475865,
+       "status": "COMPLETE",
+       "trades": 262
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -3281.5772705494496,
+       "r": -37.597776207318994,
+       "status": "COMPLETE",
+       "trades": 207
+      },
+      "fees_slip_x2": {
+       "net": -4358.738171209098,
+       "r": -55.1409120768247,
+       "status": "COMPLETE",
+       "trades": 211
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -2235.4755275157268,
+       "r": -23.042136030580476,
+       "status": "COMPLETE",
+       "trades": 299
+      },
+      "fees_slip_x2": {
+       "net": -4231.386288519354,
+       "r": -52.86814319458453,
+       "status": "COMPLETE",
+       "trades": 301
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -1401.256990392947,
+       "r": -12.197266281441824,
+       "status": "COMPLETE",
+       "trades": 252
+      },
+      "fees_slip_x2": {
+       "net": -3099.6106444867582,
+       "r": -34.25799531680857,
+       "status": "COMPLETE",
+       "trades": 257
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -2810.4264354977095,
+       "r": -30.950848417785334,
+       "status": "COMPLETE",
+       "trades": 249
+      },
+      "fees_slip_x2": {
+       "net": -4459.231636306503,
+       "r": -57.09059032379681,
+       "status": "COMPLETE",
+       "trades": 250
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -3397.0811918817576,
+       "r": -38.27752010399935,
+       "status": "COMPLETE",
+       "trades": 279
+      },
+      "fees_slip_x2": {
+       "net": -5133.233271335828,
+       "r": -68.93581564512674,
+       "status": "COMPLETE",
+       "trades": 283
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -2905.668463274529,
+       "r": -33.30922562615956,
+       "status": "COMPLETE",
+       "trades": 162
+      },
+      "fees_slip_x2": {
+       "net": -4035.2705090278946,
+       "r": -50.63734114516588,
+       "status": "COMPLETE",
+       "trades": 164
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -2297.103665350634,
+       "r": -24.447293761423925,
+       "status": "COMPLETE",
+       "trades": 223
+      },
+      "fees_slip_x2": {
+       "net": -3404.3863261110455,
+       "r": -39.9635551503768,
+       "status": "COMPLETE",
+       "trades": 225
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -3798.1052213561093,
+       "r": -41.018583255283225,
+       "status": "COMPLETE",
+       "trades": 284
+      },
+      "fees_slip_x2": {
+       "net": -6143.901794502696,
+       "r": -89.75552288780979,
+       "status": "COMPLETE",
+       "trades": 288
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -2902.5727516055786,
+       "r": -31.50146914710141,
+       "status": "COMPLETE",
+       "trades": 258
+      },
+      "fees_slip_x2": {
+       "net": -4628.316812391834,
+       "r": -59.51957741745326,
+       "status": "COMPLETE",
+       "trades": 262
+      }
+     }
+    },
+    "short": {
+     "B2": {
+      "base": {
+       "net": -2890.0091783546654,
+       "r": -28.56650284819123,
+       "status": "COMPLETE",
+       "trades": 293
+      },
+      "fees_slip_x2": {
+       "net": -4769.664065059078,
+       "r": -59.531740044180374,
+       "status": "COMPLETE",
+       "trades": 295
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -3394.1910493060755,
+       "r": -39.07592144269217,
+       "status": "COMPLETE",
+       "trades": 225
+      },
+      "fees_slip_x2": {
+       "net": -4679.007525673359,
+       "r": -60.76635845129988,
+       "status": "COMPLETE",
+       "trades": 228
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -4302.1246551713375,
+       "r": -52.860196016329894,
+       "status": "COMPLETE",
+       "trades": 384
+      },
+      "fees_slip_x2": {
+       "net": -6407.448334571598,
+       "r": -98.97973655642109,
+       "status": "COMPLETE",
+       "trades": 393
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -3999.582079571197,
+       "r": -47.84764964996428,
+       "status": "COMPLETE",
+       "trades": 332
+      },
+      "fees_slip_x2": {
+       "net": -5875.010017708822,
+       "r": -85.34139083899508,
+       "status": "COMPLETE",
+       "trades": 336
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -3103.2349143711035,
+       "r": -34.81184250938867,
+       "status": "COMPLETE",
+       "trades": 272
+      },
+      "fees_slip_x2": {
+       "net": -5277.545600899133,
+       "r": -72.73959398774949,
+       "status": "COMPLETE",
+       "trades": 277
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -4223.843893001346,
+       "r": -51.598968573872,
+       "status": "COMPLETE",
+       "trades": 320
+      },
+      "fees_slip_x2": {
+       "net": -5687.15146818934,
+       "r": -80.83951451740232,
+       "status": "COMPLETE",
+       "trades": 325
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -2757.747144012281,
+       "r": -30.775377097184624,
+       "status": "COMPLETE",
+       "trades": 199
+      },
+      "fees_slip_x2": {
+       "net": -4031.650579142229,
+       "r": -50.22325538136813,
+       "status": "COMPLETE",
+       "trades": 202
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -4052.7152186310427,
+       "r": -49.96496595642847,
+       "status": "COMPLETE",
+       "trades": 277
+      },
+      "fees_slip_x2": {
+       "net": -5255.807584887133,
+       "r": -72.47270638769122,
+       "status": "COMPLETE",
+       "trades": 282
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -4060.777729015033,
+       "r": -47.047139291113346,
+       "status": "COMPLETE",
+       "trades": 331
+      },
+      "fees_slip_x2": {
+       "net": -6302.402659783475,
+       "r": -94.99878916276012,
+       "status": "COMPLETE",
+       "trades": 331
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -4316.175557438952,
+       "r": -53.39968999232092,
+       "status": "COMPLETE",
+       "trades": 306
+      },
+      "fees_slip_x2": {
+       "net": -5609.2947105348785,
+       "r": -79.260928735272,
+       "status": "COMPLETE",
+       "trades": 308
+      }
+     }
+    }
+   },
+   "first_decision": "2022-12-29T00:00:00Z",
+   "fold": 1,
+   "key": "walk_forward[1]",
+   "name": "walk_forward",
+   "status": "COMPLETE",
+   "window": {
+    "end": "2023-12-18T00:00:00Z",
+    "start": "2022-12-19T00:00:00Z"
+   }
+  },
+  {
+   "counts": {
+    "long": {
+     "B2": {
+      "base": {
+       "net": -3272.9962836275863,
+       "r": -34.19115708198191,
+       "status": "COMPLETE",
+       "trades": 277
+      },
+      "fees_slip_x2": {
+       "net": -5012.069131471457,
+       "r": -63.940498787364035,
+       "status": "COMPLETE",
+       "trades": 283
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -2262.618011156397,
+       "r": -22.10560816133852,
+       "status": "COMPLETE",
+       "trades": 218
+      },
+      "fees_slip_x2": {
+       "net": -3552.7036362583613,
+       "r": -40.35262699825848,
+       "status": "COMPLETE",
+       "trades": 221
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -5181.871841669266,
+       "r": -69.48114620012473,
+       "status": "COMPLETE",
+       "trades": 344
+      },
+      "fees_slip_x2": {
+       "net": -6371.822446896994,
+       "r": -97.9649843887501,
+       "status": "COMPLETE",
+       "trades": 346
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -3630.6460575228125,
+       "r": -41.80962238489138,
+       "status": "COMPLETE",
+       "trades": 276
+      },
+      "fees_slip_x2": {
+       "net": -5164.775666819056,
+       "r": -69.46883477579547,
+       "status": "COMPLETE",
+       "trades": 276
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -3329.9689716581997,
+       "r": -38.01948662981327,
+       "status": "COMPLETE",
+       "trades": 245
+      },
+      "fees_slip_x2": {
+       "net": -4670.439798971946,
+       "r": -60.52245315221789,
+       "status": "COMPLETE",
+       "trades": 242
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -3504.3399276702116,
+       "r": -37.94466502837498,
+       "status": "COMPLETE",
+       "trades": 306
+      },
+      "fees_slip_x2": {
+       "net": -5026.705815715057,
+       "r": -64.60530953187752,
+       "status": "COMPLETE",
+       "trades": 305
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -1781.8652959527126,
+       "r": -17.13503632965479,
+       "status": "COMPLETE",
+       "trades": 179
+      },
+      "fees_slip_x2": {
+       "net": -2865.040702215888,
+       "r": -31.379759191137165,
+       "status": "COMPLETE",
+       "trades": 179
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -2557.309250733093,
+       "r": -26.265044102476388,
+       "status": "COMPLETE",
+       "trades": 258
+      },
+      "fees_slip_x2": {
+       "net": -3879.147421002686,
+       "r": -45.72540153541117,
+       "status": "COMPLETE",
+       "trades": 263
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -2093.910481846489,
+       "r": -16.71823647575546,
+       "status": "COMPLETE",
+       "trades": 315
+      },
+      "fees_slip_x2": {
+       "net": -4746.068618621342,
+       "r": -58.89288722081929,
+       "status": "COMPLETE",
+       "trades": 322
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -3500.8842306663564,
+       "r": -38.13371512324247,
+       "status": "COMPLETE",
+       "trades": 291
+      },
+      "fees_slip_x2": {
+       "net": -5086.645195871263,
+       "r": -66.14772334611133,
+       "status": "COMPLETE",
+       "trades": 291
+      }
+     }
+    },
+    "short": {
+     "B2": {
+      "base": {
+       "net": -4470.728319908512,
+       "r": -55.710035454239744,
+       "status": "COMPLETE",
+       "trades": 340
+      },
+      "fees_slip_x2": {
+       "net": -6378.9375609982935,
+       "r": -97.78943867082467,
+       "status": "COMPLETE",
+       "trades": 350
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -4373.841429051602,
+       "r": -54.448867032576395,
+       "status": "COMPLETE",
+       "trades": 300
+      },
+      "fees_slip_x2": {
+       "net": -5870.283670433226,
+       "r": -85.33519473894849,
+       "status": "COMPLETE",
+       "trades": 304
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -4391.824500419159,
+       "r": -55.28039340667444,
+       "status": "COMPLETE",
+       "trades": 423
+      },
+      "fees_slip_x2": {
+       "net": -6227.482613096897,
+       "r": -94.98793859823583,
+       "status": "COMPLETE",
+       "trades": 428
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -3812.762517804454,
+       "r": -44.16957157627587,
+       "status": "COMPLETE",
+       "trades": 345
+      },
+      "fees_slip_x2": {
+       "net": -5600.72411554822,
+       "r": -78.45887912113542,
+       "status": "COMPLETE",
+       "trades": 351
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -5086.640495682525,
+       "r": -68.99755406910725,
+       "status": "COMPLETE",
+       "trades": 330
+      },
+      "fees_slip_x2": {
+       "net": -6286.717854791699,
+       "r": -96.89223271366589,
+       "status": "COMPLETE",
+       "trades": 335
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -5531.552511324965,
+       "r": -77.44138244340489,
+       "status": "COMPLETE",
+       "trades": 390
+      },
+      "fees_slip_x2": {
+       "net": -6836.496684323468,
+       "r": -112.10567636542976,
+       "status": "COMPLETE",
+       "trades": 393
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -3360.1966288542076,
+       "r": -39.864565190535245,
+       "status": "COMPLETE",
+       "trades": 196
+      },
+      "fees_slip_x2": {
+       "net": -4412.255076861137,
+       "r": -57.172519865273024,
+       "status": "COMPLETE",
+       "trades": 196
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -3763.9752819462583,
+       "r": -45.137680812261706,
+       "status": "COMPLETE",
+       "trades": 336
+      },
+      "fees_slip_x2": {
+       "net": -5344.791998900056,
+       "r": -74.48131546457712,
+       "status": "COMPLETE",
+       "trades": 338
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -6466.43998735417,
+       "r": -99.04108789283895,
+       "status": "COMPLETE",
+       "trades": 427
+      },
+      "fees_slip_x2": {
+       "net": -7897.185142519215,
+       "r": -151.35891994562436,
+       "status": "COMPLETE",
+       "trades": 426
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -5133.091591773196,
+       "r": -69.145962597651,
+       "status": "COMPLETE",
+       "trades": 373
+      },
+      "fees_slip_x2": {
+       "net": -6469.662808582192,
+       "r": -101.31090170909403,
+       "status": "COMPLETE",
+       "trades": 374
+      }
+     }
+    }
+   },
+   "first_decision": "2023-12-28T00:00:00Z",
+   "fold": 2,
+   "key": "walk_forward[2]",
+   "name": "walk_forward",
+   "status": "COMPLETE",
+   "window": {
+    "end": "2024-12-16T00:00:00Z",
+    "start": "2023-12-18T00:00:00Z"
+   }
+  },
+  {
+   "counts": {
+    "long": {
+     "B2": {
+      "base": {
+       "net": -3669.886774480354,
+       "r": -41.398995369069084,
+       "status": "COMPLETE",
+       "trades": 308
+      },
+      "fees_slip_x2": {
+       "net": -4993.014959656179,
+       "r": -64.76899293534684,
+       "status": "COMPLETE",
+       "trades": 309
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -3253.2399029765324,
+       "r": -36.23215491653495,
+       "status": "COMPLETE",
+       "trades": 249
+      },
+      "fees_slip_x2": {
+       "net": -4821.133424287755,
+       "r": -62.773584481456815,
+       "status": "COMPLETE",
+       "trades": 254
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -4764.773125924483,
+       "r": -61.26851671142093,
+       "status": "COMPLETE",
+       "trades": 384
+      },
+      "fees_slip_x2": {
+       "net": -6242.9288503312955,
+       "r": -94.51006215739095,
+       "status": "COMPLETE",
+       "trades": 390
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -4542.67730965725,
+       "r": -57.04273955835605,
+       "status": "COMPLETE",
+       "trades": 330
+      },
+      "fees_slip_x2": {
+       "net": -5785.406310661394,
+       "r": -82.78481747073654,
+       "status": "COMPLETE",
+       "trades": 331
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -1655.4771235096064,
+       "r": -15.59011394850224,
+       "status": "COMPLETE",
+       "trades": 271
+      },
+      "fees_slip_x2": {
+       "net": -3599.8074641036997,
+       "r": -42.199213687832454,
+       "status": "COMPLETE",
+       "trades": 275
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -3348.9782161475964,
+       "r": -36.95582722077564,
+       "status": "COMPLETE",
+       "trades": 331
+      },
+      "fees_slip_x2": {
+       "net": -4995.030695520481,
+       "r": -65.47237715480074,
+       "status": "COMPLETE",
+       "trades": 335
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -1829.3351323262755,
+       "r": -18.847440011216918,
+       "status": "COMPLETE",
+       "trades": 179
+      },
+      "fees_slip_x2": {
+       "net": -2891.114223330409,
+       "r": -32.76014132871487,
+       "status": "COMPLETE",
+       "trades": 182
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -1849.139573391306,
+       "r": -18.14908063656413,
+       "status": "COMPLETE",
+       "trades": 277
+      },
+      "fees_slip_x2": {
+       "net": -3411.684048352434,
+       "r": -39.678060907592936,
+       "status": "COMPLETE",
+       "trades": 279
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -5153.043156840336,
+       "r": -67.20406865705266,
+       "status": "COMPLETE",
+       "trades": 346
+      },
+      "fees_slip_x2": {
+       "net": -7107.37770374556,
+       "r": -119.11909423393344,
+       "status": "COMPLETE",
+       "trades": 351
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -3269.3331598343534,
+       "r": -36.46261737220804,
+       "status": "COMPLETE",
+       "trades": 306
+      },
+      "fees_slip_x2": {
+       "net": -4863.066852189422,
+       "r": -63.590341034077014,
+       "status": "COMPLETE",
+       "trades": 311
+      }
+     }
+    },
+    "short": {
+     "B2": {
+      "base": {
+       "net": -2537.5405720737854,
+       "r": -24.331758328388236,
+       "status": "COMPLETE",
+       "trades": 302
+      },
+      "fees_slip_x2": {
+       "net": -5360.892616761292,
+       "r": -72.61263957042424,
+       "status": "COMPLETE",
+       "trades": 302
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -787.1685272427844,
+       "r": -4.524729885224689,
+       "status": "COMPLETE",
+       "trades": 265
+      },
+      "fees_slip_x2": {
+       "net": -2968.08035191961,
+       "r": -31.59885052337838,
+       "status": "COMPLETE",
+       "trades": 270
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -1814.3051010837562,
+       "r": -16.586870930073335,
+       "status": "COMPLETE",
+       "trades": 379
+      },
+      "fees_slip_x2": {
+       "net": -4072.2085251082653,
+       "r": -49.16757577728576,
+       "status": "COMPLETE",
+       "trades": 381
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -547.168272369579,
+       "r": -1.46921271343727,
+       "status": "COMPLETE",
+       "trades": 319
+      },
+      "fees_slip_x2": {
+       "net": -2373.371501652163,
+       "r": -23.066904124112618,
+       "status": "COMPLETE",
+       "trades": 315
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -2394.0429930539995,
+       "r": -24.108156389586963,
+       "status": "COMPLETE",
+       "trades": 308
+      },
+      "fees_slip_x2": {
+       "net": -4176.080296381789,
+       "r": -50.966213276465616,
+       "status": "COMPLETE",
+       "trades": 308
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -1046.628668323729,
+       "r": -6.500473369452347,
+       "status": "COMPLETE",
+       "trades": 345
+      },
+      "fees_slip_x2": {
+       "net": -3117.3886034956063,
+       "r": -33.13030039371913,
+       "status": "COMPLETE",
+       "trades": 343
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": 954.3312608010272,
+       "r": 11.385121567557041,
+       "status": "COMPLETE",
+       "trades": 186
+      },
+      "fees_slip_x2": {
+       "net": -912.6011894175399,
+       "r": -7.485622701463133,
+       "status": "COMPLETE",
+       "trades": 186
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -601.1053110070258,
+       "r": -3.547654481278997,
+       "status": "COMPLETE",
+       "trades": 296
+      },
+      "fees_slip_x2": {
+       "net": -2905.4523138061186,
+       "r": -31.729118132469015,
+       "status": "COMPLETE",
+       "trades": 300
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -1227.5853980262277,
+       "r": -6.155185626748471,
+       "status": "COMPLETE",
+       "trades": 350
+      },
+      "fees_slip_x2": {
+       "net": -4191.873320769759,
+       "r": -47.93444670905794,
+       "status": "COMPLETE",
+       "trades": 352
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -612.3488407538455,
+       "r": -2.205096311530217,
+       "status": "COMPLETE",
+       "trades": 322
+      },
+      "fees_slip_x2": {
+       "net": -2848.01414295917,
+       "r": -29.574854170125104,
+       "status": "COMPLETE",
+       "trades": 322
+      }
+     }
+    }
+   },
+   "first_decision": "2024-12-26T00:00:00Z",
+   "fold": 3,
+   "key": "walk_forward[3]",
+   "name": "walk_forward",
+   "status": "COMPLETE",
+   "window": {
+    "end": "2025-12-15T00:00:00Z",
+    "start": "2024-12-16T00:00:00Z"
+   }
+  },
+  {
+   "counts": {
+    "long": {
+     "B2": {
+      "base": {
+       "net": -3241.5206285902127,
+       "r": -36.46320034589656,
+       "status": "COMPLETE",
+       "trades": 269
+      },
+      "fees_slip_x2": {
+       "net": -4658.953164967294,
+       "r": -60.16985828399817,
+       "status": "COMPLETE",
+       "trades": 271
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -3509.319915116976,
+       "r": -40.69416244771693,
+       "status": "COMPLETE",
+       "trades": 214
+      },
+      "fees_slip_x2": {
+       "net": -4845.520608370058,
+       "r": -63.63846670235118,
+       "status": "COMPLETE",
+       "trades": 218
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -3121.378545627398,
+       "r": -34.07918664388829,
+       "status": "COMPLETE",
+       "trades": 321
+      },
+      "fees_slip_x2": {
+       "net": -4908.502310178685,
+       "r": -64.41684727545586,
+       "status": "COMPLETE",
+       "trades": 326
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -3363.294735623282,
+       "r": -39.28605805286833,
+       "status": "COMPLETE",
+       "trades": 270
+      },
+      "fees_slip_x2": {
+       "net": -4413.971407338232,
+       "r": -56.91222286719398,
+       "status": "COMPLETE",
+       "trades": 267
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -1268.2905656211224,
+       "r": -10.84046124839196,
+       "status": "COMPLETE",
+       "trades": 259
+      },
+      "fees_slip_x2": {
+       "net": -3345.6095873685476,
+       "r": -38.04659019613085,
+       "status": "COMPLETE",
+       "trades": 262
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -2751.618070438421,
+       "r": -29.47971694146825,
+       "status": "COMPLETE",
+       "trades": 294
+      },
+      "fees_slip_x2": {
+       "net": -4483.136435357537,
+       "r": -56.92702877150462,
+       "status": "COMPLETE",
+       "trades": 295
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -499.2039923183873,
+       "r": -3.8869296819283123,
+       "status": "COMPLETE",
+       "trades": 163
+      },
+      "fees_slip_x2": {
+       "net": -1963.34133063433,
+       "r": -20.669506905961228,
+       "status": "COMPLETE",
+       "trades": 163
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -2642.2689163949235,
+       "r": -28.73170868580989,
+       "status": "COMPLETE",
+       "trades": 254
+      },
+      "fees_slip_x2": {
+       "net": -4023.5032475099256,
+       "r": -49.41314235520039,
+       "status": "COMPLETE",
+       "trades": 254
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -4191.6040799705,
+       "r": -49.61925108120425,
+       "status": "COMPLETE",
+       "trades": 298
+      },
+      "fees_slip_x2": {
+       "net": -6325.761188487039,
+       "r": -97.2004362502218,
+       "status": "COMPLETE",
+       "trades": 297
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -2376.645253722393,
+       "r": -24.91353504321867,
+       "status": "COMPLETE",
+       "trades": 271
+      },
+      "fees_slip_x2": {
+       "net": -4113.707073964015,
+       "r": -50.87349258848127,
+       "status": "COMPLETE",
+       "trades": 272
+      }
+     }
+    },
+    "short": {
+     "B2": {
+      "base": {
+       "net": -3679.810575318987,
+       "r": -42.90606845877996,
+       "status": "COMPLETE",
+       "trades": 235
+      },
+      "fees_slip_x2": {
+       "net": -4988.236695099203,
+       "r": -66.17986069756792,
+       "status": "COMPLETE",
+       "trades": 235
+      }
+     },
+     "range_vwap_rev.v1.k+0.5": {
+      "base": {
+       "net": -1034.0226944410686,
+       "r": -7.375918977210623,
+       "status": "COMPLETE",
+       "trades": 205
+      },
+      "fees_slip_x2": {
+       "net": -2320.8876613771804,
+       "r": -23.044581562860586,
+       "status": "COMPLETE",
+       "trades": 205
+      }
+     },
+     "range_vwap_rev.v1.k-0.5": {
+      "base": {
+       "net": -4027.169825613981,
+       "r": -49.21274854744126,
+       "status": "COMPLETE",
+       "trades": 315
+      },
+      "fees_slip_x2": {
+       "net": -5396.816519923641,
+       "r": -75.26795504660399,
+       "status": "COMPLETE",
+       "trades": 317
+      }
+     },
+     "range_vwap_rev.v1.n+12": {
+      "base": {
+       "net": -3081.04544942135,
+       "r": -34.54195536067335,
+       "status": "COMPLETE",
+       "trades": 259
+      },
+      "fees_slip_x2": {
+       "net": -4752.085230670543,
+       "r": -62.2356365471334,
+       "status": "COMPLETE",
+       "trades": 264
+      }
+     },
+     "range_vwap_rev.v1.n-12": {
+      "base": {
+       "net": -2301.700933866299,
+       "r": -24.047898576048024,
+       "status": "COMPLETE",
+       "trades": 237
+      },
+      "fees_slip_x2": {
+       "net": -3853.9661679376463,
+       "r": -46.73130051332639,
+       "status": "COMPLETE",
+       "trades": 237
+      }
+     },
+     "range_vwap_rev.v1.rg+0.5": {
+      "base": {
+       "net": -906.9393429877123,
+       "r": -6.896310717923875,
+       "status": "COMPLETE",
+       "trades": 255
+      },
+      "fees_slip_x2": {
+       "net": -3197.2279226548435,
+       "r": -35.96478138866647,
+       "status": "COMPLETE",
+       "trades": 260
+      }
+     },
+     "range_vwap_rev.v1.rg-0.5": {
+      "base": {
+       "net": -387.6219589991286,
+       "r": -2.6098540381093147,
+       "status": "COMPLETE",
+       "trades": 156
+      },
+      "fees_slip_x2": {
+       "net": -1887.8035164705054,
+       "r": -19.636119087546824,
+       "status": "COMPLETE",
+       "trades": 157
+      }
+     },
+     "range_vwap_rev.v1.stop_atr+0.5": {
+      "base": {
+       "net": -1222.827244564926,
+       "r": -11.237732341168584,
+       "status": "COMPLETE",
+       "trades": 231
+      },
+      "fees_slip_x2": {
+       "net": -2465.971498978437,
+       "r": -26.584843123794546,
+       "status": "COMPLETE",
+       "trades": 232
+      }
+     },
+     "range_vwap_rev.v1.stop_atr-0.5": {
+      "base": {
+       "net": -2426.968943251726,
+       "r": -25.357876414940044,
+       "status": "COMPLETE",
+       "trades": 289
+      },
+      "fees_slip_x2": {
+       "net": -4761.101674489547,
+       "r": -62.88866994722002,
+       "status": "COMPLETE",
+       "trades": 289
+      }
+     },
+     "range_vwap_rev.v1.x1_mean": {
+      "base": {
+       "net": -635.9019314500999,
+       "r": -3.99668033857456,
+       "status": "COMPLETE",
+       "trades": 249
+      },
+      "fees_slip_x2": {
+       "net": -2900.7794936276973,
+       "r": -31.87172667056298,
+       "status": "COMPLETE",
+       "trades": 254
+      }
+     }
+    }
+   },
+   "first_decision": "2025-12-25T00:00:00Z",
+   "fold": 4,
+   "key": "walk_forward[4]",
+   "name": "walk_forward",
+   "status": "COMPLETE",
+   "window": {
+    "end": "2026-09-28T00:00:00Z",
+    "start": "2025-12-15T00:00:00Z"
+   }
+  }
+ ],
+ "status": "INCOMPLETE",
+ "tier": "CORE-10",
+ "universe_label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+ "variant": {
+  "boundary": "decision close t admitted iff t + (cap + 1) x 4h <= split end",
+  "candidate_id": "range_vwap_rev.v1-splitcut",
+  "development_only": true,
+  "entry_rule": "entry-cutoff/1",
+  "label": "DEVELOPMENT-ONLY CANDIDATE RULE - NON-PROMOTABLE (remedy A, Codex 6185035993 point 4)",
+  "promotable": false,
+  "variant_of": "range_vwap_rev.v1"
+ },
+ "window": {
+  "end": "2026-09-28T00:00:00Z",
+  "start": "2021-01-04T00:00:00Z"
+ }
+}

@@ -1126,38 +1126,92 @@ def test_every_registered_v2_envelope_and_run_digest_is_golden():
         assert R.run_digest(env['run']) == d
     out = subprocess.run(['git', '-C', ROOT, 'diff', '--no-renames', '--name-status', '0944547', '--', 'research_evidence'],
                          stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True).stdout
-    assert _append_only_violations(out) == []                           # no registered evidence byte changed
+    assert _append_only_violations(out, _baseline_bytes, _worktree_bytes) == []   # no registered evidence byte changed
 
 
-# Codex 6307485958: research_evidence is append-only since 0944547. Every file that existed there stays byte-identical
-# (no M / D / T; --no-renames turns a rename into D + A); the only additions allowed are new preregistrations, which the
-# envelope scan above still covers like every other tracked evidence file.
-APPEND_ONLY_DIRS = ('research_evidence/prereg/',)
+# Codex 6307485958 + 6310029368: research_evidence is append-only since 0944547. Every file that existed there stays
+# byte-identical (no D / T; --no-renames turns a rename into D + A), except REGISTRY.jsonl, which may only grow by whole
+# lines appended after its baseline bytes. New files may land only in the exact approved evidence dirs; every tracked
+# evidence file is still walked by the v2 envelope scan above.
+APPEND_ONLY_BASE = '0944547'
+APPEND_ONLY_DIRS = ('research_evidence/prereg/', 'research_evidence/ledger/', 'research_evidence/runs/')
+APPEND_ONLY_REGISTRY = 'research_evidence/ledger/REGISTRY.jsonl'
 
 
-def _append_only_violations(name_status: str) -> list:
+def _baseline_bytes(rel: str) -> bytes:
+    return subprocess.run(['git', '-C', ROOT, 'show', f'{APPEND_ONLY_BASE}:{rel}'], stdin=subprocess.DEVNULL,
+                          capture_output=True, check=True).stdout
+
+
+def _worktree_bytes(rel: str) -> bytes:
+    with open(os.path.join(ROOT, rel), 'rb') as f:
+        return f.read()
+
+
+def _is_line_append(old: bytes, new: bytes) -> bool:
+    """`new` is `old` plus at least one whole appended line: a strict byte prefix, starting on a line boundary."""
+    return (len(new) > len(old) and new.startswith(old) and (not old or old.endswith(b'\n'))
+            and new.endswith(b'\n'))
+
+
+def _append_only_violations(name_status: str, old_bytes, new_bytes) -> list:
     bad = []
     for line in name_status.splitlines():
         if not line.strip():
             continue
         status, _, rel = line.partition('\t')
-        if status != 'A' or not rel.startswith(APPEND_ONLY_DIRS):
-            bad.append(line)
+        if status == 'A' and rel.startswith(APPEND_ONLY_DIRS):
+            continue
+        if status == 'M' and rel == APPEND_ONLY_REGISTRY and _is_line_append(old_bytes(rel), new_bytes(rel)):
+            continue
+        bad.append(line)
     return bad
 
 
-@pytest.mark.parametrize('name_status, ok', [
-    ('', True),
-    ('A\tresearch_evidence/prereg/core10_gapfill_plan.v1.json\n', True),
-    ('M\tresearch_evidence/prereg/r4_gate.json\n', False),                 # an existing prereg changed
-    ('D\tresearch_evidence/notices/zb-delist-notice-core-10-20261014.json\n', False),
-    ('T\tresearch_evidence/prereg/r4_gate.json\n', False),
-    ('A\tresearch_evidence/runs/rex/CORE-10/detail.json\n', False),        # new evidence outside prereg
-    ('A\tresearch_evidence/prereg_extra/x.json\n', False),                 # prefix look-alike
-    ('A\tresearch_evidence/prereg/a.json\nM\tresearch_evidence/manifests/m.json.gz\n', False),
+_REG_OLD = b'{"a":1}\n{"b":2}\n'
+
+
+@pytest.mark.parametrize('name_status, new_registry, ok', [
+    ('', _REG_OLD, True),
+    ('A\tresearch_evidence/prereg/core10_gapfill_plan.v1.json\n', _REG_OLD, True),
+    ('A\tresearch_evidence/ledger/range_vwap_rev.jsonl\n', _REG_OLD, True),
+    ('A\tresearch_evidence/runs/rex-x/CORE-10/final-1.json\n', _REG_OLD, True),
+    ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', _REG_OLD + b'{"c":3}\n', True),            # whole-line append
+    ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', _REG_OLD + b'{"c":3}\n{"d":4}\n', True),
+    ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', b'{"a":9}\n{"b":2}\n{"c":3}\n', False),    # earlier line rewritten
+    ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', b'{"a":1}\n', False),                      # truncated
+    ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', _REG_OLD + b'{"c":3}', False),             # no trailing newline
+    ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', b'{"c":3}\n' + _REG_OLD, False),           # prepended
+    ('M\tresearch_evidence/ledger/range_vwap_rev.jsonl\n', _REG_OLD + b'{"c":3}\n', False),    # only REGISTRY may grow
+    ('M\tresearch_evidence/prereg/r4_gate.json\n', _REG_OLD, False),
+    ('D\tresearch_evidence/notices/zb-delist-notice-core-10-20261014.json\n', _REG_OLD, False),
+    ('D\tresearch_evidence/ledger/REGISTRY.jsonl\n', _REG_OLD, False),
+    ('T\tresearch_evidence/prereg/r4_gate.json\n', _REG_OLD, False),
+    ('A\tresearch_evidence/notices/new.json\n', _REG_OLD, False),                               # not an approved dir
+    ('A\tresearch_evidence/manifests/new.json.gz\n', _REG_OLD, False),
+    ('A\tresearch_evidence/prereg_extra/x.json\n', _REG_OLD, False),                            # prefix look-alikes
+    ('A\tresearch_evidence/ledgerX/x.jsonl\n', _REG_OLD, False),
+    ('A\tresearch_evidence/runs-old/x.json\n', _REG_OLD, False),
+    ('A\tresearch_evidence/ledger/REGISTRY.jsonl.bak\n', _REG_OLD, True),                       # inside ledger/, a new file
+    ('A\tresearch_evidence/prereg/a.json\nM\tresearch_evidence/manifests/m.json.gz\n', _REG_OLD, False),
 ])
-def test_research_evidence_is_append_only_for_new_preregs_only(name_status, ok):
-    assert (_append_only_violations(name_status) == []) is ok
+def test_research_evidence_is_append_only(name_status, new_registry, ok):
+    old = {APPEND_ONLY_REGISTRY: _REG_OLD, 'research_evidence/ledger/range_vwap_rev.jsonl': _REG_OLD}
+    new = {APPEND_ONLY_REGISTRY: new_registry, 'research_evidence/ledger/range_vwap_rev.jsonl': new_registry}
+    got = _append_only_violations(name_status, lambda r: old.get(r, b'x'), lambda r: new.get(r, b'y'))
+    assert (got == []) is ok, got
+
+
+@pytest.mark.parametrize('old, new, ok', [
+    (b'', b'{"a":1}\n', True),                                       # first registry line
+    (_REG_OLD, _REG_OLD + b'{"c":3}\n', True),
+    (_REG_OLD, _REG_OLD, False),                                     # no growth is not an append
+    (b'{"a":1}', b'{"a":1}{"b":2}\n', False),                        # glued onto an unterminated last line
+    (b'{"a":1}', b'{"a":1}\n{"b":2}\n', False),                      # rewrites the unterminated last line
+])
+def test_registry_append_only_is_a_whole_line_byte_prefix(old, new, ok):
+    assert _is_line_append(old, new) is ok
+
 
 
 def test_test_fixture_v2_envelopes_keep_their_shape(tmp_path):

@@ -365,8 +365,17 @@ def _base():
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
     out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
-    assert sorted(out) == ['breadth_static40', 'range_bb_mr', 'res01_infra', 'short_breakdown', 'trend_ema_mom',
-                           'trend_ema_mom_short']
+    assert sorted(out) == ['breadth_static40', 'range_bb_mr', 'range_vwap_rev', 'res01_infra', 'short_breakdown',
+                           'trend_ema_mom', 'trend_ema_mom_short']
+    # PR #166 (CORE10_GAPFILL_PREREG_v1): range_vwap_rev holds exactly the one registered CORE-10 gap-fill splitcut run -
+    # 1 development Access + 20 trial records (18 variant + 2 baseline), never promotable, and no legacy window_spent.
+    rex = out.pop('range_vwap_rev')
+    assert [(r['kind'], r['detail'].get('side')) for r in rex] == [('data_access', None)] + [
+        k for side in ('long', 'short') for k in [('variant', side)] * 9 + [('baseline', side)]]
+    assert {r['split'] for r in rex} == {'development'}
+    assert {r['candidate_id'] for r in rex} == {'range_vwap_rev.v1-splitcut'}
+    assert all(r['detail']['promotable'] is False for r in rex)
+    assert not any(r['kind'] == 'window_spent' for r in rex)
     # R3: the infrastructure family holds only development-split shape/coverage smokes (no trials, no holdout)
     infra = out.pop('res01_infra')
     assert {(r['kind'], r['split']) for r in infra} == {('data_access', 'development')} and L.n_trials(infra) == 0
