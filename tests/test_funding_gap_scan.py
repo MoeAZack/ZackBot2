@@ -54,8 +54,29 @@ def test_data_start_after_the_scan_start_is_an_edge_not_a_hole():
     assert kinds(d) == ['data_start'] and d[0]['t_ms'] == rows[0].time_ms
 
 
+def test_a_symbol_listed_after_the_window_is_labelled_non_causal():
+    d = F.scan_rows([], LO, LO + 10 * 8 * H, LO + 50 * 8 * H)
+    assert kinds(d) == ['data_start'] and d[0]['in_window'] is False and 'non-causal' in d[0]['detail']
+    d = F.scan_rows(chain(LO + 2 * 8 * H, 20), LO, LO + 10 * 8 * H, LO + 2 * 8 * H)
+    assert kinds(d) == ['data_start'] and d[0]['in_window'] is True        # listed inside the window: causal
+
+
+def test_clip_anchor_checks_the_rex_clip_view_not_the_store():
+    """Cowork G1: rex_clip keeps time_ms >= window lo, so a store row before lo is invisible to the evaluator."""
+    first, span_lo, hi = LO - 16 * H, LO - 8 * H - 60_000, LO + 10 * 8 * H
+    rows = chain(LO - 8 * H, 12)
+    assert F.scan_rows(rows, span_lo, hi, first, clip_lo=LO) == []
+    early = [F.Row(r.time_ms - 30_000, 8) if r.time_ms == LO else r for r in rows]  # the LO event 30 s early
+    assert F.scan_rows(early, span_lo, hi, first, clip_lo=LO) == []    # clipped, but LO+8h still anchors in time
+    hole = [r for r in early if r.time_ms != LO + 8 * H]                # ...and the next event is missing too
+    d = F.scan_rows(hole, span_lo, hi, first, clip_lo=LO)
+    assert kinds(d) == ['clip_anchor', 'spacing'] and d[0]['t_ms'] == LO + 16 * H
+    assert kinds(F.scan_rows(hole, span_lo, hi, first)) == ['spacing']  # the store-only view misses clip_anchor
+
+
 def test_no_funding_file_at_all_is_reported():
-    assert kinds(F.scan_rows([], LO, LO + H, None)) == ['data_start']
+    d = F.scan_rows([], LO, LO + H, None)
+    assert kinds(d) == ['data_start'] and d[0]['in_window'] is False
 
 
 def test_a_series_ending_inside_the_window_is_a_next_event_defect():
@@ -116,4 +137,10 @@ def test_frozen_report_is_bound_to_the_core10_wf0_inputs():
     assert r['provenance']['clean'] is True and len(r['provenance']['commit']) == 40
     assert F.parse_utc(r["window"]["hi"]) <= F.parse_utc(F.SEALED_END)
     kinds = {d['kind'] for v in r['symbols'].values() for d in v['defects']}
-    assert kinds <= {'time_tol', 'interval_type', 'grid', 'duplicate', 'spacing', 'data_start', 'next_event'}
+    assert kinds <= {'time_tol', 'interval_type', 'grid', 'duplicate', 'spacing', 'data_start', 'next_event',
+                     'clip_anchor'}
+    assert r['in_window_defect_count'] == sum(d['in_window'] for v in r['symbols'].values() for d in v['defects'])
+    hi = F.parse_utc(r['window']['hi'])
+    for v in r['symbols'].values():                      # a data_start after the window end is labelled non-causal
+        for d in v['defects']:
+            assert d['in_window'] is not (d['kind'] == 'data_start' and d['t_ms'] > hi)

@@ -12,7 +12,10 @@ series - no trade, no position, no PnL, no evaluation - and lists every defect w
   * `spacing`       consecutive nominal instants not exactly one interval (of either row) apart;
   * `data_start`    the symbol's first stored funding row lies after the scan start (no phase anchor possible
                     before it - a listing / data-start edge, not a mid-series hole);
-  * `next_event`    the series ends inside the scan window (the event after the last row is due at or before hi).
+  * `next_event`    the series ends inside the scan window (the event after the last row is due at or before hi);
+  * `clip_anchor`   in the evaluator's `rex_clip` view (rows with time_ms >= window lo) the first kept row does not
+                    anchor the first interval.
+Every defect has `in_window`; a `data_start` after the window end is `in_window: false` (not listed, non-causal).
 
 Inputs are the committed attested manifest (`pit_run.MANIFEST_PATH`) and its archive store; every file read is
 re-proved against the manifest sha256 and its `.ok` sidecar. Only fundingRate files overlapping the scan span are read.
@@ -76,17 +79,28 @@ def _classify(r: Row) -> str | None:
     return 'grid'
 
 
-def scan_rows(rows: list, lo: int, hi: int, first_ms: int | None) -> list[dict]:
+def scan_rows(rows: list, lo: int, hi: int, first_ms: int | None, clip_lo: int | None = None) -> list[dict]:
     """Defects of one symbol's rows over [lo, hi] (rows already limited to the scan span, any order). `first_ms` is
-    the symbol's first stored funding row time from the manifest (None = no funding file at all)."""
+    the symbol's first stored funding row time from the manifest (None = no funding file at all). Every defect
+    carries `in_window`: False only for a `data_start` after `hi` (the symbol was not listed in the window, so it
+    cannot cause a trade row there). `clip_lo` (the window start) adds the evaluator-view check `clip_anchor`:
+    `pit_run.rex_clip` keeps only rows with time_ms >= clip_lo, so the first kept row must anchor the first
+    interval (its nominal instant at most one interval after clip_lo)."""
     out = []
-    def add(kind, t, **kw):
-        out.append(dict(kind=kind, t_ms=t, utc=utc(t), **kw))
+    def add(kind, t, in_window=True, **kw):
+        out.append(dict(kind=kind, t_ms=t, utc=utc(t), in_window=in_window, **kw))
     if first_ms is None:
-        add('data_start', lo, detail='no fundingRate file for this symbol')
+        add('data_start', lo, in_window=False, detail='no fundingRate file for this symbol')
         return out
     if first_ms > lo:
-        add('data_start', first_ms, detail=f'first stored funding row {utc(first_ms)} is after the scan start')
+        add('data_start', first_ms, in_window=first_ms <= hi,
+            detail=f'first stored funding row {utc(first_ms)} is after the scan start'
+                   + ('' if first_ms <= hi else ' and after the window end: not listed in the window, non-causal'))
+    if clip_lo is not None and first_ms <= clip_lo:
+        kept = sorted((r for r in rows if r.time_ms >= clip_lo and _classify(r) is None), key=lambda r: r.time_ms)
+        if not kept or RV.t_nom(kept[0]) > clip_lo + kept[0].interval_hours * HOUR:
+            add('clip_anchor', kept[0].time_ms if kept else clip_lo,
+                detail='the rex_clip view (time_ms >= window lo) starts more than one interval after lo')
     good = []
     for r in sorted(rows, key=lambda r: r.time_ms):
         k = _classify(r)
@@ -142,14 +156,17 @@ def scan(store: str, man: dict, symbols: list[str], lo: int, hi: int) -> dict:
             raise ScanError(f'{s}: a selected file reaches the sealed holdout; refusing')
         rows = [r for f in use for r in _read_funding(store, f) if span_lo <= r.time_ms <= span_hi]
         files += [{'path': f['path'], 'sha256': f['sha256'], 'rows': f['rows']} for f in use]
+        kept = [r for r in rows if r.time_ms >= lo]
         per[s] = {'first_row_utc': None if first is None else utc(first), 'rows_scanned': len(rows),
-                  'defects': scan_rows(rows, span_lo, hi, first)}
+                  'first_clipped_row_utc': utc(min(r.time_ms for r in kept)) if kept else None,
+                  'defects': scan_rows(rows, span_lo, hi, first, clip_lo=lo)}
     return {'format': FORMAT, 'purpose': 'FUND-GAP-01 FG-1 fundingRate continuity inventory (no evaluation)',
             'manifest_digest': man['digest'], 'window': {'lo': utc(lo), 'hi': utc(hi)},
             'scan_span': {'lo': utc(span_lo), 'hi': utc(span_hi)},
             'rules': {'funding_tol_ms': RV.FUNDING_TOL, 'grids_h': list(RV.FUNDING_GRIDS),
                       'anchor_lookback_h': C.MAX_FUNDING_INTERVAL_H},
             'symbols': per, 'defect_count': sum(len(v['defects']) for v in per.values()),
+            'in_window_defect_count': sum(d['in_window'] for v in per.values() for d in v['defects']),
             'files_read': files}
 
 
@@ -180,7 +197,7 @@ def main(argv=None) -> int:
     if a.out:
         with open(a.out, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
-        print(f'{a.out} sha256 {doc_sha} defects {doc["defect_count"]}')
+        print(f'{a.out} sha256 {doc_sha} defects {doc["defect_count"]} in-window {doc["in_window_defect_count"]}')
     else:
         sys.stdout.write(text)
     return 0
