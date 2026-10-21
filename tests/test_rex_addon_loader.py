@@ -512,3 +512,29 @@ def test_fill_cli_fetch_requires_a_zips_dir(fx, monkeypatch):
     p.write_text(json.dumps(fx['rep']))
     with pytest.raises(SystemExit):
         BF.main(['--report', str(p), '--out', str(fx['tmp'] / 'a.json'), '--fetch'])
+
+
+def test_a_cited_file_whose_period_runs_past_the_sealed_end_is_refused(fx, monkeypatch):
+    """Codex 6304510176 #1: even when every selected row is pre-cutoff, a cited archive file whose period ends after
+    SEALED_END is refused before the Access (the #88 planner rule, re-applied by the loader)."""
+    addon = make_addon(fx)
+    monkeypatch.setattr(BF, 'check_report', lambda rep: rep)       # the report itself is pre-cutoff; isolate the file rule
+    monkeypatch.setattr(BF, 'SEALED_END', '2024-03-12T20:00:00Z')  # mid-file: OPEN_BAR (16:00-20:00) still fits
+    assert OPEN_BAR + TF <= U(BF.SEALED_END)
+    with pytest.raises(PR.PitRunError, match='past the sealed end'):
+        with_addon(fx, addon)
+    assert_no_access(fx)
+    monkeypatch.setattr(BF, 'SEALED_END', '2024-03-13T00:00:00Z')  # the file period ends exactly at the cutoff: accepted
+    with_addon(fx, addon)
+
+
+@pytest.mark.parametrize('empty', ['rows_and_files', 'rows_only'])
+def test_an_addon_that_fills_nothing_is_refused(fx, empty):
+    """Codex 6304510176 #2: a resealed no-op add-on must not change the run identity as if it had filled data."""
+    def fn(a):
+        a['rows'] = []
+        if empty == 'rows_and_files':
+            a['files'] = []
+    with pytest.raises(PR.PitRunError, match='fills nothing'):
+        with_addon(fx, reseal(make_addon(fx), fn))
+    assert_no_access(fx)

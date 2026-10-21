@@ -59,6 +59,17 @@ def _sha(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+def _period_end_ms(url: str) -> int:
+    """Exclusive UTC end (ms) of the period an archive file covers, from its URL
+    .../{monthly|daily}/{series}/{SYMBOL}/{interval}/{SYMBOL}-{interval}-{YYYY-MM | YYYY-MM-DD}.zip."""
+    parts = url.split('/')
+    try:
+        freq, period = parts[-5], parts[-1][:-len('.zip')].split('-', 2)[2]
+        return int(BF._period_end(freq, period).timestamp()) * 1000
+    except (IndexError, ValueError) as e:
+        raise AddonError(f'source file {url}: no archive period in its name ({type(e).__name__})')
+
+
 def _coords(url: str):
     """(series, symbol, interval) named by an archive URL .../{monthly|daily}/{series}/{SYMBOL}/{interval}/file.zip."""
     parts = url.split('/')
@@ -162,6 +173,8 @@ def _validate(addon, report, manifest_digest, symbols, lo, hi, cutoff, zips, add
         raise AddonError('add-on digest does not match its canonical content (edited?)')
     if addon.get('manifest_digest') != manifest_digest:
         raise AddonError('the add-on pins another base manifest than the attested one in use')
+    if not addon.get('rows') or not addon.get('files'):         # a no-op must never change the run identity
+        raise AddonError('the add-on fills nothing (no rows / no source files): refused')
     try:
         GI.verify(report)
         BF.check_report(report)
@@ -178,6 +191,8 @@ def _validate(addon, report, manifest_digest, symbols, lo, hi, cutoff, zips, add
             raise AddonError(f'source file {u!r} is not on https://{BF.HOST}{BF.PATH_PREFIX}')
         if u in files:
             raise AddonError(f'source file {u} listed twice')
+        if _period_end_ms(u) > S.parse_utc(BF.SEALED_END):     # the #88 planner rule, re-applied to every cited file
+            raise AddonError(f'source file {u} covers a period past the sealed end {BF.SEALED_END} (holdout refused)')
         files[u] = f
     holes: dict = {}
     for h in report['holes']:
