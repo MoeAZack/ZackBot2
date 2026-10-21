@@ -22,15 +22,15 @@ py -3.14 tools/research/binance_archive_fill.py --report <S>/gap_report.json --o
 ```
 
 **Step-0 equality rule.** The report embeds `provenance.commit`, so its self-sha changes with the head it runs at.
-Step 0 regenerates the report at the accepted head and requires every field to equal the frozen file **except** `provenance.commit`
-(must be the accepted head, tree clean) and the derived `sha256`. Verified at `89fb082`: those two are the only differing fields.
+Step 0 regenerates the report at the **protected master merge commit of this PR** and requires every field to equal the frozen file **except** `provenance.commit`
+(must equal that merge commit, tree clean) and the derived `sha256`. Verified at `89fb082`: those two are the only differing fields.
 The fill always uses the **frozen** report (§6), so the plan digest and the add-on's pinned report do not move.
 
 ## 2. Exact scope
 
 - Tier **CORE-10** (BTC ETH ZEC SOL XRP NEAR HYPE DOGE UNI SUI, USDT-M).
 - Window **2021-01-04T00:00:00Z → 2026-09-28T00:00:00Z** = `pit_run.REX_DEV_WINDOW`.
-  **OPEN (Codex 6306617660):** the sealed v1 rex run's window/ledger is not on master; this assumes it equals `REX_DEV_WINDOW`. If it differs, the report and plan are regenerated and every digest above changes.
+  **Confirmed (Codex 6306709619):** the sealed v1 evidence (`detail-370fb3b0b1170055.json`, candidate `range_vwap_rev.v1`) has exactly this Access window, manifest `54912d9d…` and notice `4cdf7d61…`.
 - Holes: **182** (294 missing bar opens). By series/split: markPriceKlines train 90 / walk-forward 84; klines walk-forward 8.
   Missing opens by reason: funding_mark 174 (train 90, wf[0] 27, wf[1] 24, wf[4] 33); gap 120 (all wf[0], the 8 klines holes). `series_end` 0, `off_grid` 0.
 - Requests: **77** daily archive files (57 markPriceKlines, 20 klines), periods 2021-07-01 → 2026-06-29, no monthly.
@@ -47,9 +47,9 @@ and that posted value is the one passed as `--addon-sha256`.
 
 ## 4. Output and run identity
 
-- Fetch outputs: `C:/Dev/ZackBot2_data/core10_gapfill_v1/` (`addon.json`, `zips/`). Never inside the repo, never the sealed v1 dir.
-- Evaluation output: `research_evidence/runs/rex-core10-gapfill-v1/` (new dir; refuse if it exists; no `--resume`).
-- Run identity: `rex-core10-gapfill-v1`, commit = accepted head of this PR, clean tree.
+- Fetch outputs: `C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/` (`addon.json`, `zips/`). Never inside the repo, never the sealed v1 dir.
+- Evaluation output: `research_evidence/runs/rex-core10-gapfill-splitcut-v1/` (new dir; refuse if it exists; no `--resume`).
+- Run identity: `rex-core10-gapfill-splitcut-v1`, variant `range_vwap_rev.v1-splitcut`, commit = **protected master merge commit of this PR** (never an unmerged branch), clean tree. Non-promotable evidence.
 
 ## 5. Acceptance / refusal table
 
@@ -72,19 +72,20 @@ py -3.14 tools/research/rex_gap_inventory.py --store C:/Dev/ZackBot2_data/binanc
    --window 2021-01-04T00:00:00Z/2026-09-28T00:00:00Z --out <S>/gap_report.json
 # step 1: fetch (network)
 py -3.14 tools/research/binance_archive_fill.py --report research_evidence/prereg/core10_gapfill_report.v1.json \
-   --out C:/Dev/ZackBot2_data/core10_gapfill_v1/addon.json --fetch --zips C:/Dev/ZackBot2_data/core10_gapfill_v1/zips
+   --out C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/addon.json --fetch --zips C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/zips
 # step 2: post addon sha256 + zip listing on the PR, then evaluate
 py -3.14 tools/research/run_r4.py rex --window 2021-01-04T00:00:00Z/2026-09-28T00:00:00Z --tier CORE-10 \
-   --store C:/Dev/ZackBot2_data/binance_um --out-dir research_evidence/runs/rex-core10-gapfill-v1 \
+   --variant range_vwap_rev.v1-splitcut --store C:/Dev/ZackBot2_data/binance_um --out-dir research_evidence/runs/rex-core10-gapfill-splitcut-v1 \
    --notice research_evidence/notices/zb-delist-notice-core-10-20261014.json \
    --notice-sha256 4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68 \
-   --addon C:/Dev/ZackBot2_data/core10_gapfill_v1/addon.json --addon-report research_evidence/prereg/core10_gapfill_report.v1.json \
-   --addon-sha256 <posted> --addon-zips C:/Dev/ZackBot2_data/core10_gapfill_v1/zips \
+   --addon C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/addon.json --addon-report research_evidence/prereg/core10_gapfill_report.v1.json \
+   --addon-sha256 <posted> --addon-zips C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/zips \
    --author claude-code --cairo-date <date>
 ```
 
-## 7. Open rulings (Codex)
+## 7. Rulings (Codex 6306709619, fixed before any fetch)
 
-1. Window: confirm `REX_DEV_WINDOW` equals the sealed v1 run window (§2).
-2. Variant: `range_vwap_rev.v1` (above) vs `--variant range_vwap_rev.v1-splitcut` with the add-on. One variant only, chosen before fetch.
-3. Trial multiplicity: this run counts as one additional trial against the rex family; the result is evidence for the remedy, not a new strategy selection.
+1. Window: confirmed equal to the sealed v1 run window (§2).
+2. Variant: exactly `range_vwap_rev.v1-splitcut` (the accepted development-only causal cutoff from #91). No other variant is run.
+3. Multiplicity: exactly one additional rex-family trial. It tests the accepted remedy; it is not a strategy-selection or promotion trial.
+4. Execution commit: the protected master merge commit of this PR; all commands in §6 run there.
