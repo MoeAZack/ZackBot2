@@ -267,3 +267,30 @@ def test_176_open_short_basis_is_corrected_from_its_first_fill():
     want = -(0.0046 - 0.0046053641) * 10000.0                            # unrealized on the MEASURED basis
     assert float(TB.compute('C', lots=[bl], marks={'X': 0.0046}, funding=FOK)['B1_FAST']['unreal']) == pytest.approx(want, abs=1e-4)
     assert BL.compute(dict(id='C'), lots=[bl], marks={'X': 0.0046})['books']['B1_FAST']['unrealized'] == pytest.approx(want, abs=1e-4)
+
+
+def test_176_sui_multi_fill_entry_uses_the_weighted_measured_price():
+    """Codex 6329208598: SUIUSDT SC-RANGE entry over 16 executions, weighted 1.0386313735 (booked 1.03408812), stop
+    measured 1.0275; fees 2.68059878 -> gross -36.10460995, net -38.78520873 (pre-fix cohort -24.7119)."""
+    q = 36.10460995 / (1.0386313735 - 1.0275)
+    t = dict(side='LONG', fills=[['t0', 'entry', q, 1.03408812], ['t1', 'stop', q, 1.0275]],
+             fill_refs=[[0, 'c1-1-0'], [1, 'c1-1-1']])
+    AC.apply_px(t, dict(cost_ref='c1-1-0', actual=1.0386313735)); AC.apply_px(t, dict(cost_ref='c1-1-1', actual=1.0275))
+    AC.finalize_px(t, 1, TA.ENTRY_KINDS)
+    booked, _ = AC._replay(t['fills'], 1, TA.ENTRY_KINDS, {})
+    assert booked + t['pnl_fill_adj'] == pytest.approx(-36.10460995, abs=1e-6)
+    assert booked + t['pnl_fill_adj'] - 2.68059878 == pytest.approx(-38.78520873, abs=1e-6)
+
+
+def test_an_entry_over_many_executions_is_corrected_to_their_weighted_price():
+    """The engine path: one entry order filled in 16 executions at different prices (answer without avgPrice); the
+    enriched record carries the qty-weighted price and the lot basis follows it."""
+    e, _ = mk(EX)
+    e.trade.split = [(1 / 16, 100.0 + 0.1 * i) for i in range(16)]
+    k = opened(e); lot = e.state['lots'][k]
+    settle(e)
+    r = next(x for x in recs(e) if x['kind'] == 'entry_market')
+    rows = e.trade.rows[max(e.trade.rows)]
+    vwap = sum(float(x['qty']) * float(x['price']) for x in rows) / sum(float(x['qty']) for x in rows)
+    assert r['actual'] == pytest.approx(vwap) and lot['avg'] == 100.0
+    assert lot['fill_px_partial'] is False and lot['avg'] + lot['avg_fill_adj'] == pytest.approx(vwap)
