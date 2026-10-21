@@ -40,11 +40,27 @@ DROP_MARKS = {'BBBUSDT': {U('2024-03-05T07:00:00Z')}}
 
 
 def zbytes(member, lines) -> bytes:
-    """A zip with a FIXED member timestamp (deterministic bytes, so manifest / tape digests are reproducible)."""
+    """A zip with FIXED header fields (deterministic bytes on every OS, so manifest / tape digests are reproducible).
+    ZipInfo.create_system defaults to the host OS (0 Windows, 3 Unix) and is written into the header: pinned to 0
+    (Cowork 6305237417 - the CI / Windows golden mismatch), with external_attr pinned alongside."""
+    zi = zipfile.ZipInfo(member, date_time=(2024, 1, 1, 0, 0, 0))
+    zi.create_system, zi.external_attr = 0, 0
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w') as z:
-        z.writestr(zipfile.ZipInfo(member, date_time=(2024, 1, 1, 0, 0, 0)), '\n'.join(lines) + '\n')
+        z.writestr(zi, '\n'.join(lines) + '\n')
     return buf.getvalue()
+
+
+def test_fixture_zip_bytes_do_not_depend_on_the_host_os(monkeypatch):
+    """The fixture zip is byte-identical whatever ZipInfo's host default is (Windows 0 / Unix 3)."""
+    want = zbytes('X-1h-2024-01.csv', ['a', 'b'])
+    real = zipfile.ZipInfo.__init__
+
+    def unix(self, *a, **k):
+        real(self, *a, **k)
+        self.create_system = 3
+    monkeypatch.setattr(zipfile.ZipInfo, '__init__', unix)
+    assert zbytes('X-1h-2024-01.csv', ['a', 'b']) == want
 
 
 def put(store, rel, lines):
@@ -538,3 +554,20 @@ def test_an_addon_that_fills_nothing_is_refused(fx, empty):
     with pytest.raises(PR.PitRunError, match='fills nothing'):
         with_addon(fx, reseal(make_addon(fx), fn))
     assert_no_access(fx)
+
+
+@pytest.fixture
+def unix_zipinfo(monkeypatch):
+    """ZipInfo as on Linux / CI (create_system 3), applied BEFORE `fx` builds the fixture store."""
+    real = zipfile.ZipInfo.__init__
+
+    def unix(self, *a, **k):
+        real(self, *a, **k)
+        self.create_system = 3
+    monkeypatch.setattr(zipfile.ZipInfo, '__init__', unix)
+
+
+def test_the_no_addon_golden_holds_under_the_unix_zip_default(unix_zipinfo, fx):
+    """Cowork 6305237417: CI (Linux) computed 3684098d... because the fixture zip header carried the host OS; with
+    the header pinned the pre-slice golden is the same on Windows and Linux."""
+    assert golden(fx) == GOLDEN_NO_ADDON
