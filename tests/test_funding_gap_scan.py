@@ -1,4 +1,5 @@
 """FUND-GAP-01 FG-1: the fundingRate continuity scan applies exactly range_vwap_rev's funding rules (no evaluation)."""
+import json
 import os
 import sys
 
@@ -6,6 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools', 'research'))
 import funding_gap_scan as F                                                                # noqa: E402
+import pit as P                                                                             # noqa: E402
 
 H = F.HOUR
 LO = F.parse_utc('2022-01-01T00:00:00Z')
@@ -144,3 +146,108 @@ def test_frozen_report_is_bound_to_the_core10_wf0_inputs():
     for v in r['symbols'].values():                      # a data_start after the window end is labelled non-causal
         for d in v['defects']:
             assert d['in_window'] is not (d['kind'] == 'data_start' and d['t_ms'] > hi)
+    assert r['evaluator_mismatch_symbols'] == []          # G2: the evaluator path delivers exactly the scanned rows
+    for v in r['symbols'].values():
+        q = v['evaluator_equivalence']
+        assert q['equal'] is True and q['first_mismatch'] is None
+        assert q['scanner_rows'] == q['evaluator_rows'] and q['scanner_digest'] == q['evaluator_digest']
+
+
+# ------------------------------------------------------------------ G2: evaluator-path row equivalence
+def fund(t, ih=8):
+    return P.Funding(t, 0.0001, ih, t)
+
+
+def test_equivalence_holds_on_the_same_rows_and_ignores_rows_outside_the_clip():
+    rows = chain(LO - 16 * H, 12)                         # two rows before lo: never delivered by rex_clip
+    hi = LO + 7 * 8 * H
+    got = [fund(r.time_ms) for r in rows if LO <= r.time_ms <= hi + F.RV.FUNDING_TOL]
+    q = F.equivalence(rows, got, LO, hi)
+    assert q['equal'] and q['scanner_rows'] == q['evaluator_rows'] == 8 and q['first_mismatch'] is None
+
+
+def test_equivalence_fails_on_a_dropped_evaluator_row():
+    rows = chain(LO, 10)
+    got = [fund(r.time_ms) for r in rows]
+    del got[4]
+    q = F.equivalence(rows, got, LO, LO + 9 * 8 * H)
+    assert not q['equal'] and (q['scanner_rows'], q['evaluator_rows']) == (10, 9)
+    assert q['first_mismatch'] == {'index': 4, 'scanner': [LO + 32 * H, 8, 'int'], 'evaluator': [LO + 40 * H, 8, 'int']}
+
+
+def test_equivalence_fails_on_a_retyped_interval():
+    rows = chain(LO, 10)
+    got = [fund(r.time_ms, 8.0 if i == 6 else 8) for i, r in enumerate(rows)]
+    q = F.equivalence(rows, got, LO, LO + 9 * 8 * H)
+    assert not q['equal'] and q['scanner_rows'] == q['evaluator_rows'] == 10
+    assert q['first_mismatch']['evaluator'] == [LO + 48 * H, 8.0, 'float'] and q['scanner_digest'] != q['evaluator_digest']
+
+
+@pytest.fixture
+def syn(tmp_path, monkeypatch):
+    """The REX-02 loader's synthetic archive store (tests/test_range_vwap_rev_loader.py), tmp dirs only."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import pit_run as PR                                                                    # noqa: E402
+    import test_range_vwap_rev_loader as LD                                                 # noqa: E402
+    monkeypatch.setattr(PR, '_git', LD.fake_git())
+    store = str(tmp_path / 'store')
+    man = LD.build_store(store)
+    ds = PR.StaticDataset(man, store, LD.static(), LD.SYMS)
+    return {'PR': PR, 'LD': LD, 'store': store, 'man': man, 'ds': ds, 'tmp': tmp_path}
+
+
+def test_the_mirrored_read_equals_the_real_ledgered_access_path(syn):
+    """evaluator_funding == rex_clip(rex_series(Access window)) for the full window and for an inner split (the
+    access window does not change what rex_clip delivers)."""
+    PR, LD = syn['PR'], syn['LD']
+    art = LD.artifact()
+    notice = str(syn['tmp'] / 'notice.json')
+    with open(notice, 'w', newline='\n') as f:
+        json.dump(art, f)
+    ledger = str(syn['tmp'] / 'ledger' / 'range_vwap_rev.jsonl')
+    os.makedirs(os.path.dirname(ledger))
+    src = {'manifest': syn['man'], 'static': LD.static(), 'rules': LD.RULES, 'ledger': ledger}
+    env = PR.rex_load(src, repo=LD.ROOT, store=syn['store'], tier='CORE-10', window=LD.WINDOW, notice_path=notice,
+                      notice_sha256=art['digest'], author='t', cairo_date='2026-10-21', plan=PR.rex_plan(LD.ROOT))
+    inner = (LD.LO + 10 * 86_400_000, LD.HI - 10 * 86_400_000)
+    for s in LD.SYMS:
+        for lo, hi in ((LD.LO, LD.HI), inner):
+            real = PR.rex_clip(env['tape'][s], lo, hi).funding
+            assert real and F.evaluator_funding(syn['ds'], s, lo, hi, acc_lo=LD.LO, acc_hi=LD.HI) == real
+            assert F.evaluator_funding(syn['ds'], s, lo, hi) == real
+
+
+def test_scan_reports_equivalence_and_names_a_dropped_or_retyped_evaluator_row(syn, monkeypatch):
+    LD, ds = syn['LD'], syn['ds']
+    rep = F.scan(syn['store'], syn['man'], list(LD.SYMS), LD.LO, LD.HI, ds=ds)
+    assert rep['evaluator_mismatch_symbols'] == [] and rep['in_window_defect_count'] == 0
+    assert all(v['evaluator_equivalence']['equal'] and v['evaluator_equivalence']['evaluator_rows'] > 100
+               for v in rep['symbols'].values())
+    real = type(ds).slice
+
+    def drop(self, f, lo, t):                             # the evaluator path loses one AAAUSDT row
+        out = real(self, f, lo, t)
+        return [r for r in out if not (f['symbol'] == 'AAAUSDT' and r.time_ms == LD.LO + 8 * H + 3)]
+    monkeypatch.setattr(type(ds), 'slice', drop)
+    rep = F.scan(syn['store'], syn['man'], list(LD.SYMS), LD.LO, LD.HI, ds=ds)
+    assert rep['evaluator_mismatch_symbols'] == ['AAAUSDT']
+    q = rep['symbols']['AAAUSDT']['evaluator_equivalence']
+    assert q['evaluator_rows'] == q['scanner_rows'] - 1
+    assert q['first_mismatch']['scanner'] == [LD.LO + 8 * H + 3, 8, 'int']
+
+    def retype(self, f, lo, t):                           # ... or delivers one BBBUSDT interval as a float
+        out = real(self, f, lo, t)
+        return [r._replace(interval_hours=float(r.interval_hours))
+                if f['symbol'] == 'BBBUSDT' and r.time_ms == LD.LO + 16 * H + 3 else r for r in out]
+    monkeypatch.setattr(type(ds), 'slice', retype)
+    rep = F.scan(syn['store'], syn['man'], list(LD.SYMS), LD.LO, LD.HI, ds=ds)
+    assert rep['evaluator_mismatch_symbols'] == ['BBBUSDT']
+    assert rep['symbols']['BBBUSDT']['evaluator_equivalence']['first_mismatch']['evaluator'][2] == 'float'
+
+
+def test_an_evaluator_path_file_in_the_holdout_is_refused(syn, monkeypatch):
+    LD = syn['LD']
+    f0 = [f for f in syn['ds'].files('fundingRate', 'AAAUSDT', None) if f['first_open_ms'] <= LD.HI][-1]
+    monkeypatch.setitem(f0, 'last_open_ms', F.parse_utc(F.SEALED_END))
+    with pytest.raises(F.ScanError, match='sealed holdout'):
+        F.evaluator_funding(syn['ds'], 'AAAUSDT', LD.LO, LD.HI)

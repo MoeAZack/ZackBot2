@@ -17,6 +17,10 @@ series - no trade, no position, no PnL, no evaluation - and lists every defect w
                     anchor the first interval.
 Every defect has `in_window`; a `data_start` after the window end is `in_window: false` (not listed, non-causal).
 
+G2 (Codex 6316137350): per symbol, `evaluator_equivalence` compares the scanner's rows with the rows the evaluator
+path actually delivers to the window (`rex_series` -> `rex_clip(lo, hi)`), by timestamp and TYPED interval_hours:
+counts, digests and the first mismatch only. No Access is opened and nothing is recorded in a ledger.
+
 Inputs are the committed attested manifest (`pit_run.MANIFEST_PATH`) and its archive store; every file read is
 re-proved against the manifest sha256 and its `.ok` sidecar. Only fundingRate files overlapping the scan span are read.
 A scan end after the sealed holdout boundary is refused before any read.
@@ -125,6 +129,65 @@ def scan_rows(rows: list, lo: int, hi: int, first_ms: int | None, clip_lo: int |
     return out
 
 
+def evaluator_funding(ds, symbol: str, lo: int, hi: int, acc_lo: int | None = None, acc_hi: int | None = None):
+    """G2: the funding rows the REX evaluator delivers to a split [lo, hi]. `pit_run.rex_series` reads them as
+    `View(w.hi).funding(s, w.lo)` of an access window [acc_lo, acc_hi + tail] (`View._rows`: per manifest file,
+    newest first and prepended, `Dataset.slice` time >= acc_lo and available_ms <= acc_hi + tail), and `run_rex`
+    clips each split with `pit_run.rex_clip(lo, hi)`. A Window is opened only through a ledger-recorded Access, so the
+    `View._rows` loop is mirrored here over the same `Dataset.files` / `Dataset.slice` (proved identical to the real
+    Access path by the tests) and `rex_clip` is the real function. The access window defaults to the split itself
+    (`rex_clip` gives the same rows for any access window covering it). A file reaching the sealed holdout refuses."""
+    import pit_run as PR                                                                    # noqa: E402
+    acc_lo = lo if acc_lo is None else acc_lo
+    t = (hi if acc_hi is None else acc_hi) + PR.REX_FUNDING_TAIL_MS
+    out = []
+    for f in reversed(ds.files('fundingRate', symbol, None)):
+        if f['first_open_ms'] is None or f['first_open_ms'] > t or f['last_open_ms'] < acc_lo:
+            continue
+        if f['last_open_ms'] >= parse_utc(SEALED_END):
+            raise ScanError(f'{symbol}: an evaluator-path file reaches the sealed holdout; refusing')
+        out = ds.slice(f, acc_lo, t) + out
+    return PR.rex_clip(RV.Series({}, {}, tuple(out), {}), lo, hi).funding
+
+
+def row_key(time_ms, interval_hours) -> list:
+    """The compared identity of a funding row: timestamp and the TYPED interval (an 8.0 is not an 8)."""
+    return [time_ms, interval_hours, type(interval_hours).__name__]
+
+
+def _digest(keys: list) -> str:
+    return hashlib.sha256(json.dumps(keys, separators=(',', ':')).encode()).hexdigest()
+
+
+def equivalence(rows: list, delivered, lo: int, hi: int) -> dict:
+    """Scanner rows (restricted to the rex_clip view: time_ms >= lo, available = time_ms <= hi + tail) vs the
+    evaluator-delivered rows, both by time: counts, digests and only the first mismatch (no rate, no result)."""
+    a = [row_key(r.time_ms, r.interval_hours)
+         for r in sorted(rows, key=lambda r: r.time_ms) if lo <= r.time_ms <= hi + RV.FUNDING_TOL]
+    b = [row_key(r.time_ms, r.interval_hours) for r in sorted(delivered, key=lambda r: r.time_ms)]
+    first = None
+    for i in range(max(len(a), len(b))):
+        x, y = (a[i] if i < len(a) else None), (b[i] if i < len(b) else None)
+        if x != y:
+            first = {'index': i, 'scanner': x, 'evaluator': y}
+            break
+    return {'scanner_rows': len(a), 'evaluator_rows': len(b), 'scanner_digest': _digest(a),
+            'evaluator_digest': _digest(b), 'equal': first is None, 'first_mismatch': first}
+
+
+def evaluator_dataset(man: dict, store: str, symbols: list[str]):
+    """The evaluator's StaticDataset (the rank prefix covering `symbols`) over the same attested manifest; metadata
+    and the committed universe only, no Access and no ledger record."""
+    import pit_run as PR                                                                    # noqa: E402
+    src = PR.rex_sources(REPO)
+    if src['manifest']['digest'] != man['digest']:
+        raise ScanError('the evaluator sources pin a different manifest digest')
+    ranked = [x['symbol'] for x in src['static']['symbols']]
+    if any(s not in ranked for s in symbols):
+        raise ScanError(f'{sorted(set(symbols) - set(ranked))} not in the static universe')
+    return PR.StaticDataset(man, store, src['static'], ranked[:max(ranked.index(s) for s in symbols) + 1])
+
+
 def _git(*args) -> str:
     return subprocess.run(['git', '-C', REPO, *args], capture_output=True, text=True, check=True).stdout.strip()
 
@@ -140,7 +203,7 @@ def _read_funding(store: str, f: dict) -> list[Row]:
     return [Row(int(r[0]), int(r[1]), p) for r in raw]
 
 
-def scan(store: str, man: dict, symbols: list[str], lo: int, hi: int) -> dict:
+def scan(store: str, man: dict, symbols: list[str], lo: int, hi: int, ds=None) -> dict:
     if hi > parse_utc(SEALED_END):
         raise ScanError(f'scan end {utc(hi)} is after the sealed holdout boundary {SEALED_END}; refusing')
     span_lo = lo - C.MAX_FUNDING_INTERVAL_H * HOUR - RV.FUNDING_TOL
@@ -160,7 +223,12 @@ def scan(store: str, man: dict, symbols: list[str], lo: int, hi: int) -> dict:
         per[s] = {'first_row_utc': None if first is None else utc(first), 'rows_scanned': len(rows),
                   'first_clipped_row_utc': utc(min(r.time_ms for r in kept)) if kept else None,
                   'defects': scan_rows(rows, span_lo, hi, first, clip_lo=lo)}
-    return {'format': FORMAT, 'purpose': 'FUND-GAP-01 FG-1 fundingRate continuity inventory (no evaluation)',
+        if ds is not None:
+            per[s]['evaluator_equivalence'] = equivalence(rows, evaluator_funding(ds, s, lo, hi), lo, hi)
+    eq = {} if ds is None else {
+        'evaluator_path': 'pit_run.rex_series (View.funding over Dataset.slice) -> pit_run.rex_clip(lo, hi)',
+        'evaluator_mismatch_symbols': sorted(s for s, v in per.items() if not v['evaluator_equivalence']['equal'])}
+    return {**eq,'format': FORMAT, 'purpose': 'FUND-GAP-01 FG-1 fundingRate continuity inventory (no evaluation)',
             'manifest_digest': man['digest'], 'window': {'lo': utc(lo), 'hi': utc(hi)},
             'scan_span': {'lo': utc(span_lo), 'hi': utc(span_hi)},
             'rules': {'funding_tol_ms': RV.FUNDING_TOL, 'grids_h': list(RV.FUNDING_GRIDS),
@@ -187,7 +255,8 @@ def main(argv=None) -> int:
         if hi > parse_utc(SEALED_END):
             raise ScanError(f'scan end {hi_s} is after the sealed holdout boundary {SEALED_END}; refusing')
         man = M.load(os.path.join(REPO, MANIFEST_PATH))
-        doc = scan(a.store, man, [s for s in a.symbols.split(',') if s], lo, hi)
+        symbols = [s for s in a.symbols.split(',') if s]
+        doc = scan(a.store, man, symbols, lo, hi, ds=evaluator_dataset(man, a.store, symbols))
         doc['provenance'] = {'commit': _git('rev-parse', 'HEAD'), 'clean': _git('status', '--porcelain') == ''}
     except (ScanError, M.ManifestError, OSError, ValueError) as e:
         print(f'error: {e}', file=sys.stderr)
