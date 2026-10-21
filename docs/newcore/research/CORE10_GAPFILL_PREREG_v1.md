@@ -10,7 +10,7 @@ Basis: master `f485467ab82a2238def19da8025c426b7f73524a` (remedy stack #88 → #
 | Source manifest | `research_evidence/manifests/binance-um-archive-v1.json.gz` | manifest_digest `54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7` |
 | Hole/window report (timestamp-only) | `research_evidence/prereg/core10_gapfill_report.v1.json` | file sha256 `cd93ce28b8736c83257e3b9766aa5f866b30874327a6ab31af8a6a53b10968fa`; self `sha256` `7d3bdc9ce4b99de20fb3ad346ca4aa97c0541f981fc2b09d5d6c7b7752d442bd` |
 | URL plan | `research_evidence/prereg/core10_gapfill_plan.v1.json` | file sha256 `d7336ab59a0d6d4f987da3f090db2d3c4032c3d11414211d6c0db2f44c337a84`; `digest` `fb9e5744b3d4f684f753fd8ac0bd2f121eb2709c7dca5735fb5a9951582215e3`; `inventory_digest` = report self-sha |
-| Delist notice | `research_evidence/notices/zb-delist-notice-core-10-20261014.json` | `4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68` |
+| Delist notice | `research_evidence/notices/zb-delist-notice-core-10-20261014.json` | artifact `digest` field `4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68` (what `--notice-sha256` expects; not the file sha256) |
 | Store | `C:/Dev/ZackBot2_data/binance_um` | must reproduce the report above before fetch (step 0, rule below) |
 
 Report and plan were produced on a clean tree at `f485467` with:
@@ -33,7 +33,7 @@ The fill always uses the **frozen** report (§6), so the plan digest and the add
   **Confirmed (Codex 6306709619):** the sealed v1 evidence (`detail-370fb3b0b1170055.json`, candidate `range_vwap_rev.v1`) has exactly this Access window, manifest `54912d9d…` and notice `4cdf7d61…`.
 - Holes: **182** (294 missing bar opens). By series/split: markPriceKlines train 90 / walk-forward 84; klines walk-forward 8.
   Missing opens by reason: funding_mark 174 (train 90, wf[0] 27, wf[1] 24, wf[4] 33); gap 120 (all wf[0], the 8 klines holes). `series_end` 0, `off_grid` 0.
-- Requests: **77** daily archive files (57 markPriceKlines, 20 klines), periods 2021-07-01 → 2026-06-29, no monthly.
+- Requests: **77** daily archive files = **154 HTTP requests** (zip + `.CHECKSUM` each) (57 markPriceKlines, 20 klines), periods 2021-07-01 → 2026-06-29, no monthly.
   Per symbol: NEAR/SOL/XRP/ZEC 13, BTC 9, UNI 8, DOGE/ETH 3, HYPE/SUI 1.
 - Holdout: no planned file's period ends after `SEALED_END` (enforced by `candidates()` and re-checked by the add-on loader).
 - Host: `https://data.binance.vision` only; `min_gap_s` 1.0, sequential.
@@ -44,11 +44,14 @@ Archive sha256 values are not knowable before fetch. Rule: each zip is verified 
 the zip and `.CHECKSUM` are kept in `--zips`; the add-on loader re-proves every filled row from those zips.
 The add-on file's sha256 and the zips dir listing (name + sha256 per file) are **posted on the PR before any evaluation**,
 and that posted value is the one passed as `--addon-sha256`.
+`.CHECKSUM` is served by the same host as the zip, so it proves corruption integrity, not independent provenance.
 
 ## 4. Output and run identity
 
 - Fetch outputs: `C:/Dev/ZackBot2_data/core10_gapfill_splitcut_v1/` (`addon.json`, `zips/`). Never inside the repo, never the sealed v1 dir.
-- Evaluation output: `research_evidence/runs/rex-core10-gapfill-splitcut-v1/` (new dir; refuse if it exists; no `--resume`).
+- Evaluation output: `research_evidence/runs/rex-core10-gapfill-splitcut-v1/` (new dir; refuse if it exists at first start).
+- `--resume` is allowed **only** after an interrupted evaluation with the exact same frozen identity, progress present and no final artifact;
+  it continues the same single trial. A sealed/final run is never resumed.
 - Run identity: `rex-core10-gapfill-splitcut-v1`, variant `range_vwap_rev.v1-splitcut`, commit = **protected master merge commit of this PR** (never an unmerged branch), clean tree. Non-promotable evidence.
 
 ## 5. Acceptance / refusal table
@@ -56,13 +59,15 @@ and that posted value is the one passed as `--addon-sha256`.
 | Event | Outcome |
 |---|---|
 | Step-0 report differs from §1 in any field other than `provenance.commit` / `sha256` | **STOP**, no fetch; report the diff |
-| HTTP 429 / 418 / 403, HTML body, redirect off `data.binance.vision` | **STOP** the whole fetch; post status; no retry loop |
-| HTTP 404 on a planned file | hole stays **archive_missing** = genuine gap under MISSING_DATA_POLICY_v1 |
-| `.CHECKSUM` mismatch or unreadable zip | file **unresolved**; its holes stay holes; never re-fetched in this run |
-| Zip row outside its hole set / overlaps existing data | row ignored; existing store data wins |
+| HTTP 429 / 418 / 403, HTML body, redirect off `data.binance.vision` | **STOP** the whole fetch; post status; no retry |
+| `addon.stopped` is not null (any stop above), even if the partial add-on is loadable | **no evaluation**; post the stopped state; this registered run ends |
+| Verified HTTP 404 on a planned file | hole stays **archive_missing** = genuine gap under MISSING_DATA_POLICY_v1 |
+| Any other unresolved outcome: HTTP 5xx, timeout/network error, bad zip, schema or `.CHECKSUM` failure | holes **unresolved**; **no evaluation and no retry in this run**; a future attempt needs a separately accepted run record |
+| Zip row outside its hole's missing set | never enters the add-on (`extract()` keeps only missing opens) |
+| Base store changed and a planned open now exists | `check_base` refuses the **whole add-on**: **STOP before Access**; no evaluation |
 | Add-on loader refusal (manifest, sealed end, empty add-on, digest) | **STOP before Access**; no evaluation |
 | Any fill or result outside CORE-10 / the window | refused by tooling; treated as a defect |
-| Post-fill holes > 0 | reported per reason; evaluation proceeds only under the policy's genuine-gap handling |
+| Only verified-404 gaps remain unfilled | evaluation may proceed only if the add-on is non-empty and the loader accepts it; incompleteness reported per reason |
 
 ## 6. One-shot commands (run once, after Codex acceptance)
 
