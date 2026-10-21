@@ -27,7 +27,7 @@ import json, os, sys
 sys.path.insert(0, sys.argv[1])
 import runlock as RL
 repo, kind, ident, mode, root = sys.argv[2], sys.argv[3], json.loads(sys.argv[4]), sys.argv[5], sys.argv[6] or None
-with RL.hold(repo, kind, ident, argv=['holder'], root=root):
+with RL.hold(repo, kind, ident, argv=['holder'], root=root, bind_commit=sys.argv[7] == '1'):
     print('HELD', flush=True)
     if mode == 'crash':
         os._exit(3)                                  # dies holding the lock: no release, no finally
@@ -55,11 +55,12 @@ def worktrees(tmp_path):
 
 
 class Holder:
-    def __init__(self, tmp_path, repo, kind, ident, mode='hold', root=None):
+    def __init__(self, tmp_path, repo, kind, ident, mode='hold', root=None, bind_commit=True):
         script = tmp_path / 'holder.py'
         script.write_text(HOLDER)
         self.p = subprocess.Popen([sys.executable, str(script), TOOLS, repo, kind, json.dumps(ident), mode,
-                                   root or ''], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   root or '', '1' if bind_commit else '0'], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True)
         line = self.p.stdout.readline().strip()
         assert line == 'HELD', (line, self.p.stderr.read() if self.p.poll() is not None else '')
@@ -196,6 +197,23 @@ def test_a_new_commit_is_a_new_identity(tmp_path, worktrees, holders):
         pass
 
 
+def test_a_report_bound_acquisition_collides_on_every_commit(tmp_path, worktrees, holders):
+    """F1: the archive fetch owns shared zips/output for one report - a new commit must NOT make it a new resource."""
+    wt1, wt2 = worktrees
+    A = {'report_sha256': 'a' * 64, 'fetch': True, 'plan_only': True}
+    with RL.hold(wt1, 'archive_fill', A, bind_commit=False) as owner:  # the record says it is not commit-bound
+        assert owner['commit_bound'] is False
+    holders.append(Holder(tmp_path, wt1, 'archive_fill', A, bind_commit=False))
+    (tmp_path / 'wt2' / 'b.txt').write_text('b')
+    _git(wt2, 'add', 'b.txt')
+    _git(wt2, 'commit', '-q', '-m', 'b')
+    with pytest.raises(RL.RunActive, match='run already active: archive_fill'):
+        with RL.hold(wt2, 'archive_fill', A, bind_commit=False):
+            pass
+    with RL.hold(wt2, 'archive_fill', A) as owner:                  # the commit-bound key is a different lock
+        assert owner['commit_bound'] is True
+
+
 # ---------------------------------------------------------------- handle lifetime, release, death, crash, metadata
 
 def test_the_lock_file_is_one_stable_seed_byte_and_never_unlinked(worktrees):
@@ -285,9 +303,9 @@ def test_a_live_owner_with_missing_or_wrong_metadata_is_never_stolen(tmp_path, w
 def test_the_owner_file_carries_bounded_metadata_and_no_argv(worktrees):
     wt1, _ = worktrees
     with RL.hold(wt1, 'rex', P, argv=['rex', '--secret-looking', 'value']) as owner:
-        assert set(owner) == {'format', 'state', 'key', 'kind', 'commit', 'repo', 'identity_sha256', 'pid',
-                              'process_start', 'acquired_utc', 'acquired_cairo', 'worktree', 'argv_sha256'}
-        assert owner['identity_sha256'] == RL.identity_digest(P)
+        assert set(owner) == {'format', 'state', 'key', 'kind', 'commit', 'commit_bound', 'repo', 'identity_sha256',
+                              'pid', 'process_start', 'acquired_utc', 'acquired_cairo', 'worktree', 'argv_sha256'}
+        assert owner['identity_sha256'] == RL.identity_digest(P) and owner['commit_bound'] is True
         assert owner['acquired_utc'].endswith('Z') and owner['acquired_cairo'][-6:] in ('+02:00', '+03:00')
         assert owner['process_start'] is None or owner['process_start'].startswith(('win-filetime:', 'linux-ticks:'))
         assert 'value' not in json.dumps(owner)
@@ -351,21 +369,122 @@ def test_there_is_no_environment_override(tmp_path, worktrees, monkeypatch):
     assert not (tmp_path / 'elsewhere').exists() and os.path.exists(_base(wt1) + '.lock')
 
 
+@pytest.mark.parametrize('bad', [dict(P, s={1, 2}), dict(P, x=float('nan')), dict(P, x=float('-inf')),
+                                 dict(P, o=object()), {(1, 2): 'tuple key'}],
+                         ids=['set', 'nan', 'inf', 'object', 'key'])
+def test_a_non_json_identity_fails_closed_before_anything_is_created(tmp_path, worktrees, bad):
+    """F3: canonical identity serialisation errors are RunLockError, never a raw TypeError / ValueError."""
+    wt1, _ = worktrees
+    root = tmp_path / 'locks'
+    with pytest.raises(RL.RunLockError, match='not canonical JSON') as e:
+        with RL.hold(wt1, 'rex', bad, root=str(root)):
+            pass
+    assert not isinstance(e.value, RL.RunActive) and not root.exists()
+    with pytest.raises(RL.RunLockError):
+        RL.identity_digest(bad)
+
+
+def test_owner_replace_rides_out_a_brief_sharing_violation(worktrees, monkeypatch):
+    """F4: a reader briefly holding the owner file (Windows) -> bounded retry while the OS lock stays held."""
+    wt1, wt2 = worktrees
+    real, fails = os.replace, {'n': 3}
+    def flaky(src, dst):
+        if dst.endswith('.owner.json') and fails['n']:
+            fails['n'] -= 1
+            raise PermissionError(errno.EACCES, 'sharing violation')
+        real(src, dst)
+    monkeypatch.setattr(RL.os, 'replace', flaky)
+    monkeypatch.setattr(RL.time, 'sleep', lambda s: None)
+    with RL.hold(wt1, 'rex', P) as owner:
+        assert owner['state'] == 'held' and fails['n'] == 0
+    with open(_base(wt1) + '.owner.json', encoding='utf-8') as f:
+        assert json.load(f)['state'] == 'released'
+
+
+def test_a_persistent_sharing_violation_fails_closed_and_unlocks(worktrees, monkeypatch):
+    wt1, wt2 = worktrees
+    real, calls = os.replace, []
+    def stuck(src, dst):
+        calls.append(dst)
+        raise PermissionError(errno.EACCES, 'sharing violation')
+    monkeypatch.setattr(RL.os, 'replace', stuck)
+    monkeypatch.setattr(RL.time, 'sleep', lambda s: None)
+    with pytest.raises(RL.RunLockError, match='cannot record the owner') as e:
+        with RL.hold(wt1, 'rex', P):
+            pytest.fail('must not start without an owner record')
+    assert not isinstance(e.value, RL.RunActive) and len(calls) == RL.REPLACE_TRIES       # bounded, then gives up
+    monkeypatch.setattr(RL.os, 'replace', real)
+    with RL.hold(wt2, 'rex', P):                                                       # the OS lock was released
+        pass
+
+
+CHURN = r'''
+import os, sys, time
+sys.path.insert(0, sys.argv[1])
+import runlock as RL
+repo, root, n = sys.argv[2], sys.argv[3], int(sys.argv[4])
+wins = lost = 0
+for _ in range(n):
+    try:
+        with RL.hold(repo, 'rex', {'churn': 1}, root=root):
+            wins += 1
+            time.sleep(0.003)
+    except RL.RunActive as e:
+        assert e.args[0].startswith('run already active: rex key '), e.args[0]
+        lost += 1
+print(wins, lost, flush=True)
+'''
+
+
+def test_multi_process_churn_never_breaks_the_lock_or_its_records(tmp_path, worktrees):
+    """F4 (real processes): 6 processes x 40 attempts on one key, losers reading the owner file while winners replace
+    it. No unexpected error anywhere; every win is exactly one acquired + one released record; never two at once."""
+    wt1, wt2 = worktrees
+    root = tmp_path / 'locks'
+    script = tmp_path / 'churn.py'
+    script.write_text(CHURN)
+    procs = [subprocess.Popen([sys.executable, str(script), TOOLS, (wt1, wt2)[i % 2], str(root), '40'],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for i in range(6)]
+    wins = 0
+    for p in procs:
+        out, err = p.communicate(timeout=300)
+        assert p.returncode == 0, err
+        w, lost = map(int, out.split())
+        assert w + lost == 40
+        wins += w
+    key = RL.run_key(RL.repo_identity(wt1), 'rex', subprocess.run(['git', '-C', wt1, 'rev-parse', 'HEAD'],
+                                                                  capture_output=True, text=True).stdout.strip(),
+                     {'churn': 1})
+    with open(root / (key + '.audit.jsonl'), encoding='utf-8') as f:
+        ev = [json.loads(x)['event'] for x in f]
+    assert wins >= 1 and ev.count('acquired') == ev.count('released') == wins and 'recovered' not in ev
+    depth = 0
+    for e in ev:                                                   # strictly alternating: never two holders at once
+        depth += 1 if e == 'acquired' else -1
+        assert depth in (0, 1)
+    with open(root / (key + '.owner.json'), encoding='utf-8') as f:
+        assert json.load(f)['state'] == 'released'
+
+
 # ---------------------------------------------------------------- the one-shot commands
 
 class Captured(Exception):
     pass
 
 
-def _captured_identity(monkeypatch, fn, argv):
-    """The exact (repo, kind, identity) a command passes to RL.hold, captured before anything else happens."""
+def _captured(monkeypatch, fn, argv):
+    """The exact (repo, kind, identity, keywords) a command passes to RL.hold, captured before anything happens."""
     def cap(repo, kind, ident, **kw):
-        raise Captured(repo, kind, ident)
+        raise Captured(repo, kind, ident, kw)
     with monkeypatch.context() as m:
         m.setattr(RL, 'hold', cap)
         with pytest.raises(Captured) as e:
             fn(argv)
     return e.value.args
+
+
+def _captured_identity(monkeypatch, fn, argv):
+    return _captured(monkeypatch, fn, argv)[:3]
 
 
 REX = ['rex', '--window', WINDOW, '--tier', 'CORE-10']
@@ -383,6 +502,12 @@ def test_rex_identity_is_the_whole_command_minus_the_exclusions(monkeypatch, tmp
         assert _captured_identity(monkeypatch, G.main, REX + extra)[2] != ident, extra
     other = ['rex', '--window', '2021-01-04T00:00:00Z/2026-09-27T20:00:00Z', '--tier', 'CORE-10']
     assert _captured_identity(monkeypatch, G.main, other)[2] != ident
+
+
+def test_evaluation_commands_stay_commit_bound(monkeypatch, tmp_path):
+    for argv in (REX, ['pit', '--store', str(tmp_path), '--author', 'x', '--cairo-date', 'd'],
+                 ['m3', '--store', str(tmp_path), '--author', 'x', '--cairo-date', 'd']):
+        assert _captured(monkeypatch, G.main, argv)[3].get('bind_commit', True) is True, argv[0]
 
 
 def test_a_new_argument_enters_the_identity_automatically():
@@ -430,10 +555,11 @@ def test_a_losing_archive_fetch_exits_5_before_any_network(tmp_path, holders, mo
     monkeypatch.setattr(BF, 'fill', lambda *a, **k: pytest.fail('the loser must not fill'))
     out, zips = tmp_path / 'addon.json', tmp_path / 'zips'
     argv = ['--report', str(tmp_path / 'report.json'), '--out', str(out), '--fetch', '--zips', str(zips)]
-    repo, kind, ident = _captured_identity(monkeypatch, BF.main, argv)
+    repo, kind, ident, kw = _captured(monkeypatch, BF.main, argv)
     assert kind == 'archive_fill' and ident['report_sha256'] == hashlib.sha256(b'{"format": "stub"}').hexdigest()
     assert not {'out', 'zips', 'report'} & set(ident)
-    holders.append(Holder(tmp_path, repo, kind, ident, root=locks))
+    assert kw['bind_commit'] is False                                  # F1: report-bound, never split by HEAD
+    holders.append(Holder(tmp_path, repo, kind, ident, root=locks, bind_commit=False))
     real = RL.hold
     monkeypatch.setattr(RL, 'hold', lambda *a, **k: real(*a, root=locks, **k))
     assert BF.main(argv) == 5

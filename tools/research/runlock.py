@@ -4,10 +4,16 @@ The PR #166 incident: two worktrees of the same repository started the same regi
 out-dir guard saw only its own tree. This lock is keyed to the REPOSITORY (the Git common dir every worktree shares)
 plus the run's complete immutable identity, so a second start from any worktree is refused before it touches anything.
 
+Scope: exclusion is across the worktrees of ONE Git common dir (the incident's shape). Separate full clones have
+separate common dirs and are not excluded from each other.
+
 Rules:
   * the key is sha256 over {repo: canonical Git common dir, kind, commit: HEAD, identity}; the caller builds
     `identity` from its whole parsed command minus an explicit exclusion list (out-dir / author / Cairo date /
-    resume), so every identity-bearing argument added later enters the key automatically;
+    resume), so every identity-bearing argument added later enters the key automatically. An evaluation is
+    commit-bound; a report-bound acquisition of shared resources (the archive fetch) passes `bind_commit=False`, so
+    the same report and arguments collide on every commit. An identity that is not plain JSON (a set, NaN,
+    infinity, an object) fails closed as RunLockError;
   * the lock root is always `<Git common dir>/zb-runlock` - no environment override; it fails closed (RunLockError)
     when the common dir cannot be resolved or the root cannot be created;
   * exclusion is an OS advisory lock on byte 0 of `<key>.lock` (Windows `msvcrt.locking`, POSIX `fcntl.flock`),
@@ -33,6 +39,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -71,15 +78,23 @@ def repo_identity(repo: str) -> str:
     return canon_path(common if os.path.isabs(common) else os.path.join(repo, common))
 
 
+def _digest(doc) -> str:
+    """Canonical JSON sha256; anything that is not plain finite JSON fails closed (never a raw TypeError/ValueError)."""
+    try:
+        text = json.dumps(doc, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    except (TypeError, ValueError) as e:
+        raise RunLockError(f'run lock: the run identity is not canonical JSON ({e}); refusing to start') from None
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def identity_digest(identity: dict) -> str:
     """What the owner record keeps of the identity: a digest only - the raw values (any future argument, including a
     secret-shaped one) stay in memory for the key and are never written."""
-    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return _digest(identity)
 
 
-def run_key(repo_id: str, kind: str, commit: str, identity: dict) -> str:
-    doc = {'format': FORMAT, 'repo': repo_id, 'kind': kind, 'commit': commit, 'identity': identity}
-    return hashlib.sha256(json.dumps(doc, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+def run_key(repo_id: str, kind: str, commit: str | None, identity: dict) -> str:
+    return _digest({'format': FORMAT, 'repo': repo_id, 'kind': kind, 'commit': commit, 'identity': identity})
 
 
 def process_start() -> str | None:
@@ -137,12 +152,25 @@ def _read_json(path: str):
         return None
 
 
+REPLACE_TRIES, REPLACE_PAUSE_S = 50, 0.02     # <= ~1 s: rides out a loser briefly reading the owner file (Windows)
+
+
 def _write_owner(path: str, doc: dict) -> None:
+    """Atomic owner write (tmp + replace), called only while the OS lock is held. On Windows a concurrent reader
+    (a loser describing the owner) makes the replace fail with a sharing violation: retry a bounded number of times,
+    then let the PermissionError surface (the caller turns it into RunLockError / exit 2)."""
     tmp = f'{path}.{os.getpid()}.tmp'
     with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
         json.dump(doc, f, sort_keys=True, indent=1)
         f.write('\n')
-    os.replace(tmp, path)
+    for i in range(REPLACE_TRIES):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if i == REPLACE_TRIES - 1:
+                raise
+            time.sleep(REPLACE_PAUSE_S)
 
 
 def _audit(path: str, event: str, **kw) -> None:
@@ -162,12 +190,13 @@ def describe(owner) -> str:
 
 
 @contextlib.contextmanager
-def hold(repo: str, kind: str, identity: dict, *, argv=None, root: str | None = None):
+def hold(repo: str, kind: str, identity: dict, *, argv=None, root: str | None = None, bind_commit: bool = True):
     """Hold the run lock for `kind` + `identity` at `repo`'s HEAD; raises RunActive while another process holds it.
-    `root` replaces the lock directory for tests only; production callers never pass it."""
+    `bind_commit=False` (report-bound shared-resource acquisitions only) keys without HEAD. `root` replaces the lock
+    directory for tests only; production callers never pass it."""
     repo_id = repo_identity(repo)
     commit = _git(repo, 'rev-parse', 'HEAD')
-    key = run_key(repo_id, kind, commit, identity)
+    key = run_key(repo_id, kind, commit if bind_commit else None, identity)
     d = root or os.path.join(repo_id, SUBDIR)
     base = os.path.join(d, key)
     try:
@@ -181,9 +210,10 @@ def hold(repo: str, kind: str, identity: dict, *, argv=None, root: str | None = 
                             f'{describe(_read_json(base + ".owner.json"))} - do not start a second copy')
         try:
             now = datetime.now(timezone.utc)
-            owner = {'format': FORMAT, 'state': 'held', 'key': key, 'kind': kind, 'commit': commit, 'repo': repo_id,
-                     'identity_sha256': identity_digest(identity), 'pid': os.getpid(), 'process_start': process_start(),
-                     'acquired_utc': _utc(now), 'acquired_cairo': now.astimezone(CAIRO).isoformat(timespec='seconds'),
+            owner = {'format': FORMAT, 'state': 'held', 'key': key, 'kind': kind, 'commit': commit,
+                     'commit_bound': bind_commit, 'repo': repo_id, 'identity_sha256': identity_digest(identity),
+                     'pid': os.getpid(), 'process_start': process_start(), 'acquired_utc': _utc(now),
+                     'acquired_cairo': now.astimezone(CAIRO).isoformat(timespec='seconds'),
                      'worktree': canon_path(_git(repo, 'rev-parse', '--show-toplevel')),
                      'argv_sha256': hashlib.sha256(json.dumps(list(argv or [])).encode()).hexdigest()}
             try:
