@@ -11,7 +11,7 @@ Basis: master `f485467ab82a2238def19da8025c426b7f73524a` (remedy stack #88 → #
 | Hole/window report (timestamp-only) | `research_evidence/prereg/core10_gapfill_report.v1.json` | file sha256 `cd93ce28b8736c83257e3b9766aa5f866b30874327a6ab31af8a6a53b10968fa`; self `sha256` `7d3bdc9ce4b99de20fb3ad346ca4aa97c0541f981fc2b09d5d6c7b7752d442bd` |
 | URL plan | `research_evidence/prereg/core10_gapfill_plan.v1.json` | file sha256 `d7336ab59a0d6d4f987da3f090db2d3c4032c3d11414211d6c0db2f44c337a84`; `digest` `fb9e5744b3d4f684f753fd8ac0bd2f121eb2709c7dca5735fb5a9951582215e3`; `inventory_digest` = report self-sha |
 | Delist notice | `research_evidence/notices/zb-delist-notice-core-10-20261014.json` | `4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68` |
-| Store | `C:/Dev/ZackBot2_data/binance_um` | must reproduce the report above byte-for-byte before fetch (step 0) |
+| Store | `C:/Dev/ZackBot2_data/binance_um` | must reproduce the report above before fetch (step 0, rule below) |
 
 Report and plan were produced on a clean tree at `f485467` with:
 
@@ -20,6 +20,11 @@ py -3.14 tools/research/rex_gap_inventory.py --store C:/Dev/ZackBot2_data/binanc
    --window 2021-01-04T00:00:00Z/2026-09-28T00:00:00Z --out <S>/gap_report.json
 py -3.14 tools/research/binance_archive_fill.py --report <S>/gap_report.json --out <S>/fetch_plan.json   # plan-only default
 ```
+
+**Step-0 equality rule.** The report embeds `provenance.commit`, so its self-sha changes with the head it runs at.
+Step 0 regenerates the report at the accepted head and requires every field to equal the frozen file **except** `provenance.commit`
+(must be the accepted head, tree clean) and the derived `sha256`. Verified at `89fb082`: those two are the only differing fields.
+The fill always uses the **frozen** report (§6), so the plan digest and the add-on's pinned report do not move.
 
 ## 2. Exact scope
 
@@ -50,7 +55,7 @@ and that posted value is the one passed as `--addon-sha256`.
 
 | Event | Outcome |
 |---|---|
-| Step-0 report digest differs from §1 | **STOP**, no fetch; report the diff |
+| Step-0 report differs from §1 in any field other than `provenance.commit` / `sha256` | **STOP**, no fetch; report the diff |
 | HTTP 429 / 418 / 403, HTML body, redirect off `data.binance.vision` | **STOP** the whole fetch; post status; no retry loop |
 | HTTP 404 on a planned file | hole stays **archive_missing** = genuine gap under MISSING_DATA_POLICY_v1 |
 | `.CHECKSUM` mismatch or unreadable zip | file **unresolved**; its holes stay holes; never re-fetched in this run |
@@ -62,7 +67,7 @@ and that posted value is the one passed as `--addon-sha256`.
 ## 6. One-shot commands (run once, after Codex acceptance)
 
 ```
-# step 0: reproduce the frozen report (must match §1)
+# step 0: reproduce the frozen report (equality rule in §1)
 py -3.14 tools/research/rex_gap_inventory.py --store C:/Dev/ZackBot2_data/binance_um --tier CORE-10 \
    --window 2021-01-04T00:00:00Z/2026-09-28T00:00:00Z --out <S>/gap_report.json
 # step 1: fetch (network)
