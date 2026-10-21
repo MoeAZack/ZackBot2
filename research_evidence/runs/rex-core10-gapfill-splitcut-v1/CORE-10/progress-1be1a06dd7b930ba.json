@@ -1,0 +1,29 @@
+{
+ "digest": "4eae358ec8ed0554f8daa264c6e4302312d7048b593cc42c620fbbf86dfbb032",
+ "format": "zb-run-progress/2",
+ "identity": {
+  "classification": null,
+  "commit": "d93f9bc619faf877f6207da869a16a65bbbcb358",
+  "evaluator": "ffce4472c8a3e3383b9acbeabc855080c89f5140b409a2ea9d8fcd821ac1e98d",
+  "manifest": "8ccf52b2ee9296b3ce7b1d11d962b9dd8f0d64e9c4ac1646e479107ad2dffe81",
+  "prereg": null,
+  "universe": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce"
+ },
+ "identity_digest": "9ed8eeabc8ee170ccfb7434a856b3fd767d6b608acae5f011e2da81ff5ae52e7",
+ "integrity": [],
+ "kind": "live",
+ "run": "1be1a06dd7b930ba",
+ "seq": 5,
+ "stages": [
+  {
+   "name": "pit.open",
+   "status": "done"
+  },
+  {
+   "name": "pit.development",
+   "status": "done"
+  }
+ ],
+ "state": "sealed",
+ "wall": "2026-10-21T09:45:10+03:00"
+}
