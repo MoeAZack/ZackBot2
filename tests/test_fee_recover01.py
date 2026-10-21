@@ -40,21 +40,21 @@ def test_the_runtime_windows_are_the_persisted_record_windows():
 
 
 def test_the_172_evidence_recovers_entry_and_split_tp_uniquely():
-    st, raw = AC.match_fill(AKE, 'AKEUSDT', False, 96026, 'USDT', *E.Engine._cost_recover_window(ENTRY_REC))
+    st, raw, _k = AC.match_fill(AKE, 'AKEUSDT', False, 96026, 'USDT', *E.Engine._cost_recover_window(ENTRY_REC))
     assert st == 'ok' and raw == [dict(asset='USDT', maker=False, amount=1.48320319, n=1)]
-    st, raw = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', *E.Engine._cost_recover_window(TP_REC))
+    st, raw, _k = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', *E.Engine._cost_recover_window(TP_REC))
     assert st == 'ok' and raw == [dict(asset='USDT', maker=True, amount=0.73821304, n=2)]   # 0.00251075 + 0.73570229
     assert round(1.48320319 + raw[0]['amount'] + 0.74485447, 8) == 2.9662707          # the #172 complete total
 
 
 def test_two_equal_orders_in_the_window_are_ambiguous_never_picked():
-    st, raw = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', T0, T0 + 3_600_000)   # TP and stop both inside
+    st, raw, _k = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', T0, T0 + 3_600_000)   # TP and stop both inside
     assert (st, raw) == ('ambiguous', None)
 
 
 def test_an_order_reaching_outside_the_window_is_not_a_candidate():
     lo, _hi = E.Engine._cost_recover_window(TP_REC)
-    st, _ = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', lo, ms('2026-10-20T19:24:35.300+00:00'))  # 2nd exec outside
+    st, _, _k = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', lo, ms('2026-10-20T19:24:35.300+00:00'))  # 2nd exec outside
     assert st == 'no_match'
 
 
@@ -67,11 +67,11 @@ def test_an_order_reaching_outside_the_window_is_not_a_candidate():
     ([], 'no_match'),
 ])
 def test_every_unprovable_case_fails_closed(rows, want):
-    assert AC.match_fill(rows, 'AKEUSDT', False, 96026, 'USDT', T0 - 1, T0 + 1, limit=3) == (want, None)
+    assert AC.match_fill(rows, 'AKEUSDT', False, 96026, 'USDT', T0 - 1, T0 + 1, limit=3) == (want, None, None)
 
 
 def test_a_repeated_trade_row_is_counted_once():
-    st, raw = AC.match_fill([AKE[0], dict(AKE[0])], 'AKEUSDT', False, 96026, 'USDT', T0 - 1, T0 + 1)
+    st, raw, _k = AC.match_fill([AKE[0], dict(AKE[0])], 'AKEUSDT', False, 96026, 'USDT', T0 - 1, T0 + 1)
     assert st == 'ok' and raw[0]['amount'] == 1.48320319 and raw[0]['n'] == 1
 
 
@@ -298,3 +298,84 @@ def test_a_commit_whose_target_never_loads_ends_final_and_frees_the_queue():
         e.cost_recover_tick(force=True)
     assert e.state['cost_recover'][ref] == dict(status='failed', why='target_gone', symbol='BTCUSDT',
                                                 commit_tries=E.Engine.COST_RECOVER_TRIES)
+
+
+# ------------------------------------------------------------------ F1 (Cowork 6317772714, Codex 6317814442): one order, one fill
+def test_the_match_returns_a_hashed_order_key_never_the_id():
+    st, raw, key = AC.match_fill(AKE, 'AKEUSDT', True, 48013, 'USDT', *E.Engine._cost_recover_window(TP_REC))
+    assert st == 'ok' and key == AC.order_key('AKEUSDT', 12) and len(key) == 16 and '12' != key
+    assert AC.order_key('AKEUSDT', 12) != AC.order_key('AKEUSDT', 13) != AC.order_key('XRPUSDT', 13)
+    t = dict(cost_refs=['a'], cost_refs_done=['a'], cost_fills_missing=1)
+    assert AC.recover_fill(t, 'a', raw, key) and t['cost_order_keys'] == [['a', key]]
+    assert AC.order_owner(t, key) == 'a' and AC.order_owner(t, 'x' * 16) is None
+
+
+def twin_ref(e, k):
+    """A second missing fill on the same lot: same symbol / side / qty / time as the first (overlapping windows), but
+    the exchange shows ONE order - the Cowork F1 shape."""
+    lot = e.state['lots'][k]; a = lot['cost_refs'][0]; b = a + '-twin'
+    p = e.F['fills']
+    rs = [json.loads(x) for x in open(p)]
+    rec = next(r for r in rs if r.get('cost_ref') == a)
+    with open(p, 'a') as f: f.write(json.dumps(dict(rec, cost_ref=b)) + '\n')
+    lot['cost_refs'].append(b); lot['cost_refs_done'].append(b)
+    lot['cost_fills_missing'] = int(lot['cost_fills_missing']) + 1
+    return lot, a, b
+
+
+def test_two_refs_one_order_overlapping_windows_never_book_the_fee_twice():
+    e, _ = mk(RX); k = missing_entry(e); lot, a, b = twin_ref(e, k)
+    assert e.cost_recover_tick(force=True) == 'ok'
+    assert e.cost_recover_tick(force=True) == 'order_already_consumed'
+    st = e.state['cost_recover']
+    won, lost = (a, b) if st[a]['status'] == 'recovered' else (b, a)
+    assert st[won]['status'] == 'recovered' and st[lost] == dict(st[lost], status='failed', why='order_already_consumed')
+    assert lot['fees_actual_by_asset'] == {'USDT': pytest.approx(truth(e))}         # one order's fee, once
+    assert lot['cost_fills_missing'] == 1 and lot['fees_actual'] is None              # the other fill stays unproven
+    assert lot['cost_order_keys'] == [[won, st[won]['order_key']]] and 'raw' not in st[lost]
+
+
+def test_the_consumed_key_survives_a_restart_even_without_its_state(monkeypatch):
+    e, tmp = mk(RX); k = missing_entry(e); lot, a, b = twin_ref(e, k)
+    e.state.setdefault('cost_recover', {})[b] = dict(status='pending', symbol='hold', next_s=10 ** 12)   # b waits
+    assert e.cost_recover_tick(force=True) == 'ok' and e.state['cost_recover'][a]['status'] == 'recovered'
+    e.state['cost_recover'].pop(b); e.state['cost_recover'].pop(a)        # state progress lost; the lot keeps the key
+    e.save_state()
+    e2, _ = mk(RX, tmp=tmp); e2.trade.rows = e.trade.rows
+    assert e2.cost_recover_tick(force=True) == 'order_already_consumed'                       # b: refused by the lot's key
+    assert a not in e2.state['cost_recover']                           # a is not rediscovered: the lot lists it recovered
+    lot2 = e2.state['lots'][k]
+    assert lot2['fees_actual_by_asset'] == {'USDT': pytest.approx(truth(e))} and lot2['cost_fills_missing'] == 1
+
+
+def test_a_pending_commit_owns_its_order_before_it_is_durable(monkeypatch):
+    e, _ = mk(RX); k, ref = closed_missing(e)
+    on = failing_writes(monkeypatch)
+    assert e.cost_recover_tick(force=True) == 'ok' and e.state['cost_recover'][ref]['status'] == 'apply_pending'
+    key = e.state['cost_recover'][ref]['order_key']
+    assert e._cost_order_consumer(key, 'someone-else') == ref and e._cost_order_consumer(key, ref) is None
+    on['v'] = False
+    assert e.cost_recover_tick(force=True) == 'idle' and e.state['cost_recover'][ref]['status'] == 'recovered'
+    log = [json.loads(x) for x in open(os.path.join(e.dir, 'cost_recover.jsonl'))]
+    assert log[-1]['order_key'] == key and 'orderId' not in json.dumps(log)
+
+
+def test_after_a_restart_a_pending_commit_still_owns_its_order(monkeypatch):
+    e, tmp = mk(RX); k, ref = closed_missing(e)
+    on = failing_writes(monkeypatch)
+    assert e.cost_recover_tick(force=True) == 'ok'
+    key = e.state['cost_recover'][ref]['order_key']
+    on['v'] = False
+    e2, _ = mk(RX, tmp=tmp)                                            # the disk row has no key yet: state alone owns it
+    assert AC.order_owner(e2.history[-1], key) is None
+    assert e2._cost_order_consumer(key, 'another-ref') == ref
+
+
+def test_a_pending_commit_whose_order_another_fill_holds_is_refused_not_applied():
+    e, _ = mk(RX); k = missing_entry(e); lot = e.state['lots'][k]; ref = lot['cost_refs'][0]
+    lot['cost_order_keys'] = [['other-ref', 'k' * 16]]
+    e.state.setdefault('cost_recover', {})[ref] = dict(status='apply_pending', order_key='k' * 16, symbol='BTCUSDT',
+                                                       raw=[dict(asset='USDT', maker=False, amount=1.0, n=1)])
+    e.cost_recover_tick(force=True)
+    assert e.state['cost_recover'][ref]['status'] == 'failed' and e.state['cost_recover'][ref]['why'] == 'order_already_consumed'
+    assert lot['cost_fills_missing'] == 1 and 'cost_refs_recovered' not in lot and not lot.get('fees_actual_by_asset')

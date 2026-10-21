@@ -11,7 +11,7 @@ from datetime import datetime
 
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
-               'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered')
+               'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys')
 
 
 def _num(v):
@@ -58,35 +58,46 @@ def match_fill(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit=None):
     userTrades read. trades: the account's executions of `symbol` over a span padded around [lo_ms, hi_ms] (so an order
     reaching outside the window is seen whole). A candidate is one exchange order on the booked side whose executions
     (deduplicated by trade id, split executions summed) total exactly the booked quantity and all lie inside the window.
-    Returns ('ok', commission_raw) only for exactly one candidate whose every amount is readable and charged in `quote`;
-    otherwise (status, None) - never a guess: unreadable / too_many_rows / bad_evidence / no_match / ambiguous /
-    amount_unreadable / non_quote_asset."""
+    Returns ('ok', commission_raw, order_key) only for exactly one candidate whose every amount is readable and charged
+    in `quote`; otherwise (status, None, None) - never a guess: unreadable / too_many_rows / bad_evidence / no_match /
+    ambiguous / amount_unreadable / non_quote_asset. order_key (order_key()) identifies the matched exchange order without
+    its id, so one order can never be attributed to two fills (the caller refuses a key another fill consumed)."""
     q0 = _num(qty)
-    if not q0 or q0 <= 0 or buy not in (True, False) or not quote or not symbol: return 'bad_evidence', None
-    if not isinstance(trades, list): return 'unreadable', None
-    if limit and len(trades) >= limit: return 'too_many_rows', None          # the span may hold more than was returned
+    if not q0 or q0 <= 0 or buy not in (True, False) or not quote or not symbol: return 'bad_evidence', None, None
+    if not isinstance(trades, list): return 'unreadable', None, None
+    if limit and len(trades) >= limit: return 'too_many_rows', None, None          # the span may hold more than was returned
     groups = {}
     for t in trades:
-        if not isinstance(t, dict): return 'unreadable', None
+        if not isinstance(t, dict): return 'unreadable', None, None
         if t.get('symbol', symbol) != symbol or t.get('buyer') is not buy: continue
-        if t.get('orderId') is None or t.get('id') is None: return 'unreadable', None
+        if t.get('orderId') is None or t.get('id') is None: return 'unreadable', None, None
         groups.setdefault(str(t['orderId']), {})[str(t['id'])] = t
     cands = []
     for rows in groups.values():
         rows = list(rows.values())
         qs, tms = [_num(t.get('qty')) for t in rows], [_num(t.get('time')) for t in rows]
-        if any(x is None or x <= 0 for x in qs) or any(x is None for x in tms): return 'unreadable', None
+        if any(x is None or x <= 0 for x in qs) or any(x is None for x in tms): return 'unreadable', None, None
         if abs(sum(qs) - q0) > 1e-9 * max(1.0, q0) or not all(lo_ms <= x <= hi_ms for x in tms): continue
         cands.append(rows)
-    if not cands: return 'no_match', None
-    if len(cands) > 1: return 'ambiguous', None
+    if not cands: return 'no_match', None, None
+    if len(cands) > 1: return 'ambiguous', None, None
     raw, complete = raw_from_trades((t.get('commission'), t.get('commissionAsset'), t.get('maker')) for t in cands[0])
-    if not complete or not raw: return 'amount_unreadable', None
-    if any(x['asset'] != quote for x in raw): return 'non_quote_asset', None
-    return 'ok', raw
+    if not complete or not raw: return 'amount_unreadable', None, None
+    if any(x['asset'] != quote for x in raw): return 'non_quote_asset', None, None
+    return 'ok', raw, order_key(symbol, cands[0][0]['orderId'])
 
 
-def recover_fill(target, ref, raw):
+def order_key(symbol, order_id):
+    """FEE-RECOVER-01: a stable, privacy-safe key for one exchange order (the order id itself is never stored)."""
+    return hashlib.sha256(f'{symbol}|{order_id}'.encode()).hexdigest()[:16]
+
+
+def order_owner(target, key):
+    """The ref of `target` that consumed exchange order `key` in a recovery, else None."""
+    return next((r for r, k in (target.get('cost_order_keys') or ()) if k == key), None)
+
+
+def recover_fill(target, ref, raw, key=None):
     """FEE-RECOVER-01: fold a recovered commission into the lot / row that applied `ref` as missing (in place). True when
     applied; False (nothing changed) when ref is not this target's, was never applied, is already recovered, or no
     missing fill remains. `fees` (the estimate) and every trade fact stay as they are."""
@@ -102,6 +113,7 @@ def recover_fill(target, ref, raw):
         elif x.get('maker') is False: target['taker_fills'] = int(target.get('taker_fills') or 0) + int(x.get('n') or 1)
     target['cost_fills_missing'] = int(target['cost_fills_missing']) - 1
     target.setdefault('cost_refs_recovered', []).append(ref)
+    if key: target.setdefault('cost_order_keys', []).append([ref, key])    # consumed with the fee, in one revision
     return True
 
 

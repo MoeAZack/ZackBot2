@@ -2778,6 +2778,19 @@ class Engine:
         wait = max(0.0, float(rec.get('wait_s') or 0))
         return int(t_ms - (wait + cls.COST_RECOVER_PRE_S) * 1000), int(t_ms + (cls.COST_RECOVER_POST_S + 1) * 1000)
 
+    def _cost_order_consumer(self, key, ref):
+        """The OTHER ref that already consumed exchange order `key` (state progress, or any lot / row's cost_order_keys,
+        which travel with the fee revision), else None."""
+        if not key: return None
+        for r, c in (self.state.get('cost_recover') or {}).items():
+            if r != ref and c.get('order_key') == key and c.get('status') in ('recovered', 'apply_pending'): return r
+        ids = {h.get('id') for h in self.history}
+        for t in (list(self.state.get('lots', {}).values()) + list(self.history)
+                  + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]):
+            o = AC.order_owner(t, key)
+            if o is not None and o != ref: return o
+        return None
+
     def _cost_recover_commit(self, ref, cur, raw, now):
         """Under the lock: apply a PROVEN commission (raw) to its lot / row and make it durable. Durable -> 'recovered';
         a failed history / cohort write -> 'apply_pending' with raw kept in state, retried every tick and after a restart
@@ -2790,7 +2803,9 @@ class Engine:
                 cur.update(status='failed', why='target_gone'); cur.pop('raw', None); return 'failed'
             cur.update(status='apply_pending', raw=raw, why='target_not_loaded'); return 'apply_pending'
         fresh = ref not in (t.get('cost_refs_recovered') or ())
-        if fresh and not AC.recover_fill(t, ref, raw):
+        if fresh and self._cost_order_consumer(cur.get('order_key'), ref) is not None:   # consumed meanwhile (restart)
+            cur.update(status='failed', why='order_already_consumed'); cur.pop('raw', None); return 'failed'
+        if fresh and not AC.recover_fill(t, ref, raw, cur.get('order_key')):
             cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
         if fresh: self._cost_final(kind, t)
         ok = True
@@ -2808,7 +2823,8 @@ class Engine:
             with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
                 f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
                                         id=t.get('id') if kind == 'row' else t.get('symbol'), symbol=cur.get('symbol'),
-                                        raw=raw, fees_actual=t.get('fees_actual'), cost_rev=t.get('cost_rev'),
+                                        raw=raw, order_key=cur.get('order_key'), fees_actual=t.get('fees_actual'),
+                                        cost_rev=t.get('cost_rev'),
                                         time_ms=int(now * 1000)), separators=(',', ':')) + '\n')
         except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
         return 'recovered'
@@ -2878,17 +2894,23 @@ class Engine:
         pad = self.COST_RECOVER_PAD_S * 1000
         try:
             got = rd(e['symbol'], e['lo_ms'] - pad, e['hi_ms'] + pad, self.COST_RECOVER_LIMIT)
-            status, raw = AC.match_fill(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']), e['lo_ms'],
+            status, raw, key = AC.match_fill(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']), e['lo_ms'],
                                         e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
         except Exception as ex:                              # outage / cooldown / 429: retried with backoff, never guessed
-            status, raw = 'read_failed', None
+            status, raw, key = 'read_failed', None, None
             log.debug(f'commission recovery read failed ({type(ex).__name__})')
         with self.lock:
             cur = (self.state.get('cost_recover') or {}).get(ref)
             if cur is None or cur.get('status') != 'pending': return 'stale'
             cur['tries'] = int(cur.get('tries') or 0) + 1
             if status == 'ok':
-                self._cost_recover_commit(ref, cur, raw, now)
+                other = self._cost_order_consumer(key, ref)
+                if other is not None:                        # Cowork F1: one exchange order is never two fills' fee
+                    cur.update(status='failed', why='order_already_consumed')
+                    status = 'order_already_consumed'
+                else:
+                    cur['order_key'] = key
+                    self._cost_recover_commit(ref, cur, raw, now)
             elif status in self.COST_RECOVER_RETRY and cur['tries'] < self.COST_RECOVER_TRIES:
                 cur.update(why=status, next_s=now + min(3600, 300 * 2 ** (cur['tries'] - 1)))
             else:
