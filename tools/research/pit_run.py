@@ -2145,6 +2145,10 @@ def real_env(repo: str, *, store: str, author: str, cairo_date: str, gate_path: 
 # are emitted per split; the aggregate is derived from the split results afterwards (`rex_aggregate`).
 # Provenance (6172596212 c): a historical / store run (rex_load) refuses a dirty git tree before any access and records
 # the exact clean commit SHA; any other (synthetic / unit) run is marked `historical_evidence: False`.
+# Add-on (Codex 6185035993 point 3, optional `rex_load(addon=, addon_report=)` / `run_r4 rex --addon --addon-report`):
+# the base archive stays immutable; a checksum-pinned zb-rex-gap-fill/1 add-on fills ONLY exact holes of its pinned
+# signed gap report where no base row exists (rex_addon: validated in full before the Access opens, any failure or
+# collision refuses). Its provenance goes on the data_access detail, the run config (run id) and the summary.
 # Provenance files: the same progress snapshot + sealed final + summary / detail artifacts as the STRAT runs
 # (progress.py, `_state`, `is_complete`). Nothing is promotable.
 import range_vwap_rev as RV                                                                 # noqa: E402
@@ -2570,6 +2574,8 @@ def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tu
                          'rules_digest': man['rules_digest'], 'source': man.get('source'),
                          'notice_artifact': env['notice_sha256'], 'funding_tail_ms': REX_FUNDING_TAIL_MS,
                          'ledger': env.get('access')}}
+    if env.get('addon') is not None:
+        access['detail']['addon'] = env['addon']
     head = {'candidate_id': cid, 'family': RV.FAMILY, 'tier': tier, 'label': DEV_LABEL,
             'universe_label': LABEL, 'split': 'development', 'promotable': False, 'provenance': rex_provenance(env),
             'window': {'start': S.utc(lo), 'end': S.utc(hi)}, 'first_decision': S.utc(segs[0]['first']),
@@ -2578,6 +2584,8 @@ def rex_evaluate(env: dict, tier: str, lo: int, hi: int, run_config: dict) -> tu
             'missing_data_policy': POLICY, 'status': status, 'run': sha(run_config)}
     if env.get('variant_record') is not None:
         head['variant'] = env['variant_record']
+    if env.get('addon') is not None:
+        head['addon'] = env['addon']
     if inc:
         head['incomplete'] = inc
     summary = dict(head, format=REX_SUMMARY_FORMAT, counts=counts, splits=[sp['summary'] for sp in splits],
@@ -2600,6 +2608,8 @@ def rex_run_config(env: dict, lo: int, hi: int) -> dict:
            'provenance': rex_provenance(env)}
     if env.get('variant_record') is not None:
         out['variant'] = env['variant_record']
+    if env.get('addon') is not None:                         # the add-on is part of the run identity (run id)
+        out['addon'] = env['addon']
     return out
 
 
@@ -2758,12 +2768,18 @@ def _rex_read_artifact(path: str, sha256: str) -> dict:
 
 
 def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path: str, notice_sha256: str,
-             author: str, cairo_date: str, plan: S.SplitPlan, variant=None) -> dict:
+             author: str, cairo_date: str, plan: S.SplitPlan, variant=None, addon=None, addon_report=None, addon_sha256=None,
+             addon_zips=None) -> dict:
     """The REX-02 loader: window -> CLEAN git tree (exact commit SHA) -> notice artifact (exact pinned digest) -> tier
     symbols + rules -> ledger guard -> StaticDataset -> ledger-recorded development Access (lineage root) -> tape read
     through the Window + its manifest. Returns the run env for run_rex with `historical` provenance (nothing is read
     before the window, clean-tree, artifact and ledger checks pass). `variant` (explicit, development-only) records
-    the Access under the variant's own candidate id; None = the frozen v1."""
+    the Access under the variant's own candidate id; None = the frozen v1. Add-on (optional; all four or none):
+    `addon` = the RAW bytes of a `zb-rex-gap-fill/1` add-on file, `addon_sha256` = its digest pinned by the run
+    command (checked before parsing), `addon_report` = the signed gap report it pins, `addon_zips` = the kept archive
+    zips every row is re-proved from (rex_addon). All of it, incl. value checks and the base-collision check (time
+    column only), runs before the Access opens; the rows are merged into exact holes after the base tape is read.
+    Without them the loader is unchanged."""
     cid, vrec = rex_variant(variant)
     lo, hi = rex_window(window, plan)
     if tier not in RUN_TIERS:
@@ -2777,6 +2793,26 @@ def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path
         raise PitRunError(f'REX-02: no pinned exchange rule for {missing}')
     ledger = src['ledger']
     rex_no_holdout(ledger)
+    added = None
+    parts = (addon, addon_report, addon_sha256, addon_zips)
+    if any(x is not None for x in parts):
+        import rex_addon as RA                                                              # noqa: E402
+        import rex_gap_inventory as GI                                                      # noqa: E402
+        if any(x is None for x in parts):
+            raise PitRunError('REX-02: an add-on needs both the add-on manifest and its signed gap report, its pinned '
+                              'sha256 and the kept archive zips (all four)')
+        try:
+            doc = RA.load_pinned(addon, addon_sha256)
+            added = RA.validate(doc, addon_report, manifest_digest=src['manifest']['digest'], symbols=symbols,
+                                lo=lo, hi=hi, cutoff=rex_sealed_cutoff(plan), zips=addon_zips,
+                                addon_sha256=addon_sha256)
+            try:
+                idx = GI.index(src['manifest'], store, symbols, lo, hi)
+            except (GI.InventoryError, M.ManifestError, P.PITError, OSError, ValueError) as e:
+                raise RA.AddonError(f'cannot index the base store times ({type(e).__name__}: {e})')
+            RA.check_base(added, idx)
+        except RA.AddonError as e:
+            raise PitRunError(f'REX-02: add-on refused: {e}')
     ds = StaticDataset(src['manifest'], store, static, symbols)
     acc = P.Access(ds, plan, ledger, candidate_id=cid, author=author, cairo_date=cairo_date, repo=repo)
     detail = {'purpose': 'REX-02 range_vwap_rev.v1 development screen (no holdout, not promotable)',
@@ -2786,13 +2822,22 @@ def rex_load(src: dict, *, repo: str, store: str, tier: str, window, notice_path
     if vrec is not None:
         detail = dict(detail, purpose=f'REX-02 {cid} development screen (no holdout), {vrec["label"]}',
                       variant=vrec)
+    if added is not None:
+        detail = dict(detail, addon=added['provenance'])
     w = acc.open_development(S.utc(lo), S.utc(hi + REX_FUNDING_TAIL_MS), lineage='root', detail=detail)
     tape = {s: rex_series(w, s, src['rules'][s]) for s in symbols}
     source = {'data_manifest': ds.digest, 'universe': static['digest'], 'loader': ds.manifest['loader_version']}
+    if added is not None:
+        try:
+            tape = RA.merge(tape, added)
+        except RA.AddonError as e:
+            raise PitRunError(f'REX-02: add-on refused: {e}')
+        source = dict(source, addon=added['provenance']['digest'])
     man = rex_tape_manifest(tape, art, symbols=symbols, source=source)
     return {'tape': tape, 'manifest': man, 'notice_artifact': art, 'notice_sha256': notice_sha256,
             'symbols': symbols, 'commit': commit, 'universe': static['digest'], 'ledger': ledger, 'author': author,
             'cairo_date': cairo_date,
             'provenance': {'class': 'historical', 'commit': commit, 'tree': 'clean'},
             'access': {'family': RV.FAMILY, 'window': w.window_doc, 'manifest': ds.digest, 'split': 'development'},
-            **({} if vrec is None else {'variant': cid})}
+            **({} if vrec is None else {'variant': cid}),
+            **({} if added is None else {'addon': added['provenance']})}
