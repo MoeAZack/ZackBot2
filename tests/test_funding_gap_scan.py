@@ -93,3 +93,27 @@ def test_bad_window_is_exit_2(tmp_path):
     assert F.main(['--store', str(tmp_path), '--symbols', 'BTCUSDT', '--window', '2022-01-01T00:00:00Z']) == 2
     assert F.main(['--store', str(tmp_path), '--symbols', 'BTCUSDT',
                    '--window', '2022-02-01T00:00:00Z/2022-01-01T00:00:00Z']) == 2
+
+
+# ------------------------------------------------------------------ the frozen FG-1 report (no store needed)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _json(rel):
+    import json
+    with open(os.path.join(ROOT, rel), encoding='utf-8') as f:
+        return json.load(f)
+
+
+def test_frozen_report_is_bound_to_the_core10_wf0_inputs():
+    r = _json('research_evidence/prereg/core10_fundgap_report.v1.json')
+    g = _json('research_evidence/prereg/core10_gapfill_report.v1.json')
+    wf0 = next(s for s in g['segments'] if s['key'] == 'walk_forward[0]')
+    assert r['format'] == F.FORMAT and r['manifest_digest'] == g['manifest_digest']
+    assert (F.parse_utc(r['window']['lo']), F.parse_utc(r['window']['hi'])) == (wf0['lo'], wf0['hi'])
+    assert sorted(r['symbols']) == sorted(g['symbols'])
+    assert r['defect_count'] == sum(len(v['defects']) for v in r['symbols'].values())
+    assert r['provenance']['clean'] is True and len(r['provenance']['commit']) == 40
+    assert F.parse_utc(r["window"]["hi"]) <= F.parse_utc(F.SEALED_END)
+    kinds = {d['kind'] for v in r['symbols'].values() for d in v['defects']}
+    assert kinds <= {'time_tol', 'interval_type', 'grid', 'duplicate', 'spacing', 'data_start', 'next_event'}
