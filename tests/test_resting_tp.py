@@ -158,6 +158,8 @@ def test_tp_fill_finishes_the_lot_and_cancels_the_stop(monkeypatch):
     assert k not in e.state['lots'] and stop not in e.trade.stops and not e.trade.tps
     h = e.history[-1]
     assert h['exit_reason'] == 'take_profit_resting' and h['exit'] == 110.0 and h['pnl_gross'] > 0
+    h.update(fees_actual=h.get('fees') or 0.0, fees_actual_partial=False, fill_px_partial=False)   # #178: the close audit
+    e._row_changed(h)                                                                             # follows the measured row
     assert any(x and x.get('kind') == 'trade_audit' and x.get('exit_reason') == 'take_profit_resting' for x in ev)
 
 

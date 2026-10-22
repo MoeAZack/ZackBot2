@@ -74,6 +74,18 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import actual_costs as AC       # noqa: E402
+
+
+def _hist_view(h):
+    """#178 (Codex 6343115717): a closed row as the dashboard shows it - pnl / r are the row's SETTLED (measured /
+    acknowledged) values; a pending row shows none (never the booked figure as actual). Booked values stay beside them.
+    The stored row is not changed."""
+    try:
+        v = AC.row_view(h)
+        if v['status'] == 'booked': return h
+        return dict(h, pnl=v['pnl'], r=v['r'], pnl_status=v['status'], pnl_booked=h.get('pnl'), r_booked=h.get('r'))
+    except Exception:
+        return dict(h, pnl=None, r=None, pnl_status='pending', pnl_booked=h.get('pnl'), r_booked=h.get('r'))
 import lab as LAB               # noqa: E402
 import feasibility as F         # noqa: E402
 import instance as INST         # noqa: E402  (AUD-00: one process per data folder / account)
@@ -1329,7 +1341,8 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
                 e = APP.engine
                 return self._json(e.audit_summary() if hasattr(e, 'audit_summary') else dict(error='no audit'))
-            if p == '/api/history': return self._json(dict(rev=APP.revs(APP.engine)['history'], history=APP.engine.history[-1500:]))
+            if p == '/api/history': return self._json(dict(rev=APP.revs(APP.engine)['history'],
+                                                           history=[_hist_view(h) for h in APP.engine.history[-1500:]]))
             if p == '/api/missed': return self._json(dict(rev=APP.revs(APP.engine)['missed'], missed=APP.missed_view()))
             if p == '/api/signals':
                 e = APP.engine

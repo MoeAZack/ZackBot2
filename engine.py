@@ -3055,6 +3055,7 @@ class Engine:
         ev = next((r for r in reversed(getattr(self, 'cohort_rows', None) or ()) if r.get('id') == row.get('id')), None)
         row['cost_rev'] = max(int(row.get('cost_rev') or 0), int((ev or {}).get('cost_rev') or 0)) + 1   # past every copy
         self._measured_followup(row)                                # FILL-PNL-02: a close waiting for its measured result
+        self._audit_revise(row)                                     # #178: an earlier close audit line on another net
         return self._cohort_rev(row)
 
     def true_books(self, marks=None, persist=True):
@@ -3178,26 +3179,28 @@ class Engine:
             return self._tb_excursions_read()
 
     def _tb_excursions_read(self):
-        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, fid=None))
+        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, at={}, fid=None))
         cur = self.F['audit']
         try: stt = os.stat(cur); size, fid = stt.st_size, (stt.st_ino, stt.st_ctime_ns)
         except OSError: size, fid = 0, None
         if fid != c.get('fid') or size < c['off'].get(cur, 0):           # rotated / replaced (not only shorter): re-read both
-            c['off'].clear(); c['ids'].clear(); c['fid'] = fid
+            c['off'].clear(); c['ids'].clear(); c.setdefault('at', {}).clear(); c['fid'] = fid
         for path in (cur + '.1', cur):
             try:
                 with open(path, 'rb') as f:
                     f.seek(c['off'].get(path, 0))
                     for ln in f:
                         if not ln.endswith(b'\n'): break                   # a line still being written: next time
-                        c['off'][path] = c['off'].get(path, 0) + len(ln)
+                        at = c['off'].get(path, 0)
+                        c['off'][path] = at + len(ln)
                         if b'"trade_audit"' not in ln: continue
                         try: r = json.loads(ln)
                         except ValueError: continue
                         if not isinstance(r, dict) or r.get('kind') != 'trade_audit' or not r.get('id'): continue
                         m = r.get('metrics') if isinstance(r.get('metrics'), dict) else {}
                         c['ids'][r['id']] = dict(mfe_r=(m.get('mfe') or {}).get('r'), mae_r=(m.get('mae') or {}).get('r'),
-                                                 giveback_r=r.get('giveback_r'))
+                                                 giveback_r=r.get('giveback_r'))          # the LATEST line (revision) wins
+                        c.setdefault('at', {})[r['id']] = (path, at, r.get('net_pnl'))
             except OSError: continue
         return c['ids']
 
@@ -3373,6 +3376,7 @@ class Engine:
                 self._audit_since = now_utc().isoformat(timespec='seconds')
                 with open(sp, 'w', encoding='utf-8') as fh: fh.write(self._audit_since)
         except Exception as e: log.debug(f'audit start time not recorded ({e})')
+        self._audit_reconcile()
         try:
             lots = self.state.get('lots') or {}
             if not lots: return
@@ -3394,6 +3398,43 @@ class Engine:
                 except Exception: pass
         except Exception as e:
             log.warning(f'audit start-up skipped ({e})')
+
+    def _audit_reconcile(self):
+        """#178 (Codex 6343115717): at start, every settled history row whose latest close audit line still carries another
+        net gets one appended revision (restart-safe: the revision is the latest line next time, so nothing repeats)."""
+        try:
+            try: self._auditw.flush(1.0)
+            except Exception: pass
+            n = sum(bool(self._audit_revise(h)) for h in list(self.history))
+            if n: log.warning(f'trade audit: {n} close record(s) revised onto the measured net (append-only)')
+        except Exception as e: log.warning(f'trade audit reconcile skipped ({e})')
+
+    def _audit_revise(self, row):
+        """Append a revision of the row's latest close audit line when its net differs from the row's settled (measured /
+        acknowledged) net. The original line is never edited. -> True when a revision was queued. Never raises."""
+        try:
+            rid = row.get('id')
+            v = AC.row_view(row)
+            if not rid or v['status'] not in ('measured', 'acknowledged'): return False
+            net = AC.measured(row)['net']
+            done = vars(self).setdefault('_audit_rev', {})
+            if rid in done and abs(done[rid] - net) <= 1e-6: return False
+            self._tb_excursions()                                   # the latest line of each id (incremental read)
+            at = (vars(self).get('_tb_exc') or {}).get('at', {}).get(rid)
+            if not at: return False                                 # no close audit line (legacy / rotated away)
+            path, off, cur = at
+            if isinstance(cur, (int, float)) and abs(cur - net) <= 1e-6: done[rid] = net; return False
+            with open(path, 'rb') as f:
+                f.seek(off); orig = json.loads(f.readline())
+            if orig.get('id') != rid: return False
+            rv = TA.revise_close(orig, net, v['status'], row.get('risk_usd'), now_utc().isoformat(timespec='seconds'))
+            if not rv: return False
+            if row.get('pnl_fill_adj') is not None: rv['pnl_fill_adj'] = row['pnl_fill_adj']
+            rv['pnl_booked'] = row.get('pnl')
+            self._audit_emit(rv); done[rid] = net
+            return True
+        except Exception as e:
+            log.warning(f'trade audit revision not recorded ({e})'); return False
 
     def _audit_ctx(self):
         """(missing, down_last) from T05b: samples are missing while the exchange-down incident is open or the trading
@@ -4149,46 +4190,65 @@ class Engine:
                 rec['fills_booked'] = len(lot.get('fills') or []); self._cost_final('row', rec)
         except Exception as e: log.warning(f'actual costs not carried to history ({e})')
         if lot.get('cohort_id'): rec['cohort_id'] = lot['cohort_id']     # RUN-PACK-01: carried, never re-derived
-        au = None
-        try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
-            au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
-            if au:
-                au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed'])
-                if lot.get('fill_refs'):                 # FILL-PNL-01: measured-price correction known at the close
-                    au.update(pnl_fill_adj=lot.get('pnl_fill_adj'), fill_px_partial=lot.get('fill_px_partial'))
-                self._audit_emit(au)
-        except Exception as e: log.warning(f'trade audit not recorded ({e})')
         self.history.append(rec); self.history = self.history[-3000:]
         if rec.get('cohort_id') and self._cohort_ok() and rec['cohort_id'] == self.state['cohort']['id']:
             self._cohort_row(rec)                                  # RUN-PACK-01 evidence copy (never read by trading)
         self._save_aux('history', self.history)
-        self._measured_close(key, rec, lot, au, why)              # FILL-PNL-02: R / ML label / notice on the measured net
+        self._measured_close(key, rec, lot, why)          # FILL-PNL-02: audit / R / ML label / notice on the measured net
 
     MEASURED_WAIT_MAX = 500
 
-    def _measured_close(self, key, rec, lot, au, why):
-        """FILL-PNL-02: the R history, ML label and close notice carry the MEASURED result. A row whose fill prices / fees
-        are not measured yet waits (state['measured_wait'], survives restarts) and is completed by _measured_followup when
-        the row is revised; it is announced as pending - never with its booked figure presented as actual."""
+    ML_AUDIT_KEYS = ('metrics', 'coverage', 'target_touch_t', 'target', 'observations')
+
+    def _measured_close(self, key, rec, lot, why):
+        """FILL-PNL-02: the trade audit, R history, ML label and close notice carry the MEASURED result. A row whose fill
+        prices / fees are not measured yet waits (state['measured_wait'] with a copy of the closed lot, survives restarts)
+        and is completed by _measured_followup when the row is revised; it is announced as pending - never with its booked
+        figure presented as actual."""
         w = dict(key=key, sleeve=lot['sleeve'], manual=bool(lot.get('manual')), risk_usd=lot.get('risk_usd'), why=why,
                  hours=rec.get('hours'))
         if isinstance(lot.get('ml_decision_id'), str):             # ML-SHADOW-01: the only key the hook adds (ON only)
-            w['ml'] = dict(ml_decision_id=lot['ml_decision_id'],
-                           audit={k: (au or {}).get(k) for k in ('metrics', 'coverage', 'target_touch_t', 'target', 'observations')})
+            w['ml'] = dict(ml_decision_id=lot['ml_decision_id'])
         v = AC.row_view(rec)
         if v['status'] == 'pending':
+            w['audit_lot'] = {k: copy.deepcopy(v_) for k, v_ in lot.items() if k != 'ml_decision_id'}   # #178 canary:
+                                                                    # the audit is written once, when measured (ML id: w['ml'])
             mw = self.state.setdefault('measured_wait', {})
             mw[rec['id']] = w
             for k in list(mw)[:-self.MEASURED_WAIT_MAX]:
                 mw.pop(k, None); log.warning(f'measured close {k}: waited too long among {self.MEASURED_WAIT_MAX} - its R / ML label are dropped')
             self.notify(f"⏳ CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL pending exchange fill prices · {rec['hours']}h")
             return
+        w['audit_lot'] = lot
         self._measured_done(rec, w, v, 'CLOSED')
 
+    def _close_audit(self, rec, lot, v):
+        """T05a close record from the row's ONE settled net (#178 canary, Codex 6342665810): net_pnl, R, giveback, metrics,
+        flags and every counterfactual vs_actual use the measured / acknowledged net (a legacy row: its booked net). The
+        lot is fully closed here, so its quantity is 0 for the cohort ledger. Observe only; None when not recorded."""
+        try:
+            if v['status'] in ('measured', 'acknowledged'): net = AC.measured(rec)['net']
+            else: net = float(lot.get('realized') or 0.0) - float(lot.get('fees') or 0.0)    # legacy: its booked net
+            au = TA.close_record(dict(lot, qty=0.0), net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
+            if not au: return None
+            au.update(kind='trade_audit', id=rec['id'], exit_reason=rec.get('exit_reason'), closed=rec['closed'], t=rec['closed'],
+                      net_basis=v['status'], pnl_booked=rec.get('pnl'))
+            if lot.get('fill_refs'):                     # FILL-PNL-01: the correction already inside net_pnl
+                au.update(pnl_fill_adj=rec.get('pnl_fill_adj', lot.get('pnl_fill_adj')), fill_px_partial=False)
+            self._audit_emit(au)
+            if au.get('net_basis') in ('measured', 'acknowledged'):
+                vars(self).setdefault('_audit_rev', {})[rec['id']] = net
+            return au
+        except Exception as e:
+            log.warning(f'trade audit not recorded ({e})'); return None
+
     def _measured_done(self, rec, w, v, word):
+        lot = w.pop('audit_lot', None)
+        au = self._close_audit(rec, lot, v) if lot else None       # a wait from an older build: its audit was written then
         self._record_r(w, v['pnl'])
         if w.get('ml'):                                             # observe only, never raises
-            self._ml_label(w['key'], dict(rec, pnl=v['pnl'], r=v['r']), w['ml'], w['ml']['audit'])
+            aud = {k: (au or {}).get(k) for k in self.ML_AUDIT_KEYS} if au else w['ml'].get('audit') or {}
+            self._ml_label(w['key'], dict(rec, pnl=v['pnl'], r=v['r']), w['ml'], aud)
         tag = {'measured': '', 'acknowledged': ' (operator-acknowledged)'}.get(v['status'], ' (booked)')
         self.notify(f"{'✅' if (v['pnl'] or 0) > 0 else '❌'} {word} {rec['side']} {rec['symbol']} [{w['sleeve']}] {w['why']} · "
                     f"PnL {v['pnl']:+.2f} USDT{tag}" + (f" ({v['r']}R)" if v['r'] is not None else '') + f" · {w['hours']}h")
