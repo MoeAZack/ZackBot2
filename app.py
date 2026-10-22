@@ -1049,11 +1049,13 @@ class App:
         lots = []
         for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
-            pnl = sd * (m - AC.measured_avg(l)) * l['qty'] if m else None      # FILL-PNL-02: measured entry basis
+            basis = AC.measured_avg(l)                   # FILL-PNL-02: measured entry basis; None = entry price pending
+            pnl = sd * (m - basis) * l['qty'] if m and basis is not None else None
             lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'book', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
                              tp=l.get('tp'), add_blocked=l.get('add_blocked'), **_stop_view(e, l),     # AUD-04: fresh confirmation
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
+                             pnl_status='pending' if basis is None else 'measured',
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
         return lots
 
@@ -1645,6 +1647,15 @@ def handle(path, b):
             except Exception: pass
             raise ValueError(msg)
         return 'saved'
+    if path == '/api/capital/ack':                        # FILL-PNL-02: settle one unmeasurable close (PAPER, HMAC-authed)
+        rid, note = b.get('row_id'), b.get('note')
+        if not isinstance(rid, str) or not rid: raise ValueError('row_id is required')
+        if not isinstance(note, str) or not note.strip(): raise ValueError('an evidence note is required')
+        net = b.get('net')
+        if isinstance(net, bool) or not isinstance(net, (int, float)) or not math.isfinite(net): raise ValueError('net must be a finite number')
+        ok, msg, status = e.ack_unmeasured(rid, net, note)
+        if not ok: raise ValueError(msg)
+        return dict(row_id=rid, status=status, msg=msg)
     if path == '/api/install/confirm':                    # AUD-05 r3: the owner confirms the account of this data folder
         if b.get('CONFIRM') != 'THIS_ACCOUNT': raise ValueError('type THIS_ACCOUNT to confirm the account of this data folder')
         return e.confirm_install()

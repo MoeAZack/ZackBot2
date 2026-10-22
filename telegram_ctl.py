@@ -367,7 +367,8 @@ class TelegramControl:
         out = []
         for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
-            pnl = sd * (m - AC.measured_avg(l)) * l['qty'] if m else None       # FILL-PNL-02: measured entry basis
+            b = AC.measured_avg(l)                                              # FILL-PNL-02: None = entry price pending
+            pnl = sd * (m - b) * l['qty'] if m and b is not None else None
             out.append(dict(key=k, symbol=l['symbol'], side=l['side'], sleeve=l.get('sleeve'), qty=l.get('qty'), avg=l.get('avg'),
                             stop=l.get('stop'), mark=m, pnl=pnl, manual=l.get('manual'),
                             r=pnl / l['risk_usd'] if pnl is not None and l.get('risk_usd') else None,

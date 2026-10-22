@@ -13,7 +13,7 @@ COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'ma
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
                'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys',
                'fill_refs', 'px_actual', 'px_missing', 'pnl_fill_adj', 'avg_fill_adj', 'fill_px_partial',   # FILL-PNL-01
-               'px_unmeasured', 'px_unlinked_ok')
+               'px_unmeasured', 'px_unlinked_ok', 'px_ack')
 
 
 def _num(v):
@@ -227,6 +227,7 @@ def _replay(fills, sd, entry_kinds, over):
 def finalize_px(target, sd, entry_kinds, now_ms=None, wait_ms=None):
     """Recompute pnl_fill_adj / avg_fill_adj / fill_px_partial (in place) from the fills and the measured prices so far.
     A target with no linked fill (booked before FILL-PNL-01, or never sent) is left as it is."""
+    if target.get('px_ack'): return target       # FILL-PNL-02: an operator-acknowledged close is final for its fill prices
     refs = [x for x in (target.get('fill_refs') or ()) if isinstance(x, (list, tuple)) and len(x) == 2]
     if not refs and not target.get('px_unmeasured') and not target.get('px_unlinked_ok'): return target
     pa, miss = target.get('px_actual') or {}, set(target.get('px_missing') or ())
@@ -339,34 +340,37 @@ def measured(row):
     return dict(gross=gross, fees=fa, funding=fu, net=gross - fa + fu, complete=not why, why=sorted(why))
 
 
-def row_view(row, ack=None):
+def row_view(row):
     """What a consumer may show / count for one closed row -> {pnl, r, status, why}. status 'measured' = actual;
     'pending' = tracked but not measured yet (pnl None - never the booked figure); 'booked' = a legacy row's own value."""
     if not tracked(row):
         return dict(pnl=_num(row.get('pnl')), r=_num(row.get('r')), status='booked', why=[])
     m = measured(row)
     risk = _num(row.get('risk_usd'))
-    if not m['complete']:
-        a = _num((ack or {}).get('net'))                 # Codex 6332168655: only an explicit operator acknowledgement with
-        if a is None: return dict(pnl=None, r=None, status='pending', why=m['why'])      # its own net releases the hold -
-        return dict(pnl=round(a, 4), r=round(a / risk, 2) if risk else None, status='acknowledged', why=m['why'])   # never booked
-    return dict(pnl=round(m['net'], 4), r=round(m['net'] / risk, 2) if risk else None, status='measured', why=[])
+    if not m['complete']: return dict(pnl=None, r=None, status='pending', why=m['why'])
+    st = 'acknowledged' if row.get('px_ack') else 'measured'      # the acknowledged net is written into the row itself
+    return dict(pnl=round(m['net'], 4), r=round(m['net'] / risk, 2) if risk else None, status=st, why=[])
 
 
 def measured_avg(lot):
-    """An open lot's entry basis at the measured fill prices (the booked avg when no correction is known)."""
-    a, adj = _num(lot.get('avg')), _num(lot.get('avg_fill_adj'))
-    return a if a is None or adj is None else a + adj
+    """An open lot's entry basis at the measured fill prices. None = unknown (Codex 6332163574 P1-2): a tracked lot whose
+    fill prices are not all measured, or whose correction is missing / unreadable - never the booked avg as actual.
+    A legacy lot (no fill links) keeps its booked avg."""
+    a = _num(lot.get('avg'))
+    if a is None or not tracked(lot): return a
+    adj = _num(lot.get('avg_fill_adj'))
+    if lot.get('fill_px_partial') or adj is None: return None
+    return a + adj
 
 
-def capital_hold(rows, checkpoint, acks=None):
+def capital_hold(rows, checkpoint):
     """Ruling 1: realized P&L for COMPOUND / guard capital. While any tracked row is not measured, capital holds at the
     last fully reconciled checkpoint (None = base: 0.0) and says why; once every row is measured the checkpoint is revised
     once (idempotent - the same rows give the same checkpoint). Legacy rows count at their booked value.
     -> {realized, checkpoint, hold, realized_unmeasured_n, why}."""
     total, why, n = 0.0, set(), 0
     for r in rows:
-        v = row_view(r, (acks or {}).get(r.get('id')))
+        v = row_view(r)
         if v['status'] == 'pending': n += 1; why.update(v['why']); continue
         total += v['pnl'] or 0.0
     if n:
@@ -375,3 +379,32 @@ def capital_hold(rows, checkpoint, acks=None):
                     realized_unmeasured_n=n, why=sorted(why))
     ck = dict(realized=round(total, 8), n=len(rows))
     return dict(realized=ck['realized'], checkpoint=ck, hold=None, realized_unmeasured_n=0, why=[])
+
+
+# Fill-price gaps that can never close by themselves - the only ones an operator acknowledgement may settle. A row still
+# pending its price (fill_px_pending) or missing fees / funding is refused: those resolve from records, not by hand.
+ACK_REASONS = frozenset({'fill_px_lost', 'fill_px_missing', 'fill_px_unmeasured', 'fill_ref_missing', 'fill_ref_unmatched',
+                         'fills_unreadable', 'pnl_fill_adj_unreadable', 'pnl_fill_adj_missing', 'fill_px_partial'})
+
+
+def acknowledge(row, net, note, t):
+    """Codex 6332263574 P1-1: settle a permanently unmeasurable close at the operator's stated actual net, IN the row (one
+    truth for every consumer): pnl_fill_adj is set so that the row's net equals `net` exactly, fill_px_partial clears,
+    and px_ack keeps the evidence (net, note, time, the unmeasured reasons, the correction it replaced). The booked
+    figure is never used. -> (ok, message); the row is untouched when refused."""
+    if row.get('px_ack'): return False, 'already acknowledged'
+    if not tracked(row): return False, 'a legacy close has no measurement to settle'
+    try: net = float(net)
+    except (TypeError, ValueError): return False, 'net must be a number'
+    if net != net or net in (float('inf'), float('-inf')): return False, 'net must be a finite number'
+    note = str(note or '').strip()
+    if not note: return False, 'an evidence note is required'
+    m = measured(row)
+    if m['complete']: return False, 'this close is measured - nothing to acknowledge'
+    other = set(m['why']) - ACK_REASONS
+    if other: return False, f"not an unmeasurable fill price ({', '.join(sorted(other))}) - it resolves from its records"
+    g = _num(row.get('pnl_gross')); fa = _num(row.get('fees_actual')); fu = _num(row.get('funding_actual')) or 0.0
+    row['px_ack'] = dict(net=round(net, 8), note=note[:200], t=t, why=m['why'], replaced_adj=row.get('pnl_fill_adj'))
+    row['pnl_fill_adj'] = round(net - (g - fa + fu), 10) + 0.0
+    row['fill_px_partial'] = False
+    return True, f'acknowledged at net {net:+.4f}'

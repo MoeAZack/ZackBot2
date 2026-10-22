@@ -168,9 +168,14 @@ def test_open_pnl_uses_the_measured_entry_basis():
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     l = next(iter(e.state['lots'].values()))
     e.marks = {'BTCUSDT': l['avg'] + 10.0}
-    base = e.bot_unrealized()
-    l['avg_fill_adj'] = 2.0                                              # measured entry 2.0 worse than booked
-    assert e.bot_unrealized() == pytest.approx(base - 2.0 * l['qty'])
+    l['fill_px_partial'] = ['fill_px_pending']                          # Codex P1-2: entry price not measured yet
+    assert e.bot_unrealized() == 0.0                                     # unknown, never the booked +10/unit
+    info = e.capital_info()
+    assert info['unrealized_unmeasured_n'] == 1 and info['unrealized_why'] == ['fill_px_pending']
+    l['avg_fill_adj'] = 2.0; l['fill_px_partial'] = False               # measured entry 2.0 worse than booked
+    assert e.bot_unrealized() == pytest.approx(8.0 * l['qty']) and e.capital_info()['unrealized_unmeasured_n'] == 0
+    for f in ('fill_refs', 'px_unmeasured', 'px_unlinked_ok', 'avg_fill_adj', 'fill_px_partial'): l.pop(f, None)
+    assert e.bot_unrealized() == pytest.approx(10.0 * l['qty'])          # a legacy lot keeps its booked basis
 
 
 def test_paper_books_value_measured_rows_and_count_pending():
@@ -214,11 +219,94 @@ def test_permanent_hold_releases_only_on_operator_ack_with_its_own_net():
     assert e.capital_info()['hold'] == 'realized_unmeasured' and r['id'] in e.state['measured_wait']
     assert e.ack_unmeasured(r['id'], 'x')[0] is False and e.ack_unmeasured('nope', 1)[0] is False
     assert e.ack_unmeasured(r['id'], float('nan'))[0] is False
-    ok, _ = e.ack_unmeasured(r['id'], -2.3612176, 'exchange fills')
-    assert ok and e.ack_unmeasured(r['id'], -2.3612176)[0] is False                 # once
+    ok, _, st = e.ack_unmeasured(r['id'], -2.3612176, 'exchange fills')
+    assert st == 'acknowledged'
+    assert ok and e.ack_unmeasured(r['id'], -2.3612176, 'again')[0] is False        # once
     info = e.capital_info()
     assert info['hold'] is None and info['realized'] == pytest.approx(before - 2.3612176, abs=0.01)
     assert e.state['hist'][SL['id']] == [round(-2.3612176 / r['risk_usd'], 3)] and r['id'] not in e.state['measured_wait']
     assert any('operator-acknowledged' in n and '-2.36' in n for n in notes)
-    assert AC.row_view(r)['status'] == 'pending'                                   # displays without the ack stay pending
+    assert AC.row_view(r)['status'] == 'acknowledged' and AC.measured(r)['net'] == pytest.approx(-2.3612176, abs=1e-8)
+    assert r['px_ack']['why'] == ['fill_ref_missing'] and r['fill_px_partial'] is False   # one truth, in the row itself
     m = dict(_row(5, 1.0, 0.1, adj=0.0)); assert e.ack_unmeasured(m['id'], 1.0)[0] is False   # not in history
+
+
+def _aave_pending(e, notes):
+    r = _close_one(e, notes)
+    r.update(fees_actual=1.6852176, fees_actual_partial=False, fill_px_partial=['fill_ref_missing'], pnl=6.7578)
+    e._row_changed(r)
+    return r
+
+
+def test_ack_is_one_durable_row_truth_across_restart_archive_and_books():
+    """Codex P1-1: the acknowledgement is a revisable row correction - in the cohort evidence store, the saved history and
+    every consumer (true_books, ledger, paper_books, Telegram) - and it survives a restart; one truth path only."""
+    from test_safety import mk_engine
+    e, tmp = books_engine(COMPOUND=True)
+    before = e.capital_info()['realized']
+    r = _aave_pending(e, [])
+    rev0 = r['cost_rev']
+    assert e.ack_unmeasured(r['id'], -2.3612176, 'raw fills: entry 150.4417 exit 150.49, fees 1.6852')[0]
+    assert r['cost_rev'] == rev0 + 1 and 'cap_ack' not in e.state
+    ev = [x for x in e.cohort_rows if x.get('id') == r['id']][-1]
+    assert ev['px_ack']['net'] == -2.3612176 and ev['fill_px_partial'] is False and ev['cost_rev'] == r['cost_rev']
+    b = e.true_books(persist=False)[r['book']]
+    assert not [x for x in b['incomplete'] if x.get('id') == r['id'] and x['reason'] != 'funding_unread']   # same row truth
+    assert b['strategies'] and AC.measured(r)['net'] == pytest.approx(-2.3612176, abs=1e-8)
+    pb = next(x for x in PB.summary(10000.0, 10000.0, history=e.history) if x['id'] == r['book'])
+    assert pb['pending'] == 0 and pb['net_pnl'] == pytest.approx(round(-2.3612176, 2), abs=0.01)
+    e2, _ = mk_engine(tmp, CAPITAL_CAP=10000.0, PAPER_BOOKS=True, PAPER_BOOK_CAP=2000.0, COMPOUND=True)   # restart
+    e2.S['CAP_SINCE'] = e.S['CAP_SINCE']
+    r2 = next(h for h in e2.history if h.get('id') == r['id'])
+    assert AC.row_view(r2)['status'] == 'acknowledged' and r2['px_ack']['note'].startswith('raw fills')
+    info = e2.capital_info()
+    assert info['hold'] is None and info['realized'] == pytest.approx(before - 2.3612176, abs=0.01)
+    assert e2.ack_unmeasured(r['id'], -2.3612176, 'again')[0] is False and e2.pending_ack() == []
+
+
+def test_ack_refuses_what_resolves_from_records_and_live_mode():
+    e, _ = books_engine(COMPOUND=True)
+    r = _close_one(e, [])
+    r.update(fees_actual=1.0, fees_actual_partial=False, fill_px_partial=['fill_px_pending'])
+    assert e.ack_unmeasured(r['id'], 1.0, 'n')[0] is False                          # still arriving: never by hand
+    r.update(fill_px_partial=['fill_ref_missing'], fees_actual=None, fees_actual_partial=['fill_records_lost'])
+    assert e.ack_unmeasured(r['id'], 1.0, 'n')[0] is False                          # fees resolve from their records
+    r.update(fees_actual=1.0, fees_actual_partial=False)
+    assert [p['id'] for p in e.pending_ack()] == [r['id']] and e.pending_ack()[0]['acknowledgeable']
+    assert 'pnl' not in e.pending_ack()[0]                                         # no provisional figure is listed
+    assert e.ack_unmeasured(r['id'], 1.0, '   ')[0] is False                       # evidence note required
+    e.live = True
+    assert e.ack_unmeasured(r['id'], 1.0, 'n')[1].startswith('refused')            # PAPER only
+    e.live = False
+    assert AC.row_view(r)['status'] == 'pending' and 'px_ack' not in r              # every refusal left the row untouched
+    late = dict(cost_ref='zz', actual=1.0)
+    assert e.ack_unmeasured(r['id'], 1.0, 'n')[0]
+    adj = r['pnl_fill_adj']; AC.finalize_px(r, 1, TA.ENTRY_KINDS)                  # a late recompute never undoes it
+    assert r['pnl_fill_adj'] == adj and r['fill_px_partial'] is False and late
+
+
+def test_app_ack_endpoint_validates_and_returns_the_revised_status(monkeypatch):
+    import app as A, types
+    e, _ = books_engine(COMPOUND=True)
+    r = _aave_pending(e, [])
+    monkeypatch.setattr(A, 'APP', types.SimpleNamespace(engine=e))
+    for bad in ({'net': -2.36, 'note': 'x'}, {'row_id': r['id'], 'net': -2.36}, {'row_id': r['id'], 'net': True, 'note': 'x'},
+                {'row_id': r['id'], 'net': float('inf'), 'note': 'x'}, {'row_id': 'nope', 'net': -2.36, 'note': 'x'}):
+        with pytest.raises(ValueError): A.handle('/api/capital/ack', bad)
+    out = A.handle('/api/capital/ack', {'row_id': r['id'], 'net': -2.3612176, 'note': 'raw fills'})
+    assert out['status'] == 'acknowledged' and out['row_id'] == r['id']
+    with pytest.raises(ValueError): A.handle('/api/capital/ack', {'row_id': r['id'], 'net': -2.36, 'note': 'again'})
+
+
+def test_open_lot_with_pending_entry_price_shows_pending_in_app_and_telegram():
+    import app as A, telegram_ctl as TG
+    e, _ = books_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    l = next(iter(e.state['lots'].values())); l['fill_px_partial'] = ['fill_px_pending']
+    e.marks = {'BTCUSDT': l['avg'] + 10.0}
+    v = A.App._lots_view(object.__new__(A.App), e)[0]
+    t = TG.TelegramControl._lots(object.__new__(TG.TelegramControl), e)[0]
+    assert t['pnl'] is None and t['r'] is None
+    assert v['pnl'] is None and v['pnl_status'] == 'pending'
+    l['fill_px_partial'] = False; l['avg_fill_adj'] = 0.0
+    assert TG.TelegramControl._lots(object.__new__(TG.TelegramControl), e)[0]['pnl'] == pytest.approx(10.0 * l['qty'])

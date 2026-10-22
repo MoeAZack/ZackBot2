@@ -2302,8 +2302,10 @@ class Engine:
         lots = list(self.state['lots'].values())
         if not lots: return 0.0
         if self.marks and all(l['symbol'] in self.marks for l in lots):
-            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - AC.measured_avg(l)) * l['qty']
-                       for l in lots)                              # FILL-PNL-02: measured entry basis
+            # FILL-PNL-02 (Codex P1-2): measured entry basis; a lot whose entry price is not measured yet counts 0 (unknown) -
+            # never its booked basis as actual; min(exchange balance, capital) still carries any real loss into the guards
+            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - b) * l['qty']
+                       for l in lots for b in (AC.measured_avg(l),) if b is not None)
         return float(self.last_account.get('totalUnrealizedProfit', 0) or 0)
 
     def equity(self):
@@ -2338,7 +2340,7 @@ class Engine:
         # the last fully reconciled checkpoint (base if none) and is revised once when every row is measured
         ck = self.state.get('cap_ckpt')
         ck = {k: v for k, v in ck.items() if k != 'since'} if isinstance(ck, dict) and ck.get('since') == since else None
-        held = AC.capital_hold(rows, ck, self.state.get('cap_ack'))
+        held = AC.capital_hold(rows, ck)
         if held['checkpoint'] is not None and held['checkpoint'] != ck: self.state['cap_ckpt'] = dict(held['checkpoint'], since=since)
         realized = held['realized']
         adjs = S.get('CAP_ADJ', [])
@@ -2352,7 +2354,11 @@ class Engine:
                         unrealized=round(upnl, 2), capital=round(cap, 2), growth=round((cap - adj) / base * 100 - 100, 2) if base else None,
                         sizing=round(self.last_eq or 0, 2), adj=adjs[-50:], cycles=S.get('CAP_CYCLES', [])[-50:],
                         realized_booked=round(sum(h.get('pnl') or 0 for h in rows), 2), hold=held['hold'],
-                        hold_why=held['why'], realized_unmeasured_n=held['realized_unmeasured_n'])
+                        hold_why=held['why'], realized_unmeasured_n=held['realized_unmeasured_n'],
+                        unrealized_unmeasured_n=sum(1 for l in self.state['lots'].values() if AC.measured_avg(l) is None),
+                        unrealized_why=sorted({str(x) for l in self.state['lots'].values() if AC.measured_avg(l) is None
+                                               for x in (l.get('fill_px_partial') or ['avg_fill_adj_missing'])}),
+                        pending_ack=self.pending_ack())
         return self.cap
 
     def shift_guards(self, delta):
@@ -4187,33 +4193,40 @@ class Engine:
         self.notify(f"{'✅' if (v['pnl'] or 0) > 0 else '❌'} {word} {rec['side']} {rec['symbol']} [{w['sleeve']}] {w['why']} · "
                     f"PnL {v['pnl']:+.2f} USDT{tag}" + (f" ({v['r']}R)" if v['r'] is not None else '') + f" · {w['hours']}h")
 
+    def pending_ack(self):
+        """Read-only: closes holding capital because a fill price can never be measured (no P&L figure is listed)."""
+        out = []
+        for h in self.history:
+            v = AC.row_view(h)
+            if v['status'] == 'pending' and AC.tracked(h):
+                out.append(dict(id=h.get('id'), symbol=h.get('symbol'), side=h.get('side'), closed=h.get('closed'),
+                                book=h.get('book'), why=v['why'], acknowledgeable=not (set(v['why']) - AC.ACK_REASONS)))
+        return out[-100:]
+
     def ack_unmeasured(self, row_id, net, note=''):
-        """FILL-PNL-02 (Codex 6332168655): the ONLY release of a capital hold on a close that can never be measured. The
-        operator states the close's actual net (from the exchange's own records); its booked figure is never used. Refused
-        for a row that is not pending, already acknowledged, or a net that is not a finite number. -> (ok, message)."""
+        """FILL-PNL-02 (Codex 6332263574): the ONLY release of a capital hold on a close that can never be measured. The
+        operator states the close's actual net (from the exchange's own records) and an evidence note; the settlement is
+        written INTO the row (AC.acknowledge), revised in the evidence store and saved - every consumer reads that one row.
+        PAPER only; the booked figure is never used. -> (ok, message, status)."""
+        if self.live: return False, 'refused: acknowledgements are PAPER-only', None
         with self.lock:
             row = next((h for h in reversed(self.history) if h.get('id') == row_id), None)
-            if row is None: return False, f'no closed trade {row_id}'
-            try: net = float(net)
-            except (TypeError, ValueError): return False, 'net must be a number'
-            if not math.isfinite(net): return False, 'net must be a finite number'
-            acks = self.state.setdefault('cap_ack', {})
-            if row_id in acks: return False, f'{row_id} is already acknowledged'
-            if AC.row_view(row)['status'] != 'pending': return False, f'{row_id} is not waiting for a measurement'
-            acks[row_id] = dict(net=round(net, 8), note=str(note)[:200], t=now_utc().isoformat(timespec='seconds'),
-                                why=AC.measured(row)['why'])
-            log.warning(f"capital hold: {row.get('symbol')} close {row_id} acknowledged by the operator at net {net:+.4f} "
-                        f"(unmeasured: {', '.join(acks[row_id]['why'])})")
-            self._measured_followup(row)
+            if row is None: return False, f'no closed trade {row_id}', None
+            ok, msg = AC.acknowledge(row, net, note, now_utc().isoformat(timespec='seconds'))
+            if not ok: return False, f'{row_id}: {msg}', AC.row_view(row)['status']
+            log.warning(f"capital hold: {row.get('symbol')} close {row_id} {msg} by the operator "
+                        f"(unmeasured: {', '.join(row['px_ack']['why'])}; note: {row['px_ack']['note']})")
+            self._row_changed(row)                       # cost_rev + evidence revision + the waiting R / label / notice
+            self._save_aux('history', self.history)
             self.save_state()
-            return True, f'{row_id} acknowledged at net {net:+.4f}'
+            return True, f'{row_id} {msg}', AC.row_view(row)['status']
 
     def _measured_followup(self, row):
         """A revised row whose close was waiting for its measured result: finish the R / ML label / notice once."""
         try:
             w = (self.state.get('measured_wait') or {}).get(row.get('id'))
             if not w: return
-            v = AC.row_view(row, (self.state.get('cap_ack') or {}).get(row.get('id')))
+            v = AC.row_view(row)
             if v['status'] == 'pending': return
             self.state['measured_wait'].pop(row['id'], None)
             self._measured_done(row, w, v, 'MEASURED')
