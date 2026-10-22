@@ -1674,6 +1674,7 @@ class Engine:
         self._mk_refs = {}                        # EXEC-CAL-00: resting maker entry -> its filled orders (memory only, ids never saved)
         self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
+        self._lev_cur = {}                        # #183: symbol -> the leverage Binance last reported / accepted for the coin
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
         self._auditw = fill_writer(self.F['audit'], rotate_lines=AUDIT_ROTATE_LINES, slim=TA.slim_record, rotate_bytes=AUDIT_ROTATE_BYTES)   # T05a: audit events (same
         #   non-blocking writer contract as T05 fills; the in-memory window keeps only slimmed final trade records)
@@ -5772,6 +5773,7 @@ class Engine:
         if self._lev.get(sym) == want:
             try: current, _ = self._margin_state(sym); current = lev_num(current, 'current leverage', pos=True)
             except Exception: current = None
+            if current is not None: self._lev_cur[sym] = current
             if current is not None and current <= want: return 'set'
             self._lev.pop(sym, None)                              # external/unknown change: prove or set it again
         cool = self._lev_cool.get(sym, 0)
@@ -5793,7 +5795,7 @@ class Engine:
                 self._lev_cool[sym] = time.time() + LEV_REFUSAL_COOLDOWN_S
                 return self._leverage_fallback(sym, lev, e2, notional, risk)   # proceeds only if proven safe (read-only)
         self._lev_cool.pop(sym, None)
-        self._lev[sym] = want
+        self._lev[sym] = want; self._lev_cur[sym] = lev
         return 'set'
 
     def _brackets(self, sym, fetch=True):
@@ -5813,14 +5815,21 @@ class Engine:
         leverage in use (feasibility.tier_notional_cap; Binance answers -2027), else None. Counted conservatively: every open
         lot of the coin (both sides) and every resting entry order of the coin (its full quantity, filled part included), each
         valued at the HIGHER of the current order price px and its own entry/limit price - never at a stale lower average
-        (a price rise must not hide notional). Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown
-        -> None. Reduce-only exits never pass through here."""
+        (a price rise must not hide notional). Reduce-only exits never pass through here.
+        #183 (Binance -2027 at 20:30 Cairo, 22 Oct): the schedule is FETCHED when the 1 h cache expired (cache-only made the
+        gate silently disappear an hour into a run), an unavailable / unusable schedule REFUSES the entry (fail closed) and
+        the cap is taken at the HIGHER of the configured leverage and the one Binance last reported for the coin."""
+        try:                                                     # cached for LEV_BRACKET_TTL_S, re-fetched after it
+            b = self._brackets(sym, fetch=hasattr(self.trade, 'leverage_brackets'))
+        except LevReject as e:
+            return f'leverage tier: {sym} bracket schedule unavailable - entry refused ({str(e)[:120]})'
+        if not b: return None                                    # a client with no schedule source (older / offline fakes)
         try:
-            b = self._brackets(sym, fetch=False)
-            if not b: return None
             lev = min(max(1, int(self.S['MAX_LEVERAGE'])), float(b[0]['lev']))
+            cur = self._lev_cur.get(sym)
+            if isinstance(cur, (int, float)) and math.isfinite(cur) and cur > lev: lev = float(cur)
             cap = F.tier_notional_cap(b, lev)
-            if cap is None: return None
+            if cap is None: return f'leverage tier: {sym} no bracket allows {lev:g}x - entry refused'
             px = float(px)
             held = sum(float(l['qty']) * max(px, float(l['avg'])) for l in self.state['lots'].values() if l['symbol'] == sym)
             held += sum(float(r['qty']) * max(px, float((r.get('plan') or {}).get('px') or 0.0))
@@ -5828,8 +5837,8 @@ class Engine:
             if held + notional <= cap: return None
             return (f'leverage tier: {sym} position {held + notional:,.0f} USDT would exceed the Binance maximum '
                     f'{cap:,.0f} USDT at {lev:g}x')
-        except Exception:                                   # noqa: BLE001  a feasibility hint never raises into trading
-            return None
+        except Exception as e:                              # noqa: BLE001  never raises into trading; never a silent pass
+            return f'leverage tier: {sym} check failed - entry refused ({type(e).__name__})'
 
     def _lev_max(self, sym, fetch=True):
         """The coin's maximum initial leverage (first bracket), or None if unknown/invalid."""
@@ -6082,6 +6091,7 @@ class Engine:
             except LevReject: read_err, cur = f'invalid current leverage {cur!r}', None
             else: cur = int(cur) if cur == int(cur) else cur
         r.update(current=cur, margin_type=mtype if mtype in ('CROSSED', 'ISOLATED') else None)
+        if cur is not None: self._lev_cur[sym] = cur          # #183: the tier cap follows the leverage really in use
 
         def done(ok, reason, detail):
             r.update(outcome='went_ahead' if ok else 'skipped', reason=reason, detail=str(detail)[:200])
