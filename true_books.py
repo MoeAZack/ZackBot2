@@ -34,6 +34,18 @@ IMMUTABLE = ('book', 'strategy_key', 'symbol', 'side', 'cohort_id', 'opened', 'c
 REVISABLE = tuple(AC.COST_FIELDS) + ('cost_rev', 'fills_booked')     # late actual-cost / funding restatements
 
 
+def _gross(b, t, g, ident):
+    """FILL-PNL-01: the booked gross plus the measured-fill-price correction; a fill whose exchange price is not known
+    yet (or never came) makes the book INCOMPLETE (fill_px_unresolved) - never planned-price P&L counted as actual."""
+    p = t.get('fill_px_partial')
+    if p: b['incomplete'].append(dict(reason='fill_px_unresolved', id=ident, why=p))
+    if 'pnl_fill_adj' not in t or g is None: return g
+    adj = D(t.get('pnl_fill_adj'))
+    if adj is None:
+        b['incomplete'].append(dict(reason='fill_px_unresolved', id=ident, why=['pnl_fill_adj_unreadable'])); return g
+    return g + adj
+
+
 def D(x):
     """Decimal from a JSON number / string; None when unreadable or not finite."""
     if x is None or isinstance(x, bool): return None
@@ -128,7 +140,7 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
             c = _ms(r.get('closed'))
             if fund_t is None or c is None or c > fund_t:
                 b['incomplete'].append(dict(reason='funding_unread', id=r.get('id'), why=funding.get('why')))
-        g, fe = D(r.get('pnl_gross')), D(r.get('fees'))
+        g, fe = _gross(b, r, D(r.get('pnl_gross')), r.get('id')), D(r.get('fees'))
         if g is None: b['incomplete'].append(dict(reason='pnl_unreadable', id=r.get('id'))); g = Decimal(0)
         if fe is None: b['incomplete'].append(dict(reason='fees_unreadable', id=r.get('id'))); fe = Decimal(0)
         _funding_gap(b, r)
@@ -165,7 +177,7 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         if lot.get('cohort_id') != cohort_id: continue          # value only: an older cohort's lot is not this NAV's
         if not funding.get('ok') and qty > 0:
             b['incomplete'].append(dict(reason='funding_unread', id=lot.get('symbol'), why=funding.get('why')))
-        g, fe = D(lot.get('realized', 0)), D(lot.get('fees', 0))
+        g, fe = _gross(b, lot, D(lot.get('realized', 0)), lot.get('symbol')), D(lot.get('fees', 0))
         if g is None: b['incomplete'].append(dict(reason='pnl_unreadable', id=lot.get('symbol'))); g = Decimal(0)
         if fe is None: b['incomplete'].append(dict(reason='fees_unreadable', id=lot.get('symbol'))); fe = Decimal(0)
         _funding_gap(b, lot)
@@ -177,7 +189,7 @@ def compute(cohort_id, history=(), lots=(), marks=None, working=(), halted=None,
         else: b['fees_act'] += fa
         for why in lot.get('funding_partial') or ():
             b['incomplete'].append(dict(reason=why, id=lot.get('symbol'), n=lot.get('funding_unattributed')))
-        if mk is not None: b['unreal'] += (1 if lot.get('side') == 'LONG' else -1) * (mk - avg) * qty
+        if mk is not None: b['unreal'] += (1 if lot.get('side') == 'LONG' else -1) * (mk - avg - (D(lot.get('avg_fill_adj')) or 0)) * qty
     for k, nn, rr in working or ():
         b = out.get(k)
         if b is None: unowned['working'] += 1; continue          # unmapped / manual working order on the shared account
@@ -227,9 +239,11 @@ def _funding_gap(b, x):
 
 def cost_pending_only(b):
     """True when the book's only incompleteness is fill commissions still in flight (fill_records_pending): accounting
-    latency, not a hole. Anything else - including fill_records_lost / fills_without_cost_record - is not."""
+    latency, not a hole. FILL-PNL-01: the same in-flight record's exchange price (fill_px_pending) is latency too. Anything
+    else - including fill_records_lost / fills_without_cost_record / fill_px_missing - is not."""
     inc = b['incomplete']
-    return bool(inc) and all(x['reason'] == 'fees_actual_missing' and set(x.get('why') or ()) == {'fill_records_pending'}
+    return bool(inc) and all((x['reason'] == 'fees_actual_missing' and set(x.get('why') or ()) == {'fill_records_pending'})
+                             or (x['reason'] == 'fill_px_unresolved' and set(x.get('why') or ()) == {'fill_px_pending'})
                              for x in inc)
 
 
@@ -301,7 +315,7 @@ def _spread(vals):
 
 
 def _row_complete(r):
-    return D(r.get('fees_actual')) is not None and not r.get('funding_partial') and not r.get('_conflict') \
+    return D(r.get('fees_actual')) is not None and not r.get('funding_partial') and not r.get('_conflict')         and not r.get('fill_px_partial') \
         and D(r.get('pnl_gross')) is not None and not (r.get('funding_actual') is None and (r.get('funding_by_asset') or r.get('funding_rows')))
 
 
@@ -316,6 +330,9 @@ def _close_gaps(r):
     # either direction: fewer records than fills (a fill booked without one) or more (a record linked, its fill not booked)
     if fb is not None and fb != len(refs if isinstance(refs, (list, tuple)) else ()): why.add('fills_cost_refs_mismatch')
     if r.get('exit_px_unconfirmed'): why.add('exit_px_unconfirmed')
+    p = r.get('fill_px_partial')                                       # FILL-PNL-01: a booked price not yet measured
+    if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
+    elif p: why.add('fill_px_partial')
     p = r.get('fees_actual_partial')
     if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
     elif p: why.add('fees_actual_partial')
@@ -369,7 +386,7 @@ def compare(books, rows=(), audits=None, rejections=(), start=START, min_n=MIN_N
             nets, rr, notional, fees, fund, hours, exits, exc = [], [], Decimal(0), Decimal(0), Decimal(0), [], {}, dict(mfe=[], mae=[], gb=[])
             missing = incomplete = 0
             for r in sorted(rs, key=lambda x: str(x.get('closed') or '')):
-                g = D(r.get('pnl_gross')) or Decimal(0)
+                g = (D(r.get('pnl_gross')) or Decimal(0)) + (D(r.get('pnl_fill_adj')) or Decimal(0))   # FILL-PNL-01
                 fa, fu = D(r.get('fees_actual')), D(r.get('funding_actual')) or Decimal(0)
                 fe = fa if fa is not None else (D(r.get('fees')) or Decimal(0))
                 nets.append(g - fe + fu); fees += fe; fund += fu

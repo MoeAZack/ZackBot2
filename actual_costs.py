@@ -11,7 +11,9 @@ from datetime import datetime
 
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
-               'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys')
+               'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys',
+               'fill_refs', 'px_actual', 'px_missing', 'pnl_fill_adj', 'avg_fill_adj', 'fill_px_partial',   # FILL-PNL-01
+               'px_unmeasured', 'px_unlinked_ok')
 
 
 def _num(v):
@@ -150,6 +152,106 @@ def finalize(target, quote, booked_fills, now_ms=None, wait_ms=None):
         target['fees_actual'], target['fees_actual_partial'] = None, sorted(set(why))
     else:
         target['fees_actual'], target['fees_actual_partial'] = round(by.get(quote, 0.0), 10) + 0.0, False
+    return target
+
+
+# ---- FILL-PNL-01 (#176): realized P&L from the MEASURED fill prices --------------------------------------------------
+# A lot books each fill at the price known when it was sent (the order answer's average, else the mark / plan price). The
+# exchange price arrives later in the fill's cost record (enriched `actual`). The booked numbers (`realized`, `avg`,
+# `pnl_gross`) are never rewritten; `pnl_fill_adj` / `avg_fill_adj` are the corrections from replaying the lot's own fills
+# with every measured price (average-cost, the same arithmetic as the booking), recomputed from scratch each time - so a
+# record applied twice, or after the close, never double counts. Until every linked fill has its exchange price the
+# target says why (`fill_px_partial`), and that is INCOMPLETE, never planned-price P&L presented as actual.
+def link_px(target, ref):
+    """The fill just appended to target['fills'] is the execution behind cost record `ref` (no exchange id)."""
+    if ref and target.get('fills'):
+        target.setdefault('fill_refs', []).append([len(target['fills']) - 1, ref])
+    return target
+
+
+def _idx(v):
+    """The fill indexes a per-fill marker list holds; anything else (a scalar count, junk) covers no fill."""
+    return {i for i in v if isinstance(i, int) and not isinstance(i, bool)} if isinstance(v, (list, tuple)) else set()
+
+
+def _mark(target, key):
+    """Mark the fill just appended to target['fills'] by its index - once: a repeated mark of the same fill is a no-op,
+    so a duplicate call can never cover a different, unaccounted fill (Codex 6330154803)."""
+    fills = target.get('fills') or []
+    if fills: target[key] = sorted(_idx(target.get(key)) | {len(fills) - 1})
+    return target
+
+
+def px_unmeasured(target):
+    """A fill booked WITHOUT an exchange price and without a record that could bring one (a lost answer settled from the
+    position, an adoption at the mark, a resync, a stop whose fill was not read): its P&L stays INCOMPLETE for good."""
+    return _mark(target, 'px_unmeasured')
+
+
+def px_unlinked_ok(target):
+    """A fill booked at an exchange-reported price that has no cost record (settled from its order record): measured,
+    but outside fill_refs - marked so the coverage check accounts for it."""
+    return _mark(target, 'px_unlinked_ok')
+
+
+def apply_px(target, rec):
+    """Record the exchange price of one finished fill record, once per ref. A record without one is `px_missing`.
+    Returns True when the target changed."""
+    ref = rec.get('cost_ref')
+    if not ref or ref not in {r for _, r in (target.get('fill_refs') or ())}: return False
+    pa = target.setdefault('px_actual', {})
+    if ref in pa or ref in (target.get('px_missing') or ()): return False
+    px = _num(rec.get('actual'))
+    if px is not None and px > 0: pa[ref] = px
+    else: target.setdefault('px_missing', []).append(ref)
+    return True
+
+
+def _replay(fills, sd, entry_kinds, over):
+    """(realized gross, average entry) of the fills booked in order, average-cost; `over` = {fill index: price}.
+    (None, None) when a fill is unreadable."""
+    avg, q, real = None, 0.0, 0.0
+    for i, f in enumerate(fills or ()):
+        if not isinstance(f, (list, tuple)) or len(f) < 4: return None, None
+        n, px = _num(f[2]), _num(over.get(i, f[3]))
+        if n is None or px is None: return None, None
+        if f[1] in entry_kinds:
+            avg = px if avg is None or q <= 0 else (avg * q + px * n) / (q + n)
+            q += n
+        elif avg is not None:
+            real += sd * (px - avg) * n
+            q -= n
+    return real, avg
+
+
+def finalize_px(target, sd, entry_kinds, now_ms=None, wait_ms=None):
+    """Recompute pnl_fill_adj / avg_fill_adj / fill_px_partial (in place) from the fills and the measured prices so far.
+    A target with no linked fill (booked before FILL-PNL-01, or never sent) is left as it is."""
+    refs = [x for x in (target.get('fill_refs') or ()) if isinstance(x, (list, tuple)) and len(x) == 2]
+    if not refs and not target.get('px_unmeasured') and not target.get('px_unlinked_ok'): return target
+    pa, miss = target.get('px_actual') or {}, set(target.get('px_missing') or ())
+    why = {'fill_px_unmeasured'} if target.get('px_unmeasured') else set()
+    fills = target.get('fills') or []
+    # Cowork H1: every fill INDEX of a target tracked since FILL-PNL-01 is linked, flagged unmeasured or marked measured
+    # without a record - a booked fill none of them covers is never silently assumed exchange-priced (a set: duplicates
+    # never cover another fill, and a scalar count from any older state covers nothing)
+    covered = {i for i, _ in refs if isinstance(i, int)} | _idx(target.get('px_unmeasured')) | _idx(target.get('px_unlinked_ok'))
+    if any(i not in covered for i in range(len(fills))): why.add('fill_ref_missing')
+    for i, r in refs:
+        if r in pa: continue
+        if r in miss: why.add('fill_px_missing'); continue
+        t = ref_ms(r)
+        lost = now_ms is not None and wait_ms is not None and t is not None and now_ms - t > wait_ms
+        why.add('fill_px_lost' if lost else 'fill_px_pending')
+    if any(not isinstance(i, int) or not 0 <= i < len(fills) for i, _ in refs): why.add('fill_ref_unmatched')
+    booked = _replay(fills, sd, entry_kinds, {})
+    meas = _replay(fills, sd, entry_kinds, {i: pa[r] for i, r in refs if r in pa and isinstance(i, int)})
+    if booked[0] is None or meas[0] is None:
+        why.add('fills_unreadable'); target['pnl_fill_adj'] = target['avg_fill_adj'] = None
+    else:
+        target['pnl_fill_adj'] = round(meas[0] - booked[0], 10) + 0.0
+        target['avg_fill_adj'] = (round(meas[1] - booked[1], 12) + 0.0) if None not in (meas[1], booked[1]) else 0.0
+    target['fill_px_partial'] = sorted(why) or False
     return target
 
 
