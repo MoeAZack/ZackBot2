@@ -14,6 +14,7 @@ import strategies as S
 import trade_audit as TA
 import paper_books as PB
 import actual_costs as AC
+import risk_fill as RF
 import true_books as TB
 import book_ledger as BL
 import run_pack as RP
@@ -2752,7 +2753,7 @@ class Engine:
             if AC.apply_px(t, rec):
                 self._px_log(t, rec); self._cost_final(kind, t)
                 if kind == 'row': self._row_changed(t); rows = True
-                else: lots = True
+                else: self._risk_fill_mark(t, rec); lots = True
         return rows, lots
 
     @staticmethod
@@ -2799,6 +2800,7 @@ class Engine:
                     AC.apply_fill(t, rec)
                     if AC.apply_px(t, rec): self._px_log(t, rec)             # FILL-PNL-01: the measured price
                     self._cost_final(kind, t)
+                    if kind == 'lot': self._risk_fill_mark(t, rec)          # RISK-FILL-01: post-fill risk budget
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
                     if kind == 'row': revised[id(t)] = t
                 if now - getattr(self, '_cost_swept', 0) > 60:
@@ -3891,7 +3893,7 @@ class Engine:
             raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: its stop fired on Binance and the fill is being "
                                "booked - nothing is sent")
 
-    def _market_close(self, lot, qty, why, mark=None, post=None):
+    def _market_close(self, lot, qty, why, mark=None, post=None, cid=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
         self._stop_fired_guard(lot)                                 # every close path, partial ones included
@@ -3902,9 +3904,10 @@ class Engine:
         if not self.dry:
             lot['last_order_t'] = t0 = time.time()
             try:
-                o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
+                o = (self.trade.close(sym, lot['side'], self._fmt(qty, r['step'])) if cid is None   # RISK-FILL-01: a trim is
+                     else self.trade.close(sym, lot['side'], self._fmt(qty, r['step']), cid=cid))     # sent under its write-ahead id
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
+                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag) or cid)
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
@@ -4048,6 +4051,123 @@ class Engine:
         res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
         return res
 
+    # ------------------------------------------------------------ RISK-FILL-01 (#179): post-fill risk budget
+    RISK_FILL_RETRIES = 1                 # one bounded reconciliation / retry, then residual risk + alert (never a loop)
+
+    def risk_fill_view(self, lot):
+        """Audit / UI: the per-fill post-fill checks, 'pending' while a tracked entry is not measured yet, 'unavailable'
+        for a lot booked before FILL-PNL-01 (never zero)."""
+        if lot.get('risk_fill'): return copy.deepcopy(lot['risk_fill'])
+        return 'pending' if AC.tracked(lot) else 'unavailable'
+
+    def _risk_fill_mark(self, lot, rec):
+        """An entry / add fill's measured price arrived: decide its post-fill action once (per fill index - each add is
+        checked on its own, no once-per-lot latch). Never sends anything; manage() runs a due action. Never raises."""
+        try:
+            ref = rec.get('cost_ref')
+            i = next((i for i, r in lot.get('fill_refs') or () if r == ref), None)
+            fills = lot.get('fills') or []
+            if not isinstance(i, int) or not 0 <= i < len(fills) or fills[i][1] not in TA.ENTRY_KINDS: return
+            rf = lot.setdefault('risk_fill', {})
+            if str(i) in rf: return
+            f, sym = fills[i], lot['symbol']
+            r = self.rules.get(sym) or {}
+            meas = (lot.get('px_actual') or {}).get(ref)
+            quote, raw = _quote_asset(sym), rec.get('commission_raw')
+            fees = None
+            if isinstance(raw, list) and raw and not rec.get('commission_missing') and all(x.get('asset') == quote for x in raw):
+                fees = sum(float(x.get('amount') or 0) for x in raw)
+            # the stop is anchored at the first fill's BOOKED price - its plan is that distance; an add's plan is its
+            # decision price (expected), because the stop is not re-anchored for it
+            planned_px = f[3] if i == 0 else (_fnum(rec.get('expected')) or f[3])
+            d = RF.decide(lot['side'], float(f[2]), meas, lot.get('stop'), planned_px, fees, r.get('step', 0.0),
+                          r.get('min_qty', 0.0), r.get('min_notional', 0.0), FEE_EST)
+            d.update(fill=i, kind=f[1], t=now_utc().isoformat(timespec='seconds'), planned_px=planned_px, measured_px=meas,
+                     stop=lot.get('stop'), attempts=0, trimmed=0.0,
+                     state={'trim': 'due', 'unwind': 'due', 'unmeasured': 'unmeasured'}.get(d['action'], 'done'))
+            rf[str(i)] = d
+            if d['action'] != 'ok':
+                log.warning(f"RISK-FILL {sym} {lot['side']} [{lot['sleeve']}] fill {i}: planned {d['planned']} measured "
+                            f"{d['measured']} USDT ({d['ratio']}x) -> {d['action']} ({d['why']})")
+        except Exception as e: log.warning(f'post-fill risk check not recorded ({e})')
+
+    def _risk_fill_block(self, lot):
+        """Reason an add is refused while a tracked entry fill is unmeasured, being trimmed or left over budget."""
+        if not AC.tracked(lot): return None
+        rf, linked = lot.get('risk_fill') or {}, {i: r for i, r in lot.get('fill_refs') or () if isinstance(i, int)}
+        um = set(AC._idx(lot.get('px_unmeasured')))
+        miss, have = set(lot.get('px_missing') or ()), set(lot.get('px_actual') or ())
+        lost = 'fill_px_lost' in (lot.get('fill_px_partial') or ())
+        for i, f in enumerate(lot.get('fills') or ()):
+            if f[1] not in TA.ENTRY_KINDS: continue
+            if i in um: return 'risk_unmeasured: an entry price was never measured'
+            if i not in linked: continue
+            st = (rf.get(str(i)) or {}).get('state')
+            if st is None:                                   # ruling 5: a MISSING measured fill blocks; one still arriving
+                if linked[i] in miss or (lost and linked[i] not in have):    # (seconds) does not - its add is checked alone
+                    return 'risk_unmeasured: an entry price was never measured'
+                continue
+            if st == 'unmeasured': return 'risk_unmeasured: an entry price was never measured'
+            if st in ('due', 'sent'): return 'risk_trim in progress'
+            if st == 'residual': return 'risk_residual: the post-fill trim is incomplete'
+        return None
+
+    def _risk_fill_run(self, key, lot, m):
+        """Run the first due post-fill action of this lot. A trim is written ahead (state 'sent', deterministic client
+        id, quantity before) and saved BEFORE the order is sent; after a restart or an unanswered send it is settled from
+        the lot's own booking or the exchange's order record - never sent blind twice. One bounded retry, then the
+        residual risk is recorded and alerted. The stop is resized after the trim fill (stop_dirty), never moved."""
+        i, d = next((k, v) for k, v in sorted(lot['risk_fill'].items(), key=lambda kv: int(kv[0]))
+                    if (v or {}).get('state') in ('due', 'sent'))
+        sym, r = lot['symbol'], self.rules[lot['symbol']]
+        if d['attempts'] >= 1 + self.RISK_FILL_RETRIES and d['state'] == 'due':
+            d.update(state='residual', residual=RF.residual(lot['side'], lot['qty'], d['measured_px'], lot['stop'], d.get('fee_unit')))
+            self.err(f"{sym} [{lot['sleeve']}] post-fill risk {d['action']} incomplete after {d['attempts']} tries - residual "
+                     f"risk {d['residual']} USDT kept with its stop; adds blocked", key=f'risk-fill|{key}')
+            self.save_state(); return True
+        if d['action'] == 'unwind':
+            d['attempts'] += 1; d.update(state='done', trimmed=lot['qty']); self.save_state()
+            try: self.close_lot(key, 'risk_unwind', m)       # its own unconfirmed-order safety (AUD-02 / AUD-03)
+            except Exception:
+                if key in self.state['lots']: d['state'] = 'due'; self.save_state()
+                raise
+            return True
+        if d['state'] == 'sent':                             # write-ahead found: settle it, never send blind
+            qb = d.get('qty_before')
+            if qb is not None and lot['qty'] < qb - 1e-12:   # already booked (order record / resync / pending resolve)
+                return self._risk_fill_done(lot, d, qb)
+            res = self._order_result(sym, d.get('cid'), d.get('send_qty'))
+            if res['state'] in ('pending', 'unreadable'): return False      # not final yet - asked again next pass
+            if res['state'] == 'final' and res['qty'] > 0:
+                self._apply_close(lot, res['qty'], res['px'] or m, 'risk_trim')
+                return self._risk_fill_done(lot, d, qb)
+            d['state'] = 'due'                               # nothing executed / never reached Binance: one more send
+            if d['attempts'] >= 1 + self.RISK_FILL_RETRIES: return self._risk_fill_run(key, lot, m)
+        qty = self._rd(min(d['trim_qty'] - d.get('trimmed', 0.0), lot['qty']), r['step'])
+        if qty <= 0: d['state'] = 'done'; self.save_state(); return True
+        d['attempts'] += 1
+        cid = f"zbrf{zlib.crc32(f'{key}|{i}|{d['attempts']}'.encode()):08x}"
+        d.update(state='sent', cid=cid, send_qty=qty, qty_before=lot['qty']); self.save_state()      # write-ahead
+        try:
+            self._market_close(lot, qty, 'risk_trim', m, cid=cid)
+        except AmbiguousOrder:
+            return True                                      # lot['pending']: reconcile decides, 'sent' settles after
+        except PartialClose:
+            d['trimmed'] = d.get('trimmed', 0.0) + d['qty_before'] - lot['qty']
+            d['state'] = 'due'; lot['stop_dirty'] = True; self.save_state(); return True
+        except UnfilledOrder:
+            d['state'] = 'due'; self.save_state(); return True
+        return self._risk_fill_done(lot, d, d['qty_before'])
+
+    def _risk_fill_done(self, lot, d, qty_before):
+        d['trimmed'] = round(d.get('trimmed', 0.0) + max(0.0, (qty_before or lot['qty']) - lot['qty']), 12)
+        d['residual'] = RF.residual(lot['side'], lot['qty'], d['measured_px'], lot['stop'], d.get('fee_unit'))
+        d['state'] = 'done'
+        lot['stop_dirty'] = True                             # protection resized to what is left, after the fill
+        log.warning(f"RISK-FILL {lot['symbol']} [{lot['sleeve']}] trimmed {d['trimmed']} -> {lot['qty']} kept, "
+                    f"risk {d['residual']} USDT (planned {d['planned']})")
+        self.save_state(); return True
+
     def _record_r(self, lot, net):
         """Kelly R history: one closed trade's net / risk - the measured net (FILL-PNL-02), or a legacy lot's booked one."""
         if lot.get('manual') or not lot.get('risk_usd') or net is None: return
@@ -4149,6 +4269,7 @@ class Engine:
                 rec['fills_booked'] = len(lot.get('fills') or []); self._cost_final('row', rec)
         except Exception as e: log.warning(f'actual costs not carried to history ({e})')
         if lot.get('cohort_id'): rec['cohort_id'] = lot['cohort_id']     # RUN-PACK-01: carried, never re-derived
+        rec['risk_fill'] = self.risk_fill_view(lot)                      # RISK-FILL-01: planned vs measured, action
         au = None
         try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
             au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
@@ -4694,6 +4815,12 @@ class Engine:
                     if isinstance(lot.get('ex'), dict): rs.discard(key)   # only once observe() really started tracking
                     self._audit_emit(TA.checkpoint(lot, key, t_))  # bounded checkpoint event goes to the writer queue
                 except Exception: pass                         # audit never raises into a trading path
+                if any((v or {}).get('state') in ('due', 'sent') for v in (lot.get('risk_fill') or {}).values()):
+                    try: changed = self._risk_fill_run(key, lot, m) or changed     # RISK-FILL-01: post-fill risk action
+                    except Exception as e:
+                        self.err(f"{lot['symbol']} [{lot['sleeve']}] post-fill risk action failed ({type(e).__name__}: "
+                                 f"{str(e)[:120]}) - retried next pass, its stop stays", key=f'risk-fill|{key}')
+                    if key not in self.state['lots']: continue
                 failed = []                                    # AUD-02: stages of this lot that failed this pass
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
@@ -5254,6 +5381,8 @@ class Engine:
         st, Sg = self.state, self.S
         pb = self.persist_block()                                 # AUD-05 r2
         if pb: return pb
+        rb = self._risk_fill_block(lot)                           # RISK-FILL-01: no new risk on an unmeasured / over-budget lot
+        if rb: return rb
         if st.get('halted'): return 'daily loss halt is active'
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure

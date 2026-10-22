@@ -1056,6 +1056,7 @@ class App:
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
                              pnl_status='pending' if basis is None else 'measured',
+                             risk_fill=e.risk_fill_view(l),                 # RISK-FILL-01: planned vs measured risk, action
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
         return lots
 
