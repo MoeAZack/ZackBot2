@@ -75,3 +75,18 @@ def test_booked_pnl_never_reaches_capital_when_measured_differs():
     r = _row(3, -0.30, 2.832, adj=-0.5877)                      # booked gross -0.30, measured gross -0.8877
     h = AC.capital_hold([r], None)
     assert h['realized'] == pytest.approx(-0.8877 - 2.832, abs=1e-6)
+
+
+def test_179_xrp_short_partial_tp1_measured_net():
+    """Codex 6330860693: XRPUSDT SC-QBANK short, entry 3,507.8 booked at the planned 1.35508 (measured 1.3524780803),
+    TP1 closed 2,455.4 measured at 1.3512 -> gross +3.13819837; fees 1.32834984 + 1.32709459 -> net +0.48275394
+    (pre-fix runtime booked +12.2278). The 1,052.4 remainder is still open."""
+    t = dict(side='SHORT', fills=[['t0', 'entry', 3507.8, 1.35508], ['t1', 'take_profit_1', 2455.4, 1.3501]],
+             fill_refs=[[0, 'c1-1-0'], [1, 'c1-1-1']])
+    AC.apply_px(t, dict(cost_ref='c1-1-0', actual=1.3524780803)); AC.apply_px(t, dict(cost_ref='c1-1-1', actual=1.3512))
+    AC.finalize_px(t, -1, TA.ENTRY_KINDS)
+    booked, avg = AC._replay(t['fills'], -1, TA.ENTRY_KINDS, {})
+    assert t['fill_px_partial'] is False
+    assert booked + t['pnl_fill_adj'] == pytest.approx(3.13819837, abs=1e-6)
+    assert booked + t['pnl_fill_adj'] - 1.32834984 - 1.32709459 == pytest.approx(0.48275394, abs=1e-6)
+    assert avg + t['avg_fill_adj'] == pytest.approx(1.3524780803, abs=1e-10)       # remainder basis = measured entry
