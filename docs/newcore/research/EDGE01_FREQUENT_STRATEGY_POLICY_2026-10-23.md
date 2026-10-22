@@ -136,5 +136,10 @@ is not a holdout. Run exactly two simplified CORE-10 cells on the same developme
 cells count in the family trial ledger and use the same hard gate. A failing side is parked; a passing side remains only
 an execution-adapter candidate. The untouched holdout remains closed.
 
+Result: both sides failed decisively. Long produced 2,653 trades, PF 0.689 and -368.75R (packet
+`22a17c5efdbd...`); short produced 2,367 trades, PF 0.628 and -371.69R (packet `3d600f334674...`). New
+`SC-MBURST` entries were stopped. No momentum-burst lot was open at the stop, and the rest of PAPER remained active and
+protected. No repair was inferred from these results.
+
 ROADMAP FIT: Binance strategy evidence, truthful PAPER forward validation and numeric mainnet-candidate gates.
 DEFERRED: mainnet activation, new venues, unrestricted parameter mining, ML order authority and cosmetic UI work.
