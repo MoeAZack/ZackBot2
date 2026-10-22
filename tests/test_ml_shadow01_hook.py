@@ -60,10 +60,20 @@ def run_fixture(tmp, monkeypatch, ml_on, boom=False):
         e.cycle('4h')
     state = copy.deepcopy(e.state)
     for l in state['lots'].values(): l.pop('ml_decision_id', None)      # the only state the hook may add (ON only)
+    for w in (state.get('measured_wait') or {}).values(): w.pop('ml', None)   # ... carried by a close awaiting its measured net
     return e, dict(orders=orders, state=json.dumps(state, sort_keys=True, default=str),
                    lots=json.dumps(state['lots'], sort_keys=True, default=str),
                    history=json.dumps(e.history, sort_keys=True, default=str),
                    missed=[(m['symbol'], m['candle'], m['reason']) for m in e.missed])
+
+
+def settle(e):
+    """FILL-PNL-02: the fake exchange delivers no cost records - mark every closed row measured at its booked prices and
+    run the real revision hook, which writes the label a close was waiting for (labels carry the measured net only)."""
+    for r in e.history:
+        if r.get('fill_px_partial') or r.get('fees_actual') is None:
+            r.update(fees_actual=r.get('fees') or 0.0, fees_actual_partial=False, fill_px_partial=False)
+            e._row_changed(r)
 
 
 def ledger_rows(e, kind):
@@ -103,6 +113,7 @@ def test_ml_shadow_on_vs_off_identical_trading(tmp_path, monkeypatch):
     skip = next(r for r in dec if r['status'] == 'skipped')
     assert 'max positions' in skip['reason'] and skip['family'] == 'Trend' and skip['strategy'] == 'ema_mom'
     assert skip['features']['atr_pct'] is not None                                # features_at ran on the candle frame
+    settle(e1)
     labels = ledger_rows(e1, 'labels')
     assert len(labels) == 2 and {l['exit_reason'] for l in labels} == {'exit_signal'}
     assert all('mfe_r' in l and 'mae_r' in l for l in labels)                     # no fabricated values without mark samples
@@ -297,6 +308,7 @@ def test_maker_rests_fills_closes_one_pending_decision_one_label(tmp_path):
     one_cycle(e, {'BTCUSDT': sig('2026-10-04 04:00:00', lx=True)}, {'BTCUSDT': frame(100.0)})
     assert not e.state['lots']
     assert len(ledger_rows(e, 'decisions')) == 1                       # no second row on fill
+    settle(e)
     labels = ledger_rows(e, 'labels')
     assert len(labels) == 1 and labels[0]['decision_id'] == dec[0]['decision_id']
     assert len(join(ledger_rows(e, 'decisions'), labels)) == 1          # trainer accepts a filled pending decision
@@ -312,6 +324,7 @@ def test_restart_between_fill_and_close_still_labels(tmp_path):
     e2.S['ML_SHADOW'] = True
     assert e2.state['lots'][k]['ml_decision_id'] == lot['ml_decision_id']
     e2.close_lot(k, 'exit_signal')
+    settle(e2)
     labels = ledger_rows(e2, 'labels')
     assert [l['decision_id'] for l in labels] == [lot['ml_decision_id']]
 
