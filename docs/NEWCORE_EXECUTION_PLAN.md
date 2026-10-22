@@ -374,6 +374,32 @@ symbol/year concentration checks and gap/funding/slippage stress. More strategie
 Each strategy has separate performance, tail-risk, evidence-readiness and operational/copy-readiness scores. No blended
 score may hide a failed hard gate.
 
+#### EDGE-01 — frequent, profitable strategy qualification (owner ruling, 23 October 2026)
+
+`exp_scalp.v0` and the `SC-RANGE` / `range_scalp` version observed in PAPER are frozen failed baselines. Stop new PAPER
+entries without disturbing protection or management of open lots. Their retained results and exact configuration remain
+immutable comparison evidence. A successor uses a new version and preregistration; it does not overwrite this failure.
+
+Frequent trading is optimized only inside the hard profitability envelope. The preregistered gate for a 15-minute
+candidate must include at least these dimensions; the numeric values are frozen before its run and may only become
+stricter after results are seen:
+
+- exact runtime decision/management code driven by execution-grade 1m/5m data beneath the 15m decision clock;
+- actual or conservative fees, spread, slippage, funding, tick/step/minimum rules, latency, partial fills and stop gaps;
+- anchored walk-forward plus one untouched holdout, with long and short reported and promoted independently;
+- normal-cost and stressed-cost profitability, meaningful margin over break-even, parameter-neighbour stability,
+  symbol/year/regime concentration, drawdown/tail loss and bootstrap uncertainty;
+- activity metrics (eligible signals, executed trades, trades/week and capital occupancy) reported beside net expectancy;
+- shadow parity before a bounded PAPER cohort, followed by measured fill/PnL completeness and no unresolved protection,
+  ownership or accounting defects.
+
+The first implementation slice is `EDGE-01A`: reproduce the exact frozen `exp_scalp.v0` and `range_scalp.v0` rules in
+the shared research harness, generate their honest baseline, and reject or advance only a small registered repair matrix.
+Initial repair hypotheses are a cost/edge admission margin, liquidity/spread and volatility vetoes, regime qualification,
+turnover control, and alternative exits using identical entries and initial risk. `EDGE-01B` scouts additional frequent
+families only after each hypothesis, trial budget and stop condition is written. All candidates remain shadow/research-only
+until they pass; no almost-break-even result is promoted merely to increase trade count.
+
 #### Required strategy-coverage matrix
 
 The goal is useful coverage, not an unbounded pile of bots. Research must either fill or explicitly reject each relevant

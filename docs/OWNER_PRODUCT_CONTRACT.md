@@ -228,6 +228,25 @@ When an asset is in a confirmed range and the owner selects a fast horizon/high 
 Session-level portfolio heat, loss, consecutive-loss, fee-drag and correlation ceilings apply across the entire scalp
 sequence. Higher activity must improve after-cost expectancy or retained profit, not merely gross wins or win rate.
 
+### Frequent-trading evidence rule (owner, 23 October 2026 — binding)
+
+Frequent trading is a product objective, but frequency never substitutes for edge. A strategy that loses after measured
+costs, depends on one symbol or period, or only barely clears break-even is not useful and remains disabled for automated
+execution. It may stay manually selectable with an honest `PARKED` / `RESEARCH ONLY` label.
+
+The required order is: frozen hypothesis and trial budget -> causal execution-grade backtest -> anchored walk-forward ->
+untouched holdout -> shadow comparison -> bounded PAPER/testnet forward cohort -> mainnet-candidate review. Synthetic and
+unit tests prove mechanics, not profitability. PAPER/testnet validates transfer and exchange execution; it must not be the
+first profitability screen for an unqualified strategy.
+
+Every strategy and enabled side is judged separately. A blended portfolio result cannot hide a failing family, side,
+symbol concentration or regime. Failed and marginal variants are frozen as baselines, not silently retuned. Scouting may
+continue in parallel, one preregistered candidate at a time, and negative results are first-class evidence.
+
+The current `exp_scalp` and `SC-RANGE` versions are frozen failed baselines from the retained PAPER evidence available on
+23 October 2026. They may manage already-open PAPER positions to a protected close, but may not open new positions or be
+described as promotion candidates until a new version independently clears the strategy-evidence gates.
+
 ## 5. Range Scalp Basket
 
 The UI includes an optional **Range Scalp Basket**. One basket is one durable, explicit asset/strategy/account scope; it
