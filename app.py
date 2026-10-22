@@ -73,6 +73,7 @@ import backtest as BT           # noqa: E402
 from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc, UNVERIFIED_BT01   # noqa: E402
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
+import actual_costs as AC       # noqa: E402
 import lab as LAB               # noqa: E402
 import feasibility as F         # noqa: E402
 import instance as INST         # noqa: E402  (AUD-00: one process per data folder / account)
@@ -1048,7 +1049,7 @@ class App:
         lots = []
         for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
-            pnl = sd * (m - l['avg']) * l['qty'] if m else None
+            pnl = sd * (m - AC.measured_avg(l)) * l['qty'] if m else None      # FILL-PNL-02: measured entry basis
             lots.append(dict(key=k, **{x: l.get(x) for x in ('symbol', 'side', 'sleeve', 'book', 'qty', 'avg', 'e0', 'stop', 'opened', 'adds', 'dca', 'tp1', 'manual', 'tf', 'risk_usd')},
                              tp=l.get('tp'), add_blocked=l.get('add_blocked'), **_stop_view(e, l),     # AUD-04: fresh confirmation
                              exit=_safe(lambda: e.exit_plan(l)),

@@ -105,3 +105,92 @@ def test_179_xrp_short_full_close_measured_net():
     assert t['fill_px_partial'] is False
     assert booked + t['pnl_fill_adj'] == pytest.approx(3.13819837 + 7.44897171, abs=1e-6)
     assert booked + t['pnl_fill_adj'] - fees == pytest.approx(6.79602691, abs=1e-6)
+
+
+# ---------------------------------------------------------------- #178 engine + consumer wiring
+from test_book_ledger import books_engine                                # noqa: E402
+from test_safety import SL, SG                                           # noqa: E402
+import paper_books as PB                                                 # noqa: E402
+
+
+def _close_one(e, notes):
+    e.notify = notes.append
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    k = next(iter(e.state['lots']))
+    e.close_lot(k, 'manual')
+    return e.history[-1]
+
+
+def _measure(e, r, adj=-1.25, fees=0.75):
+    r.update(fees_actual=fees, fees_actual_partial=False, fill_px_partial=False, pnl_fill_adj=adj)
+    e._row_changed(r)
+
+
+def test_engine_close_waits_for_measured_net_then_finishes_once():
+    """Ruling 1 end to end: an unmeasured close holds capital at the checkpoint, records no R and announces 'pending';
+    the measurement revision finishes R / notice exactly once and capital resumes on the measured net."""
+    e, _ = books_engine(COMPOUND=True)
+    before = e.capital_info()['realized']
+    notes = []
+    r = _close_one(e, notes)
+    assert AC.row_view(r)['status'] == 'pending'
+    info = e.capital_info()
+    assert info['hold'] == 'realized_unmeasured' and info['realized_unmeasured_n'] == 1 and info['realized'] == before
+    assert not (e.state.get('hist') or {}).get(SL['id']) and r['id'] in e.state['measured_wait']
+    assert any('pending exchange fill prices' in n for n in notes) and not any('PnL +' in n or 'PnL -' in n for n in notes)
+    _measure(e, r)
+    m = AC.measured(r)
+    assert m['complete'] and r['id'] not in e.state['measured_wait']
+    assert e.state['hist'][SL['id']] == [round(m['net'] / r['risk_usd'], 3)]
+    assert sum('MEASURED' in n for n in notes) == 1 and f"{m['net']:+.2f}" in notes[-1]
+    info = e.capital_info()
+    assert info['hold'] is None and info['realized'] == pytest.approx(before + m['net'], abs=0.01)
+    _measure(e, r)                                                       # a later restatement never re-records
+    assert len(e.state['hist'][SL['id']]) == 1 and sum('MEASURED' in n for n in notes) == 1
+
+
+def test_legacy_close_keeps_its_booked_value_immediately():
+    """A close with no fill links (booked before FILL-PNL-01) has nothing to measure: R and notice at once, no hold."""
+    e, _ = books_engine(COMPOUND=True)
+    notes = []; e.notify = notes.append
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    k, lot = next(iter(e.state['lots'].items()))
+    for f in ('fill_refs', 'px_unmeasured', 'px_unlinked_ok'): lot.pop(f, None)
+    e.close_lot(k, 'manual')
+    r = e.history[-1]
+    assert AC.row_view(r)['status'] == 'booked' and not e.state.get('measured_wait')
+    assert len(e.state['hist'][SL['id']]) == 1 and any('(booked)' in n for n in notes)
+    assert e.capital_info()['hold'] is None
+
+
+def test_open_pnl_uses_the_measured_entry_basis():
+    e, _ = books_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    l = next(iter(e.state['lots'].values()))
+    e.marks = {'BTCUSDT': l['avg'] + 10.0}
+    base = e.bot_unrealized()
+    l['avg_fill_adj'] = 2.0                                              # measured entry 2.0 worse than booked
+    assert e.bot_unrealized() == pytest.approx(base - 2.0 * l['qty'])
+
+
+def test_paper_books_value_measured_rows_and_count_pending():
+    meas = _row(1, 10.0, 1.0, adj=-2.0); meas.update(book='B1_FAST', fees=0.4)
+    pend = _row(2, 5.0, 0.5, adj=0.0, partial=['fill_px_pending']); pend['book'] = 'B1_FAST'
+    legacy = dict(book='B1_FAST', pnl=3.0, fees=0.2, closed='2026-10-22T00:00:00')
+    b = next(x for x in PB.summary(10000.0, 10000.0, history=[meas, pend, legacy]) if x['id'] == 'B1_FAST')
+    assert b['closed'] == 3 and b['pending'] == 1
+    assert b['net_pnl'] == pytest.approx(10.0 - 2.0 - 1.0 + 3.0) and b['fees'] == pytest.approx(1.0 + 0.2)
+
+
+def test_telegram_profit_never_shows_a_pending_row_as_actual():
+    import telegram_ctl as TG
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    meas = _row(1, 10.0, 1.0, adj=-2.0, closed=now); meas.update(symbol='BTCUSDT', side='LONG')
+    pend = _row(2, 50.0, 0.5, adj=0.0, partial=['fill_px_pending'], closed=now); pend.update(symbol='ETHUSDT', side='SHORT')
+
+    class _E:
+        import threading
+        lock = threading.Lock(); history = [meas, pend]
+    out = TG.TelegramControl.c_profit(object.__new__(TG.TelegramControl), _E(), ['7'], None)
+    assert '(1 pending measurement)' in out and 'Net P&L: +7.00' in out and 'ETH' not in out

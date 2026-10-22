@@ -3,6 +3,8 @@
 The exchange margin is shared; these are attribution and sizing books, not independent Binance accounts. Unknown/new
 strategies land in Discovery so horizontal scouting remains visible without contaminating the established family books.
 """
+import actual_costs as AC
+
 BOOKS = (
     ('B1_FAST', 'Fast / scalp', frozenset({'exp_scalp', 'range_scalp', 'failed_breakout_scalp',
                                             'momentum_burst_scalp', 'quick_bank_runner'})),
@@ -31,7 +33,7 @@ def allocation(equity, cap=2000.0):
 def summary(equity, cap, lots=(), history=()):
     per = allocation(equity, cap)
     out = {k: dict(id=k, name=n, strategies=sorted(strategies), allocation=per, open=0, open_risk=0.0,
-                   closed=0, net_pnl=0.0, fees=0.0)
+                   closed=0, net_pnl=0.0, fees=0.0, pending=0)
            for k, n, strategies in BOOKS}
     for lot in lots or ():
         k = lot.get('book')
@@ -41,7 +43,10 @@ def summary(equity, cap, lots=(), history=()):
         k = row.get('book')
         if k not in out: continue
         b = out[k]; b['closed'] += 1
-        b['net_pnl'] += float(row.get('pnl') or 0.0); b['fees'] += float(row.get('fees') or 0.0)
+        v = AC.row_view(row)                     # FILL-PNL-02: the measured net; a pending row is counted, never valued
+        if v['status'] == 'pending': b['pending'] += 1; continue
+        b['net_pnl'] += float(v['pnl'] or 0.0); b['fees'] += float(AC.measured(row)['fees'] if v['status'] == 'measured'
+                                                                  else row.get('fees') or 0.0)
     for b in out.values():
         for x in ('open_risk', 'net_pnl', 'fees'): b[x] = round(b[x], 2)
     return list(out.values())

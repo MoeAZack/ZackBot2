@@ -303,3 +303,71 @@ def apply_funding(target, amount, asset):
     target['funding_rows'] = int(target.get('funding_rows') or 0) + 1
     target['funding_actual'] = round(sum(by.values()), 10) + 0.0 if len(by) == 1 else None
     return target
+
+
+# ---------------------------------------------------------------- FILL-PNL-02 (#178): measured P&L for every consumer
+# Codex ruling 6329976227: sizing, guards, R history, ML labels, notifications and books read the MEASURED result; a row
+# tracked since FILL-PNL-01 whose result is not measured yet is never presented or compounded as actual. Rows booked
+# before FILL-PNL-01 (no fill links, no coverage marks) keep their booked value - nothing exists to measure them with.
+
+def tracked(t):
+    """True for a target whose fill prices are measured since FILL-PNL-01 (a legacy row has none of these keys)."""
+    return any(k in t for k in ('fill_refs', 'px_unmeasured', 'px_unlinked_ok'))
+
+
+def measured(row):
+    """One closed row's actual result -> {gross, fees, funding, net, complete, why}: the true_books per-row formula
+    net = pnl_gross + pnl_fill_adj - fees_actual + funding_actual, complete only when true_books would count it."""
+    why = set()
+    p = row.get('fill_px_partial')
+    if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
+    elif p: why.add('fill_px_partial')
+    g, adj = _num(row.get('pnl_gross')), _num(row.get('pnl_fill_adj')) if 'pnl_fill_adj' in row else 0.0
+    if g is None: why.add('pnl_unreadable'); g = 0.0
+    if adj is None: why.add('pnl_fill_adj_unreadable'); adj = 0.0
+    fa = _num(row.get('fees_actual'))
+    if fa is None:
+        why.add('fees_actual_missing'); fa = _num(row.get('fees')) or 0.0
+    why.update(str(x) for x in row.get('funding_partial') or ())
+    fu = _num(row.get('funding_actual'))
+    if fu is None:
+        if row.get('funding_by_asset') or row.get('funding_rows'): why.add('funding_unpriced')
+        fu = 0.0
+    if row.get('_conflict'): why.add('row_conflict')
+    gross = g + adj
+    return dict(gross=gross, fees=fa, funding=fu, net=gross - fa + fu, complete=not why, why=sorted(why))
+
+
+def row_view(row):
+    """What a consumer may show / count for one closed row -> {pnl, r, status, why}. status 'measured' = actual;
+    'pending' = tracked but not measured yet (pnl None - never the booked figure); 'booked' = a legacy row's own value."""
+    if not tracked(row):
+        return dict(pnl=_num(row.get('pnl')), r=_num(row.get('r')), status='booked', why=[])
+    m = measured(row)
+    if not m['complete']: return dict(pnl=None, r=None, status='pending', why=m['why'])
+    risk = _num(row.get('risk_usd'))
+    return dict(pnl=round(m['net'], 4), r=round(m['net'] / risk, 2) if risk else None, status='measured', why=[])
+
+
+def measured_avg(lot):
+    """An open lot's entry basis at the measured fill prices (the booked avg when no correction is known)."""
+    a, adj = _num(lot.get('avg')), _num(lot.get('avg_fill_adj'))
+    return a if a is None or adj is None else a + adj
+
+
+def capital_hold(rows, checkpoint):
+    """Ruling 1: realized P&L for COMPOUND / guard capital. While any tracked row is not measured, capital holds at the
+    last fully reconciled checkpoint (None = base: 0.0) and says why; once every row is measured the checkpoint is revised
+    once (idempotent - the same rows give the same checkpoint). Legacy rows count at their booked value.
+    -> {realized, checkpoint, hold, realized_unmeasured_n, why}."""
+    total, why, n = 0.0, set(), 0
+    for r in rows:
+        v = row_view(r)
+        if v['status'] == 'pending': n += 1; why.update(v['why']); continue
+        total += v['pnl'] or 0.0
+    if n:
+        held = _num((checkpoint or {}).get('realized'))
+        return dict(realized=held if held is not None else 0.0, checkpoint=checkpoint, hold='realized_unmeasured',
+                    realized_unmeasured_n=n, why=sorted(why))
+    ck = dict(realized=round(total, 8), n=len(rows))
+    return dict(realized=ck['realized'], checkpoint=ck, hold=None, realized_unmeasured_n=0, why=[])

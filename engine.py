@@ -2302,7 +2302,8 @@ class Engine:
         lots = list(self.state['lots'].values())
         if not lots: return 0.0
         if self.marks and all(l['symbol'] in self.marks for l in lots):
-            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - l['avg']) * l['qty'] for l in lots)
+            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - AC.measured_avg(l)) * l['qty']
+                       for l in lots)                              # FILL-PNL-02: measured entry basis
         return float(self.last_account.get('totalUnrealizedProfit', 0) or 0)
 
     def equity(self):
@@ -2332,7 +2333,14 @@ class Engine:
     def capital_info(self, acc=None):
         S = self.S
         since = S.get('CAP_SINCE') or ''
-        realized = sum(h.get('pnl') or 0 for h in self.history if h.get('closed', '') >= since)
+        rows = [h for h in self.history if h.get('closed', '') >= since]
+        # FILL-PNL-02 (ruling 6329976227): a closed row not measured yet is never compounded as actual - capital holds at
+        # the last fully reconciled checkpoint (base if none) and is revised once when every row is measured
+        ck = self.state.get('cap_ckpt')
+        ck = {k: v for k, v in ck.items() if k != 'since'} if isinstance(ck, dict) and ck.get('since') == since else None
+        held = AC.capital_hold(rows, ck)
+        if held['checkpoint'] is not None and held['checkpoint'] != ck: self.state['cap_ckpt'] = dict(held['checkpoint'], since=since)
+        realized = held['realized']
         adjs = S.get('CAP_ADJ', [])
         adj = sum(a['amount'] for a in adjs)
         upnl = self.bot_unrealized()
@@ -2342,7 +2350,9 @@ class Engine:
                         withdrawn=round(-sum(a['amount'] for a in adjs if a['amount'] < 0), 2),
                         deposited=round(sum(a['amount'] for a in adjs if a['amount'] > 0), 2), adj_total=round(adj, 2),
                         unrealized=round(upnl, 2), capital=round(cap, 2), growth=round((cap - adj) / base * 100 - 100, 2) if base else None,
-                        sizing=round(self.last_eq or 0, 2), adj=adjs[-50:], cycles=S.get('CAP_CYCLES', [])[-50:])
+                        sizing=round(self.last_eq or 0, 2), adj=adjs[-50:], cycles=S.get('CAP_CYCLES', [])[-50:],
+                        realized_booked=round(sum(h.get('pnl') or 0 for h in rows), 2), hold=held['hold'],
+                        hold_why=held['why'], realized_unmeasured_n=held['realized_unmeasured_n'])
         return self.cap
 
     def shift_guards(self, delta):
@@ -3038,6 +3048,7 @@ class Engine:
         """A closed row was restated (late fee / funding): bump its cost_rev and append the revision to the evidence store."""
         ev = next((r for r in reversed(getattr(self, 'cohort_rows', None) or ()) if r.get('id') == row.get('id')), None)
         row['cost_rev'] = max(int(row.get('cost_rev') or 0), int((ev or {}).get('cost_rev') or 0)) + 1   # past every copy
+        self._measured_followup(row)                                # FILL-PNL-02: a close waiting for its measured result
         return self._cohort_rev(row)
 
     def true_books(self, marks=None, persist=True):
@@ -4031,10 +4042,11 @@ class Engine:
         res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
         return res
 
-    def _record_r(self, lot):
-        if lot.get('manual') or not lot.get('risk_usd'): return
+    def _record_r(self, lot, net):
+        """Kelly R history: one closed trade's net / risk - the measured net (FILL-PNL-02), or a legacy lot's booked one."""
+        if lot.get('manual') or not lot.get('risk_usd') or net is None: return
         h = self.state.setdefault('hist', {}).setdefault(lot['sleeve'], [])
-        h.append(round((lot.get('realized', 0.0) - lot.get('fees', 0.0)) / lot['risk_usd'], 3)); del h[:-200]
+        h.append(round(net / lot['risk_usd'], 3)); del h[:-200]
 
     def kelly_mult(self, sl):
         k = sl.get('kelly')
@@ -4106,7 +4118,6 @@ class Engine:
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
-        self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
         closes = [f for f in lot.get('fills', []) if f[1] not in TA.ENTRY_KINDS]      # entry_fallback is an entry
         cq = sum(f[2] for f in closes) or 1e-12
@@ -4145,8 +4156,46 @@ class Engine:
         if rec.get('cohort_id') and self._cohort_ok() and rec['cohort_id'] == self.state['cohort']['id']:
             self._cohort_row(rec)                                  # RUN-PACK-01 evidence copy (never read by trading)
         self._save_aux('history', self.history)
-        self._ml_label(key, rec, lot, au)                          # ML-SHADOW-01 close label (observe only, never raises)
-        self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
+        self._measured_close(key, rec, lot, au, why)              # FILL-PNL-02: R / ML label / notice on the measured net
+
+    MEASURED_WAIT_MAX = 500
+
+    def _measured_close(self, key, rec, lot, au, why):
+        """FILL-PNL-02: the R history, ML label and close notice carry the MEASURED result. A row whose fill prices / fees
+        are not measured yet waits (state['measured_wait'], survives restarts) and is completed by _measured_followup when
+        the row is revised; it is announced as pending - never with its booked figure presented as actual."""
+        w = dict(key=key, sleeve=lot['sleeve'], manual=bool(lot.get('manual')), risk_usd=lot.get('risk_usd'), why=why,
+                 hours=rec.get('hours'))
+        if isinstance(lot.get('ml_decision_id'), str):             # ML-SHADOW-01: the only key the hook adds (ON only)
+            w['ml'] = dict(ml_decision_id=lot['ml_decision_id'],
+                           audit={k: (au or {}).get(k) for k in ('metrics', 'coverage', 'target_touch_t', 'target', 'observations')})
+        v = AC.row_view(rec)
+        if v['status'] == 'pending':
+            mw = self.state.setdefault('measured_wait', {})
+            mw[rec['id']] = w
+            for k in list(mw)[:-self.MEASURED_WAIT_MAX]: mw.pop(k, None)
+            self.notify(f"⏳ CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL pending exchange fill prices · {rec['hours']}h")
+            return
+        self._measured_done(rec, w, v, 'CLOSED')
+
+    def _measured_done(self, rec, w, v, word):
+        self._record_r(w, v['pnl'])
+        if w.get('ml'):                                             # observe only, never raises
+            self._ml_label(w['key'], dict(rec, pnl=v['pnl'], r=v['r']), w['ml'], w['ml']['audit'])
+        tag = '' if v['status'] == 'measured' else ' (booked)'
+        self.notify(f"{'✅' if (v['pnl'] or 0) > 0 else '❌'} {word} {rec['side']} {rec['symbol']} [{w['sleeve']}] {w['why']} · "
+                    f"PnL {v['pnl']:+.2f} USDT{tag} ({v['r']}R) · {w['hours']}h")
+
+    def _measured_followup(self, row):
+        """A revised row whose close was waiting for its measured result: finish the R / ML label / notice once."""
+        try:
+            w = (self.state.get('measured_wait') or {}).get(row.get('id'))
+            if not w: return
+            v = AC.row_view(row)
+            if v['status'] == 'pending': return
+            self.state['measured_wait'].pop(row['id'], None)
+            self._measured_done(row, w, v, 'MEASURED')
+        except Exception as e: log.warning(f'measured close follow-up failed ({e})')
 
     # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
     # The lot -> decision link lives in the lot record itself (lot['ml_decision_id'], survives restarts with state.json).
@@ -5409,9 +5458,10 @@ class Engine:
     def daily_summary(self, day, start, end):
         H = [h for h in self.history if h.get('closed', '')[:10] >= day]
         try:
-            n = len(H); w = sum(1 for h in H if h['pnl'] > 0)
-            self.notify(f"📊 Day {day}: bot capital {start:.2f} -> {end:.2f} ({(end / start - 1) * 100:+.2f}%) · {n} closed trades, {w} won · "
-                        f"{len(self.state['lots'])} open")
+            V = [AC.row_view(h) for h in H]                         # FILL-PNL-02: wins on the measured net only
+            n = len(H); w = sum(1 for v in V if (v['pnl'] or 0) > 0); p = sum(1 for v in V if v['status'] == 'pending')
+            self.notify(f"📊 Day {day}: bot capital {start:.2f} -> {end:.2f} ({(end / start - 1) * 100:+.2f}%) · {n} closed trades, {w} won"
+                        + (f" ({p} pending measurement)" if p else '') + f" · {len(self.state['lots'])} open")
         except Exception: pass
 
     # ------------------------------------------------------------ candle-close cycle
