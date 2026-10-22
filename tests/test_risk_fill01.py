@@ -242,3 +242,9 @@ def test_check_error_records_unmeasured_and_blocks_adds():
     finally: RF.decide = orig
     assert d['state'] == 'unmeasured' and d['why'] == 'risk_check_error'
     assert e._add_block(lot, 1.0, 100.0).startswith('risk_unmeasured')
+
+
+def test_a_trim_that_keeps_nothing_is_an_unwind_even_without_exchange_minimums():
+    """Cowork 6351190962: keep floors to 0 with min_qty = min_notional = 0 -> an unwind, never a 'trim' of everything."""
+    d = RF.decide('LONG', 1.0, 100.0, 90.0, 97.0, step=1.0)                # ratio ~1.43, keep = floor(~0.7) = 0
+    assert d['action'] == 'unwind' and d['why'] == 'remainder_below_min' and d['keep_qty'] == 0.0 and d['trim_qty'] == 1.0
