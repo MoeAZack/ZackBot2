@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_ml_shadow01_hook import (run_fixture, ledger_rows, maker_setup, one_cycle, frame, sig, SLA)   # noqa: E402
+from test_ml_shadow01_hook import (run_fixture, ledger_rows, maker_setup, one_cycle, frame, sig, SLA, settle)   # noqa: E402
 from test_safety import mk_engine                          # noqa: E402
 import engine as E                                         # noqa: E402
 import ml_shadow as MLS                                    # noqa: E402
@@ -310,6 +310,7 @@ def test_direct_entry_link_is_in_the_first_state_save(tmp_path):
     e2.trade.pos.update(e.trade.pos); e2.trade.stops.update(e.trade.stops)
     e2.S['ML_SHADOW'] = True
     e2.close_lot(k, 'exit_signal')
+    settle(e2)                                              # FILL-PNL-02: the label waits for the measured net
     assert [l['decision_id'] for l in ledger_rows(e2, 'labels')] == [want]
 
 
