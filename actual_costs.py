@@ -169,18 +169,29 @@ def link_px(target, ref):
     return target
 
 
+def _idx(v):
+    """The fill indexes a per-fill marker list holds; anything else (a scalar count, junk) covers no fill."""
+    return {i for i in v if isinstance(i, int) and not isinstance(i, bool)} if isinstance(v, (list, tuple)) else set()
+
+
+def _mark(target, key):
+    """Mark the fill just appended to target['fills'] by its index - once: a repeated mark of the same fill is a no-op,
+    so a duplicate call can never cover a different, unaccounted fill (Codex 6330154803)."""
+    fills = target.get('fills') or []
+    if fills: target[key] = sorted(_idx(target.get(key)) | {len(fills) - 1})
+    return target
+
+
 def px_unmeasured(target):
     """A fill booked WITHOUT an exchange price and without a record that could bring one (a lost answer settled from the
     position, an adoption at the mark, a resync, a stop whose fill was not read): its P&L stays INCOMPLETE for good."""
-    target['px_unmeasured'] = int(target.get('px_unmeasured') or 0) + 1
-    return target
+    return _mark(target, 'px_unmeasured')
 
 
 def px_unlinked_ok(target):
     """A fill booked at an exchange-reported price that has no cost record (settled from its order record): measured,
-    but outside fill_refs - counted so the coverage check accounts for it."""
-    target['px_unlinked_ok'] = int(target.get('px_unlinked_ok') or 0) + 1
-    return target
+    but outside fill_refs - marked so the coverage check accounts for it."""
+    return _mark(target, 'px_unlinked_ok')
 
 
 def apply_px(target, rec):
@@ -221,10 +232,11 @@ def finalize_px(target, sd, entry_kinds, now_ms=None, wait_ms=None):
     pa, miss = target.get('px_actual') or {}, set(target.get('px_missing') or ())
     why = {'fill_px_unmeasured'} if target.get('px_unmeasured') else set()
     fills = target.get('fills') or []
-    # Cowork H1: every fill of a target tracked since FILL-PNL-01 is linked, flagged unmeasured or counted as measured
-    # without a record - a booked fill none of them accounts for is never silently assumed exchange-priced
-    if len(fills) > len(refs) + int(target.get('px_unmeasured') or 0) + int(target.get('px_unlinked_ok') or 0):
-        why.add('fill_ref_missing')
+    # Cowork H1: every fill INDEX of a target tracked since FILL-PNL-01 is linked, flagged unmeasured or marked measured
+    # without a record - a booked fill none of them covers is never silently assumed exchange-priced (a set: duplicates
+    # never cover another fill, and a scalar count from any older state covers nothing)
+    covered = {i for i, _ in refs if isinstance(i, int)} | _idx(target.get('px_unmeasured')) | _idx(target.get('px_unlinked_ok'))
+    if any(i not in covered for i in range(len(fills))): why.add('fill_ref_missing')
     for i, r in refs:
         if r in pa: continue
         if r in miss: why.add('fill_px_missing'); continue

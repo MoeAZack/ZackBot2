@@ -308,3 +308,20 @@ def test_an_unaccounted_fill_is_never_assumed_exchange_priced():
     legacy = dict(side='LONG', fills=[['t0', 'entry', 1.0, 10.0], ['t1', 'tp', 1.0, 12.0]])
     AC.finalize_px(legacy, 1, TA.ENTRY_KINDS)
     assert 'fill_px_partial' not in legacy
+
+
+def test_a_repeated_mark_never_covers_another_fill():
+    """Codex 6330154803: three fills - one linked, one unlinked-ok marked twice, one truly missing - still say
+    fill_ref_missing; marks are per fill index and idempotent, and a scalar count from older state covers nothing."""
+    t = dict(side='LONG', fills=[['t0', 'entry', 1.0, 10.0], ['t1', 'take_profit_1', 0.5, 12.0]], fill_refs=[[0, 'c1-1-0']])
+    AC.apply_px(t, dict(cost_ref='c1-1-0', actual=10.0))
+    AC.px_unlinked_ok(t); AC.px_unlinked_ok(t)                           # the same fill marked twice
+    assert t['px_unlinked_ok'] == [1]
+    t['fills'].append(['t2', 'take_profit_2', 0.5, 13.0])                # booked with no link and no mark
+    AC.finalize_px(t, 1, TA.ENTRY_KINDS)
+    assert t['fill_px_partial'] == ['fill_ref_missing']
+    AC.px_unmeasured(t); AC.px_unmeasured(t); AC.finalize_px(t, 1, TA.ENTRY_KINDS)
+    assert t['px_unmeasured'] == [2] and t['fill_px_partial'] == ['fill_px_unmeasured']
+    s = dict(side='LONG', fills=t['fills'], fill_refs=[[0, 'c1-1-0']], px_actual={'c1-1-0': 10.0}, px_unlinked_ok=5)
+    AC.finalize_px(s, 1, TA.ENTRY_KINDS)                                 # an over-counted scalar never proves coverage
+    assert s['fill_px_partial'] == ['fill_ref_missing']
