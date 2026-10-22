@@ -225,7 +225,7 @@ def test_engine_on_the_1m_path_fills_stops_at_the_level_and_reprices_to_engine_p
     raw = {SYM: _agg(m)}
     labels, fills = [], []
     out = run_replay(copy.deepcopy(raw), _sleeve(), T0, tf_sec=900, compare=False, costs_off=True, fill_log=fills,
-                     path_fn=X.make_path_fn(raw, {SYM: m}, labels))
+                     path_fn=X.make_path_fn(raw, {SYM: m}, labels)[0])
     trades = X.trades_of(fills, out['history'])
     assert len(trades) >= 3 and labels
     assert {x[2] for x in labels} <= {X.ONE_LEVEL, X.RES_1M, X.SAME_MINUTE, X.TWO_SIDED}     # no NO-1M: data complete
@@ -281,7 +281,7 @@ def _run_injected(m, sig_bar, side=1, mgmt=None):
         sl = [E.sleeve('SC', 'exp_scalp', 1.0, 0.01, 1, [SYM], sides='long' if side == 1 else 'short', mgmt=mgmt or {},
                        tf='15m')]
         out = run_replay(copy.deepcopy(raw), sl, T0, tf_sec=900, compare=False, costs_off=True, fill_log=fills,
-                         path_fn=X.make_path_fn(raw, {SYM: m}, labels))
+                         path_fn=X.make_path_fn(raw, {SYM: m}, labels)[0])
     finally:
         S.signals = real
     return raw, out, fills, labels
@@ -367,3 +367,126 @@ def test_risk_fill_would_is_reported_per_row():
     assert b['risk_fill_would'] == 'ok'
     hot = C.Scenario('hot', slip_mult=1000.0)                         # 2 bps x 1000 = 2 % adverse on a 5 % stop
     assert X.price_trade(tr, hot, row=C.CRYPTO, slip_c=1e-9, bars15=_bars(), funding_rows=[])['risk_fill_would'] in ('trim', 'unwind')
+
+
+# ------------------------------------------------------------------ Codex ruling 00ba8d0: latency, account path, frozen config
+def _injected(m, sig_bar, latency_s=0, pricer=None, side=1):
+    import engine as E
+    raw = {SYM: _agg(m)}
+    sig_t = raw[SYM].t[sig_bar]
+    real = S.signals
+
+    def fake(key, d, ctx, params=None, mask_sides=True):
+        out = {k: np.zeros(len(d), bool) for k in ('le', 'se', 'lx', 'sx')}
+        out['le' if side == 1 else 'se'][:] = (pd.to_datetime(d.t) == sig_t).values
+        return out
+    S.signals = fake
+    try:
+        sl = [E.sleeve('SC', 'exp_scalp', 1.0, 0.01, 1, [SYM], sides='long' if side == 1 else 'short', tf='15m')]
+        out, fills, labels = X._engine(raw, {SYM: m}, sl, T0, start=500.0, rules=None, settings=None,
+                                       latency_s=latency_s, pricer=pricer)
+    finally:
+        S.signals = real
+    return raw, out, fills, labels
+
+
+def test_latency_60s_enters_at_the_minute_1_open_and_still_manages_minute_0():
+    m = _flat_minutes(300)
+    sig = 280
+    t_e = _agg(m).t[sig + 1]
+    _set(m, t_e + pd.Timedelta(minutes=1), 100.4, 100.5, 99.5, 100.0)     # minute 1 opens at 100.4
+    raw, out, fills, _ = _injected(m, sig, latency_s=60)
+    op = [f for f in fills if f['act'] == 'open'][0]
+    assert op['t_ms'] == int(t_e.value // 10 ** 6) + 60_000 and op['ref'] == 100.4
+    # a lot already open: its stop touched in minute 0 of a later candle fills BEFORE the delayed cycle
+    m2 = _flat_minutes(300)
+    t_k = _agg(m2).t[sig + 3]
+    _set(m2, t_k, 100.0, 100.2, 98.5, 99.0)
+    _, _, f2, _ = _injected(m2, sig, latency_s=60)
+    c = [f for f in f2 if f['act'] == 'close'][0]
+    assert c['kind'] == 'stop' and int(t_k.value // 10 ** 6) <= c['t_ms'] < int(t_k.value // 10 ** 6) + 60_000
+
+
+def test_latency_must_be_whole_minutes():
+    with pytest.raises(X.ScalpExecError, match='whole number'):
+        X.make_path_fn({}, {}, [], latency_s=30)
+
+
+def _cal():
+    import json
+    with open(os.path.join(ROOT, 'research_evidence', 'prereg', 'trend_ema_mom.v1.json'), encoding='utf-8') as fh:
+        return json.load(fh)['costs']['slip_cal_v1']
+
+
+def test_account_path_applies_costs_at_fill_time_and_funding_at_T():
+    m = _flat_minutes(300)
+    sig = 280
+    raw = {SYM: _agg(m)}
+    t_e = int(raw[SYM].t[sig + 1].value // 10 ** 6)
+    model = C.CostModel(_cal(), {SYM: 'crypto'})
+    fund = {SYM: [(t_e, 0.001, 100.0), (t_e + 3 * 900_000, 0.001, 100.0)]}
+    _set(m, raw[SYM].t[sig + 5], 100.0, 100.2, 98.5, 99.0)                # stop-out on candle sig + 5
+    for lat, want_events in ((0, 2), (60, 1)):                             # at 60 s the entry is after T = t_e
+        pr = X.Pricer(C.STRESS['base'], model, {SYM: _agg(m)}, funding=fund)
+        _, out, fills, _ = _injected(m, sig, latency_s=lat, pricer=pr)
+        ts = X.account_trades(fills, out['history'], pr.paid)
+        assert len(ts) == 1 and len(pr.paid) == want_events
+        e = [f for f in fills if f['act'] == 'open'][0]
+        assert e['px'] > e['ref'] and e['fee'] > 0                         # adverse slippage + taker fee on the entry
+        assert ts[0]['funding'] == pytest.approx(want_events * 0.001 * e['qty'] * 100.0)
+        assert ts[0]['net'] < sum(f['qty'] * (f['ref'] - e['ref']) for f in fills if f['act'] == 'close')
+
+
+def test_run_cell_reports_repriced_account_and_divergence():
+    m = _minutes(420, 11)
+    raw = {SYM: _agg(m)}
+    model = C.CostModel(_cal(), {SYM: 'crypto'})
+    fund = {SYM: [(int(t.value // 10 ** 6), 0.0001, 100.0) for t in raw[SYM].t[::32]]}
+    pk = X.run_cell(raw, {SYM: m}, _sleeve(), T0, model=model, funding=fund, start=2000.0)
+    assert pk['non_promotable'] is True and pk['status'] == 'COMPLETE' and pk['latency_s'] == 0
+    assert set(pk['account']) == set(X.ACCOUNT_ROWS) and set(pk['divergence']) == set(X.ACCOUNT_ROWS)
+    assert pk['repriced']['trades'] and set(pk['repriced']['summary']) == set(X.SCENARIOS)
+    for name in X.ACCOUNT_ROWS:
+        d = pk['divergence'][name]
+        assert d['zero'] == len(pk['repriced']['trades']) and d['account'] == len(pk['account'][name]['trades'])
+        assert set(pk['account'][name]['risk_fill']) == set(X.RF.ACTIONS)
+    b, s = pk['account']['base']['summary']['ALL'], pk['account']['edge01_x1_5']['summary']['ALL']
+    assert s['net_r'] < b['net_r'] + 1e-9 or s['n'] != b['n']              # stress costs more on the same decisions
+    assert 'SLIP-C-UNFITTED' in pk['labels'] and pk['code']['engine.py']
+    tr = X.trial_records(pk, key='exp_scalp', side='both')
+    assert len(tr) == len(X.SCENARIOS) + len(X.ACCOUNT_ROWS)
+
+
+def test_frozen_config_is_checked_by_sha_and_only_sides_change(tmp_path):
+    import json
+    doc = {'schema': 'zb-edge01-frozen-config/1', 'preset': 'breadth_rotation',
+           'sleeves': [dict(id='exp_scalp', key='exp_scalp', name='x', enabled=True, share=1 / 6, risk=0.02, max_pos=4,
+                            symbols='all', sides='both', mgmt=dict(be_r=0.75, tp1_frac=0.5, tp1_r=0.75), tf='15m')]}
+    p = tmp_path / 'cfg.json'
+    p.write_bytes(json.dumps(doc).encode())
+    with pytest.raises(X.ScalpExecError, match='sha256'):
+        X.load_config(str(p))
+    import hashlib
+    got = X.load_config(str(p), hashlib.sha256(p.read_bytes()).hexdigest())
+    sl = X.cell_sleeves(got, 'exp_scalp', 'short')
+    assert sl[0]['sides'] == 'short' and {k: v for k, v in sl[0].items() if k != 'sides'} == \
+        {k: v for k, v in doc['sleeves'][0].items() if k != 'sides'}
+    with pytest.raises(X.ScalpExecError, match='sleeves of range_scalp'):
+        X.cell_sleeves(got, 'range_scalp', 'long')
+
+
+def test_frozen_config_constant_matches_codex_file():
+    r = subprocess.run(['git', 'show', 'origin/codex/strategy-evidence-policy:docs/newcore/research/'
+                        'EDGE01_FROZEN_BASELINE_CONFIG_2026-10-23.json'], cwd=ROOT, capture_output=True)
+    if r.returncode:
+        pytest.skip('Codex policy branch not fetched')
+    import hashlib
+    assert hashlib.sha256(r.stdout).hexdigest() == X.CONFIG_SHA256
+
+
+def test_skipping_durable_state_writes_changes_no_fill():
+    m = _minutes(420, 11)
+    raw = {SYM: _agg(m)}
+    a = X._engine(raw, {SYM: m}, _sleeve(), T0, start=2000.0, rules=None, settings=None, latency_s=0)
+    b = X._engine(raw, {SYM: m}, _sleeve(), T0, start=2000.0, rules=None, settings=None, latency_s=0, durable_io=True)
+    assert a[1] == b[1] and len(a[1]) > 6

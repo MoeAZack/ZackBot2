@@ -57,7 +57,13 @@ EDGE01_X1_5 = C.Scenario('edge01_x1_5', fee_mult=1.5, slip_mult=1.5)
 SCENARIOS = {**C.STRESS, EDGE01_X1_5.name: EDGE01_X1_5}
 TWO_SIDED, ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M = 'TWO-SIDED', IB.ONE_LEVEL, IB.RES_1M, IB.SAME_MINUTE, IB.NO_1M
 UNRESOLVED = (SAME_MINUTE, NO_1M)
-LIMITATION = 'per-trade R exact under each cost row; account path (equity-driven sizing) from the zero-cost run'
+LIMITATION = ('repriced rows: per-trade R exact under each cost row, account path (sizing) from the zero-cost run - '
+              'diagnostic only; account rows: costs applied at fill time (Codex ruling 00ba8d0)')
+ACCOUNT_ROWS = ('base', 'edge01_x1_5')
+LATENCIES = (0, 60)                                  # primary and the single preregistered stress row
+CONFIG_SHA256 = '3027cb8a048fcaae89154fb842fdadc5ccdf66e68f9b50d13afb7de0919320de'
+MANIFEST_DIGEST = '54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7'
+WARM_BARS = 1000                                     # the engine reads 1000 x 15m candles per cycle
 
 
 class ScalpExecError(ValueError):
@@ -97,14 +103,28 @@ def _spans(bar, levels) -> bool:
     return any(bar.l <= x <= bar.h for x in levels)
 
 
-def bar_path(bar, minutes, sides, levels) -> tuple[list, str]:
-    """(points after the candle open, label) for one 15m candle. `bar`/`minutes`: objects with open_ms/o/h/l/c;
-    `sides`: {+1 / -1 held}; `levels`: (stops, targets)."""
+def complete_minutes(bar, minutes) -> list | None:
+    """The candle's 15 x 1m bars in time order, or None when any is missing; refuses 1m bars that contradict the candle."""
+    mins = sorted(minutes or (), key=lambda m: m.open_ms)
+    if [m.open_ms for m in mins] != list(range(bar.open_ms, bar.open_ms + TF_MS, MINUTE)):
+        return None
+    lo, hi = min(m.l for m in mins), max(m.h for m in mins)
+    if not (math.isclose(mins[0].o, bar.o, rel_tol=1e-9) and math.isclose(mins[-1].c, bar.c, rel_tol=1e-9)
+            and math.isclose(lo, bar.l, rel_tol=1e-9) and math.isclose(hi, bar.h, rel_tol=1e-9)):
+        raise ScalpExecError(f'1m bars do not reproduce the 15m candle at {bar.open_ms} (inconsistent data)')
+    return mins
+
+
+def bar_path(bar, minutes, sides, levels, lo=0, hi=15) -> tuple[list, str]:
+    """(points, label) for minutes [lo, hi) of one 15m candle, starting from minute lo's open (the candle open when lo=0,
+    already walked). `bar`/`minutes`: objects with open_ms/o/h/l/c; `sides`: {+1 / -1 held}; `levels`: (stops,
+    targets). Missing 1m data: the whole candle as the 4-point stop-first path (lo must then be 0)."""
     stops, tg = levels
     allv = list(stops) + list(tg)
-    mins = sorted(minutes or (), key=lambda m: m.open_ms)
-    want = list(range(bar.open_ms, bar.open_ms + TF_MS, MINUTE))
-    if [m.open_ms for m in mins] != want:
+    mins = complete_minutes(bar, minutes)
+    if mins is None:
+        if lo:
+            raise ScalpExecError('a partial-candle walk needs complete 1m data')
         ext = _order(bar.o, bar.h, bar.l, bar.c, sides if len(sides) == 1 else {1})
         t = bar.open_ms + TF_MS // 2
         pts, a = [], bar.o
@@ -112,12 +132,9 @@ def bar_path(bar, minutes, sides, levels) -> tuple[list, str]:
             pts += _leg(a, b, allv, t); a = b
         both = _spans(bar, stops) and _spans(bar, tg)
         return pts, NO_1M if both else ONE_LEVEL
-    lo, hi = min(m.l for m in mins), max(m.h for m in mins)
-    if not (math.isclose(mins[0].o, bar.o, rel_tol=1e-9) and math.isclose(mins[-1].c, bar.c, rel_tol=1e-9)
-            and math.isclose(lo, bar.l, rel_tol=1e-9) and math.isclose(hi, bar.h, rel_tol=1e-9)):
-        raise ScalpExecError(f'1m bars do not reproduce the 15m candle at {bar.open_ms} (inconsistent data)')
-    pts, a = [], bar.o
-    for k, m in enumerate(mins):
+    seg = mins[lo:hi]
+    pts, a = [], seg[0].o if seg else bar.o
+    for k, m in enumerate(seg):
         if k:                                       # a minute open is a gap point: a stop it opens through fills there
             pts.append((m.o, True, m.open_ms)); a = m.o
         t = m.open_ms + MINUTE // 2
@@ -125,9 +142,11 @@ def bar_path(bar, minutes, sides, levels) -> tuple[list, str]:
             pts += _leg(a, b, allv, t); a = b
     if len(sides) > 1:
         return pts, TWO_SIDED
-    if any(_spans(m, stops) and _spans(m, tg) for m in mins):
+    if any(_spans(m, stops) and _spans(m, tg) for m in seg):
         return pts, SAME_MINUTE
-    return pts, RES_1M if _spans(bar, stops) and _spans(bar, tg) else ONE_LEVEL
+    lo_, hi_ = (min(m.l for m in seg), max(m.h for m in seg)) if seg else (bar.o, bar.o)
+    span = type('s', (), dict(l=lo_, h=hi_))
+    return pts, RES_1M if _spans(span, stops) and _spans(span, tg) else ONE_LEVEL
 
 
 class Bar(tuple):
@@ -142,37 +161,82 @@ def bars_of(df) -> list:
     return [Bar((int(a), float(o), float(h), float(l), float(c))) for a, o, h, l, c in zip(t, df.o, df.h, df.l, df.c)]
 
 
-def make_path_fn(raw15: dict, minutes: dict, labels: list):
-    """run_replay path hook: the 1m path for every symbol holding a lot; `labels` collects (symbol, open_ms, label)."""
+class Minutes:
+    """One symbol's 1m bars as arrays; `of(open_ms)` = the Bars inside the 15m candle opening then (any count)."""
+    def __init__(self, df):
+        self.t = (pd.to_datetime(df.t).astype('datetime64[ns]').astype('int64') // 10 ** 6).to_numpy() \
+            if not isinstance(df, dict) else np.asarray(df['t'], dtype='int64')
+        self.v = [np.asarray(df[k], dtype=float) for k in ('o', 'h', 'l', 'c')]
+
+    def of(self, open_ms: int) -> list:
+        a, b = np.searchsorted(self.t, open_ms), np.searchsorted(self.t, open_ms + TF_MS)
+        o, h, l, c = self.v
+        return [Bar((int(self.t[k]), float(o[k]), float(h[k]), float(l[k]), float(c[k]))) for k in range(a, b)]
+
+
+def _levels_of(lots, s):
+    st, tg = [], []
+    for lot in lots.values():
+        if lot['symbol'] == s:
+            a, b = lot_levels(lot); st += a; tg += b
+    return st, tg
+
+
+def make_path_fn(raw15: dict, minutes: dict, labels: list, latency_s: int = 0):
+    """run_replay hooks for the 1m path: (path_fn, pre_fn). `labels` collects (symbol, open_ms, label) per walked
+    segment. latency_s (a whole number of minutes, < 15): the engine's cycle runs at minute L = latency_s / 60's open;
+    pre_fn walks minutes [0, L) for the symbols already holding a lot and moves every symbol to minute L's open; pre_fn
+    is None at zero latency. A candle without complete 1m data keeps the decision at its open (no latency possible)."""
+    if latency_s % 60 or not 0 <= latency_s < TF_MS // 1000:
+        raise ScalpExecError('latency_s must be a whole number of minutes below 15')
+    L = latency_s // 60
     B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in raw15.items()}
-    M = {s: {} for s in raw15}
-    for s, df in (minutes or {}).items():
-        for b in bars_of(df):
-            M.setdefault(s, {}).setdefault(b.open_ms - b.open_ms % TF_MS, []).append(b)
+    M = {s: Minutes(df) for s, df in (minutes or {}).items()}
+    delayed = set()
+
+    def mins_of(s, bar):
+        return complete_minutes(bar, M[s].of(bar.open_ms)) if s in M else None
+
+    def pre(j, held, lots):
+        out = {}
+        for s in raw15:
+            bar = B15[s][j]
+            mins = mins_of(s, bar)
+            if mins is None:
+                continue
+            delayed.add((s, j))
+            if s in held:
+                pts, label = bar_path(bar, mins, held[s], _levels_of(lots, s), 0, L)
+                labels.append((s, bar.open_ms, label))
+            else:
+                pts = []
+            out[s] = pts + [(mins[L].o, True, mins[L].open_ms)]
+        return out
 
     def fn(j, held, lots):
         out = {}
         for s, sides in held.items():
             bar = B15[s][j]
-            st, tg = [], []
-            for lot in lots.values():
-                if lot['symbol'] == s:
-                    a, b = lot_levels(lot); st += a; tg += b
-            pts, label = bar_path(bar, M.get(s, {}).get(bar.open_ms), sides, (st, tg))
+            lo = L if (s, j) in delayed else 0
+            mins = mins_of(s, bar) if lo else (M[s].of(bar.open_ms) if s in M else None)
+            pts, label = bar_path(bar, mins, sides, _levels_of(lots, s), lo)
             out[s] = pts
             labels.append((s, bar.open_ms, label))
         return out
-    return fn
+    return fn, (pre if L else None)
 
 
 # ------------------------------------------------------------------ guards
 def check_inputs(raw15: dict, minutes: dict, funding: dict) -> dict:
     """Sealed cutoff (fail closed) and 15m completeness. Returns {symbol: reason} for INCOMPLETE symbols (excluded)."""
-    def last_ms(df):
-        return int(pd.to_datetime(df.t).max().value // 10 ** 6) if len(df) else 0
+    def last_ms(df):                                # a DataFrame, or the loader's {t: int ms array, ...}
+        if isinstance(df, dict):
+            return int(np.max(df['t'])) if len(df['t']) else None
+        return int(pd.to_datetime(df.t).max().value // 10 ** 6) if len(df) else None
     for what, d, span in (('15m', raw15, TF_MS), ('1m', minutes or {}, MINUTE)):
         for s, df in d.items():
-            if len(df) and last_ms(df) + span > CUTOFF_MS:
+            last = last_ms(df)
+            if last is not None and last + span > CUTOFF_MS:
                 raise ScalpExecError(f'{what} {s}: data at or after the sealed cutoff {SEALED_CUTOFF} (holdout stays closed)')
     for s, rows in (funding or {}).items():
         if any(t >= CUTOFF_MS for t, _r, _m in rows):
@@ -249,6 +313,8 @@ def trades_of(fill_log, history) -> list[dict]:
         k = (t['sym'], t['ps']); n = pos.get(k, 0); pos[k] = n + 1
         h = hist[k][n]
         t['risk_usd'], t['exit_reason'], t['engine_gross'] = h.get('risk_usd'), h.get('exit_reason'), h.get('pnl_gross')
+        rf = h.get('risk_fill')
+        t['risk_fill'] = rf.get('action') if isinstance(rf, dict) else None
     return done
 
 
@@ -304,49 +370,305 @@ def price_trade(tr, scen: C.Scenario, *, row: C.CostRow, slip_c: float, bars15, 
                 costs_r=r(gross_ref - net), complete=complete, risk_fill_would=rf)
 
 
+# ------------------------------------------------------------------ cost-applied account path (Codex ruling 00ba8d0)
+class Pricer:
+    """run_replay fill_px / fund_fn for one cost scenario: every fill priced with costs.py at fill time (the engine sees
+    that price), funding charged on the exchange lots at each actual funding time. Funding paid per (symbol, side) is
+    kept in `paid` for per-trade attribution; a symbol without funding rows marks the run incomplete."""
+    def __init__(self, scen: C.Scenario, model: C.CostModel, raw15: dict, *, funding=None, rules=None):
+        self.scen, self.model, self.funding, self.rules = scen, model, funding or {}, rules or {}
+        self.B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in raw15.items()}
+        self.opens = {s: [b.open_ms for b in v] for s, v in self.B15.items()}
+        self.paid, self.incomplete = [], set()
+
+    def bps(self, s, t_ms):
+        k = int(np.searchsorted(self.opens[s], t_ms - TF_MS, side='right'))
+        win = self.B15[s][max(0, k - C.SLIP_BARS):k]
+        if len(win) < C.SLIP_BARS:
+            raise ScalpExecError(f'{s}: fewer than {C.SLIP_BARS} closed candles before a fill (warm-up)')
+        return C.slip_bps(win, self.model.slip_c(s), self.scen.vol)
+
+    def __call__(self, f):
+        s, buy = f['sym'], (f['act'] == 'open') == (f['ps'] == 'LONG')
+        px = C.fill_price(f['ref'], 'buy' if buy else 'sell', self.bps(s, f['t_ms']), self.scen,
+                          gap=f['kind'] in ('stop', 'gap'), tick=(self.rules.get(s) or {}).get('tick'))
+        return px, C.fee(f['qty'] * px, 'taker', self.model.row(s), self.scen)
+
+    def fund(self, t0, t1, lots):
+        tot = 0.0
+        for l in lots:
+            rows = self.funding.get(l['s'])
+            if rows is None:
+                self.incomplete.add(l['s']); continue
+            for ev in funding_events(rows, t0, t1):
+                x = C.funding_cost('long' if l['ps'] == 'LONG' else 'short', l['q'], [ev], self.scen)
+                self.paid.append((ev[0], l['s'], l['ps'], x)); tot += x
+        return tot
+
+
+def account_trades(fills, history, paid) -> list[dict]:
+    """Per-trade net from the priced fills (fill price, fee) plus the funding paid while the lot was open."""
+    out = []
+    for tr in trades_of(fills, history):
+        sd = 1 if tr['ps'] == 'LONG' else -1
+        e = tr['entry']
+        gross = sum(sd * (f['px'] - e['px']) * f['qty'] for f in tr['closes'])
+        fees = e['fee'] + sum(f['fee'] for f in tr['closes'])
+        t1 = tr['closes'][-1]['t_ms']
+        fund = math.fsum(x for t, s, ps, x in paid if s == tr['sym'] and ps == tr['ps'] and e['t_ms'] <= t < t1)
+        net = gross - fees - fund
+        risk = tr.get('risk_usd')
+        out.append(dict(sym=tr['sym'], side=tr['ps'], entry_ms=e['t_ms'], exit_ms=t1, qty=e['qty'],
+                        exit_kinds=[f['kind'] for f in tr['closes']], exit_reason=tr['exit_reason'], risk_usd=risk,
+                        risk_fill=tr.get('risk_fill'), net=net, fees=fees, funding=fund,
+                        net_r=net / risk if risk else None))
+    return out
+
+
+def summary(rs, weeks: float) -> dict:
+    """Headline numbers of one list of per-trade net R (trades without a risk are excluded and counted)."""
+    xs = [r for r in rs if r is not None]
+    win, loss = math.fsum(x for x in xs if x > 0), -math.fsum(x for x in xs if x < 0)
+    return dict(n=len(xs), no_risk=len(rs) - len(xs), net_r=math.fsum(xs), mean_r=math.fsum(xs) / len(xs) if xs else None,
+                pf=(win / loss) if loss else None, win_rate=sum(x > 0 for x in xs) / len(xs) if xs else None,
+                per_week=len(xs) / weeks if weeks else None)
+
+
+def divergence(zero: list, acct: list, row: str) -> dict:
+    """Account path (costs at fill time) vs the zero-cost decisions repriced on the same row: trade set, sizing,
+    occupancy and per-trade R. `material` (proposed bar, Codex to confirm): matched < 95 % or median |dR| > 0.05."""
+    key = lambda t: (t['sym'], t['side'], t['entry_ms'])
+    za, ac = {key(t): t for t in zero}, {key(t): t for t in acct}
+    both = sorted(set(za) & set(ac))
+    dr = sorted(abs(ac[k]['net_r'] - za[k]['rows'][row]['net_r']) for k in both
+                if ac[k]['net_r'] is not None and za[k]['rows'][row]['net_r'] is not None)
+    qr = sorted(abs(ac[k]['qty'] / za[k]['qty'] - 1) for k in both if za[k].get('qty'))
+    occ = lambda ts: math.fsum(t['exit_ms'] - t['entry_ms'] for t in ts)
+    n = max(len(za), len(ac), 1)
+    med = dr[len(dr) // 2] if dr else 0.0
+    out = dict(zero=len(za), account=len(ac), matched=len(both), matched_pct=round(100 * len(both) / n, 2),
+               only_zero=len(set(za) - set(ac)), only_account=len(set(ac) - set(za)),
+               qty_rel_median=qr[len(qr) // 2] if qr else 0.0,
+               occupancy_ratio=(occ(acct) / occ(zero)) if occ(zero) else None,
+               dr_median=med, dr_p95=dr[int(0.95 * (len(dr) - 1))] if dr else 0.0)
+    out['material'] = out['matched_pct'] < 95.0 or med > 0.05
+    return out
+
+
 # ------------------------------------------------------------------ one cell
-def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel, funding=None, exchange_rules=None,
-             start=2000.0, scenarios=None, latency_s=0) -> dict:
-    """One (strategy, side) cell: the engine on the 1m path with costs off, then every scenario re-priced per trade."""
+def _engine(run, minutes, sleeves, t0, *, start, rules, settings, latency_s, pricer=None, durable_io=False):
+    """One engine replay. durable_io=False (default) skips the engine's durable state-file writes for the run (about
+    70 % of replay time; harness-side, like replay's own clock / exchange patches): state stays in memory, and a test
+    pins identical fills with and without the writes."""
+    import engine as E
     import replay as RP
-    if latency_s:
-        raise ScalpExecError('latency_s > 0 is not implemented in v1 (fills at the next 15m open)')
+    labels, fills = [], []
+    fn, pre = make_path_fn(run, minutes, labels, latency_s)
+    saved = E.save_json
+    if not durable_io:
+        E.save_json = lambda *a, **k: None
+    try:
+        out = RP.run_replay(copy.deepcopy(run), copy.deepcopy(sleeves), t0, tf_sec=TF_MS // 1000, start=start,
+                            exchange_rules=rules, path_fn=fn, pre_fn=pre, fill_log=fills, compare=False, settings=settings,
+                            costs_off=pricer is None, fill_px=pricer, fund_fn=pricer.fund if pricer else None)
+    finally:
+        E.save_json = saved
+    return out, fills, labels
+
+
+def _sides(rows, get, weeks):
+    return {sd: summary([get(r) for r in rows if sd in ('ALL', r['side'])], weeks) for sd in ('ALL', 'LONG', 'SHORT')}
+
+
+def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel, funding=None, exchange_rules=None,
+             start=2000.0, scenarios=None, latency_s=0, settings=None, account_rows=ACCOUNT_ROWS) -> dict:
+    """One cell at one latency: (1) the engine on the 1m path with costs off, every scenario re-priced per trade
+    (diagnostic); (2) one engine run per account row with that row's costs applied at fill time (RISK-FILL-01 acts on
+    the priced fills); (3) their divergence."""
     check_sleeves(sleeves)
     bad = check_inputs(raw15, minutes, funding)
     run = {s: df for s, df in raw15.items() if s not in bad}
     if not run:
         raise ScalpExecError('no complete symbol to run')
-    labels, fills = [], []
-    out = RP.run_replay(copy.deepcopy(run), copy.deepcopy(sleeves), t0, tf_sec=TF_MS // 1000, start=start,
-                        exchange_rules=exchange_rules, path_fn=make_path_fn(run, minutes, labels), costs_off=True,
-                        fill_log=fills, compare=False)
-    trades = trades_of(fills, out['history'])
-    B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in run.items()}
     rules = exchange_rules or {}
     scen = scenarios or SCENARIOS
+    out, fills, labels = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
+                                 latency_s=latency_s)
+    B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in run.items()}
     rows = []
-    for tr in trades:
+    for tr in trades_of(fills, out['history']):
         s = tr['sym']
         rec = dict(sym=s, side=tr['ps'], entry_ms=tr['entry']['t_ms'], exit_ms=tr['closes'][-1]['t_ms'],
-                   exit_kinds=[f['kind'] for f in tr['closes']], exit_reason=tr['exit_reason'], risk_usd=tr['risk_usd'],
-                   rows={})
+                   qty=tr['entry']['qty'], exit_kinds=[f['kind'] for f in tr['closes']], exit_reason=tr['exit_reason'],
+                   risk_usd=tr['risk_usd'], rows={})
         for name, sc in scen.items():
             rec['rows'][name] = price_trade(tr, sc, row=model.row(s), slip_c=model.slip_c(s), bars15=B15[s],
                                             tick=(rules.get(s) or {}).get('tick'), funding_rows=(funding or {}).get(s))
         rows.append(rec)
+    t_all = pd.to_datetime(next(iter(run.values())).t)
+    weeks = (t_all.iloc[-1] - t_all.iloc[t0]).total_seconds() / (7 * 86400)
+    acct, div, acct_inc = {}, {}, False
+    for name in account_rows:
+        pr = Pricer(scen[name], model, run, funding=funding, rules=rules)
+        o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
+                              latency_s=latency_s, pricer=pr)
+        ts = account_trades(f2, o2['history'], pr.paid)
+        acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
+                          risk_fill={a: sum(t['risk_fill'] == a for t in ts) for a in RF.ACTIONS},
+                          summary=_sides(ts, lambda t: t['net_r'], weeks))
+        acct_inc = acct_inc or bool(pr.incomplete)
+        div[name] = divergence(rows, ts, name)
     lab = [x[2] for x in labels]
-    held_bars = len(lab)
     unres = sum(x in UNRESOLVED for x in lab)
-    incomplete = bool(bad) or any(not r['rows'][n]['complete'] for r in rows for n in r['rows']
-                                  if scen[n].funding_mode == 'actual')
-    return dict(format=FORMAT, non_promotable=True, limitation=LIMITATION, config_digest=config_digest(sleeves),
-                cost_model_digest=model.digest, labels=sorted({l for s in run for l in model.labels(s)}),
-                excluded_symbols=bad, status='INCOMPLETE' if incomplete else 'COMPLETE', trades=rows,
-                intrabar=dict(held_bars=held_bars, by_label={k: lab.count(k) for k in (ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M, TWO_SIDED)},
+    incomplete = acct_inc or bool(bad) or any(not r['rows'][n]['complete'] for r in rows for n in r['rows']
+                                              if scen[n].funding_mode == 'actual')
+    return dict(format=FORMAT, non_promotable=True, limitation=LIMITATION, latency_s=latency_s,
+                config_digest=config_digest(sleeves), cost_model_digest=model.digest,
+                labels=sorted({l for s in run for l in model.labels(s)}), excluded_symbols=bad,
+                status='INCOMPLETE' if incomplete else 'COMPLETE', weeks=weeks,
+                repriced=dict(trades=rows, summary={n: _sides(rows, lambda r, n=n: r['rows'][n]['net_r'], weeks) for n in scen},
+                              risk_fill_would={n: {a: sum(r['rows'][n]['risk_fill_would'] == a for r in rows)
+                                                   for a in RF.ACTIONS} for n in scen}),
+                account=acct, divergence=div,
+                intrabar=dict(segments=len(lab), by_label={k: lab.count(k) for k in (ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M,
+                                                                                     TWO_SIDED)},
                               unresolved=unres, unresolved_share=unres / len(rows) if rows else 0.0,
                               park=bool(rows) and unres / len(rows) > IB.PARK_UNRESOLVED_SHARE),
                 refused=len([m for m in out['missed'] if m.get('kind') != 'deferred']), open_lots=len(out['lots']),
-                code=code_ids(),
-                risk_fill_would={n: {a: sum(r['rows'][n]['risk_fill_would'] == a for r in rows) for a in RF.ACTIONS}
-                                 for n in scen})
+                code=code_ids())
 
+
+# ------------------------------------------------------------------ frozen inputs
+def load_config(path: str, sha256: str = CONFIG_SHA256) -> dict:
+    """The hashed as-run sleeve file (EDGE01_FROZEN_BASELINE_CONFIG_2026-10-23.json); refuses any other bytes."""
+    with open(path, 'rb') as fh:
+        raw = fh.read()
+    if hashlib.sha256(raw).hexdigest() != sha256:
+        raise ScalpExecError(f'{path}: sha256 does not match the frozen config {sha256[:12]}')
+    doc = json.loads(raw)
+    check_sleeves(doc['sleeves'])
+    return doc
+
+
+def cell_sleeves(doc: dict, key: str, side: str) -> list:
+    """The frozen sleeve of `key`, unchanged except `sides` (long / short = a promotion cell; both = as run)."""
+    if side not in ('long', 'short', 'both'):
+        raise ScalpExecError('side must be long, short or both')
+    sl = [copy.deepcopy(x) for x in doc['sleeves'] if x['key'] == key]
+    if len(sl) != 1:
+        raise ScalpExecError(f'the frozen config has {len(sl)} sleeves of {key}')
+    sl[0]['sides'] = side
+    return sl
+
+
+def load_store(manifest_path: str, store: str, static_path: str, symbols, lo_ms: int, hi_ms: int,
+               warm_bars: int = WARM_BARS) -> dict:
+    """Manifest-bound inputs (every file re-hashed by pit.Dataset.rows): 1m klines -> the 15m candles (exact OHLC
+    aggregation of complete minutes; a candle with a missing minute is dropped and counted), funding rows with the
+    FUNDING-MARK-PROXY-V1 mark (close of the 1h mark bar ending at or before T), and per-symbol coverage."""
+    import manifest as M
+    import pit_run as PR
+    man = M.load(manifest_path)
+    if man['digest'] != MANIFEST_DIGEST:
+        raise ScalpExecError(f'manifest digest {man["digest"][:12]} is not the frozen {MANIFEST_DIGEST[:12]}')
+    if hi_ms > CUTOFF_MS:
+        raise ScalpExecError(f'window end after the sealed cutoff {SEALED_CUTOFF}')
+    with open(static_path, encoding='utf-8') as fh:
+        static = json.load(fh)
+    core = static['core_10']
+    if any(s not in core for s in symbols):
+        raise ScalpExecError('symbols must be CORE-10 members')
+    ds = PR.StaticDataset(man, store, static, core[:max(core.index(s) for s in symbols) + 1])
+    from_ms = lo_ms - warm_bars * TF_MS
+    raw15, minutes, funding, cover = {}, {}, {}, {}
+    for s in symbols:
+        rows = [r for f in ds.files('klines', s, '1m') for r in ds.slice(f, from_ms, hi_ms)]
+        ds._cache.clear(); ds._keys.clear()
+        t = np.array([r[0] for r in rows], dtype='int64')
+        o, h, l, c, v = (np.array([r[k] for r in rows], dtype=float) for k in (1, 2, 3, 4, 5))
+        del rows
+        g = t - t % TF_MS
+        starts = np.flatnonzero(np.r_[True, g[1:] != g[:-1]])
+        full = np.diff(np.r_[starts, len(t)]) == 15
+        st = starts[full]
+        df = pd.DataFrame(dict(t=pd.to_datetime(g[st], unit='ms'), o=o[st], h=np.maximum.reduceat(h, starts)[full],
+                               l=np.minimum.reduceat(l, starts)[full], c=c[st + 14], v=np.add.reduceat(v, starts)[full]))
+        raw15[s], minutes[s] = df, dict(t=t, o=o, h=h, l=l, c=c)
+        mk = {r[0]: r[4] for f in ds.files('markPriceKlines', s, '1h') for r in ds.slice(f, from_ms - 3_600_000, hi_ms)}
+        fr = [r for f in ds.files('fundingRate', s, None) for r in ds.slice(f, from_ms, hi_ms)]
+        ds._cache.clear(); ds._keys.clear()
+        ev, miss = [], 0
+        for r in fr:
+            m = mk.get(r[0] - r[0] % 3_600_000 - 3_600_000)
+            if m is None:
+                miss += 1; continue
+            ev.append((int(r[0]), float(r[1]), float(m)))
+        funding[s] = ev
+        cover[s] = dict(first_ms=int(t[0]) if len(t) else None, last_ms=int(t[-1]) if len(t) else None,
+                        minutes=int(len(t)), candles=int(full.sum()), candles_dropped=int((~full).sum()),
+                        candles_expected=int((hi_ms - from_ms) // TF_MS), funding_rows=len(fr), funding_no_mark=miss)
+    return dict(raw15=raw15, minutes=minutes, funding=funding, coverage=cover, manifest_digest=man['digest'],
+                static_digest=static.get('digest'))
+
+
+def window_start(raw15: dict, lo_ms: int) -> int:
+    """t0 = the index of the first 15m candle at or after the window start on the run grid (>= 260 warm-up candles)."""
+    t = next(iter(raw15.values())).t
+    t0 = int(np.searchsorted(pd.to_datetime(t).astype('datetime64[ns]').astype('int64') // 10 ** 6, lo_ms))
+    if t0 < 260:
+        raise ScalpExecError('fewer than 260 warm-up candles before the window start')
+    return t0
+
+
+# ------------------------------------------------------------------ trial ledger + CLI
+def trial_records(packet: dict, *, key: str, side: str, mgmt: str = 'frozen') -> list:
+    """One trial per strategy x side x management x cost row x latency (Codex ruling 00ba8d0), for the family ledger."""
+    return [dict(key=key, side=side, mgmt=mgmt, cost_row=n, latency_s=packet['latency_s'], kind=k,
+                 config_digest=packet['config_digest'], status=packet['status'])
+            for k, names in (('repriced', list(packet['repriced']['summary'])), ('account', list(packet['account'])))
+            for n in names]
+
+
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description='SCALP-EXEC-15M-01 execution-grade cell (research only, non-promotable)')
+    for k in ('--config', '--manifest', '--store', '--static', '--out'):
+        ap.add_argument(k, required=True)
+    ap.add_argument('--symbols', required=True, help='comma list of CORE-10 members')
+    ap.add_argument('--window', required=True, help='START/END ISO UTC, END <= the sealed cutoff')
+    ap.add_argument('--key', required=True, choices=KEYS)
+    ap.add_argument('--side', required=True, choices=('long', 'short', 'both'))
+    ap.add_argument('--latency-s', type=int, required=True, choices=LATENCIES)
+    ap.add_argument('--rules', help='exchange-rules snapshot JSON {symbol: rule}')
+    ap.add_argument('--cal', required=True, help='slip-cal-v1 JSON (or a prereg holding costs.slip_cal_v1)')
+    ap.add_argument('--start', type=float, default=2000.0)
+    a = ap.parse_args(argv)
+    if os.path.exists(a.out):
+        raise ScalpExecError(f'{a.out} exists (packets are never overwritten)')
+    lo, hi = (int(pd.Timestamp(x).value // 10 ** 6) for x in a.window.split('/'))
+    doc = load_config(a.config)
+    syms = a.symbols.split(',')
+    data = load_store(a.manifest, a.store, a.static, syms, lo, hi)
+    with open(a.cal, encoding='utf-8') as fh:
+        cal = json.load(fh)                         # the calibration itself, or a prereg holding costs.slip_cal_v1
+        model = C.CostModel(cal.get('costs', {}).get('slip_cal_v1', cal), {s: 'crypto' for s in syms})
+    rules = None
+    if a.rules:
+        with open(a.rules, encoding='utf-8') as fh:
+            rules = json.load(fh)
+    raw15 = data['raw15']
+    pk = run_cell(raw15, data['minutes'], cell_sleeves(doc, a.key, a.side), window_start(raw15, lo), model=model,
+                  funding=data['funding'], exchange_rules=rules, start=a.start, latency_s=a.latency_s,
+                  settings={'PRESET': doc['preset']})
+    pk.update(key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
+              manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=CONFIG_SHA256)
+    pk['trials'] = trial_records(pk, key=a.key, side=a.side)
+    with open(a.out, 'x', encoding='utf-8') as fh:
+        json.dump(pk, fh, sort_keys=True, default=float)
+    print(json.dumps(dict(out=a.out, status=pk['status'], trades=len(pk['repriced']['trades']), trials=len(pk['trials'])),
+                     sort_keys=True))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -22,7 +22,8 @@ LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor
 
 
 def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, exchange_rules=None,
-               path_fn=None, costs_off=False, fill_log=None, compare=True):
+               path_fn=None, costs_off=False, fill_log=None, compare=True, pre_fn=None, fill_px=None, fund_fn=None,
+               settings=None):
     """raw: {symbol: DataFrame t,o,h,l,c,v[,qv]} (same length / timestamps; qv = Binance kline quote volume, optional); sleeves: engine slot dicts; t0: first bar index.
     Returns dict(engine_curve, bt_curve, engine_trades, bt_trades, matched, metrics, mismatch, stops, lots).
     stop_at=(bar, leg, step) or a list of them: stop INSIDE that candle's price path (leg 0-2, step 1..steps) and return only the engine's
@@ -41,7 +42,15 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
       fill_log    a list: every simulated fill is appended as dict(t_ms, sym, ps, act ('open' / 'close'), kind ('market' /
                   'stop' / 'gap'), qty, ref (price before slippage)); every stop order placed is logged as act
                   'stop_set' (ref = its price). Recording only.
-      compare     False skips the backtester run and the trade matching (engine-only result)."""
+      compare     False skips the backtester run and the trade matching (engine-only result).
+      pre_fn(j, held, lots) -> points like path_fn, walked BEFORE the engine's cycle at candle j's open (decision latency:
+                  the cycle then runs at the last point's price; open lots are managed on the way).
+      fill_px(fill) -> (price, fee_usd): prices every simulated fill (fill = the fill_log dict) instead of the legacy
+                  SLIP / FEE; the engine sees that price as the exchange's avgPrice (so post-fill checks act on it).
+      fund_fn(t_from_ms, t_to_ms, lots) -> cash paid (+) / received (-) for the funding times in [t_from, t_to) of
+                  the exchange lots held at the candle open T (after a gap stop at the open; with pre_fn before the delayed
+                  cycle, else after it, so an entry AT T counts), replacing the legacy flat funding.
+      settings    dict merged into the engine settings before connect (e.g. PRESET)."""
     syms = list(raw)
     D = {s: raw[s].reset_index(drop=True) for s in syms}
     N = len(D[syms[0]])
@@ -53,7 +62,16 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0; t_ms = None
 
     def log_fill(s, ps, act, kind, q, ref):
-        if fill_log is not None: fill_log.append(dict(t_ms=W.t_ms, sym=s, ps=ps, act=act, kind=kind, qty=q, ref=ref))
+        f = dict(t_ms=W.t_ms, sym=s, ps=ps, act=act, kind=kind, qty=q, ref=ref)
+        if fill_log is not None: fill_log.append(f)
+        return f
+
+    def priced(f, legacy_px):
+        """(fill price, fee) for one fill: the research pricer when given, else the legacy constants."""
+        if fill_px is None: return legacy_px, f['qty'] * legacy_px * FEE
+        px, fee = fill_px(f)
+        if fill_log is not None: f.update(px=px, fee=fee)
+        return px, fee
 
     def merge(s, ps):
         ls = [l for l in W.lots if l['s'] == s and l['ps'] == ps]
@@ -67,9 +85,10 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         if l is None:      # Binance rejects a close with no position; a bare StopIteration here logged an empty error
             raise RuntimeError(f'simulated exchange holds no {s} {ps} position to close ({q})')
         q = min(q, l['q']); sd = 1 if ps == 'LONG' else -1
-        log_fill(s, ps, 'close', kind, q, px if ref is None else ref)
-        W.cash += sd * (px - l['avg']) * q - q * px * FEE; l['q'] -= q
+        px, fee = priced(log_fill(s, ps, 'close', kind, q, px if ref is None else ref), px)
+        W.cash += sd * (px - l['avg']) * q - fee; l['q'] -= q
         if l['q'] <= 1e-12: W.lots.remove(l)
+        return px
 
     def equity():
         return W.cash + sum((1 if l['ps'] == 'LONG' else -1) * (W.mark[l['s']] - l['avg']) * l['q'] for l in W.lots)
@@ -119,13 +138,13 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def set_leverage(self, *a): pass
         def set_margin_type(self, *a): pass
         def open(self, s, ps, qty):
-            q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 + sd * SLIP)
-            W.cash -= q * px * FEE; W.lots.append(dict(s=s, ps=ps, q=q, avg=px)); merge(s, ps)
-            log_fill(s, ps, 'open', 'market', q, W.mark[s])
+            q = float(qty); sd = 1 if ps == 'LONG' else -1
+            px, fee = priced(log_fill(s, ps, 'open', 'market', q, W.mark[s]), W.mark[s] * (1 + sd * SLIP))
+            W.cash -= fee; W.lots.append(dict(s=s, ps=ps, q=q, avg=px)); merge(s, ps)
             return {'avgPrice': str(px)}
         def close(self, s, ps, qty):
             q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 - sd * SLIP)
-            reduce(s, ps, q, px, 'market', W.mark[s]); return {'avgPrice': str(px)}
+            px = reduce(s, ps, q, px, 'market', W.mark[s]); return {'avgPrice': str(px)}
         def stop(self, s, ps, qty, price):
             W.n += 1; tag = f'o:{W.n}'; W.stops[tag] = dict(s=s, ps=ps, q=float(qty), p=float(price))
             log_fill(s, ps, 'stop_set', 'order', float(qty), float(price)); return tag
@@ -149,17 +168,34 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         eng = E.Engine(dict(MODE='paper', API_KEY='x', API_SECRET='y'), tmp)
         eng.S['SLEEVES'] = sleeves; eng.S['UNIVERSE'] = syms; eng.S['SYMBOLS_ON'] = {s: True for s in syms}
         eng.S['CAPITAL_CAP'] = 0; eng.S['MAX_LEVERAGE'] = 10
+        if settings: eng.S.update(copy.deepcopy(settings))
         eng.equity_hist = []; eng.record_equity = lambda e: None
         eng.connect()
         tf = next((k for k, v in E.TF_SEC.items() if v == tf_sec), '4h')
+
+        def walk(pts_by_sym):
+            for k in range(max((len(v) for v in pts_by_sym.values()), default=0)):
+                for s, pts in pts_by_sym.items():
+                    if k < len(pts):
+                        W.t_ms = pts[k][2]; move({s: pts[k][0]}, at_open=bool(pts[k][1]))
+                if eng.state['lots']: eng.manage(dict(W.mark))
         curve = []
         for i in range(t0, N - 1):
             W.i = i
             fake_now[0] = D[syms[0]].t[i].timestamp() + tf_sec + 15
             W.t_ms = int(D[syms[0]].t[i + 1].value // 10 ** 6)
             move({s: D[s].o[i + 1] for s in syms}, at_open=True)   # C13f: the open runs the simulated stops (was mark.update)
+            def fund_at_open():                         # funding at T = this candle's open over the lots held at T
+                t_j = int(D[syms[0]].t[i + 1].value // 10 ** 6)
+                W.cash -= fund_fn(t_j, t_j + tf_sec * 1000, [dict(l) for l in W.lots])
+            if fund_fn is not None and pre_fn is not None: fund_at_open()     # entries come later than T
+            if pre_fn is not None:                      # SCALP-EXEC-15M-01 latency: the market moves before the decision
+                held0 = {}
+                for l_ in eng.state['lots'].values(): held0.setdefault(l_['symbol'], set()).add(1 if l_['side'] == 'LONG' else -1)
+                walk(pre_fn(i + 1, held0, eng.state['lots']) or {})
             eng.cycle(tf)
             j = i + 1
+            if fund_fn is not None and pre_fn is None: fund_at_open()         # an entry at T counts (entry == T)
             # FBL-BT01: the backtester's path policy (backtest.path_points). A doji takes the worst-case path of the side
             # held on that coin (long: high first); with no lot, or both sides held, it keeps the green order
             held = {}
@@ -171,11 +207,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             fine = path_fn(j, held, eng.state['lots']) if path_fn is not None else None
             if fine:                                    # SCALP-EXEC-15M-01: caller-supplied points (e.g. the candle's 1m bars)
                 legs = [{s: tgt[s] for s in syms if s not in fine} for tgt in legs]
-                for k in range(max(len(v) for v in fine.values())):
-                    for s, pts in fine.items():
-                        if k < len(pts):
-                            W.t_ms = pts[k][2]; move({s: pts[k][0]}, at_open=bool(pts[k][1]))
-                    if eng.state['lots']: eng.manage(dict(W.mark))
+                walk(fine)
                 W.t_ms = int(D[syms[0]].t[j].value // 10 ** 6) + tf_sec * 1000 - 1
             for li, tgt in enumerate(legs):
                 if not tgt: continue
@@ -192,7 +224,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                         if len(snaps) == len(stop_set):
                             return snaps[stop_at] if isinstance(stop_at, tuple) else snaps
                 if not eng.state['lots']: eng.manage(dict(W.mark))
-            if not costs_off: W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR * tf_sec / 14400 for l in W.lots)
+            if fund_fn is None and not costs_off: W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR * tf_sec / 14400 for l in W.lots)
             curve.append((D[syms[0]].t[j], equity()))
     finally:
         E.Futures, E.now_utc, E.time = saved
