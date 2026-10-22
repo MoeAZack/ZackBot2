@@ -7,6 +7,25 @@ limits. A failing or barely break-even strategy is not useful and cannot be carr
 Continue scouting when existing candidates fail; preserve every failed trial so the same idea is not rediscovered or
 silently tuned against known outcomes.
 
+## Evidence interpretation and owner collaboration
+
+PAPER forward results over two or three days are diagnostic, never a standalone promotion or retirement verdict. They
+can expose execution, accounting, regime and implementation defects and can justify a reversible risk-budget park, but
+they cannot prove that a strategy has or lacks durable edge. A parked strategy remains registered and continues
+decision/signal shadow capture; it is not deleted. It may return to a bounded PAPER cohort only after a new version passes
+the execution-accurate historical, anchored walk-forward and untouched-holdout gates.
+
+Backtesting is the primary discovery and rejection engine, provided it uses the runtime rules, point-in-time data,
+causal sub-bar execution, actual fees/funding/exchange filters, realistic slippage, preregistered trials and a sealed
+holdout. A simplified historical screen may reject an obviously weak version or prioritize work, but cannot promote it.
+Forward testing then measures transfer into real testnet fills; it does not replace history and history does not replace
+forward execution.
+
+Owner observations are first-class hypotheses, not automatic facts. Codex must check them against the ledger, code and
+historical evidence and state any disagreement. Claude Code implements only the agreed bounded test or fix. Cowork
+independently attacks the assumptions, data and result. All three lanes use this same interpretation; no lane may turn a
+small forward sample, a single backtest or the owner's initial wording into a final conclusion by itself.
+
 ## Trigger evidence
 
 The append-only retained PAPER ledger was deduplicated by trade id at 01:46 Cairo on 23 October 2026.
