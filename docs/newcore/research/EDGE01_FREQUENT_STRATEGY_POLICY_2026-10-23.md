@@ -79,5 +79,39 @@ The finite repair matrix is deliberately small:
 No Cartesian parameter sweep is allowed. A repair that fails a development hard gate stops; it does not consume the
 holdout. The selected successor receives a new version id before shadow or PAPER use.
 
+## SCALP-EXEC-15M-01 integration rulings
+
+These rulings are frozen before the execution-grade cells run.
+
+- The forward-readiness baseline is the exact protected master `9523a65c8fdb77c7f9df143eede56f485b4fc076` and its
+  engine/strategy blobs. Historical PAPER rows from older builds remain separate observed evidence; the new replay must
+  not claim to reproduce an older build. It reports how often base and stressed adverse entry costs would trigger the
+  current 10% measured-fill trim/unwind boundary.
+- The as-run sleeve input is
+  `EDGE01_FROZEN_BASELINE_CONFIG_2026-10-23.json`, SHA-256
+  `3027cb8a048fcaae89154fb842fdadc5ccdf66e68f9b50d13afb7de0919320de`. The 8-hour value is the PAPER breadth-rotation
+  group period, not a session filter. The two `enabled: true` values record the state before the 02:25 Cairo entry
+  freeze; no other sleeve field changed during that freeze.
+- Primary development coverage is 14 October 2024 through 28 September 2026 UTC on the frozen CORE-10 universe artifact.
+  Manifest `54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7` contains full-window 1m, funding and 1h
+  mark-price coverage for nine symbols. `HYPEUSDT` starts only in May 2025, so the strict full-window headline is
+  CORE-10-ELIGIBLE-9. Every packet reports coverage and exclusions. A separate available-period HYPE sensitivity is
+  reported but cannot enter the headline gate or choose a winner.
+- Fifteen-minute decisions use only completed candles. Stops, targets and exits computed at completed bar `t` become
+  effective at the first minute of bar `t+1`; they are never moved from bar `t` extremes and then tested inside bar `t`.
+  The entry minute is always walked, including gap and same-minute stop/target cases.
+- Signal-causality, prior-bar stop activation, entry-minute stop, gap-through-stop and same-minute-stop-first mutations
+  are required. Symbols excluded for incomplete data also receive an available-period sensitivity so survivor selection
+  is visible.
+- Repriced zero-cost decisions are diagnostic only. The adapter must also run the account path with actual base-row costs
+  and the frozen 1.5x cost stress applied at fill time, then report trade-set, sizing, occupancy and per-trade-R divergence.
+  A material divergence makes the repriced rows non-comparable and blocks promotion.
+- Latency is not tunable: zero seconds is the primary row and 60 seconds is the single preregistered stress row. Every
+  strategy x side x management x cost x latency result appends to the immutable trial ledger. The earlier four 4h screens
+  and six simplified baseline packets count in the family-wide multiplicity record.
+- No measured EXEC-CAL profile is frozen yet. Use `slip-cal-v1`, mark it `SLIP-C-UNFITTED`, and keep the packets
+  non-promotable for slippage-transfer claims. Do not compare that modeled slippage with observed PAPER slippage as if it
+  were calibrated.
+
 ROADMAP FIT: Binance strategy evidence, truthful PAPER forward validation and numeric mainnet-candidate gates.
 DEFERRED: mainnet activation, new venues, unrestricted parameter mining, ML order authority and cosmetic UI work.
