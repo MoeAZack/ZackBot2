@@ -11,7 +11,7 @@ Metrics (release targets proposed by the independent reviewer, 2026-10-05):
   matched trades >= 98 %, median |dR| <= 0.05, p95 |dR| <= 0.25, total-return gap <= 3 pp, max-DD gap <= 2 pp,
   zero position mismatches (exchange vs engine, dust excluded), one exchange stop per open lot.
 """
-import os, tempfile, types, logging
+import copy, os, tempfile, types, logging
 import numpy as np, pandas as pd
 import backtest as B
 import engine as E
@@ -21,22 +21,39 @@ STRICT = dict(matched_pct=98.0, med_dr=0.05, p95_dr=0.25, ret_gap=3.0, dd_gap=2.
 LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor is pending
 
 
-def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, exchange_rules=None):
+def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, exchange_rules=None,
+               path_fn=None, costs_off=False, fill_log=None, compare=True):
     """raw: {symbol: DataFrame t,o,h,l,c,v[,qv]} (same length / timestamps; qv = Binance kline quote volume, optional); sleeves: engine slot dicts; t0: first bar index.
     Returns dict(engine_curve, bt_curve, engine_trades, bt_trades, matched, metrics, mismatch, stops, lots).
     stop_at=(bar, leg, step) or a list of them: stop INSIDE that candle's price path (leg 0-2, step 1..steps) and return only the engine's
     decisions so far: dict(lots, events, history, stops) (a list -> {point: that dict}) - used by the causality test.
     exchange_rules (BT02): a snapshot or {symbol: rule}. The simulated exchange then serves exactly these filters to the engine
     and the backtester gets the same rules (both floor to the step and skip below the minimums through feasibility.size_check).
-    None (default): unchanged - the engine sees step 1e-5 / backtest.MIN_NOTIONAL, the backtester its legacy floor."""
+    None (default): unchanged - the engine sees step 1e-5 / backtest.MIN_NOTIONAL, the backtester its legacy floor.
+    SCALP-EXEC-15M-01 research hooks (all off by default; off = the exact behaviour above):
+      path_fn(j, held, lots) -> {symbol: [(price, at_open, t_ms), ...]}: the price points of candle j AFTER its open, walked one
+                  point at a time (each point one manage() call when lots are open); at_open=True makes that point a gap open
+                  (a stop it crosses fills there, like the candle open). A symbol missing from the dict keeps the legacy path.
+                  held = {symbol: {+1 / -1 sides held}}; lots = the engine's open lots (read only). Not combinable
+                  with stop_at.
+      costs_off   the simulated exchange charges no fee, slippage or flat funding (fills at the reference price), so a
+                  research cost model can re-price every fill from fill_log.
+      fill_log    a list: every simulated fill is appended as dict(t_ms, sym, ps, act ('open' / 'close'), kind ('market' /
+                  'stop' / 'gap'), qty, ref (price before slippage)); every stop order placed is logged as act
+                  'stop_set' (ref = its price). Recording only.
+      compare     False skips the backtester run and the trade matching (engine-only result)."""
     syms = list(raw)
     D = {s: raw[s].reset_index(drop=True) for s in syms}
     N = len(D[syms[0]])
-    FEE, SLIP = B.FEE, B.SLIP
+    FEE, SLIP = (0.0, 0.0) if costs_off else (B.FEE, B.SLIP)
+    if path_fn is not None and stop_at: raise ValueError('path_fn and stop_at cannot be combined')
     XR = F.snapshot_rules(exchange_rules)
 
     class W:
-        i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0
+        i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0; t_ms = None
+
+    def log_fill(s, ps, act, kind, q, ref):
+        if fill_log is not None: fill_log.append(dict(t_ms=W.t_ms, sym=s, ps=ps, act=act, kind=kind, qty=q, ref=ref))
 
     def merge(s, ps):
         ls = [l for l in W.lots if l['s'] == s and l['ps'] == ps]
@@ -45,11 +62,12 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             for l in ls: W.lots.remove(l)
             W.lots.append(dict(s=s, ps=ps, q=q, avg=avg))
 
-    def reduce(s, ps, q, px):
+    def reduce(s, ps, q, px, kind='market', ref=None):
         l = next((l for l in W.lots if l['s'] == s and l['ps'] == ps), None)
         if l is None:      # Binance rejects a close with no position; a bare StopIteration here logged an empty error
             raise RuntimeError(f'simulated exchange holds no {s} {ps} position to close ({q})')
         q = min(q, l['q']); sd = 1 if ps == 'LONG' else -1
+        log_fill(s, ps, 'close', kind, q, px if ref is None else ref)
         W.cash += sd * (px - l['avg']) * q - q * px * FEE; l['q'] -= q
         if l['q'] <= 1e-12: W.lots.remove(l)
 
@@ -68,7 +86,8 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                 if sd * (p - st['p']) <= 0:
                     have = sum(l['q'] for l in W.lots if l['s'] == s and l['ps'] == st['ps'])
                     q = min(st['q'], have)
-                    if q > 0: reduce(s, st['ps'], q, (p if at_open else st['p']) * (1 - sd * SLIP))
+                    ref = p if at_open else st['p']
+                    if q > 0: reduce(s, st['ps'], q, ref * (1 - sd * SLIP), 'gap' if at_open else 'stop', ref)
                     W.stops.pop(tag)
 
     class Fake:
@@ -102,12 +121,14 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def open(self, s, ps, qty):
             q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 + sd * SLIP)
             W.cash -= q * px * FEE; W.lots.append(dict(s=s, ps=ps, q=q, avg=px)); merge(s, ps)
+            log_fill(s, ps, 'open', 'market', q, W.mark[s])
             return {'avgPrice': str(px)}
         def close(self, s, ps, qty):
             q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 - sd * SLIP)
-            reduce(s, ps, q, px); return {'avgPrice': str(px)}
+            reduce(s, ps, q, px, 'market', W.mark[s]); return {'avgPrice': str(px)}
         def stop(self, s, ps, qty, price):
-            W.n += 1; tag = f'o:{W.n}'; W.stops[tag] = dict(s=s, ps=ps, q=float(qty), p=float(price)); return tag
+            W.n += 1; tag = f'o:{W.n}'; W.stops[tag] = dict(s=s, ps=ps, q=float(qty), p=float(price))
+            log_fill(s, ps, 'stop_set', 'order', float(qty), float(price)); return tag
         def cancel(self, s, tag): W.stops.pop(tag, None)
         def open_stop_tags(self, s): return {k for k, v in W.stops.items() if v['s'] == s}
         def leverage_max(self, s): return 50
@@ -135,6 +156,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         for i in range(t0, N - 1):
             W.i = i
             fake_now[0] = D[syms[0]].t[i].timestamp() + tf_sec + 15
+            W.t_ms = int(D[syms[0]].t[i + 1].value // 10 ** 6)
             move({s: D[s].o[i + 1] for s in syms}, at_open=True)   # C13f: the open runs the simulated stops (was mark.update)
             eng.cycle(tf)
             j = i + 1
@@ -146,10 +168,20 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                    if len(held.get(s, ())) == 1 else B.path_points(D[s].o[j], D[s].h[j], D[s].l[j], D[s].c[j], 1)
                    if D[s].c[j] != D[s].o[j] else (D[s].o[j], D[s].l[j], D[s].h[j], D[s].c[j]) for s in syms}
             legs = [{s: pth[s][1] for s in syms}, {s: pth[s][2] for s in syms}, {s: pth[s][3] for s in syms}]
+            fine = path_fn(j, held, eng.state['lots']) if path_fn is not None else None
+            if fine:                                    # SCALP-EXEC-15M-01: caller-supplied points (e.g. the candle's 1m bars)
+                legs = [{s: tgt[s] for s in syms if s not in fine} for tgt in legs]
+                for k in range(max(len(v) for v in fine.values())):
+                    for s, pts in fine.items():
+                        if k < len(pts):
+                            W.t_ms = pts[k][2]; move({s: pts[k][0]}, at_open=bool(pts[k][1]))
+                    if eng.state['lots']: eng.manage(dict(W.mark))
+                W.t_ms = int(D[syms[0]].t[j].value // 10 ** 6) + tf_sec * 1000 - 1
             for li, tgt in enumerate(legs):
+                if not tgt: continue
                 a = dict(W.mark)
                 for k in range(1, steps + 1):
-                    move({s: a[s] + (tgt[s] - a[s]) * k / steps for s in syms})
+                    move({s: a[s] + (tgt[s] - a[s]) * k / steps for s in tgt})
                     if eng.state['lots']: eng.manage(dict(W.mark))
                     if stop_at and (j, li, k) in stop_set:
                         import copy as _c, csv as _csv
@@ -160,7 +192,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                         if len(snaps) == len(stop_set):
                             return snaps[stop_at] if isinstance(stop_at, tuple) else snaps
                 if not eng.state['lots']: eng.manage(dict(W.mark))
-            W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR * tf_sec / 14400 for l in W.lots)
+            if not costs_off: W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR * tf_sec / 14400 for l in W.lots)
             curve.append((D[syms[0]].t[j], equity()))
     finally:
         E.Futures, E.now_utc, E.time = saved
@@ -171,6 +203,9 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             try: E.close_fill_writer(os.path.join(tmp, 'trade_audit.jsonl'))   # T05a: nor an audit writer thread
             except Exception: pass
     cv = pd.Series([c for _, c in curve], index=[t for t, _ in curve])
+    if not compare:
+        return dict(engine_curve=cv, history=eng.history, missed=eng.missed, stops=dict(W.stops), lots=copy.deepcopy(eng.state['lots']),
+                    exchange_lots=[dict(l) for l in W.lots])
     bk = B.Book({s: raw[s] for s in syms})
     def order(sl):   # same coin order as the live engine (sleeve_symbols) and the app's backtests: first signal in this order wins a free slot
         base = E.CORE8 if sl['symbols'] == 'core8' else syms if sl['symbols'] == 'all' else sl['symbols']
