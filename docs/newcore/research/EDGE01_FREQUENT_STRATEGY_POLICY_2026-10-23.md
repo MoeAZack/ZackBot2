@@ -113,5 +113,15 @@ These rulings are frozen before the execution-grade cells run.
   non-promotable for slippage-transfer claims. Do not compare that modeled slippage with observed PAPER slippage as if it
   were calibrated.
 
+## EDGE-01B-01 bounded scout: failed-breakout side asymmetry
+
+Before running this scout, the existing PAPER development evidence showed `SC-FAILBRK` long at 20 closes and about
+-0.29R/trade, while short had 19 closes and about +0.27R/trade. That observation selected this hypothesis and therefore
+is development evidence, not a holdout. The frozen hypothesis is that the existing `failed_breakout_scalp` rules may have
+an after-cost short-side edge but not a long-side edge. Run exactly two simplified CORE-10 cells on the same development
+window: current defaults, long and short separately, with no parameter or management search. Both cells count in the
+family trial ledger and use the EDGE-01A numeric gate. A failing side is parked; a passing side is only a candidate for the
+execution-grade adapter and cannot advance directly to PAPER. The untouched holdout remains closed.
+
 ROADMAP FIT: Binance strategy evidence, truthful PAPER forward validation and numeric mainnet-candidate gates.
 DEFERRED: mainnet activation, new venues, unrestricted parameter mining, ML order authority and cosmetic UI work.
