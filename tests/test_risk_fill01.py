@@ -223,3 +223,22 @@ def test_trim_leaves_the_stop_marked_for_resize():
     d = measure(e, lot, adverse(lot, 0.5))
     e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
     assert d['state'] == 'done' and lot['stop_dirty'] is True
+
+
+def test_non_finite_inputs_fail_closed_as_unmeasured():
+    nan, inf = float('nan'), float('inf')
+    for args in ((nan, 95.0, 100.0), (101.0, nan, 100.0), (101.0, 95.0, nan), (inf, 95.0, 100.0), (101.0, -inf, 100.0)):
+        assert RF.decide('LONG', 1.0, *args)['action'] == 'unmeasured'
+    d = RF.decide('LONG', 1.0, 101.0, 95.0, 100.0, entry_fees=nan)
+    assert d['fee_basis'] == 'estimate' and d['action'] in ('ok', 'trim', 'unwind', 'below_step')
+
+
+def test_check_error_records_unmeasured_and_blocks_adds():
+    e = eng(); k, lot = opened(e)
+    orig = RF.decide
+    def boom(*a, **kw): raise ValueError('boom')
+    RF.decide = boom
+    try: d = measure(e, lot, adverse(lot, 0.5))
+    finally: RF.decide = orig
+    assert d['state'] == 'unmeasured' and d['why'] == 'risk_check_error'
+    assert e._add_block(lot, 1.0, 100.0).startswith('risk_unmeasured')

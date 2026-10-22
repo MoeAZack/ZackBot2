@@ -4062,7 +4062,9 @@ class Engine:
 
     def _risk_fill_mark(self, lot, rec):
         """An entry / add fill's measured price arrived: decide its post-fill action once (per fill index - each add is
-        checked on its own, no once-per-lot latch). Never sends anything; manage() runs a due action. Never raises."""
+        checked on its own, no once-per-lot latch). Never sends anything; manage() runs a due action. Never raises;
+        a failure after the fill is identified fails CLOSED (an 'unmeasured' record, which blocks adds)."""
+        i = None
         try:
             ref = rec.get('cost_ref')
             i = next((i for i, r in lot.get('fill_refs') or () if r == ref), None)
@@ -4089,7 +4091,13 @@ class Engine:
             if d['action'] != 'ok':
                 log.warning(f"RISK-FILL {sym} {lot['side']} [{lot['sleeve']}] fill {i}: planned {d['planned']} measured "
                             f"{d['measured']} USDT ({d['ratio']}x) -> {d['action']} ({d['why']})")
-        except Exception as e: log.warning(f'post-fill risk check not recorded ({e})')
+        except Exception as e:
+            log.warning(f'post-fill risk check failed ({e}) - recorded as unmeasured')
+            try:
+                if isinstance(i, int): lot.setdefault('risk_fill', {}).setdefault(str(i), dict(
+                    fill=i, action='unmeasured', why='risk_check_error', state='unmeasured', attempts=0, trimmed=0.0,
+                    t=now_utc().isoformat(timespec='seconds')))
+            except Exception: pass
 
     def _risk_fill_block(self, lot):
         """Reason an add is refused while a tracked entry fill is unmeasured, being trimmed or left over budget."""

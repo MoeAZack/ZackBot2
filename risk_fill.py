@@ -29,6 +29,10 @@ def price_risk(side, qty, entry, stop):
     return qty * max(0.0, _sd(side) * (entry - stop))
 
 
+def _finite(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
 def _floor_step(q, step):
     if not step or step <= 0: return q
     return math.floor(q / step + 1e-9) * step
@@ -40,10 +44,10 @@ def decide(side, qty, measured_px, stop, planned_px, entry_fees=None, step=0.0, 
     fee_basis, fee_unit). entry_fees None = the actual fee is unknown: both sides use fee_rate x planned price."""
     out = dict(action='ok', why=None, planned=None, measured=None, ratio=None, keep_qty=qty, trim_qty=0.0,
                tol=TOL, ceil=CEIL, fee_rate=fee_rate)
-    if measured_px is None or not qty or qty <= 0 or stop is None or planned_px is None:
-        out.update(action='unmeasured', why='risk_unmeasured', keep_qty=None); return out
+    if not all(_finite(x) for x in (measured_px, qty, stop, planned_px)) or qty <= 0:
+        out.update(action='unmeasured', why='risk_unmeasured', keep_qty=None); return out    # fail closed (NaN/inf too)
     sd = _sd(side)
-    if entry_fees is None or entry_fees < 0:
+    if not _finite(entry_fees) or entry_fees < 0:
         fee_u, out['fee_basis'] = planned_px * fee_rate, 'estimate'
     else:
         fee_u, out['fee_basis'] = entry_fees / qty, 'actual'
