@@ -2338,7 +2338,7 @@ class Engine:
         # the last fully reconciled checkpoint (base if none) and is revised once when every row is measured
         ck = self.state.get('cap_ckpt')
         ck = {k: v for k, v in ck.items() if k != 'since'} if isinstance(ck, dict) and ck.get('since') == since else None
-        held = AC.capital_hold(rows, ck)
+        held = AC.capital_hold(rows, ck, self.state.get('cap_ack'))
         if held['checkpoint'] is not None and held['checkpoint'] != ck: self.state['cap_ckpt'] = dict(held['checkpoint'], since=since)
         realized = held['realized']
         adjs = S.get('CAP_ADJ', [])
@@ -4183,16 +4183,37 @@ class Engine:
         self._record_r(w, v['pnl'])
         if w.get('ml'):                                             # observe only, never raises
             self._ml_label(w['key'], dict(rec, pnl=v['pnl'], r=v['r']), w['ml'], w['ml']['audit'])
-        tag = '' if v['status'] == 'measured' else ' (booked)'
+        tag = {'measured': '', 'acknowledged': ' (operator-acknowledged)'}.get(v['status'], ' (booked)')
         self.notify(f"{'✅' if (v['pnl'] or 0) > 0 else '❌'} {word} {rec['side']} {rec['symbol']} [{w['sleeve']}] {w['why']} · "
                     f"PnL {v['pnl']:+.2f} USDT{tag}" + (f" ({v['r']}R)" if v['r'] is not None else '') + f" · {w['hours']}h")
+
+    def ack_unmeasured(self, row_id, net, note=''):
+        """FILL-PNL-02 (Codex 6332168655): the ONLY release of a capital hold on a close that can never be measured. The
+        operator states the close's actual net (from the exchange's own records); its booked figure is never used. Refused
+        for a row that is not pending, already acknowledged, or a net that is not a finite number. -> (ok, message)."""
+        with self.lock:
+            row = next((h for h in reversed(self.history) if h.get('id') == row_id), None)
+            if row is None: return False, f'no closed trade {row_id}'
+            try: net = float(net)
+            except (TypeError, ValueError): return False, 'net must be a number'
+            if not math.isfinite(net): return False, 'net must be a finite number'
+            acks = self.state.setdefault('cap_ack', {})
+            if row_id in acks: return False, f'{row_id} is already acknowledged'
+            if AC.row_view(row)['status'] != 'pending': return False, f'{row_id} is not waiting for a measurement'
+            acks[row_id] = dict(net=round(net, 8), note=str(note)[:200], t=now_utc().isoformat(timespec='seconds'),
+                                why=AC.measured(row)['why'])
+            log.warning(f"capital hold: {row.get('symbol')} close {row_id} acknowledged by the operator at net {net:+.4f} "
+                        f"(unmeasured: {', '.join(acks[row_id]['why'])})")
+            self._measured_followup(row)
+            self.save_state()
+            return True, f'{row_id} acknowledged at net {net:+.4f}'
 
     def _measured_followup(self, row):
         """A revised row whose close was waiting for its measured result: finish the R / ML label / notice once."""
         try:
             w = (self.state.get('measured_wait') or {}).get(row.get('id'))
             if not w: return
-            v = AC.row_view(row)
+            v = AC.row_view(row, (self.state.get('cap_ack') or {}).get(row.get('id')))
             if v['status'] == 'pending': return
             self.state['measured_wait'].pop(row['id'], None)
             self._measured_done(row, w, v, 'MEASURED')

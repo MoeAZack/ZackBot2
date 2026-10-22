@@ -200,3 +200,25 @@ def test_a_tracked_row_without_its_correction_is_never_measured():
     """Cowork N1: a tracked row whose pnl_fill_adj never got written stays pending, never planned prices as actual."""
     r = _row(9, 4.0, 0.5, adj=0.0); r.pop('pnl_fill_adj')
     assert AC.row_view(r)['status'] == 'pending' and 'pnl_fill_adj_missing' in AC.measured(r)['why']
+
+
+def test_permanent_hold_releases_only_on_operator_ack_with_its_own_net():
+    """Codex 6332168655: data that can never be measured holds until an explicit operator acknowledgement; the release
+    uses the operator's stated net (AAVE raw truth -2.3612176), never the booked figure (+6.7578)."""
+    e, _ = books_engine(COMPOUND=True)
+    before = e.capital_info()['realized']
+    notes = []
+    r = _close_one(e, notes)
+    r.update(fees_actual=1.6852176, fees_actual_partial=False, fill_px_partial=['fill_ref_missing'], pnl=6.7578)
+    e._row_changed(r)
+    assert e.capital_info()['hold'] == 'realized_unmeasured' and r['id'] in e.state['measured_wait']
+    assert e.ack_unmeasured(r['id'], 'x')[0] is False and e.ack_unmeasured('nope', 1)[0] is False
+    assert e.ack_unmeasured(r['id'], float('nan'))[0] is False
+    ok, _ = e.ack_unmeasured(r['id'], -2.3612176, 'exchange fills')
+    assert ok and e.ack_unmeasured(r['id'], -2.3612176)[0] is False                 # once
+    info = e.capital_info()
+    assert info['hold'] is None and info['realized'] == pytest.approx(before - 2.3612176, abs=0.01)
+    assert e.state['hist'][SL['id']] == [round(-2.3612176 / r['risk_usd'], 3)] and r['id'] not in e.state['measured_wait']
+    assert any('operator-acknowledged' in n and '-2.36' in n for n in notes)
+    assert AC.row_view(r)['status'] == 'pending'                                   # displays without the ack stay pending
+    m = dict(_row(5, 1.0, 0.1, adj=0.0)); assert e.ack_unmeasured(m['id'], 1.0)[0] is False   # not in history

@@ -339,14 +339,17 @@ def measured(row):
     return dict(gross=gross, fees=fa, funding=fu, net=gross - fa + fu, complete=not why, why=sorted(why))
 
 
-def row_view(row):
+def row_view(row, ack=None):
     """What a consumer may show / count for one closed row -> {pnl, r, status, why}. status 'measured' = actual;
     'pending' = tracked but not measured yet (pnl None - never the booked figure); 'booked' = a legacy row's own value."""
     if not tracked(row):
         return dict(pnl=_num(row.get('pnl')), r=_num(row.get('r')), status='booked', why=[])
     m = measured(row)
-    if not m['complete']: return dict(pnl=None, r=None, status='pending', why=m['why'])
     risk = _num(row.get('risk_usd'))
+    if not m['complete']:
+        a = _num((ack or {}).get('net'))                 # Codex 6332168655: only an explicit operator acknowledgement with
+        if a is None: return dict(pnl=None, r=None, status='pending', why=m['why'])      # its own net releases the hold -
+        return dict(pnl=round(a, 4), r=round(a / risk, 2) if risk else None, status='acknowledged', why=m['why'])   # never booked
     return dict(pnl=round(m['net'], 4), r=round(m['net'] / risk, 2) if risk else None, status='measured', why=[])
 
 
@@ -356,14 +359,14 @@ def measured_avg(lot):
     return a if a is None or adj is None else a + adj
 
 
-def capital_hold(rows, checkpoint):
+def capital_hold(rows, checkpoint, acks=None):
     """Ruling 1: realized P&L for COMPOUND / guard capital. While any tracked row is not measured, capital holds at the
     last fully reconciled checkpoint (None = base: 0.0) and says why; once every row is measured the checkpoint is revised
     once (idempotent - the same rows give the same checkpoint). Legacy rows count at their booked value.
     -> {realized, checkpoint, hold, realized_unmeasured_n, why}."""
     total, why, n = 0.0, set(), 0
     for r in rows:
-        v = row_view(r)
+        v = row_view(r, (acks or {}).get(r.get('id')))
         if v['status'] == 'pending': n += 1; why.update(v['why']); continue
         total += v['pnl'] or 0.0
     if n:
