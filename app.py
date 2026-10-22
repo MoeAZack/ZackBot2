@@ -1105,7 +1105,8 @@ class App:
         hl = e.history[-1]['id'] if e.history else ''
         ml = e.missed[-1]['logged'] if e.missed else ''
         eh = e.equity_hist[-1][0] if e.equity_hist else 0
-        return dict(history=f'{len(e.history)}:{hl}', missed=f'{len(e.missed)}:{ml}', signals=str(e.signals_time),
+        cr = sum(int(h.get('cost_rev') or 0) for h in e.history)   # #178: a settled / restated row refreshes the table
+        return dict(history=f'{len(e.history)}:{hl}:{cr}', missed=f'{len(e.missed)}:{ml}', signals=str(e.signals_time),
                     equity=f'{len(e.equity_hist)}:{eh}', meta=VERSION)
 
     def snapshot(self):

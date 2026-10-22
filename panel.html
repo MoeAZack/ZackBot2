@@ -1252,8 +1252,8 @@ function renderTrades(){if(!D)return;try{renderAudit()}catch(e){}const H=closedF
      +tile('Best / worst',`<span class="pos">${susd(st.best,0)}</span> / <span class="neg">${susd(st.worst,0)}</span>`,`fees paid ${usd(st.fees)}`));
     const srt=H.filter(h=>h.pnl!=null).sort((a,b)=>ms(a.closed)-ms(b.closed));let c=0;const cum=srt.map(h=>[ms(h.closed),c+=h.pnl]);
     lineChart($('cumChart'),cum.length?[[ms(srt[0].opened),0],...cum]:[],{zero:true,fmt:v=>susd(v,0),empty:'Closed trades will draw your P&L curve here.',extra:i=>i>0?`<div>${coin(srt[i-1].symbol)} ${susd(srt[i-1].pnl)}</div>`:''});
-    histo($('rHist'),H.map(h=>h.r||0));
-    const agg=(key,lab,full)=>{const m={};H.forEach(h=>{const k=h[key];m[k]=m[k]||{v:0,n:0,w:0};m[k].v+=h.pnl;m[k].n++;if(h.pnl>0)m[k].w++});return Object.entries(m).map(([k,o])=>({label:esc(lab?lab(k):k),full:full?full(k):'',value:o.v,sub:`${o.n} trades · ${Math.round(o.w/o.n*100)}% win`})).sort((a,b)=>b.value-a.value)};
+    const HS=H.filter(h=>h.pnl!=null);histo($('rHist'),HS.map(h=>h.r||0));     // a pending row is not a result
+    const agg=(key,lab,full)=>{const m={};HS.forEach(h=>{const k=h[key];m[k]=m[k]||{v:0,n:0,w:0};m[k].v+=h.pnl;m[k].n++;if(h.pnl>0)m[k].w++});return Object.entries(m).map(([k,o])=>({label:esc(lab?lab(k):k),full:full?full(k):'',value:o.v,sub:`${o.n} trades · ${Math.round(o.w/o.n*100)}% win`})).sort((a,b)=>b.value-a.value)};
     hbars($('byCoin'),agg('symbol',coin).slice(0,12));hbars($('byStrat'),agg('sleeve',null,k=>stratName(k)||(CH.history.find(h=>h.sleeve===k)||{}).strategy||''),{lw:'110px'});hbars($('byExit'),agg('exit_reason',k=>k.replace(/_/g,' ')),{lw:'110px'});
     renderCal();renderClosedTable()}
   if(trView==='open')renderOpenTable();

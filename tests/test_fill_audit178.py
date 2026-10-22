@@ -186,3 +186,21 @@ def test_a_revision_supersedes_never_double_counts_in_attribution_or_segments():
     assert TA.segments(recs)['trades'] == 2
     win = [TA.slim_record(r) for r in recs if TA.slim_record(r)]
     assert [r['net_pnl'] for r in TA.latest_closes(win)] == [-1.0, -20.36]
+
+
+def test_a_settling_row_refreshes_the_dashboard_history():
+    """Cowork 6345088881 P2: the panel refetches /api/history only when revs()['history'] changes - a pending row that
+    settles (or is restated) must change it although no trade was added."""
+    import app as A
+    import engine as E
+    e, _ = mk_engine()
+    try:
+        k, row = _ain(e)
+        before = A.App.revs(None, e)['history']
+        _measure(e, row, -0.6)
+        mid = A.App.revs(None, e)['history']
+        assert mid != before
+        _measure(e, row, -0.7)                                                   # a later restatement too
+        assert A.App.revs(None, e)['history'] != mid
+    finally:
+        E.close_fill_writer(e.F['audit'])
