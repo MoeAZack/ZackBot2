@@ -47,5 +47,37 @@ signals, exposure/occupancy, net R/trade, PF, costs/R, drawdown, worst trade, lo
 walk-forward stability, holdout status and accounting completeness. Gross profit, win rate or trade count alone can never
 produce a green verdict.
 
+## EDGE-01A preregistered numeric gate v1
+
+These values are frozen before the first EDGE-01A baseline result. A result must pass every applicable hard gate; a strong
+score elsewhere cannot compensate. The gate may be made stricter after results are known, but not relaxed for this trial.
+
+| Dimension | Development and anchored walk-forward gate | Untouched holdout / PAPER transfer gate |
+|---|---|---|
+| Activity | At least 300 closed trades total, 100 per enabled side, and median at least 15 trades/week across CORE-10 | At least 100 complete closes over at least 14 Cairo days before a PAPER promotion verdict |
+| Normal costs | PF >= 1.25 and net expectancy >= +0.08R/trade | PF >= 1.15 and net expectancy >= +0.05R/trade |
+| Cost stress | PF >= 1.10 and positive expectancy at 1.5x the frozen fee/spread/slippage profile | Positive measured expectancy after actual fees, funding and fill adjustment |
+| Statistical margin | Trade-block bootstrap 95% lower bound of mean net R must be above zero | Direction of measured result must agree with holdout; no substitution of booked P&L |
+| Time stability | At least 70% of anchored test windows and 6 of 8 available quarters positive | No accounting-incomplete period used for a verdict |
+| Concentration | Removing the best symbol remains profitable; no symbol supplies over 35% of positive net R | Report symbol/regime shares; a single-symbol rescue is a failure |
+| Tail/risk | Max drawdown <= 12R; expected shortfall and every loss beyond -1.5R explained and stress-tested | No unprotected lot, risk-budget breach or unresolved ownership/fill mismatch |
+| Parity | Exact runtime decisions; zero unexplained live/replay decision mismatches | 100% actual-cost completeness for ranked closes |
+
+Long and short are separate promotion cells. A side that fails is disabled even when the combined strategy passes. If the
+activity floor fails, the candidate may be economically sound but does not meet the owner's frequent-trading objective and
+is not promoted into this catalog slot.
+
+The finite repair matrix is deliberately small:
+
+1. frozen baseline rules and exits;
+2. 5x expected-edge-to-round-trip-cost admission gate;
+3. item 2 plus spread/liquidity veto;
+4. item 2 plus the strategy-specific regime veto (trend alignment for `exp_scalp`, confirmed range for `range_scalp`);
+5. best still-eligible entry rule with whole-position fixed target/time cap;
+6. the same entry rule with early bank plus protected runner.
+
+No Cartesian parameter sweep is allowed. A repair that fails a development hard gate stops; it does not consume the
+holdout. The selected successor receives a new version id before shadow or PAPER use.
+
 ROADMAP FIT: Binance strategy evidence, truthful PAPER forward validation and numeric mainnet-candidate gates.
 DEFERRED: mainnet activation, new venues, unrestricted parameter mining, ML order authority and cosmetic UI work.
