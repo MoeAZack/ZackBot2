@@ -2705,10 +2705,11 @@ class Engine:
         AC.finalize_px(t, 1 if t.get('side') == 'LONG' else -1, TA.ENTRY_KINDS, now_ms=time.time() * 1000,
                        wait_ms=self.COST_WAIT_S * 1000)             # FILL-PNL-01: measured-price P&L correction
 
-    def _px_unmeasured(self, lot):
-        """FILL-PNL-01: a fill of this lot was booked at a price that is not exchange truth and has no record to bring one."""
+    def _px_unmeasured(self, lot, measured=False):
+        """FILL-PNL-01: a fill of this lot was booked without a cost record - at a price that is not exchange truth
+        (unmeasured: INCOMPLETE for good), or at the exchange's own reported price (measured: only counted for coverage)."""
         if lot is None: return
-        try: AC.px_unmeasured(lot); self._cost_final('lot', lot)
+        try: (AC.px_unlinked_ok if measured else AC.px_unmeasured)(lot); self._cost_final('lot', lot)
         except Exception as e: log.warning(f'unmeasured fill price not recorded ({e})')
 
     PX_RECOVER_AGE_S = 120                # a fill record this old cannot still be in enrichment (ENRICH_CAP_S)
@@ -3793,7 +3794,7 @@ class Engine:
             return 'unknown'
         if new > 0:
             self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
-            if not px: self._px_unmeasured(l)                            # FILL-PNL-01: booked at the TP limit
+            self._px_unmeasured(l, measured=bool(px))                     # FILL-PNL-01: no px = booked at the TP limit
             l['tp_done'] = (l.get('tp_done') or 0.0) + new
             self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
         if l['qty'] <= 0:
@@ -3944,7 +3945,7 @@ class Engine:
             if got < pd_['qty']: fin = None                              # a partial full-close finishes nothing
             if pd_['kind'] == 'close': self._apply_close(l, got, px, pd_['why'])
             else: self._apply_add(l, got, px, pd_['why'])
-            if not fr['px']: self._px_unmeasured(l)                     # FILL-PNL-01: booked at the planned price
+            self._px_unmeasured(l, measured=bool(fr['px']))              # FILL-PNL-01: no px = the planned price
             l.update(post)
             if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
                 sd = 1 if l['side'] == 'LONG' else -1
@@ -6752,7 +6753,7 @@ class Engine:
                     px = fr['px'] or plan['px']
                     log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
                     self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
-                    if not fr['px']: self._px_unmeasured(self.state['lots'].get(self._last_lot_key))   # FILL-PNL-01
+                    self._px_unmeasured(self.state['lots'].get(self._last_lot_key), measured=bool(fr['px']))   # FILL-PNL-01
                 else:
                     log.info(f"ENTRY {sym} {side} unconfirmed -> its order record shows nothing executed")
                     if u.get('prov'): self._cancel_or_park(sym, u['prov'])

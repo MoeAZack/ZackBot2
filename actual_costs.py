@@ -13,7 +13,7 @@ COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'ma
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
                'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys',
                'fill_refs', 'px_actual', 'px_missing', 'pnl_fill_adj', 'avg_fill_adj', 'fill_px_partial',   # FILL-PNL-01
-               'px_unmeasured')
+               'px_unmeasured', 'px_unlinked_ok')
 
 
 def _num(v):
@@ -176,6 +176,13 @@ def px_unmeasured(target):
     return target
 
 
+def px_unlinked_ok(target):
+    """A fill booked at an exchange-reported price that has no cost record (settled from its order record): measured,
+    but outside fill_refs - counted so the coverage check accounts for it."""
+    target['px_unlinked_ok'] = int(target.get('px_unlinked_ok') or 0) + 1
+    return target
+
+
 def apply_px(target, rec):
     """Record the exchange price of one finished fill record, once per ref. A record without one is `px_missing`.
     Returns True when the target changed."""
@@ -210,16 +217,20 @@ def finalize_px(target, sd, entry_kinds, now_ms=None, wait_ms=None):
     """Recompute pnl_fill_adj / avg_fill_adj / fill_px_partial (in place) from the fills and the measured prices so far.
     A target with no linked fill (booked before FILL-PNL-01, or never sent) is left as it is."""
     refs = [x for x in (target.get('fill_refs') or ()) if isinstance(x, (list, tuple)) and len(x) == 2]
-    if not refs and not target.get('px_unmeasured'): return target
+    if not refs and not target.get('px_unmeasured') and not target.get('px_unlinked_ok'): return target
     pa, miss = target.get('px_actual') or {}, set(target.get('px_missing') or ())
     why = {'fill_px_unmeasured'} if target.get('px_unmeasured') else set()
+    fills = target.get('fills') or []
+    # Cowork H1: every fill of a target tracked since FILL-PNL-01 is linked, flagged unmeasured or counted as measured
+    # without a record - a booked fill none of them accounts for is never silently assumed exchange-priced
+    if len(fills) > len(refs) + int(target.get('px_unmeasured') or 0) + int(target.get('px_unlinked_ok') or 0):
+        why.add('fill_ref_missing')
     for i, r in refs:
         if r in pa: continue
         if r in miss: why.add('fill_px_missing'); continue
         t = ref_ms(r)
         lost = now_ms is not None and wait_ms is not None and t is not None and now_ms - t > wait_ms
         why.add('fill_px_lost' if lost else 'fill_px_pending')
-    fills = target.get('fills') or []
     if any(not isinstance(i, int) or not 0 <= i < len(fills) for i, _ in refs): why.add('fill_ref_unmatched')
     booked = _replay(fills, sd, entry_kinds, {})
     meas = _replay(fills, sd, entry_kinds, {i: pa[r] for i, r in refs if r in pa and isinstance(i, int)})

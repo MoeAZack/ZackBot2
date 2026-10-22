@@ -150,7 +150,8 @@ def test_replay_matches_the_engine_booking_with_adds_and_partials():
              ['t', 'stop', 2.0, 9.0]]
     real, avg = AC._replay(fills, 1, TA.ENTRY_KINDS, {})
     assert real == pytest.approx(2.0 + 2 * (9.0 - 10.5)) and avg == pytest.approx(10.5)
-    lot = dict(side='LONG', fills=fills, fill_refs=[[0, 'c1-1-1'], [1, 'c1-1-2']], px_actual={'c1-1-1': 10.2, 'c1-1-2': 11.9})
+    lot = dict(side='LONG', fills=fills, fill_refs=[[0, 'c1-1-1'], [1, 'c1-1-2'], [2, 'c1-1-3'], [3, 'c1-1-4']],
+               px_actual={'c1-1-1': 10.2, 'c1-1-2': 11.9, 'c1-1-3': 11.0, 'c1-1-4': 9.0})
     AC.finalize_px(lot, 1, TA.ENTRY_KINDS)
     want = (11.9 - 10.2) * 1 + 2 * (9.0 - (10.2 + 11.0) / 2)
     assert lot['pnl_fill_adj'] == pytest.approx(want - real) and lot['fill_px_partial'] is False
@@ -294,3 +295,16 @@ def test_an_entry_over_many_executions_is_corrected_to_their_weighted_price():
     vwap = sum(float(x['qty']) * float(x['price']) for x in rows) / sum(float(x['qty']) for x in rows)
     assert r['actual'] == pytest.approx(vwap) and lot['avg'] == 100.0
     assert lot['fill_px_partial'] is False and lot['avg'] + lot['avg_fill_adj'] == pytest.approx(vwap)
+
+
+def test_an_unaccounted_fill_is_never_assumed_exchange_priced():
+    """Cowork H1: a tracked lot whose fill is neither linked, nor flagged unmeasured, nor counted as measured without a
+    record says fill_ref_missing (a future call site that forgets both cannot be silent); legacy lots stay exempt."""
+    t = dict(side='LONG', fills=[['t0', 'entry', 1.0, 10.0], ['t1', 'take_profit_1', 1.0, 12.0]], fill_refs=[[0, 'c1-1-0']])
+    AC.apply_px(t, dict(cost_ref='c1-1-0', actual=11.0)); AC.finalize_px(t, 1, TA.ENTRY_KINDS)
+    assert t['fill_px_partial'] == ['fill_ref_missing'] and t['pnl_fill_adj'] == pytest.approx(-1.0)
+    AC.px_unlinked_ok(t); AC.finalize_px(t, 1, TA.ENTRY_KINDS)            # the exit was the order record's own price
+    assert t['fill_px_partial'] is False
+    legacy = dict(side='LONG', fills=[['t0', 'entry', 1.0, 10.0], ['t1', 'tp', 1.0, 12.0]])
+    AC.finalize_px(legacy, 1, TA.ENTRY_KINDS)
+    assert 'fill_px_partial' not in legacy
