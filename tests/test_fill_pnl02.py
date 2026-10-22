@@ -194,3 +194,9 @@ def test_telegram_profit_never_shows_a_pending_row_as_actual():
         lock = threading.Lock(); history = [meas, pend]
     out = TG.TelegramControl.c_profit(object.__new__(TG.TelegramControl), _E(), ['7'], None)
     assert '(1 pending measurement)' in out and 'Net P&L: +7.00' in out and 'ETH' not in out
+
+
+def test_a_tracked_row_without_its_correction_is_never_measured():
+    """Cowork N1: a tracked row whose pnl_fill_adj never got written stays pending, never planned prices as actual."""
+    r = _row(9, 4.0, 0.5, adj=0.0); r.pop('pnl_fill_adj')
+    assert AC.row_view(r)['status'] == 'pending' and 'pnl_fill_adj_missing' in AC.measured(r)['why']

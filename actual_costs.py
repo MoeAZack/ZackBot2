@@ -323,6 +323,7 @@ def measured(row):
     if isinstance(p, (list, tuple)): why.update(str(x) for x in p)
     elif p: why.add('fill_px_partial')
     g, adj = _num(row.get('pnl_gross')), _num(row.get('pnl_fill_adj')) if 'pnl_fill_adj' in row else 0.0
+    if tracked(row) and 'pnl_fill_adj' not in row: why.add('pnl_fill_adj_missing')    # Cowork N1: never planned prices
     if g is None: why.add('pnl_unreadable'); g = 0.0
     if adj is None: why.add('pnl_fill_adj_unreadable'); adj = 0.0
     fa = _num(row.get('fees_actual'))

@@ -4173,7 +4173,8 @@ class Engine:
         if v['status'] == 'pending':
             mw = self.state.setdefault('measured_wait', {})
             mw[rec['id']] = w
-            for k in list(mw)[:-self.MEASURED_WAIT_MAX]: mw.pop(k, None)
+            for k in list(mw)[:-self.MEASURED_WAIT_MAX]:
+                mw.pop(k, None); log.warning(f'measured close {k}: waited too long among {self.MEASURED_WAIT_MAX} - its R / ML label are dropped')
             self.notify(f"⏳ CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL pending exchange fill prices · {rec['hours']}h")
             return
         self._measured_done(rec, w, v, 'CLOSED')
@@ -4184,7 +4185,7 @@ class Engine:
             self._ml_label(w['key'], dict(rec, pnl=v['pnl'], r=v['r']), w['ml'], w['ml']['audit'])
         tag = '' if v['status'] == 'measured' else ' (booked)'
         self.notify(f"{'✅' if (v['pnl'] or 0) > 0 else '❌'} {word} {rec['side']} {rec['symbol']} [{w['sleeve']}] {w['why']} · "
-                    f"PnL {v['pnl']:+.2f} USDT{tag} ({v['r']}R) · {w['hours']}h")
+                    f"PnL {v['pnl']:+.2f} USDT{tag}" + (f" ({v['r']}R)" if v['r'] is not None else '') + f" · {w['hours']}h")
 
     def _measured_followup(self, row):
         """A revised row whose close was waiting for its measured result: finish the R / ML label / notice once."""
