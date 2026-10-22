@@ -39,6 +39,11 @@ EXIT_CODE_MEANING = {
               'the market price',
     'STOP_FAILED': 'the protective stop could not be placed right after the entry, so the bot closed the position again at market',
     'BASKET_TP_PART': 'the runner part of a DCA basket target (dca_frac) closed the rest of the position',
+    # appended by RISK-FILL-01 (#179): the post-fill risk check on the MEASURED entry price
+    'RISK_TRIM': 'bot reduce-only market close of PART of the position because the measured fill made its risk exceed the '
+                 'planned budget by more than the tolerance (the kept quantity fits the plan; the stop is unchanged)',
+    'RISK_UNWIND': 'bot reduce-only market close of the WHOLE position because the measured fill put its risk at or beyond the '
+                   'ceiling (2x planned), at or through the stop, or left a remainder below the exchange minimum',
 }
 EXIT_CODES = tuple(EXIT_CODE_MEANING)
 DEPRECATED_EXIT_CODES = {}                          # code -> replacement code; a deprecated code stays in EXIT_CODES

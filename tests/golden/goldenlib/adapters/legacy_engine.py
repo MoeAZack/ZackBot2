@@ -30,7 +30,7 @@ from .base import Trace, check_costs, check_unsupported, legacy_slot, symbols, s
 REASON = {'stop': 'STOP_HIT', 'stop_crossed': 'STOP_CROSSED', 'time_exit': 'TIME_EXIT', 'exit_signal': 'SIGNAL_EXIT',
           'take_profit': 'TP_FULL', 'basket_tp': 'TP_BASKET', 'take_profit_1': 'TP_PARTIAL', 'take_profit_ladder': 'TP_LADDER',
           'liquidated': 'LIQUIDATED', 'flatten': 'FLATTEN', 'resync': 'RESYNC', 'stop_failed': 'STOP_FAILED',
-          'basket_tp_part': 'BASKET_TP_PART'}
+          'basket_tp_part': 'BASKET_TP_PART', 'risk_trim': 'RISK_TRIM', 'risk_unwind': 'RISK_UNWIND'}
 CYCLE_REASONS = {'time_exit', 'exit_signal'}     # decided at a candle close: the replay books them in the next cycle
 T0 = 260
 STEPS = 8

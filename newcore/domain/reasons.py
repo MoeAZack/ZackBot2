@@ -154,6 +154,9 @@ class ReasonCode(enum.StrEnum):
     EXEC_LEV_TIER = 'execution.lev_tier'
     # AIREL-01 AI review refusal under the fail-closed policy - appended (registry is append-only)
     FILTER_AI_UNAVAILABLE = 'filter.ai_unavailable'
+    # ---- RISK-FILL-01 (#179): post-fill risk check on the measured entry price
+    EXIT_RISK_TRIM = 'exit.risk_trim'
+    EXIT_RISK_UNWIND = 'exit.risk_unwind'
 
     @property
     def namespace(self):
@@ -286,6 +289,10 @@ MEANING = {
     R.EXEC_SIZE_MAX: 'the size is above the venue maximum order quantity (refused, never cut down)',
     R.EXEC_LEV_TIER: 'the coin position would exceed the venue notional cap for the leverage in use (Binance -2027)',
     R.FILTER_AI_UNAVAILABLE: 'the AI review was unusable and the fail-closed policy refuses the entry (never the PAPER default)',
+    R.EXIT_RISK_TRIM: 'reduce-only close of part of the position: the measured fill put its risk above the planned budget '
+                      'plus tolerance (the kept quantity fits the plan; the stop is unchanged)',
+    R.EXIT_RISK_UNWIND: 'reduce-only close of the whole position: the measured fill put its risk at or beyond the ceiling, '
+                        'at or through the stop, or left a remainder below the exchange minimum',
 }
 del R
 
@@ -300,7 +307,7 @@ DEPRECATED = {ReasonCode.FILTER_WARNING: None, ReasonCode.FILTER_AI_VETO: None}
 # zb-golden/1 exit-code registry in its append-only order, pinned from origin/golden-short-mirrors @ 0ef7402
 # (tests/golden/goldenlib/schema.EXIT_CODES in the tree must be a prefix of it).
 GOLDEN_EXIT_CODES = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP_PARTIAL', 'TP_LADDER', 'LIQUIDATED',
-                     'FLATTEN', 'STOP_CROSSED', 'RESYNC', 'STOP_FAILED', 'BASKET_TP_PART')
+                     'FLATTEN', 'STOP_CROSSED', 'RESYNC', 'STOP_FAILED', 'BASKET_TP_PART', 'RISK_TRIM', 'RISK_UNWIND')
 
 GOLDEN_EXIT = {
     ReasonCode.EXIT_STOP: 'STOP_HIT',
@@ -316,6 +323,8 @@ GOLDEN_EXIT = {
     ReasonCode.EXIT_FLATTEN: 'FLATTEN',
     ReasonCode.EXIT_RESYNC: 'RESYNC',
     ReasonCode.EXIT_STOP_FAILED: 'STOP_FAILED',
+    ReasonCode.EXIT_RISK_TRIM: 'RISK_TRIM',
+    ReasonCode.EXIT_RISK_UNWIND: 'RISK_UNWIND',
     ReasonCode.EXIT_MANUAL: None,           # an operator-requested bot close: no zb-golden/1 code
 }
 
