@@ -123,5 +123,18 @@ window: current defaults, long and short separately, with no parameter or manage
 family trial ledger and use the EDGE-01A numeric gate. A failing side is parked; a passing side is only a candidate for the
 execution-grade adapter and cannot advance directly to PAPER. The untouched holdout remains closed.
 
+Result: both sides failed decisively. Long produced 1,839 trades, PF 0.693 and -373.07R (packet
+`90dc81321ac1...`); short produced 1,780 trades, PF 0.663 and -375.05R (packet `bec876c40fa0...`). New
+`SC-FAILBRK` entries were stopped; protected open lots remain managed. No repair was inferred from these results.
+
+## EDGE-01B-02 bounded scout: momentum-burst side asymmetry
+
+This starts only after EDGE-01B-01 completed. Existing PAPER development evidence showed `SC-MBURST` short at 18 closes
+and about -0.26R/trade, while long had only 6 closes at about +0.38R/trade. That observation selected the hypothesis and
+is not a holdout. Run exactly two simplified CORE-10 cells on the same development window: the unchanged
+`momentum_burst_scalp` defaults, long and short separately. There is no parameter, management or symbol search. Both
+cells count in the family trial ledger and use the same hard gate. A failing side is parked; a passing side remains only
+an execution-adapter candidate. The untouched holdout remains closed.
+
 ROADMAP FIT: Binance strategy evidence, truthful PAPER forward validation and numeric mainnet-candidate gates.
 DEFERRED: mainnet activation, new venues, unrestricted parameter mining, ML order authority and cosmetic UI work.
