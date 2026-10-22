@@ -90,3 +90,18 @@ def test_179_xrp_short_partial_tp1_measured_net():
     assert booked + t['pnl_fill_adj'] == pytest.approx(3.13819837, abs=1e-6)
     assert booked + t['pnl_fill_adj'] - 1.32834984 - 1.32709459 == pytest.approx(0.48275394, abs=1e-6)
     assert avg + t['avg_fill_adj'] == pytest.approx(1.3524780803, abs=1e-10)       # remainder basis = measured entry
+
+
+def test_179_xrp_short_full_close_measured_net():
+    """Codex 6331145434: the 1,052.4 runner closed measured at 1.3454 -> gross +7.44897171, fees 0.56933916 +
+    0.56635958 -> net +6.31327297. Whole trade: net +6.79602691 vs pre-fix booked +25.1441 (3.70x overstated)."""
+    t = dict(side='SHORT', fills=[['t0', 'entry', 3507.8, 1.35508], ['t1', 'take_profit_1', 2455.4, 1.3501],
+                                  ['t2', 'exit', 1052.4, 1.3440]],
+             fill_refs=[[0, 'c1-1-0'], [1, 'c1-1-1'], [2, 'c1-1-2']])
+    for r, px in (('c1-1-0', 1.3524780803), ('c1-1-1', 1.3512), ('c1-1-2', 1.3454)): AC.apply_px(t, dict(cost_ref=r, actual=px))
+    AC.finalize_px(t, -1, TA.ENTRY_KINDS)
+    booked, _ = AC._replay(t['fills'], -1, TA.ENTRY_KINDS, {})
+    fees = 1.32834984 + 1.32709459 + 0.56933916 + 0.56635958
+    assert t['fill_px_partial'] is False
+    assert booked + t['pnl_fill_adj'] == pytest.approx(3.13819837 + 7.44897171, abs=1e-6)
+    assert booked + t['pnl_fill_adj'] - fees == pytest.approx(6.79602691, abs=1e-6)
