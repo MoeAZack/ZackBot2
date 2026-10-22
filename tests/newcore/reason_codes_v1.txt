@@ -117,3 +117,5 @@ capacity.gold_family_cap
 execution.size_max
 execution.lev_tier
 filter.ai_unavailable
+exit.risk_trim
+exit.risk_unwind

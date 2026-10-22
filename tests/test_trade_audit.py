@@ -1,9 +1,19 @@
+import pytest
 """T05a draft: pure trade-audit functions (observe only)."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import trade_audit as TA                                                  # noqa: E402
 
+
+
+def settle(e):
+    """#178 canary: the close audit is written once the row is measured. The fake exchange delivers no cost records -
+    mark every closed row measured at its booked prices and run the real revision hook (as the ML tests do)."""
+    for r in e.history:
+        if r.get('fill_px_partial') or r.get('fees_actual') is None:
+            r.update(fees_actual=r.get('fees') or 0.0, fees_actual_partial=False, fill_px_partial=False)
+            e._row_changed(r)
 
 def lot(side='LONG', avg=100.0, qty=1.0, **k):
     return dict(dict(symbol='BTCUSDT', side=side, avg=avg, qty=qty, e0=avg, R=2.0, risk_usd=2.0, mgmt=dict(tp_r=2.0)), **k)
@@ -68,7 +78,7 @@ def test_engine_records_excursions_and_writes_an_audit_record_at_close():
     ex = e.state['lots'][k]['ex']
     assert ex['mfe_px'] == 104.0 and ex['mae_px'] == 99.5 and ex['n'] >= 4
     e.close_lot(k, 'signal', mark=102.0)
-    assert e._auditw.flush(5)
+    settle(e); assert e._auditw.flush(5)
     rec = [json.loads(l) for l in open(e.F['audit'])][-1]
     assert rec['kind'] == 'trade_audit' and rec['id'] == k and rec['mfe_px'] == 104.0 and rec['giveback'] > 0
     assert {c['kind'] for c in rec['counterfactuals']} >= {'hindsight_ceiling', 'causal_policy'}
@@ -282,7 +292,7 @@ def test_engine_audit_summary_reads_the_window_and_skips_malformed_lines():
         assert a['telemetry']['invalid_records'] == 3 and a['telemetry']['in_window'] == 1
         assert a['funnel'].get('filter/paused') == 1
         k = opened(e2); e2.trade.mark['BTCUSDT'] = 103.0; e2.manage(e2.trade.marks()); e2.close_lot(k, 'signal', mark=103.0)
-        assert e2._auditw.flush(5)
+        settle(e2); assert e2._auditw.flush(5)
         assert e2.audit_summary()['closes'] == 2
     finally:
         E.close_fill_writer(e2.F['audit'])
@@ -344,7 +354,7 @@ import ast, json                                                           # noq
 
 
 def _last_audit(e):
-    assert e._auditw.flush(5)
+    settle(e); assert e._auditw.flush(5)
     return [json.loads(x) for x in open(e.F['audit'])][-1]
 
 
@@ -393,7 +403,10 @@ def test_hindsight_ceiling_on_an_exchange_stop_includes_banked_partials_and_all_
         assert e.history[-1]['exit_reason'] == 'stop'
         rec = _last_audit(e); hc = _cf(rec, 'hindsight_ceiling')
         assert hc['value'] == 3.898 and hc['final_qty'] == 0.5
-        assert rec['net_pnl'] == round(2.0 - 2.5 - (0.05 + 0.026 + 0.5 * 95 * 0.0005), 6)
+        # #178: net_pnl is the row's settled net (its 4-dp gross / fees), the same figure every consumer shows
+        assert rec['net_pnl'] == pytest.approx(2.0 - 2.5 - (0.05 + 0.026 + 0.5 * 95 * 0.0005), abs=1e-4)
+        assert rec['net_basis'] == 'measured' and rec['qty_mismatch'] is None
+        assert 'cohort ledger does not reconcile' not in (rec['coverage_why'] or ())
     finally:
         E.close_fill_writer(e.F['audit'])
 
@@ -841,7 +854,7 @@ def test_engine_audit_summary_is_cached_until_the_window_or_missed_changes(monke
         assert len(calls) == 1 and a['funnel'] == b['funnel'] and 'telemetry' in b
         e.miss(SL, 'BTCUSDT', 'LONG', dict(SG, time='2026-10-04 08:00:00'), 'entries paused')
         c = e.audit_summary(); assert len(calls) == 2 and c['funnel'].get('filter/paused') == 1
-        e._auditw.emit(dict(kind='trade_audit', sleeve='Z', tf='1h', side='LONG', r=1.0)); assert e._auditw.flush(5)
+        e._auditw.emit(dict(kind='trade_audit', sleeve='Z', tf='1h', side='LONG', r=1.0)); settle(e); assert e._auditw.flush(5)
         d = e.audit_summary(); assert len(calls) == 3 and any(g['sleeve'] == 'Z' for g in d['groups'])
         d['groups'] = None; assert e.audit_summary()['groups'] and len(calls) == 3      # callers cannot corrupt the cache
     finally:
@@ -865,7 +878,7 @@ def test_restart_continues_from_the_newest_checkpoint_and_records_the_gap(monkey
         _walk(e, (100.0, 100.4, 101.2, 100.6))                            # small moves: no stop/partial/add
         assert e.state['lots'][k]['ex']['mfe_px'] == 101.2 and e.state['lots'][k]['ex']['n'] == 4
         assert 'ex' not in json.load(open(e.F['state']))['lots'][k]      # the mark loop did NOT save state for the audit
-        assert e._auditw.flush(5)
+        settle(e); assert e._auditw.flush(5)
     finally:
         E.close_fill_writer(e.F['audit'])
     e2, _ = mk_engine(tmp); _carry(e, e2)
@@ -893,7 +906,7 @@ def test_rate_limited_checkpoints_lose_only_what_the_gap_says():
     try:
         k = opened(e)
         _walk(e, (100.0, 100.4, 101.2, 100.6))
-        assert e._auditw.flush(5)
+        settle(e); assert e._auditw.flush(5)
         cks = [json.loads(x) for x in open(e.F['audit']) if '"excursion"' in x]
         assert len(cks) == 1 and cks[0]['n'] == 1                          # forced first-observation checkpoint only
     finally:
@@ -1071,7 +1084,7 @@ def _clocked(monkeypatch, start=datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc
 
 
 def _events(e, kind=None):
-    assert e._auditw.flush(5)
+    settle(e); assert e._auditw.flush(5)
     rows = [json.loads(x) for x in open(e.F['audit'])] if os.path.exists(e.F['audit']) else []
     return [r for r in rows if kind is None or r.get('kind') == kind]
 

@@ -74,6 +74,18 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import actual_costs as AC       # noqa: E402
+
+
+def _hist_view(h):
+    """#178 (Codex 6343115717): a closed row as the dashboard shows it - pnl / r are the row's SETTLED (measured /
+    acknowledged) values; a pending row shows none (never the booked figure as actual). Booked values stay beside them.
+    The stored row is not changed."""
+    try:
+        v = AC.row_view(h)
+        if v['status'] == 'booked': return h
+        return dict(h, pnl=v['pnl'], r=v['r'], pnl_status=v['status'], pnl_booked=h.get('pnl'), r_booked=h.get('r'))
+    except Exception:
+        return dict(h, pnl=None, r=None, pnl_status='pending', pnl_booked=h.get('pnl'), r_booked=h.get('r'))
 import lab as LAB               # noqa: E402
 import feasibility as F         # noqa: E402
 import instance as INST         # noqa: E402  (AUD-00: one process per data folder / account)
@@ -1056,6 +1068,7 @@ class App:
                              exit=_safe(lambda: e.exit_plan(l)),
                              mark=m, pnl=pnl, r=(pnl / l['risk_usd']) if (pnl is not None and l.get('risk_usd')) else None,
                              pnl_status='pending' if basis is None else 'measured',
+                             risk_fill=e.risk_fill_view(l),                 # RISK-FILL-01: planned vs measured risk, action
                              risk_to_stop=sd * ((m or l['avg']) - l['stop']) * l['qty'], notional=(m or l['avg']) * l['qty']))
         return lots
 
@@ -1093,7 +1106,8 @@ class App:
         hl = e.history[-1]['id'] if e.history else ''
         ml = e.missed[-1]['logged'] if e.missed else ''
         eh = e.equity_hist[-1][0] if e.equity_hist else 0
-        return dict(history=f'{len(e.history)}:{hl}', missed=f'{len(e.missed)}:{ml}', signals=str(e.signals_time),
+        cr = sum(int(h.get('cost_rev') or 0) for h in e.history)   # #178: a settled / restated row refreshes the table
+        return dict(history=f'{len(e.history)}:{hl}:{cr}', missed=f'{len(e.missed)}:{ml}', signals=str(e.signals_time),
                     equity=f'{len(e.equity_hist)}:{eh}', meta=VERSION)
 
     def snapshot(self):
@@ -1329,7 +1343,8 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
                 e = APP.engine
                 return self._json(e.audit_summary() if hasattr(e, 'audit_summary') else dict(error='no audit'))
-            if p == '/api/history': return self._json(dict(rev=APP.revs(APP.engine)['history'], history=APP.engine.history[-1500:]))
+            if p == '/api/history': return self._json(dict(rev=APP.revs(APP.engine)['history'],
+                                                           history=[_hist_view(h) for h in APP.engine.history[-1500:]]))
             if p == '/api/missed': return self._json(dict(rev=APP.revs(APP.engine)['missed'], missed=APP.missed_view()))
             if p == '/api/signals':
                 e = APP.engine
