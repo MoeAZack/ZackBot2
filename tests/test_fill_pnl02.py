@@ -310,3 +310,13 @@ def test_open_lot_with_pending_entry_price_shows_pending_in_app_and_telegram():
     assert v['pnl'] is None and v['pnl_status'] == 'pending'
     l['fill_px_partial'] = False; l['avg_fill_adj'] = 0.0
     assert TG.TelegramControl._lots(object.__new__(TG.TelegramControl), e)[0]['pnl'] == pytest.approx(10.0 * l['qty'])
+
+
+def test_paper_books_acknowledged_row_uses_its_actual_fees():
+    """Cowork 6346648762: an operator-acknowledged row adds its settled net AND its actual fees - never the booked estimate."""
+    ack = _row(3, 10.0, 0.30, adj=0.0, partial=['fill_px_lost']); ack.update(book='B1_FAST', fees=0.20)
+    ok, _ = AC.acknowledge(ack, 9.5, 'exchange statement', '2026-10-22T00:00:00')
+    assert ok and AC.row_view(ack)['status'] == 'acknowledged'
+    b = next(x for x in PB.summary(10000.0, 10000.0, history=[ack]) if x['id'] == 'B1_FAST')
+    assert b['net_pnl'] == pytest.approx(AC.row_view(ack)['pnl']) and b['fees'] == pytest.approx(AC.measured(ack)['fees'])
+    assert b['fees'] != pytest.approx(0.20)

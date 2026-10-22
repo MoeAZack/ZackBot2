@@ -45,7 +45,7 @@ def summary(equity, cap, lots=(), history=()):
         b = out[k]; b['closed'] += 1
         v = AC.row_view(row)                     # FILL-PNL-02: the measured net; a pending row is counted, never valued
         if v['status'] == 'pending': b['pending'] += 1; continue
-        b['net_pnl'] += float(v['pnl'] or 0.0); b['fees'] += float(AC.measured(row)['fees'] if v['status'] == 'measured'
+        b['net_pnl'] += float(v['pnl'] or 0.0); b['fees'] += float(AC.measured(row)['fees'] if v['status'] in ('measured', 'acknowledged')
                                                                   else row.get('fees') or 0.0)
     for b in out.values():
         for x in ('open_risk', 'net_pnl', 'fees'): b[x] = round(b[x], 2)
