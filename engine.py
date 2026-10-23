@@ -3936,6 +3936,7 @@ class Engine:
                                "booked - nothing is sent")
 
     BOOK_PROBE_WAIT_S = 1.0               # TP-SLIP-01: after a market close is answered, wait at most this for its book read
+    BOOK_PROBE_URGENT = ('flatten', 'risk_trim')   # risk-reducing closes never wait on evidence (the next order goes first)
 
     def _book_probe(self, sym):
         """TP-SLIP-01 (#189) evidence: the testnet best bid / ask, read CONCURRENTLY with a market close - started just
@@ -3953,14 +3954,15 @@ class Engine:
         th.start()
         return th, box
 
-    def _book_snapshot(self, probe, mark, buy, qty):
+    def _book_snapshot(self, probe, mark, buy, qty, urgent=False):
         """The probe's result for the fill record: touch price / quantity on the side the close takes, its distance from
         the decision mark in bps (+ = the book was worse than the mark) and how much of the order the touch covered.
         Evidence only - never used by any decision. None without a probe; {'missing': why} when it did not answer."""
         if probe is None: return None
         th, box = probe
-        th.join(self.BOOK_PROBE_WAIT_S)
+        th.join(0 if urgent else self.BOOK_PROBE_WAIT_S)
         b = box.get('b')
+        if urgent and th.is_alive(): return dict(missing='safety_deferred')
         if th.is_alive() or not isinstance(b, dict): return dict(missing=box.get('err') or ('timeout' if th.is_alive() else 'bad_answer'))
         bid, ask, bq, aq = (_fnum(b.get(k)) for k in ('bidPrice', 'askPrice', 'bidQty', 'askQty'))
         touch, tq = (ask, aq) if buy else (bid, bq)
@@ -3989,7 +3991,7 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
-            book = self._book_snapshot(probe, mark, lot['side'] == 'SHORT', qty)
+            book = self._book_snapshot(probe, px, lot['side'] == 'SHORT', qty, urgent=why in self.BOOK_PROBE_URGENT)
             ref = (self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
                        book=book, **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)

@@ -115,3 +115,48 @@ def test_client_book_ticker_is_public_unsigned_and_on_the_audit_session():
     assert c.book_ticker('BTCUSDT')['bidPrice'] == '99.90'
     m, path, p = calls[0]
     assert (m, path) == ('GET', '/v1/ticker/bookTicker') and p == {'symbol': 'BTCUSDT'}       # no timestamp / signature
+
+
+# ------------------------------------------------------------------ Codex #195 ruling: urgent closes never wait on evidence
+def _two_lots(cls):
+    e, _ = mk(cls); opened(e, 'BTCUSDT'); opened(e, 'ETHUSDT')
+    return e
+
+
+def test_flatten_with_a_hung_probe_adds_no_serial_wait(monkeypatch):
+    monkeypatch.setattr(E.Engine, 'BOOK_PROBE_WAIT_S', 2.0)              # a normal close would wait 2 s per lot
+    BX.hold = threading.Event()
+    e = _two_lots(BX)
+    t = time.time(); e.flatten(); dt = time.time() - t
+    BX.hold.set()
+    rs = recs(e, 'exit')
+    assert dt < 1.0 and len(rs) == 2 and BX.bt_calls == 2                # probe started, never waited for
+    assert all(r['book'] == {'missing': 'safety_deferred'} and r['outcome'] == 'filled' for r in rs)
+    ref = _two_lots(EX); ref.flatten(); recs(ref)
+    assert e.trade.order_log == ref.trade.order_log                      # identical close orders
+
+
+def test_risk_trim_with_a_hung_probe_adds_no_wait(monkeypatch):
+    monkeypatch.setattr(E.Engine, 'BOOK_PROBE_WAIT_S', 2.0)
+    BX.hold = threading.Event()
+    e, _ = mk(BX); k = opened(e); lot = e.state['lots'][k]
+    t = time.time(); e._market_close(lot, lot['qty'] / 2, 'risk_trim', 101.0); dt = time.time() - t
+    BX.hold.set()
+    r = one(e, 'exit')
+    assert dt < 1.0 and r['book'] == {'missing': 'safety_deferred'} and r['outcome'] == 'filled'
+    ref, _ = mk(EX); k2 = opened(ref); l2 = ref.state['lots'][k2]
+    ref._market_close(l2, l2['qty'] / 2, 'risk_trim', 101.0); recs(ref)
+    assert e.trade.order_log == ref.trade.order_log
+
+
+def test_normal_close_still_waits_for_the_book():
+    _, r, _ = closed('LONG')
+    assert 'missing' not in r['book'] and r['book']['bid'] == 99.9
+
+
+def test_markless_close_measures_against_the_booking_price():
+    e, _ = mk(BX); k = opened(e); lot = e.state['lots'][k]
+    avg = lot['avg']
+    e._market_close(lot, lot['qty'], 'signal', None)
+    b = one(e, 'exit')['book']
+    assert b['touch_vs_mark_bps'] == pytest.approx((avg - 99.9) / avg * 1e4, abs=0.01)
