@@ -24,22 +24,37 @@ entries. The group changes at 03:00 Cairo. Disabled strategies are never deleted
 
 ## Current forward books
 
-| Book | Closed | Open | Rankable now | Point-in-time result |
-|---|---:|---:|---|---|
-| B1 Fast / scalp | 73 | 4 | Yes | roughly -7% from its $2,000 start; dominated by failed fast versions and cost drag |
-| B2 Range / VWAP | 3 | 1 | Yes, sample tiny | roughly +0.7% |
-| B3 Trend / momentum | 2 | 2 | Yes, sample tiny | roughly -3.5% |
-| B4 Breakout / structure | 3 | 2 | No | near flat, but two historical fills remain unresolved |
-| B5 Discovery | 2 | 0 | Yes, sample tiny | roughly +0.3% |
+| Book | Closed (n) | Open | Measured / booked closes | Build / cohort | Rankable now | Point-in-time result |
+|---|---:|---:|---|---|---|---|
+| B1 Fast / scalp | 73 | 4 | [DATA: measured n / booked n] | [DATA: per build/cohort split] | Describable only, not a verdict | roughly -7% from its $2,000 start (n=73); dominated by failed fast versions and cost drag |
+| B2 Range / VWAP | 3 | 1 | [DATA] | [DATA] | **No** (n=3) | roughly +0.7% (n=3) |
+| B3 Trend / momentum | 2 | 2 | [DATA] | [DATA] | **No** (n=2) | roughly -3.5% (n=2) |
+| B4 Breakout / structure | 3 | 2 | [DATA]; two historical fills unresolved | [DATA] | **No** (n=3, incomplete) | near flat (n=3) |
+| B5 Discovery | 2 | 0 | [DATA] | [DATA] | **No** (n=2) | roughly +0.3% (n=2) |
 
-Only B1 has enough closes to describe, and even B1 is not a durable strategy verdict. B2–B5 are far too small. Book
-results share exchange margin and are attribution views, not independent accounts.
+Only B1 has enough closes to describe, and even B1 is not a durable strategy verdict. B2, B3 and B5 are not rankable
+at these sample sizes, and B4 is not rankable while fills are unresolved. Book results share exchange margin and are
+attribution views, not independent accounts. Forward rows are attributed to the PAPER build / shadow cohort that
+produced them: rows from superseded builds or retired strategy versions are reported separately and never pooled with
+the current build's rows.
+
+### `quick_bank_runner` (measured-net closed rows)
+
+| Window (Cairo) | Closed n (measured net) | Mean net R | Uncertainty | Open lots |
+|---|---:|---:|---|---:|
+| [DATA: first close .. snapshot] | [DATA] | [DATA] | [DATA: e.g. 95 % interval / t] | [DATA] |
+
+Only closed rows with a measured net (exchange fill price and fee) are counted; booked-only rows are listed, not
+pooled. **Limitation:** open lots that have taken TP1 show only their realised first leg; their remainder is unrealised,
+so a TP1-heavy open book can look better than its eventual closed result. The figure above excludes open lots.
 
 ## Shadow lanes
 
 - Strategy shadow records all six 15m candidates (`exp_scalp`, `exp_structure`, `failed_breakout_scalp`,
   `momentum_burst_scalp`, `quick_bank_runner`, `range_scalp`) every cycle, including signals skipped because the slot is
-  parked, rotated out or the book is full. The current cohort had 9,663 shadow records at this snapshot.
+  parked, rotated out or the book is full. Coverage at this snapshot: [DATA: expected cycles x candidates] expected,
+  [DATA] observed ([DATA] %); a raw record count (9,663) is not a coverage measure. Its fixed-cost model shows that
+  signals are captured; it does not show that any of them is profitable.
 - ML shadow records features and later outcome labels only. It had 213 current-file decisions and 238 labels, plus its
   rotated history. It cannot approve, size, block or place an order. Historical feature missingness must be repaired and
   coverage-proven before model training can influence even a formal candidate score.
@@ -55,7 +70,8 @@ SOL, XRP, BNB and DOGE twins, across 21 strategy-side cells on 15m and 4h data f
 
 The packet is `INCOMPLETE`, `non_promotable`, and explicitly says `USDC BETTER: UNAVAILABLE`. The equal-5bp isolation
 row shows that quote differences are generally much smaller than strategy differences. Several 4h cells were positive on
-both quotes, but the fee-promotion window, standard non-promotional USDC fee schedule, multi-quarter sufficiency and
+both quotes; with 21 strategy-side cells compared on two quotes, these are multiplicity-adjusted hypotheses from an
+`INCOMPLETE` packet, not findings. The fee-promotion window, standard non-promotional USDC fee schedule, multi-quarter sufficiency and
 execution calibration are not frozen strongly enough for a routing decision. No agent may describe USDC as better or
 enable it from this packet.
 
@@ -64,9 +80,12 @@ enable it from this packet.
 1. Finish the exact 1m-under-15m adapter and reconcile why current `quick_bank_runner` PAPER evidence is mildly positive
    while its simplified historical cells are deeply negative. This contradiction is higher priority than inventing a new
    fast strategy.
-2. Re-evaluate the strongest existing 4h research cells with the same execution/cost standard: regime-aware
-   `pullback_rsi` short, `rotation` long, `exp_trend` long and `ema_mom` long. Their earlier results are hypotheses, not
-   promotions, and their activity may be too low for the owner's frequent-trading catalog.
+2. Re-evaluate the strongest existing 4h research cells with the same execution/cost standard, labelled as
+   hypotheses: **H1** regime-aware `pullback_rsi` short, **H2** `rotation` long, **H3** `exp_trend` long, **H4**
+   `ema_mom` long. They were selected after [DATA: full prior trial count across every earlier test of these families]
+   prior trials, so their earlier results are hypotheses, not promotions. Each must beat a buy-and-hold baseline on the
+   same symbols and window, after costs, before it counts. Their trade frequency is low, which conflicts with the
+   owner's frequent-trading catalog: a survivor joins it only as a low-frequency book, labelled as such.
 3. Then scout one preregistered frequent hypothesis at a time: regime-gated trend pullback; volatility-compression
    breakout with liquidity/cost admission; cross-sectional relative-strength continuation; and funding/open-interest
    dislocation mean reversion. Long and short remain separate cells.
