@@ -230,7 +230,9 @@ def run(*, store: str, notice: str, notice_sha256: str, addon: str, addon_sha256
     _cid, vrec = PR.rex_variant(VARIANT)
     with open(addon, 'rb') as fh:
         raw = fh.read()
-    added = RA.validate(RA.load_pinned(raw, addon_sha256), addon_report, manifest_digest=src['manifest']['digest'],
+    with open(addon_report, encoding='utf-8') as fh:
+        report = json.load(fh)                      # run_r4: the signed gap report is passed parsed
+    added = RA.validate(RA.load_pinned(raw, addon_sha256), report, manifest_digest=src['manifest']['digest'],
                         symbols=symbols, lo=dev_lo, hi=dev_hi, cutoff=PR.rex_sealed_cutoff(plan), zips=addon_zips,
                         addon_sha256=addon_sha256)
     ds = PR.StaticDataset(src['manifest'], store, src['static'], symbols)
