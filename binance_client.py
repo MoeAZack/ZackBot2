@@ -370,11 +370,11 @@ class Futures:
         st = self._audit_state()
         with st['lock']: st['until'] = max(st['until'], time.monotonic() + max(0.0, float(seconds or 0)))
 
-    def _audit_req(self, path, params):
+    def _audit_req(self, path, params, signed=True):
         if self.audit_blocked():
             raise AuditSkipped(f'audit read {path} not sent (cooldown)')
         try:
-            r, data = self._once('GET', self.base + path, params, True, sess=self._audit_session(), timeout=AUDIT_TIMEOUT_S)
+            r, data = self._once('GET', self.base + path, params, signed, sess=self._audit_session(), timeout=AUDIT_TIMEOUT_S)
         except requests.RequestException as ex:
             raise _scrubbed(ex) from None
         code = data.get('code') if isinstance(data, dict) else None
@@ -389,6 +389,11 @@ class Futures:
         if isinstance(data, dict) and code not in (None, 0, 200):
             raise BinanceError(code, data.get('msg'))
         return data
+
+    def book_ticker(self, symbol):
+        """TP-SLIP-01 (read-only audit path, public, unsigned): best bid / ask price and quantity of one symbol and the
+        exchange's own time. One attempt; never drives the T05b circuit."""
+        return self._audit_req('/fapi/v1/ticker/bookTicker', dict(symbol=symbol), signed=False)
 
     def user_trades(self, symbol, order_id):
         """EXEC-CAL-00 (read-only audit path): this account's executions of ONE order (price, qty, commission,
