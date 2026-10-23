@@ -1138,7 +1138,7 @@ class App:
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
                          ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status), ('book_ledger', e.book_ledger_status),
-                         ('true_books', e.true_books_status)):
+                         ('true_books', e.true_books_status), ('slippage', e.slippage_status)):
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
