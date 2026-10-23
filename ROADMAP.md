@@ -362,6 +362,13 @@ A high score **never** changes settings automatically.
   readings; ranked candidates are research priorities only. B0 baseline versus B1 ranking, B2 risk/catalyst veto and B3
   full-committee comparisons are pre-registered in `docs/TA_SCOUT_01.md`. All variants remain shadow until sealed
   walk-forward evidence, point-in-time inputs and independent acceptance exist.
+- **AI-SCAN-01 causal chart scanner and calibrated shadow dashboard:** extend TA-SCOUT-01 with an immutable per-signal
+  ledger, sortable cross-coin scanner and signal detail for the rules decision, shadow opinion, evidence coverage,
+  disagreement, causal entry/stop/target plan, measured cost estimate and later outcome. A probability is shown only
+  after frozen calibration evidence; otherwise it is visibly `UNVERIFIED` or `INSUFFICIENT`. The scanner is queued,
+  PAPER/shadow-only and cannot block management or mutate eligibility, sizing, orders, stops or exits. B0 versus B1
+  is evaluated with anchored walk-forward and untouched holdout before any authority discussion. Contract:
+  `docs/AI_SCAN_01.md`; tracking: GitHub issue #199.
 
 ### Phase 11 — TradingView and real news
 
