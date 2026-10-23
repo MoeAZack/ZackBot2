@@ -160,3 +160,16 @@ def test_markless_close_measures_against_the_booking_price():
     e._market_close(lot, lot['qty'], 'signal', None)
     b = one(e, 'exit')['book']
     assert b['touch_vs_mark_bps'] == pytest.approx((avg - 99.9) / avg * 1e4, abs=0.01)
+
+
+@pytest.mark.parametrize('why', ['risk_unwind', 'stop_crossed', 'stop_failed'])
+def test_protective_closes_with_a_hung_probe_add_no_wait(monkeypatch, why):
+    monkeypatch.setattr(E.Engine, 'BOOK_PROBE_WAIT_S', 2.0)
+    BX.hold = threading.Event()
+    e, _ = mk(BX); k = opened(e)
+    t = time.time(); e.close_lot(k, why, 101.0); dt = time.time() - t
+    BX.hold.set()
+    r = one(e, 'exit')
+    assert dt < 1.0 and BX.bt_calls == 1 and r['book'] == {'missing': 'safety_deferred'} and r['outcome'] == 'filled'
+    ref, _ = mk(EX); k2 = opened(ref); ref.close_lot(k2, why, 101.0); recs(ref)
+    assert e.trade.order_log == ref.trade.order_log
