@@ -45,7 +45,25 @@ VARIANT = 'range_vwap_rev.v1-splitcut'
 DEV_WINDOW = '2021-01-04T00:00:00Z/2026-09-28T00:00:00Z'
 PREDICATES = ('off_grid', 'missing_anchor', 'nonconsecutive_pair', 'uncovered_terminal')
 NEAR_H = 24                                        # nearby rows: +- this many hours around the failing instant
-FORBIDDEN = ('rate', 'mark', 'net', 'pnl', 'r', 'qty', 'trades', 'wallet', 'cost', 'fees', 'equity', 'signals')
+# The omission contract as an explicit output-schema ALLOWLIST (Codex 6362587273): every key a report may carry, with
+# its exact leaf types. Anything else - a new key, a float, a nested object where a leaf belongs - refuses.
+_S, _I, _B, _N = str, int, bool, type(None)
+_CENSOR = {'reason': (_S, _N), 'class': (_S, _N), 'symbol': (_S, _N), 'phase': (_S, _N),
+           **{f + sfx: (t, _N) for f in ('cycle', 'first_unaccountable', 'last_valid')
+              for sfx, t in (('_ms', _I), ('_utc', _S))}}
+_NEAR = {'time_ms': (_I,), 'utc': (_S,), 't_nom_ms': (_I, _N), 't_nom_utc': (_S, _N),
+         'interval_hours': (_I, _S, _N), 'interval_type': (_S,)}
+_CELL = {'split': (_S,), 'side': (_S,), 'config': (_S,), 'row': (_S,), 'status': (_S, _N), 'censor': _CENSOR,
+         'predicate': (_S, _N), 'note': (_S,), 'failing_ms': (_I,), 'failing_utc': (_S,), 'inclusive': (_B,),
+         'entry_open_ms': (_I,), 'entry_open_utc': (_S,), 'bar_lo_ms': (_I,), 'bar_lo_utc': (_S,),
+         'bar_hi_ms': (_I,), 'bar_hi_utc': (_S,), 'causal': (_B,), 'nearby_rows': [_NEAR]}
+SCHEMA = {'format': (_S,), 'purpose': (_S,), 'evaluator_path': (_S,),
+          'split': {'key': (_S,), 'lo': (_S,), 'hi': (_S,), 'first_decision': (_S,)},
+          'access_window': {'lo': (_S,), 'hi': (_S,), 'mirror': (_S,)},
+          'variant': (_S,), 'manifest_digest': (_S, _N), 'universe': (_S, _N), 'notice_sha256': (_S,),
+          'addon_sha256': (_S,), 'addon_provenance_digest': (_S, _N), 'symbols': [(_S,)], 'predicates': [(_S,)],
+          'cells': [_CELL], 'files_read': [{'path': (_S,), 'sha256': (_S,)}],
+          'provenance': {'commit': (_S,), 'clean': (_B,)}}
 HOUR = RV.HOUR
 
 
@@ -161,18 +179,31 @@ def cell_record(k, rec: dict) -> dict:
     return out
 
 
-def assert_blind(doc) -> None:
-    """Refuse a report that carries any performance / rate field name (the omission contract)."""
-    def walk(o, path):
-        if isinstance(o, dict):
+def check_schema(doc, schema, err=None) -> None:
+    """Refuse `doc` unless every key is in the allowlist `schema` and every leaf has one of its exact types (a dict
+    schema is an object, [s] a list of s, a tuple the allowed leaf types; bool never passes as int)."""
+    err = err or G3Error
+    def walk(o, sc, path):
+        if isinstance(sc, dict):
+            if type(o) is not dict:
+                raise err(f'omission contract: {path or "/"} must be an object')
             for key, v in o.items():
-                if key in FORBIDDEN:
-                    raise G3Error(f'omission contract: field {path}/{key} is not allowed in a G3 report')
-                walk(v, f'{path}/{key}')
-        elif isinstance(o, list):
+                if key not in sc:
+                    raise err(f'omission contract: field {path}/{key} is not in the report allowlist')
+                walk(v, sc[key], f'{path}/{key}')
+        elif isinstance(sc, list):
+            if type(o) is not list:
+                raise err(f'omission contract: {path} must be a list')
             for v in o:
-                walk(v, path)
-    walk(doc, '')
+                walk(v, sc[0], f'{path}[]')
+        elif type(o) not in sc:
+            raise err(f'omission contract: {path} has type {type(o).__name__}, allowed {[t.__name__ for t in sc]}')
+    walk(doc, schema, '')
+
+
+def assert_blind(doc) -> None:
+    """The G3 omission contract: the report matches SCHEMA exactly (no rate, result or any unlisted field)."""
+    check_schema(doc, SCHEMA)
 
 
 # ------------------------------------------------------------------ the tape (mirror of the Access read)
