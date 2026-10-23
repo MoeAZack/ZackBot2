@@ -1,6 +1,8 @@
-# Strategy research board — 23 October 2026, 02:37 Cairo
+# Strategy research board — 23 October 2026, updated 07:44 Cairo
 
-This is a point-in-time evidence board, not a permanent verdict. PAPER build `20261023-011441` is on protected master
+This is a point-in-time evidence board, not a permanent verdict. Sections carry their own snapshot anchors:
+the forward books and `quick_bank_runner` are as of 07:44 Cairo; the strategy catalog and active-group sentence are
+as of 02:37 Cairo; the shadow coverage denominator states its own window. No single timestamp applies to every section. At 02:37 Cairo, PAPER build `20261023-011441` was on protected master
 `9523a65`. The account is PAPER/testnet; ML, Claude analysis and strategy shadow have no order authority.
 
 ## Order-taking strategy catalog
@@ -18,7 +20,7 @@ only in its own active group and after all shared risk, capacity, cost and data 
 | Breakout / structure | `bear_breakdown`, `breakout_pyramid`, `exp_breakout`, `squeeze_tp` | Enabled in their rotation windows |
 | Discovery | `dca_dip`, `exp_rip_sell_dca` | Enabled in their rotation windows |
 
-At this snapshot the active breadth group is `ema_st`, `hot_coin`, `exp_vwaprev`, `exp_breakout`, `exp_scalp`, and
+At the 02:37 Cairo snapshot the active breadth group was `ema_st`, `hot_coin`, `exp_vwaprev`, `exp_breakout`, `exp_scalp`, and
 `exp_rip_sell_dca`. Because `exp_scalp` is parked, five group members plus independent `quick_bank_runner` can seek new
 entries. The group changes at 03:00 Cairo. Disabled strategies are never deleted from research.
 
@@ -79,7 +81,7 @@ SOL, XRP, BNB and DOGE twins, across 21 strategy-side cells on 15m and 4h data f
 
 The packet is `INCOMPLETE`, `non_promotable`, and explicitly says `USDC BETTER: UNAVAILABLE`. The equal-5bp isolation
 row shows that quote differences are generally much smaller than strategy differences. Several 4h cells were positive on
-both quotes; with 21 strategy-side cells compared on two quotes, these are multiplicity-adjusted hypotheses from an
+both quotes; with 21 strategy-side cells compared on two quotes, these are multiplicity-exposed hypotheses requiring adjustment, from an
 `INCOMPLETE` packet, not findings. The fee-promotion window, standard non-promotional USDC fee schedule, multi-quarter sufficiency and
 execution calibration are not frozen strongly enough for a routing decision. No agent may describe USDC as better or
 enable it from this packet.
