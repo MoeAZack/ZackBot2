@@ -1,0 +1,711 @@
+{
+ "defect_count": 2,
+ "evaluator_mismatch_symbols": [],
+ "evaluator_path": "pit_run.rex_series (View.funding over Dataset.slice) -> pit_run.rex_clip(lo, hi)",
+ "files_read": [
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "bf3ce484faf41d7dccfd38c5cc3d8de34d8297df30ab10784e874cc10fd1b310"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "22ee19079b620f5c6d820e7d7f8bafa7fde866d89bd664863b8bd527749c12cb"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "fa95088258a905c79ab79e8984d2f6f66933ec2e814dbab4ef9da89b01ab484a"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "4cf0883bc07f4ed4cdd3b0d8c0d166b4d15d21e666ab752f9f44401af4d6172f"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "57e2776cc68b3169fc9f8632dad67278f470cd453407a8ebe6c87963c8a31357"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "bced8a5013d09742b96682e6fd01ad4456213515a03d7586ec2b1f2689af5255"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "0cd0708f8903829eb46f98cf60f4b2516c986e1ccddf6620a5912b48e16baf93"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "29d58cce0cd45f74c6a112039835c6d9ee5a7e60e7c38c2503beb7930453a4fe"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "6f4f0c6c84c05694b4b4a5c085776730fd4059723eecd98ee6ffeb3fde4da811"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "d62cd4e13009de37add446dc4f63ead4c56dcc4955a1e60f6726bcadc5a68fa9"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "ad9efed10d4ca1567b865d7a158790977cec1b925395634217069df6696c8bc9"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "8febe5bec1a029e993bbf27490761f8c47c32849bf7dd13441b2b2f6ec1ffb51"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "4218c78331bcc4dbeb5768fa112242a880971c1f2cfd1d3f32aaa26ca34069af"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "a62f9d2aa4ad02e827e40d740e8cdbaa46f5b68dc3b7aec2c455e8b1aa265648"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "b37736ec46a47d8bd0b5a0de1be61a6f0511d86e8c045cdfc8238b247cf8a8b2"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "e496ee4bbe84b791550497ce6555e995582fcb507cc08e6329d3fb4ffeb5f468"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "fce1916d6dc4bd971cb72931e4f8477935ec489df6bb5bc22c99bcbf2abe78e6"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "655d57b2da463acf06a2e11f9c5d7ea8744facd5a082725cd14b4f480fc9d877"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "77b31f75485d3f66eef37d3cc5bc1620a1e9e93d00e47aa5391d5a6f0216b469"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "40f2c0ca054a31eb62372f67919ee1b402015454018026d3b15ff7faacd22f1e"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "ad7458419c3486565f826838da188714c6034e0f9054929fec1cb07bac64f8d6"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "a45c8e14d3bf26a1aa9fd60e09ff215ca459c39cba1c7d9ec24d019ad375cb8e"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "75ed3ada815ae4273abedeac0faee99aba67eb03ce3a467ddebd99affd69674c"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "ca1d8d2818fa7850ed7c511a6a04269b984c4a7e7ba8ff882e8999a028e430f4"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "e118ddf37bc7f2659d102595fbc6235c364621231100f57f7dd20e9e8c6ab2fd"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "c5d07f43864d7ca5fe3dbc84ab9dd1c824932fcf4750ef401f27eb2a46fb555b"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "788d5c57e7cbc8e6b94ed4d7672618a85311edf1d7f0888083410d0d3389d811"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "9f5bd01450b05a8c5e48cdc99fa147e85c82ecf7ee7919fa543a4e6039a2b98d"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "9c35e30327ac8915cc1333415b7d5018425781c81918e349d26b734525fcdfe5"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "3de0714a2b2582029b32147815298b6e67e972e776ca3f68a4208823b4109404"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "7c306ac8b6275a857b064916080e0b6ec502b25a4501c84c3fd2c0b077425de3"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "c458330243c9d8e048ffc7168c9e3c077c01bb82b1644097a4893fee34069b78"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "f6f3a69b656b91500b41501a230e663ccc3c1a65f46273595b00682d8f6fabb1"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "17826e5591af8660a7fed74d60e24eee77c822cf0d901dd8af355a10a36699aa"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "a2680549de5e087566f4d323b3a812c2b9863528c6bc49b0e551cb42c381bb4d"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "816e4de946d9f854cc457c86ca396b9cb49b46e80cf44941b59b9ad2124f2ef8"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "e434c29eb544cc57ff574e38685535bb7d04703aee54bc5d52f53cea372810e6"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "4f4e52f176f69e99353959d287874a4d4a135b5bb4ea85514dd5a3e65958b2d7"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "8cd0e885d63b85ee602d80eaae956f9ee3e0e25db264eb5c74026a9ae0d71f4e"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "698dcf7f359152fee69a6089a4b9b6789d75f5fbc4bdc08404e9861cc07c71e9"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "eae411eb325357df6f4f150796f1f0e33a5c2e5e10069dc34bc3c5a1163324e5"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "f342709b6981dbd5ea1256d3558c2a17ad0b173059f0acbce346e41f785c5a2f"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "4a585f4f2bcb46e6ab2c1c1aecf661e5f54e81437ff29526807eb598393996fd"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "62c10a80e31e21cf89acbfbb1341d43faaf05365158d31a8a19aaf3288bfb0d7"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "541b888959e8ca263ed0d600b5beb0ca7b587b3535e8afbe88eec0958cae4db3"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "e3b07b4615a79354b93a8ebefb321d8a1210bfed63ce16d57aec9739a7da9d61"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "c22d4ec70c8ca6b73fbd13533d41df823ac59eb5a1cf33647fff965e23de29b7"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "b05bf4e06899e6a1593bf7e2febb79831c41c3a5c803f401e08e991e1d4a9540"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "a55ffad7142ce819e17c2f669d58e8b15e1d10f877f2d0d5d2b678db922356c5"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "14b5b1a23a2983535f2d236d745bb9eed33048ec0c0fca73e61c14ffae8db9fe"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "c526300bd454d18063faf0630a7343c7bfb09e3b3bfb3b5699c5adfe20ff12ac"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "73e4ac714afce85d43abcc9a3357a5f3ab6b6afaaeb6741e982ebeb79d6c4b90"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "0ea2c59cde9362715dea398bd66d3325d5bdb40c39db0370977bcad0b0f67533"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "f3be14b01356f33f6cbde6d12ee30311ae91fc521dc78d72a0aa39db8c295053"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "d622a4a5cfb461e81d9cb13ebdd34b02e2d221c2ddb8d708dc4047d2f499fa96"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "10d3d16d74340850c2148553261dfdad7ffeb0b705f014c869fa807a1e7ddc84"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "f07052472753f04eb8e7fb818cf60e90e187e712f63a577741ca7ae59c63bc9e"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "ed42b50666e40e1489f01730f85e5efe919b9a94344e043369a459c66492a940"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "78249fec5212753b19ce01c2fb23ffdc3deecd29bd3ab61fb7cf70ba6c395edc"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "ce4c96d62e020d4b3c53bc31c248e5800a4a6eb3a6809c36509238122aa02a3a"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "1604d1993d0c6a7e37e2ff81a6944d7b5c0e81475e3fe475bdbdf0deaff4d847"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "673b50b2daec4a34da7d8a8095995ddbafa6f66bf8c2d499ba48f8050cf68565"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "d0436ed57e674ae3c00eeff3aa46f6e65c596892b80e5b6e8183d487c6ef3168"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-11.zip",
+   "rows": 165,
+   "sha256": "73fbada102584d8e19cb9594f04471f589ff37404b0cf64c0bd7cb4ac4d4a157"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "b9b8d803d985679959d21a55d08b14db331cf961442f8446eb18d723ea154567"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "00cde4c8840a6bcccba0e96984220ede6cf850c7f5fb4045802aace94759ae62"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "1062db4dfb65bab91cb4189d849f2164bc1e89e4f536e451d2a0ad78ffbf142c"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "d5dbdbda2b43e7a183ee601a4002df95d9103cdb5de57fee13801bf3b8f57efb"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "8e5a8dbafd0a78a74e1e4f20edc19110c2d27e1c77840e309f918f9946e52ed2"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "46421c82e081cfa5d201970896ff5c57c8a095175c94ef50f18ff3a32dcfc0bc"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "340f2e97c33a62a83fcc1600f3eebdacd6e47214d090f5606ee845374d9dcc9b"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "afe9edd03dcd35c555fa21b84ca69343338c4b708e7f0a3dba54256fd604141f"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "f4cf6c579a1d45f9b0b806f69d202d69ff7c8ef4414062a979df3338163009e5"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "05aa8b622907cd314d4764ebf61689bc54b0027906e1ef8d74cbff44197e2a3e"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "6f88e0c8b243d371740f418e91ab1dab933e8e7920ae32260f322e7b9dca167c"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "3a9c3f162b955c69b499cce67ae6b5b53e894e0986df0939317fb67d2cb957a6"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "64cd99d28f094287e7a0ad7dec7595892bbd6fe38e23b5c01dbcb5ade2bffa4b"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "bfb145c43bcd0774135454c1b67ce4f8a159cdbae43ab6b1551c31f26a1dcf61"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "a96ac211f0316219b9d7faec92b830dec5c4ee808b0cfca5bb966dd8b68ff987"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "9ddff6efb16709debed38c0a6a0a2278c01659d18aedc2192b9fc02dc93d03ce"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "033b260f54c03c4f32b3503e87f9a3d3bcf735a48f13b4057344bb05192006b4"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "4eeea8c79c35ff9363baa9dc70091a155c8f9e276dd319d05e0ba8ef5ab00b6e"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "65dc012890af68b8e77736be03a71bde04c7a54b5ff6cb1957c94c4b2560da78"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "9ec85394189f8f61a420bc6266cfd6e782870eb14ab43fe53ad981f274ea2829"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "ed33e50c7a15b4605478840bc9ceb93af17afe81728dd9c80a8673732da5b979"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "d0c0be21ff0fd3476d88cd2ac576f4b8e5697001bedf8ab43c746f2e5ae4699b"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "ebe01bede02640bb9425dc31f6a1bb4e46488989715d7083b6d1569adb8736ba"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "5f4cef57cc0b839b9efd1a0ad2a09457e8a4f7745f5de045d85ad86159255587"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "d19321c736b80fa52b447325092f6f21128f435a28e377941bccb65e6dae1370"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "44f32f9c6d3f66d7d0af48a56b5cd6f431c19070c9e4438784ee95df25d7dcb2"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "4c17c8aa8c7b64d2acf1ecfdbdc5ff0c2a69d918f44a1040f530be3fbec74e6b"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2021-12.zip",
+   "rows": 93,
+   "sha256": "ddd4685ab119e40390861a2e6757f9ebf7156b01da17665571716fb800dc3a06"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-01.zip",
+   "rows": 93,
+   "sha256": "2a0b3f4cbddd867f8be767395de83cec78fdeeaa5ad5aad63a11653296da19fa"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-02.zip",
+   "rows": 84,
+   "sha256": "6e33bee09bf17ac429d90a84014e00c63e05e4e9eac3a26d15ad4ca18fae5374"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-03.zip",
+   "rows": 93,
+   "sha256": "eaa59aec2fbde6567c9025b4301eea1282d6a206c706e08c0da68ece4ca1af26"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-04.zip",
+   "rows": 90,
+   "sha256": "a9ab2ed82c2bc5aee7394bdd8fd6d9b09e7c38a4700f8b8ec9caadd31373fc14"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-05.zip",
+   "rows": 93,
+   "sha256": "a6f48551bea86a9e3d5a3dd25297c0e682b3fc4cb2c58b670f7d49f3fb638e5a"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-06.zip",
+   "rows": 90,
+   "sha256": "b05f93b1410583e952d49b2793fb6e119ef77dacc4fedba49ce8faf2cd6bce40"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-07.zip",
+   "rows": 93,
+   "sha256": "1d68ca39969d1b7d19c575350c7a9ad01b24ce0607d969cb8b9016aa325db0a9"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-08.zip",
+   "rows": 93,
+   "sha256": "58b52cdd3c4b5f1c9fa069d39b5f954ce2ea490757b0614c68faf99fe2933bb2"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-09.zip",
+   "rows": 90,
+   "sha256": "6d206d2c26ef7cdf668d8bdf1dfb2f7e261cc5a9f21944014a766ee5d3fcabee"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-10.zip",
+   "rows": 93,
+   "sha256": "1847af684eac3ece6dda9d62b6936e6b8940598d854a1269d87439a905527541"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-11.zip",
+   "rows": 90,
+   "sha256": "c39af14b79a4dcdb0a5e9d948d38ae7cabde58ee8b99882324ef29528605c9ba"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-12.zip",
+   "rows": 93,
+   "sha256": "7b460992df464cea55c303757834684be1e4dca7961b1c6e5f4568192e6607dd"
+  }
+ ],
+ "format": "zb-fundgap-scan/1",
+ "in_window_defect_count": 0,
+ "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+ "provenance": {
+  "clean": true,
+  "commit": "2f0af36d11094bbaeaa7102eef698cccd9f2694b"
+ },
+ "purpose": "FUND-GAP-01 FG-1 fundingRate continuity inventory (no evaluation)",
+ "rules": {
+  "anchor_lookback_h": 8,
+  "funding_tol_ms": 60000,
+  "grids_h": [
+   1,
+   2,
+   4,
+   8
+  ]
+ },
+ "scan_span": {
+  "hi": "2022-12-19T00:01:00Z",
+  "lo": "2021-12-19T15:59:00Z"
+ },
+ "symbols": {
+  "BTCUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-01-01T00:00:00Z",
+   "rows_scanned": 1094
+  },
+  "DOGEUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-07-10T08:00:00Z",
+   "rows_scanned": 1094
+  },
+  "ETHUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-01-01T00:00:00Z",
+   "rows_scanned": 1094
+  },
+  "HYPEUSDT": {
+   "defects": [
+    {
+     "detail": "first stored funding row 2025-05-30T12:00:00Z is after the scan start and after the window end: not listed in the window, non-causal",
+     "in_window": false,
+     "kind": "data_start",
+     "t_ms": 1748606400006,
+     "utc": "2025-05-30T12:00:00Z"
+    }
+   ],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "evaluator_rows": 0,
+    "first_mismatch": null,
+    "scanner_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "scanner_rows": 0
+   },
+   "first_clipped_row_utc": null,
+   "first_row_utc": "2025-05-30T12:00:00Z",
+   "rows_scanned": 0
+  },
+  "NEARUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-10-14T16:00:00Z",
+   "rows_scanned": 1094
+  },
+  "SOLUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "ff7ee89a36eb4cc6b5119e9d61829d9cb2cfc75ebe65f9e93fa7dba5d2b15506",
+    "evaluator_rows": 1168,
+    "first_mismatch": null,
+    "scanner_digest": "ff7ee89a36eb4cc6b5119e9d61829d9cb2cfc75ebe65f9e93fa7dba5d2b15506",
+    "scanner_rows": 1168
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-09-13T16:00:00Z",
+   "rows_scanned": 1169
+  },
+  "SUIUSDT": {
+   "defects": [
+    {
+     "detail": "first stored funding row 2023-05-03T16:00:00Z is after the scan start and after the window end: not listed in the window, non-causal",
+     "in_window": false,
+     "kind": "data_start",
+     "t_ms": 1683129600011,
+     "utc": "2023-05-03T16:00:00Z"
+    }
+   ],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "evaluator_rows": 0,
+    "first_mismatch": null,
+    "scanner_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "scanner_rows": 0
+   },
+   "first_clipped_row_utc": null,
+   "first_row_utc": "2023-05-03T16:00:00Z",
+   "rows_scanned": 0
+  },
+  "UNIUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-09-17T08:00:00Z",
+   "rows_scanned": 1094
+  },
+  "XRPUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-01-06T08:00:00Z",
+   "rows_scanned": 1094
+  },
+  "ZECUSDT": {
+   "defects": [],
+   "evaluator_equivalence": {
+    "equal": true,
+    "evaluator_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "evaluator_rows": 1093,
+    "first_mismatch": null,
+    "scanner_digest": "2b375ab2e8c26dac46ac8b94f3c0783e3dcbd2f64899d50c1ce3867ca7b24467",
+    "scanner_rows": 1093
+   },
+   "first_clipped_row_utc": "2021-12-20T00:00:00Z",
+   "first_row_utc": "2020-02-04T08:00:00Z",
+   "rows_scanned": 1094
+  }
+ },
+ "window": {
+  "hi": "2022-12-19T00:00:00Z",
+  "lo": "2021-12-20T00:00:00Z"
+ }
+}
