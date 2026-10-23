@@ -188,3 +188,20 @@ def test_every_fill_is_in_exactly_one_trade_and_the_cash_adds_up():
     assert len(legs) == len(set(legs)) == len(fl)                         # every fill once, none twice, none dropped
     assert math.fsum(priced(t)['gross_ref'] for t in ts) == pytest.approx(cash(fl))
     assert X.add_stats(ts) == dict(trades=3, trades_with_adds=2, add_legs=2, add_qty=1.5)
+
+
+# ------------------------------------------------------------------ Codex 6373065821: the causal leg order is identity
+def test_an_add_and_a_partial_close_in_the_other_order_refuse():
+    fl = [f(20, 'open', 2.0, 100.0), f(21, 'close', 1.0, 105.0), f(22, 'open', 1.0, 103.0), f(24, 'close', 2.0, 110.0)]
+    swapped = [fl[0], fl[2], fl[1], fl[3]]                              # same per-class quantities, other history
+    assert X.trades_of(fl, [row(fl)])[0]['adds'] == 1
+    with pytest.raises(X.ScalpExecError, match='ambiguous'):
+        X.trades_of(fl, [row(swapped)])
+
+
+def test_a_completed_lot_missing_from_history_refuses_cleanly():
+    fl = [f(20, 'open', 1.0, 100.0), f(21, 'open', 1.0, 100.0), f(22, 'close', 2.0, 101.0)]
+    other = [f(20, 'open', 1.0, 100.0, sym='XRPUSDT'), f(22, 'close', 1.0, 101.0, sym='XRPUSDT')]
+    for hist in ([], [row(other, sym='XRPUSDT')], [row(fl, 'SHORT')]):
+        with pytest.raises(X.ScalpExecError, match='disagree'):
+            X.trades_of(fl + (other if hist and hist[0]['symbol'] == 'XRPUSDT' else []), hist)

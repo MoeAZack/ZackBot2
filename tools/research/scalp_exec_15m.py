@@ -300,18 +300,16 @@ def _qeq(a, b) -> bool:
 
 
 def _legs_match(t, h) -> bool:
-    """The trade's entry / close legs are the engine lot's own booked fills (history 'fills' [t, kind, qty, px]):
-    same number of entry legs and close legs, same quantities in order. A row without fills is not checkable."""
+    """The trade's legs are the engine lot's own booked fills (history 'fills' [t, kind, qty, px]) in their causal
+    order: the same interleaved sequence of entry / close legs with the same quantities (Codex 6373065821 - an add
+    and a partial close in the other order is another lot history). A row without fills is not checkable."""
     fl = h.get('fills')
     if not isinstance(fl, list) or not fl: return False
     try:
-        ent = [float(f[2]) for f in fl if f[1] in TA.ENTRY_KINDS]
-        cls = [float(f[2]) for f in fl if f[1] not in TA.ENTRY_KINDS]
+        seq = [(f[1] in TA.ENTRY_KINDS, float(f[2])) for f in fl]
     except (TypeError, ValueError, IndexError):
         return False
-    return (len(ent) == len(t['entries']) and len(cls) == len(t['closes'])
-            and all(_qeq(a, x['qty']) for a, x in zip(ent, t['entries']))
-            and all(_qeq(a, x['qty']) for a, x in zip(cls, t['closes'])))
+    return len(seq) == len(t['seq']) and all(a == b and _qeq(x, y) for (a, x), (b, y) in zip(seq, t['seq']))
 
 
 def trades_of(fill_log, history) -> list[dict]:
@@ -332,14 +330,15 @@ def trades_of(fill_log, history) -> list[dict]:
         if f['act'] == 'open':
             tr = open_.get(k)
             if tr is None:
-                open_[k] = dict(sym=f['sym'], ps=f['ps'], entry=f, entries=[f], closes=[], qty=f['qty'])
+                open_[k] = dict(sym=f['sym'], ps=f['ps'], entry=f, entries=[f], closes=[], qty=f['qty'],
+                                seq=[(True, f['qty'])])
             else:                                   # an add on the open lot: one more entry leg of the same trade
-                tr['entries'].append(f); tr['qty'] += f['qty']
+                tr['entries'].append(f); tr['qty'] += f['qty']; tr['seq'].append((True, f['qty']))
         else:
             tr = open_.get(k)
             if tr is None:
                 raise ScalpExecError(f'{k}: close without an open lot in the fill log')
-            tr['closes'].append(f); tr['qty'] -= f['qty']
+            tr['closes'].append(f); tr['qty'] -= f['qty']; tr['seq'].append((False, f['qty']))
             tol = 1e-9 * max(1.0, sum(x['qty'] for x in tr['entries']))
             if tr['qty'] < -tol:
                 raise ScalpExecError(f'{k}: the closes exceed the quantity entered on the lot')
@@ -348,8 +347,8 @@ def trades_of(fill_log, history) -> list[dict]:
     hist = {}
     for h in history:
         hist.setdefault((h['symbol'], h['side']), []).append(h)
-    for k in hist:
-        if len(hist[k]) != sum((t['sym'], t['ps']) == k for t in done):
+    for k in set(hist) | {(t['sym'], t['ps']) for t in done}:
+        if len(hist.get(k, ())) != sum((t['sym'], t['ps']) == k for t in done):
             raise ScalpExecError(f'{k}: engine history and fill log disagree on the number of closed trades')
     pos = {}
     for t in done:
