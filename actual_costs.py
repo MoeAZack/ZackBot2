@@ -207,6 +207,35 @@ def apply_px(target, rec):
     return True
 
 
+# ---- TP-SLIP-01 (#189): measured slippage of one fill against the price it was booked at --------------------------
+SLIP_RECENT = 20                     # alerts kept for the dashboard
+
+
+def slip_bps(side, kind, booked, measured, entry_kinds):
+    """Signed slippage of one fill in bps of its booked price, POSITIVE = adverse: a buy (long entry / short exit) filled
+    above the booked price, or a sell (short entry / long exit) filled below it. None when either price is unreadable."""
+    b, m = _num(booked), _num(measured)
+    if b is None or m is None or b <= 0 or m <= 0 or side not in ('LONG', 'SHORT'): return None
+    buy = (side == 'LONG') == (kind in entry_kinds)
+    return round((m - b) / b * 1e4 * (1 if buy else -1), 4) + 0.0
+
+
+def slip_note(stats, symbol, leg, bps, alert_bps, t=None, kind=None):
+    """Fold one measured fill into the per-symbol telemetry (in place): stats[symbol][leg] = n / mean / worst adverse bps
+    and the count at or beyond the alert level; alerts go to stats['_recent'] (newest last). Returns True on an alert."""
+    if bps is None: return False
+    x = stats.setdefault('symbols', {}).setdefault(symbol, {}).setdefault(leg, dict(n=0, sum_bps=0.0, worst_bps=None, alerts=0))
+    x['n'] += 1; x['sum_bps'] = round(x['sum_bps'] + bps, 4) + 0.0
+    x['worst_bps'] = bps if x['worst_bps'] is None else max(x['worst_bps'], bps)
+    hit = bps >= alert_bps
+    if hit:
+        x['alerts'] += 1
+        rec = stats.setdefault('_recent', [])
+        rec.append(dict(t=t, symbol=symbol, leg=leg, kind=kind, bps=bps))
+        del rec[:-SLIP_RECENT]
+    return hit
+
+
 def _replay(fills, sd, entry_kinds, over):
     """(realized gross, average entry) of the fills booked in order, average-cost; `over` = {fill index: price}.
     (None, None) when a fill is unreadable."""
