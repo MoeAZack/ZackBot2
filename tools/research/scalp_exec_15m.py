@@ -56,6 +56,7 @@ CUTOFF_MS = int(pd.Timestamp(SEALED_CUTOFF).value // 10 ** 6)
 EDGE01_X1_5 = C.Scenario('edge01_x1_5', fee_mult=1.5, slip_mult=1.5)
 SCENARIOS = {**C.STRESS, EDGE01_X1_5.name: EDGE01_X1_5}
 TWO_SIDED, ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M = 'TWO-SIDED', IB.ONE_LEVEL, IB.RES_1M, IB.SAME_MINUTE, IB.NO_1M
+NO_LATENCY = 'NO-1M-NO-LATENCY'                     # latency row: a candle without 1m data decides at its open
 UNRESOLVED = (SAME_MINUTE, NO_1M)
 LIMITATION = ('repriced rows: per-trade R exact under each cost row, account path (sizing) from the zero-cost run - '
               'diagnostic only; account rows: costs applied at fill time (Codex ruling 00ba8d0)')
@@ -186,7 +187,10 @@ def make_path_fn(raw15: dict, minutes: dict, labels: list, latency_s: int = 0):
     """run_replay hooks for the 1m path: (path_fn, pre_fn). `labels` collects (symbol, open_ms, label) per walked
     segment. latency_s (a whole number of minutes, < 15): the engine's cycle runs at minute L = latency_s / 60's open;
     pre_fn walks minutes [0, L) for the symbols already holding a lot and moves every symbol to minute L's open; pre_fn
-    is None at zero latency. A candle without complete 1m data keeps the decision at its open (no latency possible)."""
+    is None at zero latency. A candle without complete 1m data keeps the decision at its open (no latency possible),
+    labelled NO-1M-NO-LATENCY. Known approximations (Cowork #187): the engine stamps a lot opened at previous close
+    + 15 s even at 60 s latency (hold-time exits shift by ~45 s); funding counts an entry exactly at T (a long pays, a
+    short receives - the costs.py convention)."""
     if latency_s % 60 or not 0 <= latency_s < TF_MS // 1000:
         raise ScalpExecError('latency_s must be a whole number of minutes below 15')
     L = latency_s // 60
@@ -202,7 +206,8 @@ def make_path_fn(raw15: dict, minutes: dict, labels: list, latency_s: int = 0):
         for s in raw15:
             bar = B15[s][j]
             mins = mins_of(s, bar)
-            if mins is None:
+            if mins is None:                        # no 1m data: this symbol decides at the candle open, labelled
+                labels.append((s, bar.open_ms, NO_LATENCY))
                 continue
             delayed.add((s, j))
             if s in held:
@@ -531,7 +536,7 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
                                                    for a in RF.ACTIONS} for n in scen}),
                 account=acct, divergence=div,
                 intrabar=dict(segments=len(lab), by_label={k: lab.count(k) for k in (ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M,
-                                                                                     TWO_SIDED)},
+                                                                                     TWO_SIDED, NO_LATENCY)},
                               unresolved=unres, unresolved_share=unres / len(rows) if rows else 0.0,
                               park=bool(rows) and unres / len(rows) > IB.PARK_UNRESOLVED_SHARE),
                 refused=len([m for m in out['missed'] if m.get('kind') != 'deferred']), open_lots=len(out['lots']),

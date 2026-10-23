@@ -490,3 +490,40 @@ def test_skipping_durable_state_writes_changes_no_fill():
     a = X._engine(raw, {SYM: m}, _sleeve(), T0, start=2000.0, rules=None, settings=None, latency_s=0)
     b = X._engine(raw, {SYM: m}, _sleeve(), T0, start=2000.0, rules=None, settings=None, latency_s=0, durable_io=True)
     assert a[1] == b[1] and len(a[1]) > 6
+
+
+def test_f1_walk_is_time_merged_across_symbols():
+    """Cowork #187 F1: with a different number of points per symbol, manage() must never see one symbol minutes ahead."""
+    from replay import run_replay
+    import engine as E
+    m = _minutes(320, 3)
+    raw = {SYM: _agg(m), 'ETHUSDT': _agg(m)}
+    seen = []
+    real = E.Engine.manage
+
+    def spy(self, marks):
+        seen.append(dict(marks)); return real(self, marks)
+
+    def fn(j, held, lots):
+        t = int(raw[SYM].t[j].value // 10 ** 6)
+        a = [(100.0 + k * 0.001, False, t + k * 60_000) for k in range(15)]
+        b = [(200.0 + k * 0.001, False, t + k * 60_000) for k in range(15) for _ in range(3)]   # 3 points per minute
+        return {SYM: a, 'ETHUSDT': b}
+    sig_t = raw[SYM].t[290]
+    real_sig = S.signals
+
+    def fake(key, d, ctx, params=None, mask_sides=True):                  # one long on SYM so lots are open while walked
+        out = {k: np.zeros(len(d), bool) for k in ('le', 'se', 'lx', 'sx')}
+        out['le'][:] = (pd.to_datetime(d.t) == sig_t).values
+        return out
+    E.Engine.manage, S.signals = spy, fake
+    try:
+        run_replay(copy.deepcopy(raw), _sleeve(mgmt=dict(stop_atr=50.0, tp_r=50.0, max_bars=500)), T0, tf_sec=900,
+                   compare=False, path_fn=fn, costs_off=True)
+    finally:
+        E.Engine.manage, S.signals = real, real_sig
+    walked = [x for x in seen if 100.0 <= x.get(SYM, 0) < 101 and 200.0 <= x.get('ETHUSDT', 0) < 201]
+    assert walked
+    for x in walked:
+        k_a = round((x[SYM] - 100.0) / 0.001); k_b = round((x['ETHUSDT'] - 200.0) / 0.001)
+        assert abs(k_a - k_b) <= 1                                         # same minute (or the next symbol's turn)

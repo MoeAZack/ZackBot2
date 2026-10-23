@@ -174,11 +174,17 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         tf = next((k for k, v in E.TF_SEC.items() if v == tf_sec), '4h')
 
         def walk(pts_by_sym):
-            for k in range(max((len(v) for v in pts_by_sym.values()), default=0)):
-                for s, pts in pts_by_sym.items():
-                    if k < len(pts):
-                        W.t_ms = pts[k][2]; move({s: pts[k][0]}, at_open=bool(pts[k][1]))
-                if eng.state['lots']: eng.manage(dict(W.mark))
+            # time-merged (Cowork #187 F1): every symbol's points of one time stamp are walked before any later time, so
+            # manage() never sees one symbol's market minutes ahead of another's; points keep their order per symbol
+            by_t = {}
+            for s, pts in pts_by_sym.items():
+                for p in pts: by_t.setdefault(p[2], {}).setdefault(s, []).append(p)
+            for t in sorted(by_t):
+                W.t_ms = t
+                for s, pts in by_t[t].items():
+                    for p in pts:
+                        move({s: p[0]}, at_open=bool(p[1]))
+                        if eng.state['lots']: eng.manage(dict(W.mark))
         curve = []
         for i in range(t0, N - 1):
             W.i = i
