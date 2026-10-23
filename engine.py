@@ -2887,6 +2887,11 @@ class Engine:
             if o is not None and o != ref: return o
         return None
 
+    def _cost_order_of(self, ref):
+        """FILL-PX-RECOVER-01: the exchange order already recorded for this fill (its fee recovery), else None."""
+        _kind, t = self._cost_target(ref)
+        return next((c for r, c in (t or {}).get('cost_order_keys') or () if r == ref), None)
+
     def _cost_recover_commit(self, ref, cur, raw, now, px=None):
         """Under the lock: apply a PROVEN commission (raw) to its lot / row and make it durable. Durable -> 'recovered';
         a failed history / cohort write -> 'apply_pending' with raw kept in state, retried every tick and after a restart
@@ -2918,7 +2923,8 @@ class Engine:
             ok = self._row_changed(t)
             ok = self._save_aux('history', self.history) and ok
         if not ok:
-            cur.update(status='apply_pending', raw=raw, why='persist_failed', **({'px': px} if px is not None else {}))
+            cur.update(status='apply_pending', raw=raw, why='persist_failed', **({'px': px} if px is not None else {}),
+                       **({'px_unlogged': True} if px_new else {}))   # its telemetry goes with the durable commit
             log.warning('recovered commission / fill price not durable yet; retried next tick')
             return 'apply_pending'
         mpx = (t.get('px_actual') or {}).get(ref) if ref in (t.get('px_refs_recovered') or ()) else None
@@ -2935,7 +2941,8 @@ class Engine:
                                         px_actual=mpx, pnl_fill_adj=t.get('pnl_fill_adj'), cost_rev=t.get('cost_rev'),
                                         time_ms=int(now * 1000)), separators=(',', ':')) + '\n')
         except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
-        if px_new: self._px_log(t, {'cost_ref': ref})       # TP-SLIP-01 telemetry for the late-measured fill
+        if cur.pop('px_unlogged', False) or px_new:
+            self._px_log(t, {'cost_ref': ref})               # TP-SLIP-01 telemetry for the late-measured fill, once
         return 'recovered'
 
     def _cost_recover_discover(self):
@@ -3042,7 +3049,10 @@ class Engine:
             cur = (self.state.get('cost_recover') or {}).get(sk)
             if cur is None or cur.get('status') != 'pending': return 'stale'
             cur['tries'] = int(cur.get('tries') or 0) + 1
-            if status == 'ok':
+            if status == 'ok' and px_only and self._cost_order_of(ref) not in (None, key):
+                cur.update(status='failed', why='order_mismatch')   # never a second order for one fill
+                status = 'order_mismatch'
+            elif status == 'ok':
                 other = self._cost_order_consumer(key, ref)
                 if other is not None:                        # Cowork F1: one exchange order is never two fills' fee
                     cur.update(status='failed', why='order_already_consumed')
