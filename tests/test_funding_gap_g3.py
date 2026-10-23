@@ -163,3 +163,17 @@ def test_cells_are_the_four_known_wf0_incomplete_funding_cells():
                        ('walk_forward[0]', 'long', 'B2', 'fees_slip_x2'))
     import pit_run as PR                                                                    # noqa: E402
     assert {c['name'] for c in PR.rex_configs()} >= {'range_vwap_rev.v1.rg+0.5', 'B2'}
+
+
+def test_the_frozen_report_is_blind_and_binds_the_four_cells():
+    path = os.path.join(F.REPO, 'research_evidence', 'prereg', 'core10_fundgap_g3_report.v1.json')
+    with open(path, encoding='utf-8') as f:
+        doc = json.load(f)
+    G.assert_blind(doc)
+    assert doc['format'] == G.FORMAT and doc['split']['key'] == G.SPLIT and doc['variant'] == G.VARIANT
+    assert [(c['split'], c['side'], c['config'], c['row']) for c in doc['cells']] == [list(k) for k in G.CELLS] or \
+        [tuple((c['split'], c['side'], c['config'], c['row'])) for c in doc['cells']] == list(G.CELLS)
+    assert all(c['predicate'] in G.PREDICATES and c['causal'] for c in doc['cells'])
+    assert doc['provenance']['clean'] and len(doc['provenance']['commit']) == 40
+    assert all(f['path'] and len(f['sha256']) == 64 for f in doc['files_read'])
+    assert doc['access_window']['hi'] < F.SEALED_END
