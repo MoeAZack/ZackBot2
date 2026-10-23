@@ -654,9 +654,15 @@ def test_qbank_key_runs_only_from_a_config_sealed_for_it(tmp_path):
         del X.SEALED_CONFIGS[sha]
 
 
-def test_the_edge01_config_is_not_sealed_for_qbank():
-    assert X.SEALED_CONFIGS[X.CONFIG_SHA256] == ('exp_scalp', 'range_scalp')
-    assert all('quick_bank_runner' not in v for v in X.SEALED_CONFIGS.values())    # until Integration seals v0
+def test_qbank_runs_only_from_the_codex_sealed_v0_sleeve():
+    assert X.SEALED_CONFIGS[X.CONFIG_SHA256] == ('exp_scalp', 'range_scalp')       # EDGE01 never runs QBank
+    assert [k for k, v in X.SEALED_CONFIGS.items() if 'quick_bank_runner' in v] == [X.QBANK01_CONFIG_SHA256]
+    p = 'C:/Dev/ZackBot2_data/scalp_exec_packets/frozen_QBANK01_2026-10-24.json'      # Codex 6375498248 seal
+    if not os.path.exists(p):
+        pytest.skip('sealed QBank v0 file not on this machine')
+    import hashlib
+    with open(p, 'rb') as fh:
+        assert hashlib.sha256(fh.read()).hexdigest() == X.QBANK01_CONFIG_SHA256
 
 
 def test_qbank_candle_depth_matches_its_longest_window():
@@ -664,3 +670,136 @@ def test_qbank_candle_depth_matches_its_longest_window():
     src = inspect.getsource(S.sig_quick_bank_runner)
     assert 'e50' in src and 'e200' not in src and S.QB['stop_atr'] == 1.0          # EMA50 + ATR14 are the longest
     assert X.candle_depth('quick_bank_runner') == dict(served=1000, max_window=50, limit=200, ok=True)
+
+
+# ------------------------------------------------------------------ QBANK-01 frozen B1-B3 entry gate (Codex 6375498248)
+def _qgate(variant, raw, cost=0.0):
+    g = X.QBGate(variant, raw, C.CostModel(_cal(), {s: 'crypto' for s in raw}), C.STRESS['base'])
+    g.rt_cost = lambda sym, price, t_ms: cost                     # B2 / B3 pins isolate their own rule
+    g.begin('reference')
+    return g
+
+
+def _sg(t, atr=1.0, close=100.0):
+    return dict(time=pd.Timestamp(t), atr=atr, close=close)
+
+
+def _trend(n4h, up=True, start='2025-01-06'):
+    t = pd.date_range(start, periods=n4h * 16, freq='15min')
+    c = 100 * np.exp(np.arange(len(t)) * (1 if up else -1) * 2e-4)
+    return pd.DataFrame(dict(t=t, o=c, h=c * 1.001, l=c * 0.999, c=c, v=1.0))
+
+
+def _end(n4h=60):
+    """The decision candle (its open) that closes exactly at the last 4h close of _trend(n4h)."""
+    return pd.Timestamp('2025-01-06') + pd.Timedelta(hours=4 * n4h) - pd.Timedelta(minutes=15)
+
+
+def test_b1_reward_is_the_frozen_blended_plan():
+    assert X.qb_reward_atr() == pytest.approx(1.16) and X.B1_EDGE_X == 5.0
+
+
+def test_b1_admits_only_an_edge_of_five_round_trips_at_the_base_cost():
+    raw = {SYM: _agg(_minutes(300, 3))}
+    t = raw[SYM].t[200]
+    g = X.QBGate('B1', raw, C.CostModel(_cal(), {SYM: 'crypto'}), C.STRESS['base'])
+    g.begin('reference')
+    cut = int(t.value // 10 ** 6) + X.TF_MS
+    rt = g.rt_cost(SYM, 100.0, cut)
+    base, model = C.STRESS['base'], C.CostModel(_cal(), {SYM: 'crypto'})          # independent: 2 taker fees + 2 slips
+    bps = X.Pricer(base, model, raw).bps(SYM, cut)
+    assert bps > 0 and rt == pytest.approx(2 * C.fee(100.0, 'taker', model.row(SYM), base) + 2 * 100.0 * bps / 1e4)
+    edge_atr = 5 * rt / 1.16
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t, atr=edge_atr * 1.001), []) is None
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t, atr=edge_atr * 0.999), []) == 'b1_edge'
+
+
+def test_4h_table_uses_only_complete_candles():
+    ms, close, ema = X.ema4h_table(_trend(60).drop(index=[5]))       # the first 4h candle misses a 15m candle
+    assert len(ms) == 59 and ms[0] == int(pd.Timestamp('2025-01-06T08:00Z').value // 10 ** 6)
+    assert (ms % X.H4_MS == 0).all()
+
+
+def test_b2_regime_is_causal_and_needs_symbol_and_btc_aligned():
+    up, dn, t = _trend(60, True), _trend(60, False), _end()
+    g = _qgate('B2', {SYM: up, 'BTCUSDT': up})
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t), []) is None
+    assert g.check({'id': 'SC'}, SYM, 'SHORT', _sg(t), []) == 'b2_symbol_regime'
+    g = _qgate('B2', {SYM: up, 'BTCUSDT': dn})
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t), []) == 'b2_btc_regime'
+    crash = up.copy()                                                  # the LAST 4h candle collapses below its EMA ...
+    crash.loc[crash.index[-16:], ['o', 'h', 'l', 'c']] = 50.0
+    g = _qgate('B2', {SYM: crash, 'BTCUSDT': up})
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t), []) == 'b2_symbol_regime'
+    early = t - pd.Timedelta(minutes=15)                               # ... a decision before that 4h close never sees it
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(early), []) is None
+
+
+def test_b2_without_fifty_complete_4h_candles_refuses():
+    g = _qgate('B2', {SYM: _trend(49), 'BTCUSDT': _trend(60)})
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(_end(49)), []) == 'b2_symbol_regime'
+
+
+def test_b3_cooldown_is_four_closed_candles_after_the_final_exit():
+    up = _trend(60)
+    g = _qgate('B3', {SYM: up, 'BTCUSDT': up})
+    te = _end() - pd.Timedelta(hours=2) + pd.Timedelta(minutes=7)     # an exit inside a 15m candle
+    hist = [dict(sleeve='SC', symbol=SYM, side='LONG', closed=te.isoformat())]
+    base = te.floor('15min')
+    for k, want in ((3, 'b3_cooldown'), (4, None)):                    # decisions at the 3rd / 4th close after it
+        assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(base + pd.Timedelta(minutes=15 * (k - 1))), hist) == want, k
+    t3 = base + pd.Timedelta(minutes=30)
+    for h in (dict(hist[0], side='SHORT'), dict(hist[0], symbol='ETHUSDT'), dict(hist[0], sleeve='OTHER'),
+              dict(hist[0], closed=(t3 + pd.Timedelta(minutes=16)).isoformat())):    # an exit after the cutoff is unknown
+        assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t3), [h]) is None
+
+
+def test_each_variant_adds_exactly_one_rule_in_order():
+    up, dn, t = _trend(60), _trend(60, False), _end()
+    hist = [dict(sleeve='SC', symbol=SYM, side='LONG', closed=(t - pd.Timedelta(minutes=10)).isoformat())]
+    chk = lambda v, raw, cost=0.0: _qgate(v, raw, cost).check({'id': 'SC'}, SYM, 'LONG', _sg(t), hist)
+    assert {v: chk(v, {SYM: up, 'BTCUSDT': dn}, 1.0) for v in ('B1', 'B2', 'B3')} == dict.fromkeys(('B1', 'B2', 'B3'), 'b1_edge')
+    assert {v: chk(v, {SYM: up, 'BTCUSDT': dn}) for v in ('B1', 'B2', 'B3')} == \
+        {'B1': None, 'B2': 'b2_btc_regime', 'B3': 'b2_btc_regime'}
+    assert {v: chk(v, {SYM: up, 'BTCUSDT': up}) for v in ('B2', 'B3')} == {'B2': None, 'B3': 'b3_cooldown'}
+    with pytest.raises(X.ScalpExecError, match='unknown entry variant'):
+        X.QBGate('B0', {SYM: up}, C.CostModel(_cal(), {SYM: 'crypto'}), C.STRESS['base'])
+
+
+def test_the_gate_only_removes_and_passes_admitted_entries_through_unchanged():
+    calls = []
+
+    def open_lot(eng, *a, **k):
+        calls.append((a, k))
+        return 'LOT'
+
+    class Eng:
+        history, last_skip = [], ''
+
+    up, t = _trend(60), _end()
+    g = _qgate('B2', {SYM: up, 'BTCUSDT': up})
+    w, e = g.wrap(open_lot), Eng()
+    assert w(e, {'id': 'SC'}, SYM, 'LONG', _sg(t), 'df', 1000.0, risk=2) == 'LOT'
+    assert calls == [(({'id': 'SC'}, SYM, 'LONG', _sg(t), 'df', 1000.0), {'risk': 2})]
+    assert w(e, {'id': 'SC'}, SYM, 'SHORT', _sg(t), 'df', 1000.0) is False and len(calls) == 1
+    assert e.last_skip == 'entry gate B2: b2_symbol_regime' and g.rejected == {'reference': {'b2_symbol_regime': 1}}
+
+
+def test_engine_open_lot_is_restored_after_a_gated_replay():
+    import engine as E
+    before = E.Engine.open_lot
+    m = _minutes(300, 5)
+    raw = {SYM: _agg(m)}
+    g = _qgate('B1', raw, cost=1e9)                                   # rejects every entry
+    out, fills, _ = X._engine(raw, {SYM: m}, _sleeve('quick_bank_runner'), T0, start=2000.0, rules=None,
+                              settings=None, latency_s=0, gate=g)
+    assert E.Engine.open_lot is before
+    assert not [f for f in fills if f['act'] == 'open'] and not out['history']
+    assert g.rejected['reference'].get('b1_edge', 0) >= 1 and set(g.rejected['reference']) == {'b1_edge'}
+
+
+def test_variants_are_preregistered_for_qbank_only():
+    m = _minutes(300, 5)
+    with pytest.raises(X.ScalpExecError, match='preregistered for'):
+        X.run_cell({SYM: _agg(m)}, {SYM: m}, _sleeve('exp_scalp'), T0, model=C.CostModel(_cal(), {SYM: 'crypto'}),
+                   variant='B1')

@@ -562,7 +562,95 @@ def divergence(zero: list, acct: list, row: str) -> dict:
 
 
 # ------------------------------------------------------------------ one cell
-def _engine(run, minutes, sleeves, t0, *, start, rules, settings, latency_s, pricer=None, durable_io=False):
+# ------------------------------------------------------------------ QBANK-01 frozen entry matrix (#203, Codex 6375498248)
+VARIANTS = ('B0', 'B1', 'B2', 'B3')     # each later variant = the previous one plus one more REMOVAL-ONLY admission rule
+B1_EDGE_X = 5.0                          # expected edge >= 5 x the actual round-trip cost
+B2_EMA, H4_MS, B2_REF = 50, 4 * 3_600_000, 'BTCUSDT'
+B3_CANDLES = 4                           # closed 15m candles after the same symbol/side lot's final exit
+GATE_KEYS = ('quick_bank_runner',)
+
+
+def qb_reward_atr() -> float:
+    """The v0 plan's blended planned reward in ATR: stop_atr x (tp1_frac x tp1_r + (1 - tp1_frac) x tp_r) = 1.16."""
+    q = ST.QB
+    return q['stop_atr'] * (q['tp1_frac'] * q['tp1_r'] + (1 - q['tp1_frac']) * q['tp_r'])
+
+
+def ema4h_table(df15):
+    """(close_ms, close, ema50) of COMPLETE 4h candles (all 16 of their 15m candles present) on the UTC 4h grid; a 4h
+    candle is usable at a decision only when its close_ms <= the decision cutoff."""
+    b = bars_of(df15.reset_index(drop=True))
+    groups = {}
+    for x in b:
+        groups.setdefault(x.open_ms - x.open_ms % H4_MS, []).append(x)
+    keep = sorted(k for k, v in groups.items() if len(v) == H4_MS // TF_MS)
+    close = pd.Series([groups[k][-1].close for k in keep], dtype=float)
+    ema = close.ewm(span=B2_EMA, adjust=False).mean()
+    return np.array([k + H4_MS for k in keep], dtype=np.int64), close.to_numpy(), ema.to_numpy()
+
+
+class QBGate:
+    """The frozen QBANK-01 admission rules, applied AFTER every v0 check has passed (it wraps Engine.open_lot), so a
+    variant can only remove entries. Scenario-independent: the round-trip cost is always the base cost row, so every
+    replay of a cell runs the same rule. Rejections are counted per replay and reason."""
+
+    def __init__(self, variant: str, run: dict, model: C.CostModel, base: C.Scenario):
+        if variant not in VARIANTS[1:]:
+            raise ScalpExecError(f'unknown entry variant {variant!r}')
+        self.variant, self.level = variant, VARIANTS.index(variant)
+        self.model, self.base = model, base
+        self.pricer = Pricer(base, model, run)                    # slip bps from candles closed at or before t
+        self.h4 = {s: ema4h_table(df) for s, df in run.items()} if self.level >= 2 else {}
+        self.rejected, self._cur = {}, None
+
+    def begin(self, replay: str):
+        self._cur = self.rejected.setdefault(replay, {})
+
+    def rt_cost(self, sym: str, price: float, t_ms: int) -> float:
+        """Round trip per unit at `price`: taker fee on entry and exit + the calibrated slippage on both fills (base row)."""
+        bps = self.pricer.bps(sym, t_ms)
+        return 2 * C.fee(price, 'taker', self.model.row(sym), self.base) + 2 * price * bps / 1e4
+
+    def regime(self, sym: str, cutoff_ms: int):
+        """+1 / -1: the last complete 4h close at or before the cutoff above / below its EMA50; None = not enough 4h data."""
+        tab = self.h4.get(sym)
+        if tab is None: return None
+        k = int(np.searchsorted(tab[0], cutoff_ms, side='right')) - 1
+        if k < B2_EMA - 1: return None                             # EMA50 needs 50 complete 4h candles
+        return 1 if tab[1][k] > tab[2][k] else -1 if tab[1][k] < tab[2][k] else 0
+
+    def check(self, sl, sym: str, side: str, sg: dict, history) -> str | None:
+        cutoff = int(pd.Timestamp(sg['time']).value // 10 ** 6) + TF_MS
+        if self.level >= 1 and not qb_reward_atr() * float(sg['atr']) >= B1_EDGE_X * self.rt_cost(sym, float(sg['close']), cutoff):
+            return 'b1_edge'
+        if self.level >= 2:
+            sd = 1 if side == 'LONG' else -1
+            if self.regime(sym, cutoff) != sd: return 'b2_symbol_regime'
+            if self.regime(B2_REF, cutoff) != sd: return 'b2_btc_regime'
+        if self.level >= 3:
+            ex = [int(pd.Timestamp(h['closed']).value // 10 ** 6) for h in history
+                  if h.get('sleeve') == sl['id'] and h.get('symbol') == sym and h.get('side') == side and h.get('closed')]
+            ex = [t for t in ex if t <= cutoff]                     # causal: only exits known at the decision
+            if ex:
+                te = max(ex)
+                if (cutoff - (te - te % TF_MS)) // TF_MS < B3_CANDLES: return 'b3_cooldown'
+        return None
+
+    def wrap(self, open_lot):
+        gate = self
+
+        def gated(eng, sl, sym, side, sg, df, eq, *a, **k):
+            why = gate.check(sl, sym, side, sg, eng.history)
+            if why is not None:
+                gate._cur[why] = gate._cur.get(why, 0) + 1
+                eng.last_skip = f'entry gate {gate.variant}: {why}'
+                return False                                         # the engine records it as a refused entry
+            return open_lot(eng, sl, sym, side, sg, df, eq, *a, **k)
+        return gated
+
+
+def _engine(run, minutes, sleeves, t0, *, start, rules, settings, latency_s, pricer=None, durable_io=False, gate=None,
+            replay='reference'):
     """One engine replay. durable_io=False (default) skips the engine's durable state-file writes for the run (about
     70 % of replay time; harness-side, like replay's own clock / exchange patches): state stays in memory, and a test
     pins identical fills with and without the writes."""
@@ -570,15 +658,18 @@ def _engine(run, minutes, sleeves, t0, *, start, rules, settings, latency_s, pri
     import replay as RP
     labels, fills = [], []
     fn, pre = make_path_fn(run, minutes, labels, latency_s)
-    saved = E.save_json
+    saved, saved_open = E.save_json, E.Engine.open_lot
     if not durable_io:
         E.save_json = lambda *a, **k: None
+    if gate is not None:                                          # QBANK-01 B1-B3: harness-side, restored below
+        gate.begin(replay)
+        E.Engine.open_lot = gate.wrap(saved_open)
     try:
         out = RP.run_replay(copy.deepcopy(run), copy.deepcopy(sleeves), t0, tf_sec=TF_MS // 1000, start=start,
                             exchange_rules=rules, path_fn=fn, pre_fn=pre, fill_log=fills, compare=False, settings=settings,
                             costs_off=pricer is None, fill_px=pricer, fund_fn=pricer.fund if pricer else None)
     finally:
-        E.save_json = saved
+        E.save_json, E.Engine.open_lot = saved, saved_open
     return out, fills, labels
 
 
@@ -587,7 +678,7 @@ def _sides(rows, get, weeks):
 
 
 def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel, funding=None, exchange_rules=None,
-             start=2000.0, scenarios=None, latency_s=0, settings=None, account_rows=ACCOUNT_ROWS) -> dict:
+             start=2000.0, scenarios=None, latency_s=0, settings=None, account_rows=ACCOUNT_ROWS, variant='B0') -> dict:
     """One cell at one latency: (1) the engine on the 1m path with costs off, every scenario re-priced per trade
     (diagnostic); (2) one engine run per account row with that row's costs applied at fill time (RISK-FILL-01 acts on
     the priced fills); (3) their divergence."""
@@ -598,8 +689,11 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
         raise ScalpExecError('no complete symbol to run')
     rules = exchange_rules or {}
     scen = scenarios or SCENARIOS
+    if variant != 'B0' and any(x['key'] not in GATE_KEYS for x in sleeves):
+        raise ScalpExecError(f'entry variant {variant} is preregistered for {GATE_KEYS} only')
+    gate = None if variant == 'B0' else QBGate(variant, run, model, scen['base'])
     out, fills, labels = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
-                                 latency_s=latency_s)
+                                 latency_s=latency_s, gate=gate)
     B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in run.items()}
     rows = []
     for tr in trades_of(fills, out['history']):
@@ -617,7 +711,7 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
     for name in account_rows:
         pr = Pricer(scen[name], model, run, funding=funding, rules=rules)
         o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
-                              latency_s=latency_s, pricer=pr)
+                              latency_s=latency_s, pricer=pr, gate=gate, replay=name)
         ts = account_trades(f2, o2['history'], pr.paid)
         acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
                           adds=add_stats(ts, o2['lots']),
@@ -630,6 +724,9 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
     incomplete = acct_inc or bool(bad) or any(not r['rows'][n]['complete'] for r in rows for n in r['rows']
                                               if scen[n].funding_mode == 'actual')
     return dict(format=FORMAT, non_promotable=True, limitation=LIMITATION, latency_s=latency_s,
+                entry_gate=dict(variant=variant, frozen='6375498248', rejected=gate.rejected if gate else {},
+                                b1=dict(edge_x=B1_EDGE_X, reward_atr=qb_reward_atr(), cost_row='base'),
+                                b2=dict(ema=B2_EMA, tf='4h', ref=B2_REF), b3=dict(candles=B3_CANDLES, anchor='final_exit')),
                 config_digest=config_digest(sleeves), cost_model_digest=model.digest,
                 labels=sorted({l for s in run for l in model.labels(s)}), excluded_symbols=bad,
                 status='INCOMPLETE' if incomplete else 'COMPLETE', weeks=weeks,
@@ -650,7 +747,8 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
 # ------------------------------------------------------------------ frozen inputs
 # Every config a cell may run, by sha256 -> the keys it may run. QBANK-01: the as-run SC-QBANK v0 sleeve is added here
 # only once Integration has sealed it from the runtime (#202 / #203); until then a QBank cell has no config and refuses.
-SEALED_CONFIGS = {CONFIG_SHA256: ('exp_scalp', 'range_scalp')}
+QBANK01_CONFIG_SHA256 = 'cb1c1cd4d5f079102f40b649567c39c9a26a89b9c32931f5eeff49a1ff02b547'   # Codex 6375498248
+SEALED_CONFIGS = {CONFIG_SHA256: ('exp_scalp', 'range_scalp'), QBANK01_CONFIG_SHA256: ('quick_bank_runner',)}
 
 
 def sealed_config(path: str, key: str):
@@ -746,9 +844,9 @@ def window_start(raw15: dict, lo_ms: int) -> int:
 
 
 # ------------------------------------------------------------------ trial ledger + CLI
-def trial_records(packet: dict, *, key: str, side: str, mgmt: str = 'frozen') -> list:
+def trial_records(packet: dict, *, key: str, side: str, mgmt: str = 'frozen', variant: str = 'B0') -> list:
     """One trial per strategy x side x management x cost row x latency (Codex ruling 00ba8d0), for the family ledger."""
-    return [dict(key=key, side=side, mgmt=mgmt, cost_row=n, latency_s=packet['latency_s'], kind=k,
+    return [dict(key=key, side=side, variant=variant, mgmt=mgmt, cost_row=n, latency_s=packet['latency_s'], kind=k,
                  config_digest=packet['config_digest'], status=packet['status'])
             for k, names in (('repriced', list(packet['repriced']['summary'])), ('account', list(packet['account'])))
             for n in names]
@@ -775,6 +873,7 @@ def main(argv=None) -> int:
     ap.add_argument('--rules', help='exchange-rules snapshot JSON {symbol: rule}')
     ap.add_argument('--cal', required=True, help='slip-cal-v1 JSON (or a prereg holding costs.slip_cal_v1)')
     ap.add_argument('--start', type=float, default=2000.0)
+    ap.add_argument('--variant', default='B0', choices=VARIANTS, help='QBANK-01 frozen entry matrix (B0 = exact v0)')
     a = ap.parse_args(argv)
     if os.path.exists(a.out):
         raise ScalpExecError(f'{a.out} exists (packets are never overwritten)')
@@ -792,11 +891,11 @@ def main(argv=None) -> int:
     raw15 = data['raw15']
     pk = run_cell(raw15, data['minutes'], cell_sleeves(doc, a.key, a.side), window_start(raw15, lo), model=model,
                   funding=data['funding'], exchange_rules=rules, start=a.start, latency_s=a.latency_s,
-                  settings={'PRESET': doc['preset']})
-    pk.update(key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
+                  settings={'PRESET': doc['preset']}, variant=a.variant)
+    pk.update(variant=a.variant, key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
               manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=cfg_sha)
     pk['candle_depth'] = candle_depth(a.key)
-    pk['trials'] = trial_records(pk, key=a.key, side=a.side)
+    pk['trials'] = trial_records(pk, key=a.key, side=a.side, variant=a.variant)
     with open(a.out, 'x', encoding='utf-8') as fh:
         json.dump(pk, fh, sort_keys=True, default=float)
     print(json.dumps(dict(out=a.out, status=pk['status'], trades=len(pk['repriced']['trades']), trials=len(pk['trials'])),
