@@ -233,6 +233,11 @@ def test_analyst_aggregate_counts_only(app_env, monkeypatch):
     assert agg['n_trades'] == raw['n_trades'] >= 10 and agg['performance']['all']['n'] == raw['n_trades']
     assert agg['mfe_mae_coverage'] == {'mfe': 1.0, 'mae': 1.0}
     assert agg['outcome_diagnostics']['profitable_then_lost'] == 6
+    assert agg['regime_performance'] == {'RANGE.n': 12, 'RANGE.net_r': 3.0, 'RANGE.win_rate': 0.5,
+                                          'RANGE.avg_r': 0.25, 'RANGE.pf': 1.5}
+    assert agg['source_coverage']['point_in_time_news'] == 0.0
+    assert all(agg['source_coverage'][k] == 0.0 for k in ('qv_ratio', 'funding', 'rank', 'exposure_count', 'corr_count'))
+    assert agg['portfolio_pressure'] == {}
     blob = json.dumps(agg)
     assert 'A|BTCUSDT' not in blob and 'decision_id' not in blob
 
@@ -535,8 +540,11 @@ def test_concurrent_analyses_are_serialised(app_env, monkeypatch):
     e.S['CLAUDE_SHADOW_ANALYST'] = True
     active, peak, n = [0], [0], [0]
     lock = threading.Lock()
+    analysis = {k: [] for k in SA.SCHEMA_KEYS}
+    analysis['role_reviews'] = [
+        {'role': role, 'stance': 'neutral', 'confidence': 0.5, 'evidence': 'mixed evidence'} for role in SA.ROLE_ORDER]
     body = json.dumps({'type': 'message', 'stop_reason': 'end_turn', 'usage': {'input_tokens': 10, 'output_tokens': 5},
-                       'content': [{'type': 'text', 'text': json.dumps({k: [] for k in SA.SCHEMA_KEYS})}]})
+                       'content': [{'type': 'text', 'text': json.dumps(analysis)}]})
 
     def transport(url, headers, b, timeout):
         with lock:
