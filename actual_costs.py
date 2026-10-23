@@ -13,7 +13,7 @@ COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'ma
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
                'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys',
                'fill_refs', 'px_actual', 'px_missing', 'pnl_fill_adj', 'avg_fill_adj', 'fill_px_partial',   # FILL-PNL-01
-               'px_unmeasured', 'px_unlinked_ok', 'px_ack')
+               'px_unmeasured', 'px_unlinked_ok', 'px_ack', 'px_refs_recovered')
 
 
 def _num(v):
@@ -56,6 +56,11 @@ def apply_fill(target, rec):
 
 
 def match_fill(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit=None):
+    st, raw, key, _px = match_order(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit)
+    return (st, raw, key) if st == 'ok' else (st, None, None)
+
+
+def match_order(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit=None):
     """FEE-RECOVER-01 (pure): the commission of ONE booked fill whose own reads timed out, proven from a time-window
     userTrades read. trades: the account's executions of `symbol` over a span padded around [lo_ms, hi_ms] (so an order
     reaching outside the window is seen whole). A candidate is one exchange order on the booked side whose executions
@@ -63,33 +68,41 @@ def match_fill(trades, symbol, buy, qty, quote, lo_ms, hi_ms, limit=None):
     Returns ('ok', commission_raw, order_key) only for exactly one candidate whose every amount is readable and charged
     in `quote`; otherwise (status, None, None) - never a guess: unreadable / too_many_rows / bad_evidence / no_match /
     ambiguous / amount_unreadable / non_quote_asset. order_key (order_key()) identifies the matched exchange order without
-    its id, so one order can never be attributed to two fills (the caller refuses a key another fill consumed)."""
+    its id, so one order can never be attributed to two fills (the caller refuses a key another fill consumed).
+    match_order also returns px: FILL-PX-RECOVER-01 (#189) the qty-weighted price of that one order's executions (None
+    when any price is unreadable). With a unique order whose commission is unprovable (amount_unreadable /
+    non_quote_asset) it still returns that order's key and px - its price is proven even though its fee is not."""
+    no = lambda st: (st, None, None, None)
     q0 = _num(qty)
-    if not q0 or q0 <= 0 or buy not in (True, False) or not quote or not symbol: return 'bad_evidence', None, None
-    if not isinstance(trades, list): return 'unreadable', None, None
-    if limit and len(trades) >= limit: return 'too_many_rows', None, None          # the span may hold more than was returned
+    if not q0 or q0 <= 0 or buy not in (True, False) or not quote or not symbol: return no('bad_evidence')
+    if not isinstance(trades, list): return no('unreadable')
+    if limit and len(trades) >= limit: return no('too_many_rows')          # the span may hold more than was returned
     groups = {}
     for t in trades:
-        if not isinstance(t, dict): return 'unreadable', None, None
+        if not isinstance(t, dict): return no('unreadable')
         if t.get('symbol', symbol) != symbol or t.get('buyer') is not buy: continue
-        if t.get('orderId') is None or t.get('id') is None: return 'unreadable', None, None
+        if t.get('orderId') is None or t.get('id') is None: return no('unreadable')
         groups.setdefault(str(t['orderId']), {})[str(t['id'])] = t
     cands = []
     for rows in groups.values():
         rows = list(rows.values())
         qs, tms = [_num(t.get('qty')) for t in rows], [_num(t.get('time')) for t in rows]
-        if any(x is None or x <= 0 for x in qs) or any(x is None for x in tms): return 'unreadable', None, None
+        if any(x is None or x <= 0 for x in qs) or any(x is None for x in tms): return no('unreadable')
         if abs(sum(qs) - q0) > 1e-9 * max(1.0, q0): continue
         inside = [lo_ms <= x <= hi_ms for x in tms]
-        if any(inside) and not all(inside): return 'ambiguous', None, None   # straddles the window: never skip it (H1)
+        if any(inside) and not all(inside): return no('ambiguous')   # straddles the window: never skip it (H1)
         if not all(inside): continue
         cands.append(rows)
-    if not cands: return 'no_match', None, None
-    if len(cands) > 1: return 'ambiguous', None, None
-    raw, complete = raw_from_trades((t.get('commission'), t.get('commissionAsset'), t.get('maker')) for t in cands[0])
-    if not complete or not raw: return 'amount_unreadable', None, None
-    if any(x['asset'] != quote for x in raw): return 'non_quote_asset', None, None
-    return 'ok', raw, order_key(symbol, cands[0][0]['orderId'])
+    if not cands: return no('no_match')
+    if len(cands) > 1: return no('ambiguous')
+    rows, key = cands[0], order_key(symbol, cands[0][0]['orderId'])
+    pq = [(_num(t.get('price')), _num(t.get('qty'))) for t in rows]
+    px = (round(sum(p * q for p, q in pq) / sum(q for _, q in pq), 10) + 0.0
+          if all(p is not None and p > 0 for p, _ in pq) else None)
+    raw, complete = raw_from_trades((t.get('commission'), t.get('commissionAsset'), t.get('maker')) for t in rows)
+    if not complete or not raw: return 'amount_unreadable', None, key, px
+    if any(x['asset'] != quote for x in raw): return 'non_quote_asset', None, key, px
+    return 'ok', raw, key, px
 
 
 def order_key(symbol, order_id):
@@ -119,6 +132,23 @@ def recover_fill(target, ref, raw, key=None):
     target['cost_fills_missing'] = int(target['cost_fills_missing']) - 1
     target.setdefault('cost_refs_recovered', []).append(ref)
     if key: target.setdefault('cost_order_keys', []).append([ref, key])    # consumed with the fee, in one revision
+    return True
+
+
+def recover_px(target, ref, px, key=None):
+    """FILL-PX-RECOVER-01 (#189): the proven exchange price of ONE linked fill that was applied as px_missing (in place).
+    True when applied; False (nothing changed) when ref is not one of this target's fills, already has a price, was
+    never missing, or px is not a positive number. Booked fills are never rewritten: the measured price only feeds
+    finalize_px (pnl_fill_adj)."""
+    p = _num(px)
+    if p is None or p <= 0: return False
+    if ref not in {r for _, r in (target.get('fill_refs') or ())}: return False
+    if ref in (target.get('px_actual') or {}) or ref not in (target.get('px_missing') or ()): return False
+    target['px_missing'] = [r for r in target['px_missing'] if r != ref]
+    target.setdefault('px_actual', {})[ref] = p
+    target.setdefault('px_refs_recovered', []).append(ref)
+    if key and [ref, key] not in [list(x) for x in target.get('cost_order_keys') or ()]:
+        target.setdefault('cost_order_keys', []).append([ref, key])        # the order is this fill's, for every reader
     return True
 
 
@@ -205,6 +235,35 @@ def apply_px(target, rec):
     if px is not None and px > 0: pa[ref] = px
     else: target.setdefault('px_missing', []).append(ref)
     return True
+
+
+# ---- TP-SLIP-01 (#189): measured slippage of one fill against the price it was booked at --------------------------
+SLIP_RECENT = 20                     # alerts kept for the dashboard
+
+
+def slip_bps(side, kind, booked, measured, entry_kinds):
+    """Signed slippage of one fill in bps of its booked price, POSITIVE = adverse: a buy (long entry / short exit) filled
+    above the booked price, or a sell (short entry / long exit) filled below it. None when either price is unreadable."""
+    b, m = _num(booked), _num(measured)
+    if b is None or m is None or b <= 0 or m <= 0 or side not in ('LONG', 'SHORT'): return None
+    buy = (side == 'LONG') == (kind in entry_kinds)
+    return round((m - b) / b * 1e4 * (1 if buy else -1), 4) + 0.0
+
+
+def slip_note(stats, symbol, leg, bps, alert_bps, t=None, kind=None):
+    """Fold one measured fill into the per-symbol telemetry (in place): stats[symbol][leg] = n / mean / worst adverse bps
+    and the count at or beyond the alert level; alerts go to stats['_recent'] (newest last). Returns True on an alert."""
+    if bps is None: return False
+    x = stats.setdefault('symbols', {}).setdefault(symbol, {}).setdefault(leg, dict(n=0, sum_bps=0.0, worst_bps=None, alerts=0))
+    x['n'] += 1; x['sum_bps'] = round(x['sum_bps'] + bps, 4) + 0.0
+    x['worst_bps'] = bps if x['worst_bps'] is None else max(x['worst_bps'], bps)
+    hit = bps >= alert_bps
+    if hit:
+        x['alerts'] += 1
+        rec = stats.setdefault('_recent', [])
+        rec.append(dict(t=t, symbol=symbol, leg=leg, kind=kind, bps=bps))
+        del rec[:-SLIP_RECENT]
+    return hit
 
 
 def _replay(fills, sd, entry_kinds, over):

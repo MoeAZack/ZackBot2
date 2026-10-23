@@ -357,6 +357,11 @@ A high score **never** changes settings automatically.
   - logistic-regression baseline first;
   - champion/challenger;
   - drift monitoring with automatic loss of authority.
+- **TA-SCOUT-01 fixed-role committee:** regime, execution/liquidity, catalyst, risk/portfolio, bull and bear roles review
+  only bounded causal aggregates. Strict structured votes produce deterministic coverage, weighted stance and disagreement
+  readings; ranked candidates are research priorities only. B0 baseline versus B1 ranking, B2 risk/catalyst veto and B3
+  full-committee comparisons are pre-registered in `docs/TA_SCOUT_01.md`. All variants remain shadow until sealed
+  walk-forward evidence, point-in-time inputs and independent acceptance exist.
 
 ### Phase 11 — TradingView and real news
 
@@ -365,6 +370,8 @@ A high score **never** changes settings automatically.
   - age checks, allowlists and Pine version hash;
   - modes: Off / Observe / Testnet / Live.
 - **News:** a real `NewsProvider` with source, freshness and expiry. It may warn or veto only. The existing LLM reviewer stays separate.
+- Until that provider exists, TA-SCOUT-01 reports catalyst coverage as zero and requires the catalyst role to return
+  `insufficient`; current search results or model memory may not be used as historical evidence.
 
 ### Phase 12 — Gold, TradFi and shareable release
 

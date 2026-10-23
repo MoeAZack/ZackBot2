@@ -26,6 +26,8 @@ def data_dir():
 
 
 DATA = data_dir()
+import ca_bundle                    # noqa: E402  RUNTIME-CA-01: pin the TLS CA bundle outside the one-file temp folder
+ca_bundle.install(os.path.join(DATA, 'certs'))
 LOG_F = os.path.join(DATA, 'bot.log')
 SECRETS = set()                     # values that must never appear in a log line
 
@@ -693,6 +695,13 @@ def ml_aggregate(e):
     performance = {'all': perf([l['net_r'] for _, l in trades])} if trades else {}
     for strat in sorted({d.get('strategy') or '?' for d, _ in trades}):
         performance[str(strat)] = perf([l['net_r'] for d, l in trades if (d.get('strategy') or '?') == strat])
+    # Fixed-role shadow committee evidence. Flattened numeric maps keep the analyst input bounded and prevent arbitrary
+    # nested text reaching the model. These are observations only; no value is read by the trading engine.
+    regime_performance = {}
+    for rg in sorted({str((d.get('features') or {}).get('regime') or '?') for d, _ in trades}):
+        row = perf([l['net_r'] for d, l in trades if str((d.get('features') or {}).get('regime') or '?') == rg])
+        for k, v in (row or {}).items():
+            regime_performance[f'{rg}.{k}'] = v
     counts = {}
     for g in ('strategy', 'family', 'side'):
         c = collections.Counter(str(d.get(g) or '?') for d in taken.values())
@@ -702,6 +711,19 @@ def ml_aggregate(e):
     exits = collections.Counter(str(l.get('exit_reason') or '?')[:40] for _, l in trades)
     times = sorted(str(r.get('candle_time')) for r in dec if r.get('candle_time'))
     miss = collections.Counter(k for r in dec for k in (r.get('missing') or []))
+    def feature_values(name):
+        return [float(v) for r in dec if isinstance((v := (r.get('features') or {}).get(name)), (int, float))
+                and not isinstance(v, bool)]
+    exposure, corr = feature_values('exposure_count'), feature_values('corr_count')
+    portfolio_pressure = {}
+    if exposure:
+        portfolio_pressure.update(exposure_avg=round(sum(exposure) / len(exposure), 3), exposure_max=max(exposure))
+    if corr:
+        portfolio_pressure.update(corr_avg=round(sum(corr) / len(corr), 3), corr_max=max(corr))
+    source_coverage = {'point_in_time_news': 0.0}             # Phase 11 NewsProvider is not present: explicit, never guessed
+    if dec:
+        for name in ('qv_ratio', 'funding', 'rank', 'exposure_count', 'corr_count'):
+            source_coverage[name] = round(sum(1 for r in dec if (r.get('features') or {}).get(name) is not None) / len(dec), 3)
     mfes = [float(l['mfe_r']) for _, l in trades if isinstance(l.get('mfe_r'), (int, float))]
     maes = [float(l['mae_r']) for _, l in trades if isinstance(l.get('mae_r'), (int, float))]
     givebacks = [float(l['mfe_r']) - float(l['net_r']) for _, l in trades
@@ -717,7 +739,9 @@ def ml_aggregate(e):
     # configuration, credentials or identifiers. Bound to this engine instance's folder (production: DATA == e.dir).
     bts = _recent_backtests(os.path.join(e.dir, 'backtests'))
     bt_n = max([b['trades'] for b in bts if isinstance(b.get('trades'), int) and not isinstance(b['trades'], bool)] or [0])
-    raw = dict(n_trades=max(len(trades), bt_n), performance=performance, counts=counts, skip_reasons=dict(skips.most_common(20)),
+    raw = dict(n_trades=max(len(trades), bt_n), performance=performance, counts=counts,
+               regime_performance=regime_performance, portfolio_pressure=portfolio_pressure,
+               source_coverage=source_coverage, skip_reasons=dict(skips.most_common(20)),
                mfe_mae_coverage=dict(mfe=round(len(mfes) / len(trades), 3), mae=round(len(maes) / len(trades), 3)) if trades else {},
                outcome_diagnostics=diagnostic, backtests=bts,
                missingness={k: round(v / len(dec), 3) for k, v in miss.items()} if dec else {},
@@ -1136,10 +1160,11 @@ class App:
         extra = {}
         for name, fn in (('risk_rules', e.risk_rules_status), ('governor', e.governor_status), ('grids', e.grids.status),
                          ('ctrl', e.ctrl_status), ('rotation', e.rotation_status), ('paper_books', e.paper_books_status), ('book_ledger', e.book_ledger_status),
-                         ('true_books', e.true_books_status)):
+                         ('true_books', e.true_books_status), ('slippage', e.slippage_status)):
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
+        extra['tls_ca'] = ca_bundle.status()
         return dict(version=VERSION, build=BUILD_ID, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
                     ai_model=e.cfg.get('ANTHROPIC_MODEL') or ai_filter.DEFAULT_MODEL,
                     error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,

@@ -1675,6 +1675,7 @@ class Engine:
         self._mk_refs = {}                        # EXEC-CAL-00: resting maker entry -> its filled orders (memory only, ids never saved)
         self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
+        self._lev_cur = {}                        # #183: symbol -> the leverage Binance last reported / accepted for the coin
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
         self._auditw = fill_writer(self.F['audit'], rotate_lines=AUDIT_ROTATE_LINES, slim=TA.slim_record, rotate_bytes=AUDIT_ROTATE_BYTES)   # T05a: audit events (same
         #   non-blocking writer contract as T05 fills; the in-memory window keeps only slimmed final trade records)
@@ -2689,6 +2690,7 @@ class Engine:
     # Every executed fill record gets a cost_ref (not an exchange id) that its lot lists in cost_refs. The finished record
     # (enriched by the worker, or written at once) is appended to a queue; apply_costs() folds it into the lot - or into the
     # trade's history row when it arrives after the close - on the engine's own thread. Estimates (`fees`) never change.
+    SLIP_ALERT_BPS = 25.0                 # TP-SLIP-01: a measured fill this many bps adverse to its booked price alerts
     COST_WAIT_S = 600                     # an unlinked cost record waits this long for its lot, then counts as orphan
 
     def _cost_link(self, rec, lot=None):
@@ -2756,17 +2758,37 @@ class Engine:
                 else: self._risk_fill_mark(t, rec); lots = True
         return rows, lots
 
-    @staticmethod
-    def _px_log(t, rec):
-        """FILL-PNL-01: say when a fill's exchange price differs from the price it was booked at (never raises)."""
+    def _px_log(self, t, rec):
+        """FILL-PNL-01: say when a fill's exchange price differs from the price it was booked at; TP-SLIP-01 (#189): fold
+        its measured slippage into the per-symbol telemetry and alert at SLIP_ALERT_BPS adverse (never raises; the
+        booked and measured numbers are only read - nothing about the order or the lot changes)."""
         try:
             i = next(i for i, r in t.get('fill_refs') or () if r == rec.get('cost_ref'))
             f, px = t['fills'][i], (t.get('px_actual') or {}).get(rec['cost_ref'])
             if px is None:
                 log.warning(f"{t.get('symbol')} {f[1]} fill has no exchange price - its P&L stays INCOMPLETE (fill_px_missing)")
-            elif px != f[3]:
+                return
+            if px != f[3]:
                 log.info(f"FILL-PNL {t.get('symbol')} {t.get('side')} {f[1]} {f[2]} booked @ {f[3]}, measured @ {px}")
+            bps = AC.slip_bps(t.get('side'), f[1], f[3], px, AC.OPENING_FILLS)
+            leg = 'entry' if f[1] in AC.OPENING_FILLS else 'exit'
+            stats = self.state.setdefault('slip_stats', {})
+            if AC.slip_note(stats, t.get('symbol'), leg, bps, self.SLIP_ALERT_BPS, t=now_utc().isoformat(timespec='seconds'),
+                            kind=f[1]):
+                msg = (f"SLIPPAGE {t.get('symbol')} {t.get('side')} {f[1]}: booked {f[3]}, measured {px} "
+                       f"({bps:.1f} bps adverse, measured is the authority)")
+                log.warning(msg); self.notify(f"⚠️ {msg}")
         except Exception: pass
+
+    def slippage_status(self):
+        """TP-SLIP-01: per-symbol measured slippage (entry / exit legs) and the recent alerts, for the dashboard."""
+        st = self.state.get('slip_stats') or {}
+        out = {}
+        for sym, legs in (st.get('symbols') or {}).items():
+            out[sym] = {leg: dict(n=x['n'], mean_bps=round(x['sum_bps'] / x['n'], 2) if x['n'] else None,
+                                  worst_bps=x['worst_bps'], alerts=x['alerts']) for leg, x in legs.items()}
+        return dict(alert_bps=self.SLIP_ALERT_BPS, basis='measured exchange fill vs booked price, + = adverse',
+                    symbols=out, recent=list(st.get('_recent') or ()))
 
     def _cost_sweep(self):
         """Re-finalize lots / rows whose cost record never came (restart / crash cut the enrichment, or the queue
@@ -2822,9 +2844,13 @@ class Engine:
     # read per tick, outside the lock (as funding_tick). Only a unique, complete, quote-asset match is applied - as a
     # revision (cost_rev + cohort evidence), idempotent per cost_ref (cost_refs_recovered). Anything else fails closed and the
     # row stays INCOMPLETE. Progress lives in state['cost_recover'] (a restart neither repeats nor double-counts).
+    # FILL-PX-RECOVER-01 (#189): the same unique match also proves the fill's exchange price (qty-weighted over that one
+    # order's executions). A fee recovery applies it to a px_missing fill in the same revision; a fill whose price alone is
+    # missing (its fee was read, or recovered before this) gets its own 'px|<cost_ref>' job, same read, same rules.
     COST_RECOVER_POLL_S, COST_RECOVER_PRE_S, COST_RECOVER_POST_S, COST_RECOVER_PAD_S = 120, 120, 10, 600
     COST_RECOVER_TRIES, COST_RECOVER_LIMIT, COST_RECOVER_KEEP = 8, 1000, 500
     COST_RECOVER_RETRY = ('read_failed', 'no_match', 'no_evidence')      # may clear later; every other status is final
+    PX_AFTER_FEE_FAIL = ('amount_unreadable', 'non_quote_asset')   # the fee was unprovable, the order and price were not
 
     def _cost_recover_scan(self, want):
         """{cost_ref: fill record} for the wanted refs, from fills.jsonl.1 then fills.jsonl (raw lines; never raises)."""
@@ -2853,7 +2879,7 @@ class Engine:
         which travel with the fee revision), else None."""
         if not key: return None
         for r, c in (self.state.get('cost_recover') or {}).items():
-            if r != ref and c.get('order_key') == key and c.get('status') in ('recovered', 'apply_pending'): return r
+            if r.split('|')[-1] != ref and c.get('order_key') == key and c.get('status') in ('recovered', 'apply_pending'): return r
         ids = {h.get('id') for h in self.history}
         for t in (list(self.state.get('lots', {}).values()) + list(self.history)
                   + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]):
@@ -2861,42 +2887,55 @@ class Engine:
             if o is not None and o != ref: return o
         return None
 
-    def _cost_recover_commit(self, ref, cur, raw, now):
+    def _cost_recover_commit(self, ref, cur, raw, now, px=None):
         """Under the lock: apply a PROVEN commission (raw) to its lot / row and make it durable. Durable -> 'recovered';
         a failed history / cohort write -> 'apply_pending' with raw kept in state, retried every tick and after a restart
         (memory still holding it: save only; a restart that lost it: the stored raw is applied to the disk row) - never a
-        new read, never applied twice (cost_refs_recovered). Returns the resulting status."""
+        new read, never applied twice (cost_refs_recovered). Returns the resulting status.
+        FILL-PX-RECOVER-01: px (the same order's proven price) is applied once (px_refs_recovered) when that fill is
+        px_missing; a 'px' job (cur['mode']) applies only the price and needs no commission."""
+        px_only = cur.get('mode') == 'px'
         kind, t = self._cost_target(ref)
         if t is None:                                        # a few ticks for a restart to load it, then final
             cur['commit_tries'] = int(cur.get('commit_tries') or 0) + 1
             if cur['commit_tries'] >= self.COST_RECOVER_TRIES:
                 cur.update(status='failed', why='target_gone'); cur.pop('raw', None); return 'failed'
-            cur.update(status='apply_pending', raw=raw, why='target_not_loaded'); return 'apply_pending'
-        fresh = ref not in (t.get('cost_refs_recovered') or ())
+            cur.update(status='apply_pending', raw=raw, why='target_not_loaded', **({'px': px} if px is not None else {})); return 'apply_pending'
+        fresh = ref not in (t.get('px_refs_recovered' if px_only else 'cost_refs_recovered') or ())
         if fresh and self._cost_order_consumer(cur.get('order_key'), ref) is not None:   # consumed meanwhile (restart)
             cur.update(status='failed', why='order_already_consumed'); cur.pop('raw', None); return 'failed'
-        if fresh and not AC.recover_fill(t, ref, raw, cur.get('order_key')):
-            cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
-        if fresh: self._cost_final(kind, t)
+        if px_only:
+            if fresh and not AC.recover_px(t, ref, px, cur.get('order_key')):
+                cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
+            px_new = fresh
+        else:
+            if fresh and not AC.recover_fill(t, ref, raw, cur.get('order_key')):
+                cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
+            px_new = px is not None and AC.recover_px(t, ref, px, cur.get('order_key'))
+        if fresh or px_new: self._cost_final(kind, t)
         ok = True
         if kind == 'row':
             ok = self._row_changed(t)
             ok = self._save_aux('history', self.history) and ok
         if not ok:
-            cur.update(status='apply_pending', raw=raw, why='persist_failed')
-            log.warning('recovered commission not durable yet; retried next tick')
+            cur.update(status='apply_pending', raw=raw, why='persist_failed', **({'px': px} if px is not None else {}))
+            log.warning('recovered commission / fill price not durable yet; retried next tick')
             return 'apply_pending'
-        cur.update(status='recovered', amount={x['asset']: x['amount'] for x in raw}, fees_actual=t.get('fees_actual'),
+        mpx = (t.get('px_actual') or {}).get(ref) if ref in (t.get('px_refs_recovered') or ()) else None
+        cur.update(status='recovered', **({} if px_only else dict(amount={x['asset']: x['amount'] for x in raw},
+                                                                     fees_actual=t.get('fees_actual'))),
                    **({} if fresh else {'why': 'already_applied'}))
-        cur.pop('raw', None)
+        cur.pop('raw', None); cur.pop('px', None)
+        if mpx is not None: cur['px'] = mpx
         try:
             with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
-                f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
+                f.write(json.dumps(dict(kind='px_recover' if px_only else 'cost_recover', cost_ref=ref, target=kind,
                                         id=t.get('id') if kind == 'row' else t.get('symbol'), symbol=cur.get('symbol'),
                                         raw=raw, order_key=cur.get('order_key'), fees_actual=t.get('fees_actual'),
-                                        cost_rev=t.get('cost_rev'),
+                                        px_actual=mpx, pnl_fill_adj=t.get('pnl_fill_adj'), cost_rev=t.get('cost_rev'),
                                         time_ms=int(now * 1000)), separators=(',', ':')) + '\n')
         except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
+        if px_new: self._px_log(t, {'cost_ref': ref})       # TP-SLIP-01 telemetry for the late-measured fill
         return 'recovered'
 
     def _cost_recover_discover(self):
@@ -2913,8 +2952,34 @@ class Engine:
                 if r in done and r not in rec and (e is None or (e.get('status') == 'no_evidence' and
                                                                   int(e.get('tries') or 0) < self.COST_RECOVER_TRIES)):
                     want.add(r)
-        if not want: return False
-        recs = self._cost_recover_scan(want)
+        want_px = set()                                      # FILL-PX-RECOVER-01: a missing price the fee job will not carry
+        for t in list(self.state.get('lots', {}).values()) + rows:
+            pm = set(t.get('px_missing') or ()) - set(t.get('px_refs_recovered') or ())
+            for _i, r in t.get('fill_refs') or ():
+                if r not in pm or r in want: continue
+                f, e = st.get(r), st.get('px|' + r)
+                if f is not None and f.get('status') in ('pending', 'no_evidence', 'apply_pending'): continue
+                if f is not None and f.get('status') == 'failed' and f.get('why') not in self.PX_AFTER_FEE_FAIL: continue
+                if e is None or (e.get('status') == 'no_evidence' and int(e.get('tries') or 0) < self.COST_RECOVER_TRIES):
+                    want_px.add(r)
+        if not want and not want_px: return False
+        recs = self._cost_recover_scan(want | want_px)
+        for r in want_px:
+            rec, k = recs.get(r), 'px|' + r
+            if rec is None:
+                e = st.setdefault(k, dict(status='no_evidence', tries=0, mode='px'))
+                e['tries'] = int(e.get('tries') or 0) + 1
+                if e['tries'] >= self.COST_RECOVER_TRIES: e.update(status='failed', why='no_evidence')
+                continue
+            if _fnum(rec.get('actual')):                     # the record has its price: _px_recover applies it
+                st[k] = dict(status='not_missing', mode='px'); continue
+            try:
+                lo_ms, hi_ms = self._cost_recover_window(rec)
+                qty = float(rec['qty_fill'])
+            except (KeyError, TypeError, ValueError):
+                st[k] = dict(status='failed', why='bad_evidence', mode='px'); continue
+            st[k] = dict(status='pending', mode='px', symbol=rec.get('symbol'), buy=rec.get('buy'), qty=qty, tries=0,
+                         next_s=0, lo_ms=lo_ms, hi_ms=hi_ms)
         for r in want:
             rec = recs.get(r)
             if rec is None:                                  # not on disk (yet): a few scans, then final
@@ -2952,25 +3017,29 @@ class Engine:
             self.state['cost_recover_polled'] = now
             changed = False
             for r, c in list((self.state.get('cost_recover') or {}).items()):   # proven but not durable yet: first
-                if c.get('status') == 'apply_pending' and isinstance(c.get('raw'), list):
-                    self._cost_recover_commit(r, c, c['raw'], now); changed = True
+                if c.get('status') == 'apply_pending' and (isinstance(c.get('raw'), list) or
+                                                           c.get('mode') == 'px' and _fnum(c.get('px'))):
+                    self._cost_recover_commit(r.split('|')[-1], c, c.get('raw'), now, px=c.get('px')); changed = True
             changed = self._cost_recover_discover() or changed
             job = next(((r, dict(e)) for r, e in (self.state.get('cost_recover') or {}).items()
                         if e.get('status') == 'pending' and float(e.get('next_s') or 0) <= now), None)
             if job is None:
                 if changed: self.save_state()
                 return 'idle'
-        ref, e = job
+        sk, e = job
+        ref, px_only = sk.split('|')[-1], e.get('mode') == 'px'
         pad = self.COST_RECOVER_PAD_S * 1000
         try:
             got = rd(e['symbol'], e['lo_ms'] - pad, e['hi_ms'] + pad, self.COST_RECOVER_LIMIT)
-            status, raw, key = AC.match_fill(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']), e['lo_ms'],
-                                        e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
+            status, raw, key, px = AC.match_order(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']),
+                                                  e['lo_ms'], e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
         except Exception as ex:                              # outage / cooldown / 429: retried with backoff, never guessed
-            status, raw, key = 'read_failed', None, None
+            status, raw, key, px = 'read_failed', None, None, None
             log.debug(f'commission recovery read failed ({type(ex).__name__})')
+        if px_only and key is not None and status in ('ok', 'amount_unreadable', 'non_quote_asset'):
+            status = 'ok' if px is not None else 'px_unreadable'   # a price job needs the unique order and its price only
         with self.lock:
-            cur = (self.state.get('cost_recover') or {}).get(ref)
+            cur = (self.state.get('cost_recover') or {}).get(sk)
             if cur is None or cur.get('status') != 'pending': return 'stale'
             cur['tries'] = int(cur.get('tries') or 0) + 1
             if status == 'ok':
@@ -2980,7 +3049,7 @@ class Engine:
                     status = 'order_already_consumed'
                 else:
                     cur['order_key'] = key
-                    self._cost_recover_commit(ref, cur, raw, now)
+                    self._cost_recover_commit(ref, cur, raw, now, px=px)
             elif status in self.COST_RECOVER_RETRY and cur['tries'] < self.COST_RECOVER_TRIES:
                 cur.update(why=status, next_s=now + min(3600, 300 * 2 ** (cur['tries'] - 1)))
             else:
@@ -3934,6 +4003,43 @@ class Engine:
             raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: its stop fired on Binance and the fill is being "
                                "booked - nothing is sent")
 
+    BOOK_PROBE_WAIT_S = 1.0               # TP-SLIP-01: after a market close is answered, wait at most this for its book read
+    BOOK_PROBE_URGENT = ('flatten', 'risk_trim', 'risk_unwind', 'stop_crossed', 'stop_failed')   # protective closes never wait on evidence (the next order goes first)
+
+    def _book_probe(self, sym):
+        """TP-SLIP-01 (#189) evidence: the testnet best bid / ask, read CONCURRENTLY with a market close - started just
+        before the order is sent, so the order is never delayed. PAPER/testnet only (the enrichment gate), on the audit
+        read path (never the outage circuit). -> (thread, box) or None."""
+        if not self._enrich_on() or not callable(getattr(self.trade, 'book_ticker', None)): return None
+        box = {}
+
+        def run():
+            t = time.time()
+            try: box['b'] = self.trade.book_ticker(sym)
+            except Exception as ex: box['err'] = type(ex).__name__
+            box['dt'] = time.time() - t
+        th = threading.Thread(target=run, daemon=True, name='book-probe')
+        th.start()
+        return th, box
+
+    def _book_snapshot(self, probe, mark, buy, qty, urgent=False):
+        """The probe's result for the fill record: touch price / quantity on the side the close takes, its distance from
+        the decision mark in bps (+ = the book was worse than the mark) and how much of the order the touch covered.
+        Evidence only - never used by any decision. None without a probe; {'missing': why} when it did not answer."""
+        if probe is None: return None
+        th, box = probe
+        th.join(0 if urgent else self.BOOK_PROBE_WAIT_S)
+        b = box.get('b')
+        if urgent and th.is_alive(): return dict(missing='safety_deferred')
+        if th.is_alive() or not isinstance(b, dict): return dict(missing=box.get('err') or ('timeout' if th.is_alive() else 'bad_answer'))
+        bid, ask, bq, aq = (_fnum(b.get(k)) for k in ('bidPrice', 'askPrice', 'bidQty', 'askQty'))
+        touch, tq = (ask, aq) if buy else (bid, bq)
+        out = dict(bid=bid, ask=ask, bid_qty=bq, ask_qty=aq, ex_ms=b.get('time'), fetch_s=round(box.get('dt') or 0.0, 3))
+        m = _fnum(mark)
+        if m and touch: out['touch_vs_mark_bps'] = round((touch - m) / m * 1e4 * (1 if buy else -1), 2) + 0.0
+        if tq is not None and qty: out['touch_cover'] = round(tq / float(qty), 4)
+        return out
+
     def _market_close(self, lot, qty, why, mark=None, post=None, cid=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
@@ -3944,6 +4050,7 @@ class Engine:
         px = mark or lot['avg']
         if not self.dry:
             lot['last_order_t'] = t0 = time.time()
+            probe = self._book_probe(sym)                                  # TP-SLIP-01: evidence read, in parallel
             try:
                 o = (self.trade.close(sym, lot['side'], self._fmt(qty, r['step'])) if cid is None   # RISK-FILL-01: a trim is
                      else self.trade.close(sym, lot['side'], self._fmt(qty, r['step']), cid=cid))     # sent under its write-ahead id
@@ -3952,8 +4059,9 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
+            book = self._book_snapshot(probe, px, lot['side'] == 'SHORT', qty, urgent=why in self.BOOK_PROBE_URGENT)
             ref = (self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
-                       **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
+                       book=book, **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
                 raise UnfilledOrder(f"{sym} {why}: Binance {o.get('status')} - nothing executed, the position is unchanged")
@@ -5969,6 +6077,7 @@ class Engine:
         if self._lev.get(sym) == want:
             try: current, _ = self._margin_state(sym); current = lev_num(current, 'current leverage', pos=True)
             except Exception: current = None
+            if current is not None: self._lev_cur[sym] = current
             if current is not None and current <= want: return 'set'
             self._lev.pop(sym, None)                              # external/unknown change: prove or set it again
         cool = self._lev_cool.get(sym, 0)
@@ -5990,7 +6099,7 @@ class Engine:
                 self._lev_cool[sym] = time.time() + LEV_REFUSAL_COOLDOWN_S
                 return self._leverage_fallback(sym, lev, e2, notional, risk)   # proceeds only if proven safe (read-only)
         self._lev_cool.pop(sym, None)
-        self._lev[sym] = want
+        self._lev[sym] = want; self._lev_cur[sym] = lev
         return 'set'
 
     def _brackets(self, sym, fetch=True):
@@ -6010,14 +6119,21 @@ class Engine:
         leverage in use (feasibility.tier_notional_cap; Binance answers -2027), else None. Counted conservatively: every open
         lot of the coin (both sides) and every resting entry order of the coin (its full quantity, filled part included), each
         valued at the HIGHER of the current order price px and its own entry/limit price - never at a stale lower average
-        (a price rise must not hide notional). Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown
-        -> None. Reduce-only exits never pass through here."""
+        (a price rise must not hide notional). Reduce-only exits never pass through here.
+        #183 (Binance -2027 at 20:30 Cairo, 22 Oct): the schedule is FETCHED when the 1 h cache expired (cache-only made the
+        gate silently disappear an hour into a run), an unavailable / unusable schedule REFUSES the entry (fail closed) and
+        the cap is taken at the HIGHER of the configured leverage and the one Binance last reported for the coin."""
+        try:                                                     # cached for LEV_BRACKET_TTL_S, re-fetched after it
+            b = self._brackets(sym, fetch=hasattr(self.trade, 'leverage_brackets'))
+        except LevReject as e:
+            return f'leverage tier: {sym} bracket schedule unavailable - entry refused ({str(e)[:120]})'
+        if not b: return None                                    # a client with no schedule source (older / offline fakes)
         try:
-            b = self._brackets(sym, fetch=False)
-            if not b: return None
             lev = min(max(1, int(self.S['MAX_LEVERAGE'])), float(b[0]['lev']))
+            cur = self._lev_cur.get(sym)
+            if isinstance(cur, (int, float)) and math.isfinite(cur) and cur > lev: lev = float(cur)
             cap = F.tier_notional_cap(b, lev)
-            if cap is None: return None
+            if cap is None: return f'leverage tier: {sym} no bracket allows {lev:g}x - entry refused'
             px = float(px)
             held = sum(float(l['qty']) * max(px, float(l['avg'])) for l in self.state['lots'].values() if l['symbol'] == sym)
             held += sum(float(r['qty']) * max(px, float((r.get('plan') or {}).get('px') or 0.0))
@@ -6025,8 +6141,8 @@ class Engine:
             if held + notional <= cap: return None
             return (f'leverage tier: {sym} position {held + notional:,.0f} USDT would exceed the Binance maximum '
                     f'{cap:,.0f} USDT at {lev:g}x')
-        except Exception:                                   # noqa: BLE001  a feasibility hint never raises into trading
-            return None
+        except Exception as e:                              # noqa: BLE001  never raises into trading; never a silent pass
+            return f'leverage tier: {sym} check failed - entry refused ({type(e).__name__})'
 
     def _lev_max(self, sym, fetch=True):
         """The coin's maximum initial leverage (first bracket), or None if unknown/invalid."""
@@ -6279,6 +6395,7 @@ class Engine:
             except LevReject: read_err, cur = f'invalid current leverage {cur!r}', None
             else: cur = int(cur) if cur == int(cur) else cur
         r.update(current=cur, margin_type=mtype if mtype in ('CROSSED', 'ISOLATED') else None)
+        if cur is not None: self._lev_cur[sym] = cur          # #183: the tier cap follows the leverage really in use
 
         def done(ok, reason, detail):
             r.update(outcome='went_ahead' if ok else 'skipped', reason=reason, detail=str(detail)[:200])
