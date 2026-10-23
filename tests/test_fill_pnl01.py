@@ -38,6 +38,8 @@ def scenario(side, entry_px, tp_mark, tp_px):
     ('LONG', 100.3, 103.0, 99.9),            # AINUSDT shape: TP1 credited at the level, filled below the entry (adverse)
     ('SHORT', 99.4, 98.0, 98.9),             # MOVRUSDT shape: a smaller real gain than credited
     ('LONG', 99.8, 101.0, 101.4),            # favorable slippage on both fills
+    ('SHORT', 100.0, 99.47, 99.9999),        # TP-SLIP-01 (#189) AIN short: credited +53 bps, filled back at the entry
+    ('SHORT', 100.0, 98.0, 100.2),           # TP-SLIP-01: a short TP1 credited +2 % whose measured fill is a loss
 ])
 def test_partial_exit_pnl_is_reconciled_to_the_measured_fills(side, entry_px, tp_mark, tp_px):
     e, k, lot, q = scenario(side, entry_px, tp_mark, tp_px)
@@ -325,3 +327,23 @@ def test_a_repeated_mark_never_covers_another_fill():
     s = dict(side='LONG', fills=t['fills'], fill_refs=[[0, 'c1-1-0']], px_actual={'c1-1-0': 10.0}, px_unlinked_ok=5)
     AC.finalize_px(s, 1, TA.ENTRY_KINDS)                                 # an over-counted scalar never proves coverage
     assert s['fill_px_partial'] == ['fill_ref_missing']
+
+
+def test_tp_slip01_a_tp1_partial_measured_at_a_loss_turns_the_open_book_negative():
+    """TP-SLIP-01 (#189): the TP1 slice is credited at the decision price but its measured fill crosses back through the
+    entry. Once measured, neither book may still show the credited gain: the open lot's net is the measured slice minus
+    fees (negative here), and before the measurement lands the book is INCOMPLETE, never the credited +gain."""
+    e, k, lot, q = scenario('SHORT', 100.0, 98.0, 100.2)
+    credited = (100.0 - 98.0) * q
+    assert lot['realized'] == pytest.approx(credited) and credited > 0
+    pend = dict(lot, book='B1_FAST', cohort_id='C', fees_actual=0.0)
+    b = TB.compute('C', lots=[pend], marks={'BTCUSDT': 100.0}, funding=FOK)['B1_FAST']
+    assert [x['reason'] for x in b['incomplete'] if x['reason'] == 'fill_px_unresolved'] == ['fill_px_unresolved']
+    assert BL.compute(dict(id='C'), lots=[pend], marks={'BTCUSDT': 100.0})['books']['B1_FAST']['fill_px_unresolved'] == 1
+    settle(e)
+    lot = e.state['lots'][k]
+    bl = dict(lot, book='B1_FAST', cohort_id='C', fees_actual=lot['fees'])
+    b = TB.compute('C', lots=[bl], marks={'BTCUSDT': 100.0}, funding=FOK)['B1_FAST']
+    assert float(b['gross_real']) == pytest.approx(-0.2 * q, abs=1e-4) and float(b['gross_real']) - float(b['fees_act']) < 0
+    led = BL.compute(dict(id='C'), lots=[bl], marks={'BTCUSDT': 100.0})['books']['B1_FAST']
+    assert led['open_booked_net'] == pytest.approx(-0.2 * q - lot['fees'], abs=1e-4) and led['open_booked_net'] < 0
