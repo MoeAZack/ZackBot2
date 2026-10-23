@@ -26,6 +26,8 @@ def data_dir():
 
 
 DATA = data_dir()
+import ca_bundle                    # noqa: E402  RUNTIME-CA-01: pin the TLS CA bundle outside the one-file temp folder
+ca_bundle.install(os.path.join(DATA, 'certs'))
 LOG_F = os.path.join(DATA, 'bot.log')
 SECRETS = set()                     # values that must never appear in a log line
 
@@ -1162,6 +1164,7 @@ class App:
             try: extra[name] = fn()
             except Exception as ex: extra[name] = dict(error=str(ex)[:120])
         extra['telegram'] = self.tg.status() if getattr(self, 'tg', None) else None
+        extra['tls_ca'] = ca_bundle.status()
         return dict(version=VERSION, build=BUILD_ID, mode='LIVE' if e.live else 'PAPER', keys=bool(e.cfg.get('API_KEY')), ai_key=bool(e.cfg.get('ANTHROPIC_API_KEY')),
                     ai_model=e.cfg.get('ANTHROPIC_MODEL') or ai_filter.DEFAULT_MODEL,
                     error=e.error, hedge=e.hedge, equity=e.guard_eq if e.guard_eq is not None else e.last_eq, sizing_equity=e.last_eq,
