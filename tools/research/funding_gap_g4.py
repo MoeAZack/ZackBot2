@@ -18,7 +18,15 @@ last covered row (08:00Z) carries a 2h interval, the next stored row is 16:00Z w
                     and the counterexample sets (identical observed tapes with different truth) - nothing else.
 
 Never a rate, mark, quantity, trade or result: the CSV rate column is not parsed. Funding files that reach the sealed
-holdout are skipped unread (listed by path); the enumeration end is therefore the last pre-holdout file.
+holdout are skipped unread (listed by path); the enumeration end is therefore the last pre-holdout file. In the frozen
+report every CORE-10 symbol ends on 2026-08-31 (the 2026-09 files reach 30 Sep), so "3 transitions total" means 3 from
+2021-01-04 through 31 Aug 2026 - September 2026 is not covered.
+
+Ruling (Codex 6363158911): option (a) - `last_row` stays, the four wf[0] cells stay INCOMPLETE ("SOLUSDT 2h->8h cadence
+switch on 18 Nov 2022 is not provable from the stored tape"); `lookahead1` is not a completeness proof.
+Known limit, tracked as a later G5 evidence line (no repair / rerun now): the 2022-11-10 SOLUSDT 04:00 4h->2h pair
+(gap 4h, class `old`) passes today's either-row rule, but under the backward label convention it hides a missing 02:00
+event - the same false-accept class `last_row` shows in the simulation.
 """
 from __future__ import annotations
 
@@ -323,7 +331,10 @@ def main(argv=None) -> int:
     with open(a.out, 'x', encoding='utf-8', newline='\n') as fh:
         fh.write(text)
     t = doc['transitions']
+    ends = sorted({v['last_row_utc'] for v in t['symbols'].values() if v['last_row_utc']})
     print(f'{a.out} sha256 {hashlib.sha256(text.encode()).hexdigest()} transitions {t["total"]} {t["counts"]} '
+          f'(from {t["window_lo"]} through {ends[-1] if ends else None}; sealed files skipped unread: '
+          f'{len(t["skipped_sealed_files"])}) '
           f'sol_replica {doc["sol_replica"]}')
     return 0
 

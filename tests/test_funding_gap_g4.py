@@ -62,10 +62,25 @@ def test_lookahead1_needs_a_valid_pair_with_the_next_row():
     assert G.covered('lookahead1', G._series(tape), ENTRY, LO, HI, True) is False
     tape = [(t, h) for t, h in sol_tape() if t <= D + 8 * H]    # no row within one max interval after hi
     assert G.covered('lookahead1', G._series(tape), ENTRY, LO, HI, True) is False
+    tape = [(t, h) for t, h in sol_tape() if t <= D + 8 * H] + [(D + 18 * H, 2)]
+    assert D + 18 * H <= HI + G.MAX_H * H                       # inside the cap: only the pair rule (10h gap) refuses
+    assert G.covered('lookahead1', G._series(tape), ENTRY, LO, HI, True) is False
+
+
+PINNED = {'cases': 23_920, 'last_row': (51, 98), 'lookahead1': (54, 30), 'same_convention': 9, 'cross_convention_only': 24}
+
+
+def assert_pinned(sim):
+    for r in G.RULES:
+        s = sim['rules'][r]
+        assert (s['cases'], s['false_accept'], s['false_reject']) == (PINNED['cases'], *PINNED[r])
+    for k in ('same_convention', 'cross_convention_only'):
+        assert sim['counterexamples'][k]['count'] == PINNED[k]
 
 
 def test_simulation_decides_the_sol_shape_only_given_a_label_convention():
     sim = G.simulate()
+    assert_pinned(sim)                                          # Codex 6363266225: the decisive counts, exactly
     assert sim['sol_shape'] == {'old_label': [True], 'new_label': [False]}
     for r in G.RULES:
         s = sim['rules'][r]
@@ -161,5 +176,8 @@ def test_the_frozen_g4_report_is_blind_bound_and_names_the_sol_transition():
     assert {'from_utc': '2022-11-18T08:00:00Z', 'to_utc': '2022-11-18T16:00:00Z', 'old_h': 2, 'new_h': 8, 'gap_h': 8,
             'class': 'new', 'hidden_slots': 3} in sol
     assert doc['sol_replica'] == {'last_row': False, 'lookahead1': True}
+    assert_pinned(doc['simulation'])
+    assert doc['transitions']['total'] == 3 and doc['transitions']['counts'] == {'old': 1, 'new': 2, 'both': 0, 'neither': 0}
+    assert {v['last_row_utc'][:10] for v in doc['transitions']['symbols'].values()} == {'2026-08-31'}   # 3 = through 31 Aug
     assert all(p.endswith('-2026-09.zip') for p in doc['transitions']['skipped_sealed_files'])
     assert all(not f['path'].endswith('-2026-09.zip') for f in doc['transitions']['files_read'])
