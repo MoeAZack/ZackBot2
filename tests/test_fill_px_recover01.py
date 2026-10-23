@@ -209,3 +209,38 @@ def test_a_price_proven_without_its_fee_survives_failed_writes_and_a_restart(mon
     h = e2.history[-1]
     assert h['px_missing'] == [] and h['px_refs_recovered'] == [ref] and h['cost_fills_missing'] >= 1
     assert e2.state['cost_recover']['px|' + ref]['status'] == 'recovered'
+
+
+# ------------------------------------------------------------------ Cowork #196 P3s
+def slip_n(e, leg='entry'):
+    return (((e.state.get('slip_stats') or {}).get('symbols') or {}).get('BTCUSDT') or {}).get(leg, {}).get('n', 0)
+
+
+def test_a_late_measured_price_reaches_the_slippage_telemetry_once(monkeypatch):
+    e, _ = mk(RX); k, lot, ref = entry_px_missing(e)
+    assert slip_n(e) == 0
+    assert e.cost_recover_tick(force=True) == 'ok' and slip_n(e) == 1
+    assert e.cost_recover_tick(force=True) == 'idle' and slip_n(e) == 1
+
+
+def test_the_telemetry_survives_a_first_failed_persist(monkeypatch):
+    e, _ = mk(RX); k, lot, ref = entry_px_missing(e)
+    e.close_lot(k, 'signal', mark=101.0); recs(e); e.apply_costs()
+    n0 = slip_n(e)
+    on = failing_writes(monkeypatch)
+    assert e.cost_recover_tick(force=True) == 'ok' and e.state['cost_recover'][ref]['status'] == 'apply_pending'
+    assert slip_n(e) == n0                                              # not logged before it is durable
+    on['v'] = False
+    assert e.cost_recover_tick(force=True) == 'idle' and e.state['cost_recover'][ref]['status'] == 'recovered'
+    assert slip_n(e) == n0 + 1 and 'px_unlogged' not in e.state['cost_recover'][ref]
+    assert e.cost_recover_tick(force=True) == 'idle' and slip_n(e) == n0 + 1
+
+
+def test_a_price_job_never_uses_an_order_other_than_the_one_that_proved_the_fee(monkeypatch):
+    e, _ = mk(RX); k, lot, ref = entry_px_missing(e)
+    prefix_fee_recovery(e, monkeypatch)
+    oid = OID0 + 1; rows = e.trade.rows.pop(oid)                        # A drops out of the read, B takes its place
+    e.trade.rows[777] = [dict(x, orderId=777, id=x['id'] + 9000, price='555') for x in rows]
+    assert e.cost_recover_tick(force=True) == 'order_mismatch'
+    assert lot['px_missing'] == [ref] and e.state['cost_recover']['px|' + ref]['why'] == 'order_mismatch'
+    assert len(lot['cost_order_keys']) == 1
