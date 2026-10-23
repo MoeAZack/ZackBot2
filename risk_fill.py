@@ -72,7 +72,7 @@ def decide(side, qty, measured_px, stop, planned_px, entry_fees=None, step=0.0, 
     trim = round(qty - keep, 12)
     if trim <= 0 or _floor_step(trim, step) <= 0:
         out.update(action='below_step', why='trim_below_step'); return out
-    if keep < (min_qty or 0) or keep * measured_px < (min_notional or 0):
+    if keep <= 0 or keep < (min_qty or 0) or keep * measured_px < (min_notional or 0):   # nothing (or dust) kept
         out.update(action='unwind', why='remainder_below_min', trim_qty=qty, keep_qty=0.0); return out
     out.update(action='trim', why='over_tolerance', keep_qty=round(keep, 12), trim_qty=trim)
     return out
