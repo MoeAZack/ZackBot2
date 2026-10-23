@@ -24,37 +24,46 @@ entries. The group changes at 03:00 Cairo. Disabled strategies are never deleted
 
 ## Current forward books
 
-| Book | Closed (n) | Open | Measured / booked closes | Build / cohort | Rankable now | Point-in-time result |
-|---|---:|---:|---|---|---|---|
-| B1 Fast / scalp | 73 | 4 | [DATA: measured n / booked n] | [DATA: per build/cohort split] | Describable only, not a verdict | roughly -7% from its $2,000 start (n=73); dominated by failed fast versions and cost drag |
-| B2 Range / VWAP | 3 | 1 | [DATA] | [DATA] | **No** (n=3) | roughly +0.7% (n=3) |
-| B3 Trend / momentum | 2 | 2 | [DATA] | [DATA] | **No** (n=2) | roughly -3.5% (n=2) |
-| B4 Breakout / structure | 3 | 2 | [DATA]; two historical fills unresolved | [DATA] | **No** (n=3, incomplete) | near flat (n=3) |
-| B5 Discovery | 2 | 0 | [DATA] | [DATA] | **No** (n=2) | roughly +0.3% (n=2) |
+Snapshot 23 October 2026, 07:44 Cairo (Codex 6357656908). All 103 closed rows carry cohort
+`CH-20261020T100344Z-6b4aba0e`. Closed rows do not store an exact build ID, so no row is attributed to a build; rows
+from different evidence classes are never pooled.
+
+| Book | Closed (n) | Open | Directly measured / acknowledged / legacy / pending | Net by evidence class | Rankable now |
+|---|---:|---:|---|---|---|
+| B1_FAST | 92 | 3 | 48 / 4 / 40 / 0 | measured −$363.1791; acknowledged −$65.9351; legacy +$78.4979 | Describable only, not a verdict |
+| B2_RANGE | 4 | 0 | 1 / 0 / 3 / 0 | measured +$4.5261; legacy +$0.5465 | **No** (n=4) |
+| B3_TREND | 2 | 3 | 0 / 2 / 0 / 0 | acknowledged −$39.1406 | **No** (n=2) |
+| B4_BREAKOUT | 3 | 2 | 0 / 1 / 0 / 2 | acknowledged −$30.6722; two pending/unusable | **No** (n=3, two pending) |
+| B5_DISCOVERY | 2 | 0 | 0 / 1 / 1 / 0 | acknowledged +$4.1961; legacy +$1.5180 | **No** (n=2) |
 
 Only B1 has enough closes to describe, and even B1 is not a durable strategy verdict. B2, B3 and B5 are not rankable
-at these sample sizes, and B4 is not rankable while fills are unresolved. Book results share exchange margin and are
-attribution views, not independent accounts. Forward rows are attributed to the PAPER build / shadow cohort that
-produced them: rows from superseded builds or retired strategy versions are reported separately and never pooled with
-the current build's rows.
+at these sample sizes, and B4 is not rankable while fills are pending. Book results share exchange margin and are
+attribution views, not independent accounts. Build attribution needs a build ID on each row; until rows carry one, the
+cohort is the only attribution and temporal context is labelled as such.
 
-### `quick_bank_runner` (measured-net closed rows)
+### `quick_bank_runner` (fully closed, directly measured rows only)
 
-| Window (Cairo) | Closed n (measured net) | Mean net R | Uncertainty | Open lots |
-|---|---:|---:|---|---:|
-| [DATA: first close .. snapshot] | [DATA] | [DATA] | [DATA: e.g. 95 % interval / t] | [DATA] |
+| Window (Cairo) | Closed rows | Directly measured (n) | Measured net | Mean net R | Provisional 95 % interval | Open lots |
+|---|---:|---:|---:|---:|---|---:|
+| 22 Oct 16:45:50 – 23 Oct 07:32:37 | 27 (5 legacy booked, 0 acknowledged/pending) | 22 | −$238.1557 (−13.3493R) | −0.6068R | [−0.9408R, −0.2728R] (Student t, sample SD 0.7533R) | 3 (AIN, QNT, ZEC short) |
 
-Only closed rows with a measured net (exchange fill price and fee) are counted; booked-only rows are listed, not
-pooled. **Limitation:** open lots that have taken TP1 show only their realised first leg; their remainder is unrealised,
-so a TP1-heavy open book can look better than its eventual closed result. The figure above excludes open lots.
+Measured net = `pnl_gross + pnl_fill_adj − fees_actual + funding_actual`; net R = measured net / `risk_usd`; the
+evidence class follows `actual_costs.row_view()`. The interval is descriptive, not a durable-edge verdict: clustering
+and symbol reuse violate independence and may make it optimistic. The legacy rows are not pooled. The current live
+session/build `20261023-011441` began 23 Oct 02:20:44 Cairo; 16 of the 22 measured rows opened and closed after that
+start, but rows lack build IDs, so this is temporal context only, not build attribution. **Limitation:** open lots
+that have taken TP1 show only their realised first leg; their remainder is unrealised, so a TP1-heavy open book can
+look better than its eventual closed result. The figures above exclude the three open lots.
 
 ## Shadow lanes
 
 - Strategy shadow records all six 15m candidates (`exp_scalp`, `exp_structure`, `failed_breakout_scalp`,
   `momentum_burst_scalp`, `quick_bank_runner`, `range_scalp`) every cycle, including signals skipped because the slot is
-  parked, rotated out or the book is full. Coverage at this snapshot: [DATA: expected cycles x candidates] expected,
-  [DATA] observed ([DATA] %); a raw record count (9,663) is not a coverage measure. Its fixed-cost model shows that
-  signals are captured; it does not show that any of them is profitable.
+  parked, rotated out or the book is full. Coverage for cohort CH-20261020T100344Z-6b4aba0e from 20 Oct 13:15
+  through 23 Oct 02:30 Cairo: 1,476 candidate-cycle observations expected (246 scheduled 15m cycles × six candidates),
+  1,332 observed across 222 unique complete cycles (90.2%). Twenty-four scheduled cycles are absent; five duplicate
+  cycle records are replay duplicates and are not counted. The 9,663 raw ledger records are not a coverage
+  denominator. Its fixed-cost model shows that signals are captured; it does not show that any of them is profitable.
 - ML shadow records features and later outcome labels only. It had 213 current-file decisions and 238 labels, plus its
   rotated history. It cannot approve, size, block or place an order. Historical feature missingness must be repaired and
   coverage-proven before model training can influence even a formal candidate score.
@@ -77,15 +86,17 @@ enable it from this packet.
 
 ## Next bounded strategy work
 
-1. Finish the exact 1m-under-15m adapter and reconcile why current `quick_bank_runner` PAPER evidence is mildly positive
-   while its simplified historical cells are deeply negative. This contradiction is higher priority than inventing a new
-   fast strategy.
+1. Finish the exact 1m-under-15m adapter and reconcile `quick_bank_runner`'s PAPER evidence, which is negative in
+   this small measured snapshot (n=22, mean −0.6068R), with its simplified historical cells. The exact-rule historical
+   contradiction remains open. This is higher priority than inventing a new fast strategy.
 2. Re-evaluate the strongest existing 4h research cells with the same execution/cost standard, labelled as
    hypotheses: **H1** regime-aware `pullback_rsi` short, **H2** `rotation` long, **H3** `exp_trend` long, **H4**
-   `ema_mom` long. They were selected after an unquantified number of earlier tests (committed research tables alone hold at
-   least 10 / 12 / 0 / 10 rows naming H1 / H2 / H3 / H4, a lower bound, per Cowork 6357524514; the earlier 4h screens,
-   the 21 USDC cells and runs outside the repo are not in them), so their earlier results are hypotheses, not
-   promotions. A full count must be frozen before any deflated statistic is quoted. Each must beat a buy-and-hold baseline on the
+   `ema_mom` long. These four cells are hypotheses nominated from heterogeneous legacy screens, not promotions. The committed
+   append-only breadth ledger records one preregistration for each H1–H4 but does not contain a complete, deduplicated
+   inventory of completed prior trials. As documentary context only, legacy committed CSV tables contain 10 rows naming
+   pullback_rsi, 12 naming rotation and 10 naming ema_mom; no row naming exp_trend was found. Those row counts mix
+   sides/timeframes and are neither exact trial counts nor valid multiplicity denominators. Freeze a complete trial
+   inventory before quoting any deflated or multiplicity-adjusted statistic. Each must beat a buy-and-hold baseline on the
    same symbols and window, after costs, before it counts. Their trade frequency is low, which conflicts with the
    owner's frequent-trading catalog: a survivor joins it only as a low-frequency book, labelled as such.
 3. Then scout one preregistered frequent hypothesis at a time: regime-gated trend pullback; volatility-compression
