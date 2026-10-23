@@ -2690,6 +2690,7 @@ class Engine:
     # Every executed fill record gets a cost_ref (not an exchange id) that its lot lists in cost_refs. The finished record
     # (enriched by the worker, or written at once) is appended to a queue; apply_costs() folds it into the lot - or into the
     # trade's history row when it arrives after the close - on the engine's own thread. Estimates (`fees`) never change.
+    SLIP_ALERT_BPS = 25.0                 # TP-SLIP-01: a measured fill this many bps adverse to its booked price alerts
     COST_WAIT_S = 600                     # an unlinked cost record waits this long for its lot, then counts as orphan
 
     def _cost_link(self, rec, lot=None):
@@ -2757,17 +2758,37 @@ class Engine:
                 else: self._risk_fill_mark(t, rec); lots = True
         return rows, lots
 
-    @staticmethod
-    def _px_log(t, rec):
-        """FILL-PNL-01: say when a fill's exchange price differs from the price it was booked at (never raises)."""
+    def _px_log(self, t, rec):
+        """FILL-PNL-01: say when a fill's exchange price differs from the price it was booked at; TP-SLIP-01 (#189): fold
+        its measured slippage into the per-symbol telemetry and alert at SLIP_ALERT_BPS adverse (never raises; the
+        booked and measured numbers are only read - nothing about the order or the lot changes)."""
         try:
             i = next(i for i, r in t.get('fill_refs') or () if r == rec.get('cost_ref'))
             f, px = t['fills'][i], (t.get('px_actual') or {}).get(rec['cost_ref'])
             if px is None:
                 log.warning(f"{t.get('symbol')} {f[1]} fill has no exchange price - its P&L stays INCOMPLETE (fill_px_missing)")
-            elif px != f[3]:
+                return
+            if px != f[3]:
                 log.info(f"FILL-PNL {t.get('symbol')} {t.get('side')} {f[1]} {f[2]} booked @ {f[3]}, measured @ {px}")
+            bps = AC.slip_bps(t.get('side'), f[1], f[3], px, AC.OPENING_FILLS)
+            leg = 'entry' if f[1] in AC.OPENING_FILLS else 'exit'
+            stats = self.state.setdefault('slip_stats', {})
+            if AC.slip_note(stats, t.get('symbol'), leg, bps, self.SLIP_ALERT_BPS, t=now_utc().isoformat(timespec='seconds'),
+                            kind=f[1]):
+                msg = (f"SLIPPAGE {t.get('symbol')} {t.get('side')} {f[1]}: booked {f[3]}, measured {px} "
+                       f"({bps:.1f} bps adverse, measured is the authority)")
+                log.warning(msg); self.notify(f"⚠️ {msg}")
         except Exception: pass
+
+    def slippage_status(self):
+        """TP-SLIP-01: per-symbol measured slippage (entry / exit legs) and the recent alerts, for the dashboard."""
+        st = self.state.get('slip_stats') or {}
+        out = {}
+        for sym, legs in (st.get('symbols') or {}).items():
+            out[sym] = {leg: dict(n=x['n'], mean_bps=round(x['sum_bps'] / x['n'], 2) if x['n'] else None,
+                                  worst_bps=x['worst_bps'], alerts=x['alerts']) for leg, x in legs.items()}
+        return dict(alert_bps=self.SLIP_ALERT_BPS, basis='measured exchange fill vs booked price, + = adverse',
+                    symbols=out, recent=list(st.get('_recent') or ()))
 
     def _cost_sweep(self):
         """Re-finalize lots / rows whose cost record never came (restart / crash cut the enrichment, or the queue
