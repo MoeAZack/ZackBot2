@@ -46,6 +46,7 @@ import costs as C                                                               
 import intrabar as IB                                                                       # noqa: E402
 import risk_fill as RF                                                                      # noqa: E402
 import strategies as ST                                                                     # noqa: E402
+import trade_audit as TA                                                                    # noqa: E402
 
 FORMAT = 'zb-scalp-exec/1'
 KEYS = ('exp_scalp', 'range_scalp')
@@ -294,24 +295,55 @@ def config_digest(sleeves) -> str:
 
 
 # ------------------------------------------------------------------ trades from the fill log
+def _qeq(a, b) -> bool:
+    return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+
+
+def _legs_match(t, h) -> bool:
+    """The trade's entry / close legs are the engine lot's own booked fills (history 'fills' [t, kind, qty, px]):
+    same number of entry legs and close legs, same quantities in order. A row without fills is not checkable."""
+    fl = h.get('fills')
+    if not isinstance(fl, list) or not fl: return False
+    try:
+        ent = [float(f[2]) for f in fl if f[1] in TA.ENTRY_KINDS]
+        cls = [float(f[2]) for f in fl if f[1] not in TA.ENTRY_KINDS]
+    except (TypeError, ValueError, IndexError):
+        return False
+    return (len(ent) == len(t['entries']) and len(cls) == len(t['closes'])
+            and all(_qeq(a, x['qty']) for a, x in zip(ent, t['entries']))
+            and all(_qeq(a, x['qty']) for a, x in zip(cls, t['closes'])))
+
+
 def trades_of(fill_log, history) -> list[dict]:
-    """Group the simulated fills into trades per (symbol, side) and attach the engine's risk_usd (history, in close order)."""
+    """Group the simulated fills into one trade per engine lot per (symbol, side) and attach the engine's risk_usd
+    (history, in close order). #187 (Codex 6372669079): an add / second entry on an open lot joins that lot's trade as
+    a further entry leg (entries, causal order; entry = the first leg, which anchors the stop and the times), so no
+    lot is dropped or split. Fails closed on a close without an open lot, an over-close, a non-positive quantity, a
+    trade whose legs are not its history row's own booked fills (ambiguous lot identity / row order) and an add lot
+    without an authoritative risk_usd."""
     open_, done = {}, []
     for f in fill_log:
         k = (f['sym'], f['ps'])
         if f['act'] == 'stop_set':                  # the first stop placed after the entry = the planned stop
             if k in open_ and 'stop0' not in open_[k]: open_[k]['stop0'] = f['ref']
             continue
+        if not f['qty'] > 0:
+            raise ScalpExecError(f"{k}: a fill with a non-positive quantity ({f['qty']})")
         if f['act'] == 'open':
-            if k in open_ and open_[k]['qty'] > 1e-12:
-                raise ScalpExecError(f'{k}: an add / second entry on an open lot is not modelled in v1')
-            open_[k] = dict(sym=f['sym'], ps=f['ps'], entry=f, closes=[], qty=f['qty'])
+            tr = open_.get(k)
+            if tr is None:
+                open_[k] = dict(sym=f['sym'], ps=f['ps'], entry=f, entries=[f], closes=[], qty=f['qty'])
+            else:                                   # an add on the open lot: one more entry leg of the same trade
+                tr['entries'].append(f); tr['qty'] += f['qty']
         else:
             tr = open_.get(k)
             if tr is None:
                 raise ScalpExecError(f'{k}: close without an open lot in the fill log')
             tr['closes'].append(f); tr['qty'] -= f['qty']
-            if tr['qty'] <= 1e-9 * max(1.0, tr['entry']['qty']):
+            tol = 1e-9 * max(1.0, sum(x['qty'] for x in tr['entries']))
+            if tr['qty'] < -tol:
+                raise ScalpExecError(f'{k}: the closes exceed the quantity entered on the lot')
+            if tr['qty'] <= tol:
                 done.append(open_.pop(k))
     hist = {}
     for h in history:
@@ -323,6 +355,13 @@ def trades_of(fill_log, history) -> list[dict]:
     for t in done:
         k = (t['sym'], t['ps']); n = pos.get(k, 0); pos[k] = n + 1
         h = hist[k][n]
+        adds = len(t['entries']) - 1
+        if adds and not _legs_match(t, h):
+            raise ScalpExecError(f'{k}: an add lot whose legs are not its history row\'s booked fills (ambiguous lot)')
+        if adds and not h.get('risk_usd'):
+            raise ScalpExecError(f'{k}: an add lot without an authoritative risk_usd')
+        t['adds'], t['add_qty'] = adds, sum(x['qty'] for x in t['entries'][1:])
+        t['qty_in'] = sum(x['qty'] for x in t['entries'])
         t['risk_usd'], t['exit_reason'], t['engine_gross'] = h.get('risk_usd'), h.get('exit_reason'), h.get('pnl_gross')
         rf = h.get('risk_fill')
         t['risk_fill'] = rf.get('action') if isinstance(rf, dict) else None
@@ -350,26 +389,31 @@ def price_trade(tr, scen: C.Scenario, *, row: C.CostRow, slip_c: float, bars15, 
         return C.slip_bps(win, slip_c, scen.vol)
 
     e = tr['entry']
-    e_px = C.fill_price(e['ref'], 'buy' if sd == 1 else 'sell', bps_at(e['t_ms']), scen, tick=tick)
-    fees = C.fee(e['qty'] * e_px, 'taker', row, scen)
-    gross = gross_ref = 0.0
+    ents = tr.get('entries') or [e]                 # #187: every entry leg (the first is `entry`)
+    legs = [(x, C.fill_price(x['ref'], 'buy' if sd == 1 else 'sell', bps_at(x['t_ms']), scen, tick=tick)) for x in ents]
+    e_px = legs[0][1]
+    fees = math.fsum(C.fee(x['qty'] * px, 'taker', row, scen) for x, px in legs)
+    gross = -sd * math.fsum(px * x['qty'] for x, px in legs)       # net cash of a fully closed lot (any leg order)
+    gross_ref = -sd * math.fsum(x['ref'] * x['qty'] for x in ents)
     for f in tr['closes']:
         px = C.fill_price(f['ref'], 'sell' if sd == 1 else 'buy', bps_at(f['t_ms']), scen, gap=f['kind'] in ('stop', 'gap'),
                           tick=tick)
-        gross += sd * (px - e_px) * f['qty']
-        gross_ref += sd * (f['ref'] - e['ref']) * f['qty']
+        gross += sd * px * f['qty']
+        gross_ref += sd * f['ref'] * f['qty']
         fees += C.fee(f['qty'] * px, 'taker', row, scen)
     t_exit = tr['closes'][-1]['t_ms']
     complete = True
     if scen.funding_mode == 'flat_legacy':
         n_bars = max(1, math.ceil((t_exit - e['t_ms']) / TF_MS))
-        fund = C.funding_cost(side, e['qty'], [], scen, bars_held=n_bars, entry_notional=e['qty'] * e_px)
+        fund = C.funding_cost(side, sum(x['qty'] for x in ents), [], scen, bars_held=n_bars,
+                              entry_notional=math.fsum(x['qty'] * px for x, px in legs))
     elif funding_rows is None:
         fund, complete = 0.0, False
     else:
         fund = 0.0
         for ev in funding_events(funding_rows, e['t_ms'], t_exit):
-            q = e['qty'] - sum(f['qty'] for f in tr['closes'] if f['t_ms'] <= ev[0])
+            q = (sum(x['qty'] for x in ents if x['t_ms'] <= ev[0])
+                 - sum(f['qty'] for f in tr['closes'] if f['t_ms'] <= ev[0]))
             if q > 1e-12:
                 fund += C.funding_cost(side, q, [ev], scen)
     net = gross - fees - fund
@@ -422,18 +466,25 @@ def account_trades(fills, history, paid) -> list[dict]:
     out = []
     for tr in trades_of(fills, history):
         sd = 1 if tr['ps'] == 'LONG' else -1
-        e = tr['entry']
-        gross = sum(sd * (f['px'] - e['px']) * f['qty'] for f in tr['closes'])
-        fees = e['fee'] + sum(f['fee'] for f in tr['closes'])
+        e, ents = tr['entry'], tr.get('entries') or [tr['entry']]
+        gross = sd * (math.fsum(f['px'] * f['qty'] for f in tr['closes']) - math.fsum(x['px'] * x['qty'] for x in ents))
+        fees = math.fsum(x['fee'] for x in ents) + math.fsum(f['fee'] for f in tr['closes'])
         t1 = tr['closes'][-1]['t_ms']
         fund = math.fsum(x for t, s, ps, x in paid if s == tr['sym'] and ps == tr['ps'] and e['t_ms'] <= t < t1)
         net = gross - fees - fund
         risk = tr.get('risk_usd')
-        out.append(dict(sym=tr['sym'], side=tr['ps'], entry_ms=e['t_ms'], exit_ms=t1, qty=e['qty'],
+        out.append(dict(sym=tr['sym'], side=tr['ps'], entry_ms=e['t_ms'], exit_ms=t1, qty=tr.get('qty_in', e['qty']),
+                        adds=tr.get('adds', 0), add_qty=tr.get('add_qty', 0.0),
                         exit_kinds=[f['kind'] for f in tr['closes']], exit_reason=tr['exit_reason'], risk_usd=risk,
                         risk_fill=tr.get('risk_fill'), net=net, fees=fees, funding=fund,
                         net_r=net / risk if risk else None))
     return out
+
+
+def add_stats(trades) -> dict:
+    """#187 provenance: how many trades carry adds, how many add legs and how much add quantity (auditable sample)."""
+    return dict(trades=len(trades), trades_with_adds=sum(1 for t in trades if t.get('adds')),
+                add_legs=sum(int(t.get('adds') or 0) for t in trades), add_qty=math.fsum(t.get('add_qty') or 0.0 for t in trades))
 
 
 def summary(rs, weeks: float) -> dict:
@@ -514,8 +565,8 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
     for tr in trades_of(fills, out['history']):
         s = tr['sym']
         rec = dict(sym=s, side=tr['ps'], entry_ms=tr['entry']['t_ms'], exit_ms=tr['closes'][-1]['t_ms'],
-                   qty=tr['entry']['qty'], exit_kinds=[f['kind'] for f in tr['closes']], exit_reason=tr['exit_reason'],
-                   risk_usd=tr['risk_usd'], rows={})
+                   qty=tr['qty_in'], adds=tr['adds'], add_qty=tr['add_qty'], exit_kinds=[f['kind'] for f in tr['closes']],
+                   exit_reason=tr['exit_reason'], risk_usd=tr['risk_usd'], rows={})
         for name, sc in scen.items():
             rec['rows'][name] = price_trade(tr, sc, row=model.row(s), slip_c=model.slip_c(s), bars15=B15[s],
                                             tick=(rules.get(s) or {}).get('tick'), funding_rows=(funding or {}).get(s))
@@ -528,7 +579,7 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
         o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
                               latency_s=latency_s, pricer=pr)
         ts = account_trades(f2, o2['history'], pr.paid)
-        acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
+        acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete), adds=add_stats(ts),
                           risk_fill={a: sum(t['risk_fill'] == a for t in ts) for a in RF.ACTIONS},
                           summary=_sides(ts, lambda t: t['net_r'], weeks))
         acct_inc = acct_inc or bool(pr.incomplete)
@@ -544,7 +595,7 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
                 repriced=dict(trades=rows, summary={n: _sides(rows, lambda r, n=n: r['rows'][n]['net_r'], weeks) for n in scen},
                               risk_fill_would={n: {a: sum(r['rows'][n]['risk_fill_would'] == a for r in rows)
                                                    for a in RF.ACTIONS} for n in scen}),
-                account=acct, divergence=div,
+                account=acct, divergence=div, adds=add_stats(rows),
                 intrabar=dict(segments=len(lab), by_label={k: lab.count(k) for k in (ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M,
                                                                                      TWO_SIDED, NO_LATENCY)},
                               unresolved=unres, unresolved_share=unres / len(rows) if rows else 0.0,
