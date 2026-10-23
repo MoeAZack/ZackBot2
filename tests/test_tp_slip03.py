@@ -173,3 +173,29 @@ def test_protective_closes_with_a_hung_probe_add_no_wait(monkeypatch, why):
     assert dt < 1.0 and BX.bt_calls == 1 and r['book'] == {'missing': 'safety_deferred'} and r['outcome'] == 'filled'
     ref, _ = mk(EX); k2 = opened(ref); ref.close_lot(k2, why, 101.0); recs(ref)
     assert e.trade.order_log == ref.trade.order_log
+
+
+# ------------------------------------------------------------------ #195 P3 ruling: the urgent set's negative boundary
+EVIDENCE_REASONS = ['take_profit_1', 'take_profit_ladder', 'exit_signal', 'time_exit', 'basket_tp']
+
+
+def test_protective_and_evidence_reasons_are_disjoint():
+    assert not set(EVIDENCE_REASONS) & set(E.Engine.BOOK_PROBE_URGENT)
+
+
+@pytest.mark.parametrize('why', EVIDENCE_REASONS)
+def test_evidence_closes_keep_the_bounded_wait_and_the_full_book(why):
+    e, _ = mk(BX); k = opened(e)
+    e.close_lot(k, why, 101.0)
+    b = one(e, 'exit')['book']
+    assert 'missing' not in b and (b['bid'], b['ask']) == (99.9, 100.2) and b['touch_vs_mark_bps'] > 0
+
+
+@pytest.mark.parametrize('why', EVIDENCE_REASONS)
+def test_evidence_closes_with_a_hung_probe_wait_then_record_timeout(monkeypatch, why):
+    monkeypatch.setattr(E.Engine, 'BOOK_PROBE_WAIT_S', 0.4)
+    BX.hold = threading.Event()
+    e, _ = mk(BX); k = opened(e)
+    t = time.time(); e.close_lot(k, why, 101.0); dt = time.time() - t
+    BX.hold.set()
+    assert dt >= 0.35 and one(e, 'exit')['book'] == {'missing': 'timeout'}               # waited, not safety_deferred
