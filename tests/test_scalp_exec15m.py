@@ -630,3 +630,37 @@ def test_loader_excludes_rows_available_at_the_window_end(tmp_path, monkeypatch)
     assert d['funding'][SYM] and max(t for t, _r, _m in d['funding'][SYM]) < hi
     assert int(d['minutes'][SYM]['t'].max()) + 60_000 <= hi
     X.check_inputs(d['raw15'], d['minutes'], d['funding'])               # passes the sealed-cutoff guard
+
+
+# ------------------------------------------------------------------ QBANK-01 (#202): B0 exact v0 key
+def test_qbank_key_runs_only_from_a_config_sealed_for_it(tmp_path):
+    import hashlib
+    import json
+    doc = {'schema': 'zb-qbank-v0-config/1', 'preset': 'breadth_rotation',
+           'sleeves': [dict(id='SC-QBANK', key='quick_bank_runner', name='x', enabled=True, share=1 / 6, risk=0.01,
+                            max_pos=2, symbols='core8', sides='both', mgmt={}, tf='15m')]}
+    p = tmp_path / 'qb.json'
+    p.write_bytes(json.dumps(doc).encode())
+    with pytest.raises(X.ScalpExecError, match='not sealed for quick_bank_runner'):
+        X.sealed_config(str(p), 'quick_bank_runner')
+    sha = hashlib.sha256(p.read_bytes()).hexdigest()
+    X.SEALED_CONFIGS[sha] = ('quick_bank_runner',)
+    try:
+        got, s = X.sealed_config(str(p), 'quick_bank_runner')
+        assert s == sha and X.cell_sleeves(got, 'quick_bank_runner', 'long')[0]['sides'] == 'long'
+        with pytest.raises(X.ScalpExecError, match='not sealed for exp_scalp'):
+            X.sealed_config(str(p), 'exp_scalp')
+    finally:
+        del X.SEALED_CONFIGS[sha]
+
+
+def test_the_edge01_config_is_not_sealed_for_qbank():
+    assert X.SEALED_CONFIGS[X.CONFIG_SHA256] == ('exp_scalp', 'range_scalp')
+    assert all('quick_bank_runner' not in v for v in X.SEALED_CONFIGS.values())    # until Integration seals v0
+
+
+def test_qbank_candle_depth_matches_its_longest_window():
+    import inspect
+    src = inspect.getsource(S.sig_quick_bank_runner)
+    assert 'e50' in src and 'e200' not in src and S.QB['stop_atr'] == 1.0          # EMA50 + ATR14 are the longest
+    assert X.candle_depth('quick_bank_runner') == dict(served=1000, max_window=50, limit=200, ok=True)

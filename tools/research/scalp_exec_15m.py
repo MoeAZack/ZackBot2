@@ -49,7 +49,7 @@ import strategies as ST                                                         
 import trade_audit as TA                                                                    # noqa: E402
 
 FORMAT = 'zb-scalp-exec/1'
-KEYS = ('exp_scalp', 'range_scalp')
+KEYS = ('exp_scalp', 'range_scalp', 'quick_bank_runner')   # QBANK-01 (#202): B0 = exact v0
 TF, TF_MS = '15m', 900_000
 MINUTE = IB.MINUTE
 SEALED_CUTOFF = '2026-09-28T00:00:00Z'               # = run_vwaprev_candidate.SEALED_CUTOFF (pinned by a test)
@@ -68,7 +68,7 @@ MANIFEST_DIGEST = '54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf
 WARM_BARS = 1000                                     # the engine reads 1000 x 15m candles per cycle
 # Codex ruling 6356220526 pt 4: 1,000 served candles is accepted because each key's longest indicator window is < 200
 # (exp_scalp: EMA50; range_scalp: 32-candle range + 32-candle invalidation lookback; ATR / ADX 14). Pinned per packet.
-MAX_WINDOW = {'exp_scalp': 50, 'range_scalp': 64}
+MAX_WINDOW = {'exp_scalp': 50, 'range_scalp': 64, 'quick_bank_runner': 50}   # QBank: EMA9/20/50 + ATR14
 DEPTH_LIMIT = 200
 COMPARABLE_MATCH_PCT = 95.0                          # ruling 6356220526 pt 2 (registered before any real-data packet)
 COMPARABLE_DR_SHARE = 0.25                           # median |dR| <= 25 % of the cell's median |cost-R|
@@ -648,6 +648,20 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
 
 
 # ------------------------------------------------------------------ frozen inputs
+# Every config a cell may run, by sha256 -> the keys it may run. QBANK-01: the as-run SC-QBANK v0 sleeve is added here
+# only once Integration has sealed it from the runtime (#202 / #203); until then a QBank cell has no config and refuses.
+SEALED_CONFIGS = {CONFIG_SHA256: ('exp_scalp', 'range_scalp')}
+
+
+def sealed_config(path: str, key: str):
+    """(doc, sha256) of a sealed config that may run `key`; refuses any unsealed file or a key it was not sealed for."""
+    with open(path, 'rb') as fh:
+        sha = hashlib.sha256(fh.read()).hexdigest()
+    if key not in SEALED_CONFIGS.get(sha, ()):
+        raise ScalpExecError(f'{path}: config {sha[:12]} is not sealed for {key}')
+    return load_config(path, sha), sha
+
+
 def load_config(path: str, sha256: str = CONFIG_SHA256) -> dict:
     """The hashed as-run sleeve file (EDGE01_FROZEN_BASELINE_CONFIG_2026-10-23.json); refuses any other bytes."""
     with open(path, 'rb') as fh:
@@ -765,7 +779,7 @@ def main(argv=None) -> int:
     if os.path.exists(a.out):
         raise ScalpExecError(f'{a.out} exists (packets are never overwritten)')
     lo, hi = (int(pd.Timestamp(x).value // 10 ** 6) for x in a.window.split('/'))
-    doc = load_config(a.config)
+    doc, cfg_sha = sealed_config(a.config, a.key)
     syms = a.symbols.split(',')
     data = load_store(a.manifest, a.store, a.static, syms, lo, hi)
     with open(a.cal, encoding='utf-8') as fh:
@@ -780,7 +794,7 @@ def main(argv=None) -> int:
                   funding=data['funding'], exchange_rules=rules, start=a.start, latency_s=a.latency_s,
                   settings={'PRESET': doc['preset']})
     pk.update(key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
-              manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=CONFIG_SHA256)
+              manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=cfg_sha)
     pk['candle_depth'] = candle_depth(a.key)
     pk['trials'] = trial_records(pk, key=a.key, side=a.side)
     with open(a.out, 'x', encoding='utf-8') as fh:
