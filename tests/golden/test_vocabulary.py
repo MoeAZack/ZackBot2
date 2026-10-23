@@ -19,7 +19,7 @@ from goldenlib.adapters import legacy_backtest, legacy_engine  # noqa: E402
 
 # zb-golden/1 registry as published. Append new codes to schema.EXIT_CODE_MEANING (and here); never edit this prefix.
 PINNED_V1 = ('STOP_HIT', 'TIME_EXIT', 'SIGNAL_EXIT', 'TP_FULL', 'TP_BASKET', 'TP_PARTIAL', 'TP_LADDER', 'LIQUIDATED', 'FLATTEN',
-             'STOP_CROSSED', 'RESYNC', 'STOP_FAILED', 'BASKET_TP_PART')
+             'STOP_CROSSED', 'RESYNC', 'STOP_FAILED', 'BASKET_TP_PART', 'RISK_TRIM', 'RISK_UNWIND')
 CODE = re.compile(r'[A-Z][A-Z0-9_]*')
 # Behaviour registry zb-golden-behaviours/1 as published (Codex golden r3 residual ruling, point 1): the ordered IDs AND the
 # sha256 of their [id, meaning] pairs. Append new IDs to tests/golden/BEHAVIOURS.json; never edit this prefix or its meanings.
@@ -81,7 +81,7 @@ def test_deprecated_codes_stay_valid():
 def test_reason_scanners_find_the_known_reasons():
     """The scanners are not vacuous: they find today's reasons (a scanner that finds nothing would pass every mapping check)."""
     assert {'stop', 'stop_crossed', 'time_exit', 'exit_signal', 'take_profit', 'basket_tp', 'basket_tp_part', 'take_profit_1',
-            'take_profit_ladder', 'flatten', 'resync', 'stop_failed'} <= engine_exit_reasons()
+            'take_profit_ladder', 'flatten', 'resync', 'stop_failed', 'risk_trim', 'risk_unwind'} <= engine_exit_reasons()
     assert {'stop', 'tp', 'tp1', 'tp_ladder', 'signal', 'time', 'liquidated'} <= backtest_exit_reasons()
 
 

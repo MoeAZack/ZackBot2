@@ -473,6 +473,7 @@ def monte_carlo(trades_df, start=500.0, n=2000, method='shuffle', risk_per_trade
                 end_capital=_pcts(E_), max_dd=_pcts(D_, 1), losing_streak=_pcts(L_, 0),
                 prob_loss=_f(np.mean(E_ < start), 4), ruin_50=_f(np.mean(LO < 0.5 * start), 4), ruin_20=_f(np.mean(LO < 0.2 * start), 4),
                 prob_dd_30=_f(np.mean(D_ <= -30), 4), prob_dd_50=_f(np.mean(D_ <= -50), 4),
+                basis='simulated_backtest',            # FILL-PNL-02: 'actual' = the backtest's own trade order, never live fills
                 actual=dict(end=_f(actual_eq[0, -1], 2), max_dd=_f(actual_dd[0], 1), losing_streak=int(actual_st[0])),
                 chart=dict(x=xs, bands=band, samples=[[_f(v, 2) for v in s_[xs]] for s_ in samples], actual=[_f(v, 2) for v in actual_eq[0][xs]]),
                 elapsed_s=round(time.time() - t_start, 2))
@@ -498,6 +499,7 @@ def monte_carlo_daily(cv, start=500.0, n=2000, block_days=5, seed=0):
     return dict(method='daily_block_bootstrap', days=m, block_days=block_days, n=n, end_capital=_pcts(eq[:, -1]), max_dd=_pcts(dd, 1),
                 prob_loss=_f(np.mean(eq[:, -1] < start), 4), ruin_50=_f(np.mean(lo < 0.5 * start), 4), ruin_20=_f(np.mean(lo < 0.2 * start), 4),
                 prob_dd_30=_f(np.mean(dd <= -30), 4), prob_dd_50=_f(np.mean(dd <= -50), 4),
+                basis='simulated_backtest',            # FILL-PNL-02: 'actual' = the backtest's own day order, never live fills
                 actual=dict(end=_f(act[-1], 2), max_dd=_f((np.r_[start, act] / np.maximum.accumulate(np.r_[start, act]) - 1).min() * 100, 1)))
 
 

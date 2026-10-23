@@ -1,0 +1,50 @@
+{
+  "schema": "zb-edge01-frozen-config/1",
+  "sealed_at_cairo": "2026-10-23T02:28:00+03:00",
+  "source_build": "20261023-011441",
+  "source_commit": "9523a65c8fdb77c7f9df143eede56f485b4fc076",
+  "preset": "breadth_rotation",
+  "rotation": {
+    "period_h": 8,
+    "groups": 3,
+    "paper_only": true
+  },
+  "notes": [
+    "This records the exact two PAPER sleeves as they ran before the 2026-10-23 entry freeze.",
+    "Only enabled changed from true to false at 02:25 Cairo; all other sleeve fields were preserved.",
+    "The 8-hour value is the breadth-rotation group period, not a daily session filter.",
+    "The sealed baseline is master 9523a65. Later engine behavior is a separate forward-runtime comparison, never a silent replacement."
+  ],
+  "sleeves": [
+    {
+      "id": "exp_scalp",
+      "key": "exp_scalp",
+      "name": "[TESTNET EXP] Scalp L/S 15m",
+      "enabled": true,
+      "share": 0.16666666666666666,
+      "risk": 0.02,
+      "max_pos": 4,
+      "symbols": "all",
+      "sides": "both",
+      "mgmt": {
+        "be_r": 0.75,
+        "tp1_frac": 0.5,
+        "tp1_r": 0.75
+      },
+      "tf": "15m"
+    },
+    {
+      "id": "SC-RANGE",
+      "key": "range_scalp",
+      "name": "[PAPER EXP] Range scalp L/S 15m",
+      "enabled": true,
+      "share": 0.16666666666666666,
+      "risk": 0.01,
+      "max_pos": 2,
+      "symbols": "all",
+      "sides": "both",
+      "mgmt": {},
+      "tf": "15m"
+    }
+  ]
+}

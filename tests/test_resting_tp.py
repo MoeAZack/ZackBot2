@@ -110,7 +110,7 @@ def test_option_off_is_byte_identical(mg):
         assert not any(f.startswith('tp_') for f in lot)
         e.trade.mark['BTCUSDT'] = 110.5; manage(e)                       # today's poll path: closed at market
         assert k not in e.state['lots'] and e.history[-1]['exit_reason'] == 'take_profit'
-        h = {x: v for x, v in e.history[-1].items() if x not in ('id', 'opened', 'closed', 'fills', 'hours', 'cost_refs')}
+        h = {x: v for x, v in e.history[-1].items() if x not in ('id', 'opened', 'closed', 'fills', 'hours', 'cost_refs', 'fill_refs')}
         runs.append((list(e.trade.calls), plan, h))
     assert runs[0] == runs[1]
     assert 'resting' not in json.dumps(runs[0][1])
@@ -158,6 +158,8 @@ def test_tp_fill_finishes_the_lot_and_cancels_the_stop(monkeypatch):
     assert k not in e.state['lots'] and stop not in e.trade.stops and not e.trade.tps
     h = e.history[-1]
     assert h['exit_reason'] == 'take_profit_resting' and h['exit'] == 110.0 and h['pnl_gross'] > 0
+    h.update(fees_actual=h.get('fees') or 0.0, fees_actual_partial=False, fill_px_partial=False)   # #178: the close audit
+    e._row_changed(h)                                                                             # follows the measured row
     assert any(x and x.get('kind') == 'trade_audit' and x.get('exit_reason') == 'take_profit_resting' for x in ev)
 
 

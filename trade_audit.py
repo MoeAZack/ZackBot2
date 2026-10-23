@@ -661,6 +661,11 @@ def close_record(lot, net_pnl, fee_rate=FEE_EST, slip_bps=0.0, path=None, cap_ba
         coh = led.get('cohorts') or []
         if led.get('qty_mismatch') is not None:
             lim.append(f"cohort ledger: the fills leave {led['qty_mismatch']:+g} more open quantity than the lot (unknown fill kind?)")
+            why_partial.append('cohort ledger does not reconcile')
+        if led.get('unmatched_close_qty'):
+            why_partial.append('cohort ledger does not reconcile')
+        if led.get('error'): why_partial.append('cohort ledger not evaluated')
+        why_partial = list(dict.fromkeys(why_partial))
         rec = dict(v=AUDIT_VERSION, kind='trade_audit', audit_available=True, coverage='partial' if why_partial else 'full',
                    coverage_why=why_partial or None,
                    symbol=lot.get('symbol'), side=lot.get('side'), sleeve=lot.get('sleeve'), tf=lot.get('tf'),
@@ -1194,6 +1199,49 @@ def trade_metrics(lot, net_pnl, fee_rate=FEE_EST, slip_bps=EXEC_SLIP_BPS):
     return out
 
 
+def revise_close(orig, net_pnl, basis, risk_usd, t):
+    """#178 canary (Codex 6343115717): an APPEND-ONLY revision of an emitted close record onto the row's settled net. The
+    original line is never edited; a consumer takes the LATEST trade_audit line of an id. Every net-dependent field is
+    recomputed from the same net: net_pnl, r, giveback (+ % / R), each counterfactual vs_actual, the metrics' net and
+    give-back, and the two net-based failure flags. Path-derived fields (excursions, peaks, policy values) are unchanged.
+    Returns the revision or None (never raises)."""
+    try:
+        if not isinstance(orig, dict) or orig.get('kind') != 'trade_audit' or not _num(net_pnl): return None
+        rec = json.loads(json.dumps(orig))
+        risk = float(risk_usd) if _num(risk_usd) and risk_usd > 0 else None
+        rnd = lambda v, n=6: round(v, n) if _num(v) else None
+        peak = rec.get('peak_pnl')
+        rec.update(net_pnl=round(net_pnl, 6), r=round(net_pnl / risk, 4) if risk else None, net_basis=basis,
+                   revision=int(orig.get('revision') or 0) + 1, revises_t=orig.get('t'), revised_from_net=orig.get('net_pnl'), t=t,
+                   revision_why='settled (measured / acknowledged) net of the closed row; the earlier line used the booked net')
+        if _num(peak):
+            gb = peak - net_pnl
+            rec.update(giveback=round(gb, 6), giveback_pct=round(gb / peak * 100, 2) if peak > 0 else None,
+                       giveback_r=round(gb / risk, 4) if risk else None)
+        for c in rec.get('counterfactuals') or ():
+            if isinstance(c, dict) and 'vs_actual' in c:
+                c['vs_actual'] = round(c['value'] - net_pnl, 6) if _num(c.get('value')) else None
+        m = rec.get('metrics')
+        if isinstance(m, dict):
+            pk = m.get('peak_net_usd') if _num(m.get('peak_net_usd')) else None
+            m.update(net_usd=rnd(net_pnl), net_r=rnd(net_pnl / risk, 4) if risk else None,
+                     giveback_usd=rnd(pk - net_pnl) if pk is not None else None,
+                     giveback_pct_of_mfe=rnd((pk - net_pnl) / pk * 100, 2) if pk is not None and pk > 0 else None)
+            net_flags = ('green_to_red', 'gave_back_gt_50pct_mfe')
+            fl = [f for f in (rec.get('flags') or ()) if f not in net_flags]
+            un = [f for f in (rec.get('flags_unknown') or ()) if f not in net_flags]
+            g, _ = _green(m)
+            if g is None: un += list(net_flags)
+            else:
+                if g > 0 and net_pnl < 0: fl.append('green_to_red')
+                if g > 0 and (g - net_pnl) > 0.5 * g: fl.append('gave_back_gt_50pct_mfe')
+            if rec.get('flags') is not None: rec['flags'] = fl
+            rec['flags_unknown'] = un or None
+        return rec
+    except Exception:
+        return None
+
+
 def _green(m):
     """(value, basis) the green tests use: the executable MFE, else the lifecycle net peak."""
     if _num(m.get('executable_mfe_usd')): return float(m['executable_mfe_usd']), 'executable_mfe_usd'
@@ -1247,12 +1295,26 @@ def segment_of(lot, ledger, regime=None):
                 runner='runner' if (ledger or {}).get('runner') else 'no_runner')
 
 
+def latest_closes(records):
+    """#178: one close record per trade - the LATEST trade_audit line of each id (an appended revision supersedes the
+    line before it); every other record is kept, order preserved. Never raises."""
+    try:
+        records = list(records or ())
+        last = {}
+        for i, r in enumerate(records):
+            if isinstance(r, dict) and r.get('kind') == 'trade_audit' and isinstance(r.get('id'), str): last[r['id']] = i
+        return [r for i, r in enumerate(records)
+                if not (isinstance(r, dict) and r.get('kind') == 'trade_audit' and isinstance(r.get('id'), str)) or last[r['id']] == i]
+    except Exception:
+        return list(records or ()) if isinstance(records, (list, tuple)) else []
+
+
 def segments(records, top=12, samples=3):
     """Aggregate trade_audit records by every SEG_DIMS dimension: n, win rate, expectancy (mean net USD and mean net R),
     flag counts; plus per flag the count and up to `samples` most recent audit ids. Pure; never raises."""
     dims = {d: {} for d in SEG_DIMS}
     fl, unk, n_all = {f: dict(n=0, samples=[]) for f in FLAGS}, {}, 0
-    for r in records or ():
+    for r in latest_closes(records):
         try:
             if not (isinstance(r, dict) and r.get('kind') == 'trade_audit'): continue
             n_all += 1
@@ -1475,7 +1537,7 @@ def attribution(records, top=50):
     ('warning' = taken with a warning, 'add_blocked', audit events) are only counted. Malformed entries are counted.
     runner_value = sum of the SAME-quantity runner attribution (record['runner']['value_vs_activation'])."""
     groups, funnel, bad, other = {}, {}, 0, {}
-    try: records = list(records or ())
+    try: records = latest_closes(list(records or ()))
     except Exception: records, bad = [], 1
     for r in records:
         try:

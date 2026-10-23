@@ -14,6 +14,7 @@ import strategies as S
 import trade_audit as TA
 import paper_books as PB
 import actual_costs as AC
+import risk_fill as RF
 import true_books as TB
 import book_ledger as BL
 import run_pack as RP
@@ -1674,6 +1675,7 @@ class Engine:
         self._mk_refs = {}                        # EXEC-CAL-00: resting maker entry -> its filled orders (memory only, ids never saved)
         self._lev_cool = {}                       # T03c: symbol -> time before which a refused leverage change is not re-sent
         self._brk = {}                            # T03c r1: symbol -> (fetched time, leverage bracket schedule), TTL LEV_BRACKET_TTL_S
+        self._lev_cur = {}                        # #183: symbol -> the leverage Binance last reported / accepted for the coin
         self._lev_exc_chk = {}                    # T03c r1: symbol -> last read-only leverage check while adds are paused
         self._auditw = fill_writer(self.F['audit'], rotate_lines=AUDIT_ROTATE_LINES, slim=TA.slim_record, rotate_bytes=AUDIT_ROTATE_BYTES)   # T05a: audit events (same
         #   non-blocking writer contract as T05 fills; the in-memory window keeps only slimmed final trade records)
@@ -2302,7 +2304,10 @@ class Engine:
         lots = list(self.state['lots'].values())
         if not lots: return 0.0
         if self.marks and all(l['symbol'] in self.marks for l in lots):
-            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - l['avg']) * l['qty'] for l in lots)
+            # FILL-PNL-02 (Codex P1-2): measured entry basis; a lot whose entry price is not measured yet counts 0 (unknown) -
+            # never its booked basis as actual; min(exchange balance, capital) still carries any real loss into the guards
+            return sum((1 if l['side'] == 'LONG' else -1) * (self.marks[l['symbol']] - b) * l['qty']
+                       for l in lots for b in (AC.measured_avg(l),) if b is not None)
         return float(self.last_account.get('totalUnrealizedProfit', 0) or 0)
 
     def equity(self):
@@ -2332,7 +2337,14 @@ class Engine:
     def capital_info(self, acc=None):
         S = self.S
         since = S.get('CAP_SINCE') or ''
-        realized = sum(h.get('pnl') or 0 for h in self.history if h.get('closed', '') >= since)
+        rows = [h for h in self.history if h.get('closed', '') >= since]
+        # FILL-PNL-02 (ruling 6329976227): a closed row not measured yet is never compounded as actual - capital holds at
+        # the last fully reconciled checkpoint (base if none) and is revised once when every row is measured
+        ck = self.state.get('cap_ckpt')
+        ck = {k: v for k, v in ck.items() if k != 'since'} if isinstance(ck, dict) and ck.get('since') == since else None
+        held = AC.capital_hold(rows, ck)
+        if held['checkpoint'] is not None and held['checkpoint'] != ck: self.state['cap_ckpt'] = dict(held['checkpoint'], since=since)
+        realized = held['realized']
         adjs = S.get('CAP_ADJ', [])
         adj = sum(a['amount'] for a in adjs)
         upnl = self.bot_unrealized()
@@ -2342,7 +2354,13 @@ class Engine:
                         withdrawn=round(-sum(a['amount'] for a in adjs if a['amount'] < 0), 2),
                         deposited=round(sum(a['amount'] for a in adjs if a['amount'] > 0), 2), adj_total=round(adj, 2),
                         unrealized=round(upnl, 2), capital=round(cap, 2), growth=round((cap - adj) / base * 100 - 100, 2) if base else None,
-                        sizing=round(self.last_eq or 0, 2), adj=adjs[-50:], cycles=S.get('CAP_CYCLES', [])[-50:])
+                        sizing=round(self.last_eq or 0, 2), adj=adjs[-50:], cycles=S.get('CAP_CYCLES', [])[-50:],
+                        realized_booked=round(sum(h.get('pnl') or 0 for h in rows), 2), hold=held['hold'],
+                        hold_why=held['why'], realized_unmeasured_n=held['realized_unmeasured_n'],
+                        unrealized_unmeasured_n=sum(1 for l in self.state['lots'].values() if AC.measured_avg(l) is None),
+                        unrealized_why=sorted({str(x) for l in self.state['lots'].values() if AC.measured_avg(l) is None
+                                               for x in (l.get('fill_px_partial') or ['avg_fill_adj_missing'])}),
+                        pending_ack=self.pending_ack())
         return self.cap
 
     def shift_guards(self, delta):
@@ -2686,7 +2704,7 @@ class Engine:
         try:
             if rec and rec.get('cost_ref'):
                 vars(self).setdefault('_cost_q', collections.deque(maxlen=5000)).append(
-                    {k: copy.deepcopy(rec.get(k)) for k in ('cost_ref', 'symbol', 'commission_raw', 'commission_missing') if k in rec})
+                    {k: copy.deepcopy(rec.get(k)) for k in ('cost_ref', 'symbol', 'commission_raw', 'commission_missing', 'actual') if k in rec})
         except Exception: pass
 
     def _cost_target(self, ref):
@@ -2702,6 +2720,54 @@ class Engine:
         quote = _quote_asset(t.get('symbol'))
         booked = len(t.get('fills') or []) if kind == 'lot' else t.get('fills_booked')
         AC.finalize(t, quote, booked, now_ms=time.time() * 1000, wait_ms=self.COST_WAIT_S * 1000)
+        AC.finalize_px(t, 1 if t.get('side') == 'LONG' else -1, TA.ENTRY_KINDS, now_ms=time.time() * 1000,
+                       wait_ms=self.COST_WAIT_S * 1000)             # FILL-PNL-01: measured-price P&L correction
+
+    def _px_unmeasured(self, lot, measured=False):
+        """FILL-PNL-01: a fill of this lot was booked without a cost record - at a price that is not exchange truth
+        (unmeasured: INCOMPLETE for good), or at the exchange's own reported price (measured: only counted for coverage)."""
+        if lot is None: return
+        try: (AC.px_unlinked_ok if measured else AC.px_unmeasured)(lot); self._cost_final('lot', lot)
+        except Exception as e: log.warning(f'unmeasured fill price not recorded ({e})')
+
+    PX_RECOVER_AGE_S = 120                # a fill record this old cannot still be in enrichment (ENRICH_CAP_S)
+
+    def _px_recover(self, now):
+        """FILL-PNL-01 restart path: a linked fill whose record never reached apply_costs (a restart dropped the in-memory
+        queue) takes its exchange price from its own fills.jsonl record, found by cost_ref - read once per ref per process,
+        local file only, never an exchange read. Returns (rows changed, lots changed)."""
+        tried = vars(self).setdefault('_px_tried', set())
+        want = {}
+        for kind, ts in (('lot', self.state.get('lots', {}).values()), ('row', self.history[-3000:])):
+            for t in ts:
+                p = t.get('fill_px_partial') or ()
+                if 'fill_px_pending' not in p and 'fill_px_lost' not in p: continue
+                done = set(t.get('px_actual') or ()) | set(t.get('px_missing') or ())
+                for _i, r in t.get('fill_refs') or ():
+                    if r in done or r in tried or (AC.ref_ms(r) or now * 1000) > (now - self.PX_RECOVER_AGE_S) * 1000: continue
+                    want[r] = (kind, t)
+        if not want: return False, False
+        tried.update(want)
+        rows = lots = False
+        for r, rec in self._cost_recover_scan(set(want)).items():
+            kind, t = want[r]
+            if AC.apply_px(t, rec):
+                self._px_log(t, rec); self._cost_final(kind, t)
+                if kind == 'row': self._row_changed(t); rows = True
+                else: self._risk_fill_mark(t, rec); lots = True
+        return rows, lots
+
+    @staticmethod
+    def _px_log(t, rec):
+        """FILL-PNL-01: say when a fill's exchange price differs from the price it was booked at (never raises)."""
+        try:
+            i = next(i for i, r in t.get('fill_refs') or () if r == rec.get('cost_ref'))
+            f, px = t['fills'][i], (t.get('px_actual') or {}).get(rec['cost_ref'])
+            if px is None:
+                log.warning(f"{t.get('symbol')} {f[1]} fill has no exchange price - its P&L stays INCOMPLETE (fill_px_missing)")
+            elif px != f[3]:
+                log.info(f"FILL-PNL {t.get('symbol')} {t.get('side')} {f[1]} {f[2]} booked @ {f[3]}, measured @ {px}")
+        except Exception: pass
 
     def _cost_sweep(self):
         """Re-finalize lots / rows whose cost record never came (restart / crash cut the enrichment, or the queue
@@ -2709,12 +2775,14 @@ class Engine:
         rows = lots = False
         for kind, ts in (('lot', self.state.get('lots', {}).values()), ('row', self.history[-3000:])):
             for t in ts:
-                if 'fill_records_pending' not in (t.get('fees_actual_partial') or ()): continue
-                before = t.get('fees_actual_partial'); self._cost_final(kind, t)
-                if t.get('fees_actual_partial') != before:
+                if ('fill_records_pending' not in (t.get('fees_actual_partial') or ())
+                        and 'fill_px_pending' not in (t.get('fill_px_partial') or ())): continue
+                before = (t.get('fees_actual_partial'), t.get('fill_px_partial')); self._cost_final(kind, t)
+                if (t.get('fees_actual_partial'), t.get('fill_px_partial')) != before:
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
                     if kind == 'row': self._row_changed(t)
-        return rows, lots
+        r2, l2 = self._px_recover(time.time())                    # FILL-PNL-01: records a restart dropped
+        return rows or r2, lots or l2
 
     def apply_costs(self, reconsider=True):
         """Fold queued cost records into their lots / history rows (engine thread, under the lock). Never raises."""
@@ -2730,7 +2798,10 @@ class Engine:
                         if now - t0 < self.COST_WAIT_S: wait.append((t0, rec))
                         else: self.state['cost_orphans'] = int(self.state.get('cost_orphans') or 0) + 1
                         continue
-                    AC.apply_fill(t, rec); self._cost_final(kind, t)
+                    AC.apply_fill(t, rec)
+                    if AC.apply_px(t, rec): self._px_log(t, rec)             # FILL-PNL-01: the measured price
+                    self._cost_final(kind, t)
+                    if kind == 'lot': self._risk_fill_mark(t, rec)          # RISK-FILL-01: post-fill risk budget
                     rows, lots = rows or kind == 'row', lots or kind == 'lot'
                     if kind == 'row': revised[id(t)] = t
                 if now - getattr(self, '_cost_swept', 0) > 60:
@@ -2744,6 +2815,179 @@ class Engine:
             n = 0
         if reconsider: self._reconsider()             # ORDER-SYM-01: a measured book lets its deferred candidates retry
         return n
+
+    # ------------------------------------------------------------ FEE-RECOVER-01: commissions whose reads timed out (#172)
+    # A fill whose enrichment ended commission_missing (timeout / outage) left its lot / row fees_actual_partial for good,
+    # and TRUE-BOOK admission refused its whole book. PAPER/testnet only: the missing fill's own evidence (symbol, side,
+    # quantity, time, from its fills.jsonl record found by cost_ref) is matched against ONE bounded userTrades time-window
+    # read per tick, outside the lock (as funding_tick). Only a unique, complete, quote-asset match is applied - as a
+    # revision (cost_rev + cohort evidence), idempotent per cost_ref (cost_refs_recovered). Anything else fails closed and the
+    # row stays INCOMPLETE. Progress lives in state['cost_recover'] (a restart neither repeats nor double-counts).
+    COST_RECOVER_POLL_S, COST_RECOVER_PRE_S, COST_RECOVER_POST_S, COST_RECOVER_PAD_S = 120, 120, 10, 600
+    COST_RECOVER_TRIES, COST_RECOVER_LIMIT, COST_RECOVER_KEEP = 8, 1000, 500
+    COST_RECOVER_RETRY = ('read_failed', 'no_match', 'no_evidence')      # may clear later; every other status is final
+
+    def _cost_recover_scan(self, want):
+        """{cost_ref: fill record} for the wanted refs, from fills.jsonl.1 then fills.jsonl (raw lines; never raises)."""
+        out = {}
+        for p in (self.F['fills'] + '.1', self.F['fills']):
+            try:
+                with open(p, encoding='utf-8') as f:
+                    for ln in f:
+                        if '"cost_ref"' not in ln: continue
+                        try: r = json.loads(ln)
+                        except ValueError: continue
+                        if isinstance(r, dict) and r.get('cost_ref') in want: out[r['cost_ref']] = r
+            except OSError: continue
+        return out
+
+    @classmethod
+    def _cost_recover_window(cls, rec):
+        """[lo_ms, hi_ms] in which the fill's executions must lie: from its record time (seconds, written after the fill)
+        back over its own wait plus COST_RECOVER_PRE_S, forward to the end of that second plus COST_RECOVER_POST_S."""
+        t_ms = int(datetime.fromisoformat(rec['time']).timestamp() * 1000)
+        wait = max(0.0, float(rec.get('wait_s') or 0))
+        return int(t_ms - (wait + cls.COST_RECOVER_PRE_S) * 1000), int(t_ms + (cls.COST_RECOVER_POST_S + 1) * 1000)
+
+    def _cost_order_consumer(self, key, ref):
+        """The OTHER ref that already consumed exchange order `key` (state progress, or any lot / row's cost_order_keys,
+        which travel with the fee revision), else None."""
+        if not key: return None
+        for r, c in (self.state.get('cost_recover') or {}).items():
+            if r != ref and c.get('order_key') == key and c.get('status') in ('recovered', 'apply_pending'): return r
+        ids = {h.get('id') for h in self.history}
+        for t in (list(self.state.get('lots', {}).values()) + list(self.history)
+                  + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]):
+            o = AC.order_owner(t, key)
+            if o is not None and o != ref: return o
+        return None
+
+    def _cost_recover_commit(self, ref, cur, raw, now):
+        """Under the lock: apply a PROVEN commission (raw) to its lot / row and make it durable. Durable -> 'recovered';
+        a failed history / cohort write -> 'apply_pending' with raw kept in state, retried every tick and after a restart
+        (memory still holding it: save only; a restart that lost it: the stored raw is applied to the disk row) - never a
+        new read, never applied twice (cost_refs_recovered). Returns the resulting status."""
+        kind, t = self._cost_target(ref)
+        if t is None:                                        # a few ticks for a restart to load it, then final
+            cur['commit_tries'] = int(cur.get('commit_tries') or 0) + 1
+            if cur['commit_tries'] >= self.COST_RECOVER_TRIES:
+                cur.update(status='failed', why='target_gone'); cur.pop('raw', None); return 'failed'
+            cur.update(status='apply_pending', raw=raw, why='target_not_loaded'); return 'apply_pending'
+        fresh = ref not in (t.get('cost_refs_recovered') or ())
+        if fresh and self._cost_order_consumer(cur.get('order_key'), ref) is not None:   # consumed meanwhile (restart)
+            cur.update(status='failed', why='order_already_consumed'); cur.pop('raw', None); return 'failed'
+        if fresh and not AC.recover_fill(t, ref, raw, cur.get('order_key')):
+            cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
+        if fresh: self._cost_final(kind, t)
+        ok = True
+        if kind == 'row':
+            ok = self._row_changed(t)
+            ok = self._save_aux('history', self.history) and ok
+        if not ok:
+            cur.update(status='apply_pending', raw=raw, why='persist_failed')
+            log.warning('recovered commission not durable yet; retried next tick')
+            return 'apply_pending'
+        cur.update(status='recovered', amount={x['asset']: x['amount'] for x in raw}, fees_actual=t.get('fees_actual'),
+                   **({} if fresh else {'why': 'already_applied'}))
+        cur.pop('raw', None)
+        try:
+            with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
+                f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
+                                        id=t.get('id') if kind == 'row' else t.get('symbol'), symbol=cur.get('symbol'),
+                                        raw=raw, order_key=cur.get('order_key'), fees_actual=t.get('fees_actual'),
+                                        cost_rev=t.get('cost_rev'),
+                                        time_ms=int(now * 1000)), separators=(',', ':')) + '\n')
+        except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
+        return 'recovered'
+
+    def _cost_recover_discover(self):
+        """Under the lock: add every applied-as-missing fill of a lot / row (fill_commission_missing) to state['cost_recover']
+        with its window, from its own fill record. True when the state changed."""
+        st = self.state.setdefault('cost_recover', {})
+        want, ids = set(), {h.get('id') for h in self.history[-3000:]}
+        rows = self.history[-3000:] + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]
+        for t in list(self.state.get('lots', {}).values()) + rows:
+            if 'fill_commission_missing' not in (t.get('fees_actual_partial') or ()): continue
+            done, rec = set(t.get('cost_refs_done') or ()), set(t.get('cost_refs_recovered') or ())
+            for r in t.get('cost_refs') or ():
+                e = st.get(r)
+                if r in done and r not in rec and (e is None or (e.get('status') == 'no_evidence' and
+                                                                  int(e.get('tries') or 0) < self.COST_RECOVER_TRIES)):
+                    want.add(r)
+        if not want: return False
+        recs = self._cost_recover_scan(want)
+        for r in want:
+            rec = recs.get(r)
+            if rec is None:                                  # not on disk (yet): a few scans, then final
+                e = st.setdefault(r, dict(status='no_evidence', tries=0))
+                e['tries'] = int(e.get('tries') or 0) + 1
+                if e['tries'] >= self.COST_RECOVER_TRIES: e.update(status='failed', why='no_evidence')
+                continue
+            if not rec.get('commission_missing'):
+                st[r] = dict(status='not_missing'); continue
+            if rec.get('commission_raw'):                    # part of it was folded already: a total would double-count
+                st[r] = dict(status='failed', why='partial_raw_recorded'); continue
+            try:
+                lo_ms, hi_ms = self._cost_recover_window(rec)
+                qty = float(rec['qty_fill'])
+            except (KeyError, TypeError, ValueError):
+                st[r] = dict(status='failed', why='bad_evidence'); continue
+            st[r] = dict(status='pending', symbol=rec.get('symbol'), buy=rec.get('buy'), qty=qty, tries=0, next_s=0,
+                         lo_ms=lo_ms, hi_ms=hi_ms, missing=rec.get('commission_missing'))
+        while len(st) > self.COST_RECOVER_KEEP:              # oldest settled entries go first; pending ones stay
+            old = next((k for k, v in st.items() if v.get('status') not in ('pending', 'no_evidence')), None)
+            if old is None: break
+            del st[old]
+        return True
+
+    def cost_recover_tick(self, force=False):
+        """FEE-RECOVER-01: one missing commission per tick (PAPER/testnet only). Never raises into the loop's caller beyond
+        what funding_tick does; never sizes, orders or touches a position."""
+        if getattr(self, 'live', True) is not False: return 'live'
+        if getattr(self.trade, 'base', TESTNET) != TESTNET: return 'not_testnet'
+        rd = getattr(self.trade, 'user_trades_window', None)
+        if not rd: return 'no_reader'
+        now = time.time()
+        if not force and now - float(self.state.get('cost_recover_polled') or 0) < self.COST_RECOVER_POLL_S: return 'not_due'
+        with self.lock:
+            self.state['cost_recover_polled'] = now
+            changed = False
+            for r, c in list((self.state.get('cost_recover') or {}).items()):   # proven but not durable yet: first
+                if c.get('status') == 'apply_pending' and isinstance(c.get('raw'), list):
+                    self._cost_recover_commit(r, c, c['raw'], now); changed = True
+            changed = self._cost_recover_discover() or changed
+            job = next(((r, dict(e)) for r, e in (self.state.get('cost_recover') or {}).items()
+                        if e.get('status') == 'pending' and float(e.get('next_s') or 0) <= now), None)
+            if job is None:
+                if changed: self.save_state()
+                return 'idle'
+        ref, e = job
+        pad = self.COST_RECOVER_PAD_S * 1000
+        try:
+            got = rd(e['symbol'], e['lo_ms'] - pad, e['hi_ms'] + pad, self.COST_RECOVER_LIMIT)
+            status, raw, key = AC.match_fill(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']), e['lo_ms'],
+                                        e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
+        except Exception as ex:                              # outage / cooldown / 429: retried with backoff, never guessed
+            status, raw, key = 'read_failed', None, None
+            log.debug(f'commission recovery read failed ({type(ex).__name__})')
+        with self.lock:
+            cur = (self.state.get('cost_recover') or {}).get(ref)
+            if cur is None or cur.get('status') != 'pending': return 'stale'
+            cur['tries'] = int(cur.get('tries') or 0) + 1
+            if status == 'ok':
+                other = self._cost_order_consumer(key, ref)
+                if other is not None:                        # Cowork F1: one exchange order is never two fills' fee
+                    cur.update(status='failed', why='order_already_consumed')
+                    status = 'order_already_consumed'
+                else:
+                    cur['order_key'] = key
+                    self._cost_recover_commit(ref, cur, raw, now)
+            elif status in self.COST_RECOVER_RETRY and cur['tries'] < self.COST_RECOVER_TRIES:
+                cur.update(why=status, next_s=now + min(3600, 300 * 2 ** (cur['tries'] - 1)))
+            else:
+                cur.update(status='failed', why=status)
+            self.save_state()
+        return status
 
     # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
     # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
@@ -2813,6 +3057,8 @@ class Engine:
         """A closed row was restated (late fee / funding): bump its cost_rev and append the revision to the evidence store."""
         ev = next((r for r in reversed(getattr(self, 'cohort_rows', None) or ()) if r.get('id') == row.get('id')), None)
         row['cost_rev'] = max(int(row.get('cost_rev') or 0), int((ev or {}).get('cost_rev') or 0)) + 1   # past every copy
+        self._measured_followup(row)                                # FILL-PNL-02: a close waiting for its measured result
+        self._audit_revise(row)                                     # #178: an earlier close audit line on another net
         return self._cohort_rev(row)
 
     def true_books(self, marks=None, persist=True):
@@ -2936,26 +3182,28 @@ class Engine:
             return self._tb_excursions_read()
 
     def _tb_excursions_read(self):
-        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, fid=None))
+        c = vars(self).setdefault('_tb_exc', dict(off={}, ids={}, at={}, fid=None))
         cur = self.F['audit']
         try: stt = os.stat(cur); size, fid = stt.st_size, (stt.st_ino, stt.st_ctime_ns)
         except OSError: size, fid = 0, None
         if fid != c.get('fid') or size < c['off'].get(cur, 0):           # rotated / replaced (not only shorter): re-read both
-            c['off'].clear(); c['ids'].clear(); c['fid'] = fid
+            c['off'].clear(); c['ids'].clear(); c.setdefault('at', {}).clear(); c['fid'] = fid
         for path in (cur + '.1', cur):
             try:
                 with open(path, 'rb') as f:
                     f.seek(c['off'].get(path, 0))
                     for ln in f:
                         if not ln.endswith(b'\n'): break                   # a line still being written: next time
-                        c['off'][path] = c['off'].get(path, 0) + len(ln)
+                        at = c['off'].get(path, 0)
+                        c['off'][path] = at + len(ln)
                         if b'"trade_audit"' not in ln: continue
                         try: r = json.loads(ln)
                         except ValueError: continue
                         if not isinstance(r, dict) or r.get('kind') != 'trade_audit' or not r.get('id'): continue
                         m = r.get('metrics') if isinstance(r.get('metrics'), dict) else {}
                         c['ids'][r['id']] = dict(mfe_r=(m.get('mfe') or {}).get('r'), mae_r=(m.get('mae') or {}).get('r'),
-                                                 giveback_r=r.get('giveback_r'))
+                                                 giveback_r=r.get('giveback_r'))          # the LATEST line (revision) wins
+                        c.setdefault('at', {})[r['id']] = (path, at, r.get('net_pnl'))
             except OSError: continue
         return c['ids']
 
@@ -3131,6 +3379,7 @@ class Engine:
                 self._audit_since = now_utc().isoformat(timespec='seconds')
                 with open(sp, 'w', encoding='utf-8') as fh: fh.write(self._audit_since)
         except Exception as e: log.debug(f'audit start time not recorded ({e})')
+        self._audit_reconcile()
         try:
             lots = self.state.get('lots') or {}
             if not lots: return
@@ -3152,6 +3401,43 @@ class Engine:
                 except Exception: pass
         except Exception as e:
             log.warning(f'audit start-up skipped ({e})')
+
+    def _audit_reconcile(self):
+        """#178 (Codex 6343115717): at start, every settled history row whose latest close audit line still carries another
+        net gets one appended revision (restart-safe: the revision is the latest line next time, so nothing repeats)."""
+        try:
+            try: self._auditw.flush(1.0)
+            except Exception: pass
+            n = sum(bool(self._audit_revise(h)) for h in list(self.history))
+            if n: log.warning(f'trade audit: {n} close record(s) revised onto the measured net (append-only)')
+        except Exception as e: log.warning(f'trade audit reconcile skipped ({e})')
+
+    def _audit_revise(self, row):
+        """Append a revision of the row's latest close audit line when its net differs from the row's settled (measured /
+        acknowledged) net. The original line is never edited. -> True when a revision was queued. Never raises."""
+        try:
+            rid = row.get('id')
+            v = AC.row_view(row)
+            if not rid or v['status'] not in ('measured', 'acknowledged'): return False
+            net = AC.measured(row)['net']
+            done = vars(self).setdefault('_audit_rev', {})
+            if rid in done and abs(done[rid] - net) <= 1e-6: return False
+            self._tb_excursions()                                   # the latest line of each id (incremental read)
+            at = (vars(self).get('_tb_exc') or {}).get('at', {}).get(rid)
+            if not at: return False                                 # no close audit line (legacy / rotated away)
+            path, off, cur = at
+            if isinstance(cur, (int, float)) and abs(cur - net) <= 1e-6: done[rid] = net; return False
+            with open(path, 'rb') as f:
+                f.seek(off); orig = json.loads(f.readline())
+            if orig.get('id') != rid: return False
+            rv = TA.revise_close(orig, net, v['status'], row.get('risk_usd'), now_utc().isoformat(timespec='seconds'))
+            if not rv: return False
+            if row.get('pnl_fill_adj') is not None: rv['pnl_fill_adj'] = row['pnl_fill_adj']
+            rv['pnl_booked'] = row.get('pnl')
+            self._audit_emit(rv); done[rid] = net
+            return True
+        except Exception as e:
+            log.warning(f'trade audit revision not recorded ({e})'); return False
 
     def _audit_ctx(self):
         """(missing, down_last) from T05b: samples are missing while the exchange-down incident is open or the trading
@@ -3569,6 +3855,7 @@ class Engine:
             return 'unknown'
         if new > 0:
             self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
+            self._px_unmeasured(l, measured=bool(px))                     # FILL-PNL-01: no px = booked at the TP limit
             l['tp_done'] = (l.get('tp_done') or 0.0) + new
             self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
         if l['qty'] <= 0:
@@ -3648,7 +3935,7 @@ class Engine:
             raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: its stop fired on Binance and the fill is being "
                                "booked - nothing is sent")
 
-    def _market_close(self, lot, qty, why, mark=None, post=None):
+    def _market_close(self, lot, qty, why, mark=None, post=None, cid=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
         self._stop_fired_guard(lot)                                 # every close path, partial ones included
@@ -3659,14 +3946,15 @@ class Engine:
         if not self.dry:
             lot['last_order_t'] = t0 = time.time()
             try:
-                o = self.trade.close(sym, lot['side'], self._fmt(qty, r['step']))
+                o = (self.trade.close(sym, lot['side'], self._fmt(qty, r['step'])) if cid is None   # RISK-FILL-01: a trim is
+                     else self.trade.close(sym, lot['side'], self._fmt(qty, r['step']), cid=cid))     # sent under its write-ahead id
             except AmbiguousOrder as e:
-                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag))
+                lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag) or cid)
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
-            act = float(o.get('avgPrice') or 0) or None
-            self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
-                       **({'outcome': 'unfilled'} if got == 0 else {}))
+            act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
+            ref = (self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
+                       **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
                 raise UnfilledOrder(f"{sym} {why}: Binance {o.get('status')} - nothing executed, the position is unchanged")
@@ -3677,9 +3965,9 @@ class Engine:
                 short = 0.0
             qty, px = got, act or px
         else:
-            short = 0.0
+            short, ref = 0.0, None
         try:
-            pnl = self._apply_close(lot, qty, px, why)
+            pnl = self._apply_close(lot, qty, px, why, ref=ref)
         except Exception as ex:
             self._after_fill_failed(lot, post, why, ex); raise
         if short > 0 and lot['qty'] > 0:
@@ -3687,12 +3975,13 @@ class Engine:
                                "the rest is closed on a later pass")
         return pnl
 
-    def _apply_close(self, lot, qty, px, why):
+    def _apply_close(self, lot, qty, px, why, ref=None):
         sym, r = lot['symbol'], self.rules[lot['symbol']]
         sd = 1 if lot['side'] == 'LONG' else -1
         pnl = sd * (px - lot['avg']) * qty
         lot['realized'] = lot.get('realized', 0.0) + pnl
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, qty, px])
+        AC.link_px(lot, ref)                                       # FILL-PNL-01: its exchange price arrives with ref
         lot['fees'] = lot.get('fees', 0.0) + qty * px * FEE_EST
         lot['qty'] = max(0.0, self._rd(lot['qty'] - qty, r['step']))
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=sym,
@@ -3718,6 +4007,7 @@ class Engine:
             if got < pd_['qty']: fin = None                              # a partial full-close finishes nothing
             if pd_['kind'] == 'close': self._apply_close(l, got, px, pd_['why'])
             else: self._apply_add(l, got, px, pd_['why'])
+            self._px_unmeasured(l, measured=bool(fr['px']))              # FILL-PNL-01: no px = the planned price
             l.update(post)
             if 'dca' in l.get('mgmt', {}) and pd_['kind'] == 'add' and l.get('tp') is not None:
                 sd = 1 if l['side'] == 'LONG' else -1
@@ -3748,6 +4038,7 @@ class Engine:
                 self._apply_close(l, pd_['qty'], pd_['px'], pd_['why'])
             else:
                 self._apply_add(l, pd_['qty'], pd_['px'], pd_['why'])
+            self._px_unmeasured(l)                                       # FILL-PNL-01: the position has no price
             post = dict(pd_.get('post') or {})
             fin = post.pop('finish', None)
             l.update(post)
@@ -3802,10 +4093,136 @@ class Engine:
         res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
         return res
 
-    def _record_r(self, lot):
-        if lot.get('manual') or not lot.get('risk_usd'): return
+    # ------------------------------------------------------------ RISK-FILL-01 (#179): post-fill risk budget
+    RISK_FILL_RETRIES = 1                 # one bounded reconciliation / retry, then residual risk + alert (never a loop)
+
+    def risk_fill_view(self, lot):
+        """Audit / UI: the per-fill post-fill checks, 'pending' while a tracked entry is not measured yet, 'unavailable'
+        for a lot booked before FILL-PNL-01 (never zero)."""
+        if lot.get('risk_fill'): return copy.deepcopy(lot['risk_fill'])
+        return 'pending' if AC.tracked(lot) else 'unavailable'
+
+    def _risk_fill_mark(self, lot, rec):
+        """An entry / add fill's measured price arrived: decide its post-fill action once (per fill index - each add is
+        checked on its own, no once-per-lot latch). Never sends anything; manage() runs a due action. Never raises;
+        a failure after the fill is identified fails CLOSED (an 'unmeasured' record, which blocks adds)."""
+        i = None
+        try:
+            ref = rec.get('cost_ref')
+            i = next((i for i, r in lot.get('fill_refs') or () if r == ref), None)
+            fills = lot.get('fills') or []
+            if not isinstance(i, int) or not 0 <= i < len(fills) or fills[i][1] not in TA.ENTRY_KINDS: return
+            rf = lot.setdefault('risk_fill', {})
+            if str(i) in rf: return
+            f, sym = fills[i], lot['symbol']
+            r = self.rules.get(sym) or {}
+            meas = (lot.get('px_actual') or {}).get(ref)
+            quote, raw = _quote_asset(sym), rec.get('commission_raw')
+            fees = None
+            if isinstance(raw, list) and raw and not rec.get('commission_missing') and all(x.get('asset') == quote for x in raw):
+                fees = sum(float(x.get('amount') or 0) for x in raw)
+            # the stop is anchored at the first fill's BOOKED price - its plan is that distance; an add's plan is its
+            # decision price (expected), because the stop is not re-anchored for it
+            planned_px = f[3] if i == 0 else (_fnum(rec.get('expected')) or f[3])
+            d = RF.decide(lot['side'], float(f[2]), meas, lot.get('stop'), planned_px, fees, r.get('step', 0.0),
+                          r.get('min_qty', 0.0), r.get('min_notional', 0.0), FEE_EST)
+            d.update(fill=i, kind=f[1], t=now_utc().isoformat(timespec='seconds'), planned_px=planned_px, measured_px=meas,
+                     stop=lot.get('stop'), attempts=0, trimmed=0.0,
+                     state={'trim': 'due', 'unwind': 'due', 'unmeasured': 'unmeasured'}.get(d['action'], 'done'))
+            rf[str(i)] = d
+            if d['action'] != 'ok':
+                log.warning(f"RISK-FILL {sym} {lot['side']} [{lot['sleeve']}] fill {i}: planned {d['planned']} measured "
+                            f"{d['measured']} USDT ({d['ratio']}x) -> {d['action']} ({d['why']})")
+        except Exception as e:
+            log.warning(f'post-fill risk check failed ({e}) - recorded as unmeasured')
+            try:
+                if isinstance(i, int): lot.setdefault('risk_fill', {}).setdefault(str(i), dict(
+                    fill=i, action='unmeasured', why='risk_check_error', state='unmeasured', attempts=0, trimmed=0.0,
+                    t=now_utc().isoformat(timespec='seconds')))
+            except Exception: pass
+
+    def _risk_fill_block(self, lot):
+        """Reason an add is refused while a tracked entry fill is unmeasured, being trimmed or left over budget."""
+        if not AC.tracked(lot): return None
+        rf, linked = lot.get('risk_fill') or {}, {i: r for i, r in lot.get('fill_refs') or () if isinstance(i, int)}
+        um = set(AC._idx(lot.get('px_unmeasured')))
+        miss, have = set(lot.get('px_missing') or ()), set(lot.get('px_actual') or ())
+        lost = 'fill_px_lost' in (lot.get('fill_px_partial') or ())
+        for i, f in enumerate(lot.get('fills') or ()):
+            if f[1] not in TA.ENTRY_KINDS: continue
+            if i in um: return 'risk_unmeasured: an entry price was never measured'
+            if i not in linked: continue
+            st = (rf.get(str(i)) or {}).get('state')
+            if st is None:                                   # ruling 5: a MISSING measured fill blocks; one still arriving
+                if linked[i] in miss or (lost and linked[i] not in have):    # (seconds) does not - its add is checked alone
+                    return 'risk_unmeasured: an entry price was never measured'
+                continue
+            if st == 'unmeasured': return 'risk_unmeasured: an entry price was never measured'
+            if st in ('due', 'sent'): return 'risk_trim in progress'
+            if st == 'residual': return 'risk_residual: the post-fill trim is incomplete'
+        return None
+
+    def _risk_fill_run(self, key, lot, m):
+        """Run the first due post-fill action of this lot. A trim is written ahead (state 'sent', deterministic client
+        id, quantity before) and saved BEFORE the order is sent; after a restart or an unanswered send it is settled from
+        the lot's own booking or the exchange's order record - never sent blind twice. One bounded retry, then the
+        residual risk is recorded and alerted. The stop is resized after the trim fill (stop_dirty), never moved."""
+        i, d = next((k, v) for k, v in sorted(lot['risk_fill'].items(), key=lambda kv: int(kv[0]))
+                    if (v or {}).get('state') in ('due', 'sent'))
+        sym, r = lot['symbol'], self.rules[lot['symbol']]
+        if d['attempts'] >= 1 + self.RISK_FILL_RETRIES and d['state'] == 'due':
+            d.update(state='residual', residual=RF.residual(lot['side'], lot['qty'], d['measured_px'], lot['stop'], d.get('fee_unit')))
+            self.err(f"{sym} [{lot['sleeve']}] post-fill risk {d['action']} incomplete after {d['attempts']} tries - residual "
+                     f"risk {d['residual']} USDT kept with its stop; adds blocked", key=f'risk-fill|{key}')
+            self.save_state(); return True
+        if d['action'] == 'unwind':
+            d['attempts'] += 1; d.update(state='done', trimmed=lot['qty']); self.save_state()
+            try: self.close_lot(key, 'risk_unwind', m)       # its own unconfirmed-order safety (AUD-02 / AUD-03)
+            except Exception:
+                if key in self.state['lots']: d['state'] = 'due'; self.save_state()
+                raise
+            return True
+        if d['state'] == 'sent':                             # write-ahead found: settle it, never send blind
+            qb = d.get('qty_before')
+            if qb is not None and lot['qty'] < qb - 1e-12:   # already booked (order record / resync / pending resolve)
+                return self._risk_fill_done(lot, d, qb)
+            res = self._order_result(sym, d.get('cid'), d.get('send_qty'))
+            if res['state'] in ('pending', 'unreadable'): return False      # not final yet - asked again next pass
+            if res['state'] == 'final' and res['qty'] > 0:
+                self._apply_close(lot, res['qty'], res['px'] or m, 'risk_trim')
+                return self._risk_fill_done(lot, d, qb)
+            d['state'] = 'due'                               # nothing executed / never reached Binance: one more send
+            if d['attempts'] >= 1 + self.RISK_FILL_RETRIES: return self._risk_fill_run(key, lot, m)
+        qty = self._rd(min(d['trim_qty'] - d.get('trimmed', 0.0), lot['qty']), r['step'])
+        if qty <= 0: d['state'] = 'done'; self.save_state(); return True
+        d['attempts'] += 1
+        cid = f"zbrf{zlib.crc32(f'{key}|{i}|{d['attempts']}'.encode()):08x}"
+        d.update(state='sent', cid=cid, send_qty=qty, qty_before=lot['qty']); self.save_state()      # write-ahead
+        try:
+            self._market_close(lot, qty, 'risk_trim', m, cid=cid)
+        except AmbiguousOrder:
+            return True                                      # lot['pending']: reconcile decides, 'sent' settles after
+        except PartialClose:
+            d['trimmed'] = d.get('trimmed', 0.0) + d['qty_before'] - lot['qty']
+            d['state'] = 'due'; lot['stop_dirty'] = True; self.save_state(); return True
+        except UnfilledOrder:
+            d['state'] = 'due'; self.save_state(); return True
+        return self._risk_fill_done(lot, d, d['qty_before'])
+
+    def _risk_fill_done(self, lot, d, qty_before):
+        d['trimmed'] = round(d.get('trimmed', 0.0) + max(0.0, (qty_before or lot['qty']) - lot['qty']), 12)
+        d['residual'] = RF.residual(lot['side'], lot['qty'], d['measured_px'], lot['stop'], d.get('fee_unit'))
+        d['state'] = 'done'
+        lot['stop_dirty'] = True                             # protection resized to what is left, after the fill
+        log.warning(f"RISK-FILL {lot['symbol']} [{lot['sleeve']}] trimmed {d['trimmed']} -> {lot['qty']} kept, "
+                    f"risk {d['residual']} USDT (planned {d['planned']})")
+        self.save_state(); return True
+
+    def _record_r(self, lot, net):
+        """Kelly R history: one closed trade's net / risk - the measured net (FILL-PNL-02), or a legacy lot's booked one."""
+        if lot.get('manual') or not lot.get('risk_usd') or net is None: return
         h = self.state.setdefault('hist', {}).setdefault(lot['sleeve'], [])
-        h.append(round((lot.get('realized', 0.0) - lot.get('fees', 0.0)) / lot['risk_usd'], 3)); del h[:-200]
+        h.append(round(net / lot['risk_usd'], 3)); del h[:-200]
 
     def kelly_mult(self, sl):
         k = sl.get('kelly')
@@ -3877,7 +4294,6 @@ class Engine:
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
-        self._record_r(lot)
         sd = 1 if lot['side'] == 'LONG' else -1
         closes = [f for f in lot.get('fills', []) if f[1] not in TA.ENTRY_KINDS]      # entry_fallback is an entry
         cq = sum(f[2] for f in closes) or 1e-12
@@ -3903,19 +4319,108 @@ class Engine:
                 rec['fills_booked'] = len(lot.get('fills') or []); self._cost_final('row', rec)
         except Exception as e: log.warning(f'actual costs not carried to history ({e})')
         if lot.get('cohort_id'): rec['cohort_id'] = lot['cohort_id']     # RUN-PACK-01: carried, never re-derived
-        au = None
-        try:                                             # T05a: causal trade audit record (observe only, non-blocking writer)
-            au = TA.close_record(lot, net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
-            if au:
-                au.update(kind='trade_audit', id=key, exit_reason=why, closed=rec['closed'], t=rec['closed'])
-                self._audit_emit(au)
-        except Exception as e: log.warning(f'trade audit not recorded ({e})')
+        rec['risk_fill'] = self.risk_fill_view(lot)                      # RISK-FILL-01: planned vs measured, action
         self.history.append(rec); self.history = self.history[-3000:]
         if rec.get('cohort_id') and self._cohort_ok() and rec['cohort_id'] == self.state['cohort']['id']:
             self._cohort_row(rec)                                  # RUN-PACK-01 evidence copy (never read by trading)
         self._save_aux('history', self.history)
-        self._ml_label(key, rec, lot, au)                          # ML-SHADOW-01 close label (observe only, never raises)
-        self.notify(f"{'✅' if net > 0 else '❌'} CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL {net:+.2f} USDT ({rec['r']}R) · {rec['hours']}h")
+        self._measured_close(key, rec, lot, why)          # FILL-PNL-02: audit / R / ML label / notice on the measured net
+
+    MEASURED_WAIT_MAX = 500
+
+    ML_AUDIT_KEYS = ('metrics', 'coverage', 'target_touch_t', 'target', 'observations')
+
+    def _measured_close(self, key, rec, lot, why):
+        """FILL-PNL-02: the trade audit, R history, ML label and close notice carry the MEASURED result. A row whose fill
+        prices / fees are not measured yet waits (state['measured_wait'] with a copy of the closed lot, survives restarts)
+        and is completed by _measured_followup when the row is revised; it is announced as pending - never with its booked
+        figure presented as actual."""
+        w = dict(key=key, sleeve=lot['sleeve'], manual=bool(lot.get('manual')), risk_usd=lot.get('risk_usd'), why=why,
+                 hours=rec.get('hours'))
+        if isinstance(lot.get('ml_decision_id'), str):             # ML-SHADOW-01: the only key the hook adds (ON only)
+            w['ml'] = dict(ml_decision_id=lot['ml_decision_id'])
+        v = AC.row_view(rec)
+        if v['status'] == 'pending':
+            w['audit_lot'] = {k: copy.deepcopy(v_) for k, v_ in lot.items() if k != 'ml_decision_id'}   # #178 canary:
+                                                                    # the audit is written once, when measured (ML id: w['ml'])
+            mw = self.state.setdefault('measured_wait', {})
+            mw[rec['id']] = w
+            for k in list(mw)[:-self.MEASURED_WAIT_MAX]:
+                mw.pop(k, None); log.warning(f'measured close {k}: waited too long among {self.MEASURED_WAIT_MAX} - its R / ML label are dropped')
+            self.notify(f"⏳ CLOSED {lot['side']} {lot['symbol']} [{lot['sleeve']}] {why} · PnL pending exchange fill prices · {rec['hours']}h")
+            return
+        w['audit_lot'] = lot
+        self._measured_done(rec, w, v, 'CLOSED')
+
+    def _close_audit(self, rec, lot, v):
+        """T05a close record from the row's ONE settled net (#178 canary, Codex 6342665810): net_pnl, R, giveback, metrics,
+        flags and every counterfactual vs_actual use the measured / acknowledged net (a legacy row: its booked net). The
+        lot is fully closed here, so its quantity is 0 for the cohort ledger. Observe only; None when not recorded."""
+        try:
+            if v['status'] in ('measured', 'acknowledged'): net = AC.measured(rec)['net']
+            else: net = float(lot.get('realized') or 0.0) - float(lot.get('fees') or 0.0)    # legacy: its booked net
+            au = TA.close_record(dict(lot, qty=0.0), net, fee_rate=FEE_EST, path=TA.recorded_path(lot))
+            if not au: return None
+            au.update(kind='trade_audit', id=rec['id'], exit_reason=rec.get('exit_reason'), closed=rec['closed'], t=rec['closed'],
+                      net_basis=v['status'], pnl_booked=rec.get('pnl'))
+            if lot.get('fill_refs'):                     # FILL-PNL-01: the correction already inside net_pnl
+                au.update(pnl_fill_adj=rec.get('pnl_fill_adj', lot.get('pnl_fill_adj')), fill_px_partial=False)
+            self._audit_emit(au)
+            if au.get('net_basis') in ('measured', 'acknowledged'):
+                vars(self).setdefault('_audit_rev', {})[rec['id']] = net
+            return au
+        except Exception as e:
+            log.warning(f'trade audit not recorded ({e})'); return None
+
+    def _measured_done(self, rec, w, v, word):
+        lot = w.pop('audit_lot', None)
+        au = self._close_audit(rec, lot, v) if lot else None       # a wait from an older build: its audit was written then
+        self._record_r(w, v['pnl'])
+        if w.get('ml'):                                             # observe only, never raises
+            aud = {k: (au or {}).get(k) for k in self.ML_AUDIT_KEYS} if au else w['ml'].get('audit') or {}
+            self._ml_label(w['key'], dict(rec, pnl=v['pnl'], r=v['r']), w['ml'], aud)
+        tag = {'measured': '', 'acknowledged': ' (operator-acknowledged)'}.get(v['status'], ' (booked)')
+        self.notify(f"{'✅' if (v['pnl'] or 0) > 0 else '❌'} {word} {rec['side']} {rec['symbol']} [{w['sleeve']}] {w['why']} · "
+                    f"PnL {v['pnl']:+.2f} USDT{tag}" + (f" ({v['r']}R)" if v['r'] is not None else '') + f" · {w['hours']}h")
+
+    def pending_ack(self):
+        """Read-only: closes holding capital because a fill price can never be measured (no P&L figure is listed)."""
+        out = []
+        for h in self.history:
+            v = AC.row_view(h)
+            if v['status'] == 'pending' and AC.tracked(h):
+                out.append(dict(id=h.get('id'), symbol=h.get('symbol'), side=h.get('side'), closed=h.get('closed'),
+                                book=h.get('book'), why=v['why'], acknowledgeable=not (set(v['why']) - AC.ACK_REASONS)))
+        return out[-100:]
+
+    def ack_unmeasured(self, row_id, net, note=''):
+        """FILL-PNL-02 (Codex 6332263574): the ONLY release of a capital hold on a close that can never be measured. The
+        operator states the close's actual net (from the exchange's own records) and an evidence note; the settlement is
+        written INTO the row (AC.acknowledge), revised in the evidence store and saved - every consumer reads that one row.
+        PAPER only; the booked figure is never used. -> (ok, message, status)."""
+        if self.live: return False, 'refused: acknowledgements are PAPER-only', None
+        with self.lock:
+            row = next((h for h in reversed(self.history) if h.get('id') == row_id), None)
+            if row is None: return False, f'no closed trade {row_id}', None
+            ok, msg = AC.acknowledge(row, net, note, now_utc().isoformat(timespec='seconds'))
+            if not ok: return False, f'{row_id}: {msg}', AC.row_view(row)['status']
+            log.warning(f"capital hold: {row.get('symbol')} close {row_id} {msg} by the operator "
+                        f"(unmeasured: {', '.join(row['px_ack']['why'])}; note: {row['px_ack']['note']})")
+            self._row_changed(row)                       # cost_rev + evidence revision + the waiting R / label / notice
+            self._save_aux('history', self.history)
+            self.save_state()
+            return True, f'{row_id} {msg}', AC.row_view(row)['status']
+
+    def _measured_followup(self, row):
+        """A revised row whose close was waiting for its measured result: finish the R / ML label / notice once."""
+        try:
+            w = (self.state.get('measured_wait') or {}).get(row.get('id'))
+            if not w: return
+            v = AC.row_view(row)
+            if v['status'] == 'pending': return
+            self.state['measured_wait'].pop(row['id'], None)
+            self._measured_done(row, w, v, 'MEASURED')
+        except Exception as e: log.warning(f'measured close follow-up failed ({e})')
 
     # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
     # The lot -> decision link lives in the lot record itself (lot['ml_decision_id'], survives restarts with state.json).
@@ -4269,7 +4774,7 @@ class Engine:
         r = self.rules[lot['symbol']]
         d = F.size_check(q, q, px, r)                    # BT02: the shared check (floor to the step, minQty, minNotional)
         if not d['ok']: return False
-        q = d['qty']
+        q, ref = d['qty'], None
         if not self.dry:
             if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
@@ -4300,23 +4805,24 @@ class Engine:
                            px, None, q, o.get('executedQty'), t0, reason=why, outcome='unfilled')
                 raise UnfilledOrder(f"{lot['symbol']} {why}: Binance {o.get('status')} - nothing executed, the lot is unchanged")
             q = got
-            act = float(o.get('avgPrice') or 0) or None
+            act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
             self._last_order = dict(rec=self._fill(why if why in self.FILL_KINDS else 'pyramid_add', lot['symbol'], lot['side'], lot['side'] == 'LONG',
                                     px, act, q, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
                                     fallback_order=(why == 'entry_fallback') or None))
-            px = act or px
+            px, ref = act or px, (self._last_order.get('rec') or {}).get('cost_ref')
         try:
-            self._apply_add(lot, q, px, why)
+            self._apply_add(lot, q, px, why, ref=ref)
         except Exception as ex:
             self._after_fill_failed(lot, post, why, ex); raise
         return True
 
-    def _apply_add(self, lot, q, px, why, fee=None):
+    def _apply_add(self, lot, q, px, why, fee=None, ref=None):
         r = self.rules[lot['symbol']]
         lot['avg'] = (lot['avg'] * lot['qty'] + px * q) / (lot['qty'] + q)
         lot['qty'] = self._rd(lot['qty'] + q, r['step'])
         lot['qty_max'] = max(lot.get('qty_max', 0), lot['qty'])
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, q, px])
+        AC.link_px(lot, ref)                                       # FILL-PNL-01
         lot['fees'] = lot.get('fees', 0.0) + q * px * (FEE_EST if fee is None else fee)
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=lot['symbol'],
                        side=lot['side'], qty=q, price=px, stop=lot['stop'], equity=round(self.last_eq or 0, 2))
@@ -4378,6 +4884,12 @@ class Engine:
                     if isinstance(lot.get('ex'), dict): rs.discard(key)   # only once observe() really started tracking
                     self._audit_emit(TA.checkpoint(lot, key, t_))  # bounded checkpoint event goes to the writer queue
                 except Exception: pass                         # audit never raises into a trading path
+                if any((v or {}).get('state') in ('due', 'sent') for v in (lot.get('risk_fill') or {}).values()):
+                    try: changed = self._risk_fill_run(key, lot, m) or changed     # RISK-FILL-01: post-fill risk action
+                    except Exception as e:
+                        self.err(f"{lot['symbol']} [{lot['sleeve']}] post-fill risk action failed ({type(e).__name__}: "
+                                 f"{str(e)[:120]}) - retried next pass, its stop stays", key=f'risk-fill|{key}')
+                    if key not in self.state['lots']: continue
                 failed = []                                    # AUD-02: stages of this lot that failed this pass
                 try:
                     if lot.get('force_close'):                 # a stop update found price already through the stop
@@ -4938,6 +5450,8 @@ class Engine:
         st, Sg = self.state, self.S
         pb = self.persist_block()                                 # AUD-05 r2
         if pb: return pb
+        rb = self._risk_fill_block(lot)                           # RISK-FILL-01: no new risk on an unmeasured / over-budget lot
+        if rb: return rb
         if st.get('halted'): return 'daily loss halt is active'
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
@@ -5100,10 +5614,11 @@ class Engine:
                 l.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), 'stop', l['qty'], px])
                 l['fees'] = l.get('fees', 0.0) + l['qty'] * px * FEE_EST
                 if how == 'ok':                                         # cost record + userTrades commission (FEE-ASSET-01)
-                    self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'], _fnum(o.get('executedQty')) or l['qty'],
-                               order=o, cost_lot=l)
+                    AC.link_px(l, (self._fill('stop', sym, side, side == 'SHORT', l['stop'], px, l['qty'],
+                                              _fnum(o.get('executedQty')) or l['qty'], order=o, cost_lot=l) or {}).get('cost_ref'))
                 else:                                                   # no exchange record: the row stays INCOMPLETE
                     l['exit_px_unconfirmed'] = int(l.get('exit_px_unconfirmed') or 0) + 1
+                    self._px_unmeasured(l)                                  # FILL-PNL-01
                 l.pop('stop_gone', None)
                 expected -= l['qty']; self._finish(k, 'stop')
                 self.notify(f"🛑 STOP {side} {sym} [{l['sleeve']}] at {px}")
@@ -5130,7 +5645,9 @@ class Engine:
                     l = st['lots'][k]
                     newq = newqs[k]
                     gone_q = l['qty'] - newq
-                    if gone_q > 0: self._apply_close(l, gone_q, mk or l['stop'], 'resync')    # book what left at the market price
+                    if gone_q > 0:
+                        self._apply_close(l, gone_q, mk or l['stop'], 'resync')    # book what left at the market price
+                        self._px_unmeasured(l)                                   # FILL-PNL-01: not an exchange price
                     if l['qty'] <= 0: self._finish(k, 'resync')
                     else: self._replace_stop(l)
                 self.err(f'{sym} {side}: exchange holds less than expected ({have} vs {expected:.6g}) - lots resized to match')
@@ -5174,9 +5691,10 @@ class Engine:
     def daily_summary(self, day, start, end):
         H = [h for h in self.history if h.get('closed', '')[:10] >= day]
         try:
-            n = len(H); w = sum(1 for h in H if h['pnl'] > 0)
-            self.notify(f"📊 Day {day}: bot capital {start:.2f} -> {end:.2f} ({(end / start - 1) * 100:+.2f}%) · {n} closed trades, {w} won · "
-                        f"{len(self.state['lots'])} open")
+            V = [AC.row_view(h) for h in H]                         # FILL-PNL-02: wins on the measured net only
+            n = len(H); w = sum(1 for v in V if (v['pnl'] or 0) > 0); p = sum(1 for v in V if v['status'] == 'pending')
+            self.notify(f"📊 Day {day}: bot capital {start:.2f} -> {end:.2f} ({(end / start - 1) * 100:+.2f}%) · {n} closed trades, {w} won"
+                        + (f" ({p} pending measurement)" if p else '') + f" · {len(self.state['lots'])} open")
         except Exception: pass
 
     # ------------------------------------------------------------ candle-close cycle
@@ -5452,6 +5970,7 @@ class Engine:
         if self._lev.get(sym) == want:
             try: current, _ = self._margin_state(sym); current = lev_num(current, 'current leverage', pos=True)
             except Exception: current = None
+            if current is not None: self._lev_cur[sym] = current
             if current is not None and current <= want: return 'set'
             self._lev.pop(sym, None)                              # external/unknown change: prove or set it again
         cool = self._lev_cool.get(sym, 0)
@@ -5473,7 +5992,7 @@ class Engine:
                 self._lev_cool[sym] = time.time() + LEV_REFUSAL_COOLDOWN_S
                 return self._leverage_fallback(sym, lev, e2, notional, risk)   # proceeds only if proven safe (read-only)
         self._lev_cool.pop(sym, None)
-        self._lev[sym] = want
+        self._lev[sym] = want; self._lev_cur[sym] = lev
         return 'set'
 
     def _brackets(self, sym, fetch=True):
@@ -5493,14 +6012,21 @@ class Engine:
         leverage in use (feasibility.tier_notional_cap; Binance answers -2027), else None. Counted conservatively: every open
         lot of the coin (both sides) and every resting entry order of the coin (its full quantity, filled part included), each
         valued at the HIGHER of the current order price px and its own entry/limit price - never at a stale lower average
-        (a price rise must not hide notional). Uses the cached bracket schedule only (_ensure_leverage fetched it); unknown
-        -> None. Reduce-only exits never pass through here."""
+        (a price rise must not hide notional). Reduce-only exits never pass through here.
+        #183 (Binance -2027 at 20:30 Cairo, 22 Oct): the schedule is FETCHED when the 1 h cache expired (cache-only made the
+        gate silently disappear an hour into a run), an unavailable / unusable schedule REFUSES the entry (fail closed) and
+        the cap is taken at the HIGHER of the configured leverage and the one Binance last reported for the coin."""
+        try:                                                     # cached for LEV_BRACKET_TTL_S, re-fetched after it
+            b = self._brackets(sym, fetch=hasattr(self.trade, 'leverage_brackets'))
+        except LevReject as e:
+            return f'leverage tier: {sym} bracket schedule unavailable - entry refused ({str(e)[:120]})'
+        if not b: return None                                    # a client with no schedule source (older / offline fakes)
         try:
-            b = self._brackets(sym, fetch=False)
-            if not b: return None
             lev = min(max(1, int(self.S['MAX_LEVERAGE'])), float(b[0]['lev']))
+            cur = self._lev_cur.get(sym)
+            if isinstance(cur, (int, float)) and math.isfinite(cur) and cur > lev: lev = float(cur)
             cap = F.tier_notional_cap(b, lev)
-            if cap is None: return None
+            if cap is None: return f'leverage tier: {sym} no bracket allows {lev:g}x - entry refused'
             px = float(px)
             held = sum(float(l['qty']) * max(px, float(l['avg'])) for l in self.state['lots'].values() if l['symbol'] == sym)
             held += sum(float(r['qty']) * max(px, float((r.get('plan') or {}).get('px') or 0.0))
@@ -5508,8 +6034,8 @@ class Engine:
             if held + notional <= cap: return None
             return (f'leverage tier: {sym} position {held + notional:,.0f} USDT would exceed the Binance maximum '
                     f'{cap:,.0f} USDT at {lev:g}x')
-        except Exception:                                   # noqa: BLE001  a feasibility hint never raises into trading
-            return None
+        except Exception as e:                              # noqa: BLE001  never raises into trading; never a silent pass
+            return f'leverage tier: {sym} check failed - entry refused ({type(e).__name__})'
 
     def _lev_max(self, sym, fetch=True):
         """The coin's maximum initial leverage (first bracket), or None if unknown/invalid."""
@@ -5762,6 +6288,7 @@ class Engine:
             except LevReject: read_err, cur = f'invalid current leverage {cur!r}', None
             else: cur = int(cur) if cur == int(cur) else cur
         r.update(current=cur, margin_type=mtype if mtype in ('CROSSED', 'ISOLATED') else None)
+        if cur is not None: self._lev_cur[sym] = cur          # #183: the tier cap follows the leverage really in use
 
         def done(ok, reason, detail):
             r.update(outcome='went_ahead' if ok else 'skipped', reason=reason, detail=str(detail)[:200])
@@ -6518,6 +7045,7 @@ class Engine:
                     px = fr['px'] or plan['px']
                     log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
                     self._create_lot(plan, got, px, adopt_stop=u.get('prov'))
+                    self._px_unmeasured(self.state['lots'].get(self._last_lot_key), measured=bool(fr['px']))   # FILL-PNL-01
                 else:
                     log.info(f"ENTRY {sym} {side} unconfirmed -> its order record shows nothing executed")
                     if u.get('prov'): self._cancel_or_park(sym, u['prov'])
@@ -6539,6 +7067,7 @@ class Engine:
                     self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
                              f"the position ({extra} @ mark {px})")
                     self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
+                    self._px_unmeasured(self.state['lots'].get(self._last_lot_key))   # FILL-PNL-01: adopted at the mark
                     self.save_state()
             elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
                 ue.pop(uk, None)
@@ -6562,6 +7091,7 @@ class Engine:
                    qty_max=qty, fills=[[now_utc().isoformat(timespec='seconds'), 'entry', qty, fill]], fees=fee)
         if cost_ref:
             lot['cost_refs'] = [cost_ref]                              # FEE-ASSET-01: the entry fill's cost record
+            lot['fill_refs'] = [[0, cost_ref]]                         # FILL-PNL-01: ... and its exchange price
             self._cost_final('lot', lot)                               # explicit latency, never a false INCOMPLETE hole
         if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)

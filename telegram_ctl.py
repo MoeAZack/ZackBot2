@@ -35,6 +35,7 @@ INTEGRATION (app.py - lead engineer):
 """
 import hashlib, hmac, json, logging, os, re, secrets, threading, time, collections
 from datetime import datetime, timezone, timedelta
+import actual_costs as AC
 
 log = logging.getLogger('zackbot')
 
@@ -366,7 +367,8 @@ class TelegramControl:
         out = []
         for k, l in items:
             m = marks.get(l['symbol']); sd = 1 if l['side'] == 'LONG' else -1
-            pnl = sd * (m - l['avg']) * l['qty'] if m else None
+            b = AC.measured_avg(l)                                              # FILL-PNL-02: None = entry price pending
+            pnl = sd * (m - b) * l['qty'] if m and b is not None else None
             out.append(dict(key=k, symbol=l['symbol'], side=l['side'], sleeve=l.get('sleeve'), qty=l.get('qty'), avg=l.get('avg'),
                             stop=l.get('stop'), mark=m, pnl=pnl, manual=l.get('manual'),
                             r=pnl / l['risk_usd'] if pnl is not None and l.get('risk_usd') else None,
@@ -456,13 +458,16 @@ class TelegramControl:
         with e.lock: H = list(e.history)
         H = [h for h in H if (_parse_ts(h.get('closed')) or since - timedelta(1)) >= since]
         if not H: return f'No closed trades in the last {days} day(s).'
-        pn = [h.get('pnl') or 0 for h in H]
+        V = [(h, AC.row_view(h)) for h in H]                 # FILL-PNL-02: measured net; pending rows are counted apart
+        M = [(h, v) for h, v in V if v['status'] != 'pending']; pend = len(V) - len(M)
+        if not M: return f'Last {days} day(s): {len(H)} closed trade(s), all pending measurement.'
+        pn = [v['pnl'] or 0 for _, v in M]
         w = sum(1 for x in pn if x > 0)
-        best = max(H, key=lambda h: h.get('pnl') or 0); worst = min(H, key=lambda h: h.get('pnl') or 0)
-        nm = lambda h: f"{h.get('symbol', '?').replace('USDT', '')} {h.get('side', '')} {_sgn(h.get('pnl'))}"
-        return '\n'.join([f'Last {days} day(s): {len(H)} closed trade(s)',
-                          f'Net P&L: {_sgn(sum(pn))} USDT (after est. fees)',
-                          f'Win rate: {w / len(H) * 100:.0f}% ({w} won, {len(H) - w} lost)',
+        best = max(M, key=lambda x: x[1]['pnl'] or 0); worst = min(M, key=lambda x: x[1]['pnl'] or 0)
+        nm = lambda x: f"{x[0].get('symbol', '?').replace('USDT', '')} {x[0].get('side', '')} {_sgn(x[1]['pnl'])}"
+        return '\n'.join([f'Last {days} day(s): {len(H)} closed trade(s)' + (f' ({pend} pending measurement)' if pend else ''),
+                          f'Net P&L: {_sgn(sum(pn))} USDT (measured fills and fees)',
+                          f'Win rate: {w / len(M) * 100:.0f}% ({w} won, {len(M) - w} lost)',
                           f'Best: {nm(best)}', f'Worst: {nm(worst)}'])
 
     def c_daily(self, e, args, cid):
@@ -473,12 +478,13 @@ class TelegramControl:
         try: start = _parse_ts(E.next_reset_utc()) - timedelta(days=1)
         except Exception: start = datetime.now(timezone.utc) - timedelta(days=1)
         T = [h for h in H if _parse_ts(h.get('closed')) and _parse_ts(h['closed']) >= start]
-        net = sum(h.get('pnl') or 0 for h in T)
+        V = [AC.row_view(h) for h in T]                      # FILL-PNL-02: measured net only
+        net, pend = sum(v['pnl'] or 0 for v in V if v['status'] != 'pending'), sum(1 for v in V if v['status'] == 'pending')
         chg = (g - d0) if g is not None and d0 else None
         return '\n'.join([f'Today ({day or E.trading_day()}, Cairo day)',
                           f'Day start: {_f(d0)} USDT', f'Now: {_f(g)} USDT',
                           f'Change: {_sgn(chg)} USDT ({_sgn(self._today_pct(e))}%)',
-                          f'Closed today: {len(T)} trade(s), net {_sgn(net)} USDT',
+                          f'Closed today: {len(T)} trade(s), net {_sgn(net)} USDT' + (f' ({pend} pending measurement)' if pend else ''),
                           f'Entries: {self._entries(e)}'])
 
     def c_risk(self, e, args, cid):
@@ -600,7 +606,9 @@ class TelegramControl:
                     try:
                         e.close_lot(k, 'closed_from_telegram', (e.marks or {}).get(lot['symbol']))
                         h = e.history[-1] if e.history and e.history[-1].get('id') == k else {}
-                        out.append(f"Closed {name}" + (f" P&L {_sgn(h.get('pnl'))} USDT" if h else ''))
+                        v = AC.row_view(h) if h else None        # FILL-PNL-02: never the booked figure as actual
+                        out.append(f"Closed {name}" + ('' if not v else ' P&L pending measurement' if v['status'] == 'pending'
+                                                       else f" P&L {_sgn(v['pnl'])} USDT"))
                     except Exception as ex:
                         out.append(f"FAILED {name}: {type(ex).__name__} {str(ex)[:120]} - its stop is still on Binance")
             log.warning('telegram control: close confirmed: ' + '; '.join(out)[:300])

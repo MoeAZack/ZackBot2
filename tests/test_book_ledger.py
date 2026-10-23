@@ -438,7 +438,9 @@ def test_evidence_retention_never_changes_trading_history_window():
     e.close_lot(next(iter(e.state['lots'])), 'manual')
     assert len(e.history) == 3000 and e.history[0]['id'] == 'r1'          # baseline trading window, oldest row dropped
     base = sum(h.get('pnl') or 0 for h in e.history if h.get('closed', '') >= e.S['CAP_SINCE'])
-    assert e.capital_info()['realized'] == round(base, 2)
+    info = e.capital_info()                     # FILL-PNL-02: the window is unchanged; the new close is not measured
+    assert info['realized_booked'] == round(base, 2)                 # yet, so capital holds at the reconciled checkpoint
+    assert info['hold'] == 'realized_unmeasured' and info['realized_unmeasured_n'] == 1 and info['realized'] == 300000.0
     assert e.book_ledger_status()['books']['B3_TREND']['closed'] == 3001   # the ledger still sees every cohort trade
 
 

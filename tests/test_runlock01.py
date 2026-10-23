@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import types
@@ -28,7 +29,7 @@ sys.path.insert(0, sys.argv[1])
 import runlock as RL
 repo, kind, ident, mode, root = sys.argv[2], sys.argv[3], json.loads(sys.argv[4]), sys.argv[5], sys.argv[6] or None
 with RL.hold(repo, kind, ident, argv=['holder'], root=root, bind_commit=sys.argv[7] == '1'):
-    print('HELD', flush=True)
+    print(f'HELD {os.getpid()}', flush=True)
     if mode == 'crash':
         os._exit(3)                                  # dies holding the lock: no release, no finally
     sys.stdin.readline()                             # hold until the test says go
@@ -63,7 +64,13 @@ class Holder:
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True)
         line = self.p.stdout.readline().strip()
-        assert line == 'HELD', (line, self.p.stderr.read() if self.p.poll() is not None else '')
+        parts = line.split()
+        assert len(parts) == 2 and parts[0] == 'HELD' and parts[1].isdigit(), \
+            (line, self.p.stderr.read() if self.p.poll() is not None else '')
+        # On some Windows Python installations sys.executable is a launcher which remains between Popen and the
+        # interpreter.  The interpreter owns the byte-range lock, so its self-reported PID is the only correct PID for
+        # owner assertions and death simulation.
+        self.pid = int(parts[1])
 
     def release(self):
         self.p.stdin.write('go\n')
@@ -72,7 +79,10 @@ class Holder:
         assert self.p.wait(30) == 0
 
     def kill(self):
-        self.p.kill()
+        if self.pid == self.p.pid:
+            self.p.kill()
+        else:
+            os.kill(self.pid, signal.SIGTERM)
         self.p.wait(30)
 
     def close(self):
@@ -140,7 +150,7 @@ def test_the_refusal_names_the_live_owner(tmp_path, worktrees, holders):
     with pytest.raises(RL.RunActive) as e:
         with RL.hold(wt2, 'rex', P):
             pass
-    assert f'pid {h.p.pid} ' in str(e.value) and RL.canon_path(wt1) in str(e.value)
+    assert f'pid {h.pid} ' in str(e.value) and RL.canon_path(wt1) in str(e.value)
 
 
 def test_the_loser_changes_no_byte_of_the_lock_infrastructure(tmp_path, worktrees, holders):
@@ -269,7 +279,7 @@ def test_a_dead_owner_is_recovered_atomically_and_audited(tmp_path, worktrees, h
     with RL.hold(wt2, 'rex', P) as owner:
         assert owner['pid'] == os.getpid()
     rec = [r for r in _audit(wt2) if r['event'] == 'recovered']
-    assert len(rec) == 1 and rec[0]['previous']['pid'] == h.p.pid and rec[0]['by'] == os.getpid()
+    assert len(rec) == 1 and rec[0]['previous']['pid'] == h.pid and rec[0]['by'] == os.getpid()
 
 
 def test_forged_live_pid_metadata_never_blocks_a_free_lock(worktrees):

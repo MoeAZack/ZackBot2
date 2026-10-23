@@ -149,7 +149,8 @@ def test_unresolved_commission_fails_closed_in_both_orders(order, eng):
     assert any(w in miss_of(e, second) for w in PENDING), miss_of(e, second)
     app_pass(e); app_pass(e)                                           # ticks while the commission is still in flight
     assert opens(e) == [first] and held(e) == [first]
-    assert {x['reason'] for x in b1(e)['incomplete']} == {'fees_actual_missing'}
+    assert {x['reason'] for x in b1(e)['incomplete']} == {'fees_actual_missing', 'fill_px_unresolved'}   # FILL-PNL-01:
+    assert TB.cost_pending_only(b1(e))                                 # the record's price is in flight with its fee
 
 
 # ------------------------------------------------------------------ deferred reconsideration (missing on master)
@@ -362,7 +363,8 @@ def test_restart_mid_deferral_never_opens_the_deferred_candidate(order, eng, mon
     lot = next(iter(e2.state['lots'].values()))
     assert lot['symbol'] == first and any(x['reason'] == 'fees_actual_missing' for x in b1(e2)['incomplete'])
     ref = lot['cost_refs'][0]                                          # the commission reaches the new process
-    e2._cost_sink(dict(cost_ref=ref, symbol=first, commission_raw=[dict(asset='USDT', maker=False, amount=0.05, n=1)]))
+    e2._cost_sink(dict(cost_ref=ref, symbol=first, commission_raw=[dict(asset='USDT', maker=False, amount=0.05, n=1)],
+                       actual=lot['fills'][0][3]))                     # a real record carries its exchange price
     e2.apply_costs()
     assert b1(e2)['complete'], b1(e2)['incomplete']
     app_pass(e2); app_pass(e2)
