@@ -15,8 +15,8 @@ For each eligible symbol, timeframe and strategy family, the scanner shows:
 
 - the deterministic `RULES` decision and the separate `AI SHADOW` opinion (`LONG`, `SHORT` or `NO_TRADE`);
 - evidence coverage, disagreement, age and exact insufficient-data reason;
-- a setup-quality probability only when the active model/version has passed frozen calibration evidence, otherwise
-  `UNVERIFIED`;
+- `P(net_R > 0 after actual costs by the frozen terminal horizon)` only when the active calibration epoch has passed
+  the frozen calibration gate below, otherwise `UNVERIFIED`;
 - the causal entry zone, invalidation/stop and target plan copied from the immutable deterministic snapshot;
 - estimated fees, funding, slippage and dollar/R risk from the measured execution model; and
 - the later measured outcome, once available, compared with the original deterministic decision.
@@ -29,8 +29,12 @@ marketing-style percentage.
 - PAPER/testnet and shadow-only. New UI/API surfaces default off until installed and verified.
 - No order, settings, sizing, eligibility, stop, exit, rotation or strategy authority.
 - Remote model analysis is queued and asynchronous; it cannot block a 15-minute cycle or position management.
-- Inputs contain only information available at the decision cutoff. Missing, stale, malformed or insufficient inputs
-  produce `INSUFFICIENT`, never an inferred score.
+- Inputs contain only information whose exchange/source ingest time is at or before the decision cutoff. The snapshot
+  must match the exact decision cutoff; a shadow result is display-fresh for at most two bars and no more than 30
+  minutes. Later results remain historical evidence but are visibly stale. Missing, stale, malformed or insufficient
+  inputs produce `INSUFFICIENT`, never an inferred score.
+- Point-in-time inputs include universe membership, exchange-filter snapshots, funding data and every feature used by
+  the decision. Restated or later-listed information cannot enter an earlier record.
 - Current web/model knowledge cannot substitute for missing point-in-time news. Phase 11 `NewsProvider` remains separate.
 - No credentials, exchange/order identifiers, arbitrary logs or raw private state enter a prompt.
 - Model prose is untrusted and cannot modify the deterministic trade plan.
@@ -38,24 +42,70 @@ marketing-style percentage.
 
 ## Deliverables
 
-1. **Immutable signal ledger.** One versioned, restart-idempotent record per candidate/decision with cutoff, feature and
-   schema hashes, strategy snapshot, deterministic decision, proposed plan, committee result, model/version,
-   coverage/disagreement and a causally joined later outcome. Ambiguous joins fail closed.
+1. **Immutable signal ledger.** One versioned, restart-idempotent record per candidate/decision with cutoff and ingest
+   times, feature/schema hashes, strategy snapshot, deterministic decision, proposed plan, committee result,
+   coverage/disagreement and a causally joined later outcome. Each model record pins the immutable provider model id,
+   prompt-template hash, sampling parameters and raw-response hash. Changing any one opens a new calibration epoch;
+   vendor aliases are not reproducible identifiers. Ambiguous joins fail closed.
 2. **Scanner API and UI.** Sortable cross-coin table and per-signal detail. Labels clearly distinguish `RULES`,
-   `AI SHADOW`, `UNVERIFIED` and `INSUFFICIENT`.
+   `AI SHADOW`, `UNVERIFIED` and `INSUFFICIENT`. With the feature off, the stable response is
+   `{schema_version: 1, on: false, mode: "off", updated_at: null, rows: []}`.
 3. **Evaluation harness.** Preregister B0 as the unchanged deterministic baseline and B1 as scanner ranking only.
    Evaluate exact runtime rules on anchored walk-forward and an untouched holdout with actual fee, funding, fill and
-   exchange assumptions. Forward PAPER confirms transfer; two or three days cannot promote it.
+   exchange assumptions. Taken candidates use measured outcomes and their append-only actual-cost revision id. Untaken,
+   vetoed and capacity-skipped candidates receive a deterministic causal simulation under the same frozen policy and
+   cost model. Measured and simulated outcomes are stored and reported separately; missing future data is
+   `INSUFFICIENT`, not imputed. Forward PAPER confirms transfer; two or three days cannot promote it.
 4. **Evidence.** Report trades/week, retained-trade rate, net expectancy, profit factor, drawdown, tail loss, costs/R,
    long/short and regime/coin concentration, Brier score, calibration error, coverage and latency.
+
+## Probability target and calibration gate
+
+The probability target is one only when the candidate's net return in R is greater than zero after actual-model fees,
+funding and fills at the earlier of its deterministic strategy exit or its strategy-declared maximum-bar horizon. If a
+position would still be open at that horizon, use the first causally executable mark at/after it and charge the frozen
+exit-cost model. The label definition and cost-model hash are part of the calibration epoch.
+
+A probability remains `UNVERIFIED` unless a calibration window disjoint from fitting, walk-forward evaluation and the
+sealed holdout has all of the following:
+
+- at least 500 resolved labels overall and at least 50 labels per reported bin (adjacent bins are merged otherwise);
+- expected calibration error at most 0.05; and
+- Brier score strictly better than the frozen base-rate predictor, with the paired-bootstrap 95% confidence interval
+  for Brier improvement wholly above zero.
+
+Every model, prompt-template, sampling-parameter, feature/schema or label/cost-model change opens a new unverified epoch.
+Rolling ECE above 0.08 or failure to beat the frozen base-rate predictor for two consecutive resolved windows
+automatically demotes the epoch to `UNVERIFIED`.
+
+## Preregistration and holdout
+
+AI-SCAN-01 receives a new dedicated holdout; it may not reuse or read any existing EDGE/newcore sealed holdout. Codex
+seals the dataset manifest and hashed preregistration before evaluation. The holdout is opened once, after fitting,
+calibration and anchored walk-forward choices are frozen.
+
+The preregistration fixes B1's primary endpoint as improvement in actual-cost net expectancy per resolved opportunity
+over B0. It also requires at least 1,000 eligible candidates and 300 resolved trade opportunities, at least 80% of B0's
+trades/week, and no more than a 10% relative worsening in maximum drawdown or CVaR95. Candidate ranking variants and
+sort keys use Holm correction. Future B2/B3 comparisons require separate preregistrations and cannot be selected from
+this holdout.
+
+The remote-analysis queue is bounded. Queue-full, timeout or exhausted spend budget records `INSUFFICIENT` and cannot
+delay or fail the engine. The exact queue limit, worker timeout and spend budget are configuration values frozen in the
+preregistration and reported with every evaluation.
 
 ## Required tests
 
 - point-in-time cutoff/no-look-ahead and restart idempotency;
+- point-in-time universe, exchange-filter and funding snapshots reject later-ingested/restated data;
 - missing, stale or malformed inputs fail to `INSUFFICIENT`;
 - model output cannot mutate the deterministic plan or acquire order authority;
 - calibrated and uncalibrated UI labels cannot be confused;
-- outcome joins handle partial exits, adds and actual-cost revisions without double counting;
+- outcome joins handle partial exits, adds and append-only actual-cost revision ids without double counting;
+- untraded simulated outcomes cannot be mixed with measured outcomes;
+- remote hangs, timeouts, queue saturation and exhausted spend budgets leave the 15-minute cycle and position
+  management unaffected; the queue stays bounded;
+- fitting and calibration paths cannot read holdout rows;
 - API compatibility, Windows UI screenshots and no console errors; and
 - independent Cowork adversarial review plus exact-head CI before any PAPER install.
 
