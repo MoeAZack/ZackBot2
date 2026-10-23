@@ -82,8 +82,10 @@ enable it from this packet.
    fast strategy.
 2. Re-evaluate the strongest existing 4h research cells with the same execution/cost standard, labelled as
    hypotheses: **H1** regime-aware `pullback_rsi` short, **H2** `rotation` long, **H3** `exp_trend` long, **H4**
-   `ema_mom` long. They were selected after [DATA: full prior trial count across every earlier test of these families]
-   prior trials, so their earlier results are hypotheses, not promotions. Each must beat a buy-and-hold baseline on the
+   `ema_mom` long. They were selected after an unquantified number of earlier tests (committed research tables alone hold at
+   least 10 / 12 / 0 / 10 rows naming H1 / H2 / H3 / H4, a lower bound, per Cowork 6357524514; the earlier 4h screens,
+   the 21 USDC cells and runs outside the repo are not in them), so their earlier results are hypotheses, not
+   promotions. A full count must be frozen before any deflated statistic is quoted. Each must beat a buy-and-hold baseline on the
    same symbols and window, after costs, before it counts. Their trade frequency is low, which conflicts with the
    owner's frequent-trading catalog: a survivor joins it only as a low-frequency book, labelled as such.
 3. Then scout one preregistered frequent hypothesis at a time: regime-gated trend pullback; volatility-compression
