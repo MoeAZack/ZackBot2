@@ -124,7 +124,7 @@ def test_happy_path_request_shape(tmp_path):
     assert r['status'] == sa.STATUS_OK and r['cached'] is False and r['untrusted'] is True
     assert r['analysis']['observations'] == ['trend_ema_mom shorts PF 1.4 over 31 trades']
     assert r['committee_metrics'] == {'roles_total': 6, 'roles_with_evidence': 5, 'coverage': 0.8333,
-                                      'disagreement': 0.0, 'weighted_stance': 0.0}
+                                      'disagreement': 0.0, 'weighted_stance': 0.0, 'catalyst_gated': False}
     c = t.calls[0]
     assert c['url'] == 'https://api.anthropic.com/v1/messages' and c['timeout'] == sa.TIMEOUT_S <= 30
     assert c['headers'] == {'x-api-key': KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'}
@@ -219,8 +219,10 @@ def test_committee_roles_rankings_and_disagreement_are_strict(tmp_path):
     a, _, _ = mk(tmp_path, (200, api_body(good_text(role_reviews=roles, strategy_rankings=rankings))))
     r = run(a)
     assert r['status'] == sa.STATUS_OK
-    assert r['committee_metrics']['disagreement'] == 1.0
-    assert r['committee_metrics']['weighted_stance'] == 0.0
+    # zero point-in-time news in raw(): the catalyst 'support' is gated out -> 2 support vs 3 oppose (Codex 6364877873)
+    assert r['committee_metrics']['catalyst_gated'] is True and r['committee_metrics']['roles_with_evidence'] == 5
+    assert r['committee_metrics']['weighted_stance'] == -0.2
+    assert r['committee_metrics']['disagreement'] == round(0.96 ** 0.5, 4)
 
     for bad in (
         roles[:-1],
@@ -234,6 +236,38 @@ def test_committee_roles_rankings_and_disagreement_are_strict(tmp_path):
     b, _, _ = mk(tmp_path / 'ungrounded', (200, api_body(good_text(
         strategy_rankings=[{'candidate': 'invented_strategy', 'rank': 1, 'confidence': 0.8, 'reason': 'unsupported'}]))))
     assert run(b)['reason'] == 'schema_invalid'
+
+
+
+def _catalyst_roles(stance='support', conf=0.9):
+    return [{'role': role, 'stance': stance if role == 'catalyst' else 'neutral',
+             'confidence': conf if role == 'catalyst' else 0.5, 'evidence': 'bounded evidence'} for role in sa.ROLE_ORDER]
+
+
+def test_zero_news_catalyst_stance_never_counts(tmp_path):
+    """Cowork P2 / Codex 6364877873: point_in_time_news == 0 -> a model-supplied catalyst stance is not evidence."""
+    a, _, _ = mk(tmp_path, (200, api_body(good_text(role_reviews=_catalyst_roles()))))
+    r = run(a)
+    m = r['committee_metrics']
+    assert r['status'] == sa.STATUS_OK and m['catalyst_gated'] is True
+    assert m['roles_with_evidence'] == 5 and m['coverage'] == round(5 / 6, 4)
+    assert m['weighted_stance'] == 0.0 and m['disagreement'] == 0.0        # only the five neutral votes remain
+    assert r['analysis']['role_reviews'][2]['stance'] == 'support'       # the untrusted reply is kept as received
+
+
+def test_catalyst_counts_only_with_point_in_time_news(tmp_path):
+    a, _, _ = mk(tmp_path, (200, api_body(good_text(role_reviews=_catalyst_roles()))))
+    m = run(a, data=raw(source_coverage={'point_in_time_news': 0.5}))['committee_metrics']
+    assert m['catalyst_gated'] is False and m['roles_with_evidence'] == 6 and m['weighted_stance'] > 0
+
+
+@pytest.mark.parametrize('v', [None, 0, 0.0, -1, True, float('nan'), 'high', [1]])
+def test_news_coverage_is_never_guessed(v):
+    assert sa.news_coverage({'source_coverage': {'point_in_time_news': v}}) == 0.0
+    a = {'role_reviews': _catalyst_roles()}
+    assert sa.committee_metrics(a, {'source_coverage': {'point_in_time_news': v}})['catalyst_gated'] is True
+    assert sa.committee_metrics(a)['catalyst_gated'] is True
+    assert sa.committee_metrics({'role_reviews': _catalyst_roles('insufficient', 0.0)})['catalyst_gated'] is False
 
 
 # --- budget ---------------------------------------------------------------------------------------------------------

@@ -393,11 +393,24 @@ def parse_analysis(text):
     return {k: d[k] for k in SCHEMA_KEYS}
 
 
-def committee_metrics(analysis):
-    """Deterministic summary of untrusted role votes. Research metadata only; no trading caller consumes it."""
-    votes = []
+def news_coverage(aggregate):
+    """The point-in-time news coverage the bounded input declares (0.0 when absent or unreadable - never guessed)."""
+    sc = aggregate.get('source_coverage') if isinstance(aggregate, dict) else None
+    v = sc.get('point_in_time_news') if isinstance(sc, dict) else None
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 else 0.0
+
+
+def committee_metrics(analysis, aggregate=None):
+    """Deterministic summary of untrusted role votes. Research metadata only; no trading caller consumes it.
+    Zero-news gate (Codex 6364877873, Cowork P2): without point-in-time news in the input, a catalyst stance cannot be
+    grounded, so it never counts as a vote - whatever the model claimed - and `catalyst_gated` records the drop."""
+    votes, gated = [], False
+    no_news = news_coverage(aggregate) <= 0
     for r in analysis.get('role_reviews', ()) if isinstance(analysis, dict) else ():
         if r.get('stance') == 'insufficient':
+            continue
+        if no_news and r.get('role') == 'catalyst':
+            gated = True
             continue
         votes.append(({'support': 1.0, 'neutral': 0.0, 'oppose': -1.0}[r['stance']], float(r['confidence'])))
     weight = sum(w for _, w in votes)
@@ -407,7 +420,7 @@ def committee_metrics(analysis):
         'roles_total': len(ROLE_ORDER), 'roles_with_evidence': len(votes),
         'coverage': round(len(votes) / len(ROLE_ORDER), 4),
         'disagreement': round(min(1.0, math.sqrt(variance)), 4),
-        'weighted_stance': round(mean, 4),
+        'weighted_stance': round(mean, 4), 'catalyst_gated': gated,
     }
 
 
@@ -872,7 +885,7 @@ class ShadowAnalyst:
         analysis = parse_analysis(texts[0])
         if analysis is None or not rankings_grounded(analysis, agg):
             return self._no('schema_invalid', now_utc, model, digest, **meta)
-        metrics = committee_metrics(analysis)
+        metrics = committee_metrics(analysis, agg)
         result = {'status': STATUS_OK, 'reason': 'ok', 'analysis': analysis, 'committee_metrics': metrics,
                   'model': model, 'input_hash': digest,
                   'response_hash': rhash, 'ts': now_utc.isoformat(), 'untrusted': True}
