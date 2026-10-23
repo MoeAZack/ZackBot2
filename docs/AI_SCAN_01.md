@@ -29,10 +29,12 @@ marketing-style percentage.
 - PAPER/testnet and shadow-only. New UI/API surfaces default off until installed and verified.
 - No order, settings, sizing, eligibility, stop, exit, rotation or strategy authority.
 - Remote model analysis is queued and asynchronous; it cannot block a 15-minute cycle or position management.
-- Inputs contain only information whose exchange/source ingest time is at or before the decision cutoff. The snapshot
-  must match the exact decision cutoff; a shadow result is display-fresh for at most two bars and no more than 30
-  minutes. Later results remain historical evidence but are visibly stale. Missing, stale, malformed or insufficient
-  inputs produce `INSUFFICIENT`, never an inferred score.
+- Inputs contain only values whose source/event timestamp is at or before the decision cutoff. Their receipt/ingest
+  timestamp may be after that close, but must be no later than the recorded decision instant (`decided_at >= cutoff`);
+  this permits ordinary exchange delivery latency without admitting information from a later market event. The snapshot
+  must match the exact decision cutoff. A shadow result is display-fresh for `min(2 bars, 30 minutes)`, intentionally
+  expiring mid-bar on 1h/4h views; later results remain historical evidence but are visibly stale. Missing, stale,
+  malformed or insufficient inputs produce `INSUFFICIENT`, never an inferred score.
 - Point-in-time inputs include universe membership, exchange-filter snapshots, funding data and every feature used by
   the decision. Restated or later-listed information cannot enter an earlier record.
 - Current web/model knowledge cannot substitute for missing point-in-time news. Phase 11 `NewsProvider` remains separate.
@@ -55,7 +57,9 @@ marketing-style percentage.
    exchange assumptions. Taken candidates use measured outcomes and their append-only actual-cost revision id. Untaken,
    vetoed and capacity-skipped candidates receive a deterministic causal simulation under the same frozen policy and
    cost model. Measured and simulated outcomes are stored and reported separately; missing future data is
-   `INSUFFICIENT`, not imputed. Forward PAPER confirms transfer; two or three days cannot promote it.
+   `INSUFFICIENT`, not imputed. An `INSUFFICIENT` B1 row keeps its B0 order and counts as retained, so queue, timeout
+   and spend state cannot improve B1 by silently dropping opportunities. Forward PAPER confirms transfer; two or three
+   days cannot promote it.
 4. **Evidence.** Report trades/week, retained-trade rate, net expectancy, profit factor, drawdown, tail loss, costs/R,
    long/short and regime/coin concentration, Brier score, calibration error, coverage and latency.
 
@@ -70,9 +74,10 @@ A probability remains `UNVERIFIED` unless a calibration window disjoint from fit
 sealed holdout has all of the following:
 
 - at least 500 resolved labels overall and at least 50 labels per reported bin (adjacent bins are merged otherwise);
-- expected calibration error at most 0.05; and
+- pooled expected calibration error at most 0.05 under the preregistered fixed binning rule; and
 - Brier score strictly better than the frozen base-rate predictor, with the paired-bootstrap 95% confidence interval
-  for Brier improvement wholly above zero.
+  for Brier improvement wholly above zero. The paired bootstrap is time-blocked and cross-coin clustered, never iid
+  over correlated candidate rows.
 
 Every model, prompt-template, sampling-parameter, feature/schema or label/cost-model change opens a new unverified epoch.
 Rolling ECE above 0.08 or failure to beat the frozen base-rate predictor for two consecutive resolved windows
@@ -80,15 +85,16 @@ automatically demotes the epoch to `UNVERIFIED`.
 
 ## Preregistration and holdout
 
-AI-SCAN-01 receives a new dedicated holdout; it may not reuse or read any existing EDGE/newcore sealed holdout. Codex
-seals the dataset manifest and hashed preregistration before evaluation. The holdout is opened once, after fitting,
-calibration and anchored walk-forward choices are frozen.
+AI-SCAN-01 receives a new dedicated holdout; it may not reuse or read any existing EDGE/newcore sealed holdout. Its dated
+window is fixed in the sealed manifest and may not overlap any existing sealed-holdout window, including the newcore
+holdout beginning 19 October 2026. Codex seals the dataset manifest and hashed preregistration before evaluation. The
+holdout is opened once, after fitting, calibration and anchored walk-forward choices are frozen.
 
-The preregistration fixes B1's primary endpoint as improvement in actual-cost net expectancy per resolved opportunity
-over B0. It also requires at least 1,000 eligible candidates and 300 resolved trade opportunities, at least 80% of B0's
-trades/week, and no more than a 10% relative worsening in maximum drawdown or CVaR95. Candidate ranking variants and
-sort keys use Holm correction. Future B2/B3 comparisons require separate preregistrations and cannot be selected from
-this holdout.
+The preregistration fixes B1's co-primary endpoints as improvement in actual-cost net expectancy per resolved opportunity
+over B0 and total actual-cost net R/week not below B0. It also requires at least 1,000 eligible candidates and 300
+resolved trade opportunities, at least 80% of B0's trades/week, and no more than a 10% relative worsening in maximum
+drawdown or CVaR95. Candidate ranking variants and sort keys use Holm correction. Future B2/B3 comparisons require
+separate preregistrations and cannot be selected from this holdout.
 
 The remote-analysis queue is bounded. Queue-full, timeout or exhausted spend budget records `INSUFFICIENT` and cannot
 delay or fail the engine. The exact queue limit, worker timeout and spend budget are configuration values frozen in the
