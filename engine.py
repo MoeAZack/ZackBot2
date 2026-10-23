@@ -3936,7 +3936,7 @@ class Engine:
                                "booked - nothing is sent")
 
     BOOK_PROBE_WAIT_S = 1.0               # TP-SLIP-01: after a market close is answered, wait at most this for its book read
-    BOOK_PROBE_URGENT = ('flatten', 'risk_trim')   # risk-reducing closes never wait on evidence (the next order goes first)
+    BOOK_PROBE_URGENT = ('flatten', 'risk_trim', 'risk_unwind', 'stop_crossed', 'stop_failed')   # protective closes never wait on evidence (the next order goes first)
 
     def _book_probe(self, sym):
         """TP-SLIP-01 (#189) evidence: the testnet best bid / ask, read CONCURRENTLY with a market close - started just
