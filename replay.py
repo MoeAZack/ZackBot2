@@ -21,9 +21,29 @@ STRICT = dict(matched_pct=98.0, med_dr=0.05, p95_dr=0.25, ret_gap=3.0, dd_gap=2.
 LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor is pending
 
 
+class SyncEnricher:
+    """B1 (SCALP-EXEC-15M-01): the engine's fill enrichment run inline - the same enrich_attempt / enrich_finish, at most
+    ENRICH_ATTEMPTS reads, no thread and no clock - so a replay stays deterministic. The record goes only to the engine's
+    cost queue (apply_costs); no fill file is written."""
+    closing = False
+
+    def submit(self, rec, refs, client, writer, sink=None):
+        rec, refs, n = copy.deepcopy(rec), [dict(r) for r in refs], 0
+        while n < E.ENRICH_ATTEMPTS:
+            n += 1
+            if not E.enrich_attempt(rec, refs, client): break
+        E.enrich_finish(rec, refs, cut=False); rec['enrich_attempts'] = n
+        if sink: sink(rec)
+        return 'queued'
+
+    def flush(self, timeout=2.0): return True
+    def close(self, timeout=2.0): return True
+    def summary(self): return {}
+
+
 def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True, stop_at=None, exchange_rules=None,
                path_fn=None, costs_off=False, fill_log=None, compare=True, pre_fn=None, fill_px=None, fund_fn=None,
-               settings=None):
+               settings=None, measured_fills=False):
     """raw: {symbol: DataFrame t,o,h,l,c,v[,qv]} (same length / timestamps; qv = Binance kline quote volume, optional); sleeves: engine slot dicts; t0: first bar index.
     Returns dict(engine_curve, bt_curve, engine_trades, bt_trades, matched, metrics, mismatch, stops, lots).
     stop_at=(bar, leg, step) or a list of them: stop INSIDE that candle's price path (leg 0-2, step 1..steps) and return only the engine's
@@ -50,7 +70,11 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
       fund_fn(t_from_ms, t_to_ms, lots) -> cash paid (+) / received (-) for the funding times in [t_from, t_to) of
                   the exchange lots held at the candle open T (after a gap stop at the open; with pre_fn before the delayed
                   cycle, else after it, so an entry AT T counts), replacing the legacy flat funding.
-      settings    dict merged into the engine settings before connect (e.g. PRESET)."""
+      settings    dict merged into the engine settings before connect (e.g. PRESET).
+      measured_fills  B1 (SCALP-EXEC-15M-01, harness only): every simulated order answers with an order id and its
+                  executed quantity, user_trades() returns its fill (price and fee as simulated), and the engine's fill
+                  enrichment runs synchronously, so RISK-FILL-01 acts on the measured fill. Ids stay in memory. Off = B0,
+                  the default: the simulated exchange is unchanged."""
     syms = list(raw)
     D = {s: raw[s].reset_index(drop=True) for s in syms}
     N = len(D[syms[0]])
@@ -59,7 +83,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
     XR = F.snapshot_rules(exchange_rules)
 
     class W:
-        i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0; t_ms = None
+        i = None; mark = {}; cash = start; lots = []; stops = {}; n = 0; t_ms = None; last = None; trades = {}
 
     def log_fill(s, ps, act, kind, q, ref):
         f = dict(t_ms=W.t_ms, sym=s, ps=ps, act=act, kind=kind, qty=q, ref=ref)
@@ -68,9 +92,11 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
 
     def priced(f, legacy_px):
         """(fill price, fee) for one fill: the research pricer when given, else the legacy constants."""
-        if fill_px is None: return legacy_px, f['qty'] * legacy_px * FEE
-        px, fee = fill_px(f)
-        if fill_log is not None: f.update(px=px, fee=fee)
+        if fill_px is None: px, fee = legacy_px, f['qty'] * legacy_px * FEE
+        else:
+            px, fee = fill_px(f)
+            if fill_log is not None: f.update(px=px, fee=fee)
+        W.last = (f['qty'], px, fee)
         return px, fee
 
     def merge(s, ps):
@@ -154,6 +180,17 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def cancel_all(self, s):
             for k in [k for k, v in W.stops.items() if v['s'] == s]: W.stops.pop(k)
 
+    class Measured(Fake):
+        # B1: an order answer the engine can correlate (orderId / clientOrderId / executedQty / FILLED) and its trade rows
+        def _answer(self, s, o, cid):
+            q, px, fee = W.last; W.n += 1; oid = W.n
+            W.trades[(s, oid)] = [dict(id=oid, orderId=oid, symbol=s, qty=str(q), price=str(px), commission=str(fee),
+                                       commissionAsset=E._quote_asset(s), maker=False)]
+            return dict(o, orderId=oid, clientOrderId=cid or f'zbr{oid}', executedQty=str(q), status='FILLED')
+        def open(self, s, ps, qty, cid=None): return self._answer(s, super().open(s, ps, qty), cid)
+        def close(self, s, ps, qty, cid=None): return self._answer(s, super().close(s, ps, qty), cid)
+        def user_trades(self, s, oid): return [dict(r) for r in W.trades.get((s, oid), ())]
+
     saved = (E.Futures, E.now_utc, E.time)
     lg = logging.getLogger('zackbot'); lvl = lg.level
     if quiet: lg.setLevel(logging.WARNING)
@@ -161,7 +198,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
     stop_set = ({stop_at} if isinstance(stop_at, tuple) else set(stop_at)) if stop_at else set()
     snaps = {}
     try:
-        E.Futures = Fake
+        E.Futures = Measured if measured_fills else Fake
         E.now_utc = lambda: pd.Timestamp(fake_now[0], unit='s', tz='UTC').to_pydatetime()
         E.time = types.SimpleNamespace(time=lambda: fake_now[0], sleep=lambda x: None)
         tmp = tempfile.mkdtemp(prefix='zb_replay_')
@@ -170,7 +207,12 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         eng.S['CAPITAL_CAP'] = 0; eng.S['MAX_LEVERAGE'] = 10
         if settings: eng.S.update(copy.deepcopy(settings))
         eng.equity_hist = []; eng.record_equity = lambda e: None
+        if measured_fills: eng._enr = SyncEnricher()
         eng.connect()
+
+        def mng():
+            if measured_fills: eng.apply_costs()        # B1: measured fills reach their lots before manage acts
+            eng.manage(dict(W.mark))
         tf = next((k for k, v in E.TF_SEC.items() if v == tf_sec), '4h')
 
         def walk(pts_by_sym):
@@ -184,7 +226,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                 for s, pts in by_t[t].items():
                     for p in pts:
                         move({s: p[0]}, at_open=bool(p[1]))
-                        if eng.state['lots']: eng.manage(dict(W.mark))
+                        if eng.state['lots']: mng()
         curve = []
         for i in range(t0, N - 1):
             W.i = i
@@ -220,7 +262,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                 a = dict(W.mark)
                 for k in range(1, steps + 1):
                     move({s: a[s] + (tgt[s] - a[s]) * k / steps for s in tgt})
-                    if eng.state['lots']: eng.manage(dict(W.mark))
+                    if eng.state['lots']: mng()
                     if stop_at and (j, li, k) in stop_set:
                         import copy as _c, csv as _csv
                         f = os.path.join(tmp, 'trades.csv')
@@ -229,9 +271,10 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
                                                  stops=_c.deepcopy(W.stops), cash=W.cash)
                         if len(snaps) == len(stop_set):
                             return snaps[stop_at] if isinstance(stop_at, tuple) else snaps
-                if not eng.state['lots']: eng.manage(dict(W.mark))
+                if not eng.state['lots']: mng()
             if fund_fn is None and not costs_off: W.cash -= sum(l['q'] * W.mark[l['s']] * B.FUND_PER_BAR * tf_sec / 14400 for l in W.lots)
             curve.append((D[syms[0]].t[j], equity()))
+        if measured_fills: eng.apply_costs()            # the last exits' measured fills reach their history rows
     finally:
         E.Futures, E.now_utc, E.time = saved
         lg.setLevel(lvl)

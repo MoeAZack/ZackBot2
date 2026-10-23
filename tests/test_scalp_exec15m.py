@@ -527,3 +527,49 @@ def test_f1_walk_is_time_merged_across_symbols():
     for x in walked:
         k_a = round((x[SYM] - 100.0) / 0.001); k_b = round((x['ETHUSDT'] - 200.0) / 0.001)
         assert abs(k_a - k_b) <= 1                                         # same minute (or the next symbol's turn)
+
+
+# ------------------------------------------------------------------ B1 (Cowork ruling 1): measured fills, harness only
+def _b1_run(measured, decide=None):
+    import engine as E
+    from replay import run_replay
+    m = _flat_minutes(300)
+    raw = {SYM: _agg(m)}
+    sig_t = raw[SYM].t[280]
+    real, real_dec = S.signals, E.RF.decide
+
+    def fake(key, d, ctx, params=None, mask_sides=True):
+        out = {k: np.zeros(len(d), bool) for k in ('le', 'se', 'lx', 'sx')}
+        out['le'][:] = (pd.to_datetime(d.t) == sig_t).values
+        return out
+
+    def fee_px(f): return f['ref'], (f['qty'] * f['ref'] * 0.005 if f['act'] == 'open' else 0.0)
+    S.signals, fills = fake, []
+    if decide: E.RF.decide = decide(real_dec)
+    try:
+        sl = [E.sleeve('SC', 'exp_scalp', 1.0, 0.01, 1, [SYM], sides='long', mgmt={}, tf='15m')]
+        out = run_replay(copy.deepcopy(raw), sl, T0, tf_sec=900, compare=False, fill_log=fills, fill_px=fee_px,
+                         measured_fills=measured, path_fn=X.make_path_fn(raw, {SYM: m}, [])[0])
+    finally:
+        S.signals, E.RF.decide = real, real_dec
+    return out, fills
+
+
+def test_b1_measured_fills_reach_risk_fill_and_b0_is_unchanged():
+    b0, f0 = _b1_run(False)
+    b1, f1 = _b1_run(True)
+    assert f0 == f1 and len(f0) == 3                                   # same fills: the booked price IS the measured one
+    assert b0['history'][0]['risk_fill'] == 'unavailable'                  # B0: RISK-FILL-01 never sees a measured fill
+    rf = b1['history'][0]['risk_fill']['0']
+    assert rf['action'] == 'ok' and rf['fee_basis'] == 'actual' and rf['measured_px'] == 100.0
+
+
+def test_b1_a_trim_decision_is_executed_through_the_fake():
+    def worse(real):                                                     # the measured price 0.5 above the booked one (long)
+        return lambda side, qty, meas, *a, **k: real(side, qty, meas + 0.5, *a, **k)
+    out, fills = _b1_run(True, worse)
+    rf = out['history'][0]['risk_fill']['0']
+    assert rf['action'] == 'trim' and rf['state'] == 'done' and rf['trimmed'] > 0
+    closes = [f for f in fills if f['act'] == 'close']
+    assert 0 < closes[0]['t_ms'] - fills[0]['t_ms'] < 60_000 and closes[0]['qty'] == pytest.approx(rf['trimmed'])    # first managed point
+    assert sum(f['qty'] for f in closes) == pytest.approx(fills[0]['qty'])
