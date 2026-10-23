@@ -257,6 +257,12 @@ def test_a_shadow_is_display_fresh_for_the_earlier_of_two_bars_or_thirty_minutes
             decided_at='2026-10-20T12:00:10Z')
     w = A.fold([h, shadow(h, created_at='2026-10-20T12:01:00Z')])[h['signal_id']]
     assert A.display(w, now='2026-10-20T12:31:01Z')['ai'][0]['stale'] is True     # 1h: capped at 30 min, not 2 h
+    f = sig(tf='4h', candle_open='2026-10-20T08:00:00Z', snapshot=snap(last_close='2026-10-20T12:00:00Z',
+                                                                        available_at='2026-10-20T12:00:03Z'),
+            decided_at='2026-10-20T12:00:10Z')
+    x = A.fold([f, shadow(f, created_at='2026-10-20T12:01:00Z')])[f['signal_id']]
+    assert A.display(x, now='2026-10-20T12:31:00Z')['ai'][0]['stale'] is False    # 4h: 30 min wins over 8 h
+    assert A.display(x, now='2026-10-20T12:31:01Z')['ai'][0]['stale'] is True
     assert A.display(v)['ai'][0]['stale'] is None
 
 
