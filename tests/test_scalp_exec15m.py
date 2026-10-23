@@ -600,3 +600,33 @@ def test_candle_depth_invariant_is_pinned_per_key(monkeypatch):
     monkeypatch.setitem(X.MAX_WINDOW, 'range_scalp', 200)
     with pytest.raises(X.ScalpExecError):
         X.candle_depth('range_scalp')
+
+
+def test_loader_excludes_rows_available_at_the_window_end(tmp_path, monkeypatch):
+    """#187 first real run: Dataset.slice is inclusive on available_ms, so a funding event exactly AT the sealed cutoff
+    reached the loader (check_inputs refused it). The window end is exclusive."""
+    import json
+    import manifest as M
+    import pit_run as PR
+    hi = X.CUTOFF_MS
+    lo = hi - 2 * 86_400_000
+    span = {'klines': (60_000, 59_999), 'markPriceKlines': (3_600_000, 3_599_999), 'fundingRate': (8 * 3_600_000, 0)}
+
+    class DS:
+        def __init__(self, *a): self._cache, self._keys = {}, {}
+        def files(self, kind, s, tf): return [kind]
+        def slice(self, f, a, t):                                # pit.Dataset.slice: time >= a and available <= t
+            step, lag = span[f]
+            out = []
+            for ts in range(a - a % step, hi + 86_400_000, step):
+                if ts >= a and ts + lag <= t:
+                    out.append([ts, 100.0, 100.5, 99.5, 100.0, 1.0] if f != 'fundingRate' else [ts, 0.0001])
+            return out
+    monkeypatch.setattr(M, 'load', lambda path: {'digest': X.MANIFEST_DIGEST})
+    monkeypatch.setattr(PR, 'StaticDataset', DS)
+    st = tmp_path / 'static.json'
+    st.write_text(json.dumps({'core_10': [SYM]}))
+    d = X.load_store('m', 's', str(st), [SYM], lo, hi, warm_bars=20)
+    assert d['funding'][SYM] and max(t for t, _r, _m in d['funding'][SYM]) < hi
+    assert int(d['minutes'][SYM]['t'].max()) + 60_000 <= hi
+    X.check_inputs(d['raw15'], d['minutes'], d['funding'])               # passes the sealed-cutoff guard

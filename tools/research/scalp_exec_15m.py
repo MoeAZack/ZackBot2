@@ -595,9 +595,11 @@ def load_store(manifest_path: str, store: str, static_path: str, symbols, lo_ms:
         raise ScalpExecError('symbols must be CORE-10 members')
     ds = PR.StaticDataset(man, store, static, core[:max(core.index(s) for s in symbols) + 1])
     from_ms = lo_ms - warm_bars * TF_MS
+    end = hi_ms - 1                                 # Dataset.slice keeps available_ms <= end: the window END is excluded
+    #                                                 (a funding event AT the cutoff is sealed data, #187 first-run refusal)
     raw15, minutes, funding, cover = {}, {}, {}, {}
     for s in symbols:
-        rows = [r for f in ds.files('klines', s, '1m') for r in ds.slice(f, from_ms, hi_ms)]
+        rows = [r for f in ds.files('klines', s, '1m') for r in ds.slice(f, from_ms, end)]
         ds._cache.clear(); ds._keys.clear()
         t = np.array([r[0] for r in rows], dtype='int64')
         o, h, l, c, v = (np.array([r[k] for r in rows], dtype=float) for k in (1, 2, 3, 4, 5))
@@ -609,8 +611,8 @@ def load_store(manifest_path: str, store: str, static_path: str, symbols, lo_ms:
         df = pd.DataFrame(dict(t=pd.to_datetime(g[st], unit='ms'), o=o[st], h=np.maximum.reduceat(h, starts)[full],
                                l=np.minimum.reduceat(l, starts)[full], c=c[st + 14], v=np.add.reduceat(v, starts)[full]))
         raw15[s], minutes[s] = df, dict(t=t, o=o, h=h, l=l, c=c)
-        mk = {r[0]: r[4] for f in ds.files('markPriceKlines', s, '1h') for r in ds.slice(f, from_ms - 3_600_000, hi_ms)}
-        fr = [r for f in ds.files('fundingRate', s, None) for r in ds.slice(f, from_ms, hi_ms)]
+        mk = {r[0]: r[4] for f in ds.files('markPriceKlines', s, '1h') for r in ds.slice(f, from_ms - 3_600_000, end)}
+        fr = [r for f in ds.files('fundingRate', s, None) for r in ds.slice(f, from_ms, end)]
         ds._cache.clear(); ds._keys.clear()
         ev, miss = [], 0
         for r in fr:
