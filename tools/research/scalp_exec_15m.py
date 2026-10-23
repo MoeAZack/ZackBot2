@@ -65,6 +65,12 @@ LATENCIES = (0, 60)                                  # primary and the single pr
 CONFIG_SHA256 = '3027cb8a048fcaae89154fb842fdadc5ccdf66e68f9b50d13afb7de0919320de'
 MANIFEST_DIGEST = '54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7'
 WARM_BARS = 1000                                     # the engine reads 1000 x 15m candles per cycle
+# Codex ruling 6356220526 pt 4: 1,000 served candles is accepted because each key's longest indicator window is < 200
+# (exp_scalp: EMA50; range_scalp: 32-candle range + 32-candle invalidation lookback; ATR / ADX 14). Pinned per packet.
+MAX_WINDOW = {'exp_scalp': 50, 'range_scalp': 64}
+DEPTH_LIMIT = 200
+COMPARABLE_MATCH_PCT = 95.0                          # ruling 6356220526 pt 2 (registered before any real-data packet)
+COMPARABLE_DR_SHARE = 0.25                           # median |dR| <= 25 % of the cell's median |cost-R|
 
 
 class ScalpExecError(ValueError):
@@ -441,7 +447,8 @@ def summary(rs, weeks: float) -> dict:
 
 def divergence(zero: list, acct: list, row: str) -> dict:
     """Account path (costs at fill time) vs the zero-cost decisions repriced on the same row: trade set, sizing,
-    occupancy and per-trade R. `material` (proposed bar, Codex to confirm): matched < 95 % or median |dR| > 0.05."""
+    occupancy and per-trade R. Comparability (Codex ruling 6356220526 pt 2): matched >= 95 % and median |dR| <= 25 % of
+    the median |cost-R| of this row's repriced trades, else NOT_COMPARABLE (the account row stays primary)."""
     key = lambda t: (t['sym'], t['side'], t['entry_ms'])
     za, ac = {key(t): t for t in zero}, {key(t): t for t in acct}
     both = sorted(set(za) & set(ac))
@@ -456,7 +463,10 @@ def divergence(zero: list, acct: list, row: str) -> dict:
                qty_rel_median=qr[len(qr) // 2] if qr else 0.0,
                occupancy_ratio=(occ(acct) / occ(zero)) if occ(zero) else None,
                dr_median=med, dr_p95=dr[int(0.95 * (len(dr) - 1))] if dr else 0.0)
-    out['material'] = out['matched_pct'] < 95.0 or med > 0.05
+    cr = sorted(abs(t['rows'][row]['costs_r']) for t in zero if t['rows'][row]['costs_r'] is not None)
+    out['cost_r_median'] = cr[len(cr) // 2] if cr else None
+    ok = out['matched_pct'] >= COMPARABLE_MATCH_PCT and cr and med <= COMPARABLE_DR_SHARE * out['cost_r_median']
+    out['comparability'] = 'COMPARABLE' if ok else 'NOT_COMPARABLE'
     return out
 
 
@@ -634,6 +644,14 @@ def trial_records(packet: dict, *, key: str, side: str, mgmt: str = 'frozen') ->
             for n in names]
 
 
+def candle_depth(key: str) -> dict:
+    """The ruling-4 invariant for one key: served candles vs its longest indicator window (refuses when it fails)."""
+    w = MAX_WINDOW[key]
+    if not w < DEPTH_LIMIT <= WARM_BARS:
+        raise ScalpExecError(f'{key}: indicator window {w} breaks the 1,000-candle acceptance (< {DEPTH_LIMIT})')
+    return dict(served=WARM_BARS, max_window=w, limit=DEPTH_LIMIT, ok=True)
+
+
 def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description='SCALP-EXEC-15M-01 execution-grade cell (research only, non-promotable)')
@@ -667,6 +685,7 @@ def main(argv=None) -> int:
                   settings={'PRESET': doc['preset']})
     pk.update(key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
               manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=CONFIG_SHA256)
+    pk['candle_depth'] = candle_depth(a.key)
     pk['trials'] = trial_records(pk, key=a.key, side=a.side)
     with open(a.out, 'x', encoding='utf-8') as fh:
         json.dump(pk, fh, sort_keys=True, default=float)

@@ -573,3 +573,30 @@ def test_b1_a_trim_decision_is_executed_through_the_fake():
     closes = [f for f in fills if f['act'] == 'close']
     assert 0 < closes[0]['t_ms'] - fills[0]['t_ms'] < 60_000 and closes[0]['qty'] == pytest.approx(rf['trimmed'])    # first managed point
     assert sum(f['qty'] for f in closes) == pytest.approx(fills[0]['qty'])
+
+
+# ------------------------------------------------------------------ Codex ruling 6356220526: comparability bar, depth pin
+def _div_rows(n, dr, cost_r, n_acct=None):
+    zero = [dict(sym=SYM, side='LONG', entry_ms=k, exit_ms=k + 1, qty=1.0,
+                 rows={'base': dict(net_r=0.0, costs_r=cost_r)}) for k in range(n)]
+    acct = [dict(sym=SYM, side='LONG', entry_ms=k, exit_ms=k + 1, qty=1.0, net_r=dr) for k in range(n_acct or n)]
+    return zero, acct
+
+
+def test_comparability_bar_is_the_registered_one():
+    assert X.divergence(*_div_rows(20, 0.025, -0.1), 'base')['comparability'] == 'COMPARABLE'       # exactly 25 %
+    assert X.divergence(*_div_rows(20, 0.026, -0.1), 'base')['comparability'] == 'NOT_COMPARABLE'
+    assert X.divergence(*_div_rows(20, 0.0, 0.1, n_acct=19), 'base')['comparability'] == 'COMPARABLE'   # 95 % matched
+    assert X.divergence(*_div_rows(20, 0.0, 0.1, n_acct=18), 'base')['comparability'] == 'NOT_COMPARABLE'
+    assert X.divergence(*_div_rows(0, 0.0, 0.1), 'base')['comparability'] == 'NOT_COMPARABLE'
+
+
+def test_candle_depth_invariant_is_pinned_per_key(monkeypatch):
+    import inspect
+    assert X.MAX_WINDOW['range_scalp'] == 2 * S.RS['n']                  # range + invalidation lookback
+    src = inspect.getsource(S.sig_exp_scalp)
+    assert 'e20' in src and 'e50' in src and 'e200' not in src           # EMA50 is exp_scalp's longest window
+    assert X.candle_depth('exp_scalp') == dict(served=1000, max_window=50, limit=200, ok=True)
+    monkeypatch.setitem(X.MAX_WINDOW, 'range_scalp', 200)
+    with pytest.raises(X.ScalpExecError):
+        X.candle_depth('range_scalp')
