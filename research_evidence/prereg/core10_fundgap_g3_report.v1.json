@@ -1,0 +1,1904 @@
+{
+ "access_window": {
+  "hi": "2022-12-19T00:01:00Z",
+  "lo": "2021-12-20T00:00:00Z",
+  "mirror": "pit.View._rows (no Access opened)"
+ },
+ "addon_provenance_digest": "e52f377075e6dfd0c678c5c0e89bb9fba8c444b7cdad9505f4b4ae608f8c91dd",
+ "addon_sha256": "f4a808f404f0db5a807066b0464eec87cc83722f40ca12ef2bd88616c95e4d93",
+ "cells": [
+  {
+   "bar_hi_ms": 1668772800000,
+   "bar_hi_utc": "2022-11-18T12:00:00Z",
+   "bar_lo_ms": 1668758400000,
+   "bar_lo_utc": "2022-11-18T08:00:00Z",
+   "causal": true,
+   "censor": {
+    "class": "funding_rate_gap",
+    "cycle_ms": 1668772800000,
+    "cycle_utc": "2022-11-18T12:00:00Z",
+    "first_unaccountable_ms": 1668765600000,
+    "first_unaccountable_utc": "2022-11-18T10:00:00Z",
+    "last_valid_ms": 1668758400000,
+    "last_valid_utc": "2022-11-18T08:00:00Z",
+    "phase": "funding",
+    "reason": "incomplete.funding",
+    "symbol": "SOLUSDT"
+   },
+   "config": "range_vwap_rev.v1.rg+0.5",
+   "entry_open_ms": 1668744000000,
+   "entry_open_utc": "2022-11-18T04:00:00Z",
+   "failing_ms": 1668765600000,
+   "failing_utc": "2022-11-18T10:00:00Z",
+   "inclusive": true,
+   "nearby_rows": [
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668679200000,
+     "t_nom_utc": "2022-11-17T10:00:00Z",
+     "time_ms": 1668679200022,
+     "utc": "2022-11-17T10:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668686400000,
+     "t_nom_utc": "2022-11-17T12:00:00Z",
+     "time_ms": 1668686400009,
+     "utc": "2022-11-17T12:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668693600000,
+     "t_nom_utc": "2022-11-17T14:00:00Z",
+     "time_ms": 1668693600000,
+     "utc": "2022-11-17T14:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668700800000,
+     "t_nom_utc": "2022-11-17T16:00:00Z",
+     "time_ms": 1668700800006,
+     "utc": "2022-11-17T16:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668708000000,
+     "t_nom_utc": "2022-11-17T18:00:00Z",
+     "time_ms": 1668708000003,
+     "utc": "2022-11-17T18:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668715200000,
+     "t_nom_utc": "2022-11-17T20:00:00Z",
+     "time_ms": 1668715200020,
+     "utc": "2022-11-17T20:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668722400000,
+     "t_nom_utc": "2022-11-17T22:00:00Z",
+     "time_ms": 1668722400008,
+     "utc": "2022-11-17T22:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668729600000,
+     "t_nom_utc": "2022-11-18T00:00:00Z",
+     "time_ms": 1668729600004,
+     "utc": "2022-11-18T00:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668736800000,
+     "t_nom_utc": "2022-11-18T02:00:00Z",
+     "time_ms": 1668736800004,
+     "utc": "2022-11-18T02:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668744000000,
+     "t_nom_utc": "2022-11-18T04:00:00Z",
+     "time_ms": 1668744000000,
+     "utc": "2022-11-18T04:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668751200000,
+     "t_nom_utc": "2022-11-18T06:00:00Z",
+     "time_ms": 1668751200007,
+     "utc": "2022-11-18T06:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668758400000,
+     "t_nom_utc": "2022-11-18T08:00:00Z",
+     "time_ms": 1668758400016,
+     "utc": "2022-11-18T08:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668787200000,
+     "t_nom_utc": "2022-11-18T16:00:00Z",
+     "time_ms": 1668787200000,
+     "utc": "2022-11-18T16:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668816000000,
+     "t_nom_utc": "2022-11-19T00:00:00Z",
+     "time_ms": 1668816000000,
+     "utc": "2022-11-19T00:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668844800000,
+     "t_nom_utc": "2022-11-19T08:00:00Z",
+     "time_ms": 1668844800004,
+     "utc": "2022-11-19T08:00:00Z"
+    }
+   ],
+   "predicate": "uncovered_terminal",
+   "row": "base",
+   "side": "long",
+   "split": "walk_forward[0]",
+   "status": "INCOMPLETE"
+  },
+  {
+   "bar_hi_ms": 1668772800000,
+   "bar_hi_utc": "2022-11-18T12:00:00Z",
+   "bar_lo_ms": 1668758400000,
+   "bar_lo_utc": "2022-11-18T08:00:00Z",
+   "causal": true,
+   "censor": {
+    "class": "funding_rate_gap",
+    "cycle_ms": 1668772800000,
+    "cycle_utc": "2022-11-18T12:00:00Z",
+    "first_unaccountable_ms": 1668765600000,
+    "first_unaccountable_utc": "2022-11-18T10:00:00Z",
+    "last_valid_ms": 1668758400000,
+    "last_valid_utc": "2022-11-18T08:00:00Z",
+    "phase": "funding",
+    "reason": "incomplete.funding",
+    "symbol": "SOLUSDT"
+   },
+   "config": "range_vwap_rev.v1.rg+0.5",
+   "entry_open_ms": 1668744000000,
+   "entry_open_utc": "2022-11-18T04:00:00Z",
+   "failing_ms": 1668765600000,
+   "failing_utc": "2022-11-18T10:00:00Z",
+   "inclusive": true,
+   "nearby_rows": [
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668679200000,
+     "t_nom_utc": "2022-11-17T10:00:00Z",
+     "time_ms": 1668679200022,
+     "utc": "2022-11-17T10:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668686400000,
+     "t_nom_utc": "2022-11-17T12:00:00Z",
+     "time_ms": 1668686400009,
+     "utc": "2022-11-17T12:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668693600000,
+     "t_nom_utc": "2022-11-17T14:00:00Z",
+     "time_ms": 1668693600000,
+     "utc": "2022-11-17T14:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668700800000,
+     "t_nom_utc": "2022-11-17T16:00:00Z",
+     "time_ms": 1668700800006,
+     "utc": "2022-11-17T16:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668708000000,
+     "t_nom_utc": "2022-11-17T18:00:00Z",
+     "time_ms": 1668708000003,
+     "utc": "2022-11-17T18:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668715200000,
+     "t_nom_utc": "2022-11-17T20:00:00Z",
+     "time_ms": 1668715200020,
+     "utc": "2022-11-17T20:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668722400000,
+     "t_nom_utc": "2022-11-17T22:00:00Z",
+     "time_ms": 1668722400008,
+     "utc": "2022-11-17T22:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668729600000,
+     "t_nom_utc": "2022-11-18T00:00:00Z",
+     "time_ms": 1668729600004,
+     "utc": "2022-11-18T00:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668736800000,
+     "t_nom_utc": "2022-11-18T02:00:00Z",
+     "time_ms": 1668736800004,
+     "utc": "2022-11-18T02:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668744000000,
+     "t_nom_utc": "2022-11-18T04:00:00Z",
+     "time_ms": 1668744000000,
+     "utc": "2022-11-18T04:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668751200000,
+     "t_nom_utc": "2022-11-18T06:00:00Z",
+     "time_ms": 1668751200007,
+     "utc": "2022-11-18T06:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668758400000,
+     "t_nom_utc": "2022-11-18T08:00:00Z",
+     "time_ms": 1668758400016,
+     "utc": "2022-11-18T08:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668787200000,
+     "t_nom_utc": "2022-11-18T16:00:00Z",
+     "time_ms": 1668787200000,
+     "utc": "2022-11-18T16:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668816000000,
+     "t_nom_utc": "2022-11-19T00:00:00Z",
+     "time_ms": 1668816000000,
+     "utc": "2022-11-19T00:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668844800000,
+     "t_nom_utc": "2022-11-19T08:00:00Z",
+     "time_ms": 1668844800004,
+     "utc": "2022-11-19T08:00:00Z"
+    }
+   ],
+   "predicate": "uncovered_terminal",
+   "row": "fees_slip_x2",
+   "side": "long",
+   "split": "walk_forward[0]",
+   "status": "INCOMPLETE"
+  },
+  {
+   "bar_hi_ms": 1668772800000,
+   "bar_hi_utc": "2022-11-18T12:00:00Z",
+   "bar_lo_ms": 1668758400000,
+   "bar_lo_utc": "2022-11-18T08:00:00Z",
+   "causal": true,
+   "censor": {
+    "class": "funding_rate_gap",
+    "cycle_ms": 1668772800000,
+    "cycle_utc": "2022-11-18T12:00:00Z",
+    "first_unaccountable_ms": 1668765600000,
+    "first_unaccountable_utc": "2022-11-18T10:00:00Z",
+    "last_valid_ms": 1668758400000,
+    "last_valid_utc": "2022-11-18T08:00:00Z",
+    "phase": "funding",
+    "reason": "incomplete.funding",
+    "symbol": "SOLUSDT"
+   },
+   "config": "B2",
+   "entry_open_ms": 1668758400000,
+   "entry_open_utc": "2022-11-18T08:00:00Z",
+   "failing_ms": 1668765600000,
+   "failing_utc": "2022-11-18T10:00:00Z",
+   "inclusive": true,
+   "nearby_rows": [
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668679200000,
+     "t_nom_utc": "2022-11-17T10:00:00Z",
+     "time_ms": 1668679200022,
+     "utc": "2022-11-17T10:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668686400000,
+     "t_nom_utc": "2022-11-17T12:00:00Z",
+     "time_ms": 1668686400009,
+     "utc": "2022-11-17T12:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668693600000,
+     "t_nom_utc": "2022-11-17T14:00:00Z",
+     "time_ms": 1668693600000,
+     "utc": "2022-11-17T14:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668700800000,
+     "t_nom_utc": "2022-11-17T16:00:00Z",
+     "time_ms": 1668700800006,
+     "utc": "2022-11-17T16:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668708000000,
+     "t_nom_utc": "2022-11-17T18:00:00Z",
+     "time_ms": 1668708000003,
+     "utc": "2022-11-17T18:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668715200000,
+     "t_nom_utc": "2022-11-17T20:00:00Z",
+     "time_ms": 1668715200020,
+     "utc": "2022-11-17T20:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668722400000,
+     "t_nom_utc": "2022-11-17T22:00:00Z",
+     "time_ms": 1668722400008,
+     "utc": "2022-11-17T22:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668729600000,
+     "t_nom_utc": "2022-11-18T00:00:00Z",
+     "time_ms": 1668729600004,
+     "utc": "2022-11-18T00:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668736800000,
+     "t_nom_utc": "2022-11-18T02:00:00Z",
+     "time_ms": 1668736800004,
+     "utc": "2022-11-18T02:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668744000000,
+     "t_nom_utc": "2022-11-18T04:00:00Z",
+     "time_ms": 1668744000000,
+     "utc": "2022-11-18T04:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668751200000,
+     "t_nom_utc": "2022-11-18T06:00:00Z",
+     "time_ms": 1668751200007,
+     "utc": "2022-11-18T06:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668758400000,
+     "t_nom_utc": "2022-11-18T08:00:00Z",
+     "time_ms": 1668758400016,
+     "utc": "2022-11-18T08:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668787200000,
+     "t_nom_utc": "2022-11-18T16:00:00Z",
+     "time_ms": 1668787200000,
+     "utc": "2022-11-18T16:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668816000000,
+     "t_nom_utc": "2022-11-19T00:00:00Z",
+     "time_ms": 1668816000000,
+     "utc": "2022-11-19T00:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668844800000,
+     "t_nom_utc": "2022-11-19T08:00:00Z",
+     "time_ms": 1668844800004,
+     "utc": "2022-11-19T08:00:00Z"
+    }
+   ],
+   "predicate": "uncovered_terminal",
+   "row": "base",
+   "side": "long",
+   "split": "walk_forward[0]",
+   "status": "INCOMPLETE"
+  },
+  {
+   "bar_hi_ms": 1668772800000,
+   "bar_hi_utc": "2022-11-18T12:00:00Z",
+   "bar_lo_ms": 1668758400000,
+   "bar_lo_utc": "2022-11-18T08:00:00Z",
+   "causal": true,
+   "censor": {
+    "class": "funding_rate_gap",
+    "cycle_ms": 1668772800000,
+    "cycle_utc": "2022-11-18T12:00:00Z",
+    "first_unaccountable_ms": 1668765600000,
+    "first_unaccountable_utc": "2022-11-18T10:00:00Z",
+    "last_valid_ms": 1668758400000,
+    "last_valid_utc": "2022-11-18T08:00:00Z",
+    "phase": "funding",
+    "reason": "incomplete.funding",
+    "symbol": "SOLUSDT"
+   },
+   "config": "B2",
+   "entry_open_ms": 1668758400000,
+   "entry_open_utc": "2022-11-18T08:00:00Z",
+   "failing_ms": 1668765600000,
+   "failing_utc": "2022-11-18T10:00:00Z",
+   "inclusive": true,
+   "nearby_rows": [
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668679200000,
+     "t_nom_utc": "2022-11-17T10:00:00Z",
+     "time_ms": 1668679200022,
+     "utc": "2022-11-17T10:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668686400000,
+     "t_nom_utc": "2022-11-17T12:00:00Z",
+     "time_ms": 1668686400009,
+     "utc": "2022-11-17T12:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668693600000,
+     "t_nom_utc": "2022-11-17T14:00:00Z",
+     "time_ms": 1668693600000,
+     "utc": "2022-11-17T14:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668700800000,
+     "t_nom_utc": "2022-11-17T16:00:00Z",
+     "time_ms": 1668700800006,
+     "utc": "2022-11-17T16:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668708000000,
+     "t_nom_utc": "2022-11-17T18:00:00Z",
+     "time_ms": 1668708000003,
+     "utc": "2022-11-17T18:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668715200000,
+     "t_nom_utc": "2022-11-17T20:00:00Z",
+     "time_ms": 1668715200020,
+     "utc": "2022-11-17T20:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668722400000,
+     "t_nom_utc": "2022-11-17T22:00:00Z",
+     "time_ms": 1668722400008,
+     "utc": "2022-11-17T22:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668729600000,
+     "t_nom_utc": "2022-11-18T00:00:00Z",
+     "time_ms": 1668729600004,
+     "utc": "2022-11-18T00:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668736800000,
+     "t_nom_utc": "2022-11-18T02:00:00Z",
+     "time_ms": 1668736800004,
+     "utc": "2022-11-18T02:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668744000000,
+     "t_nom_utc": "2022-11-18T04:00:00Z",
+     "time_ms": 1668744000000,
+     "utc": "2022-11-18T04:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668751200000,
+     "t_nom_utc": "2022-11-18T06:00:00Z",
+     "time_ms": 1668751200007,
+     "utc": "2022-11-18T06:00:00Z"
+    },
+    {
+     "interval_hours": 2,
+     "interval_type": "int",
+     "t_nom_ms": 1668758400000,
+     "t_nom_utc": "2022-11-18T08:00:00Z",
+     "time_ms": 1668758400016,
+     "utc": "2022-11-18T08:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668787200000,
+     "t_nom_utc": "2022-11-18T16:00:00Z",
+     "time_ms": 1668787200000,
+     "utc": "2022-11-18T16:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668816000000,
+     "t_nom_utc": "2022-11-19T00:00:00Z",
+     "time_ms": 1668816000000,
+     "utc": "2022-11-19T00:00:00Z"
+    },
+    {
+     "interval_hours": 8,
+     "interval_type": "int",
+     "t_nom_ms": 1668844800000,
+     "t_nom_utc": "2022-11-19T08:00:00Z",
+     "time_ms": 1668844800004,
+     "utc": "2022-11-19T08:00:00Z"
+    }
+   ],
+   "predicate": "uncovered_terminal",
+   "row": "fees_slip_x2",
+   "side": "long",
+   "split": "walk_forward[0]",
+   "status": "INCOMPLETE"
+  }
+ ],
+ "evaluator_path": "pit_run.rex_split_pass -> range_vwap_rev.run_book -> bar_funding -> funding_events",
+ "files_read": [
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2021-12.zip",
+   "sha256": "30124fe8c2de7114781371e867b63fb7e57c8f7590f8f05c03b8e9f3e3a43993"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-01.zip",
+   "sha256": "600262e137d855af1fb005a605477dda53ae784e682c00ad8ec5a86066c565f6"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-02.zip",
+   "sha256": "0e072f3d2ab245b0b3327b50ab2b8b664cd2d8d51c3b51876aeb7d6ca0f6b566"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-03.zip",
+   "sha256": "49000ed74b217b0d5a7b478b0aeb252c3d2987f8a014dad23dca1c0e89cd5bae"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-04.zip",
+   "sha256": "8e2c9c80707ff1f5965c98761dcfbadfdb583e62d24c8c5d9ff63423cc7c2bfd"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-05.zip",
+   "sha256": "409dfc24ea1e06de9a00b9e39d68fc23699ca3cb8919f58ec8f6e8af17358322"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-06.zip",
+   "sha256": "8bafe0fe001a2b764779e7c418f03eb5ca1162ef0315655177c917e6e670b3ad"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-07.zip",
+   "sha256": "1f66bb3de104e5ce6b568bcc16e466060446a6fb8d6fd46f9b9490be8259f134"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-08.zip",
+   "sha256": "c7c451a4a9f09f14339286ff654fed40b294fc37328126e43531bd3a1c98fe3d"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-09.zip",
+   "sha256": "d7bb4d9961577057bbfd54ea8d6aafd81a5df889b011837c989f7b9f120629d2"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-10.zip",
+   "sha256": "baa731766e96b40c1727dea96e24cb204b6f17012b434a0d196b4736c5e91e58"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-11.zip",
+   "sha256": "155d3052a60386e20f8dda75bbf814098c0174f7f9e59c2b1022aacd563d5dc6"
+  },
+  {
+   "path": "um/monthly/klines/BTCUSDT/4h/BTCUSDT-4h-2022-12.zip",
+   "sha256": "94a9a1ae61658c9b5d35589e400cd6f5516ee330b11ea53879fc126a3b1651c6"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2021-12.zip",
+   "sha256": "6f48453d80e4222086ecae9ddddf701402b0ca591171e9ae4ca5ce98813612e7"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-01.zip",
+   "sha256": "b03860574c80a3d7c58fce3afd24bd9e7d72d29ad8538adf00d9fdef78a8e0d5"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-02.zip",
+   "sha256": "fc03caff19988fb80d5b1dbaaf18839a25d28454925e5f5aee0a919f750623c3"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-03.zip",
+   "sha256": "7f9d6033c1726a5afa377bcb5c514caa5a83be96f812fb11371d5fe06311d628"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-04.zip",
+   "sha256": "6673291c1e33cf5981f73da458c266a75761d6a20b5eeee870b3c7bff925f910"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-05.zip",
+   "sha256": "23e180c67ba5f89cfd02416561efb35a14481a5dc984ebf061f1534b31d5baa8"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-06.zip",
+   "sha256": "10ea39d94c31e514023010078383f22a0eb98628897a9f2a6a7a1b1941da435a"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-07.zip",
+   "sha256": "baafc36bfebd44d4356b8c5cae3a92dba09e03a841e7ef13a358ebe6960e4903"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-08.zip",
+   "sha256": "1925c38ceee17ea2142ce019f360db7c8549bc39998bb1bd63fc2027df5712bb"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-09.zip",
+   "sha256": "9483f95974442901ee8a277d1eae52af4dd70010c6fb4409d616990685a96158"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-10.zip",
+   "sha256": "9804dbd86adbd447d60edf955fd668de3e426fa3c6596a13d69ae539a2549864"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-11.zip",
+   "sha256": "9ff271bbd7bf9a1cb1fc271776a086f66ae38d489a5210ecd3a15d453732273b"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/BTCUSDT/1h/BTCUSDT-1h-2022-12.zip",
+   "sha256": "321ea021c1d07ec31f5f029aa3e55c94f56d4595360b20027a004b7dc3083630"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2021-12.zip",
+   "sha256": "bf3ce484faf41d7dccfd38c5cc3d8de34d8297df30ab10784e874cc10fd1b310"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-01.zip",
+   "sha256": "22ee19079b620f5c6d820e7d7f8bafa7fde866d89bd664863b8bd527749c12cb"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-02.zip",
+   "sha256": "fa95088258a905c79ab79e8984d2f6f66933ec2e814dbab4ef9da89b01ab484a"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-03.zip",
+   "sha256": "4cf0883bc07f4ed4cdd3b0d8c0d166b4d15d21e666ab752f9f44401af4d6172f"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-04.zip",
+   "sha256": "57e2776cc68b3169fc9f8632dad67278f470cd453407a8ebe6c87963c8a31357"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-05.zip",
+   "sha256": "bced8a5013d09742b96682e6fd01ad4456213515a03d7586ec2b1f2689af5255"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-06.zip",
+   "sha256": "0cd0708f8903829eb46f98cf60f4b2516c986e1ccddf6620a5912b48e16baf93"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-07.zip",
+   "sha256": "29d58cce0cd45f74c6a112039835c6d9ee5a7e60e7c38c2503beb7930453a4fe"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-08.zip",
+   "sha256": "6f4f0c6c84c05694b4b4a5c085776730fd4059723eecd98ee6ffeb3fde4da811"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-09.zip",
+   "sha256": "d62cd4e13009de37add446dc4f63ead4c56dcc4955a1e60f6726bcadc5a68fa9"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-10.zip",
+   "sha256": "ad9efed10d4ca1567b865d7a158790977cec1b925395634217069df6696c8bc9"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-11.zip",
+   "sha256": "8febe5bec1a029e993bbf27490761f8c47c32849bf7dd13441b2b2f6ec1ffb51"
+  },
+  {
+   "path": "um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-12.zip",
+   "sha256": "4218c78331bcc4dbeb5768fa112242a880971c1f2cfd1d3f32aaa26ca34069af"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2021-12.zip",
+   "sha256": "f835997fe562177e90f8070a57a8f6aeb205618004a838590a36925fd59eb2ca"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-01.zip",
+   "sha256": "aefdb47655576c8bfd25d19e4c4aac732770742b5c36da36d7bc74a373b5da0b"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-02.zip",
+   "sha256": "a59a2b7e55cbbbf171bcdc8ce43326e34112e7ed19cc66cde3915be7d46b93a5"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-03.zip",
+   "sha256": "e97ae4f25da02f4f28dc0ed8dbfba48564f1ef7795053715c3a57bc9a0e39b2f"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-04.zip",
+   "sha256": "2e16ffc266bd0a75b0cf322b3525b8f0a788f01cf5a5f771031b8c13ebedbc83"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-05.zip",
+   "sha256": "316109c271805d46b1dc062c360ca8559634cf60716622ab083e611bdac8dd5b"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-06.zip",
+   "sha256": "4f49d948d43dbef27d99ee8b2e6d8b26de688f1bd668dff29bb643965a6702a1"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-07.zip",
+   "sha256": "88dab76352aee69e76cf4419c897b95cec71da1728c980c08180e7eadfbc113a"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-08.zip",
+   "sha256": "395461806cebaf139caefd8e166315bae5645dc37862c3f54e996461d7610a57"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-09.zip",
+   "sha256": "a9abb3c23a98daec48a6ec40b892fd044d956cd111f6ac73d8342870c44fc5b0"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-10.zip",
+   "sha256": "4ced7f691c1597747ec47fbc28796b242f8bda4caccedad350be1ea59b7d778c"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-11.zip",
+   "sha256": "e8bf2feb0316329638415eb091d2047e0ccb45bf67be35a519358960632220cc"
+  },
+  {
+   "path": "um/monthly/klines/ETHUSDT/4h/ETHUSDT-4h-2022-12.zip",
+   "sha256": "e4de61e87826279741915b3ac6c3c0d1ca9e7cf27aa3b51f20a851681a2a9bfe"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2021-12.zip",
+   "sha256": "7c15a005c4dd21a0b41d767b1c0e881f7687ffe9fe580d37632965b2c797b52e"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-01.zip",
+   "sha256": "da76759ea210e7e9d33bd6be1576dd6fdd32f7a47b37b7c439c3fcceb025c5d9"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-02.zip",
+   "sha256": "c37f3bba2c61f63f78ba60aeed23067694fe64d7c2ef67e99201932560a7e1f7"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-03.zip",
+   "sha256": "9f85c7467b29c35f71e8d55c39e00e042d511cedb4270799a06f94bd706fe5e1"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-04.zip",
+   "sha256": "b3004ffea66d1e27160d8355ab8692254d272d2fb9a0f6969f5afa4ab033cba3"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-05.zip",
+   "sha256": "713dd69910c2d39209e1e3be00c415044c0df017126cb2e0df914dbeb62fbae2"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-06.zip",
+   "sha256": "7baa832f63d629692d6f57c7840ff4c77649c2f717ca1a8fe485a17f67e1d33f"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-07.zip",
+   "sha256": "dcd76948acedd02c2745c7a449ae09579f918cdf60102ccb3e2cb1743ce42729"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-08.zip",
+   "sha256": "31394dcf1a84655a3e003200d228f70dfe35487e22cba54de7cda9245b72b950"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-09.zip",
+   "sha256": "51f5ada75af692d6e95abdcc2d84dd521d03c52d187d0b870057c430b14e10d9"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-10.zip",
+   "sha256": "95311f377e0ec8ef14e2c8c81599760b03a5f97dee3d1128c8d5077d29d2c2b1"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-11.zip",
+   "sha256": "38b21c96b1b365f5130178dbbc601f3d45edec573678fbef9cf5c119868bb975"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ETHUSDT/1h/ETHUSDT-1h-2022-12.zip",
+   "sha256": "417a07e86f134f8cc99a0a412653651c577a805af0577282c1af03498ea6b820"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2021-12.zip",
+   "sha256": "788d5c57e7cbc8e6b94ed4d7672618a85311edf1d7f0888083410d0d3389d811"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-01.zip",
+   "sha256": "9f5bd01450b05a8c5e48cdc99fa147e85c82ecf7ee7919fa543a4e6039a2b98d"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-02.zip",
+   "sha256": "9c35e30327ac8915cc1333415b7d5018425781c81918e349d26b734525fcdfe5"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-03.zip",
+   "sha256": "3de0714a2b2582029b32147815298b6e67e972e776ca3f68a4208823b4109404"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-04.zip",
+   "sha256": "7c306ac8b6275a857b064916080e0b6ec502b25a4501c84c3fd2c0b077425de3"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-05.zip",
+   "sha256": "c458330243c9d8e048ffc7168c9e3c077c01bb82b1644097a4893fee34069b78"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-06.zip",
+   "sha256": "f6f3a69b656b91500b41501a230e663ccc3c1a65f46273595b00682d8f6fabb1"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-07.zip",
+   "sha256": "17826e5591af8660a7fed74d60e24eee77c822cf0d901dd8af355a10a36699aa"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-08.zip",
+   "sha256": "a2680549de5e087566f4d323b3a812c2b9863528c6bc49b0e551cb42c381bb4d"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-09.zip",
+   "sha256": "816e4de946d9f854cc457c86ca396b9cb49b46e80cf44941b59b9ad2124f2ef8"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-10.zip",
+   "sha256": "e434c29eb544cc57ff574e38685535bb7d04703aee54bc5d52f53cea372810e6"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-11.zip",
+   "sha256": "4f4e52f176f69e99353959d287874a4d4a135b5bb4ea85514dd5a3e65958b2d7"
+  },
+  {
+   "path": "um/monthly/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2022-12.zip",
+   "sha256": "8cd0e885d63b85ee602d80eaae956f9ee3e0e25db264eb5c74026a9ae0d71f4e"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2021-12.zip",
+   "sha256": "89fcff3b3fb62b78e955442faacd80029f2c2262fc3a92bfe671eca6fe27dc95"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-01.zip",
+   "sha256": "1d7644ddf3f069c06a2f7cadd258312487850b8cd0e05cc46d580a8dbe9b958e"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-02.zip",
+   "sha256": "64694b71800824bded862d70e6f228f954ef6e7286eaf321e66d0b6b24b3d5dd"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-03.zip",
+   "sha256": "6ccd39a21bf20c4f94e1753ea36d15c40b896f355f405595b8f083f8344f46d6"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-04.zip",
+   "sha256": "3f88fd103663d1785fe0ce79168beaa4512dbad84a77f7dde0b83ce8844bbe26"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-05.zip",
+   "sha256": "11d3d3a3a969584f1d210d7de62cf3b04d29fbedee1c0871d1fe5f0c68f2c85b"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-06.zip",
+   "sha256": "683a741288f0211bb64f786f5d73037fbf8fe7c65ff79f37b42904b0b956eadb"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-07.zip",
+   "sha256": "b99ede44905aa89e6dce70679f5ce29a5c4a02af1c2e699d2aee5ac9924c7a43"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-08.zip",
+   "sha256": "4d0b4be9b4ddf1ddb231fa8e00275b2865938b26d9812d0fafa899219cd1f334"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-09.zip",
+   "sha256": "4761771faa23e441625623c778f5b27ad3489f329ffb317ccaa5ff26c17fe4ba"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-10.zip",
+   "sha256": "edd16293bc05d7d598d30421589551013ab7a95fff8555e57fae3bced0b828bf"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-11.zip",
+   "sha256": "347be348ed9fb7216b825068cb5790c78728d41faf19972ee0e16563d0ca28bb"
+  },
+  {
+   "path": "um/monthly/klines/ZECUSDT/4h/ZECUSDT-4h-2022-12.zip",
+   "sha256": "0204ad1db247f48131ef1f91ac61fae7f955eacb4c0aeaabc98977d1e425e432"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2021-12.zip",
+   "sha256": "2b5c94ad15bd930d0f64cb6a7cda8f62e71d5e7fd4af791004feee701ee771b9"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-01.zip",
+   "sha256": "ba3e7ec374aed60a04f44dc2893f2aeb360a3fe8fd4d52548b9e35b5edac4a13"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-02.zip",
+   "sha256": "22bf77deccdcce87a73f2a052a785d67db071e9bf10b7e88632223765a6284b4"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-03.zip",
+   "sha256": "4a0642a22af41b31566e928243184cb44b82e8505aea5bb07b687276114fb445"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-04.zip",
+   "sha256": "c93fbf5ff818ad61de5d3d84adfa643e4ffae7cea891214e3d474ae42a36dfe7"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-05.zip",
+   "sha256": "69d9e7fd390b3fd95dbb59ce779804839df2841537a7f68a1050df120e459747"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-06.zip",
+   "sha256": "1fdad8fcad9835197e12c6a99bda523d3d42b35534d30d805c6217bd08689c42"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-07.zip",
+   "sha256": "ba49a6c9f95381bedb226fa26fa98c220c1f2a43a19877d2bddbddb54ff21c29"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-08.zip",
+   "sha256": "a34253bf27487a993d2d64fa2c6ddf9c00acae6785574e2c085650a423a4166c"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-09.zip",
+   "sha256": "21661ec29ea8096878e2ba3208b4698ba5633f55f501f1f1337d6d4f26fdb322"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-10.zip",
+   "sha256": "499f09e2199945cad2ce83f90d65cf86ab2185e144a3cfcbff5d2b6f5cec9d61"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-11.zip",
+   "sha256": "e2a13a02a9854dce3b1a51b5edfbdfdeb848d8e486adb98a96fdd8338d7876c5"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/ZECUSDT/1h/ZECUSDT-1h-2022-12.zip",
+   "sha256": "be17a6c86efe63719303af3bf6923274f7329cd086693a332bdffac882340f0a"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2021-12.zip",
+   "sha256": "ddd4685ab119e40390861a2e6757f9ebf7156b01da17665571716fb800dc3a06"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-01.zip",
+   "sha256": "2a0b3f4cbddd867f8be767395de83cec78fdeeaa5ad5aad63a11653296da19fa"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-02.zip",
+   "sha256": "6e33bee09bf17ac429d90a84014e00c63e05e4e9eac3a26d15ad4ca18fae5374"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-03.zip",
+   "sha256": "eaa59aec2fbde6567c9025b4301eea1282d6a206c706e08c0da68ece4ca1af26"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-04.zip",
+   "sha256": "a9ab2ed82c2bc5aee7394bdd8fd6d9b09e7c38a4700f8b8ec9caadd31373fc14"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-05.zip",
+   "sha256": "a6f48551bea86a9e3d5a3dd25297c0e682b3fc4cb2c58b670f7d49f3fb638e5a"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-06.zip",
+   "sha256": "b05f93b1410583e952d49b2793fb6e119ef77dacc4fedba49ce8faf2cd6bce40"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-07.zip",
+   "sha256": "1d68ca39969d1b7d19c575350c7a9ad01b24ce0607d969cb8b9016aa325db0a9"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-08.zip",
+   "sha256": "58b52cdd3c4b5f1c9fa069d39b5f954ce2ea490757b0614c68faf99fe2933bb2"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-09.zip",
+   "sha256": "6d206d2c26ef7cdf668d8bdf1dfb2f7e261cc5a9f21944014a766ee5d3fcabee"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-10.zip",
+   "sha256": "1847af684eac3ece6dda9d62b6936e6b8940598d854a1269d87439a905527541"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-11.zip",
+   "sha256": "c39af14b79a4dcdb0a5e9d948d38ae7cabde58ee8b99882324ef29528605c9ba"
+  },
+  {
+   "path": "um/monthly/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2022-12.zip",
+   "sha256": "7b460992df464cea55c303757834684be1e4dca7961b1c6e5f4568192e6607dd"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2021-12.zip",
+   "sha256": "19d70d1ecc8dcfcf8e507a4e763391019b5dff2fc4295c24e9ce3b0031f0e4b9"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-01.zip",
+   "sha256": "09ac48ccfe09bd21c95001c9eabe7e21a70f3fc4fb82f16564b1f43461ea17da"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-02.zip",
+   "sha256": "b33cb8a26f1f626463c9a0e67e26f2297db4f7d1d40ed2c22000536247769808"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-03.zip",
+   "sha256": "480525a29697d856be20ee3c303a65990a512b6958277e6a7c54ecf5fea258da"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-04.zip",
+   "sha256": "de83fde163031147c7cb272e3cb9b4ef655d3dcdd32bcee85848c3572c501b36"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-05.zip",
+   "sha256": "ebd963b2d1c3fbd35817a1d1f3061b39884fbc89aaff7933045d0dec280da953"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-06.zip",
+   "sha256": "9a91fc3dbd441f50158cbb6e11356f97e06c4f26accb8b86f6801f657681f9ad"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-07.zip",
+   "sha256": "a8399d0c3d7fe4810f916b88accfb464bb49e134e9a7ede26dc50a2851b10b72"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-08.zip",
+   "sha256": "5409d8049ccc33f3510128572d0e255e48e392d67b5a8c73b080998aa705180a"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-09.zip",
+   "sha256": "89f4d53418242c838a8bde68cc5a5fc90a597637e3189723f22a60f6d5ed43b6"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-10.zip",
+   "sha256": "bcf380ac6330202b2066c465533287a131cba7fc0a46906bc1df3033ae206b6c"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-11.zip",
+   "sha256": "4216a614245c46c747257b28a996e13449fd8b456648afe8bd02d0ca416b9166"
+  },
+  {
+   "path": "um/monthly/klines/SOLUSDT/4h/SOLUSDT-4h-2022-12.zip",
+   "sha256": "6dbe77ebd5a0047c8e82bc8698aedd858d88f74aff5d6059e66bacb5a5f18593"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2021-12.zip",
+   "sha256": "d5fee35101c3e4ea6741652e71875e810f0da4c6af9263958a9dc5fbca729d7c"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-01.zip",
+   "sha256": "6c85571fc2e2172bcdae45cdc3a46e8e4167b21c61edea8888f94096e05d5c0c"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-02.zip",
+   "sha256": "1531c45b25f052eb2efc81ed60aa55b6424f3598aeb516055bae44930aed7aaa"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-03.zip",
+   "sha256": "49e77a42787a5a4aed2ac0a2e528e71fe0d852c5f088867a30a07a6438737f30"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-04.zip",
+   "sha256": "679e3f7b13b456620360f7935933ea4782858cda3239f8a5a098200dca6bfb3b"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-05.zip",
+   "sha256": "7f46493130fe4b34e084377bf2d92582c12be3ae5e6046a9762208bc5c1b1ecd"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-06.zip",
+   "sha256": "bee6259a08db515e4bd55f248b2883615b2676ea42527a46d2eccfff8ca3f51e"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-07.zip",
+   "sha256": "33912547c1207b734dbe849b9728d9e50f6a5a023298e5846bc58a0cb046aa10"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-08.zip",
+   "sha256": "48198b926de2382a54ca7b2c452e6c358653492558190170ea9b89b0de548065"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-09.zip",
+   "sha256": "60c7b2428567b97d22c00ab300a19de3e52e9e0107be95a036e2ef2ff1968738"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-10.zip",
+   "sha256": "4d137c5553bff5a2a2cba5a8702f6da0c4e7b741fa9464055a330c8df6951334"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-11.zip",
+   "sha256": "b5b44f3fbde48248b476f843567f0dce2a72a5b1d63f14d6d94527710a7c0aba"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/SOLUSDT/1h/SOLUSDT-1h-2022-12.zip",
+   "sha256": "d1a32494d1013de7016f991afe666e5ec204735c542b50584f45464031267fc7"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2021-12.zip",
+   "sha256": "0ea2c59cde9362715dea398bd66d3325d5bdb40c39db0370977bcad0b0f67533"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-01.zip",
+   "sha256": "f3be14b01356f33f6cbde6d12ee30311ae91fc521dc78d72a0aa39db8c295053"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-02.zip",
+   "sha256": "d622a4a5cfb461e81d9cb13ebdd34b02e2d221c2ddb8d708dc4047d2f499fa96"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-03.zip",
+   "sha256": "10d3d16d74340850c2148553261dfdad7ffeb0b705f014c869fa807a1e7ddc84"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-04.zip",
+   "sha256": "f07052472753f04eb8e7fb818cf60e90e187e712f63a577741ca7ae59c63bc9e"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-05.zip",
+   "sha256": "ed42b50666e40e1489f01730f85e5efe919b9a94344e043369a459c66492a940"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-06.zip",
+   "sha256": "78249fec5212753b19ce01c2fb23ffdc3deecd29bd3ab61fb7cf70ba6c395edc"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-07.zip",
+   "sha256": "ce4c96d62e020d4b3c53bc31c248e5800a4a6eb3a6809c36509238122aa02a3a"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-08.zip",
+   "sha256": "1604d1993d0c6a7e37e2ff81a6944d7b5c0e81475e3fe475bdbdf0deaff4d847"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-09.zip",
+   "sha256": "673b50b2daec4a34da7d8a8095995ddbafa6f66bf8c2d499ba48f8050cf68565"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-10.zip",
+   "sha256": "d0436ed57e674ae3c00eeff3aa46f6e65c596892b80e5b6e8183d487c6ef3168"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-11.zip",
+   "sha256": "73fbada102584d8e19cb9594f04471f589ff37404b0cf64c0bd7cb4ac4d4a157"
+  },
+  {
+   "path": "um/monthly/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2022-12.zip",
+   "sha256": "b9b8d803d985679959d21a55d08b14db331cf961442f8446eb18d723ea154567"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2021-12.zip",
+   "sha256": "c28f97cfd0804d7c13e9658550284c09bdacd77ceb5e493abd58fe9b77b4ea83"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-01.zip",
+   "sha256": "a8c915ef654ab8119dd6315b24eeb648bf37045e241a1735849221496f2dbef7"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-02.zip",
+   "sha256": "1bee39113106f509562ba174f3b5529ed96e818680110f6e5b5122ca4d172662"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-03.zip",
+   "sha256": "c693d3a6a023f40a27018166e1677347cebfd3463e4a23f195c0120e8855b6d5"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-04.zip",
+   "sha256": "982ff5dcc00ee3ef316763bfa439ec385e5b323582d36504f7935294e2cd2e10"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-05.zip",
+   "sha256": "913fc0ea431cb892cd228d1076ddd7bf6164a8039c9c9758a64be67a95eefb0f"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-06.zip",
+   "sha256": "b2f82b5892813b91f570a4d52ce391e8e7d09cfe77222f17b85562829626de8c"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-07.zip",
+   "sha256": "2b390683cbcd8497b1d65d465b51bc4c8807c8192f1f446761c29bbae615baaf"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-08.zip",
+   "sha256": "24c05866cb6dc73b984d7391e06cb8fae25743b06ff19e50ba44cf63ca06a912"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-09.zip",
+   "sha256": "de15c0ef2dce9faf9e4100141b9fee2ef7654cd635d43b3ff811bcc18b054111"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-10.zip",
+   "sha256": "253a563ceaf36a07d1f5c8a9650e99d70a7bc08b790e6555a3b938c4547efd79"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-11.zip",
+   "sha256": "fbf9da5edb472159baeaff07f77c557ad6ced8affc04a9239ee4f97977290e6e"
+  },
+  {
+   "path": "um/monthly/klines/XRPUSDT/4h/XRPUSDT-4h-2022-12.zip",
+   "sha256": "4426ee0188c2144c9e3311739d49fe44668ff9f2280c8f4c708ceff9fce43989"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2021-12.zip",
+   "sha256": "950bacfe70d57a8a56b46bf39a05e05ed7541f438deaf025d5078c0de6608650"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-01.zip",
+   "sha256": "5e8cc78856a281c9bc48d0a5798de6a043549f1aaa830983bbe1146bd02b586a"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-02.zip",
+   "sha256": "c2e786bb9bd2f460c5b14ad0edc5312e759fce0cc6790d2660cf857e9c534194"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-03.zip",
+   "sha256": "c096f9b4695b6745700bb65ff2db02865100ba19a114fcc45969d626b5e8f57e"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-04.zip",
+   "sha256": "8cfb7d4a8139ab29852f2a56678c6bdafe9dff8900b4f3d2d209b450dbcfe4f4"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-05.zip",
+   "sha256": "f854f954b88768ac0e6dbe279d9f98954ffad4da6f93a828d245ff3d7a4b555a"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-06.zip",
+   "sha256": "68c664debba01c1f9c1e80ac48d0533c272c659ab09a13fb5dc0f26a5de88b3f"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-07.zip",
+   "sha256": "22d6fa0bcac36c7988d616945ee0a2e9276f08f690f4d0c21026de467b20872c"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-08.zip",
+   "sha256": "7708218690bc95817087323ac381f78e05bc8eacedad4652ec861182dbb7acad"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-09.zip",
+   "sha256": "55efb2f93fe7885b086ca7a39cca56f4c460c86569a334e07e84543cb7ce9342"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-10.zip",
+   "sha256": "224cd0ba734dde968eb80b1c5c1c92536d6b6f1b7a71b878bb4cd0dbb15e50f5"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-11.zip",
+   "sha256": "cd636bf8a9e3608e775477671d2ca2dbce4dd6bfa40b51fc8475d24ebce842e9"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/XRPUSDT/1h/XRPUSDT-1h-2022-12.zip",
+   "sha256": "2094c37f7e5eb90c95b2ce689de3a16cd8c74c5475b12dd6b17d0fdfc4fbc12e"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2021-12.zip",
+   "sha256": "a96ac211f0316219b9d7faec92b830dec5c4ee808b0cfca5bb966dd8b68ff987"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-01.zip",
+   "sha256": "9ddff6efb16709debed38c0a6a0a2278c01659d18aedc2192b9fc02dc93d03ce"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-02.zip",
+   "sha256": "033b260f54c03c4f32b3503e87f9a3d3bcf735a48f13b4057344bb05192006b4"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-03.zip",
+   "sha256": "4eeea8c79c35ff9363baa9dc70091a155c8f9e276dd319d05e0ba8ef5ab00b6e"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-04.zip",
+   "sha256": "65dc012890af68b8e77736be03a71bde04c7a54b5ff6cb1957c94c4b2560da78"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-05.zip",
+   "sha256": "9ec85394189f8f61a420bc6266cfd6e782870eb14ab43fe53ad981f274ea2829"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-06.zip",
+   "sha256": "ed33e50c7a15b4605478840bc9ceb93af17afe81728dd9c80a8673732da5b979"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-07.zip",
+   "sha256": "d0c0be21ff0fd3476d88cd2ac576f4b8e5697001bedf8ab43c746f2e5ae4699b"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-08.zip",
+   "sha256": "ebe01bede02640bb9425dc31f6a1bb4e46488989715d7083b6d1569adb8736ba"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-09.zip",
+   "sha256": "5f4cef57cc0b839b9efd1a0ad2a09457e8a4f7745f5de045d85ad86159255587"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-10.zip",
+   "sha256": "d19321c736b80fa52b447325092f6f21128f435a28e377941bccb65e6dae1370"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-11.zip",
+   "sha256": "44f32f9c6d3f66d7d0af48a56b5cd6f431c19070c9e4438784ee95df25d7dcb2"
+  },
+  {
+   "path": "um/monthly/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2022-12.zip",
+   "sha256": "4c17c8aa8c7b64d2acf1ecfdbdc5ff0c2a69d918f44a1040f530be3fbec74e6b"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2021-12.zip",
+   "sha256": "2da4cda0c95bf945af307ec2a49f51da76dad68c1b07723737d6c707c305416a"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-01.zip",
+   "sha256": "527197f248b05e7cf1eab11d549f45ee68c4fc0e1b9d1ec37ac5959fe44cf47c"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-02.zip",
+   "sha256": "13988eed2afbd5f4879439301025f059d69b7ecfcd3a9ba5905bdbc2ddc9aa70"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-03.zip",
+   "sha256": "0577d0540bd018f7616651aa1c07e4f151df6cc8e3430d1cfd17909c86c1ee09"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-04.zip",
+   "sha256": "68ff4f2c39d21c095caa536ed78e1ff731eaa97a5c4928c7c18d538309479db9"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-05.zip",
+   "sha256": "8af96971f89ea9d1f8d1b72fe119ec4fb858f1ab80697dac8cefafbd11abb5af"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-06.zip",
+   "sha256": "a6b2b81793f8c9e33e7b5160623f18d830a72786b8aa88894d6c20786dac1220"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-07.zip",
+   "sha256": "9c9b9ea92cf35baa58076dc1e2218a70f9a0593788bc84cb4c0acf1560868135"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-08.zip",
+   "sha256": "2b372f6b10c5feaab0deda0932d72c9f88230aaed5861746718cce02d246c93c"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-09.zip",
+   "sha256": "18ddb26d77acf372a9e41207b2b9dffb3f79be3f929fbec877fee0d63d6a740d"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-10.zip",
+   "sha256": "9253f41d7aa187dec39a7e0f21e72450ce1544fe0ca3674d50a8ec4b9445e2de"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-11.zip",
+   "sha256": "7325dfa8c2dc64d72ed86c7e5e2f80ff95c227a76d836dbe474d288fe3313efc"
+  },
+  {
+   "path": "um/monthly/klines/NEARUSDT/4h/NEARUSDT-4h-2022-12.zip",
+   "sha256": "50778500997dd074cf56abfb4fb6df8b89a5ed359b83e3f66a3061d4e0c645fa"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2021-12.zip",
+   "sha256": "400b5e35fce40b1a26d0cc2fbf8d089de8be08f7b36963eceb47abdff8bff9eb"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-01.zip",
+   "sha256": "e4d62190203e0e5d08e115c3e465415ff10f26510d725c4df98a6360aa560893"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-02.zip",
+   "sha256": "254dfb6605b2463e3848ff3a296e4e22d75ac6230b340068abbc27190305ef88"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-03.zip",
+   "sha256": "0025aa6ea488683be9b7c290e775cfa7a41a0156e6981004d4042bcab40e89c0"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-04.zip",
+   "sha256": "5da53be3f77274f9c4f7b9aeba3f09c6e63703533a95d77b3177c1cdd6d4a442"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-05.zip",
+   "sha256": "32cfd5a5f150a5b3e1b08759368a60f0d350115f20f25ce9910a4b2c9855a520"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-06.zip",
+   "sha256": "1750d0ed867fe9f80f96c2540dabccbe4b8ec5732e5c9003d1b4a072b374f347"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-07.zip",
+   "sha256": "06ae43404aeac5b84bbe07cb060e553925005d5fdab037bcb43896bf97185ae1"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-08.zip",
+   "sha256": "e68d9b4d440caf56935c113074b0ef51283cf97701e5bd207f9598a5b42952e8"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-09.zip",
+   "sha256": "3235679646624f04a957416075e2d30ebdf04856cf26f610646f10d44c523e12"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-10.zip",
+   "sha256": "aa42a6880fe442285a4e624132e5a5d020aad3fe6655188d6e15028b9e857ce8"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-11.zip",
+   "sha256": "a8a05ff777b955ae2ea60ba3b44fdd5f78c89ebf7d9bbcecf57857124c5b7308"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/NEARUSDT/1h/NEARUSDT-1h-2022-12.zip",
+   "sha256": "66c9e79d005db3fc3aacdb9d5050e3f56a0e60f3eeff00ca93253c4a3960697c"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2021-12.zip",
+   "sha256": "698dcf7f359152fee69a6089a4b9b6789d75f5fbc4bdc08404e9861cc07c71e9"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-01.zip",
+   "sha256": "eae411eb325357df6f4f150796f1f0e33a5c2e5e10069dc34bc3c5a1163324e5"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-02.zip",
+   "sha256": "f342709b6981dbd5ea1256d3558c2a17ad0b173059f0acbce346e41f785c5a2f"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-03.zip",
+   "sha256": "4a585f4f2bcb46e6ab2c1c1aecf661e5f54e81437ff29526807eb598393996fd"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-04.zip",
+   "sha256": "62c10a80e31e21cf89acbfbb1341d43faaf05365158d31a8a19aaf3288bfb0d7"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-05.zip",
+   "sha256": "541b888959e8ca263ed0d600b5beb0ca7b587b3535e8afbe88eec0958cae4db3"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-06.zip",
+   "sha256": "e3b07b4615a79354b93a8ebefb321d8a1210bfed63ce16d57aec9739a7da9d61"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-07.zip",
+   "sha256": "c22d4ec70c8ca6b73fbd13533d41df823ac59eb5a1cf33647fff965e23de29b7"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-08.zip",
+   "sha256": "b05bf4e06899e6a1593bf7e2febb79831c41c3a5c803f401e08e991e1d4a9540"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-09.zip",
+   "sha256": "a55ffad7142ce819e17c2f669d58e8b15e1d10f877f2d0d5d2b678db922356c5"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-10.zip",
+   "sha256": "14b5b1a23a2983535f2d236d745bb9eed33048ec0c0fca73e61c14ffae8db9fe"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-11.zip",
+   "sha256": "c526300bd454d18063faf0630a7343c7bfb09e3b3bfb3b5699c5adfe20ff12ac"
+  },
+  {
+   "path": "um/monthly/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2022-12.zip",
+   "sha256": "73e4ac714afce85d43abcc9a3357a5f3ab6b6afaaeb6741e982ebeb79d6c4b90"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2021-12.zip",
+   "sha256": "72f7a697588e3cd101fb210d385bc70b7a50ff150fd589946d4964ef0b70d138"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-01.zip",
+   "sha256": "fb0c711bf2631b54edf5bda8e0ac28bf68d5f3fd0c56d220f65be666dd7f0e81"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-02.zip",
+   "sha256": "99683747ea65d5e7d2c46b6c39161be8aa1dedf2b141a33cd0b757689e0d7b94"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-03.zip",
+   "sha256": "a1a3dda0bf998a2469409bf10ebcb068493dfe4e67ef7e02420dbf7c5393bdb7"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-04.zip",
+   "sha256": "d9e1d90445e9fc6306e297d970c17dfe86eb8069cb9605dc36fc1a33cbc7e28c"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-05.zip",
+   "sha256": "b46535f0dab32b292a4d7cc2ab2927ebc4a4d24d3be57a35c6f2b90249ad7995"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-06.zip",
+   "sha256": "126152dd8facde6ce001325a24a309f59145556424650bea1033511370de0b75"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-07.zip",
+   "sha256": "d46ebf6460c9621d57bf7149a6e2215b22e815f90545a7e1ecdc3e2e1209a32f"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-08.zip",
+   "sha256": "1af02b41e1b0d0ea52fb3428c3fe2cd01e9cf00be0f1adf655de2874f40dd038"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-09.zip",
+   "sha256": "0ebfd84774e9449d0b78fe59409f60a6e6fccc4c5e379cbc0f158871a8aefb76"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-10.zip",
+   "sha256": "1524f852848b5d87a2f0cf20b68127adacf263409647227fb32f766a639191e5"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-11.zip",
+   "sha256": "55a4daac19aed92715763d19e51eae2ab46ca6d45ac684093d2e9731473dd649"
+  },
+  {
+   "path": "um/monthly/klines/DOGEUSDT/4h/DOGEUSDT-4h-2022-12.zip",
+   "sha256": "7c4996a1c0042a99ee4bfdfcc72000823baef6c8f7b794ddba4aac734a97ad6d"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2021-12.zip",
+   "sha256": "8911eb67b23ec52d8ed3fee05a319592f6b6d50bff1b4caee09dd3cfd667a0b6"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-01.zip",
+   "sha256": "8e21e17b3d5ab08d391c0956078cae33a6af4ea81e50997a7efdb35e6a2e0a66"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-02.zip",
+   "sha256": "1a3b541d63c96d9be6ae8a16d528ad48f1d4b5e37ea5a9c4b1dcf31270ab6af4"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-03.zip",
+   "sha256": "195b4d3b79c0e4c624da6799d4b67e24945abcf42161df63db58594a4cac239d"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-04.zip",
+   "sha256": "f608a8f48a6494f0f71308cd906f04bebd28c391277e2725c5dfd938e31a6c2a"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-05.zip",
+   "sha256": "7f7d385b2b640d3ed14170d3e8503f63c2e12923591ff3264972d09bb4780563"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-06.zip",
+   "sha256": "a727b26803f67b1c3ecd106e04e04fc569f83b4e1670a89176bbac8e1b3790ec"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-07.zip",
+   "sha256": "1f1999a64a737846cd4cc3fafaf0a7b298c53e01e62d44642c1cc0aeec6a0f6f"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-08.zip",
+   "sha256": "6572d4bf34b5efde0118fe0f30e6ced356fc9fa6058f2a3eac18cd78dd113283"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-09.zip",
+   "sha256": "61aa39f180dc8122cfe1fd3239ca128f2b7b86edb4c2953404baa8dc12b057d3"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-10.zip",
+   "sha256": "220ea14745cfba07b9328280a3f98ee585a0d7fceb41f200a8be6adc72902744"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-11.zip",
+   "sha256": "599f07506afb280a18314c849b3848def1cee9efbf58e82fc8ecf31bbb624d36"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/DOGEUSDT/1h/DOGEUSDT-1h-2022-12.zip",
+   "sha256": "7e44dbc61240bd44f5431ac564f341aaaca63e1a4c0d8fadc26b8d03a9e0e6a3"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2021-12.zip",
+   "sha256": "a62f9d2aa4ad02e827e40d740e8cdbaa46f5b68dc3b7aec2c455e8b1aa265648"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-01.zip",
+   "sha256": "b37736ec46a47d8bd0b5a0de1be61a6f0511d86e8c045cdfc8238b247cf8a8b2"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-02.zip",
+   "sha256": "e496ee4bbe84b791550497ce6555e995582fcb507cc08e6329d3fb4ffeb5f468"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-03.zip",
+   "sha256": "fce1916d6dc4bd971cb72931e4f8477935ec489df6bb5bc22c99bcbf2abe78e6"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-04.zip",
+   "sha256": "655d57b2da463acf06a2e11f9c5d7ea8744facd5a082725cd14b4f480fc9d877"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-05.zip",
+   "sha256": "77b31f75485d3f66eef37d3cc5bc1620a1e9e93d00e47aa5391d5a6f0216b469"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-06.zip",
+   "sha256": "40f2c0ca054a31eb62372f67919ee1b402015454018026d3b15ff7faacd22f1e"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-07.zip",
+   "sha256": "ad7458419c3486565f826838da188714c6034e0f9054929fec1cb07bac64f8d6"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-08.zip",
+   "sha256": "a45c8e14d3bf26a1aa9fd60e09ff215ca459c39cba1c7d9ec24d019ad375cb8e"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-09.zip",
+   "sha256": "75ed3ada815ae4273abedeac0faee99aba67eb03ce3a467ddebd99affd69674c"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-10.zip",
+   "sha256": "ca1d8d2818fa7850ed7c511a6a04269b984c4a7e7ba8ff882e8999a028e430f4"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-11.zip",
+   "sha256": "e118ddf37bc7f2659d102595fbc6235c364621231100f57f7dd20e9e8c6ab2fd"
+  },
+  {
+   "path": "um/monthly/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2022-12.zip",
+   "sha256": "c5d07f43864d7ca5fe3dbc84ab9dd1c824932fcf4750ef401f27eb2a46fb555b"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2021-12.zip",
+   "sha256": "8e2909c583e1603bd57c1277fd19d79099e91377148fc34a3b0f2124fff87406"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-01.zip",
+   "sha256": "a4be04478a11ad569341934497b7485b9053589c0f827d702c38308b36a949f1"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-02.zip",
+   "sha256": "ca7ea3e59333c496400256f39c5c232a2e02b4c03f9d19797d2384faf1d82cab"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-03.zip",
+   "sha256": "f98bfa290281130a16ddf6232b337f2e1cfff2a25468fefc227dd16302870f04"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-04.zip",
+   "sha256": "b2acf3e37ba7e1fa4688ff56797f0e6ad5a29a537ddada7919c437c684eaf1a1"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-05.zip",
+   "sha256": "8aa17669b467740abb9d2f6c9fd82053644d723c3c81641c6add1faf0a2369ed"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-06.zip",
+   "sha256": "83f10c0314f9631b15f5ae4bb6329bac3ddd97a5f7facfb153c9e53780ced379"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-07.zip",
+   "sha256": "c29ac55cdefc5fdb6a7b2a33f3f1ea52882b22b44cfc5fea934735b6d92492c2"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-08.zip",
+   "sha256": "d61fbf46b1daaa00ece2bd2acf04d7db204c737cb87b87a8a77337a09b0205a4"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-09.zip",
+   "sha256": "1e836d5c34ffdd3c1f9f7f2bfe7efd288bef5c1e5178485abb91ccb055955efb"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-10.zip",
+   "sha256": "3f6efbf880e257d9a7063738b0d2622ae2a665e7f9b2ba01194f02764966175b"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-11.zip",
+   "sha256": "2dcbd78b617c78cc34ef24e057d67dffa6c84681dd0d75b3684e538a517b11dd"
+  },
+  {
+   "path": "um/monthly/klines/UNIUSDT/4h/UNIUSDT-4h-2022-12.zip",
+   "sha256": "af51586b3b2c0e94bdccdadfa6e2b465b43d92ac2f54107632bfeeba77b22933"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2021-12.zip",
+   "sha256": "69ab7030a2df64514ed8b86ade38f91122e2c1b1a3bba800b2808fa114c016cd"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-01.zip",
+   "sha256": "f4a4857969035d1678800668b10c4511e8dba4a3b0f9f2f20b607750a21c8c6c"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-02.zip",
+   "sha256": "e83c610956e0e2fe74e500a57a7d7ba46bd7b26b2cffc5163bbdace1073fcbf1"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-03.zip",
+   "sha256": "529ae706427a3c65cf127462f020690274ea9d45dce0334741a408db8ef24b57"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-04.zip",
+   "sha256": "77b0b1b20547f77ef379adcea74faf101adc444bd4d67ee63e8fdff7a8aaf2ab"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-05.zip",
+   "sha256": "303680807233819d39769f74e072932fd1db5b653810d233a2e3eec31eb31c2e"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-06.zip",
+   "sha256": "bfeb3e32630eb5f2cf96d24675c63161143bd0fa8d476d6b373e10bae7276edb"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-07.zip",
+   "sha256": "75b0715f6524731a4ef6eafac008c111a69047a4b8c5537647bff5150bfc78c1"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-08.zip",
+   "sha256": "9935031c1f7193be50f23082fb9a03216d784bd6fdb45b7d97ee98694f015a66"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-09.zip",
+   "sha256": "aa7ee2b2eab72264dd0466ba31e66db3cbef7e3ee2ada679bc0d757a2fafa71e"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-10.zip",
+   "sha256": "c5443231edcaca92ca6be8b8713891d960861d54ed75343450bb3071502a3096"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-11.zip",
+   "sha256": "64b9405731d54feec645ddb4ea9c33e18fd5d009337da1e3fe2b79f397a61dd2"
+  },
+  {
+   "path": "um/monthly/markPriceKlines/UNIUSDT/1h/UNIUSDT-1h-2022-12.zip",
+   "sha256": "843d762e06e2a9aabaccd73e73d783bf2a41cfebdf7cef4731d9dfe69eed00dc"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2021-12.zip",
+   "sha256": "00cde4c8840a6bcccba0e96984220ede6cf850c7f5fb4045802aace94759ae62"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-01.zip",
+   "sha256": "1062db4dfb65bab91cb4189d849f2164bc1e89e4f536e451d2a0ad78ffbf142c"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-02.zip",
+   "sha256": "d5dbdbda2b43e7a183ee601a4002df95d9103cdb5de57fee13801bf3b8f57efb"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-03.zip",
+   "sha256": "8e5a8dbafd0a78a74e1e4f20edc19110c2d27e1c77840e309f918f9946e52ed2"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-04.zip",
+   "sha256": "46421c82e081cfa5d201970896ff5c57c8a095175c94ef50f18ff3a32dcfc0bc"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-05.zip",
+   "sha256": "340f2e97c33a62a83fcc1600f3eebdacd6e47214d090f5606ee845374d9dcc9b"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-06.zip",
+   "sha256": "afe9edd03dcd35c555fa21b84ca69343338c4b708e7f0a3dba54256fd604141f"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-07.zip",
+   "sha256": "f4cf6c579a1d45f9b0b806f69d202d69ff7c8ef4414062a979df3338163009e5"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-08.zip",
+   "sha256": "05aa8b622907cd314d4764ebf61689bc54b0027906e1ef8d74cbff44197e2a3e"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-09.zip",
+   "sha256": "6f88e0c8b243d371740f418e91ab1dab933e8e7920ae32260f322e7b9dca167c"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-10.zip",
+   "sha256": "3a9c3f162b955c69b499cce67ae6b5b53e894e0986df0939317fb67d2cb957a6"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-11.zip",
+   "sha256": "64cd99d28f094287e7a0ad7dec7595892bbd6fe38e23b5c01dbcb5ade2bffa4b"
+  },
+  {
+   "path": "um/monthly/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2022-12.zip",
+   "sha256": "bfb145c43bcd0774135454c1b67ce4f8a159cdbae43ab6b1551c31f26a1dcf61"
+  }
+ ],
+ "format": "zb-fundgap-g3/1",
+ "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+ "notice_sha256": "4cdf7d61c1e8c38397e04a685f94540bfaf612e8c176385f30f1a2bbd1a6cf68",
+ "predicates": [
+  "off_grid",
+  "missing_anchor",
+  "nonconsecutive_pair",
+  "uncovered_terminal"
+ ],
+ "provenance": {
+  "clean": true,
+  "commit": "20ab101cd7eb95d0887b616c57bb60dbf6c5ad1e"
+ },
+ "purpose": "FUND-GAP-01 G3 results-blind first-failure proof (wf[0] only)",
+ "split": {
+  "first_decision": "2021-12-30T00:00:00Z",
+  "hi": "2022-12-19T00:00:00Z",
+  "key": "walk_forward[0]",
+  "lo": "2021-12-20T00:00:00Z"
+ },
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "ZECUSDT",
+  "SOLUSDT",
+  "XRPUSDT",
+  "NEARUSDT",
+  "HYPEUSDT",
+  "DOGEUSDT",
+  "UNIUSDT",
+  "SUIUSDT"
+ ],
+ "universe": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+ "variant": "range_vwap_rev.v1-splitcut"
+}
