@@ -312,6 +312,28 @@ def _legs_match(t, h) -> bool:
     return len(seq) == len(t['seq']) and all(a == b and _qeq(x, y) for (a, x), (b, y) in zip(seq, t['seq']))
 
 
+NA_ADD = 'not_applicable_add'          # repriced risk_fill_would of an add lot: read the cost-applied account path
+
+
+def _rf_legs(t, h):
+    """The engine's RISK-FILL-01 action per entry leg of the trade, in causal order (None = no decision recorded), and
+    the row's status when the map is a string ('pending' / 'unavailable'). The history map is keyed by the lot's fill
+    index ({'0': {'action': ...}, '2': {...}}); a decision on a fill that is not one of the trade's entry legs fails
+    closed - no action is dropped or collapsed (Codex 6373243304)."""
+    rf, n = h.get('risk_fill'), len(t['entries'])
+    if not isinstance(rf, dict):
+        return [None] * n, rf if isinstance(rf, str) else None
+    fl = h.get('fills')
+    idx = ([i for i, f in enumerate(fl) if f[1] in TA.ENTRY_KINDS] if isinstance(fl, list) and fl else
+           ([0] if n == 1 else None))
+    if idx is None or len(idx) != n:
+        raise ScalpExecError(f"{(t['sym'], t['ps'])}: risk_fill decisions cannot be mapped to the entry legs")
+    extra = set(rf) - {str(i) for i in idx}
+    if extra:
+        raise ScalpExecError(f"{(t['sym'], t['ps'])}: a risk_fill decision on a fill that is not an entry leg ({sorted(extra)})")
+    return [(rf.get(str(i)) or {}).get('action') if isinstance(rf.get(str(i)), dict) else None for i in idx], None
+
+
 def trades_of(fill_log, history) -> list[dict]:
     """Group the simulated fills into one trade per engine lot per (symbol, side) and attach the engine's risk_usd
     (history, in close order). #187 (Codex 6372669079): an add / second entry on an open lot joins that lot's trade as
@@ -362,8 +384,7 @@ def trades_of(fill_log, history) -> list[dict]:
         t['adds'], t['add_qty'] = adds, sum(x['qty'] for x in t['entries'][1:])
         t['qty_in'] = sum(x['qty'] for x in t['entries'])
         t['risk_usd'], t['exit_reason'], t['engine_gross'] = h.get('risk_usd'), h.get('exit_reason'), h.get('pnl_gross')
-        rf = h.get('risk_fill')
-        t['risk_fill'] = rf.get('action') if isinstance(rf, dict) else None
+        t['risk_fill'], t['risk_fill_status'] = _rf_legs(t, h)      # one action per entry leg, causal order
     return done
 
 
@@ -416,7 +437,8 @@ def price_trade(tr, scen: C.Scenario, *, row: C.CostRow, slip_c: float, bars15, 
             if q > 1e-12:
                 fund += C.funding_cost(side, q, [ev], scen)
     net = gross - fees - fund
-    rf = (RF.decide(tr['ps'], e['qty'], e_px, tr['stop0'], e['ref'], entry_fees=C.fee(e['qty'] * e_px, 'taker', row, scen))['action']
+    rf = (NA_ADD if len(ents) > 1 else               # an add lot: never the first leg alone - see the account path
+          RF.decide(tr['ps'], e['qty'], e_px, tr['stop0'], e['ref'], entry_fees=C.fee(e['qty'] * e_px, 'taker', row, scen))['action']
           if tr.get('stop0') else 'unmeasured')        # what RISK-FILL-01 WOULD do on this priced entry (A1; never applied)
     risk = tr.get('risk_usd')
     r = (lambda v: v / risk) if risk else (lambda v: None)
@@ -475,15 +497,34 @@ def account_trades(fills, history, paid) -> list[dict]:
         out.append(dict(sym=tr['sym'], side=tr['ps'], entry_ms=e['t_ms'], exit_ms=t1, qty=tr.get('qty_in', e['qty']),
                         adds=tr.get('adds', 0), add_qty=tr.get('add_qty', 0.0),
                         exit_kinds=[f['kind'] for f in tr['closes']], exit_reason=tr['exit_reason'], risk_usd=risk,
-                        risk_fill=tr.get('risk_fill'), net=net, fees=fees, funding=fund,
+                        risk_fill=tr.get('risk_fill'), risk_fill_status=tr.get('risk_fill_status'), net=net, fees=fees, funding=fund,
                         net_r=net / risk if risk else None))
     return out
 
 
-def add_stats(trades) -> dict:
-    """#187 provenance: how many trades carry adds, how many add legs and how much add quantity (auditable sample)."""
-    return dict(trades=len(trades), trades_with_adds=sum(1 for t in trades if t.get('adds')),
-                add_legs=sum(int(t.get('adds') or 0) for t in trades), add_qty=math.fsum(t.get('add_qty') or 0.0 for t in trades))
+def add_stats(trades, open_lots=None) -> dict:
+    """#187 provenance: how many CLOSED trades carry adds, how many add legs and how much add quantity, plus the engine
+    lots still open at the end that carry adds (not priced, counted so the sample stays auditable)."""
+    ol = list((open_lots or {}).values()) if isinstance(open_lots, dict) else list(open_lots or ())
+    oa = [l for l in ol if sum(1 for f in l.get('fills') or () if f[1] in TA.ENTRY_KINDS) > 1]
+    return dict(scope='closed_trades', trades=len(trades), trades_with_adds=sum(1 for t in trades if t.get('adds')),
+                add_legs=sum(int(t.get('adds') or 0) for t in trades), add_qty=math.fsum(t.get('add_qty') or 0.0 for t in trades),
+                open_lots=len(ol), open_lots_with_adds=len(oa))
+
+
+def rf_counts(trades) -> dict:
+    """Engine RISK-FILL-01 actions counted per ENTRY LEG (an add lot contributes one per leg)."""
+    legs = [a for t in trades for a in t.get('risk_fill') or ()]
+    return {a: sum(x == a for x in legs) for a in RF.ACTIONS}
+
+
+def rf_basis(trades) -> dict:
+    """The denominator of rf_counts: entry legs, decided legs, legs without a recorded decision, and lot statuses."""
+    legs = [a for t in trades for a in t.get('risk_fill') or ()]
+    st = [t.get('risk_fill_status') for t in trades if t.get('risk_fill_status')]
+    return dict(per='entry_leg', entry_legs=len(legs), decided=sum(x in RF.ACTIONS for x in legs),
+                no_decision=sum(x is None for x in legs), other=sum(x is not None and x not in RF.ACTIONS for x in legs),
+                lot_status={k: st.count(k) for k in sorted(set(st))})
 
 
 def summary(rs, weeks: float) -> dict:
@@ -578,8 +619,9 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
         o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
                               latency_s=latency_s, pricer=pr)
         ts = account_trades(f2, o2['history'], pr.paid)
-        acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete), adds=add_stats(ts),
-                          risk_fill={a: sum(t['risk_fill'] == a for t in ts) for a in RF.ACTIONS},
+        acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
+                          adds=add_stats(ts, o2['lots']),
+                          risk_fill=rf_counts(ts), risk_fill_basis=rf_basis(ts),
                           summary=_sides(ts, lambda t: t['net_r'], weeks))
         acct_inc = acct_inc or bool(pr.incomplete)
         div[name] = divergence(rows, ts, name)
@@ -593,8 +635,10 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
                 status='INCOMPLETE' if incomplete else 'COMPLETE', weeks=weeks,
                 repriced=dict(trades=rows, summary={n: _sides(rows, lambda r, n=n: r['rows'][n]['net_r'], weeks) for n in scen},
                               risk_fill_would={n: {a: sum(r['rows'][n]['risk_fill_would'] == a for r in rows)
-                                                   for a in RF.ACTIONS} for n in scen}),
-                account=acct, divergence=div, adds=add_stats(rows),
+                                                   for a in RF.ACTIONS} for n in scen},
+                              risk_fill_would_basis=dict(trades=len(rows), first_entry_only=True,
+                                                         not_applicable_add=sum(1 for r in rows if r.get('adds')))),
+                account=acct, divergence=div, adds=add_stats(rows, out['lots']),
                 intrabar=dict(segments=len(lab), by_label={k: lab.count(k) for k in (ONE_LEVEL, RES_1M, SAME_MINUTE, NO_1M,
                                                                                      TWO_SIDED, NO_LATENCY)},
                               unresolved=unres, unresolved_share=unres / len(rows) if rows else 0.0,

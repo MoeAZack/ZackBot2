@@ -131,7 +131,8 @@ def test_account_path_sums_every_leg_price_and_fee():
 
 def test_add_provenance_counts_trades_legs_and_quantity():
     st = X.add_stats([dict(adds=2, add_qty=3.0), dict(adds=0, add_qty=0.0), dict(adds=1, add_qty=0.5)])
-    assert st == dict(trades=3, trades_with_adds=2, add_legs=3, add_qty=3.5)
+    assert st == dict(scope='closed_trades', trades=3, trades_with_adds=2, add_legs=3, add_qty=3.5, open_lots=0,
+                      open_lots_with_adds=0)
 
 
 # ------------------------------------------------------------------ fail closed
@@ -187,7 +188,8 @@ def test_every_fill_is_in_exactly_one_trade_and_the_cash_adds_up():
     legs = [id(x) for t in ts for x in t['entries'] + t['closes']]
     assert len(legs) == len(set(legs)) == len(fl)                         # every fill once, none twice, none dropped
     assert math.fsum(priced(t)['gross_ref'] for t in ts) == pytest.approx(cash(fl))
-    assert X.add_stats(ts) == dict(trades=3, trades_with_adds=2, add_legs=2, add_qty=1.5)
+    assert X.add_stats(ts) == dict(scope='closed_trades', trades=3, trades_with_adds=2, add_legs=2, add_qty=1.5, open_lots=0,
+                                   open_lots_with_adds=0)
 
 
 # ------------------------------------------------------------------ Codex 6373065821: the causal leg order is identity
@@ -205,3 +207,58 @@ def test_a_completed_lot_missing_from_history_refuses_cleanly():
     for hist in ([], [row(other, sym='XRPUSDT')], [row(fl, 'SHORT')]):
         with pytest.raises(X.ScalpExecError, match='disagree'):
             X.trades_of(fl + (other if hist and hist[0]['symbol'] == 'XRPUSDT' else []), hist)
+
+
+# ------------------------------------------------------------------ Codex 6373243304: per-entry RISK-FILL-01 truth
+def test_single_entry_trim_is_kept_and_counted():
+    fl = [f(20, 'open', 2.0, 100.0), f(24, 'close', 2.0, 95.0)]
+    h = dict(row(fl), risk_fill={'0': {'action': 'trim', 'planned': 1}})
+    (t,) = X.trades_of(fl, [h])
+    assert t['risk_fill'] == ['trim'] and t['risk_fill_status'] is None
+    assert X.rf_counts([t])['trim'] == 1 and X.rf_basis([t])['entry_legs'] == 1
+
+
+def test_an_add_lot_keeps_every_leg_action_in_causal_order():
+    fl = [f(20, 'open', 2.0, 100.0), f(21, 'close', 1.0, 105.0), f(22, 'open', 1.0, 103.0), f(24, 'close', 2.0, 110.0)]
+    h = dict(row(fl), risk_fill={'0': {'action': 'ok'}, '2': {'action': 'unwind'}})     # fill index 2 = the add
+    (t,) = X.trades_of(fl, [h])
+    assert t['risk_fill'] == ['ok', 'unwind']
+    c, b = X.rf_counts([t]), X.rf_basis([t])
+    assert (c['ok'], c['unwind'], b['entry_legs'], b['decided'], b['no_decision']) == (1, 1, 2, 2, 0)
+
+
+def test_an_undecided_leg_and_string_statuses_are_explicit():
+    fl = [f(20, 'open', 1.0, 100.0), f(21, 'open', 1.0, 100.0), f(22, 'close', 2.0, 101.0)]
+    (t,) = X.trades_of(fl, [dict(row(fl), risk_fill={'0': {'action': 'trim'}})])
+    assert t['risk_fill'] == ['trim', None] and X.rf_basis([t])['no_decision'] == 1
+    (u,) = X.trades_of(fl, [dict(row(fl), risk_fill='unavailable')])
+    assert u['risk_fill'] == [None, None] and X.rf_basis([u])['lot_status'] == {'unavailable': 1}
+
+
+def test_a_decision_on_a_close_or_unknown_fill_refuses():
+    fl = [f(20, 'open', 1.0, 100.0), f(21, 'open', 1.0, 100.0), f(22, 'close', 2.0, 101.0)]
+    for rf in ({'0': {'action': 'ok'}, '2': {'action': 'trim'}}, {'7': {'action': 'ok'}}):
+        with pytest.raises(X.ScalpExecError, match='risk_fill'):
+            X.trades_of(fl, [dict(row(fl), risk_fill=rf)])
+
+
+def test_account_trades_carry_the_leg_actions():
+    fl = [f(20, 'open', 2.0, 100.0, px=100.0, fee=0.1), f(22, 'open', 1.0, 102.0, px=102.0, fee=0.05),
+          f(25, 'close', 3.0, 104.0, px=104.0, fee=0.15)]
+    (a,) = X.account_trades(fl, [dict(row(fl), risk_fill={'0': {'action': 'trim'}, '1': {'action': 'ok'}})], paid=[])
+    assert a['risk_fill'] == ['trim', 'ok'] and X.rf_counts([a])['trim'] == 1 and X.rf_counts([a])['ok'] == 1
+
+
+def test_repriced_would_is_explicitly_not_applicable_for_an_add_lot():
+    fl = [f(20, 'open', 2.0, 100.0), f(20, 'stop_set', 0, 95.0), f(22, 'open', 1.0, 102.0), f(25, 'close', 3.0, 104.0)]
+    (t,) = X.trades_of(fl, [row(fl)])
+    assert priced(t)['risk_fill_would'] == X.NA_ADD
+    one = [f(20, 'open', 2.0, 100.0), f(20, 'stop_set', 0, 95.0), f(25, 'close', 2.0, 104.0)]
+    (u,) = X.trades_of(one, [row(one)])
+    assert priced(u)['risk_fill_would'] in X.RF.ACTIONS
+
+
+def test_open_lots_with_adds_are_counted_in_provenance():
+    lots = {'a': dict(fills=[[0, 'entry', 1, 1], [1, 'pyramid_add', 1, 1]]), 'b': dict(fills=[[0, 'entry', 1, 1]])}
+    st = X.add_stats([], lots)
+    assert (st['open_lots'], st['open_lots_with_adds'], st['scope']) == (2, 1, 'closed_trades')
