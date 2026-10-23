@@ -525,6 +525,7 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
     d = os.path.join(ROOT, 'research_evidence', 'prereg')
     names = sorted(n for n in os.listdir(d) if n.endswith('.json'))
     assert names == ['core10_fundgap_g3_report.v1.json',                                       # #171 FUND-GAP-01 G3
+                     'core10_fundgap_g4_report.v1.json',                                       # #171 FUND-GAP-01 G4
                      'core10_fundgap_report.v1.json',                                          # #170 FUND-GAP-01 FG-1
                      'core10_gapfill_plan.v1.json', 'core10_gapfill_report.v1.json',            # #165 CORE-10 fill prereg
                      'r4_gate.json', 'r4_gate_short.json', 'trend_ema_mom.v1.json', 'trend_ema_mom_short.v1.json']

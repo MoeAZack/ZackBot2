@@ -146,3 +146,20 @@ def test_a_file_reaching_the_holdout_is_refused_unread_and_skipped_by_the_enumer
     out = G.transitions(st, man, ['AAAUSDT'], LD.LO)
     assert out['skipped_sealed_files'] == [fs[-1]['path']] and fs[-1]['path'] not in reads
     assert out['symbols']['AAAUSDT']['rows'] > 0 and out['total'] == len(out['symbols']['AAAUSDT']['transitions'])
+
+
+def test_the_frozen_g4_report_is_blind_bound_and_names_the_sol_transition():
+    path = os.path.join(F.REPO, 'research_evidence', 'prereg', 'core10_fundgap_g4_report.v1.json')
+    with open(path, encoding='utf-8') as f:
+        doc = json.load(f)
+    G.assert_blind(doc)
+    assert doc['format'] == G.FORMAT and doc['provenance']['clean'] and len(doc['provenance']['commit']) == 40
+    assert doc['g3_report_sha256'] == '0737c1449c65ebbc82715c44057985ca3bef170213a4767eb963a43edf193c20'
+    assert [(r['nominal_utc'], r['interval_hours']) for r in doc['provenance_rows']] == [
+        ('2022-11-18T06:00:00Z', 2), ('2022-11-18T08:00:00Z', 2), ('2022-11-18T16:00:00Z', 8)]
+    sol = doc['transitions']['symbols']['SOLUSDT']['transitions']
+    assert {'from_utc': '2022-11-18T08:00:00Z', 'to_utc': '2022-11-18T16:00:00Z', 'old_h': 2, 'new_h': 8, 'gap_h': 8,
+            'class': 'new', 'hidden_slots': 3} in sol
+    assert doc['sol_replica'] == {'last_row': False, 'lookahead1': True}
+    assert all(p.endswith('-2026-09.zip') for p in doc['transitions']['skipped_sealed_files'])
+    assert all(not f['path'].endswith('-2026-09.zip') for f in doc['transitions']['files_read'])
