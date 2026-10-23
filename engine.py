@@ -2844,9 +2844,13 @@ class Engine:
     # read per tick, outside the lock (as funding_tick). Only a unique, complete, quote-asset match is applied - as a
     # revision (cost_rev + cohort evidence), idempotent per cost_ref (cost_refs_recovered). Anything else fails closed and the
     # row stays INCOMPLETE. Progress lives in state['cost_recover'] (a restart neither repeats nor double-counts).
+    # FILL-PX-RECOVER-01 (#189): the same unique match also proves the fill's exchange price (qty-weighted over that one
+    # order's executions). A fee recovery applies it to a px_missing fill in the same revision; a fill whose price alone is
+    # missing (its fee was read, or recovered before this) gets its own 'px|<cost_ref>' job, same read, same rules.
     COST_RECOVER_POLL_S, COST_RECOVER_PRE_S, COST_RECOVER_POST_S, COST_RECOVER_PAD_S = 120, 120, 10, 600
     COST_RECOVER_TRIES, COST_RECOVER_LIMIT, COST_RECOVER_KEEP = 8, 1000, 500
     COST_RECOVER_RETRY = ('read_failed', 'no_match', 'no_evidence')      # may clear later; every other status is final
+    PX_AFTER_FEE_FAIL = ('amount_unreadable', 'non_quote_asset')   # the fee was unprovable, the order and price were not
 
     def _cost_recover_scan(self, want):
         """{cost_ref: fill record} for the wanted refs, from fills.jsonl.1 then fills.jsonl (raw lines; never raises)."""
@@ -2875,7 +2879,7 @@ class Engine:
         which travel with the fee revision), else None."""
         if not key: return None
         for r, c in (self.state.get('cost_recover') or {}).items():
-            if r != ref and c.get('order_key') == key and c.get('status') in ('recovered', 'apply_pending'): return r
+            if r.split('|')[-1] != ref and c.get('order_key') == key and c.get('status') in ('recovered', 'apply_pending'): return r
         ids = {h.get('id') for h in self.history}
         for t in (list(self.state.get('lots', {}).values()) + list(self.history)
                   + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]):
@@ -2883,42 +2887,55 @@ class Engine:
             if o is not None and o != ref: return o
         return None
 
-    def _cost_recover_commit(self, ref, cur, raw, now):
+    def _cost_recover_commit(self, ref, cur, raw, now, px=None):
         """Under the lock: apply a PROVEN commission (raw) to its lot / row and make it durable. Durable -> 'recovered';
         a failed history / cohort write -> 'apply_pending' with raw kept in state, retried every tick and after a restart
         (memory still holding it: save only; a restart that lost it: the stored raw is applied to the disk row) - never a
-        new read, never applied twice (cost_refs_recovered). Returns the resulting status."""
+        new read, never applied twice (cost_refs_recovered). Returns the resulting status.
+        FILL-PX-RECOVER-01: px (the same order's proven price) is applied once (px_refs_recovered) when that fill is
+        px_missing; a 'px' job (cur['mode']) applies only the price and needs no commission."""
+        px_only = cur.get('mode') == 'px'
         kind, t = self._cost_target(ref)
         if t is None:                                        # a few ticks for a restart to load it, then final
             cur['commit_tries'] = int(cur.get('commit_tries') or 0) + 1
             if cur['commit_tries'] >= self.COST_RECOVER_TRIES:
                 cur.update(status='failed', why='target_gone'); cur.pop('raw', None); return 'failed'
-            cur.update(status='apply_pending', raw=raw, why='target_not_loaded'); return 'apply_pending'
-        fresh = ref not in (t.get('cost_refs_recovered') or ())
+            cur.update(status='apply_pending', raw=raw, why='target_not_loaded', **({'px': px} if px is not None else {})); return 'apply_pending'
+        fresh = ref not in (t.get('px_refs_recovered' if px_only else 'cost_refs_recovered') or ())
         if fresh and self._cost_order_consumer(cur.get('order_key'), ref) is not None:   # consumed meanwhile (restart)
             cur.update(status='failed', why='order_already_consumed'); cur.pop('raw', None); return 'failed'
-        if fresh and not AC.recover_fill(t, ref, raw, cur.get('order_key')):
-            cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
-        if fresh: self._cost_final(kind, t)
+        if px_only:
+            if fresh and not AC.recover_px(t, ref, px, cur.get('order_key')):
+                cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
+            px_new = fresh
+        else:
+            if fresh and not AC.recover_fill(t, ref, raw, cur.get('order_key')):
+                cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
+            px_new = px is not None and AC.recover_px(t, ref, px, cur.get('order_key'))
+        if fresh or px_new: self._cost_final(kind, t)
         ok = True
         if kind == 'row':
             ok = self._row_changed(t)
             ok = self._save_aux('history', self.history) and ok
         if not ok:
-            cur.update(status='apply_pending', raw=raw, why='persist_failed')
-            log.warning('recovered commission not durable yet; retried next tick')
+            cur.update(status='apply_pending', raw=raw, why='persist_failed', **({'px': px} if px is not None else {}))
+            log.warning('recovered commission / fill price not durable yet; retried next tick')
             return 'apply_pending'
-        cur.update(status='recovered', amount={x['asset']: x['amount'] for x in raw}, fees_actual=t.get('fees_actual'),
+        mpx = (t.get('px_actual') or {}).get(ref) if ref in (t.get('px_refs_recovered') or ()) else None
+        cur.update(status='recovered', **({} if px_only else dict(amount={x['asset']: x['amount'] for x in raw},
+                                                                     fees_actual=t.get('fees_actual'))),
                    **({} if fresh else {'why': 'already_applied'}))
-        cur.pop('raw', None)
+        cur.pop('raw', None); cur.pop('px', None)
+        if mpx is not None: cur['px'] = mpx
         try:
             with open(os.path.join(self.dir, 'cost_recover.jsonl'), 'a', encoding='utf-8') as f:
-                f.write(json.dumps(dict(kind='cost_recover', cost_ref=ref, target=kind,
+                f.write(json.dumps(dict(kind='px_recover' if px_only else 'cost_recover', cost_ref=ref, target=kind,
                                         id=t.get('id') if kind == 'row' else t.get('symbol'), symbol=cur.get('symbol'),
                                         raw=raw, order_key=cur.get('order_key'), fees_actual=t.get('fees_actual'),
-                                        cost_rev=t.get('cost_rev'),
+                                        px_actual=mpx, pnl_fill_adj=t.get('pnl_fill_adj'), cost_rev=t.get('cost_rev'),
                                         time_ms=int(now * 1000)), separators=(',', ':')) + '\n')
         except OSError as ex: log.warning(f'cost_recover.jsonl not written ({ex})')
+        if px_new: self._px_log(t, {'cost_ref': ref})       # TP-SLIP-01 telemetry for the late-measured fill
         return 'recovered'
 
     def _cost_recover_discover(self):
@@ -2935,8 +2952,34 @@ class Engine:
                 if r in done and r not in rec and (e is None or (e.get('status') == 'no_evidence' and
                                                                   int(e.get('tries') or 0) < self.COST_RECOVER_TRIES)):
                     want.add(r)
-        if not want: return False
-        recs = self._cost_recover_scan(want)
+        want_px = set()                                      # FILL-PX-RECOVER-01: a missing price the fee job will not carry
+        for t in list(self.state.get('lots', {}).values()) + rows:
+            pm = set(t.get('px_missing') or ()) - set(t.get('px_refs_recovered') or ())
+            for _i, r in t.get('fill_refs') or ():
+                if r not in pm or r in want: continue
+                f, e = st.get(r), st.get('px|' + r)
+                if f is not None and f.get('status') in ('pending', 'no_evidence', 'apply_pending'): continue
+                if f is not None and f.get('status') == 'failed' and f.get('why') not in self.PX_AFTER_FEE_FAIL: continue
+                if e is None or (e.get('status') == 'no_evidence' and int(e.get('tries') or 0) < self.COST_RECOVER_TRIES):
+                    want_px.add(r)
+        if not want and not want_px: return False
+        recs = self._cost_recover_scan(want | want_px)
+        for r in want_px:
+            rec, k = recs.get(r), 'px|' + r
+            if rec is None:
+                e = st.setdefault(k, dict(status='no_evidence', tries=0, mode='px'))
+                e['tries'] = int(e.get('tries') or 0) + 1
+                if e['tries'] >= self.COST_RECOVER_TRIES: e.update(status='failed', why='no_evidence')
+                continue
+            if _fnum(rec.get('actual')):                     # the record has its price: _px_recover applies it
+                st[k] = dict(status='not_missing', mode='px'); continue
+            try:
+                lo_ms, hi_ms = self._cost_recover_window(rec)
+                qty = float(rec['qty_fill'])
+            except (KeyError, TypeError, ValueError):
+                st[k] = dict(status='failed', why='bad_evidence', mode='px'); continue
+            st[k] = dict(status='pending', mode='px', symbol=rec.get('symbol'), buy=rec.get('buy'), qty=qty, tries=0,
+                         next_s=0, lo_ms=lo_ms, hi_ms=hi_ms)
         for r in want:
             rec = recs.get(r)
             if rec is None:                                  # not on disk (yet): a few scans, then final
@@ -2974,25 +3017,29 @@ class Engine:
             self.state['cost_recover_polled'] = now
             changed = False
             for r, c in list((self.state.get('cost_recover') or {}).items()):   # proven but not durable yet: first
-                if c.get('status') == 'apply_pending' and isinstance(c.get('raw'), list):
-                    self._cost_recover_commit(r, c, c['raw'], now); changed = True
+                if c.get('status') == 'apply_pending' and (isinstance(c.get('raw'), list) or
+                                                           c.get('mode') == 'px' and _fnum(c.get('px'))):
+                    self._cost_recover_commit(r.split('|')[-1], c, c.get('raw'), now, px=c.get('px')); changed = True
             changed = self._cost_recover_discover() or changed
             job = next(((r, dict(e)) for r, e in (self.state.get('cost_recover') or {}).items()
                         if e.get('status') == 'pending' and float(e.get('next_s') or 0) <= now), None)
             if job is None:
                 if changed: self.save_state()
                 return 'idle'
-        ref, e = job
+        sk, e = job
+        ref, px_only = sk.split('|')[-1], e.get('mode') == 'px'
         pad = self.COST_RECOVER_PAD_S * 1000
         try:
             got = rd(e['symbol'], e['lo_ms'] - pad, e['hi_ms'] + pad, self.COST_RECOVER_LIMIT)
-            status, raw, key = AC.match_fill(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']), e['lo_ms'],
-                                        e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
+            status, raw, key, px = AC.match_order(got, e['symbol'], e['buy'], e['qty'], _quote_asset(e['symbol']),
+                                                  e['lo_ms'], e['hi_ms'], limit=self.COST_RECOVER_LIMIT)
         except Exception as ex:                              # outage / cooldown / 429: retried with backoff, never guessed
-            status, raw, key = 'read_failed', None, None
+            status, raw, key, px = 'read_failed', None, None, None
             log.debug(f'commission recovery read failed ({type(ex).__name__})')
+        if px_only and key is not None and status in ('ok', 'amount_unreadable', 'non_quote_asset'):
+            status = 'ok' if px is not None else 'px_unreadable'   # a price job needs the unique order and its price only
         with self.lock:
-            cur = (self.state.get('cost_recover') or {}).get(ref)
+            cur = (self.state.get('cost_recover') or {}).get(sk)
             if cur is None or cur.get('status') != 'pending': return 'stale'
             cur['tries'] = int(cur.get('tries') or 0) + 1
             if status == 'ok':
@@ -3002,7 +3049,7 @@ class Engine:
                     status = 'order_already_consumed'
                 else:
                     cur['order_key'] = key
-                    self._cost_recover_commit(ref, cur, raw, now)
+                    self._cost_recover_commit(ref, cur, raw, now, px=px)
             elif status in self.COST_RECOVER_RETRY and cur['tries'] < self.COST_RECOVER_TRIES:
                 cur.update(why=status, next_s=now + min(3600, 300 * 2 ** (cur['tries'] - 1)))
             else:
