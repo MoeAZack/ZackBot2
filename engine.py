@@ -3935,6 +3935,41 @@ class Engine:
             raise RuntimeError(f"{lot['symbol']} [{lot['sleeve']}] close deferred: its stop fired on Binance and the fill is being "
                                "booked - nothing is sent")
 
+    BOOK_PROBE_WAIT_S = 1.0               # TP-SLIP-01: after a market close is answered, wait at most this for its book read
+
+    def _book_probe(self, sym):
+        """TP-SLIP-01 (#189) evidence: the testnet best bid / ask, read CONCURRENTLY with a market close - started just
+        before the order is sent, so the order is never delayed. PAPER/testnet only (the enrichment gate), on the audit
+        read path (never the outage circuit). -> (thread, box) or None."""
+        if not self._enrich_on() or not callable(getattr(self.trade, 'book_ticker', None)): return None
+        box = {}
+
+        def run():
+            t = time.time()
+            try: box['b'] = self.trade.book_ticker(sym)
+            except Exception as ex: box['err'] = type(ex).__name__
+            box['dt'] = time.time() - t
+        th = threading.Thread(target=run, daemon=True, name='book-probe')
+        th.start()
+        return th, box
+
+    def _book_snapshot(self, probe, mark, buy, qty):
+        """The probe's result for the fill record: touch price / quantity on the side the close takes, its distance from
+        the decision mark in bps (+ = the book was worse than the mark) and how much of the order the touch covered.
+        Evidence only - never used by any decision. None without a probe; {'missing': why} when it did not answer."""
+        if probe is None: return None
+        th, box = probe
+        th.join(self.BOOK_PROBE_WAIT_S)
+        b = box.get('b')
+        if th.is_alive() or not isinstance(b, dict): return dict(missing=box.get('err') or ('timeout' if th.is_alive() else 'bad_answer'))
+        bid, ask, bq, aq = (_fnum(b.get(k)) for k in ('bidPrice', 'askPrice', 'bidQty', 'askQty'))
+        touch, tq = (ask, aq) if buy else (bid, bq)
+        out = dict(bid=bid, ask=ask, bid_qty=bq, ask_qty=aq, ex_ms=b.get('time'), fetch_s=round(box.get('dt') or 0.0, 3))
+        m = _fnum(mark)
+        if m and touch: out['touch_vs_mark_bps'] = round((touch - m) / m * 1e4 * (1 if buy else -1), 2) + 0.0
+        if tq is not None and qty: out['touch_cover'] = round(tq / float(qty), 4)
+        return out
+
     def _market_close(self, lot, qty, why, mark=None, post=None, cid=None):
         """Close qty at market. If Binance's answer is lost (AmbiguousOrder) the lot is marked 'pending' and reconcile()
         decides from the real position whether it filled - so a partial take-profit can never fire twice."""
@@ -3945,6 +3980,7 @@ class Engine:
         px = mark or lot['avg']
         if not self.dry:
             lot['last_order_t'] = t0 = time.time()
+            probe = self._book_probe(sym)                                  # TP-SLIP-01: evidence read, in parallel
             try:
                 o = (self.trade.close(sym, lot['side'], self._fmt(qty, r['step'])) if cid is None   # RISK-FILL-01: a trim is
                      else self.trade.close(sym, lot['side'], self._fmt(qty, r['step']), cid=cid))     # sent under its write-ahead id
@@ -3953,8 +3989,9 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
+            book = self._book_snapshot(probe, mark, lot['side'] == 'SHORT', qty)
             ref = (self._fill('exit', sym, lot['side'], lot['side'] == 'SHORT', mark, act, qty, o.get('executedQty'), t0, order=o, cost_lot=lot, reason=why,
-                       **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
+                       book=book, **({'outcome': 'unfilled'} if got == 0 else {})) or {}).get('cost_ref')
             if got is None: self._unknown_answer(lot, 'close', qty, px, why, post, o)
             if got <= 0:
                 raise UnfilledOrder(f"{sym} {why}: Binance {o.get('status')} - nothing executed, the position is unchanged")
