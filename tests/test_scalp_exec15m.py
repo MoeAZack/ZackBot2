@@ -934,3 +934,16 @@ def test_main_refuses_wrong_b0_digest_before_running_cell(tmp_path, monkeypatch)
             '--variant', 'B1', '--b0-packet', str(b0)]
     with pytest.raises(X.ScalpExecError, match='not the same'):
         X.main(argv)
+
+
+def test_entry_keys_share_the_replay_flatness_boundary_for_dust_reopens():
+    # #187 legal dust/reopen: the sub-step remainder is flat in replay, so the reopen is a new entry
+    dust = [dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1000.0),
+            dict(sym=SYM, ps='LONG', act='close', t_ms=2, qty=999.9999995),
+            dict(sym=SYM, ps='LONG', act='open', t_ms=3, qty=0.1),
+            dict(sym=SYM, ps='LONG', act='close', t_ms=4, qty=0.1000005)]
+    assert [x['decision_ms'] for x in X.entry_keys(dust, 'SC-QBANK')] == [1, 3]
+    real = [dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1000.0),            # one whole step left = still open
+            dict(sym=SYM, ps='LONG', act='close', t_ms=2, qty=1000.0 - 1e-5),
+            dict(sym=SYM, ps='LONG', act='open', t_ms=3, qty=0.1)]
+    assert [x['decision_ms'] for x in X.entry_keys(real, 'SC-QBANK')] == [1]

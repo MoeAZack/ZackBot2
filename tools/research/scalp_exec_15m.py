@@ -334,16 +334,20 @@ def _rf_legs(t, h):
     return [(rf.get(str(i)) or {}).get('action') if isinstance(rf.get(str(i)), dict) else None for i in idx], None
 
 
-def trades_of(fill_log, history) -> list[dict]:
+def trades_of(fill_log, history, exchange_rules=None) -> list[dict]:
     """Group the simulated fills into one trade per engine lot per (symbol, side) and attach the engine's risk_usd
     (history, in close order). #187 (Codex 6372669079): an add / second entry on an open lot joins that lot's trade as
     a further entry leg (entries, causal order; entry = the first leg, which anchors the stop and the times), so no
     lot is dropped or split. Fails closed on a close without an open lot, an over-close, a non-positive quantity, a
     trade whose legs are not its history row's own booked fills (ambiguous lot identity / row order) and an add lot
     without an authoritative risk_usd."""
-    open_, done = {}, []
+    import replay as RP
+    open_, done, carry, recent = {}, [], {}, {}
     for f in fill_log:
         k = (f['sym'], f['ps'])
+        if f['act'] != 'stop_set':
+            recent.setdefault(k, []).append((f['act'], f['qty'], f.get('t_ms')))
+            recent[k] = recent[k][-8:]
         if f['act'] == 'stop_set':                  # the first stop placed after the entry = the planned stop
             if k in open_ and 'stop0' not in open_[k]: open_[k]['stop0'] = f['ref']
             continue
@@ -360,11 +364,35 @@ def trades_of(fill_log, history) -> list[dict]:
             tr = open_.get(k)
             if tr is None:
                 raise ScalpExecError(f'{k}: close without an open lot in the fill log')
-            tr['closes'].append(f); tr['qty'] -= f['qty']; tr['seq'].append((False, f['qty']))
-            tol = 1e-9 * max(1.0, sum(x['qty'] for x in tr['entries']))
-            if tr['qty'] < -tol:
-                raise ScalpExecError(f'{k}: the closes exceed the quantity entered on the lot')
+            entered = sum(x['qty'] for x in tr['entries'])
+            eps = 1e-12 * max(1.0, entered)
+            tol = RP.qty_flat_tolerance(k[0], exchange_rules)
+            qty = f['qty']
+            if qty > tr['qty'] + eps:
+                excess = qty - tr['qty']
+                if excess > carry.get(k, 0.0) + eps:
+                    raise ScalpExecError(f'{k}: the closes exceed the quantity entered on the lot '
+                                         f'(residual={tr["qty"]:.17g}, carry={carry.get(k, 0.0):.17g}, '
+                                         f'flat_tolerance={tol:.17g}, '
+                                         f'recent={recent[k]})')
+                qty = tr['qty']
+                carry[k] = max(0.0, carry.get(k, 0.0) - excess)
+            close = dict(f, qty=qty)
+            tr['closes'].append(close); tr['qty'] -= qty; tr['seq'].append((False, qty))
+            if tr['qty'] < -eps:
+                raise ScalpExecError(f'{k}: the closes exceed the quantity entered on the lot '
+                                     f'(residual={tr["qty"]:.17g}, carry={carry.get(k, 0.0):.17g}, '
+                                     f'flat_tolerance={tol:.17g}, '
+                                     f'recent={recent[k]})')
             if tr['qty'] <= tol:
+                dust = max(0.0, tr['qty'])
+                if dust:
+                    tr['closes'][-1]['qty'] += dust
+                    tr['seq'][-1] = (False, tr['seq'][-1][1] + dust)
+                    carry[k] = carry.get(k, 0.0) + dust
+                elif qty == f['qty']:
+                    carry.pop(k, None)              # the next lot closed exactly: replay discarded the old dust
+                tr['qty'] = 0.0
                 done.append(open_.pop(k))
     hist = {}
     for h in history:
@@ -482,10 +510,10 @@ class Pricer:
         return tot
 
 
-def account_trades(fills, history, paid) -> list[dict]:
+def account_trades(fills, history, paid, exchange_rules=None) -> list[dict]:
     """Per-trade net from the priced fills (fill price, fee) plus the funding paid while the lot was open."""
     out = []
-    for tr in trades_of(fills, history):
+    for tr in trades_of(fills, history, exchange_rules):
         sd = 1 if tr['ps'] == 'LONG' else -1
         e, ents = tr['entry'], tr.get('entries') or [tr['entry']]
         gross = sd * (math.fsum(f['px'] * f['qty'] for f in tr['closes']) - math.fsum(x['px'] * x['qty'] for x in ents))
@@ -681,9 +709,11 @@ def _sides(rows, get, weeks):
     return {sd: summary([get(r) for r in rows if sd in ('ALL', r['side'])], weeks) for sd in ('ALL', 'LONG', 'SHORT')}
 
 
-def entry_keys(fill_log, sleeve: str) -> list[dict]:
+def entry_keys(fill_log, sleeve: str, exchange_rules=None) -> list[dict]:
     """Stable audit identity of every lot's first entry, including lots open at the window end. Adds are not new
-    entries. `t_ms` is the replay decision/fill stamp used throughout this packet; a QBank cell has one frozen sleeve."""
+    entries. `t_ms` is the replay decision/fill stamp used throughout this packet; a QBank cell has one frozen sleeve.
+    A lot is flat at the replay's own step-aware boundary (#187), so a legal reopen after sub-step dust is a new entry."""
+    import replay as RP
     qty, out = {}, []
     for f in fill_log:
         if f['act'] == 'stop_set':
@@ -695,6 +725,8 @@ def entry_keys(fill_log, sleeve: str) -> list[dict]:
             qty[k] = qty.get(k, 0.0) + float(f['qty'])
         else:
             qty[k] = qty.get(k, 0.0) - float(f['qty'])
+            if qty[k] <= RP.qty_flat_tolerance(k[0], exchange_rules):
+                qty[k] = 0.0
     vals = [(x['sleeve'], x['symbol'], x['side'], x['decision_ms']) for x in out]
     if len(vals) != len(set(vals)):
         raise ScalpExecError('duplicate entry key in one replay')
@@ -753,7 +785,7 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
                                  latency_s=latency_s, gate=gate)
     B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in run.items()}
     rows = []
-    for tr in trades_of(fills, out['history']):
+    for tr in trades_of(fills, out['history'], rules):
         s = tr['sym']
         rec = dict(sym=s, side=tr['ps'], entry_ms=tr['entry']['t_ms'], exit_ms=tr['closes'][-1]['t_ms'],
                    qty=tr['qty_in'], adds=tr['adds'], add_qty=tr['add_qty'], exit_kinds=[f['kind'] for f in tr['closes']],
@@ -769,8 +801,8 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
         pr = Pricer(scen[name], model, run, funding=funding, rules=rules)
         o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
                               latency_s=latency_s, pricer=pr, gate=gate, replay=name)
-        ts = account_trades(f2, o2['history'], pr.paid)
-        acct_keys[name] = entry_keys(f2, sleeves[0]['id'])
+        ts = account_trades(f2, o2['history'], pr.paid, rules)
+        acct_keys[name] = entry_keys(f2, sleeves[0]['id'], rules)
         acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
                           adds=add_stats(ts, o2['lots']),
                           risk_fill=rf_counts(ts), risk_fill_basis=rf_basis(ts),
@@ -782,7 +814,7 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
     incomplete = acct_inc or bool(bad) or any(not r['rows'][n]['complete'] for r in rows for n in r['rows']
                                               if scen[n].funding_mode == 'actual')
     sleeve_id = sleeves[0]['id']
-    keys = {'reference': entry_keys(fills, sleeve_id)}
+    keys = {'reference': entry_keys(fills, sleeve_id, rules)}
     keys.update(acct_keys)
     return dict(format=FORMAT, non_promotable=True, limitation=LIMITATION, latency_s=latency_s,
                 entry_gate=dict(variant=variant, frozen='6375498248', rejected=gate.rejected if gate else {},
