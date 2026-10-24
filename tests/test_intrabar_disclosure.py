@@ -256,3 +256,7 @@ def test_disclose_does_not_flag_a_segment_by_the_opposite_sides_exit(inject, mon
     monkeypatch.setattr(X, 'trades_of', lambda *a, **k: [dict(t, ps='SHORT') for t in real(*a, **k)])
     seg, = D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0)['symbols'][SYM]['segments']
     assert seg['side'] == 'LONG' and seg['overlaps_closed_trade_exit'] is False and seg['exit_kinds'] == []
+
+
+def test_a_two_sided_held_set_is_disclosed_as_both():
+    assert D._side({1}) == 'LONG' and D._side({-1}) == 'SHORT' and D._side({1, -1}) == 'BOTH'
