@@ -166,6 +166,10 @@ def test_reproduces_run_cell_aggregates_and_refuses_a_packet_it_does_not(inject)
     bad['intrabar']['unresolved'] += 1
     with pytest.raises(D.DisclosureError, match='does not reproduce'):
         D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=bad, identity=ident)
+    bad = copy.deepcopy(pk)
+    bad['intrabar']['by_label'][X.ONE_LEVEL] += 1                        # labels differ, totals equal
+    with pytest.raises(D.DisclosureError, match='does not reproduce'):
+        D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=bad, identity=ident)
 
 
 def _packet(raw, m):
@@ -275,3 +279,44 @@ def test_an_identity_field_missing_on_either_side_is_refused_even_if_both_are_no
                       ({k: v for k, v in full.items() if k != field}, {k: v for k, v in full.items() if k != field})):
         with pytest.raises(D.DisclosureError, match=f"identity incomplete.*'{field}'"):
             D.check_identity(pk, ident)
+
+
+SYM2 = 'XRPUSDT'
+
+
+def test_per_symbol_counts_and_shares_use_that_symbols_own_trades(inject):
+    import engine as E
+    m, t_e = _same_minute()
+    m2 = _flat_minutes(300)
+    _set(m2, t_e + pd.Timedelta(minutes=3), 100.0, 102.0, 99.6, 100.0)  # SYM2: target only, resolved
+    raw = {SYM: _agg(m), SYM2: _agg(m2)}
+    inject(raw)
+    sl = [E.sleeve('SC', 'exp_scalp', 1.0, 0.01, 2, [SYM, SYM2], sides='long', tf='15m')]
+    res = D.disclose(raw, {SYM: m, SYM2: m2}, sl, T0, start=500.0)
+    a, b = res['symbols'][SYM], res['symbols'][SYM2]
+    assert a['trades'] >= 1 and b['trades'] >= 1 and a['trades'] + b['trades'] == res['trades']
+    assert (a['unresolved'], b['unresolved']) == (1, 0) and b['segments'] == []
+    assert a['unresolved_share'] == 1 / a['trades'] and b['unresolved_share'] == 0.0
+    assert res['unresolved_share'] == 1 / res['trades']
+
+
+def test_cli_packet_projection_keeps_a_missing_key_missing_and_is_refused(tmp_path):
+    import hashlib
+    import json
+    ident = {k: None for k in D.IDENTITY}                # requested static_digest is None too
+    pk = dict(ident, intrabar=dict(segments=0, by_label={}, unresolved=0), repriced=dict(trades=[]))
+    del pk['static_digest']
+    f = tmp_path / 'p.json'
+    f.write_text(json.dumps(pk), encoding='utf-8')
+    got, sha = D.load_packet(str(f))
+    assert sha == hashlib.sha256(f.read_bytes()).hexdigest() and 'static_digest' not in got
+    with pytest.raises(D.DisclosureError, match="identity incomplete.*'static_digest'"):
+        D.check_identity(got, ident)
+    with pytest.raises(D.DisclosureError, match="identity incomplete.*'static_digest'"):
+        D.disclose({}, {}, [], T0, packet=got, identity=ident)   # refused before any replay
+
+
+def test_main_uses_the_absence_preserving_projection():
+    import inspect
+    src = inspect.getsource(D.main)
+    assert 'load_packet(a.packet)' in src and '.get(k)' not in src

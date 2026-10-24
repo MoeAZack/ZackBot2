@@ -142,6 +142,17 @@ def disclose(raw15, minutes, sleeves, t0, *, funding=None, exchange_rules=None, 
                 unresolved_share=unres / len(trades) if trades else 0.0, symbols=per)
 
 
+def load_packet(path) -> tuple:
+    """(the packet's identity fields that are present + its intrabar counts and trades, SHA-256 of the file bytes).
+    A missing identity key stays missing, so check_identity refuses it."""
+    with open(path, 'rb') as fh:
+        raw = fh.read()
+    pk = json.loads(raw)
+    packet = {k: pk[k] for k in IDENTITY if k in pk}
+    packet.update(intrabar=pk['intrabar'], repriced=dict(trades=pk['repriced']['trades']))
+    return packet, hashlib.sha256(raw).hexdigest()
+
+
 def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description='INTRABAR-DISCLOSURE-01: price-free unresolved-segment disclosure')
@@ -171,13 +182,7 @@ def main(argv=None) -> int:
                     config_sha256=X.CONFIG_SHA256, config_digest=X.config_digest(sleeves),
                     manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], code=X.code_ids())
     if a.packet:
-        with open(a.packet, 'rb') as fh:
-            raw = fh.read()
-        packet_sha = hashlib.sha256(raw).hexdigest()
-        pk = json.loads(raw)
-        packet = {k: pk.get(k) for k in IDENTITY}
-        packet.update(intrabar=pk['intrabar'], repriced=dict(trades=pk['repriced']['trades']))
-        del pk, raw
+        packet, packet_sha = load_packet(a.packet)
     raw15 = data['raw15']
     res = disclose(raw15, data['minutes'], sleeves, X.window_start(raw15, lo),
                    funding=data['funding'], exchange_rules=rules, start=a.start, latency_s=a.latency_s,
