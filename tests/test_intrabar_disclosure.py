@@ -258,5 +258,20 @@ def test_disclose_does_not_flag_a_segment_by_the_opposite_sides_exit(inject, mon
     assert seg['side'] == 'LONG' and seg['overlaps_closed_trade_exit'] is False and seg['exit_kinds'] == []
 
 
-def test_a_two_sided_held_set_is_disclosed_as_both():
+def test_a_two_sided_held_set_is_disclosed_as_both_and_its_overlap_unions_both_sides():
     assert D._side({1}) == 'LONG' and D._side({-1}) == 'SHORT' and D._side({1, -1}) == 'BOTH'
+    t = 1_000 * X.TF_MS
+    ex = D.exits_by_side([dict(sym=SYM, ps='LONG', closes=[dict(t_ms=t + 60_000, kind='tp')]),
+                          dict(sym=SYM, ps='SHORT', closes=[dict(t_ms=t + 120_000, kind='stop')])])
+    assert D.exit_overlap(ex, SYM, D._side({1, -1}), t) == ['stop', 'tp']
+
+
+@pytest.mark.parametrize('field', ['key', 'static_digest', 'code'])
+def test_an_identity_field_missing_on_either_side_is_refused_even_if_both_are_none(field):
+    full = {k: None for k in D.IDENTITY}
+    D.check_identity(dict(full), dict(full))                             # all present: equal None is equal
+    for pk, ident in ((full, {k: v for k, v in full.items() if k != field}),
+                      ({k: v for k, v in full.items() if k != field}, full),
+                      ({k: v for k, v in full.items() if k != field}, {k: v for k, v in full.items() if k != field})):
+        with pytest.raises(D.DisclosureError, match=f"identity incomplete.*'{field}'"):
+            D.check_identity(pk, ident)

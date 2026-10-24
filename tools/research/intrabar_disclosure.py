@@ -91,8 +91,12 @@ def exits_by_side(trades) -> dict:
 
 
 def check_identity(packet, identity) -> None:
-    """The packet must be the run being disclosed: every identity field equal, not only its counts."""
-    bad = sorted(k for k in IDENTITY if packet.get(k) != identity.get(k))
+    """The packet must be the run being disclosed: every identity field present on both sides and equal, not only its
+    counts (a field missing on both sides is refused, never treated as equal None)."""
+    missing = sorted(k for k in IDENTITY if k not in packet or k not in identity)
+    if missing:
+        raise DisclosureError(f'packet identity incomplete: {missing}')
+    bad = sorted(k for k in IDENTITY if packet[k] != identity[k])
     if bad:
         raise DisclosureError(f'packet identity differs from the requested run: {bad}')
 
