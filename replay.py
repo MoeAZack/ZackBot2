@@ -21,6 +21,18 @@ STRICT = dict(matched_pct=98.0, med_dr=0.05, p95_dr=0.25, ret_gap=3.0, dd_gap=2.
 LOOSE_RET_GAP = 15.0          # interim hard gate while the shared-core refactor is pending
 
 
+def qty_flat_tolerance(symbol, exchange_rules=None):
+    """Largest sub-step remainder that the simulated exchange treats as flat.
+
+    Keep this boundary shared with the execution-packet reconstruction.  A whole
+    exchange step is real quantity; only a strictly smaller remainder is dust.
+    """
+    rules = F.snapshot_rules(exchange_rules)
+    rule = (rules or {}).get(symbol) or {}
+    step = float(rule.get('step') or 1e-5)
+    return max(1e-12, 0.99 * step)
+
+
 class SyncEnricher:
     """B1 (SCALP-EXEC-15M-01): the engine's fill enrichment run inline - the same enrich_attempt / enrich_finish, at most
     ENRICH_ATTEMPTS reads, no thread and no clock - so a replay stays deterministic. The record goes only to the engine's
@@ -103,8 +115,9 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         ls = [l for l in W.lots if l['s'] == s and l['ps'] == ps]
         if len(ls) > 1:
             q = sum(l['q'] for l in ls); avg = sum(l['q'] * l['avg'] for l in ls) / q
+            q_in = sum(l.get('q_in', l['q']) for l in ls)
             for l in ls: W.lots.remove(l)
-            W.lots.append(dict(s=s, ps=ps, q=q, avg=avg))
+            W.lots.append(dict(s=s, ps=ps, q=q, q_in=q_in, avg=avg))
 
     def reduce(s, ps, q, px, kind='market', ref=None):
         l = next((l for l in W.lots if l['s'] == s and l['ps'] == ps), None)
@@ -113,7 +126,11 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         q = min(q, l['q']); sd = 1 if ps == 'LONG' else -1
         px, fee = priced(log_fill(s, ps, 'close', kind, q, px if ref is None else ref), px)
         W.cash += sd * (px - l['avg']) * q - fee; l['q'] -= q
-        if l['q'] <= 1e-12: W.lots.remove(l)
+        tol = qty_flat_tolerance(s, XR)
+        if 1e-12 < l['q'] <= tol:
+            lg.warning('replay sub-step remainder treated as flat: %s %s residual=%.17g tolerance=%.17g',
+                       s, ps, l['q'], tol)
+        if l['q'] <= tol: W.lots.remove(l)
         return px
 
     def equity():
@@ -158,7 +175,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def positions(self):
             out = {}
             for l in W.lots: out[(l['s'], l['ps'])] = out.get((l['s'], l['ps']), 0) + l['q']
-            return {k: v for k, v in out.items() if v > 1e-12}
+            return {k: v for k, v in out.items() if v > qty_flat_tolerance(k[0], XR)}
         def hedge_mode(self): return True
         def set_hedge_mode(self, on=True): pass
         def set_leverage(self, *a): pass
@@ -166,7 +183,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         def open(self, s, ps, qty):
             q = float(qty); sd = 1 if ps == 'LONG' else -1
             px, fee = priced(log_fill(s, ps, 'open', 'market', q, W.mark[s]), W.mark[s] * (1 + sd * SLIP))
-            W.cash -= fee; W.lots.append(dict(s=s, ps=ps, q=q, avg=px)); merge(s, ps)
+            W.cash -= fee; W.lots.append(dict(s=s, ps=ps, q=q, q_in=q, avg=px)); merge(s, ps)
             return {'avgPrice': str(px)}
         def close(self, s, ps, qty):
             q = float(qty); sd = 1 if ps == 'LONG' else -1; px = W.mark[s] * (1 - sd * SLIP)
