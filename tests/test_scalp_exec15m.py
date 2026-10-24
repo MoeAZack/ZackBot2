@@ -832,13 +832,56 @@ def test_entry_keys_and_same_cell_b0_substitutions_are_reported_per_replay():
         'reference': {'entries': 2, 'entries_not_in_b0': 2}}
 
 
-def test_b0_substitution_comparison_refuses_a_different_cell_or_replay_shape():
+def test_entry_keys_ignore_stop_rows_and_refuse_duplicate_entry_identity():
+    fills = [dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1),
+             dict(sym=SYM, ps='LONG', act='stop_set', t_ms=1, qty=10),
+             dict(sym=SYM, ps='LONG', act='close', t_ms=2, qty=1),
+             dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1)]
+    with pytest.raises(X.ScalpExecError, match='duplicate entry key'):
+        X.entry_keys(fills, 'SC-QBANK')
+
+
+@pytest.mark.parametrize('field,value', [
+    ('key', 'range_scalp'), ('side', 'short'), ('window', 'C/D'), ('symbols', ['ETHUSDT']),
+    ('latency_s', 60), ('config_sha256', 'other'), ('manifest_digest', 'other'),
+    ('static_digest', 'other'), ('cost_model_digest', 'other')])
+def test_b0_substitution_comparison_refuses_each_different_cell_field(field, value):
+    common = dict(key='quick_bank_runner', side='long', window='A/B', symbols=['BTCUSDT'], latency_s=0,
+                  config_sha256='sealed', manifest_digest='manifest', static_digest='static',
+                  cost_model_digest='cost')
+    b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': []}})
+    bad_cell = dict(common, variant='B1', entry_gate={'entry_keys': {'reference': []}})
+    bad_cell[field] = value
+    with pytest.raises(X.ScalpExecError, match='not the same'):
+        X.add_b0_substitutions(bad_cell, b0)
+
+
+def test_b0_substitution_comparison_refuses_a_different_replay_shape():
     common = dict(key='quick_bank_runner', side='long', window='A/B', symbols=['BTCUSDT'], latency_s=0,
                   config_sha256='sealed')
     b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': []}})
-    bad_cell = dict(common, variant='B1', latency_s=60, entry_gate={'entry_keys': {'reference': []}})
-    with pytest.raises(X.ScalpExecError, match='not the same'):
-        X.add_b0_substitutions(bad_cell, b0)
     bad_shape = dict(common, variant='B1', entry_gate={'entry_keys': {'base': []}})
     with pytest.raises(X.ScalpExecError, match='different replay'):
         X.add_b0_substitutions(bad_shape, b0)
+
+
+def test_b0_substitution_comparison_refuses_non_b0_packet():
+    common = dict(key='quick_bank_runner', side='long', window='A/B', symbols=['BTCUSDT'], latency_s=0,
+                  config_sha256='sealed')
+    variant = dict(common, variant='B1', entry_gate={'entry_keys': {'reference': []}})
+    with pytest.raises(X.ScalpExecError, match='not the same'):
+        X.add_b0_substitutions(variant, dict(variant, entry_gate={'entry_keys': {'reference': []}}))
+
+
+@pytest.mark.parametrize('variant,b0_arg,match', [
+    ('B0', 'comparison.json', 'only valid for B1-B3'),
+    ('B1', None, 'required for B1-B3')])
+def test_main_refuses_invalid_b0_packet_usage_before_loading_inputs(tmp_path, variant, b0_arg, match):
+    argv = ['--config', 'missing-config', '--manifest', 'missing-manifest', '--store', 'missing-store',
+            '--static', 'missing-static', '--out', str(tmp_path / 'out.json'), '--symbols', 'BTCUSDT',
+            '--window', '2026-01-01/2026-01-02', '--key', 'quick_bank_runner', '--side', 'both',
+            '--latency-s', '0', '--cal', 'missing-cal', '--variant', variant]
+    if b0_arg:
+        argv += ['--b0-packet', b0_arg]
+    with pytest.raises(X.ScalpExecError, match=match):
+        X.main(argv)

@@ -708,13 +708,20 @@ def _key_set(rows) -> set[tuple]:
         raise ScalpExecError(f'invalid entry key in B0 comparison: {ex}') from ex
 
 
+_B0_CELL_FIELDS = ('key', 'side', 'window', 'symbols', 'latency_s', 'config_sha256', 'manifest_digest',
+                   'static_digest', 'cost_model_digest')
+
+
+def check_b0_cell(packet: dict, b0: dict, fields=_B0_CELL_FIELDS) -> None:
+    """Refuse a non-B0 or wrong-cell comparison packet before expensive replay work starts."""
+    if b0.get('variant') != 'B0' or any(packet.get(k) != b0.get(k) for k in fields):
+        raise ScalpExecError('B0 comparison packet is not the same key/side/window/symbols/latency/config cell')
+
+
 def add_b0_substitutions(packet: dict, b0: dict) -> None:
     """Attach same-cell counts of variant entries absent from B0. This is reporting only: portfolio knock-on entries
     are substitutions, so B1-B3 must never be interpreted as filtered subsets of B0."""
-    fields = ('key', 'side', 'window', 'symbols', 'latency_s', 'config_sha256', 'manifest_digest', 'static_digest',
-              'cost_model_digest')
-    if b0.get('variant') != 'B0' or any(packet.get(k) != b0.get(k) for k in fields):
-        raise ScalpExecError('B0 comparison packet is not the same key/side/window/symbols/latency/config cell')
+    check_b0_cell(packet, b0)
     mine = packet.get('entry_gate', {}).get('entry_keys')
     base = b0.get('entry_gate', {}).get('entry_keys')
     if not isinstance(mine, dict) or not isinstance(base, dict) or set(mine) != set(base):
@@ -930,13 +937,28 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if os.path.exists(a.out):
         raise ScalpExecError(f'{a.out} exists (packets are never overwritten)')
+    if a.variant == 'B0' and a.b0_packet:
+        raise ScalpExecError('--b0-packet is only valid for B1-B3')
+    if a.variant != 'B0' and not a.b0_packet:
+        raise ScalpExecError('--b0-packet is required for B1-B3')
     lo, hi = (int(pd.Timestamp(x).value // 10 ** 6) for x in a.window.split('/'))
     doc, cfg_sha = sealed_config(a.config, a.key)
     syms = a.symbols.split(',')
+    b0 = None
+    if a.b0_packet:
+        with open(a.b0_packet, encoding='utf-8') as fh:
+            b0 = json.load(fh)
+        check_b0_cell(dict(key=a.key, side=a.side, window=a.window, symbols=syms, latency_s=a.latency_s,
+                           config_sha256=cfg_sha), b0,
+                      fields=('key', 'side', 'window', 'symbols', 'latency_s', 'config_sha256'))
     data = load_store(a.manifest, a.store, a.static, syms, lo, hi)
     with open(a.cal, encoding='utf-8') as fh:
         cal = json.load(fh)                         # the calibration itself, or a prereg holding costs.slip_cal_v1
         model = C.CostModel(cal.get('costs', {}).get('slip_cal_v1', cal), {s: 'crypto' for s in syms})
+    if b0 is not None:
+        check_b0_cell(dict(key=a.key, side=a.side, window=a.window, symbols=syms, latency_s=a.latency_s,
+                           config_sha256=cfg_sha, manifest_digest=data['manifest_digest'],
+                           static_digest=data['static_digest'], cost_model_digest=model.digest), b0)
     rules = None
     if a.rules:
         with open(a.rules, encoding='utf-8') as fh:
@@ -948,16 +970,11 @@ def main(argv=None) -> int:
     pk.update(variant=a.variant, key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
               manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=cfg_sha)
     if a.variant == 'B0':
-        if a.b0_packet:
-            raise ScalpExecError('--b0-packet is only valid for B1-B3')
         pk['entry_gate']['b0_substitutions'] = {
             replay: dict(entries=len(rows), entries_not_in_b0=0)
             for replay, rows in sorted(pk['entry_gate']['entry_keys'].items())}
     else:
-        if not a.b0_packet:
-            raise ScalpExecError('--b0-packet is required for B1-B3')
-        with open(a.b0_packet, encoding='utf-8') as fh:
-            add_b0_substitutions(pk, json.load(fh))
+        add_b0_substitutions(pk, b0)
     pk['candle_depth'] = candle_depth(a.key)
     pk['trials'] = trial_records(pk, key=a.key, side=a.side, variant=a.variant)
     with open(a.out, 'x', encoding='utf-8') as fh:
