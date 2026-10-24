@@ -714,7 +714,10 @@ _B0_CELL_FIELDS = ('key', 'side', 'window', 'symbols', 'latency_s', 'config_sha2
 
 def check_b0_cell(packet: dict, b0: dict, fields=_B0_CELL_FIELDS) -> None:
     """Refuse a non-B0 or wrong-cell comparison packet before expensive replay work starts."""
-    if b0.get('variant') != 'B0' or any(packet.get(k) != b0.get(k) for k in fields):
+    if not isinstance(b0, dict):
+        raise ScalpExecError('B0 comparison packet must be a JSON object')
+    if b0.get('variant') != 'B0' or b0.get('status') != 'COMPLETE' or any(
+            packet.get(k) != b0.get(k) for k in fields):
         raise ScalpExecError('B0 comparison packet is not the same key/side/window/symbols/latency/config cell')
 
 

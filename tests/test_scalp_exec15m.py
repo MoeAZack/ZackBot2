@@ -6,6 +6,7 @@ falls back to a labelled stop-first path, inconsistent 1m data refuses, funding 
 refuses, and re-pricing with the legacy cost constants reproduces the engine's own price P&L.
 """
 import copy
+import json
 import os
 import subprocess
 import sys
@@ -823,7 +824,7 @@ def test_entry_keys_and_same_cell_b0_substitutions_are_reported_per_replay():
                     dict(sleeve='SC-QBANK', symbol='ETHUSDT', side='LONG', decision_ms=2)]
     common = dict(key='quick_bank_runner', side='both', window='A/B', symbols=['BTCUSDT', 'ETHUSDT'], latency_s=0,
                   config_sha256='sealed')
-    b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': [], 'base': []}})
+    b0 = dict(common, variant='B0', status='COMPLETE', entry_gate={'entry_keys': {'reference': [], 'base': []}})
     variant = dict(common, variant='B2', entry_gate={'entry_keys': {
         'reference': keys, 'base': keys[:1] + [dict(sleeve='SC-QBANK', symbol='SOLUSDT', side='LONG', decision_ms=3)]}})
     X.add_b0_substitutions(variant, b0)
@@ -833,12 +834,16 @@ def test_entry_keys_and_same_cell_b0_substitutions_are_reported_per_replay():
 
 
 def test_entry_keys_ignore_stop_rows_and_refuse_duplicate_entry_identity():
-    fills = [dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1),
-             dict(sym=SYM, ps='LONG', act='stop_set', t_ms=1, qty=10),
-             dict(sym=SYM, ps='LONG', act='close', t_ms=2, qty=1),
-             dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1)]
+    stop_rows = [dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1),
+                 dict(sym=SYM, ps='LONG', act='stop_set', t_ms=1, qty=10),
+                 dict(sym=SYM, ps='LONG', act='open', t_ms=2, qty=1)]
+    assert X.entry_keys(stop_rows, 'SC-QBANK') == [
+        dict(sleeve='SC-QBANK', symbol=SYM, side='LONG', decision_ms=1)]
+    duplicate = [dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1),
+                 dict(sym=SYM, ps='LONG', act='close', t_ms=2, qty=1),
+                 dict(sym=SYM, ps='LONG', act='open', t_ms=1, qty=1)]
     with pytest.raises(X.ScalpExecError, match='duplicate entry key'):
-        X.entry_keys(fills, 'SC-QBANK')
+        X.entry_keys(duplicate, 'SC-QBANK')
 
 
 @pytest.mark.parametrize('field,value', [
@@ -849,7 +854,7 @@ def test_b0_substitution_comparison_refuses_each_different_cell_field(field, val
     common = dict(key='quick_bank_runner', side='long', window='A/B', symbols=['BTCUSDT'], latency_s=0,
                   config_sha256='sealed', manifest_digest='manifest', static_digest='static',
                   cost_model_digest='cost')
-    b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': []}})
+    b0 = dict(common, variant='B0', status='COMPLETE', entry_gate={'entry_keys': {'reference': []}})
     bad_cell = dict(common, variant='B1', entry_gate={'entry_keys': {'reference': []}})
     bad_cell[field] = value
     with pytest.raises(X.ScalpExecError, match='not the same'):
@@ -859,7 +864,7 @@ def test_b0_substitution_comparison_refuses_each_different_cell_field(field, val
 def test_b0_substitution_comparison_refuses_a_different_replay_shape():
     common = dict(key='quick_bank_runner', side='long', window='A/B', symbols=['BTCUSDT'], latency_s=0,
                   config_sha256='sealed')
-    b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': []}})
+    b0 = dict(common, variant='B0', status='COMPLETE', entry_gate={'entry_keys': {'reference': []}})
     bad_shape = dict(common, variant='B1', entry_gate={'entry_keys': {'base': []}})
     with pytest.raises(X.ScalpExecError, match='different replay'):
         X.add_b0_substitutions(bad_shape, b0)
@@ -873,6 +878,14 @@ def test_b0_substitution_comparison_refuses_non_b0_packet():
         X.add_b0_substitutions(variant, dict(variant, entry_gate={'entry_keys': {'reference': []}}))
 
 
+@pytest.mark.parametrize('b0,match', [
+    ([], 'JSON object'),
+    ({'variant': 'B0', 'status': 'INCOMPLETE'}, 'not the same')])
+def test_b0_substitution_comparison_refuses_invalid_or_incomplete_packet(b0, match):
+    with pytest.raises(X.ScalpExecError, match=match):
+        X.check_b0_cell({}, b0, fields=())
+
+
 @pytest.mark.parametrize('variant,b0_arg,match', [
     ('B0', 'comparison.json', 'only valid for B1-B3'),
     ('B1', None, 'required for B1-B3')])
@@ -884,4 +897,40 @@ def test_main_refuses_invalid_b0_packet_usage_before_loading_inputs(tmp_path, va
     if b0_arg:
         argv += ['--b0-packet', b0_arg]
     with pytest.raises(X.ScalpExecError, match=match):
+        X.main(argv)
+
+
+def test_main_refuses_wrong_b0_identity_before_loading_store(tmp_path, monkeypatch):
+    b0 = tmp_path / 'b0.json'
+    window = '2026-01-01/2026-01-02'
+    b0.write_text(json.dumps(dict(variant='B0', status='COMPLETE', key='quick_bank_runner', side='long',
+                                  window=window, symbols=[SYM], latency_s=0, config_sha256='sealed')))
+    monkeypatch.setattr(X, 'sealed_config', lambda *_: ({}, 'sealed'))
+    monkeypatch.setattr(X, 'load_store', lambda *_args, **_kw: pytest.fail('load_store reached'))
+    argv = ['--config', 'config', '--manifest', 'manifest', '--store', 'store', '--static', 'static',
+            '--out', str(tmp_path / 'out.json'), '--symbols', SYM, '--window', window,
+            '--key', 'quick_bank_runner', '--side', 'both', '--latency-s', '0', '--cal', 'cal',
+            '--variant', 'B1', '--b0-packet', str(b0)]
+    with pytest.raises(X.ScalpExecError, match='not the same'):
+        X.main(argv)
+
+
+def test_main_refuses_wrong_b0_digest_before_running_cell(tmp_path, monkeypatch):
+    b0 = tmp_path / 'b0.json'
+    window = '2026-01-01/2026-01-02'
+    b0.write_text(json.dumps(dict(variant='B0', status='COMPLETE', key='quick_bank_runner', side='both',
+                                  window=window, symbols=[SYM], latency_s=0, config_sha256='sealed',
+                                  manifest_digest='wrong', static_digest='static', cost_model_digest='cost')))
+    cal = tmp_path / 'cal.json'
+    cal.write_text('{}')
+    monkeypatch.setattr(X, 'sealed_config', lambda *_: ({}, 'sealed'))
+    monkeypatch.setattr(X, 'load_store', lambda *_args, **_kw: dict(
+        manifest_digest='manifest', static_digest='static', raw15={}, minutes={}, funding={}, coverage={}))
+    monkeypatch.setattr(X.C, 'CostModel', lambda *_: type('Model', (), {'digest': 'cost'})())
+    monkeypatch.setattr(X, 'run_cell', lambda *_args, **_kw: pytest.fail('run_cell reached'))
+    argv = ['--config', 'config', '--manifest', 'manifest', '--store', 'store', '--static', 'static',
+            '--out', str(tmp_path / 'out.json'), '--symbols', SYM, '--window', window,
+            '--key', 'quick_bank_runner', '--side', 'both', '--latency-s', '0', '--cal', str(cal),
+            '--variant', 'B1', '--b0-packet', str(b0)]
+    with pytest.raises(X.ScalpExecError, match='not the same'):
         X.main(argv)
