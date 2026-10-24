@@ -180,3 +180,87 @@ def test_short_tp_price_is_on_the_grid_at_or_above_its_level():
     lot = dict(symbol='X', side='SHORT', e0=75183.735 + 2.0, R=1.0, mgmt=dict(tp_r=2.0))   # level 75183.735
     px = E.Engine._tp_price(me, lot)
     assert px >= 75183.735 and px == 75183.74
+
+
+# ------------------------------------------------------------------ float-accumulated counters (Cowork 6385494817, Codex 6385527903)
+PARTS = {1e-5: [6.17502, 42.68018, 42.51135, 40.66615], 0.01: [35.23, 8.12, 8.76, 26.31]}   # float sums land BELOW the grid
+
+
+def _exact(xs, step):
+    return _grid(round(sum(round(x / step) for x in xs)), step)
+
+
+@pytest.mark.parametrize('step', [1e-5, 0.01])
+def test_grid_qty_normalises_only_binary_noise(step):
+    acc = 0.0
+    for x in PARTS[step]:
+        acc += x                                          # the old engine counter
+    assert F.grid_qty(acc, step) == _exact(PARTS[step], step)
+    with pytest.raises(ValueError, match='not on the'):
+        F.grid_qty(_exact(PARTS[step], step) + step * 0.001, step)      # a fraction of a step is not noise: fail closed
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), -float('inf')])
+def test_non_finite_quantities_raise_everywhere(bad):
+    for call in (lambda: F.round_step(bad, 1e-5), lambda: F.step_add(1.0, bad, 1e-5), lambda: F.qty_sum(1.0, bad),
+                 lambda: F.grid_qty(bad, 1e-5), lambda: F.round_step(1.0, bad)):
+        with pytest.raises(ValueError):
+            call()
+    for step in (0.0, -1e-5):
+        with pytest.raises(ValueError, match='invalid step'):
+            F.round_step(1.0, step)
+
+
+def _step(e, step):
+    for r in e.rules.values():
+        r['step'] = step
+
+
+@pytest.mark.parametrize('step', [1e-5, 0.01])
+def test_maker_filled_counter_and_remainder_stay_exact_over_partial_fills(eng, step):
+    _, e, _k = eng
+    _step(e, step)
+    total = _exact(PARTS[step], step) + 5 * step
+    rec = dict(symbol='BTCUSDT', side='LONG', price=100.0, qty=total, filled=0.0, cost=0.0)
+    for x in PARTS[step]:
+        e._maker_done_order(rec, {'executedQty': repr(x), 'avgPrice': '100'})
+    assert rec['filled'] == _exact(PARTS[step], step)
+    assert F.step_add(rec['qty'], -F.grid_qty(rec['filled'], step), step) == _grid(5, step)
+
+
+@pytest.mark.parametrize('step', [1e-5, 0.01])
+@pytest.mark.parametrize('restart', [False, True])
+def test_resting_tp_partials_book_exact_deltas(eng, monkeypatch, step, restart):
+    _, e, k = eng
+    _step(e, step)
+    lot = _hold(e, k, _exact(PARTS[step], step) + 10 * step)
+    start = lot['qty']
+    lot.update(tp_id='o:9', tp_px=101.0, tp_qty=start, tp_done=0.0)
+    cum = 0.0
+    for i, x in enumerate(PARTS[step]):
+        cum = F.qty_sum(cum, x)                         # the exchange reports the cumulative executed qty as a decimal
+        if restart and i == 2:                          # a persisted pre-fix counter, one ulp of float noise high
+            lot['tp_done'] = math.nextafter(_exact(PARTS[step][:2], step), math.inf)
+        monkeypatch.setattr(e, '_tp_record', lambda l, c=cum: dict(state='ok', exec=c, px=101.0, final=False))
+        e._tp_settle(k, {'o:9'}, replace=False)
+        assert lot['tp_done'] == _exact(PARTS[step][:i + 1], step), i               # exact after EVERY partial
+        assert lot['qty'] == F.step_add(start, -_exact(PARTS[step][:i + 1], step), step), i
+    assert lot['tp_done'] == _exact(PARTS[step], step)
+    assert lot['qty'] == F.step_add(start, -_exact(PARTS[step], step), step) == _grid(10, step)
+
+
+@pytest.mark.parametrize('step', [1e-5, 0.01])
+def test_risk_trim_counter_stays_exact_over_partials_and_restart(eng, step):
+    _, e, k = eng
+    _step(e, step)
+    lot = _hold(e, k, _exact(PARTS[step], step) + 3 * step)
+    noisy = 0.0
+    for y in PARTS[step][:2]:
+        noisy += y                                      # persisted pre-fix float counter
+    d = dict(trimmed=noisy, measured_px=100.0, fee_unit=None, planned=1.0)
+    before = lot['qty']
+    lot['qty'] = F.step_add(before, -PARTS[step][2], step)
+    e._risk_fill_done(lot, d, before)
+    assert d['trimmed'] == _exact(PARTS[step][:3], step)
+    trim_qty = _exact(PARTS[step], step)
+    assert F.step_add(trim_qty, -F.grid_qty(d['trimmed'], step), step) == _grid(round(PARTS[step][3] / step), step)

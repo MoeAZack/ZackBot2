@@ -3913,7 +3913,7 @@ class Engine:
         sym, step, listed = l['symbol'], self.rules[l['symbol']]['step'], tag in tags
         rec = self._tp_record(l)
         if rec['state'] == 'ok':
-            new, px, final = max(0.0, F.step_add(rec['exec'], -(l.get('tp_done') or 0.0), step)), rec['px'], rec['final']
+            new, px, final = max(0.0, F.step_add(rec['exec'], -F.grid_qty(l.get('tp_done') or 0.0, step), step)), rec['px'], rec['final']
             if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
         elif rec['state'] == 'notfound' and not listed:
             new, px, final = 0.0, None, True                       # Binance has no such order: it never existed
@@ -3924,7 +3924,7 @@ class Engine:
         if new > 0:
             self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
             self._px_unmeasured(l, measured=bool(px))                     # FILL-PNL-01: no px = booked at the TP limit
-            l['tp_done'] = (l.get('tp_done') or 0.0) + new
+            l['tp_done'] = F.grid_qty(F.qty_sum(l.get('tp_done') or 0.0, new), step)     # ROUND-STEP-01: exact counter
             self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
         if l['qty'] <= 0:
             self._tp_clear(l)                                       # filled: nothing left to cancel
@@ -4300,7 +4300,7 @@ class Engine:
                 return self._risk_fill_done(lot, d, qb)
             d['state'] = 'due'                               # nothing executed / never reached Binance: one more send
             if d['attempts'] >= 1 + self.RISK_FILL_RETRIES: return self._risk_fill_run(key, lot, m)
-        qty = min(F.step_add(d['trim_qty'], -d.get('trimmed', 0.0), r['step']), self._rd(lot['qty'], r['step']))
+        qty = min(F.step_add(d['trim_qty'], -F.grid_qty(d.get('trimmed', 0.0), r['step']), r['step']), self._rd(lot['qty'], r['step']))
         if qty <= 0: d['state'] = 'done'; self.save_state(); return True
         d['attempts'] += 1
         cid = f"zbrf{zlib.crc32(f'{key}|{i}|{d['attempts']}'.encode()):08x}"
@@ -4310,14 +4310,15 @@ class Engine:
         except AmbiguousOrder:
             return True                                      # lot['pending']: reconcile decides, 'sent' settles after
         except PartialClose:
-            d['trimmed'] = d.get('trimmed', 0.0) + d['qty_before'] - lot['qty']
+            d['trimmed'] = F.grid_qty(F.qty_sum(d.get('trimmed', 0.0), d['qty_before'], -lot['qty']), self.rules[lot['symbol']]['step'])
             d['state'] = 'due'; lot['stop_dirty'] = True; self.save_state(); return True
         except UnfilledOrder:
             d['state'] = 'due'; self.save_state(); return True
         return self._risk_fill_done(lot, d, d['qty_before'])
 
     def _risk_fill_done(self, lot, d, qty_before):
-        d['trimmed'] = round(d.get('trimmed', 0.0) + max(0.0, (qty_before or lot['qty']) - lot['qty']), 12)
+        d['trimmed'] = F.grid_qty(F.qty_sum(d.get('trimmed', 0.0), max(0.0, F.qty_sum(qty_before or lot['qty'], -lot['qty']))),
+                                  self.rules[lot['symbol']]['step'])
         d['residual'] = RF.residual(lot['side'], lot['qty'], d['measured_px'], lot['stop'], d.get('fee_unit'))
         d['state'] = 'done'
         lot['stop_dirty'] = True                             # protection resized to what is left, after the fill
@@ -7517,7 +7518,7 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
-        rem = F.step_add(rec['qty'], -rec['filled'], r['step'])
+        rem = F.step_add(rec['qty'], -F.grid_qty(rec['filled'], r['step']), r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
         cid = new_cid('zm')
@@ -7547,7 +7548,7 @@ class Engine:
         ex = float(o.get('executedQty') or 0)
         if ex > 0:
             px = float(o.get('avgPrice') or 0) or rec['price']
-            rec['filled'] += ex; rec['cost'] += ex * px
+            rec['filled'] = F.grid_qty(F.qty_sum(rec['filled'], ex), self.rules[rec['symbol']]['step']); rec['cost'] += ex * px
             if not float(o.get('avgPrice') or 0): rec['px_unknown'] = True    # EXEC-CAL-00: booked at the limit (audit only)
             try:                                                     # EXEC-CAL-00: memory only (ids are never saved)
                 self._mk_refs.setdefault(self._mk_key(rec), []).append(self._order_ref(o, ex, rec['price'], rec.get('cid')))
@@ -7579,7 +7580,7 @@ class Engine:
                 self.trade.cancel(sym, f"c:{rec['cid']}"); rec['cancel_t'] = time.time(); return True
             else:
                 return False
-        rem = F.step_add(rec['qty'], -rec['filled'], r['step'])
+        rem = F.step_add(rec['qty'], -F.grid_qty(rec['filled'], r['step']), r['step'])
         px_ = (marks or {}).get(sym) or rec.get('price') or rec['plan']['px']
         small = rem < r['min_qty'] or rem * px_ < r['min_notional']
         if not legacy and not small and rec['n'] <= K and time.time() - rec['t0'] < T:

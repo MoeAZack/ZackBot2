@@ -14,7 +14,7 @@ Testnet and mainnet rules are separate snapshots and are never assumed identical
 unverified, for the wrong environment or older than max_age_days gives the state 'unknown' upstream - never a green pass.
 """
 import math
-from decimal import ROUND_FLOOR, Decimal
+from decimal import ROUND_FLOOR, ROUND_HALF_EVEN, Decimal
 
 SCHEMA = 'zackbot.exchange_rules/1'
 ENVIRONMENTS = ('testnet', 'mainnet')
@@ -40,23 +40,52 @@ def round_step(x, step):
     ROUND-STEP-01 (#187): the floor is taken on the DECIMAL values of x and step (their shortest float reprs), so an
     on-grid quantity stays exact (254.37124 at 1e-5 is 25437123.999999996 steps in float and floored one step short
     under the old absolute +1e-9 guard) and the result never exceeds x. A float just below the grid (nextafter) floors."""
-    d = Decimal(repr(float(step)))
-    return float((Decimal(repr(float(x))) / d).to_integral_value(rounding=ROUND_FLOOR) * d)
+    d = _dstep(step)
+    return float((_dqty(x) / d).to_integral_value(rounding=ROUND_FLOOR) * d)
+
+
+def _dqty(x):
+    """Decimal of a finite quantity; NaN / inf raise (fail closed) instead of becoming a silent NaN or zero."""
+    x = float(x)
+    if not math.isfinite(x):
+        raise ValueError(f'non-finite quantity {x!r}')
+    return Decimal(repr(x))
+
+
+def _dstep(step):
+    step = float(step)
+    if not (math.isfinite(step) and step > 0):
+        raise ValueError(f'invalid step {step!r}')
+    return Decimal(repr(step))
+
+
+GRID_ULPS = 64       # strict binary-noise bound for an accumulator of on-grid exchange quantities
+
+
+def grid_qty(x, step):
+    """ACCUMULATOR-ONLY (Codex 6385527903): a counter that is by contract a sum of on-grid exchange quantities (resting-TP
+    tp_done, maker filled, risk-fill trimmed) normalised to its nearest step - but only within GRID_ULPS of binary noise.
+    Anything farther from the grid is not float noise: it raises. Never for raw risk or price inputs (use round_step)."""
+    d, dx = _dstep(step), _dqty(x)
+    g = (dx / d).to_integral_value(rounding=ROUND_HALF_EVEN) * d
+    bound = GRID_ULPS * math.ulp(max(abs(float(x)), float(step)))
+    if bound >= float(step) * 1e-6 or abs(float(dx - g)) > bound:
+        raise ValueError(f'accumulator {x!r} is not on the {step!r} grid within {GRID_ULPS} ulp')
+    return float(g)
 
 
 def qty_sum(*xs):
     """Exact decimal sum of quantities (no flooring): what an exchange holds after on-grid fills - Binance keeps
     positions as decimals, so a simulated exchange must not accumulate float noise (ROUND-STEP-01)."""
-    return float(sum((Decimal(repr(float(x))) for x in xs), Decimal(0)))
+    return float(sum((_dqty(x) for x in xs), Decimal(0)))
 
 
 def step_add(a, b, step):
     """round_step(a + b) with the sum taken on the DECIMAL values of a and b (ROUND-STEP-01, #187). Lot and order
     quantities are on the step grid, but their float sum/difference is not: 2345.61989 - 1172.80994 is
     1172.8099499999998 in float, which floors one step short and left a real one-step position after the stop."""
-    d = Decimal(repr(float(step)))
-    t = Decimal(repr(float(a))) + Decimal(repr(float(b)))
-    return float((t / d).to_integral_value(rounding=ROUND_FLOOR) * d)
+    d = _dstep(step)
+    return float(((_dqty(a) + _dqty(b)) / d).to_integral_value(rounding=ROUND_FLOOR) * d)
 
 
 def ceil_step(x, step):
