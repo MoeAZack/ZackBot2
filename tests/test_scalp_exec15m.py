@@ -712,6 +712,8 @@ def test_b1_admits_only_an_edge_of_five_round_trips_at_the_base_cost():
     edge_atr = 5 * rt / 1.16
     assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t, atr=edge_atr * 1.001), []) is None
     assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t, atr=edge_atr * 0.999), []) == 'b1_edge'
+    g.rt_cost = lambda sym, price, t_ms: X.qb_reward_atr()
+    assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(t, atr=X.B1_EDGE_X), []) is None     # exact >= boundary
 
 
 def test_4h_table_uses_only_complete_candles():
@@ -738,6 +740,12 @@ def test_b2_regime_is_causal_and_needs_symbol_and_btc_aligned():
 def test_b2_without_fifty_complete_4h_candles_refuses():
     g = _qgate('B2', {SYM: _trend(49), 'BTCUSDT': _trend(60)})
     assert g.check({'id': 'SC'}, SYM, 'LONG', _sg(_end(49)), []) == 'b2_symbol_regime'
+
+
+@pytest.mark.parametrize('variant', ['B2', 'B3'])
+def test_btc_dependent_variants_fail_closed_when_btc_is_missing(variant):
+    with pytest.raises(X.ScalpExecError, match=f'{variant} requires BTCUSDT'):
+        _qgate(variant, {SYM: _trend(60)})
 
 
 def test_b3_cooldown_is_four_closed_candles_after_the_final_exit():
@@ -803,3 +811,34 @@ def test_variants_are_preregistered_for_qbank_only():
     with pytest.raises(X.ScalpExecError, match='preregistered for'):
         X.run_cell({SYM: _agg(m)}, {SYM: m}, _sleeve('exp_scalp'), T0, model=C.CostModel(_cal(), {SYM: 'crypto'}),
                    variant='B1')
+
+
+def test_entry_keys_and_same_cell_b0_substitutions_are_reported_per_replay():
+    fills = [dict(sym='ETHUSDT', ps='LONG', act='open', t_ms=2, qty=2),
+             dict(sym='ETHUSDT', ps='LONG', act='open', t_ms=3, qty=1),        # add: not another entry key
+             dict(sym='ETHUSDT', ps='LONG', act='close', t_ms=4, qty=3),
+             dict(sym='BTCUSDT', ps='SHORT', act='open', t_ms=1, qty=1)]      # still open: still an entry key
+    keys = X.entry_keys(fills, 'SC-QBANK')
+    assert keys == [dict(sleeve='SC-QBANK', symbol='BTCUSDT', side='SHORT', decision_ms=1),
+                    dict(sleeve='SC-QBANK', symbol='ETHUSDT', side='LONG', decision_ms=2)]
+    common = dict(key='quick_bank_runner', side='both', window='A/B', symbols=['BTCUSDT', 'ETHUSDT'], latency_s=0,
+                  config_sha256='sealed')
+    b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': [], 'base': []}})
+    variant = dict(common, variant='B2', entry_gate={'entry_keys': {
+        'reference': keys, 'base': keys[:1] + [dict(sleeve='SC-QBANK', symbol='SOLUSDT', side='LONG', decision_ms=3)]}})
+    X.add_b0_substitutions(variant, b0)
+    assert variant['entry_gate']['b0_substitutions'] == {
+        'base': {'entries': 2, 'entries_not_in_b0': 2},
+        'reference': {'entries': 2, 'entries_not_in_b0': 2}}
+
+
+def test_b0_substitution_comparison_refuses_a_different_cell_or_replay_shape():
+    common = dict(key='quick_bank_runner', side='long', window='A/B', symbols=['BTCUSDT'], latency_s=0,
+                  config_sha256='sealed')
+    b0 = dict(common, variant='B0', entry_gate={'entry_keys': {'reference': []}})
+    bad_cell = dict(common, variant='B1', latency_s=60, entry_gate={'entry_keys': {'reference': []}})
+    with pytest.raises(X.ScalpExecError, match='not the same'):
+        X.add_b0_substitutions(bad_cell, b0)
+    bad_shape = dict(common, variant='B1', entry_gate={'entry_keys': {'base': []}})
+    with pytest.raises(X.ScalpExecError, match='different replay'):
+        X.add_b0_substitutions(bad_shape, b0)

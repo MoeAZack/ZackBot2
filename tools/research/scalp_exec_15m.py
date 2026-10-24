@@ -563,10 +563,10 @@ def divergence(zero: list, acct: list, row: str) -> dict:
 
 # ------------------------------------------------------------------ one cell
 # ------------------------------------------------------------------ QBANK-01 frozen entry matrix (#203, Codex 6375498248)
-VARIANTS = ('B0', 'B1', 'B2', 'B3')     # each later variant = the previous one plus one more REMOVAL-ONLY admission rule
-B1_EDGE_X = 5.0                          # expected edge >= 5 x the actual round-trip cost
+VARIANTS = ('B0', 'B1', 'B2', 'B3')     # each later variant adds one candidate-level admission rule
+B1_EDGE_X = 5.0                          # planned-reward screen >= 5 x the actual round-trip cost
 B2_EMA, H4_MS, B2_REF = 50, 4 * 3_600_000, 'BTCUSDT'
-B3_CANDLES = 4                           # closed 15m candles after the same symbol/side lot's final exit
+B3_CANDLES = 4                           # exit candle is close 1; admit at close 4 for the same symbol/side
 GATE_KEYS = ('quick_bank_runner',)
 
 
@@ -590,14 +590,18 @@ def ema4h_table(df15):
 
 
 class QBGate:
-    """The frozen QBANK-01 admission rules, applied AFTER every v0 check has passed (it wraps Engine.open_lot), so a
-    variant can only remove entries. Scenario-independent: the round-trip cost is always the base cost row, so every
-    replay of a cell runs the same rule. Rejections are counted per replay and reason."""
+    """The frozen QBANK-01 admission rules, applied when a v0 candidate calls Engine.open_lot. Some v0 checks live
+    inside open_lot and therefore follow this gate. A rule removes that candidate, but freed symbol/portfolio capacity
+    can admit a later candidate that B0 skipped; packet entry keys and B0 substitutions make that explicit.
+    Scenario-independent: the round-trip cost is always the base cost row, so every replay of a cell runs the same
+    rule. Rejections are counted per replay and reason."""
 
     def __init__(self, variant: str, run: dict, model: C.CostModel, base: C.Scenario):
         if variant not in VARIANTS[1:]:
             raise ScalpExecError(f'unknown entry variant {variant!r}')
         self.variant, self.level = variant, VARIANTS.index(variant)
+        if self.level >= 2 and B2_REF not in run:
+            raise ScalpExecError(f'entry variant {variant} requires {B2_REF} in the complete run')
         self.model, self.base = model, base
         self.pricer = Pricer(base, model, run)                    # slip bps from candles closed at or before t
         self.h4 = {s: ema4h_table(df) for s, df in run.items()} if self.level >= 2 else {}
@@ -677,6 +681,49 @@ def _sides(rows, get, weeks):
     return {sd: summary([get(r) for r in rows if sd in ('ALL', r['side'])], weeks) for sd in ('ALL', 'LONG', 'SHORT')}
 
 
+def entry_keys(fill_log, sleeve: str) -> list[dict]:
+    """Stable audit identity of every lot's first entry, including lots open at the window end. Adds are not new
+    entries. `t_ms` is the replay decision/fill stamp used throughout this packet; a QBank cell has one frozen sleeve."""
+    qty, out = {}, []
+    for f in fill_log:
+        if f['act'] == 'stop_set':
+            continue
+        k = (f['sym'], f['ps'])
+        if f['act'] == 'open':
+            if qty.get(k, 0.0) <= 1e-12:
+                out.append(dict(sleeve=sleeve, symbol=f['sym'], side=f['ps'], decision_ms=int(f['t_ms'])))
+            qty[k] = qty.get(k, 0.0) + float(f['qty'])
+        else:
+            qty[k] = qty.get(k, 0.0) - float(f['qty'])
+    vals = [(x['sleeve'], x['symbol'], x['side'], x['decision_ms']) for x in out]
+    if len(vals) != len(set(vals)):
+        raise ScalpExecError('duplicate entry key in one replay')
+    return sorted(out, key=lambda x: (x['decision_ms'], x['sleeve'], x['symbol'], x['side']))
+
+
+def _key_set(rows) -> set[tuple]:
+    try:
+        return {(x['sleeve'], x['symbol'], x['side'], int(x['decision_ms'])) for x in rows}
+    except (KeyError, TypeError, ValueError) as ex:
+        raise ScalpExecError(f'invalid entry key in B0 comparison: {ex}') from ex
+
+
+def add_b0_substitutions(packet: dict, b0: dict) -> None:
+    """Attach same-cell counts of variant entries absent from B0. This is reporting only: portfolio knock-on entries
+    are substitutions, so B1-B3 must never be interpreted as filtered subsets of B0."""
+    fields = ('key', 'side', 'window', 'symbols', 'latency_s', 'config_sha256', 'manifest_digest', 'static_digest',
+              'cost_model_digest')
+    if b0.get('variant') != 'B0' or any(packet.get(k) != b0.get(k) for k in fields):
+        raise ScalpExecError('B0 comparison packet is not the same key/side/window/symbols/latency/config cell')
+    mine = packet.get('entry_gate', {}).get('entry_keys')
+    base = b0.get('entry_gate', {}).get('entry_keys')
+    if not isinstance(mine, dict) or not isinstance(base, dict) or set(mine) != set(base):
+        raise ScalpExecError('B0 comparison packet has missing or different replay entry-key rows')
+    packet['entry_gate']['b0_substitutions'] = {
+        replay: dict(entries=len(mine[replay]), entries_not_in_b0=len(_key_set(mine[replay]) - _key_set(base[replay])))
+        for replay in sorted(mine)}
+
+
 def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel, funding=None, exchange_rules=None,
              start=2000.0, scenarios=None, latency_s=0, settings=None, account_rows=ACCOUNT_ROWS, variant='B0') -> dict:
     """One cell at one latency: (1) the engine on the 1m path with costs off, every scenario re-priced per trade
@@ -707,12 +754,13 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
         rows.append(rec)
     t_all = pd.to_datetime(next(iter(run.values())).t)
     weeks = (t_all.iloc[-1] - t_all.iloc[t0]).total_seconds() / (7 * 86400)
-    acct, div, acct_inc = {}, {}, False
+    acct, acct_keys, div, acct_inc = {}, {}, {}, False
     for name in account_rows:
         pr = Pricer(scen[name], model, run, funding=funding, rules=rules)
         o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
                               latency_s=latency_s, pricer=pr, gate=gate, replay=name)
         ts = account_trades(f2, o2['history'], pr.paid)
+        acct_keys[name] = entry_keys(f2, sleeves[0]['id'])
         acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
                           adds=add_stats(ts, o2['lots']),
                           risk_fill=rf_counts(ts), risk_fill_basis=rf_basis(ts),
@@ -723,8 +771,12 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
     unres = sum(x in UNRESOLVED for x in lab)
     incomplete = acct_inc or bool(bad) or any(not r['rows'][n]['complete'] for r in rows for n in r['rows']
                                               if scen[n].funding_mode == 'actual')
+    sleeve_id = sleeves[0]['id']
+    keys = {'reference': entry_keys(fills, sleeve_id)}
+    keys.update(acct_keys)
     return dict(format=FORMAT, non_promotable=True, limitation=LIMITATION, latency_s=latency_s,
                 entry_gate=dict(variant=variant, frozen='6375498248', rejected=gate.rejected if gate else {},
+                                entry_keys=keys,
                                 b1=dict(edge_x=B1_EDGE_X, reward_atr=qb_reward_atr(), cost_row='base'),
                                 b2=dict(ema=B2_EMA, tf='4h', ref=B2_REF), b3=dict(candles=B3_CANDLES, anchor='final_exit')),
                 config_digest=config_digest(sleeves), cost_model_digest=model.digest,
@@ -874,6 +926,7 @@ def main(argv=None) -> int:
     ap.add_argument('--cal', required=True, help='slip-cal-v1 JSON (or a prereg holding costs.slip_cal_v1)')
     ap.add_argument('--start', type=float, default=2000.0)
     ap.add_argument('--variant', default='B0', choices=VARIANTS, help='QBANK-01 frozen entry matrix (B0 = exact v0)')
+    ap.add_argument('--b0-packet', help='completed same-cell B0 packet; required for B1-B3 substitution reporting')
     a = ap.parse_args(argv)
     if os.path.exists(a.out):
         raise ScalpExecError(f'{a.out} exists (packets are never overwritten)')
@@ -894,6 +947,17 @@ def main(argv=None) -> int:
                   settings={'PRESET': doc['preset']}, variant=a.variant)
     pk.update(variant=a.variant, key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
               manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=cfg_sha)
+    if a.variant == 'B0':
+        if a.b0_packet:
+            raise ScalpExecError('--b0-packet is only valid for B1-B3')
+        pk['entry_gate']['b0_substitutions'] = {
+            replay: dict(entries=len(rows), entries_not_in_b0=0)
+            for replay, rows in sorted(pk['entry_gate']['entry_keys'].items())}
+    else:
+        if not a.b0_packet:
+            raise ScalpExecError('--b0-packet is required for B1-B3')
+        with open(a.b0_packet, encoding='utf-8') as fh:
+            add_b0_substitutions(pk, json.load(fh))
     pk['candle_depth'] = candle_depth(a.key)
     pk['trials'] = trial_records(pk, key=a.key, side=a.side, variant=a.variant)
     with open(a.out, 'x', encoding='utf-8') as fh:
