@@ -14,6 +14,7 @@ Testnet and mainnet rules are separate snapshots and are never assumed identical
 unverified, for the wrong environment or older than max_age_days gives the state 'unknown' upstream - never a green pass.
 """
 import math
+from decimal import ROUND_FLOOR, ROUND_HALF_EVEN, Decimal
 
 SCHEMA = 'zackbot.exchange_rules/1'
 ENVIRONMENTS = ('testnet', 'mainnet')
@@ -35,16 +36,65 @@ REASON_NOT_REACHED = 'not reached: an earlier order of this sequence is skipped,
 
 # ------------------------------------------------------------------ rounding (the engine's _rd, moved here verbatim)
 def round_step(x, step):
-    """Floor x to a multiple of step (the engine's _rd). step must be > 0."""
-    dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-    return round(math.floor(x / step + 1e-9) * step, dec)
+    """Floor x to a multiple of step (the engine's _rd). step must be > 0.
+    ROUND-STEP-01 (#187): the floor is taken on the DECIMAL values of x and step (their shortest float reprs), so an
+    on-grid quantity stays exact (254.37124 at 1e-5 is 25437123.999999996 steps in float and floored one step short
+    under the old absolute +1e-9 guard) and the result never exceeds x. A float just below the grid (nextafter) floors."""
+    d = _dstep(step)
+    return float((_dqty(x) / d).to_integral_value(rounding=ROUND_FLOOR) * d)
+
+
+def _dqty(x):
+    """Decimal of a finite quantity; NaN / inf raise (fail closed) instead of becoming a silent NaN or zero."""
+    x = float(x)
+    if not math.isfinite(x):
+        raise ValueError(f'non-finite quantity {x!r}')
+    return Decimal(repr(x))
+
+
+def _dstep(step):
+    step = float(step)
+    if not (math.isfinite(step) and step > 0):
+        raise ValueError(f'invalid step {step!r}')
+    return Decimal(repr(step))
+
+
+GRID_ULPS = 64       # strict binary-noise bound for an accumulator of on-grid exchange quantities
+
+
+def grid_qty(x, step):
+    """ACCUMULATOR-ONLY (Codex 6385527903): a counter that is by contract a sum of on-grid exchange quantities (resting-TP
+    tp_done, maker filled, risk-fill trimmed) normalised to its nearest step - but only within GRID_ULPS of binary noise.
+    Anything farther from the grid is not float noise: it raises. Never for raw risk or price inputs (use round_step)."""
+    d, dx = _dstep(step), _dqty(x)
+    g = (dx / d).to_integral_value(rounding=ROUND_HALF_EVEN) * d
+    if dx == g:
+        return float(g)                                  # exactly on the grid: never a raise, whatever the size
+    bound = GRID_ULPS * math.ulp(max(abs(float(x)), float(step)))
+    if bound >= float(step) * 1e-6 or abs(float(dx - g)) > bound:
+        raise ValueError(f'accumulator {x!r} is not on the {step!r} grid within {GRID_ULPS} ulp')
+    return float(g)
+
+
+def qty_sum(*xs):
+    """Exact decimal sum of quantities (no flooring): what an exchange holds after on-grid fills - Binance keeps
+    positions as decimals, so a simulated exchange must not accumulate float noise (ROUND-STEP-01)."""
+    return float(sum((_dqty(x) for x in xs), Decimal(0)))
+
+
+def step_add(a, b, step):
+    """round_step(a + b) with the sum taken on the DECIMAL values of a and b (ROUND-STEP-01, #187). Lot and order
+    quantities are on the step grid, but their float sum/difference is not: 2345.61989 - 1172.80994 is
+    1172.8099499999998 in float, which floors one step short and left a real one-step position after the stop."""
+    d = _dstep(step)
+    return float(((_dqty(a) + _dqty(b)) / d).to_integral_value(rounding=ROUND_FLOOR) * d)
 
 
 def ceil_step(x, step):
     """Smallest multiple of step that is >= x (used only for the minimum-capital estimate, never to size an order)."""
     if not step: return x
     q = round_step(x, step)
-    return q if q >= x - 1e-12 else round_step(q + step, step)
+    return q if q >= x - 1e-12 else step_add(q, step, step)        # exact: q + step in float can floor back to q
 
 
 # ------------------------------------------------------------------ rules
@@ -221,13 +271,19 @@ def tier_notional_cap(brackets, lev):
     return max(caps) if caps else None
 
 
+REQUIRED_QTY_MAX_STEPS = 64      # ceil_step already lands within a step of the minimum; more steps = a broken rule
+
+
 def required_qty(px, rule):
     """Smallest order quantity this rule accepts at price px (a multiple of the step, >= minQty, notional >= minNotional)."""
     mq, mn, step = float(rule.get('min_qty', 0)), float(rule.get('min_notional', 0)), rule.get('step')
     need = max(mq, mn / px if px > 0 else math.inf)
     q = ceil_step(need, step) if step else need
-    while step and (q < mq or q * px < mn): q = round_step(q + step, step)     # float edge: one more step
-    return q
+    for _ in range(REQUIRED_QTY_MAX_STEPS):              # ROUND-STEP-01: exact one more step, bounded (Cowork 6385840296)
+        if not (step and (q < mq or q * px < mn)):
+            return q
+        q = step_add(q, step, step)
+    raise ValueError(f'required_qty did not converge at px={px!r} rule={rule!r}')
 
 
 def leaves_dust(rest, px, rule):

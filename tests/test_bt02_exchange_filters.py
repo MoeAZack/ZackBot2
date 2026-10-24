@@ -23,6 +23,15 @@ def old_rd(x, step):
     return round(math.floor(x / step + 1e-9) * step, dec)
 
 
+def in_round_step_bug_set(x, step, new, old):
+    """The old absolute +1e-9 floor either lost a step on a decimal on-grid value (new = old + step, x on the grid) or
+    rounded a value a hair below the grid UP (old > x; new = old - step <= x). Anything else is a parity break."""
+    from decimal import Decimal
+    on_grid = (Decimal(repr(x)) / Decimal(repr(step))) % 1 == 0
+    one = abs(abs(new - old) - step) <= step * 1e-6
+    return one and new <= x and ((new > old and on_grid) or (new < old and old > x))
+
+
 def old_open_lot_gate(qty_raw, qty, px, r):
     """engine.open_lot before BT02: returns (skip?, qty, last_skip)."""
     qty = old_rd(qty, r['step'])
@@ -73,7 +82,9 @@ def test_round_step_is_the_old_engine_rd_bit_for_bit():
     for _ in range(20000):
         step = rng.choice([1e-5, 1e-4, 0.001, 0.01, 0.1, 1.0, 10.0, 0.5, 0.005])
         x = rng.choice([rng.uniform(0, 5), rng.uniform(0, 5000), rng.randint(0, 999) * step, rng.randint(0, 999) * step * (1 - 1e-12)])
-        assert F.round_step(x, step) == old_rd(x, step), (x, step)
+        new, old = F.round_step(x, step), old_rd(x, step)
+        if new != old:                                   # ROUND-STEP-01 (#187): only the two demonstrated defects differ
+            assert in_round_step_bug_set(x, step, new, old), (x, step, new, old)
 
 
 def test_entry_and_add_gate_decisions_identical_to_pre_bt02_engine():
@@ -81,7 +92,7 @@ def test_entry_and_add_gate_decisions_identical_to_pre_bt02_engine():
     rng = random.Random(3)
     rules = [dict(step=s, min_qty=mq, min_notional=mn) for s, mq in ((0.001, 0.001), (0.01, 0.01), (1.0, 1.0), (1e-5, 1e-5), (0.1, 0.3))
              for mn in (5.0, 20.0, 50.0, 100.0)]
-    n = 0
+    n = skipped = 0
     for r in rules:
         for _ in range(1500):
             px = rng.choice([0.08, 1.7, 23.4, 101.0, 2500.0, 65000.0, 120000.0])
@@ -89,6 +100,10 @@ def test_entry_and_add_gate_decisions_identical_to_pre_bt02_engine():
                                   r['min_qty'] * rng.randint(1, 5), rng.uniform(0, 4) * r['min_qty']])
             qty = rng.choice([qty_raw, qty_raw * rng.uniform(0, 1), r['min_notional'] / px * rng.uniform(.5, 1.5)])
             qty = min(qty, qty_raw)
+            if old_rd(qty, r['step']) != F.round_step(qty, r['step']):
+                assert in_round_step_bug_set(qty, r['step'], F.round_step(qty, r['step']), old_rd(qty, r['step']))
+                skipped += 1
+                continue                                 # ROUND-STEP-01: the corrected floor, characterised above
             skip, q_old, why_old = old_open_lot_gate(qty_raw, qty, px, r)
             d = F.size_check(qty_raw, qty, px, r)
             assert (not d['ok']) == skip and d['qty'] == q_old and (d['reason'] or None) == why_old, (r, px, qty_raw, qty, d)
@@ -96,7 +111,7 @@ def test_entry_and_add_gate_decisions_identical_to_pre_bt02_engine():
             d2 = F.size_check(qty, qty, px, r)
             assert (not d2['ok']) == ref and (d2['qty'] == q2), (r, px, qty, d2)
             n += 1
-    assert n == len(rules) * 1500
+    assert n + skipped == len(rules) * 1500 and skipped < 0.05 * n
 
 
 def test_engine_add_below_minimum_is_refused_without_an_order():

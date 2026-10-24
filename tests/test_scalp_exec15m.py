@@ -247,9 +247,15 @@ def test_runtime_files_are_untouched():
     base = subprocess.run(['git', 'merge-base', 'HEAD', 'origin/master'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     if not base:
         pytest.skip('no origin/master in this checkout')
-    diff = subprocess.run(['git', 'diff', '--name-only', base, '--', 'engine.py', 'strategies.py', 'app.py', 'backtest.py'],
+    diff = subprocess.run(['git', 'diff', '--name-only', base, '--', 'strategies.py', 'app.py', 'backtest.py'],
                           cwd=ROOT, capture_output=True, text=True).stdout.strip()
     assert diff == ''
+    # ROUND-STEP-01 (#187, Codex 6385148287): engine.py may differ ONLY by its exact-step arithmetic swaps
+    eng = subprocess.run(['git', 'diff', '-U0', base, '--', 'engine.py'], cwd=ROOT, capture_output=True, text=True).stdout
+    body = [x for x in eng.splitlines() if x[:1] in '+-' and not x.startswith(('+++', '---'))]
+    ok_add = ('F.step_add(', 'F.grid_qty(', 'F.qty_sum(')
+    assert all(any(h in x for h in ok_add) or x[1:].strip() == "self.rules[lot['symbol']]['step'])" for x in body if x[0] == '+'), body
+    assert all(any(h in x for h in ('self._rd(', "['tp_done']", "['filled'] +=", "['trimmed']")) for x in body if x[0] == '-'), body
 
 
 # ------------------------------------------------------------------ Cowork #186 A2 / A3 / A4 and engine-level parity (b)
