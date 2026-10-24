@@ -14,6 +14,7 @@ Testnet and mainnet rules are separate snapshots and are never assumed identical
 unverified, for the wrong environment or older than max_age_days gives the state 'unknown' upstream - never a green pass.
 """
 import math
+from decimal import ROUND_FLOOR, Decimal
 
 SCHEMA = 'zackbot.exchange_rules/1'
 ENVIRONMENTS = ('testnet', 'mainnet')
@@ -35,16 +36,34 @@ REASON_NOT_REACHED = 'not reached: an earlier order of this sequence is skipped,
 
 # ------------------------------------------------------------------ rounding (the engine's _rd, moved here verbatim)
 def round_step(x, step):
-    """Floor x to a multiple of step (the engine's _rd). step must be > 0."""
-    dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-    return round(math.floor(x / step + 1e-9) * step, dec)
+    """Floor x to a multiple of step (the engine's _rd). step must be > 0.
+    ROUND-STEP-01 (#187): the floor is taken on the DECIMAL values of x and step (their shortest float reprs), so an
+    on-grid quantity stays exact (254.37124 at 1e-5 is 25437123.999999996 steps in float and floored one step short
+    under the old absolute +1e-9 guard) and the result never exceeds x. A float just below the grid (nextafter) floors."""
+    d = Decimal(repr(float(step)))
+    return float((Decimal(repr(float(x))) / d).to_integral_value(rounding=ROUND_FLOOR) * d)
+
+
+def qty_sum(*xs):
+    """Exact decimal sum of quantities (no flooring): what an exchange holds after on-grid fills - Binance keeps
+    positions as decimals, so a simulated exchange must not accumulate float noise (ROUND-STEP-01)."""
+    return float(sum((Decimal(repr(float(x))) for x in xs), Decimal(0)))
+
+
+def step_add(a, b, step):
+    """round_step(a + b) with the sum taken on the DECIMAL values of a and b (ROUND-STEP-01, #187). Lot and order
+    quantities are on the step grid, but their float sum/difference is not: 2345.61989 - 1172.80994 is
+    1172.8099499999998 in float, which floors one step short and left a real one-step position after the stop."""
+    d = Decimal(repr(float(step)))
+    t = Decimal(repr(float(a))) + Decimal(repr(float(b)))
+    return float((t / d).to_integral_value(rounding=ROUND_FLOOR) * d)
 
 
 def ceil_step(x, step):
     """Smallest multiple of step that is >= x (used only for the minimum-capital estimate, never to size an order)."""
     if not step: return x
     q = round_step(x, step)
-    return q if q >= x - 1e-12 else round_step(q + step, step)
+    return q if q >= x - 1e-12 else step_add(q, step, step)        # exact: q + step in float can floor back to q
 
 
 # ------------------------------------------------------------------ rules

@@ -3792,7 +3792,7 @@ class Engine:
         tick, sd = self.rules[lot['symbol']]['tick'], (1 if lot['side'] == 'LONG' else -1)
         lvl = lot['e0'] + sd * lot['mgmt']['tp_r'] * lot['R']
         q = self._rd(lvl, tick)
-        if sd == -1 and q < lvl - tick * 1e-6: q = self._rd(q + tick, tick)
+        if sd == -1 and q < lvl - tick * 1e-6: q = F.step_add(q, tick, tick)
         return q
 
     def _tp_clear(self, lot):
@@ -3913,7 +3913,7 @@ class Engine:
         sym, step, listed = l['symbol'], self.rules[l['symbol']]['step'], tag in tags
         rec = self._tp_record(l)
         if rec['state'] == 'ok':
-            new, px, final = self._rd(max(0.0, rec['exec'] - (l.get('tp_done') or 0.0)), step), rec['px'], rec['final']
+            new, px, final = max(0.0, F.step_add(rec['exec'], -(l.get('tp_done') or 0.0), step)), rec['px'], rec['final']
             if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
         elif rec['state'] == 'notfound' and not listed:
             new, px, final = 0.0, None, True                       # Binance has no such order: it never existed
@@ -4090,7 +4090,7 @@ class Engine:
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, qty, px])
         AC.link_px(lot, ref)                                       # FILL-PNL-01: its exchange price arrives with ref
         lot['fees'] = lot.get('fees', 0.0) + qty * px * FEE_EST
-        lot['qty'] = max(0.0, self._rd(lot['qty'] - qty, r['step']))
+        lot['qty'] = max(0.0, F.step_add(lot['qty'], -qty, r['step']))       # ROUND-STEP-01: exact on-grid difference
         self.log_trade(time=now_utc().isoformat(timespec='seconds'), event=why, sleeve=lot['sleeve'], symbol=sym,
                        side=lot['side'], qty=qty, price=px, pnl=round(pnl, 4), equity=round(self.last_eq or 0, 2))
         self._audit_fill(lot)                                      # T05a: cohort / runner events (memory + queue only)
@@ -4300,7 +4300,7 @@ class Engine:
                 return self._risk_fill_done(lot, d, qb)
             d['state'] = 'due'                               # nothing executed / never reached Binance: one more send
             if d['attempts'] >= 1 + self.RISK_FILL_RETRIES: return self._risk_fill_run(key, lot, m)
-        qty = self._rd(min(d['trim_qty'] - d.get('trimmed', 0.0), lot['qty']), r['step'])
+        qty = min(F.step_add(d['trim_qty'], -d.get('trimmed', 0.0), r['step']), self._rd(lot['qty'], r['step']))
         if qty <= 0: d['state'] = 'done'; self.save_state(); return True
         d['attempts'] += 1
         cid = f"zbrf{zlib.crc32(f'{key}|{i}|{d['attempts']}'.encode()):08x}"
@@ -4926,7 +4926,7 @@ class Engine:
     def _apply_add(self, lot, q, px, why, fee=None, ref=None):
         r = self.rules[lot['symbol']]
         lot['avg'] = (lot['avg'] * lot['qty'] + px * q) / (lot['qty'] + q)
-        lot['qty'] = self._rd(lot['qty'] + q, r['step'])
+        lot['qty'] = F.step_add(lot['qty'], q, r['step'])
         lot['qty_max'] = max(lot.get('qty_max', 0), lot['qty'])
         lot.setdefault('fills', []).append([now_utc().isoformat(timespec='seconds'), why, q, px])
         AC.link_px(lot, ref)                                       # FILL-PNL-01
@@ -5747,7 +5747,7 @@ class Engine:
                 newqs = {k: self._rd(raw[k], step) for k in rest}
                 spare = int(round((self._rd(have, step) - sum(newqs.values())) / step))
                 for k in sorted(rest, key=lambda k: newqs[k] - raw[k])[:max(0, spare)]:
-                    newqs[k] = self._rd(newqs[k] + step, step)
+                    newqs[k] = F.step_add(newqs[k], step, step)
                 for k in rest:
                     l = st['lots'][k]
                     newq = newqs[k]
@@ -7517,7 +7517,7 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
-        rem = self._rd(rec['qty'] - rec['filled'], r['step'])
+        rem = F.step_add(rec['qty'], -rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
         cid = new_cid('zm')
@@ -7579,7 +7579,7 @@ class Engine:
                 self.trade.cancel(sym, f"c:{rec['cid']}"); rec['cancel_t'] = time.time(); return True
             else:
                 return False
-        rem = self._rd(rec['qty'] - rec['filled'], r['step'])
+        rem = F.step_add(rec['qty'], -rec['filled'], r['step'])
         px_ = (marks or {}).get(sym) or rec.get('price') or rec['plan']['px']
         small = rem < r['min_qty'] or rem * px_ < r['min_notional']
         if not legacy and not small and rec['n'] <= K and time.time() - rec['t0'] < T:

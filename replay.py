@@ -114,7 +114,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
     def merge(s, ps):
         ls = [l for l in W.lots if l['s'] == s and l['ps'] == ps]
         if len(ls) > 1:
-            q = sum(l['q'] for l in ls); avg = sum(l['q'] * l['avg'] for l in ls) / q
+            q = F.qty_sum(*(l['q'] for l in ls)); avg = sum(l['q'] * l['avg'] for l in ls) / q
             q_in = sum(l.get('q_in', l['q']) for l in ls)
             for l in ls: W.lots.remove(l)
             W.lots.append(dict(s=s, ps=ps, q=q, q_in=q_in, avg=avg))
@@ -125,7 +125,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
             raise RuntimeError(f'simulated exchange holds no {s} {ps} position to close ({q})')
         q = min(q, l['q']); sd = 1 if ps == 'LONG' else -1
         px, fee = priced(log_fill(s, ps, 'close', kind, q, px if ref is None else ref), px)
-        W.cash += sd * (px - l['avg']) * q - fee; l['q'] -= q
+        W.cash += sd * (px - l['avg']) * q - fee; l['q'] = F.qty_sum(l['q'], -q)   # exact, as Binance holds it
         tol = qty_flat_tolerance(s, XR)
         if 1e-12 < l['q'] <= tol:
             lg.warning('replay sub-step remainder treated as flat: %s %s residual=%.17g tolerance=%.17g',
