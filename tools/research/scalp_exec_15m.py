@@ -27,6 +27,7 @@ slot as it ran and is reported per side, never as a promotion cell.
 from __future__ import annotations
 
 import copy
+import gzip
 import hashlib
 import json
 import math
@@ -615,10 +616,12 @@ def _sides(rows, get, weeks):
 
 
 def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel, funding=None, exchange_rules=None,
-             start=2000.0, scenarios=None, latency_s=0, settings=None, account_rows=ACCOUNT_ROWS) -> dict:
+             start=2000.0, scenarios=None, latency_s=0, settings=None, account_rows=ACCOUNT_ROWS,
+             on_fills=None) -> dict:
     """One cell at one latency: (1) the engine on the 1m path with costs off, every scenario re-priced per trade
     (diagnostic); (2) one engine run per account row with that row's costs applied at fill time (RISK-FILL-01 acts on
-    the priced fills); (3) their divergence."""
+    the priced fills); (3) their divergence. on_fills(replay, fills, history), when given, receives every replay's raw
+    fill log and engine history BEFORE they are reconstructed, so a reconstruction refusal never loses the replay."""
     check_sleeves(sleeves)
     bad = check_inputs(raw15, minutes, funding)
     run = {s: df for s, df in raw15.items() if s not in bad}
@@ -628,6 +631,8 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
     scen = scenarios or SCENARIOS
     out, fills, labels = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
                                  latency_s=latency_s)
+    if on_fills is not None:
+        on_fills('reference', fills, out['history'])
     B15 = {s: bars_of(df.reset_index(drop=True)) for s, df in run.items()}
     rows = []
     for tr in trades_of(fills, out['history'], rules):
@@ -646,6 +651,8 @@ def run_cell(raw15: dict, minutes: dict, sleeves, t0: int, *, model: C.CostModel
         pr = Pricer(scen[name], model, run, funding=funding, rules=rules)
         o2, f2, _l2 = _engine(run, minutes, sleeves, t0, start=start, rules=exchange_rules, settings=settings,
                               latency_s=latency_s, pricer=pr)
+        if on_fills is not None:
+            on_fills(name, f2, o2['history'])
         ts = account_trades(f2, o2['history'], pr.paid, rules)
         acct[name] = dict(trades=ts, open_lots=len(o2['lots']), incomplete_funding=sorted(pr.incomplete),
                           adds=add_stats(ts, o2['lots']),
@@ -776,6 +783,17 @@ def candle_depth(key: str) -> dict:
     return dict(served=WARM_BARS, max_window=w, limit=DEPTH_LIMIT, ok=True)
 
 
+def fill_saver(dirpath: str):
+    """on_fills callback: one gzip JSON per replay, {replay, fills, history}, opened exclusively (never overwritten).
+    The replay is simulated: its fills carry no exchange order or trade ids."""
+    os.makedirs(dirpath, exist_ok=False)
+
+    def save(replay, fills, history):
+        with gzip.open(os.path.join(dirpath, f'{replay}.json.gz'), 'xt', encoding='utf-8') as fh:
+            json.dump(dict(replay=replay, fills=fills, history=history), fh, sort_keys=True, default=float)
+    return save
+
+
 def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description='SCALP-EXEC-15M-01 execution-grade cell (research only, non-promotable)')
@@ -790,8 +808,9 @@ def main(argv=None) -> int:
     ap.add_argument('--cal', required=True, help='slip-cal-v1 JSON (or a prereg holding costs.slip_cal_v1)')
     ap.add_argument('--start', type=float, default=2000.0)
     a = ap.parse_args(argv)
-    if os.path.exists(a.out):
-        raise ScalpExecError(f'{a.out} exists (packets are never overwritten)')
+    fills_dir = a.out + '.fills'
+    if os.path.exists(a.out) or os.path.exists(fills_dir):
+        raise ScalpExecError(f'{a.out} or its fill dir exists (packets are never overwritten)')
     lo, hi = (int(pd.Timestamp(x).value // 10 ** 6) for x in a.window.split('/'))
     doc = load_config(a.config)
     syms = a.symbols.split(',')
@@ -806,7 +825,7 @@ def main(argv=None) -> int:
     raw15 = data['raw15']
     pk = run_cell(raw15, data['minutes'], cell_sleeves(doc, a.key, a.side), window_start(raw15, lo), model=model,
                   funding=data['funding'], exchange_rules=rules, start=a.start, latency_s=a.latency_s,
-                  settings={'PRESET': doc['preset']})
+                  settings={'PRESET': doc['preset']}, on_fills=fill_saver(fills_dir))
     pk.update(key=a.key, side=a.side, window=a.window, symbols=syms, coverage=data['coverage'],
               manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], config_sha256=CONFIG_SHA256)
     pk['candle_depth'] = candle_depth(a.key)
