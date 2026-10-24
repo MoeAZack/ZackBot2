@@ -94,6 +94,53 @@ def test_sequential_lots_restart_equivalent_row_order():
         X.trades_of(a + b, [row(b, risk=7.0), row(a, risk=5.0)])
 
 
+def test_sub_step_dust_then_reopen_is_two_legal_lots():
+    a = [f(20, 'open', 1000.0, 100.0), f(21, 'close', 999.9999995, 101.0)]
+    b = [f(22, 'open', 0.1, 100.0), f(23, 'close', 0.1000005, 101.0)]
+    ts = X.trades_of(a + b, [row(a), row(b)], {SYM: {'step': 1e-5}})
+    assert len(ts) == 2
+    assert [sum(x['qty'] for x in t['entries']) for t in ts] == pytest.approx([1000.0, 0.1])
+    assert [sum(x['qty'] for x in t['closes']) for t in ts] == pytest.approx([1000.0, 0.1])
+
+
+def test_carried_dust_does_not_hide_a_larger_over_close():
+    a = [f(20, 'open', 1000.0, 100.0), f(21, 'close', 999.9999995, 101.0)]
+    b = [f(22, 'open', 0.1, 100.0), f(23, 'close', 0.1000015, 101.0)]
+    with pytest.raises(X.ScalpExecError, match='exceed'):
+        X.trades_of(a + b, [row(a), row(b)], {SYM: {'step': 1e-5}})
+
+
+@pytest.mark.parametrize('other_sym,other_side', [(SYM, 'SHORT'), ('XRPUSDT', 'LONG')])
+def test_carried_dust_never_crosses_symbol_or_side(other_sym, other_side):
+    a = [f(20, 'open', 1000.0, 100.0), f(21, 'close', 999.9999995, 101.0)]
+    b = [f(22, 'open', 0.1, 100.0, other_side, sym=other_sym),
+         f(23, 'close', 0.1000005, 101.0, other_side, sym=other_sym)]
+    rules = {SYM: {'step': 1e-5}, other_sym: {'step': 1e-5}}
+    with pytest.raises(X.ScalpExecError, match='exceed'):
+        X.trades_of(a + b, [row(a), row(b, ps=other_side, sym=other_sym)], rules)
+
+
+def test_consumed_dust_cannot_be_reused_by_a_third_lot():
+    a = [f(20, 'open', 1000.0, 100.0), f(21, 'close', 999.9999995, 101.0)]
+    b = [f(22, 'open', 0.1, 100.0), f(23, 'close', 0.1000005, 101.0)]
+    c = [f(24, 'open', 0.1, 100.0), f(25, 'close', 0.1000005, 101.0)]
+    with pytest.raises(X.ScalpExecError, match='exceed'):
+        X.trades_of(a + b + c, [row(a), row(b), row(c)], {SYM: {'step': 1e-5}})
+
+
+@pytest.mark.parametrize('close_qty', [0.2, 0.100002])
+def test_genuine_over_close_still_refuses_at_and_beyond_the_boundary(close_qty):
+    fl = [f(20, 'open', 0.1, 100.0), f(21, 'close', close_qty, 101.0)]
+    with pytest.raises(X.ScalpExecError, match='exceed'):
+        X.trades_of(fl, [row(fl)], {SYM: {'step': 1e-5}})
+
+
+def test_one_whole_step_over_close_on_a_big_lot_refuses():
+    fl = [f(20, 'open', 1000.0, 100.0), f(21, 'close', 1000.1, 101.0)]
+    with pytest.raises(X.ScalpExecError, match='exceed'):
+        X.trades_of(fl, [row(fl)], {SYM: {'step': 0.1}})
+
+
 def test_long_and_short_lots_of_one_symbol_stay_apart():
     lg = [f(20, 'open', 1.0, 100.0), f(21, 'open', 1.0, 100.5), f(24, 'close', 2.0, 101.0)]
     sh = [f(20, 'open', 2.0, 100.0, 'SHORT'), f(22, 'open', 1.0, 100.2, 'SHORT'), f(23, 'close', 3.0, 99.0, 'SHORT')]
