@@ -6,9 +6,12 @@ labels the packet counts) on the same frozen inputs and reports, per symbol, eve
 label log, segment_open_ms, minute_open_ms (the 1m candle spanning both a stop and a target; None for NO-1M), label,
 side held, and whether a closed trade's exit fill falls inside that 15m candle (with the exit kinds). Nothing here
 changes a decision, cost or fill: scalp_exec_15m.bar_path is wrapped for the run only and returns its own result
-unchanged, and the run refuses unless its aggregate labels and trade count equal the packet's when one is given.
+unchanged, and given a packet, the run refuses unless the packet's identity (key, side, window, symbols, latency, frozen config /
+manifest / static digests, code blob ids) equals the requested run's AND its aggregate labels and trade count match;
+the disclosure records that identity and the packet's SHA-256.
 The output carries no price, quantity or P&L - only ms timestamps, labels, sides, counts and shares.
 """
+import hashlib
 import json
 import os
 import sys
@@ -20,6 +23,8 @@ import scalp_exec_15m as X                                                      
 
 FORMAT = 'intrabar-disclosure/1'
 SIDE = {1: 'LONG', -1: 'SHORT'}
+IDENTITY = ('key', 'side', 'window', 'symbols', 'latency_s', 'config_sha256', 'config_digest', 'manifest_digest',
+            'static_digest', 'code')
 
 
 class DisclosureError(ValueError):
@@ -70,8 +75,34 @@ def _pair(labels, ctx):
     return recs
 
 
+def exit_overlap(exits, sym, side, open_ms) -> list:
+    """Kinds of the closed-trade exit fills inside this 15m candle on the side held there (BOTH: either side)."""
+    sides = ('LONG', 'SHORT') if side == 'BOTH' else (side,)
+    return sorted(kind for sd in sides for t, kind in exits.get((sym, sd), ()) if open_ms <= t < open_ms + X.TF_MS)
+
+
+def exits_by_side(trades) -> dict:
+    """{(symbol, LONG|SHORT): [(exit t_ms, kind)]} over every close fill of every closed trade."""
+    exits = {}
+    for tr in trades:
+        for f in tr['closes']:
+            exits.setdefault((tr['sym'], tr['ps']), []).append((int(f['t_ms']), f['kind']))
+    return exits
+
+
+def check_identity(packet, identity) -> None:
+    """The packet must be the run being disclosed: every identity field equal, not only its counts."""
+    bad = sorted(k for k in IDENTITY if packet.get(k) != identity.get(k))
+    if bad:
+        raise DisclosureError(f'packet identity differs from the requested run: {bad}')
+
+
 def disclose(raw15, minutes, sleeves, t0, *, funding=None, exchange_rules=None, start=2000.0, latency_s=0,
-             settings=None, packet=None) -> dict:
+             settings=None, packet=None, identity=None) -> dict:
+    if packet is not None:
+        if identity is None:
+            raise DisclosureError('a packet cross-check needs the requested run identity')
+        check_identity(packet, identity)
     X.check_sleeves(sleeves)
     bad = X.check_inputs(raw15, minutes, funding)
     run = {s: df for s, df in raw15.items() if s not in bad}
@@ -80,10 +111,7 @@ def disclose(raw15, minutes, sleeves, t0, *, funding=None, exchange_rules=None, 
     out, fills, labels, ctx = reference_segments(run, minutes, sleeves, t0, start=start, rules=exchange_rules,
                                                  settings=settings, latency_s=latency_s)
     trades = X.trades_of(fills, out['history'], exchange_rules or {})
-    exits = {}
-    for tr in trades:
-        for f in tr['closes']:
-            exits.setdefault(tr['sym'], []).append((int(f['t_ms']), f['kind']))
+    exits = exits_by_side(trades)
     lab = [x[2] for x in labels]
     by_label = {k: lab.count(k) for k in (X.ONE_LEVEL, X.RES_1M, X.SAME_MINUTE, X.NO_1M, X.TWO_SIDED, X.NO_LATENCY)}
     unres = sum(x in X.UNRESOLVED for x in lab)
@@ -98,7 +126,7 @@ def disclose(raw15, minutes, sleeves, t0, *, funding=None, exchange_rules=None, 
     for k, s, open_ms, label, c in _pair(labels, ctx):
         if label not in X.UNRESOLVED:
             continue
-        kinds = sorted(kind for t, kind in exits.get(s, ()) if open_ms <= t < open_ms + X.TF_MS)
+        kinds = exit_overlap(exits, s, c['side'], open_ms)
         per[s]['unresolved'] += 1
         per[s]['segments'].append(dict(index=k, segment_open_ms=open_ms, minute_open_ms=c['minute_open_ms'],
                                        label=label, side=c['side'], overlaps_closed_trade_exit=bool(kinds),
@@ -130,19 +158,27 @@ def main(argv=None) -> int:
     doc = X.load_config(a.config)
     syms = a.symbols.split(',')
     data = X.load_store(a.manifest, a.store, a.static, syms, lo, hi)
-    rules = packet = None
+    rules = packet = packet_sha = None
     if a.rules:
         with open(a.rules, encoding='utf-8') as fh:
             rules = json.load(fh)
+    sleeves = X.cell_sleeves(doc, a.key, a.side)
+    identity = dict(key=a.key, side=a.side, window=a.window, symbols=syms, latency_s=a.latency_s,
+                    config_sha256=X.CONFIG_SHA256, config_digest=X.config_digest(sleeves),
+                    manifest_digest=data['manifest_digest'], static_digest=data['static_digest'], code=X.code_ids())
     if a.packet:
-        with open(a.packet, encoding='utf-8') as fh:
-            pk = json.load(fh)
-        packet = dict(intrabar=pk['intrabar'], repriced=dict(trades=pk['repriced']['trades']))
+        with open(a.packet, 'rb') as fh:
+            raw = fh.read()
+        packet_sha = hashlib.sha256(raw).hexdigest()
+        pk = json.loads(raw)
+        packet = {k: pk.get(k) for k in IDENTITY}
+        packet.update(intrabar=pk['intrabar'], repriced=dict(trades=pk['repriced']['trades']))
+        del pk, raw
     raw15 = data['raw15']
-    res = disclose(raw15, data['minutes'], X.cell_sleeves(doc, a.key, a.side), X.window_start(raw15, lo),
+    res = disclose(raw15, data['minutes'], sleeves, X.window_start(raw15, lo),
                    funding=data['funding'], exchange_rules=rules, start=a.start, latency_s=a.latency_s,
-                   settings={'PRESET': doc['preset']}, packet=packet)
-    res.update(key=a.key, side=a.side, window=a.window, packet_checked=bool(a.packet))
+                   settings={'PRESET': doc['preset']}, packet=packet, identity=identity)
+    res.update(identity=identity, packet_checked=bool(a.packet), packet_sha256=packet_sha)
     with open(a.out, 'x', encoding='utf-8') as fh:
         json.dump(res, fh, sort_keys=True)
     print(json.dumps(dict(out=a.out, unresolved=res['unresolved'], trades=res['trades']), sort_keys=True))

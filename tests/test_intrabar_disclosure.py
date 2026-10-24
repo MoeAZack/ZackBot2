@@ -157,15 +157,55 @@ def test_reproduces_run_cell_aggregates_and_refuses_a_packet_it_does_not(inject)
     m, _ = _same_minute()
     raw = {SYM: _agg(m)}
     inject(raw)
-    pk = X.run_cell(raw, {SYM: m}, _sleeves(), T0, model=C.CostModel(_cal(), {SYM: 'crypto'}), start=500.0)
-    res = D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=pk)
+    pk, ident = _packet(raw, m)
+    res = D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=pk, identity=ident)
     assert (res['segments'], res['by_label'], res['unresolved']) == \
         (pk['intrabar']['segments'], pk['intrabar']['by_label'], pk['intrabar']['unresolved'])
     assert res['unresolved_share'] == pk['intrabar']['unresolved_share']
     bad = copy.deepcopy(pk)
     bad['intrabar']['unresolved'] += 1
     with pytest.raises(D.DisclosureError, match='does not reproduce'):
-        D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=bad)
+        D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=bad, identity=ident)
+
+
+def _packet(raw, m):
+    """A run_cell packet with main()'s identity fields, and the identity the extractor's main() would request."""
+    pk = X.run_cell(raw, {SYM: m}, _sleeves(), T0, model=C.CostModel(_cal(), {SYM: 'crypto'}), start=500.0)
+    ident = dict(key='exp_scalp', side='long', window='2025-01-06/2025-01-10', symbols=[SYM], latency_s=0,
+                 config_sha256=X.CONFIG_SHA256, config_digest=X.config_digest(_sleeves()), manifest_digest='m' * 64,
+                 static_digest='s' * 64, code=X.code_ids())
+    pk.update({k: ident[k] for k in ('key', 'side', 'window', 'symbols', 'config_sha256', 'manifest_digest',
+                                     'static_digest')})
+    assert all(pk[k] == ident[k] for k in D.IDENTITY)    # latency_s, config_digest and code come from run_cell itself
+    return pk, ident
+
+
+@pytest.mark.parametrize('field,other', [('key', 'range_scalp'), ('side', 'both'), ('window', '2025-01-06/2025-01-11'),
+                                         ('symbols', [SYM, 'XRPUSDT']), ('latency_s', 60), ('config_sha256', '0' * 64),
+                                         ('config_digest', '0' * 64), ('manifest_digest', '0' * 64),
+                                         ('static_digest', '0' * 64), ('code', {'engine.py': '0' * 40})])
+def test_a_packet_of_another_run_with_equal_counts_is_refused(inject, field, other):
+    m, _ = _same_minute()
+    raw = {SYM: _agg(m)}
+    inject(raw)
+    pk, ident = _packet(raw, m)
+    bad = dict(pk, **{field: other})                    # every count still equal
+    with pytest.raises(D.DisclosureError, match=f"identity differs.*'{field}'"):
+        D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=bad, identity=ident)
+    with pytest.raises(D.DisclosureError, match='needs the requested run identity'):
+        D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0, packet=pk)
+
+
+def test_exit_overlap_is_side_specific():
+    t = 1_000 * X.TF_MS
+    ex = {(SYM, 'SHORT'): [(t + 60_000, 'stop')]}
+    assert D.exit_overlap(ex, SYM, 'LONG', t) == []                       # only the opposite side exited there
+    assert D.exit_overlap(ex, SYM, 'SHORT', t) == ['stop']
+    assert D.exit_overlap(ex, SYM, 'BOTH', t) == ['stop']                 # two-sided context: deliberate union
+    ex[(SYM, 'LONG')] = [(t, 'tp'), (t + X.TF_MS, 'stop')]                # candle open counts, next candle does not
+    assert D.exit_overlap(ex, SYM, 'LONG', t) == ['tp']
+    assert D.exit_overlap(ex, SYM, 'BOTH', t) == ['stop', 'tp']
+    assert D.exit_overlap(ex, 'XRPUSDT', 'BOTH', t) == []
 
 
 def test_output_is_price_free(inject):
@@ -194,3 +234,25 @@ def test_existing_runtime_and_harness_files_are_untouched():
     out = subprocess.run(['git', 'diff', '--name-only', base, '--'], cwd=ROOT, capture_output=True, text=True, check=True)
     changed = {p for p in out.stdout.split() if p}
     assert changed <= {'tools/research/intrabar_disclosure.py', 'tests/test_intrabar_disclosure.py'}
+
+
+def test_exits_are_keyed_by_the_trade_side():
+    t = 1_000 * X.TF_MS
+    trades = [dict(sym=SYM, ps='SHORT', closes=[dict(t_ms=t + 60_000, kind='stop')]),
+              dict(sym=SYM, ps='LONG', closes=[dict(t_ms=t + 2 * X.TF_MS, kind='tp'), dict(t_ms=t + 3 * X.TF_MS,
+                                                                                        kind='stop')])]
+    ex = D.exits_by_side(trades)
+    assert ex == {(SYM, 'SHORT'): [(t + 60_000, 'stop')], (SYM, 'LONG'): [(t + 2 * X.TF_MS, 'tp'),
+                                                                         (t + 3 * X.TF_MS, 'stop')]}
+    assert D.exit_overlap(ex, SYM, 'LONG', t) == []       # a LONG segment is not flagged by the SHORT trade's exit
+
+
+
+def test_disclose_does_not_flag_a_segment_by_the_opposite_sides_exit(inject, monkeypatch):
+    m, t_e = _same_minute()
+    raw = {SYM: _agg(m)}
+    inject(raw)
+    real = X.trades_of
+    monkeypatch.setattr(X, 'trades_of', lambda *a, **k: [dict(t, ps='SHORT') for t in real(*a, **k)])
+    seg, = D.disclose(raw, {SYM: m}, _sleeves(), T0, start=500.0)['symbols'][SYM]['segments']
+    assert seg['side'] == 'LONG' and seg['overlaps_closed_trade_exit'] is False and seg['exit_kinds'] == []
