@@ -269,3 +269,51 @@ def test_risk_trim_counter_stays_exact_over_partials_and_restart(eng, step):
 @pytest.mark.parametrize('x,step', [(1400.00001, 1e-5), (140000.001, 1e-3), (99999999.99, 0.01)])
 def test_grid_qty_accepts_exact_on_grid_values_of_any_size(x, step):
     assert F.grid_qty(x, step) == x                       # Cowork 6385780710: the noise cap must not reject exact values
+
+
+# ------------------------------------------------------------------ Cowork 6385840296 / Codex 6385852917
+@pytest.mark.parametrize('px', [719.42446043, 809.06148867, 561.16722783])
+def test_required_qty_terminates_and_meets_the_minimums(px):
+    import threading
+    rule = dict(step=1e-5, min_qty=1e-5, min_notional=5.0)
+    out = []
+    t = threading.Thread(target=lambda: out.append(F.required_qty(px, rule)), daemon=True)
+    t.start(); t.join(5.0)
+    assert out, f'required_qty hung at px={px}'
+    q = out[0]
+    assert q >= rule['min_qty'] and q * px >= rule['min_notional'] and F.round_step(q, 1e-5) == q
+    assert (q - 1e-5) * px < rule['min_notional'] + 1e-9                  # the smallest such quantity
+
+
+def test_required_qty_fails_closed_instead_of_spinning(monkeypatch):
+    monkeypatch.setattr(F, 'step_add', lambda q, s, st: q)                # a step that never advances
+    with pytest.raises(ValueError, match='did not converge'):
+        F.required_qty(719.42446043, dict(step=1e-5, min_qty=1e-5, min_notional=5.0))
+
+
+def test_apply_add_sums_lot_quantities_exactly(eng):
+    _, e, k = eng
+    lot = _hold(e, k, 93.12374)
+    e._apply_add(lot, 25.04914, 100.0, 'add')                             # float sum is 118.17287999999999
+    assert lot['qty'] == 118.17288
+
+
+SITES = [                                    # Codex 6385852917 item 3: required-site assertions for paths without a cheap hook
+    ('engine', 'Engine._risk_fill_run', "F.step_add(d['trim_qty'], -F.grid_qty(d.get('trimmed', 0.0), r['step']), r['step'])"),
+    ('engine', 'Engine._risk_fill_run', "F.grid_qty(F.qty_sum(d.get('trimmed', 0.0), d['qty_before'], -lot['qty'])"),
+    ('engine', 'Engine.reconcile', "newqs[k] = F.step_add(newqs[k], step, step)"),
+    ('engine', 'Engine._maker_place', "rem = F.step_add(rec['qty'], -F.grid_qty(rec['filled'], r['step']), r['step'])"),
+    ('engine', 'Engine._maker_poll', "rem = F.step_add(rec['qty'], -F.grid_qty(rec['filled'], r['step']), r['step'])"),
+    ('replay', 'run_replay', "q = F.qty_sum(*(l['q'] for l in ls))"),
+    ('replay', 'run_replay', "l['q'] = F.qty_sum(l['q'], -q)"),
+]
+
+
+@pytest.mark.parametrize('mod,fn,code', SITES, ids=[f'{m}.{f}:{i}' for i, (m, f, _c) in enumerate(SITES)])
+def test_required_exact_arithmetic_sites(mod, fn, code):
+    import importlib
+    import inspect
+    obj = importlib.import_module(mod)
+    for part in fn.split('.'):
+        obj = getattr(obj, part)
+    assert code in inspect.getsource(obj)

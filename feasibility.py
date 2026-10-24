@@ -271,13 +271,19 @@ def tier_notional_cap(brackets, lev):
     return max(caps) if caps else None
 
 
+REQUIRED_QTY_MAX_STEPS = 64      # ceil_step already lands within a step of the minimum; more steps = a broken rule
+
+
 def required_qty(px, rule):
     """Smallest order quantity this rule accepts at price px (a multiple of the step, >= minQty, notional >= minNotional)."""
     mq, mn, step = float(rule.get('min_qty', 0)), float(rule.get('min_notional', 0)), rule.get('step')
     need = max(mq, mn / px if px > 0 else math.inf)
     q = ceil_step(need, step) if step else need
-    while step and (q < mq or q * px < mn): q = round_step(q + step, step)     # float edge: one more step
-    return q
+    for _ in range(REQUIRED_QTY_MAX_STEPS):              # ROUND-STEP-01: exact one more step, bounded (Cowork 6385840296)
+        if not (step and (q < mq or q * px < mn)):
+            return q
+        q = step_add(q, step, step)
+    raise ValueError(f'required_qty did not converge at px={px!r} rule={rule!r}')
 
 
 def leaves_dust(rest, px, rule):
