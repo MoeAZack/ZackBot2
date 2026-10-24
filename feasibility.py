@@ -68,6 +68,8 @@ def grid_qty(x, step):
     Anything farther from the grid is not float noise: it raises. Never for raw risk or price inputs (use round_step)."""
     d, dx = _dstep(step), _dqty(x)
     g = (dx / d).to_integral_value(rounding=ROUND_HALF_EVEN) * d
+    if dx == g:
+        return float(g)                                  # exactly on the grid: never a raise, whatever the size
     bound = GRID_ULPS * math.ulp(max(abs(float(x)), float(step)))
     if bound >= float(step) * 1e-6 or abs(float(dx - g)) > bound:
         raise ValueError(f'accumulator {x!r} is not on the {step!r} grid within {GRID_ULPS} ulp')

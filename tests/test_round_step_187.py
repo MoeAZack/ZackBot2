@@ -264,3 +264,8 @@ def test_risk_trim_counter_stays_exact_over_partials_and_restart(eng, step):
     assert d['trimmed'] == _exact(PARTS[step][:3], step)
     trim_qty = _exact(PARTS[step], step)
     assert F.step_add(trim_qty, -F.grid_qty(d['trimmed'], step), step) == _grid(round(PARTS[step][3] / step), step)
+
+
+@pytest.mark.parametrize('x,step', [(1400.00001, 1e-5), (140000.001, 1e-3), (99999999.99, 0.01)])
+def test_grid_qty_accepts_exact_on_grid_values_of_any_size(x, step):
+    assert F.grid_qty(x, step) == x                       # Cowork 6385780710: the noise cap must not reject exact values
