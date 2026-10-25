@@ -617,7 +617,7 @@ def _engine(run, minutes, sleeves, t0, *, start, rules, settings, latency_s, pri
     finally:
         E.save_json, E.Engine._finish = saved, finish
     capped = out['history']
-    if len(full) < len(capped) or any(a is not b for a, b in zip(full[len(full) - len(capped):], capped)):
+    if (full and not capped) or len(full) < len(capped) or             any(a is not b for a, b in zip(full[len(full) - len(capped):], capped)):
         raise ScalpExecError('the collected trade history does not end with the engine\'s own history')
     out['history'] = full
     return out, fills, labels

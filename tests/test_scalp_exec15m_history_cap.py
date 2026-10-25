@@ -128,6 +128,20 @@ def test_a_history_that_is_not_the_collected_tail_refuses(data, monkeypatch):
     monkeypatch.setattr(E.Engine, '_finish', copies)
     with pytest.raises(X.ScalpExecError, match='does not end with'):
         _run(data)
+    assert E.Engine._finish is copies                       # restored although the post-replay guard raised
+
+
+def test_rows_captured_but_an_empty_engine_history_refuses(data, monkeypatch):
+    import replay as RP
+    real_run, real = RP.run_replay, E.Engine._finish
+
+    def empty(*a, **k):                                     # the replay writes rows but reports no history
+        out = real_run(*a, **k)
+        return dict(out, history=[])
+    monkeypatch.setattr(RP, 'run_replay', empty)
+    with pytest.raises(X.ScalpExecError, match='does not end with'):
+        _run(data)
+    assert E.Engine._finish is real
 
 
 def test_engine_cap_is_the_one_this_fix_was_written_for():
