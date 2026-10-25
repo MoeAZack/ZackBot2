@@ -3246,6 +3246,11 @@ class Engine:
                 cur.update(status='failed', why='not_applicable'); cur.pop('raw', None); return 'failed'
             px_new = px is not None and AC.recover_px(t, ref, px, cur.get('order_key'))
         if fresh or px_new: self._cost_final(kind, t)
+        if kind == 'lot' and (fresh or px_new):              # RISK-FILL-RECOVER-01: an unmeasured entry is decided on the
+            frec = self._cost_recover_scan({ref}).get(ref) or {}     # proven price (once; a measured record never changes)
+            self._risk_fill_mark(t, dict(cost_ref=ref, expected=frec.get('expected'),
+                                         commission_raw=frec.get('commission_raw') if px_only else raw,
+                                         commission_missing=frec.get('commission_missing') if px_only else None))
         ok = True
         if kind == 'row':
             ok = self._row_changed(t)
@@ -4562,7 +4567,8 @@ class Engine:
     def _risk_fill_mark(self, lot, rec):
         """An entry / add fill's measured price arrived: decide its post-fill action once (per fill index - each add is
         checked on its own, no once-per-lot latch). Never sends anything; manage() runs a due action. Never raises;
-        a failure after the fill is identified fails CLOSED (an 'unmeasured' record, which blocks adds)."""
+        a failure after the fill is identified fails CLOSED (an 'unmeasured' record, which blocks adds). An 'unmeasured'
+        record made for want of a price is decided once more when a recovered price arrives (RISK-FILL-RECOVER-01)."""
         i = None
         try:
             ref = rec.get('cost_ref')
@@ -4570,10 +4576,12 @@ class Engine:
             fills = lot.get('fills') or []
             if not isinstance(i, int) or not 0 <= i < len(fills) or fills[i][1] not in TA.ENTRY_KINDS: return
             rf = lot.setdefault('risk_fill', {})
-            if str(i) in rf: return
+            meas = (lot.get('px_actual') or {}).get(ref)
+            old = rf.get(str(i))
+            if old is not None and not (meas is not None and old.get('why') == 'risk_unmeasured' and
+                                        old.get('measured_px') is None and not old.get('attempts')): return
             f, sym = fills[i], lot['symbol']
             r = self.rules.get(sym) or {}
-            meas = (lot.get('px_actual') or {}).get(ref)
             quote, raw = _quote_asset(sym), rec.get('commission_raw')
             fees = None
             if isinstance(raw, list) and raw and not rec.get('commission_missing') and all(x.get('asset') == quote for x in raw):
@@ -4586,6 +4594,7 @@ class Engine:
             d.update(fill=i, kind=f[1], t=now_utc().isoformat(timespec='seconds'), planned_px=planned_px, measured_px=meas,
                      stop=lot.get('stop'), attempts=0, trimmed=0.0,
                      state={'trim': 'due', 'unwind': 'due', 'unmeasured': 'unmeasured'}.get(d['action'], 'done'))
+            if old is not None: d['remeasured'] = old['why']   # RISK-FILL-RECOVER-01: decided late, on a recovered price
             rf[str(i)] = d
             if d['action'] != 'ok':
                 log.warning(f"RISK-FILL {sym} {lot['side']} [{lot['sleeve']}] fill {i}: planned {d['planned']} measured "
