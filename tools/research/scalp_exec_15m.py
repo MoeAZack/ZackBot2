@@ -599,15 +599,27 @@ def _engine(run, minutes, sleeves, t0, *, start, rules, settings, latency_s, pri
     import replay as RP
     labels, fills = [], []
     fn, pre = make_path_fn(run, minutes, labels, latency_s)
-    saved = E.save_json
+    saved, finish, full = E.save_json, E.Engine._finish, []
+
+    def keep(self, key, why):                       # #206 full RANGE: Engine._finish keeps only the last 3,000 rows;
+        last = self.history[-1] if self.history else None       # the harness keeps every row it writes (same objects)
+        r = finish(self, key, why)
+        if self.history and self.history[-1] is not last:
+            full.append(self.history[-1])
+        return r
     if not durable_io:
         E.save_json = lambda *a, **k: None
+    E.Engine._finish = keep
     try:
         out = RP.run_replay(copy.deepcopy(run), copy.deepcopy(sleeves), t0, tf_sec=TF_MS // 1000, start=start,
                             exchange_rules=rules, path_fn=fn, pre_fn=pre, fill_log=fills, compare=False, settings=settings,
                             costs_off=pricer is None, fill_px=pricer, fund_fn=pricer.fund if pricer else None)
     finally:
-        E.save_json = saved
+        E.save_json, E.Engine._finish = saved, finish
+    capped = out['history']
+    if len(full) < len(capped) or any(a is not b for a, b in zip(full[len(full) - len(capped):], capped)):
+        raise ScalpExecError('the collected trade history does not end with the engine\'s own history')
+    out['history'] = full
     return out, fills, labels
 
 
