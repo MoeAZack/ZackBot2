@@ -4589,12 +4589,21 @@ class Engine:
             # the stop is anchored at the first fill's BOOKED price - its plan is that distance; an add's plan is its
             # decision price (expected), because the stop is not re-anchored for it
             planned_px = f[3] if i == 0 else (_fnum(rec.get('expected')) or f[3])
-            d = RF.decide(lot['side'], float(f[2]), meas, lot.get('stop'), planned_px, fees, r.get('step', 0.0),
+            # RISK-FILL-RECOVER-01: a late decision is judged against the stop the fill was planned on (the unmeasured
+            # record's), never one moved since (breakeven / runner); a lot whose stop moved or that has exited part
+            # since keeps the decision as evidence only - a stale trim / unwind is never queued (Cowork 6400354056)
+            stop = old['stop'] if old is not None and old.get('stop') is not None else lot.get('stop')
+            stale = old is not None and (lot.get('stop') != stop or float(lot.get('qty') or 0) < float(f[2]) - self._qty_tol(r.get('step', 0.0)) or
+                                         any(x[1] not in TA.ENTRY_KINDS for x in fills[i + 1:]))
+            d = RF.decide(lot['side'], float(f[2]), meas, stop, planned_px, fees, r.get('step', 0.0),
                           r.get('min_qty', 0.0), r.get('min_notional', 0.0), FEE_EST)
             d.update(fill=i, kind=f[1], t=now_utc().isoformat(timespec='seconds'), planned_px=planned_px, measured_px=meas,
-                     stop=lot.get('stop'), attempts=0, trimmed=0.0,
+                     stop=stop, attempts=0, trimmed=0.0,
                      state={'trim': 'due', 'unwind': 'due', 'unmeasured': 'unmeasured'}.get(d['action'], 'done'))
-            if old is not None: d['remeasured'] = old['why']   # RISK-FILL-RECOVER-01: decided late, on a recovered price
+            if old is not None: d['remeasured'] = old['why']   # decided late, on a recovered price
+            if stale:
+                d['late_stale'] = True
+                if d['state'] == 'due': d['state'] = 'done'
             rf[str(i)] = d
             if d['action'] != 'ok':
                 log.warning(f"RISK-FILL {sym} {lot['side']} [{lot['sleeve']}] fill {i}: planned {d['planned']} measured "

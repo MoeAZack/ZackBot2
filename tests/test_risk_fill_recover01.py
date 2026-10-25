@@ -78,3 +78,30 @@ def test_no_price_yet_keeps_the_record_unmeasured():
     d = dict(lot['risk_fill']['0'])
     e._risk_fill_mark(lot, dict(cost_ref=ref))
     assert lot['risk_fill']['0'] == d and e._risk_fill_block(lot).startswith('risk_unmeasured')
+
+
+# ------------------------------------------------------------------ Cowork 6400354056: the lot changed before recovery
+def test_a_breakeven_stop_moved_before_recovery_never_unwinds_the_lot():
+    e, _ = mk(RX); k, lot, ref = entry_px_missing(e)
+    entry_stop = lot['risk_fill']['0']['stop']
+    lot['stop'] = lot['fills'][0][3] * 1.0015                # the normal breakeven move, then the price is proven
+    assert e.cost_recover_tick(force=True) == 'ok'
+    d = lot['risk_fill']['0']
+    assert d['stop'] == entry_stop and d['why'] != 'impossible_plan'      # judged on the stop the fill was planned on
+    assert d['late_stale'] and d['state'] == 'done' and e._risk_fill_block(lot) is None
+
+
+def test_a_partial_exit_before_recovery_queues_no_trim():
+    e, _ = mk(RX); k, lot, ref = entry_px_missing(e, split=[(1.0, 130.0)])   # adverse enough to want a trim / unwind
+    lot['qty'] = lot['qty'] * 0.4
+    assert e.cost_recover_tick(force=True) == 'ok'
+    d = lot['risk_fill']['0']
+    assert d['action'] in ('trim', 'unwind') and d['late_stale'] and d['state'] == 'done'   # evidence, nothing queued
+    assert e._risk_fill_block(lot) is None
+
+
+def test_an_unchanged_lot_still_gets_its_late_trim():
+    e, _ = mk(RX); k, lot, ref = entry_px_missing(e, split=[(1.0, 130.0)])
+    assert e.cost_recover_tick(force=True) == 'ok'
+    d = lot['risk_fill']['0']
+    assert d['state'] == 'due' and 'late_stale' not in d
