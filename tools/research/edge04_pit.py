@@ -14,6 +14,7 @@ import tempfile
 import pit as P
 import pit_run as PR
 import splits as S
+import edge04_1m_acquire as E1
 
 FORMAT = "zb-edge04-pit-adapter/1"
 PREREG = "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json"
@@ -63,10 +64,11 @@ def plan(repo):
     return S.SplitPlan(splits, interval="4h", lookback_bars=240, horizon_bars=180)
 
 
-def dataset(manifest, store, static, *, repo):
+def dataset(manifest, store, static, *, repo, minute_overlay=None, minute_overlay_store=None):
     """The preregistered CORE-10-ELIGIBLE-9 in frozen rank order (HYPE stays sensitivity-only)."""
     symbols = contract(repo)["universe"]["headline"]
-    return PR.StaticDataset(manifest, store, static, symbols, exact_subset=True)
+    return PR.StaticDataset(manifest, store, static, symbols, exact_subset=True,
+                            minute_overlay=minute_overlay, minute_overlay_store=minute_overlay_store)
 
 
 def development_window(plan_, key):
@@ -90,11 +92,11 @@ def evaluate_split(access, key, times, *, repo):
     return P.evaluate(window, EVALUATOR, FUNCTION, times)
 
 
-def binding(repo):
+def binding(repo, minute_overlay=None):
     """Immutable identity material for a later run envelope; no data is opened."""
     c = contract(repo)
     management_addendum(repo)
-    return {
+    out = {
         "format": FORMAT,
         "candidate_id": c["candidate_id"],
         "prereg_sha256": _sha(os.path.join(repo, PREREG)),
@@ -105,10 +107,17 @@ def binding(repo):
         "orchestration_sha256": _sha(os.path.join(repo, "tools/research/edge04_orchestrate.py")),
         "costs_sha256": _sha(os.path.join(repo, "tools/research/costs.py")),
         "pit_runner_sha256": _sha(os.path.join(repo, "tools/research/pit_run.py")),
+        "one_minute_overlay_loader_sha256": _sha(os.path.join(repo, "tools/research/edge04_1m_acquire.py")),
         "exchange_rules": {"path": PR.RULES_PATH, "sha256": PR.RULES_SHA256, "environment": PR.RULES_ENV},
         "hypotheses": [{"id": h["id"], "key": h["key"], "side": h["side"],
                          "management": h["management"]} for h in c["hypotheses"]],
     }
+    if minute_overlay is not None:
+        E1.validate_overlay_manifest(minute_overlay)
+        out["one_minute_overlay"] = {"manifest_digest": minute_overlay["digest"],
+                                     "source_manifest_digest": minute_overlay["source_manifest_digest"],
+                                     "attestation_sha256": minute_overlay["attestation_sha256"]}
+    return out
 
 
 def write_once(path, doc):

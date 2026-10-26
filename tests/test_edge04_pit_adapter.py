@@ -172,6 +172,7 @@ def test_binding_is_pinned_and_outputs_are_write_once(tmp_path):
     assert bind["hypotheses"][0]["management"]["tp1_frac"] == 0.5
     assert bind["hypotheses"][2]["management"]["tp_r"] == 3.0
     assert bind["exchange_rules"]["environment"] == "mainnet"
+    assert len(bind["one_minute_overlay_loader_sha256"]) == 64
     out = tmp_path / "edge04.json"
     doc = {"format": E.FORMAT, "attestation": "a" * 64}
     assert A.write_once(str(out), doc) == str(out)
@@ -199,3 +200,38 @@ def test_static_dataset_subset_is_explicit_ordered_and_opt_in(monkeypatch):
     assert ds._all == frozenset({"A", "B"})
     with pytest.raises(PR.PitRunError, match="preserve the frozen rank order"):
         PR.StaticDataset(manifest, "unused", static, ["B", "A"], exact_subset=True)
+
+
+def test_static_dataset_overlay_identity_unique_lookup_and_duplicate_fail_closed(monkeypatch):
+    static = {"format": "x", "label": "x", "owner_approved": True, "digest": "u",
+              "symbols": [{"symbol": "A"}]}
+    monkeypatch.setattr(PR.M, "validate", lambda m: None)
+    monkeypatch.setattr(PR.M, "promotion_eligible", lambda m: True)
+    monkeypatch.setattr(PR.SU, "FORMAT", "x"); monkeypatch.setattr(PR, "LABEL", "x")
+    monkeypatch.setattr(PR.SU, "BOOK", "crypto")
+    manifest = {"digest": "d", "loader_version": PR.M.ARCHIVE_LOADER, "files": []}
+    day = 1_767_225_600_000
+    overlay = {"source_manifest_digest": "d", "digest": "e" * 64,
+               "files": [{"symbol": "A", "day": "2026-01-01", "path": "x"}]}
+    import edge04_1m_acquire as E1
+    monkeypatch.setattr(E1, "validate_overlay_manifest", lambda d: None)
+    bar = P.Bar(day, 1, 2, .5, 1.5, 1, 1, day + 60_000)
+    monkeypatch.setattr(E1, "overlay_rows", lambda store, f: [bar])
+    ds = PR.StaticDataset(manifest, "base", static, ["A"], exact_subset=True,
+                          minute_overlay=overlay, minute_overlay_store="overlay")
+    # Use the key actually selected from the UTC day; this also proves the lookup is exact, not nearest-bar.
+    ds._minute_overlay_files = {("A", "2026-01-01"): overlay["files"][0]}
+    assert ds.exact_minute_bar("A", day) == bar
+    assert ds.exact_minute_bar("A", day + 60_000) is None
+    assert ds.latency_identity == {"source_manifest_digest":"d", "overlay_manifest_digest":"e" * 64}
+    with pytest.raises(PR.PitRunError, match="source identity"):
+        PR.StaticDataset(manifest, "base", static, ["A"], exact_subset=True,
+                         minute_overlay={**overlay, "source_manifest_digest":"wrong"},
+                         minute_overlay_store="overlay")
+
+    monkeypatch.setattr(ds, "files", lambda *args: [{"path":"base", "first_open_ms":day,
+                                                       "last_open_ms":day}])
+    ds._keys["base"] = ([day], [day + 60_000])
+    monkeypatch.setattr(ds, "rows", lambda f: [bar])
+    with pytest.raises(PR.PitRunError, match="duplicate base/overlay"):
+        ds.exact_minute_bar("A", day)

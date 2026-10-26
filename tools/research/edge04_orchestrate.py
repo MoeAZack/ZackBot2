@@ -93,6 +93,11 @@ def latency_60s(minute_bars, entry_ms):
     return float(rows[0].close)
 
 
+def latency_from_dataset(dataset, symbol, entry_ms):
+    bar = dataset.exact_minute_bar(symbol, entry_ms)
+    return latency_60s(() if bar is None else (bar,), entry_ms)
+
+
 def candidates_from_tape(outputs, hypothesis, *, rules, slip_c, scenario=None, minute_bars=None):
     """Translate only attested EDGE-04 tape bits into executable candidate inputs for the shared router."""
     if hypothesis not in A.MANAGEMENT:
@@ -118,7 +123,8 @@ def candidates_from_tape(outputs, hypothesis, *, rules, slip_c, scenario=None, m
             if ref is None:
                 raise OrchestrationError(f"{symbol}: next executable open missing; row is INCOMPLETE")
             if scenario.name == "entry_latency_60s":
-                ref = latency_60s((minute_bars or {}).get(symbol, ()), t)
+                ref = latency_from_dataset(minute_bars, symbol, t) if hasattr(minute_bars, "exact_minute_bar") else \
+                    latency_60s((minute_bars or {}).get(symbol, ()), t)
             dist = float(q["atr"])
             action = "sell" if side == "short" else "buy"
             fill = C.fill_price(ref, action, x.bps(t, scenario.vol, slip_c), scenario,

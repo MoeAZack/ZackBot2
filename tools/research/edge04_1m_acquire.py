@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import manifest as M  # noqa: E402
 
 FORMAT = "zb-edge04-1m-attestation/1"
+OVERLAY_FORMAT = "zb-edge04-1m-overlay-manifest/1"
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "ZECUSDT", "SOLUSDT", "XRPUSDT",
            "NEARUSDT", "DOGEUSDT", "UNIUSDT", "SUIUSDT")
 START = "2021-01-04T00:00:00Z"
@@ -296,6 +297,105 @@ def write_once(doc: dict, path: str) -> None:
         raise AcquireError(f"{path} already exists with different bytes")
     with open(path, "xb") as f:
         f.write(raw)
+
+
+def overlay_digest(doc: dict) -> str:
+    return hashlib.sha256(M.canonical({k: v for k, v in doc.items() if k != "digest"})).hexdigest()
+
+
+def validate_overlay_manifest(doc: dict) -> None:
+    keys = {"format", "attestation_sha256", "attestation_digest", "source_manifest_digest", "window",
+            "files", "digest"}
+    if not isinstance(doc, dict) or set(doc) != keys or doc.get("format") != OVERLAY_FORMAT:
+        raise AcquireError("invalid EDGE-04 overlay manifest shape")
+    if any(not isinstance(doc.get(k), str) or not HEX64.match(doc[k])
+           for k in ("attestation_sha256", "attestation_digest", "source_manifest_digest", "digest")):
+        raise AcquireError("overlay identity hashes must be lowercase SHA-256")
+    if doc["window"] != {"start": START, "end": END} or doc["digest"] != overlay_digest(doc):
+        raise AcquireError("overlay manifest digest/window mismatch")
+    seen, coverage = set(), set()
+    for f in doc["files"]:
+        need = {"path", "symbol", "day", "sha256", "bytes", "rows", "first_open_ms", "last_open_ms",
+                "source_url", "published_checksum"}
+        if set(f) != need or f["symbol"] not in SYMBOLS or not HEX64.match(f["sha256"]):
+            raise AcquireError("invalid overlay file identity")
+        if f["sha256"] != f["published_checksum"] or f["rows"] != 1440 or f["bytes"] <= 0:
+            raise AcquireError("overlay file is not hash-bound exact daily coverage")
+        day = _ms(f["day"] + "T00:00:00Z")
+        if f["first_open_ms"] != day or f["last_open_ms"] != day + 86_340_000:
+            raise AcquireError("overlay daily coverage bounds mismatch")
+        if f["path"] in seen or (f["symbol"], f["day"]) in coverage:
+            raise AcquireError("duplicate overlay path or symbol/day")
+        if f["source_url"] != f"https://data.binance.vision/data/futures/um/daily/klines/{f['symbol']}/1m/" \
+                f"{f['symbol']}-1m-{f['day']}.zip":
+            raise AcquireError("overlay source is not its exact official Binance URL")
+        seen.add(f["path"]); coverage.add((f["symbol"], f["day"]))
+
+
+def build_overlay_manifest(store: str, attestation_path: str, out: str) -> dict:
+    with open(attestation_path, "rb") as f:
+        att_raw = f.read()
+    att = json.loads(att_raw)
+    if att.get("format") != FORMAT or att.get("digest") != hashlib.sha256(
+            M.canonical({k: v for k, v in att.items() if k != "digest"})).hexdigest():
+        raise AcquireError("acquisition attestation identity mismatch")
+    if not att.get("effective_coverage", {}).get("complete"):
+        raise AcquireError("cannot manifest an incomplete acquisition")
+    planned = {r["path"]: r for r in att["acquisition_plan"] if r["kind"] == "daily_overlay"}
+    verified = {x["path"]: x for x in att["acquisition"] if x.get("status") == "verified"}
+    if set(planned) != set(verified):
+        raise AcquireError("verified overlay set differs from the frozen acquisition plan")
+    files = []
+    for path in sorted(planned):
+        req, got = planned[path], verified[path]
+        ap = M.contained(store, path)
+        with open(ap, "rb") as f:
+            raw = f.read()
+        actual = hashlib.sha256(raw).hexdigest()
+        with open(ap + ".ok", encoding="ascii") as f:
+            published = f.read().strip()
+        if actual != got["sha256"] or published != actual or len(raw) != got["bytes"]:
+            raise AcquireError(f"{path}: bytes/sidecar no longer match the acquisition attestation")
+        _scan_daily(ap, req)
+        day = _ms(req["period"] + "T00:00:00Z")
+        files.append({"path": path, "symbol": req["symbol"], "day": req["period"], "sha256": actual,
+                      "bytes": len(raw), "rows": 1440, "first_open_ms": day,
+                      "last_open_ms": day + 86_340_000, "source_url": req["url"],
+                      "published_checksum": published})
+    doc = {"format": OVERLAY_FORMAT, "attestation_sha256": hashlib.sha256(att_raw).hexdigest(),
+           "attestation_digest": att["digest"], "source_manifest_digest": att["source_manifest_digest"],
+           "window": {"start": START, "end": END}, "files": files}
+    doc["digest"] = overlay_digest(doc)
+    validate_overlay_manifest(doc)
+    write_once(doc, out)
+    return doc
+
+
+def load_overlay_manifest(path: str) -> dict:
+    with open(path, encoding="ascii") as f:
+        doc = json.load(f)
+    validate_overlay_manifest(doc)
+    return doc
+
+
+def overlay_rows(store: str, file: dict):
+    """Re-prove one manifest file and return its exact causal Bars."""
+    ap = M.contained(store, file["path"])
+    with open(ap, "rb") as f:
+        raw = f.read()
+    if hashlib.sha256(raw).hexdigest() != file["sha256"]:
+        raise AcquireError(f"{file['path']}: overlay bytes differ from manifest")
+    req = {"symbol": file["symbol"], "period": file["day"], "path": file["path"]}
+    _scan_daily(ap, req)
+    member = f"{file['symbol']}-1m-{file['day']}.csv"
+    with zipfile.ZipFile(ap) as z:
+        rows = M.parse_archive_csv(file["path"], z.read(member),
+                                   {"series":"klines", "interval":"1m",
+                                    "month_start_ms":file["first_open_ms"],
+                                    "month_end_ms":file["last_open_ms"] + MINUTE})
+    import pit as P
+    return [P.Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[7]),
+                  int(r[0]) + MINUTE) for r in rows]
 
 
 def main(argv=None) -> int:

@@ -139,3 +139,20 @@ def test_plan_uses_daily_overlay_for_boundary_hole():
     f["rows"] -= 1440; f["last_open_ms"] -= 86_400_000
     got = A.plan(manifest(fs))
     assert len(got) == 1 and got[0]["kind"] == "daily_overlay" and got[0]["period"] == "2022-02-28"
+
+
+def test_overlay_manifest_digest_and_duplicate_coverage_fail_closed():
+    day = A._ms("2022-02-26T00:00:00Z")
+    f = {"path":"edge04_daily/klines/ZECUSDT/1m/ZECUSDT-1m-2022-02-26.zip",
+         "symbol":"ZECUSDT", "day":"2022-02-26", "sha256":"a"*64, "bytes":10, "rows":1440,
+         "first_open_ms":day, "last_open_ms":day+86_340_000,
+         "source_url":"https://data.binance.vision/data/futures/um/daily/klines/ZECUSDT/1m/"
+                      "ZECUSDT-1m-2022-02-26.zip", "published_checksum":"a"*64}
+    d={"format":A.OVERLAY_FORMAT,"attestation_sha256":"b"*64,"attestation_digest":"c"*64,
+       "source_manifest_digest":"d"*64,"window":{"start":A.START,"end":A.END},"files":[f]}
+    d["digest"]=A.overlay_digest(d); A.validate_overlay_manifest(d)
+    bad={**d,"files":[f,dict(f)]}; bad["digest"]=A.overlay_digest(bad)
+    with pytest.raises(A.AcquireError,match="duplicate overlay"):
+        A.validate_overlay_manifest(bad)
+    with pytest.raises(A.AcquireError,match="digest/window"):
+        A.validate_overlay_manifest({**d,"digest":"0"*64})
