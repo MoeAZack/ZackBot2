@@ -17,6 +17,7 @@ import splits as S
 
 FORMAT = "zb-edge04-pit-adapter/1"
 PREREG = "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json"
+ADDENDUM = "docs/newcore/research/EDGE04_MANAGEMENT_ADDENDUM_v1.json"
 EVALUATOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "edge04_eval.py")
 FUNCTION = "tape"
 
@@ -39,6 +40,16 @@ def contract(repo):
     if _sha(os.path.join(repo, "strategies.py")) != c["source"]["strategies_sha256"]:
         raise Edge04Error("runtime strategy rules differ from the frozen EDGE-04 source")
     return c
+
+
+def management_addendum(repo):
+    path = os.path.join(repo, ADDENDUM)
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if doc.get("format") != "zb-edge04-management-addendum/1" or doc.get("candidate_id") != \
+            "edge04_legacy_reeval.v1" or doc.get("boundaries", {}).get("market_data_opened") is not False:
+        raise Edge04Error("EDGE-04 management addendum is missing or was not frozen before data")
+    return doc
 
 
 def plan(repo):
@@ -64,7 +75,8 @@ def development_window(plan_, key):
 
 def evaluate_split(access, key, times, *, repo):
     """Attest one development signal tape using ``pit.evaluate``'s two-process/perturbation proof."""
-    contract(repo)  # source-rule pin is checked before Access can append or read data
+    contract(repo)  # source-rule pins are checked before Access can append or read data
+    management_addendum(repo)
     p = access.plan
     development_window(p, key)
     if p.split(key)["name"] == "holdout":  # defensive duplicate: do not rely on a caller-supplied Access.
@@ -80,11 +92,14 @@ def evaluate_split(access, key, times, *, repo):
 def binding(repo):
     """Immutable identity material for a later run envelope; no data is opened."""
     c = contract(repo)
+    management_addendum(repo)
     return {
         "format": FORMAT,
         "candidate_id": c["candidate_id"],
         "prereg_sha256": _sha(os.path.join(repo, PREREG)),
+        "management_addendum_sha256": _sha(os.path.join(repo, ADDENDUM)),
         "evaluator_sha256": _sha(EVALUATOR),
+        "accounting_sha256": _sha(os.path.join(repo, "tools/research/edge04_account.py")),
         "costs_sha256": _sha(os.path.join(repo, "tools/research/costs.py")),
         "pit_runner_sha256": _sha(os.path.join(repo, "tools/research/pit_run.py")),
         "exchange_rules": {"path": PR.RULES_PATH, "sha256": PR.RULES_SHA256, "environment": PR.RULES_ENV},
