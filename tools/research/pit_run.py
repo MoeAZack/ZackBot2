@@ -238,7 +238,7 @@ class StaticDataset(P.Dataset):
     members at every time (contract section 0.1: no PIT membership reconstruction), labelled CURRENT-UNIVERSE /
     SURVIVOR-BIASED. Every row is still read through the manifest's SHA-256 re-check (`Dataset.rows`)."""
 
-    def __init__(self, manifest: dict, store: str, static: dict, symbols):
+    def __init__(self, manifest: dict, store: str, static: dict, symbols, *, exact_subset=False):
         M.validate(manifest)
         if not M.promotion_eligible(manifest):
             raise PitRunError('a reproduction-only manifest can never feed the PIT run')
@@ -246,7 +246,13 @@ class StaticDataset(P.Dataset):
             raise PitRunError('the static universe must be the owner-approved CURRENT-UNIVERSE / SURVIVOR-BIASED list')
         ranked = [s['symbol'] for s in static['symbols']]
         symbols = list(symbols)
-        if not symbols or symbols != ranked[:len(symbols)]:
+        if exact_subset:
+            # EDGE-04's preregistered headline is CORE-10-ELIGIBLE-9: the frozen rank order with HYPE removed for
+            # insufficient full-window history.  This opt-in accepts only an explicit order-preserving subset; the
+            # existing tier path remains prefix-only by default and cannot silently select a subset.
+            if not symbols or len(symbols) != len(set(symbols)) or [s for s in ranked if s in set(symbols)] != symbols:
+                raise PitRunError('an exact static subset must be unique, known, and preserve the frozen rank order')
+        elif not symbols or symbols != ranked[:len(symbols)]:
             raise PitRunError('a tier must be a rank prefix of the static list (frozen ranks, never a selection)')
         self.manifest, self.store, self.digest = manifest, store, manifest['digest']
         self.archive = manifest['loader_version'] == M.ARCHIVE_LOADER
