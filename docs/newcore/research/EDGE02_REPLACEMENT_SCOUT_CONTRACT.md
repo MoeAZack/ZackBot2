@@ -38,6 +38,20 @@ Long and short are separate hypotheses and may not rescue each other by pooling.
 
 No DCA is included. No threshold may be selected after seeing results.
 
+### Candidate 4 frozen mechanics addendum — before any result
+
+`btc_residual_mr.v1` uses the strict synchronized 15m intersection of BTC and each eligible non-BTC CORE-10 symbol.
+At closed bar `t`, estimate a **zero-intercept** beta from the previous 1,920 paired log-return observations ending at
+`t-1`, requiring at least 1,536 valid pairs. Define `e_t = r_symbol,t - beta_t * r_BTC,t`, sum the latest 32 residuals
+into `Q_t`, then z-score `Q_t` against the previous 1,920 `Q` observations ending at `t-1`.
+
+Only the last completed 4h BTC `range` regime may admit entries. Long enters on the first upward cross through `-2`;
+short is the mirror downward cross through `+2`. Fill is no earlier than the next open. Both sides use a 1.5 ATR14
+stop, a 16-bar cap, a five-times round-trip-cost admission floor and an eight-full-bar same-side re-entry lock. Exit at
+the directional zero crossing or adverse invalidation only: long at `z <= -3.5`, short at `z >= +3.5`. Diagnostics are
+entry z 1.5/2/2.5 only and cannot replace the primary. BTC is a benchmark, never a target symbol. HYPE is excluded from
+any headline period for which its synchronized history is incomplete.
+
 ## Stage A — bounded causal screen
 
 - Universe: CORE-10 first. CORE-20 is allowed only for a cell already net-positive on CORE-10.
@@ -81,4 +95,3 @@ ROADMAP FIT: Wave D / `EDGE-01B`, frequent profitable strategy coverage after th
 
 DEFERRED: re-enabling failed fast strategies, QBank, unbounded parameter search, live/mainnet activation, additional venues,
 TradFi/gold and UI work. The PR #208/#209 accounting and installation gate continues independently.
-
