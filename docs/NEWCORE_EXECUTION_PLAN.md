@@ -396,9 +396,11 @@ stricter after results are seen:
 The first implementation slice is `EDGE-01A`: reproduce the exact frozen `exp_scalp.v0` and `range_scalp.v0` rules in
 the shared research harness, generate their honest baseline, and reject or advance only a small registered repair matrix.
 Initial repair hypotheses are a cost/edge admission margin, liquidity/spread and volatility vetoes, regime qualification,
-turnover control, and alternative exits using identical entries and initial risk. `EDGE-01B` scouts additional frequent
-families only after each hypothesis, trial budget and stop condition is written. All candidates remain shadow/research-only
-until they pass; no almost-break-even result is promoted merely to increase trade count.
+turnover control, and alternative exits using identical entries and initial risk. The completed EDGE-01 baselines were
+negative and remain parked. `EDGE-01B` is now active as `EDGE-02`: the frozen replacement-family queue, trial budget,
+stop conditions and fresh-holdout boundary are in
+[`EDGE02_REPLACEMENT_SCOUT_CONTRACT.md`](newcore/research/EDGE02_REPLACEMENT_SCOUT_CONTRACT.md). All candidates remain
+shadow/research-only until they pass; no almost-break-even result is promoted merely to increase trade count.
 
 #### Required strategy-coverage matrix
 
