@@ -610,7 +610,13 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if sl['volr'] and sl['volr'][s][i] > cfg['vol_max_pct']: continue
                     side = 1 if g['le'][i] else (-1 if g['se'][i] else 0)
                     if not side: continue
-                    if cfg.get('reentry_lock') and sl['last_exit'].get((s, side)) == i:
+                    lock = cfg.get('reentry_lock')
+                    last = sl['last_exit'].get((s, side))
+                    # Historical True means same-decision-bar only.  Research
+                    # candidates may request an integer number of full bars
+                    # after a close without changing existing strategy behavior.
+                    lock_bars = 0 if lock is True else int(lock or 0)
+                    if lock and last is not None and i - last <= lock_bars:
                         blocked['reentry_lock'] = blocked.get('reentry_lock', 0) + 1; continue
                     if RG is not None or sl['pg'] or RR['btc_breaker']:
                         why = entry_filters(sl, s, side, i)

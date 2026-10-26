@@ -21,6 +21,9 @@ STRUCTURE = dict(cost_x=COST_X, volume_x=1.25, volume_n=20, stop_atr=1.0)
 RSI2 = dict(level=RSI2_PRIMARY, cost_x=COST_X, stop_atr=1.25)
 SQUEEZE = dict(percentile=SQUEEZE_PRIMARY, donchian_n=20, volume_n=20, volume_x=1.25,
                cost_x=COST_X, stop_atr=1.5)
+RESIDUAL = dict(beta_n=1920, beta_min=1536, q_n=32, z_n=1920, z_min=1920,
+                entry_z=2.0, invalid_z=3.5, cost_x=5.0, stop_atr=1.5)
+RESIDUAL_ENTRY_NEIGHBOURS = (1.5, 2.5)
 
 
 def _x(v):
@@ -94,6 +97,47 @@ def sig_squeeze_release(d, p, ctx):
     return _one_side(dict(le=le, se=se, lx=dn | (d.c < d.e20), sx=up | (d.c > d.e20)))
 
 
+def residual_state(d, p, ctx):
+    """Causal BTC-relative residual state on an already synchronized 15m book.
+
+    Beta is the literal frozen zero-intercept slope.  Both the beta estimation
+    sample and the z-score reference sample end at t-1; only the closed bar t is
+    used to form the current residual and Q observation.
+    """
+    if 'btc_c' not in ctx:
+        raise ValueError('btc_residual_mr.v1 needs synchronized BTCUSDT closes')
+    btc_values = np.asarray(ctx['btc_c'], float)
+    if len(btc_values) != len(d):
+        raise ValueError('btc_residual_mr.v1 BTCUSDT context is not synchronized')
+    btc = pd.Series(btc_values, index=d.index)
+    y = np.log(d.c.astype(float)).diff()
+    x = np.log(btc).diff()
+    n, minimum = int(p['beta_n']), int(p['beta_min'])
+    # OLS through the origin, using paired returns strictly before decision bar t.
+    xy = (x * y).shift().rolling(n, min_periods=minimum).sum()
+    xx = x.pow(2).shift().rolling(n, min_periods=minimum).sum()
+    beta = (xy / xx.where(xx > 0)).replace([np.inf, -np.inf], np.nan)
+    resid = y - beta * x
+    q = resid.rolling(int(p['q_n']), min_periods=int(p['q_n'])).sum()
+    prior = q.shift()
+    mu = prior.rolling(int(p['z_n']), min_periods=int(p['z_min'])).mean()
+    sd = prior.rolling(int(p['z_n']), min_periods=int(p['z_min'])).std(ddof=0)
+    z = ((q - mu) / sd.where(sd > 0)).replace([np.inf, -np.inf], np.nan)
+    return pd.DataFrame(dict(beta=beta, residual=resid, q=q, z=z), index=d.index)
+
+
+def sig_btc_residual_mr(d, p, ctx):
+    """Frozen range-only BTC residual mean reversion; sleeve gating supplies the causal 4h range state."""
+    z = residual_state(d, p, ctx).z
+    ez, iz = float(p['entry_z']), float(p['invalid_z'])
+    gate = _cost_ok(d, p['stop_atr'], p['cost_x'])
+    le = (z.shift() <= -ez) & (z > -ez) & gate
+    se = (z.shift() >= ez) & (z < ez) & gate
+    lx = ((z.shift() < 0) & (z >= 0)) | (z <= -iz)
+    sx = ((z.shift() > 0) & (z <= 0)) | (z >= iz)
+    return _one_side(dict(le=le, se=se, lx=lx, sx=sx))
+
+
 _WHEN = {'long': 'bull', 'short': 'bear'}
 _COMMON = dict(sides='both', tf='15m', research_only=True, when_by_side=_WHEN)
 
@@ -116,6 +160,12 @@ CANDIDATES = {
         **_COMMON, name='[RESEARCH] EDGE-02 squeeze release', fn=sig_squeeze_release,
         params=dict(SQUEEZE), mgmt=dict(stop_atr=1.5, tp_r=2.0, max_bars=16),
         desc='EDGE-02 Stage-A only: prior compression to volume-confirmed Donchian release with trend/regime/cost gates.'),
+    'btc_residual_mr.v1': dict(
+        sides='both', tf='15m', research_only=True, when_by_side={'long': 'range', 'short': 'range'},
+        name='[RESEARCH] EDGE-02 BTC residual mean reversion', fn=sig_btc_residual_mr,
+        params=dict(RESIDUAL), reentry_lock=8, warmup_bars=3520, benchmark='BTCUSDT',
+        mgmt=dict(stop_atr=1.5, max_bars=16),
+        desc='EDGE-02 Stage-A only: shifted BTC beta/residual z mean reversion, range-only, cost-gated and cooldown locked.'),
 }
 
 

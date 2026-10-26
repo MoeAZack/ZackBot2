@@ -241,7 +241,7 @@ class FeeProbe:
 def sleeve(key, side, symbols, mgmt, risk, max_pos, *, when='any', reentry_lock=False) -> dict:
     return dict(key=key, share=1.0, risk=float(risk), max_pos=int(max_pos), id='S1', sides=side, mgmt=dict(mgmt),
                 symbols=list(symbols), hours=None, vol_max_pct=None, kelly=None, when=when,
-                reentry_lock=bool(reentry_lock))
+                reentry_lock=reentry_lock)
 
 
 def resolve_when(strat, side, when=None) -> str:
@@ -256,6 +256,12 @@ def resolve_when(strat, side, when=None) -> str:
 def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos, tf_sec=TF_SEC,
              when='any', reentry_lock=False):
     book = BT.Book(raw)
+    if E2.CANDIDATES.get(key, {}).get('benchmark') == BTC:
+        # Book has already intersected every target with BTC by timestamp.  Add
+        # the aligned benchmark only to this research candidate's context.
+        btc_c = book.d[BTC].c.to_numpy(float)
+        for sym in book.syms:
+            book.ctx[sym]['btc_c'] = pd.Series(btc_c, index=book.d[sym].index)
     if len(book.t) and _ms(book.t).max() >= hi:
         raise RunnerError('breadth candidate: the book holds a candle at / after END; aborted')
     if book.gaps:
@@ -405,7 +411,8 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
     except VC.RunnerError as e:
         raise RunnerError(str(e).replace('VWAPREV candidate', 'breadth candidate')) from None
     # the run tf's warm-up (220 bars of tf) lies inside the 4h warm-up span the guard already validated
-    warm_lo = lo - WARMUP_BARS * tf_ms
+    warmup_bars = max(WARMUP_BARS, int(strat.get('warmup_bars', WARMUP_BARS)))
+    warm_lo = lo - warmup_bars * tf_ms
     assert warm_lo >= warm4
     book_syms = sorted(set(syms) | {BTC})
     raw, files, comp, nan_qv, incomplete = {}, {}, {}, {}, []
@@ -437,10 +444,11 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
         raise RunnerError('breadth candidate: the 4h BTCUSDT regime frame is INCOMPLETE; refused')
     VC.assert_bounded({BTC: b4}, warm4, hi)
     reg = btc_regime_frame(b4)
-    run_syms = [s for s in syms if s in raw]
+    benchmark = strat.get('benchmark')
+    run_syms = [s for s in syms if s in raw and s != benchmark]
     tr, cv, book, pos = simulate(raw, key, side, run_syms, mg, lo, hi, start=start, max_lev=max_lev,
                                  daily_halt=daily_halt, risk=risk, max_pos=max_pos, tf_sec=tf_ms // 1000,
-                                 when=when, reentry_lock=bool(strat.get('reentry_lock')))
+                                 when=when, reentry_lock=strat.get('reentry_lock', False))
     n_sig = emitted(book, key, side, run_syms, lo, hi)
     if len(tr) and (tr.side != SIDES[side]).any():
         raise RunnerError('breadth candidate: a trade on the filtered-out side; aborted')
@@ -476,7 +484,7 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
         'commit': commit, 'tree': 'clean', 'runner_sha256': runner_digest(),
         'window': {'start': _utc(lo), 'end': _utc(hi), 'end_exclusive': True, 'bars': int((hi - lo) // tf_ms), 'tf': tf,
                    'guard': 'pit_run.rex_window', 'sealed_cutoff': SEALED_CUTOFF},
-        'warmup': {'bars': WARMUP_BARS, 'tf': tf, 'start': _utc(warm_lo), 'guard_4h_start': _utc(warm4), 'book_bars_before_start': int((bt < lo).sum())},
+        'warmup': {'bars': warmup_bars, 'tf': tf, 'start': _utc(warm_lo), 'guard_4h_start': _utc(warm4), 'book_bars_before_start': int((bt < lo).sum())},
         'universe': {'digest': static['digest'], 'id': static.get('universe_id'), 'tier': tier, 'requested': syms,
                      'run': run_syms, 'book': sorted(raw), 'incomplete': incomplete},
         'cache': {'format': f'app._get_candles CSV <SYMBOL>_{tf}.csv: t(ms),o,h,l,c,v,qv', 'files': files,
@@ -488,11 +496,11 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
                      'params': dict(strat.get('params') or {}), 'mgmt_mode': mgmt_mode, 'mgmt_override': mg,
                      'mgmt_check': mcheck,
                      'mgmt_source': PROFIT_CAPTURE_SOURCE if mgmt_mode == 'profit_capture' else None,
-                     'mgmt': merge_mgmt(key, mg), 'reentry_lock': bool(strat.get('reentry_lock')),
+                     'mgmt': merge_mgmt(key, mg), 'reentry_lock': strat.get('reentry_lock', False),
                      'research_only': bool(strat.get('research_only')), 'when': when},
         'side': side,
         'sleeve': sleeve(key, side, run_syms, mg, risk, max_pos, when=when,
-                         reentry_lock=bool(strat.get('reentry_lock'))),
+                         reentry_lock=strat.get('reentry_lock', False)),
         'account': {'start': float(start), 'max_lev': float(max_lev), 'daily_halt': float(daily_halt)},
         'costs': {'fee_taker': FEE_VALUE, 'slip': BT.SLIP, 'fund_per_bar': BT.FUND_PER_BAR * (tf_ms // 1000) / 14400,
                   'entry_order': 'market (taker)',
