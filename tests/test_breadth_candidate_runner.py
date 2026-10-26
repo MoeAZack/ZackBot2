@@ -191,6 +191,19 @@ def tape15(seed, scale):
                                 qv=np.round(c * v, 6)))
 
 
+def tape15_residual(seed, scale):
+    """Full 220x4h guard span required by the residual candidate's two shifted rolling stages."""
+    t = np.arange(VT.WARM_LO, VT.HI + 40 * M15, M15, dtype=np.int64)
+    n = len(t)
+    rng = np.random.default_rng(seed)
+    c = scale * np.exp(np.cumsum(rng.normal(0, 0.002, n)) + 0.02 * np.sin(np.arange(n) / 17.0))
+    o = np.r_[c[0], c[:-1]]
+    w = np.abs(rng.normal(0, 0.0015, n)) * c
+    v = np.round(1000.0 + 500 * rng.random(n), 3)
+    return VT.pd.DataFrame(dict(t=t.astype(float), o=o, h=np.maximum(o, c) + w, l=np.minimum(o, c) - w, c=c, v=v,
+                                qv=np.round(c * v, 6)))
+
+
 def write15(d, fr):
     os.makedirs(d, exist_ok=True)
     for s, df in fr.items():
@@ -224,6 +237,24 @@ def test_edge02_research_key_exact_when_and_runtime_isolation(env, tmp_path):
     assert 'structure_cf.v1' not in B.ST.STRATEGIES
     with pytest.raises(B.RunnerError, match='frozen when=bull'):
         go(env, out='wrong.json', key='structure_cf.v1', cache=c15, regime_cache=env['cache'], when='bear')
+
+
+def test_residual_runner_binds_synchronized_btc_range_and_long_warmup(env, tmp_path):
+    syms = ['BTCUSDT', 'ETHUSDT']
+    c15 = write15(str(tmp_path / 'res15'), {s: tape15_residual(i + 91, 100.0 * (i + 1))
+                                            for i, s in enumerate(syms)})
+    assert 'btc_residual_mr.v1' not in B.ST.STRATEGIES
+    p = go(env, out='res.json', key='btc_residual_mr.v1', cache=c15, regime_cache=env['cache'], symbols=syms)
+    assert p['strategy']['when'] == 'range' and p['sleeve']['when'] == 'range'
+    assert p['strategy']['reentry_lock'] == p['sleeve']['reentry_lock'] == 8
+    assert p['warmup']['bars'] == 3520 and p['warmup']['start'] == B._utc(VT.WARM_LO)
+    assert p['universe']['requested'] == syms and p['universe']['run'] == ['ETHUSDT']
+    assert p['universe']['book'] == syms
+    assert p['strategy']['params']['entry_z'] == 2.0 and p['strategy']['params']['cost_x'] == 5.0
+    assert 'btc_residual_mr.v1' not in B.ST.STRATEGIES
+    with pytest.raises(B.RunnerError, match='frozen when=range'):
+        go(env, out='bad-res.json', key='btc_residual_mr.v1', cache=c15, regime_cache=env['cache'], symbols=syms,
+           when='bull')
 
 
 def test_pullback_short_bear_control_binds_exact_sleeve(env):
