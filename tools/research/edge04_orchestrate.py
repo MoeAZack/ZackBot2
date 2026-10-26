@@ -214,6 +214,8 @@ def route_shared(candidates, replay, *, equity0=10_000.0, risk_fraction=0.01, ma
             if qty <= 0 or qty < rule["min_qty"] or qty * fill < rule["min_notional"]:
                 refused.append({"symbol": symbol, "entry_ms": at, "reason": "execution.size_min"}); continue
             episode = replay(c, qty)
+            if episode.get("symbol", symbol) != symbol:
+                raise OrchestrationError("managed episode symbol differs from its admitted candidate")
             terminal_at = episode.get("exit_ms", episode.get("first_unaccountable_ms"))
             if terminal_at is None or terminal_at < at:
                 raise OrchestrationError("managed episode has no valid terminal/censor time")
@@ -224,7 +226,10 @@ def route_shared(candidates, replay, *, equity0=10_000.0, risk_fraction=0.01, ma
                 seq += 1
                 heapq.heappush(events, (event["at_ms"], seq, event["delta"], symbol,
                                         event.get("terminal", False)))
-            accepted.append(dict(episode, admitted_qty=qty, snapshot=snapshot))
+            # The shared router owns admission identity. Management replays historically did
+            # not repeat the symbol, so seal it here instead of making downstream consumers
+            # infer it from event ordering.
+            accepted.append(dict(episode, symbol=symbol, admitted_qty=qty, snapshot=snapshot))
     drain(2**63 - 1)
     return {"format": FORMAT, "wallet_end": wallet, "accepted": accepted, "refused": refused,
             "status": PR.COMPLETE if all(x.get("status") == PR.COMPLETE for x in accepted) else PR.INCOMPLETE}

@@ -147,6 +147,16 @@ def test_attested_tape_is_the_only_candidate_source_and_latency_uses_1m():
                                scenario=O.STRESS["entry_latency_60s"], minute_bars={})
 
 
+def test_actual_edge04_management_episode_is_sealed_with_admitted_symbol():
+    # Drive the real candidates -> shared router -> replay_position path. replay_position
+    # deliberately owns management fields, while the router must bind admission identity.
+    out = O.orchestrate(attested_outputs(), "H3", rules={"BTC": dict(RULE)}, slip_c=1.0,
+                        observation_end_ms=BASE + 20 * PR.TF)
+    assert len(out["accepted"]) == 1
+    assert out["accepted"][0]["symbol"] == "BTC"
+    assert out["accepted"][0]["hypothesis"] == "H3"
+
+
 def test_reports_are_write_once(tmp_path):
     path = tmp_path / "report.json"
     doc = {"format": "zb-edge04-report/1", "status": "COMPLETE"}
