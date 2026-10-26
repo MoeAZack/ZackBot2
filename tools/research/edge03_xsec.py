@@ -159,8 +159,9 @@ class FundingTape:
 
     Settlement instants are explicit rather than inferred from candles.  A
     listed settlement without a matching causal record makes the episode
-    accounting-incomplete.  Entry and exit fills own half-open position time,
-    so only settlements strictly inside ``(entry_ms, exit_ms)`` are crossed.
+    accounting-incomplete.  Funding ownership is conservatively and explicitly
+    ``(entry_ms, exit_ms]``: the next-open entry excludes a simultaneous
+    settlement, while a position held into its exit boundary includes it.
     """
 
     def __init__(self, settlements, records=()):
@@ -181,7 +182,7 @@ class FundingTape:
 
     def crossed(self, symbol: str, entry_ms: int, exit_ms: int) -> tuple[int, ...]:
         del symbol
-        return tuple(t for t in self._times if entry_ms < t < exit_ms)
+        return tuple(t for t in self._times if entry_ms < t <= exit_ms)
 
     def record_at(self, symbol: str, settlement_ms: int) -> FundingRecord | None:
         return self._records.get((symbol, int(settlement_ms)))

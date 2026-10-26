@@ -199,6 +199,15 @@ def test_signed_point_in_time_funding_and_missing_rows_are_incomplete():
         X.run_side(fs, 'long', start_ms=d0, end_ms=d0 + X.DAY_MS)
 
 
+def test_funding_endpoint_ownership_excludes_entry_and_includes_exit():
+    entry = pd.Timestamp('2025-02-01T00:00:00Z').value // 1_000_000
+    exit_ = entry + X.DAY_MS
+    tape = X.FundingTape((entry, entry + 8 * 60 * 60 * 1000, exit_))
+    assert tape.crossed('BTCUSDT', entry, exit_) == (entry + 8 * 60 * 60 * 1000, exit_)
+    assert entry not in tape.crossed('BTCUSDT', entry, exit_)
+    assert exit_ in tape.crossed('BTCUSDT', entry, exit_)
+
+
 def test_research_module_has_no_runtime_registry_or_funding_oi_candidate():
     source = open(X.__file__, encoding='utf-8').read()
     assert 'strategies.STRATEGIES' not in source
