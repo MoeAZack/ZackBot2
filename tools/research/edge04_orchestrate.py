@@ -121,7 +121,7 @@ def candidates_from_tape(outputs, hypothesis, *, rules, slip_c, scenario=None, m
             nxt = x.rec.get(t + PR.TF)
             ref = nxt["b"][0] if nxt is not None else rec.get("n")
             if ref is None:
-                raise OrchestrationError(f"{symbol}: next executable open missing; row is INCOMPLETE")
+                raise OrchestrationError(f"{symbol} at {t}: next executable open missing; row is INCOMPLETE")
             if scenario.name == "entry_latency_60s":
                 ref = latency_from_dataset(minute_bars, symbol, t) if hasattr(minute_bars, "exact_minute_bar") else \
                     latency_60s((minute_bars or {}).get(symbol, ()), t)

@@ -99,6 +99,24 @@ def account_summary(book):
             "refusals": dict(collections.Counter(x["reason"] for x in book.get("refused", [])))}
 
 
+def incomplete_row(reason):
+    """Stable expected-failure row: preserve evidence and never convert a missing input to a process crash."""
+    return {"summary":{"status":PR.INCOMPLETE,"episodes":0,"complete_episodes":0,"wallet_end":None,
+                       "net_pnl":None,"mean_net_r":None,"profit_factor":None,
+                       "incomplete":{"orchestration":1},"refusals":{},"reason":str(reason)},
+            "book":{"format":O.FORMAT,"status":PR.INCOMPLETE,"wallet_end":None,"accepted":[],"refused":[],
+                    "failure":{"class":type(reason).__name__,"reason":str(reason)}}}
+
+
+def orchestrate_row(outputs, hypothesis, *, rules, slip_c, scenario, ds, hi):
+    try:
+        book=O.orchestrate(outputs,hypothesis,rules=rules,slip_c=slip_c,scenario=scenario,
+                           minute_bars=ds,observation_end_ms=hi)
+        return {"summary":account_summary(book),"book":book}
+    except (O.OrchestrationError,PR.PitRunError,C.CostError) as e:
+        return incomplete_row(e)
+
+
 def b1(outputs, hypothesis, symbols, first, hi, rules, slip_c, scenario, ds):
     """Equal-weight side-matched passive, with exact opens and the same costs."""
     _, syms = PR.read_tape(outputs)
@@ -225,17 +243,20 @@ def run_split(repo, outdir, key, ds, plan, ledger, rules, symbols, slip_c):
         transformed = variant_outputs(outputs, variant, first, last)
         stresses = {}
         for stress, scenario in O.STRESS.items():
-            book = O.orchestrate(transformed, hypothesis, rules=rules, slip_c=slip_c, scenario=scenario,
-                                 minute_bars=ds, observation_end_ms=hi)
-            stresses[stress] = {"summary":account_summary(book), "book":book}
+            stresses[stress] = orchestrate_row(transformed,hypothesis,rules=rules,slip_c=slip_c,
+                                                scenario=scenario,ds=ds,hi=hi)
         variants[name] = {"hypothesis":hypothesis, "role":role, "stresses":stresses}
     baselines = {}
     for name in PRIMARY:
         variant = next(v for v in VARIANTS if v[0] == name); hypothesis = variant[1]
         transformed = variant_outputs(outputs, variant, first, last)
         primary_book=variants[name]["stresses"]["base"]["book"]
-        baselines[hypothesis] = {"B1": {stress:b1(transformed,hypothesis,symbols,first,hi,rules,slip_c,scenario,ds)
-                                                for stress,scenario in O.STRESS.items()},
+        b1_rows={}
+        for stress,scenario in O.STRESS.items():
+            try: b1_rows[stress]=b1(transformed,hypothesis,symbols,first,hi,rules,slip_c,scenario,ds)
+            except (O.OrchestrationError,PR.PitRunError,C.CostError,PR.Incomplete) as e:
+                b1_rows[stress]={"status":PR.INCOMPLETE,"wallet_end":None,"rows":[],"reason":str(e)}
+        baselines[hypothesis] = {"B1": b1_rows,
                                  "B0": b0(transformed,hypothesis,primary_book,key,first,last,hi,rules,slip_c,ds)}
     result = {"format":"zb-edge04-stage-a-split/1", "split":key, "window":plan.window(key),
               "decision_range":{"first":first,"last":last}, "tape_attestation":packet["attestation_digest"],
