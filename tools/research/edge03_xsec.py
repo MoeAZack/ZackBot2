@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Protocol
 
 import numpy as np
 import pandas as pd
@@ -95,6 +95,7 @@ class Trade:
     atr14: float
     gross_r: float
     fee_r: float
+    funding_r: float
     net_r: float
     cost_multiplier: float
 
@@ -106,6 +107,8 @@ class IncompleteEpisode:
     decision_ms: int
     entry_ms: int
     reason: str
+    exit_ms: int | None = None
+    exit_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,71 @@ class RunResult:
     trades: tuple[Trade, ...]
     incomplete: tuple[IncompleteEpisode, ...]
     blocked_by_lock: tuple[tuple[int, str], ...]
+    cooldowns: tuple[tuple[int, str, int, str], ...]
+
+
+@dataclass(frozen=True)
+class FundingRecord:
+    """One point-in-time Binance funding settlement.
+
+    ``available_ms`` prevents a record retrieved or revised later from being
+    backfilled into an earlier simulated decision.  ``mark_price`` is the
+    actual settlement notional price; no candle proxy is accepted.
+    """
+    symbol: str
+    settlement_ms: int
+    available_ms: int
+    rate: float
+    mark_price: float
+
+    def __post_init__(self):
+        if self.symbol not in CORE_10_ELIGIBLE_9:
+            raise XsecError(f'funding record has non-headline symbol {self.symbol!r}')
+        if type(self.settlement_ms) is not int or type(self.available_ms) is not int:
+            raise XsecError('funding timestamps must be integer milliseconds')
+        if not all(math.isfinite(float(v)) for v in (self.rate, self.mark_price)) or self.mark_price <= 0:
+            raise XsecError('funding rate/mark_price must be finite and mark_price positive')
+
+
+class FundingInput(Protocol):
+    """Explicit funding capability supplied by a later evidence runner."""
+
+    def crossed(self, symbol: str, entry_ms: int, exit_ms: int) -> tuple[int, ...]: ...
+
+    def record_at(self, symbol: str, settlement_ms: int) -> FundingRecord | None: ...
+
+
+class FundingTape:
+    """Small immutable adapter over an authoritative settlement calendar and records.
+
+    Settlement instants are explicit rather than inferred from candles.  A
+    listed settlement without a matching causal record makes the episode
+    accounting-incomplete.  Entry and exit fills own half-open position time,
+    so only settlements strictly inside ``(entry_ms, exit_ms)`` are crossed.
+    """
+
+    def __init__(self, settlements, records=()):
+        times = tuple(sorted(int(t) for t in settlements))
+        if len(times) != len(set(times)):
+            raise XsecError('funding settlement calendar contains duplicates')
+        self._times = times
+        self._records = {}
+        for record in records:
+            if not isinstance(record, FundingRecord):
+                raise XsecError('funding records must be FundingRecord values')
+            key = (record.symbol, int(record.settlement_ms))
+            if key[1] not in times:
+                raise XsecError(f'funding record is outside the settlement calendar {key}')
+            if key in self._records:
+                raise XsecError(f'duplicate funding record {key}')
+            self._records[key] = record
+
+    def crossed(self, symbol: str, entry_ms: int, exit_ms: int) -> tuple[int, ...]:
+        del symbol
+        return tuple(t for t in self._times if entry_ms < t < exit_ms)
+
+    def record_at(self, symbol: str, settlement_ms: int) -> FundingRecord | None:
+        return self._records.get((symbol, int(settlement_ms)))
 
 
 def _ms(values) -> np.ndarray:
@@ -231,7 +299,8 @@ def _bar_at(df: pd.DataFrame, open_ms: int):
     return None if i == len(t) or t[i] != open_ms else df.iloc[i]
 
 
-def _trade(df: pd.DataFrame, row: RankRow, decision_ms: int, side: str, cost: CostModel):
+def _trade(df: pd.DataFrame, row: RankRow, decision_ms: int, side: str, cost: CostModel,
+           funding: FundingInput):
     sd = 1 if side == 'long' else -1
     entry_ms = decision_ms
     first = _bar_at(df, entry_ms)
@@ -263,20 +332,36 @@ def _trade(df: pd.DataFrame, row: RankRow, decision_ms: int, side: str, cost: Co
     exit_fill = exit_ref * (1.0 - sd * cost.slip)
     gross_r = sd * (exit_fill - entry) / risk
     fee_r = cost.fee * (entry + exit_fill) / risk
+    funding_r = 0.0
+    for settlement_ms in funding.crossed(row.symbol, entry_ms, exit_ms):
+        record = funding.record_at(row.symbol, settlement_ms)
+        if record is None:
+            return IncompleteEpisode(row.symbol, side, decision_ms, entry_ms,
+                                     f'missing funding settlement {settlement_ms}', exit_ms, reason)
+        if (record.symbol != row.symbol or int(record.settlement_ms) != settlement_ms
+                or int(record.available_ms) > settlement_ms):
+            return IncompleteEpisode(row.symbol, side, decision_ms, entry_ms,
+                                     f'non-causal funding settlement {settlement_ms}', exit_ms, reason)
+        # Positive funding is paid by longs and received by shorts.  R is the
+        # per-unit entry-to-initial-stop distance, so quantity cancels.
+        funding_r += -sd * float(record.rate) * float(record.mark_price) / risk
     return Trade(row.symbol, side, decision_ms, entry_ms, exit_ms, entry_ref, entry, stop, exit_ref, exit_fill,
-                 reason, row.atr14, gross_r, fee_r, gross_r - fee_r, cost.multiplier)
+                 reason, row.atr14, gross_r, fee_r, funding_r, gross_r - fee_r + funding_r, cost.multiplier)
 
 
 def run_side(frames: Mapping[str, pd.DataFrame], side: str, *, cost_multiplier: float = 1.0,
-             start_ms: int | None = None, end_ms: int | None = None) -> RunResult:
+             funding: FundingInput | None = None, start_ms: int | None = None,
+             end_ms: int | None = None) -> RunResult:
     """Evaluate one side in isolation.  The other side has no shared position or lock state."""
     if side not in ('long', 'short'):
         raise XsecError("side must be 'long' or 'short'")
+    if funding is None:
+        raise XsecError('an explicit point-in-time funding input is required')
     prepared = prepare(frames)
     ds = decisions(prepared, start_ms, end_ms)
     cost = CostModel(float(cost_multiplier))
     locks: dict[str, int] = {}
-    trades, incomplete, blocked = [], [], []
+    trades, incomplete, blocked, cooldowns = [], [], [], []
     for d in ds:
         if d.skipped:
             continue
@@ -286,21 +371,29 @@ def run_side(frames: Mapping[str, pd.DataFrame], side: str, *, cost_multiplier: 
             if entry_ms < locks.get(symbol, -1):
                 blocked.append((entry_ms, symbol))
                 continue
-            episode = _trade(prepared[symbol], by_symbol[symbol], d.close_ms, side, cost)
+            episode = _trade(prepared[symbol], by_symbol[symbol], d.close_ms, side, cost, funding)
             if isinstance(episode, IncompleteEpisode):
                 incomplete.append(episode)
+                if episode.exit_ms is not None:
+                    until = episode.exit_ms + TF_MS
+                    locks[symbol] = until
+                    cooldowns.append((episode.exit_ms, symbol, until, episode.exit_reason or 'unknown'))
                 continue
             trades.append(episode)
-            if episode.exit_reason == 'time':
-                # At least one whole bar must close after the time-cap exit before a same-side re-entry.
-                locks[symbol] = episode.exit_ms + TF_MS
-    return RunResult(RULE_ID, side, cost.multiplier, ds, tuple(trades), tuple(incomplete), tuple(blocked))
+            # Every close, including stop and gap-stop closes, starts the
+            # same-side one-complete-bar re-entry lock.
+            until = episode.exit_ms + TF_MS
+            locks[symbol] = until
+            cooldowns.append((episode.exit_ms, symbol, until, episode.exit_reason))
+    return RunResult(RULE_ID, side, cost.multiplier, ds, tuple(trades), tuple(incomplete), tuple(blocked),
+                     tuple(cooldowns))
 
 
 def run_cost_pair(frames: Mapping[str, pd.DataFrame], side: str, *, start_ms: int | None = None,
-                  end_ms: int | None = None) -> dict[str, RunResult]:
+                  end_ms: int | None = None, funding: FundingInput | None = None) -> dict[str, RunResult]:
     """Mechanically paired frozen base and 1.5x fee/slippage stress runs."""
     return {
-        'base': run_side(frames, side, cost_multiplier=1.0, start_ms=start_ms, end_ms=end_ms),
-        'stress_1_5x': run_side(frames, side, cost_multiplier=1.5, start_ms=start_ms, end_ms=end_ms),
+        'base': run_side(frames, side, cost_multiplier=1.0, funding=funding, start_ms=start_ms, end_ms=end_ms),
+        'stress_1_5x': run_side(frames, side, cost_multiplier=1.5, funding=funding,
+                               start_ms=start_ms, end_ms=end_ms),
     }
