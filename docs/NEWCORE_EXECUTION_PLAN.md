@@ -374,6 +374,23 @@ symbol/year concentration checks and gap/funding/slippage stress. More strategie
 Each strategy has separate performance, tail-risk, evidence-readiness and operational/copy-readiness scores. No blended
 score may hide a failed hard gate.
 
+#### External finance-skill intake (27 Oct 2026 Cairo)
+
+External agent skills may improve the research workflow, but they are never runtime dependencies, evidence sources by
+themselves, or permission to widen a frozen experiment. The `backtesting-frameworks` and `quantitative-research` skills
+were reviewed and adopted as process cross-checks only. Their useful requirements already map to DATA-01 / RES-01 /
+EDGE-00: point-in-time inputs, next-bar execution, fees/slippage/funding, walk-forward plus untouched holdout, episode
+bootstrap uncertainty, multiple-testing control, adequate sample size, regime/concentration checks, and parameter
+neighbour stability. ZackBot's causal harness and sealed ledgers remain authoritative where generic examples differ.
+
+Binance's `trading-signal` skill passed a read-only BSC API smoke after a local Windows entry-point fix, but it covers
+BSC/Solana smart-money tokens rather than Binance USD-M futures and returned an undocumented status value. It is
+therefore **research-only scouting**: unknown statuses fail closed, outputs cannot drive PAPER/testnet entries, and any
+future hypothesis must be preregistered and validated through DATA-01 / RES-01 like every other candidate. The
+third-party CoinGlass skill is not integrated: it requires a separate credential, duplicates native Binance data, and
+adds a large unaudited code surface. D1 continues to prefer timestamp-correct native Binance funding/OI/taker/long-short
+data; an external source needs its own provenance contract and a concrete preregistered gap before reconsideration.
+
 #### EDGE-01 — frequent, profitable strategy qualification (owner ruling, 23 October 2026)
 
 `exp_scalp.v0` and the `SC-RANGE` / `range_scalp` version observed in PAPER are frozen failed baselines. Stop new PAPER
