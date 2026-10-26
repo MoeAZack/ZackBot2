@@ -39,7 +39,7 @@ def _fill(ref, action, x, at, scen, slip_c, tick, *, gap=False):
 
 
 def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, rule, slip_c,
-                    signal_exit_times=(), row="base", observation_end_ms=None):
+                    signal_exit_times=(), row="base", scenario=None, observation_end_ms=None):
     """Replay one admitted position without inventing admission or an exit.
 
     ``signal_exit_times`` are closed-bar decision times; their market exits fill at the next bar open.
@@ -56,7 +56,9 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
         raise Edge04AccountError("quantity, stop distance, tick and step must be numeric")
     if qty <= 0 or dist <= 0 or tick <= 0 or step <= 0:
         raise Edge04AccountError("quantity, stop distance, tick and step must be positive")
-    scen = C.STRESS[row]
+    scen = scenario if scenario is not None else C.STRESS[row]
+    if not isinstance(scen, C.Scenario):
+        raise Edge04AccountError("scenario must be a frozen costs.Scenario")
     action_in, action_out = ("sell", "buy") if short else ("buy", "sell")
     fill = _fill(entry_ref, action_in, x, entry_ms, scen, slip_c, tick)
     if short:
@@ -75,6 +77,7 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
     funding = gross = 0.0
     partial_done = False
     fills = [{"kind": "entry", "at_ms": entry_ms, "qty": qty, "price": fill, "fee": fees}]
+    wallet_events = [{"at_ms": entry_ms, "delta": -fees, "kind": "entry_fee", "terminal": False}]
     exits = set(signal_exit_times)
 
     def finish(ref, at_ms, why, *, bps_at, gap=False, amount=None):
@@ -82,10 +85,13 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
         q = remaining if amount is None else amount
         px = _fill(ref, action_out, x, bps_at, scen, slip_c, tick, gap=gap)
         fee = C.fee(px * q, "taker", C.CRYPTO, scen)
-        gross += ((fill - px) if short else (px - fill)) * q
+        slice_gross = ((fill - px) if short else (px - fill)) * q
+        gross += slice_gross
         fees += fee
         remaining = max(0.0, remaining - q)
         fills.append({"kind": why, "at_ms": at_ms, "qty": q, "price": px, "fee": fee, "gap": gap})
+        wallet_events.append({"at_ms": at_ms, "delta": slice_gross - fee, "kind": why,
+                              "terminal": remaining <= 1e-12})
         return px
 
     def complete(reason, at_ms):
@@ -95,7 +101,7 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
                 "initial_stop": fill + risk_u if short else fill - risk_u, "stop": stop,
                 "initial_qty": initial_qty, "open_qty": remaining, "partial_done": partial_done,
                 "gross": gross, "fees": fees, "funding": funding, "pnl": pnl,
-                "r": pnl / initial_risk, "fills": fills}
+                "r": pnl / initial_risk, "fills": fills, "wallet_events": wallet_events}
 
     def incomplete(reason, at_ms):
         return {"format": FORMAT, "hypothesis": hypothesis, "side": side, "status": PR.INCOMPLETE,
@@ -103,7 +109,16 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
                 "entry_price": fill, "initial_stop": fill + risk_u if short else fill - risk_u, "stop": stop,
                 "initial_qty": initial_qty, "open_qty": remaining, "partial_done": partial_done,
                 "gross_accounted": gross, "fees_accounted": fees, "funding_accounted": funding,
-                "pnl": None, "r": None, "fills": fills}
+                "pnl": None, "r": None, "fills": fills,
+                "wallet_events": wallet_events + [{"at_ms": at_ms, "delta": 0.0, "kind": reason,
+                                                     "terminal": True}]}
+
+    def charge(events, amount):
+        nonlocal funding
+        for event in events:
+            cost = C.funding_cost(side, amount, [event], scen, bars_held=1, entry_notional=amount * fill)
+            funding += cost
+            wallet_events.append({"at_ms": event[0], "delta": -cost, "kind": "funding", "terminal": False})
 
     expected_t = entry_ms + PR.TF
     for t in sorted(x.rec):
@@ -137,8 +152,7 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
                     events = x.bar_events(entry_ms, bo, t)
                 except PR.Incomplete as exc:
                     return incomplete(exc.reason, bo)
-                funding += C.funding_cost(side, remaining, events, scen, bars_held=1,
-                                          entry_notional=remaining * fill)
+                charge(events, remaining)
             finish(ref, bo if gap else t, "exit.breakeven" if partial_done else "exit.stop",
                    bps_at=bo, gap=gap)
             return complete("exit.breakeven" if partial_done else "exit.stop", bo if gap else t)
@@ -147,7 +161,7 @@ def replay_position(x, hypothesis, *, entry_ref, entry_ms, qty, stop_distance, r
             events = x.bar_events(entry_ms, bo, t)
         except PR.Incomplete as exc:
             return incomplete(exc.reason, bo)
-        funding += C.funding_cost(side, remaining, events, scen, bars_held=1, entry_notional=remaining * fill)
+        charge(events, remaining)
 
         # Stop-first was resolved above. Targets now execute in favourable price order.
         favourable = (lambda level: low <= level) if short else (lambda level: high >= level)

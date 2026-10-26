@@ -232,3 +232,18 @@ _TAPE = Edge04Tape()
 
 def tape(view):
     return _TAPE.decide(view)
+
+
+def summarize(outputs):
+    """Outcome-free deterministic shape summary used by the immutable run envelope."""
+    counts = {h: 0 for h in HYPOTHESES}
+    records = 0
+    for cycle in outputs:
+        for rec in cycle["r"]:
+            if "q" not in rec:
+                continue
+            records += 1
+            for h in HYPOTHESES:
+                counts[h] += int(bool(rec["q"][h]["e"]))
+    return {"format": "zb-edge04-tape-summary/1", "cycles": len(outputs), "records": records,
+            "entry_signals": counts}

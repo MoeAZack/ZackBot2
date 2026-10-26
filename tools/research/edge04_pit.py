@@ -18,6 +18,7 @@ import splits as S
 FORMAT = "zb-edge04-pit-adapter/1"
 PREREG = "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json"
 ADDENDUM = "docs/newcore/research/EDGE04_MANAGEMENT_ADDENDUM_v1.json"
+ORCHESTRATION_ADDENDUM = "docs/newcore/research/EDGE04_ORCHESTRATION_ADDENDUM_v1.json"
 EVALUATOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "edge04_eval.py")
 FUNCTION = "tape"
 
@@ -100,6 +101,8 @@ def binding(repo):
         "management_addendum_sha256": _sha(os.path.join(repo, ADDENDUM)),
         "evaluator_sha256": _sha(EVALUATOR),
         "accounting_sha256": _sha(os.path.join(repo, "tools/research/edge04_account.py")),
+        "orchestration_addendum_sha256": _sha(os.path.join(repo, ORCHESTRATION_ADDENDUM)),
+        "orchestration_sha256": _sha(os.path.join(repo, "tools/research/edge04_orchestrate.py")),
         "costs_sha256": _sha(os.path.join(repo, "tools/research/costs.py")),
         "pit_runner_sha256": _sha(os.path.join(repo, "tools/research/pit_run.py")),
         "exchange_rules": {"path": PR.RULES_PATH, "sha256": PR.RULES_SHA256, "environment": PR.RULES_ENV},
