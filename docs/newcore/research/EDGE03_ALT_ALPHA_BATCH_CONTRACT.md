@@ -63,7 +63,9 @@ batch with a new id and counts as another trial.
   minimum-notional rules when those records are available. An infeasible order is skipped, never rounded into more risk.
 - Base costs are 5 bp taker fee plus 2 bp adverse spread/slippage on every entry and exit fill. The paired stress applies
   1.5 times those two components. Actual signed funding at each crossed funding timestamp is additional in both rows.
-  A missing funding charge makes that episode accounting-incomplete and excludes the cell from a pass.
+  Funding event ownership is `(entry timestamp, exit timestamp]`: a settlement simultaneous with the next-open entry is
+  excluded, while one simultaneous with the exit is included conservatively. A missing funding charge makes that episode
+  accounting-incomplete and excludes the cell from a pass.
 - Results report signals, skips by reason, entries, closes, trades/week, occupancy, gross and net R, costs/R, PF, maximum
   drawdown, expected shortfall, worst trade, fold, symbol and regime splits, and absolute-contribution concentration.
 
