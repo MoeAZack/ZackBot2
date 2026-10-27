@@ -1,0 +1,88 @@
+{
+  "contract": "ML-TRAIN-01",
+  "version": 1,
+  "status": "DRAFT",
+  "signed_by": null,
+  "frozen_at": null,
+  "base_commit": "945f997",
+  "doc": "ML_TRAIN_01_CONTRACT.md",
+  "scope": {
+    "authority": "none",
+    "paper_only": true,
+    "default_on": false,
+    "ui_flag": "ML_TRAIN_UI",
+    "engine_imports_trainer": false
+  },
+  "dataset": {
+    "decision_schema": "ml_shadow.v2",
+    "exclude_v1_rows": true,
+    "require_labelable": true,
+    "net_basis_allowed": ["measured"],
+    "excluded_families": ["Dip-DCA"],
+    "join_key": ["decision_id", "cost_rev_id"],
+    "revision_rule": "latest_at_or_before_t_cut",
+    "conflict_status": "DATASET_CONFLICT",
+    "label_definition": "ml_train_01.y_netr_gt0.v1",
+    "max_censored_frac": 0.05
+  },
+  "split": {
+    "shuffle": false,
+    "block": "cairo_day",
+    "sealed_test_frac": 0.20,
+    "n_folds": 4,
+    "embargo_floor_days": 3,
+    "embargo_rule": "max(embargo_floor_days, ceil(max_observed_holding_days))",
+    "purge_train_rows_closing_after_cutoff": true
+  },
+  "sufficiency": {
+    "min_total_labels": 1000,
+    "min_bucket_labels": 100,
+    "min_per_class_dev": 150,
+    "min_per_class_test": 50,
+    "min_cairo_days": 30,
+    "min_symbols": 10,
+    "min_regime_report": 50,
+    "min_test_labels_calibrated": 500,
+    "current_closed_labels_approx": 308,
+    "current_verdict": "INSUFFICIENT_DATA"
+  },
+  "model": {
+    "kind": "logistic_l2",
+    "l2": 1.0,
+    "hyperparameter_search": false,
+    "prior_baseline": "train_base_rate"
+  },
+  "calibration": {
+    "method": "platt",
+    "fit_on": "dev_out_of_fold",
+    "isotonic_min_labels": 5000,
+    "n_bins": 10,
+    "min_per_bin": 50,
+    "ece_max": 0.05,
+    "ece_demote": 0.08,
+    "bootstrap_reps": 2000,
+    "bootstrap_ci": 0.95,
+    "bootstrap_block": "cairo_day",
+    "bootstrap_cluster": "symbol"
+  },
+  "leakage": {
+    "shuffle_perms": 200,
+    "null_brier_skill_max": 0.005,
+    "canary_auc_flag": 0.90,
+    "max_corrupt_line_frac": 0.001
+  },
+  "ladder": {
+    "rungs": ["CONTRACT", "ARTIFACT_EXISTS", "CALIBRATED_SHADOW", "SHOWN_IN_UI", "VETO_CONSIDERATION"],
+    "deferred": ["VETO_CONSIDERATION"],
+    "ui_forward_days": 14,
+    "ui_forward_labels": 200
+  },
+  "artifact": {
+    "model_version": "ml_train_01.logit_platt.v1",
+    "statuses": ["UNVERIFIED", "CALIBRATED_SHADOW"],
+    "store": "<data>/ml_shadow/artifacts/ml_train_01/<dataset_digest[:16]>.json",
+    "immutable": true
+  },
+  "failure_statuses": ["INSUFFICIENT_DATA", "DATASET_CONFLICT", "LEAKAGE_SUSPECT", "SOURCE_UNREADABLE", "ARTIFACT_EXISTS"],
+  "gaps": ["G1", "G2", "G3", "G4", "G5"]
+}
