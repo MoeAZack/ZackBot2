@@ -333,10 +333,6 @@ def verify_manifest(m):
     return m
 
 
-def _overlaps(a, b):
-    return a[0] < b[1] and b[0] < a[1]
-
-
 def calibration_id(c):
     """A calibration record's id: sha256 of everything else in it - an arbitrary or reused id never matches."""
     try: return sha256_hex(canonical_json({k: v for k, v in c.items() if k != 'id'}))
@@ -345,18 +341,17 @@ def calibration_id(c):
 
 def calibration_passes(c, epoch, manifest=None):
     """The frozen #200 gate for one epoch: the record is bound to the sealed manifest (its hash) and its window IS the
-    manifest's calibration interval, computed not to overlap fit or holdout; its id is its own content hash; >= 500
+    manifest's calibration interval (non-overlap with fit / holdout computed by verify_manifest); its id is its own content hash; >= 500
     resolved labels and >= 50 per reported bin; ECE <= 0.05; the paired-bootstrap 95% CI of the Brier improvement over
     the base-rate predictor wholly above zero; the target is TARGET; and the epoch has not been demoted since."""
     if not isinstance(c, dict): return False
     try:
         verify_manifest(manifest)
         w = _interval(c.get('window'), 'calibration window')
-        iv = {name: _interval(manifest[name], name) for name in WINDOWS}
+        iv = {'calibration': _interval(manifest['calibration'], 'calibration')}
     except AIScanError:
         return False
-    if (c.get('manifest_hash') != manifest['manifest_hash'] or w != iv['calibration']
-            or _overlaps(w, iv['fit']) or _overlaps(w, iv['holdout'])):
+    if c.get('manifest_hash') != manifest['manifest_hash'] or w != iv['calibration']:   # non-overlap: verify_manifest
         return False
     try: cid = calibration_id(c)
     except AIScanError: return False
