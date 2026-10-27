@@ -357,15 +357,16 @@ def test_installed_rotation_gets_missing_scalp_slots_once_and_existing_slots_byt
     snap = json.dumps(old, sort_keys=True)
     e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)
     e2.data = e2.trade; e2.connect()                                            # restart: connect adds the missing slots
-    sl = e2.S['SLEEVES']
+    sl = [x for x in e2.S['SLEEVES'] if x['id'] not in E.CANDIDATE_SLOTS]       # FACTORY-CAND-01 slots: own test
     assert json.dumps(sl[:len(old)], sort_keys=True) == snap
     assert [x['id'] for x in sl[len(old):]] == list(E.SCALP_SLOTS)
-    assert e2.sync_scalp_slots() == [] and len(e2.S['SLEEVES']) == len(old) + 4  # idempotent
+    assert e2.sync_scalp_slots() == [] and len(sl) == len(old) + 4              # idempotent
     # persisted: a further restart reads them from disk; an owner-disabled scalp slot stays disabled, never duplicated
-    e2.S['SLEEVES'][-1]['enabled'] = False; e2.save_settings()
+    sl[-1]['enabled'] = False; e2.save_settings()
     e3 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)
     e3.data = e3.trade; e3.connect()
-    assert [x['id'] for x in e3.S['SLEEVES']] == [x['id'] for x in sl] and e3.S['SLEEVES'][-1]['enabled'] is False
+    s3 = [x for x in e3.S['SLEEVES'] if x['id'] not in E.CANDIDATE_SLOTS]
+    assert [x['id'] for x in s3] == [x['id'] for x in sl] and s3[-1]['enabled'] is False
     assert json.dumps(e3.S['SLEEVES'][:len(old)], sort_keys=True) == snap
     # a partial set (one scalp slot already present) only gets the other three
     part = old + [E.scalp_sleeves()[1]]
