@@ -1,0 +1,146 @@
+{
+  "format": "zb-edge05-prereg/1",
+  "candidate_id": "funding_carry_xsec.v1",
+  "family": "funding_carry_xsec",
+  "status": "DRAFT - UNSIGNED - NOT FROZEN",
+  "signed": false,
+  "drafted": "2026-10-28 Cairo by Build (claude-code), from Codex roadmap 6455796158 item 4",
+  "signing": "Integration (codex) freezes the numbers, then copies this JSON byte-identically to research_evidence/prereg/funding_carry_xsec.v1.json and creates research_evidence/ledger/funding_carry_xsec.jsonl plus one REGISTRY.jsonl line, before any market result",
+  "source": {
+    "base_commit": "cee9c84",
+    "universe_sha256": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031",
+    "costs_sha256": "41275d4e75fbadda93b3d30be7a7d743dd2c22215ba6fd3bd784b8a500e98350",
+    "actual_costs_sha256": "2fbc7cc91075481228513a3e99900d4410a2b5e1e02112d03e789d22e8445d92",
+    "manifest": "research_evidence/manifests/binance-um-archive-v1.json.gz",
+    "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7"
+  },
+  "hypothesis": "Perpetuals whose recently settled funding is extreme relative to the cross-section earn a positive after-cost return over the next ~24h when held against the crowd (short the highest, long the lowest), net of the funding they actually pay or receive.",
+  "universe": {
+    "artifact": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+    "label": "STATIC-40; frozen current-universe / survivor-biased (same artifact as EDGE04, all 40 symbols, not the CORE-10-ELIGIBLE-9 headline and not CAND_FIXED18)",
+    "size": 40,
+    "why_not_smaller": "CORE-10-ELIGIBLE-9 and fixed-18 are too narrow for a k=5 per side cross-section; static-40 is the widest frozen list the repo already owns",
+    "eligibility_at_decision": "symbol is in the artifact AND its first settled funding event and first 4h kline are each at least 30 days before D AND its funding sequence in (D-24h, D] passes costs.check_funding_sequence AND its 1d bars needed for the R unit exist",
+    "min_eligible": 15,
+    "below_min_eligible": "no new cohort that day (book flat); counted and reported, not INCOMPLETE",
+    "listing": "a symbol enters the eligible set only after the 30-day age rule; no back-fill before its first archive row",
+    "delisting_or_halt": "a missing 4h bar, mark bar or funding event inside an open episode makes that episode INCOMPLETE (never filled, never dropped silently); a symbol that is delisted or halted is ineligible from the first decision whose required inputs are missing"
+  },
+  "signal": {
+    "name": "F24",
+    "definition": "F24(s, D) = sum of the settled fundingRate of symbol s over every funding event with nominal time T in (D - 24h, D]",
+    "units": "fraction of notional per 24h (interval-agnostic: 3 events on an 8h grid, 6 on 4h, 24 on 1h)",
+    "why": "the spec holds each position ~24h, so the look-back equals the hold horizon; a 24h sum is the only window that normalises the 1h/4h/8h Binance cadences without a free parameter. Not tuned; no alternative window is evaluated",
+    "settled_only": "a funding event counts only once its archived calc_time (time_ms) <= T + 60 s (costs.FUNDING_TIME_TOLERANCE_MS) AND T + availability_lag <= D",
+    "availability_lag_seconds": 300,
+    "nominal_time": "range_vwap_rev.t_nom (whole hour within 60 s, interval in {1,2,4,8})",
+    "incomplete": "an expected event missing, duplicated or off-grid in (D - 24h, D] makes the symbol ineligible at D; if fewer than min_eligible symbols remain the day has no cohort"
+  },
+  "selection": {
+    "rule": "rank eligible symbols by F24 at D; ties broken by symbol name ascending",
+    "k": 5,
+    "k_source": "the existing EDGE04 H2 rotation k=5 constant; fixed, not searched",
+    "short_book": "short the k highest F24",
+    "long_book": "long the k lowest F24",
+    "sign_filter": "none: pure rank, no threshold on the level of F24",
+    "books_separate": true,
+    "max_positions_per_book": 5,
+    "duplicates": "at most one open position per symbol per book; cohorts never overlap because exit precedes the next entry",
+    "same_symbol_both_books": "impossible when eligible >= 15 > 2k"
+  },
+  "execution": {
+    "decision_time_utc": "00:00 daily (D)",
+    "cadence": "one cohort per book per UTC day",
+    "entry": "market at the open of the first 4h kline that opens at or after D + availability lag, i.e. 04:00 UTC",
+    "exit": "market at the open of the 4h kline 24h after entry (04:00 UTC next day), or earlier by the protective stop",
+    "holding_cap_hours": 24,
+    "funding_held": "every funding event with entry <= T < exit (costs.py rule): exactly 3 on an 8h grid",
+    "r_unit": "stop distance = 2.0 x TR-SMA14 of the 15 closed 1d bars ending at D (costs.tr_sma14); 1R = that distance x quantity",
+    "stop_atr_mult": 2.0,
+    "stop_path": "4h bars: gap-open first, then conservative stop-first; a stop the bar opens through fills at the open",
+    "rebalance_roll": "a symbol re-selected at D+1 is closed and re-opened as a new episode (both fills charged); no carry-over",
+    "account": {"start_usdt": 10000, "risk_fraction_per_position": 0.01, "max_gross_leverage_per_book": 3.0, "lev_cap_rule": "if a cohort would exceed the cap, every position in it is scaled down by the same factor", "books": "long and short each run their own 10000 USDT book"},
+    "filters": "historical stepSize, minQty and minNotional; quantities floored, never rounded up",
+    "maker": "none; every fill is taker"
+  },
+  "costs": {
+    "fee": "Binance UM VIP0 taker 0.05% each fill (costs.TAKER)",
+    "slippage": "slip-v1 on 4h closed bars with the slip-cal-v1 crypto coefficient; the 0.05% unfitted fallback each market fill while SLIP-C-UNFITTED",
+    "funding": "actual signed settled rate x funding-mark-proxy-v1 notional at each held event; longs pay positive, shorts receive positive",
+    "net_formula": "net = pnl_gross + pnl_fill_adj - fees_actual + funding_actual (actual_costs.measured)",
+    "stress_rows": {
+      "base_x1": "fees x1, slippage x1, funding as settled",
+      "all_variable_costs_x1.5": "fees x1.5, slippage x1.5, funding paid x1.5, funding received / 1.5",
+      "all_variable_costs_x2": "fees x2, slippage x2, funding paid x2, funding received / 2",
+      "funding_zero": "report-only: price P&L with fees+slippage, funding set to 0 (carry vs price decomposition)",
+      "funding_mark_adverse": "report-only: costs.py funding_mark_adverse row",
+      "entry_latency_1bar": "report-only: entry and exit both one 4h bar later"
+    },
+    "stress_rule": "stress multiplies only costs and never inflates received funding; stress rows reprice the same episodes and are not variants"
+  },
+  "windows": {
+    "calibration": {"start": "2020-02-03T00:00:00Z", "end": "2021-01-04T00:00:00Z", "use": "warm-up and eligibility only; no result reported"},
+    "train": {"start": "2021-01-04T00:00:00Z", "end": "2021-12-20T00:00:00Z"},
+    "walk_forward": [
+      {"fold": 0, "start": "2021-12-20T00:00:00Z", "end": "2022-12-19T00:00:00Z"},
+      {"fold": 1, "start": "2022-12-19T00:00:00Z", "end": "2023-12-18T00:00:00Z"},
+      {"fold": 2, "start": "2023-12-18T00:00:00Z", "end": "2024-12-16T00:00:00Z"},
+      {"fold": 3, "start": "2024-12-16T00:00:00Z", "end": "2025-12-15T00:00:00Z"},
+      {"fold": 4, "start": "2025-12-15T00:00:00Z", "end": "2026-09-28T00:00:00Z"}
+    ],
+    "split_source": "identical to the EDGE04 / R4 split boundaries",
+    "sealed_cutoff": "2026-09-28T00:00:00Z",
+    "holdout": {"start": "2026-11-02T00:00:00Z", "end": "2027-05-03T00:00:00Z", "minimum_episodes_per_side": 500, "reveals": 1, "status": "proposed; Integration freezes"},
+    "split_rule": "fresh books per split; 4h signal interval; lookback 180 bars (30 days), horizon 6 bars (24h); purge max(180,6) bars, embargo 1 bar (splits.py); no episode, look-back or hold crosses a boundary",
+    "prep_access": "nothing on or after 2026-09-28T00:00:00Z is read during prep; the coverage tool refuses it"
+  },
+  "primaries": [
+    {"id": "P-SHORT", "book": "short", "k": 5},
+    {"id": "P-LONG", "book": "long", "k": 5}
+  ],
+  "diagnostics": [
+    {"id": "D-LS", "rule": "report-only market-neutral sum of P-SHORT and P-LONG cohorts; can never be promoted or rescue a failed primary"}
+  ],
+  "baselines": [
+    {"id": "B0", "per_side": true, "rule": "1000 seeded random books: each day draw k symbols uniformly without replacement from that day's eligible set; same cadence, hold, stop, sizing and costs", "seed": "sha256('funding_carry_xsec.v1|' + side + '|' + D_iso + '|' + book_index)"},
+    {"id": "B1", "per_side": true, "rule": "equal-risk side-matched book over every eligible symbol each day; same cadence, hold, stop and costs"},
+    {"id": "B2", "per_side": true, "rule": "sign-flipped selection (short the k lowest / long the k highest F24); report-only rank-information check"}
+  ],
+  "trial_budget": {
+    "primary_hypotheses": 2,
+    "diagnostics": 1,
+    "baseline_rows": 6,
+    "total_ledger_trial_records": 9,
+    "primary_holm_m": 2,
+    "prior_funding_carry_looks": 0,
+    "rule": "no result-dependent variant, no alternative k / window / lag / stop; diagnostics, baselines and stress rows never replace a failed primary"
+  },
+  "metrics": ["net R per episode and per cohort, per side", "fold-level mean net R and PF", "gross vs funding vs fee/slippage decomposition", "stressed mean net R at x1.5 and x2", "max equity DD, closed-R DD, longest underwater days", "worst cohort net R, 1st-percentile episode net R", "symbol share of absolute net-R", "daily turnover (notional traded / equity), position notional / prior-24h quote volume", "incomplete and no-cohort day counts"],
+  "gates": {
+    "data": "every walk-forward fold has at most 2% INCOMPLETE episodes and no unresolved accounting row; otherwise the side is INCOMPLETE, not FAIL",
+    "activity": "at least 1000 closed episodes per side across walk-forward and at least 200 cohort days in every fold",
+    "fold_stability": {"positive_folds_min": 4, "folds": 5, "rule": "mean net R > 0 in at least 4 of 5 walk-forward folds"},
+    "expectancy": {"combined_mean_net_r_gt": 0.0, "combined_pf_gt": 1.10, "lcb": "95% lower bound of combined walk-forward mean net R > 0 by moving-block bootstrap of daily cohort means, block 30 cohorts, 10000 resamples, seed 20261028"},
+    "baselines": "mean net R above the 95th percentile of the 1000 B0 book means, and above B1 mean net R",
+    "stress": {"x1_5_mean_net_r_gt": 0.0, "x2_mean_net_r_gt_for_promotion": 0.0, "rule": "x1.5 > 0 is a PASS gate; x2 > 0 is required for promotion to shadow/PAPER and otherwise reported"},
+    "drawdown_and_tail": {"max_equity_dd_lt": 0.35, "x1_5_max_equity_dd_lt": 0.45, "closed_r_dd_lt": 40, "longest_underwater_days_le": 270, "worst_cohort_net_r_ge": -7.5, "policy": "Codex DD policy: higher DD is not an automatic rejection for a longer-hold strategy with robust positive after-cost expectancy, but the tail and recovery time must be bounded"},
+    "concentration": {"max_symbol_share": 0.25, "max_top3_share": 0.50},
+    "capacity": {"median_notional_over_prior_24h_quote_volume_le": 0.001, "turnover": "reported"},
+    "multiplicity": "Holm alpha 0.05 across P-SHORT and P-LONG on the bootstrap p-value of mean net R <= 0",
+    "verdict": "PASS only if every gate passes for that primary; long and short are judged separately"
+  },
+  "promotion_allocation": {"max_share_of_portfolio_risk_budget": 0.25, "max_open_risk_per_book": 0.05, "rule": "a passing book enters shadow at a risk allocation that cannot dominate the portfolio"},
+  "failure_modes": {
+    "incomplete_funding": "symbol ineligible at D; inside a hold the episode is INCOMPLETE; >2% per fold makes the side INCOMPLETE",
+    "missing_symbol": "a universe symbol with no data in a split is reported; it never silently shrinks the universe below min_eligible",
+    "holdout_timestamp": "any access at or after 2026-09-28T00:00:00Z during prep or development is refused (pit.Access guard; edge05_coverage refuses before reading)",
+    "missing_bar": "no forward fill; the episode is INCOMPLETE"
+  },
+  "coverage_check": {
+    "tool": "tools/research/edge05_coverage.py",
+    "mode": "manifest metadata only, streamed; no archive opened, no rate or price read",
+    "window": "2020-02-03T00:00:00Z to 2026-09-28T00:00:00Z exclusive",
+    "result": {"status": "COMPLETE", "symbols_with_funding": 40, "missing_symbols": 0, "symbols_with_month_gaps": 0, "funding_rows_full_months": 224064, "straddle_months_unread": 40, "funding_symbols_per_month_min": 11, "funding_symbols_per_month_max": 40, "first_month_with_15_symbols": "2020-09", "same_for_klines_4h_1d_and_mark_1h": "40/40 symbols, no month gaps"}
+  },
+  "boundaries": {"paper": false, "runtime_change": false, "holdout_read": false, "mainnet": false, "evaluation_run": false}
+}
