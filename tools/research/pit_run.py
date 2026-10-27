@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import bisect
 import dataclasses
+from datetime import datetime, timezone
 import glob
 import hashlib
 import json
@@ -238,7 +239,8 @@ class StaticDataset(P.Dataset):
     members at every time (contract section 0.1: no PIT membership reconstruction), labelled CURRENT-UNIVERSE /
     SURVIVOR-BIASED. Every row is still read through the manifest's SHA-256 re-check (`Dataset.rows`)."""
 
-    def __init__(self, manifest: dict, store: str, static: dict, symbols):
+    def __init__(self, manifest: dict, store: str, static: dict, symbols, *, exact_subset=False,
+                 minute_overlay=None, minute_overlay_store=None):
         M.validate(manifest)
         if not M.promotion_eligible(manifest):
             raise PitRunError('a reproduction-only manifest can never feed the PIT run')
@@ -246,7 +248,13 @@ class StaticDataset(P.Dataset):
             raise PitRunError('the static universe must be the owner-approved CURRENT-UNIVERSE / SURVIVOR-BIASED list')
         ranked = [s['symbol'] for s in static['symbols']]
         symbols = list(symbols)
-        if not symbols or symbols != ranked[:len(symbols)]:
+        if exact_subset:
+            # EDGE-04's preregistered headline is CORE-10-ELIGIBLE-9: the frozen rank order with HYPE removed for
+            # insufficient full-window history.  This opt-in accepts only an explicit order-preserving subset; the
+            # existing tier path remains prefix-only by default and cannot silently select a subset.
+            if not symbols or len(symbols) != len(set(symbols)) or [s for s in ranked if s in set(symbols)] != symbols:
+                raise PitRunError('an exact static subset must be unique, known, and preserve the frozen rank order')
+        elif not symbols or symbols != ranked[:len(symbols)]:
             raise PitRunError('a tier must be a rank prefix of the static list (frozen ranks, never a selection)')
         self.manifest, self.store, self.digest = manifest, store, manifest['digest']
         self.archive = manifest['loader_version'] == M.ARCHIVE_LOADER
@@ -265,6 +273,54 @@ class StaticDataset(P.Dataset):
             P._refuse_overlap(key, v)
         self._cache: dict[str, list] = {}
         self._keys: dict[str, tuple] = {}
+        self.minute_overlay, self.minute_overlay_store = None, None
+        self._minute_overlay_files, self._minute_overlay_cache = {}, {}
+        if minute_overlay is not None:
+            import edge04_1m_acquire as E1
+            E1.validate_overlay_manifest(minute_overlay)
+            if minute_overlay_store is None or minute_overlay["source_manifest_digest"] != self.digest:
+                raise PitRunError("EDGE-04 1m overlay store/source identity mismatch")
+            for f in minute_overlay["files"]:
+                key = (f["symbol"], f["day"])
+                if key in self._minute_overlay_files:
+                    raise PitRunError("duplicate EDGE-04 1m overlay coverage")
+                self._minute_overlay_files[key] = f
+            self.minute_overlay, self.minute_overlay_store = minute_overlay, minute_overlay_store
+
+    @property
+    def latency_identity(self):
+        return {"source_manifest_digest": self.digest,
+                "overlay_manifest_digest": None if self.minute_overlay is None else self.minute_overlay["digest"]}
+
+    def exact_minute_bar(self, symbol: str, open_ms: int):
+        """Unique base-or-overlay 1m bar. An overlap is contamination, never overlay precedence."""
+        import bisect as _bisect
+        found = []
+        for f in self.files("klines", symbol, "1m"):
+            if f["first_open_ms"] is None or not f["first_open_ms"] <= open_ms <= f["last_open_ms"]:
+                continue
+            rows = self.rows(f); times = self._keys[f["path"]][0]
+            i = _bisect.bisect_left(times, open_ms)
+            if i < len(rows) and rows[i].open_ms == open_ms:
+                found.append(rows[i])
+        if self.minute_overlay is not None:
+            import edge04_1m_acquire as E1
+            day = datetime.fromtimestamp(open_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+            f = self._minute_overlay_files.get((symbol, day))
+            if f is not None:
+                rows = self._minute_overlay_cache.get(f["path"])
+                if rows is None:
+                    try:
+                        rows = E1.overlay_rows(self.minute_overlay_store, f)
+                    except E1.AcquireError as e:
+                        raise PitRunError(str(e))
+                    self._minute_overlay_cache[f["path"]] = rows
+                i = _bisect.bisect_left([b.open_ms for b in rows], open_ms)
+                if i < len(rows) and rows[i].open_ms == open_ms:
+                    found.append(rows[i])
+        if len(found) > 1:
+            raise PitRunError(f"{symbol} {open_ms}: duplicate base/overlay 1m coverage")
+        return found[0] if found else None
 
 
 # ------------------------------------------------------------------ holdout guard

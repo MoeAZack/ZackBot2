@@ -1,0 +1,42 @@
+{
+  "format": "zb-edge04-orchestration-addendum/1",
+  "candidate_id": "edge04_legacy_reeval.v1",
+  "status": "FROZEN BEFORE MARKET DATA OR RESULT - 2026-10-26 Cairo",
+  "shared_book": {
+    "equity0": 10000.0,
+    "risk_fraction": 0.01,
+    "max_positions": 4,
+    "max_leverage": 3.0,
+    "cap_gap_buffer": 0.1,
+    "cycle_order": "exits and wallet events, one wallet snapshot, entries in frozen symbol order",
+    "gross_exposure": "open quantity times the causal close/mark at the admission cycle; missing mark is INCOMPLETE",
+    "daily_halt": "3% Cairo-day MTM loss; entries remain refused for that Cairo day",
+    "one_position_per_symbol": true
+  },
+  "B0": {
+    "books_per_primary": 10000,
+    "seed_rule": "sha256(candidate_id|hypothesis|split|book_index) first 64 bits",
+    "match": ["symbol", "side", "entry_count", "holding_bars_distribution", "capacity", "costs"],
+    "replacement": false
+  },
+  "B1": {
+    "rule": "equal-weight side-matched passive over the same eligible symbols and split",
+    "entry": "first executable open in the decision window",
+    "exit": "first executable open at the split end",
+    "costs": "same frozen execution costs; missing exact open is INCOMPLETE"
+  },
+  "stress": {
+    "base": {},
+    "all_variable_costs_x1.5": {"fee_mult": 1.5, "slip_mult": 1.5, "funding_mult": 1.5},
+    "fees_slippage_x2": {"fee_mult": 2.0, "slip_mult": 2.0},
+    "funding_x2": {"funding_mult": 2.0},
+    "gap_slippage_x5": {"gap_slip_mult": 5.0},
+    "entry_latency_60s": {
+      "source": "exact 1m bar opening at the scheduled entry and available at entry+60s",
+      "reference": "that 1m bar close at entry+60s",
+      "missing": "INCOMPLETE; never proxy with 4h or 15m data"
+    }
+  },
+  "outputs": "run envelope and result/report artifacts are content-addressed and write-once",
+  "boundaries": {"market_data_opened": false, "holdout_read": false, "paper": false, "runtime_change": false}
+}

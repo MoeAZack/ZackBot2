@@ -1,0 +1,60 @@
+{
+  "format": "zb-edge04-management-addendum/1",
+  "candidate_id": "edge04_legacy_reeval.v1",
+  "status": "FROZEN BEFORE MARKET DATA OR RESULT - 2026-10-26 Cairo",
+  "parent_prereg": "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json",
+  "intrabar": {
+    "gap": "an open through the protective stop exits at the open before funding or any target",
+    "collision": "if a non-gap stop and any target are both inside one unresolved 4h candle, the stop wins and no target is booked",
+    "targets": "after the stop is ruled out, favourable target levels execute in price order using the frozen taker slippage, fee and tick rules",
+    "target_time": "without finer ordered-trade evidence, a non-gap target is accounted at the 4h bar close; actual funding events earlier in that bar apply to the pre-target quantity"
+  },
+  "hypotheses": {
+    "H1": {
+      "side": "short",
+      "stop_atr": 2.0,
+      "tp1_r": 1.0,
+      "tp1_fraction": 0.5,
+      "breakeven_only_after_executed_partial": true,
+      "target_r": 3.0,
+      "max_bars": 60,
+      "partial_rounding": "floor the requested partial quantity to stepSize; zero means no fill, no fee and no breakeven transition"
+    },
+    "H2": {
+      "side": "long",
+      "stop_atr": 3.0,
+      "runtime_signal_exit": true,
+      "runtime_time_cap": null,
+      "administrative_observation_bars": 180,
+      "at_observation_boundary": "right_censored_runtime_no_cap; INCOMPLETE; never force-close or exclude"
+    },
+    "H3": {
+      "side": "long",
+      "stop_atr": 2.5,
+      "target_r": 3.0,
+      "runtime_signal_exit": true,
+      "max_bars": 180
+    },
+    "H4": {
+      "side": "long",
+      "stop_atr": 2.5,
+      "runtime_signal_exit": true,
+      "runtime_time_cap": null,
+      "administrative_observation_bars": 180,
+      "at_observation_boundary": "right_censored_runtime_no_cap; INCOMPLETE; never force-close or exclude"
+    }
+  },
+  "accounting": {
+    "entry_and_market_exit": "taker with slip-v1 and adverse tick rounding",
+    "partial_and_target": "taker with slip-v1 and adverse tick rounding; no maker assumption",
+    "funding": "actual signed event rate times causal mark and quantity held at that event",
+    "risk_denominator": "original executed quantity times actual tick-rounded fill-to-initial-stop distance",
+    "completeness": "any missing bar, slippage history, funding rate/mark, next open, or administrative censor is INCOMPLETE"
+  },
+  "boundaries": {
+    "market_data_opened": false,
+    "holdout_read": false,
+    "paper": false,
+    "runtime_change": false
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "format": "zb-edge04-prereg/1",
+  "candidate_id": "edge04_legacy_reeval.v1",
+  "family": "edge04_legacy_reeval",
+  "status": "FROZEN BEFORE RESULT - 2026-10-26 Cairo",
+  "source": {
+    "commit": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "strategies_sha256": "9c58dd236f0e70f6d138e8601cb35498c00499a19710f6cacd190599ebb68908",
+    "backtest_sha256": "d9d4856429c62a0a78a6141f5e8897ad4123812190a64f99ed7be002782a3025",
+    "candidate_runner_sha256": "dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2"
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "key": "pullback_rsi",
+      "side": "short",
+      "timeframe": "4h",
+      "when": "bear",
+      "signal": "dn=(EMA50<EMA200 and close<EMA200); enter when RSI14 crosses down through 60; no signal exit",
+      "management": {"stop_atr": 2.0, "tp1_r": 1.0, "tp1_frac": 0.5, "be_r": 1.0, "tp_r": 3.0, "max_bars": 60},
+      "regime": "strategies.regime on BTCUSDT: last completed daily close below its EMA200, minimum 30 completed daily closes"
+    },
+    {
+      "id": "H2",
+      "key": "rotation",
+      "side": "long",
+      "timeframe": "4h",
+      "when": "any",
+      "signal": "enter on transition into cross-sectional rank<=k and close>EMA50; rank is descending ret180/(rolling-180 close-return SD*sqrt(180)); exit rank>k+3 or close<EMA50",
+      "params": {"k": 5},
+      "management": {"stop_atr": 3.0}
+    },
+    {
+      "id": "H3",
+      "key": "exp_trend",
+      "side": "long",
+      "timeframe": "4h",
+      "when": "any",
+      "signal": "EMA20 crosses above EMA50, close>EMA200, ret42>0 and ret180>0; exit EMA20<EMA50 or either momentum return is non-positive",
+      "management": {"stop_atr": 2.5, "tp_r": 3.0, "max_bars": 180}
+    },
+    {
+      "id": "H4",
+      "key": "ema_mom",
+      "side": "long",
+      "timeframe": "4h",
+      "when": "any",
+      "signal": "EMA20 crosses above EMA50, close>EMA200, ret42>0 and ret180>0; exit EMA20<EMA50 or either momentum return is non-positive",
+      "management": {"stop_atr": 2.5}
+    }
+  ],
+  "universe": {
+    "artifact": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+    "artifact_sha256": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031",
+    "headline": ["BTCUSDT", "ETHUSDT", "ZECUSDT", "SOLUSDT", "XRPUSDT", "NEARUSDT", "DOGEUSDT", "UNIUSDT", "SUIUSDT"],
+    "headline_label": "CORE-10-ELIGIBLE-9; frozen current-universe / survivor-biased",
+    "sensitivity": {"symbol": "HYPEUSDT", "rule": "available-period only, separately reported, never pooled into a gate"},
+    "completeness": "no fill; a symbol/split with a missing kline, funding event, mark, rule or delist input is INCOMPLETE and excluded, never silently reduced"
+  },
+  "windows": {
+    "calibration": {"start": "2020-02-03T00:00:00Z", "end": "2021-01-04T00:00:00Z"},
+    "train": {"start": "2021-01-04T00:00:00Z", "end": "2021-12-20T00:00:00Z"},
+    "walk_forward": [
+      {"fold": 0, "start": "2021-12-20T00:00:00Z", "end": "2022-12-19T00:00:00Z"},
+      {"fold": 1, "start": "2022-12-19T00:00:00Z", "end": "2023-12-18T00:00:00Z"},
+      {"fold": 2, "start": "2023-12-18T00:00:00Z", "end": "2024-12-16T00:00:00Z"},
+      {"fold": 3, "start": "2024-12-16T00:00:00Z", "end": "2025-12-15T00:00:00Z"},
+      {"fold": 4, "start": "2025-12-15T00:00:00Z", "end": "2026-09-28T00:00:00Z"}
+    ],
+    "sealed_cutoff": "2026-09-28T00:00:00Z",
+    "holdout": {"start": "2026-11-02T00:00:00Z", "end": "2027-11-01T00:00:00Z", "minimum_episodes_per_hypothesis": 30, "reveals": 1},
+    "split_rule": "fresh book per split; 240-bar warm-up; no indicator, position or capital crosses a boundary; one-bar embargo and max(240,180)-bar purge for H3"
+  },
+  "execution": {
+    "decisions": "closed 4h candles only; entry at next executable 4h open; signal exit at next executable open in the execution-grade adapter",
+    "account": {"start_usdt": 10000, "risk_fraction": 0.01, "max_open_lots": 4, "max_gross_leverage": 3.0, "cairo_daily_halt": 0.03},
+    "cost_base": {"fee": "Binance UM VIP0 taker 0.05% each fill", "slippage": "slip-cal-v1 fallback 0.05% each market fill", "funding": "actual signed rate at each funding time using the causal archived mark", "filters": "historical stepSize, minQty and minNotional; quantity floors, never rounds up"},
+    "path": "gap-open first, then conservative stop-first for unresolved 4h ambiguity; report unresolved ambiguity; no maker assumption",
+    "stress_rows": ["base", "all_variable_costs_x1.5", "fees_and_slippage_x2", "funding_x2", "gap_slippage_x5", "entry_latency_60s"],
+    "engine_reuse": "reuse StaticDataset/PIT access, SplitPlan, cost model, exchange-rule snapshots, ledger and report envelopes; add only an exact runtime-strategy adapter and rotation context"
+  },
+  "variants": [
+    {"id": "H1.primary", "role": "primary", "hypothesis": "H1", "override": {"when": "bear"}},
+    {"id": "H1.any_ablation", "role": "diagnostic", "hypothesis": "H1", "override": {"when": "any"}},
+    {"id": "H2.primary_k5", "role": "primary", "hypothesis": "H2", "override": {"k": 5}},
+    {"id": "H2.k3", "role": "diagnostic", "hypothesis": "H2", "override": {"k": 3}},
+    {"id": "H2.k7", "role": "diagnostic", "hypothesis": "H2", "override": {"k": 7}},
+    {"id": "H3.primary", "role": "primary", "hypothesis": "H3", "override": {}},
+    {"id": "H4.primary", "role": "primary", "hypothesis": "H4", "override": {}}
+  ],
+  "baselines": [
+    {"id": "B0", "per_hypothesis": true, "rule": "10000 deterministic matched random-entry books preserving symbol, side, entry count, holding-time distribution, capacity and costs"},
+    {"id": "B1", "per_hypothesis": true, "rule": "equal-weight side-matched passive over the same eligible symbols and split, entered and exited at executable opens with the same costs"}
+  ],
+  "trial_budget": {
+    "strategy_variants": 7,
+    "primary_hypotheses": 4,
+    "diagnostics": 3,
+    "baseline_rows": 8,
+    "total_ledger_trial_records": 15,
+    "primary_holm_m": 4,
+    "rule": "diagnostics and stress rows may never replace a failed primary; no result-dependent new variant"
+  },
+  "prior_inventory": {
+    "legacy_csv_context": {
+      "commit": "0c873de74ba792dcf7a763c098b78de96e844120",
+      "named_rows_from_committed_board": {"pullback_rsi": 10, "rotation": 12, "ema_mom": 10, "exp_trend": 0},
+      "deduplication": "root results_single.csv is a superseded copy and is not counted twice; mixed-side and aggregate rows remain contamination, not side-specific evidence",
+      "limitation": "the CSV rows lack immutable run/config/data identities, so semantic deduplication beyond the explicit duplicate is impossible; all 32 named rows count conservatively as prior looks"
+    },
+    "candidate_packets": [
+      {"h": "H1", "cell": "CORE10/default", "packet": "96bd5a190f26d13195b57974efb87c37f723580b054debbdaae4f8bcec8808cf"},
+      {"h": "H1", "cell": "CORE20-partial/default", "packet": "ea87861ac647ce9f59f5de54e730d80c7cc2a325095596637456e06caabdbeed"},
+      {"h": "H1", "cell": "CORE20-fuller/default", "packet": "004fb0d6eb777e623322e98ad3d196a2f90a6dde1e491509da0c021ceabd4367"},
+      {"h": "H2", "cell": "CORE10/default", "packet": "c734d83d6a56e3f15d1a33781b42ef169fd26498a63435be37fc33cc1f861d5c"},
+      {"h": "H2", "cell": "CORE20-partial/default", "packet": "24c3eea1b136e7067291820efc31c100a0682afc0e662619b68c649ebef32163"},
+      {"h": "H2", "cell": "CORE20-fuller/default", "packet": "3330d888a435c43caedc46b8be01eaa447b646b57a47c1e7387b31881e6af204"},
+      {"h": "H2", "cell": "Static40/default", "packet": "7e8ee4f4383e6605d046fd9cf7bcdc2f1f1511ee08639dd5f4070d74a4e55c1f"},
+      {"h": "H3", "cell": "CORE10/default", "packet": "e27fbf44da487d3f3c846c6ca533387baa0a95fe24f02449cddef0b720ce7227"},
+      {"h": "H3", "cell": "CORE10/profit_capture", "packet": "ebc8162f49a64e29b339b69397e9e2f62d9379c843ade05c850ec7dbe8068d01"},
+      {"h": "H3", "cell": "CORE20-partial/default", "packet": "1c1133875d608f163f2fe58c772163d5e6e3ad6ebaeb7a317b5f383393b026f4"},
+      {"h": "H3", "cell": "CORE20-partial/profit_capture", "packet": "81f64a08bce84491da9146021ebfd9cd48b73141836ce160e6b97047eedca7b9"},
+      {"h": "H3", "cell": "CORE20-fuller/default", "packet": "f6b9661953ed4fef93240419e6dbbcddbce2ab0420d9bd45d4526b2163090c48"},
+      {"h": "H3", "cell": "CORE20-fuller/profit_capture", "packet": "e673216b381ed4d42840c027253a26ef2a8d0e011e53f4ebcda1d6a54410744e"},
+      {"h": "H3", "cell": "Static40/default", "packet": "33a092e1fc8e75f5f3cb502efb16f4e091d03a99a713b79d19acf660897fca1e"},
+      {"h": "H4", "cell": "CORE10/default", "packet": "53af447c52ef5495a22b672fdd5c1fe4236e1523378f29b88436d69aa21f5a0c"},
+      {"h": "H4", "cell": "CORE20-partial/default", "packet": "ca39576c4d640e7ed3993cc9e7d32a9e7c15e1b605236c7d7a4ccc42667bda14"},
+      {"h": "H4", "cell": "CORE20-fuller/default", "packet": "49fb8ad11d8a1c28b8fc884da6b09b1ca111ffd16d7a1100ff03529c739efbca"},
+      {"h": "H4", "cell": "Static40/default", "packet": "54d6a0445148b8694a2e84e9056c9f4b6035aed299a65036efca8260c6e5aceb"}
+    ],
+    "candidate_packet_trials": 18,
+    "trend_ema_mom_registered_trials": 18,
+    "historical_prior_looks": 68,
+    "search_aware_total_after_this_prereg": 75,
+    "supersession": "partial CORE20 packets remain prior looks but are superseded as evidence by the fuller c808794 packets; c8c7b92 parity reruns are verification replays, not new trials"
+  },
+  "gates": {
+    "data": "every headline symbol/split complete; no account bust; no unresolved accounting row",
+    "activity": "at least 60 closed episodes and at least 0.75 closed episodes per week across development+walk-forward",
+    "walk_forward": "at least 4 of 5 folds have positive net R; combined walk-forward mean net R>0 and PF>1.10",
+    "expectancy": "episode-clustered 95% lower confidence bound of combined walk-forward mean net R>0; pre-cost gross mean R>0",
+    "baselines": "base net return exceeds B1 and the episode-clustered 95% lower bound of candidate-minus-B0 mean R is >0",
+    "stress": "all-variable-costs x1.5 mean net R>0; no sign flip at 60-second latency; fees/slippage x2 reported",
+    "concentration": "no symbol exceeds 35% of absolute net-R contribution and top three do not exceed 60%",
+    "drawdown": "base max equity drawdown<25%, closed-trade max drawdown<25R, and all-variable-costs x1.5 max equity drawdown<35%",
+    "multiplicity": "Holm alpha 0.05 across the four primaries; report deflated/search-aware statistics with 75 prior+new strategy looks",
+    "verdict": "PASS only if every gate passes for the frozen primary; diagnostics cannot rescue it"
+  },
+  "ledger": {
+    "path": "research_evidence/ledger/edge04_legacy_reeval.jsonl",
+    "records_before_result": 15,
+    "append_only": true,
+    "future": "each data access, execution run, failure and single holdout reveal appends; never rewrite or restart"
+  },
+  "blockers": [
+    "The current candidate runner has causal signals but legacy flat funding and legacy exchange filters; it is not an execution-grade result path.",
+    "The current PIT execution-grade runner lacks an adapter for these runtime keys and H2 cross-sectional rank context.",
+    "Legacy CSV rows have no immutable run/config/data identities, so their 32 named rows are conservatively counted rather than semantically merged."
+  ],
+  "boundaries": {"paper": false, "runtime_change": false, "holdout_read": false, "mainnet": false}
+}

@@ -365,8 +365,8 @@ def _base():
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
     out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
-    assert sorted(out) == ['breadth_static40', 'range_bb_mr', 'range_vwap_rev', 'res01_infra', 'short_breakdown',
-                           'trend_ema_mom', 'trend_ema_mom_short']
+    assert sorted(out) == ['breadth_static40', 'edge04_legacy_reeval', 'range_bb_mr', 'range_vwap_rev', 'res01_infra',
+                           'short_breakdown', 'trend_ema_mom', 'trend_ema_mom_short']
     # PR #166 (CORE10_GAPFILL_PREREG_v1): range_vwap_rev holds exactly the one registered CORE-10 gap-fill splitcut run -
     # 1 development Access + 20 trial records (18 variant + 2 baseline), never promotable, and no legacy window_spent.
     rex = out.pop('range_vwap_rev')
@@ -389,6 +389,13 @@ def test_committed_family_ledgers_mark_legacy_window_spent():
     breadth = out.pop('breadth_static40')
     assert len(breadth) == 12 and {(r['kind'], r['split']) for r in breadth} == {('variant', 'development')}
     assert not any(r['kind'] in L.SPEND_KINDS for r in breadth)
+    # EDGE-04 is a fresh preregistration family: four primaries, three diagnostics, and two baselines for each primary.
+    edge04 = out.pop('edge04_legacy_reeval')
+    assert len(edge04) == 15 and L.n_trials(edge04) == 15
+    assert [r['kind'] for r in edge04] == ['variant', 'grid_point', 'variant', 'grid_point', 'grid_point',
+                                            'variant', 'variant'] + ['baseline'] * 8
+    assert {r['split'] for r in edge04} == {'development'}
+    assert not any(r['kind'] in L.SPEND_KINDS for r in edge04)
     for fam, recs in out.items():
         spent = [r['window'] for r in recs if r['kind'] == 'window_spent']
         assert any(w['start'] <= '2025-01-01T00:00:00Z' and w['end'] >= '2026-10-04T00:00:00Z' for w in spent), fam
