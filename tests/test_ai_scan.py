@@ -21,8 +21,11 @@ SAMP = dict(temperature=0, max_tokens=3000)
 MODEL = 'claude-sonnet-5-5'
 IDENT = dict(model_id=MODEL, prompt_hash=H1, sampling=SAMP, feature_schema_hash=H3, cost_model_hash=H4)
 EPOCH = A.epoch_of(MODEL, H1, SAMP, H3, H4)
-CR0 = A.cost_revision_id(dict(fees_actual=0.42, funding=0.0, net=12.0))       # booked
-CR1 = A.cost_revision_id(dict(fees_actual=0.51, funding=-0.08, net=9.0))      # a late-fee / funding restatement
+COSTS0 = dict(fees_actual=0.42, funding=0.0, pnl_gross=12.42, pnl_fill_adj=0.0, pnl_net=12.0, net_r=1.2)
+COSTS1 = dict(COSTS0, fees_actual=0.51, funding=-0.08, pnl_net=9.0, net_r=0.9)   # a late-fee / funding restatement
+CMID = 'actual-cost-model-v1'
+CR0 = A.cost_revision_id(COSTS0, net_basis='booked', cost_model_id=CMID)
+CR1 = A.cost_revision_id(COSTS1, net_basis='measured', cost_model_id=CMID)
 
 
 def snap(**kw):
@@ -469,12 +472,54 @@ def test_rev_deduplicates_and_a_reused_rev_or_renumbered_identity_refuses():
         A.fold([s, o0, outcome(s, rev=1)])                                    # one economic identity, two revs
 
 
-def test_cost_revision_id_is_content_derived():
-    assert A.cost_revision_id(dict(net=1.0, fees_actual=0.1)) == A.cost_revision_id(dict(fees_actual=0.1, net=1.0))
-    assert A.cost_revision_id(dict(net=1.0)) != A.cost_revision_id(dict(net=1.01))
-    for bad in (None, {}, [1]):
-        with pytest.raises(A.AIScanError):
-            A.cost_revision_id(bad)
+GOLDEN_CR0 = 'ad138f6d47d13a4b56cac758f41a00b87f0a7109faef83100d6a3e4f58129fe4'   # independent: sha256(json [schema, pairs, basis, model])
+
+
+def test_cost_revision_id_schema_and_golden_hash_are_pinned():
+    assert A.COST_REV_SCHEMA == 'ai-scan-cost-rev-v1'
+    assert A.COST_REV_FIELDS == ('fees_actual', 'funding', 'pnl_gross', 'pnl_fill_adj', 'pnl_net', 'net_r')
+    assert CR0 == GOLDEN_CR0
+
+
+def test_cost_revision_id_ignores_input_order_timestamps_and_presentation_fields():
+    rev = dict(reversed(list(COSTS0.items())))
+    noisy = dict(COSTS0, closed_at='2026-10-20T14:00:00Z', ts=1760968800, cost_rev=3, label='TP1 hit', pnl_str='+$12.00',
+                 id='row-7', fees_actual=0.42)
+    ints = dict(COSTS0, funding=0, pnl_fill_adj=0)                              # 0 and 0.0 are one value
+    for d in (rev, noisy, ints):
+        assert A.cost_revision_id(d, net_basis='booked', cost_model_id=CMID) == CR0
+
+
+@pytest.mark.parametrize('change', [dict(fees_actual=0.43), dict(funding=-0.01), dict(pnl_gross=12.5),
+                                    dict(pnl_fill_adj=0.1), dict(pnl_net=11.99), dict(net_r=1.19),
+                                    dict(net_basis='measured'), dict(cost_model_id='actual-cost-model-v2')])
+def test_any_cost_field_net_basis_or_cost_model_changes_the_id(change):
+    nb, cm = change.pop('net_basis', 'booked'), change.pop('cost_model_id', CMID)
+    assert A.cost_revision_id(dict(COSTS0, **change), net_basis=nb, cost_model_id=cm) != CR0
+
+
+def test_a_schema_version_bump_changes_the_id(monkeypatch):
+    monkeypatch.setattr(A, 'COST_REV_SCHEMA', 'ai-scan-cost-rev-v2')
+    assert A.cost_revision_id(COSTS0, net_basis='booked', cost_model_id=CMID) != CR0
+
+
+@pytest.mark.parametrize('costs, kw', [(None, {}), ([1], {}), ({k: v for k, v in COSTS0.items() if k != 'funding'}, {}),
+                                       (dict(COSTS0, funding=None), {}), (dict(COSTS0, net_r=float('nan')), {}),
+                                       (dict(COSTS0, fees_actual='0.42'), {}), (dict(COSTS0, fees_actual=True), {}),
+                                       (COSTS0, dict(net_basis='modelled')), (COSTS0, dict(cost_model_id=''))])
+def test_a_missing_or_partial_cost_has_no_identity(costs, kw):
+    a = dict(dict(net_basis='booked', cost_model_id=CMID), **kw)
+    with pytest.raises(A.AIScanError):
+        A.cost_revision_id(costs, **a)
+
+
+def test_an_id_collision_between_two_different_revisions_fails_closed():
+    s = sig()
+    other = outcome(s, rev=1, net_r=0.5, net_pnl=5.0, cost_basis='measured')   # different revision, same id CR0
+    with pytest.raises(A.AIScanError, match='conflicting replay'):
+        A.fold([s, outcome(s), other])
+    with pytest.raises(A.AIScanError, match='conflicting replay'):
+        A.fold([s, other, outcome(s)])
 
 
 def test_several_models_are_kept_side_by_side():

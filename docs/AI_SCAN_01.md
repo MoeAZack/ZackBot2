@@ -2,6 +2,12 @@
 
 ## Roadmap fit and order
 
+> **Supersession (Codex 6453104005):** Codex decisions 6452143340 supersede rulings 6374978304 and 6375106166. The
+> earlier exact-cutoff snapshot rule, the `min(2 bars, 30 minutes)` display cap and the five-field versioned flag-off
+> shape are withdrawn. This document, `docs/AI_SCAN_01_SCHEMA.md` and `tests/test_ai_scan.py` state the one current
+> contract: `STALE_BARS = 2` timeframe-relative with absolute age, insufficient data fails closed, flag-off exactly
+> `{on: false, rows: []}`, and outcomes joined by decision id + `cost_revision_id`.
+
 Phase 10 (ML in shadow), extending TA-SCOUT-01 and supporting EDGE-01. This is the ZackBot-owned version of an AI
 chart scanner. It uses ZackBot/Binance causal data and does not install, clone or reverse-engineer TradingView.
 
@@ -31,10 +37,12 @@ marketing-style percentage.
 - Remote model analysis is queued and asynchronous; it cannot block a 15-minute cycle or position management.
 - Inputs contain only values whose source/event timestamp is at or before the decision cutoff. Their receipt/ingest
   timestamp may be after that close, but must be no later than the recorded decision instant (`decided_at >= cutoff`);
-  this permits ordinary exchange delivery latency without admitting information from a later market event. The snapshot
-  must match the exact decision cutoff. A shadow result is display-fresh for `min(2 bars, 30 minutes)`, intentionally
-  expiring mid-bar on 1h/4h views; later results remain historical evidence but are visibly stale. Missing, stale,
-  malformed or insufficient inputs produce `INSUFFICIENT`, never an inferred score.
+  this permits ordinary exchange delivery latency without admitting information from a later market event. Freshness is
+  the timeframe-relative ceiling `STALE_BARS = 2`: the snapshot's last close may not be after the cutoff, and its
+  absolute age (`snapshot_age_s`) is recorded and shown; exactly 2 bars of the timeframe is fresh, older is
+  `INSUFFICIENT` (`stale_snapshot`). A shadow result shows its absolute `age_s` and, once older than 2 bars of its
+  timeframe, is shown as `INSUFFICIENT` (`stale`) with no score; the record stays as historical evidence. Missing,
+  stale, malformed or insufficient inputs fail closed to `INSUFFICIENT`, never an inferred score.
 - Point-in-time inputs include universe membership, exchange-filter snapshots, funding data and every feature used by
   the decision. Restated or later-listed information cannot enter an earlier record.
 - Current web/model knowledge cannot substitute for missing point-in-time news. Phase 11 `NewsProvider` remains separate.
@@ -50,11 +58,13 @@ marketing-style percentage.
    prompt-template hash, sampling parameters and raw-response hash. Changing any one opens a new calibration epoch;
    vendor aliases are not reproducible identifiers. Ambiguous joins fail closed.
 2. **Scanner API and UI.** Sortable cross-coin table and per-signal detail. Labels clearly distinguish `RULES`,
-   `AI SHADOW`, `UNVERIFIED` and `INSUFFICIENT`. With the feature off, the stable response is
-   `{schema_version: 1, on: false, mode: "off", updated_at: null, rows: []}`.
+   `AI SHADOW`, `UNVERIFIED` and `INSUFFICIENT`. With the feature off, the stable response is exactly
+   `{on: false, rows: []}`.
 3. **Evaluation harness.** Preregister B0 as the unchanged deterministic baseline and B1 as scanner ranking only.
    Evaluate exact runtime rules on anchored walk-forward and an untouched holdout with actual fee, funding, fill and
-   exchange assumptions. Taken candidates use measured outcomes and their append-only actual-cost revision id. Untaken,
+   exchange assumptions. Taken candidates use measured outcomes joined by decision id + `cost_revision_id` (SHA-256 over
+   the versioned, pinned actual-cost fields + net basis + cost-model id; the integer `cost_rev` only orders/dedupes;
+   see `docs/AI_SCAN_01_SCHEMA.md`). Untaken,
    vetoed and capacity-skipped candidates receive a deterministic causal simulation under the same frozen policy and
    cost model. Measured and simulated outcomes are stored and reported separately; missing future data is
    `INSUFFICIENT`, not imputed. An `INSUFFICIENT` B1 row keeps its B0 order and counts as retained, so queue, timeout

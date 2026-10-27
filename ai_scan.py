@@ -50,6 +50,9 @@ DEMOTE_ECE, DEMOTE_FAILS = 0.08, 2                   # rolling ECE above, or thi
 SHADOW_FAILURES = ('queue_full', 'timeout', 'budget_exhausted', 'remote_error')
 COST_BASES = {'measured': ('booked', 'measured'), 'simulated': ('modelled',)}
 RATIONALE_MAX = 400
+# cost_revision_id input (Codex 6453104005): versioned, pinned field list AND order. Bump the schema to change either.
+COST_REV_SCHEMA = 'ai-scan-cost-rev-v1'
+COST_REV_FIELDS = ('fees_actual', 'funding', 'pnl_gross', 'pnl_fill_adj', 'pnl_net', 'net_r')
 _HEX64 = re.compile(r'^[0-9a-f]{64}$')
 _ID_RE = re.compile(r'(order|client|trade|exchange)[\s_\-]?(o?id|key)|orderid|clientoid', re.I)
 _AUTHORITY_KEYS = ('plan', 'entry', 'stop', 'target', 'targets', 'size', 'qty', 'lot', 'leverage', 'order', 'exit',
@@ -105,12 +108,24 @@ def stale_after_s(tf):
     return STALE_BARS * TF_SEC[tf]
 
 
-def cost_revision_id(actual_costs):
-    """The actual-cost revision identifier: sha256 of one revision's actual-cost fields (fees, funding, fill prices, net).
-    This - with the decision id - is the economic join key; the monotonic rev only orders revisions."""
-    if not (isinstance(actual_costs, dict) and actual_costs):
-        raise AIScanError('a cost revision identifier needs the actual-cost fields')
-    return sha256_hex(canonical_json(actual_costs))
+def cost_revision_id(actual_costs, *, net_basis, cost_model_id):
+    """The actual-cost revision identifier (Codex 6453104005): sha256 over the canonical, versioned tuple
+    [COST_REV_SCHEMA, [[field, value] in COST_REV_FIELDS order], net_basis, cost_model_id]. Only the pinned fields are
+    read - timestamps, ids and presentation fields are ignored, so they never change the id; any pinned cost field, the
+    net basis, the cost-model id or a schema bump does. Each pinned field must be a finite number (a missing or partial
+    cost fails closed - it has no identity yet). With the decision id this is the economic join key; the integer
+    cost_rev only orders and deduplicates. Collision rule: two different records under one (decision id, id) are a
+    conflicting replay and refuse (fold and the ledger), never a silent overwrite."""
+    if not isinstance(actual_costs, dict): raise AIScanError('a cost revision identifier needs the actual-cost fields')
+    vals = []
+    for f in COST_REV_FIELDS:
+        v = actual_costs.get(f)
+        if not _num(v): raise AIScanError(f'cost revision field {f!r} missing or not a finite number')
+        vals.append([f, float(v)])
+    if net_basis not in COST_BASES['measured']: raise AIScanError(f'unknown net basis {net_basis!r}')
+    if not (isinstance(cost_model_id, str) and cost_model_id):
+        raise AIScanError('a cost revision identifier needs the cost-model id')
+    return sha256_hex(canonical_json([COST_REV_SCHEMA, vals, net_basis, cost_model_id]))
 
 
 # ------------------------------------------------------------------ inputs -> INSUFFICIENT reasons
