@@ -158,7 +158,7 @@ def test_backfill_and_non_training_closes(c, md):
 
 def test_epoch_relative_counters(c, md):
     d = c['diagnostics']
-    assert d['epoch'] == 'pair_epoch_start' and '**ML-PAIR-01 epoch**' in md
+    assert d['epoch'] == 'pair_epoch.json:first_decision_candle' and '`pair_epoch_start` is' in md and '**ML-PAIR-01 epoch**' in md
     assert 'They never block training.' in md and 'historical_orphans' in d['historical_diagnostic']
 
 
@@ -230,8 +230,8 @@ def test_per_row_horizon_purging_no_global_embargo(c, md):
     assert p['rule'] == 'per_row_strategy_horizon' and p['global_embargo'] is False
     assert 'There is no single global embargo.**' in md and 'Overlap embargo' not in md
     assert 'embargo_days' not in md and 'T_cut − embargo' not in md
-    assert p['row_kept_if_before_boundary'] == ['candle_time_plus_frozen_horizon', 'closed_at']
-    assert '`candle_time + horizon(strategy, tf)`' in md and 'its actual close, `closed_at`' in md
+    assert p['row_kept_if_before_boundary'] == ['candle_time_plus_horizon_h_le_boundary', 'closed_at_lt_boundary']
+    assert '`candle_time + horizon_h ≤ boundary`' in md and 'its actual close: `closed_at < boundary`' in md
     assert p['applies_to'] == ['training', 'calibration'] and 'A training or\n  calibration row' in md
     assert p['purge_exact_overlapping_symbol_episodes'] is True and '**Exact overlapping symbol episodes are purged' in md
     assert p['short_rows_inherit_longest_horizon'] is False
@@ -265,3 +265,74 @@ def test_v1_capped_only_and_ml_horizon_02_deferred(c, md):
                  'runtime_trade_management_change': False}
     assert c['deferred_contracts'] == ['ML-HORIZON-02'] and 'ML-HORIZON-02' not in c['tickets']
     assert '**DEFERRED follow-up contract:** **`ML-HORIZON-02`**' in md and 'no runtime trade-management change' in md
+
+
+def test_effective_mgmt_snapshot_and_pending_excluded(c, md):
+    m = c['pair_ledger']['mgmt_snapshot']
+    assert m['eligibility_source'] == 'row_snapshot_not_registry' and m['immutable'] is True and m['taken_at'] == 'lot_open'
+    assert "**row's own snapshot, never from the registry**" in md
+    for f in m['fields']:
+        assert f'`{f}`' in md, f
+    assert m['eligible_if'] == {'runner': False, 'overlay_id': None, 'mgmt_hash_equals_canonical': True,
+                                'effective_max_bars_equals_table': True}
+    for x in m['excluded_counted']:
+        assert f'`{x}`' in md, x
+    assert '**excluded and counted**' in md and '**noncanonical override**' in md
+    assert c['pair_ledger']['pending_in_v1_training'] is False
+    assert '**v1 excludes `pending` / trailing-entry decisions entirely.**' in md
+    assert '**pending-horizon contract**' in md and c['open_questions_closed']['Q2'] == '6455506817'
+    assert 'or is the `horizon_breach` exclusion enough?' not in md
+    assert c['split']['purge']['horizon_source'] == 'row_mgmt_snapshot'
+
+
+def test_restart_identity_excludes_paired_at(c, md):
+    from ml_shadow.common import canonical_json, sha256_hex
+    pl = c['pair_ledger']
+    assert pl['record_hash_excludes'] == ['record_hash', 'paired_at'] and pl['paired_at_in_training_identity'] is False
+    assert 'sha256 of the canonical row **without `record_hash` and `paired_at`**' in md
+    assert '**Metadata only: it is excluded from `record_hash` and from every training identity**' in md
+    assert pl['replay_same_content'] == 'no_op' and pl['content_change_same_key'] == 'refused_duplicate_pairs'
+    assert '**restart identity:**' in md and 'hashes identically and is a no-op' in md
+    # the rule as stated is deterministic: two appends of the same content at different times hash identically
+    def rh(row):
+        return sha256_hex(canonical_json({k: v for k, v in row.items() if k not in pl['record_hash_excludes']}))
+    a = {'pair_key': ['d1', 0], 'label': {'net_r': 1.2}, 'paired_at': '2026-10-28T00:00:00Z'}
+    assert rh(a) == rh(dict(a, paired_at='2026-10-29T09:00:00Z')) != rh(dict(a, label={'net_r': 1.3}))
+
+
+def test_failure_split_no_artifact_vs_unverified(c, md):
+    o = c['outcomes']
+    assert set(o['no_artifact_run_record_only']) == set(c['failure_statuses'])
+    assert '**A. Structural, data, leakage or source failure \u2192 run record only, NO model artifact.**' in md
+    assert ('**B. Completed, leakage-clean fit that misses a predictive or promotion threshold \u2192 immutable '
+            '`UNVERIFIED` artifact.**') in md
+    assert 'A model that fails \u00a75 is written as `UNVERIFIED` only.' not in md
+    assert 'a completed, leakage-clean fit wrote an immutable artifact with status `UNVERIFIED`' in md
+    count_gates = {'min_paired_labels', 'min_family_side_cell', 'min_future_folds', 'min_fold_labels', 'min_cairo_days',
+                   'min_regimes'}
+    assert not count_gates & set(o['predictive_gates'])          # count gates -> INSUFFICIENT_DATA, never an artifact
+    assert set(o['predictive_gates']) <= set(c['thresholds'])
+    assert 'INSUFFICIENT_DATA' in o['no_artifact_run_record_only']
+
+
+def test_durable_epoch(c, md):
+    e = c['epoch']
+    assert e['create'] == 'exclusive' and e['immutable'] is True and e['file'].endswith('pair_epoch.json')
+    for f in e['fields']:
+        assert f'`{f}`' in md, f
+    assert e['referenced_by'] == ['pair_rows', 'run_manifest'] and e['missing_or_conflicting'] == 'PAIRING_DEFECT'
+    assert e['reset'] == 'new_signed_epoch_archive_operation' and '**new signed epoch/archive operation**' in md
+    assert '**once, by exclusive create**' in md and 'cannot drift or be backdated' in md and '**fails pairing**' in md
+    assert 'epoch_hash' in c['pair_ledger']['fields'] and 'the `epoch_hash` of `pair_epoch.json`;' in md
+
+
+def test_episode_purge_never_reads_holdout(c, md):
+    p = c['split']['purge']
+    assert p['interval_semantics'] == '[start,end)' and '**`[start, end)` semantics**' in md
+    assert p['row_kept_if_before_boundary'] == ['candle_time_plus_horizon_h_le_boundary', 'closed_at_lt_boundary']
+    assert '`candle_time + horizon_h \u2264 boundary`' in md and '`closed_at < boundary`' in md
+    assert p['holdout_rows_inspected'] is False and '**Holdout rows are never inspected**' in md
+    assert p['holdout_purge_uses'] == ['dev_row_own_horizon', 'dev_row_closed_at_lt_holdout_start']
+    assert 'its own `closed_at < holdout_start`' in md
+    assert p['episode_overlap_scope'] == 'development_fold_metadata_only' and '**development-fold metadata\n  only**' in md
+    assert 'other side' not in md

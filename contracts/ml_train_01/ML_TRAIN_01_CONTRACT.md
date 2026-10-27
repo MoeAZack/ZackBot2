@@ -16,7 +16,7 @@ Binding inputs:
 - data ruling 6452728797, which fixes the order:
   **(1) paired ledger → (2) diagnostics → (3) training → (4) shadow-only authority.**
   No step starts before the one above it is accepted;
-- contract review 6453098718, which rules on backfill, acknowledged/booked closes, model shape, the parity guard and
+- contract review 6453098718 and blockers 6455506817, which rule on backfill, acknowledged/booked closes, model shape, the parity guard and
   five corrections.
 
 PATH: Phase 10 ML-in-shadow → ML-SHADOW-01 ledgers (live) → **ML-PAIR-01 paired ledger** → ML-TRAIN-01 offline artifact
@@ -61,7 +61,8 @@ closes are counted in a separate diagnostics stratum, `non_training_closes`, key
 At decision time (`engine._ml_decision` → `submit('decision')`), a decision whose status is `taken` or `pending`
 (`ledger.labelable`) is also appended to `labelable_decisions.jsonl`, a durable store that is never rotated. Skipped
 decisions stay only in the rotating ledger. The pairing step reads the decision from the durable store, so rotation can no
-longer orphan a label. The store's size is bounded by the number of taken and pending decisions.
+longer orphan a label. The store's size is bounded by the number of taken and pending decisions. Pending decisions are
+still recorded for diagnostics, but v1 training excludes them (§1.7).
 
 ### 1.3 Row schema `ml_shadow.pair.v1`
 | Field | Content |
@@ -74,17 +75,20 @@ longer orphan a label. The store's size is bounded by the number of taken and pe
 | `label` | `closed_at`, `net_r`, `net_pnl`, `exit_reason`, `mfe_r`, `mae_r`, `target_before_stop`, `net_basis` (`measured`) |
 | `costs` | from `actual_costs.measured`: `gross`, `fees_actual`, `funding_actual`, `fill_adj` (slippage vs booked fill), `risk_usd`, `complete`, `why` |
 | `ids` | `code_id` (§1.6), `decision_schema`, `label_schema`, `feature_schema`, `feature_names_sha256`, `cost_model_id`, `cost_rev_id` |
+| `mgmt` | immutable **effective management snapshot** (§1.7): `effective_max_bars`, `runner`, `overlay_id`, `overlay_hash`, `mgmt_hash`, `canonical_mgmt_hash`, `tf`, `horizon_h` |
+| `epoch_hash` | the `epoch_hash` of `pair_epoch.json` (§1.8) the row was written under |
 | `provenance` | backfill only: `source_files` (sha256 of every source ledger and history file read), `reconstructed_by` (code id) |
-| `paired_at` | UTC ISO time of the append |
-| `record_hash` | sha256 of the canonical row without `record_hash` |
+| `paired_at` | UTC ISO time of the append. **Metadata only: it is excluded from `record_hash` and from every training identity** (§1.4) |
+| `record_hash` | sha256 of the canonical row **without `record_hash` and `paired_at`** |
 
 ### 1.4 Storage and integrity
 `<data>/ml_shadow/pairs/pairs.jsonl` follows the `ai_scan_ledger.ScanLedger` pattern:
 - append-only and **never rotated**;
 - each write is one whole sealed line (write + flush + fsync under a lock), and a torn last line is closed off before
   the next append;
-- the same `pair_key` with the same `record_hash` is a no-op (restart-safe); the same key with a different hash is
-  refused and counted, and nothing is written;
+- **restart identity:** `record_hash` covers the content only, never `paired_at`, so the same pair content replayed
+  after a restart or rebuilt by backfill hashes identically and is a no-op. A real content change under one `pair_key`
+  (a different `record_hash`) is refused and counted as `duplicate_pairs`, and nothing is written;
 - reads verify `record_hash`; an edited or corrupt line is skipped and counted, never raised;
 - rows pass a `sanitize_row('pair', ...)` allow-list (no secrets, raw ids hashed).
 
@@ -109,12 +113,48 @@ tagged **`source = backfill_v1`**. Counting rules:
 
 A pair without a packaged build (`BUILD_ID == 'dev'`) or without a source commit is for diagnostics/engineering only.
 
+### 1.7 Effective management snapshot
+Eligibility and horizon come from the **row's own snapshot, never from the registry**. When the lot opens, ML-PAIR-01
+records the lot's effective `mgmt`, as the engine will apply it (`engine.py` `closing = ... l['mgmt'].get('max_bars')
+and not run ...`), with the durable decision in `labelable_decisions.jsonl`. The pair row copies it, and it is never
+edited:
+- `effective_max_bars`: `lot['mgmt']['max_bars']`;
+- `runner`: true when `lot['mgmt']` has a `runner` key;
+- `overlay_id` and `overlay_hash`: the `ROTATION_MGMT_OVERLAY` entry applied to the sleeve (null when none) and the
+  sha256 of its canonical JSON;
+- `mgmt_hash`: the sha256 of the canonical effective `mgmt`; `canonical_mgmt_hash`: the same hash for the registry
+  `strategies.STRATEGIES[key]['mgmt']`;
+- `tf` and `horizon_h = effective_max_bars × tf`.
+
+If the lot's `mgmt` hash at close differs from the snapshot taken at open, the pair is excluded as `mgmt_changed`.
+Pairs with `runner = true`, an overlay, or `mgmt_hash ≠ canonical_mgmt_hash` (a **noncanonical override**) are
+**excluded and counted** (`runner`, `noncanonical_mgmt`).
+
+**v1 excludes `pending` / trailing-entry decisions entirely.** Their horizon from the decision includes an entry wait
+(`engine.py` `te.max_bars`, default 3 bars) that no signed contract freezes yet. They are counted as `pending_excluded`
+and wait for a separately signed **pending-horizon contract**.
+
+### 1.8 Durable pairing epoch
+`<data>/ml_shadow/pairs/pair_epoch.json` is written **once, by exclusive create**, when the first installed ML-PAIR-01
+build handles its first labelable decision. It holds:
+- `build_id`, `source_commit` and `bundle_hash` (the §1.6 `code_id` of that installed build);
+- `first_decision_candle`;
+- `created_at`;
+- `epoch_hash`, the sha256 of the canonical body without `epoch_hash`.
+
+It is never rewritten, so it cannot drift or be backdated. A pair whose `candle_time` is before `first_decision_candle`
+is refused, and `first_decision_candle` must not be later than `created_at`. Every pair row and every run manifest
+carries its `epoch_hash`. A missing epoch while pairs exist, an `epoch_hash` that does not verify, or a pair row whose
+`epoch_hash` differs **fails pairing** (`PAIRING_DEFECT`). A reset needs a **new signed epoch/archive operation**: the
+old `pairs.jsonl` and epoch are archived and hash-recorded, then a new epoch is created under a newly signed contract
+version.
+
 ## 2. Diagnostics — second
 
 Exposed in `health['ml_shadow']['pairs']` and in the dataset manifest.
 
-**Epoch.** The must-be-zero counters are defined relative to the **ML-PAIR-01 epoch**: `pair_epoch_start`, the first
-decision-candle time handled by an installed ML-PAIR-01 build, recorded once in the manifest. Labels orphaned before the
+**Epoch.** The must-be-zero counters are defined relative to the **ML-PAIR-01 epoch**: `pair_epoch_start` is
+`first_decision_candle` in the immutable `pair_epoch.json` (§1.8), which every manifest references by `epoch_hash`. Labels orphaned before the
 epoch are the diagnostic `historical_orphans` (Codex-reported 180). They never block training.
 
 For labelable decisions with `candle_time ≥ pair_epoch_start`:
@@ -139,8 +179,10 @@ Training is refused while any must-be-zero counter is non-zero.
 The label horizon is frozen **ex ante** from each strategy's time exit (`mgmt.max_bars` × candle length). It is never
 the observed holding time, which can read the future or the holdout and has no bound for some strategies. The time exit
 fires at `engine.py` `closing = ... max_bars and not run and bars >= max_bars`, so a lot whose effective management has
-a `runner`, or whose `max_bars` was changed by `ROTATION_MGMT_OVERLAY`, has no frozen cap. Such pairs are excluded and
-counted. A pair whose `closed_at − candle_time` exceeds its frozen horizon is excluded as `horizon_breach`.
+a `runner`, or whose `max_bars` was changed by `ROTATION_MGMT_OVERLAY`, has no frozen cap. A pair is eligible only if
+its own §1.7 snapshot shows `runner = false`, no overlay, `mgmt_hash = canonical_mgmt_hash` and
+`effective_max_bars` equal to the table below. Its horizon is the snapshot's `horizon_h`. Every other pair is excluded
+and counted. A pair whose `closed_at − candle_time` exceeds its frozen horizon is excluded as `horizon_breach`.
 
 **Eligible (capped)** — strategy, timeframe, cap, and the `strategies.py` line of the cap:
 
@@ -190,7 +232,9 @@ dev `code_id`.
 Before any fit, the run writes a manifest with:
 - the sha256 of `pairs.jsonl` and `T_cut`;
 - counts per include/exclude reason;
-- the sorted `(decision_id, cost_rev_id, record_hash)` list and its sha256 (`dataset_digest`);
+- the sorted `(decision_id, cost_rev_id, record_hash)` list and its sha256 (`dataset_digest`). `paired_at` is never
+  part of it;
+- the `epoch_hash` of `pair_epoch.json`;
 - the feature schema and its sha256, and the label definition `ml_train_01.y_netr_gt0.v1`;
 - split dates, the frozen horizon table, per-fold purge counts, seeds and code commit.
 
@@ -205,10 +249,16 @@ Before any fit, the run writes a manifest with:
 - **Per-row strategy-horizon purging (Codex 6453844773). There is no single global embargo.** A training or
   calibration row is kept for a fold only if **both** of these end **before the boundary** (the future fold's start,
   or the sealed holdout's start):
-  - its own frozen strategy horizon from §3.1, counted from the decision time: `candle_time + horizon(strategy, tf)`;
-  - its actual close, `closed_at`.
-- **Exact overlapping symbol episodes are purged as well.** A row whose `[candle_time, closed_at]` overlaps an episode
-  of the same symbol on the other side of the boundary is dropped.
+  - its own frozen strategy horizon, counted from the decision time: `candle_time + horizon_h ≤ boundary` (the
+    half-open interval `[candle_time, candle_time + horizon_h)` ends before it);
+  - its actual close: `closed_at < boundary`.
+- All intervals use **`[start, end)` semantics**. An episode is `[candle_time, closed_at)`.
+- **Sealed holdout: purge without reading it.** Against `holdout_start`, each development row is purged using only its
+  own frozen horizon and its own `closed_at < holdout_start`. **Holdout rows are never inspected** to purge, check or
+  size anything.
+- **Exact overlapping symbol episodes are purged inside development only.** A training row whose episode overlaps a
+  same-symbol episode of the development test fold is dropped. Cross-episode checks use **development-fold metadata
+  only**.
 - **Shorter-horizon rows do not inherit `exp_trend`'s 30-day exclusion.** A 4 h scalp row is purged against its own
   4 h horizon only.
 - Each horizon comes from the frozen §3.1 table. **No future or holdout duration is read to choose a horizon.**
@@ -286,7 +336,7 @@ Build proposes these definitions for Codex to freeze:
 The promotion ladder, in order:
 1. `CONTRACT`: this contract is signed.
 2. `PAIRED_LEDGER`: ML-PAIR-01 is accepted and the epoch counters are zero.
-3. `ARTIFACT_EXISTS`: an artifact is written, with status `UNVERIFIED`.
+3. `ARTIFACT_EXISTS`: a completed, leakage-clean fit wrote an immutable artifact with status `UNVERIFIED`.
 4. `CALIBRATED_SHADOW`: every §5 gate passes on development and on the sealed holdout.
 5. `PROSPECTIVE_SHADOW`: ≥ 200 live closes over ≥ 14 days.
 6. `VETO_CONSIDERATION`: **DEFERRED / out of scope**, and risk-reducing only.
@@ -296,16 +346,22 @@ paired labels. A training run today must output `INSUFFICIENT_DATA`, and pairing
 
 ## 6. Failure modes (fail closed)
 
-There is no partial artifact. A failed run writes a small run record (`status`, `reason`, counts, manifest sha) and
-stops on any of:
+The run outcome takes one of two forms, and they never overlap.
+
+**A. Structural, data, leakage or source failure → run record only, NO model artifact.** The run writes a small
+fail-closed run record (`status`, `reason`, counts, manifest sha, `epoch_hash`) and stops. No model file is written on
+any of these:
 - `PAIRING_DEFECT`: a §2 epoch counter is non-zero;
-- `INSUFFICIENT_DATA`: a §5 count gate fails, censoring is too high, or a fold has only one class;
+- `INSUFFICIENT_DATA`: a §5 count gate (labels, cells, folds, days, regimes) fails, censoring is too high, or a fold
+  has only one class;
 - `DATASET_CONFLICT`: a conflicting `pair_key`;
 - `LEAKAGE_SUSPECT`: a §3.5 gate fails;
 - `SOURCE_UNREADABLE`: more than 0.1% of lines were skipped;
 - `ARTIFACT_EXISTS`: the immutable target exists with a different body.
 
-A model that fails §5 is written as `UNVERIFIED` only.
+**B. Completed, leakage-clean fit that misses a predictive or promotion threshold → immutable `UNVERIFIED` artifact.**
+This covers OOF AUC, calibration skill, the tranche, cost-stress, activity and concentration gates. Such a fit **may**
+write an immutable artifact with status `UNVERIFIED`. Only a fit that passes every §5 gate is `CALIBRATED_SHADOW`.
 
 ## 7. Implementation tickets (in order)
 
@@ -338,5 +394,5 @@ strategies, with no runtime trade-management change. Until it is signed they sta
 
 - **Q1** (settled by Codex 6453844773: `exp_trend` stays in v1, with per-row horizon purging instead of a global
   embargo.)
-- **Q2** Should pending (trailing-entry) decisions use their entry-wait cap (`engine.py` `te.max_bars`, default 3 bars)
-  in the horizon, or is the `horizon_breach` exclusion enough?
+- **Q2** (closed by Codex 6455506817: v1 excludes pending / trailing-entry decisions entirely, until a separately signed
+  pending-horizon contract.)
