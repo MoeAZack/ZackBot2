@@ -87,7 +87,7 @@ def test_split_and_calibration_choices_are_preregistered(c, md):
     assert sp['shuffle'] is False and sp['block'] == 'cairo_day' and sp['purge_train_rows_closing_after_cutoff'] is True
     assert '**{:.0%}** of Cairo days'.format(sp['sealed_test_frac']) in md
     assert '**{:.0%}** of Cairo days'.format(1 - sp['sealed_test_frac']) in md
-    assert c['calibration']['method'] == 'platt' and '**Platt scaling**' in md
+    assert c['calibration']['method'] == 'platt' and 'Platt scaling** fitted on the pooled out-of-fold' in md
     assert c['model']['hyperparameter_search'] is False and 'No hyper-parameter search in v1' in md
     # the calibrated rung is unreachable today: the needed total exceeds the current label count
     need = c['sufficiency']['min_test_labels_calibrated'] / sp['sealed_test_frac']
@@ -101,7 +101,7 @@ def test_join_exclusions_and_statuses_named_in_md(c, md):
     assert d['net_basis_allowed'] == ['measured'] and d['excluded_families'] == ['Dip-DCA']
     assert f"`schema == '{d['decision_schema']}'`" in md and d['label_definition'] in md
     for s in c['failure_statuses'] + c['artifact']['statuses'] + c['ladder']['rungs']:
-        assert s in md.replace('`ARTIFACT_EXISTS`', 'ARTIFACT_EXISTS') or s == 'VETO_CONSIDERATION', s
+        assert s in md or s == 'VETO_CONSIDERATION', s      # L4 is written out as 'veto consideration'
     assert c['artifact']['model_version'] in md and c['artifact']['immutable'] is True
     for g in c['gaps']:
         assert re.search(rf'\*\*{g} ', md), g
