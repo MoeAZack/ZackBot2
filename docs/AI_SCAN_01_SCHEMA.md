@@ -27,10 +27,10 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
     `{event_at, available_at}` with `event_at <= cutoff` and `event_at <= available_at <= decided_at`; the snapshot needs
     `last_close <= cutoff` and `last_close <= available_at <= decided_at`. Each breach is its own reason
     (`after_cutoff:<name>`, `available_before_event:<name>`, `after_decision:<name>`); a missing or malformed pair (including
-    the old single timestamp) is `missing:<name>`. The snapshot's `{event_at: last_close, available_at}` is persisted as
-    `snapshot_as_of` and bound into `snapshot_hash`; changing either time changes the snapshot identity, and `fold` refuses a
-    re-sealed signal whose `snapshot_as_of` no longer re-derives its hash or is not causal. All give `INSUFFICIENT`, so restated or later-listed
-    data cannot leak.
+    the old single timestamp) is `missing:<name>`. All give `INSUFFICIENT`, so restated or later-listed data cannot leak.
+  - **Snapshot provenance (Codex 6455762348).** The snapshot's `{event_at: last_close, available_at}` is persisted as
+    `snapshot_as_of` and bound into `snapshot_hash`; changing either time changes the snapshot identity. `fold` refuses a
+    re-sealed signal whose `snapshot_as_of` no longer re-derives its hash, or is not causal.
 - **Display freshness:** the same ceiling applies to a shadow result. `display(view, now)` shows its absolute `age_s`
   (`now - created_at`); older than 2 bars of the signal's timeframe, it is shown as `INSUFFICIENT` with `stale` and no score.
   The record itself stays as historical evidence.
