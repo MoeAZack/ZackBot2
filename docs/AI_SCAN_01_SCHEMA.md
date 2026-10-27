@@ -45,8 +45,15 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
   - Otherwise the probability is dropped and the state is `UNVERIFIED`.
 - **Outcomes:**
   - `measured` is the engine's own trade. Its join key is the immutable decision id (`signal_id`) **plus the actual-cost
-    revision identifier** `cost_revision_id` = `cost_revision_id(actual_costs)`, the sha256 of that revision's actual-cost
-    fields (Codex 6452143340 #2). Each revision joins to its own outcome under `view['revisions']`.
+    revision identifier** `cost_revision_id(actual_costs, net_basis=, cost_model_id=)` (Codex 6452143340 #2,
+    6453104005): sha256 of the canonical JSON `[COST_REV_SCHEMA, [[field, float(value)] ...], net_basis, cost_model_id]`
+    with `COST_REV_SCHEMA = 'ai-scan-cost-rev-v1'` and the pinned field list and order `COST_REV_FIELDS = (fees_actual,
+    funding, pnl_gross, pnl_fill_adj, pnl_net, net_r)`. Only those fields are read, so timestamps, ids and presentation
+    fields never change the id; any pinned field, the net basis, the cost-model id or a schema bump does. A missing or
+    non-finite field has no identity (refused). A golden hash is pinned in the tests. Each revision joins to its own
+    outcome under `view['revisions']`.
+  - **Collision rule:** two different records under one (decision id, `cost_revision_id`) are a conflicting replay and
+    refuse, in `fold` and in the ledger. Nothing is overwritten and neither is picked.
   - The monotonic `rev` (the history row's #196 `cost_rev`, `engine.py` `_row_changed`: 0 = booked, +1 per restatement) is
     kept **only for ordering and deduplication**: the highest `rev` is the current `measured`, two revisions sharing a `rev`
     refuse, and renumbering `rev` never changes which outcome a revision id joins. Its cost basis is `booked` or `measured`.
@@ -102,8 +109,8 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 
 - **Flag off.** Both paths return `api_off()` = exactly `{on: false, rows: []}` when the flag is off (Codex 6452143340 #3;
   stable, pinned); no ledger is read. There is no POST, PUT or DELETE.
-- **Note:** the #200 contract text (`docs/AI_SCAN_01.md`) still describes the earlier exact-cutoff + min(2 bars, 30 min)
-  display rule and the versioned five-field flag-off shape. This schema follows the later Codex decisions in 6452143340.
+- **Supersession:** Codex 6452143340 supersedes 6374978304 / 6375106166 (ruling 6453104005); `docs/AI_SCAN_01.md`
+  carries the same note and the same rules.
 - **Labels.** The labels never merge:
   - `RULES` is the deterministic decision and plan;
   - `AI SHADOW` is one row per model epoch, with its `age_s`;
