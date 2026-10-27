@@ -2,11 +2,10 @@
 
 Contract only - no data, no training. The documentation path is segmented (same precedent as
 tests/test_reg02_short_registration.py) because executable source never names the documentation tree literally
-(test_ci reuse guard). The numbers that the contract re-uses from code are pinned against the code constants too.
+(test_ci reuse guard). Numbers and names the contract takes from code are pinned against the code too.
 """
 import json
 import os
-import re
 
 import pytest
 
@@ -31,84 +30,114 @@ def md():
         return fh.read()
 
 
+def _get(c, path):
+    for k in path:
+        c = c[k]
+    return c
+
+
 def test_status_is_draft_and_unsigned(c, md):
     assert c['contract'] == 'ML-TRAIN-01' and c['version'] == 1
     assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
     assert '**Status: DRAFT — unsigned.**' in md
 
 
-def test_no_authority_paper_only_default_off(c, md):
+def test_frozen_order_pairing_first(c, md):
+    assert c['order'] == ['PAIRED_LEDGER', 'DIAGNOSTICS', 'TRAINING', 'SHADOW_ONLY']
+    assert '**(1) paired ledger → (2) diagnostics → (3) training → (4) shadow-only authority.**' in md
+    heads = [md.index(h) for h in ('## 1. Paired training ledger (ML-PAIR-01) — first', '## 2. Diagnostics — second',
+                                   '## 3. Training — only then', '## 4. Shadow-only authority')]
+    assert heads == sorted(heads)
+    assert c['tickets'][0] == 'ML-PAIR-01'
+    pos = [md.index(f'**{t}') for t in c['tickets']]
+    assert pos == sorted(pos)
+
+
+def test_authority_none_reduce_only_skipped_never_labels(c, md):
     s = c['scope']
-    assert s == {'authority': 'none', 'paper_only': True, 'default_on': False, 'ui_flag': 'ML_TRAIN_UI',
-                 'engine_imports_trainer': False}
-    assert '"authority": "none"' in md and 'PAPER-only' in md and 'Default OFF' in md
-    assert 'VETO_CONSIDERATION' in c['ladder']['deferred'] and 'DEFERRED / out of scope' in md
+    assert s['authority'] == 'none' and s['runtime_authority'] == 'DEFERRED'
+    assert s['future_authority_direction'] == 'reduce_only' and 'never increase' in md
+    assert s['paper_only'] is True and s['default_on'] is False and s['engine_imports_trainer'] is False
+    assert s['skipped_are_labels'] is False and '**Skipped opportunities are not supervised outcomes.**' in md
+    assert c['ladder']['deferred'] == ['VETO_CONSIDERATION'] and '**DEFERRED / out of scope**' in md
 
 
-def _has(md, text):
-    assert text in md, text
+@pytest.mark.parametrize('key,text', [
+    ('unique_decisions', '| Unique decisions | {:,} |'),
+    ('measured_close_labels', '| Measured close labels | {} |'),
+    ('surviving_joins', '| Feature-label joins that survive | **{}** |'),
+    ('orphaned_labels', '| Orphaned labels (decision rotated away) | **{}** |'),
+    ('joined_decision_days', '| Joined history | {} decision days |'),
+])
+def test_codex_reported_figures_parity(c, md, key, text):
+    assert c['codex_reported']['read_by_build'] is False and '**Build did not read live data.**' in md
+    assert text.format(c['codex_reported'][key]) in md
+    cr = c['codex_reported']
+    assert f"| Taken / pending decisions | {cr['taken_decisions']} / {cr['pending_decisions']} |" in md
 
 
 @pytest.mark.parametrize('path,fmt', [
-    (('sufficiency', 'min_total_labels'), '| Qualifying labels overall | **{:,}**'),
-    (('sufficiency', 'min_bucket_labels'), '| Per (family, side) bucket to be modelled | **{}**'),
-    (('sufficiency', 'min_per_class_dev'), '| Per class (wins / losses) in development | **{}** each'),
-    (('sufficiency', 'min_per_class_test'), '| Per class in the sealed test | **{}** each'),
-    (('sufficiency', 'min_cairo_days'), '| Distinct Cairo days spanned | **{}**'),
-    (('sufficiency', 'min_symbols'), '| Distinct symbols | **{}**'),
-    (('sufficiency', 'min_regime_report'), '| Per regime, for a regime stability line | **{}**'),
-    (('sufficiency', 'min_test_labels_calibrated'), '| Sealed test labels for `CALIBRATED_SHADOW` | **{}**'),
-    (('sufficiency', 'current_closed_labels_approx'), '**Today (~{} closed labels'),
-    (('split', 'n_folds'), '**{}** expanding folds'),
-    (('split', 'embargo_floor_days'), '**Embargo** = `max({}, ceil(max observed holding days))`'),
+    (('thresholds', 'min_paired_labels'), '| Paired labels | **≥ {:,}** |'),
+    (('thresholds', 'min_family_side_cell'), '| Per family-side cell | **≥ {}** |'),
+    (('thresholds', 'min_future_folds'), '| Future folds | **≥ {}**'),
+    (('thresholds', 'min_fold_labels'), 'each **≥ {}** labels |'),
+    (('thresholds', 'min_cairo_days'), '| Cairo days | **≥ {}**'),
+    (('thresholds', 'min_regimes'), 'multiple regimes (**≥ {}**)'),
+    (('thresholds', 'min_oof_auc'), '| Out-of-fold AUC | **≥ {}**'),
+    (('thresholds', 'tranche_day_block_lower_ci_gt'), 'lower CI **> {}**'),
+    (('thresholds', 'min_positive_folds'), 'positive in **≥ {} of 4** folds'),
+    (('thresholds', 'cost_stress_mult'), 'non-negative at **{}×** variable cost'),
+    (('thresholds', 'min_activity_retained'), '| Activity retained | **≥ {:.0%}** of trades |'),
+    (('thresholds', 'max_concentration'), '| Concentration | **≤ {:.0%}** |'),
+    (('thresholds', 'prospective_min_closes'), '**≥ {}** new cost-complete shadow closes'),
+    (('thresholds', 'prospective_min_cairo_days'), 'over **≥ {}** Cairo days'),
+    (('thresholds', 'bootstrap_reps'), 'uses {:,} reps'),
     (('dataset', 'max_censored_frac'), 'censored > **{:.0%}**'),
-    (('calibration', 'n_bins'), '{} equal-width reliability bins'),
-    (('calibration', 'min_per_bin'), 'until each has ≥ **{}**'),
-    (('calibration', 'ece_max'), '**ECE ≤ {}**'),
-    (('calibration', 'ece_demote'), 'rolling ECE ≤ **{}**'),
-    (('calibration', 'bootstrap_reps'), '{:,} reps'),
-    (('calibration', 'isotonic_min_labels'), 'needs ≥ {:,} calibration labels'),
+    (('split', 'embargo_floor_days'), '**Overlap embargo** = `max({}, ceil(max observed holding days))`'),
+    (('split', 'sealed_holdout_frac'), '**sealed holdout** = last **{:.0%}** of Cairo days'),
+    (('calibration', 'isotonic_min_labels'), 'needs ≥ {:,} labels'),
     (('leakage', 'shuffle_perms'), '**{}** permutations'),
-    (('leakage', 'null_brier_skill_max'), '**≤ {}**, and the real skill'),
-    (('leakage', 'canary_auc_flag'), '(> **{:.2f}** ⇒ flag)'),
-    (('ladder', 'ui_forward_days'), 'forward window ≥ **{}** Cairo days'),
-    (('ladder', 'ui_forward_labels'), '≥ **{}** new labels'),
+    (('leakage', 'null_skill_max'), 'mean null skill ≤ **{}**'),
+    (('leakage', 'canary_auc_flag'), 'AUC > **{:.2f}**'),
     (('model', 'l2'), '`l2 = {}`'),
 ])
 def test_md_json_parity(c, md, path, fmt):
-    v = c
-    for k in path:
-        v = v[k]
-    _has(md, fmt.format(v))
+    assert fmt.format(_get(c, path)) in md
 
 
-def test_split_and_calibration_choices_are_preregistered(c, md):
-    sp = c['split']
-    assert sp['shuffle'] is False and sp['block'] == 'cairo_day' and sp['purge_train_rows_closing_after_cutoff'] is True
-    assert '**{:.0%}** of Cairo days'.format(sp['sealed_test_frac']) in md
-    assert '**{:.0%}** of Cairo days'.format(1 - sp['sealed_test_frac']) in md
-    assert c['calibration']['method'] == 'platt' and 'Platt scaling** fitted on the pooled out-of-fold' in md
-    assert c['model']['hyperparameter_search'] is False and 'No hyper-parameter search in v1' in md
-    # the calibrated rung is unreachable today: the needed total exceeds the current label count
-    need = c['sufficiency']['min_test_labels_calibrated'] / sp['sealed_test_frac']
-    assert need > c['sufficiency']['current_closed_labels_approx']
-    assert c['sufficiency']['current_verdict'] == 'INSUFFICIENT_DATA'
+def test_thresholds_tighten_only(c, md):
+    t = c['thresholds']
+    assert t['source'] == '6452728797' and t['may_tighten'] is True and t['may_weaken_silently'] is False
+    assert 'may **tighten** during independent review but **never weaken silently**' in md
+    assert t['min_positive_folds'] <= t['of_folds'] == t['min_future_folds']
+    assert c['current_verdict'] == 'INSUFFICIENT_DATA'
+    assert c['codex_reported']['surviving_joins'] < t['min_paired_labels']
 
 
-def test_join_exclusions_and_statuses_named_in_md(c, md):
-    d = c['dataset']
-    assert d['join_key'] == ['decision_id', 'cost_rev_id'] and '(`decision_id`, `cost_rev_id`)' in md
-    assert d['net_basis_allowed'] == ['measured'] and d['excluded_families'] == ['Dip-DCA']
-    assert f"`schema == '{d['decision_schema']}'`" in md and d['label_definition'] in md
+def test_pair_ledger_spec_named_in_md(c, md):
+    p = c['pair_ledger']
+    assert p['rotated'] is False and p['append_only'] is True and p['require_costs_complete'] is True
+    assert p['pair_key'] == ['decision_id', 'cost_rev_id'] and '`(decision_id, cost_rev_id)`' in md
+    assert f"`{p['schema']}`" in md and p['net_basis_paired'] == ['measured']
+    for step in ('engine._measured_done', 'engine._ml_label', "LedgerWriter.submit('label', row)", 'LedgerWriter._do_write'):
+        assert step in md and step.split('(')[0] in p['write_point'], step
+    for f in p['fields']:
+        assert f'`{f}`' in md, f
+    for f in p['cost_fields']:
+        assert f'`{f}`' in md, f
+    assert '`labelable_decisions.jsonl`' in md and '`<data>/ml_shadow/pairs/pairs.jsonl`' in md
+    for f in c['diagnostics']['must_be_zero']:
+        assert f'`{f}`' in md, f
     for s in c['failure_statuses'] + c['artifact']['statuses'] + c['ladder']['rungs']:
-        assert s in md or s == 'VETO_CONSIDERATION', s      # L4 is written out as 'veto consideration'
-    assert c['artifact']['model_version'] in md and c['artifact']['immutable'] is True
-    for g in c['gaps']:
-        assert re.search(rf'\*\*{g} ', md), g
+        assert f'`{s}`' in md, s
 
 
-def test_numbers_reused_from_code_match_the_code(c):
-    assert c['sufficiency']['min_total_labels'] == trainer.MIN_TOTAL
-    assert c['sufficiency']['min_bucket_labels'] == trainer.MIN_BUCKET
-    assert c['dataset']['decision_schema'] == trainer.SCHEMA_VERSION
-    assert len(FEATURE_NAMES) == 15          # 13 numeric + regime + session, as described in section 5
+def test_code_facts_the_contract_relies_on():
+    import engine
+    assert (engine.Engine.ML_MAX_BYTES, engine.Engine.ML_MAX_FILES) == (2_000_000, 5)   # the rotation that orphans labels
+    for name in ('_measured_done', '_ml_label', '_measured_followup', '_ml_decision'):
+        assert callable(getattr(engine.Engine, name)), name
+    assert (trainer.MIN_TOTAL, trainer.MIN_BUCKET) == (1000, 100)
+    assert len(FEATURE_NAMES) == 15          # 13 numeric + regime + session (section 3.3)
+    for f in ('atr_pct', 'ema_slope', 'regime', 'session'):
+        assert f in FEATURE_NAMES
