@@ -731,6 +731,18 @@ def with_candidate_slots(sleeves):
     return list(sleeves or []) + add, [x['id'] for x in add]
 
 
+def candidate_owner(x, key=None):
+    """The slot that owns a lot / row / working entry (its sleeve, an unconfirmed entry's plan slot, else its 'UE|<slot>|..'
+    key). Candidate-owned activity is sized and attributed outside the PAPER / TRUE books (Codex 6444251851)."""
+    sid = (x or {}).get('sleeve') or (((x or {}).get('plan') or {}).get('sl') or {}).get('id')
+    if not sid and key and str(key).startswith('UE|') and str(key).count('|') >= 2: sid = str(key).split('|')[1]
+    return sid
+
+
+def candidate_owned(x, key=None):
+    return candidate_owner(x, key) in CANDIDATE_SLOTS
+
+
 # TRADFI-01 T4 (Codex ruling c + 6186554256 mapping): with S['TRADFI_ENABLED'] (PAPER only) the SAME rotation gains these
 # slots - one rotation, max six active. Symbol tiers resolve to [] whenever TRADFI is off, so a stale slot never trades.
 TRADFI_RANGE_STOCKS = ('SPYUSDT', 'QQQUSDT', 'AMZNUSDT', 'METAUSDT', 'GOOGLUSDT', 'MUUSDT')     # mega caps (no high beta)
@@ -2233,9 +2245,7 @@ class Engine:
         out = [(l['sleeve'], l['symbol']) for l in st['lots'].values()]
         out += [(p.get('sleeve'), p.get('symbol')) for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending]
         out += [(r.get('sleeve'), r.get('symbol')) for r in (st.get('resting_entries') or {}).values()]
-        for k, u in (st.get('unconfirmed_entries') or {}).items():
-            sid = ((u.get('plan') or {}).get('sl') or {}).get('id') or (k.split('|')[1] if k.count('|') >= 2 else None)
-            out.append((sid, u.get('symbol')))
+        out += [(candidate_owner(u, k), u.get('symbol')) for k, u in (st.get('unconfirmed_entries') or {}).items()]
         return out
 
     def candidate_block(self, sl, sym, skip_pending=None):
@@ -3222,7 +3232,9 @@ class Engine:
         A manual or unmapped working entry (any of resting / unconfirmed / armed) is (None, ...): owned by no book, so
         every book is INCOMPLETE until it is gone (Codex 6240139762 #7) - never skipped."""
         out = []
-        for x in list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('unconfirmed_entries') or {}).values()):
+        work = list((self.state.get('resting_entries') or {}).items()) + list((self.state.get('unconfirmed_entries') or {}).items())
+        for k, x in work:
+            if candidate_owned(x, k): continue                          # FACTORY-CAND-01: owned by its candidate slot
             p = x.get('plan') or {}
             b = None if x.get('manual') or p.get('manual') else self._book_of_working(x)
             if b not in PB.IDS: out.append((None, None, None)); continue
@@ -3230,6 +3242,7 @@ class Engine:
             except (TypeError, ValueError, KeyError): out.append((b, None, None)); continue
             out.append((b, qty * px, qty * sd))
         for p in (self.state.get('pending_entries') or {}).values():     # armed trailing entries: ownership only here
+            if candidate_owned(p): continue
             if p.get('manual') or self._book_of_working(p) not in PB.IDS: out.append((None, None, None))
         return out
 
@@ -3279,7 +3292,8 @@ class Engine:
             if on: self._cohort_rev_retry()
             if marks is None:                                        # never value a book on a stalled mark feed
                 marks = (self.marks or {}) if time.time() - (getattr(self, 'marks_t', 0) or 0) <= MARK_FRESH_S else {}
-            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
+            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']),
+                               [l for l in self.state.get('lots', {}).values() if not candidate_owned(l)],
                                marks, self._tb_working(), st['halted'], peaks=st['peak'], funding=self._tb_funding(),
                                unsaved=self.state.get('cohort_rev_pending') or (),
                                unowned_funding=[u for u in self.state.get('funding_unowned') or () if u.get('cohort_id') == st['cohort_id']])
@@ -3339,13 +3353,16 @@ class Engine:
         if not cohort_id: return []
         rows = [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id]
         start = (self.state.get('cohort') or {}).get('started_utc') or ''
+        rows = [r for r in rows if not candidate_owned(r)]           # FACTORY-CAND-01: candidate rows: own attribution
         for h in self.history:
+            if candidate_owned(h): continue
             if h.get('cohort_id') == cohort_id: rows.append(h)
             elif not h.get('cohort_id') and h.get('book') not in PB.IDS and str(h.get('closed') or '') >= start:
                 rows.append(h)                                        # unowned activity on the shared account
         return rows
 
     def _book_of_working(self, x):
+        if candidate_owned(x): return None                            # FACTORY-CAND-01: a candidate entry has no book
         b = x.get('book') or (x.get('plan') or {}).get('book')
         if b: return b
         sl = next((s for s in self.S.get('SLEEVES', []) if s['id'] == x.get('sleeve')), None)
@@ -3366,7 +3383,7 @@ class Engine:
 
     def true_book_block(self, sl, size=None, skip_pending=None, sym=None, side=None):
         """Book-wide gate for a new lot (automatic entries only). None or a reason."""
-        if not self._tb_on() or not sl: return None
+        if not self._tb_on() or not sl or sl.get('id') in CANDIDATE_SLOTS: return None   # FACTORY-CAND-01: no book
         if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
         # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
         # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
@@ -6599,6 +6616,7 @@ class Engine:
             if tp_r: g['tp_r'] = tp_r
         sd = 1 if side == 'LONG' else -1
         book_mode = bool(not manual and not self.live and self.S.get('PAPER_BOOKS') is True)
+        if sl and sl.get('id') in CANDIDATE_SLOTS: book_mode = False   # FACTORY-CAND-01: its own share basis, no book
         book = PB.book_for(sl.get('key')) if book_mode else None
         sleeve_eq = PB.allocation(eq, self.S.get('PAPER_BOOK_CAP') or 2000.0) if book_mode else (eq if manual else eq * sl['share'])
         if book_mode and self._tb_on():                 # TRUE-BOOK-01: the book's own NAV, never account equity / 5

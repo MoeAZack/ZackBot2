@@ -6,6 +6,7 @@ shares a coin with another slot and the correlated F01/F02 family has ONE positi
 on protection / accounting / drift failure while its open lots stay protected; attribution is per candidate.
 Synthetic data only (tests/test_safety.FakeX)."""
 import copy
+import json
 import os
 import sys
 
@@ -302,3 +303,78 @@ def test_a_firing_trail_entry_does_not_count_against_itself(on):
     _work(e, 'pending', F02, 'ETHUSDT')
     assert e.candidate_block(slot(e, F02), 'ETHUSDT').startswith('candidate family')
     assert e.candidate_block(slot(e, F02), 'ETHUSDT', skip_pending=f'{F02}|ETHUSDT') is None
+
+
+# ------------------------------------------------------------------ Codex 6444251851: sizing isolated from the books
+def _book_engine(true_books):
+    from test_true_books import tb_engine, T_SL
+    e, tmp = tb_engine()
+    e.S['TRUE_BOOKS'] = true_books
+    e.S['SLEEVES'] = [T_SL] + E.candidate_sleeves()
+    for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    return e, T_SL
+
+
+def _share_risk(e, sl):
+    return e.equity() * sl['share'] * sl['risk'] * e.kelly_mult(sl) * e.governor_mult()
+
+
+@pytest.mark.parametrize('true_books', [False, True])
+def test_a_candidate_sizes_on_its_own_share_basis_in_every_book_mode(true_books):
+    from test_true_books import size_of
+    e, _ = _book_engine(true_books)
+    for sid in E.CANDIDATE_SLOTS:
+        sl = slot(e, sid)
+        assert size_of(e, sl) == pytest.approx(_share_risk(e, sl), abs=0.005)   # 1/6 x 1 % of equity (cents), never a book NAV
+    e2, _ = mk_engine()                                                    # share mode (no books): the identical basis
+    e2.S['SLEEVES'] = E.candidate_sleeves(); slot(e2, F01)['enabled'] = True
+    assert _share_risk(e2, slot(e2, F01)) == pytest.approx(e2.equity() * E.CANDIDATE_SHARE * E.CANDIDATE_RISK
+                                                          * e2.kelly_mult(slot(e2, F01)) * e2.governor_mult())
+
+
+@pytest.mark.parametrize('true_books', [False, True])
+def test_a_candidate_lot_carries_no_book_and_leaves_every_book_unchanged(true_books):
+    from test_true_books import SG as TSG
+    e, _ = _book_engine(true_books)
+    before = json.dumps(e.paper_books_status()['books'], sort_keys=True, default=str)
+    tb0 = e.true_books(persist=False) if true_books else None
+    assert e.open_lot(slot(e, F01), 'BTCUSDT', 'LONG', TSG, None, e.equity()), e.last_skip
+    (l,) = lots(e, F01)
+    assert l.get('book') is None
+    assert json.dumps(e.paper_books_status()['books'], sort_keys=True, default=str) == before
+    if true_books:
+        tb1 = e.true_books(persist=False)
+        for k in tb0:
+            assert tb1[k]['lots'] == tb0[k]['lots'] and tb1[k]['notional'] == tb0[k]['notional']
+            assert not any(x['reason'] == 'unowned_account_activity' for x in tb1[k]['incomplete'])
+        assert e.true_book_block(slot(e, F02), sym='ETHUSDT', side='LONG') is None    # the book gate is not theirs
+
+
+def test_candidate_working_entries_and_rows_are_never_unowned_book_activity():
+    e, _ = _book_engine(True)
+    e.state['resting_entries']['r1'] = dict(symbol='ETHUSDT', side='LONG', qty=1.0, sleeve=F01,
+                                            plan=dict(qty=1.0, px=100.0, stop_dist=2.0, sl=dict(id=F01)))
+    e.state['unconfirmed_entries'][f'UE|{F02}|SOLUSDT|LONG|1'] = dict(symbol='SOLUSDT', side='LONG', qty=1.0)
+    e.state['pending_entries'][f'{F01}|XRPUSDT'] = dict(sleeve=F01, symbol='XRPUSDT', side='LONG')
+    e.history.append(dict(id='c1', sleeve=F02, symbol='NEARUSDT', closed='2026-10-17T15:00:00+00:00', pnl=1.0))
+    for b in e.true_books(persist=False).values():
+        assert b['working'] == 0 and not any(x['reason'] == 'unowned_account_activity' for x in b['incomplete'])
+    e.state['resting_entries']['r2'] = dict(symbol='ADAUSDT', side='LONG', qty=1.0, sleeve='MAN', manual=True,
+                                            plan=dict(qty=1.0, px=1.0, stop_dist=0.1))
+    assert all(any(x['reason'] == 'unowned_account_activity' for x in b['incomplete'])          # the rule still holds
+               for b in e.true_books(persist=False).values())                                    # for anything else
+
+
+def test_the_canary_is_labelled_a_downscale_of_the_research_packet():
+    assert E.CANDIDATE_SHARE == pytest.approx(1 / 6) and E.CANDIDATE_RISK == 0.01                # packet: share 1.0
+
+
+def test_a_full_trend_book_never_blocks_or_counts_a_candidate():
+    from test_true_books import fake_lot, T_SL
+    e, _ = _book_engine(True)
+    for i in range(3): e.state['lots'][f'b{i}'] = fake_lot(e, 'B3_TREND', sleeve='T', stop=99.9, qty=0.01)   # on ETHUSDT
+    e.state['pending_entries'][f'{F01}|XRPUSDT'] = dict(sleeve=F01, symbol='XRPUSDT', side='LONG')
+    assert e.true_book_block(T_SL, sym='BTCUSDT', side='LONG') is None        # the candidate's armed entry holds no B3 slot
+    e.state['lots']['b3'] = fake_lot(e, 'B3_TREND', sleeve='T', stop=99.9, qty=0.01)
+    assert 'full' in e.true_book_block(T_SL, sym='BTCUSDT', side='LONG')       # B3 itself is full (4/4)
+    assert e.true_book_block(slot(e, F02), sym='BTCUSDT', side='LONG') is None  # ... a candidate is never judged by it
