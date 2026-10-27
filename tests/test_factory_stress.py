@@ -380,3 +380,58 @@ def test_bootstrap_zero_net_counts_as_nonpositive():
           T('B', '2025-01-03T00:00:00Z', '2025-01-04T00:00:00Z', -1.0)]
     b = run([mk(tr)], n_boot=2000)['pooled']['drawdown']['bootstrap']
     assert 0.70 <= b['p_net_le_0'] <= 0.80        # 2-draw paths: P(sum <= 0) = 3/4 (sum == 0 half the time)
+
+
+# ------------------------------------------------------------------ F12-BUST-ECHO-01 (Cowork 6450991919, Codex 6451073431)
+def busted(trades, after, post=None, start='2025-01-01T00:00:00Z'):
+    p = mk(trades, start=start)
+    p['bust'] = {'busted': True, 'time': '2025-03-01T00:00:00Z', 'trade_number': len(trades) - after + 1,
+                 'trades_before': len(trades) - after, 'trades_after': after}
+    p['stats']['post_bust'] = {'aggregate': {'trades': after if post is None else post}}
+    return seal(p)
+
+
+def test_bust_echo_clean_slices():
+    rep = run([mk(CONC), mk(CONC, start='2024-01-01T00:00:00Z')])               # distinct packets (window differs)
+    assert [p['bust'] for p in rep['packets']] == [dict(busted=False, time=None, post_bust_trades=0)] * 2
+    bd = rep['bust_disclosure']
+    assert bd['any_busted'] is False and bd['slices_with_post_bust_trades'] == [] and bd['pooled_includes_post_bust_trades'] is False
+    assert 'BUSTED' not in FS.summary(rep) and 'post-bust' not in FS.summary(rep)
+
+
+def test_bust_echo_busted_slice_is_disclosed_and_still_included():
+    rep = run([busted(CONC, after=2)])
+    assert rep['packets'][0]['bust'] == dict(busted=True, time='2025-03-01T00:00:00Z', post_bust_trades=2)
+    bd = rep['bust_disclosure']
+    assert bd['any_busted'] and bd['slices_with_post_bust_trades'] == ['S1'] and bd['pooled_includes_post_bust_trades']
+    assert rep['pooled']['concentration']['trades'] == 5                     # disclosed, never silently dropped
+    txt = FS.summary(rep)
+    assert 'BUSTED 2025-03-01T00:00:00Z, 2 post-bust trades included' in txt and 'includes post-bust trades from S1' in txt
+
+
+def test_bust_echo_busted_with_zero_post_trades():
+    rep = run([busted(CONC, after=0)])
+    assert rep['bust_disclosure']['any_busted'] and not rep['bust_disclosure']['pooled_includes_post_bust_trades']
+
+
+@pytest.mark.parametrize('bust,why', [(None, 'bust.busted'), ({}, 'bust.busted'), ({'busted': 'no'}, 'bust.busted'),
+                                      ({'busted': True}, 'post-bust trade count is missing'),
+                                      ({'busted': True, 'trades_after': -1}, 'invalid'),
+                                      ({'busted': True, 'trades_after': True}, 'invalid')])
+def test_bust_echo_fails_closed_on_malformed_record(bust, why):
+    p = mk(CONC)
+    p['bust'] = bust
+    with pytest.raises(FS.StressError, match=why):
+        run([seal(p)])
+
+
+def test_bust_echo_post_bust_count_mismatch_fails_closed():
+    with pytest.raises(FS.StressError, match='!= bust.trades_after'):
+        run([busted(CONC, after=2, post=3)])
+
+
+def test_validate_alone_rejects_a_malformed_bust_record():
+    p = mk(CONC)
+    p['bust'] = {'busted': 'no'}
+    with pytest.raises(FS.StressError, match='bust.busted'):
+        FS.validate(seal(p))
