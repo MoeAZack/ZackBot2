@@ -154,3 +154,75 @@ def test_b0_data_or_episode_incompleteness_fails_closed_without_resampling(monke
 def test_b0_discloses_unpaired_stress_rows(monkeypatch):
     got=b0_case(monkeypatch,["BTC","BTC"],[3,3])
     assert "NOT paired" in got["pairing"] and got["stresses"]["base"]["diagnostics"]["pairing"]==got["pairing"]
+
+# ---------------------------------------------------------------- r3: STRUCTURAL / PATH_DEPENDENT refusal groups
+def test_b0_refusal_classification():
+    for r in ("capacity.one_per_symbol","capacity.max_positions","proposal.collision"):
+        assert A.b0_refusal_group(r)=="structural"
+    for r in ("risk.daily_loss","execution.size_min"):
+        assert A.b0_refusal_group(r)=="path_dependent"
+    for r in ("capacity.unknown","capacity.weird","",None):
+        assert A.b0_refusal_group(r) is None
+
+@pytest.mark.parametrize("struct,path,share,label",[
+    (0,0,0.0,"CLEAN_ON_DIAGNOSTIC"),(7,0,0.0,"CLEAN_ON_DIAGNOSTIC"),
+    (999,1,0.001,"CONDITIONED_NULL"),          # any path-dependent refusal leaves CLEAN
+    (20,1,1/21,"CONDITIONED_NULL"),            # 4.76%: just below 5%
+    (19,1,0.05,"MATERIAL_CONDITIONING"),       # exactly 5%
+    (0,3,1.0,"MATERIAL_CONDITIONING")])
+def test_b0_conditioning_share_and_label_boundaries(struct,path,share,label):
+    got=A.b0_conditioning(struct,path)
+    assert got=={"structural_refusals":struct,"path_dependent_refusals":path,"total_resampled_refusals":struct+path,
+                 "path_dependent_share":share,"conditioning":label}
+
+def _refuse_on_call(n,reasons):
+    real=A.O.route_shared; calls={"n":0}
+    def wrapped(cand,replay,**kw):
+        calls["n"]+=1
+        book=real(cand,replay,**kw)
+        if calls["n"]==n:
+            book=dict(book,accepted=book["accepted"][:1],
+                      refused=[{"symbol":"BTC","entry_ms":0,"reason":r} for r in reasons])
+        return book
+    return wrapped
+
+def test_b0_unclassified_refusal_fails_closed(monkeypatch):
+    seen=[];real_seed=A.b0_seed
+    monkeypatch.setattr(A,"b0_seed",lambda h,k,i,a:(seen.append((i,a)),real_seed(h,k,i,a))[1])
+    monkeypatch.setattr(A.O,"route_shared",_refuse_on_call(4,["capacity.weird"]))
+    base=b0_case(monkeypatch,["BTC","BTC"],[3,3])["stresses"]["base"]
+    assert base["status"]==PR.INCOMPLETE and len(seen)==4
+    assert base["failed"]=={"draw":seen[-1][0],"attempt":seen[-1][1],"reason":"unclassified.refusal: capacity.weird"}
+
+def test_b0_path_dependent_refusals_are_counted_and_labelled(monkeypatch):
+    monkeypatch.setattr(A.O,"route_shared",_refuse_on_call(2,["risk.daily_loss","execution.size_min"]))
+    got=b0_case(monkeypatch,["BTC","BTC"],[3,3]); base=got["stresses"]["base"]
+    hist=base["refusal_reason_histogram"]
+    assert got["status"]==PR.COMPLETE and hist["risk.daily_loss"]==1 and hist["execution.size_min"]==1
+    assert base["path_dependent_refusals"]==2 and base["structural_refusals"]==hist["capacity.one_per_symbol"]
+    assert base["total_resampled_refusals"]==sum(hist.values())
+    assert base["path_dependent_share"]==2/sum(hist.values())
+    assert base["conditioning"]==A.b0_conditioning(base["structural_refusals"],2)["conditioning"]
+    assert got["refusal_groups"]["structural"]==list(A.B0_STRUCTURAL)
+
+def test_b0_uncongested_is_clean_on_diagnostic(monkeypatch):
+    base=b0_case(monkeypatch,["BTC","ETH"],[3,2])["stresses"]["base"]
+    assert base["conditioning"]=="CLEAN_ON_DIAGNOSTIC" and base["total_resampled_refusals"]==0
+
+def test_b0_amendment_twins_agree_on_groups_and_thresholds():
+    import json,re
+    doc=ROOT/"docs/newcore/research"
+    j=json.loads((doc/"EDGE04_B0_AMENDMENT_v1.json").read_text(encoding="utf-8"))
+    md=(doc/"EDGE04_B0_AMENDMENT_v1.md").read_text(encoding="utf-8")
+    assert j["status"].startswith("DRAFT") and j["signature"] is None and "DRAFT" in md.splitlines()[2]
+    assert "pnl_independence" not in json.dumps(j) and "never reads" not in md and "never P&L" not in md
+    for name,code in (("STRUCTURAL",A.B0_STRUCTURAL),("PATH_DEPENDENT",A.B0_PATH_DEPENDENT)):
+        line=next(x for x in md.splitlines() if x.startswith(f"- **{name}**:"))
+        assert re.findall(r"`([^`]+)`",line)==j["refusal_groups"][name]==list(code)
+    assert j["interpretation"]["material_share"]==A.B0_MATERIAL_SHARE==0.05
+    labels=list(j["interpretation"]["labels"])
+    assert labels==["CLEAN_ON_DIAGNOSTIC","CONDITIONED_NULL","MATERIAL_CONDITIONING"]
+    rows=[x for x in md.splitlines() if x.startswith("| ") and "`" in x]
+    assert [re.findall(r"`([^`]+)`",x)[0] for x in rows]==labels
+    assert rows[0].startswith("| 0% ") and "below 5%" in rows[1] and rows[2].startswith("| 5% or more ")
+    assert j["budget"]["max_attempts_per_draw"]==A.B0_MAX_ATTEMPTS and "10,000 attempts" in md

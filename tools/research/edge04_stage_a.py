@@ -151,6 +151,25 @@ B0_RULE = "edge04-b0-capacity-rejection/1"
 B0_MAX_ATTEMPTS = 10_000   # per draw and stress; frozen by EDGE04_B0_AMENDMENT_v1
 B0_PAIRING = ("stress rows are conditionally sampled per stress from the same proposal seed sequence and are "
               "NOT paired outcome-by-outcome")
+# Resampled refusal reasons, frozen by EDGE04_B0_AMENDMENT_v1. Any other refusal reason fails the stress closed.
+B0_STRUCTURAL = ("capacity.one_per_symbol", "capacity.max_positions", "proposal.collision")
+B0_PATH_DEPENDENT = ("risk.daily_loss", "execution.size_min")
+B0_MATERIAL_SHARE = 0.05
+
+
+def b0_refusal_group(reason):
+    """'structural' | 'path_dependent' | None (unclassified: never resampled, fails closed)."""
+    return "structural" if reason in B0_STRUCTURAL else "path_dependent" if reason in B0_PATH_DEPENDENT else None
+
+
+def b0_conditioning(structural, path_dependent):
+    """Pre-registered reading of how far the resampled null is conditioned on path-dependent refusals."""
+    total = structural + path_dependent
+    share = path_dependent / total if total else 0.0
+    label = ("CLEAN_ON_DIAGNOSTIC" if path_dependent == 0 else
+             "CONDITIONED_NULL" if share < B0_MATERIAL_SHARE else "MATERIAL_CONDITIONING")
+    return {"structural_refusals": structural, "path_dependent_refusals": path_dependent,
+            "total_resampled_refusals": total, "path_dependent_share": share, "conditioning": label}
 
 
 def b0_seed(hypothesis, key, index, attempt):
@@ -178,10 +197,11 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
     Each completed primary episode contributes one same-symbol/side/holding-duration/risk-shape template.
     Random entries are without replacement. The normal shared wallet enforces the identical capacity gates.
     Draw ``d`` tries seeds ``b0_seed(h, split, d, a)`` for a = 0, 1, ...; the first attempt whose shared book
-    admits every template completely is draw ``d``. Only capacity refusals and proposal collisions are
-    resampled; any data/episode incompleteness, orchestration or cost failure fails the stress closed at once.
-    Acceptance never reads P&L, so accepted books are the old whole-book null conditioned on capacity
-    validity. A draw that exhausts the finite per-draw budget makes that stress INCOMPLETE (fail closed).
+    admits every template completely is draw ``d``. Only the classified refusals are resampled: STRUCTURAL
+    (one-per-symbol, max-positions, proposal collision) and PATH_DEPENDENT (daily-loss halt, size minimum).
+    Unclassified refusals, data/episode incompleteness, orchestration or cost failures fail the stress closed.
+    PATH_DEPENDENT resampling conditions the null on avoiding drawdown halts and size refusals (a conservative
+    upward selection of B0 P&L); its share is emitted with a pre-registered label per stress. A draw that exhausts the finite per-draw budget makes that stress INCOMPLETE (fail closed).
     """
     budget = B0_MAX_ATTEMPTS if max_attempts is None else int(max_attempts)
     if budget < 1:
@@ -245,27 +265,31 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                     return {"status":PR.COMPLETE,"symbol":c["symbol"],"entry_ms":e,"exit_ms":z,"pnl":pnl,
                             "r":pnl/(qty*c["risk_u"]),"wallet_events":events}
                 book=O.route_shared(cand,replay)
-            except StageAError: return None,"proposal.collision",0,False
-            except PR.Incomplete as e: return None,f"data.{e.reason}",0,True
-            except O.OrchestrationError as e: return None,f"data.orchestration: {e}",0,True
-            except C.CostError as e: return None,f"data.cost: {e}",0,True
+            except StageAError: return None,"proposal.collision",0,False,["proposal.collision"]
+            except PR.Incomplete as e: return None,f"data.{e.reason}",0,True,[]
+            except O.OrchestrationError as e: return None,f"data.orchestration: {e}",0,True,[]
+            except C.CostError as e: return None,f"data.cost: {e}",0,True,[]
             if book["status"] != PR.COMPLETE:
-                return None,"episode.incomplete",len(book["accepted"]),True
+                return None,"episode.incomplete",len(book["accepted"]),True,[]
             if len(book["accepted"]) != len(templates):
-                why="+".join(sorted({r["reason"] for r in book["refused"]})) or "capacity.unknown"
-                return None,why,len(book["accepted"]),False
-            return book["wallet_end"]-10_000.0,None,len(book["accepted"]),False
+                refs=[r["reason"] for r in book["refused"]] or ["capacity.unknown"]
+                why="+".join(sorted(set(refs)))
+                if any(b0_refusal_group(r) is None for r in refs):
+                    return None,f"unclassified.refusal: {why}",len(book["accepted"]),True,[]
+                return None,why,len(book["accepted"]),False,refs
+            return book["wallet_end"]-10_000.0,None,len(book["accepted"]),False,[]
 
         vals=[];attempts=[];trades=[];reasons=collections.Counter();shortfall=collections.Counter();exhausted=None
+        raw=collections.Counter()
         failed=None
         for index in range(O.B0_BOOKS):
             for attempt in range(budget):
-                val,why,admitted,fatal=attempt_book(random.Random(b0_seed(hypothesis,key,index,attempt)))
+                val,why,admitted,fatal,refs=attempt_book(random.Random(b0_seed(hypothesis,key,index,attempt)))
                 if why is None:
                     vals.append(val);attempts.append(attempt+1);trades.append(admitted);break
                 if fatal:   # data/episode incompleteness is never resampled away
                     failed={"draw":index,"attempt":attempt,"reason":why};break
-                reasons[why]+=1;shortfall[admitted]+=1
+                reasons[why]+=1;shortfall[admitted]+=1;raw.update(refs)
             else:
                 exhausted={"draw":index,"attempts":budget}
             if failed is not None or exhausted is not None:
@@ -276,6 +300,9 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
              "valid_books":len(vals),"rejected_attempts":rejected,"rejection_reasons":dict(sorted(reasons.items())),
              "attempts_per_draw":attempts,"mean_net_pnl":math.fsum(vals)/len(vals) if vals else None,
              "outcomes_digest":sha_doc(vals),
+             "refusal_reason_histogram":dict(sorted(raw.items())),
+             **b0_conditioning(sum(v for k,v in raw.items() if b0_refusal_group(k)=="structural"),
+                               sum(v for k,v in raw.items() if b0_refusal_group(k)=="path_dependent")),
              "diagnostics":{"accepted_books":len(vals),"total_attempts":len(vals)+rejected+(failed is not None),
                             "pairing":B0_PAIRING,
                             "acceptance_rate":len(vals)/(len(vals)+rejected) if vals or rejected else None,
@@ -293,7 +320,10 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                            " baseline is INCOMPLETE")
         per_stress[stress]=row
     return {"status":PR.COMPLETE if all(x["status"]==PR.COMPLETE for x in per_stress.values()) else PR.INCOMPLETE,
-            **head,"pairing":B0_PAIRING,"stresses":per_stress}
+            **head,"pairing":B0_PAIRING,
+            "refusal_groups":{"structural":list(B0_STRUCTURAL),"path_dependent":list(B0_PATH_DEPENDENT),
+                              "unclassified":"fail closed"},
+            "material_share":B0_MATERIAL_SHARE,"stresses":per_stress}
 
 
 def run_split(repo, outdir, key, ds, plan, ledger, rules, symbols, slip_c):

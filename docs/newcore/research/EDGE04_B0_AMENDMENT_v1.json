@@ -12,12 +12,11 @@
     "implementation": "tools/research/edge04_stage_a.py b0()",
     "draw": "unchanged whole-book draw: one template per complete primary episode (symbol, side, holding bars, risk fraction), entries uniform without replacement inside the book, routed through the unchanged shared wallet and costs",
     "acceptance": "a draw is valid only if the shared book admits every template and every admitted episode is COMPLETE",
-    "resample": "ONLY capacity-validity refusals (shared-router refusals) and proposal collisions (no free entry in a template pool) are resampled: draw d tries attempt a = 0, 1, ... until the first valid book",
+    "resample": "ONLY classified refusal reasons are resampled (refusal_groups): draw d tries attempt a = 0, 1, ... until the first valid book",
     "seed_attempt_0": "the frozen addendum seed sha256(candidate_id|hypothesis|split|book_index) first 64 bits",
     "seed_attempt_a_ge_1": "sha256(candidate_id|hypothesis|split|book_index|attempt=a) first 64 bits",
     "per_stress": "each stress resamples independently with the same deterministic proposal seed sequence; stress rows are conditionally sampled and NOT paired outcome-by-outcome",
-    "pnl_independence": "acceptance reads only admission/refusal and completeness, never P&L; accepted books are the original null conditioned on capacity validity",
-    "fail_closed": "any data or episode incompleteness (PR.Incomplete -> data.<reason>, orchestration failure -> data.orchestration, cost failure -> data.cost, an admitted episode not COMPLETE -> episode.incomplete) is never resampled: the stress stops at once and is INCOMPLETE with failed={draw, attempt, reason}"
+    "fail_closed": "any data or episode incompleteness (PR.Incomplete -> data.<reason>, orchestration failure -> data.orchestration, cost failure -> data.cost, an admitted episode not COMPLETE -> episode.incomplete) is never resampled; nor is any refusal reason outside refusal_groups (unclassified.refusal, including capacity.unknown): the stress stops at once and is INCOMPLETE with failed={draw, attempt, reason}"
   },
   "budget": {
     "max_attempts_per_draw": 10000,
@@ -25,9 +24,8 @@
     "exhaustion": "the first draw that exhausts the deterministic budget stops that stress; the stress and the B0 row are INCOMPLETE with exhausted={draw, attempts}"
   },
   "rejection_reasons": {
-    "capacity": "sorted '+'-joined shared-router refusal reasons of the attempt (capacity.one_per_symbol, capacity.max_positions, risk.daily_loss, execution.size_min); resampled",
-    "proposal.collision": "no free entry left in a template pool; resampled",
-    "fail_closed": "data.<incomplete reason>, data.orchestration: <msg>, data.cost: <msg>, episode.incomplete; never resampled"
+    "resampled": "see refusal_groups; rejection_reasons keys are the sorted '+'-joined refusal set of each rejected attempt",
+    "fail_closed": "data.<incomplete reason>, data.orchestration: <msg>, data.cost: <msg>, episode.incomplete, unclassified.refusal: <reasons>; never resampled"
   },
   "outputs_per_stress": [
     "status",
@@ -37,6 +35,12 @@
     "attempts_per_draw",
     "mean_net_pnl",
     "outcomes_digest",
+    "refusal_reason_histogram",
+    "structural_refusals",
+    "path_dependent_refusals",
+    "total_resampled_refusals",
+    "path_dependent_share",
+    "conditioning",
     "exhausted",
     "failed",
     "reason",
@@ -76,7 +80,34 @@
     "rule",
     "max_attempts_per_draw",
     "pairing",
+    "refusal_groups",
+    "material_share",
     "stresses"
   ],
-  "revision": "r2 2026-10-27: Codex CHANGES REQUESTED at e86aefa - data/episode incompleteness fails closed, unpaired stresses disclosed, no wall-clock cap"
+  "revision": [
+    "r2 2026-10-27: Codex CHANGES REQUESTED at e86aefa - data/episode incompleteness fails closed, unpaired stresses disclosed, no wall-clock cap",
+    "r3 2026-10-27: Codex upheld Cowork blocker at 97d74d9 - P&L-independence claim removed; refusals split STRUCTURAL / PATH_DEPENDENT; unclassified refusals fail closed; pre-registered conditioning labels"
+  ],
+  "refusal_groups": {
+    "STRUCTURAL": [
+      "capacity.one_per_symbol",
+      "capacity.max_positions",
+      "proposal.collision"
+    ],
+    "PATH_DEPENDENT": [
+      "risk.daily_loss",
+      "execution.size_min"
+    ],
+    "unclassified": "fail closed: the stress stops INCOMPLETE with reason unclassified.refusal: <reasons>"
+  },
+  "conditioning": "The rule is NOT P&L-independent. Resampling PATH_DEPENDENT refusals conditions the null on avoiding drawdown halts (risk.daily_loss depends on earlier legs' marks) and size refusals (execution.size_min depends on the wallet path). This is a conservative upward selection: it biases mean B0 P&L UP and makes the null harder to beat. STRUCTURAL refusals depend only on proposed entry times, symbols and holding periods.",
+  "interpretation": {
+    "metric": "path_dependent_share = path_dependent_refusals / total_resampled_refusals (0 when the denominator is 0), counted over individual refused rows per stress x hypothesis",
+    "material_share": 0.05,
+    "labels": {
+      "CLEAN_ON_DIAGNOSTIC": "share == 0",
+      "CONDITIONED_NULL": "0 < share < 0.05",
+      "MATERIAL_CONDITIONING": "share >= 0.05; the B0 p-value cannot be used as clean-null promotion evidence"
+    }
+  }
 }
