@@ -94,8 +94,6 @@ def test_codex_reported_figures_parity(c, md, key, text):
     (('thresholds', 'prospective_min_cairo_days'), 'over **≥ {}** Cairo days'),
     (('thresholds', 'bootstrap_reps'), 'uses {:,} reps'),
     (('dataset', 'max_censored_frac'), 'censored > **{:.0%}**'),
-    (('split', 'embargo_days_with_trend'), 'That is **{}** days when'),
-    (('split', 'embargo_days_breakout_or_momentum'), '**{}** days with Breakout or Momentum'),
     (('split', 'sealed_holdout_frac'), 'The **sealed holdout** is the last **{:.0%}** of Cairo days'),
     (('calibration', 'isotonic_min_labels'), 'Isotonic is not allowed in v1 (it needs ≥ {:,}'),
     (('leakage', 'shuffle_perms'), '**{}** permutations'),
@@ -214,7 +212,56 @@ def test_frozen_horizons_match_strategy_code(c, md):
         assert f'`{k}`' in md
     covered = {e['strategy'] for e in h['eligible']} | set(h['excluded_uncapped']) | set(h['excluded_always'])
     assert covered == set(S.STRATEGIES)                         # every registered strategy is classified
+
+
+def test_per_row_horizon_purging_no_global_embargo(c, md):
     sp = c['split']
-    assert sp['embargo_days_with_trend'] == math.ceil(fam['Trend'] / 24)
-    assert sp['embargo_days_breakout_or_momentum'] == math.ceil(max(fam['Breakout'], fam['Momentum']) / 24)
-    assert sp['purge_exact_overlapping_episodes'] is True
+    def keys(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                yield k
+                yield from keys(v)
+        elif isinstance(o, list):
+            for v in o:
+                yield from keys(v)
+    # the only embargo key left anywhere is the explicit "global_embargo": false - no embargo rule or day count
+    assert [k for k in keys(c) if 'embargo' in k] == ['global_embargo']
+    p = sp['purge']
+    assert p['rule'] == 'per_row_strategy_horizon' and p['global_embargo'] is False
+    assert 'There is no single global embargo.**' in md and 'Overlap embargo' not in md
+    assert 'embargo_days' not in md and 'T_cut − embargo' not in md
+    assert p['row_kept_if_before_boundary'] == ['candle_time_plus_frozen_horizon', 'closed_at']
+    assert '`candle_time + horizon(strategy, tf)`' in md and 'its actual close, `closed_at`' in md
+    assert p['applies_to'] == ['training', 'calibration'] and 'A training or\n  calibration row' in md
+    assert p['purge_exact_overlapping_symbol_episodes'] is True and '**Exact overlapping symbol episodes are purged' in md
+    assert p['short_rows_inherit_longest_horizon'] is False
+    assert "**Shorter-horizon rows do not inherit `exp_trend`'s 30-day exclusion.**" in md
+    assert p['horizon_from_future_or_holdout_duration'] is False
+    assert '**No future or holdout duration is read to choose a horizon.**' in md
+
+
+def test_too_few_rows_is_insufficient_data_never_relaxed(c, md):
+    p = c['split']['purge']
+    assert p['too_few_rows_outcome'] == 'INSUFFICIENT_DATA' and p['gates_relaxed'] is False
+    assert ('**If per-row purging leaves too few rows, the outcome is\n  `INSUFFICIENT_DATA`**, and no gate is ever relaxed.'
+            in md)
+    assert c['thresholds']['min_future_folds'] == 4 and c['thresholds']['min_fold_labels'] == 50
+    assert c['thresholds']['min_cairo_days'] == 30 and c['thresholds']['min_paired_labels'] == 1000
+
+
+def test_v1_capped_only_and_ml_horizon_02_deferred(c, md):
+    import strategies as S
+    h = c['horizons']
+    assert h['v1_scope'] == 'currently_capped_only' and h['uncapped_excluded_from_v1'] is True
+    assert h['uncapped_blocks_strategy_or_paper_path'] is False and h['pair01_invents_uncapped_labels'] is False
+    assert '**ML v1 = currently capped strategies only.**' in md and '**does not block their strategy or PAPER path**' in md
+    assert '**not invent labels**' in md
+    assert {'ema_mom', 'breakout_pyramid'} <= set(h['excluded_uncapped'])
+    eligible = {e['strategy'] for e in h['eligible']}
+    assert not eligible & set(h['excluded_uncapped'])
+    assert all(S.STRATEGIES[e]['mgmt'].get('max_bars') for e in eligible)
+    f = h['follow_up']
+    assert f == {'contract': 'ML-HORIZON-02', 'status': 'DEFERRED', 'scope': 'deterministic_causal_label_only_horizons',
+                 'runtime_trade_management_change': False}
+    assert c['deferred_contracts'] == ['ML-HORIZON-02'] and 'ML-HORIZON-02' not in c['tickets']
+    assert '**DEFERRED follow-up contract:** **`ML-HORIZON-02`**' in md and 'no runtime trade-management change' in md

@@ -10,7 +10,8 @@
     "6452494807",
     "6452143340",
     "6452728797",
-    "6453098718"
+    "6453098718",
+    "6453844773"
   ],
   "order": [
     "PAIRED_LEDGER",
@@ -131,11 +132,27 @@
     "block": "cairo_day",
     "sealed_holdout_frac": 0.2,
     "sealed_holdout_reads_in_fit": 0,
-    "embargo_rule": "ceil(max frozen horizon of eligible families present / 24h)",
-    "purge_train_rows_closing_after_cutoff": true,
-    "embargo_days_with_trend": 30,
-    "embargo_days_breakout_or_momentum": 10,
-    "purge_exact_overlapping_episodes": true
+    "purge": {
+      "rule": "per_row_strategy_horizon",
+      "global_embargo": false,
+      "row_kept_if_before_boundary": [
+        "candle_time_plus_frozen_horizon",
+        "closed_at"
+      ],
+      "applies_to": [
+        "training",
+        "calibration"
+      ],
+      "boundary": [
+        "future_fold_start",
+        "sealed_holdout_start"
+      ],
+      "purge_exact_overlapping_symbol_episodes": true,
+      "short_rows_inherit_longest_horizon": false,
+      "horizon_from_future_or_holdout_duration": false,
+      "too_few_rows_outcome": "INSUFFICIENT_DATA",
+      "gates_relaxed": false
+    }
   },
   "model": {
     "kind": "logistic_l2",
@@ -379,6 +396,19 @@
       "runner_mgmt",
       "overlay_max_bars_changed",
       "horizon_breach"
-    ]
-  }
+    ],
+    "v1_scope": "currently_capped_only",
+    "uncapped_excluded_from_v1": true,
+    "uncapped_blocks_strategy_or_paper_path": false,
+    "pair01_invents_uncapped_labels": false,
+    "follow_up": {
+      "contract": "ML-HORIZON-02",
+      "status": "DEFERRED",
+      "scope": "deterministic_causal_label_only_horizons",
+      "runtime_trade_management_change": false
+    }
+  },
+  "deferred_contracts": [
+    "ML-HORIZON-02"
+  ]
 }

@@ -162,7 +162,13 @@ A (strategy, tf) pair not in this table, for example `pullback_rsi` on another t
 
 Family maximum horizon: **Trend 720 h, Breakout 240 h, Momentum 240 h, Range 120 h, Scalp 4 h, Other 4 h.**
 
-**Excluded until they have a fixed causal horizon** (no `max_bars`; trailing-stop or signal exits):
+**ML v1 = currently capped strategies only.** The uncapped strategies below are **excluded from v1 training** until a
+fixed causal horizon exists (they have no `max_bars`, and exit on trailing stops or signals). This includes F01
+`ema_mom` and F12 `breakout_pyramid`. The exclusion **does not block their strategy or PAPER path**. ML-PAIR-01 must
+**not invent labels** for them. Label-only horizons for them are the subject of the DEFERRED follow-up contract
+**`ML-HORIZON-02`**: deterministic causal label-only horizons, with **no runtime trade-management change**.
+
+Excluded (uncapped):
 - `ema_st`, `ema_mom`, `donchian_ens` (Trend);
 - `breakout_pyramid`, `squeeze_tp`, `bear_breakdown` (Breakout);
 - `hot_coin`, `exp_mom_short` (Momentum);
@@ -177,7 +183,8 @@ that passed §1.5. Exclusions are each counted: ineligible strategy, `horizon_br
 dev `code_id`.
 - Target: `y = 1` if `net_r > 0`, else `0`.
 - Cost revision: for each `decision_id`, the latest `cost_rev_id` with revision time ≤ the dataset cut `T_cut`.
-- Censoring: taken decisions with `candle_time ≤ T_cut − embargo` and no pair are **censored**. If censored > **5%**,
+- Censoring: taken decisions of an eligible strategy with `candle_time + frozen horizon ≤ T_cut` and no pair are
+  **censored**. If censored > **5%**,
   the result is `INSUFFICIENT_DATA`.
 
 Before any fit, the run writes a manifest with:
@@ -185,7 +192,7 @@ Before any fit, the run writes a manifest with:
 - counts per include/exclude reason;
 - the sorted `(decision_id, cost_rev_id, record_hash)` list and its sha256 (`dataset_digest`);
 - the feature schema and its sha256, and the label definition `ml_train_01.y_netr_gt0.v1`;
-- split dates, embargo, seeds and code commit.
+- split dates, the frozen horizon table, per-fold purge counts, seeds and code commit.
 
 ### 3.3 Split — purged chronological walk-forward by Cairo day
 - Rows are ordered by `(candle_time, decision_id)`, with **never a random shuffle**. Blocks are whole Cairo days
@@ -195,11 +202,18 @@ Before any fit, the run writes a manifest with:
   it is opened once, after everything is frozen.
 - Inside development there are at least **4** expanding future folds (`walk_forward_splits`), each with ≥ **50**
   labels.
-- **Overlap embargo** = `ceil(max frozen horizon of the eligible families present / 24 h)` days. That is **30** days when
-  Trend (`exp_trend`) is present, **10** days with Breakout or Momentum, and so on. It is fixed before the run from §3.1,
-  never from observed data.
-- **Purge:** a training row is kept only if it opened and closed before `test_start − embargo`. Exact overlapping
-  open/close episodes (same symbol, overlapping `[candle_time, closed_at]`) never straddle a train/test boundary.
+- **Per-row strategy-horizon purging (Codex 6453844773). There is no single global embargo.** A training or
+  calibration row is kept for a fold only if **both** of these end **before the boundary** (the future fold's start,
+  or the sealed holdout's start):
+  - its own frozen strategy horizon from §3.1, counted from the decision time: `candle_time + horizon(strategy, tf)`;
+  - its actual close, `closed_at`.
+- **Exact overlapping symbol episodes are purged as well.** A row whose `[candle_time, closed_at]` overlaps an episode
+  of the same symbol on the other side of the boundary is dropped.
+- **Shorter-horizon rows do not inherit `exp_trend`'s 30-day exclusion.** A 4 h scalp row is purged against its own
+  4 h horizon only.
+- Each horizon comes from the frozen §3.1 table. **No future or holdout duration is read to choose a horizon.**
+- The fold, day and count gates are unchanged. **If per-row purging leaves too few rows, the outcome is
+  `INSUFFICIENT_DATA`**, and no gate is ever relaxed.
 
 ### 3.4 Model and calibration
 - **v1 is ONE pooled, regularised model.** It is an L2 logistic regression with `l2 = 1.0` and no hyper-parameter
@@ -218,7 +232,7 @@ Before any fit, the run writes a manifest with:
 ### 3.5 Leakage gates (any failure → `LEAKAGE_SUSPECT`, no artifact)
 1. Feature time ≤ decision time: `candle_time + tf ≤ ts_utc` for every pair (frames hold closed candles only), and the
    feature keys equal the v1 feature schema exactly.
-2. Embargo and purge are asserted per fold, with zero sealed-holdout reads (index guard + unchanged holdout digest).
+2. Per-row horizon purging and episode purging are asserted per fold, with zero sealed-holdout reads (index guard + unchanged holdout digest).
 3. Label-shuffle null across Cairo-day blocks, **200** permutations: the mean null skill must be ≤ **0.005**, and the
    real skill must be above the null's 95th percentile.
 4. Future-feature canary: a label-derived feature is refused by gate 1. With gate 1 bypassed in the test only, a
@@ -317,9 +331,12 @@ A model that fails §5 is written as `UNVERIFIED` only.
    `CALIBRATED_SHADOW`.
 7. **ML-SHADOW-UI (later).** A read-only display behind `ML_TRAIN_UI`, after the prospective window.
 
+**DEFERRED follow-up contract:** **`ML-HORIZON-02`**, deterministic causal label-only horizons for the uncapped
+strategies, with no runtime trade-management change. Until it is signed they stay out of ML training.
+
 ## Open questions for Integration
 
-- **Q1** With `exp_trend` present, the frozen embargo is 30 days. Keep Trend in v1, or exclude it so the embargo drops
-  to 10 days?
+- **Q1** (settled by Codex 6453844773: `exp_trend` stays in v1, with per-row horizon purging instead of a global
+  embargo.)
 - **Q2** Should pending (trailing-entry) decisions use their entry-wait cap (`engine.py` `te.max_bars`, default 3 bars)
   in the horizon, or is the `horizon_breach` exclusion enough?
