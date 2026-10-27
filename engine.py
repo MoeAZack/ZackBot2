@@ -2226,16 +2226,30 @@ class Engine:
         log.info(f'FACTORY-CAND-01: PAPER candidate slots added {added} (off)')
         return added
 
-    def candidate_block(self, sl, sym):
-        """FACTORY-CAND-01: a NEW entry of a candidate slot on a coin another slot holds, or of any slot on a coin a candidate
-        holds, is refused - each candidate's lots, fills and stops stay its own. None = not blocked."""
+    def _claims(self, skip_pending=None):
+        """FACTORY-CAND-01: (slot id, symbol) of every open lot AND every working entry (pending / resting / unconfirmed - a
+        coin is reserved before it becomes a lot). An unconfirmed entry's slot comes from its plan, else its key."""
+        st = self.state
+        out = [(l['sleeve'], l['symbol']) for l in st['lots'].values()]
+        out += [(p.get('sleeve'), p.get('symbol')) for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending]
+        out += [(r.get('sleeve'), r.get('symbol')) for r in (st.get('resting_entries') or {}).values()]
+        for k, u in (st.get('unconfirmed_entries') or {}).items():
+            sid = ((u.get('plan') or {}).get('sl') or {}).get('id') or (k.split('|')[1] if k.count('|') >= 2 else None)
+            out.append((sid, u.get('symbol')))
+        return out
+
+    def candidate_block(self, sl, sym, skip_pending=None):
+        """FACTORY-CAND-01: a NEW entry of a candidate slot on a coin another slot holds or has an entry working on, or of any
+        slot on a coin a candidate holds / is entering, is refused - each candidate's lots, fills and stops stay its own; the
+        correlated family's ONE cap counts its lots and working entries. None = not blocked."""
         sid = (sl or {}).get('id')
-        for l in self.state['lots'].values():
-            if l['symbol'] == sym and l['sleeve'] != sid and (sid in CANDIDATE_SLOTS or l['sleeve'] in CANDIDATE_SLOTS):
-                return f"candidate isolation: slot {l['sleeve']} holds this coin"
+        claims = self._claims(skip_pending)
+        for owner, s in claims:
+            if s == sym and owner != sid and (sid in CANDIDATE_SLOTS or owner in CANDIDATE_SLOTS):
+                return f'candidate isolation: slot {owner} holds this coin'
         fam = CANDIDATE_FAMILY.get(sid)
         if fam is not None:
-            n = sum(1 for l in self.state['lots'].values() if CANDIDATE_FAMILY.get(l['sleeve']) == fam)
+            n = sum(1 for owner, _s in claims if CANDIDATE_FAMILY.get(owner) == fam)
             if n >= CANDIDATE_MAX_POS: return f'candidate family {fam}: {n} open (one shared cap of {CANDIDATE_MAX_POS})'
         return None
 
@@ -2254,7 +2268,7 @@ class Engine:
         lot of it has lost its exchange stop (restoring / owner_check), a closed trade of it still has unmeasured costs
         CANDIDATE_COST_PENDING_S after closing, or its slot drifted from the frozen card (candidate_drift). Only new entries stop: open lots keep their stop and management. The reason
         stays in state['candidate_disabled'] for the panel; switching the slot back on is Integration's call. Returns the
-        ids switched off; never raises."""
+        ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off."""
         off = []
         try:
             now = time.time() if now is None else now
@@ -2277,7 +2291,19 @@ class Engine:
                     off.append(sl['id'])
             if off: self.save_settings(); self.save_state()
         except Exception as e:
-            log.warning(f'candidate guard failed ({type(e).__name__}: {e})')
+            log.warning(f'candidate guard failed ({type(e).__name__}: {e}) - every enabled candidate is switched off')
+            try:
+                for sl in self.S.get('SLEEVES') or []:
+                    if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
+                    sl['enabled'] = False
+                    self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(
+                        why=f'guard_error: {type(e).__name__}', t=now_utc().isoformat(timespec='seconds'))
+                    if sl['id'] not in off: off.append(sl['id'])
+                self.err(f'FACTORY candidate guard failed ({type(e).__name__}) - candidates {off} switched off; open lots stay protected')
+            except Exception: pass
+            for save in (self.save_settings, self.save_state):           # durable where possible; never raises
+                try: save()
+                except Exception: pass
         return off
 
     def is_tradfi(self, sym):
@@ -6151,7 +6177,7 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
-        rb = self.scalp_block(sl) or self.candidate_block(sl, sym)  # BREADTH-01 B2 + SCALP-4 + FACTORY-CAND-01 isolation
+        rb = self.scalp_block(sl) or self.candidate_block(sl, sym, skip_pending)   # BREADTH-01 B2 + SCALP-4 + FACTORY-CAND-01
         if rb: return rb
         tb = self.tradfi_block(sl, sym, side, size)                 # TRADFI-01 T3/T4: session, mapping, gold-family cap
         if tb: return tb

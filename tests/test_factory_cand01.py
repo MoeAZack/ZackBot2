@@ -231,3 +231,74 @@ def test_a_restart_appends_the_slots_once_and_keeps_every_saved_slot(tmp_path):
     slot(e2, F01)['enabled'] = True; e2.save_settings()
     e3, _ = mk_engine(tmp)
     assert [x['id'] for x in e3.S['SLEEVES']] == [x['id'] for x in e2.S['SLEEVES']] and slot(e3, F01)['enabled'] is True
+
+
+# ------------------------------------------------------------------ Codex 6444017152: fail closed, working entries count
+def _work(e, kind, owner, sym, n=0):
+    """A working entry of slot `owner` on `sym` (pending trail entry / resting maker entry / unconfirmed entry)."""
+    if kind == 'pending':
+        e.state.setdefault('pending_entries', {})[f'{owner}|{sym}'] = dict(sleeve=owner, symbol=sym, side='LONG')
+    elif kind == 'resting':
+        e.state.setdefault('resting_entries', {})[f'R{n}|{owner}|{sym}'] = dict(sleeve=owner, symbol=sym, side='LONG')
+    elif kind == 'unconfirmed_plan':
+        e.state.setdefault('unconfirmed_entries', {})[f'UE|x|{sym}|LONG|{n}'] = dict(symbol=sym, side='LONG', plan=dict(sl=dict(id=owner)))
+    else:                                                                      # an older record: the slot from its key
+        e.state.setdefault('unconfirmed_entries', {})[f'UE|{owner}|{sym}|LONG|{n}'] = dict(symbol=sym, side='LONG')
+
+
+KINDS = ('pending', 'resting', 'unconfirmed_plan', 'unconfirmed_key')
+
+
+def test_a_guard_error_switches_every_enabled_candidate_off_and_blocks_entries(on, monkeypatch):
+    e, _ = on
+    e.history.append(dict(sleeve=F01, symbol='ETHUSDT', closed='2026-10-01T00:00:00+00:00'))
+
+    def boom(row): raise RuntimeError('unreadable row')
+    monkeypatch.setattr(E.AC, 'row_view', boom)
+    assert sorted(e.candidate_guard()) == [F01, F02]
+    assert not slot(e, F01)['enabled'] and not slot(e, F02)['enabled']
+    assert e.state['candidate_disabled'][F01]['why'] == 'guard_error: RuntimeError'
+    monkeypatch.undo()                                                         # the rest of the cycle reads rows too
+    cycle4(e, {f'{F01}|BTCUSDT': SG, f'{F02}|ETHUSDT': dict(SG, close=50.0, atr=1.0)})
+    assert not lots(e, F01) and not lots(e, F02)
+
+
+def test_a_guard_error_after_a_lot_opened_never_touches_its_protection(on, monkeypatch):
+    e, _ = on
+    cycle4(e, {f'{F01}|BTCUSDT': SG})
+    (l,) = lots(e, F01, 'BTCUSDT')
+    stop = dict(e.trade.stops[l['stop_id']]) if isinstance(e.trade.stops[l['stop_id']], dict) else e.trade.stops[l['stop_id']]
+    monkeypatch.setattr(e, 'candidate_drift', lambda sl: (_ for _ in ()).throw(KeyError('x')))
+    assert F01 in e.candidate_guard()
+    assert lots(e, F01, 'BTCUSDT') == [l] and e.trade.stops[l['stop_id']] == stop
+
+
+@pytest.mark.parametrize('kind', KINDS)
+def test_a_working_entry_reserves_its_coin_in_both_directions(on, kind):
+    e, _ = on
+    _work(e, kind, 'ema_mom', 'ETHUSDT')
+    assert e.candidate_block(slot(e, F01), 'ETHUSDT') == 'candidate isolation: slot ema_mom holds this coin'
+    e2_owner = F01
+    _work(e, kind, e2_owner, 'SOLUSDT', 1)
+    other = next(x for x in e.S['SLEEVES'] if x['key'] == 'ema_st')
+    assert e.candidate_block(other, 'SOLUSDT') == f'candidate isolation: slot {F01} holds this coin'
+    assert e.candidate_block(slot(e, F02), 'SOLUSDT') == f'candidate isolation: slot {F01} holds this coin'
+
+
+@pytest.mark.parametrize('kind', KINDS)
+def test_working_entries_count_toward_the_shared_family_cap(on, kind):
+    e, _ = on
+    e.state['lots']['a'] = dict(symbol='SOLUSDT', sleeve=F01, side='LONG')
+    e.state['lots']['b'] = dict(symbol='XRPUSDT', sleeve=F02, side='LONG')
+    e.state['lots']['c'] = dict(symbol='NEARUSDT', sleeve=F01, side='LONG')
+    assert e.candidate_block(slot(e, F02), 'ETHUSDT') is None
+    _work(e, kind, F02, 'DOGEUSDT', 2)                                         # the 4th family claim is a working entry
+    assert e.candidate_block(slot(e, F02), 'ETHUSDT') == f'candidate family trend_long: 4 open (one shared cap of {E.CANDIDATE_MAX_POS})'
+
+
+def test_a_firing_trail_entry_does_not_count_against_itself(on):
+    e, _ = on
+    for i, sym in enumerate(('SOLUSDT', 'XRPUSDT', 'NEARUSDT')): e.state['lots'][f'l{i}'] = dict(symbol=sym, sleeve=F01, side='LONG')
+    _work(e, 'pending', F02, 'ETHUSDT')
+    assert e.candidate_block(slot(e, F02), 'ETHUSDT').startswith('candidate family')
+    assert e.candidate_block(slot(e, F02), 'ETHUSDT', skip_pending=f'{F02}|ETHUSDT') is None
