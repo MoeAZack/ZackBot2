@@ -9,7 +9,7 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 
 | kind | replay key | written when | content |
 | --- | --- | --- | --- |
-| `signal` | `signal_id` | the engine has decided (same point as the ML-SHADOW decision hook) | candle open, cutoff, decision instant, input event + availability times, snapshot hash, deterministic plan, rules status/reason, cost estimate, input coverage, `snapshot_age_s`, `OK`/`INSUFFICIENT` + reasons |
+| `signal` | `signal_id` | the engine has decided (same point as the ML-SHADOW decision hook) | candle open, cutoff, decision instant, input event + availability times, `snapshot_as_of` = {event_at: last_close, available_at}, `features_hash`, snapshot hash (sha256 of `snapshot_as_of` + `features_hash`; Codex 6455762348), deterministic plan, rules status/reason, cost estimate, input coverage, `snapshot_age_s`, `OK`/`INSUFFICIENT` + reasons |
 | `shadow` | `signal_id` + `epoch` | asynchronously, after the decision | immutable `model_id`, `prompt_hash`, `sampling`, `feature_schema_hash`, `cost_model_hash`, the epoch, the snapshot/plan hashes it read; then either `OK` (raw-response hash, opinion `LONG`/`SHORT`/`NO_TRADE`, coverage, disagreement, probability block, bounded rationale) or `INSUFFICIENT` with `queue_full`/`timeout`/`budget_exhausted`/`remote_error` |
 | `outcome` | measured: `signal_id` + `cost_revision_id` (`rev` orders only); simulated: `signal_id` + `cost_model_hash` | measured: at close (`rev` 0) and on each actual-cost restatement; simulated: from the causal replay | net R / PnL, exit reason, cost basis, partial exits, adds |
 
@@ -27,7 +27,9 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
     `{event_at, available_at}` with `event_at <= cutoff` and `event_at <= available_at <= decided_at`; the snapshot needs
     `last_close <= cutoff` and `last_close <= available_at <= decided_at`. Each breach is its own reason
     (`after_cutoff:<name>`, `available_before_event:<name>`, `after_decision:<name>`); a missing or malformed pair (including
-    the old single timestamp) is `missing:<name>`. All give `INSUFFICIENT`, so restated or later-listed
+    the old single timestamp) is `missing:<name>`. The snapshot's `{event_at: last_close, available_at}` is persisted as
+    `snapshot_as_of` and bound into `snapshot_hash`; changing either time changes the snapshot identity, and `fold` refuses a
+    re-sealed signal whose `snapshot_as_of` no longer re-derives its hash or is not causal. All give `INSUFFICIENT`, so restated or later-listed
     data cannot leak.
 - **Display freshness:** the same ceiling applies to a shadow result. `display(view, now)` shows its absolute `age_s`
   (`now - created_at`); older than 2 bars of the signal's timeframe, it is shown as `INSUFFICIENT` with `stale` and no score.

@@ -36,7 +36,8 @@ marketing-style percentage.
 - No order, settings, sizing, eligibility, stop, exit, rotation or strategy authority.
 - Remote model analysis is queued and asynchronous; it cannot block a 15-minute cycle or position management.
 - Inputs contain only values whose source/event timestamp is at or before the decision cutoff; each point-in-time input
-  carries `{event_at, available_at}` with `event_at <= available_at <= decided_at`. Their receipt/ingest
+  carries `{event_at, available_at}` with `event_at <= available_at <= decided_at`. The snapshot's
+  `{event_at: last_close, available_at}` is persisted in the record and bound into the sealed snapshot hash. Their receipt/ingest
   timestamp may be after that close, but must be no later than the recorded decision instant (`decided_at >= cutoff`);
   this permits ordinary exchange delivery latency without admitting information from a later market event. Freshness is
   the timeframe-relative ceiling `STALE_BARS = 2`: the snapshot's last close may not be after the cutoff, and its

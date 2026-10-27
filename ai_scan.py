@@ -183,9 +183,28 @@ _cost_rev_id = cost_revision_id                     # build_outcome's parameter 
 
 
 # ------------------------------------------------------------------ inputs -> INSUFFICIENT reasons
+def features_hash(features):
+    return sha256_hex(canonical_json(features))
+
+
+def provenance_hash(as_of, f_hash):
+    """sha256 over the snapshot's causal provenance {event_at = last_close, available_at} + its features hash."""
+    return sha256_hex(canonical_json({'as_of': as_of, 'features_hash': f_hash}))
+
+
+def snapshot_as_of(snapshot):
+    """{event_at: last_close, available_at} (ISO), or None when either is missing / malformed."""
+    try: return dict(event_at=_iso(snapshot['last_close']), available_at=_iso(snapshot['available_at']))
+    except (KeyError, TypeError, ValueError): return None
+
+
 def snapshot_hash(snapshot):
-    """The immutable causal input the shadow layer may read: the cutoff candle close + flat numeric features."""
-    return sha256_hex(canonical_json({'last_close': _iso(snapshot['last_close']), 'features': snapshot['features']}))
+    """The immutable causal input the shadow layer may read, bound to BOTH its timestamps (Codex 6455762348): the
+    provenance hash of {event_at: last_close, available_at} + the flat numeric features. Changing either time changes
+    the snapshot identity, so it cannot be replayed as the same snapshot."""
+    as_of = snapshot_as_of(snapshot)
+    if as_of is None: raise AIScanError('a snapshot needs last_close and available_at')
+    return provenance_hash(as_of, features_hash(snapshot['features']))
 
 
 def _times(v):
@@ -268,14 +287,16 @@ def build_signal(*, sleeve, strategy, family, symbol, side, tf, candle_open, dec
         age_s = (cutoff_ms - _ms((snapshot or {}).get('last_close'))) // 1000
     except (TypeError, ValueError):
         age_s = None
+    snap_bad = any(w.startswith(('missing:snapshot', 'missing:last_close', 'malformed:feature')) for w in why)
+    snap_as_of = None if snap_bad else snapshot_as_of(snapshot)
     rec = dict(kind='signal', schema=SCHEMA_VERSION,
                signal_id=decision_id(sleeve, strategy, symbol, side, tf, candle_open),
                sleeve=str(sleeve), strategy=str(strategy), family=str(family), symbol=str(symbol).upper(), side=side,
                tf=tf, candle_open=_iso(candle_open), cutoff=_iso(cutoff_ms), decided_at=_iso(decided_ms), inputs_as_of=as_of,
                rules=dict(status=rules_status, reason=str(rules_reason or '')[:200]),
-               input_coverage=[present, len(feats)], snapshot_age_s=age_s,
-               snapshot_hash=None if any(w.startswith(('missing:snapshot', 'missing:last_close', 'malformed:feature'))
-                                         for w in why) else snapshot_hash(snapshot),
+               input_coverage=[present, len(feats)], snapshot_age_s=age_s, snapshot_as_of=snap_as_of,
+               features_hash=None if snap_bad else features_hash(snapshot['features']),
+               snapshot_hash=None if snap_bad else snapshot_hash(snapshot),
                plan=None if any(w.startswith(('missing:plan', 'malformed:plan', 'malformed:targets')) for w in why)
                else dict(entry_lo=plan['entry_lo'], entry_hi=plan['entry_hi'], stop=plan['stop'], targets=list(plan['targets'])),
                costs=dict(costs) if costs else None,
@@ -489,6 +510,24 @@ def _verify(rec):
     if rec.get('record_hash') != h: raise AIScanError(f"{rec.get('signal_id')}: record hash mismatch (edited record)")
 
 
+def _check_provenance(rec, k):
+    """A signal's snapshot identity must be re-derivable from its persisted snapshot_as_of + features_hash; an OK signal
+    must carry it and satisfy last_close <= cutoff and last_close <= available_at <= decided_at."""
+    as_of, fh, sh = rec.get('snapshot_as_of'), rec.get('features_hash'), rec.get('snapshot_hash')
+    if as_of is None and fh is None and sh is None:
+        if rec.get('status') == 'OK': raise AIScanError(f'{k}: an OK signal without snapshot_as_of')
+        return
+    try:
+        ev, av = _ms(as_of['event_at']), _ms(as_of['available_at'])
+        norm = dict(event_at=_iso(ev), available_at=_iso(av))
+        ok = _hex64(fh) and as_of == norm and sh == provenance_hash(norm, fh)
+    except (KeyError, TypeError, ValueError):
+        ok = False
+    if not ok: raise AIScanError(f'{k}: snapshot provenance does not match the snapshot hash')
+    if rec.get('status') == 'OK' and not (ev <= _ms(rec['cutoff']) and ev <= av <= _ms(rec['decided_at'])):
+        raise AIScanError(f'{k}: snapshot provenance is not causal')
+
+
 def fold(records):
     """Replay records (file order) into {signal_id: view}. Idempotent on exact duplicates; fails closed otherwise."""
     views, seen = {}, {}
@@ -505,6 +544,7 @@ def fold(records):
         if kind != 'signal' and sid not in views: raise AIScanError(f'{k}: joins no recorded signal')
         seen[k] = rec['record_hash']
         if kind == 'signal':
+            _check_provenance(rec, k)
             views[sid] = dict(signal=rec, shadows={}, measured=None, revisions={}, simulated={})
             continue
         v = views[sid]

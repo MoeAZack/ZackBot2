@@ -183,6 +183,66 @@ def test_outcome_at_or_before_the_decision_refuses():
         outcome(sig(), closed_at=DEC)
 
 
+# ------------------------------------------------------------------ snapshot provenance (Codex 6455762348)
+GOLDEN_SNAP = 'd4e11793383a1587b947435e1195f6eb83363855396b8e65f370dd9eab29bd73'   # independent: sha256(json {as_of:{available_at,event_at}, features_hash}) sorted keys
+
+
+def test_snapshot_as_of_is_persisted_and_bound_into_the_snapshot_hash():
+    s = sig()
+    assert s['snapshot_as_of'] == dict(event_at=CUT, available_at='2026-10-20T12:15:03Z')
+    assert s['snapshot_hash'] == A.snapshot_hash(snap()) == GOLDEN_SNAP
+    assert s['features_hash'] == A.features_hash(snap()['features'])
+
+
+@pytest.mark.parametrize('kw', [dict(available_at=None), dict(available_at='garbage')])
+def test_a_snapshot_without_its_availability_time_is_insufficient(kw):
+    s = sig(snapshot=snap(**kw))
+    assert s['status'] == 'INSUFFICIENT' and 'missing:snapshot' in s['insufficient']
+    assert s['snapshot_as_of'] is None and s['snapshot_hash'] is None
+    with pytest.raises(A.AIScanError):
+        A.snapshot_hash(snap(**kw))
+    with pytest.raises(A.AIScanError, match='INSUFFICIENT'):
+        shadow(s)
+
+
+def test_changing_only_available_at_changes_the_identity_and_cannot_replay_as_the_same_snapshot():
+    s = sig(); s2 = sig(snapshot=snap(available_at='2026-10-20T12:15:04Z'))
+    assert s2['snapshot_hash'] != s['snapshot_hash'] and s2['record_hash'] != s['record_hash']
+    with pytest.raises(A.AIScanError, match='conflicting replay'):
+        A.fold([s, s2])
+    with pytest.raises(A.AIScanError, match='different snapshot or plan'):
+        shadow(s2, read_snapshot_hash=s['snapshot_hash'])
+    with pytest.raises(A.AIScanError, match='different snapshot or plan'):
+        A.fold([s2, A._seal(dict(shadow(s), signal_id=s2['signal_id']))])
+
+
+def test_changing_only_the_event_time_changes_the_identity():
+    a = sig(tf='1h', candle_open='2026-10-20T11:00:00Z', snapshot=snap(last_close='2026-10-20T12:00:00Z'))
+    b = sig(tf='1h', candle_open='2026-10-20T11:00:00Z', snapshot=snap(last_close='2026-10-20T11:00:00Z'))
+    assert a['features_hash'] == b['features_hash'] and a['snapshot_hash'] != b['snapshot_hash']
+
+
+@pytest.mark.parametrize('field, value', [('available_at', '2026-10-20T12:15:04Z'), ('event_at', '2026-10-20T12:00:00Z'),
+                                          ('available_at', None), ('event_at', 'x')])
+def test_a_resealed_signal_with_tampered_snapshot_times_is_refused(field, value):
+    s = sig()
+    forged = A._seal(dict(s, snapshot_as_of=dict(s['snapshot_as_of'], **{field: value})))
+    with pytest.raises(A.AIScanError, match='snapshot provenance does not match'):
+        A.fold([forged])
+
+
+def test_a_resealed_signal_that_drops_snapshot_as_of_or_breaks_causality_is_refused():
+    s = sig()
+    with pytest.raises(A.AIScanError, match='without snapshot_as_of'):
+        A.fold([A._seal(dict(s, snapshot_as_of=None, features_hash=None, snapshot_hash=None))])
+    with pytest.raises(A.AIScanError, match='snapshot provenance does not match'):
+        A.fold([A._seal(dict(s, snapshot_as_of=None))])
+    late = dict(event_at=CUT, available_at='2026-10-20T12:15:11Z')        # available after decided_at, hash re-derived
+    forged = dict(s, snapshot_as_of=late, snapshot_hash=A.provenance_hash(late, s['features_hash']))
+    with pytest.raises(A.AIScanError, match='not causal'):
+        A.fold([A._seal(forged)])
+
+
 # ------------------------------------------------------------------ missing / malformed -> INSUFFICIENT
 @pytest.mark.parametrize('kw, reason', [
     (dict(snapshot=None), 'missing:snapshot'),
