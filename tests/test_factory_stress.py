@@ -328,3 +328,10 @@ def test_real_runner_packet_conforms(tmp_path):
     cs = rep['pooled']['cost_stress']
     assert cs['fees_x2']['status'] in ('OK', 'UNAVAILABLE')
     assert cs['fees_x2']['status'] == 'UNAVAILABLE' or cs['fees_x2']['net_r'] < cs['base_net_r']
+
+
+def test_bootstrap_zero_net_counts_as_nonpositive():
+    tr = [T('A', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 1.0),
+          T('B', '2025-01-03T00:00:00Z', '2025-01-04T00:00:00Z', -1.0)]
+    b = run([mk(tr)], n_boot=2000)['pooled']['drawdown']['bootstrap']
+    assert 0.70 <= b['p_net_le_0'] <= 0.80        # 2-draw paths: P(sum <= 0) = 3/4 (sum == 0 half the time)
