@@ -75,8 +75,8 @@ still recorded for diagnostics, but v1 training excludes them (§1.7).
 | `label` | `closed_at`, `net_r`, `net_pnl`, `exit_reason`, `mfe_r`, `mae_r`, `target_before_stop`, `net_basis` (`measured`) |
 | `costs` | from `actual_costs.measured`: `gross`, `fees_actual`, `funding_actual`, `fill_adj` (slippage vs booked fill), `risk_usd`, `complete`, `why` |
 | `ids` | `code_id` (§1.6), `decision_schema`, `label_schema`, `feature_schema`, `feature_names_sha256`, `cost_model_id`, `cost_rev_id` |
-| `mgmt` | immutable **effective management snapshot** (§1.7): `effective_max_bars`, `runner`, `overlay_id`, `overlay_hash`, `mgmt_hash`, `canonical_mgmt_hash`, `tf`, `horizon_h` |
-| `epoch_hash` | the `epoch_hash` of `pair_epoch.json` (§1.8) the row was written under |
+| `mgmt` | immutable **effective management snapshot** (§1.7): `effective_max_bars`, `runner`, `overlay_id`, `overlay_hash`, `mgmt_hash`, `canonical_mgmt_hash`, `tf`, `horizon_h`, `mgmt_close_hash`, `mgmt_changed` |
+| `epoch_hash` | `live` rows: the `epoch_hash` of `pair_epoch.json` (§1.8). `backfill_v1` rows: the `backfill_epoch_hash` of `backfill_epoch.json` (§1.5) |
 | `provenance` | backfill only: `source_files` (sha256 of every source ledger and history file read), `reconstructed_by` (code id) |
 | `paired_at` | UTC ISO time of the append. **Metadata only: it is excluded from `record_hash` and from every training identity** (§1.4) |
 | `record_hash` | sha256 of the canonical row **without `record_hash` and `paired_at`** |
@@ -87,7 +87,8 @@ still recorded for diagnostics, but v1 training excludes them (§1.7).
 - each write is one whole sealed line (write + flush + fsync under a lock), and a torn last line is closed off before
   the next append;
 - **restart identity:** `record_hash` covers the content only, never `paired_at`, so the same pair content replayed
-  after a restart or rebuilt by backfill hashes identically and is a no-op. A real content change under one `pair_key`
+  after a restart hashes identically and is a no-op. A `backfill_v1` row does **not** hash like the corresponding live
+  row, because `source` and `provenance` intentionally differ (§1.5). A real content change under one `pair_key`
   (a different `record_hash`) is refused and counted as `duplicate_pairs`, and nothing is written;
 - reads verify `record_hash`; an edited or corrupt line is skipped and counted, never raised;
 - rows pass a `sanitize_row('pair', ...)` allow-list (no secrets, raw ids hashed).
@@ -102,6 +103,19 @@ tagged **`source = backfill_v1`**. Counting rules:
   diagnostics/engineering only;
 - the **180 orphaned labels are never synthesized**: no decision or feature row is invented for them, and they stay a
   historical diagnostic count.
+
+Clarifications (Codex 6455705215):
+- **Separate backfill epoch.** Pre-live `backfill_v1` rows reference their own immutable, exclusive-create
+  `<data>/ml_shadow/pairs/backfill_epoch.json`. It holds `reconstruction_code_id`, `source_file_hashes` (the full
+  sha256 list), `created_at`, and its own `backfill_epoch_hash`. Backfill rows are **never compared against or backdated
+  into the live epoch** (`pair_epoch.json`), and they **do not affect the live-epoch must-be-zero counters**.
+- **Existing pair key.** Backfill **never overwrites an existing live pair**. If the `pair_key` already exists, the
+  backfill row is skipped as a no-op and counted as **`backfill_existing_skipped`**, not `duplicate_pairs`. Repeating
+  the backfill of a backfill row is idempotent **only when its canonical content hash matches**. A different hash is
+  refused and counted.
+- **Management reconstruction.** A backfill row is training-eligible **only when its effective open-time management is
+  exactly reconstructible from immutable decision/config/build evidence**, with those evidence hashes recorded in
+  `provenance` (`mgmt_evidence_hashes`). Otherwise it is **diagnostics-only and counted** (`backfill_mgmt_unreconstructible`).
 
 ### 1.6 Code identity
 `code_id` binds three things:
@@ -126,7 +140,10 @@ edited:
   `strategies.STRATEGIES[key]['mgmt']`;
 - `tf` and `horizon_h = effective_max_bars × tf`.
 
-If the lot's `mgmt` hash at close differs from the snapshot taken at open, the pair is excluded as `mgmt_changed`.
+**Management drift source (Codex 6455705215).** `mgmt_close_hash` is the hash of the management snapshot in the
+measured close/history row. `mgmt_changed` is true when `mgmt_close_hash ≠ mgmt_hash`. A **missing `mgmt_close_hash`
+or a mismatch with the immutable open snapshot excludes the pair from training** and is counted (`mgmt_close_missing`,
+`mgmt_changed`). It **never silently inherits registry management**.
 Pairs with `runner = true`, an overlay, or `mgmt_hash ≠ canonical_mgmt_hash` (a **noncanonical override**) are
 **excluded and counted** (`runner`, `noncanonical_mgmt`).
 
@@ -169,7 +186,9 @@ Also counted:
 - closes not paired because costs are incomplete;
 - `measured_wait` overflow (`MEASURED_WAIT_MAX = 500`);
 - censored taken decisions;
-- `backfill_v1` rows, split into training-eligible and diagnostics-only.
+- `backfill_v1` rows, split into training-eligible and diagnostics-only, plus `backfill_existing_skipped` and
+  `backfill_mgmt_unreconstructible` (backfill counters never enter the live-epoch must-be-zero counters);
+- `mgmt_close_missing` and `mgmt_changed`.
 
 Training is refused while any must-be-zero counter is non-zero.
 

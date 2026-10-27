@@ -292,7 +292,7 @@ def test_restart_identity_excludes_paired_at(c, md):
     assert 'sha256 of the canonical row **without `record_hash` and `paired_at`**' in md
     assert '**Metadata only: it is excluded from `record_hash` and from every training identity**' in md
     assert pl['replay_same_content'] == 'no_op' and pl['content_change_same_key'] == 'refused_duplicate_pairs'
-    assert '**restart identity:**' in md and 'hashes identically and is a no-op' in md
+    assert '**restart identity:**' in md and 'after a restart hashes identically and is a no-op' in md
     # the rule as stated is deterministic: two appends of the same content at different times hash identically
     def rh(row):
         return sha256_hex(canonical_json({k: v for k, v in row.items() if k not in pl['record_hash_excludes']}))
@@ -336,3 +336,80 @@ def test_episode_purge_never_reads_holdout(c, md):
     assert 'its own `closed_at < holdout_start`' in md
     assert p['episode_overlap_scope'] == 'development_fold_metadata_only' and '**development-fold metadata\n  only**' in md
     assert 'other side' not in md
+
+
+# ---------------- Codex 6455705215 clarifications: backfill epoch / existing key / mgmt reconstruction / close hash
+def _rh(row, excl=('record_hash', 'paired_at')):
+    from ml_shadow.common import canonical_json, sha256_hex
+    return sha256_hex(canonical_json({k: v for k, v in row.items() if k not in excl}))
+
+
+def _backfill_append(store, row, counters):
+    """The contract's rule, executed on dicts: live rows win, backfill repeats are idempotent only on equal hashes."""
+    key, h = tuple(row['pair_key']), _rh(row)
+    have = store.get(key)
+    if have is None:
+        store[key] = dict(row, record_hash=h)
+        return 'appended'
+    if have['source'] == 'live':
+        counters['backfill_existing_skipped'] += 1
+        return 'skipped'
+    if have['record_hash'] == h:
+        return 'no_op'
+    counters['refused'] += 1
+    return 'refused'
+
+
+def test_separate_backfill_epoch(c, md):
+    e = c['backfill']['epoch']
+    assert e['file'].endswith('backfill_epoch.json') and e['create'] == 'exclusive' and e['immutable'] is True
+    assert e['fields'] == ['reconstruction_code_id', 'source_file_hashes', 'created_at', 'backfill_epoch_hash']
+    for f in e['fields']:
+        assert f'`{f}`' in md, f
+    assert e['compared_with_live_epoch'] is False and e['affects_live_must_be_zero'] is False
+    assert '**never compared against or backdated\n  into the live epoch**' in md
+    assert '**do not affect the live-epoch must-be-zero counters**' in md
+    assert c['epoch']['file'].endswith('pair_epoch.json') and e['file'] != c['epoch']['file']
+
+
+def test_backfill_never_overwrites_live_and_is_idempotent(c, md):
+    x = c['backfill']['existing_pair_key']
+    assert x == {'overwrite_live': False, 'action': 'skip_no_op', 'counter': 'backfill_existing_skipped',
+                 'counts_as_duplicate_pairs': False}
+    assert '**never overwrites an existing live pair**' in md and '**`backfill_existing_skipped`**, not `duplicate_pairs`' in md
+    assert c['backfill']['repeat_idempotent_only_if'] == 'canonical_content_hash_matches'
+    assert '**only when its canonical content hash matches**' in md
+    assert c['backfill']['hashes_like_live_row'] is False
+    assert 'or rebuilt by backfill hashes identically' not in md and 'does **not** hash like the corresponding live' in md
+    live = {'pair_key': ['d1', 0], 'source': 'live', 'label': {'net_r': 1.0}, 'provenance': None}
+    bf = dict(live, source='backfill_v1', provenance={'source_files': ['ab']})
+    assert _rh(live) != _rh(bf)                                  # source/provenance differ on purpose
+    store, ctr = {}, {'backfill_existing_skipped': 0, 'refused': 0}
+    _backfill_append(store, live, ctr)
+    assert _backfill_append(store, bf, ctr) == 'skipped' and store[('d1', 0)]['source'] == 'live'
+    assert ctr == {'backfill_existing_skipped': 1, 'refused': 0}
+    bf2 = dict(bf, pair_key=['d2', 0])
+    assert _backfill_append(store, bf2, ctr) == 'appended'
+    assert _backfill_append(store, dict(bf2, paired_at='later'), ctr) == 'no_op'
+    assert _backfill_append(store, dict(bf2, label={'net_r': 9.0}), ctr) == 'refused' and ctr['refused'] == 1
+
+
+def test_backfill_training_needs_exact_mgmt_reconstruction(c, md):
+    r = c['backfill']['training_requires_mgmt_reconstruction']
+    assert r == {'from': ['decision', 'config', 'build'], 'immutable_evidence': True,
+                 'hashes_recorded': 'provenance.mgmt_evidence_hashes', 'else': 'diagnostics_only',
+                 'counter': 'backfill_mgmt_unreconstructible'}
+    assert '**only when its effective open-time management is\n  exactly reconstructible from immutable decision/config/build evidence**' in md
+    assert '`mgmt_evidence_hashes`' in md and '**diagnostics-only and counted**' in md
+    assert '`backfill_mgmt_unreconstructible`' in md
+
+
+def test_mgmt_close_hash_drift(c, md):
+    m = c['pair_ledger']['mgmt_snapshot']
+    assert m['fields'][-2:] == ['mgmt_close_hash', 'mgmt_changed']
+    assert m['close_hash_source'] == 'measured_close_history_mgmt_snapshot'
+    assert m['close_missing_or_mismatch'] == 'excluded_and_counted' and m['inherit_registry_mgmt'] is False
+    assert {'mgmt_changed', 'mgmt_close_missing'} <= set(m['excluded_counted'])
+    assert '`mgmt_close_hash`, `mgmt_changed` |' in md
+    assert '**missing `mgmt_close_hash`\nor a mismatch with the immutable open snapshot excludes the pair from training**' in md
+    assert '**never silently inherits registry management**' in md and '- `mgmt_close_missing` and `mgmt_changed`.' in md

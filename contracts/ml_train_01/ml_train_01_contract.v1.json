@@ -12,7 +12,8 @@
     "6452728797",
     "6453098718",
     "6453844773",
-    "6455506817"
+    "6455506817",
+    "6455705215"
   ],
   "order": [
     "PAIRED_LEDGER",
@@ -113,7 +114,9 @@
         "mgmt_hash",
         "canonical_mgmt_hash",
         "tf",
-        "horizon_h"
+        "horizon_h",
+        "mgmt_close_hash",
+        "mgmt_changed"
       ],
       "taken_at": "lot_open",
       "immutable": true,
@@ -127,8 +130,12 @@
       "excluded_counted": [
         "runner",
         "noncanonical_mgmt",
-        "mgmt_changed"
-      ]
+        "mgmt_changed",
+        "mgmt_close_missing"
+      ],
+      "close_hash_source": "measured_close_history_mgmt_snapshot",
+      "close_missing_or_mismatch": "excluded_and_counted",
+      "inherit_registry_mgmt": false
     },
     "pending_in_v1_training": false,
     "pending_follow_up": "separately_signed_pending_horizon_contract"
@@ -320,7 +327,39 @@
     "counts_toward_prospective": false,
     "counts_toward_training": "only_if_all_live_rules_pass",
     "else": "diagnostics_only",
-    "synthesize_orphans": false
+    "synthesize_orphans": false,
+    "epoch": {
+      "file": "<data>/ml_shadow/pairs/backfill_epoch.json",
+      "create": "exclusive",
+      "immutable": true,
+      "fields": [
+        "reconstruction_code_id",
+        "source_file_hashes",
+        "created_at",
+        "backfill_epoch_hash"
+      ],
+      "compared_with_live_epoch": false,
+      "affects_live_must_be_zero": false
+    },
+    "existing_pair_key": {
+      "overwrite_live": false,
+      "action": "skip_no_op",
+      "counter": "backfill_existing_skipped",
+      "counts_as_duplicate_pairs": false
+    },
+    "repeat_idempotent_only_if": "canonical_content_hash_matches",
+    "hashes_like_live_row": false,
+    "training_requires_mgmt_reconstruction": {
+      "from": [
+        "decision",
+        "config",
+        "build"
+      ],
+      "immutable_evidence": true,
+      "hashes_recorded": "provenance.mgmt_evidence_hashes",
+      "else": "diagnostics_only",
+      "counter": "backfill_mgmt_unreconstructible"
+    }
   },
   "horizons": {
     "rule": "ex_ante_max_bars_x_tf",
