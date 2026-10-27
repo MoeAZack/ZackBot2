@@ -68,12 +68,22 @@ def open_(e, sl, sym, side):
 
 
 # ------------------------------------------------------------------ flag off = B2 bit-identical / live refused
+def candidates_off_outside_rotation(e, tradfi=False):
+    """FACTORY-CAND-01 appends C-F01/C-F02 on PAPER connect: disabled, own share/risk, never in the TRADFI rotation."""
+    rot = {x['id'] for x in E.breadth_sleeves(tradfi=tradfi)}
+    got = {x['id']: x for x in e.S['SLEEVES'] if x['id'] in E.CANDIDATE_SLOTS}
+    assert sorted(got) == sorted(E.CANDIDATE_SLOTS) and not set(got) & rot
+    for x in got.values():
+        assert x['enabled'] is False and x['share'] == E.CANDIDATE_SHARE and x['risk'] == E.CANDIDATE_RISK
+
+
 def test_flag_off_rules_universe_and_slots_unchanged(mk):
     e = mk(on=False, preset=E.ROTATION_PRESET)
     assert e.rules == F.rules_from_exchange_info(e.trade.exchange_info())
     assert not any(r.get('kind') == 'tradfi' for r in e.rules.values()) and 'XAUUSDT' not in e.rules
     assert e.tradfi_universe == [] and e.tradfi_on() is False
-    assert [x['id'] for x in e.S['SLEEVES']] == [x['id'] for x in E.breadth_sleeves()]
+    assert [x['id'] for x in e.S['SLEEVES']] == [x['id'] for x in E.with_candidate_slots(E.breadth_sleeves())[0]]
+    candidates_off_outside_rotation(e)
     assert E.breadth_sleeves() == E.breadth_sleeves(tradfi=False) and E.breadth_groups() == E.breadth_groups(tradfi=False)
     assert not set(E.TRADFI_SLOTS) & {x['id'] for x in e.S['SLEEVES']}
     for tier in E.TRADFI_TIERS: assert e.sleeve_symbols(dict(symbols=tier)) == []
@@ -242,8 +252,9 @@ def test_enabling_later_syncs_the_slots_into_the_same_rotation(mk):
     assert not set(E.TRADFI_SLOTS) & {x['id'] for x in e.S['SLEEVES']}
     e.S['TRADFI_ENABLED'] = True
     assert sorted(e.sync_tradfi_slots()) == sorted(E.TRADFI_SLOTS)
-    want = {x['id']: x['share'] for x in E.breadth_sleeves(tradfi=True)}
+    want = {x['id']: x['share'] for x in E.with_candidate_slots(E.breadth_sleeves(tradfi=True))[0]}
     assert {x['id']: x['share'] for x in e.S['SLEEVES']} == want
+    candidates_off_outside_rotation(e, tradfi=True)
     assert e.sync_tradfi_slots() == []
     e.live = True
     assert e.rotation_block(e.S['SLEEVES'][0]) and e.tradfi_on() is False
