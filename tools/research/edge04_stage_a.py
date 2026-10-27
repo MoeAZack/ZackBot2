@@ -146,22 +146,54 @@ def b1(outputs, hypothesis, symbols, first, hi, rules, slip_c, scenario, ds):
             "wallet_end":equity, "rows":rows}
 
 
-def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, ds):
-    """10,000 deterministic matched random-entry shared books.
+B0_CANDIDATE = "edge04_legacy_reeval.v1"
+B0_RULE = "edge04-b0-capacity-rejection/1"
+B0_MAX_ATTEMPTS = 10_000   # per draw and stress; frozen by EDGE04_B0_AMENDMENT_v1
+
+
+def b0_seed(hypothesis, key, index, attempt):
+    """Attempt 0 is the frozen addendum seed; retries derive from (seed root, split, draw index, attempt) only."""
+    base = O.seed(B0_CANDIDATE, hypothesis, key, index)   # also enforces the addendum's domain checks
+    if type(attempt) is not int or attempt < 0:
+        raise StageAError("B0 attempt must be a non-negative int")
+    if attempt == 0:
+        return base
+    raw = f"{B0_CANDIDATE}|{hypothesis}|{key}|{index}|attempt={attempt}".encode("ascii")
+    return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big")
+
+
+def _quantiles(xs):
+    xs = sorted(xs)
+    if not xs:
+        return None
+    pick = lambda q: xs[min(len(xs) - 1, int(q * (len(xs) - 1) + 0.5))]
+    return {"min": xs[0], "p50": pick(.5), "p90": pick(.9), "p99": pick(.99), "max": xs[-1]}
+
+
+def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, ds, *, max_attempts=None):
+    """10,000 deterministic matched random-entry shared books (EDGE04_B0_AMENDMENT_v1).
 
     Each completed primary episode contributes one same-symbol/side/holding-duration/risk-shape template.
     Random entries are without replacement. The normal shared wallet enforces the identical capacity gates.
+    Draw ``d`` tries seeds ``b0_seed(h, split, d, a)`` for a = 0, 1, ...; the first attempt whose shared book
+    admits every template completely is draw ``d``. Acceptance depends only on capacity/data validity, never
+    on P&L, so accepted books are the old whole-book null conditioned on validity. A draw that exhausts the
+    finite per-draw budget makes that stress INCOMPLETE (fail closed).
     """
+    budget = B0_MAX_ATTEMPTS if max_attempts is None else int(max_attempts)
+    if budget < 1:
+        raise StageAError("B0 attempt budget must be >= 1")
+    head = {"books":O.B0_BOOKS,"rule":B0_RULE,"max_attempts_per_draw":budget}
     if primary_book.get("status") != PR.COMPLETE:
         return {"status":PR.INCOMPLETE,"reason":"primary book incomplete; matched B0 is undefined",
-                "books":O.B0_BOOKS,"valid_books":0}
+                "valid_books":0,**head}
     templates=[]
     for x in primary_book.get("accepted",[]):
         if x.get("status") != PR.COMPLETE:
-            return {"status":PR.INCOMPLETE,"reason":"primary episode incomplete","books":O.B0_BOOKS,"valid_books":0}
+            return {"status":PR.INCOMPLETE,"reason":"primary episode incomplete","valid_books":0,**head}
         hold=(x["exit_ms"]-x["entry_ms"])//PR.TF
         if hold < 1:
-            return {"status":PR.INCOMPLETE,"reason":"non-positive holding duration","books":O.B0_BOOKS,"valid_books":0}
+            return {"status":PR.INCOMPLETE,"reason":"non-positive holding duration","valid_books":0,**head}
         templates.append({"symbol":x["symbol"],"side":x["side"],"hold":hold,
                           "risk_frac":abs(x["entry_price"]-x["initial_stop"])/x["entry_price"]})
     _,syms=PR.read_tape(outputs)
@@ -175,9 +207,9 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                        and sx.rec[t+tp["hold"]*PR.TF].get("n") is not None]
     per_stress={}
     for stress,scenario in O.STRESS.items():
-        vals=[];invalid=0
-        for index in range(O.B0_BOOKS):
-            rng=random.Random(O.seed("edge04_legacy_reeval.v1",hypothesis,key,index)); used=set(); cand=[]
+        def attempt_book(rng, scenario=scenario):
+            """One whole-book draw -> (net P&L, None, admitted) when valid, else (None, rejection reason, admitted)."""
+            used=set(); cand=[]
             try:
                 for tp in templates:
                     pool=[t for t in pools[(tp["symbol"],tp["hold"])] if (tp["symbol"],t) not in used]
@@ -210,15 +242,44 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                     return {"status":PR.COMPLETE,"symbol":c["symbol"],"entry_ms":e,"exit_ms":z,"pnl":pnl,
                             "r":pnl/(qty*c["risk_u"]),"wallet_events":events}
                 book=O.route_shared(cand,replay)
-                if len(book["accepted"]) != len(templates) or book["status"] != PR.COMPLETE:
-                    invalid+=1
-                else: vals.append(book["wallet_end"]-10_000.0)
-            except (PR.Incomplete,O.OrchestrationError,StageAError,C.CostError): invalid+=1
-        per_stress[stress]={"valid_books":len(vals),"invalid_books":invalid,
-                            "mean_net_pnl":math.fsum(vals)/len(vals) if vals else None,
-                            "outcomes_digest":sha_doc(vals)}
-    return {"status":PR.COMPLETE if all(x["valid_books"]==O.B0_BOOKS for x in per_stress.values()) else PR.INCOMPLETE,
-            "books":O.B0_BOOKS,"stresses":per_stress}
+            except StageAError: return None,"match.unmatched_template",0
+            except PR.Incomplete as e: return None,f"data.{e.reason}",0
+            except O.OrchestrationError: return None,"data.orchestration",0
+            except C.CostError: return None,"data.cost",0
+            if book["status"] != PR.COMPLETE:
+                return None,"episode.incomplete",len(book["accepted"])
+            if len(book["accepted"]) != len(templates):
+                return None,"+".join(sorted({r["reason"] for r in book["refused"]}) or ["capacity.unknown"]),\
+                    len(book["accepted"])
+            return book["wallet_end"]-10_000.0,None,len(book["accepted"])
+
+        vals=[];attempts=[];trades=[];reasons=collections.Counter();shortfall=collections.Counter();exhausted=None
+        for index in range(O.B0_BOOKS):
+            for attempt in range(budget):
+                val,why,admitted=attempt_book(random.Random(b0_seed(hypothesis,key,index,attempt)))
+                if why is None:
+                    vals.append(val);attempts.append(attempt+1);trades.append(admitted);break
+                reasons[why]+=1;shortfall[admitted]+=1
+            else:
+                exhausted={"draw":index,"attempts":budget};break
+        rejected=sum(reasons.values())
+        row={"status":PR.COMPLETE if exhausted is None and len(vals)==O.B0_BOOKS else PR.INCOMPLETE,
+             "valid_books":len(vals),"rejected_attempts":rejected,"rejection_reasons":dict(sorted(reasons.items())),
+             "attempts_per_draw":attempts,"mean_net_pnl":math.fsum(vals)/len(vals) if vals else None,
+             "outcomes_digest":sha_doc(vals),
+             "diagnostics":{"accepted_books":len(vals),"total_attempts":len(vals)+rejected,
+                            "acceptance_rate":len(vals)/(len(vals)+rejected) if vals or rejected else None,
+                            "attempts_quantiles":_quantiles(attempts),
+                            "attempts_histogram":{str(k):v for k,v in sorted(collections.Counter(attempts).items())},
+                            "attempts_digest":sha_doc(attempts),
+                            "accepted_trade_count_quantiles":_quantiles(trades),
+                            "rejected_admitted_count_histogram":{str(k):v for k,v in sorted(shortfall.items())}}}
+        if exhausted is not None:
+            row["exhausted"]=exhausted
+            row["reason"]=f"B0 draw {exhausted['draw']} exhausted the {budget}-attempt budget; baseline is INCOMPLETE"
+        per_stress[stress]=row
+    return {"status":PR.COMPLETE if all(x["status"]==PR.COMPLETE for x in per_stress.values()) else PR.INCOMPLETE,
+            **head,"stresses":per_stress}
 
 
 def run_split(repo, outdir, key, ds, plan, ledger, rules, symbols, slip_c):

@@ -1,0 +1,43 @@
+{
+  "format": "zb-edge04-b0-amendment/1",
+  "candidate_id": "edge04_legacy_reeval.v1",
+  "status": "DRAFT - awaiting Integration (Codex) signature",
+  "drafted": "2026-10-27 16:47 Cairo by Build (Claude Code), ticket EDGE04-B0-01",
+  "signature": null,
+  "parent_prereg": "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json",
+  "parent_addendum": "docs/newcore/research/EDGE04_ORCHESTRATION_ADDENDUM_v1.json",
+  "defect": "whole-book draws were invalidated by any shared-wallet capacity refusal while all 10000 draws were required valid; complete WF3 primaries gave H1 38, H2 0, H3 2407, H4 1269 valid base books of 10000",
+  "rule": {
+    "id": "edge04-b0-capacity-rejection/1",
+    "implementation": "tools/research/edge04_stage_a.py b0()",
+    "draw": "unchanged whole-book draw: one template per complete primary episode (symbol, side, holding bars, risk fraction), entries uniform without replacement inside the book, routed through the unchanged shared wallet and costs",
+    "acceptance": "a draw is valid only if the shared book admits every template and every admitted episode is COMPLETE",
+    "resample": "draw d tries attempt a = 0, 1, ... until the first valid book; that book is draw d",
+    "seed_attempt_0": "the frozen addendum seed sha256(candidate_id|hypothesis|split|book_index) first 64 bits",
+    "seed_attempt_a_ge_1": "sha256(candidate_id|hypothesis|split|book_index|attempt=a) first 64 bits",
+    "per_stress": "each stress resamples independently with the same seed sequence",
+    "pnl_independence": "acceptance reads only admission/refusal and completeness, never P&L; accepted books are the original null conditioned on validity"
+  },
+  "budget": {
+    "max_attempts_per_draw": 10000,
+    "exhaustion": "the first draw that exhausts the budget stops that stress; the stress and the B0 row are INCOMPLETE with the draw index and reason"
+  },
+  "rejection_reasons": {
+    "capacity": "sorted '+'-joined shared-router refusal reasons of the attempt (capacity.one_per_symbol, capacity.max_positions, risk.daily_loss, execution.size_min)",
+    "episode.incomplete": "an admitted episode was not COMPLETE",
+    "match.unmatched_template": "no free entry left in a template pool",
+    "data": "data.<incomplete reason>, data.orchestration or data.cost raised while building or routing the book"
+  },
+  "outputs_per_stress": [
+    "status", "valid_books", "rejected_attempts", "rejection_reasons", "attempts_per_draw", "mean_net_pnl",
+    "outcomes_digest", "exhausted", "reason",
+    "diagnostics.accepted_books", "diagnostics.total_attempts", "diagnostics.acceptance_rate",
+    "diagnostics.attempts_quantiles", "diagnostics.attempts_histogram", "diagnostics.attempts_digest",
+    "diagnostics.accepted_trade_count_quantiles", "diagnostics.rejected_admitted_count_histogram"
+  ],
+  "unchanged": ["primary episodes", "hypotheses", "windows", "costs", "seed root", "stress definitions",
+                "B0_BOOKS 10000", "ledger history", "holdout sealed"],
+  "chosen_without": "any candidate or B0 P&L; the only result-derived inputs seen were the valid-book counts in the defect line",
+  "compatibility": "when attempt 0 is valid for every draw the outputs equal the pre-amendment generator (golden-digest test)",
+  "boundaries": {"market_data_opened": false, "holdout_read": false, "paper": false, "runtime_change": false, "rerun_started": false}
+}
