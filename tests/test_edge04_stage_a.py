@@ -214,7 +214,9 @@ def test_b0_amendment_twins_agree_on_groups_and_thresholds():
     doc=ROOT/"docs/newcore/research"
     j=json.loads((doc/"EDGE04_B0_AMENDMENT_v1.json").read_text(encoding="utf-8"))
     md=(doc/"EDGE04_B0_AMENDMENT_v1.md").read_text(encoding="utf-8")
-    assert j["status"].startswith("DRAFT") and j["signature"] is None and "DRAFT" in md.splitlines()[2]
+    assert j["status"].startswith("SIGNED") and j["signature"]["authority"]=="Integration (Codex)"
+    assert j["signature"]["accepted_implementation_head"]=="f1ad3e4b423c5e13fdc0c65ee196d9f15f4f9064"
+    assert "SIGNED by Integration (Codex)" in md.splitlines()[2]
     assert "pnl_independence" not in json.dumps(j) and "never reads" not in md and "never P&L" not in md
     for name,code in (("STRUCTURAL",A.B0_STRUCTURAL),("PATH_DEPENDENT",A.B0_PATH_DEPENDENT)):
         line=next(x for x in md.splitlines() if x.startswith(f"- **{name}**:"))

@@ -1,9 +1,8 @@
 # EDGE-04 B0 amendment v1
 
-Status: **DRAFT - awaiting Integration (Codex) signature**. Drafted 27 October 2026, 16:47 Cairo, by Build (Claude
-Code) under ticket EDGE04-B0-01. It does not take effect, and no Stage-A rerun may start, until Codex signs it. The
-machine-readable authority is `EDGE04_B0_AMENDMENT_v1.json`. It supplements the orchestration addendum and does not
-rewrite the preregistration.
+Status: **SIGNED by Integration (Codex), 27 October 2026, 17:52 Cairo** after Cowork independently passed exact
+implementation head `f1ad3e4b423c5e13fdc0c65ee196d9f15f4f9064`. The machine-readable authority is
+`EDGE04_B0_AMENDMENT_v1.json`. It supplements the orchestration addendum and does not rewrite the preregistration.
 
 ## Defect
 

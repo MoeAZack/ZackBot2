@@ -1,9 +1,15 @@
 {
   "format": "zb-edge04-b0-amendment/1",
   "candidate_id": "edge04_legacy_reeval.v1",
-  "status": "DRAFT - awaiting Integration (Codex) signature",
+  "status": "SIGNED - Integration (Codex), 2026-10-27 17:52 Cairo",
   "drafted": "2026-10-27 16:47 Cairo by Build (Claude Code), ticket EDGE04-B0-01",
-  "signature": null,
+  "signature": {
+    "authority": "Integration (Codex)",
+    "signed_at": "2026-10-27 17:52 Cairo",
+    "accepted_implementation_head": "f1ad3e4b423c5e13fdc0c65ee196d9f15f4f9064",
+    "independent_evidence": "https://github.com/MoeAZack/ZackBot2/pull/217#issuecomment-6445156502",
+    "integration_review": "https://github.com/MoeAZack/ZackBot2/pull/217#issuecomment-6445017737"
+  },
   "parent_prereg": "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json",
   "parent_addendum": "docs/newcore/research/EDGE04_ORCHESTRATION_ADDENDUM_v1.json",
   "defect": "whole-book draws were invalidated by any shared-wallet capacity refusal while all 10000 draws were required valid; complete WF3 primaries gave H1 38, H2 0, H3 2407, H4 1269 valid base books of 10000",
