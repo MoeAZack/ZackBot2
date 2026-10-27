@@ -66,7 +66,9 @@ def test_concentration_hand_values():
     c = run([mk(CONC)])['pooled']['concentration']
     assert c['net_r'] == 5.0 and c['trades'] == 5
     assert c['r_by_symbol'] == {'A': 4.0, 'B': 2.0, 'C': 1.0, 'D': -2.0}
-    assert c['top1_symbol'] == 'A' and c['top1_share'] == 0.8 and c['top3_share'] == 1.4
+    assert c['gross_positive_r'] == 7.0 and c['top1_symbol'] == 'A'
+    assert c['top1_share'] == round(4 / 7, 6) and c['top3_share'] == 1.0              # gross-positive basis (primary)
+    assert c['top1_share_net_secondary'] == 0.8 and c['top3_share_net_secondary'] == 1.4
     assert c['hhi_positive'] == round(21 / 49, 6)
     assert c['pf_r'] == 3.5
     lv = c['leave_top_k_out']
@@ -79,11 +81,24 @@ def test_concentration_hand_values():
     assert q['r_by_period'] == {'2025-Q1': 6.0, '2025-Q2': -1.0} and q['top_period_share'] == 1.2
 
 
-def test_concentration_undefined_when_net_nonpositive():
-    tr = [T('A', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 1.0),
+def test_gross_positive_share_defined_on_net_negative_book():
+    tr = [T('A', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 2.0),
+          T('B', '2025-01-03T00:00:00Z', '2025-01-04T00:00:00Z', 1.0),
+          T('C', '2025-01-05T00:00:00Z', '2025-01-06T00:00:00Z', -5.0)]
+    rep = run([mk(tr)])['pooled']
+    c = rep['concentration']
+    assert c['net_r'] == -2.0 and c['gross_positive_r'] == 3.0
+    assert c['top1_share'] == round(2 / 3, 6) and c['top3_share'] == 1.0 and c['hhi_positive'] == round(5 / 9, 6)
+    assert c['top1_share_net_secondary'] is None and c['top3_share_net_secondary'] is None
+    f = rep['flags']['CONCENTRATED']
+    assert f['raised'] is True and f['checks']['top1_share_gross_positive']['tripped'] is True
+
+
+def test_concentration_undefined_only_without_positive_symbol():
+    tr = [T('A', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', -1.0),
           T('B', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', -1.0)]
     rep = run([mk(tr)])['pooled']
-    assert rep['concentration']['top1_share'] is None
+    assert rep['concentration']['top1_share'] is None and rep['concentration']['hhi_positive'] is None
     assert rep['flags']['CONCENTRATED']['raised'] is None
 
 
@@ -164,7 +179,8 @@ def test_cost_stress_unavailable_missing_fields():
     assert cs['fees_x2']['status'] == cs['fees_x1.5']['status'] == cs['slip_plus_2bps']['status'] == 'UNAVAILABLE'
     assert 'fees' in cs['fees_x2']['reason'] and cs['fees_x2']['net_r'] is None
     assert cs['funding_x2']['status'] == 'OK'
-    assert s['flags']['COST_FRAGILE']['raised'] is None
+    assert s['flags']['COST_FRAGILE']['raised'] is False          # funding x2 available and > 0; UNAVAILABLE never trips
+    assert s['flags']['COST_FRAGILE']['unavailable'] == ['fees_x1.5', 'fees_x2', 'slip_plus_2bps']
     nofund = [dict(t, funding=None) for t in COST]
     cs = run([mk(nofund)])['pooled']['cost_stress']
     assert cs['funding_x2']['status'] == 'UNAVAILABLE' and cs['fees_x2']['status'] == 'OK'
@@ -186,20 +202,45 @@ def test_pyramid_attribution_unavailable_for_runner_schema():
 
 
 # ------------------------------------------------------------------ 5. flags: threshold boundaries
-def _sec(top1=0.1, wo=1.0, p=0.0, f2=1.0):
-    return dict(concentration=dict(top1_share=top1, without_top1=dict(net_r=wo), trades=3),
-                drawdown=dict(bootstrap=dict(p_net_le_0=p)), cost_stress=dict(fees_x2=dict(net_r=f2)))
+STRESSES = ('fees_x1.5', 'fees_x2', 'funding_x2', 'slip_plus_2bps')
+
+
+def _sec(top1=0.1, hhi=0.1, wo1=1.0, wo3=1.0, p=0.0, dd=1.0, p95=1.0, **cost):
+    cs = {k: dict(status='OK', net_r=1.0) for k in STRESSES}
+    for k, v in cost.items():
+        k = k.replace('fees_x1_5', 'fees_x1.5')
+        cs[k] = dict(status='UNAVAILABLE', reason='x', net_r=None) if v is None else dict(status='OK', net_r=v)
+    return dict(concentration=dict(top1_share=top1, hhi_positive=hhi, trades=3,
+                                   leave_top_k_out={'1': dict(net_r=wo1), '3': dict(net_r=wo3)}),
+                drawdown=dict(max_dd_r=dd, bootstrap=dict(p_net_le_0=p, dd_p95=p95)),
+                cost_stress=dict(base_net_r=1.0, slip_bps_per_side=2.0, **cs))
 
 
 @pytest.mark.parametrize('flag,kw,raised', [
     ('CONCENTRATED', dict(top1=0.40), True), ('CONCENTRATED', dict(top1=0.399999), False),
-    ('DEPENDENT', dict(wo=0.0), True), ('DEPENDENT', dict(wo=1e-6), False),
+    ('CONCENTRATED', dict(hhi=0.20), True), ('CONCENTRATED', dict(hhi=0.199999), False),
+    ('DEPENDENT', dict(wo1=0.0), True), ('DEPENDENT', dict(wo1=1e-6), False),
+    ('TOP3_DEPENDENT', dict(wo3=0.0), True), ('TOP3_DEPENDENT', dict(wo3=1e-6), False),
     ('FRAGILE', dict(p=0.10), True), ('FRAGILE', dict(p=0.099999), False),
-    ('COST_FRAGILE', dict(f2=0.0), True), ('COST_FRAGILE', dict(f2=1e-6), False)])
+    ('COST_FRAGILE', dict(fees_x2=0.0), True), ('COST_FRAGILE', dict(fees_x2=1e-6), False),
+    ('COST_FRAGILE', dict(fees_x1_5=0.0), True), ('COST_FRAGILE', dict(fees_x1_5=1e-6), False),
+    ('COST_FRAGILE', dict(funding_x2=0.0), True), ('COST_FRAGILE', dict(funding_x2=1e-6), False),
+    ('COST_FRAGILE', dict(slip_plus_2bps=0.0), True), ('COST_FRAGILE', dict(slip_plus_2bps=1e-6), False),
+    ('HIGH_DD', dict(dd=25.0), True), ('HIGH_DD', dict(dd=24.999999), False),
+    ('HIGH_DD', dict(p95=35.0), True), ('HIGH_DD', dict(p95=34.999999), False)])
 def test_flag_boundaries(flag, kw, raised):
     f = FS.flags(_sec(**kw))
     assert f[flag]['raised'] is raised
     assert sum(bool(v['raised']) for v in f.values()) == int(raised)
+
+
+def test_cost_fragile_unavailable_never_trips_but_is_listed():
+    f = FS.flags(_sec(fees_x1_5=None, slip_plus_2bps=None))['COST_FRAGILE']
+    assert f['raised'] is False and f['unavailable'] == ['fees_x1.5', 'slip_plus_2bps']
+    f = FS.flags(_sec(fees_x1_5=None, slip_plus_2bps=None, funding_x2=-0.5))['COST_FRAGILE']
+    assert f['raised'] is True and f['unavailable'] == ['fees_x1.5', 'slip_plus_2bps']
+    f = FS.flags(_sec(**{k.replace('.', '_'): None for k in STRESSES}))['COST_FRAGILE']
+    assert f['raised'] is None and len(f['unavailable']) == 4
 
 
 def test_flags_end_to_end_concentrated_at_exactly_040():
@@ -207,7 +248,8 @@ def test_flags_end_to_end_concentrated_at_exactly_040():
           T('B', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 1.5),
           T('C', '2025-01-01T00:00:00Z', '2025-01-02T00:00:00Z', 1.5)]
     f = run([mk(tr)])['pooled']['flags']
-    assert f['CONCENTRATED']['value'] == 0.4 and f['CONCENTRATED']['raised'] is True
+    assert f['CONCENTRATED']['checks']['top1_share_gross_positive'] == dict(value=0.4, threshold=0.4, tripped=True)
+    assert f['CONCENTRATED']['raised'] is True and f['TOP3_DEPENDENT']['raised'] is True   # only 3 symbols
     assert f['DEPENDENT']['raised'] is False and f['COST_FRAGILE']['raised'] is False
     f = run([mk(CONC)])['pooled']['flags']
     assert f['CONCENTRATED']['raised'] is True and f['DEPENDENT']['raised'] is False   # w/o A: +1.0
@@ -304,6 +346,9 @@ def test_cli_deterministic_and_never_overwrites(tmp_path, capsys):
     assert FS.main(args + ['--out', str(tmp_path / 'r2.json')]) == 0
     assert (tmp_path / 'r1.json').read_bytes() == (tmp_path / 'r2.json').read_bytes()
     rep = json.loads((tmp_path / 'r1.json').read_text())
+    assert rep['flags_are_diagnostic'] is True and rep['flag_source'] == 'Codex 6447574071'
+    assert [p['label'] for p in rep['packets']] == ['s0.json', 's1.json'] and 'flags' in rep['pooled']
+    assert all(set(p['flags']) == set(rep['pooled']['flags']) for p in rep['packets'])
     assert rep['params']['seed'] == 5 and rep['params']['boot'] == 300 and 'slip_plus_3bps' in rep['pooled']['cost_stress']
     assert FS.main(args + ['--out', str(tmp_path / 'r1.json')]) == 2
     bad = json.loads(open(paths[0]).read())

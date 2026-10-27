@@ -15,7 +15,7 @@ reports, per packet and pooled (all trades of all packets):
      (see COST STRESS below); UNAVAILABLE with the reason whenever a field it needs is absent - never approximated;
   4. pyramid attribution - UNAVAILABLE for this schema: the runner merges every pyramid add into the one position (avg
      price, total qty) and writes no add-leg marker per trade;
-  5. pre-registered flags (constants below).
+  5. pre-registered DIAGNOSTIC flags (constants below, frozen by Codex 6447574071).
 
 COST STRESS (exact under the runner's schema):
   - per trade risk_usd = pnl / R (backtest.close: R = realized / risk). Both are written rounded to 6 dp, so a trade with
@@ -47,10 +47,17 @@ STATUS_OK = 'ok'                    # run_breadth_candidate writes 'ok' or 'not 
 TS_FMT = '%Y-%m-%dT%H:%M:%SZ'       # splits.TS_FMT, the runner's t_in / t_out format
 
 # ------------------------------------------------------------------ pre-registered flags (do not tune after a run)
-TOP1_SHARE_MAX = 0.40               # top-1 symbol share of net R >= this -> CONCENTRATED
+# Frozen by Integration, source: Codex 6447574071. Flags are DIAGNOSTIC only (report: flags_are_diagnostic = true).
+FLAG_SOURCE = 'Codex 6447574071'
+TOP1_SHARE_MAX = 0.40               # top-1 share of GROSS POSITIVE R >= this -> CONCENTRATED
+HHI_MAX = 0.20                      # OR HHI of the gross-positive shares >= this -> CONCENTRATED
 NO_TOP1_NET_R_MIN = 0.0             # net R without the top-1 symbol <= this -> DEPENDENT
+NO_TOP3_NET_R_MIN = 0.0             # net R without the top-3 symbols <= this -> TOP3_DEPENDENT
 BOOT_P_NONPOS_MAX = 0.10            # bootstrap P(net R <= 0) >= this -> FRAGILE
 FEES_X2_NET_R_MIN = 0.0             # net R with fees x2 <= this -> COST_FRAGILE
+COST_NET_R_MIN = 0.0                # OR any AVAILABLE mandatory cost stress net R <= this -> COST_FRAGILE
+MAX_DD_R_MAX = 25.0                 # observed max DD (R) >= this -> HIGH_DD
+BOOT_DD_P95_MAX = 35.0              # OR bootstrap DD p95 (R) >= this -> HIGH_DD
 
 DEFAULT_BOOT, DEFAULT_SEED, DEFAULT_SLIP_BPS = 2000, 20261027, 2.0
 FEE_MULTS, FUNDING_MULT = (1.5, 2.0), 2.0
@@ -197,8 +204,11 @@ def concentration(rows: list) -> dict:
     for r in rows:
         by[r['symbol']] = by.get(r['symbol'], 0.0) + r['R']
     rank = sorted(by.items(), key=lambda kv: (-kv[1], kv[0]))            # largest R first; ties by symbol name
-    pos = sum(v for v in by.values() if v > 0)
+    pos = sum(v for v in by.values() if v > 0)                            # gross positive R (symbols with net R > 0)
     hhi = _r(sum((v / pos) ** 2 for v in by.values() if v > 0)) if pos > 0 else None
+
+    def gp_share(top):
+        return _r(sum(v for _, v in top if v > 0) / pos) if pos > 0 else None
     leave = {}
     for k in LEAVE_OUT_K:
         drop = {s for s, _ in rank[:k]}
@@ -214,11 +224,14 @@ def concentration(rows: list) -> dict:
                              top_period_r=_r(top[1]), top_period_share=share(top[1], net))
     return dict(
         net_r=_r(net), trades=len(rows), pf_r=pf_r([r['R'] for r in rows]),
-        share_basis='symbol R / net R (None when net R <= 0); HHI over positive-R symbols, shares of their R sum',
-        r_by_symbol={s: _r(v) for s, v in rank},
+        share_basis='PRIMARY: symbol R / gross positive R (sum of R over symbols whose net R > 0; defined even when net '
+                    'R <= 0, None only when no symbol is net positive); HHI over the same gross-positive shares. '
+                    'SECONDARY (*_net_secondary): symbol R / net R, None when net R <= 0',
+        r_by_symbol={s: _r(v) for s, v in rank}, gross_positive_r=_r(pos),
         top1_symbol=rank[0][0] if rank else None, top1_r=_r(rank[0][1]) if rank else None,
-        top1_share=share(rank[0][1], net) if rank else None,
-        top3_share=share(sum(v for _, v in rank[:3]), net) if rank else None,
+        top1_share=gp_share(rank[:1]), top3_share=gp_share(rank[:3]),
+        top1_share_net_secondary=share(rank[0][1], net) if rank else None,
+        top3_share_net_secondary=share(sum(v for _, v in rank[:3]), net) if rank else None,
         hhi_positive=hhi, without_top1=leave['1'], leave_top_k_out=leave, periods=periods)
 
 
@@ -326,22 +339,47 @@ def pyramid(pkts: list) -> dict:
 
 
 # ------------------------------------------------------------------ 5. flags
-def _flag(value, threshold, raised, rule):
-    if value is None:
-        return dict(raised=None, value=None, threshold=threshold, rule=rule, note='not computable (UNAVAILABLE / undefined)')
-    return dict(raised=bool(raised(value)), value=value, threshold=threshold, rule=rule)
+def _any_flag(checks, rule):
+    """checks: [(name, value, threshold, trips(value))]. Raised when any computable check trips; None when none is
+    computable (never silently False)."""
+    vals = {n: dict(value=v, threshold=t, tripped=None if v is None else bool(f(v))) for n, v, t, f in checks}
+    known = [x['tripped'] for x in vals.values() if x['tripped'] is not None]
+    out = dict(raised=any(known) if known else None, rule=rule, checks=vals)
+    if not known:
+        out['note'] = 'not computable (UNAVAILABLE / undefined)'
+    return out
+
+
+def _le(thr):
+    return lambda v: v <= thr
+
+
+def _ge(thr):
+    return lambda v: v >= thr
 
 
 def flags(sec: dict) -> dict:
     c, d, s = sec['concentration'], sec['drawdown'], sec['cost_stress']
+    lv = c['leave_top_k_out']
+    stresses = [k for k in s if k not in ('base_net_r', 'slip_bps_per_side')]      # the 4 mandatory cost stresses
+    cost = _any_flag([('fees_x2', s['fees_x2']['net_r'], FEES_X2_NET_R_MIN, _le(FEES_X2_NET_R_MIN))]
+                     + [(k, s[k]['net_r'], COST_NET_R_MIN, _le(COST_NET_R_MIN)) for k in stresses if k != 'fees_x2'],
+                     'fees x2 net R <= 0 OR any available mandatory cost stress net R <= 0 (UNAVAILABLE never trips)')
+    cost['unavailable'] = [k for k in stresses if s[k].get('status') == 'UNAVAILABLE']
     return {
-        'CONCENTRATED': _flag(c['top1_share'], TOP1_SHARE_MAX, lambda v: v >= TOP1_SHARE_MAX, 'top1_share >= threshold'),
-        'DEPENDENT': _flag(c['without_top1']['net_r'] if c['trades'] else None, NO_TOP1_NET_R_MIN,
-                           lambda v: v <= NO_TOP1_NET_R_MIN, 'net R without top-1 symbol <= threshold'),
-        'FRAGILE': _flag(d['bootstrap']['p_net_le_0'], BOOT_P_NONPOS_MAX, lambda v: v >= BOOT_P_NONPOS_MAX,
-                         'bootstrap P(net R <= 0) >= threshold'),
-        'COST_FRAGILE': _flag(s['fees_x2']['net_r'], FEES_X2_NET_R_MIN, lambda v: v <= FEES_X2_NET_R_MIN,
-                              'net R with fees x2 <= threshold'),
+        'CONCENTRATED': _any_flag([('top1_share_gross_positive', c['top1_share'], TOP1_SHARE_MAX, _ge(TOP1_SHARE_MAX)),
+                                   ('hhi_gross_positive', c['hhi_positive'], HHI_MAX, _ge(HHI_MAX))],
+                                  'top-1 share of gross positive R >= 0.40 OR HHI >= 0.20'),
+        'DEPENDENT': _any_flag([('net_r_without_top1', lv['1']['net_r'] if c['trades'] else None, NO_TOP1_NET_R_MIN,
+                                 _le(NO_TOP1_NET_R_MIN))], 'net R without the top-1 symbol <= 0'),
+        'TOP3_DEPENDENT': _any_flag([('net_r_without_top3', lv['3']['net_r'] if c['trades'] else None,
+                                      NO_TOP3_NET_R_MIN, _le(NO_TOP3_NET_R_MIN))], 'net R without the top-3 symbols <= 0'),
+        'FRAGILE': _any_flag([('boot_p_net_le_0', d['bootstrap']['p_net_le_0'], BOOT_P_NONPOS_MAX,
+                               _ge(BOOT_P_NONPOS_MAX))], 'bootstrap P(net R <= 0) >= 0.10'),
+        'COST_FRAGILE': cost,
+        'HIGH_DD': _any_flag([('max_dd_r', d['max_dd_r'], MAX_DD_R_MAX, _ge(MAX_DD_R_MAX)),
+                              ('boot_dd_p95', d['bootstrap']['dd_p95'], BOOT_DD_P95_MAX, _ge(BOOT_DD_P95_MAX))],
+                             'observed max DD >= 25R OR bootstrap DD p95 >= 35R'),
     }
 
 
@@ -385,12 +423,14 @@ def analyse(pkts: list, labels: list, *, n_boot=DEFAULT_BOOT, seed=DEFAULT_SEED,
         per.append(dict(label=lb, packet_sha256=p['packet_sha256'], window=p['window'], commit=p['commit'], **s))
     pooled = section(pooled_rows, pkts, costs, n_boot, seed, slip_bps)
     key, side = next(iter(ident))
-    return dict(format=FORMAT_OUT, non_promotable=True, purpose='concentration / drawdown / cost stress of factory '
+    return dict(format=FORMAT_OUT, non_promotable=True, flags_are_diagnostic=True, flag_source=FLAG_SOURCE, purpose='concentration / drawdown / cost stress of factory '
                 'candidate packets (research only)', tool_sha256=tool_sha(), strategy=key, side=side,
                 params=dict(boot=n_boot, seed=seed, slip_bps=slip_bps, fee_mults=list(FEE_MULTS),
                             funding_mult=FUNDING_MULT, leave_out_k=list(LEAVE_OUT_K)),
-                thresholds=dict(TOP1_SHARE_MAX=TOP1_SHARE_MAX, NO_TOP1_NET_R_MIN=NO_TOP1_NET_R_MIN,
-                                BOOT_P_NONPOS_MAX=BOOT_P_NONPOS_MAX, FEES_X2_NET_R_MIN=FEES_X2_NET_R_MIN),
+                thresholds=dict(TOP1_SHARE_MAX=TOP1_SHARE_MAX, HHI_MAX=HHI_MAX, NO_TOP1_NET_R_MIN=NO_TOP1_NET_R_MIN,
+                                NO_TOP3_NET_R_MIN=NO_TOP3_NET_R_MIN, BOOT_P_NONPOS_MAX=BOOT_P_NONPOS_MAX,
+                                FEES_X2_NET_R_MIN=FEES_X2_NET_R_MIN, COST_NET_R_MIN=COST_NET_R_MIN,
+                                MAX_DD_R_MAX=MAX_DD_R_MAX, BOOT_DD_P95_MAX=BOOT_DD_P95_MAX),
                 packets=per, pooled=pooled)
 
 
@@ -399,9 +439,9 @@ def summary(rep: dict) -> str:
         c, d, cs, f = s['concentration'], s['drawdown'], s['cost_stress'], s['flags']
         raised = [k for k, v in f.items() if v['raised']] or ['none']
         na = [k for k, v in f.items() if v['raised'] is None]
-        return (f"{name}: {c['trades']} trades, net {c['net_r']}R, top1 {c['top1_symbol']} {c['top1_share']}, "
+        return (f"{name}: {c['trades']} trades, net {c['net_r']}R, top1 {c['top1_symbol']} {c['top1_share']} of gross+R, "
                 f"w/o top1 {c['without_top1']['net_r']}R, maxDD {d['max_dd_r']}R, boot DD p95 {d['bootstrap']['dd_p95']}R "
-                f"P(net<=0) {d['bootstrap']['p_net_le_0']}, fees x2 {cs['fees_x2']['net_r']}R | flags: {','.join(raised)}"
+                f"P(net<=0) {d['bootstrap']['p_net_le_0']}, fees x2 {cs['fees_x2']['net_r']}R | diagnostic flags: {','.join(raised)}"
                 + (f" | n/a: {','.join(na)}" if na else ''))
     out = [f"factory stress {rep['strategy']} {rep['side']} (boot {rep['params']['boot']}, seed {rep['params']['seed']})"]
     out += [line(p['label'], p) for p in rep['packets']]
