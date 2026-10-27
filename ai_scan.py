@@ -6,14 +6,17 @@ id (ml_shadow.ledger.decision_id - deterministic, so a restart re-derives the sa
 
 - signal   one per candidate/decision: decision instant, cutoff, the ingest time of every point-in-time input, a
            snapshot pinned to the exact cutoff, the deterministic plan + decision copied from the engine, the cost
-           estimate, and INSUFFICIENT (with its reasons) when the inputs cannot support a read;
+           estimate, the snapshot's absolute age, and INSUFFICIENT (with its reasons) when the inputs cannot support a
+           read - including a snapshot older than STALE_BARS bars of its timeframe;
 - shadow   one per (signal, epoch). The epoch hashes the immutable model id, prompt-template hash, sampling parameters,
            feature/schema hash, label definition and cost-model hash - any change opens a new, unverified epoch. Either
            an opinion with coverage, disagreement, raw-response hash and a probability that stays UNVERIFIED unless the
            epoch's calibration passes the frozen gate, or INSUFFICIENT (queue full / timeout / budget / remote error).
            It names the plan and snapshot hashes it read and can never carry plan, sizing or order fields;
-- outcome  measured (the engine's trade) keyed by the history row's append-only actual-cost revision `cost_rev`
-           (#196, engine.py _row_changed; 0 = booked), or simulated (a deterministic causal replay under the frozen
+- outcome  measured (the engine's trade) joined by the immutable decision id + its actual-cost revision identifier
+           `cost_revision_id` (sha256 of the revision's actual-cost fields); the engine's monotonic `rev` (#196 cost_rev,
+           engine.py _row_changed; 0 = booked) orders and deduplicates revisions only, never the economic identity; or
+           simulated (a deterministic causal replay under the frozen
            policy and cost model - the only outcome an untaken candidate gets) keyed by that cost-model hash. The two are
            never merged. Closed strictly after the decision instant.
 
@@ -31,14 +34,13 @@ from ml_shadow.common import SECRET_NAME_RE, canonical_json, sha256_hex, to_utc
 from ml_shadow.ledger import decision_id
 
 SCHEMA_VERSION = 'ai-scan-schema-v1'
-API_SCHEMA_VERSION = 1
 FLAG = 'AI_SCAN'                                     # default OFF; report-only API/UI surface
 TF_SEC = {'5m': 300, '15m': 900, '1h': 3600, '4h': 14400}
 SIDES = ('LONG', 'SHORT')
 RULE_STATUSES = ('taken', 'skipped', 'pending')     # ml_shadow.common.STATUSES
 OPINIONS = ('LONG', 'SHORT', 'NO_TRADE')
 CAUSAL_INPUTS = ('funding', 'universe', 'exchange_rules')   # each carries its own ingest (availability) time
-FRESH_BARS, FRESH_MAX_S = 2, 1800                    # a shadow result is display-fresh for min(2 bars, 30 min)
+STALE_BARS = 2                                       # timeframe-relative freshness ceiling (Codex 6452143340 #1)
 LABEL_RULES, LABEL_AI, LABEL_UNVERIFIED, LABEL_INSUFFICIENT = 'RULES', 'AI SHADOW', 'UNVERIFIED', 'INSUFFICIENT'
 PROB_UNVERIFIED, PROB_CALIBRATED = 'UNVERIFIED', 'CALIBRATED'
 # #200: P(net_R > 0 after actual-model fees, funding and fills at the earlier of the strategy exit or its max-bar horizon)
@@ -94,8 +96,21 @@ def epoch_of(model_id, prompt_hash, sampling, feature_schema_hash, cost_model_ha
 
 
 def api_off():
-    """The stable, versioned response of both scanner endpoints while the flag is off (#200)."""
-    return dict(schema_version=API_SCHEMA_VERSION, on=False, mode='off', updated_at=None, rows=[])
+    """The stable response of the scanner endpoint while the flag is off (Codex 6452143340 #3): exactly these two keys."""
+    return dict(on=False, rows=[])
+
+
+def stale_after_s(tf):
+    """The freshness ceiling in seconds: STALE_BARS bars of the timeframe. Exactly this old is fresh; older is not."""
+    return STALE_BARS * TF_SEC[tf]
+
+
+def cost_revision_id(actual_costs):
+    """The actual-cost revision identifier: sha256 of one revision's actual-cost fields (fees, funding, fill prices, net).
+    This - with the decision id - is the economic join key; the monotonic rev only orders revisions."""
+    if not (isinstance(actual_costs, dict) and actual_costs):
+        raise AIScanError('a cost revision identifier needs the actual-cost fields')
+    return sha256_hex(canonical_json(actual_costs))
 
 
 # ------------------------------------------------------------------ inputs -> INSUFFICIENT reasons
@@ -123,7 +138,8 @@ def check_inputs(side, tf, cutoff_ms, decided_ms, snapshot, plan, inputs):
         try:
             lc = _ms(snapshot['last_close'])
             if lc > cutoff_ms: why.append('after_cutoff')                # a candle not closed at the decision cutoff
-            elif lc < cutoff_ms: why.append('not_at_cutoff')             # the snapshot must be the exact cutoff candle
+            elif tf in TF_SEC and cutoff_ms - lc > stale_after_s(tf) * 1000:
+                why.append('stale_snapshot')                             # older than STALE_BARS bars of its timeframe
         except (KeyError, TypeError, ValueError):
             why.append('missing:last_close')
         _as_of(why, 'snapshot', snapshot.get('available_at'), decided_ms)
@@ -165,12 +181,16 @@ def build_signal(*, sleeve, strategy, family, symbol, side, tf, candle_open, dec
     for name in CAUSAL_INPUTS:
         try: as_of[name] = _iso((inputs or {}).get(name))
         except (TypeError, ValueError): as_of[name] = None
+    try:
+        age_s = (cutoff_ms - _ms((snapshot or {}).get('last_close'))) // 1000
+    except (TypeError, ValueError):
+        age_s = None
     rec = dict(kind='signal', schema=SCHEMA_VERSION,
                signal_id=decision_id(sleeve, strategy, symbol, side, tf, candle_open),
                sleeve=str(sleeve), strategy=str(strategy), family=str(family), symbol=str(symbol).upper(), side=side,
                tf=tf, candle_open=_iso(candle_open), cutoff=_iso(cutoff_ms), decided_at=_iso(decided_ms), inputs_as_of=as_of,
                rules=dict(status=rules_status, reason=str(rules_reason or '')[:200]),
-               input_coverage=[present, len(feats)],
+               input_coverage=[present, len(feats)], snapshot_age_s=age_s,
                snapshot_hash=None if any(w.startswith(('missing:snapshot', 'missing:last_close', 'malformed:feature'))
                                          for w in why) else snapshot_hash(snapshot),
                plan=None if any(w.startswith(('missing:plan', 'malformed:plan', 'malformed:targets')) for w in why)
@@ -260,23 +280,26 @@ def build_shadow_failure(signal, *, model_id, prompt_hash, sampling, feature_sch
     return _seal(rec)
 
 
-def build_outcome(signal, *, source, closed_at, net_r, net_pnl, exit_reason, cost_basis, cost_rev=None,
-                  cost_model_hash=None, partial_exits=0, adds=0):
-    """measured: the engine's own trade, keyed by its history row's append-only cost_rev (0 = booked, each actual-cost
-    restatement +1). simulated: a deterministic causal replay under the frozen policy, keyed by its cost-model hash - the
-    only outcome an untaken candidate may get."""
+def build_outcome(signal, *, source, closed_at, net_r, net_pnl, exit_reason, cost_basis, cost_revision_id=None,
+                  rev=None, cost_model_hash=None, partial_exits=0, adds=0):
+    """measured: the engine's own trade, joined by (decision id, cost_revision_id) - the actual-cost revision identifier.
+    rev is the history row's monotonic cost_rev (0 = booked, each restatement +1), kept only to order and deduplicate
+    revisions. simulated: a deterministic causal replay under the frozen policy, keyed by its cost-model hash - the only
+    outcome an untaken candidate may get."""
     if source not in COST_BASES: raise AIScanError(f'unknown outcome source {source!r}')
     if cost_basis not in COST_BASES[source]: raise AIScanError(f'cost basis {cost_basis!r} is not valid for {source}')
     if source == 'measured':
-        if not (isinstance(cost_rev, int) and not isinstance(cost_rev, bool) and cost_rev >= 0 and cost_model_hash is None):
-            raise AIScanError('a measured outcome is keyed by an int cost_rev >= 0 (and no cost-model hash)')
+        if not (_hex64(cost_revision_id) and isinstance(rev, int) and not isinstance(rev, bool) and rev >= 0
+                and cost_model_hash is None):
+            raise AIScanError('a measured outcome is keyed by a sha256 cost_revision_id and ordered by an int rev >= 0'
+                              ' (and no cost-model hash)')
         if signal['rules']['status'] == 'skipped': raise AIScanError('a measured outcome on a skipped decision')
-    elif not (cost_rev is None and _hex64(cost_model_hash)):
-        raise AIScanError('a simulated outcome is keyed by its sha256 cost-model hash (and no cost_rev)')
+    elif not (cost_revision_id is None and rev is None and _hex64(cost_model_hash)):
+        raise AIScanError('a simulated outcome is keyed by its sha256 cost-model hash (and no cost revision)')
     if _ms(closed_at) <= _ms(signal['decided_at']): raise AIScanError('an outcome closed at or before the decision')
     if not (_num(net_r) and _num(net_pnl)): raise AIScanError('outcome net_r / net_pnl must be finite numbers')
-    rec = dict(kind='outcome', schema=SCHEMA_VERSION, signal_id=signal['signal_id'], source=source, cost_rev=cost_rev,
-               cost_model_hash=cost_model_hash, closed_at=_iso(closed_at), net_r=float(net_r), net_pnl=float(net_pnl),
+    rec = dict(kind='outcome', schema=SCHEMA_VERSION, signal_id=signal['signal_id'], source=source,
+               cost_revision_id=cost_revision_id, rev=rev, cost_model_hash=cost_model_hash, closed_at=_iso(closed_at), net_r=float(net_r), net_pnl=float(net_pnl),
                exit_reason=str(exit_reason or '')[:64], cost_basis=cost_basis, partial_exits=int(partial_exits),
                adds=int(adds))
     return _seal(rec)
@@ -322,7 +345,7 @@ def fold(records):
         _verify(rec)
         sid, kind = rec['signal_id'], rec['kind']
         key = {'signal': (sid,), 'shadow': (sid, rec.get('epoch')),
-               'outcome': (sid, rec.get('source'), rec.get('cost_rev'), rec.get('cost_model_hash'))}.get(kind)
+               'outcome': (sid, rec.get('source'), rec.get('cost_revision_id'), rec.get('cost_model_hash'))}.get(kind)
         if key is None: raise AIScanError(f'unknown record kind {kind!r}')
         k = (kind,) + key
         if k in seen:
@@ -331,7 +354,7 @@ def fold(records):
         if kind != 'signal' and sid not in views: raise AIScanError(f'{k}: joins no recorded signal')
         seen[k] = rec['record_hash']
         if kind == 'signal':
-            views[sid] = dict(signal=rec, shadows={}, measured=None, simulated={})
+            views[sid] = dict(signal=rec, shadows={}, measured=None, revisions={}, simulated={})
             continue
         v = views[sid]
         if kind == 'shadow':
@@ -342,7 +365,10 @@ def fold(records):
         if _ms(rec['closed_at']) <= _ms(v['signal']['decided_at']): raise AIScanError(f'{k}: look-ahead outcome')
         if rec['source'] == 'measured':
             if v['signal']['rules']['status'] == 'skipped': raise AIScanError(f'{k}: a measured outcome on a skipped decision')
-            if v['measured'] is None or rec['cost_rev'] > v['measured']['cost_rev']: v['measured'] = rec
+            if any(o['rev'] == rec['rev'] for o in v['revisions'].values()):
+                raise AIScanError(f"{k}: two actual-cost revisions share rev {rec['rev']} (ambiguous order)")
+            v['revisions'][rec['cost_revision_id']] = rec           # the join: decision id + cost revision identifier
+            if v['measured'] is None or rec['rev'] > v['measured']['rev']: v['measured'] = rec   # rev: order only
         else:
             v['simulated'][rec['cost_model_hash']] = rec
     return views
@@ -363,20 +389,23 @@ def fitting_view(records, holdout):
 def display(view, now=None):
     """Owner-facing labels. RULES (deterministic) and AI SHADOW are always separate; a probability is shown only when
     CALIBRATED (with its target), otherwise the literal UNVERIFIED; an INSUFFICIENT signal or shadow shows no score; a
-    shadow older than min(2 bars, 30 min) at `now` is marked stale; measured and simulated outcomes never merge."""
+    shadow older than STALE_BARS bars of its timeframe at `now` is INSUFFICIENT (stale), its absolute age always shown;
+    measured and simulated outcomes never merge."""
     s = view['signal']
     out = dict(signal_id=s['signal_id'], rules=dict(label=LABEL_RULES, status=s['rules']['status'], plan=s['plan']),
-               input_coverage=s['input_coverage'])
+               input_coverage=s['input_coverage'], snapshot_age_s=s['snapshot_age_s'])
     if s['status'] != 'OK':
         out['ai'] = dict(label=LABEL_INSUFFICIENT, reasons=list(s['insufficient']))
     else:
-        fresh_s = min(FRESH_BARS * TF_SEC[s['tf']], FRESH_MAX_S)
+        ceil_s = stale_after_s(s['tf'])
         rows = []
         for _, r in sorted(view['shadows'].items(), key=lambda kv: (kv[1]['model_id'], kv[0])):
-            row = dict(model_id=r['model_id'], epoch=r['epoch'],
-                       stale=None if now is None else (_ms(now) - _ms(r['created_at'])) > fresh_s * 1000)
+            age = None if now is None else (_ms(now) - _ms(r['created_at'])) // 1000
+            row = dict(model_id=r['model_id'], epoch=r['epoch'], age_s=age)
             if r['status'] != 'OK':
                 row.update(label=LABEL_INSUFFICIENT, reasons=[r['reason']])
+            elif age is not None and age > ceil_s:
+                row.update(label=LABEL_INSUFFICIENT, reasons=['stale'])
             else:
                 row.update(label=LABEL_AI, opinion=r['opinion'], coverage=r['coverage'], disagreement=r['disagreement'],
                            probability=(dict(value=f"{r['probability']['p']:.0%}", target=r['probability']['target'])
@@ -384,7 +413,8 @@ def display(view, now=None):
             rows.append(row)
         out['ai'] = rows
     m = view['measured']
-    out['outcomes'] = dict(measured=m and {k: m[k] for k in ('cost_rev', 'net_r', 'cost_basis', 'exit_reason')},
+    out['outcomes'] = dict(measured=m and {k: m[k] for k in ('cost_revision_id', 'rev', 'net_r', 'cost_basis',
+                                                              'exit_reason')},
                            simulated={h: {k: o[k] for k in ('net_r', 'cost_basis', 'exit_reason')}
                                       for h, o in sorted(view['simulated'].items())})
     return out

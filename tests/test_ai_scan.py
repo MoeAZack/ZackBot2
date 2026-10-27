@@ -1,6 +1,7 @@
-"""AI-SCAN-01 (#199/#200) schema contract: exact-cutoff snapshot + ingest-time inputs, INSUFFICIENT inputs, no shadow
-authority, immutable model identity / calibration epochs and the frozen gate, display freshness, the versioned flag-off
-shape, the bounded non-blocking queue, holdout isolation, restart idempotency, measured vs simulated outcomes."""
+"""AI-SCAN-01 (#199/#200) schema contract: the STALE_BARS=2 timeframe-relative freshness ceiling with absolute ages +
+ingest-time inputs, INSUFFICIENT inputs, no shadow authority, immutable model identity / calibration epochs and the
+frozen gate, the stable {on:false, rows:[]} flag-off shape, the bounded non-blocking queue, holdout isolation, restart
+idempotency, the (decision id, cost revision id) outcome join with rev for order only, measured vs simulated outcomes."""
 import copy
 import os
 import sys
@@ -20,6 +21,8 @@ SAMP = dict(temperature=0, max_tokens=3000)
 MODEL = 'claude-sonnet-5-5'
 IDENT = dict(model_id=MODEL, prompt_hash=H1, sampling=SAMP, feature_schema_hash=H3, cost_model_hash=H4)
 EPOCH = A.epoch_of(MODEL, H1, SAMP, H3, H4)
+CR0 = A.cost_revision_id(dict(fees_actual=0.42, funding=0.0, net=12.0))       # booked
+CR1 = A.cost_revision_id(dict(fees_actual=0.51, funding=-0.08, net=9.0))      # a late-fee / funding restatement
 
 
 def snap(**kw):
@@ -69,14 +72,14 @@ def cal(**kw):
 
 
 def outcome(s, **kw):
-    a = dict(source='measured', cost_rev=0, closed_at='2026-10-20T14:00:00Z', net_r=1.2, net_pnl=12.0, exit_reason='tp1',
+    a = dict(source='measured', cost_revision_id=CR0, rev=0, closed_at='2026-10-20T14:00:00Z', net_r=1.2, net_pnl=12.0, exit_reason='tp1',
              cost_basis='booked')
     a.update(kw)
     return A.build_outcome(s, **a)
 
 
 def sim(s, **kw):
-    return outcome(s, **dict(dict(source='simulated', cost_rev=None, cost_model_hash=H4, cost_basis='modelled'), **kw))
+    return outcome(s, **dict(dict(source='simulated', cost_revision_id=None, rev=None, cost_model_hash=H4, cost_basis='modelled'), **kw))
 
 
 # ------------------------------------------------------------------ causal cutoff / identity / ingest time
@@ -93,12 +96,29 @@ def test_a_decision_before_its_candle_closed_refuses():
         sig(decided_at='2026-10-20T12:14:59Z')
 
 
-@pytest.mark.parametrize('lc, reason', [('2026-10-20T12:30:00Z', 'after_cutoff'), ('2026-10-20T12:00:00Z', 'not_at_cutoff')])
-def test_the_snapshot_must_be_the_exact_cutoff_candle(lc, reason):
+@pytest.mark.parametrize('lc, reason', [('2026-10-20T12:30:00Z', 'after_cutoff'), ('2026-10-20T11:44:59Z', 'stale_snapshot')])
+def test_a_snapshot_after_the_cutoff_or_older_than_two_bars_is_insufficient(lc, reason):
     s = sig(snapshot=snap(last_close=lc))
     assert s['status'] == 'INSUFFICIENT' and reason in s['insufficient']
     with pytest.raises(A.AIScanError, match='INSUFFICIENT'):
         shadow(s)
+
+
+@pytest.mark.parametrize('tf, open_, lc, age, ok', [
+    ('15m', OPEN, CUT, 0, True),                                            # the exact cutoff candle
+    ('15m', OPEN, '2026-10-20T11:45:00Z', 1800, True),                      # exactly 2 bars old = fresh
+    ('15m', OPEN, '2026-10-20T11:44:59Z', 1801, False),                     # just over = INSUFFICIENT
+    ('1h', '2026-10-20T11:00:00Z', '2026-10-20T10:00:00Z', 7200, True),     # timeframe-relative: 2 h on 1h
+    ('1h', '2026-10-20T11:00:00Z', '2026-10-20T09:59:59Z', 7201, False),
+    ('4h', '2026-10-20T08:00:00Z', '2026-10-20T04:00:00Z', 28800, True),    # 8 h on 4h (no 30-min cap)
+    ('4h', '2026-10-20T08:00:00Z', '2026-10-20T03:59:59Z', 28801, False),
+])
+def test_stale_bars_is_a_timeframe_relative_ceiling_with_the_absolute_age_exposed(tf, open_, lc, age, ok):
+    s = sig(tf=tf, candle_open=open_, snapshot=snap(last_close=lc, available_at='2026-10-20T12:00:03Z'),
+            decided_at='2026-10-20T12:15:10Z')
+    assert s['snapshot_age_s'] == age and A.stale_after_s(tf) == 2 * A.TF_SEC[tf]
+    assert (s['status'] == 'OK') is ok and ('stale_snapshot' in s['insufficient']) is (not ok)
+    assert A.display(A.fold([s])[s['signal_id']])['snapshot_age_s'] == age
 
 
 @pytest.mark.parametrize('kw, reason', [
@@ -248,26 +268,26 @@ def test_out_of_range_probability_stays_unverified():
 
 
 # ------------------------------------------------------------------ display freshness and the flag-off shape
-def test_a_shadow_is_display_fresh_for_the_earlier_of_two_bars_or_thirty_minutes():
-    s = sig(); v = A.fold([s, shadow(s)])[s['signal_id']]          # 15m: two bars = 30 min = the cap
-    assert A.display(v, now='2026-10-20T12:46:00Z')['ai'][0]['stale'] is False
-    assert A.display(v, now='2026-10-20T12:46:01Z')['ai'][0]['stale'] is True
-    h = sig(tf='1h', candle_open='2026-10-20T11:00:00Z', snapshot=snap(last_close='2026-10-20T12:00:00Z',
-                                                                        available_at='2026-10-20T12:00:03Z'),
-            decided_at='2026-10-20T12:00:10Z')
-    w = A.fold([h, shadow(h, created_at='2026-10-20T12:01:00Z')])[h['signal_id']]
-    assert A.display(w, now='2026-10-20T12:31:01Z')['ai'][0]['stale'] is True     # 1h: capped at 30 min, not 2 h
+def test_a_shadow_older_than_two_bars_of_its_timeframe_shows_insufficient_with_its_age():
+    s = sig(); v = A.fold([s, shadow(s)])[s['signal_id']]          # created 12:16:00; 15m: 2 bars = 1800 s
+    r = A.display(v, now='2026-10-20T12:46:00Z')['ai'][0]
+    assert r['age_s'] == 1800 and r['label'] == A.LABEL_AI and r['opinion'] == 'LONG'
+    r = A.display(v, now='2026-10-20T12:46:01Z')['ai'][0]
+    assert r['age_s'] == 1801 and r['label'] == A.LABEL_INSUFFICIENT and r['reasons'] == ['stale'] and 'opinion' not in r
     f = sig(tf='4h', candle_open='2026-10-20T08:00:00Z', snapshot=snap(last_close='2026-10-20T12:00:00Z',
                                                                         available_at='2026-10-20T12:00:03Z'),
             decided_at='2026-10-20T12:00:10Z')
     x = A.fold([f, shadow(f, created_at='2026-10-20T12:01:00Z')])[f['signal_id']]
-    assert A.display(x, now='2026-10-20T12:31:00Z')['ai'][0]['stale'] is False    # 4h: 30 min wins over 8 h
-    assert A.display(x, now='2026-10-20T12:31:01Z')['ai'][0]['stale'] is True
-    assert A.display(v)['ai'][0]['stale'] is None
+    assert A.display(x, now='2026-10-20T20:01:00Z')['ai'][0]['label'] == A.LABEL_AI           # 4h: 8 h is fresh
+    assert A.display(x, now='2026-10-20T20:01:01Z')['ai'][0]['label'] == A.LABEL_INSUFFICIENT
+    assert A.display(v)['ai'][0]['age_s'] is None and A.display(v)['ai'][0]['label'] == A.LABEL_AI
 
 
-def test_flag_off_is_the_stable_versioned_shape():
-    assert A.api_off() == {'schema_version': 1, 'on': False, 'mode': 'off', 'updated_at': None, 'rows': []}
+def test_flag_off_is_exactly_on_false_rows_empty_and_stable():
+    a, b = A.api_off(), A.api_off()
+    assert a == {'on': False, 'rows': []} and list(a) == ['on', 'rows'] and a['on'] is False
+    a['rows'].append('x')                                        # a caller mutating its copy never leaks into the next
+    assert b == {'on': False, 'rows': []} and A.api_off() == {'on': False, 'rows': []}
 
 
 # ------------------------------------------------------------------ bounded queue, failures never block
@@ -374,7 +394,7 @@ def test_replay_rejects_forged_records_that_bypass_the_builders():
         A.fold([k, A._seal(dict(outcome(sig()), signal_id=k['signal_id']))])
 
 
-# ------------------------------------------------------------------ measured (cost_rev) vs simulated outcomes
+# ------------------------------------------------------------------ measured (decision id + cost revision id) vs simulated
 def test_an_untaken_candidate_gets_only_a_simulated_outcome():
     s = sig(status='skipped')
     with pytest.raises(A.AIScanError, match='measured outcome on a skipped'):
@@ -384,14 +404,16 @@ def test_an_untaken_candidate_gets_only_a_simulated_outcome():
 
 
 @pytest.mark.parametrize('kw', [dict(source='measured', cost_basis='modelled'), dict(source='simulated', cost_basis='booked'),
-                                dict(source='replayed', cost_basis='modelled'), dict(cost_rev=None), dict(cost_rev=-1),
-                                dict(cost_rev=True), dict(cost_rev=1.0), dict(cost_model_hash=H4)])
-def test_measured_outcomes_key_on_an_int_cost_rev_only(kw):
+                                dict(source='replayed', cost_basis='modelled'), dict(rev=None), dict(rev=-1),
+                                dict(rev=True), dict(rev=1.0), dict(cost_model_hash=H4), dict(cost_revision_id=None),
+                                dict(cost_revision_id='rev-1'), dict(cost_revision_id=1)])
+def test_measured_outcomes_need_a_cost_revision_id_and_an_int_rev(kw):
     with pytest.raises(A.AIScanError):
         outcome(sig(), **kw)
 
 
-@pytest.mark.parametrize('kw', [dict(cost_model_hash=None), dict(cost_model_hash='v1'), dict(cost_rev=0)])
+@pytest.mark.parametrize('kw', [dict(cost_model_hash=None), dict(cost_model_hash='v1'), dict(rev=0),
+                                dict(cost_revision_id=CR0)])
 def test_simulated_outcomes_key_on_a_cost_model_hash_only(kw):
     with pytest.raises(A.AIScanError, match='simulated outcome'):
         sim(sig(), **kw)
@@ -407,12 +429,52 @@ def test_measured_and_simulated_outcomes_are_never_merged():
 def test_actual_cost_revision_supersedes_and_partial_exits_and_adds_survive():
     s = sig()
     o0 = outcome(s, partial_exits=2, adds=1)
-    o1 = outcome(s, cost_rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured', partial_exits=2, adds=1)
+    o1 = outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured', partial_exits=2, adds=1)
     for order in ([s, o0, o1], [s, o1, o0]):
         v = A.fold(order)[s['signal_id']]
         m = v['measured']
-        assert (m['cost_rev'], m['net_r'], m['partial_exits'], m['adds']) == (1, 0.9, 2, 1)
-    assert A.display(v)['outcomes']['measured'] == dict(cost_rev=1, net_r=0.9, cost_basis='measured', exit_reason='tp1')
+        assert (m['cost_revision_id'], m['rev'], m['net_r'], m['partial_exits'], m['adds']) == (CR1, 1, 0.9, 2, 1)
+    assert A.display(v)['outcomes']['measured'] == dict(cost_revision_id=CR1, rev=1, net_r=0.9, cost_basis='measured',
+                                                        exit_reason='tp1')
+
+
+def test_two_revisions_of_one_decision_each_join_to_their_own_outcome():
+    s = sig()
+    o0, o1 = outcome(s), outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured')
+    v = A.fold([s, o0, o1])[s['signal_id']]
+    assert set(v['revisions']) == {CR0, CR1}
+    assert (v['revisions'][CR0]['net_r'], v['revisions'][CR1]['net_r']) == (1.2, 0.9)
+    assert all(r['signal_id'] == s['signal_id'] for r in v['revisions'].values())
+
+
+def test_rev_reordering_never_changes_the_economic_join():
+    s = sig()
+    a = [outcome(s), outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured')]
+    b = [outcome(s, rev=7), outcome(s, cost_revision_id=CR1, rev=3, net_r=0.9, net_pnl=9.0, cost_basis='measured')]
+    c = [outcome(s, rev=5), outcome(s, cost_revision_id=CR1, rev=2, net_r=0.9, net_pnl=9.0, cost_basis='measured')]
+    joins = []
+    for recs in (a, b, b[::-1], c):
+        v = A.fold([s] + recs)[s['signal_id']]
+        joins.append({cid: (r['net_r'], r['net_pnl']) for cid, r in v['revisions'].items()})
+    assert all(j == {CR0: (1.2, 12.0), CR1: (0.9, 9.0)} for j in joins)      # renumbered revs: same join every time
+    assert A.fold([s] + c)[s['signal_id']]['measured']['cost_revision_id'] == CR0   # rev decides ORDER only
+
+
+def test_rev_deduplicates_and_a_reused_rev_or_renumbered_identity_refuses():
+    s = sig(); o0 = outcome(s)
+    assert A.fold([s, o0, outcome(s)]) == A.fold([s, o0])                     # same id + rev: restart no-op
+    with pytest.raises(A.AIScanError, match='share rev 0'):
+        A.fold([s, o0, outcome(s, cost_revision_id=CR1, net_r=0.9, net_pnl=9.0, cost_basis='measured')])
+    with pytest.raises(A.AIScanError, match='conflicting replay'):
+        A.fold([s, o0, outcome(s, rev=1)])                                    # one economic identity, two revs
+
+
+def test_cost_revision_id_is_content_derived():
+    assert A.cost_revision_id(dict(net=1.0, fees_actual=0.1)) == A.cost_revision_id(dict(fees_actual=0.1, net=1.0))
+    assert A.cost_revision_id(dict(net=1.0)) != A.cost_revision_id(dict(net=1.01))
+    for bad in (None, {}, [1]):
+        with pytest.raises(A.AIScanError):
+            A.cost_revision_id(bad)
 
 
 def test_several_models_are_kept_side_by_side():

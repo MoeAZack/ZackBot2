@@ -9,9 +9,9 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 
 | kind | replay key | written when | content |
 | --- | --- | --- | --- |
-| `signal` | `signal_id` | the engine has decided (same point as the ML-SHADOW decision hook) | candle open, cutoff, decision instant, input ingest times, snapshot hash, deterministic plan, rules status/reason, cost estimate, input coverage, `OK`/`INSUFFICIENT` + reasons |
+| `signal` | `signal_id` | the engine has decided (same point as the ML-SHADOW decision hook) | candle open, cutoff, decision instant, input ingest times, snapshot hash, deterministic plan, rules status/reason, cost estimate, input coverage, `snapshot_age_s`, `OK`/`INSUFFICIENT` + reasons |
 | `shadow` | `signal_id` + `epoch` | asynchronously, after the decision | immutable `model_id`, `prompt_hash`, `sampling`, `feature_schema_hash`, `cost_model_hash`, the epoch, the snapshot/plan hashes it read; then either `OK` (raw-response hash, opinion `LONG`/`SHORT`/`NO_TRADE`, coverage, disagreement, probability block, bounded rationale) or `INSUFFICIENT` with `queue_full`/`timeout`/`budget_exhausted`/`remote_error` |
-| `outcome` | measured: `signal_id` + `cost_rev`; simulated: `signal_id` + `cost_model_hash` | measured: at close (`cost_rev` 0) and on each actual-cost restatement; simulated: from the causal replay | net R / PnL, exit reason, cost basis, partial exits, adds |
+| `outcome` | measured: `signal_id` + `cost_revision_id` (`rev` orders only); simulated: `signal_id` + `cost_model_hash` | measured: at close (`rev` 0) and on each actual-cost restatement; simulated: from the causal replay | net R / PnL, exit reason, cost basis, partial exits, adds |
 
 - **`signal_id`** is `ml_shadow.ledger.decision_id(sleeve, strategy, symbol, side, tf, candle_open)`. It is deterministic and
   restart-stable, and it joins the ML-SHADOW decision and label rows.
@@ -19,12 +19,16 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
   - `candle_open` is the engine's `sg['time']`. Measured: it is the decision candle's open (`engine.py` `dec_open`).
   - `cutoff` is that candle's close.
   - `decided_at` is the engine's decision instant, which is ≥ the cutoff.
-  - The snapshot must be the **exact** cutoff candle: earlier is `not_at_cutoff`, later is `after_cutoff`.
+  - **`STALE_BARS = 2`** is a timeframe-relative freshness ceiling (Codex 6452143340 #1). The snapshot's last close must
+    not be after the cutoff (`after_cutoff`), and its absolute age `snapshot_age_s = cutoff - last_close` is recorded and
+    shown. Exactly 2 bars of the timeframe old is fresh; older is `INSUFFICIENT` with `stale_snapshot` (15m: 1,800 s,
+    1h: 7,200 s, 4h: 28,800 s).
   - Every point-in-time input must have been **ingested** by `decided_at`: the snapshot (`available_at`), `funding`,
     `universe` membership and `exchange_rules`. A late or missing ingest time gives `INSUFFICIENT`, so restated or later-listed
     data cannot leak.
-- **Freshness:** a shadow result is display-fresh for min(2 bars, 30 min) after `created_at`. Older results stay as historical
-  evidence, but `display(view, now)` marks them `stale`.
+- **Display freshness:** the same ceiling applies to a shadow result. `display(view, now)` shows its absolute `age_s`
+  (`now - created_at`); older than 2 bars of the signal's timeframe, it is shown as `INSUFFICIENT` with `stale` and no score.
+  The record itself stays as historical evidence.
 - **Epoch:** `sha256(model_id, prompt_hash, sampling, feature_schema_hash, TARGET, cost_model_hash)[:16]`. A change of any of
   these opens a new, unverified epoch. Vendor aliases are not identifiers.
 - **Probability:**
@@ -40,9 +44,12 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
       base rate.
   - Otherwise the probability is dropped and the state is `UNVERIFIED`.
 - **Outcomes:**
-  - `measured` is the engine's own trade. It is keyed by its history row's append-only `cost_rev` (#196, `engine.py`
-    `_row_changed`: 0 = booked, +1 per actual-cost restatement); the highest supersedes. Its cost basis is `booked` or
-    `measured`.
+  - `measured` is the engine's own trade. Its join key is the immutable decision id (`signal_id`) **plus the actual-cost
+    revision identifier** `cost_revision_id` = `cost_revision_id(actual_costs)`, the sha256 of that revision's actual-cost
+    fields (Codex 6452143340 #2). Each revision joins to its own outcome under `view['revisions']`.
+  - The monotonic `rev` (the history row's #196 `cost_rev`, `engine.py` `_row_changed`: 0 = booked, +1 per restatement) is
+    kept **only for ordering and deduplication**: the highest `rev` is the current `measured`, two revisions sharing a `rev`
+    refuse, and renumbering `rev` never changes which outcome a revision id joins. Its cost basis is `booked` or `measured`.
   - `simulated` is a deterministic causal replay under the frozen policy and cost model. It is keyed by that sha256 cost-model
     hash, and its cost basis is `modelled`.
   - Untaken, vetoed or capacity-skipped candidates get simulated outcomes only.
@@ -52,7 +59,7 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 
 - **INSUFFICIENT inputs.** Each of these gives `INSUFFICIENT` with the exact reason, never an inferred score:
   - a missing snapshot, features or last close;
-  - a snapshot that is not the exact cutoff candle;
+  - a snapshot after the cutoff, or older than 2 bars of its timeframe;
   - an input ingested after the decision instant;
   - a non-finite or non-numeric feature;
   - a missing or malformed plan or targets;
@@ -73,7 +80,8 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 - **Outcome refusals.** An outcome is refused in each of these cases:
   - it closed at or before the decision;
   - it is a measured outcome on a skipped decision;
-  - the source has the wrong key (measured needs an int `cost_rev` only; simulated needs a cost-model hash only);
+  - the source has the wrong key (measured needs a sha256 `cost_revision_id` and an int `rev` ≥ 0; simulated needs a
+    cost-model hash only);
   - its cost basis doesn't match its source.
 - **Replay (`fold`).**
   - An exact duplicate is a no-op, which is what makes restarts idempotent.
@@ -89,14 +97,16 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 
 | method | path | response |
 | --- | --- | --- |
-| GET | `/api/ai_scan` | `{schema_version: 1, on, mode, updated_at, rows:[display(view, now)...], health}`, newest first. Optional `?sort=` with `age`/`symbol`/`coverage`/`disagreement`/`outcome_r` and `?limit<=500` |
+| GET | `/api/ai_scan` | flag on: `{on: true, rows:[display(view, now)...], ...}`, newest first. Optional `?sort=` with `age`/`symbol`/`coverage`/`disagreement`/`outcome_r` and `?limit<=500` |
 | GET | `/api/ai_scan/<signal_id>` | one `display(view, now)` plus rationale, entry/stop/targets, the cost estimate, age, and the outcome history per source |
 
-- **Flag off.** Both paths return `api_off()` = `{schema_version: 1, on: false, mode: "off", updated_at: null, rows: []}` when
-  the flag is off; no ledger is read. There is no POST, PUT or DELETE.
+- **Flag off.** Both paths return `api_off()` = exactly `{on: false, rows: []}` when the flag is off (Codex 6452143340 #3;
+  stable, pinned); no ledger is read. There is no POST, PUT or DELETE.
+- **Note:** the #200 contract text (`docs/AI_SCAN_01.md`) still describes the earlier exact-cutoff + min(2 bars, 30 min)
+  display rule and the versioned five-field flag-off shape. This schema follows the later Codex decisions in 6452143340.
 - **Labels.** The labels never merge:
   - `RULES` is the deterministic decision and plan;
-  - `AI SHADOW` is one row per model epoch, with `stale`;
+  - `AI SHADOW` is one row per model epoch, with its `age_s`;
   - `UNVERIFIED` is shown in place of any uncalibrated probability; a calibrated one is shown with its target;
   - `INSUFFICIENT` is shown with its reasons, for the signal or for a failed shadow attempt.
 - **Never exposed:** credentials, exchange or order ids, raw logs, raw state.
