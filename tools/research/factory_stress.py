@@ -169,7 +169,14 @@ def bust_echo(pkt: dict, label: str = 'packet') -> dict:
     b = pkt.get('bust')
     if not isinstance(b, dict) or not isinstance(b.get('busted'), bool):
         raise StressError(f'factory stress: {label} bust.busted missing or not a boolean')
-    post = ((pkt.get('stats') or {}).get('post_bust') or {}).get('aggregate', {}).get('trades')
+    post = None
+    stats = pkt.get('stats')
+    pb = stats.get('post_bust') if isinstance(stats, dict) else None
+    if pb is not None:                                                  # Codex 6451222555: nested shapes fail closed
+        agg = pb.get('aggregate') if isinstance(pb, dict) else None
+        if not isinstance(agg, dict):
+            raise StressError(f'factory stress: {label} stats.post_bust.aggregate missing or not an object')
+        post = agg.get('trades')
     after = b.get('trades_after')
     n = post if post is not None else after
     if n is None:
@@ -180,6 +187,10 @@ def bust_echo(pkt: dict, label: str = 'packet') -> dict:
         raise StressError(f'factory stress: {label} busted but its post-bust trade count is missing')
     if post is not None and after is not None and post != after:
         raise StressError(f'factory stress: {label} stats.post_bust trades {post} != bust.trades_after {after}')
+    if not b['busted'] and n:
+        raise StressError(f'factory stress: {label} not busted but has {n} post-bust trades')
+    if b['busted']:
+        _ts(b.get('time'), f'{label} bust.time')
     return dict(busted=b['busted'], time=b.get('time'), post_bust_trades=n)
 
 

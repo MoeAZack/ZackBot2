@@ -435,3 +435,30 @@ def test_validate_alone_rejects_a_malformed_bust_record():
     p['bust'] = {'busted': 'no'}
     with pytest.raises(FS.StressError, match='bust.busted'):
         FS.validate(seal(p))
+
+
+def test_not_busted_with_post_bust_trades_fails_closed():                   # Codex 6451222555 exact regression
+    p = mk(CONC)
+    p['bust'] = {'busted': False, 'trades_after': 2}
+    p['stats']['post_bust'] = {'aggregate': {'trades': 2}}
+    with pytest.raises(FS.StressError, match='not busted but has 2 post-bust trades'):
+        run([seal(p)])
+
+
+@pytest.mark.parametrize('time', [None, 'yesterday', 20250301, '2025-03-01'])
+def test_busted_without_a_valid_time_fails_closed(time):
+    p = busted(CONC, after=2)
+    if time is None:
+        del p['bust']['time']
+    else:
+        p['bust']['time'] = time
+    with pytest.raises(FS.StressError, match='bust.time'):
+        run([seal(p)])
+
+
+@pytest.mark.parametrize('pb', [[], 'x', 3, {}, {'aggregate': None}, {'aggregate': []}, {'aggregate': 'x'}])
+def test_malformed_post_bust_shapes_raise_stress_error(pb):
+    p = busted(CONC, after=2)
+    p['stats']['post_bust'] = pb
+    with pytest.raises(FS.StressError, match='post_bust.aggregate'):
+        run([seal(p)])
