@@ -146,22 +146,77 @@ def b1(outputs, hypothesis, symbols, first, hi, rules, slip_c, scenario, ds):
             "wallet_end":equity, "rows":rows}
 
 
-def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, ds):
-    """10,000 deterministic matched random-entry shared books.
+B0_CANDIDATE = "edge04_legacy_reeval.v1"
+B0_RULE = "edge04-b0-capacity-rejection/1"
+B0_MAX_ATTEMPTS = 10_000   # per draw and stress; frozen by EDGE04_B0_AMENDMENT_v1
+B0_PAIRING = ("stress rows are conditionally sampled per stress from the same proposal seed sequence and are "
+              "NOT paired outcome-by-outcome")
+# Resampled refusal reasons, frozen by EDGE04_B0_AMENDMENT_v1. Any other refusal reason fails the stress closed.
+B0_STRUCTURAL = ("capacity.one_per_symbol", "capacity.max_positions", "proposal.collision")
+B0_PATH_DEPENDENT = ("risk.daily_loss", "execution.size_min")
+B0_MATERIAL_SHARE = 0.05
+
+
+def b0_refusal_group(reason):
+    """'structural' | 'path_dependent' | None (unclassified: never resampled, fails closed)."""
+    return "structural" if reason in B0_STRUCTURAL else "path_dependent" if reason in B0_PATH_DEPENDENT else None
+
+
+def b0_conditioning(structural, path_dependent):
+    """Pre-registered reading of how far the resampled null is conditioned on path-dependent refusals."""
+    total = structural + path_dependent
+    share = path_dependent / total if total else 0.0
+    label = ("CLEAN_ON_DIAGNOSTIC" if path_dependent == 0 else
+             "CONDITIONED_NULL" if share < B0_MATERIAL_SHARE else "MATERIAL_CONDITIONING")
+    return {"structural_refusals": structural, "path_dependent_refusals": path_dependent,
+            "total_resampled_refusals": total, "path_dependent_share": share, "conditioning": label}
+
+
+def b0_seed(hypothesis, key, index, attempt):
+    """Attempt 0 is the frozen addendum seed; retries derive from (seed root, split, draw index, attempt) only."""
+    base = O.seed(B0_CANDIDATE, hypothesis, key, index)   # also enforces the addendum's domain checks
+    if type(attempt) is not int or attempt < 0:
+        raise StageAError("B0 attempt must be a non-negative int")
+    if attempt == 0:
+        return base
+    raw = f"{B0_CANDIDATE}|{hypothesis}|{key}|{index}|attempt={attempt}".encode("ascii")
+    return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big")
+
+
+def _quantiles(xs):
+    xs = sorted(xs)
+    if not xs:
+        return None
+    pick = lambda q: xs[min(len(xs) - 1, int(q * (len(xs) - 1) + 0.5))]
+    return {"min": xs[0], "p50": pick(.5), "p90": pick(.9), "p99": pick(.99), "max": xs[-1]}
+
+
+def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, ds, *, max_attempts=None):
+    """10,000 deterministic matched random-entry shared books (EDGE04_B0_AMENDMENT_v1).
 
     Each completed primary episode contributes one same-symbol/side/holding-duration/risk-shape template.
     Random entries are without replacement. The normal shared wallet enforces the identical capacity gates.
+    Draw ``d`` tries seeds ``b0_seed(h, split, d, a)`` for a = 0, 1, ...; the first attempt whose shared book
+    admits every template completely is draw ``d``. Only the classified refusals are resampled: STRUCTURAL
+    (one-per-symbol, max-positions, proposal collision) and PATH_DEPENDENT (daily-loss halt, size minimum).
+    Unclassified refusals, data/episode incompleteness, orchestration or cost failures fail the stress closed.
+    PATH_DEPENDENT resampling conditions the null on avoiding drawdown halts and size refusals (a conservative
+    upward selection of B0 P&L); its share is emitted with a pre-registered label per stress. A draw that exhausts the finite per-draw budget makes that stress INCOMPLETE (fail closed).
     """
+    budget = B0_MAX_ATTEMPTS if max_attempts is None else int(max_attempts)
+    if budget < 1:
+        raise StageAError("B0 attempt budget must be >= 1")
+    head = {"books":O.B0_BOOKS,"rule":B0_RULE,"max_attempts_per_draw":budget}
     if primary_book.get("status") != PR.COMPLETE:
         return {"status":PR.INCOMPLETE,"reason":"primary book incomplete; matched B0 is undefined",
-                "books":O.B0_BOOKS,"valid_books":0}
+                "valid_books":0,**head}
     templates=[]
     for x in primary_book.get("accepted",[]):
         if x.get("status") != PR.COMPLETE:
-            return {"status":PR.INCOMPLETE,"reason":"primary episode incomplete","books":O.B0_BOOKS,"valid_books":0}
+            return {"status":PR.INCOMPLETE,"reason":"primary episode incomplete","valid_books":0,**head}
         hold=(x["exit_ms"]-x["entry_ms"])//PR.TF
         if hold < 1:
-            return {"status":PR.INCOMPLETE,"reason":"non-positive holding duration","books":O.B0_BOOKS,"valid_books":0}
+            return {"status":PR.INCOMPLETE,"reason":"non-positive holding duration","valid_books":0,**head}
         templates.append({"symbol":x["symbol"],"side":x["side"],"hold":hold,
                           "risk_frac":abs(x["entry_price"]-x["initial_stop"])/x["entry_price"]})
     _,syms=PR.read_tape(outputs)
@@ -175,9 +230,9 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                        and sx.rec[t+tp["hold"]*PR.TF].get("n") is not None]
     per_stress={}
     for stress,scenario in O.STRESS.items():
-        vals=[];invalid=0
-        for index in range(O.B0_BOOKS):
-            rng=random.Random(O.seed("edge04_legacy_reeval.v1",hypothesis,key,index)); used=set(); cand=[]
+        def attempt_book(rng, scenario=scenario):
+            """One whole-book draw -> (net P&L, None, admitted) when valid, else (None, rejection reason, admitted)."""
+            used=set(); cand=[]
             try:
                 for tp in templates:
                     pool=[t for t in pools[(tp["symbol"],tp["hold"])] if (tp["symbol"],t) not in used]
@@ -210,15 +265,65 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                     return {"status":PR.COMPLETE,"symbol":c["symbol"],"entry_ms":e,"exit_ms":z,"pnl":pnl,
                             "r":pnl/(qty*c["risk_u"]),"wallet_events":events}
                 book=O.route_shared(cand,replay)
-                if len(book["accepted"]) != len(templates) or book["status"] != PR.COMPLETE:
-                    invalid+=1
-                else: vals.append(book["wallet_end"]-10_000.0)
-            except (PR.Incomplete,O.OrchestrationError,StageAError,C.CostError): invalid+=1
-        per_stress[stress]={"valid_books":len(vals),"invalid_books":invalid,
-                            "mean_net_pnl":math.fsum(vals)/len(vals) if vals else None,
-                            "outcomes_digest":sha_doc(vals)}
-    return {"status":PR.COMPLETE if all(x["valid_books"]==O.B0_BOOKS for x in per_stress.values()) else PR.INCOMPLETE,
-            "books":O.B0_BOOKS,"stresses":per_stress}
+            except StageAError: return None,"proposal.collision",0,False,["proposal.collision"]
+            except PR.Incomplete as e: return None,f"data.{e.reason}",0,True,[]
+            except O.OrchestrationError as e: return None,f"data.orchestration: {e}",0,True,[]
+            except C.CostError as e: return None,f"data.cost: {e}",0,True,[]
+            if book["status"] != PR.COMPLETE:
+                return None,"episode.incomplete",len(book["accepted"]),True,[]
+            if len(book["accepted"]) != len(templates):
+                refs=[r["reason"] for r in book["refused"]] or ["capacity.unknown"]
+                why="+".join(sorted(set(refs)))
+                if any(b0_refusal_group(r) is None for r in refs):
+                    return None,f"unclassified.refusal: {why}",len(book["accepted"]),True,[]
+                return None,why,len(book["accepted"]),False,refs
+            return book["wallet_end"]-10_000.0,None,len(book["accepted"]),False,[]
+
+        vals=[];attempts=[];trades=[];reasons=collections.Counter();shortfall=collections.Counter();exhausted=None
+        raw=collections.Counter()
+        failed=None
+        for index in range(O.B0_BOOKS):
+            for attempt in range(budget):
+                val,why,admitted,fatal,refs=attempt_book(random.Random(b0_seed(hypothesis,key,index,attempt)))
+                if why is None:
+                    vals.append(val);attempts.append(attempt+1);trades.append(admitted);break
+                if fatal:   # data/episode incompleteness is never resampled away
+                    failed={"draw":index,"attempt":attempt,"reason":why};break
+                reasons[why]+=1;shortfall[admitted]+=1;raw.update(refs)
+            else:
+                exhausted={"draw":index,"attempts":budget}
+            if failed is not None or exhausted is not None:
+                break
+        rejected=sum(reasons.values())
+        row={"status":PR.COMPLETE if exhausted is None and failed is None and len(vals)==O.B0_BOOKS
+             else PR.INCOMPLETE,
+             "valid_books":len(vals),"rejected_attempts":rejected,"rejection_reasons":dict(sorted(reasons.items())),
+             "attempts_per_draw":attempts,"mean_net_pnl":math.fsum(vals)/len(vals) if vals else None,
+             "outcomes_digest":sha_doc(vals),
+             "refusal_reason_histogram":dict(sorted(raw.items())),
+             **b0_conditioning(sum(v for k,v in raw.items() if b0_refusal_group(k)=="structural"),
+                               sum(v for k,v in raw.items() if b0_refusal_group(k)=="path_dependent")),
+             "diagnostics":{"accepted_books":len(vals),"total_attempts":len(vals)+rejected+(failed is not None),
+                            "pairing":B0_PAIRING,
+                            "acceptance_rate":len(vals)/(len(vals)+rejected) if vals or rejected else None,
+                            "attempts_quantiles":_quantiles(attempts),
+                            "attempts_histogram":{str(k):v for k,v in sorted(collections.Counter(attempts).items())},
+                            "attempts_digest":sha_doc(attempts),
+                            "accepted_trade_count_quantiles":_quantiles(trades),
+                            "rejected_admitted_count_histogram":{str(k):v for k,v in sorted(shortfall.items())}}}
+        if exhausted is not None:
+            row["exhausted"]=exhausted
+            row["reason"]=f"B0 draw {exhausted['draw']} exhausted the {budget}-attempt budget; baseline is INCOMPLETE"
+        if failed is not None:
+            row["failed"]=failed
+            row["reason"]=(f"B0 draw {failed['draw']} attempt {failed['attempt']} failed closed: {failed['reason']};"
+                           " baseline is INCOMPLETE")
+        per_stress[stress]=row
+    return {"status":PR.COMPLETE if all(x["status"]==PR.COMPLETE for x in per_stress.values()) else PR.INCOMPLETE,
+            **head,"pairing":B0_PAIRING,
+            "refusal_groups":{"structural":list(B0_STRUCTURAL),"path_dependent":list(B0_PATH_DEPENDENT),
+                              "unclassified":"fail closed"},
+            "material_share":B0_MATERIAL_SHARE,"stresses":per_stress}
 
 
 def run_split(repo, outdir, key, ds, plan, ledger, rules, symbols, slip_c):
