@@ -12,32 +12,71 @@
     "implementation": "tools/research/edge04_stage_a.py b0()",
     "draw": "unchanged whole-book draw: one template per complete primary episode (symbol, side, holding bars, risk fraction), entries uniform without replacement inside the book, routed through the unchanged shared wallet and costs",
     "acceptance": "a draw is valid only if the shared book admits every template and every admitted episode is COMPLETE",
-    "resample": "draw d tries attempt a = 0, 1, ... until the first valid book; that book is draw d",
+    "resample": "ONLY capacity-validity refusals (shared-router refusals) and proposal collisions (no free entry in a template pool) are resampled: draw d tries attempt a = 0, 1, ... until the first valid book",
     "seed_attempt_0": "the frozen addendum seed sha256(candidate_id|hypothesis|split|book_index) first 64 bits",
     "seed_attempt_a_ge_1": "sha256(candidate_id|hypothesis|split|book_index|attempt=a) first 64 bits",
-    "per_stress": "each stress resamples independently with the same seed sequence",
-    "pnl_independence": "acceptance reads only admission/refusal and completeness, never P&L; accepted books are the original null conditioned on validity"
+    "per_stress": "each stress resamples independently with the same deterministic proposal seed sequence; stress rows are conditionally sampled and NOT paired outcome-by-outcome",
+    "pnl_independence": "acceptance reads only admission/refusal and completeness, never P&L; accepted books are the original null conditioned on capacity validity",
+    "fail_closed": "any data or episode incompleteness (PR.Incomplete -> data.<reason>, orchestration failure -> data.orchestration, cost failure -> data.cost, an admitted episode not COMPLETE -> episode.incomplete) is never resampled: the stress stops at once and is INCOMPLETE with failed={draw, attempt, reason}"
   },
   "budget": {
     "max_attempts_per_draw": 10000,
-    "exhaustion": "the first draw that exhausts the budget stops that stress; the stress and the B0 row are INCOMPLETE with the draw index and reason"
+    "wall_clock_cap": null,
+    "exhaustion": "the first draw that exhausts the deterministic budget stops that stress; the stress and the B0 row are INCOMPLETE with exhausted={draw, attempts}"
   },
   "rejection_reasons": {
-    "capacity": "sorted '+'-joined shared-router refusal reasons of the attempt (capacity.one_per_symbol, capacity.max_positions, risk.daily_loss, execution.size_min)",
-    "episode.incomplete": "an admitted episode was not COMPLETE",
-    "match.unmatched_template": "no free entry left in a template pool",
-    "data": "data.<incomplete reason>, data.orchestration or data.cost raised while building or routing the book"
+    "capacity": "sorted '+'-joined shared-router refusal reasons of the attempt (capacity.one_per_symbol, capacity.max_positions, risk.daily_loss, execution.size_min); resampled",
+    "proposal.collision": "no free entry left in a template pool; resampled",
+    "fail_closed": "data.<incomplete reason>, data.orchestration: <msg>, data.cost: <msg>, episode.incomplete; never resampled"
   },
   "outputs_per_stress": [
-    "status", "valid_books", "rejected_attempts", "rejection_reasons", "attempts_per_draw", "mean_net_pnl",
-    "outcomes_digest", "exhausted", "reason",
-    "diagnostics.accepted_books", "diagnostics.total_attempts", "diagnostics.acceptance_rate",
-    "diagnostics.attempts_quantiles", "diagnostics.attempts_histogram", "diagnostics.attempts_digest",
-    "diagnostics.accepted_trade_count_quantiles", "diagnostics.rejected_admitted_count_histogram"
+    "status",
+    "valid_books",
+    "rejected_attempts",
+    "rejection_reasons",
+    "attempts_per_draw",
+    "mean_net_pnl",
+    "outcomes_digest",
+    "exhausted",
+    "failed",
+    "reason",
+    "diagnostics.accepted_books",
+    "diagnostics.total_attempts",
+    "diagnostics.pairing",
+    "diagnostics.acceptance_rate",
+    "diagnostics.attempts_quantiles",
+    "diagnostics.attempts_histogram",
+    "diagnostics.attempts_digest",
+    "diagnostics.accepted_trade_count_quantiles",
+    "diagnostics.rejected_admitted_count_histogram"
   ],
-  "unchanged": ["primary episodes", "hypotheses", "windows", "costs", "seed root", "stress definitions",
-                "B0_BOOKS 10000", "ledger history", "holdout sealed"],
+  "unchanged": [
+    "primary episodes",
+    "hypotheses",
+    "windows",
+    "costs",
+    "seed root",
+    "stress definitions",
+    "B0_BOOKS 10000",
+    "ledger history",
+    "holdout sealed"
+  ],
   "chosen_without": "any candidate or B0 P&L; the only result-derived inputs seen were the valid-book counts in the defect line",
   "compatibility": "when attempt 0 is valid for every draw the outputs equal the pre-amendment generator (golden-digest test)",
-  "boundaries": {"market_data_opened": false, "holdout_read": false, "paper": false, "runtime_change": false, "rerun_started": false}
+  "boundaries": {
+    "market_data_opened": false,
+    "holdout_read": false,
+    "paper": false,
+    "runtime_change": false,
+    "rerun_started": false
+  },
+  "outputs_top_level": [
+    "status",
+    "books",
+    "rule",
+    "max_attempts_per_draw",
+    "pairing",
+    "stresses"
+  ],
+  "revision": "r2 2026-10-27: Codex CHANGES REQUESTED at e86aefa - data/episode incompleteness fails closed, unpaired stresses disclosed, no wall-clock cap"
 }

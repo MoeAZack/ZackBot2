@@ -149,6 +149,8 @@ def b1(outputs, hypothesis, symbols, first, hi, rules, slip_c, scenario, ds):
 B0_CANDIDATE = "edge04_legacy_reeval.v1"
 B0_RULE = "edge04-b0-capacity-rejection/1"
 B0_MAX_ATTEMPTS = 10_000   # per draw and stress; frozen by EDGE04_B0_AMENDMENT_v1
+B0_PAIRING = ("stress rows are conditionally sampled per stress from the same proposal seed sequence and are "
+              "NOT paired outcome-by-outcome")
 
 
 def b0_seed(hypothesis, key, index, attempt):
@@ -176,9 +178,10 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
     Each completed primary episode contributes one same-symbol/side/holding-duration/risk-shape template.
     Random entries are without replacement. The normal shared wallet enforces the identical capacity gates.
     Draw ``d`` tries seeds ``b0_seed(h, split, d, a)`` for a = 0, 1, ...; the first attempt whose shared book
-    admits every template completely is draw ``d``. Acceptance depends only on capacity/data validity, never
-    on P&L, so accepted books are the old whole-book null conditioned on validity. A draw that exhausts the
-    finite per-draw budget makes that stress INCOMPLETE (fail closed).
+    admits every template completely is draw ``d``. Only capacity refusals and proposal collisions are
+    resampled; any data/episode incompleteness, orchestration or cost failure fails the stress closed at once.
+    Acceptance never reads P&L, so accepted books are the old whole-book null conditioned on capacity
+    validity. A draw that exhausts the finite per-draw budget makes that stress INCOMPLETE (fail closed).
     """
     budget = B0_MAX_ATTEMPTS if max_attempts is None else int(max_attempts)
     if budget < 1:
@@ -242,32 +245,39 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
                     return {"status":PR.COMPLETE,"symbol":c["symbol"],"entry_ms":e,"exit_ms":z,"pnl":pnl,
                             "r":pnl/(qty*c["risk_u"]),"wallet_events":events}
                 book=O.route_shared(cand,replay)
-            except StageAError: return None,"match.unmatched_template",0
-            except PR.Incomplete as e: return None,f"data.{e.reason}",0
-            except O.OrchestrationError: return None,"data.orchestration",0
-            except C.CostError: return None,"data.cost",0
+            except StageAError: return None,"proposal.collision",0,False
+            except PR.Incomplete as e: return None,f"data.{e.reason}",0,True
+            except O.OrchestrationError as e: return None,f"data.orchestration: {e}",0,True
+            except C.CostError as e: return None,f"data.cost: {e}",0,True
             if book["status"] != PR.COMPLETE:
-                return None,"episode.incomplete",len(book["accepted"])
+                return None,"episode.incomplete",len(book["accepted"]),True
             if len(book["accepted"]) != len(templates):
-                return None,"+".join(sorted({r["reason"] for r in book["refused"]}) or ["capacity.unknown"]),\
-                    len(book["accepted"])
-            return book["wallet_end"]-10_000.0,None,len(book["accepted"])
+                why="+".join(sorted({r["reason"] for r in book["refused"]})) or "capacity.unknown"
+                return None,why,len(book["accepted"]),False
+            return book["wallet_end"]-10_000.0,None,len(book["accepted"]),False
 
         vals=[];attempts=[];trades=[];reasons=collections.Counter();shortfall=collections.Counter();exhausted=None
+        failed=None
         for index in range(O.B0_BOOKS):
             for attempt in range(budget):
-                val,why,admitted=attempt_book(random.Random(b0_seed(hypothesis,key,index,attempt)))
+                val,why,admitted,fatal=attempt_book(random.Random(b0_seed(hypothesis,key,index,attempt)))
                 if why is None:
                     vals.append(val);attempts.append(attempt+1);trades.append(admitted);break
+                if fatal:   # data/episode incompleteness is never resampled away
+                    failed={"draw":index,"attempt":attempt,"reason":why};break
                 reasons[why]+=1;shortfall[admitted]+=1
             else:
-                exhausted={"draw":index,"attempts":budget};break
+                exhausted={"draw":index,"attempts":budget}
+            if failed is not None or exhausted is not None:
+                break
         rejected=sum(reasons.values())
-        row={"status":PR.COMPLETE if exhausted is None and len(vals)==O.B0_BOOKS else PR.INCOMPLETE,
+        row={"status":PR.COMPLETE if exhausted is None and failed is None and len(vals)==O.B0_BOOKS
+             else PR.INCOMPLETE,
              "valid_books":len(vals),"rejected_attempts":rejected,"rejection_reasons":dict(sorted(reasons.items())),
              "attempts_per_draw":attempts,"mean_net_pnl":math.fsum(vals)/len(vals) if vals else None,
              "outcomes_digest":sha_doc(vals),
-             "diagnostics":{"accepted_books":len(vals),"total_attempts":len(vals)+rejected,
+             "diagnostics":{"accepted_books":len(vals),"total_attempts":len(vals)+rejected+(failed is not None),
+                            "pairing":B0_PAIRING,
                             "acceptance_rate":len(vals)/(len(vals)+rejected) if vals or rejected else None,
                             "attempts_quantiles":_quantiles(attempts),
                             "attempts_histogram":{str(k):v for k,v in sorted(collections.Counter(attempts).items())},
@@ -277,9 +287,13 @@ def b0(outputs, hypothesis, primary_book, key, first, last, hi, rules, slip_c, d
         if exhausted is not None:
             row["exhausted"]=exhausted
             row["reason"]=f"B0 draw {exhausted['draw']} exhausted the {budget}-attempt budget; baseline is INCOMPLETE"
+        if failed is not None:
+            row["failed"]=failed
+            row["reason"]=(f"B0 draw {failed['draw']} attempt {failed['attempt']} failed closed: {failed['reason']};"
+                           " baseline is INCOMPLETE")
         per_stress[stress]=row
     return {"status":PR.COMPLETE if all(x["status"]==PR.COMPLETE for x in per_stress.values()) else PR.INCOMPLETE,
-            **head,"stresses":per_stress}
+            **head,"pairing":B0_PAIRING,"stresses":per_stress}
 
 
 def run_split(repo, outdir, key, ds, plan, ledger, rules, symbols, slip_c):

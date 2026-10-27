@@ -17,16 +17,23 @@ It then required all 10,000 indices to be valid. On complete WF3 primaries only 
   fraction. Entries are uniform and without replacement inside a book. The book is routed through the same shared
   wallet, capacity gates and costs as before.
 - **Acceptance.** A draw is valid only if the shared book admits every template and every admitted episode is COMPLETE.
-- **Resampling.** Draw `d` tries attempts `a = 0, 1, ...` and keeps the first valid book.
+- **Resampling.** Only capacity refusals from the shared router and proposal collisions (no free entry left in a
+  template pool) are resampled. Draw `d` tries attempts `a = 0, 1, ...` and keeps the first valid book.
   - Attempt 0 uses the frozen addendum seed `sha256(candidate_id|hypothesis|split|book_index)`.
   - Attempt `a >= 1` uses `sha256(candidate_id|hypothesis|split|book_index|attempt=a)`.
   - In both cases the seed is the first 64 bits of the hash.
-- **Per stress.** Each stress resamples on its own, using the same seed sequence.
-- **Budget.** Each draw gets at most 10,000 attempts. The first draw that runs out stops its stress. That stress, and
+- **Fail closed, never resampled.** Data or episode incompleteness stops the stress at once and makes it INCOMPLETE,
+  with `failed = {draw, attempt, reason}`. This covers `PR.Incomplete` (`data.<reason>`), orchestration failures
+  (`data.orchestration`), cost failures (`data.cost`) and an admitted episode that is not COMPLETE
+  (`episode.incomplete`).
+- **Per stress.** Each stress resamples on its own, using the same deterministic proposal seed sequence. Stress rows
+  are therefore conditionally sampled and **not paired outcome-by-outcome**. Every output carries this disclosure
+  in `pairing`.
+- **Budget.** Each draw gets at most 10,000 attempts. The budget is deterministic and there is no wall-clock cap. The first draw that runs out stops its stress. That stress, and
   the B0 row, become INCOMPLETE, with the draw index and reason recorded.
 
 The rule reads only admission, refusal and completeness, never P&L. The accepted books are therefore the original
-whole-book null conditioned on capacity and data validity. They stay exchangeable across draws and keep the same
+whole-book null conditioned on capacity validity. They stay exchangeable across draws and keep the same
 risk-matched template shape. When attempt 0 is valid for every draw, the output equals the pre-amendment generator
 exactly. A golden-digest test enforces this.
 
@@ -35,7 +42,9 @@ exactly. A golden-digest test enforces this.
 Each stress records:
 
 - `attempts_per_draw` and `rejected_attempts`;
-- `rejection_reasons`: shared-router refusal reasons, `episode.incomplete`, `match.unmatched_template` or `data.*`;
+- `rejection_reasons`: resampled reasons only, meaning shared-router refusal reasons or `proposal.collision`;
+- `failed` or `exhausted`, with the reason, when the stress fails closed;
+- the `pairing` disclosure;
 - `acceptance_rate` and `total_attempts`;
 - attempts as quantiles, a histogram and a digest;
 - accepted-book trade-count quantiles;
@@ -49,10 +58,12 @@ valid-book counts listed above. The following are unchanged: primary episodes, h
 stress definitions, the 10,000-book count and ledger history. The holdout stays sealed. No market data, PAPER state or
 runtime state was opened, and no rerun was started.
 
-## Open points for the signer
+## Revision
 
-1. Data-incomplete attempts (`data.*`) are resampled, not failed closed. Primaries can only occur where data is
-   complete, so this matches them, but the signer should confirm it.
-2. Each stress resamples on its own, so B0 books are not paired across stresses.
-3. The 10,000-attempt budget makes exhaustion negligible at H1's observed ~0.4% acceptance, which costs about
-   2.6 million book simulations per stress. H2 at 0/10,000 is expected to fail closed.
+r2, 27 October 2026: Codex requested changes at `e86aefa`.
+
+- Data and episode incompleteness now fail closed instead of being resampled.
+- Unpaired stress rows are disclosed.
+- The 10,000-attempt budget stays deterministic, with no wall-clock cap.
+
+H2's 0/10,000 valid base books mean it is expected to exhaust the budget and fail closed.

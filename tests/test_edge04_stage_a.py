@@ -119,3 +119,38 @@ def test_b0_diagnostics_present(monkeypatch):
 def test_b0_attempt_seeds():
     assert A.b0_seed("H1","wf3[0]",7,0)==A.O.seed("edge04_legacy_reeval.v1","H1","wf3[0]",7)
     assert len({A.b0_seed("H1","wf3[0]",7,a) for a in range(50)})==50
+
+def _fail_on_call(n,exc=None,book=None):
+    """Wrap O.route_shared: the n-th call raises `exc` or returns `book`; earlier calls are real."""
+    real=A.O.route_shared; calls={"n":0}
+    def wrapped(cand,replay,**kw):
+        calls["n"]+=1
+        if calls["n"]==n:
+            if exc is not None: raise exc
+            return book
+        return real(cand,replay,**kw)
+    return wrapped
+
+@pytest.mark.parametrize("kind,patch,reason",[
+    ("incomplete",lambda: _fail_on_call(5,exc=PR.Incomplete("incomplete.gap")),"data.incomplete.gap"),
+    ("orchestration",lambda: _fail_on_call(5,exc=A.O.OrchestrationError("BTC: causal mark missing")),
+     "data.orchestration: BTC: causal mark missing"),
+    ("cost",lambda: _fail_on_call(5,exc=A.C.CostError("bad cost")),"data.cost: bad cost"),
+    ("episode",lambda: _fail_on_call(5,book={"status":PR.INCOMPLETE,"accepted":[{"status":PR.INCOMPLETE}],
+                                             "refused":[],"wallet_end":None}),"episode.incomplete"),
+])
+def test_b0_data_or_episode_incompleteness_fails_closed_without_resampling(monkeypatch,kind,patch,reason):
+    seen=[];real_seed=A.b0_seed
+    monkeypatch.setattr(A,"b0_seed",lambda h,k,i,a:(seen.append((i,a)),real_seed(h,k,i,a))[1])
+    monkeypatch.setattr(A.O,"route_shared",patch())
+    got=b0_case(monkeypatch,["BTC","BTC"],[3,3])
+    base=got["stresses"]["base"]
+    assert got["status"]==PR.INCOMPLETE and base["status"]==PR.INCOMPLETE
+    assert len(seen)==5 and base["diagnostics"]["total_attempts"]==5   # no attempt after the failing one
+    assert base["failed"]=={"draw":seen[-1][0],"attempt":seen[-1][1],"reason":reason}
+    assert reason in base["reason"] and "exhausted" not in base
+    assert base["valid_books"]+base["rejected_attempts"]==4
+
+def test_b0_discloses_unpaired_stress_rows(monkeypatch):
+    got=b0_case(monkeypatch,["BTC","BTC"],[3,3])
+    assert "NOT paired" in got["pairing"] and got["stresses"]["base"]["diagnostics"]["pairing"]==got["pairing"]
