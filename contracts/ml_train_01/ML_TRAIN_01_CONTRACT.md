@@ -3,8 +3,10 @@
 **Status: DRAFT — unsigned.** Contract only: no training run, and Build read no data. Codex signs it only after this
 revision, a Cowork adversarial contract review and green CI. Signing sets `status` → `FROZEN`, `signed_by` and
 `frozen_at` in the machine twin `ml_train_01_contract.v1.json`, which sits next to this file. Both twins live under
-`research_evidence/ml_contracts/` rather than the documentation tree, so every edit goes through normal verification
-(Codex 6453098718). Built from `origin/master` @ `945f997` code only: `ml_shadow/*`, the `engine.py` ML hooks,
+`contracts/ml_train_01/` rather than the documentation tree, so every edit goes through normal verification
+(Codex 6453098718). They are not under `research_evidence/`: since `0944547`, new files there may only land in the
+append-only `prereg/`, `ledger/` and `runs/` (the `test_bt_exec_obs01` guard), and an editable DRAFT cannot be
+append-only. Built from `origin/master` @ `945f997` code only: `ml_shadow/*`, the `engine.py` ML hooks,
 `actual_costs.measured/row_view`, `strategies.py` management, the installer build stamp, the AI-SCAN-01 contract
 (#199/#201) and the AI-SCAN-02 ledger pattern (`origin/ai-scan-02`, `ai_scan_ledger.py`).
 

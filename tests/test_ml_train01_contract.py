@@ -1,6 +1,6 @@
 """ML-TRAIN-01 contract twin: the JSON twin parses, stays DRAFT/unsigned and agrees with the markdown on the key numbers.
 
-Contract only - no data, no training. Both twins live under research_evidence/ml_contracts/ (Codex 6453098718), not in
+Contract only - no data, no training. Both twins live under contracts/ml_train_01/ (Codex 6453098718), not in
 the documentation tree, so every edit runs normal verification. Numbers and names the contract takes from code are
 pinned against the code too.
 """
@@ -14,7 +14,7 @@ from ml_shadow import trainer
 from ml_shadow.features import FEATURE_NAMES
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONTRACT_DIR = os.path.join(ROOT, 'research_evidence', 'ml_contracts')
+CONTRACT_DIR = os.path.join(ROOT, 'contracts', 'ml_train_01')
 MD = os.path.join(CONTRACT_DIR, 'ML_TRAIN_01_CONTRACT.md')
 JS = os.path.join(CONTRACT_DIR, 'ml_train_01_contract.v1.json')
 

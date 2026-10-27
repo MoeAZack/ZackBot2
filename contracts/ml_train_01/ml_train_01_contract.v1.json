@@ -236,7 +236,7 @@
     "ML-TRAIN-01b",
     "ML-SHADOW-UI"
   ],
-  "path": "research_evidence/ml_contracts",
+  "path": "contracts/ml_train_01",
   "non_training_closes": {
     "bases": [
       "acknowledged",
