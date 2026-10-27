@@ -151,6 +151,7 @@ def validate(pkt: dict, label: str = 'packet') -> dict:
         _num(t['R'], f'{label} trade {i} R')
         if _ts(t['t_out'], f'{label} trade {i} t_out') < _ts(t['t_in'], f'{label} trade {i} t_in'):
             raise StressError(f'factory stress: {label} trade {i} exits before it enters')
+    bust_echo(pkt, label)                                               # fail closed on a malformed bust record
     agg = (pkt.get('stats') or {}).get('aggregate')
     if not isinstance(agg, dict) or 'trades' not in agg or 'r_sum' not in agg:
         raise StressError(f'factory stress: {label} stats.aggregate.trades / r_sum missing')
@@ -160,6 +161,37 @@ def validate(pkt: dict, label: str = 'packet') -> dict:
     if abs(rs - _num(agg['r_sum'], f'{label} stats.aggregate.r_sum')) > 1e-6 * (len(pkt['trades']) + 1):
         raise StressError(f'factory stress: {label} trade R sum {rs} != stats.aggregate.r_sum {agg["r_sum"]}')
     return pkt
+
+
+def bust_echo(pkt: dict, label: str = 'packet') -> dict:
+    """F12-BUST-ECHO-01 (Cowork 6450991919, Codex 6451073431): the runner's trades / stats.aggregate include any trades
+    entered after a bust, so the report echoes the slice's bust record. Disclosure only, not a flag."""
+    b = pkt.get('bust')
+    if not isinstance(b, dict) or not isinstance(b.get('busted'), bool):
+        raise StressError(f'factory stress: {label} bust.busted missing or not a boolean')
+    post = None
+    stats = pkt.get('stats')
+    pb = stats.get('post_bust') if isinstance(stats, dict) else None
+    if pb is not None:                                                  # Codex 6451222555: nested shapes fail closed
+        agg = pb.get('aggregate') if isinstance(pb, dict) else None
+        if not isinstance(agg, dict):
+            raise StressError(f'factory stress: {label} stats.post_bust.aggregate missing or not an object')
+        post = agg.get('trades')
+    after = b.get('trades_after')
+    n = post if post is not None else after
+    if n is None:
+        n = 0 if not b['busted'] else None
+    if n is not None and (isinstance(n, bool) or not isinstance(n, int) or n < 0):
+        raise StressError(f'factory stress: {label} post-bust trade count {n!r} invalid')
+    if b['busted'] and n is None:
+        raise StressError(f'factory stress: {label} busted but its post-bust trade count is missing')
+    if post is not None and after is not None and post != after:
+        raise StressError(f'factory stress: {label} stats.post_bust trades {post} != bust.trades_after {after}')
+    if not b['busted'] and n:
+        raise StressError(f'factory stress: {label} not busted but has {n} post-bust trades')
+    if b['busted']:
+        _ts(b.get('time'), f'{label} bust.time')
+    return dict(busted=b['busted'], time=b.get('time'), post_bust_trades=n)
 
 
 def load(path: str) -> dict:
@@ -420,7 +452,8 @@ def analyse(pkts: list, labels: list, *, n_boot=DEFAULT_BOOT, seed=DEFAULT_SEED,
         rd = (p.get('stats') or {}).get('aggregate', {}).get('max_dd_r')
         s['runner_crosscheck'] = dict(runner_max_dd_r=rd, match=(rd is not None and s['drawdown']['max_dd_r'] is not None
                                                                  and abs(rd - s['drawdown']['max_dd_r']) <= 1e-6 * (len(rows) + 1)))
-        per.append(dict(label=lb, packet_sha256=p['packet_sha256'], window=p['window'], commit=p['commit'], **s))
+        per.append(dict(label=lb, packet_sha256=p['packet_sha256'], window=p['window'], commit=p['commit'],
+                        bust=bust_echo(p, lb), **s))
     pooled = section(pooled_rows, pkts, costs, n_boot, seed, slip_bps)
     key, side = next(iter(ident))
     return dict(format=FORMAT_OUT, non_promotable=True, flags_are_diagnostic=True, flag_source=FLAG_SOURCE, purpose='concentration / drawdown / cost stress of factory '
@@ -431,6 +464,11 @@ def analyse(pkts: list, labels: list, *, n_boot=DEFAULT_BOOT, seed=DEFAULT_SEED,
                                 NO_TOP3_NET_R_MIN=NO_TOP3_NET_R_MIN, BOOT_P_NONPOS_MAX=BOOT_P_NONPOS_MAX,
                                 FEES_X2_NET_R_MIN=FEES_X2_NET_R_MIN, COST_NET_R_MIN=COST_NET_R_MIN,
                                 MAX_DD_R_MAX=MAX_DD_R_MAX, BOOT_DD_P95_MAX=BOOT_DD_P95_MAX),
+                bust_disclosure=dict(
+                    any_busted=any(x['bust']['busted'] for x in per),
+                    slices_with_post_bust_trades=[x['label'] for x in per if x['bust']['post_bust_trades']],
+                    pooled_includes_post_bust_trades=any(x['bust']['post_bust_trades'] for x in per),
+                    note='trades entered after a bust are INCLUDED in every section (runner stats.aggregate does the same)'),
                 packets=per, pooled=pooled)
 
 
@@ -444,8 +482,11 @@ def summary(rep: dict) -> str:
                 f"P(net<=0) {d['bootstrap']['p_net_le_0']}, fees x2 {cs['fees_x2']['net_r']}R | diagnostic flags: {','.join(raised)}"
                 + (f" | n/a: {','.join(na)}" if na else ''))
     out = [f"factory stress {rep['strategy']} {rep['side']} (boot {rep['params']['boot']}, seed {rep['params']['seed']})"]
-    out += [line(p['label'], p) for p in rep['packets']]
-    out.append(line('POOLED', rep['pooled']))
+    out += [line(p['label'], p) + (f" | BUSTED {p['bust']['time']}, {p['bust']['post_bust_trades']} post-bust trades "
+                                   'included' if p['bust']['busted'] else '') for p in rep['packets']]
+    bd = rep['bust_disclosure']
+    out.append(line('POOLED', rep['pooled']) + (f" | includes post-bust trades from {','.join(bd['slices_with_post_bust_trades'])}"
+                                                 if bd['pooled_includes_post_bust_trades'] else ''))
     return '\n'.join(out)
 
 
