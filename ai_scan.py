@@ -338,16 +338,23 @@ def _verify(rec):
     if rec.get('record_hash') != h: raise AIScanError(f"{rec.get('signal_id')}: record hash mismatch (edited record)")
 
 
+def record_key(rec):
+    """The immutable identity of one record: signal -> decision id; shadow -> + epoch; outcome -> + source + cost
+    revision id / cost-model hash (never the ordering rev). The replay and the ledger dedupe on this key."""
+    sid, kind = rec.get('signal_id'), rec.get('kind')
+    key = {'signal': (sid,), 'shadow': (sid, rec.get('epoch')),
+           'outcome': (sid, rec.get('source'), rec.get('cost_revision_id'), rec.get('cost_model_hash'))}.get(kind)
+    if key is None: raise AIScanError(f'unknown record kind {kind!r}')
+    return (kind,) + key
+
+
 def fold(records):
     """Replay records (file order) into {signal_id: view}. Idempotent on exact duplicates; fails closed otherwise."""
     views, seen = {}, {}
     for rec in records:
         _verify(rec)
         sid, kind = rec['signal_id'], rec['kind']
-        key = {'signal': (sid,), 'shadow': (sid, rec.get('epoch')),
-               'outcome': (sid, rec.get('source'), rec.get('cost_revision_id'), rec.get('cost_model_hash'))}.get(kind)
-        if key is None: raise AIScanError(f'unknown record kind {kind!r}')
-        k = (kind,) + key
+        k = record_key(rec)
         if k in seen:
             if seen[k] != rec['record_hash']: raise AIScanError(f'{k}: conflicting replay of an immutable record')
             continue

@@ -98,6 +98,8 @@ import market_collector as MC     # noqa: E402
 import engine as ENG              # noqa: E402
 import ai_filter                   # noqa: E402  (DEFAULT_MODEL for the non-secret ai_model read-back)
 import shadow_analyst as SA       # noqa: E402  ML-SHADOW-01: report-only analyst (never feeds trading)
+import ai_scan as AI_SCAN       # noqa: E402  AI-SCAN-01: schema (pure; never feeds trading)
+import ai_scan_ledger as AISL  # noqa: E402  AI-SCAN-01: append-only scan ledger + read-only view
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -847,6 +849,14 @@ def analyst_view(app, now=None):
                 model_price_known=SA.model_price(e.S.get('CLAUDE_SHADOW_MODEL') or SA.DEFAULT_MODEL) is not None)
 
 
+def ai_scan_view(app, now=None):
+    """GET /api/ai_scan (AI-SCAN-01, report only). Reads the engine's settings dict and its own ledger file - never the
+    engine lock, orders, positions or settings writes. Flag off -> exactly {on: false, rows: []}; LIVE -> the same."""
+    e = app.engine
+    if getattr(e, 'live', True) is not False: return AI_SCAN.api_off()
+    return AISL.scan_view(dict(e.S), e.dir, now=now or datetime.now(timezone.utc))
+
+
 def analyst_action(app, path, b, now=None):
     e = app.engine
     if path == '/api/analyst/analyze_now':
@@ -1381,6 +1391,7 @@ class H(BaseHTTPRequestHandler):
                 return self._json(APP.candles_view((q.get('symbol') or [''])[0], (q.get('tf') or ['4h'])[0], (q.get('n') or ['160'])[0]))
             if p == '/api/research': return self._json(APP.research)
             if p == '/api/analyst': return self._json(analyst_view(APP))
+            if p == '/api/ai_scan': return self._json(ai_scan_view(APP))     # AI-SCAN-01: read-only, no engine lock
             if p == '/api/backtests': return self._json(list_backtests())
             if p.startswith('/api/backtest/'):
                 bid = p.rsplit('/', 1)[1]
@@ -1608,10 +1619,12 @@ def settings_update(e, b):
             ns[k] = v
         elif k == 'FEE_EDGE_MULT': ns[k] = _num(v, 1, 20, 'fee edge multiple')
         elif k == 'PAPER_BOOK_CAP': ns[k] = _num(v, 100, 1e7, 'paper book capital')
-        elif k in ('ML_SHADOW', 'CLAUDE_SHADOW_ANALYST'):          # ML-SHADOW-01: observation / report only, independent of AI_FILTER
+        elif k in ('ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'AI_SCAN'):   # ML-SHADOW-01 / AI-SCAN-01: observation / report only
             if not isinstance(v, bool): raise ValueError(f'{k.lower()} must be true or false')
             if v and k == 'CLAUDE_SHADOW_ANALYST' and getattr(e, 'live', True) is not False:
                 raise ValueError('the Claude shadow analyst is PAPER only')
+            if v and k == 'AI_SCAN' and getattr(e, 'live', True) is not False:
+                raise ValueError('the AI scan report is PAPER only')
             ns[k] = v
         elif k == 'CLAUDE_SHADOW_MODEL':
             if not isinstance(v, str) or not re.fullmatch(r'[A-Za-z0-9.\-_]{0,80}', v): raise ValueError('shadow analyst model: letters, digits, dot, dash only')
