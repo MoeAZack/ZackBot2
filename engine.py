@@ -13,6 +13,7 @@ import pandas as pd
 import strategies as S
 import trade_audit as TA
 import paper_books as PB
+import candidates as CD
 import actual_costs as AC
 import risk_fill as RF
 import true_books as TB
@@ -697,6 +698,49 @@ def with_scalp_slots(sleeves):
     have = {x.get('id') for x in sleeves or []}
     add = [x for x in scalp_sleeves() if x['id'] not in have]
     return list(sleeves or []) + add, [x['id'] for x in add]
+
+
+# FACTORY-CAND-01 (Codex 96-h factory, #13 6442094571): isolated PAPER candidate slots. Each is the exact sleeve its factory
+# packet ran (strategy key, side, 1 % risk, max 4 open, frozen default mgmt, the fixed-18 universe, 4h). Like SCALP-4 they
+# are independent of the rotation and default OFF (Integration switches one on after its parity gate); PAPER/testnet only.
+# A candidate never shares a coin with another slot's open lot (isolated attribution and protection), and candidate_guard
+# switches it off - its open lots stay protected and managed - when one of them loses exchange protection or a closed
+# trade's costs stay unmeasured past CANDIDATE_COST_PENDING_S.
+CAND_FIXED18 = ('BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT', 'QNTUSDT',
+                'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT')
+CANDIDATE_SLOTS = {'C-F01': ('ema_mom', 'long'), 'C-F02': ('exp_trend', 'long')}     # slot id -> (strategy key, side)
+# Correlated candidates share ONE position cap (Codex 6443422894: F01/F02 share 131 fills, Jaccard 0.655 - one family, never
+# two full independent risk budgets)
+CANDIDATE_FAMILY = {'C-F01': 'trend_long', 'C-F02': 'trend_long'}
+CANDIDATE_CARD = ('key', 'sides', 'risk', 'max_pos', 'symbols', 'mgmt', 'tf')      # fields a slot may not drift from
+CANDIDATE_SHARE, CANDIDATE_RISK, CANDIDATE_MAX_POS, CANDIDATE_DEFAULT_ENABLED = 1 / 6, 0.01, 4, False
+CANDIDATE_COST_PENDING_S = 6 * 3600
+CANDIDATE_STOP_FAIL = ('restoring', 'owner_check')     # a stop Binance does not hold (re-checks alone do not disable)
+
+
+def candidate_sleeves():
+    """The PAPER factory candidate slots, in CANDIDATE_SLOTS order."""
+    return [sleeve(i, k, CANDIDATE_SHARE, CANDIDATE_RISK, CANDIDATE_MAX_POS, list(CAND_FIXED18), sides=sd,
+                   enabled=CANDIDATE_DEFAULT_ENABLED) for i, (k, sd) in CANDIDATE_SLOTS.items()]
+
+
+def with_candidate_slots(sleeves):
+    """(sleeves + the missing candidate slots, ids added); existing entries untouched, idempotent (as with_scalp_slots)."""
+    have = {x.get('id') for x in sleeves or []}
+    add = [x for x in candidate_sleeves() if x['id'] not in have]
+    return list(sleeves or []) + add, [x['id'] for x in add]
+
+
+def candidate_owner(x, key=None):
+    """The slot that owns a lot / row / working entry (its sleeve, an unconfirmed entry's plan slot, else its 'UE|<slot>|..'
+    key). Candidate-owned activity is sized and attributed outside the PAPER / TRUE books (Codex 6444251851)."""
+    sid = (x or {}).get('sleeve') or (((x or {}).get('plan') or {}).get('sl') or {}).get('id')
+    if not sid and key and str(key).startswith('UE|') and str(key).count('|') >= 2: sid = str(key).split('|')[1]
+    return sid
+
+
+def candidate_owned(x, key=None):
+    return candidate_owner(x, key) in CANDIDATE_SLOTS
 
 
 # TRADFI-01 T4 (Codex ruling c + 6186554256 mapping): with S['TRADFI_ENABLED'] (PAPER only) the SAME rotation gains these
@@ -2159,7 +2203,11 @@ class Engine:
     def scalp_block(self, sl, ts=None):
         """Rotation gate for a NEW automatic entry, with the SCALP-4 slots folded in. A scalp-strategy slot: refused in live
         mode (any profile, fail closed); in PAPER always eligible (it is not part of the rotation - its own `enabled` flag,
-        checked before this, switches it). Every other slot: exactly rotation_block. Open lots never consult it."""
+        checked before this, switches it). Every other slot: exactly rotation_block. Open lots never consult it.
+        FACTORY-CAND-01: a candidate slot is gated like a scalp slot (PAPER only, outside the rotation)."""
+        if (sl or {}).get('id') in CANDIDATE_SLOTS:
+            if getattr(self, 'live', True) is not False: return 'factory candidate slots are PAPER/testnet only - no entries in live mode'
+            return None
         if (sl or {}).get('key') in SCALP_KEYS:
             if getattr(self, 'live', True) is not False: return 'scalp slots are PAPER/testnet only - no entries in live mode'
             return None
@@ -2177,6 +2225,96 @@ class Engine:
             self.save_settings()
         log.info(f'SCALP-4: PAPER scalp slots added {added}')
         return added
+
+    def sync_candidate_slots(self):
+        """FACTORY-CAND-01, as sync_scalp_slots: rotation profile in PAPER only, appends the missing candidate slots (default
+        OFF); existing slot entries are never touched; idempotent. Returns the ids added."""
+        if self.S.get('PRESET') != ROTATION_PRESET or getattr(self, 'live', True) is not False: return []
+        with self.lock:
+            new, added = with_candidate_slots(self.S.get('SLEEVES'))
+            if not added: return []
+            self.S['SLEEVES'][len(self.S['SLEEVES']):] = new[len(self.S['SLEEVES']):]
+            self.save_settings()
+        log.info(f'FACTORY-CAND-01: PAPER candidate slots added {added} (off)')
+        return added
+
+    def _claims(self, skip_pending=None):
+        """FACTORY-CAND-01: (slot id, symbol) of every open lot AND every working entry (pending / resting / unconfirmed - a
+        coin is reserved before it becomes a lot). An unconfirmed entry's slot comes from its plan, else its key."""
+        st = self.state
+        out = [(l['sleeve'], l['symbol']) for l in st['lots'].values()]
+        out += [(p.get('sleeve'), p.get('symbol')) for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending]
+        out += [(r.get('sleeve'), r.get('symbol')) for r in (st.get('resting_entries') or {}).values()]
+        out += [(candidate_owner(u, k), u.get('symbol')) for k, u in (st.get('unconfirmed_entries') or {}).items()]
+        return out
+
+    def candidate_block(self, sl, sym, skip_pending=None):
+        """FACTORY-CAND-01: a NEW entry of a candidate slot on a coin another slot holds or has an entry working on, or of any
+        slot on a coin a candidate holds / is entering, is refused - each candidate's lots, fills and stops stay its own; the
+        correlated family's ONE cap counts its lots and working entries. None = not blocked."""
+        sid = (sl or {}).get('id')
+        claims = self._claims(skip_pending)
+        for owner, s in claims:
+            if s == sym and owner != sid and (sid in CANDIDATE_SLOTS or owner in CANDIDATE_SLOTS):
+                return f'candidate isolation: slot {owner} holds this coin'
+        fam = CANDIDATE_FAMILY.get(sid)
+        if fam is not None:
+            n = sum(1 for owner, _s in claims if CANDIDATE_FAMILY.get(owner) == fam)
+            if n >= CANDIDATE_MAX_POS: return f'candidate family {fam}: {n} open (one shared cap of {CANDIDATE_MAX_POS})'
+        return None
+
+    @staticmethod
+    def candidate_drift(sl):
+        """FACTORY-CAND-01: the card fields where a candidate slot differs from its frozen card (empty = none)."""
+        card = next((c for c in candidate_sleeves() if c['id'] == (sl or {}).get('id')), None)
+        if card is None: return []
+        def norm(f, v):
+            if f == 'symbols' and isinstance(v, (list, tuple)): return sorted(v)
+            return (v or {}) if f == 'mgmt' else v
+        return [f for f in CANDIDATE_CARD if norm(f, sl.get(f)) != norm(f, card[f])]
+
+    def candidate_guard(self, now=None):
+        """FACTORY-CAND-01 automatic disable (under the lock, every cycle): an enabled candidate slot is switched off when a
+        lot of it has lost its exchange stop (restoring / owner_check), a closed trade of it still has unmeasured costs
+        CANDIDATE_COST_PENDING_S after closing, or its slot drifted from the frozen card (candidate_drift). Only new entries stop: open lots keep their stop and management. The reason
+        stays in state['candidate_disabled'] for the panel; switching the slot back on is Integration's call. Returns the
+        ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off."""
+        off = []
+        try:
+            now = time.time() if now is None else now
+            for sl in self.S.get('SLEEVES') or []:
+                if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
+                drift = self.candidate_drift(sl)
+                why = f"drift: {', '.join(drift)} differ from the frozen card" if drift else None
+                why = why or next((f"protection: {l['symbol']} stop {l.get('stop_miss_why')}" for l in self.state['lots'].values()
+                                   if l['sleeve'] == sl['id'] and l.get('stop_miss') and l.get('stop_miss_why') in CANDIDATE_STOP_FAIL), None)
+                for h in self.history[-3000:] if why is None else ():
+                    if h.get('sleeve') != sl['id'] or AC.row_view(h)['status'] != 'pending': continue
+                    try: age = now - pd.Timestamp(h['closed']).timestamp()
+                    except (KeyError, TypeError, ValueError): age = float('inf')
+                    if age >= CANDIDATE_COST_PENDING_S:
+                        why = f"accounting: {h.get('symbol')} trade costs unmeasured {age / 3600:.1f} h after close"; break
+                if why:
+                    sl['enabled'] = False
+                    self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(why=why, t=now_utc().isoformat(timespec='seconds'))
+                    self.err(f"FACTORY candidate {sl['id']} switched off: {why} - open lots stay protected and managed")
+                    off.append(sl['id'])
+            if off: self.save_settings(); self.save_state()
+        except Exception as e:
+            log.warning(f'candidate guard failed ({type(e).__name__}: {e}) - every enabled candidate is switched off')
+            try:
+                for sl in self.S.get('SLEEVES') or []:
+                    if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
+                    sl['enabled'] = False
+                    self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(
+                        why=f'guard_error: {type(e).__name__}', t=now_utc().isoformat(timespec='seconds'))
+                    if sl['id'] not in off: off.append(sl['id'])
+                self.err(f'FACTORY candidate guard failed ({type(e).__name__}) - candidates {off} switched off; open lots stay protected')
+            except Exception: pass
+            for save in (self.save_settings, self.save_state):           # durable where possible; never raises
+                try: save()
+                except Exception: pass
+        return off
 
     def is_tradfi(self, sym):
         return sym in TU.GOLD_FAMILY or sym in TU.STOCK_SET or sym in TU.OIL_SET or \
@@ -2274,6 +2412,7 @@ class Engine:
         self.connected = True
         if on: self.sync_tradfi_slots()
         self.sync_scalp_slots()                         # SCALP-4: PAPER rotation only; appends missing slots, idempotent
+        self.sync_candidate_slots()                     # FACTORY-CAND-01: the same, for the factory candidate slots (off)
 
     # ------------------------------------------------------------ helpers
     @staticmethod
@@ -3093,7 +3232,9 @@ class Engine:
         A manual or unmapped working entry (any of resting / unconfirmed / armed) is (None, ...): owned by no book, so
         every book is INCOMPLETE until it is gone (Codex 6240139762 #7) - never skipped."""
         out = []
-        for x in list((self.state.get('resting_entries') or {}).values()) + list((self.state.get('unconfirmed_entries') or {}).values()):
+        work = list((self.state.get('resting_entries') or {}).items()) + list((self.state.get('unconfirmed_entries') or {}).items())
+        for k, x in work:
+            if candidate_owned(x, k): continue                          # FACTORY-CAND-01: owned by its candidate slot
             p = x.get('plan') or {}
             b = None if x.get('manual') or p.get('manual') else self._book_of_working(x)
             if b not in PB.IDS: out.append((None, None, None)); continue
@@ -3101,6 +3242,7 @@ class Engine:
             except (TypeError, ValueError, KeyError): out.append((b, None, None)); continue
             out.append((b, qty * px, qty * sd))
         for p in (self.state.get('pending_entries') or {}).values():     # armed trailing entries: ownership only here
+            if candidate_owned(p): continue
             if p.get('manual') or self._book_of_working(p) not in PB.IDS: out.append((None, None, None))
         return out
 
@@ -3150,7 +3292,8 @@ class Engine:
             if on: self._cohort_rev_retry()
             if marks is None:                                        # never value a book on a stalled mark feed
                 marks = (self.marks or {}) if time.time() - (getattr(self, 'marks_t', 0) or 0) <= MARK_FRESH_S else {}
-            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']), list(self.state.get('lots', {}).values()),
+            books = TB.compute(st['cohort_id'], self._tb_rows(st['cohort_id']),
+                               [l for l in self.state.get('lots', {}).values() if not candidate_owned(l)],
                                marks, self._tb_working(), st['halted'], peaks=st['peak'], funding=self._tb_funding(),
                                unsaved=self.state.get('cohort_rev_pending') or (),
                                unowned_funding=[u for u in self.state.get('funding_unowned') or () if u.get('cohort_id') == st['cohort_id']])
@@ -3210,13 +3353,16 @@ class Engine:
         if not cohort_id: return []
         rows = [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('cohort_id') == cohort_id]
         start = (self.state.get('cohort') or {}).get('started_utc') or ''
+        rows = [r for r in rows if not candidate_owned(r)]           # FACTORY-CAND-01: candidate rows: own attribution
         for h in self.history:
+            if candidate_owned(h): continue
             if h.get('cohort_id') == cohort_id: rows.append(h)
             elif not h.get('cohort_id') and h.get('book') not in PB.IDS and str(h.get('closed') or '') >= start:
                 rows.append(h)                                        # unowned activity on the shared account
         return rows
 
     def _book_of_working(self, x):
+        if candidate_owned(x): return None                            # FACTORY-CAND-01: a candidate entry has no book
         b = x.get('book') or (x.get('plan') or {}).get('book')
         if b: return b
         sl = next((s for s in self.S.get('SLEEVES', []) if s['id'] == x.get('sleeve')), None)
@@ -3237,7 +3383,7 @@ class Engine:
 
     def true_book_block(self, sl, size=None, skip_pending=None, sym=None, side=None):
         """Book-wide gate for a new lot (automatic entries only). None or a reason."""
-        if not self._tb_on() or not sl: return None
+        if not self._tb_on() or not sl or sl.get('id') in CANDIDATE_SLOTS: return None   # FACTORY-CAND-01: no book
         if not self._cohort_ok(): return 'true books: no open cohort - no new risk until one is open'
         # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
         # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
@@ -5854,6 +6000,7 @@ class Engine:
                 if closing:
                     try: self.close_lot(k, 'exit_signal' if ex else 'time_exit', sg['close'] if sg else None)
                     except Exception as e: self.err(f'exit {l["symbol"]} [{l["sleeve"]}] failed: {e} - stop stays in place, retried next cycle')
+            self.candidate_guard()                           # FACTORY-CAND-01: before any entry decision
             # entries (every signal that is not taken is logged with the reason)
             if Sg['ENTRIES_PAUSED'] or st['halted']:
                 log.info('entries paused' + (' (daily halt)' if st['halted'] else ''))
@@ -5869,6 +6016,7 @@ class Engine:
                     if not Sg['SYMBOLS_ON'].get(s, True): why = 'coin switched off'
                     elif not sl['enabled']: why = 'strategy slot switched off'
                     elif self.scalp_block(sl): why = self.scalp_block(sl)              # BREADTH-01 B2 + SCALP-4: new entries only
+                    elif self.candidate_block(sl, s): why = self.candidate_block(sl, s)   # FACTORY-CAND-01: isolation
                     elif Sg['ENTRIES_PAUSED']: why = 'entries paused'
                     elif st['halted']: why = 'daily loss halt'
                     elif s in held: why = 'already in a trade on this coin'
@@ -6046,7 +6194,7 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if not Sg['SYMBOLS_ON'].get(sym, True): return 'coin switched off'
         if not sl.get('enabled', True): return 'strategy slot switched off'
-        rb = self.scalp_block(sl)                                   # BREADTH-01 B2 + SCALP-4 (manual / adds never get here)
+        rb = self.scalp_block(sl) or self.candidate_block(sl, sym, skip_pending)   # BREADTH-01 B2 + SCALP-4 + FACTORY-CAND-01
         if rb: return rb
         tb = self.tradfi_block(sl, sym, side, size)                 # TRADFI-01 T3/T4: session, mapping, gold-family cap
         if tb: return tb
@@ -6468,6 +6616,7 @@ class Engine:
             if tp_r: g['tp_r'] = tp_r
         sd = 1 if side == 'LONG' else -1
         book_mode = bool(not manual and not self.live and self.S.get('PAPER_BOOKS') is True)
+        if sl and sl.get('id') in CANDIDATE_SLOTS: book_mode = False   # FACTORY-CAND-01: its own share basis, no book
         book = PB.book_for(sl.get('key')) if book_mode else None
         sleeve_eq = PB.allocation(eq, self.S.get('PAPER_BOOK_CAP') or 2000.0) if book_mode else (eq if manual else eq * sl['share'])
         if book_mode and self._tb_on():                 # TRUE-BOOK-01: the book's own NAV, never account equity / 5
@@ -6616,7 +6765,8 @@ class Engine:
         return dict(enabled=self.S.get('PAPER_BOOKS') is True and not self.live, shared_account=True,
                     note='books share Binance margin; attribution is separate, liquidation is account-wide',
                     target_total=round(5 * float(cap), 2), effective_total=round(5 * PB.allocation(eq, cap), 2),
-                    books=PB.summary(eq, cap, view, self.history))
+                    books=PB.summary(eq, cap, view, self.history),
+                    candidates=CD.summary(self.S.get('SLEEVES'), view, self.history, self.state.get('candidate_disabled')))
 
     # ------------------------------------------------------------ RUN-PACK-01 / BOOK-LEDGER-01 (PAPER books, observe only)
     # Evidence never feeds trading: self.history keeps its 3000-row trading window untouched; the open cohort's closed rows
