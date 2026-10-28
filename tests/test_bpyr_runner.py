@@ -1396,6 +1396,10 @@ def test_gate_inputs_are_exactly_what_decide_consumes():
     g['data_by_stage']['S2']['pass'] = g['data_by_stage']['S3']['pass'] = False
     gi = R.gate_inputs(g, None, 0.01)
     assert gi['data'] is True and R.decide(gi) == 'FALSIFIED'                 # H1 failed: S2 / S3 never reached
+    g = _g(stage=None, H1=False, H2=True)                                    # inconsistent input: H2 without H1
+    g['data_by_stage']['S3']['pass'] = False
+    gi = R.gate_inputs(g, None, 0.01)
+    assert gi['data'] is True and R.decide(gi) == 'FALSIFIED'                 # unreachable S3 gap cannot override H1
     g = _g(stage='S1', H2=False)
     g['data_by_stage']['S3']['pass'] = False
     gi = R.gate_inputs(g, _bk(stage='S1'), 0.01)

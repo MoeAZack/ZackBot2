@@ -1576,7 +1576,7 @@ def gate_inputs(g: dict, book: dict | None, gated_risk) -> dict:
     credited book's data state (<= 2% INCOMPLETE per slice, no unfilled-for-data entry, no unresolved accounting row)
     at base and x1.5; causality = book_causality() at base and x1.5; tails = worst credited-stage episode >= -3R."""
     st = g['credited_stage']
-    reached = ['S1'] + (['S2'] if g['H1'] else []) + (['S3'] if g['H2'] else [])   # Codex 6481285622 (N6)
+    reached = ['S1'] + (['S2'] if g['H1'] else []) + (['S3'] if g['H1'] and g['H2'] else [])   # Codex 6481285622 (N6)
     data = bool(g['data']) and all(bool(g['data_by_stage'][s]['pass']) for s in reached)
     out = {'activity': bool(g['activity']), 'b0': g['b0'], 'H1': g['H1'], 'H2': g['H2'], 'H3': g['H3'],
            'credited_stage': st}
