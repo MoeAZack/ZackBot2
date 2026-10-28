@@ -9,7 +9,7 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 
 | kind | replay key | written when | content |
 | --- | --- | --- | --- |
-| `signal` | `signal_id` | the engine has decided (same point as the ML-SHADOW decision hook) | candle open, cutoff, decision instant, input ingest times, snapshot hash, deterministic plan, rules status/reason, cost estimate, input coverage, `snapshot_age_s`, `OK`/`INSUFFICIENT` + reasons |
+| `signal` | `signal_id` | the engine has decided (same point as the ML-SHADOW decision hook) | candle open, cutoff, decision instant, input event + availability times, `snapshot_as_of` = {event_at: last_close, available_at}, `features_hash`, snapshot hash (sha256 of `snapshot_as_of` + `features_hash`; Codex 6455762348), deterministic plan, rules status/reason, cost estimate, input coverage, `snapshot_age_s`, `OK`/`INSUFFICIENT` + reasons |
 | `shadow` | `signal_id` + `epoch` | asynchronously, after the decision | immutable `model_id`, `prompt_hash`, `sampling`, `feature_schema_hash`, `cost_model_hash`, the epoch, the snapshot/plan hashes it read; then either `OK` (raw-response hash, opinion `LONG`/`SHORT`/`NO_TRADE`, coverage, disagreement, probability block, bounded rationale) or `INSUFFICIENT` with `queue_full`/`timeout`/`budget_exhausted`/`remote_error` |
 | `outcome` | measured: `signal_id` + `cost_revision_id` (`rev` orders only); simulated: `signal_id` + `cost_model_hash` | measured: at close (`rev` 0) and on each actual-cost restatement; simulated: from the causal replay | net R / PnL, exit reason, cost basis, partial exits, adds |
 
@@ -23,9 +23,14 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
     not be after the cutoff (`after_cutoff`), and its absolute age `snapshot_age_s = cutoff - last_close` is recorded and
     shown. Exactly 2 bars of the timeframe old is fresh; older is `INSUFFICIENT` with `stale_snapshot` (15m: 1,800 s,
     1h: 7,200 s, 4h: 28,800 s).
-  - Every point-in-time input must have been **ingested** by `decided_at`: the snapshot (`available_at`), `funding`,
-    `universe` membership and `exchange_rules`. A late or missing ingest time gives `INSUFFICIENT`, so restated or later-listed
-    data cannot leak.
+  - **Causal inputs (Codex 6455506454 #1).** `funding`, `universe` membership and `exchange_rules` each carry
+    `{event_at, available_at}` with `event_at <= cutoff` and `event_at <= available_at <= decided_at`; the snapshot needs
+    `last_close <= cutoff` and `last_close <= available_at <= decided_at`. Each breach is its own reason
+    (`after_cutoff:<name>`, `available_before_event:<name>`, `after_decision:<name>`); a missing or malformed pair (including
+    the old single timestamp) is `missing:<name>`. All give `INSUFFICIENT`, so restated or later-listed data cannot leak.
+  - **Snapshot provenance (Codex 6455762348).** The snapshot's `{event_at: last_close, available_at}` is persisted as
+    `snapshot_as_of` and bound into `snapshot_hash`; changing either time changes the snapshot identity. `fold` refuses a
+    re-sealed signal whose `snapshot_as_of` no longer re-derives its hash, or is not causal.
 - **Display freshness:** the same ceiling applies to a shadow result. `display(view, now)` shows its absolute `age_s`
   (`now - created_at`); older than 2 bars of the signal's timeframe, it is shown as `INSUFFICIENT` with `stale` and no score.
   The record itself stays as historical evidence.
@@ -36,7 +41,9 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
     or its max-bar horizon).
   - A probability is kept only if `calibration_passes(c, epoch)` holds:
     - the calibration has an id and covers the same epoch and target;
-    - its window is disjoint from fitting, walk-forward and the holdout;
+    - it is bound to the sealed manifest (`manifest_hash`) passed with it, and its `window` IS the manifest's calibration
+      interval, computed (not caller-asserted) not to overlap fit or holdout;
+    - its `id` is `calibration_id(c)`, the sha256 of the rest of the record, so an arbitrary or reused id fails;
     - n ≥ 500 resolved labels and ≥ 50 per bin;
     - ECE ≤ 0.05;
     - the paired-bootstrap 95% CI of the Brier improvement vs the base-rate predictor is wholly above 0;
@@ -46,9 +53,14 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 - **Outcomes:**
   - `measured` is the engine's own trade. Its join key is the immutable decision id (`signal_id`) **plus the actual-cost
     revision identifier** `cost_revision_id(actual_costs, net_basis=, cost_model_id=)` (Codex 6452143340 #2,
-    6453104005): sha256 of the canonical JSON `[COST_REV_SCHEMA, [[field, float(value)] ...], net_basis, cost_model_id]`
-    with `COST_REV_SCHEMA = 'ai-scan-cost-rev-v1'` and the pinned field list and order `COST_REV_FIELDS = (fees_actual,
-    funding, pnl_gross, pnl_fill_adj, pnl_net, net_r)`. Only those fields are read, so timestamps, ids and presentation
+    6453104005, 6455506454 #2): sha256 of the canonical JSON `[COST_REV_SCHEMA, [[field, float(value)] ...], net_basis,
+    cost_model_id]` with `COST_REV_SCHEMA = 'ai-scan-cost-rev-v2'` and the pinned field list and order
+    `COST_REV_FIELDS = (fees_actual, funding_actual, pnl_gross, pnl_fill_adj, risk_usd)`.
+  - `build_outcome()` takes that payload + `cost_basis` (the net basis) + `cost_model_id` and computes the id, `net_pnl` and
+    `net_r` itself, with the repo's signed formula (`actual_costs.measured`, funding + = received):
+    `net_pnl = pnl_gross + pnl_fill_adj - fees_actual + funding_actual`, `net_r = net_pnl / risk_usd`, `risk_usd` finite
+    and > 0. A supplied id or net that differs is refused, and `fold` recomputes both from a stored record (a re-sealed
+    forgery fails as `forged cost identity`). Only those fields are read, so timestamps, ids and presentation
     fields never change the id; any pinned field, the net basis, the cost-model id or a schema bump does. A missing or
     non-finite field has no identity (refused). A golden hash is pinned in the tests. Each revision joins to its own
     outcome under `view['revisions']`.
@@ -59,7 +71,8 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
     refuse, and renumbering `rev` never changes which outcome a revision id joins. Its cost basis is `booked` or `measured`.
   - `simulated` is a deterministic causal replay under the frozen policy and cost model. It is keyed by that sha256 cost-model
     hash, and its cost basis is `modelled`.
-  - Untaken, vetoed or capacity-skipped candidates get simulated outcomes only.
+  - A measured outcome is valid only for an immutable `taken` decision; `skipped` and `pending` ones (and untaken, vetoed
+    or capacity-skipped candidates) get simulated outcomes only.
   - The two sources are stored, displayed and reported separately and are never merged.
 
 ## Fail-closed rules (all pinned)
@@ -67,7 +80,7 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
 - **INSUFFICIENT inputs.** Each of these gives `INSUFFICIENT` with the exact reason, never an inferred score:
   - a missing snapshot, features or last close;
   - a snapshot after the cutoff, or older than 2 bars of its timeframe;
-  - an input ingested after the decision instant;
+  - an input whose event is after the cutoff, or which was available before its event or after the decision;
   - a non-finite or non-numeric feature;
   - a missing or malformed plan or targets;
   - a stop or target on the wrong side;
@@ -86,8 +99,9 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
   A failed attempt and a later result for the same epoch conflict, so one read is kept per epoch.
 - **Outcome refusals.** An outcome is refused in each of these cases:
   - it closed at or before the decision;
-  - it is a measured outcome on a skipped decision;
-  - the source has the wrong key (measured needs a sha256 `cost_revision_id` and an int `rev` ≥ 0; simulated needs a
+  - it is a measured outcome on a decision that is not `taken`;
+  - its supplied `cost_revision_id`, `net_pnl` or `net_r` does not match the actual-cost payload;
+  - the source has the wrong key (measured needs the actual-cost payload, a cost-model id and an int `rev` ≥ 0; simulated needs a
     cost-model hash only);
   - its cost basis doesn't match its source.
 - **Replay (`fold`).**
@@ -96,9 +110,15 @@ two #187 packets: ledger → scanner API/UI → calibration/evaluation harness.
     raise `AIScanError`.
 - **Queue.** `ScanQueue` is bounded, and `offer()` never blocks: a full or contended queue returns `False`, and the caller records
   `build_shadow_failure(..., 'queue_full')`.
-- **Holdout.** The fitting and calibration paths read only through `fitting_view(records, holdout)`. It *refuses* (never silently
+- **Sealed manifest (Codex 6455506454 #3).** `seal_manifest(fit=, calibration=, holdout=, prereg_hash=)` pins three explicit
+  `[start, end)` intervals; each needs `start < end`, and they must be ordered fit < calibration < holdout without overlap.
+  `manifest_hash` covers all of it; `verify_manifest` refuses an edited, reversed, overlapping or unhashed manifest.
+- **Holdout.** The fitting path reads only through `fitting_view(records, manifest)`. It *refuses* (never silently
   filters) any signal whose decision candle lies inside the sealed `[start, end)`, and it refuses missing bounds.
-- **No secrets.** Features, plan and costs may not carry credential-like or exchange/order/client/trade-id fields.
+- **No secrets, no hidden authority.** No key at any depth of the snapshot, plan, costs or inputs may name a credential or
+  an exchange/order/client/trade id. `sampling` is a flat allow-list (`temperature`, `top_p`, `top_k`, `max_tokens`,
+  `stop_sequences`, `seed`) of finite numbers (stop_sequences: strings); anything else refuses. Extras are refused.
+- **Future-dated.** A shadow result created after `now` is shown as `INSUFFICIENT` with `future_dated`.
 
 ## API (report-only; flag `AI_SCAN`, default OFF, PAPER only)
 

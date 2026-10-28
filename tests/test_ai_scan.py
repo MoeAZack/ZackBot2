@@ -21,8 +21,8 @@ SAMP = dict(temperature=0, max_tokens=3000)
 MODEL = 'claude-sonnet-5-5'
 IDENT = dict(model_id=MODEL, prompt_hash=H1, sampling=SAMP, feature_schema_hash=H3, cost_model_hash=H4)
 EPOCH = A.epoch_of(MODEL, H1, SAMP, H3, H4)
-COSTS0 = dict(fees_actual=0.42, funding=0.0, pnl_gross=12.42, pnl_fill_adj=0.0, pnl_net=12.0, net_r=1.2)
-COSTS1 = dict(COSTS0, fees_actual=0.51, funding=-0.08, pnl_net=9.0, net_r=0.9)   # a late-fee / funding restatement
+COSTS0 = dict(fees_actual=0.5, funding_actual=0.0, pnl_gross=12.5, pnl_fill_adj=0.0, risk_usd=10.0)    # net 12.0, 1.2R
+COSTS1 = dict(COSTS0, fees_actual=0.75, funding_actual=-2.75)   # a late-fee / funding restatement: net 9.0, 0.9R
 CMID = 'actual-cost-model-v1'
 CR0 = A.cost_revision_id(COSTS0, net_basis='booked', cost_model_id=CMID)
 CR1 = A.cost_revision_id(COSTS1, net_basis='measured', cost_model_id=CMID)
@@ -34,10 +34,21 @@ def snap(**kw):
     return s
 
 
+def at(event_at, available_at):
+    return dict(event_at=event_at, available_at=available_at)
+
+
 def inputs(**kw):
-    d = dict(funding='2026-10-20T12:00:00Z', universe='2026-10-20T00:00:00Z', exchange_rules='2026-10-20T06:00:00Z')
+    d = dict(funding=at('2026-10-20T12:00:00Z', '2026-10-20T12:00:05Z'),
+             universe=at('2026-10-20T00:00:00Z', '2026-10-20T00:00:30Z'),
+             exchange_rules=at('2026-10-20T06:00:00Z', '2026-10-20T06:00:02Z'))
     d.update(kw)
     return d
+
+
+MAN = A.seal_manifest(fit=['2026-01-01T00:00:00Z', '2026-07-01T00:00:00Z'],
+                      calibration=['2026-07-01T00:00:00Z', '2026-10-01T00:00:00Z'],
+                      holdout=['2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'], prereg_hash=H3)
 
 
 def plan(side='LONG'):
@@ -55,7 +66,7 @@ def sig(side='LONG', status='taken', **kw):
 
 def shadow(s, **kw):
     a = dict(IDENT, raw_response_hash=H2, created_at='2026-10-20T12:16:00Z', opinion='LONG', coverage=0.8, disagreement=0.2,
-             read_snapshot_hash=s['snapshot_hash'], read_plan_hash=s['plan_hash'])
+             read_snapshot_hash=s['snapshot_hash'], read_plan_hash=s['plan_hash'], manifest=MAN)
     a.update(kw)
     return A.build_shadow(s, **a)
 
@@ -68,21 +79,31 @@ def failure(s, reason='timeout', **kw):
 
 
 def cal(**kw):
-    c = dict(id='cal-2026-10', epoch=EPOCH, target=dict(A.TARGET), disjoint=True, n=500, min_bin_n=50, ece=0.05,
-             brier_improvement_ci_lo=0.001, windows=[dict(ece=0.04, beats_base=True)])
+    c = dict(epoch=EPOCH, target=dict(A.TARGET), manifest_hash=MAN['manifest_hash'], window=list(MAN['calibration']),
+             n=500, min_bin_n=50, ece=0.05, brier_improvement_ci_lo=0.001, windows=[dict(ece=0.04, beats_base=True)])
     c.update(kw)
+    if 'id' not in kw:                                                   # the id is the record's own content hash
+        try: c['id'] = A.calibration_id(c)
+        except A.AIScanError: c['id'] = ''
     return c
 
 
-def outcome(s, **kw):
-    a = dict(source='measured', cost_revision_id=CR0, rev=0, closed_at='2026-10-20T14:00:00Z', net_r=1.2, net_pnl=12.0, exit_reason='tp1',
-             cost_basis='booked')
+def outcome(s, costs=COSTS0, **kw):
+    a = dict(source='measured', actual_costs=costs, cost_model_id=CMID, rev=0, closed_at='2026-10-20T14:00:00Z',
+             exit_reason='tp1', cost_basis='booked')
     a.update(kw)
     return A.build_outcome(s, **a)
 
 
+def outcome1(s, **kw):
+    return outcome(s, **dict(dict(costs=COSTS1, rev=1, cost_basis='measured'), **kw))
+
+
 def sim(s, **kw):
-    return outcome(s, **dict(dict(source='simulated', cost_revision_id=None, rev=None, cost_model_hash=H4, cost_basis='modelled'), **kw))
+    a = dict(source='simulated', cost_model_hash=H4, cost_basis='modelled', closed_at='2026-10-20T14:00:00Z', net_r=1.2,
+             net_pnl=12.0, exit_reason='tp1')
+    a.update(kw)
+    return A.build_outcome(s, **a)
 
 
 # ------------------------------------------------------------------ causal cutoff / identity / ingest time
@@ -117,7 +138,7 @@ def test_a_snapshot_after_the_cutoff_or_older_than_two_bars_is_insufficient(lc, 
     ('4h', '2026-10-20T08:00:00Z', '2026-10-20T03:59:59Z', 28801, False),
 ])
 def test_stale_bars_is_a_timeframe_relative_ceiling_with_the_absolute_age_exposed(tf, open_, lc, age, ok):
-    s = sig(tf=tf, candle_open=open_, snapshot=snap(last_close=lc, available_at='2026-10-20T12:00:03Z'),
+    s = sig(tf=tf, candle_open=open_, snapshot=snap(last_close=lc, available_at='2026-10-20T12:15:05Z'),
             decided_at='2026-10-20T12:15:10Z')
     assert s['snapshot_age_s'] == age and A.stale_after_s(tf) == 2 * A.TF_SEC[tf]
     assert (s['status'] == 'OK') is ok and ('stale_snapshot' in s['insufficient']) is (not ok)
@@ -126,15 +147,30 @@ def test_stale_bars_is_a_timeframe_relative_ceiling_with_the_absolute_age_expose
 
 @pytest.mark.parametrize('kw, reason', [
     (dict(snapshot=snap(available_at='2026-10-20T12:15:11Z')), 'after_decision:snapshot'),
+    (dict(snapshot=snap(available_at='2026-10-20T12:14:59Z')), 'available_before_event:snapshot'),
     (dict(snapshot=snap(available_at=None)), 'missing:snapshot'),
-    (dict(inputs=inputs(funding='2026-10-20T12:20:00Z')), 'after_decision:funding'),
+    (dict(snapshot=snap(available_at='garbage')), 'missing:snapshot'),
+    (dict(inputs=inputs(funding=at('2026-10-20T12:15:01Z', '2026-10-20T12:15:05Z'))), 'after_cutoff:funding'),
+    (dict(inputs=inputs(funding=at('2026-10-20T12:00:00Z', '2026-10-20T12:15:11Z'))), 'after_decision:funding'),
+    (dict(inputs=inputs(universe=at('2026-10-20T00:00:00Z', '2026-10-19T23:59:59Z'))), 'available_before_event:universe'),
+    (dict(inputs=inputs(exchange_rules=at('2026-10-21T00:00:00Z', '2026-10-21T00:00:00Z'))), 'after_cutoff:exchange_rules'),
     (dict(inputs=inputs(universe=None)), 'missing:universe'),
-    (dict(inputs=inputs(exchange_rules='2026-10-21T00:00:00Z')), 'after_decision:exchange_rules'),
+    (dict(inputs=inputs(universe='2026-10-20T00:00:00Z')), 'missing:universe'),            # the old single timestamp
+    (dict(inputs=inputs(funding=dict(event_at='2026-10-20T12:00:00Z'))), 'missing:funding'),
+    (dict(inputs=inputs(funding=at('x', '2026-10-20T12:00:05Z'))), 'missing:funding'),
     (dict(inputs=None), 'missing:funding'),
 ])
-def test_an_input_ingested_after_the_decision_instant_is_insufficient(kw, reason):
+def test_causal_inputs_need_event_le_cutoff_and_event_le_available_le_decision(kw, reason):
     s = sig(**kw)
     assert s['status'] == 'INSUFFICIENT' and reason in s['insufficient']
+    with pytest.raises(A.AIScanError, match='INSUFFICIENT'):
+        shadow(s)
+
+
+def test_causal_input_boundaries_are_inclusive():
+    s = sig(snapshot=snap(available_at=DEC), inputs=inputs(funding=at(CUT, DEC), universe=at(OPEN, OPEN)))
+    assert s['status'] == 'OK' and s['inputs_as_of']['funding'] == at(CUT, DEC)
+    assert sig(snapshot=snap(available_at=CUT))['status'] == 'OK'                    # available exactly at the close
 
 
 def test_shadow_created_before_the_decision_refuses():
@@ -145,6 +181,66 @@ def test_shadow_created_before_the_decision_refuses():
 def test_outcome_at_or_before_the_decision_refuses():
     with pytest.raises(A.AIScanError, match='at or before'):
         outcome(sig(), closed_at=DEC)
+
+
+# ------------------------------------------------------------------ snapshot provenance (Codex 6455762348)
+GOLDEN_SNAP = 'd4e11793383a1587b947435e1195f6eb83363855396b8e65f370dd9eab29bd73'   # independent: sha256(json {as_of:{available_at,event_at}, features_hash}) sorted keys
+
+
+def test_snapshot_as_of_is_persisted_and_bound_into_the_snapshot_hash():
+    s = sig()
+    assert s['snapshot_as_of'] == dict(event_at=CUT, available_at='2026-10-20T12:15:03Z')
+    assert s['snapshot_hash'] == A.snapshot_hash(snap()) == GOLDEN_SNAP
+    assert s['features_hash'] == A.features_hash(snap()['features'])
+
+
+@pytest.mark.parametrize('kw', [dict(available_at=None), dict(available_at='garbage')])
+def test_a_snapshot_without_its_availability_time_is_insufficient(kw):
+    s = sig(snapshot=snap(**kw))
+    assert s['status'] == 'INSUFFICIENT' and 'missing:snapshot' in s['insufficient']
+    assert s['snapshot_as_of'] is None and s['snapshot_hash'] is None
+    with pytest.raises(A.AIScanError):
+        A.snapshot_hash(snap(**kw))
+    with pytest.raises(A.AIScanError, match='INSUFFICIENT'):
+        shadow(s)
+
+
+def test_changing_only_available_at_changes_the_identity_and_cannot_replay_as_the_same_snapshot():
+    s = sig(); s2 = sig(snapshot=snap(available_at='2026-10-20T12:15:04Z'))
+    assert s2['snapshot_hash'] != s['snapshot_hash'] and s2['record_hash'] != s['record_hash']
+    with pytest.raises(A.AIScanError, match='conflicting replay'):
+        A.fold([s, s2])
+    with pytest.raises(A.AIScanError, match='different snapshot or plan'):
+        shadow(s2, read_snapshot_hash=s['snapshot_hash'])
+    with pytest.raises(A.AIScanError, match='different snapshot or plan'):
+        A.fold([s2, A._seal(dict(shadow(s), signal_id=s2['signal_id']))])
+
+
+def test_changing_only_the_event_time_changes_the_identity():
+    a = sig(tf='1h', candle_open='2026-10-20T11:00:00Z', snapshot=snap(last_close='2026-10-20T12:00:00Z'))
+    b = sig(tf='1h', candle_open='2026-10-20T11:00:00Z', snapshot=snap(last_close='2026-10-20T11:00:00Z'))
+    assert a['features_hash'] == b['features_hash'] and a['snapshot_hash'] != b['snapshot_hash']
+
+
+@pytest.mark.parametrize('field, value', [('available_at', '2026-10-20T12:15:04Z'), ('event_at', '2026-10-20T12:00:00Z'),
+                                          ('available_at', None), ('event_at', 'x')])
+def test_a_resealed_signal_with_tampered_snapshot_times_is_refused(field, value):
+    s = sig()
+    forged = A._seal(dict(s, snapshot_as_of=dict(s['snapshot_as_of'], **{field: value})))
+    with pytest.raises(A.AIScanError, match='snapshot provenance does not match'):
+        A.fold([forged])
+
+
+def test_a_resealed_signal_that_drops_snapshot_as_of_or_breaks_causality_is_refused():
+    s = sig()
+    with pytest.raises(A.AIScanError, match='without snapshot_as_of'):
+        A.fold([A._seal(dict(s, snapshot_as_of=None, features_hash=None, snapshot_hash=None))])
+    with pytest.raises(A.AIScanError, match='snapshot provenance does not match'):
+        A.fold([A._seal(dict(s, snapshot_as_of=None))])
+    late = dict(event_at=CUT, available_at='2026-10-20T12:15:11Z')        # available after decided_at, hash re-derived
+    forged = dict(s, snapshot_as_of=late, snapshot_hash=A.provenance_hash(late, s['features_hash']))
+    with pytest.raises(A.AIScanError, match='not causal'):
+        A.fold([A._seal(forged)])
 
 
 # ------------------------------------------------------------------ missing / malformed -> INSUFFICIENT
@@ -196,13 +292,32 @@ def test_prose_never_changes_the_recorded_plan():
     assert v['signal']['plan'] == before and A.display(v)['rules']['plan'] == before
 
 
-@pytest.mark.parametrize('where', ['features', 'plan', 'costs'])
+@pytest.mark.parametrize('where', ['features', 'plan', 'costs', 'nested_costs', 'nested_list', 'inputs'])
 @pytest.mark.parametrize('key', ['api_key', 'orderId', 'client_oid', 'trade_id', 'secret'])
-def test_credentials_and_exchange_ids_are_refused(where, key):
+def test_credentials_and_exchange_ids_are_refused_at_any_depth(where, key):
     kw = {'features': dict(snapshot=snap(features={key: 1.0})), 'plan': dict(plan=dict(plan(), **{key: 1})),
-          'costs': dict(costs={key: 1})}[where]
+          'costs': dict(costs={key: 1}), 'nested_costs': dict(costs=dict(meta=dict(src={key: 1}))),
+          'nested_list': dict(costs=dict(legs=[dict(px=1.0), {key: 1}])),
+          'inputs': dict(inputs=inputs(funding=dict(at(OPEN, DEC), meta={key: 'x'})))}[where]
     with pytest.raises(A.AIScanError, match='credential or exchange identifier'):
         sig(**kw)
+
+
+@pytest.mark.parametrize('sampling', [dict(SAMP, leverage=3), dict(SAMP, api_key='x'), dict(SAMP, meta=dict(order_id=1)),
+                                      dict(SAMP, temperature=dict(stop=1)), dict(SAMP, stop_sequences=[dict(size=2)]),
+                                      dict(SAMP, top_p='0.9'), dict(SAMP, order_size=1)])
+def test_sampling_is_a_flat_allow_list_so_nothing_hides_inside_it(sampling):
+    with pytest.raises(A.AIScanError, match='sampling'):
+        shadow(sig(), sampling=sampling)
+    with pytest.raises(A.AIScanError, match='sampling'):
+        failure(sig(), sampling=sampling)
+    assert shadow(sig(), sampling=dict(SAMP, top_p=0.9, stop_sequences=['</x>'], seed=7))['status'] == 'OK'
+
+
+@pytest.mark.parametrize('extra', [dict(meta=dict(nested=dict(api_key='x'))), dict(meta=[dict(stop=1)])])
+def test_nested_extras_are_refused(extra):
+    with pytest.raises(A.AIScanError):
+        shadow(sig(), **extra)
 
 
 # ------------------------------------------------------------------ immutable model identity / epochs
@@ -232,15 +347,21 @@ def test_any_identity_or_label_change_opens_a_new_epoch(monkeypatch):
 # ------------------------------------------------------------------ the frozen calibration gate and demotion
 def test_a_calibration_meeting_every_gate_bar_shows_the_probability_with_its_target():
     s = sig()
-    r = shadow(s, probability=0.62, calibration=cal())
-    assert r['probability'] == dict(state=A.PROB_CALIBRATED, p=0.62, calibration_id='cal-2026-10', target=A.TARGET)
+    c = cal()
+    r = shadow(s, probability=0.62, calibration=c)
+    assert r['probability'] == dict(state=A.PROB_CALIBRATED, p=0.62, calibration_id=c['id'], target=A.TARGET)
     d = A.display(A.fold([s, r])[s['signal_id']])
     assert d['ai'][0]['probability'] == dict(value='62%', target=A.TARGET)
     assert d['ai'][0]['label'] == 'AI SHADOW' and d['rules']['label'] == 'RULES'
 
 
 @pytest.mark.parametrize('kw', [dict(n=499), dict(min_bin_n=49), dict(ece=0.0501), dict(brier_improvement_ci_lo=0.0),
-                                dict(disjoint=False), dict(disjoint='yes'), dict(id=''), dict(epoch='other'),
+                                dict(id=''), dict(id='cal-2026-10'), dict(id='0' * 64), dict(epoch='other'),
+                                dict(disjoint=True, manifest_hash=H1), dict(manifest_hash=None),
+                                dict(window=['2026-07-01T00:00:00Z', '2026-10-02T00:00:00Z']),        # runs into holdout
+                                dict(window=['2026-06-30T00:00:00Z', '2026-10-01T00:00:00Z']),        # runs into fit
+                                dict(window=['2026-10-01T00:00:00Z', '2026-07-01T00:00:00Z']),        # reversed
+                                dict(window=None),
                                 dict(target=dict(A.TARGET, horizon='fixed_16_bars')), dict(n=float('nan')),
                                 dict(windows=[dict(ece=0.081, beats_base=True)])])
 def test_a_calibration_missing_any_gate_bar_stays_unverified(kw):
@@ -248,6 +369,15 @@ def test_a_calibration_missing_any_gate_bar_stays_unverified(kw):
     r = shadow(s, probability=0.71, calibration=cal(**kw))
     assert r['probability'] == dict(state=A.PROB_UNVERIFIED)
     assert A.display(A.fold([s, r])[s['signal_id']])['ai'][0]['probability'] == 'UNVERIFIED'
+
+
+def test_a_calibration_needs_the_sealed_manifest_it_names():
+    c = cal()
+    assert shadow(sig(), probability=0.6, calibration=c)['probability']['state'] == A.PROB_CALIBRATED
+    edited = dict(MAN, calibration=['2026-06-01T00:00:00Z', '2026-10-01T00:00:00Z'])   # an edit without re-sealing
+    other = A.seal_manifest(fit=MAN['fit'], calibration=MAN['calibration'], holdout=MAN['holdout'], prereg_hash=H4)
+    for m in (None, {}, edited, other, dict(MAN, manifest_hash='0' * 64)):
+        assert shadow(sig(), probability=0.6, calibration=c, manifest=m)['probability']['state'] == A.PROB_UNVERIFIED
 
 
 def test_a_calibration_never_carries_to_another_epoch():
@@ -284,6 +414,13 @@ def test_a_shadow_older_than_two_bars_of_its_timeframe_shows_insufficient_with_i
     assert A.display(x, now='2026-10-20T20:01:00Z')['ai'][0]['label'] == A.LABEL_AI           # 4h: 8 h is fresh
     assert A.display(x, now='2026-10-20T20:01:01Z')['ai'][0]['label'] == A.LABEL_INSUFFICIENT
     assert A.display(v)['ai'][0]['age_s'] is None and A.display(v)['ai'][0]['label'] == A.LABEL_AI
+
+
+def test_a_future_dated_shadow_result_is_insufficient_at_display_time():
+    s = sig(); v = A.fold([s, shadow(s)])[s['signal_id']]                  # created 12:16:00
+    r = A.display(v, now='2026-10-20T12:15:59Z')['ai'][0]
+    assert r['label'] == A.LABEL_INSUFFICIENT and r['reasons'] == ['future_dated'] and 'opinion' not in r
+    assert A.display(v, now='2026-10-20T12:16:00Z')['ai'][0]['label'] == A.LABEL_AI         # age 0 is fine
 
 
 def test_flag_off_is_exactly_on_false_rows_empty_and_stable():
@@ -338,22 +475,50 @@ def test_unknown_failure_and_a_late_result_for_a_failed_epoch_refuse():
 
 
 # ------------------------------------------------------------------ holdout isolation
-HOLD = dict(start='2026-10-20T00:00:00Z', end='2026-10-21T00:00:00Z')
+def at_open(o):
+    end = A._iso(A._ms(o) + 900_000)
+    return sig(candle_open=o, decided_at=end, snapshot=snap(last_close=end, available_at=end),
+               inputs=inputs(funding=at(o, end), universe=at(o, end), exchange_rules=at(o, end)))
 
 
-def test_fitting_refuses_a_sealed_holdout_row_and_never_filters_it():
-    s = sig()
+def test_fitting_refuses_a_calibration_or_holdout_row_and_never_filters_it():
+    s = sig()                                                              # 2026-10-20: inside the sealed holdout
     with pytest.raises(A.AIScanError, match='sealed-holdout row'):
-        A.fitting_view([s], HOLD)
-    out = A.fitting_view([s], dict(start='2026-10-21T00:00:00Z', end='2026-10-22T00:00:00Z'))
-    assert list(out) == [s['signal_id']]
-    assert list(A.fitting_view([s], dict(start='2026-10-19T00:00:00Z', end=OPEN))) == [s['signal_id']]   # end exclusive
+        A.fitting_view([s], MAN)
+    with pytest.raises(A.AIScanError, match='sealed-calibration row'):
+        A.fitting_view([at_open('2026-08-01T00:00:00Z')], MAN)
+    f, edge = at_open('2026-03-01T00:00:00Z'), at_open('2026-06-30T23:45:00Z')   # last fit candle (end exclusive)
+    assert set(A.fitting_view([f, edge], MAN)) == {f['signal_id'], edge['signal_id']}
+    with pytest.raises(A.AIScanError, match='sealed-calibration row'):
+        A.fitting_view([at_open('2026-07-01T00:00:00Z')], MAN)              # first calibration candle
 
 
-@pytest.mark.parametrize('h', [None, {}, dict(start=OPEN), dict(end=OPEN)])
-def test_fitting_without_sealed_bounds_refuses(h):
-    with pytest.raises(A.AIScanError, match='sealed holdout bounds'):
-        A.fitting_view([sig()], h)
+def test_fitting_without_a_sealed_manifest_refuses():
+    edited = dict(MAN, holdout=['2026-10-21T00:00:00Z', '2026-11-01T00:00:00Z'])   # moved without re-sealing
+    for m in (None, {}, edited, dict(MAN, manifest_hash='0' * 64), dict(MAN, schema='v0')):
+        with pytest.raises(A.AIScanError, match='manifest'):
+            A.fitting_view([sig()], m)
+
+
+@pytest.mark.parametrize('kw, msg', [
+    (dict(holdout=['2026-11-01T00:00:00Z', '2026-10-01T00:00:00Z']), 'start must be before end'),      # reversed
+    (dict(holdout=['2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z']), 'start must be before end'),      # empty
+    (dict(calibration=['2026-06-01T00:00:00Z', '2026-10-01T00:00:00Z']), 'ordered'),                   # overlaps fit
+    (dict(holdout=['2026-09-01T00:00:00Z', '2026-11-01T00:00:00Z']), 'ordered'),                       # overlaps calib
+    (dict(fit=['2026-10-01T00:00:00Z', '2026-12-01T00:00:00Z'], holdout=['2026-01-01T00:00:00Z', '2026-07-01T00:00:00Z']),
+     'ordered'),                                                                                        # out of order
+    (dict(holdout=None), 'needs'), (dict(prereg_hash='x'), 'preregistration'),
+])
+def test_a_reversed_overlapping_or_unbound_manifest_refuses(kw, msg):
+    a = dict(fit=MAN['fit'], calibration=MAN['calibration'], holdout=MAN['holdout'], prereg_hash=H3)
+    a.update(kw)
+    with pytest.raises(A.AIScanError, match=msg):
+        A.seal_manifest(**a)
+    forged = dict(MAN, **{k: v for k, v in kw.items() if k in A.WINDOWS})
+    forged['manifest_hash'] = A.sha256_hex(A.canonical_json(A._manifest_body(forged)))   # re-hashed by hand
+    if 'prereg_hash' not in kw:
+        with pytest.raises(A.AIScanError):
+            A.verify_manifest(forged)
 
 
 # ------------------------------------------------------------------ replay: idempotent, fail-closed joins
@@ -366,7 +531,7 @@ def test_restart_replay_of_identical_records_is_idempotent():
 def test_conflicting_replay_of_an_immutable_record_refuses():
     s = sig()
     for later in ([sig(rules_reason='other')], [shadow(s), shadow(s, opinion='SHORT')],
-                  [outcome(s), outcome(s, net_r=0.5)], [sim(s), sim(s, net_r=0.5)]):
+                  [outcome(s), outcome(s, exit_reason='sl')], [sim(s), sim(s, net_r=0.5)]):
         with pytest.raises(A.AIScanError, match='conflicting replay'):
             A.fold([s] + later)
 
@@ -406,17 +571,60 @@ def test_an_untaken_candidate_gets_only_a_simulated_outcome():
     assert v['measured'] is None and set(v['simulated']) == {H4}
 
 
-@pytest.mark.parametrize('kw', [dict(source='measured', cost_basis='modelled'), dict(source='simulated', cost_basis='booked'),
-                                dict(source='replayed', cost_basis='modelled'), dict(rev=None), dict(rev=-1),
-                                dict(rev=True), dict(rev=1.0), dict(cost_model_hash=H4), dict(cost_revision_id=None),
-                                dict(cost_revision_id='rev-1'), dict(cost_revision_id=1)])
-def test_measured_outcomes_need_a_cost_revision_id_and_an_int_rev(kw):
+@pytest.mark.parametrize('kw', [dict(cost_basis='modelled'), dict(source='replayed'), dict(rev=None), dict(rev=-1),
+                                dict(rev=True), dict(rev=1.0), dict(cost_model_hash=H4), dict(costs=None),
+                                dict(cost_model_id=''), dict(cost_model_id=None), dict(costs=dict(COSTS0, risk_usd=0.0)),
+                                dict(costs=dict(COSTS0, risk_usd=-10.0)), dict(costs=dict(COSTS0, risk_usd=float('inf'))),
+                                dict(costs={k: v for k, v in COSTS0.items() if k != 'funding_actual'}),
+                                dict(costs=dict(COSTS0, pnl_gross='12.5'))])
+def test_measured_outcomes_need_the_actual_cost_payload_and_an_int_rev(kw):
     with pytest.raises(A.AIScanError):
         outcome(sig(), **kw)
 
 
+@pytest.mark.parametrize('kw, msg', [
+    (dict(cost_revision_id='0' * 64, net_pnl=999.0, net_r=99.9), 'cost_revision_id does not match'),   # Codex's probe
+    (dict(cost_revision_id='0' * 64), 'cost_revision_id does not match'), (dict(cost_revision_id=CR1), 'does not match'),
+    (dict(net_pnl=999.0), 'net_pnl / net_r do not match'), (dict(net_r=1.21), 'net_pnl / net_r do not match'),
+    (dict(net_pnl=float('nan')), 'do not match'),
+])
+def test_a_supplied_cost_id_or_net_that_differs_from_the_payload_is_refused(kw, msg):
+    with pytest.raises(A.AIScanError, match=msg):
+        outcome(sig(), **kw)
+    o = outcome(sig(), cost_revision_id=CR0, net_pnl=12.0, net_r=1.2)            # matching values are accepted
+    assert (o['cost_revision_id'], o['net_pnl'], o['net_r']) == (CR0, 12.0, 1.2)
+
+
+def test_the_measured_net_formula_and_funding_sign_are_pinned():
+    # actual_costs.measured: net = pnl_gross + pnl_fill_adj - fees_actual + funding_actual (funding + = received)
+    c = dict(pnl_gross=100.0, pnl_fill_adj=-2.0, fees_actual=3.0, funding_actual=-1.5, risk_usd=20.0)
+    assert A.measured_net(c) == (93.5, 93.5 / 20.0)
+    assert A.measured_net(dict(c, funding_actual=1.5)) == (96.5, 96.5 / 20.0)
+    o = outcome(sig(), costs=c)
+    assert (o['net_pnl'], o['net_r'], o['actual_costs']) == (93.5, 4.675, c)
+
+
+def test_replay_refuses_a_resealed_record_whose_cost_identity_was_forged():
+    s = sig(); o = outcome(s)
+    for forged in (dict(o, net_pnl=999.0), dict(o, net_r=99.0), dict(o, cost_revision_id='0' * 64),
+                   dict(o, actual_costs=dict(COSTS0, fees_actual=0.0)), dict(o, cost_model_id='other'),
+                   dict(o, cost_basis='measured'), dict(o, actual_costs=None)):
+        with pytest.raises(A.AIScanError, match='forged cost identity'):
+            A.fold([s, A._seal(forged)])
+
+
+@pytest.mark.parametrize('status', ['skipped', 'pending'])
+def test_a_measured_outcome_is_valid_only_for_a_taken_decision(status):
+    k = sig(status=status)
+    with pytest.raises(A.AIScanError, match=f'measured outcome on a {status}'):
+        outcome(k)
+    with pytest.raises(A.AIScanError, match=f'measured outcome on a {status}'):
+        A.fold([k, A._seal(dict(outcome(sig()), signal_id=k['signal_id']))])
+    assert set(A.fold([k, sim(k)])[k['signal_id']]['simulated']) == {H4}
+
+
 @pytest.mark.parametrize('kw', [dict(cost_model_hash=None), dict(cost_model_hash='v1'), dict(rev=0),
-                                dict(cost_revision_id=CR0)])
+                                dict(cost_revision_id=CR0), dict(actual_costs=COSTS0), dict(cost_model_id=CMID)])
 def test_simulated_outcomes_key_on_a_cost_model_hash_only(kw):
     with pytest.raises(A.AIScanError, match='simulated outcome'):
         sim(sig(), **kw)
@@ -432,7 +640,7 @@ def test_measured_and_simulated_outcomes_are_never_merged():
 def test_actual_cost_revision_supersedes_and_partial_exits_and_adds_survive():
     s = sig()
     o0 = outcome(s, partial_exits=2, adds=1)
-    o1 = outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured', partial_exits=2, adds=1)
+    o1 = outcome1(s, partial_exits=2, adds=1)
     for order in ([s, o0, o1], [s, o1, o0]):
         v = A.fold(order)[s['signal_id']]
         m = v['measured']
@@ -443,7 +651,7 @@ def test_actual_cost_revision_supersedes_and_partial_exits_and_adds_survive():
 
 def test_two_revisions_of_one_decision_each_join_to_their_own_outcome():
     s = sig()
-    o0, o1 = outcome(s), outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured')
+    o0, o1 = outcome(s), outcome1(s)
     v = A.fold([s, o0, o1])[s['signal_id']]
     assert set(v['revisions']) == {CR0, CR1}
     assert (v['revisions'][CR0]['net_r'], v['revisions'][CR1]['net_r']) == (1.2, 0.9)
@@ -452,9 +660,9 @@ def test_two_revisions_of_one_decision_each_join_to_their_own_outcome():
 
 def test_rev_reordering_never_changes_the_economic_join():
     s = sig()
-    a = [outcome(s), outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured')]
-    b = [outcome(s, rev=7), outcome(s, cost_revision_id=CR1, rev=3, net_r=0.9, net_pnl=9.0, cost_basis='measured')]
-    c = [outcome(s, rev=5), outcome(s, cost_revision_id=CR1, rev=2, net_r=0.9, net_pnl=9.0, cost_basis='measured')]
+    a = [outcome(s), outcome1(s)]
+    b = [outcome(s, rev=7), outcome1(s, rev=3)]
+    c = [outcome(s, rev=5), outcome1(s, rev=2)]
     joins = []
     for recs in (a, b, b[::-1], c):
         v = A.fold([s] + recs)[s['signal_id']]
@@ -467,31 +675,31 @@ def test_rev_deduplicates_and_a_reused_rev_or_renumbered_identity_refuses():
     s = sig(); o0 = outcome(s)
     assert A.fold([s, o0, outcome(s)]) == A.fold([s, o0])                     # same id + rev: restart no-op
     with pytest.raises(A.AIScanError, match='share rev 0'):
-        A.fold([s, o0, outcome(s, cost_revision_id=CR1, net_r=0.9, net_pnl=9.0, cost_basis='measured')])
+        A.fold([s, o0, outcome1(s, rev=0)])
     with pytest.raises(A.AIScanError, match='conflicting replay'):
         A.fold([s, o0, outcome(s, rev=1)])                                    # one economic identity, two revs
 
 
-GOLDEN_CR0 = 'ad138f6d47d13a4b56cac758f41a00b87f0a7109faef83100d6a3e4f58129fe4'   # independent: sha256(json [schema, pairs, basis, model])
+GOLDEN_CR0 = '16d0a15a8d3b87fae92d66abe2194fb160afff06d949d651e7de9352764c2c70'   # independent: sha256(json [schema, pairs, basis, model])
 
 
 def test_cost_revision_id_schema_and_golden_hash_are_pinned():
-    assert A.COST_REV_SCHEMA == 'ai-scan-cost-rev-v1'
-    assert A.COST_REV_FIELDS == ('fees_actual', 'funding', 'pnl_gross', 'pnl_fill_adj', 'pnl_net', 'net_r')
+    assert A.COST_REV_SCHEMA == 'ai-scan-cost-rev-v2'
+    assert A.COST_REV_FIELDS == ('fees_actual', 'funding_actual', 'pnl_gross', 'pnl_fill_adj', 'risk_usd')
     assert CR0 == GOLDEN_CR0
 
 
 def test_cost_revision_id_ignores_input_order_timestamps_and_presentation_fields():
     rev = dict(reversed(list(COSTS0.items())))
     noisy = dict(COSTS0, closed_at='2026-10-20T14:00:00Z', ts=1760968800, cost_rev=3, label='TP1 hit', pnl_str='+$12.00',
-                 id='row-7', fees_actual=0.42)
-    ints = dict(COSTS0, funding=0, pnl_fill_adj=0)                              # 0 and 0.0 are one value
+                 id='row-7', pnl_net=1e9, net_r=1e9)
+    ints = dict(COSTS0, funding_actual=0, pnl_fill_adj=0, risk_usd=10)            # 0 and 0.0 are one value
     for d in (rev, noisy, ints):
         assert A.cost_revision_id(d, net_basis='booked', cost_model_id=CMID) == CR0
 
 
-@pytest.mark.parametrize('change', [dict(fees_actual=0.43), dict(funding=-0.01), dict(pnl_gross=12.5),
-                                    dict(pnl_fill_adj=0.1), dict(pnl_net=11.99), dict(net_r=1.19),
+@pytest.mark.parametrize('change', [dict(fees_actual=0.51), dict(funding_actual=-0.01), dict(pnl_gross=12.51),
+                                    dict(pnl_fill_adj=0.1), dict(risk_usd=10.01),
                                     dict(net_basis='measured'), dict(cost_model_id='actual-cost-model-v2')])
 def test_any_cost_field_net_basis_or_cost_model_changes_the_id(change):
     nb, cm = change.pop('net_basis', 'booked'), change.pop('cost_model_id', CMID)
@@ -499,12 +707,13 @@ def test_any_cost_field_net_basis_or_cost_model_changes_the_id(change):
 
 
 def test_a_schema_version_bump_changes_the_id(monkeypatch):
-    monkeypatch.setattr(A, 'COST_REV_SCHEMA', 'ai-scan-cost-rev-v2')
+    monkeypatch.setattr(A, 'COST_REV_SCHEMA', 'ai-scan-cost-rev-v3')
     assert A.cost_revision_id(COSTS0, net_basis='booked', cost_model_id=CMID) != CR0
 
 
-@pytest.mark.parametrize('costs, kw', [(None, {}), ([1], {}), ({k: v for k, v in COSTS0.items() if k != 'funding'}, {}),
-                                       (dict(COSTS0, funding=None), {}), (dict(COSTS0, net_r=float('nan')), {}),
+@pytest.mark.parametrize('costs, kw', [(None, {}), ([1], {}), ({k: v for k, v in COSTS0.items() if k != 'funding_actual'}, {}),
+                                       (dict(COSTS0, funding_actual=None), {}), (dict(COSTS0, risk_usd=float('nan')), {}),
+                                       (dict(COSTS0, risk_usd=0), {}),
                                        (dict(COSTS0, fees_actual='0.42'), {}), (dict(COSTS0, fees_actual=True), {}),
                                        (COSTS0, dict(net_basis='modelled')), (COSTS0, dict(cost_model_id=''))])
 def test_a_missing_or_partial_cost_has_no_identity(costs, kw):
@@ -515,7 +724,8 @@ def test_a_missing_or_partial_cost_has_no_identity(costs, kw):
 
 def test_an_id_collision_between_two_different_revisions_fails_closed():
     s = sig()
-    other = outcome(s, rev=1, net_r=0.5, net_pnl=5.0, cost_basis='measured')   # different revision, same id CR0
+    other = outcome(s, rev=1, exit_reason='sl', partial_exits=1)     # a different record with the identical id CR0
+    assert other['cost_revision_id'] == CR0
     with pytest.raises(A.AIScanError, match='conflicting replay'):
         A.fold([s, outcome(s), other])
     with pytest.raises(A.AIScanError, match='conflicting replay'):

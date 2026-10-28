@@ -35,7 +35,9 @@ marketing-style percentage.
 - PAPER/testnet and shadow-only. New UI/API surfaces default off until installed and verified.
 - No order, settings, sizing, eligibility, stop, exit, rotation or strategy authority.
 - Remote model analysis is queued and asynchronous; it cannot block a 15-minute cycle or position management.
-- Inputs contain only values whose source/event timestamp is at or before the decision cutoff. Their receipt/ingest
+- Inputs contain only values whose source/event timestamp is at or before the decision cutoff; each point-in-time input
+  carries `{event_at, available_at}` with `event_at <= available_at <= decided_at`. The snapshot's
+  `{event_at: last_close, available_at}` is persisted in the record and bound into the sealed snapshot hash. Their receipt/ingest
   timestamp may be after that close, but must be no later than the recorded decision instant (`decided_at >= cutoff`);
   this permits ordinary exchange delivery latency without admitting information from a later market event. Freshness is
   the timeframe-relative ceiling `STALE_BARS = 2`: the snapshot's last close may not be after the cutoff, and its
@@ -63,7 +65,8 @@ marketing-style percentage.
 3. **Evaluation harness.** Preregister B0 as the unchanged deterministic baseline and B1 as scanner ranking only.
    Evaluate exact runtime rules on anchored walk-forward and an untouched holdout with actual fee, funding, fill and
    exchange assumptions. Taken candidates use measured outcomes joined by decision id + `cost_revision_id` (SHA-256 over
-   the versioned, pinned actual-cost fields + net basis + cost-model id; the integer `cost_rev` only orders/dedupes;
+   the versioned, pinned actual-cost payload + net basis + cost-model id, computed in `build_outcome` together with
+   net P&L and net R; valid only for a `taken` decision; the integer `cost_rev` only orders/dedupes;
    see `docs/AI_SCAN_01_SCHEMA.md`). Untaken,
    vetoed and capacity-skipped candidates receive a deterministic causal simulation under the same frozen policy and
    cost model. Measured and simulated outcomes are stored and reported separately; missing future data is
@@ -80,8 +83,9 @@ funding and fills at the earlier of its deterministic strategy exit or its strat
 position would still be open at that horizon, use the first causally executable mark at/after it and charge the frozen
 exit-cost model. The label definition and cost-model hash are part of the calibration epoch.
 
-A probability remains `UNVERIFIED` unless a calibration window disjoint from fitting, walk-forward evaluation and the
-sealed holdout has all of the following:
+A probability remains `UNVERIFIED` unless a calibration record bound to the sealed manifest (explicit ordered
+fit < calibration < holdout `[start, end)` intervals, non-overlap computed, never caller-asserted; id = its own content
+hash) has all of the following:
 
 - at least 500 resolved labels overall and at least 50 labels per reported bin (adjacent bins are merged otherwise);
 - pooled expected calibration error at most 0.05 under the preregistered fixed binning rule; and
