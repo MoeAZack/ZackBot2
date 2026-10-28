@@ -385,3 +385,15 @@ def test_engine_pairing_failure_never_changes_trading(tmp_path, monkeypatch):
     H.settle(e)
     assert on == off and e.ml_flush(5.0)
     assert e.health['ml_shadow']['labels'] == 2                                  # labels still written
+
+
+@pytest.mark.parametrize('field, bad', [('source_commit', 'a' * 40 + '\n'), ('bundle_hash', 'b' * 64 + '\n'),
+                                        ('build_id', '2026\n'), ('source_commit', 'A' * 40)])
+def test_identity_gate_is_a_full_match_and_rejects_a_trailing_newline(field, bad):
+    """Cowork 6460324223 N1: `^...$` with re.match admits a trailing newline; the gate and the sanitizer use fullmatch."""
+    good = {'build_id': '2026.10.28', 'source_commit': 'a' * 40, 'bundle_hash': 'b' * 64}
+    assert MLP.identity_gap(good) is None
+    assert MLP.identity_gap(dict(good, **{field: bad})) is not None
+    from ml_shadow.sanitize import _fmt, _HEX40, _HEX64, _BUILD
+    rx = {'source_commit': _HEX40, 'bundle_hash': _HEX64, 'build_id': _BUILD}[field]
+    assert _fmt(bad, rx) is None and _fmt(good[field], rx) == good[field]

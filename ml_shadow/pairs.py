@@ -146,7 +146,7 @@ def code_identity(data_dir, base=None):
         if isinstance(rec, dict) and rec.get('build_id') == bid and bid != 'dev': sc = rec.get('source_commit')
     except Exception:                                       # noqa: BLE001 - no record: no source commit
         sc = None
-    if not (isinstance(sc, str) and COMMIT_RE.match(sc)): sc = None
+    if not (isinstance(sc, str) and COMMIT_RE.fullmatch(sc)): sc = None
     try: bh = bundle_hash(base)
     except Exception: bh = None                             # noqa: BLE001
     return dict(build_id=str(bid), source_commit=sc, bundle_hash=bh)
@@ -157,9 +157,9 @@ def identity_gap(code):
     40-hex source commit from the matching build.json and a 64-hex bundle hash - else the first missing part."""
     c = code if isinstance(code, dict) else {}
     b = c.get('build_id')
-    if not (isinstance(b, str) and BUILD_RE.match(b)) or b == 'dev': return 'dev_build'
-    if not (isinstance(c.get('source_commit'), str) and COMMIT_RE.match(c['source_commit'])): return 'source_commit'
-    if not (isinstance(c.get('bundle_hash'), str) and HASH_RE.match(c['bundle_hash'])): return 'bundle_hash'
+    if not (isinstance(b, str) and BUILD_RE.fullmatch(b)) or b == 'dev': return 'dev_build'
+    if not (isinstance(c.get('source_commit'), str) and COMMIT_RE.fullmatch(c['source_commit'])): return 'source_commit'
+    if not (isinstance(c.get('bundle_hash'), str) and HASH_RE.fullmatch(c['bundle_hash'])): return 'bundle_hash'
     return None
 
 

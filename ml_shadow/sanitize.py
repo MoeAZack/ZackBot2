@@ -23,7 +23,7 @@ def _txt(v, cap=_SHORT):
 
 def _fmt(v, rx):
     """Generated ids keep their exact format or become None (an opaque caller string is never persisted)."""
-    return v if isinstance(v, str) and rx.match(v) else None
+    return v if isinstance(v, str) and rx.fullmatch(v) else None   # fullmatch: `$` admits a trailing newline
 
 
 def _id(v):
