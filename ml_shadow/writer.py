@@ -19,14 +19,16 @@ QUEUE_MAX = 1024
 
 
 class LedgerWriter:
-    def __init__(self, open_ledgers, counters=None, maxsize=QUEUE_MAX, key=None):
+    def __init__(self, open_ledgers, counters=None, maxsize=QUEUE_MAX, key=None, open_pairs=None):
         """open_ledgers() -> (decision_ledger, label_ledger); called once, on the writer thread (it reads the files).
         counters: a dict whose keys decisions / labels / missing_decision / refused_skipped / write_errors this thread
         increments (the engine health block); dropped / blocked_prior_writer by submit(), lost by close().
         key: the ledger folder this writer owns. Only ONE live writer per key in the process: while an earlier writer
         of the same folder is still alive (e.g. its close() timed out on an engine restart), this one never starts -
-        its rows are dropped and counted as blocked_prior_writer - so two writers never append to the same files."""
-        self.open_ledgers, self.key = open_ledgers, key
+        its rows are dropped and counted as blocked_prior_writer - so two writers never append to the same files.
+        open_pairs() -> ml_shadow.pairs.PairStore (ML-PAIR-01), also called on the writer thread; None = no pairing.
+        A store that fails to open is retried on the next row; pairing never blocks or fails the decision / label rows."""
+        self.open_ledgers, self.key, self.open_pairs, self.pairs = open_ledgers, key, open_pairs, None
         self.ctr = counters if counters is not None else {}
         for k in ('decisions', 'labels', 'missing_decision', 'refused_skipped', 'write_errors', 'dropped', 'lost',
                   'blocked_prior_writer', 'reconciled'):
@@ -37,9 +39,10 @@ class LedgerWriter:
         self.ids = set()
 
     # ---------------------------------------------------------------- engine side (non-blocking)
-    def submit(self, kind, row):
-        """Queue one built row ('decision' | 'label'). True if accepted; False (counted as dropped) when the queue is
-        full or the writer is closing. Never blocks, never raises."""
+    def submit(self, kind, row, close=None):
+        """Queue one built row ('decision' | 'label' | 'mgmt'). close: for a label, the measured-close inputs pairing
+        needs (ML-PAIR-01). True if accepted; False (counted as dropped) when the queue is full or the writer is closing.
+        Never blocks, never raises."""
         try:
             with self.lock:
                 if self.closing:
@@ -48,7 +51,7 @@ class LedgerWriter:
                     if not claim(self):                     # an earlier writer of these files is still alive
                         self.ctr['blocked_prior_writer'] += 1; self.ctr['dropped'] += 1; return False
                 try:
-                    self.q.put_nowait((kind, row))
+                    self.q.put_nowait((kind, row, close))
                 except queue.Full:
                     self.ctr['dropped'] += 1; return False
                 if kind == 'decision': self.ids.add(row.get('decision_id'))
@@ -63,22 +66,45 @@ class LedgerWriter:
             return False if self.loaded else None
 
     # ---------------------------------------------------------------- writer thread
-    def _write(self, led, kind, row):
+    def _write(self, led, kind, row, close=None):
         dec, lab = led
-        try: self._do_write(dec, lab, kind, row)
+        try: self._do_write(dec, lab, kind, row, close)
         finally: self.ctr['reconciled'] = getattr(dec, 'reconciled', 0) + getattr(lab, 'reconciled', 0)
 
-    def _do_write(self, dec, lab, kind, row):
+    def _pairs(self):
+        """ML-PAIR-01 store, opened lazily on this thread. None when pairing is off or the store cannot open (counted)."""
+        if self.pairs is None and self.open_pairs is not None:
+            try: self.pairs = self.open_pairs()
+            except Exception as e:                          # noqa: BLE001 - pairing never blocks the ledgers
+                self.ctr.setdefault('pairs', {}).setdefault('open_errors', 0)
+                self.ctr['pairs']['open_errors'] += 1
+                log.warning('ml_shadow: pair store not opened (%s)', type(e).__name__)
+        return self.pairs
+
+    def _do_write(self, dec, lab, kind, row, close=None):
+        if kind == 'mgmt':                                 # ML-PAIR-01: the lot's management snapshot at open
+            ps = self._pairs()
+            if ps is not None: ps.record_mgmt(row)
+            return
         if kind == 'decision':
-            if dec.append(row) is not None: self.ctr['decisions'] += 1
+            try:
+                if dec.append(row) is not None: self.ctr['decisions'] += 1
+            finally:                                       # ML-PAIR-01: taken / pending also to the durable store
+                ps = self._pairs()
+                if ps is not None: ps.record_decision(row)
             return
         did = row.get('decision_id')
+        ps = self._pairs()
         src = next((r for r in dec.rows() if r.get('decision_id') == did), None)
-        if src is None:                                    # dropped / never written / rotated out: incomplete evidence
-            self.ctr['missing_decision'] += 1; return
-        if not labelable(src):                             # a skipped signal never gets a label
-            self.ctr['refused_skipped'] += 1; return
-        if lab.append(row) is not None: self.ctr['labels'] += 1
+        if src is None and ps is not None: src = ps.decision(did)   # rotated out of decisions.jsonl: the durable copy
+        try:
+            if src is None:                                # dropped / never written: incomplete evidence
+                self.ctr['missing_decision'] += 1
+            elif not labelable(src):                       # a skipped signal never gets a label
+                self.ctr['refused_skipped'] += 1
+            elif lab.append(row) is not None: self.ctr['labels'] += 1
+        finally:
+            if ps is not None and close is not None: ps.pair(row, close)   # measured, cost-complete closes only
 
     def _open(self):
         """Open the ledgers and merge the decision ids already on disk. None (retried on the next row) on failure -
@@ -95,14 +121,14 @@ class LedgerWriter:
     def _run(self):
         led = self._open()
         while True:
-            try: kind, row = self.q.get(timeout=0.2)
+            try: kind, row, close = self.q.get(timeout=0.2)
             except queue.Empty:
                 if self.stop_ev.is_set(): return
                 continue
             try:
                 if led is None: led = self._open()
                 if led is None: raise OSError('ledgers unavailable')
-                self._write(led, kind, row)
+                self._write(led, kind, row, close)
             except Exception as e:                          # noqa: BLE001
                 self.ctr['write_errors'] += 1
                 log.warning('ml_shadow: row not written (%s)', type(e).__name__)   # type only: no data in logs
