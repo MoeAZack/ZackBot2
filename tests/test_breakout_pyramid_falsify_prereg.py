@@ -246,8 +246,10 @@ def test_c4_b0_is_over_random_entry_without_replacement_seeded_and_fails_closed(
 def test_c5_own_stage_data_and_slice3_activity_span():
     p = c()
     g, h = p['gates'], p['hypotheses']
-    assert "OWN data: H1 on S1, H2 on S2, H3 on S3 and on the paired S3 - S2 increments" in g['stage_scope']
-    assert "S2's own episodes" in h['H2']['test'] and 'paired S3 - S2 increments' in h['H3']['test']
+    assert "OWN episodes: H1 on S1, H2 on S2, H3 stage quality on S3" in g['stage_scope']
+    assert 'never by remove-best-symbol or concentration' in g['stage_scope']             # D3 keeps only its frozen gates
+    assert "S2's own episodes" in h['H2']['test'] and "on S3's own episodes" in h['H3']['test']
+    assert 'paired S3 - S2 increments' not in h['H3']['test'] and 'D3 carries no remove-best-symbol' in h['H3']['test']
     a = g['activity']
     assert a['slice3_eligible_end'] == p['windows']['last_entry_cutoff']['at'] == '2026-08-29T00:00:00Z'
     assert '2024-12-16T00:00:00Z -> 2026-08-29T00:00:00Z' in a['per_30d_span']

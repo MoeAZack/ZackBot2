@@ -51,7 +51,7 @@ path order: gap first, then conservative stop-first.
   - above the 95th percentile of 1000 random-entry books (B0, an edge **over random entry**). Each B0 replicate draws entry bars without replacement and without overlap, under the same re-arm rule, until each symbol/slice S1 count is matched. Replicate r uses seed 20261028 + r. If a count cannot be matched, B0 is INCOMPLETE and H1 cannot pass;
   - the activity gate passed.
 - **H2 (S2)** is tested only after H1 passes. S2 itself must be positive at base (LCB > 0) and at 1.5x, in all 3 slices, with the best symbol removed and within concentration limits, both measured on S2's own episodes.
-- **H3 (pyramiding)** is tested only after H1 and H2 pass. S2 and S3 differ only by the adds, so the paired increment S3 - S2 isolates them. It must have base LCB > 0, be positive at 1.5x and positive in all 3 slices, with remove-best-symbol and concentration measured on the paired increments. S3 must also pass the H2 test on its own episodes. S2 - S1 is report-only.
+- **H3 (pyramiding)** is tested only after H1 and H2 pass. S2 and S3 differ only by the adds, so the paired increment S3 - S2 isolates them. It must have base LCB > 0, be positive at 1.5x and positive in all 3 slices; the increment carries no remove-best-symbol or concentration gate. S3 must also pass the H2 test, including remove-best-symbol and concentration, on its own episodes. S2 - S1 is report-only.
 
 ## Book (separate from E)
 - Only the deepest credited stage is replayed as a book. It is built from that stage's raw signals and exits; E is never fed into it.
