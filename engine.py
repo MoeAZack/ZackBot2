@@ -896,7 +896,8 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
                        # ML-SHADOW-01: observation-only decision/label ledger (engine) + the report-only Claude analyst (app).
                        # Both OFF by default; independent of AI_FILTER; nothing in trading code ever reads their output.
                        ML_SHADOW=False, CLAUDE_SHADOW_ANALYST=False, CLAUDE_SHADOW_MODEL=_SHADOW_MODEL,
-                       CLAUDE_DAILY_BUDGET_USD=18.0, CLAUDE_MONTHLY_BUDGET_USD=198.0)   # USD ceilings, not expected spend
+                       CLAUDE_DAILY_BUDGET_USD=18.0, CLAUDE_MONTHLY_BUDGET_USD=198.0,   # USD ceilings, not expected spend
+                       AI_SCAN=False)    # AI-SCAN-01: read-only /api/ai_scan report (PAPER only); OFF = {on:false, rows:[]}
 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(
@@ -1385,7 +1386,8 @@ _SETTING_NUM = dict(MAX_LEVERAGE=(1, 125), DAILY_LOSS_HALT=(0.0, 1.0), PEAK_DD_F
                     MAKER_REPRICE=(0, 10), MAKER_WAIT_S=(0, 3600), FEE_MAKER=(-0.01, 0.01),
                     FEE_EDGE_MULT=(1.0, 20.0), PAPER_BOOK_CAP=(100.0, 1e7))
 _SETTING_BOOL = ('ENTRIES_PAUSED', 'COMPOUND', 'TELEGRAM_ON', 'AI_FILTER', 'MAKER_FALLBACK', 'RUN_IN_BACKGROUND', 'TRADFI_ENABLED',
-                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS', 'STRATEGY_SHADOW')
+                 'ML_SHADOW', 'CLAUDE_SHADOW_ANALYST', 'FEE_EDGE_GATE', 'PAPER_BOOKS', 'TRUE_BOOKS', 'STRATEGY_SHADOW',
+                 'AI_SCAN')
 
 
 def validate_settings(doc):
