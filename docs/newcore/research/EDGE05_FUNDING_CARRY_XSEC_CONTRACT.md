@@ -23,7 +23,8 @@ STATIC-40: `research_evidence/universe/static-top40-minhist365-contract-20261011
 fixed-18 are too narrow for k = 5 per side.
 
 A symbol is eligible at decision D only if its first settled funding event and its first 4h kline are each at least
-30 days before D, its funding sequence in the window [D-24h, D) passes `costs.check_funding_sequence`, and the 1d bars it needs
+30 days before D, its funding sequence in the available-at-decision window [D-24h, D) (every event with T + 300s <= D) passes
+`costs.check_funding_sequence` as specified in §2, and the 1d bars it needs
 for the R unit exist. It needs **at least 15 eligible symbols**. On a day with fewer, no cohort opens; that day is
 reported, not counted as INCOMPLETE. There is no back-fill before a symbol's listing. If a 4h bar, mark bar or funding
 event is missing inside an open episode, that episode is INCOMPLETE. It is never dropped silently.
@@ -40,7 +41,10 @@ T + 300s in (D-24h, D], i.e. D-24h-300s < T <= D-300s.** Nominal times are whole
   anchor (the event at or immediately before D-24h) through the last event with T + 300s <= D. The covered interval is
   [D-24h, D), so the event at D is not covered and is not passed. Equivalently (Codex 6459518132):
   start_exclusive = D-24h-300s, end_inclusive = D-300s, with the latest nominal event at or before the lower boundary as
-  the cadence phase anchor. A missing, duplicated or off-grid event inside the
+  the cadence phase anchor.
+- **Runner requirement (Codex N3):** the runner must filter the funding rows to T + 300s <= D *before* calling
+  `costs.check_funding_sequence`, and must assert that no row it passes has T + 300s > D. An event that is not yet
+  available can neither complete the sequence nor be required by it. A missing, duplicated or off-grid event inside the
   window makes the symbol ineligible at D.
 - **Why 24h:** the spec holds each position for about 24h, so the look-back equals the hold. A 24h sum is the only
   window that normalises the 1h, 4h and 8h cadences without a free parameter. It is not tuned, and no alternative

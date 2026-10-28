@@ -267,3 +267,33 @@ def test_entry_bar_is_stop_checked_and_dd_gate_is_monotone():
 
 def test_ruling_2_funding_sign_and_contribution_are_reported():
     assert any('positive / zero / negative F24' in x and 'funding contribution' in x for x in c()['metrics'])
+
+
+def _available(rows, D, lag):
+    """The runner requirement (Codex 6459663759 N3): keep only events already available at D, and prove it."""
+    kept = [r for r in rows if r.time_ms // 1000 + lag <= D]
+    assert all(r.time_ms // 1000 + lag <= D for r in kept)
+    return kept
+
+
+@pytest.mark.parametrize('grid', [8, 4, 1])
+def test_real_check_funding_sequence_excludes_t_eq_d_and_never_passes_an_incomplete_window(grid):
+    """N3 on the real costs.check_funding_sequence: synthetic rows only, no data read."""
+    from types import SimpleNamespace
+    import costs as K
+    sig = c()['signal']
+    lag = sig['availability_lag_seconds']
+    assert 'filter' in sig['runner_requirement'] and 'BEFORE calling costs.check_funding_sequence' in sig['runner_requirement']
+    D = 1_788_220_800
+    row = lambda T: SimpleNamespace(time_ms=T * 1000, interval_hours=grid)
+    full = [row(D - k * grid * H) for k in range(48 // grid, -1, -1)]          # D-48h .. D, the T = D event included
+    kept = _available(full, D, lag)
+    assert D * 1000 not in [r.time_ms for r in kept]                            # T = D is excluded
+    window = [r for r in kept if r.time_ms >= (D - 24 * H) * 1000]
+    assert len(window) == sig['expected_events_per_grid'][str(grid)]
+    K.check_funding_sequence('SYN', kept, start_ms=(D - 24 * H) * 1000, end_ms=D * 1000)     # complete: passes
+    hole = [r for r in full if r.time_ms != (D - grid * H) * 1000]              # the last available event is missing
+    with pytest.raises(K.CostError):
+        K.check_funding_sequence('SYN', _available(hole, D, lag), start_ms=(D - 24 * H) * 1000, end_ms=D * 1000)
+    with pytest.raises(K.CostError):                                            # the T = D event cannot paper over it
+        K.check_funding_sequence('SYN', hole, start_ms=(D - 24 * H) * 1000, end_ms=D * 1000)
