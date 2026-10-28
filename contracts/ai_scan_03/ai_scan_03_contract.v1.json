@@ -87,7 +87,8 @@
     "fields": ["sleeve", "strategy", "symbol", "side", "tf", "candle_open"],
     "equals": "ai_scan signal_id",
     "on_lot": "lot['ml_decision_id'] stamped at engine.Engine._ml_link when ML_SHADOW or AI_SCAN is exactly True (R1)",
-    "decided_at_source": "lot['ml_decided_at'] (the signal decided_at, UTC ISO) is stamped together with ml_decision_id at engine.Engine._ml_link; the lot dict is persisted with engine state and copied onto the closed history row, so both close hooks read signal_id + decided_at from in-memory lot / row data, never from disk on the trading thread; a lot or row with ml_decision_id but no ml_decided_at counts no_decided_at and makes the writer session conservatively incomplete (Codex 6462613229 #1)",
+    "decided_at_source": "lot['ml_decided_at'] (the signal decided_at, UTC ISO) is stamped together with ml_decision_id at engine.Engine._ml_link; the lot dict is persisted with engine state and copied onto the closed history row, so both close hooks read signal_id + decided_at from in-memory lot / row data, never from disk on the trading thread; a lot or row with ml_decision_id but no ml_decided_at counts no_decided_at and makes only that signal / outcome ineligible with a named decision-time gap; an otherwise clean writer session stays clean; no hot-path disk backfill (Codex 6462613229 #1, D1)",
+    "decided_at_form": "UTC ISO-8601 with exactly six-digit microseconds and Z, e.g. 2026-10-28T08:00:00.000000Z; fold rejects and counts decided_at_mismatch when an outcome decided_at differs from its signal (D1)",
     "flag_independence": "AI_SCAN works without ML_SHADOW and ML_SHADOW without AI_SCAN; neither feature is a prerequisite for the other (R1)",
     "missing": "no outcome; counted no_decision_id"
   },
@@ -113,6 +114,7 @@
     "rewrite": false,
     "exact_duplicate": "no_op",
     "conflicting_replay": "refused_unwritten",
+    "read_side_conflict": "fold never raises: a conflict found on read poisons only that signal (ineligible, counted conflicts) (U2)",
     "same_rev_different_cost": "refused_unwritten",
     "outcome_before_signal": "refused_unwritten",
     "measured_requires_rules_status": "taken",
@@ -161,7 +163,7 @@
     "content_hash": "sha256 over the record excluding only code and record_hash (F2)",
     "cross_build_replay": "same v2 key and same content_hash with a different code is replays_other_build and a no-op; a different content_hash is a conflict (F2)",
     "fit_identity": "the signal code and the selected outcome code must each be complete but need not match, because a position may span an upgrade; both identities are kept in provenance (F2)",
-    "identity_upgrade_record": {"kind": "identity_upgrade", "schema": "ai-scan-schema-v2", "fields": ["kind", "schema", "signal_id", "orig_record_hash", "orig_record_key", "content_hash", "code", "event_at", "writer_id", "seq", "record_hash"], "key": ["kind", "orig_record_hash"], "exact_replay": "same key and same record_hash: no-op", "conflict": "same key, different record_hash: refused, counted conflicts", "fold": "applied only when the original record exists, its content_hash equals the upgrade content_hash, the original code is incomplete and the upgrade code is complete; otherwise ignored and counted identity_upgrade_invalid; the original row is never rewritten (Codex 6462613229 #2)"},
+    "identity_upgrade_record": {"kind": "identity_upgrade", "schema": "ai-scan-schema-v2", "fields": ["kind", "schema", "signal_id", "orig_record_hash", "orig_record_key", "content_hash", "code", "event_at", "writer_id", "seq", "record_hash"], "key": ["kind", "orig_record_hash"], "upgrade_content_hash": "sha256 over (orig_record_hash, the original content_hash, the complete code identity), excluding the transport fields writer_id, seq, event_at and record_hash (U1)", "exact_replay": "same key and same upgrade_content_hash: no-op across sessions, even when transport fields differ", "conflict": "same orig_record_hash with a different original content_hash or a different complete code: conflict, counted conflicts", "fold": "applied only when the original record exists, its content_hash equals the upgrade content_hash, the original code is incomplete and the upgrade code is complete; otherwise ignored and counted identity_upgrade_invalid; the original row is never rewritten (Codex 6462613229 #2). An upgrade whose original lies outside the current bounded page is unresolved_original, not invalid; it resolves only after verified manifest pagination finds the original or conclusively proves it absent (U2)"},
     "identity_upgrade": "never rewrite or silently bless an incomplete original row; a complete-identity replay with an equal economic payload may append an explicit identity_upgrade record referencing the original record_hash; fold uses it only when payload equality and the complete build identity validate; a payload mismatch is a conflict; audit keeps both; until an upgrade exists the signal stays ineligible (G6)",
     "per_record": "complete code identity on every record; a once-written epoch is insufficient because one append-only ledger spans several installed builds (R4)",
     "incomplete": {
@@ -174,7 +176,7 @@
   "counters": [
     "signals", "shadows", "outcomes", "replays", "conflicts", "queue_full", "refused_live", "not_taken",
     "non_measured_close", "cost_incomplete", "no_decision_id", "unknown_signal", "ambiguous_rev",
-    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps", "replays_other_build", "gap_flush_failed", "producer_disabled", "identity_upgrades", "coverage_gaps", "no_decided_at", "identity_upgrade_invalid"
+    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps", "replays_other_build", "gap_flush_failed", "producer_disabled", "identity_upgrades", "coverage_gaps", "no_decided_at", "identity_upgrade_invalid", "unresolved_original", "decided_at_mismatch", "manifest_full"
   ],
   "failure_modes": [
     {"mode": "flag_off", "counter": null, "effect": "hook returns before building anything; ledger untouched"},
@@ -186,7 +188,10 @@
     {"mode": "manifest_mismatch", "counter": "producer_disabled", "effect": "producer disabled; nothing appended"},
     {"mode": "uncovered_interval", "counter": "coverage_gaps", "effect": "clean close to next start, or a disabled / flag-off / manifest-invalid / startup-failed / stopped interval, is a gap; windows crossing it are ineligible"},
     {"mode": "identity_upgrade", "counter": "identity_upgrades", "effect": "explicit upgrade record appended; the original row is unchanged"},
-    {"mode": "lot_without_decided_at", "counter": "no_decided_at", "effect": "writer session conservatively incomplete"},
+    {"mode": "lot_without_decided_at", "counter": "no_decided_at", "effect": "that signal / outcome ineligible with a named decision-time gap; the session stays clean"},
+    {"mode": "decided_at_mismatch", "counter": "decided_at_mismatch", "effect": "outcome rejected on fold; the signal is ineligible"},
+    {"mode": "upgrade_original_outside_page", "counter": "unresolved_original", "effect": "upgrade unresolved until verified pagination resolves it"},
+    {"mode": "manifest_full", "counter": "manifest_full", "effect": "producer disabled before append (producer_disabled / manifest_full)"},
     {"mode": "invalid_identity_upgrade", "counter": "identity_upgrade_invalid", "effect": "upgrade ignored; signal stays ineligible"},
     {"mode": "gap_in_window", "counter": "gaps", "effect": "any fit / calibration window crossing a gap is ineligible, never silently complete"},
     {"mode": "exact_replay", "counter": "replays", "effect": "no-op"},
@@ -211,6 +216,9 @@
     "hot_path": "the per-hook check reads one atomic cached eligibility generation only: no disk I/O, hashing or manifest traversal on the trading thread; startup / writer-side refresh verifies manifest, hash and config and atomically publishes the generation (G4)",
     "segment_bound": "a positive integer within frozen byte / segment limits, never a truthy flag",
     "limits": {"min_segment_bytes": 1048576, "max_segment_bytes": 16777216, "max_segments_per_read": 4, "max_manifest_segments": 4096, "basis": "Cowork measured ~1.06 s to fold 20k rows; a 16 MiB segment holds roughly 10k rows, so one segment folds in about 0.5 s and a 4-segment bounded read stays near 64 MiB (Codex 6462613229 #5)"},
+    "manifest_full": "at 4096 manifest segments the producer disables before append and records producer_disabled / manifest_full (L1)",
+    "pagination": "a window needing more than 4 segments is processed only by verified manifest pagination: each read <= 4 segments with hash-chain / cursor continuity; any missing or changed page makes the window incomplete; the UI / API never returns a plausible partial row (L1)",
+    "measurement": "before runtime implementation, measure representative serialized signal / outcome / upgrade rows and record fold latency and resource evidence; the confirmed byte / count limits remain conservative v1 caps (L1)",
     "read_path": "the API reads manifest-bounded segments within a hard byte / segment bound and shows only causally complete views; when completeness cannot be proven it returns a bounded incomplete / error result, never a partial plausible row",
     "requires": ["bounded_segment_size", "append_only_segments", "manifest_with_segment_hashes", "replay_across_segments_idempotent", "producer_enable_refused_without_rotation"]
   },
@@ -232,6 +240,8 @@
     "window_interval": "windows are half-open [start, end): decided_at == end belongs to the next window only (Codex 6462613229 #4)",
     "endcaps": "the manifest records every session start, clean close, disable marker and periodic heartbeat (at most 60 s apart while enabled); time before the first durable start, after the last clean close, and after an open session's last durable heartbeat is uncovered; a window is eligible only when its whole [start, end) is continuously covered by clean enabled sessions or an open session up to its last heartbeat (Codex 6462613229 #3)",
     "inferred_gaps": "flag-off, startup-failed and stopped intervals need no record of their own: any time not inside a covered span is a gap; producer_disabled and manifest-invalid write an explicit disable marker that ends coverage",
+    "heartbeat": "emitted on a monotonic 60 s schedule and persisted with strictly increasing UTC timestamps; coverage is the union of consecutive half-open heartbeat spans whose wall-time gap is at most 75 s (60 + 15 tolerance); a larger gap is an uncovered hole; a backward or non-increasing UTC step ends trustworthy coverage and opens a hole until a new durable session starts (C1)",
+    "eligibility": "a window is eligible only when _covered([start, end)) holds continuously over the whole window; checking only the signal timestamp is forbidden; session and heartbeat spans are half-open [a, b) (C2)",
     "start_marker": "durable before the first accepted record; a start-write failure disables the session and makes it unclean",
     "durable": true,
     "window_rule": "any downstream fit or calibration window that crosses a gap is ineligible, never silently complete (R7)"
@@ -278,6 +288,13 @@
     {"name": "test_window_requires_continuous_coverage_including_endcaps", "asserts": "a [start, end) window is eligible only when clean enabled sessions (or an open session up to its last durable heartbeat) cover it continuously; before the first start and after the last close / heartbeat are uncovered"},
     {"name": "test_window_boundary_is_half_open", "asserts": "a signal with decided_at == end belongs to the next window only; no double membership"},
     {"name": "test_segment_bound_numeric_limits", "asserts": "segment_bytes outside [min, max] or more than max_segments_per_read segments refuse; a truthy non-integer refuses"},
+    {"name": "test_upgrade_replay_with_changed_transport_is_noop", "asserts": "an identity_upgrade replayed by another session (different writer_id / seq / event_at / record_hash, same upgrade_content_hash) is a no-op; a different original content_hash or a different complete code is a conflict"},
+    {"name": "test_read_side_conflict_poisons_signal_never_raises", "asserts": "a fold-side conflict marks only that signal ineligible and counts conflicts; fold never raises"},
+    {"name": "test_upgrade_with_original_outside_page_is_unresolved", "asserts": "an upgrade whose original is outside the current bounded page is unresolved_original, not invalid; it resolves only after verified pagination finds the original or proves it absent"},
+    {"name": "test_heartbeat_hole_over_75s_and_backward_step", "asserts": "heartbeat spans cover only consecutive gaps <= 75 s; a 10-minute mid-session hole and a non-increasing UTC step are uncovered until a new durable session starts"},
+    {"name": "test_whole_window_eligibility_and_t_equals_close", "asserts": "eligibility requires continuous coverage of the whole [start, end) window; a covered signal inside a partly uncovered window is ineligible; t == close is outside the half-open span"},
+    {"name": "test_missing_or_mismatched_decided_at_is_signal_scoped", "asserts": "a missing ml_decided_at makes only that signal / outcome ineligible with a named decision-time gap; the session stays clean; a signal / outcome decided_at mismatch is rejected and counted; canonical form is fixed 6-digit microseconds with Z"},
+    {"name": "test_manifest_full_disables_before_append_and_pagination_continuity", "asserts": "at 4096 manifest segments the producer disables before append (producer_disabled / manifest_full); multi-page reads of <= 4 segments need hash-chain / cursor continuity, and a missing or changed page makes the window incomplete"},
     {"name": "test_api_view_unchanged_shape", "asserts": "GET /api/ai_scan returns ai_scan.api_off() when off and only ledger rows when on; no settings or engine state mutated"}
   ],
   "deferred": [
@@ -319,6 +336,15 @@
     "H3_coverage_endcaps": "manifest start / close / disable / heartbeat markers; continuous [start, end) coverage required",
     "H4_half_open": "windows are [start, end)",
     "H5_numeric_limits": "1 MiB <= segment <= 16 MiB, at most 4 segments per read, at most 4096 manifest segments"
+  },
+  "rulings_u": {
+    "source": "Codex 6462855816 on #227 @ cc5a55e (Cowork 6462804529)",
+    "U1_semantic_upgrade_replay": "upgrade_content_hash excludes transport fields; replay across sessions is a no-op",
+    "U2_bounded_fold": "read-side conflict poisons only that signal; original outside page is unresolved_original",
+    "C1_heartbeat": "monotonic 60 s schedule, strictly increasing UTC, gaps > 75 s and backward steps are holes",
+    "C2_whole_window": "eligibility needs continuous [start, end) coverage; spans are half-open",
+    "D1_decided_at": "missing decided_at is signal-scoped; canonical 6-digit microseconds Z; mismatch counted",
+    "L1_bounded_reader": "measure rows before runtime; manifest_full disables before append; verified pagination of <= 4 segments"
   },
   "rulings": {
     "source": "Codex 6460621068 on #227 @ 45c299c",

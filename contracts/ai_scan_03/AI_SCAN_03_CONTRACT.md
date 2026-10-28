@@ -41,8 +41,11 @@ ML_SHADOW and the reverse, and neither is a prerequisite for the other (R1). A l
 **`decided_at` source:** `lot['ml_decided_at']`, the signal's `decided_at` in UTC ISO form, is stamped together with
 `ml_decision_id` at `engine.Engine._ml_link`. The lot is persisted with engine state and copied onto the closed history
 row, so both close hooks read `signal_id` and `decided_at` from in-memory data, never from disk on the trading thread.
-A lot or row that has `ml_decision_id` but no `ml_decided_at` counts `no_decided_at` and makes the writer session
-conservatively incomplete.
+A lot or row that has `ml_decision_id` but no `ml_decided_at` counts `no_decided_at` and makes **only that signal /
+outcome** ineligible, with a named decision-time gap; an otherwise clean writer session stays clean, and nothing is
+backfilled from disk on the hot path (D1). The canonical form is UTC ISO-8601 with exactly six-digit microseconds and
+`Z` (e.g. `2026-10-28T08:00:00.000000Z`). Fold rejects an outcome whose `decided_at` differs from its signal's and counts
+`decided_at_mismatch`.
 
 ## 3. Join: immutable decision → measured cost revisions
 
@@ -111,10 +114,15 @@ validate; a payload mismatch is a conflict. Audit keeps both rows, and until an 
 ineligible.
 
 The `identity_upgrade` record (schema v2) has the fields `kind, schema, signal_id, orig_record_hash, orig_record_key,
-content_hash, code, event_at, writer_id, seq, record_hash`. Its key is `(kind, orig_record_hash)`. An exact replay
-(same key, same record_hash) is a no-op; the same key with a different record_hash is a conflict. Fold applies it only
+content_hash, code, event_at, writer_id, seq, record_hash`. Its key is `(kind, orig_record_hash)`. Replay is semantic (U1): an `upgrade_content_hash` covers `(orig_record_hash, original
+content_hash, complete code identity)` and excludes the transport fields `writer_id, seq, event_at, record_hash`. The
+same key and upgrade_content_hash is a no-op across sessions; the same original with a different original content_hash
+or a different complete code is a conflict. Fold applies it only
 when the original exists, the content hashes match, the original code is incomplete and the upgrade code is complete;
-otherwise it is ignored and counted `identity_upgrade_invalid`. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
+otherwise it is ignored and counted `identity_upgrade_invalid`. An upgrade whose original lies outside the current bounded
+page is `unresolved_original`, not invalid; it resolves only after verified manifest pagination finds the original or
+conclusively proves it absent (U2). **Fold never raises:** a conflict found on read poisons only that signal (ineligible,
+counted `conflicts`). The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
 commit from the matching build.json, and a 64-hex bundle hash. The bundle adds `ai_scan.py` and `ai_scan_ledger.py`.
 
 When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_hash`):
@@ -126,7 +134,7 @@ When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_
 
 `signals`, `shadows`, `outcomes`, `replays`, `conflicts`, `queue_full`, `refused_live`, `not_taken`,
 `non_measured_close`, `cost_incomplete`, `no_decision_id`, `unknown_signal`, `ambiguous_rev`, `identity_incomplete`,
-`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`, `identity_upgrades`, `coverage_gaps`, `no_decided_at`, `identity_upgrade_invalid`.
+`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`, `identity_upgrades`, `coverage_gaps`, `no_decided_at`, `identity_upgrade_invalid`, `unresolved_original`, `decided_at_mismatch`, `manifest_full`.
 
 When the flag is off, the hook returns before building anything and the ledger is untouched. A torn or edited line is
 skipped on read and never raises. A disk error is swallowed, and the next record is tried.
@@ -158,6 +166,12 @@ outside the hot path and counted in `gaps`. Any downstream fit or calibration wi
   durable heartbeat is uncovered. A window is eligible only when its whole `[start, end)` is continuously covered.
   Flag-off, startup-failed and stopped intervals need no record of their own, because any uncovered time is a gap;
   producer_disabled and manifest-invalid write an explicit disable marker that ends coverage.
+- **Heartbeats (C1):** emitted on a monotonic 60 s schedule and persisted with strictly increasing UTC timestamps.
+  Coverage is the union of consecutive half-open heartbeat spans whose wall-time gap is at most **75 s** (60 + 15
+  tolerance). A larger gap is an uncovered hole. A backward or non-increasing UTC step ends trustworthy coverage and
+  opens a hole until a new durable session starts.
+- **Whole-window eligibility (C2):** a window is eligible only when `_covered([start, end))` holds continuously over
+  the whole window. Checking only the signal's timestamp is forbidden. Session and heartbeat spans are half-open `[a, b)`.
 - **Sequence and closure (G3):** `seq` is allocated at the enqueue attempt, before the non-blocking offer, so a drop
   consumes a seq and the pending gap records it with the owning signal / decision context. A clean-close marker is
   forbidden until the queue is drained and no pending or unflushed gap exists. The start marker is durable before the
@@ -176,6 +190,13 @@ implemented and tested. This is part of AI-SCAN-03 or a required predecessor, ne
   publishes the generation atomically. `segment_bound` is a positive integer within frozen byte / segment limits, never
   a truthy flag. **Frozen limits:** 1 MiB <= segment <= 16 MiB, at most 4 segments per read and at most 4096 manifest
   segments. One 16 MiB segment holds roughly 10k rows, which folds in about 0.5 s given Cowork's 1.06 s per 20k rows.
+- **Manifest full (L1):** at 4096 manifest segments the producer disables before append and records
+  `producer_disabled` / `manifest_full`.
+- **Pagination (L1):** a window needing more than 4 segments is processed only by verified manifest pagination: each
+  read covers at most 4 segments with hash-chain / cursor continuity, and any missing or changed page makes the window
+  incomplete. The UI / API never returns a plausible partial row.
+- **Measurement (L1):** before runtime implementation, representative serialized signal / outcome / upgrade rows are
+  measured and fold latency and resource evidence is recorded. The confirmed limits remain conservative v1 caps.
 - **Bounded, causal reads:** the API reads manifest-bounded segments within a hard byte / segment bound and shows only
   causally complete views. When completeness cannot be proven, it returns a bounded incomplete / error result, never a
   partial plausible row.
@@ -230,6 +251,13 @@ cost-incomplete, the signal is excluded, and the fitter never falls back to an o
 - `test_window_requires_continuous_coverage_including_endcaps`
 - `test_window_boundary_is_half_open`
 - `test_segment_bound_numeric_limits`
+- `test_upgrade_replay_with_changed_transport_is_noop`
+- `test_read_side_conflict_poisons_signal_never_raises`
+- `test_upgrade_with_original_outside_page_is_unresolved`
+- `test_heartbeat_hole_over_75s_and_backward_step`
+- `test_whole_window_eligibility_and_t_equals_close`
+- `test_missing_or_mismatched_decided_at_is_signal_scoped`
+- `test_manifest_full_disables_before_append_and_pagination_continuity`
 - `test_api_view_unchanged_shape`
 
 The JSON twin states what each one asserts.
@@ -275,3 +303,12 @@ Implementability rulings, Codex 6462613229 (stall-takeover review):
 - **H3:** manifest start / close / disable / heartbeat markers; continuous `[start, end)` coverage required.
 - **H4:** windows are half-open `[start, end)`.
 - **H5:** frozen numeric segment limits.
+
+Bounded-correction rulings, Codex 6462855816 on Cowork 6462804529:
+
+- **U1:** semantic upgrade replay via `upgrade_content_hash`; transport fields never make a conflict.
+- **U2:** read-side conflicts poison one signal and never raise; an original outside the page is `unresolved_original`.
+- **C1:** 60 s monotonic heartbeats; gaps over 75 s and backward UTC steps are holes.
+- **C2:** whole-window `[start, end)` coverage; half-open spans.
+- **D1:** missing `decided_at` is signal-scoped; canonical six-digit microseconds `Z`; mismatches counted.
+- **L1:** measure rows before runtime; `manifest_full` disables before append; verified pagination of at most 4 segments.

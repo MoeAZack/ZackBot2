@@ -314,10 +314,12 @@ def _eligible(window, signals, gaps, sessions):
     named in no gap, and its decided_at is inside no time gap. Gaps: {'from', 'to', 'signals'}."""
     lo, hi = window
     out = []
+    spans = [(s['start'], s['close']) for s in sessions if s['clean'] and s['enabled']]
+    whole = _covered(window, spans)                         # C2: the whole [start, end) window, never the point alone
     for sid, t in signals.items():
         if not lo <= t < hi:                                # half-open [start, end) (Codex 6462613229 #4)
             continue
-        covered = any(s['start'] <= t <= s['close'] and s['clean'] and s['enabled'] for s in sessions)
+        covered = whole
         named = any(sid in g.get('signals', ()) for g in gaps)
         timed = any(g['from'] <= t <= g['to'] for g in gaps)
         out.append((sid, covered and not named and not timed))
@@ -409,9 +411,11 @@ def test_g2_clean_close_to_next_start_and_disabled_session_are_gaps():
             {'start': 210, 'close': 260, 'clean': True, 'enabled': False}]    # producer_disabled
     gaps = _coverage_gaps(sess)
     assert {'from': 110, 'to': 130} in gaps and {'from': 210, 'to': 260} in gaps
-    v = _eligible((0, 300), {'a': 50, 'b': 120, 'c': 150, 'd': 220}, gaps, sess)
-    assert v == {'a': True, 'b': False, 'c': True, 'd': False}
-    assert _eligible((140, 190), {}, gaps, sess) == {}                      # zero events inside covered time: no row lost
+    sig = {'a': 50, 'b': 120, 'c': 150, 'd': 220}
+    assert _eligible((0, 300), sig, gaps, sess) == {'a': False, 'b': False, 'c': False, 'd': False}   # crosses gaps
+    assert _eligible((0, 100), sig, gaps, sess) == {'a': True}
+    assert _eligible((130, 200), sig, gaps, sess) == {'c': True}
+    assert _eligible((140, 190), {}, gaps, sess) == {} and _covered((140, 190), [(130, 200)])   # zero events, covered
 
 
 def test_g3_seq_at_enqueue_drop_records_seq_and_close_refused_while_pending():
@@ -450,25 +454,37 @@ def _covered(window, spans):
     return at >= hi
 
 
-def _upgrade_fold(records):
-    """H2: key (kind, orig_record_hash); exact replay no-op, same key different record_hash conflict; applied only when
-    the original exists with an equal content_hash, incomplete original code and complete upgrade code."""
+def _uch(r):
+    """U1: upgrade_content_hash over (orig_record_hash, original content_hash, complete code) - no transport fields."""
+    return (r['orig_record_hash'], r['content_hash'], r.get('code', 'C'))
+
+
+def _upgrade_fold(records, page=None):
+    """H2 + U1/U2: key (kind, orig_record_hash); same upgrade_content_hash is a no-op across sessions, a different one is a
+    conflict that poisons the signal (never raises); an original outside the bounded page is unresolved_original.
+    Returns (applied, invalid, poisoned, unresolved)."""
     orig = {r['record_hash']: r for r in records if r['kind'] != 'identity_upgrade'}
-    seen, applied, invalid = {}, {}, 0
+    seen, applied, invalid, poisoned, unresolved = {}, {}, 0, set(), set()
     for r in records:
         if r['kind'] != 'identity_upgrade':
             continue
         k = (r['kind'], r['orig_record_hash'])
         if k in seen:
-            if seen[k] != r['record_hash']: raise ValueError('conflict')
+            if seen[k] != _uch(r):
+                poisoned.add(r['orig_record_hash'])
+                applied.pop(r['orig_record_hash'], None)
             continue
-        seen[k] = r['record_hash']
+        seen[k] = _uch(r)
         o = orig.get(r['orig_record_hash'])
-        if o and o['content_hash'] == r['content_hash'] and not o['code_complete'] and r['code_complete']:
+        if o is None and page is not None and r['orig_record_hash'] not in page:
+            unresolved.add(r['orig_record_hash'])
+        elif o and o['content_hash'] == r['content_hash'] and not o['code_complete'] and r['code_complete']:
             applied[o['record_hash']] = r['record_hash']
         else:
             invalid += 1
-    return applied, invalid
+    for h in poisoned:
+        applied.pop(h, None)
+    return applied, invalid, poisoned, unresolved
 
 
 def _segment_ok(c, nbytes, nseg):
@@ -492,12 +508,10 @@ def test_h2_identity_upgrade_schema_replay_conflict_and_fold(c):
     assert {'orig_record_hash', 'content_hash', 'code', 'record_hash'} <= set(u['fields'])
     o = {'kind': 'outcome', 'record_hash': 'o1', 'content_hash': 'c1', 'code_complete': False}
     up = {'kind': 'identity_upgrade', 'orig_record_hash': 'o1', 'record_hash': 'u1', 'content_hash': 'c1', 'code_complete': True}
-    assert _upgrade_fold([o, up, up]) == ({'o1': 'u1'}, 0)                                  # exact replay: no-op
-    with pytest.raises(ValueError, match='conflict'):
-        _upgrade_fold([o, up, dict(up, record_hash='u2')])
-    assert _upgrade_fold([o, dict(up, content_hash='cX')]) == ({}, 1)                      # payload mismatch: not applied
-    assert _upgrade_fold([dict(o, code_complete=True), up]) == ({}, 1)                     # nothing to upgrade
-    assert _upgrade_fold([up]) == ({}, 1)                                                  # orphan upgrade
+    assert _upgrade_fold([o, up, up]) == ({'o1': 'u1'}, 0, set(), set())                  # exact replay: no-op
+    assert _upgrade_fold([o, dict(up, content_hash='cX')]) == ({}, 1, set(), set())        # payload mismatch: not applied
+    assert _upgrade_fold([dict(o, code_complete=True), up]) == ({}, 1, set(), set())       # nothing to upgrade
+    assert _upgrade_fold([up]) == ({}, 1, set(), set())                                    # proven absent: invalid
 
 
 def test_h3_window_needs_continuous_coverage_including_endcaps(c):
@@ -526,3 +540,97 @@ def test_h5_segment_bound_numeric_limits(c):
     assert _segment_ok(c, 8 << 20, 4) and not _segment_ok(c, (16 << 20) + 1, 1) and not _segment_ok(c, 1 << 19, 1)
     assert not _segment_ok(c, True, 1) and not _segment_ok(c, 8 << 20, 5) and not _segment_ok(c, '8MiB', 1)
     assert c['rulings_h']['source'].startswith('Codex 6462613229')
+
+
+# ------------------------------------------------------------------ Codex 6462855816 U1/U2/C1/C2/D1/L1
+import re as _re
+
+_ISO6 = _re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z')
+
+
+def _hb_spans(sessions, max_gap=75):
+    """C1: half-open spans between consecutive heartbeats with gap <= max_gap; a non-increasing step ends that session's
+    trustworthy coverage (a new durable session must start)."""
+    spans = []
+    for hbs in sessions:
+        for a, b in zip(hbs, hbs[1:]):
+            if b <= a:
+                break
+            if b - a <= max_gap:
+                spans.append((a, b))
+    return spans
+
+
+def _paginate(pages, max_segments=4):
+    """L1: each page <= max_segments and chained by prev-hash; a missing / changed page makes the window incomplete."""
+    prev = None
+    for p in pages:
+        if len(p['segments']) > max_segments or p['prev'] != prev:
+            return 'incomplete'
+        prev = p['hash']
+    return 'complete'
+
+
+def test_rulings_u_c_d_l_are_applied(c, md):
+    u = c['identity']['identity_upgrade_record']
+    assert 'excluding the transport fields' in u['upgrade_content_hash'] and 'no-op across sessions' in u['exact_replay']
+    assert 'unresolved_original' in u['fold'] and 'never raises' in c['join']['read_side_conflict']
+    g = c['queue_gaps']
+    assert 'at most 75 s' in g['heartbeat'] and 'backward' in g['heartbeat'] and '_covered([start, end))' in g['eligibility']
+    assert 'only that signal / outcome' in c['decision_id']['decided_at_source'] and 'stays clean' in c['decision_id']['decided_at_source']
+    assert 'six-digit microseconds' in c['decision_id']['decided_at_form']
+    rp = c['rotation_prerequisite']
+    assert 'manifest_full' in rp['manifest_full'] and 'hash-chain / cursor continuity' in rp['pagination'] and 'measure' in rp['measurement']
+    for k in ('unresolved_original', 'decided_at_mismatch', 'manifest_full'):
+        assert k in c['counters'] and any(fm['counter'] == k for fm in c['failure_modes'])
+    names = {t['name'] for t in c['test_plan']}
+    assert all(n in names for n in ('test_upgrade_replay_with_changed_transport_is_noop', 'test_heartbeat_hole_over_75s_and_backward_step',
+                                     'test_whole_window_eligibility_and_t_equals_close', 'test_manifest_full_disables_before_append_and_pagination_continuity'))
+    assert c['rulings_u']['source'].startswith('Codex 6462855816') and '**Heartbeats (C1):**' in md
+
+
+def test_u1_replay_with_changed_transport_is_noop_and_u2_conflict_poisons():
+    o = {'kind': 'outcome', 'record_hash': 'o1', 'content_hash': 'c1', 'code_complete': False}
+    up = {'kind': 'identity_upgrade', 'orig_record_hash': 'o1', 'record_hash': 'u1', 'content_hash': 'c1',
+          'code_complete': True, 'code': 'C1', 'writer_id': 'w1', 'seq': 7, 'event_at': 100}
+    replay = dict(up, record_hash='u9', writer_id='w2', seq=1, event_at=900)                # transport only
+    assert _upgrade_fold([o, up, replay]) == ({'o1': 'u1'}, 0, set(), set())
+    other_code = dict(up, record_hash='u2', code='C2')
+    applied, _, poisoned, _ = _upgrade_fold([o, up, other_code])                            # never raises
+    assert applied == {} and poisoned == {'o1'}
+
+
+def test_u2_original_outside_page_is_unresolved_not_invalid():
+    up = {'kind': 'identity_upgrade', 'orig_record_hash': 'oX', 'record_hash': 'u1', 'content_hash': 'c1', 'code_complete': True}
+    assert _upgrade_fold([up], page={'o1'}) == ({}, 0, set(), {'oX'})
+
+
+def test_c1_heartbeat_hole_and_backward_step():
+    sess = [[0, 60, 120, 720, 780]]                                                          # a 10-minute stall
+    spans = _hb_spans(sess)
+    assert _covered((0, 120), spans) and not _covered((100, 760), spans)
+    assert _hb_spans([[0, 60, 50, 110]]) == [(0, 60)]                                        # backward step ends coverage
+    assert _hb_spans([[0, 76]]) == [] and _hb_spans([[0, 75]]) == [(0, 75)]                 # 75 s tolerance edge
+
+
+def test_c2_whole_window_and_t_equals_close():
+    sess = [{'start': 0, 'close': 100, 'clean': True, 'enabled': True}]
+    assert _eligible((50, 150), {'s': 60}, [], sess) == {'s': False}                         # signal covered, window not
+    assert _eligible((0, 100), {'s': 60}, [], sess) == {'s': True}
+    assert not _covered((100, 101), [(0, 100)])                                              # t == close is outside [0, 100)
+
+
+def test_d1_decided_at_canonical_form_and_mismatch():
+    assert _ISO6.fullmatch('2026-10-28T08:00:00.000000Z')
+    for bad in ('2026-10-28T08:00:00Z', '2026-10-28T08:00:00.000Z', '2026-10-28 08:00:00.000000Z', '2026-10-28T08:00:00.000000+00:00'):
+        assert not _ISO6.fullmatch(bad)
+    sig = {'signal_id': 's', 'decided_at': '2026-10-28T08:00:00.000000Z'}
+    out = {'signal_id': 's', 'decided_at': '2026-10-28T08:00:00.000001Z'}
+    assert sig['decided_at'] != out['decided_at']                                            # fold counts decided_at_mismatch
+
+
+def test_l1_pagination_continuity():
+    pages = [{'segments': [1, 2, 3, 4], 'prev': None, 'hash': 'h1'}, {'segments': [5, 6], 'prev': 'h1', 'hash': 'h2'}]
+    assert _paginate(pages) == 'complete'
+    assert _paginate([pages[0], dict(pages[1], prev='hX')]) == 'incomplete'                 # changed / missing page
+    assert _paginate([{'segments': [1, 2, 3, 4, 5], 'prev': None, 'hash': 'h'}]) == 'incomplete'
