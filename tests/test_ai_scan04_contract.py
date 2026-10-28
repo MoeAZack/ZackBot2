@@ -5,6 +5,8 @@ process-private pagination pages. Overlapping limits must equal the ai_scan_ledg
 Integration review 6480873345: R1 durable active checkpoint; Q1/Q2/Q3 resolved; Q3 numbers frozen (16 segments/tick).
 Integration ruling 6483289354: C1 two-phase intent/commit checkpoint, C2 sealed exposure, C3 startup I/O cap, C4
 checkpoint persistence failure is fail-closed.
+Integration ruling 6483743382: E1 seal/rotation crash protocol, E2 orphan checkpoint temp files never authoritative,
+E3 one row per transaction (frozen, no batching), E4 partial append / ENOSPC confirmed fail-closed.
 
 Contract only - no runtime code. Parity is checked from the JSON side: every name the JSON lists must appear in the md.
 """
@@ -63,8 +65,9 @@ def test_required_sections_and_keys(c):
             c['page_privacy']['requirement']) == ('a', 'b', 'c')
     for k in ('refresh_cadence', 'active_segment', 'page_privacy'):
         assert c[k]['problem']
-    assert c['integration_rulings'] == ['6480873345', '6483289354']
+    assert c['integration_rulings'] == ['6480873345', '6483289354', '6483743382']
     assert set(c['ruling_6483289354']) == {'C1', 'C2', 'C3', 'C4'}
+    assert set(c['ruling_6483743382']) == {'E1', 'E2', 'E3', 'E4'}
     for k in ('refresh_cadence', 'active_segment'):                       # Q3 numbers frozen by ruling, not proposals
         assert c[k]['proposal_for_integration'] is False
         assert c[k]['numbers_status'].startswith('frozen by Integration ruling 6480873345')
@@ -422,6 +425,155 @@ def test_c4_checkpoint_persist_failure_is_fail_closed(c, md):
 
 
 def test_ruling_6483289354_keeps_draft_off_no_authority(c):
+    assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
+    s = c['scope']
+    assert s['producer_default_on'] is False and s['authority'] == 'none' and s['grants'] == []
+    assert c['slice']['runtime_code_changed'] is False
+
+
+# ------------------------------------------------------------------ Integration ruling 6483743382 (E1..E4)
+EMPTY_SHA = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+
+
+def _startup_seal_boundary(cp, manifest, file_state, orphan_temp=False):
+    """C1 + E1/E2/E4 startup model.
+
+    cp: None (malformed canonical) or {'committed': (seg, len, sha), 'pending': state or None}; manifest: {seg: (seg,
+    len, sha)} of durable sealed entries; file_state: the active file's (seg, len, sha), or 'partial' / 'enospc'.
+    -> (outcome, quarantined, recovery_budget_spent, orphan_temp_removed)."""
+    corrupt = ('active_corrupt', True, True, False)          # E4: gap -> quarantine, budget accounted; temp untouched
+    if cp is None:
+        return corrupt                                       # E2: malformed canonical fails closed; temp never used
+    n = cp['committed'][0]
+    last = max(manifest, default=0)
+    if last == n:                                            # E1: crash between the seal and the checkpoint advance
+        if manifest[n] != cp['committed'] or cp['pending'] is not None:
+            return corrupt
+        return ('seal_advanced', False, False, orphan_temp)
+    if last != n - 1:                                        # reverse / ambiguous: names n+1 while manifest lacks n
+        return corrupt
+    if file_state in ('partial', 'enospc'):
+        return corrupt                                       # E4: third state, no truncation salvage
+    st = _startup_state(file_state, cp['committed'], cp['pending'])
+    if st == 'active_corrupt':
+        return corrupt
+    return (st, False, False, orphan_temp)                   # E2: temp removed only after validation
+
+
+def test_e1_seal_rotation_crash_protocol(c, md):
+    import hashlib
+    a = c['active_segment']
+    sr = a['seal_rotation']
+    assert sr['ruling'].startswith('6483743382 (E1)')
+    assert sr['applies_to'] == ['forced_seal', 'startup_seal'] and sr['forced_seal_triggers'] == ['bytes', 'rows', 'age']
+    assert [s['id'] for s in sr['sequence']] == ['seal_manifest', 'advance_checkpoint']
+    assert [s['step'] for s in sr['sequence']] == [1, 2]
+    assert 'durably first' in sr['sequence'][0]['action']
+    assert 'atomically replaced and fsynced' in sr['sequence'][0]['action']
+    assert all(w in sr['sequence'][1]['action'] for w in ('committed empty n+1', 'segment n+1', 'length 0',
+                                                           'sha256 of empty bytes'))
+    assert sr['empty_sha256'] == hashlib.sha256(b'').hexdigest() == EMPTY_SHA
+    assert 'exactly matches' in sr['startup_seal_boundary']
+    assert 'segment, length and sha256' in sr['startup_seal_boundary']
+    assert sr['seal_boundary_quarantines'] is False and sr['seal_boundary_spends_recovery_budget'] is False
+    assert sr['counter'] == 'checkpoint_seal_advanced' and sr['counter'] in c['counters_added']
+    fc = ' '.join(sr['fail_closed_states'])
+    assert 'names n+1 while the manifest lacks entry n' in fc and 'mismatches' in fc
+    assert 'reverse, partial or ambiguous' in fc
+    assert sr['fail_closed_path'] == 'active_corrupt -> durable gap -> quarantine'
+    assert 'seal_rotation' in a['forced_seal'] and 'seal_rotation' in a['startup_seal']
+    plan = {t['name']: t for t in c['test_plan']}
+    t1 = plan['test_crash_between_seal_and_checkpoint_advance']
+    assert t1.get('required') is True and 'forced seal' in t1['asserts'] and 'startup seal' in t1['asserts']
+    assert plan['test_seal_reverse_order_state_is_refused'].get('required') is True
+    flat = ' '.join(md.split())
+    assert '**seal manifest entry n durably first**' in flat
+    assert '**then advance the checkpoint to committed empty n+1**' in flat
+    assert '**no quarantine and no recovery-budget spend**' in flat and '**stays fail-closed**' in flat
+    assert '`test_crash_between_seal_and_checkpoint_advance` (required)' in md
+    assert '`test_seal_reverse_order_state_is_refused` (required)' in md
+
+
+@pytest.mark.parametrize('seal', ['forced_seal', 'startup_seal'])
+@pytest.mark.parametrize('case,expect', [
+    ('cp_n_manifest_n_equal', ('seal_advanced', False, False, False)),
+    ('cp_n_manifest_n_equal_orphan_temp', ('seal_advanced', False, False, True)),
+    ('cp_n_plus_1_manifest_lacks_n', ('active_corrupt', True, True, False)),
+    ('manifest_n_mismatches_cp', ('active_corrupt', True, True, False)),
+    ('advanced_clean', ('committed', False, False, False)),
+    ('orphan_temp_after_validation', ('committed', False, False, True)),
+    ('malformed_canonical_with_orphan_temp', ('active_corrupt', True, True, False)),
+    ('partial_append', ('active_corrupt', True, True, False)),
+    ('enospc', ('active_corrupt', True, True, False)),
+])
+def test_e1_e2_e4_startup_seal_boundary_model(seal, case, expect):
+    import hashlib
+    n, body = 3, b'{"a":1}\n'
+    trip = lambda seg, b: (seg, len(b), hashlib.sha256(b).hexdigest())      # noqa: E731
+    sealed_n, empty_next = trip(n, body), (n + 1, 0, EMPTY_SHA)
+    before = {i: trip(i, body) for i in range(1, n)}                        # durable entries 1..n-1
+    after = {**before, n: sealed_n}                                   # entry n durable
+    cp_old, cp_new = {'committed': sealed_n, 'pending': None}, {'committed': empty_next, 'pending': None}
+    cp_inflight = {'committed': empty_next, 'pending': trip(n + 1, body)}
+    temp = 'orphan_temp' in case
+    args = {
+        'cp_n_manifest_n_equal': (cp_old, after, sealed_n),
+        'cp_n_manifest_n_equal_orphan_temp': (cp_old, after, sealed_n),
+        'cp_n_plus_1_manifest_lacks_n': (cp_new, before, empty_next),
+        'manifest_n_mismatches_cp': (cp_old, {**before, n: trip(n, body + b"x")}, sealed_n),
+        'advanced_clean': (cp_new, after, empty_next),
+        'orphan_temp_after_validation': (cp_new, after, empty_next),
+        'malformed_canonical_with_orphan_temp': (None, after, empty_next),
+        'partial_append': (cp_inflight, after, 'partial'),
+        'enospc': (cp_inflight, after, 'enospc'),
+    }[case]
+    assert _startup_seal_boundary(*args, orphan_temp=temp) == expect, (seal, case)
+
+
+def test_e2_orphan_checkpoint_temp_never_authoritative(c, md):
+    o = c['active_segment']['durable_checkpoint']['orphan_temp_files']
+    assert o['ruling'].startswith('6483743382 (E2)') and o['authoritative'] is False
+    assert o['removed_before_canonical_validated'] is False
+    assert 'ignored' in o['startup'] and 'only after the canonical checkpoint is validated' in o['startup']
+    assert 'still fails closed' in o['malformed_canonical']
+    assert 'test_orphan_checkpoint_temp_is_never_authoritative' in [t['name'] for t in c['test_plan']]
+    flat = ' '.join(md.split())
+    assert '**never authoritative**' in flat
+    assert '**removes it only after the canonical checkpoint is validated**' in flat
+
+
+def test_e3_one_row_per_transaction_no_batching(c, md):
+    cp = c['active_segment']['durable_checkpoint']
+    g = cp['granularity']
+    assert g['ruling'].startswith('6483743382 (E3)') and g['status'] == 'frozen'
+    assert type(g['rows_per_transaction']) is int and g['rows_per_transaction'] == 1
+    assert g['batching_allowed'] is False
+    assert 'exactly one complete canonical ledger row' in g['rule']
+    assert 'measured append latency and overruns' in g['batching_amendment']
+    assert 'later contract amendment' in g['batching_amendment']
+    assert 'integrity wins over throughput' in g['priority'] and 'OFF' in g['priority']
+    per_row = 2 * (len(cp['atomic_replace']) - 1) + 1                  # intent + commit (3 each) + the append fsync
+    assert g['fsync_replace_ops_per_row'] == per_row == 7 and 'seven' in g['durability_cost']
+    assert not re.search(r'"batch(ing)?_(size|rows|enabled|max)"', json.dumps(c))   # no batching knob anywhere
+    flat = ' '.join(md.split())
+    assert '**Exactly one complete canonical ledger row per intent/append/commit transaction.**' in flat
+    assert '**about seven fsync/replace operations**' in flat
+    assert '**Integrity wins over throughput while the producer is OFF.**' in flat
+
+
+def test_e4_partial_append_or_enospc_is_fail_closed(c, md):
+    p = c['active_segment']['durable_checkpoint']['partial_append']
+    assert p['ruling'].startswith('6483743382 (E4)')
+    assert p['cases'] == ['partial append', 'ENOSPC'] and p['state'] == 'third_state'
+    assert p['outcome'] == 'active_corrupt' and p['path'] == ['active_corrupt', 'durable gap', 'quarantine']
+    assert p['spends_recovery_budget'] is True and p['truncation_salvage'] is False
+    assert 'pending digest alone cannot prove a partial suffix safe' in p['basis']
+    assert 'test_partial_append_or_enospc_is_active_corrupt' in [t['name'] for t in c['test_plan']]
+    flat = ' '.join(md.split())
+    assert '**including recovery-budget accounting**' in flat and '**no truncation salvage**' in flat
+
+
+def test_ruling_6483743382_keeps_draft_off_no_authority(c):
     assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
     s = c['scope']
     assert s['producer_default_on'] is False and s['authority'] == 'none' and s['grants'] == []

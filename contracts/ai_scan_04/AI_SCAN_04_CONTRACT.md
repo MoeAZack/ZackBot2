@@ -14,6 +14,10 @@ remains a proposal.
 (§5). C2: **sealed exposure is published separately** (§4). C3: **startup I/O is bounded** (§4). C4: **checkpoint
 persistence failure is fail-closed** (§5).
 
+**Integration ruling 6483743382 is applied** (JSON `ruling_6483743382`). E1: a **seal and rotation crash protocol**
+(§5). E2: **orphan checkpoint temp files are never authoritative** (§5). E3: **one row per transaction, frozen** (§5).
+E4: **a partial append or ENOSPC is confirmed fail-closed** (§5).
+
 ## 1. Scope and authority
 
 - The producer stays **default OFF**. Enabling it needs **a separate Integration ruling** after this contract is
@@ -111,6 +115,35 @@ repo's `PermissionError` retries, `engine._replace_retry`) or the directory fsyn
 immediately** and `checkpoint_persist_failed` is counted. Trading is unaffected. The normal recovery path is required
 before it appends again. The writer **never continues with an in-RAM digest ahead of the durable state**.
 
+**Seal and rotation crash protocol (E1 ruling 6483743382, JSON `active_segment.seal_rotation`).** It covers both the
+forced seal (bytes, rows or 6 h age) and the startup seal. The order is fixed:
+
+1. `seal_manifest`: **seal manifest entry n durably first**. The manifest is atomically replaced and fsynced.
+2. `advance_checkpoint`: **then advance the checkpoint to committed empty n+1**: `{segment n+1, length 0, sha256 of
+   empty bytes}`.
+
+Startup may recover an old checkpoint naming n **only when durable manifest entry n exactly matches** the checkpoint's
+segment, length and sha256. It then advances to empty n+1 (`checkpoint_seal_advanced`) with **no quarantine and no
+recovery-budget spend**. Any reverse, partial or ambiguous state **stays fail-closed** (`active_corrupt` → gap →
+quarantine). Examples: the checkpoint names n+1 while the manifest lacks n, or manifest entry n mismatches the
+checkpoint. **Required implementation tests:** `test_crash_between_seal_and_checkpoint_advance` (forced seal and startup
+seal) and `test_seal_reverse_order_state_is_refused`.
+
+**Orphan temp files (E2 ruling 6483743382).** An orphan checkpoint temp file is **never authoritative**. Startup
+ignores it and **removes it only after the canonical checkpoint is validated**. A malformed canonical checkpoint still
+fails closed.
+
+**Granularity (E3 ruling 6483743382, frozen).** **Exactly one complete canonical ledger row per intent/append/commit
+transaction.** There is no batching in this first shadow implementation. The per-row durability cost is **about seven
+fsync/replace operations**: the intent (temp fsync, `os.replace`, directory fsync), the append fsync, and the commit
+(temp fsync, `os.replace`, directory fsync). The runtime slice must report measured append latency and overruns before
+any batching proposal, and batching needs a later contract amendment. **Integrity wins over throughput while the
+producer is OFF.**
+
+**Partial append or ENOSPC (E4 ruling 6483743382, confirmed fail-closed).** Either is a **third state** and follows
+`active_corrupt` → durable gap → quarantine, **including recovery-budget accounting**. There is **no truncation
+salvage**, because the pending digest alone cannot prove a partial suffix safe.
+
 | Parameter | Value | Why |
 |---|---|---|
 | `max_active_bytes_cap` | 16 MiB | This is `segment_bound` ≤ `SEG_MAX`, the unchanged 03A rotation. |
@@ -159,7 +192,7 @@ MAC. That work is DEFERRED (`ipc_page_transport`).
 
 `checkpoint_mismatch`, `refresh_ticks`, `refresh_overrun`, `sweeps_completed`, `eligibility_stale`, `active_digest_mismatch`, `forced_seals`,
 `startup_seals`, `active_quarantined`, `recovery_refused`, `checkpoint_pending_promoted`, `checkpoint_pending_discarded`,
-`checkpoint_persist_failed`.
+`checkpoint_persist_failed`, `checkpoint_seal_advanced`.
 
 ## 8. Test plan for the implementation slice
 
@@ -177,6 +210,11 @@ MAC. That work is DEFERRED (`ipc_page_transport`).
 - `test_crash_after_intent_before_append_accepts_committed` (required)
 - `test_crash_after_append_fsync_before_commit_promotes_pending` (required)
 - `test_torn_or_partial_append_is_active_corrupt` (required)
+- `test_crash_between_seal_and_checkpoint_advance` (required)
+- `test_seal_reverse_order_state_is_refused` (required)
+- `test_orphan_checkpoint_temp_is_never_authoritative`
+- `test_one_row_per_checkpoint_transaction`
+- `test_partial_append_or_enospc_is_active_corrupt`
 - `test_startup_verification_reads_at_most_the_cap_with_one_buffer`
 - `test_checkpoint_persist_failure_disables_the_producer`
 - `test_startup_seals_a_nonempty_active_only_when_checkpoint_matches`
