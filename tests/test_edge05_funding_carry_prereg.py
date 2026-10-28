@@ -73,9 +73,9 @@ def test_json_numbers_behind_md_needles():
     dd = g['drawdown_and_tail']
     assert (dd['x1_5_max_equity_dd_le'], dd['longest_underwater_days_le'], dd['worst_cohort_net_r_ge']) == (0.65, 365, -7.5)
     assert dd['tiers'] == {'ordinary': {'base_max_equity_dd_le': 0.35, 'closed_r_dd_lt': 40},
-                           'profitable_high_dd': {'base_max_equity_dd_gt': 0.35, 'base_max_equity_dd_le': 0.55,
-                                                  'annualized_net_return_over_max_dd_ge': 0.75,
-                                                  'total_net_r_over_closed_r_dd_ge': 2.0}}
+                           'profitability_rescue': {'base_max_equity_dd_le': 0.55,
+                                                    'annualized_net_return_over_max_dd_ge': 0.75,
+                                                    'total_net_r_over_closed_r_dd_ge': 2.0}}
     assert (g['concentration']['max_symbol_share'], g['concentration']['max_top3_share']) == (0.25, 0.50)
     assert g['capacity']['median_notional_over_prior_24h_quote_volume_le'] == 0.001
     assert p['promotion_allocation']['max_share_of_portfolio_risk_budget'] == 0.25
@@ -201,9 +201,9 @@ def test_tool_never_opens_archives_or_computes_returns():
 def _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater, worst):
     """Reference reading of the preregistered DD tier rule (Codex 6457763292); evaluation code must match it."""
     t = dd['tiers']
-    o, h = t['ordinary'], t['profitable_high_dd']
+    o, h = t['ordinary'], t['profitability_rescue']
     ordinary = base <= o['base_max_equity_dd_le'] and closed_r < o['closed_r_dd_lt']
-    high = (h['base_max_equity_dd_gt'] < base <= h['base_max_equity_dd_le']
+    high = (base <= h['base_max_equity_dd_le']
             and ann_ret / base >= h['annualized_net_return_over_max_dd_ge']
             and net_r / closed_r >= h['total_net_r_over_closed_r_dd_ge'])
     ceilings = (x15 <= dd['x1_5_max_equity_dd_le'] and underwater <= dd['longest_underwater_days_le']
@@ -214,12 +214,12 @@ def _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater, worst):
 @pytest.mark.parametrize('base, x15, closed_r, ann_ret, net_r, ok', [
     (0.30, 0.40, 30, 0.10, 50, True),     # ordinary
     (0.35, 0.60, 39, 0.00, 0, True),      # ordinary at the inclusive 35% edge
-    (0.45, 0.60, 60, 0.40, 130, True),    # high-DD: 0.40/0.45 = 0.89 >= 0.75, 130/60 = 2.17 >= 2.0
-    (0.45, 0.60, 60, 0.30, 130, False),   # high-DD: return/DD 0.67 < 0.75
-    (0.45, 0.60, 60, 0.40, 110, False),   # high-DD: net R / closed-R DD 1.83 < 2.0
+    (0.45, 0.60, 60, 0.40, 130, True),    # rescue: 0.40/0.45 = 0.89 >= 0.75, 130/60 = 2.17 >= 2.0
+    (0.45, 0.60, 60, 0.30, 130, False),   # rescue: return/DD 0.67 < 0.75
+    (0.45, 0.60, 60, 0.40, 110, False),   # rescue: net R / closed-R DD 1.83 < 2.0
     (0.56, 0.60, 60, 0.90, 200, False),   # base DD > 55% fails on any path
     (0.30, 0.66, 30, 0.10, 50, False),    # x1.5 DD > 65% fails on any path
-    (0.30, 0.40, 40, 0.10, 50, False),    # ordinary needs closed-R DD < 40R
+    (0.30, 0.40, 40, 0.10, 50, False),    # ordinary needs closed-R DD < 40R; rescue ratios fail too
 ])
 def test_dd_tier_rule_reference_cases(base, x15, closed_r, ann_ret, net_r, ok):
     """Synthetic numbers only, no market result: the tier rule is unambiguous before any evaluation exists."""
@@ -250,10 +250,20 @@ def test_f24_window_is_defined_on_availability_and_never_needs_the_event_at_d(gr
     assert '[D - 24h, D)' in sig['definition'] and 'start_ms = D - 24h, end_ms = D' in sig['sequence_check']
 
 
-def test_entry_bar_is_stop_checked_and_dd_non_monotonicity_is_recorded():
+def test_entry_bar_is_stop_checked_and_dd_gate_is_monotone():
     p = c()
-    assert 'entry bar itself' in p['execution']['stop_path'] and 'IS stop-checked' in p['execution']['stop_path']
+    sp = p['execution']['stop_path']
+    assert 'entry bar itself' in sp and 'IS stop-checked from its 04:00 open' in sp and 'gap/open first' in sp
     dd = p['gates']['drawdown_and_tail']
-    assert 'not monotone' in dd['accepted_consequence']
-    assert _dd_gate(dd, 0.30, 0.40, 45, 0.90, 225, underwater=200, worst=-5) is False   # better DD fails (recorded)
-    assert _dd_gate(dd, 0.40, 0.40, 45, 0.40, 90, underwater=200, worst=-5) is True     # worse DD passes
+    assert 'accepted_consequence' not in dd and 'monotone' in dd['tier_rule']
+    assert _dd_gate(dd, 0.30, 0.40, 45, 0.90, 225, underwater=200, worst=-5) is True    # Cowork N1 probe: now rescued
+    assert _dd_gate(dd, 0.40, 0.40, 45, 0.40, 90, underwater=200, worst=-5) is True
+    # monotone: for fixed ratios and ceilings, lowering base DD never turns PASS into FAIL
+    for closed_r, ann, net in ((45, 0.5, 100), (30, 0.1, 10), (60, 0.35, 130), (60, 0.25, 130), (20, 0.0, 0)):
+        verdicts = [_dd_gate(dd, b / 100, 0.40, closed_r, ann * b / 100 / 0.40, net, underwater=200, worst=-5)
+                    for b in range(5, 60)]
+        assert verdicts == sorted(verdicts, reverse=True)                                # True... then False only
+
+
+def test_ruling_2_funding_sign_and_contribution_are_reported():
+    assert any('positive / zero / negative F24' in x and 'funding contribution' in x for x in c()['metrics'])

@@ -38,7 +38,9 @@ T + 300s in (D-24h, D], i.e. D-24h-300s < T <= D-300s.** Nominal times are whole
   event at T = D is not yet available, so it is never in the window and never required.
 - **Sequence check:** `costs.check_funding_sequence(symbol, rows, start_ms=D-24h, end_ms=D)`. The rows run from the phase
   anchor (the event at or immediately before D-24h) through the last event with T + 300s <= D. The covered interval is
-  [D-24h, D), so the event at D is not covered and is not passed. A missing, duplicated or off-grid event inside the
+  [D-24h, D), so the event at D is not covered and is not passed. Equivalently (Codex 6459518132):
+  start_exclusive = D-24h-300s, end_inclusive = D-300s, with the latest nominal event at or before the lower boundary as
+  the cadence phase anchor. A missing, duplicated or off-grid event inside the
   window makes the symbol ineligible at D.
 - **Why 24h:** the spec holds each position for about 24h, so the look-back equals the hold. A 24h sum is the only
   window that normalises the 1h, 4h and 8h cadences without a free parameter. It is not tuned, and no alternative
@@ -68,7 +70,7 @@ Rank the eligible symbols by F24, breaking ties by symbol name.
 | Entry | Market at the first 4h open at or after D + lag, i.e. **04:00 UTC** |
 | Exit | Market at the 4h open **24h after entry**, or earlier by the protective stop |
 | Funding held | Every event with entry <= T < exit (`costs.py` rule); exactly 3 on an 8h grid |
-| Entry-bar stop | The 4h bar opening at entry is stop-checked, stop-first over its full range; gap-open does not apply to it (Cowork N2) |
+| Entry-bar stop | The 04:00-08:00 UTC entry bar is stop-checked from its 04:00 open with the same conservative rule: gap/open first, then stop-first over its full range (Cowork N2, Codex item 3) |
 | R unit / stop | 2.0 x TR-SMA14 of the 15 closed 1d bars ending at D; on 4h bars the gap open is checked first, then stop-first |
 | Roll | A symbol re-selected next day is closed and re-opened as a new episode, with both fills charged |
 | Account | 10,000 USDT per book; 1% risk per position; max 3.0x gross per book (if a cohort would exceed it, every position is scaled down equally) |
@@ -128,17 +130,16 @@ after-cost return, cost stress and recovery are credible. The DD gate passes whe
 ceiling above holds:
 
 - **Ordinary:** base max equity DD **<= 35%**, and closed-R DD < **40R**.
-- **Profitable / high-DD:** base DD **> 35% and <= 55%**, and annualized after-cost return / max DD **>= 0.75**, and
-  total net R / closed-R DD **>= 2.0**.
+- **Profitability rescue:** any base DD **<= 55%** (no lower bound), when annualized after-cost return / max DD
+  **>= 0.75** and total net R / closed-R DD **>= 2.0**. Because the rescue has no lower bound, the gate is monotone:
+  a lower-DD book can never fail where a higher-DD book with the same ratios passes (Codex 6459518132 N1).
 - **FAIL on any path:** base DD > **55%**, or x1.5 DD > **65%**.
-
-**Accepted consequence (Cowork N1):** the tiers are not monotone in DD. A book with base DD <= 35% but closed-R
-DD >= 40R fails, because the high-DD ratio tier needs base DD > 35%, while a book with base DD in (35%, 55%] that meets
-both ratios passes. This follows Codex ruling (a) and is recorded before freeze.
 
 The other gates (worst cohort, folds, expectancy, PF, cost stress, concentration, multiplicity) are unchanged. Return,
 max DD, return/DD (Calmar), PF, net expectancy, trade count, exposure time and the longest recovery are reported
-together (Codex 6457388087). No DD threshold may be relaxed after holdout P&L is seen. A passing book enters shadow with at most **25%** of the portfolio risk budget
+together (Codex 6457388087). Per side and per fold, the report also gives the count and share of selected symbols
+with positive, zero and negative F24 at selection, and the funding versus price contribution to net R, so a market-wide
+funding-sign shift is visible (Codex ruling 2). No DD threshold may be relaxed after holdout P&L is seen. A passing book enters shadow with at most **25%** of the portfolio risk budget
 and at most 5% open risk.
 
 ## 8. Nulls and baselines
