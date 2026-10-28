@@ -1,4 +1,4 @@
-"""ML-TRAIN-01 contract twin: the JSON twin parses, stays DRAFT/unsigned and agrees with the markdown on the key numbers.
+"""ML-TRAIN-01 contract twin: the JSON twin parses, is FROZEN/signed (metadata only) and agrees with the markdown on the key numbers.
 
 Contract only - no data, no training. Both twins live under contracts/ml_train_01/ (Codex 6453098718), not in
 the documentation tree, so every edit runs normal verification. Numbers and names the contract takes from code are
@@ -37,10 +37,13 @@ def _get(c, path):
     return c
 
 
-def test_status_is_draft_and_unsigned(c, md):
+def test_status_is_frozen_and_signed_by_codex(c, md):
     assert c['contract'] == 'ML-TRAIN-01' and c['version'] == 1
-    assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
-    assert '**Status: DRAFT — unsigned.**' in md
+    assert c['status'] == 'FROZEN' and c['signed_by'] == 'codex' and c['frozen_at'] == '2026-10-28T05:50:00+03:00'
+    assert c['signature_ref'] == {'ruling': '6459327957', 'accepted_head': '9ea2cd92e71b672a3ea0c13e39da20bde3702bce',
+                                  'merge_commit': 'fe84dbbc6eab021c5685330df933a6e90221775d'}
+    assert '**Status: FROZEN — signed by Codex, 28 Oct 2026 05:50 Cairo (02:50 UTC); ruling 6459327957' in md
+    assert md.splitlines()[2].startswith('**Status: FROZEN')
 
 
 def test_frozen_order_pairing_first(c, md):
