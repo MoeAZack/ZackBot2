@@ -5,21 +5,24 @@ Authoritative spec: research_evidence/prereg/funding_carry_xsec.v1.json (read by
 Two passes, both streaming:
   pass 1 (resumable)  one UTC decision day D at a time: eligibility + F24 from only the rows available at D, the
                       k=5 per-side cohorts, and a per-unit replay (quantity 1) of every episode the books and baselines
-                      need. Each day is ONE canonical JSON line appended (flush + fsync) to `days.jsonl`; a day is
-                      a pure function of its inputs, so a resumed run is byte-identical to an uninterrupted one.
-  pass 2 (summary)    re-streams `days.jsonl` line by line and runs the books (sizing, leverage cap, exchange-rule
-                      floors, equity path), the B0/B1/B2 baselines, metrics and gates; writes `summary.json`.
+                      need. Each day is ONE canonical JSON line appended (flush + fsync) to `days.jsonl`, carrying the
+                      run-identity digest, the previous line's hash and its own record hash (a chain). A day is a pure
+                      function of its inputs, so a resumed run is byte-identical to an uninterrupted one.
+  pass 2 (summary)    re-streams and re-verifies `days.jsonl` line by line and runs every book - the primaries AND the
+                      B0 / B1 / B2 baselines - through the same Book (sizing, leverage-cap scaling, quantity floors,
+                      point-in-time rule refusals, costs); metrics and gates; writes `summary.json`.
 
-Memory: the source is asked, per symbol and per day, only for the rows of that day's window (funding ~2.5 days,
-4h bars ~4 days, 1h mark bars ~1.2 days, 15 daily bars). Nothing spans the universe x history. `--max-rss-mb` aborts
-cleanly between days (the completed lines stay; rerun the same command to resume).
+Identity (`run.json`, bound into every line): prereg hash, universe, point-in-time exchange-rules artifact hash, source,
+code identity (git commit + dirty flag + sha256 of this file and every repo module it imports), the optional holdout
+freeze-record hash, and the `conventions` block (every Integration ruling, explicit). Resume verifies every retained
+line (canonical bytes, record hash, chain, identity, plan key) and refuses on any difference.
 
-Per-unit replay: every cost is linear in quantity, so net R = net_per_unit / stop_distance is exact for any quantity;
-quantity matters only to the book layer (equity, drawdown, refusals, capacity), which pass 2 applies.
+Memory: per symbol and per day the source is asked only for that day's windows. `--max-rss-mb` is checked after every
+symbol load and after every day; an abort never writes a partial day. Unmeasurable RSS with a limit set refuses to start.
 
-Sealed boundary: every source read is clipped to its split and refused at or after the prereg sealed cutoff
-(2026-09-28T00:00:00Z) / holdout start, before and after the read (HoldoutRefused). Archive months that straddle the
-cutoff are never opened. Calibration and holdout splits are never evaluated.
+Sealed boundary: every source read is clipped to its split and refused at or after min(sealed cutoff, holdout start),
+before and after the read (HoldoutRefused). Archive months that straddle the cutoff are never opened. Calibration and
+holdout splits are never evaluated.
 
 No network, no exchange ids, no ledger write (Integration owns the ledger), no wall clock in any result byte.
 """
@@ -32,6 +35,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import sys
 from collections import OrderedDict, namedtuple
 from dataclasses import dataclass
@@ -45,9 +49,10 @@ import splits as S                                                              
 sys.path.insert(0, M.REPO)
 import feasibility as F                                                                     # noqa: E402
 
-FORMAT = 'zb-edge05-run/1'
-DAY_FORMAT = 'zb-edge05-day/1'
-SUMMARY_FORMAT = 'zb-edge05-summary/1'
+FORMAT = 'zb-edge05-run/2'
+DAY_FORMAT = 'zb-edge05-day/2'
+SUMMARY_FORMAT = 'zb-edge05-summary/2'
+RULES_FORMAT = 'zb-exchange-rules-pit/1'
 PREREG_REL = ('research_evidence', 'prereg', 'funding_carry_xsec.v1.json')
 CANDIDATE = 'funding_carry_xsec.v1'
 HOUR = 3_600_000
@@ -66,8 +71,42 @@ LOOKBACK_BARS, HORIZON_BARS = 180, 6                   # windows.split_rule
 B0_BOOKS = 1000                                        # baselines B0 "1000 seeded random books"
 BOOT_BLOCK, BOOT_N, BOOT_SEED = 30, 10_000, 20261028   # gates.expectancy.lcb
 SLIP_C_CRYPTO = 0.05                                   # slip-cal-v1 crypto c (unfitted; SLIP-C-UNFITTED)
-SLIP_FALLBACK_BPS = 5.0                                # "the 0.05% unfitted fallback each market fill"
+SLIP_FLOOR_BPS = 5.0                                   # "the 0.05% unfitted fallback each market fill"
 RESULT_FILES = ('days.jsonl', 'summary.json')
+RULE_KEYS = ('tick', 'step', 'min_qty', 'min_notional')
+INCOMPLETE_REASONS = ('incomplete.gap', 'incomplete.slip_history', 'incomplete.stop', 'incomplete.funding',
+                      'incomplete.mark', 'incomplete.split_end', 'rules_uncovered')
+# every repo module this runner imports (a test re-derives the list in a fresh interpreter)
+CODE_MODULES = ('feasibility.py', 'tools/research/costs.py', 'tools/research/edge05_coverage.py',
+                'tools/research/edge05_runner.py', 'tools/research/manifest.py', 'tools/research/runlock.py',
+                'tools/research/splits.py')
+CONVENTIONS = {
+    'slippage': 'per fill charged_bps = max(model_bps, floor_bps): model = slip-v1 TR-SMA14 on the 15 closed 4h bars, '
+                'c = 0.05 (SLIP-C-UNFITTED); floor = 5 bp; both components recorded per fill (Integration ruling 1)',
+    'worst_cohort_net_r': 'SUM of executable episode net R in one side/day cohort (Integration ruling 2)',
+    'unresolved_accounting': 'every selected episode is OK (finite, reconciled: net = gross + fill_adj - fees + funding,'
+                             ' r = net / dist) or INCOMPLETE with an enumerated reason; anything else is UNRESOLVED and '
+                             'makes the side INCOMPLETE; the <=2% allowance counts only enumerated INCOMPLETE '
+                             '(Integration ruling 3)',
+    'incomplete_reasons': list(INCOMPLETE_REASONS),
+    'exchange_rules': 'point-in-time artifact, per-symbol [from, to) intervals; the rule at the entry fill sizes and '
+                      'ticks the entry/stop, the rule at the exit fill ticks the exit; either uncovered -> INCOMPLETE '
+                      'rules_uncovered; never a current-rule substitution or an envelope (Integration ruling 4)',
+    'holdout': 'dates frozen by Integration, opening prohibited; every read refused at/after min(sealed_cutoff, '
+               'holdout.start); optional freeze-record sha256 bound in identity (Integration ruling 5)',
+    'stop_bar_funding': 'intrabar stop: funding entry <= T < stop-bar close; gap stop: entry <= T < bar open',
+    'split_contained_exit_bar': 'a day is scheduled only if its exit 4h bar closes inside its split',
+    'fresh_books_per_split': '10000 USDT per side per split (every book, baselines included), compounding on closed '
+                             'equity within the split',
+    'b0_seed': "random.Random(int.from_bytes(sha256('funding_carry_xsec.v1|' + side + '|' + D_iso + '|' + i)[:8], "
+               "'big')).sample(eligible sorted by symbol, k); D_iso = YYYY-MM-DDT00:00:00Z",
+    'baselines_execution': 'B0 (1000 books), B1 (all eligible, equal risk) and B2 (sign-flipped) run through the same '
+                           'Book as the primaries at base costs',
+    'bootstrap': 'moving-block, non-circular, block 30 daily cohort means, 10000 resamples, seed 20261028; lcb95 = 5th '
+                 'percentile (one-sided); p = (#means <= 0 + 1) / (N + 1); Holm alpha 0.05 over P-SHORT, P-LONG',
+    'fold_chain': 'walk-forward combined: max equity DD = worst fold; annualized return = chained fold growth over '
+                  'summed fold spans; closed-R DD on the chained cumulative-R curve; PF in R',
+}
 
 Bar = namedtuple('Bar', 'open_ms open high low close volume quote_volume available_ms')
 Funding = namedtuple('Funding', 'time_ms rate interval_hours available_ms')
@@ -97,6 +136,26 @@ def canon(obj) -> bytes:
 
 def sha(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
+
+
+def file_sha(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# ------------------------------------------------------------------ code identity
+def code_identity(repo: str = M.REPO) -> dict:
+    """git HEAD of the runner's repo, a dirty flag (any porcelain status line) and the sha256 of every imported module."""
+    def git(*a):
+        try:
+            return subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as e:
+            raise RunnerError(f'cannot read the code identity from git ({e})') from None
+    return {'commit': git('rev-parse', 'HEAD').strip(), 'dirty': bool(git('status', '--porcelain').strip()),
+            'modules': {m: file_sha(os.path.join(repo, *m.split('/'))) for m in CODE_MODULES}}
 
 
 # ------------------------------------------------------------------ prereg
@@ -177,6 +236,50 @@ def decision_days(plan: S.SplitPlan, key: str, prm: Params) -> list[int]:
     return out
 
 
+# ------------------------------------------------------------------ point-in-time exchange rules
+class PitRules:
+    """`zb-exchange-rules-pit/1`: {format, source, symbols: {SYM: [{from, to, tick, step, min_qty, min_notional}]}}
+    with strict UTC [from, to) intervals, sorted and non-overlapping. `at` never substitutes another interval."""
+
+    def __init__(self, doc: dict, raw: bytes):
+        if not isinstance(doc, dict) or doc.get('format') != RULES_FORMAT:
+            raise RunnerError(f'rules artifact must be {RULES_FORMAT}')
+        if not isinstance(doc.get('source'), str) or not doc['source'] or not isinstance(doc.get('symbols'), dict):
+            raise RunnerError('rules artifact needs a non-empty source and a symbols map')
+        self.sha256, self.source, self._iv = sha(raw), doc['source'], {}
+        for sym, ivs in doc['symbols'].items():
+            rows = []
+            for iv in ivs:
+                try:
+                    lo, hi = S.parse_utc(iv['from']), S.parse_utc(iv['to'])
+                    rule = {k: float(iv[k]) for k in RULE_KEYS}
+                except (KeyError, TypeError, ValueError, S.SplitError) as e:
+                    raise RunnerError(f'{sym}: bad rules interval {iv!r} ({e})') from None
+                if not lo < hi or not all(math.isfinite(v) for v in rule.values()) or rule['tick'] <= 0 \
+                        or rule['step'] <= 0 or rule['min_qty'] < 0 or rule['min_notional'] < 0:
+                    raise RunnerError(f'{sym}: invalid rules interval {iv!r}')
+                rows.append((lo, hi, dict(rule, **{'from': iv['from'], 'to': iv['to']})))
+            rows.sort(key=lambda r: r[0])
+            if any(b[0] < a[1] for a, b in zip(rows, rows[1:])):
+                raise RunnerError(f'{sym}: rules intervals overlap')
+            self._iv[sym] = ([r[0] for r in rows], rows)
+
+    @classmethod
+    def load(cls, path: str) -> 'PitRules':
+        raw = open(path, 'rb').read()
+        return cls(json.loads(raw), raw)
+
+    def identity(self) -> dict:
+        return {'format': RULES_FORMAT, 'source': self.source, 'sha256': self.sha256}
+
+    def at(self, sym: str, t: int):
+        starts, rows = self._iv.get(sym, ((), ()))
+        i = bisect.bisect_right(starts, t) - 1
+        if i < 0 or not rows[i][0] <= t < rows[i][1]:
+            return None
+        return dict(rows[i][2])
+
+
 # ------------------------------------------------------------------ guarded source
 class Guard:
     """Every read is clipped to [lo_bound, hi_bound) of the current split and the sealed cutoff; a request or a row
@@ -230,11 +333,8 @@ class ArchiveSource:
 
     def __init__(self, manifest_path: str, store: str, symbols, cutoff_ms: int, cache_months: int = 512):
         self.store, self.cutoff, self.cap = store, cutoff_ms, cache_months
-        want, h = set(symbols), hashlib.sha256()
-        with open(manifest_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(1 << 20), b''):
-                h.update(chunk)
-        self.manifest_sha256 = h.hexdigest()
+        want = set(symbols)
+        self.manifest_sha256 = file_sha(manifest_path)
         self.index: dict = {}
         self.first: dict = {}
         self.straddle_skipped = 0
@@ -383,38 +483,44 @@ def funding_paid(side: str, rate: float, mark: float, st: Stress) -> float:
     return c * st.mult if c > 0 else c / st.mult
 
 
-def slip(bars4: dict, at: int) -> float:
-    """slip-v1 on the 15 closed 4h bars ending at `at`, c = slip-cal-v1 crypto; never below the 0.05% unfitted
-    fallback (open point: the prereg names both; the larger, more conservative one is charged)."""
+def slip(bars4: dict, at: int) -> dict:
+    """slip-v1 on the 15 closed 4h bars ending at `at` (c = slip-cal-v1 crypto) and the 5 bp floor; the charged bps is
+    the larger (Integration ruling 1). Both components are returned so every fill records them."""
     win = []
     for o in range(at - 15 * TF, at, TF):
         b = bars4.get(o)
         if b is None:
             raise Incomplete('incomplete.slip_history', o)
         win.append(b)
-    return max(C.slip_bps(win, SLIP_C_CRYPTO), SLIP_FALLBACK_BPS)
+    model = C.slip_bps(win, SLIP_C_CRYPTO)
+    return {'model_bps': model, 'floor_bps': SLIP_FLOOR_BPS, 'charged_bps': max(model, SLIP_FLOOR_BPS)}
 
 
 def _tick_round(px, tick, action):
     return C.round_adverse(px, tick, action) if tick else px
 
 
-def replay(side: str, D: int, st: Stress, dist: float, day: dict, rule, prm: Params, split_hi: int) -> dict:
-    """Per-unit (qty 1) replay of one episode. Raises Incomplete for anything unaccountable."""
+def replay(side: str, D: int, st: Stress, dist: float, day: dict, rules_at, prm: Params, split_hi: int) -> dict:
+    """Per-unit (qty 1) replay of one episode. `rules_at(t)` -> the point-in-time rule or None.
+    Raises Incomplete (an enumerated INCOMPLETE_REASONS value) for anything unaccountable."""
     sgn = 1.0 if side == 'long' else -1.0
     act_in, act_out = ('buy', 'sell') if side == 'long' else ('sell', 'buy')
     scen = C.Scenario(st.name, fee_mult=st.mult, slip_mult=st.mult)
-    tick = (rule or {}).get('tick')
     entry = D + ENTRY_OFFSET + st.latency_bars * TF
     exit_sched = entry + prm.hold_ms
     if exit_sched + TF > split_hi:
         raise Incomplete('incomplete.split_end', exit_sched)
+    rule_in = rules_at(entry)
+    if rule_in is None:
+        raise Incomplete('rules_uncovered', entry)
+    tick = rule_in['tick']
     bars4 = day['bars4']
     eb = bars4.get(entry)
     if eb is None:
         raise Incomplete('incomplete.gap', entry)
     ref_in = eb.open
-    fill_in = C.fill_price(ref_in, act_in, slip(bars4, entry), scen, tick=tick)
+    slip_in = slip(bars4, entry)
+    fill_in = C.fill_price(ref_in, act_in, slip_in['charged_bps'], scen, tick=tick)
     stop = _tick_round(fill_in - dist, tick, 'sell') if side == 'long' else _tick_round(fill_in + dist, tick, 'buy')
     if not stop > 0 or not dist > 0:
         raise Incomplete('incomplete.stop', entry)
@@ -437,7 +543,11 @@ def replay(side: str, D: int, st: Stress, dist: float, day: dict, rule, prm: Par
         if xb is None:
             raise Incomplete('incomplete.gap', exit_sched)
         ref_out, exit_t, why, bps_at = xb.open, exit_sched, 'exit.time', exit_sched
-    fill_out = C.fill_price(ref_out, act_out, slip(bars4, bps_at), scen, gap=gap, tick=tick)
+    rule_out = rules_at(exit_t)
+    if rule_out is None:
+        raise Incomplete('rules_uncovered', exit_t)
+    slip_out = slip(bars4, bps_at)
+    fill_out = C.fill_price(ref_out, act_out, slip_out['charged_bps'], scen, gap=gap, tick=rule_out['tick'])
     fee_out = C.fee(fill_out, 'taker', C.CRYPTO, scen)
     # funding: costs.py rule entry <= T < exit, every event proven present (phase anchor + continuity)
     try:
@@ -471,6 +581,7 @@ def replay(side: str, D: int, st: Stress, dist: float, day: dict, rule, prm: Par
            for tc, c in closes]
     return {'st': 'OK', 'why': why, 'gap': gap, 'entry_ms': entry, 'exit_ms': exit_t, 'ref_in': ref_in,
             'fill_in': fill_in, 'ref_out': ref_out, 'fill_out': fill_out, 'stop': stop, 'dist': dist,
+            'slip_in': slip_in, 'slip_out': slip_out, 'rule': rule_in, 'rule_exit': rule_out,
             'gross_u': gross_u, 'fill_adj_u': fill_pnl - gross_u, 'fees_u': fees_u, 'funding_u': funding_u,
             'net_u': net_u, 'r': net_u / dist, 'n_funding': len(events), 'mtm_u': mtm}
 
@@ -480,6 +591,47 @@ def safe_replay(*a, **kw) -> dict:
         return replay(*a, **kw)
     except Incomplete as e:
         return {'st': 'INCOMPLETE', 'why': e.reason, 'at_ms': e.at_ms}
+
+
+def _finite(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def classify(ep) -> tuple[str, str]:
+    """Integration ruling 3: ('OK', '') only for a finite, reconciled episode; ('INCOMPLETE', reason) only for an
+    enumerated reason; everything else is ('UNRESOLVED', why)."""
+    if not isinstance(ep, dict):
+        return 'UNRESOLVED', 'not_a_record'
+    st = ep.get('st')
+    if st == 'INCOMPLETE':
+        return ('INCOMPLETE', ep.get('why')) if ep.get('why') in INCOMPLETE_REASONS else ('UNRESOLVED', 'unknown_reason')
+    if st != 'OK':
+        return 'UNRESOLVED', 'unknown_status'
+    num = ('dist', 'fill_in', 'fill_out', 'ref_in', 'ref_out', 'gross_u', 'fill_adj_u', 'fees_u', 'funding_u',
+           'net_u', 'r')
+    if any(not _finite(ep.get(k)) for k in num) or not ep['dist'] > 0 or not ep['fill_in'] > 0:
+        return 'UNRESOLVED', 'non_finite'
+    if not isinstance(ep.get('mtm_u'), list) or any(not _finite(x) for x in ep['mtm_u']):
+        return 'UNRESOLVED', 'non_finite'
+    rule = ep.get('rule')
+    if not isinstance(rule, dict) or any(not _finite(rule.get(k)) for k in RULE_KEYS):
+        return 'UNRESOLVED', 'no_rule'
+    for k in ('slip_in', 'slip_out'):
+        s = ep.get(k)
+        if not isinstance(s, dict) or any(not _finite(s.get(x)) for x in ('model_bps', 'floor_bps', 'charged_bps')) \
+                or s['charged_bps'] != max(s['model_bps'], s['floor_bps']):
+            return 'UNRESOLVED', 'slippage_components'
+
+    def close(a, b):
+        return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+    if not close(ep['net_u'], ep['gross_u'] + ep['fill_adj_u'] - ep['fees_u'] + ep['funding_u']):
+        return 'UNRESOLVED', 'net_mismatch'
+    if not close(ep['r'], ep['net_u'] / ep['dist']):
+        return 'UNRESOLVED', 'r_mismatch'
+    sgn = 1.0 if ep.get('side', 'long') == 'long' else -1.0
+    if 'side' in ep and not close(ep['gross_u'] + ep['fill_adj_u'], sgn * (ep['fill_out'] - ep['fill_in'])):
+        return 'UNRESOLVED', 'fill_mismatch'
+    return 'OK', ''
 
 
 # ------------------------------------------------------------------ one day (pass 1)
@@ -506,7 +658,13 @@ def daily_dist(bars1d, D: int, prm: Params) -> float:
     return d
 
 
-def run_day(src: Guard, symbols, D: int, key: str, prm: Params, rules: dict, split_hi: int) -> dict:
+def _ep(side, D, st, dist, day, rules, sym, prm, split_hi):
+    ep = safe_replay(side, D, st, dist, day, lambda t: rules.at(sym, t), prm, split_hi)
+    ep['side'] = side
+    return ep
+
+
+def run_day(src: Guard, symbols, D: int, key: str, prm: Params, rules: PitRules, split_hi: int, check=None) -> dict:
     elig, inel, days = {}, {}, {}
     for sym in symbols:
         fm = src.first_ms(sym)
@@ -514,6 +672,8 @@ def run_day(src: Guard, symbols, D: int, key: str, prm: Params, rules: dict, spl
             inel['age'] = inel.get('age', 0) + 1
             continue
         day = load_day(src, sym, D, split_hi)
+        if check is not None:
+            check()                                    # bounded RSS checkpoint: after every symbol load
         try:
             dist = daily_dist(day['bars1d'], D, prm)
             elig[sym] = (f24(sym, day['funding'], D, prm), dist)
@@ -529,31 +689,24 @@ def run_day(src: Guard, symbols, D: int, key: str, prm: Params, rules: dict, spl
     sel = select(f, prm.k)
     rec['f24'] = dict(sorted(f.items()))
     rec['dist'] = {s: v[1] for s, v in sorted(elig.items())}
-    base = {}
-    for side in SIDES:
-        base[side] = {}
-        for s in sorted(elig):
-            ep = safe_replay(side, D, STRESS_ROWS['base_x1'], elig[s][1], days[s], rules.get(s), prm, split_hi)
-            base[side][s] = {'st': ep['st'], 'r': ep.get('r'), 'why': ep['why']}
-    rec['base'] = base
+    qv = {}
+    for s in sorted(elig):
+        bs = [days[s]['bars4'].get(o) for o in range(D + ENTRY_OFFSET - DAY, D + ENTRY_OFFSET, TF)]
+        qv[s] = None if any(b is None or b.quote_volume is None for b in bs) else math.fsum(b.quote_volume for b in bs)
+    rec['qv24'] = qv
+    rec['base'] = {side: {s: _ep(side, D, STRESS_ROWS['base_x1'], elig[s][1], days[s], rules, s, prm, split_hi)
+                          for s in sorted(elig)} for side in SIDES}
     rec['b2'] = {'short': sel['b2_short'], 'long': sel['b2_long']}
-    prim = {}
-    for side in SIDES:
-        prim[side] = []
-        for s in sel[side]:
-            bars4 = days[s]['bars4']
-            qv = [bars4.get(o) for o in range(D + ENTRY_OFFSET - DAY, D + ENTRY_OFFSET, TF)]
-            rows = {name: safe_replay(side, D, st, elig[s][1], days[s], rules.get(s), prm, split_hi)
-                    for name, st in STRESS_ROWS.items()}
-            prim[side].append({'symbol': s, 'f24': f[s], 'rows': rows,
-                               'qv24': None if any(b is None or b.quote_volume is None for b in qv)
-                               else math.fsum(b.quote_volume for b in qv)})
-    rec['primary'] = prim
+    rec['primary'] = {side: [{'symbol': s, 'f24': f[s], 'qv24': qv[s],
+                              'rows': {name: _ep(side, D, st, elig[s][1], days[s], rules, s, prm, split_hi)
+                                       for name, st in STRESS_ROWS.items()}}
+                             for s in sel[side]] for side in SIDES}
     return rec
 
 
 # ------------------------------------------------------------------ memory guard
 def rss_mb() -> float:
+    """Current resident set in MB; raises RunnerError when it cannot be measured (never a silent 0)."""
     try:
         if os.name == 'nt':
             import ctypes
@@ -572,100 +725,146 @@ def rss_mb() -> float:
             k32.GetCurrentProcess.restype = wintypes.HANDLE
             psapi = ctypes.WinDLL('psapi')
             psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
-            if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
-                return c.WorkingSetSize / 2 ** 20
-            return 0.0
-        with open('/proc/self/statm') as f:
-            return int(f.read().split()[1]) * os.sysconf('SC_PAGE_SIZE') / 2 ** 20
-    except Exception:                                  # noqa: BLE001 - unknown platform: the guard cannot measure
-        return 0.0
+            v = c.WorkingSetSize / 2 ** 20 if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c),
+                                                                        c.cb) else 0.0
+        else:
+            with open('/proc/self/statm') as f:
+                v = int(f.read().split()[1]) * os.sysconf('SC_PAGE_SIZE') / 2 ** 20
+    except Exception as e:                              # noqa: BLE001
+        raise RunnerError(f'cannot measure RSS ({e})') from None
+    if not v > 0:
+        raise RunnerError('cannot measure RSS (zero reading)')
+    return v
 
 
-# ------------------------------------------------------------------ pass 1 driver (resumable)
+# ------------------------------------------------------------------ pass 1 driver (resumable, chained)
 def _fsync_append(fh, line: bytes):
     fh.write(line)
     fh.flush()
     os.fsync(fh.fileno())
 
 
-def identity_doc(prereg_raw: bytes, symbols, rules: dict, source_identity: dict, keys) -> dict:
+def identity_doc(prereg_raw: bytes, symbols, rules, source_identity: dict, keys, code: dict,
+                 freeze_sha: str | None) -> dict:
     return {'format': FORMAT, 'candidate_id': CANDIDATE, 'prereg_sha256': sha(prereg_raw),
-            'universe': list(symbols), 'rules_sha256': sha(canon(rules)), 'source': source_identity,
-            'splits': list(keys), 'slip': {'c': SLIP_C_CRYPTO, 'fallback_bps': SLIP_FALLBACK_BPS},
-            'rows': list(ROWS), 'boundaries': {'holdout_read': False, 'ledger_written': False, 'mainnet': False}}
+            'universe': list(symbols), 'rules': rules.identity() if rules is not None else None,
+            'source': source_identity, 'splits': list(keys), 'code': code,
+            'holdout_freeze_record_sha256': freeze_sha, 'conventions': CONVENTIONS,
+            'slip': {'c': SLIP_C_CRYPTO, 'floor_bps': SLIP_FLOOR_BPS}, 'rows': list(ROWS),
+            'boundaries': {'holdout_read': False, 'ledger_written': False, 'mainnet': False}}
 
 
-def _resume_point(path: str, plan_keys: list) -> int:
-    """Lines already complete, validated in lockstep against the plan (streamed). A torn last line is truncated."""
-    if not os.path.exists(path):
-        return 0
-    with open(path, 'rb+') as fh:
-        data_end = fh.seek(0, 2)
-        if data_end:
-            fh.seek(max(0, data_end - 1))
-            if fh.read(1) != b'\n':                    # torn tail: cut back to the last newline
-                pos = data_end
-                while pos > 0:
-                    step = min(65536, pos)
-                    fh.seek(pos - step)
-                    chunk = fh.read(step)
-                    i = chunk.rfind(b'\n')
-                    if i >= 0:
-                        pos = pos - step + i + 1
-                        break
-                    pos -= step
-                fh.truncate(pos)
-    n = 0
+def iter_verified(path: str, run_digest: str, plan_keys=None):
+    """Yield every line's record after checking canonical bytes, its hash, the chain and the identity digest."""
+    prev, n = run_digest, 0
     with open(path, 'rb') as fh:
         for line in fh:
-            d = json.loads(line)
-            if n >= len(plan_keys) or (d.get('split'), d.get('D')) != plan_keys[n]:
+            try:
+                rec = json.loads(line)
+                h = rec.pop('hash')
+            except (ValueError, KeyError, AttributeError):
+                raise RunnerError(f'days.jsonl line {n + 1} is not a hashed record; refusing') from None
+            if line != canon(dict(rec, hash=h)) + b'\n' or sha(canon(rec)) != h:
+                raise RunnerError(f'days.jsonl line {n + 1}: content does not match its record hash; refusing')
+            if rec.get('prev') != prev:
+                raise RunnerError(f'days.jsonl line {n + 1}: broken hash chain; refusing')
+            if rec.get('run') != run_digest:
+                raise RunnerError(f'days.jsonl line {n + 1}: written under another run identity; refusing')
+            if plan_keys is not None and (n >= len(plan_keys) or (rec.get('split'), rec.get('D')) != plan_keys[n]):
                 raise RunnerError(f'days.jsonl line {n + 1} does not match the run plan; refusing to resume')
-            n += 1
-    return n
+            prev, n = h, n + 1
+            yield rec, h
 
 
-def run(outdir: str, src, symbols, rules: dict, prereg: dict, prereg_raw: bytes, *, max_rss_mb: float | None = None,
-        dry_run: bool = False, only_keys=None, progress=None, stop_after_days: int | None = None) -> dict:
+def _truncate_torn_tail(path: str) -> None:
+    with open(path, 'rb+') as fh:
+        end = fh.seek(0, 2)
+        if not end:
+            return
+        fh.seek(end - 1)
+        if fh.read(1) == b'\n':
+            return
+        pos = end
+        while pos > 0:
+            step = min(65536, pos)
+            fh.seek(pos - step)
+            i = fh.read(step).rfind(b'\n')
+            if i >= 0:
+                pos = pos - step + i + 1
+                break
+            pos -= step
+        fh.truncate(pos)
+
+
+def _resume_point(path: str, plan_keys: list, run_digest: str) -> tuple[int, str]:
+    if not os.path.exists(path):
+        return 0, run_digest
+    _truncate_torn_tail(path)
+    n, prev = 0, run_digest
+    for _, h in iter_verified(path, run_digest, plan_keys):
+        n, prev = n + 1, h
+    return n, prev
+
+
+def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, max_rss_mb: float | None = None,
+        dry_run: bool = False, only_keys=None, progress=None, stop_after_days: int | None = None,
+        code: dict | None = None, allow_dirty_test_only: bool = False, holdout_freeze_record: str | None = None) -> dict:
     prm = params_of(prereg)
     plan = split_plan(prereg)
     keys = [k for k in evaluated_keys(plan) if only_keys is None or k in only_keys]
     guard = Guard(src, prm.cutoff_ms)
     schedule = [(k, d) for k in keys for d in decision_days(plan, k, prm)]
-    ident = identity_doc(prereg_raw, symbols, rules, src.identity(), keys)
+    code = code if code is not None else code_identity()
+    freeze_sha = file_sha(holdout_freeze_record) if holdout_freeze_record else None
+    ident = identity_doc(prereg_raw, symbols, rules, src.identity(), keys, code, freeze_sha)
     if dry_run:
         return dry_report(guard, symbols, rules, schedule, plan, prm, ident)
+    if rules is None:
+        raise RunnerError('no point-in-time exchange-rules artifact; refusing a real run (dry-run reports coverage)')
+    if code.get('dirty') and not allow_dirty_test_only:
+        raise RunnerError('the code tree is dirty; commit first (a real run binds a clean commit)')
+    if max_rss_mb is not None:
+        rss_mb()                                       # refuse to start when RSS cannot be measured
+
+    def check():
+        if max_rss_mb is not None:
+            v = rss_mb()
+            if v > max_rss_mb:
+                raise MemoryLimit(f'RSS {v:.0f} MB > --max-rss-mb {max_rss_mb:g}; no partial day written, '
+                                  'rerun the same command to resume')
     os.makedirs(outdir, exist_ok=True)
     idp = os.path.join(outdir, 'run.json')
     ib = json.dumps(ident, sort_keys=True, indent=1).encode('ascii') + b'\n'
     if os.path.exists(idp):
         if open(idp, 'rb').read() != ib:
-            raise RunnerError('run.json identity differs from this command; refusing to resume into it')
+            raise RunnerError('run.json identity differs from this command/code; refusing to resume into it')
     else:
         with open(idp, 'wb') as fh:
             _fsync_append(fh, ib)
     if os.path.exists(os.path.join(outdir, 'summary.json')):
         raise RunnerError('summary.json exists: this run is complete and sealed')
+    run_digest = sha(canon(ident))
     days_path = os.path.join(outdir, 'days.jsonl')
     plan_keys = [(k, S.utc(d)) for k, d in schedule]
-    done = _resume_point(days_path, plan_keys)
+    done, prev = _resume_point(days_path, plan_keys, run_digest)
     did = 0
     with open(days_path, 'ab') as fh:
         for i in range(done, len(schedule)):
             k, D = schedule[i]
             lo, hi = plan.access_range(k)
             guard.scope(lo, hi)
-            rec = run_day(guard, symbols, D, k, prm, rules, hi)
+            rec = run_day(guard, symbols, D, k, prm, rules, hi, check)
+            check()
+            rec['run'], rec['prev'] = run_digest, prev
+            prev = rec['hash'] = sha(canon(rec))
             _fsync_append(fh, canon(rec) + b'\n')
             did += 1
             if progress:
                 progress(i + 1, len(schedule), k, rec['D'])
-            if max_rss_mb is not None and rss_mb() > max_rss_mb:
-                raise MemoryLimit(f'RSS {rss_mb():.0f} MB > --max-rss-mb {max_rss_mb:g} after {rec["D"]}; '
-                                  f'{i + 1}/{len(schedule)} days done, rerun the same command to resume')
             if stop_after_days is not None and did >= stop_after_days:
                 return {'status': 'PARTIAL', 'days_done': i + 1, 'days_total': len(schedule)}
-    summ = summarize(days_path, prereg, rules, keys)
+    summ = summarize(days_path, prereg, keys, run_digest)
+    summ['identity_sha256'] = run_digest
     sp = os.path.join(outdir, 'summary.json')
     tmp = sp + '.tmp'
     with open(tmp, 'wb') as fh:
@@ -675,14 +874,20 @@ def run(outdir: str, src, symbols, rules: dict, prereg: dict, prereg_raw: bytes,
 
 
 def dry_report(guard: Guard, symbols, rules, schedule, plan, prm, ident) -> dict:
-    """Inputs and coverage only: metadata, the schedule, the rules, and the guard; no row read, no result."""
+    """Inputs and coverage only: metadata, the schedule, rules coverage and the guard; no row read, no result."""
     missing_meta = [s for s in symbols if None in (guard.first_ms(s).get('funding'), guard.first_ms(s).get('4h'))]
     per_split = {}
     for k, d in schedule:
         per_split.setdefault(k, []).append(d)
-    return {'format': FORMAT, 'mode': 'dry-run', 'identity_sha256': sha(canon(ident)),
+    if rules is None:
+        cov = None
+    else:
+        cov = {s: sum(1 for _, d in schedule if rules.at(s, d + ENTRY_OFFSET) is None
+                      or rules.at(s, d + ENTRY_OFFSET + prm.hold_ms) is None) for s in symbols}
+        cov = {s: n for s, n in cov.items() if n}
+    return {'format': FORMAT, 'mode': 'dry-run', 'identity_sha256': sha(canon(ident)), 'code_dirty': ident['code']['dirty'],
             'cutoff': S.utc(prm.cutoff_ms), 'symbols': len(symbols), 'symbols_without_metadata': missing_meta,
-            'symbols_without_rules': [s for s in symbols if s not in rules],
+            'rules': ident['rules'], 'rules_uncovered_days_by_symbol': cov,
             'splits': {k: {'days': len(v), 'first_D': S.utc(v[0]), 'last_D': S.utc(v[-1])} for k, v in per_split.items()},
             'plan_digest': plan.digest}
 
@@ -693,83 +898,91 @@ def _floor(q, step):
 
 
 class Book:
-    """One side x one cost row x one split: sizing (1% of closed equity / 1R), the 3x per-book leverage cap (whole
-    cohort scaled by one factor), floors, the closed + mark-to-market equity path."""
+    """One book (side x cost row x split, or a baseline): sizing (1% of closed equity / 1R), the 3x per-book leverage
+    cap (whole cohort scaled by one factor), step floors and min checks from the episode's point-in-time rule, the
+    closed + mark-to-market equity path. `light` keeps scalars only (B0's 1000 books)."""
 
-    def __init__(self, prm: Params):
-        self.prm = prm
+    def __init__(self, prm: Params, light: bool = False):
+        self.prm, self.light = prm, light
         self.e0 = self.eq = self.peak = prm.start_usdt
         self.maxdd = 0.0
         self.cum_r = self.peak_r = self.rdd = 0.0
         self.uw_start = None
         self.uw_max = 0
         self.first_D = self.last_D = None
+        self.sum_r, self.n_r = 0.0, 0
         self.r, self.cohort_r, self.cohort_mean = [], [], []
-        self.refused = {}
-        self.incomplete = 0
-        self.selected = 0
-        self.notional_traded = []
-        self.cap_ratio = []
+        self.refused, self.incomplete_by, self.unresolved_by = {}, {}, {}
+        self.incomplete = self.unresolved = self.selected = 0
+        self.notional_traded, self.cap_ratio = [], []
         self.exposure_ms = 0
         self.decomp = {'gross': 0.0, 'fill_adj': 0.0, 'fees': 0.0, 'funding': 0.0}
         self.sym_abs = {}
         self.f24_sign = {'pos': 0, 'zero': 0, 'neg': 0}
 
-    def _mark(self, v, D):
+    def _mark(self, v):
         if v > self.peak:
             self.peak = v
         self.maxdd = max(self.maxdd, (self.peak - v) / self.peak if self.peak > 0 else 1.0)
 
-    def cohort(self, D: int, positions, rules):
+    def cohort(self, D: int, positions):
+        """positions: [{symbol, f24, qv24, ep[, cls]}]."""
         self.first_D = D if self.first_D is None else self.first_D
         self.last_D = D
         live = []
         for p in positions:
             self.selected += 1
-            ep = p['ep']
             v = p['f24']
             self.f24_sign['pos' if v > 0 else 'neg' if v < 0 else 'zero'] += 1
-            if ep['st'] != 'OK':
+            st, why = p.get('cls') or classify(p['ep'])
+            if st == 'INCOMPLETE':
                 self.incomplete += 1
-                continue
-            live.append(p)
+                self.incomplete_by[why] = self.incomplete_by.get(why, 0) + 1
+            elif st != 'OK':
+                self.unresolved += 1
+                self.unresolved_by[why] = self.unresolved_by.get(why, 0) + 1
+            else:
+                live.append(p)
         E = self.eq
         sized = []
         for p in live:
-            ep, rule = p['ep'], rules.get(p['symbol'])
+            ep = p['ep']
             qraw = E * self.prm.risk / ep['dist']
-            sized.append([p, rule, qraw, _floor(qraw, (rule or {}).get('step'))])
-        notional = math.fsum(q * x[0]['ep']['fill_in'] for x in sized for q in [x[3]])
+            sized.append([p, qraw, _floor(qraw, ep['rule']['step'])])
+        notional = math.fsum(x[2] * x[0]['ep']['fill_in'] for x in sized)
         if notional > self.prm.lev_cap * E and notional > 0:
             f = self.prm.lev_cap * E / notional
             for x in sized:
-                x[3] = _floor(x[2] * f, (x[1] or {}).get('step'))
+                x[2] = _floor(x[1] * f, x[0]['ep']['rule']['step'])
         fills = []
-        for p, rule, qraw, q in sized:
-            chk = F.size_check(qraw, q, p['ep']['fill_in'], rule)
+        for p, qraw, q in sized:
+            chk = F.size_check(qraw, q, p['ep']['fill_in'], p['ep']['rule'])
             if chk['ok'] is not True:
                 self.refused[chk['code']] = self.refused.get(chk['code'], 0) + 1
                 continue
             fills.append((p, chk['qty']))
         if not fills:
             return
-        n_bars = max(len(p['ep']['mtm_u']) for p, _ in fills)
-        for j in range(n_bars):
-            self._mark(E + math.fsum(q * (p['ep']['mtm_u'][j] if j < len(p['ep']['mtm_u']) else p['ep']['net_u'])
-                                     for p, q in fills), D)
-        pnl = math.fsum(q * p['ep']['net_u'] for p, q in fills)
-        self.eq = E + pnl
-        self._mark(self.eq, D)
+        if not self.light:
+            n_bars = max(len(p['ep']['mtm_u']) for p, _ in fills)
+            for j in range(n_bars):
+                self._mark(E + math.fsum(q * (p['ep']['mtm_u'][j] if j < len(p['ep']['mtm_u']) else p['ep']['net_u'])
+                                         for p, q in fills))
+        self.eq = E + math.fsum(q * p['ep']['net_u'] for p, q in fills)
+        rs = [p['ep']['r'] for p, _ in fills]
+        self.sum_r += math.fsum(rs)
+        self.n_r += len(rs)
+        if self.light:
+            return
+        self._mark(self.eq)
         if self.eq >= self.peak:
             self.uw_start = None
         elif self.uw_start is None:
             self.uw_start = D
         if self.uw_start is not None:
             self.uw_max = max(self.uw_max, (D - self.uw_start) // DAY)
-        rs = []
         for p, q in fills:
             ep = p['ep']
-            rs.append(ep['r'])
             d = ep['dist']
             self.decomp['gross'] += ep['gross_u'] / d
             self.decomp['fill_adj'] += ep['fill_adj_u'] / d
@@ -786,6 +999,9 @@ class Book:
         self.cum_r += math.fsum(rs)
         self.peak_r = max(self.peak_r, self.cum_r)
         self.rdd = max(self.rdd, self.peak_r - self.cum_r)
+
+    def mean_r(self):
+        return self.sum_r / self.n_r if self.n_r else None
 
 
 def _pf(rs):
@@ -840,14 +1056,16 @@ def _book_metrics(b: Book) -> dict:
     span_days = ((b.last_D - b.first_D) // DAY + 1) if b.first_D is not None else 0
     ann = ((b.eq / b.e0) ** (365.0 / span_days) - 1.0) if span_days and b.eq > 0 else None
     tot = math.fsum(b.r)
-    return {'episodes': len(b.r), 'selected': b.selected, 'incomplete': b.incomplete, 'refused': dict(sorted(b.refused.items())),
+    return {'episodes': len(b.r), 'selected': b.selected, 'incomplete': b.incomplete,
+            'incomplete_by_reason': dict(sorted(b.incomplete_by.items())), 'unresolved': b.unresolved,
+            'unresolved_by_reason': dict(sorted(b.unresolved_by.items())), 'refused': dict(sorted(b.refused.items())),
             'incomplete_share': (b.incomplete / b.selected) if b.selected else None,
             'cohort_days': len(b.cohort_r), 'mean_r': _mean(b.r), 'total_r': tot, 'pf': _pf(b.r),
             'final_equity': b.eq, 'max_equity_dd': b.maxdd, 'closed_r_dd': b.rdd, 'longest_underwater_days': b.uw_max,
             'annualized_return': ann, 'calmar': (ann / b.maxdd) if ann is not None and b.maxdd > 0 else None,
             'total_r_over_closed_r_dd': (tot / b.rdd) if b.rdd > 0 else None,
             'exposure_share': (b.exposure_ms / (span_days * DAY)) if span_days else None,
-            'worst_cohort_r': min(b.cohort_r) if b.cohort_r else None, 'p01_episode_r': _pct(b.r, 0.01),
+            'worst_cohort_net_r_sum': min(b.cohort_r) if b.cohort_r else None, 'p01_episode_r': _pct(b.r, 0.01),
             'decomposition_r': dict(b.decomp), 'f24_sign_at_selection': dict(b.f24_sign),
             'funding_contribution_r': b.decomp['funding'],
             'price_contribution_r': b.decomp['gross'] + b.decomp['fill_adj'] + b.decomp['fees'],
@@ -855,17 +1073,12 @@ def _book_metrics(b: Book) -> dict:
             'median_notional_over_qv24': _pct(b.cap_ratio, 0.5)}
 
 
-def summarize(days_path: str, prereg: dict, rules: dict, keys) -> dict:
-    """Pass 2: stream days.jsonl once; books per (split, side, row), baselines per (split, side)."""
+def summarize(days_path: str, prereg: dict, keys, run_digest: str) -> dict:
+    """Pass 2: stream and re-verify days.jsonl once; every book (primaries and baselines) through Book."""
     prm = params_of(prereg)
-    books = {}                                         # (split, side, row) -> Book
-    b2 = {}                                            # (split, side) -> Book
-    b1 = {}                                            # (split, side) -> [sum, n]
-    b0 = {side: [[0.0, 0] for _ in range(B0_BOOKS)] for side in SIDES}     # combined walk-forward
-    b0_split = {}
+    books, b1, b2, b0 = {}, {}, {}, {}                 # b0: (split, side) -> [1000 light Books]
     counts = {}
-    for line in open(days_path, 'rb'):
-        d = json.loads(line)
+    for d, _ in iter_verified(days_path, run_digest):
         k, D = d['split'], S.parse_utc(d['D'])
         c = counts.setdefault(k, {'days': 0, 'no_cohort_days': 0, 'ineligible': {}})
         c['days'] += 1
@@ -876,47 +1089,48 @@ def summarize(days_path: str, prereg: dict, rules: dict, keys) -> dict:
             continue
         for side in SIDES:
             for row in ROWS:
-                bk = books.setdefault((k, side, row), Book(prm))
-                bk.cohort(D, [{'symbol': p['symbol'], 'f24': p['f24'], 'qv24': p['qv24'], 'ep': p['rows'][row]}
-                              for p in d['primary'][side]], rules)
-            base = d['base'][side]
-            acc = b1.setdefault((k, side), [0.0, 0])
-            for s, ep in base.items():
-                if ep['st'] == 'OK':
-                    acc[0] += ep['r']
-                    acc[1] += 1
-            # B2 report-only: sign-flipped selection, base costs, R only (the per-unit base replay)
-            bb = b2.setdefault((k, side), [0.0, 0])
-            for s in d['b2'][side]:
-                if base[s]['st'] == 'OK':
-                    bb[0] += base[s]['r']
-                    bb[1] += 1
+                books.setdefault((k, side, row), Book(prm)).cohort(
+                    D, [{'symbol': p['symbol'], 'f24': p['f24'], 'qv24': p['qv24'], 'ep': p['rows'][row]}
+                        for p in d['primary'][side]])
+            base = {s: {'symbol': s, 'f24': d['f24'][s], 'qv24': d['qv24'][s], 'ep': ep, 'cls': classify(ep)}
+                    for s, ep in d['base'][side].items()}
             elig = sorted(base)
-            per = b0_split.setdefault((k, side), [[0.0, 0] for _ in range(B0_BOOKS)])
+            b1.setdefault((k, side), Book(prm)).cohort(D, [base[s] for s in elig])
+            b2.setdefault((k, side), Book(prm)).cohort(D, [base[s] for s in d['b2'][side]])
+            per = b0.get((k, side))
+            if per is None:
+                per = b0[(k, side)] = [Book(prm, light=True) for _ in range(B0_BOOKS)]
             for i in range(B0_BOOKS):
-                for s in random.Random(b0_seed(side, d['D'], i)).sample(elig, prm.k):
-                    if base[s]['st'] == 'OK':
-                        per[i][0] += base[s]['r']
-                        per[i][1] += 1
-                        if k.startswith('walk_forward'):
-                            b0[side][i][0] += base[s]['r']
-                            b0[side][i][1] += 1
+                per[i].cohort(D, [base[s] for s in random.Random(b0_seed(side, d['D'], i)).sample(elig, prm.k)])
     out = {'format': SUMMARY_FORMAT, 'candidate_id': CANDIDATE, 'splits': {}, 'counts': counts,
-           'labels': ['SLIP-C-UNFITTED', C.FUNDING_MARK_LABEL, 'STATIC-40-SURVIVOR-BIASED', 'NOT-A-LEDGER-RECORD']}
+           'conventions': CONVENTIONS,
+           'labels': ['SLIP-C-UNFITTED', 'SLIP-FLOOR-5BP', C.FUNDING_MARK_LABEL, 'STATIC-40-SURVIVOR-BIASED',
+                      'PIT-EXCHANGE-RULES', 'WORST-COHORT-NET-R-IS-SUM', 'NOT-A-LEDGER-RECORD']}
     for k in keys:
         out['splits'][k] = {}
         for side in SIDES:
             rows = {row: _book_metrics(books[(k, side, row)]) for row in ROWS if (k, side, row) in books}
-            acc, bb, per = b1.get((k, side), [0.0, 0]), b2.get((k, side), [0.0, 0]), b0_split.get((k, side))
-            b0m = sorted(s / n for s, n in per if n) if per else []
-            out['splits'][k][side] = {'rows': rows, 'B1_mean_r': acc[0] / acc[1] if acc[1] else None,
-                                      'B2_mean_r': bb[0] / bb[1] if bb[1] else None,
-                                      'B0_p95_mean_r': _pct(b0m, 0.95), 'B0_median_mean_r': _pct(b0m, 0.5)}
+            means = sorted(m for m in (b.mean_r() for b in b0.get((k, side)) or ()) if m is not None)
+            out['splits'][k][side] = {
+                'rows': rows,
+                'B1': _book_metrics(b1[(k, side)]) if (k, side) in b1 else None,
+                'B2': _book_metrics(b2[(k, side)]) if (k, side) in b2 else None,
+                'B0_p95_mean_r': _pct(means, 0.95), 'B0_median_mean_r': _pct(means, 0.5),
+                'B0_refused': _sum_dicts(b.refused for b in b0.get((k, side)) or ()),
+            }
     out['walk_forward'] = gates(books, b1, b0, keys, prm)
     return out
 
 
-def _combined(books, keys, side, row, prm):
+def _sum_dicts(ds):
+    out = {}
+    for d in ds:
+        for k, v in d.items():
+            out[k] = out.get(k, 0) + v
+    return dict(sorted(out.items()))
+
+
+def _combined(books, keys, side, row):
     wf = [k for k in keys if k.startswith('walk_forward')]
     bs = [books[(k, side, row)] for k in wf if (k, side, row) in books]
     rs = [r for b in bs for r in b.r]
@@ -938,25 +1152,38 @@ def _combined(books, keys, side, row, prm):
 def gates(books, b1, b0, keys, prm: Params) -> dict:
     g = prm.gates
     res = {}
+    wf = [k for k in keys if k.startswith('walk_forward')]
     for side in SIDES:
-        c = _combined(books, keys, side, 'base_x1', prm)
+        c = _combined(books, keys, side, 'base_x1')
         if not c['books']:
             res[side] = {'verdict': 'NOT_RUN'}
             continue
-        x15 = _combined(books, keys, side, 'all_variable_costs_x1.5', prm)
-        x2 = _combined(books, keys, side, 'all_variable_costs_x2', prm)
+        x15 = _combined(books, keys, side, 'all_variable_costs_x1.5')
+        x2 = _combined(books, keys, side, 'all_variable_costs_x2')
         mean = _mean(c['r'])
         boot = bootstrap(c['cohort_means'])
         fold_means = [_mean(b.r) for b in c['books']]
         inc = [(b.incomplete / b.selected) if b.selected else 0.0 for b in c['books']]
-        b0m = sorted(s / n for s, n in b0[side] if n)
-        b1s = [b1.get((k, side), [0.0, 0]) for k in c['folds']]
-        b1_mean = (sum(a[0] for a in b1s) / sum(a[1] for a in b1s)) if sum(a[1] for a in b1s) else None
+        unresolved = sum(books[(k, side, row)].unresolved for k in wf for row in ROWS if (k, side, row) in books)
+        b0m = []
+        for i in range(B0_BOOKS):
+            s = n = 0
+            for k in wf:
+                bk = (b0.get((k, side)) or [None] * B0_BOOKS)[i]
+                if bk is not None:
+                    s, n = s + bk.sum_r, n + bk.n_r
+            if n:
+                b0m.append(s / n)
+        b0m.sort()
+        b1r = [r for k in wf if (k, side) in b1 for r in b1[(k, side)].r]
+        b1_mean = _mean(b1r)
         dd = g['drawdown_and_tail']
         tiers = dd['tiers']
         ratio = (c['total_r'] / c['closed_r_dd']) if c['closed_r_dd'] > 0 else math.inf
-        calmar = (c['ann'] / c['maxdd']) if c['ann'] is not None and c['maxdd'] else (math.inf if c['ann'] and c['ann'] > 0 else None)
-        ordinary = c['maxdd'] <= tiers['ordinary']['base_max_equity_dd_le'] and c['closed_r_dd'] < tiers['ordinary']['closed_r_dd_lt']
+        calmar = (c['ann'] / c['maxdd']) if c['ann'] is not None and c['maxdd'] else \
+            (math.inf if c['ann'] and c['ann'] > 0 else None)
+        ordinary = c['maxdd'] <= tiers['ordinary']['base_max_equity_dd_le'] and \
+            c['closed_r_dd'] < tiers['ordinary']['closed_r_dd_lt']
         rescue = (c['maxdd'] <= tiers['profitability_rescue']['base_max_equity_dd_le'] and calmar is not None
                   and calmar >= tiers['profitability_rescue']['annualized_net_return_over_max_dd_ge']
                   and ratio >= tiers['profitability_rescue']['total_net_r_over_closed_r_dd_ge'])
@@ -974,10 +1201,11 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
         caps = [x for b in c['books'] for x in b.cap_ratio]
         conc = g['concentration']
         checks = {
-            'data': len(c['books']) == len(c['folds']) and all(x <= 0.02 for x in inc),
+            'data': len(c['books']) == len(c['folds']) and all(x <= 0.02 for x in inc) and unresolved == 0,
             'activity': len(c['r']) >= 1000 and all(len(b.cohort_r) >= 200 for b in c['books'])
                         and len(c['books']) == len(c['folds']),
-            'fold_stability': sum(1 for m in fold_means if m is not None and m > 0) >= g['fold_stability']['positive_folds_min'],
+            'fold_stability': sum(1 for m in fold_means if m is not None and m > 0)
+                              >= g['fold_stability']['positive_folds_min'],
             'expectancy': (mean is not None and mean > g['expectancy']['combined_mean_net_r_gt']
                            and (_pf(c['r']) or 0) > g['expectancy']['combined_pf_gt']
                            and boot['lcb95'] is not None and boot['lcb95'] > 0),
@@ -986,20 +1214,22 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
             'stress': (_mean(x15['r']) or 0) > g['stress']['x1_5_mean_net_r_gt'],
             'drawdown_and_tail': (ordinary or rescue) and ceilings
                                  and c['maxdd'] <= tiers['profitability_rescue']['base_max_equity_dd_le'],
-            'concentration': bool(shares) and shares[0] <= conc['max_symbol_share'] and sum(shares[:3]) <= conc['max_top3_share'],
+            'concentration': bool(shares) and shares[0] <= conc['max_symbol_share']
+                             and sum(shares[:3]) <= conc['max_top3_share'],
             'capacity': bool(caps) and _pct(caps, 0.5) <= g['capacity']['median_notional_over_prior_24h_quote_volume_le'],
         }
         res[side] = {'checks': checks, 'mean_r': mean, 'pf': _pf(c['r']), 'episodes': len(c['r']),
-                     'fold_mean_r': fold_means, 'fold_incomplete_share': inc, 'bootstrap': boot,
-                     'B0_p95_mean_r': _pct(b0m, 0.95), 'B1_mean_r': b1_mean,
+                     'fold_mean_r': fold_means, 'fold_incomplete_share': inc, 'unresolved': unresolved,
+                     'bootstrap': boot, 'B0_p95_mean_r': _pct(b0m, 0.95), 'B1_mean_r': b1_mean,
                      'x1_5_mean_r': _mean(x15['r']), 'x2_mean_r': _mean(x2['r']),
                      'promotion_x2_ok': (_mean(x2['r']) or 0) > g['stress']['x2_mean_net_r_gt_for_promotion'],
                      'max_equity_dd': c['maxdd'], 'x1_5_max_equity_dd': x15['maxdd'], 'closed_r_dd': c['closed_r_dd'],
                      'annualized_return': c['ann'], 'calmar': calmar if calmar != math.inf else None,
                      'total_r_over_closed_r_dd': ratio if ratio != math.inf else None,
                      'dd_tier': 'ordinary' if ordinary else 'profitability_rescue' if rescue else None,
-                     'longest_underwater_days': uw, 'worst_cohort_r': worst,
-                     'max_symbol_share': shares[0] if shares else None, 'top3_share': sum(shares[:3]) if shares else None,
+                     'longest_underwater_days': uw, 'worst_cohort_net_r_sum': worst,
+                     'max_symbol_share': shares[0] if shares else None,
+                     'top3_share': sum(shares[:3]) if shares else None,
                      'median_notional_over_qv24': _pct(caps, 0.5)}
     ps = {s: res[s]['bootstrap']['p'] for s in SIDES if 'bootstrap' in res[s] and res[s]['bootstrap']['p'] is not None}
     holm = holm_reject(ps, 0.05)
@@ -1008,10 +1238,7 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
             continue
         ch = res[side]['checks']
         ch['multiplicity'] = holm.get(side, False)
-        if not ch['data']:
-            res[side]['verdict'] = 'INCOMPLETE'
-        else:
-            res[side]['verdict'] = 'PASS' if all(ch.values()) else 'FAIL'
+        res[side]['verdict'] = 'INCOMPLETE' if not ch['data'] else 'PASS' if all(ch.values()) else 'FAIL'
     return res
 
 
@@ -1026,49 +1253,40 @@ def holm_reject(ps: dict, alpha: float) -> dict:
 
 
 # ------------------------------------------------------------------ CLI
-def load_rules(path: str, symbols) -> dict:
-    """{symbol: {tick, step, min_qty, min_notional[, max_qty]}} floats, from a flat map or a
-    zackbot.exchange_rules/1 snapshot. A symbol without a rule is kept and its fills are refused (code 'unknown')."""
-    doc = json.load(open(path, encoding='utf-8'))
-    src = doc.get('symbols', doc) if isinstance(doc, dict) else {}
-    out = {}
-    for s in symbols:
-        r = src.get(s)
-        if isinstance(r, dict):
-            out[s] = {k: float(r[k]) for k in ('tick', 'step', 'min_qty', 'min_notional', 'max_qty') if r.get(k) is not None}
-    return out
-
-
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--store', required=True, help='Binance archive store root (read-only)')
-    ap.add_argument('--rules', required=True, help='exchange rules JSON (tick/step/min_qty/min_notional per symbol)')
-    ap.add_argument('--out', help='result directory (append-only days.jsonl + summary.json)')
+    ap.add_argument('--rules-artifact', help=f'point-in-time exchange rules ({RULES_FORMAT}); required for a real run')
+    ap.add_argument('--holdout-freeze-record', help='Integration holdout freeze record; its sha256 is bound')
+    ap.add_argument('--out', help='result directory (append-only chained days.jsonl + summary.json)')
     ap.add_argument('--max-rss-mb', type=float, default=None)
     ap.add_argument('--dry-run', action='store_true', help='validate inputs/coverage; write nothing')
     ap.add_argument('--split', action='append', help='limit to these split keys (default: train + walk_forward)')
     ap.add_argument('--cache-months', type=int, default=512)
+    ap.add_argument('--allow-dirty-test-only', action='store_true', help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     try:
         prereg, raw = load_prereg()
         prm = params_of(prereg)
         uni = os.path.join(M.REPO, *prereg['universe']['artifact'].split('/'))
-        if sha(open(uni, 'rb').read()) != prereg['source']['universe_sha256']:
+        if file_sha(uni) != prereg['source']['universe_sha256']:
             raise RunnerError('universe artifact hash differs from the prereg')
         symbols = CV.load_universe(uni)
+        rules = PitRules.load(a.rules_artifact) if a.rules_artifact else None
         man = os.path.join(M.REPO, *prereg['source']['manifest'].split('/'))
         src = ArchiveSource(man, a.store, symbols, prm.cutoff_ms, a.cache_months)
-        rules = load_rules(a.rules, symbols)
+        kw = dict(only_keys=a.split, holdout_freeze_record=a.holdout_freeze_record)
         if a.dry_run:
-            print(json.dumps(run(a.out or '', src, symbols, rules, prereg, raw, dry_run=True, only_keys=a.split),
+            print(json.dumps(run(a.out or '', src, symbols, rules, prereg, raw, dry_run=True, **kw),
                              indent=1, sort_keys=True))
             return 0
         if not a.out:
             raise RunnerError('--out is required unless --dry-run')
         import runlock
         with runlock.hold(M.REPO, 'edge05-runner', {'out': os.path.abspath(a.out), 'splits': a.split}, argv=argv):
-            res = run(a.out, src, symbols, rules, prereg, raw, max_rss_mb=a.max_rss_mb, only_keys=a.split,
-                      progress=lambda i, n, k, d: print(f'{i}/{n} {k} {d}', file=sys.stderr, flush=True))
+            res = run(a.out, src, symbols, rules, prereg, raw, max_rss_mb=a.max_rss_mb,
+                      allow_dirty_test_only=a.allow_dirty_test_only,
+                      progress=lambda i, n, k, d: print(f'{i}/{n} {k} {d}', file=sys.stderr, flush=True), **kw)
         print(json.dumps({s: res['walk_forward'][s].get('verdict') for s in SIDES}, sort_keys=True))
         return 0
     except MemoryLimit as e:

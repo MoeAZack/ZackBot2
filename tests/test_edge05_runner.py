@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -20,7 +21,27 @@ import splits as S                                                              
 PREREG = ROOT / 'research_evidence' / 'prereg' / 'funding_carry_xsec.v1.json'
 H, DAY, TF = R.HOUR, R.DAY, R.TF
 SYMS = [f'S{i:02d}USDT' for i in range(18)]
-RULES = {s: {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0} for s in SYMS}
+RULE = {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0}
+CODE = {'commit': 'c' * 40, 'dirty': False, 'modules': {m: '0' * 64 for m in R.CODE_MODULES}}
+
+
+def rules_doc(per=None, syms=SYMS):
+    per = per or {}
+    return {'format': R.RULES_FORMAT, 'source': 'synthetic-test',
+            'symbols': {s: per.get(s, [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})])
+                        for s in syms}}
+
+
+def pit(per=None):
+    doc = rules_doc(per)
+    return R.PitRules(doc, R.canon(doc))
+
+
+RULES = pit()
+
+
+def ra(t):
+    return dict(RULE)
 
 
 def real():
@@ -118,7 +139,7 @@ def test_prose_constants_match_the_prereg_text():
     assert 'lookback 180 bars' in p['windows']['split_rule'] and 'horizon 6 bars' in p['windows']['split_rule']
     assert '1000 seeded random books' in p['baselines'][0]['rule'] and R.B0_BOOKS == 1000
     assert 'block 30 cohorts, 10000 resamples, seed 20261028' in p['gates']['expectancy']['lcb']
-    assert '0.05% unfitted fallback' in p['costs']['slippage'] and R.SLIP_FALLBACK_BPS == 5.0
+    assert '0.05% unfitted fallback' in p['costs']['slippage'] and R.SLIP_FLOOR_BPS == 5.0
     assert set(p['costs']['stress_rows']) == set(R.ROWS)
     assert p['baselines'][0]['seed'] == "sha256('funding_carry_xsec.v1|' + side + '|' + D_iso + '|' + book_index)"
     q = R.params_of(p)
@@ -148,6 +169,24 @@ def test_unsigned_or_holdout_crossing_prereg_is_refused():
     late['windows']['walk_forward'][4]['end'] = '2026-10-05T00:00:00Z'
     with pytest.raises(R.HoldoutRefused):
         R.params_of(late)
+
+
+# ------------------------------------------------------------------ code identity
+def test_code_modules_are_every_repo_module_the_runner_imports():
+    code = ('import os, sys; sys.path.insert(0, os.path.join(sys.argv[1], "tools", "research")); '
+            'import edge05_runner, runlock; r = os.path.abspath(sys.argv[1]); '
+            'print("\\n".join(sorted(os.path.relpath(m.__file__, r).replace(os.sep, "/") for m in '
+            'list(sys.modules.values()) if getattr(m, "__file__", None) and '
+            'os.path.abspath(m.__file__).startswith(r + os.sep))))')
+    out = subprocess.run([sys.executable, '-c', code, str(ROOT)], capture_output=True, text=True, check=True)
+    assert tuple(out.stdout.split()) == R.CODE_MODULES
+
+
+def test_code_identity_hashes_the_modules_and_reads_git():
+    ci = R.code_identity()
+    assert len(ci['commit']) == 40 and isinstance(ci['dirty'], bool) and set(ci['modules']) == set(R.CODE_MODULES)
+    assert ci['modules']['tools/research/edge05_runner.py'] == hashlib.sha256(
+        (ROOT / 'tools' / 'research' / 'edge05_runner.py').read_bytes()).hexdigest()
 
 
 # ------------------------------------------------------------------ F24
@@ -243,52 +282,58 @@ def _day(path, grid=8, rate=1e-4, mark=100.0):
 
 
 FLAT = [(100.0, 100.5, 99.5, 100.0)] * 7
-
-
-def test_entry_bar_stop_funding_and_gap_open_fill():
-    ep = R.replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, _day([(100.0, 104.0, 95.0, 103.0)] + FLAT[1:], grid=4),
-                  RULES[SYMS[0]], prm(), D0 + 10 * DAY)
-    assert ep['n_funding'] == 1                                      # the 04:00 event at entry counts, 08:00 does not
-    path = [FLAT[0], (90.0, 91.0, 89.0, 90.0)] + FLAT[2:]         # second bar opens through the stop
-    ep = R.replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, _day(path), RULES[SYMS[0]], prm(), D0 + 10 * DAY)
-    assert ep['gap'] and ep['ref_out'] == 90.0 and ep['exit_ms'] == D0 + 8 * H and len(ep['mtm_u']) == 1
-    sp = [FLAT[0], (110.0, 111.0, 109.0, 110.0)] + FLAT[2:]
-    ep = R.replay('short', D0, R.STRESS_ROWS['base_x1'], 4.0, _day(sp), RULES[SYMS[0]], prm(), D0 + 10 * DAY)
-    assert ep['gap'] and ep['ref_out'] == 110.0 and ep['r'] < -2.4
-
+BASE = R.STRESS_ROWS['base_x1']
 
 
 def test_entry_bar_stop_first_8h_grid():
-    path = [(100.0, 104.0, 95.0, 103.0)] + FLAT[1:]
-    ep = R.replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, _day(path), RULES[SYMS[0]], prm(), D0 + 10 * DAY)
+    path = [(100.0, 104.0, 95.0, 103.0)] + FLAT[1:]               # entry bar: big up AND touches stop: stop-first
+    ep = R.replay('long', D0, BASE, 4.0, _day(path), ra, prm(), D0 + 10 * DAY)
     assert ep['why'] == 'exit.stop' and ep['exit_ms'] == D0 + 8 * H and not ep['gap']
     assert ep['ref_out'] == ep['stop'] and ep['mtm_u'] == [] and ep['n_funding'] == 0
 
 
+def test_entry_bar_stop_funding_and_gap_open_fill():
+    ep = R.replay('long', D0, BASE, 4.0, _day([(100.0, 104.0, 95.0, 103.0)] + FLAT[1:], grid=4), ra, prm(),
+                  D0 + 10 * DAY)
+    assert ep['n_funding'] == 1                                      # the 04:00 event at entry counts, 08:00 does not
+    path = [FLAT[0], (90.0, 91.0, 89.0, 90.0)] + FLAT[2:]         # second bar opens through the stop
+    ep = R.replay('long', D0, BASE, 4.0, _day(path), ra, prm(), D0 + 10 * DAY)
+    assert ep['gap'] and ep['ref_out'] == 90.0 and ep['exit_ms'] == D0 + 8 * H and len(ep['mtm_u']) == 1
+    sp = [FLAT[0], (110.0, 111.0, 109.0, 110.0)] + FLAT[2:]
+    ep = R.replay('short', D0, BASE, 4.0, _day(sp), ra, prm(), D0 + 10 * DAY)
+    assert ep['gap'] and ep['ref_out'] == 110.0 and ep['r'] < -2.4
+
+
 @pytest.mark.parametrize('grid,n', [(8, 3), (4, 6), (1, 24)])
 def test_full_hold_charges_every_event_entry_le_T_lt_exit(grid, n):
-    ep = R.replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, _day(FLAT, grid=grid), RULES[SYMS[0]], prm(),
-                  D0 + 10 * DAY)
+    ep = R.replay('long', D0, BASE, 4.0, _day(FLAT, grid=grid), ra, prm(), D0 + 10 * DAY)
     assert ep['why'] == 'exit.time' and ep['exit_ms'] == D0 + 28 * H and ep['n_funding'] == n
     assert len(ep['mtm_u']) == 6
     assert ep['funding_u'] == pytest.approx(-n * 1e-4 * 100.0)       # long pays a positive rate
     assert ep['net_u'] == pytest.approx(ep['gross_u'] + ep['fill_adj_u'] - ep['fees_u'] + ep['funding_u'])
 
 
+def test_slippage_records_model_and_floor_per_fill():
+    ep = R.replay('long', D0, BASE, 4.0, _day(FLAT), ra, prm(), D0 + 10 * DAY)
+    for k in ('slip_in', 'slip_out'):
+        s = ep[k]
+        assert s['floor_bps'] == 5.0 and s['charged_bps'] == max(s['model_bps'], 5.0)
+    assert ep['slip_in']['model_bps'] == pytest.approx(C.slip_bps([R.Bar(0, 100, 100.5, 99.5, 100, 1, 1, 1)] * 15, 0.05))
+    assert ep['fill_in'] == pytest.approx(100.0 * (1 + ep['slip_in']['charged_bps'] / 1e4), abs=1e-4)
+
+
 def test_missing_bar_or_funding_or_mark_is_incomplete():
     d = _day(FLAT)
     del d['bars4'][D0 + 12 * H]
-    ep = R.safe_replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, d, None, prm(), D0 + 10 * DAY)
+    ep = R.safe_replay('long', D0, BASE, 4.0, d, ra, prm(), D0 + 10 * DAY)
     assert ep['st'] == 'INCOMPLETE' and ep['why'] == 'incomplete.gap'
     d = _day(FLAT)
     d['funding'] = [r for r in d['funding'] if r.time_ms - 3 != D0 + 16 * H]
-    assert R.safe_replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, d, None, prm(), D0 + 10 * DAY)['why'] == \
-        'incomplete.funding'
+    assert R.safe_replay('long', D0, BASE, 4.0, d, ra, prm(), D0 + 10 * DAY)['why'] == 'incomplete.funding'
     d = _day(FLAT)
     del d['mark'][D0 + 15 * H]
-    assert R.safe_replay('long', D0, R.STRESS_ROWS['base_x1'], 4.0, d, None, prm(), D0 + 10 * DAY)['why'] == \
-        'incomplete.mark'
-    ep = R.safe_replay('long', D0, R.STRESS_ROWS['entry_latency_1bar'], 4.0, _day(FLAT), None, prm(), D0 + 32 * H)
+    assert R.safe_replay('long', D0, BASE, 4.0, d, ra, prm(), D0 + 10 * DAY)['why'] == 'incomplete.mark'
+    ep = R.safe_replay('long', D0, R.STRESS_ROWS['entry_latency_1bar'], 4.0, _day(FLAT), ra, prm(), D0 + 32 * H)
     assert ep['why'] == 'incomplete.split_end'
 
 
@@ -303,11 +348,11 @@ def test_adverse_stress_pays_times_m_and_receives_divided_by_m():
     assert R.funding_paid('long', 1e-4, 100.0, st['funding_zero']) == 0.0
     assert R.funding_paid('long', 1e-4, 100.0, st['funding_mark_adverse']) > paid
     assert R.funding_paid('short', 1e-4, 100.0, st['funding_mark_adverse']) > -paid      # receives less
-    b = R.replay('short', D0, st['base_x1'], 4.0, _day(FLAT), None, prm(), D0 + 10 * DAY)
-    x2 = R.replay('short', D0, st['all_variable_costs_x2'], 4.0, _day(FLAT), None, prm(), D0 + 10 * DAY)
+    b = R.replay('short', D0, st['base_x1'], 4.0, _day(FLAT), ra, prm(), D0 + 10 * DAY)
+    x2 = R.replay('short', D0, st['all_variable_costs_x2'], 4.0, _day(FLAT), ra, prm(), D0 + 10 * DAY)
     assert b['funding_u'] > 0 and x2['funding_u'] == pytest.approx(b['funding_u'] / 2)
     assert x2['fees_u'] == pytest.approx(2 * b['fees_u'], rel=1e-3) and x2['fill_adj_u'] < b['fill_adj_u'] < 0
-    zero = R.replay('short', D0, st['funding_zero'], 4.0, _day(FLAT), None, prm(), D0 + 10 * DAY)
+    zero = R.replay('short', D0, st['funding_zero'], 4.0, _day(FLAT), ra, prm(), D0 + 10 * DAY)
     assert zero['funding_u'] == 0.0 and zero['net_u'] == pytest.approx(b['net_u'] - b['funding_u'])
 
 
@@ -322,52 +367,259 @@ def test_t_nom_matches_range_vwap_rev():
             V.t_nom(R.Funding(t, 0.0, iv, t))
 
 
+# ------------------------------------------------------------------ point-in-time rules
+def test_pit_rules_interval_gap_is_rules_uncovered_and_changes_apply_by_date():
+    a = dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2021-03-01T06:00:00Z'})
+    b = dict(RULE, tick=0.5, step=0.01, **{'from': '2021-03-01T06:00:00Z', 'to': '2021-03-03T00:00:00Z'})
+    rules = pit({SYMS[0]: [a, b]})
+    assert rules.at(SYMS[0], D0 + 4 * H)['tick'] == 0.0001 and rules.at(SYMS[0], D0 + 6 * H)['tick'] == 0.5
+    assert rules.at(SYMS[0], S.parse_utc('2021-03-03T00:00:00Z')) is None          # [from, to): `to` is excluded
+    ep = R.replay('long', D0, BASE, 4.0, _day(FLAT), lambda t: rules.at(SYMS[0], t), prm(), D0 + 10 * DAY)
+    assert ep['rule']['tick'] == 0.0001 and ep['rule_exit']['tick'] == 0.5        # entry rule vs exit rule by date
+    gap = pit({SYMS[0]: [a, dict(b, **{'from': '2021-03-02T06:00:00Z'})]})             # exit D+28h falls in the gap
+    assert gap.at(SYMS[0], D0 + 28 * H) is None
+    # entry 04:00 covered; exit D+28h is past both intervals -> rules_uncovered, never a substitute rule
+    ep = R.safe_replay('long', D0, BASE, 4.0, _day(FLAT), lambda t: gap.at(SYMS[0], t), prm(), D0 + 10 * DAY)
+    assert ep == {'st': 'INCOMPLETE', 'why': 'rules_uncovered', 'at_ms': D0 + 28 * H}
+    none = pit({SYMS[0]: [dict(RULE, **{'from': '2021-03-02T00:00:00Z', 'to': '2022-01-01T00:00:00Z'})]})
+    ep = R.safe_replay('long', D0, BASE, 4.0, _day(FLAT), lambda t: none.at(SYMS[0], t), prm(), D0 + 10 * DAY)
+    assert ep['why'] == 'rules_uncovered' and ep['at_ms'] == D0 + 4 * H
+
+
+def test_pit_rules_validation():
+    a = dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2021-01-01T00:00:00Z'})
+    with pytest.raises(R.RunnerError):
+        pit({SYMS[0]: [a, dict(a, **{'from': '2020-06-01T00:00:00Z'})]})                # overlap
+    with pytest.raises(R.RunnerError):
+        pit({SYMS[0]: [dict(a, step=0.0)]})
+    with pytest.raises(R.RunnerError):
+        pit({SYMS[0]: [{k: v for k, v in a.items() if k != 'min_notional'}]})
+    with pytest.raises(R.RunnerError):
+        R.PitRules({'format': 'flat', 'source': 'x', 'symbols': {}}, b'')
+    assert RULES.identity() == {'format': R.RULES_FORMAT, 'source': 'synthetic-test',
+                                'sha256': hashlib.sha256(R.canon(rules_doc())).hexdigest()}
+
+
+# ------------------------------------------------------------------ accounting classification
+def test_classify_ok_incomplete_and_unresolved():
+    ep = R.replay('long', D0, BASE, 4.0, _day(FLAT), ra, prm(), D0 + 10 * DAY)
+    ep['side'] = 'long'
+    assert R.classify(ep) == ('OK', '')
+    for why in R.INCOMPLETE_REASONS:
+        assert R.classify({'st': 'INCOMPLETE', 'why': why}) == ('INCOMPLETE', why)
+    assert R.classify({'st': 'INCOMPLETE', 'why': 'mystery'})[0] == 'UNRESOLVED'
+    assert R.classify({'st': 'MAYBE'}) == ('UNRESOLVED', 'unknown_status')
+    assert R.classify(None)[0] == 'UNRESOLVED'
+    assert R.classify(dict(ep, net_u=ep['net_u'] + 0.01)) == ('UNRESOLVED', 'net_mismatch')
+    assert R.classify(dict(ep, r=ep['r'] + 0.01)) == ('UNRESOLVED', 'r_mismatch')
+    assert R.classify(dict(ep, fees_u=float('nan'))) == ('UNRESOLVED', 'non_finite')
+    assert R.classify(dict(ep, fill_out=ep['fill_out'] + 1, net_u=ep['net_u'])) == ('UNRESOLVED', 'fill_mismatch')
+    assert R.classify(dict(ep, rule=None)) == ('UNRESOLVED', 'no_rule')
+    assert R.classify(dict(ep, slip_in=dict(ep['slip_in'], charged_bps=1.0))) == ('UNRESOLVED', 'slippage_components')
+    b = R.Book(prm())
+    b.cohort(D0, [{'symbol': 'A', 'f24': 0.0, 'qv24': None, 'ep': {'st': 'MAYBE'}},
+                  {'symbol': 'B', 'f24': 0.0, 'qv24': None, 'ep': {'st': 'INCOMPLETE', 'why': 'incomplete.gap'}}])
+    assert (b.unresolved, b.incomplete, b.unresolved_by) == (1, 1, {'unknown_status': 1})
+
+
 # ------------------------------------------------------------------ full runs, resume, memory, holdout
-def _run(out, src=None, **kw):
+def _run(out, src=None, rules=RULES, code=CODE, **kw):
     p, raw = short_prereg()
-    return R.run(str(out), src or Synth(grids={SYMS[3]: 4, SYMS[7]: 1}), SYMS, RULES, p, raw, **kw)
+    return R.run(str(out), src or Synth(grids={SYMS[3]: 4, SYMS[7]: 1}), SYMS, rules, p, raw, code=code, **kw)
 
 
 def _bytes(d):
     return {f: (Path(d) / f).read_bytes() for f in ('run.json',) + R.RESULT_FILES}
 
 
-def test_full_run_summary_and_resume_is_byte_identical(tmp_path):
-    full = _run(tmp_path / 'a')
-    wf = full['walk_forward']
+@pytest.fixture(scope='module')
+def full(tmp_path_factory):
+    d = tmp_path_factory.mktemp('full')
+    return _run(d / 'a'), _bytes(d / 'a')
+
+
+def test_full_run_summary_identity_and_conventions(full, tmp_path):
+    summ, b = full
+    wf = summ['walk_forward']
     assert set(wf) == {'short', 'long'} and all(wf[s]['verdict'] in ('PASS', 'FAIL', 'INCOMPLETE') for s in wf)
-    assert wf['short']['checks']['activity'] is False                # 20 synthetic days cannot pass activity
-    assert full['splits']['walk_forward[0]']['short']['B0_p95_mean_r'] is not None
-    lines = (tmp_path / 'a' / 'days.jsonl').read_bytes().splitlines()
-    assert len(lines) > 10 and all(json.loads(x)['format'] == R.DAY_FORMAT for x in lines)
+    assert wf['short']['checks']['activity'] is False and wf['short']['unresolved'] == 0
+    assert summ['conventions'] == R.CONVENTIONS and 'WORST-COHORT-NET-R-IS-SUM' in summ['labels']
+    ident = json.loads(b['run.json'])
+    assert ident['code'] == CODE and ident['rules'] == RULES.identity() and ident['conventions'] == R.CONVENTIONS
+    assert ident['holdout_freeze_record_sha256'] is None
+    sp = summ['splits']['walk_forward[0]']['short']
+    assert sp['B0_p95_mean_r'] is not None and sp['B1']['episodes'] > sp['rows']['base_x1']['episodes']
+    lines = b['days.jsonl'].splitlines()
+    run_d = prev = hashlib.sha256(R.canon(ident)).hexdigest()
+    assert summ['identity_sha256'] == run_d
+    for ln in lines:
+        rec = json.loads(ln)
+        h = rec.pop('hash')
+        assert rec['run'] == run_d and rec['prev'] == prev
+        assert hashlib.sha256(R.canon(rec)).hexdigest() == h
+        prev = h
+
+
+def test_resume_is_byte_identical_and_torn_tail_recovers(full, tmp_path):
+    _, want = full
+    n = len(want['days.jsonl'].splitlines())
     part = _run(tmp_path / 'b', stop_after_days=5)
-    assert part == {'status': 'PARTIAL', 'days_done': 5, 'days_total': len(lines)}
+    assert part == {'status': 'PARTIAL', 'days_done': 5, 'days_total': n}
     assert not (tmp_path / 'b' / 'summary.json').exists()
     with open(tmp_path / 'b' / 'days.jsonl', 'ab') as fh:            # a torn line from a crash mid-write
-        fh.write(b'{"format":"zb-edge05-day/1","D":"2021-')
+        fh.write(b'{"format":"zb-edge05-day/2","D":"2021-')
     _run(tmp_path / 'b', stop_after_days=4)
     _run(tmp_path / 'b')
-    assert _bytes(tmp_path / 'a') == _bytes(tmp_path / 'b')
+    assert _bytes(tmp_path / 'b') == want
     with pytest.raises(R.RunnerError):                               # sealed: no second summary
         _run(tmp_path / 'b')
 
 
-def test_memory_guard_aborts_cleanly_and_resumes(tmp_path, monkeypatch):
-    _run(tmp_path / 'a')
-    monkeypatch.setattr(R, 'rss_mb', lambda: 10_000.0)
-    with pytest.raises(R.MemoryLimit):
-        _run(tmp_path / 'b', max_rss_mb=500)
-    assert len((tmp_path / 'b' / 'days.jsonl').read_bytes().splitlines()) == 1
-    monkeypatch.setattr(R, 'rss_mb', lambda: 1.0)
-    _run(tmp_path / 'b', max_rss_mb=500)
-    assert _bytes(tmp_path / 'a') == _bytes(tmp_path / 'b')
+def _partial(tmp_path, n=4):
+    _run(tmp_path / 'p', stop_after_days=n)
+    return tmp_path / 'p' / 'days.jsonl'
 
 
-def test_resume_into_a_different_identity_is_refused(tmp_path):
-    _run(tmp_path / 'a', stop_after_days=2)
-    p, raw = short_prereg()
+def test_resume_refuses_an_edited_valid_json_line(tmp_path):
+    p = _partial(tmp_path)
+    lines = p.read_bytes().splitlines(keepends=True)
+    rec = json.loads(lines[1])
+    rec['eligible'] += 1                                             # still valid JSON, same (split, D)
+    lines[1] = R.canon(rec) + b'\n'
+    p.write_bytes(b''.join(lines))
+    with pytest.raises(R.RunnerError, match='record hash'):
+        _run(tmp_path / 'p')
+    rec.pop('hash')                                                  # re-hashed edit: the chain still breaks
+    rec['hash'] = hashlib.sha256(R.canon(rec)).hexdigest()
+    lines[1] = R.canon(rec) + b'\n'
+    p.write_bytes(b''.join(lines))
+    with pytest.raises(R.RunnerError, match='chain'):
+        _run(tmp_path / 'p')
+
+
+def test_resume_refuses_a_dropped_line_and_a_reformatted_line(tmp_path):
+    p = _partial(tmp_path)
+    lines = p.read_bytes().splitlines(keepends=True)
+    p.write_bytes(lines[0] + b''.join(lines[2:]))
+    with pytest.raises(R.RunnerError, match='chain'):
+        _run(tmp_path / 'p')
+    p.write_bytes(b''.join(lines[:1]) + json.dumps(json.loads(lines[1]), indent=1).replace('\n', ' ').encode() + b'\n')
     with pytest.raises(R.RunnerError):
-        R.run(str(tmp_path / 'a'), Synth(), SYMS, {}, p, raw)
+        _run(tmp_path / 'p')
+
+
+def test_resume_refuses_a_code_identity_change(tmp_path):
+    _partial(tmp_path)
+    changed = copy.deepcopy(CODE)
+    changed['modules']['tools/research/costs.py'] = '1' * 64
+    with pytest.raises(R.RunnerError, match='identity'):
+        _run(tmp_path / 'p', code=changed)
+    with pytest.raises(R.RunnerError, match='identity'):
+        _run(tmp_path / 'p', code=dict(CODE, commit='d' * 40))
+
+
+def test_dirty_tree_refuses_a_real_run_unless_test_flag(tmp_path):
+    dirty = dict(CODE, dirty=True)
+    with pytest.raises(R.RunnerError, match='dirty'):
+        _run(tmp_path / 'd', code=dirty)
+    assert not (tmp_path / 'd').exists()
+    assert _run(tmp_path / 'd', code=dirty, allow_dirty_test_only=True, stop_after_days=1)['status'] == 'PARTIAL'
+
+
+def test_missing_rules_artifact_refuses_a_real_run_and_dry_run_reports(tmp_path):
+    with pytest.raises(R.RunnerError, match='rules'):
+        _run(tmp_path / 'r', rules=None)
+    assert not (tmp_path / 'r').exists()
+    rep = _run(tmp_path / 'r', rules=None, dry_run=True)
+    assert rep['rules'] is None and rep['rules_uncovered_days_by_symbol'] is None
+    short = pit({SYMS[0]: [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2021-03-01T00:00:00Z'})]})
+    rep = _run(tmp_path / 'r', rules=short, dry_run=True)
+    assert set(rep['rules_uncovered_days_by_symbol']) == {SYMS[0]} and not (tmp_path / 'r').exists()
+
+
+def test_rules_gap_makes_episodes_incomplete_in_a_run(tmp_path):
+    gap = pit({s: [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2021-03-10T00:00:00Z'}),
+                   dict(RULE, **{'from': '2021-03-20T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})] for s in SYMS})
+    summ = _run(tmp_path / 'g', rules=gap, only_keys=['walk_forward[1]'])
+    row = summ['splits']['walk_forward[1]']['short']['rows']['base_x1']
+    assert row['incomplete_by_reason'].get('rules_uncovered', 0) > 0 and row['unresolved'] == 0
+    assert summ['walk_forward']['short']['verdict'] == 'INCOMPLETE'                     # > 2% of the fold
+
+
+def test_baselines_run_through_the_book_with_refusals_and_cap(tmp_path):
+    big = {s: [dict(RULE, min_notional=1e12, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})]
+           for s in SYMS[:6]}
+    summ = _run(tmp_path / 'f', rules=pit(big), only_keys=['walk_forward[0]'])
+    sp = summ['splits']['walk_forward[0]']['long']
+    assert sp['B1']['refused'].get('below_min_notional', 0) > 0
+    assert sp['rows']['base_x1']['refused'].get('below_min_notional', 0) > 0           # long book = S00..S04
+    assert sp['B0_refused'].get('below_min_notional', 0) > 0
+    # B1 is executed: its episode count excludes the refused symbols (a per-unit sum would count them)
+    days = [json.loads(x) for x in (tmp_path / 'f' / 'days.jsonl').read_bytes().splitlines()]
+    ok = sum(1 for d in days if not d['no_cohort'] for s, ep in d['base']['long'].items() if ep['st'] == 'OK')
+    assert sp['B1']['episodes'] == ok - sum(1 for d in days if not d['no_cohort'] for s in SYMS[:6]
+                                            if d['base']['long'][s]['st'] == 'OK')
+    # the leverage cap scales B1's 18-position cohort: gross entry notional <= 3x equity
+    assert sp['B1']['daily_turnover_mean'] <= 2 * 3.0 * 1.01
+
+
+def test_unresolved_row_makes_the_side_incomplete(tmp_path, monkeypatch):
+    real_replay = R.replay
+
+    def bad(side, D, st, *a, **kw):
+        ep = real_replay(side, D, st, *a, **kw)
+        if side == 'short' and st.name == 'base_x1':
+            ep['net_u'] += 1.0                                       # an unexplained component mismatch
+        return ep
+
+    monkeypatch.setattr(R, 'replay', bad)
+    summ = _run(tmp_path / 'u', only_keys=['walk_forward[0]'])
+    assert summ['walk_forward']['short']['verdict'] == 'INCOMPLETE'
+    assert summ['walk_forward']['short']['checks']['data'] is False
+    assert summ['splits']['walk_forward[0]']['short']['rows']['base_x1']['unresolved_by_reason'] == \
+        {'net_mismatch': summ['splits']['walk_forward[0]']['short']['rows']['base_x1']['selected']}
+
+
+def test_memory_guard_aborts_mid_day_without_a_partial_line_and_resumes(full, tmp_path, monkeypatch):
+    _, want = full
+    calls = {'n': 0}
+
+    def rss():
+        calls['n'] += 1
+        return 10_000.0 if calls['n'] > 30 else 1.0                  # trips mid-day (18 symbol checks per day)
+
+    monkeypatch.setattr(R, 'rss_mb', rss)
+    with pytest.raises(R.MemoryLimit):
+        _run(tmp_path / 'm', max_rss_mb=500)
+    assert len((tmp_path / 'm' / 'days.jsonl').read_bytes().splitlines()) == 1
+    assert (tmp_path / 'm' / 'days.jsonl').read_bytes().endswith(b'\n')
+    monkeypatch.setattr(R, 'rss_mb', lambda: 1.0)
+    _run(tmp_path / 'm', max_rss_mb=500)
+    assert _bytes(tmp_path / 'm') == want
+
+
+def test_unmeasurable_rss_refuses_to_start(tmp_path, monkeypatch):
+    def broken():
+        raise R.RunnerError('cannot measure RSS')
+    monkeypatch.setattr(R, 'rss_mb', broken)
+    with pytest.raises(R.RunnerError, match='RSS'):
+        _run(tmp_path / 'n', max_rss_mb=500)
+    assert not (tmp_path / 'n' / 'days.jsonl').exists()
+    assert R.rss_mb is broken and _run(tmp_path / 'n2', stop_after_days=1)['status'] == 'PARTIAL'   # no limit: runs
+
+
+def test_real_rss_is_positive():
+    assert R.rss_mb() > 0
+
+
+def test_holdout_freeze_record_hash_is_bound(tmp_path):
+    rec = tmp_path / 'freeze.json'
+    rec.write_bytes(b'{"kind":"holdout_freeze"}\n')
+    _run(tmp_path / 'h', holdout_freeze_record=str(rec), stop_after_days=1)
+    ident = json.loads((tmp_path / 'h' / 'run.json').read_bytes())
+    assert ident['holdout_freeze_record_sha256'] == hashlib.sha256(rec.read_bytes()).hexdigest()
+    with pytest.raises(R.RunnerError, match='identity'):            # a different record cannot resume the run
+        _run(tmp_path / 'h')
 
 
 def test_loader_is_called_per_day_never_with_the_full_range(tmp_path):
@@ -405,29 +657,33 @@ def test_holdout_and_split_boundary_are_refused(tmp_path):
     cut = R.params_of(p).cutoff_ms
     assert cut == S.parse_utc('2021-07-05T00:00:00Z')
     with pytest.raises(R.HoldoutRefused):
-        R.run(str(tmp_path / 'x'), Synth(leak=cut), SYMS, RULES, p, raw)
+        R.run(str(tmp_path / 'x'), Synth(leak=cut), SYMS, RULES, p, raw, code=CODE)
 
 
 def test_dry_run_writes_nothing(tmp_path):
     rep = _run(tmp_path / 'dry', dry_run=True)
     assert rep['mode'] == 'dry-run' and not (tmp_path / 'dry').exists()
     assert set(rep['splits']) == {'train'} | {f'walk_forward[{i}]' for i in range(5)}
-    assert rep['symbols_without_rules'] == []
+    assert rep['rules_uncovered_days_by_symbol'] == {}
 
 
 # ------------------------------------------------------------------ books / statistics
 def test_book_levcap_scales_the_whole_cohort_and_r_is_quantity_free():
     q = prm()
     b = R.Book(q)
-    ep = R.replay('long', D0, R.STRESS_ROWS['base_x1'], 0.5, _day(FLAT), RULES[SYMS[0]], q, D0 + 10 * DAY)
+    ep = R.replay('long', D0, BASE, 0.5, _day(FLAT), ra, q, D0 + 10 * DAY)
+    ep['side'] = 'long'
     pos = [{'symbol': s, 'f24': 1e-4, 'qv24': 1e9, 'ep': ep} for s in SYMS[:5]]
-    b.cohort(D0, pos, RULES)                                         # 1%/0.5 -> 2x equity each, 10x > 3x cap
+    b.cohort(D0, pos)                                                # 1%/0.5 -> 2x equity each, 10x > 3x cap
     notional = sum(b.notional_traded) * b.e0 / 2                     # entry + exit ~ 2x
     assert notional <= 3.0 * b.e0 * 1.01 and b.r == [ep['r']] * 5
     assert b.f24_sign == {'pos': 5, 'zero': 0, 'neg': 0}
-    b2 = R.Book(q)
-    b2.cohort(D0, [{'symbol': 'NORULE', 'f24': 0.0, 'qv24': None, 'ep': ep}], RULES)
-    assert b2.refused == {'unknown': 1} and b2.r == []
+    small = R.Book(q)
+    small.cohort(D0, [{'symbol': 'X', 'f24': 0.0, 'qv24': None, 'ep': dict(ep, rule=dict(RULE, min_notional=1e12))}])
+    assert small.refused == {'below_min_notional': 1} and small.r == []
+    light = R.Book(q, light=True)
+    light.cohort(D0, pos)
+    assert light.mean_r() == pytest.approx(ep['r']) and light.r == [] and light.eq == pytest.approx(b.eq)
 
 
 def test_bootstrap_and_holm_are_deterministic():
