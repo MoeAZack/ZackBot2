@@ -27,7 +27,7 @@ is set to the **accepted merge SHAs** of #222 and #226; a superseded review head
 What each hook receives:
 - **Decision hook:** detached deep copies of `sleeve, strategy, family, symbol, side, tf, candle_open, decided_at,
   rules_status, rules_reason, snapshot, plan, inputs, costs`. These go to `ai_scan.build_signal`.
-- **Close hooks:** `decision_id`, the five `COST_REV_FIELDS` read from the closed row, `cost_basis='measured'`,
+- **Close hooks:** `decision_id`, `decided_at`, the five `COST_REV_FIELDS` read from the closed row, `cost_basis='measured'`,
   `cost_model_id`, `rev = row['cost_rev']`, `closed_at, exit_reason, partial_exits, adds`. These go to
   `ai_scan.build_outcome(source='measured')`.
 - No hook keeps a reference to engine objects.
@@ -37,6 +37,12 @@ ai_scan `signal_id`. The lot carries it as `lot['ml_decision_id']`, stamped at `
 slice stamps it when ML_SHADOW **or** AI_SCAN is exactly True. **The flags are independent:** AI_SCAN works without
 ML_SHADOW and the reverse, and neither is a prerequisite for the other (R1). A lot without the id produces no outcome
 (`no_decision_id`).
+
+**`decided_at` source:** `lot['ml_decided_at']`, the signal's `decided_at` in UTC ISO form, is stamped together with
+`ml_decision_id` at `engine.Engine._ml_link`. The lot is persisted with engine state and copied onto the closed history
+row, so both close hooks read `signal_id` and `decided_at` from in-memory data, never from disk on the trading thread.
+A lot or row that has `ml_decision_id` but no `ml_decided_at` counts `no_decided_at` and makes the writer session
+conservatively incomplete.
 
 ## 3. Join: immutable decision → measured cost revisions
 
@@ -102,7 +108,13 @@ provenance.
 replay with an equal economic payload may append an explicit `identity_upgrade` record that references the original
 `record_hash` (counted `identity_upgrades`). Fold uses it only when payload equality and the complete build identity
 validate; a payload mismatch is a conflict. Audit keeps both rows, and until an upgrade exists the signal stays
-ineligible. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
+ineligible.
+
+The `identity_upgrade` record (schema v2) has the fields `kind, schema, signal_id, orig_record_hash, orig_record_key,
+content_hash, code, event_at, writer_id, seq, record_hash`. Its key is `(kind, orig_record_hash)`. An exact replay
+(same key, same record_hash) is a no-op; the same key with a different record_hash is a conflict. Fold applies it only
+when the original exists, the content hashes match, the original code is incomplete and the upgrade code is complete;
+otherwise it is ignored and counted `identity_upgrade_invalid`. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
 commit from the matching build.json, and a 64-hex bundle hash. The bundle adds `ai_scan.py` and `ai_scan_ledger.py`.
 
 When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_hash`):
@@ -114,7 +126,7 @@ When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_
 
 `signals`, `shadows`, `outcomes`, `replays`, `conflicts`, `queue_full`, `refused_live`, `not_taken`,
 `non_measured_close`, `cost_incomplete`, `no_decision_id`, `unknown_signal`, `ambiguous_rev`, `identity_incomplete`,
-`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`, `identity_upgrades`, `coverage_gaps`.
+`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`, `identity_upgrades`, `coverage_gaps`, `no_decided_at`, `identity_upgrade_invalid`.
 
 When the flag is off, the hook returns before building anything and the ledger is untouched. A torn or edited line is
 skipped on read and never raises. A disk error is swallowed, and the next record is tried.
@@ -139,6 +151,13 @@ outside the hot path and counted in `gaps`. Any downstream fit or calibration wi
 - **Coverage (G2):** every interval from one durable clean close to the next durable start is a gap (`coverage_gaps`).
   So are producer-disabled, flag-off, manifest-invalid, startup-failed and stopped intervals; they are not counters only.
   A zero-event interval is eligible only when an enabled writer session durably covers it.
+- **Half-open windows:** a window is `[start, end)`, so a signal with `decided_at == end` belongs to the next window
+  only.
+- **Endcaps:** the manifest records every session start, clean close, disable marker and heartbeat (at most 60 s apart
+  while enabled). Time before the first durable start, after the last clean close, and after an open session's last
+  durable heartbeat is uncovered. A window is eligible only when its whole `[start, end)` is continuously covered.
+  Flag-off, startup-failed and stopped intervals need no record of their own, because any uncovered time is a gap;
+  producer_disabled and manifest-invalid write an explicit disable marker that ends coverage.
 - **Sequence and closure (G3):** `seq` is allocated at the enqueue attempt, before the non-blocking offer, so a drop
   consumes a seq and the pending gap records it with the owning signal / decision context. A clean-close marker is
   forbidden until the queue is drained and no pending or unflushed gap exists. The start marker is durable before the
@@ -155,7 +174,8 @@ implemented and tested. This is part of AI-SCAN-03 or a required predecessor, ne
 - **Hot path (G4):** the per-hook check reads one atomic, cached eligibility generation only: no disk I/O, hashing or
   manifest traversal on the trading thread. Startup / writer-side refresh verifies the manifest, hash and config and
   publishes the generation atomically. `segment_bound` is a positive integer within frozen byte / segment limits, never
-  a truthy flag.
+  a truthy flag. **Frozen limits:** 1 MiB <= segment <= 16 MiB, at most 4 segments per read and at most 4096 manifest
+  segments. One 16 MiB segment holds roughly 10k rows, which folds in about 0.5 s given Cowork's 1.06 s per 20k rows.
 - **Bounded, causal reads:** the API reads manifest-bounded segments within a hard byte / segment bound and shows only
   causally complete views. When completeness cannot be proven, it returns a bounded incomplete / error result, never a
   partial plausible row.
@@ -205,6 +225,11 @@ cost-incomplete, the signal is excluded, and the fitter never falls back to an o
 - `test_hook_reads_cached_generation_only`
 - `test_invalid_latest_revision_excludes_signal_no_fallback`
 - `test_identity_upgrade_record_and_conflict`
+- `test_close_hooks_carry_owning_decided_at_from_the_lot`
+- `test_identity_upgrade_v2_replay_conflict_and_fold`
+- `test_window_requires_continuous_coverage_including_endcaps`
+- `test_window_boundary_is_half_open`
+- `test_segment_bound_numeric_limits`
 - `test_api_view_unchanged_shape`
 
 The JSON twin states what each one asserts.
@@ -242,3 +267,11 @@ Completeness rulings, Codex 6462174084 on Cowork 6461915411:
 - **G4 hot path:** a cached atomic eligibility generation only; `segment_bound` a positive integer within frozen limits.
 - **G5 latest:** highest rev first; an invalid latest excludes the signal, with no fallback.
 - **G6 identity upgrade:** an explicit `identity_upgrade` record on an equal payload; a mismatch is a conflict.
+
+Implementability rulings, Codex 6462613229 (stall-takeover review):
+
+- **H1:** `lot['ml_decided_at']` is stamped at `_ml_link`; both close hooks carry `signal_id` + `decided_at` from memory.
+- **H2:** an explicit v2 `identity_upgrade` kind with fields, key, replay / conflict and fold rule.
+- **H3:** manifest start / close / disable / heartbeat markers; continuous `[start, end)` coverage required.
+- **H4:** windows are half-open `[start, end)`.
+- **H5:** frozen numeric segment limits.

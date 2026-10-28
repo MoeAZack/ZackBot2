@@ -315,7 +315,7 @@ def _eligible(window, signals, gaps, sessions):
     lo, hi = window
     out = []
     for sid, t in signals.items():
-        if not lo <= t <= hi:
+        if not lo <= t < hi:                                # half-open [start, end) (Codex 6462613229 #4)
             continue
         covered = any(s['start'] <= t <= s['close'] and s['clean'] and s['enabled'] for s in sessions)
         named = any(sid in g.get('signals', ()) for g in gaps)
@@ -433,3 +433,96 @@ def test_g5_invalid_latest_excludes_without_fallback_and_g6_upgrade_rules():
     assert up == {'kind': 'identity_upgrade', 'ref': 'h' * 64, 'payload': {'net': 1.0}} and orig['code_complete'] is False
     with pytest.raises(ValueError, match='conflict'):
         _apply_upgrade(orig, {'payload': {'net': 2.0}, 'code_complete': True})
+
+
+# ------------------------------------------------------------------ Codex 6462613229 #1-#5 (stall-takeover review)
+def _covered(window, spans):
+    """H3: is [lo, hi) continuously covered by spans [a, b)? Spans: clean enabled sessions, or an open session up to its
+    last durable heartbeat."""
+    lo, hi = window
+    at = lo
+    for a, b in sorted(spans):
+        if a > at:
+            return False
+        at = max(at, b)
+        if at >= hi:
+            return True
+    return at >= hi
+
+
+def _upgrade_fold(records):
+    """H2: key (kind, orig_record_hash); exact replay no-op, same key different record_hash conflict; applied only when
+    the original exists with an equal content_hash, incomplete original code and complete upgrade code."""
+    orig = {r['record_hash']: r for r in records if r['kind'] != 'identity_upgrade'}
+    seen, applied, invalid = {}, {}, 0
+    for r in records:
+        if r['kind'] != 'identity_upgrade':
+            continue
+        k = (r['kind'], r['orig_record_hash'])
+        if k in seen:
+            if seen[k] != r['record_hash']: raise ValueError('conflict')
+            continue
+        seen[k] = r['record_hash']
+        o = orig.get(r['orig_record_hash'])
+        if o and o['content_hash'] == r['content_hash'] and not o['code_complete'] and r['code_complete']:
+            applied[o['record_hash']] = r['record_hash']
+        else:
+            invalid += 1
+    return applied, invalid
+
+
+def _segment_ok(c, nbytes, nseg):
+    lim = c['rotation_prerequisite']['limits']
+    return (isinstance(nbytes, int) and not isinstance(nbytes, bool) and lim['min_segment_bytes'] <= nbytes <= lim['max_segment_bytes']
+            and isinstance(nseg, int) and 0 < nseg <= lim['max_segments_per_read'])
+
+
+def test_h1_close_hooks_receive_decided_at_from_the_lot(c):
+    for h in c['hooks']:
+        if h['id'] in ('measured_close', 'cost_restatement'):
+            assert 'decided_at' in h['receives'] and 'decision_id' in h['receives']
+    src = c['decision_id']['decided_at_source']
+    assert "lot['ml_decided_at']" in src and 'never from disk on the trading thread' in src and 'no_decided_at' in src
+    assert 'no_decided_at' in c['counters']
+
+
+def test_h2_identity_upgrade_schema_replay_conflict_and_fold(c):
+    u = c['identity']['identity_upgrade_record']
+    assert u['kind'] == 'identity_upgrade' and u['key'] == ['kind', 'orig_record_hash']
+    assert {'orig_record_hash', 'content_hash', 'code', 'record_hash'} <= set(u['fields'])
+    o = {'kind': 'outcome', 'record_hash': 'o1', 'content_hash': 'c1', 'code_complete': False}
+    up = {'kind': 'identity_upgrade', 'orig_record_hash': 'o1', 'record_hash': 'u1', 'content_hash': 'c1', 'code_complete': True}
+    assert _upgrade_fold([o, up, up]) == ({'o1': 'u1'}, 0)                                  # exact replay: no-op
+    with pytest.raises(ValueError, match='conflict'):
+        _upgrade_fold([o, up, dict(up, record_hash='u2')])
+    assert _upgrade_fold([o, dict(up, content_hash='cX')]) == ({}, 1)                      # payload mismatch: not applied
+    assert _upgrade_fold([dict(o, code_complete=True), up]) == ({}, 1)                     # nothing to upgrade
+    assert _upgrade_fold([up]) == ({}, 1)                                                  # orphan upgrade
+
+
+def test_h3_window_needs_continuous_coverage_including_endcaps(c):
+    g = c['queue_gaps']
+    assert 'before the first durable start' in g['endcaps'] and 'heartbeat' in g['endcaps']
+    assert 'any time not inside a covered span is a gap' in g['inferred_gaps']
+    spans = [(100, 200), (200, 260)]                                                         # clean session, then an open one to its last heartbeat
+    assert _covered((120, 250), spans) is True
+    assert _covered((50, 150), spans) is False                                               # before the first start
+    assert _covered((150, 300), spans) is False                                              # after the last heartbeat
+    assert _covered((150, 250), [(100, 180), (190, 260)]) is False                           # a between-session hole
+
+
+def test_h4_window_boundary_is_half_open(c):
+    assert '[start, end)' in c['queue_gaps']['window_interval']
+    sess = [{'start': 0, 'close': 300, 'clean': True, 'enabled': True}]
+    a = _eligible((0, 100), {'s': 100}, [], sess)
+    b = _eligible((100, 200), {'s': 100}, [], sess)
+    assert a == {} and b == {'s': True}                                                      # exactly one membership
+
+
+def test_h5_segment_bound_numeric_limits(c):
+    lim = c['rotation_prerequisite']['limits']
+    assert (lim['min_segment_bytes'], lim['max_segment_bytes'], lim['max_segments_per_read'], lim['max_manifest_segments']) == \
+        (1 << 20, 16 << 20, 4, 4096)
+    assert _segment_ok(c, 8 << 20, 4) and not _segment_ok(c, (16 << 20) + 1, 1) and not _segment_ok(c, 1 << 19, 1)
+    assert not _segment_ok(c, True, 1) and not _segment_ok(c, 8 << 20, 5) and not _segment_ok(c, '8MiB', 1)
+    assert c['rulings_h']['source'].startswith('Codex 6462613229')
