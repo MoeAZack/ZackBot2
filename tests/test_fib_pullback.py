@@ -6,7 +6,9 @@ historical development, walk-forward and untouched-holdout gates independently p
 import numpy as np
 import pandas as pd
 import pytest
+from types import SimpleNamespace
 
+import app as A
 import engine as E
 import strategies as S
 
@@ -43,6 +45,24 @@ def test_registered_for_research_but_never_paper_rotation():
     assert S.STRATEGIES[KEY]['research_only'] is True and KEY in E.RESEARCH_ONLY_KEYS
     assert KEY not in {k for g in E.breadth_groups() for k in g}
     assert KEY not in {x['key'] for x in E.breadth_sleeves()}
+
+
+def test_paper_api_refuses_research_key_but_backtest_validation_allows_it():
+    sl = dict(key=KEY, share=0.2, risk=0.01, max_pos=2)
+    with pytest.raises(ValueError, match='research-only'):
+        A.validate_sleeve(sl, 0)
+    assert A.validate_sleeve(sl, 0, allow_research=True)['key'] == KEY
+
+
+def test_settings_load_drops_persisted_research_sleeve(monkeypatch, tmp_path):
+    bad = dict(PRESET='custom', SLEEVES=[dict(id='FIB', key=KEY)], UNIVERSE=['BTCUSDT'])
+    monkeypatch.setattr(E.Engine, '_load_safe', lambda *a, **k: (bad, 'ok'))
+    alerts = []
+    bare = SimpleNamespace(F={'settings': str(tmp_path / 'settings.json')}, _installed=True, live=False,
+                           _integrity_alert=lambda *x: alerts.append(x))
+    E.Engine.load_settings(bare)
+    assert bare.S['SLEEVES'] == []
+    assert alerts and alerts[-1][0] == 'integrity|research-only-sleeve'
 
 
 def test_long_and_short_are_mirrored_and_use_0786_structural_stop():

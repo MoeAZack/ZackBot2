@@ -137,7 +137,9 @@ def sig_fib_pullback(d, p, ctx):
     the impulse spans at least ``min_impulse_atr`` ATR, price overlaps the 0.382-0.618 retracement zone, then a bullish
     candle crosses back above the 0.5 level.  Short is the exact mirror.  One entry is allowed per confirmed impulse.
     The returned ``atr`` is the distance from the decision close to the 0.786 invalidation, so management stop_atr=1
-    places the initial stop at that structural level.  No profitability claim; research_only keeps it out of PAPER.
+    places the initial stop at that structural level.  After the swing orientation flips, an existing position relies on
+    its structural stop, targets and 30-bar cap rather than an opposite-orientation signal exit.  No profitability claim;
+    research_only keeps it out of PAPER.
     """
     left, right = int(p.get('left', FIB['left'])), int(p.get('right', FIB['right']))
     if left < 1 or right < 1: raise ValueError('fib_pullback: left/right must be >= 1')

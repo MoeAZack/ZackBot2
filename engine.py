@@ -2091,6 +2091,15 @@ class Engine:
                                             overlay=s['ROTATION_MGMT_OVERLAY'])
                             if s.get('PRESET') == ROTATION_PRESET
                             else copy.deepcopy(PRESETS[s.get('PRESET', 'original')]['sleeves']))
+        if isinstance(s.get('SLEEVES'), list):
+            research = [x for x in s['SLEEVES'] if isinstance(x, dict) and x.get('key') in RESEARCH_ONLY_KEYS]
+            if research:
+                s['SLEEVES'] = [x for x in s['SLEEVES'] if not (isinstance(x, dict) and x.get('key') in RESEARCH_ONLY_KEYS)]
+                keys = ', '.join(sorted({str(x.get('key'))[:30] for x in research}))
+                log.warning(f'research-only runtime sleeves dropped on load: {keys}')
+                if hasattr(self, '_integrity_alert'):
+                    self._integrity_alert('integrity|research-only-sleeve',
+                                          f'research-only runtime sleeves were refused and dropped: {keys}')
         for k in ('RISK_PER_TRADE', 'MAX_POSITIONS_PER_SLEEVE', 'STOP_ATR', 'SPLIT_ST', 'SLEEVE_ST', 'SLEEVE_TSM'):
             s.pop(k, None)                                       # v1 keys
         s['SYMBOLS_ON'] = {sym: s.get('SYMBOLS_ON', {}).get(sym, True) for sym in s['UNIVERSE']}
