@@ -365,8 +365,14 @@ def _base():
 def test_committed_family_ledgers_mark_legacy_window_spent():
     d = os.path.join(RES, 'ledger')
     out = L.verify(d, base=_base())                            # records + registry + Git history + base anchor
-    assert sorted(out) == ['breadth_static40', 'range_bb_mr', 'range_vwap_rev', 'res01_infra', 'short_breakdown',
-                           'trend_ema_mom', 'trend_ema_mom_short']
+    assert sorted(out) == ['breadth_static40', 'breakout_pyramid_falsify', 'range_bb_mr', 'range_vwap_rev',
+                           'res01_infra', 'short_breakdown', 'trend_ema_mom', 'trend_ema_mom_short']
+    # BPYR-FALSIFY-01: the signed contract owns exactly its six frozen development trials. It is a fresh preregistration,
+    # has not been evaluated, and therefore has no spend record yet.
+    bpyr = out.pop('breakout_pyramid_falsify')
+    assert [r['detail']['id'] for r in bpyr] == ['S1', 'S2', 'S3', 'S1-T', 'B0', 'B2']
+    assert [r['kind'] for r in bpyr] == ['variant'] * 4 + ['baseline'] * 2
+    assert not any(r['kind'] in L.SPEND_KINDS for r in bpyr)
     # PR #166 (CORE10_GAPFILL_PREREG_v1): range_vwap_rev holds exactly the one registered CORE-10 gap-fill splitcut run -
     # 1 development Access + 20 trial records (18 variant + 2 baseline), never promotable, and no legacy window_spent.
     rex = out.pop('range_vwap_rev')
