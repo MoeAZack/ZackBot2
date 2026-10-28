@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import gc
 import hashlib
 import json
 import math
@@ -38,6 +39,7 @@ import random
 import re
 import subprocess
 import sys
+import zipfile
 from collections import OrderedDict, namedtuple
 from dataclasses import dataclass
 
@@ -50,11 +52,12 @@ import splits as S                                                              
 sys.path.insert(0, M.REPO)
 import feasibility as F                                                                     # noqa: E402
 
-FORMAT = 'zb-edge05-run/3'
+FORMAT = 'zb-edge05-run/4'
 DAY_FORMAT = 'zb-edge05-day/2'
-SUMMARY_FORMAT = 'zb-edge05-summary/3'
-RULES_FORMAT = 'zb-exchange-rules-pit/2'
-STRADDLE_FORMAT = 'zb-edge05-straddle/1'
+SUMMARY_FORMAT = 'zb-edge05-summary/4'
+RULES_FORMAT = 'zb-exchange-rules-pit/3'
+STRADDLE_FORMAT = 'zb-edge05-straddle/2'
+AMENDMENT_FORMAT = 'zb-edge05-amendment/1'
 ACCOUNTING_REL = ('research_evidence', 'accounting', 'strat00-accounting-inputs-v1.json')
 PREREG_REL = ('research_evidence', 'prereg', 'funding_carry_xsec.v1.json')
 CANDIDATE = 'funding_carry_xsec.v1'
@@ -81,7 +84,9 @@ SLIP_FLOOR_BPS = 5.0                                   # costs.slippage "the 0.0
 RESULT_FILES = ('days.jsonl', 'summary.json')
 RULE_KEYS = ('tick', 'step', 'min_qty', 'min_notional', 'max_qty', 'max_notional')
 INCOMPLETE_REASONS = ('incomplete.gap', 'incomplete.slip_history', 'incomplete.stop', 'incomplete.funding',
-                      'incomplete.mark', 'incomplete.split_end', 'rules_uncovered')
+                      'incomplete.mark', 'incomplete.split_end', 'rules_uncovered', 'provenance_uncovered')
+# INCOMPLETE reasons that are NEVER inside the 2% allowance: any one of them fails the data gate.
+GATE_FAILING_REASONS = ('provenance_uncovered', 'rules_uncovered')
 # every repo module this runner imports (a test re-derives the list in a fresh interpreter)
 CODE_MODULES = ('feasibility.py', 'tools/research/costs.py', 'tools/research/edge05_coverage.py',
                 'tools/research/edge05_runner.py', 'tools/research/manifest.py', 'tools/research/runlock.py',
@@ -95,6 +100,22 @@ CONVENTIONS = {
                              'makes the side INCOMPLETE; the <=2% allowance counts only enumerated INCOMPLETE '
                              '(Integration ruling 3)',
     'incomplete_reasons': list(INCOMPLETE_REASONS),
+    'gate_failing_reasons': list(GATE_FAILING_REASONS),
+    'provenance': 'both input artifacts (PIT rules, straddle) carry {source: enumerated kind at its canonical endpoint '
+                  '(no free text), source_manifest_sha256, upstream_files [{name in the exact published layout, '
+                  'published sha256, as_of}], producer {commit, script, script_sha256}, coverage [{symbol, series, '
+                  'from, to, rows, upstream}]}; the runner re-counts every coverage entry (a mismatch voids it); a '
+                  'required (symbol, series, time) outside GOOD coverage is INCOMPLETE provenance_uncovered, which '
+                  'fails the data gate (never inside the 2% allowance); a real run binds the expected artifact '
+                  'sha256 (--expect-rules-sha256 / --expect-straddle-sha256) and refuses any other artifact',
+    'amendment': 'no ad-hoc end: the only shortened end is a signed zb-edge05-amendment/1 record for this exact '
+                 'prereg, loaded with --expect-amendment-sha256, its sha256 and dev_end bound in identity',
+    'codex_rulings_r4': {'AGE-ONLY-NO-COHORT-REPORTED': 'a no-cohort day caused only by listing age is counted and '
+                                                        'reported, not INCOMPLETE',
+                         'DATA-LOSS-NO-COHORT-GATED': 'a no-cohort day with any non-age ineligibility stays inside '
+                                                      'the 2% data gate; a provenance_uncovered day fails it',
+                         'ENTRY-EXIT-MAX-FILTERS': 'max qty/notional checked against the entry AND the exit rule',
+                         'UW-COUNTS-RECOVERY-POINT': 'underwater duration includes the recovery point'},
     'exchange_rules': 'point-in-time artifact, per-symbol [from, to) intervals; the rule at the entry fill sizes and '
                       'ticks the entry/stop, the rule at the exit fill ticks the exit; either uncovered -> INCOMPLETE '
                       'rules_uncovered; never a current-rule substitution or an envelope (Integration ruling 4)',
@@ -119,11 +140,16 @@ CONVENTIONS = {
     'data_gate': 'per walk-forward fold: <= 2% INCOMPLETE episodes in EACH of base, x1.5 and x2 (stress-only '
                  'INCOMPLETE counts); identical episode identities (symbol, entry) across base/x1.5/x2; no UNRESOLVED; '
                  'every scheduled day present; data-loss no-cohort days (a non-age ineligibility) <= 2% of scheduled '
-                 'days; missing capacity inputs count as infinite notional/volume in the capacity median',
-    'sealed_month': 'an archive month containing rows at/after the cutoff is never opened; a real run needs either a '
-                    'hash-bound pre-cutoff straddle artifact or an explicit --dev-end at or before that month',
-    'memory': 'a finite --max-rss-mb is mandatory; measured = max(private committed, working set); checked between '
-              'symbols, after each day and around every archive decompress; month cache clamped to the cap',
+                 'days; zero gate-failing INCOMPLETE (provenance_uncovered / rules_uncovered) in any episode and zero '
+                 'days with a provenance_uncovered ineligibility; the 2% share counts only tolerable reasons; '
+                 'missing capacity inputs count as infinite notional/volume in the capacity median',
+    'sealed_month': 'an archive month containing rows at/after the cutoff is never opened; a real run needs the single '
+                    'frozen provenance-complete straddle artifact (expected sha256 bound) or a signed amendment whose '
+                    'dev_end is at or before that month',
+    'memory': 'a finite --max-rss-mb is mandatory; measured = max(private committed, working set); every archive is '
+              'admitted BEFORE expansion (compressed + max(3 x declared uncompressed, rows x 400 B) <= cap - current, '
+              'evicting the month cache first, else refused); rows are parsed from the zip stream with a checkpoint '
+              'every 2000 rows; the month cache is evicted by measured bytes (budget = cap / 4)',
 }
 
 Bar = namedtuple('Bar', 'open_ms open high low close volume quote_volume available_ms')
@@ -318,14 +344,14 @@ def evaluated_keys(plan: S.SplitPlan) -> list[str]:
 
 
 def split_end(plan: S.SplitPlan, key: str, end_ms: int | None = None) -> int:
-    """The effective end of a split's reads: the split end, shortened by an explicit --dev-end."""
+    """The effective end of a split's reads: the split end, shortened only by a signed amendment's dev_end."""
     hi = plan.access_range(key)[1]
     return hi if end_ms is None else min(hi, end_ms)
 
 
 def decision_days(plan: S.SplitPlan, key: str, prm: Params, end_ms: int | None = None) -> list[int]:
     """D (00:00 UTC) whose entry/hold sits in the split's decision range and whose exit bar is fully available
-    inside the split (exit bar open + 4h <= split end, or <= --dev-end, so its row never reads past it)."""
+    inside the split (exit bar open + 4h <= split end, or <= the amendment dev_end, so its row never reads past it)."""
     if key not in evaluated_keys(plan):
         raise HoldoutRefused(f'{key} is never evaluated (calibration = warm-up only, holdout = sealed)')
     lo, hi = plan.access_range(key)
@@ -342,18 +368,139 @@ def decision_days(plan: S.SplitPlan, key: str, prm: Params, end_ms: int | None =
     return out
 
 
+# ------------------------------------------------------------------ provenance (shared by both artifacts)
+HEX64 = re.compile(r'[0-9a-f]{64}\Z')
+HEX40 = re.compile(r'[0-9a-f]{40}\Z')
+PROVENANCE_SOURCES = {                                  # the only accepted upstream kinds (no free-text source)
+    'binance-vision-archive': M.ARCHIVE_URL,
+    'binance-um-exchangeinfo-snapshots': 'https://fapi.binance.com/fapi/v1/exchangeInfo',
+}
+PROVENANCE_KEYS = {'source', 'source_manifest_sha256', 'upstream_files', 'producer', 'coverage'}
+SNAPSHOT_RE = re.compile(r'exchangeInfo@(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)\Z')
+DAILY_RE = re.compile(r'um/daily/(fundingRate|klines|markPriceKlines)/([A-Z0-9]+)/(?:(1h|4h|1d)/)?'
+                      r'\2-(fundingRate|1h|4h|1d)-(\d{4}-\d\d-\d\d)\.zip\Z')
+ARCHIVE_KIND = {('fundingRate', None): 'funding', ('klines', '4h'): '4h', ('klines', '1d'): '1d',
+                ('markPriceKlines', '1h'): 'mark'}
+
+
+def _upstream_meta(kind: str, name: str):
+    """(series, symbol, start_ms, end_ms) of one upstream file name, from its exact published layout."""
+    if kind == 'binance-um-exchangeinfo-snapshots':
+        m = SNAPSHOT_RE.match(name)
+        if not m:
+            raise RunnerError(f'provenance: {name!r} is not exchangeInfo@<UTC>')
+        t = S.parse_utc(m.group(1))
+        return 'rules', None, t, t
+    m = DAILY_RE.match(name)
+    if m:
+        series, sym, iv, iv2, day = m.groups()
+        if (iv or 'fundingRate') != iv2 or (series == 'fundingRate') != (iv is None):
+            raise RunnerError(f'provenance: {name!r} interval mismatch')
+        lo = S.parse_utc(day + 'T00:00:00Z')
+        return ARCHIVE_KIND.get((series, iv)), sym, lo, lo + DAY
+    try:
+        meta = M.archive_meta(name)
+    except M.ManifestError as e:
+        raise RunnerError(f'provenance: {e}') from None
+    return ARCHIVE_KIND.get((meta['series'], meta['interval'])), meta['symbol'], meta['month_start_ms'], \
+        meta['month_end_ms']
+
+
+class Provenance:
+    """Authenticity + completeness declaration of an input artifact: the upstream source kind and its canonical
+    endpoint, the source-manifest sha256, every upstream file with its published sha256 and as-of time, the producer
+    code identity, and the expected coverage (symbol x series x [from, to) with row counts), which the consuming
+    artifact re-counts. A coverage entry whose count does not match is BAD and covers nothing."""
+
+    def __init__(self, prov, kinds, series_ok):
+        if not isinstance(prov, dict) or set(prov) != PROVENANCE_KEYS:
+            raise RunnerError(f'provenance must have exactly {sorted(PROVENANCE_KEYS)}')
+        src = prov['source']
+        if not isinstance(src, dict) or set(src) != {'kind', 'endpoint'} or src['kind'] not in kinds \
+                or src['endpoint'] != PROVENANCE_SOURCES[src['kind']]:
+            raise RunnerError(f'provenance source must be one of {sorted(kinds)} at its canonical endpoint '
+                              '(free-text sources are refused)')
+        self.kind = src['kind']
+        if not isinstance(prov['source_manifest_sha256'], str) or not HEX64.match(prov['source_manifest_sha256']):
+            raise RunnerError('provenance source_manifest_sha256 must be a sha256')
+        pr = prov['producer']
+        if not isinstance(pr, dict) or set(pr) != {'commit', 'script', 'script_sha256'} \
+                or not HEX40.match(str(pr['commit'])) or not HEX64.match(str(pr['script_sha256'])):
+            raise RunnerError('provenance producer must be {commit: 40-hex, script, script_sha256}')
+        M.check_rel_path(pr['script'])
+        files, self.files = {}, {}
+        for f in prov['upstream_files'] or ():
+            if not isinstance(f, dict) or set(f) != {'name', 'sha256', 'as_of'} or not HEX64.match(str(f['sha256'])):
+                raise RunnerError(f'provenance upstream file {f!r} needs {{name, sha256 (published), as_of}}')
+            S.parse_utc(f['as_of'])
+            if f['name'] in files:
+                raise RunnerError(f'provenance upstream file {f["name"]} listed twice')
+            files[f['name']] = _upstream_meta(self.kind, f['name'])
+            self.files[f['name']] = f['sha256']
+        if not files:
+            raise RunnerError('provenance lists no upstream files')
+        self.coverage = {}
+        for c in prov['coverage'] or ():
+            if not isinstance(c, dict) or set(c) != {'symbol', 'series', 'from', 'to', 'rows', 'upstream'}:
+                raise RunnerError(f'coverage entry {c!r} needs {{symbol, series, from, to, rows, upstream}}')
+            lo, hi = S.parse_utc(c['from']), S.parse_utc(c['to'])
+            if c['series'] not in series_ok or not lo < hi or type(c['rows']) is not int or c['rows'] < 0 \
+                    or not isinstance(c['upstream'], list) or not c['upstream']:
+                raise RunnerError(f'invalid coverage entry {c!r}')
+            for name in c['upstream']:
+                if name not in files:
+                    raise RunnerError(f'coverage entry cites unlisted upstream file {name!r}')
+                ser, sym, _, _ = files[name]
+                if ser != 'rules' and (ser != c['series'] or sym != c['symbol']):
+                    raise RunnerError(f'coverage {c["symbol"]}/{c["series"]} cites {name} ({sym}/{ser})')
+            self.coverage.setdefault((c['symbol'], c['series']), []).append([lo, hi, c['rows'], True])
+        if not self.coverage:
+            raise RunnerError('provenance declares no coverage')
+        for v in self.coverage.values():
+            v.sort()
+            if any(b[0] < a[1] for a, b in zip(v, v[1:])):
+                raise RunnerError('provenance coverage entries overlap')
+        self.digest = sha(canon(prov))
+        self.doc = {'kind': self.kind, 'source_manifest_sha256': prov['source_manifest_sha256'],
+                    'producer': dict(pr), 'upstream_files': len(files), 'digest': self.digest}
+
+    def recount(self, count) -> int:
+        """`count(symbol, series, lo, hi)` -> actual rows; marks mismatching entries BAD. Returns the number BAD."""
+        bad = 0
+        for (sym, ser), v in self.coverage.items():
+            for e in v:
+                e[3] = count(sym, ser, e[0], e[1]) == e[2]
+                bad += not e[3]
+        return bad
+
+    def covered(self, sym: str, series: str, lo: int, hi: int) -> bool:
+        """[lo, hi) lies inside the union of GOOD coverage entries for (symbol, series)."""
+        cur = lo
+        for a, b, _, ok in self.coverage.get((sym, series), ()):
+            if not ok:
+                continue
+            if a <= cur < b:
+                cur = b
+            if cur >= hi:
+                return True
+        return cur >= hi
+
+
 # ------------------------------------------------------------------ point-in-time exchange rules
 class PitRules:
-    """`zb-exchange-rules-pit/2`: {format, source, symbols: {SYM: [{from, to, tick, step, min_qty, min_notional,
-    max_qty, max_notional}]}}
-    with strict UTC [from, to) intervals, sorted and non-overlapping. `at` never substitutes another interval."""
+    """`zb-exchange-rules-pit/3`: {format, provenance, symbols: {SYM: [{from, to, tick, step, min_qty, min_notional,
+    max_qty, max_notional}]}} with strict UTC [from, to) intervals, sorted and non-overlapping. Provenance coverage
+    (series 'rules', rows = intervals inside [from, to), which must tile it) is re-counted; `lookup` raises
+    `provenance_uncovered` outside GOOD coverage and never substitutes another interval."""
 
     def __init__(self, doc: dict, raw: bytes):
-        if not isinstance(doc, dict) or doc.get('format') != RULES_FORMAT:
-            raise RunnerError(f'rules artifact must be {RULES_FORMAT}')
-        if not isinstance(doc.get('source'), str) or not doc['source'] or not isinstance(doc.get('symbols'), dict):
-            raise RunnerError('rules artifact needs a non-empty source and a symbols map')
-        self.sha256, self.source, self._iv = sha(raw), doc['source'], {}
+        if not isinstance(doc, dict) or doc.get('format') != RULES_FORMAT or set(doc) != {'format', 'provenance',
+                                                                                         'symbols'}:
+            raise RunnerError(f'rules artifact must be {RULES_FORMAT} {{format, provenance, symbols}}')
+        if not isinstance(doc.get('symbols'), dict):
+            raise RunnerError('rules artifact needs a symbols map')
+        self.sha256, self._iv = sha(raw), {}
+        self.provenance = Provenance(doc['provenance'], ('binance-um-exchangeinfo-snapshots',), ('rules',))
         for sym, ivs in doc['symbols'].items():
             rows = []
             for iv in ivs:
@@ -371,6 +518,17 @@ class PitRules:
             if any(b[0] < a[1] for a, b in zip(rows, rows[1:])):
                 raise RunnerError(f'{sym}: rules intervals overlap')
             self._iv[sym] = ([r[0] for r in rows], rows)
+        self.bad_coverage = self.provenance.recount(self._count)
+
+    def _count(self, sym, series, lo, hi):
+        """Intervals inside [lo, hi); -1 unless they tile it exactly (a gap is a count mismatch)."""
+        rows = [r for r in self._iv.get(sym, ((), ()))[1] if lo <= r[0] and r[1] <= hi]
+        cur = lo
+        for a, b, _ in rows:
+            if a != cur:
+                return -1
+            cur = b
+        return len(rows) if cur == hi else -1
 
     @classmethod
     def load(cls, path: str) -> 'PitRules':
@@ -378,7 +536,8 @@ class PitRules:
         return cls(json.loads(raw), raw)
 
     def identity(self) -> dict:
-        return {'format': RULES_FORMAT, 'source': self.source, 'sha256': self.sha256}
+        return {'format': RULES_FORMAT, 'sha256': self.sha256, 'provenance': self.provenance.doc,
+                'bad_coverage_entries': self.bad_coverage}
 
     def at(self, sym: str, t: int):
         starts, rows = self._iv.get(sym, ((), ()))
@@ -386,6 +545,12 @@ class PitRules:
         if i < 0 or not rows[i][0] <= t < rows[i][1]:
             return None
         return dict(rows[i][2])
+
+    def lookup(self, sym: str, t: int):
+        """The rule in force at t; Incomplete('provenance_uncovered') outside GOOD coverage (gate-failing)."""
+        if not self.provenance.covered(sym, 'rules', t, t + 1):
+            raise Incomplete('provenance_uncovered', t)
+        return self.at(sym, t)
 
 
 # ------------------------------------------------------------------ guarded source
@@ -433,23 +598,26 @@ class Guard:
 
 
 class StraddleArtifact:
-    """`zb-edge05-straddle/1`: hash-bound PRE-CUTOFF rows of the archive month that straddles the sealed cutoff,
-    produced by Integration without this runner ever opening that month. {format, cutoff, series: {funding:
-    {SYM: [[time_ms, rate, interval_h], ...]}, 4h | 1d | mark: {SYM: [[open_ms, o, h, l, c, v, quote_v], ...]}}}.
-    Every row must lie in the cutoff's month and be available before the cutoff (bars: open + interval <= cutoff)."""
+    """`zb-edge05-straddle/2`: hash-bound PRE-CUTOFF rows of the archive month that straddles the sealed cutoff,
+    produced by Integration without this runner ever opening that month. {format, cutoff, provenance, series:
+    {funding: {SYM: [[time_ms, rate, interval_h], ...]}, 4h | 1d | mark: {SYM: [[open_ms, o, h, l, c, v, quote_v],
+    ...]}}}. Every row must lie in the cutoff's month, be available before the cutoff (bars: open + interval <=
+    cutoff) and fall inside a declared coverage entry; each entry's row count is re-counted (a mismatch = BAD)."""
 
     IV = {'4h': TF, '1d': DAY, 'mark': HOUR}
 
     def __init__(self, doc: dict, raw: bytes, cutoff_ms: int):
-        if not isinstance(doc, dict) or doc.get('format') != STRADDLE_FORMAT:
-            raise RunnerError(f'straddle artifact must be {STRADDLE_FORMAT}')
+        if not isinstance(doc, dict) or doc.get('format') != STRADDLE_FORMAT or \
+                set(doc) != {'format', 'cutoff', 'provenance', 'series'}:
+            raise RunnerError(f'straddle artifact must be {STRADDLE_FORMAT} {{format, cutoff, provenance, series}}')
         if doc.get('cutoff') != S.utc(cutoff_ms):
             raise HoldoutRefused('straddle artifact cutoff differs from the run cutoff')
         self.sha256 = sha(raw)
+        self.provenance = Provenance(doc['provenance'], ('binance-vision-archive',), ('funding', '4h', '1d', 'mark'))
         mon = CV.parse_utc(CV.month_key(cutoff_ms) + '-01T00:00:00Z')
         self.month_start = mon
         self.rows = {}
-        for kind, per in doc.get('series', {}).items():
+        for kind, per in doc['series'].items():
             if kind not in ('funding', '4h', '1d', 'mark'):
                 raise RunnerError(f'straddle artifact: unknown series {kind!r}')
             for sym, rows in per.items():
@@ -464,26 +632,49 @@ class StraddleArtifact:
                     if x[0] < mon or avail > cutoff_ms or x[0] >= cutoff_ms:
                         raise HoldoutRefused(f'straddle artifact row {sym} {kind} {x[0]} is outside '
                                              '[cutoff month start, cutoff)')
+                    if not any(a <= x[0] < b for a, b, _, _ in self.provenance.coverage.get((sym, kind), ())):
+                        raise RunnerError(f'straddle artifact row {sym} {kind} {x[0]} is outside every declared '
+                                          'coverage entry')
                     out.append(x)
                 out.sort()
                 self.rows[(sym, kind)] = ([x[0] for x in out], out)
+        self.bad_coverage = self.provenance.recount(lambda s, k, lo, hi: len(self.slice(s, k, lo, hi)))
 
     @classmethod
     def load(cls, path: str, cutoff_ms: int) -> 'StraddleArtifact':
         raw = open(path, 'rb').read()
         return cls(json.loads(raw), raw, cutoff_ms)
 
+    def identity(self) -> dict:
+        return {'format': STRADDLE_FORMAT, 'sha256': self.sha256, 'provenance': self.provenance.doc,
+                'bad_coverage_entries': self.bad_coverage}
+
     def slice(self, sym, kind, lo, hi):
         keys, rows = self.rows.get((sym, kind), ((), ()))
         return list(rows[bisect.bisect_left(keys, lo):bisect.bisect_left(keys, hi)])
 
 
+def _deep_size(rows) -> int:
+    """Measured bytes of a parsed month: the list, every row tuple and every field object."""
+    n = sys.getsizeof(rows)
+    for r in rows:
+        n += sys.getsizeof(r) + sum(sys.getsizeof(x) for x in r)
+    return n
+
+
 class ArchiveSource:
-    """Binance archive store, indexed from a streamed manifest (never loaded whole). Months are parsed on demand into
-    a small LRU; a month file whose last row is at/after the sealed cutoff (the straddle month) is never opened."""
+    """Binance archive store, indexed from a streamed manifest (never loaded whole). A month is ADMITTED before it is
+    expanded (compressed + declared uncompressed + per-row parsed bytes against the remaining memory budget, evicting
+    first), then parsed row by row from the zip stream with a memory checkpoint every CHECK_ROWS rows; the month cache
+    is evicted by MEASURED bytes. A month file whose last row is at/after the sealed cutoff (the straddle month) is
+    never opened; reads that reach into it need a provenance-complete straddle artifact covering them."""
 
     SERIES = {('fundingRate', None): 'funding', ('klines', '4h'): '4h', ('klines', '1d'): '1d',
               ('markPriceKlines', '1h'): 'mark'}
+    ROW_BYTES = 400                                # admission estimate per parsed row (a Bar is ~330 B measured)
+    EXPAND_FACTOR = 3                              # parsed objects vs declared CSV bytes (admission upper bound)
+    CHECK_ROWS = 2000
+    LINE_MAX = 4096
 
     def __init__(self, manifest_path: str, store: str, symbols, cutoff_ms: int, cache_months: int = 512):
         self.store, self.cutoff, self.cap = store, cutoff_ms, cache_months
@@ -493,8 +684,13 @@ class ArchiveSource:
         self.first: dict = {}
         self.straddle_skipped = 0
         self.straddle_from = None                  # month start of the earliest never-opened straddle month
+        self.straddle_month: dict = {}             # (symbol, kind) -> start of its never-opened straddle month
+        self.straddle_files: dict = {}             # never-opened straddle month path -> manifest sha256
         self.straddle = None                       # StraddleArtifact serving that month's pre-cutoff rows
         self.check = None
+        self.max_mb = None
+        self.cache_budget = None                   # bytes; None = count cap only (no memory cap set yet)
+        self.cache_bytes = 0
         for e in CV.iter_file_entries(manifest_path):
             kind = self.SERIES.get((e.get('series'), e.get('interval')))
             if kind is None or e.get('symbol') not in want:
@@ -507,55 +703,146 @@ class ArchiveSource:
             meta = M.archive_meta(e['path'])
             if last >= cutoff_ms:
                 self.straddle_skipped += 1
+                self.straddle_files[e['path']] = e['sha256']
                 if meta['month_start_ms'] < cutoff_ms:
                     self.straddle_from = meta['month_start_ms'] if self.straddle_from is None else \
                         min(self.straddle_from, meta['month_start_ms'])
+                    self.straddle_month[fk] = min(self.straddle_month.get(fk, meta['month_start_ms']),
+                                                  meta['month_start_ms'])
                 continue
             self.index.setdefault(fk, []).append((meta['month_start_ms'], meta['month_end_ms'], e['path'], e['sha256'],
                                                   e['rows']))
         for v in self.index.values():
             v.sort()
-        self._lru: OrderedDict = OrderedDict()
+        self._lru: OrderedDict = OrderedDict()     # path -> (keys, rows, measured bytes)
 
     def identity(self) -> dict:
         return {'kind': 'binance-archive', 'manifest_file_sha256': self.manifest_sha256,
-                'straddle_artifact_sha256': self.straddle.sha256 if self.straddle else None}
+                'straddle': self.straddle.identity() if self.straddle else None}
 
     def attach_straddle(self, art: StraddleArtifact) -> None:
+        """The artifact must name THIS run's source manifest, and every upstream month file it cites that the
+        manifest lists must carry the manifest's (published) sha256."""
+        if art.provenance.doc['source_manifest_sha256'] != self.manifest_sha256:
+            raise RunnerError('straddle artifact was produced from another source manifest')
+        for name, h in art.provenance.files.items():
+            if name in self.straddle_files and self.straddle_files[name] != h:
+                raise RunnerError(f'straddle artifact upstream hash for {name} differs from the manifest')
         self.straddle = art
 
     def set_memory(self, check, max_mb: float) -> None:
-        """Memory checkpoint around every decompress; the month cache is clamped to the cap (~4 MB per month)."""
-        self.check = check
-        self.cap = max(8, min(self.cap, int(max_mb // 4)))
+        """Memory checkpoint during every expansion; admission against the cap; cache budget = 1/4 of the cap."""
+        self.check, self.max_mb = check, max_mb
+        self.cache_budget = int(max_mb * 2 ** 20 // 4)
+
+    def _evict_one(self) -> None:
+        _, (_, _, nb) = self._lru.popitem(last=False)
+        self.cache_bytes -= nb
+        gc.collect()
+
+    def _admit(self, path: str, need: int) -> None:
+        """Refuse (or evict first) BEFORE expansion when `need` bytes do not fit the remaining budget."""
+        if self.max_mb is None:
+            return
+        while True:
+            remaining = (self.max_mb - rss_mb()) * 2 ** 20
+            if need <= remaining:
+                return
+            if not self._lru:
+                raise MemoryLimit(f'{path}: expansion needs ~{need / 2 ** 20:.1f} MB but only '
+                                  f'{max(remaining, 0) / 2 ** 20:.1f} MB of --max-rss-mb {self.max_mb:g} remain; '
+                                  'refused before decompressing')
+            self._evict_one()
+
+    def _stream_rows(self, f, path, meta, kind, expect_rows):
+        """Row-by-row parse of the zip member stream, mirroring manifest.parse_archive_csv's checks."""
+        funding = kind == 'funding'
+        header, ncol = (M.FUNDING_HEADER, 3) if funding else (M.KLINE_HEADER, 12)
+        lo, hi = meta['month_start_ms'], meta['month_end_ms']
+        step = None if funding else M.INTERVALS[meta['interval']]
+        out, prev, first = [], None, True
+        while True:
+            ln = f.readline(self.LINE_MAX + 1)
+            if not ln:
+                break
+            if len(ln) > self.LINE_MAX:
+                raise RunnerError(f'{path}: a line exceeds {self.LINE_MAX} bytes')
+            ln = ln.rstrip(b'\n')
+            if ln.endswith(b'\r'):
+                ln = ln[:-1]
+            if first:
+                first = False
+                if ln == header:
+                    continue
+            r = ln.split(b',')
+            if len(r) != ncol:
+                raise RunnerError(f'{path}: a row does not have {ncol} columns (or the header is unknown)')
+            try:
+                t = int(r[0])
+                if funding:
+                    row = Funding(t, float(r[2]), int(r[1]), t)
+                else:
+                    if int(r[6]) != t + step - 1 or t % step:
+                        raise RunnerError(f'{path}: misaligned bar or close_time != open_time + interval - 1')
+                    if not M.QV_RE.match(r[7]):
+                        raise RunnerError(f'{path}: quote_volume {r[7]!r} is not a canonical decimal')
+                    row = Bar(t, float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[7]),
+                              t + step)
+            except ValueError as e:
+                raise RunnerError(f'{path}: non-numeric field ({e})') from None
+            if not lo <= t < hi or (prev is not None and t <= prev):
+                raise RunnerError(f'{path}: row time outside the file month or not strictly increasing')
+            prev = t
+            out.append(row)
+            if len(out) > expect_rows:
+                raise RunnerError(f'{path}: more rows than the manifest declares ({expect_rows})')
+            if self.check and len(out) % self.CHECK_ROWS == 0:
+                self.check()
+        return out
 
     def _month(self, path, sha256, rows, kind):
         if path in self._lru:
             self._lru.move_to_end(path)
-            return self._lru[path]
+            return self._lru[path][:2]
         ap = M.contained(self.store, path)
+        meta = M.archive_meta(path)
         if self.check:
             self.check()
-        _, published, data = M.read_archive(ap, path)
-        if published != sha256:
-            raise RunnerError(f'{path}: bytes no longer match the manifest sha256')
-        raw = M.parse_archive_csv(path, data, M.archive_meta(path))
-        del data
-        if kind == 'funding':
-            out = [Funding(int(r[0]), float(r[2]), int(r[1]), int(r[0])) for r in raw]
-        else:
-            iv = M.INTERVALS['1h' if kind == 'mark' else kind]
-            out = [Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[7]),
-                       int(r[0]) + iv) for r in raw]
+        try:
+            published = open(ap + '.ok', 'rb').read().strip().decode('ascii')
+        except (OSError, UnicodeDecodeError):
+            raise RunnerError(f'{path}: missing or unreadable .ok checksum sidecar') from None
+        csv_name = os.path.basename(path)[:-4] + '.csv'
+        with open(ap, 'rb') as fh:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: fh.read(1 << 20), b''):
+                h.update(chunk)
+            if h.hexdigest() != published or published != sha256:
+                raise RunnerError(f'{path}: bytes no longer match the published checksum / manifest sha256')
+            fh.seek(0)
+            try:
+                with zipfile.ZipFile(fh) as z:
+                    infos = z.infolist()
+                    if [i.filename for i in infos] != [csv_name]:
+                        raise RunnerError(f'{path}: zip must hold exactly {csv_name}')
+                    info = infos[0]
+                    need = info.compress_size + max(info.file_size * self.EXPAND_FACTOR, rows * self.ROW_BYTES)
+                    self._admit(path, need)
+                    with z.open(info) as f:
+                        out = self._stream_rows(f, path, meta, kind, rows)
+            except zipfile.BadZipFile as e:
+                raise RunnerError(f'{path}: bad zip ({e})') from None
         if len(out) != rows:
             raise RunnerError(f'{path}: {len(out)} rows != manifest {rows}')
-        del raw
         if self.check:
             self.check()
         keys = [r[0] for r in out]
-        self._lru[path] = (keys, out)
-        while len(self._lru) > self.cap:
-            self._lru.popitem(last=False)
+        nb = _deep_size(out) + sys.getsizeof(keys)
+        self._lru[path] = (keys, out, nb)
+        self.cache_bytes += nb
+        while len(self._lru) > 1 and (len(self._lru) > self.cap or
+                                      (self.cache_budget is not None and self.cache_bytes > self.cache_budget)):
+            self._evict_one()
         return keys, out
 
     def _rows(self, sym, kind, lo, hi):
@@ -565,8 +852,12 @@ class ArchiveSource:
                 continue
             keys, rs = self._month(path, sha256, rows, kind)
             out.extend(rs[bisect.bisect_left(keys, lo):bisect.bisect_left(keys, hi)])
-        if self.straddle is not None:
-            out.extend(self.straddle.slice(sym, kind, lo, hi))
+        sm = self.straddle_month.get((sym, kind))
+        if sm is not None and hi > sm and lo < self.cutoff:
+            a, b = max(lo, sm), min(hi, self.cutoff)
+            if self.straddle is None or not self.straddle.provenance.covered(sym, kind, a, b):
+                raise Incomplete('provenance_uncovered', a)
+            out.extend(self.straddle.slice(sym, kind, a, b))
         return out
 
     def funding(self, sym, lo, hi):
@@ -580,6 +871,39 @@ class ArchiveSource:
 
     def first_ms(self, sym):
         return {'funding': self.first.get((sym, 'funding')), '4h': self.first.get((sym, '4h'))}
+
+
+class Amendment:
+    """`zb-edge05-amendment/1`: the ONLY route to a shortened end. A signed record amending the frozen prereg, read
+    from a hash-bound file: {format, candidate_id, prereg_sha256, status (FROZEN...), signed: true, signed_by,
+    dev_end (UTC midnight <= cutoff), reason}. Its sha256 and exact end are bound in the run identity."""
+
+    KEYS = {'format', 'candidate_id', 'prereg_sha256', 'status', 'signed', 'signed_by', 'dev_end', 'reason'}
+
+    def __init__(self, doc: dict, raw: bytes, prereg_raw: bytes, cutoff_ms: int, expect_sha256: str | None):
+        self.sha256 = sha(raw)
+        if not expect_sha256 or self.sha256 != expect_sha256:
+            raise RunnerError('amendment record sha256 differs from --expect-amendment-sha256 (or none was given)')
+        if not isinstance(doc, dict) or set(doc) != self.KEYS or doc['format'] != AMENDMENT_FORMAT \
+                or doc['candidate_id'] != CANDIDATE or doc['prereg_sha256'] != sha(prereg_raw):
+            raise RunnerError(f'amendment must be {AMENDMENT_FORMAT} for this candidate and this exact prereg')
+        if doc['signed'] is not True or not str(doc['status']).startswith('FROZEN') \
+                or not isinstance(doc['signed_by'], str) or not doc['signed_by'].strip() \
+                or not isinstance(doc['reason'], str) or not doc['reason'].strip():
+            raise RunnerError('amendment is not frozen and signed (status FROZEN..., signed true, signed_by, reason)')
+        self.dev_end = S.parse_utc(doc['dev_end'])
+        if self.dev_end % DAY or self.dev_end > cutoff_ms:
+            raise HoldoutRefused('amendment dev_end must be a UTC midnight at or before the sealed cutoff')
+        self.doc = doc
+
+    @classmethod
+    def load(cls, path: str, prereg_raw: bytes, cutoff_ms: int, expect_sha256: str | None) -> 'Amendment':
+        raw = open(path, 'rb').read()
+        return cls(json.loads(raw), raw, prereg_raw, cutoff_ms, expect_sha256)
+
+    def identity(self) -> dict:
+        return {'format': AMENDMENT_FORMAT, 'sha256': self.sha256, 'dev_end': self.doc['dev_end'],
+                'signed_by': self.doc['signed_by']}
 
 
 # ------------------------------------------------------------------ signal
@@ -836,7 +1160,7 @@ def daily_dist(bars1d, D: int, prm: Params) -> float:
 
 
 def _ep(side, D, st, dist, day, rules, sym, prm, split_hi):
-    ep = safe_replay(side, D, st, dist, day, lambda t: rules.at(sym, t), prm, split_hi)
+    ep = safe_replay(side, D, st, dist, day, lambda t: rules.lookup(sym, t), prm, split_hi)
     ep['side'] = side
     return ep
 
@@ -848,7 +1172,11 @@ def run_day(src: Guard, symbols, D: int, key: str, prm: Params, rules: PitRules,
         if fm.get('funding') is None or fm.get('4h') is None or max(fm['funding'], fm['4h']) > D - AGE_DAYS * DAY:
             inel['age'] = inel.get('age', 0) + 1
             continue
-        day = load_day(src, sym, D, split_hi)
+        try:
+            day = load_day(src, sym, D, split_hi)
+        except Incomplete as e:                        # provenance_uncovered: a required straddle row is unproven
+            inel[e.reason] = inel.get(e.reason, 0) + 1
+            continue
         if check is not None:
             check()                                    # bounded RSS checkpoint: after every symbol load
         try:
@@ -933,10 +1261,11 @@ def _fsync_append(fh, line: bytes):
 
 
 def identity_doc(prereg_raw: bytes, symbols, rules, source_identity: dict, keys, code: dict,
-                 freeze_sha: str | None, prm: Params, dev_end: int | None, schedule: dict, excluded: dict) -> dict:
+                 freeze_sha: str | None, prm: Params, amendment, schedule: dict, excluded: dict) -> dict:
     return {'format': FORMAT, 'candidate_id': CANDIDATE, 'prereg_sha256': sha(prereg_raw),
             'accounting_input_sha256': file_sha(accounting_path()), 'policy': prm.policy,
-            'dev_end': S.utc(dev_end) if dev_end is not None else None,
+            'amendment': amendment.identity() if amendment is not None else None,
+            'dev_end': S.utc(amendment.dev_end) if amendment is not None else None,
             'scheduled_days': schedule, 'dev_end_excluded_days': excluded,
             'universe': list(symbols), 'rules': rules.identity() if rules is not None else None,
             'source': source_identity, 'splits': list(keys), 'code': code,
@@ -1000,12 +1329,16 @@ def _resume_point(path: str, plan_keys: list, run_digest: str) -> tuple[int, str
 def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, max_rss_mb: float | None = None,
         dry_run: bool = False, only_keys=None, progress=None, stop_after_days: int | None = None,
         code: dict | None = None, allow_dirty_test_only: bool = False, holdout_freeze_record: str | None = None,
-        dev_end: int | None = None) -> dict:
+        amendment: Amendment | None = None, expect_rules_sha256: str | None = None,
+        expect_straddle_sha256: str | None = None) -> dict:
     prm = params_of(prereg)
     plan = split_plan(prereg)
     keys = [k for k in evaluated_keys(plan) if only_keys is None or k in only_keys]
-    if dev_end is not None and (dev_end % DAY or dev_end > prm.cutoff_ms):
-        raise HoldoutRefused('--dev-end must be a UTC midnight at or before the sealed cutoff')
+    if amendment is not None and not isinstance(amendment, Amendment):
+        raise RunnerError('a shortened end comes only from a signed, hash-bound Amendment record')
+    if amendment is not None and amendment.doc['prereg_sha256'] != sha(prereg_raw):
+        raise RunnerError('amendment record is for another prereg')
+    dev_end = amendment.dev_end if amendment is not None else None
     cut = prm.cutoff_ms if dev_end is None else dev_end
     guard = Guard(src, cut)
     schedule = [(k, d) for k in keys for d in decision_days(plan, k, prm, dev_end)]
@@ -1013,21 +1346,32 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
     excluded = {k: len(decision_days(plan, k, prm)) - sched_n[k] for k in keys}
     code = code if code is not None else code_identity()
     freeze_sha = file_sha(holdout_freeze_record) if holdout_freeze_record else None
-    ident = identity_doc(prereg_raw, symbols, rules, src.identity(), keys, code, freeze_sha, prm, dev_end, sched_n,
+    ident = identity_doc(prereg_raw, symbols, rules, src.identity(), keys, code, freeze_sha, prm, amendment, sched_n,
                          excluded)
     straddle_from = getattr(src, 'straddle_from', None)
-    straddle_open = straddle_from is not None and getattr(src, 'straddle', None) is None and \
-        (dev_end is None or dev_end > straddle_from)
+    straddle = getattr(src, 'straddle', None)
+    straddle_needed = straddle_from is not None and (dev_end is None or dev_end > straddle_from)
+    straddle_open = straddle_needed and straddle is None
+    mism = []
+    if rules is not None and expect_rules_sha256 != rules.sha256:
+        mism.append('rules')
+    if (straddle is not None or straddle_needed) and \
+            (straddle is None or expect_straddle_sha256 != getattr(straddle, 'sha256', None)):
+        mism.append('straddle')
     if dry_run:
         rep = dry_report(guard, symbols, rules, schedule, plan, prm, ident)
         rep['straddle_unresolved_from'] = S.utc(straddle_from) if straddle_open else None
+        rep['expected_artifact_mismatch'] = mism
         return rep
     if straddle_open:
         raise RunnerError(f'archive months from {S.utc(straddle_from)} straddle the sealed cutoff and are never '
-                          'opened: pass a hash-bound --straddle-artifact or --dev-end at or before that month '
-                          '(no silent drop of scheduled data)')
+                          'opened: an evidence run needs the frozen provenance-complete --straddle-artifact (or a '
+                          'signed amendment ending at or before that month); no silent drop of scheduled data')
     if rules is None:
         raise RunnerError('no point-in-time exchange-rules artifact; refusing a real run (dry-run reports coverage)')
+    if mism:
+        raise RunnerError(f'expected artifact sha256 missing or different for: {", ".join(mism)}; an evidence run '
+                          'accepts only the frozen artifacts (--expect-rules-sha256 / --expect-straddle-sha256)')
     if code.get('dirty') and not allow_dirty_test_only:
         raise RunnerError('the code tree is dirty; commit first (a real run binds a clean commit)')
     if max_rss_mb is None or not (isinstance(max_rss_mb, (int, float)) and math.isfinite(max_rss_mb)
@@ -1094,8 +1438,13 @@ def dry_report(guard: Guard, symbols, rules, schedule, plan, prm, ident) -> dict
     if rules is None:
         cov = None
     else:
-        cov = {s: sum(1 for _, d in schedule if rules.at(s, d + ENTRY_OFFSET) is None
-                      or rules.at(s, d + ENTRY_OFFSET + prm.hold_ms) is None) for s in symbols}
+        def bad(s, t):
+            try:
+                return rules.lookup(s, t) is None
+            except Incomplete:
+                return True
+        cov = {s: sum(1 for _, d in schedule if bad(s, d + ENTRY_OFFSET) or bad(s, d + ENTRY_OFFSET + prm.hold_ms))
+               for s in symbols}
         cov = {s: n for s, n in cov.items() if n}
     return {'format': FORMAT, 'mode': 'dry-run', 'identity_sha256': sha(canon(ident)), 'code_dirty': ident['code']['dirty'],
             'cutoff': S.utc(prm.cutoff_ms), 'symbols': len(symbols), 'symbols_without_metadata': missing_meta,
@@ -1351,7 +1700,8 @@ def summarize(days_path: str, prereg: dict, keys, run_digest: str, scheduled: di
     prm = params_of(prereg)
     books, b1, b2, b0 = {}, {}, {}, {}                 # b0: (split, side) -> [1000 light Books]
     counts = {k: {'days': 0, 'scheduled_days': (scheduled or {}).get(k), 'no_cohort_days': 0,
-                  'data_loss_no_cohort_days': 0, 'ineligible': {}} for k in keys}
+                  'data_loss_no_cohort_days': 0, 'provenance_uncovered_days': 0, 'gate_failing_episodes': 0,
+                  'ineligible': {}} for k in keys}
     stress = {}                                        # (split, side) -> {mismatch, stress_only_incomplete}
     for d, _ in iter_verified(days_path, run_digest):
         k, D = d['split'], S.parse_utc(d['D'])
@@ -1359,6 +1709,13 @@ def summarize(days_path: str, prereg: dict, keys, run_digest: str, scheduled: di
         c['days'] += 1
         for r, n in d['ineligible'].items():
             c['ineligible'][r] = c['ineligible'].get(r, 0) + n
+        if d['ineligible'].get('provenance_uncovered'):
+            c['provenance_uncovered_days'] += 1        # gate-failing: never inside the 2% allowance
+        if not d['no_cohort']:
+            for side in SIDES:
+                eps = list(d['base'][side].values()) + [e for p in d['primary'][side] for e in p['rows'].values()]
+                c['gate_failing_episodes'] += sum(1 for e in eps if classify(e) in
+                                                  {('INCOMPLETE', g) for g in GATE_FAILING_REASONS})
         if d['no_cohort']:
             c['no_cohort_days'] += 1
             if any(r != 'age' for r in d['ineligible']):
@@ -1390,7 +1747,9 @@ def summarize(days_path: str, prereg: dict, keys, run_digest: str, scheduled: di
     out = {'format': SUMMARY_FORMAT, 'candidate_id': CANDIDATE, 'splits': {}, 'counts': counts,
            'conventions': CONVENTIONS, 'policy': prm.policy,
            'labels': ['SLIP-C-UNFITTED', 'SLIP-FLOOR-5BP', C.FUNDING_MARK_LABEL, 'STATIC-40-SURVIVOR-BIASED',
-                      'PIT-EXCHANGE-RULES', 'WORST-COHORT-NET-R-IS-SUM', 'FOLD-CHAINED-DD', 'NOT-A-LEDGER-RECORD']}
+                      'PIT-EXCHANGE-RULES', 'WORST-COHORT-NET-R-IS-SUM', 'FOLD-CHAINED-DD', 'NOT-A-LEDGER-RECORD',
+                      'PROVENANCE-BOUND-ARTIFACTS', 'AGE-ONLY-NO-COHORT-REPORTED', 'DATA-LOSS-NO-COHORT-GATED',
+                      'ENTRY-EXIT-MAX-FILTERS', 'UW-COUNTS-RECOVERY-POINT']}
     for k in keys:
         out['splits'][k] = {}
         for side in SIDES:
@@ -1439,17 +1798,23 @@ def data_checks(books, keys, side, counts, stress) -> dict:
     for k in wf:
         c = counts.get(k, {})
         sched = c.get('scheduled_days')
-        inc = {r: (books[(k, side, r)].incomplete / books[(k, side, r)].selected)
+        def tolerable(b):
+            return b.incomplete - sum(b.incomplete_by.get(g, 0) for g in GATE_FAILING_REASONS)
+        inc = {r: (tolerable(books[(k, side, r)]) / books[(k, side, r)].selected)
                if (k, side, r) in books and books[(k, side, r)].selected else None for r in MANDATORY_ROWS}
+        gate_fail = sum(books[(k, side, r)].incomplete_by.get(g, 0) for r in ROWS if (k, side, r) in books
+                        for g in GATE_FAILING_REASONS) + c.get('gate_failing_episodes', 0)
+        prov_days = c.get('provenance_uncovered_days', 0)
         unresolved = sum(books[(k, side, r)].unresolved for r in ROWS if (k, side, r) in books)
         loss = c.get('data_loss_no_cohort_days', 0)
         st = stress.get((k, side)) or {'identity_mismatch': 0, 'stress_only_incomplete': 0}
         ok = (all((k, side, r) in books for r in MANDATORY_ROWS)
               and all(v is not None and v <= DATA_MAX_INCOMPLETE for v in inc.values())
-              and unresolved == 0 and st['identity_mismatch'] == 0
+              and unresolved == 0 and st['identity_mismatch'] == 0 and gate_fail == 0 and prov_days == 0
               and sched is not None and c.get('days') == sched
               and (loss / sched if sched else 1.0) <= DATA_MAX_INCOMPLETE)
         per[k] = {'ok': ok, 'incomplete_share': inc, 'unresolved': unresolved, 'days': c.get('days'),
+                  'gate_failing_incomplete': gate_fail, 'provenance_uncovered_days': prov_days,
                   'scheduled_days': sched, 'data_loss_no_cohort_days': loss,
                   'no_cohort_days': c.get('no_cohort_days'), **st}
     return {'ok': bool(per) and all(v['ok'] for v in per.values()), 'folds': per}
@@ -1572,8 +1937,11 @@ def main(argv=None) -> int:
     ap.add_argument('--holdout-freeze-record', help='Integration holdout freeze record; its sha256 is bound')
     ap.add_argument('--out', help='result directory (append-only chained days.jsonl + summary.json)')
     ap.add_argument('--max-rss-mb', type=float, required=True, help='mandatory private-memory cap (MB)')
-    ap.add_argument('--dev-end', help='shortened development end (UTC midnight, e.g. 2026-09-01T00:00:00Z)')
+    ap.add_argument('--expect-rules-sha256', help='sha256 of the frozen rules artifact; any other is refused')
     ap.add_argument('--straddle-artifact', help=f'hash-bound pre-cutoff rows of the straddle month ({STRADDLE_FORMAT})')
+    ap.add_argument('--expect-straddle-sha256', help='sha256 of the frozen straddle artifact; any other is refused')
+    ap.add_argument('--amendment-record', help=f'signed prereg amendment ({AMENDMENT_FORMAT}); the only shortened end')
+    ap.add_argument('--expect-amendment-sha256', help='sha256 of the signed amendment record')
     ap.add_argument('--dry-run', action='store_true', help='validate inputs/coverage; write nothing')
     ap.add_argument('--split', action='append', help='limit to these split keys (default: train + walk_forward)')
     ap.add_argument('--cache-months', type=int, default=512)
@@ -1591,8 +1959,10 @@ def main(argv=None) -> int:
         src = ArchiveSource(man, a.store, symbols, prm.cutoff_ms, a.cache_months)
         if a.straddle_artifact:
             src.attach_straddle(StraddleArtifact.load(a.straddle_artifact, prm.cutoff_ms))
-        kw = dict(only_keys=a.split, holdout_freeze_record=a.holdout_freeze_record,
-                  dev_end=S.parse_utc(a.dev_end) if a.dev_end else None)
+        amend = Amendment.load(a.amendment_record, raw, prm.cutoff_ms, a.expect_amendment_sha256) \
+            if a.amendment_record else None
+        kw = dict(only_keys=a.split, holdout_freeze_record=a.holdout_freeze_record, amendment=amend,
+                  expect_rules_sha256=a.expect_rules_sha256, expect_straddle_sha256=a.expect_straddle_sha256)
         if a.dry_run:
             print(json.dumps(run(a.out or '', src, symbols, rules, prereg, raw, dry_run=True,
                                  max_rss_mb=a.max_rss_mb, **kw),

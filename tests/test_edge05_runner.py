@@ -26,11 +26,24 @@ RULE = {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0, 'm
 CODE = {'commit': 'c' * 40, 'dirty': False, 'modules': {m: '0' * 64 for m in R.CODE_MODULES}}
 
 
+SNAP = 'exchangeInfo@2019-01-01T00:00:00Z'
+PRODUCER = {'commit': 'd' * 40, 'script': 'tools/research/produce_pit_rules.py', 'script_sha256': 'e' * 64}
+
+
+def prov(kind, files, coverage, manifest_sha='f' * 64):
+    return {'source': {'kind': kind, 'endpoint': R.PROVENANCE_SOURCES[kind]}, 'source_manifest_sha256': manifest_sha,
+            'upstream_files': [{'name': n, 'sha256': h, 'as_of': '2026-09-28T00:00:00Z'} for n, h in files],
+            'producer': dict(PRODUCER), 'coverage': coverage}
+
+
 def rules_doc(per=None, syms=SYMS):
     per = per or {}
-    return {'format': R.RULES_FORMAT, 'source': 'synthetic-test',
-            'symbols': {s: per.get(s, [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})])
-                        for s in syms}}
+    symbols = {s: per.get(s, [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})])
+               for s in syms}
+    cov = [{'symbol': s, 'series': 'rules', 'from': iv['from'], 'to': iv['to'], 'rows': 1, 'upstream': [SNAP]}
+           for s, ivs in symbols.items() for iv in ivs]
+    return {'format': R.RULES_FORMAT, 'provenance': prov('binance-um-exchangeinfo-snapshots', [(SNAP, 'a' * 64)], cov),
+            'symbols': symbols}
 
 
 def pit(per=None):
@@ -385,6 +398,10 @@ def test_pit_rules_interval_gap_is_rules_uncovered_and_changes_apply_by_date():
     none = pit({SYMS[0]: [dict(RULE, **{'from': '2021-03-02T00:00:00Z', 'to': '2022-01-01T00:00:00Z'})]})
     ep = R.safe_replay('long', D0, BASE, 4.0, _day(FLAT), lambda t: none.at(SYMS[0], t), prm(), D0 + 10 * DAY)
     assert ep['why'] == 'rules_uncovered' and ep['at_ms'] == D0 + 4 * H
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):                    # outside declared coverage
+        gap.lookup(SYMS[0], D0 + 28 * H)
+    ep = R.safe_replay('long', D0, BASE, 4.0, _day(FLAT), lambda t: gap.lookup(SYMS[0], t), prm(), D0 + 10 * DAY)
+    assert ep['why'] == 'provenance_uncovered' and 'provenance_uncovered' in R.GATE_FAILING_REASONS
 
 
 def test_pit_rules_validation():
@@ -397,8 +414,9 @@ def test_pit_rules_validation():
         pit({SYMS[0]: [{k: v for k, v in a.items() if k != 'min_notional'}]})
     with pytest.raises(R.RunnerError):
         R.PitRules({'format': 'flat', 'source': 'x', 'symbols': {}}, b'')
-    assert RULES.identity() == {'format': R.RULES_FORMAT, 'source': 'synthetic-test',
-                                'sha256': hashlib.sha256(R.canon(rules_doc())).hexdigest()}
+    ident = RULES.identity()
+    assert ident['sha256'] == hashlib.sha256(R.canon(rules_doc())).hexdigest() and ident['bad_coverage_entries'] == 0
+    assert ident['provenance']['producer'] == PRODUCER and len(ident['provenance']['digest']) == 64
 
 
 # ------------------------------------------------------------------ accounting classification
@@ -426,6 +444,7 @@ def test_classify_ok_incomplete_and_unresolved():
 # ------------------------------------------------------------------ full runs, resume, memory, holdout
 def _run(out, src=None, rules=RULES, code=CODE, max_rss_mb=8192, **kw):
     p, raw = short_prereg()
+    kw.setdefault('expect_rules_sha256', rules.sha256 if rules is not None else None)
     return R.run(str(out), src or Synth(grids={SYMS[3]: 4, SYMS[7]: 1}), SYMS, rules, p, raw, code=code,
                  max_rss_mb=max_rss_mb, **kw)
 
@@ -448,6 +467,8 @@ def test_full_run_summary_identity_and_conventions(full, tmp_path):
     assert all(f['unresolved'] == 0 and f['days'] == f['scheduled_days'] for f in wf['short']['data']['folds'].values())
     assert wf['short']['capacity_inputs_missing'] == 0 and wf['short']['checks']['capacity'] is True
     assert summ['policy']['boot_n'] == 10000 and summ['dev_end'] is None
+    assert {'AGE-ONLY-NO-COHORT-REPORTED', 'DATA-LOSS-NO-COHORT-GATED', 'ENTRY-EXIT-MAX-FILTERS',
+            'UW-COUNTS-RECOVERY-POINT', 'PROVENANCE-BOUND-ARTIFACTS'} <= set(summ['labels'])
     assert summ['conventions'] == R.CONVENTIONS and 'WORST-COHORT-NET-R-IS-SUM' in summ['labels']
     ident = json.loads(b['run.json'])
     assert ident['code'] == CODE and ident['rules'] == RULES.identity() and ident['conventions'] == R.CONVENTIONS
@@ -547,8 +568,10 @@ def test_rules_gap_makes_episodes_incomplete_in_a_run(tmp_path):
                    dict(RULE, **{'from': '2021-03-20T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})] for s in SYMS})
     summ = _run(tmp_path / 'g', rules=gap, only_keys=['walk_forward[1]'])
     row = summ['splits']['walk_forward[1]']['short']['rows']['base_x1']
-    assert row['incomplete_by_reason'].get('rules_uncovered', 0) > 0 and row['unresolved'] == 0
-    assert summ['walk_forward']['short']['verdict'] == 'INCOMPLETE'                     # > 2% of the fold
+    assert row['incomplete_by_reason'].get('provenance_uncovered', 0) > 0 and row['unresolved'] == 0
+    assert summ['walk_forward']['short']['verdict'] == 'INCOMPLETE'
+    fold = summ['walk_forward']['short']['data']['folds']['walk_forward[1]']
+    assert fold['gate_failing_incomplete'] > 0 and not fold['ok']
 
 
 def test_baselines_run_through_the_book_with_refusals_and_cap(tmp_path):
@@ -667,7 +690,8 @@ def test_holdout_and_split_boundary_are_refused(tmp_path):
     cut = R.params_of(p).cutoff_ms
     assert cut == S.parse_utc('2021-07-05T00:00:00Z')
     with pytest.raises(R.HoldoutRefused):
-        R.run(str(tmp_path / 'x'), Synth(leak=cut), SYMS, RULES, p, raw, code=CODE, max_rss_mb=8192)
+        R.run(str(tmp_path / 'x'), Synth(leak=cut), SYMS, RULES, p, raw, code=CODE, max_rss_mb=8192,
+              expect_rules_sha256=RULES.sha256)
 
 
 def test_dry_run_writes_nothing(tmp_path):
@@ -738,7 +762,8 @@ def test_archive_source_reads_months_lazily_and_never_opens_the_straddle_month(t
     assert src.straddle_skipped == 1 and src.first_ms('AAAUSDT')['funding'] == files[0]['first_open_ms']
     rows = src.funding('AAAUSDT', S.parse_utc('2021-01-10T00:00:00Z'), S.parse_utc('2021-01-11T00:00:00Z'))
     assert [r.time_ms - 5 for r in rows] == [S.parse_utc('2021-01-10T00:00:00Z') + i * 8 * H for i in range(3)]
-    assert src.funding('AAAUSDT', S.parse_utc('2021-02-01T00:00:00Z'), S.parse_utc('2021-02-05T00:00:00Z')) == []
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):                 # never opened, never silent []
+        src.funding('AAAUSDT', S.parse_utc('2021-02-01T00:00:00Z'), S.parse_utc('2021-02-05T00:00:00Z'))
     (store / (files[0]['path'] + '.ok')).write_text('0' * 64)        # tampered sidecar: refused on the next open
     src2 = R.ArchiveSource(str(man), str(store), ['AAAUSDT'], cut)
     with pytest.raises(Exception):
@@ -752,35 +777,146 @@ class StraddleSynth(Synth):
     straddle = None
 
 
+def amend(dev_end, **over):
+    p, raw = short_prereg()
+    doc = {'format': R.AMENDMENT_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': R.sha(raw),
+           'status': 'FROZEN - SIGNED BY CODEX', 'signed': True, 'signed_by': 'codex', 'dev_end': dev_end,
+           'reason': 'synthetic test amendment'}
+    doc.update(over)
+    b = R.canon(doc)
+    return doc, b, raw
+
+
+def load_amend(dev_end, expect=True, **over):
+    doc, b, raw = amend(dev_end, **over)
+    return R.Amendment(doc, b, raw, R.params_of(short_prereg()[0]).cutoff_ms, R.sha(b) if expect is True else expect)
+
+
 def test_straddle_month_is_never_a_silent_drop(tmp_path):
-    with pytest.raises(R.RunnerError, match='straddle'):
+    with pytest.raises(R.RunnerError, match='straddle'):             # evidence run without the artifact refuses
         _run(tmp_path / 's', src=StraddleSynth())
     assert not (tmp_path / 's').exists()
     rep = _run(tmp_path / 's', src=StraddleSynth(), dry_run=True)
-    assert rep['straddle_unresolved_from'] == '2021-06-01T00:00:00Z'
-    with pytest.raises(R.RunnerError, match='straddle'):             # a dev-end past the straddle month: refused
-        _run(tmp_path / 's', src=StraddleSynth(), dev_end=S.parse_utc('2021-06-10T00:00:00Z'))
+    assert rep['straddle_unresolved_from'] == '2021-06-01T00:00:00Z' and rep['expected_artifact_mismatch'] == ['straddle']
+    with pytest.raises(R.RunnerError, match='straddle'):             # an amendment past the straddle month: refused
+        _run(tmp_path / 's', src=StraddleSynth(), amendment=load_amend('2021-06-10T00:00:00Z'))
     with pytest.raises(R.HoldoutRefused):
-        _run(tmp_path / 's', src=StraddleSynth(), dev_end=S.parse_utc('2021-06-01T12:00:00Z'))
+        load_amend('2021-06-01T12:00:00Z')
+    with pytest.raises(R.RunnerError, match='Amendment'):            # a bare end value is never accepted
+        _run(tmp_path / 's', src=StraddleSynth(), amendment=S.parse_utc('2021-06-01T00:00:00Z'))
+    with pytest.raises(TypeError):
+        _run(tmp_path / 's', src=StraddleSynth(), dev_end=S.parse_utc('2021-06-01T00:00:00Z'))
     dev = S.parse_utc('2021-06-01T00:00:00Z')
-    summ = _run(tmp_path / 's', src=StraddleSynth(), dev_end=dev)
+    am = load_amend('2021-06-01T00:00:00Z')
+    summ = _run(tmp_path / 's', src=StraddleSynth(), amendment=am)
     ident = json.loads((tmp_path / 's' / 'run.json').read_bytes())
     assert ident['dev_end'] == summ['dev_end'] == '2021-06-01T00:00:00Z'
+    assert ident['amendment'] == {'format': R.AMENDMENT_FORMAT, 'sha256': am.sha256, 'dev_end': '2021-06-01T00:00:00Z',
+                                  'signed_by': 'codex'}
     assert summ['dev_end_excluded_days']['walk_forward[4]'] > 0 == summ['dev_end_excluded_days']['walk_forward[0]']
     assert ident['dev_end_excluded_days'] == summ['dev_end_excluded_days']
     last = json.loads((tmp_path / 's' / 'days.jsonl').read_bytes().splitlines()[-1])
     assert S.parse_utc(last['D']) + R.ENTRY_OFFSET + DAY + TF <= dev
     art = StraddleSynth()
-    art.straddle = object()                                           # an attached pre-cutoff artifact
-    assert _run(tmp_path / 't', src=art, stop_after_days=1)['status'] == 'PARTIAL'
+    art.straddle = SimpleNamespace(sha256='ab' * 32)                  # an attached pre-cutoff artifact
+    with pytest.raises(R.RunnerError, match='expected artifact'):     # no / another expected hash: refused
+        _run(tmp_path / 't', src=art, stop_after_days=1)
+    with pytest.raises(R.RunnerError, match='expected artifact'):
+        _run(tmp_path / 't', src=art, stop_after_days=1, expect_straddle_sha256='cd' * 32)
+    assert _run(tmp_path / 't', src=art, stop_after_days=1, expect_straddle_sha256='ab' * 32)['status'] == 'PARTIAL'
+
+
+def test_amendment_record_must_be_signed_hash_bound_and_for_this_prereg():
+    load_amend('2021-06-01T00:00:00Z')
+    with pytest.raises(R.RunnerError, match='expect-amendment'):
+        load_amend('2021-06-01T00:00:00Z', expect=None)
+    with pytest.raises(R.RunnerError, match='expect-amendment'):
+        load_amend('2021-06-01T00:00:00Z', expect='0' * 64)
+    for over in ({'signed': False}, {'status': 'DRAFT'}, {'signed_by': ' '}):
+        with pytest.raises(R.RunnerError, match='signed'):
+            load_amend('2021-06-01T00:00:00Z', **over)
+    with pytest.raises(R.RunnerError, match='prereg'):
+        load_amend('2021-06-01T00:00:00Z', prereg_sha256='0' * 64)
+    with pytest.raises(R.HoldoutRefused):
+        load_amend('2021-08-02T00:00:00Z')                            # past the sealed cutoff
+
+
+def test_cli_has_no_dev_end_option(capsys):
+    with pytest.raises(SystemExit) as e:
+        R.main(['--store', 'x', '--max-rss-mb', '100', '--dev-end', '2021-06-01T00:00:00Z', '--dry-run'])
+    assert e.value.code == 2 and 'dev-end' in capsys.readouterr().err
+
+
+def test_real_run_refuses_a_missing_or_unexpected_rules_artifact_hash(tmp_path):
+    with pytest.raises(R.RunnerError, match='expected artifact.*rules'):
+        _run(tmp_path / 'x', expect_rules_sha256=None)
+    with pytest.raises(R.RunnerError, match='expected artifact.*rules'):
+        _run(tmp_path / 'x', expect_rules_sha256='0' * 64)
+    assert not (tmp_path / 'x').exists()
+    assert _run(tmp_path / 'x', expect_rules_sha256='0' * 64, dry_run=True)['expected_artifact_mismatch'] == ['rules']
+
+
+def test_rules_provenance_free_text_bad_hash_and_bad_coverage():
+    doc = rules_doc()
+    for mut in (lambda d: d['provenance'].__setitem__('source', 'synthetic-test'),
+                lambda d: d['provenance']['source'].__setitem__('endpoint', 'https://example.invalid/'),
+                lambda d: d['provenance']['source'].__setitem__('kind', 'binance-vision-archive'),
+                lambda d: d['provenance']['upstream_files'][0].__setitem__('sha256', 'xyz'),
+                lambda d: d['provenance']['upstream_files'][0].__setitem__('name', 'whatever.json'),
+                lambda d: d['provenance'].__setitem__('source_manifest_sha256', 'nope'),
+                lambda d: d['provenance']['producer'].__setitem__('commit', 'HEAD'),
+                lambda d: d['provenance'].pop('producer'),
+                lambda d: d['provenance'].__setitem__('coverage', []),
+                lambda d: d['provenance']['coverage'][0].__setitem__('upstream', ['exchangeInfo@2020-01-01T00:00:00Z']),
+                lambda d: d.__setitem__('source', 'synthetic-test')):
+        d = copy.deepcopy(doc)
+        mut(d)
+        with pytest.raises(R.RunnerError):
+            R.PitRules(d, R.canon(d))
+    d = copy.deepcopy(doc)                                            # omitted row: coverage says 2 intervals
+    d['provenance']['coverage'][0]['rows'] = 2
+    r = R.PitRules(d, R.canon(d))
+    assert r.bad_coverage == 1 and r.identity()['bad_coverage_entries'] == 1
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        r.lookup(SYMS[0], D0)
+    assert r.lookup(SYMS[1], D0)['tick'] == RULE['tick']
+    d = copy.deepcopy(doc)                                            # a symbol without declared coverage
+    d['provenance']['coverage'] = [c for c in d['provenance']['coverage'] if c['symbol'] != SYMS[2]]
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        R.PitRules(d, R.canon(d)).lookup(SYMS[2], D0)
+
+
+def test_uncovered_rules_fail_the_data_gate_even_below_two_percent(tmp_path):
+    d = rules_doc()
+    d['provenance']['coverage'][0]['rows'] = 2                        # one symbol of 18 voided -> few episodes
+    r = R.PitRules(d, R.canon(d))
+    summ = _run(tmp_path / 'u', rules=r, only_keys=['walk_forward[0]'])
+    folds = [summ['walk_forward'][s]['data']['folds']['walk_forward[0]'] for s in R.SIDES]
+    assert sum(f['gate_failing_incomplete'] for f in folds) > 0
+    assert all(not f['ok'] or f['gate_failing_incomplete'] == 0 for f in folds)
+    assert any(summ['walk_forward'][s]['verdict'] == 'INCOMPLETE' for s in R.SIDES)
+
+
+FUND_SEP = 'um/monthly/fundingRate/AUSDT/AUSDT-fundingRate-2026-09.zip'
+K4_SEP = 'um/monthly/klines/AUSDT/4h/AUSDT-4h-2026-09.zip'
+
+
+def straddle_doc(series, cov_rows=(1, 1)):
+    cov = [{'symbol': 'AUSDT', 'series': 'funding', 'from': '2026-09-01T00:00:00Z', 'to': '2026-09-28T00:00:00Z',
+            'rows': cov_rows[0], 'upstream': [FUND_SEP]},
+           {'symbol': 'AUSDT', 'series': '4h', 'from': '2026-09-01T00:00:00Z', 'to': '2026-09-28T00:00:00Z',
+            'rows': cov_rows[1], 'upstream': [K4_SEP]}]
+    return {'format': R.STRADDLE_FORMAT, 'cutoff': '2026-09-28T00:00:00Z',
+            'provenance': prov('binance-vision-archive', [(FUND_SEP, '1' * 64), (K4_SEP, '2' * 64)], cov),
+            'series': series}
 
 
 def test_straddle_artifact_is_pre_cutoff_only_and_hash_bound():
     cut = S.parse_utc('2026-09-28T00:00:00Z')
     t = S.parse_utc('2026-09-27T16:00:00Z')
-    doc = {'format': R.STRADDLE_FORMAT, 'cutoff': '2026-09-28T00:00:00Z',
-           'series': {'funding': {'AUSDT': [[t + 5, 1e-4, 8]]}, '4h': {'AUSDT': [[t, 1, 2, 0.5, 1.5, 3, 4]]}}}
+    doc = straddle_doc({'funding': {'AUSDT': [[t + 5, 1e-4, 8]]}, '4h': {'AUSDT': [[t, 1, 2, 0.5, 1.5, 3, 4]]}})
     art = R.StraddleArtifact(doc, R.canon(doc), cut)
+    assert art.bad_coverage == 0 and art.provenance.covered('AUSDT', 'funding', S.parse_utc('2026-09-01T00:00:00Z'), cut)
     assert art.sha256 == hashlib.sha256(R.canon(doc)).hexdigest()
     assert [r.time_ms for r in art.slice('AUSDT', 'funding', t, cut)] == [t + 5]
     for bad in ([[cut, 0.0, 8]], [[S.parse_utc('2026-08-31T16:00:00Z'), 0.0, 8]]):
@@ -796,6 +932,63 @@ def test_straddle_artifact_is_pre_cutoff_only_and_hash_bound():
         R.StraddleArtifact(d, R.canon(d), cut)
     with pytest.raises(R.HoldoutRefused):
         R.StraddleArtifact(dict(doc, cutoff='2026-09-01T00:00:00Z'), b'', cut)
+
+
+def test_straddle_provenance_mutants():
+    cut = S.parse_utc('2026-09-28T00:00:00Z')
+    t = S.parse_utc('2026-09-27T16:00:00Z')
+    series = {'funding': {'AUSDT': [[t + 5, 1e-4, 8]]}, '4h': {'AUSDT': [[t, 1, 2, 0.5, 1.5, 3, 4]]}}
+    d = straddle_doc(series, cov_rows=(2, 1))                         # omitted row: count mismatch voids the entry
+    art = R.StraddleArtifact(d, R.canon(d), cut)
+    assert art.bad_coverage == 1 and not art.provenance.covered('AUSDT', 'funding', t, cut)
+    assert art.provenance.covered('AUSDT', '4h', t, cut)
+    for mut in (lambda x: x['provenance'].__setitem__('source', 'data.binance.vision'),          # free text
+                lambda x: x['provenance']['upstream_files'][0].__setitem__('sha256', 'Z' * 64),
+                lambda x: x['provenance']['coverage'][0].__setitem__('upstream', [K4_SEP]),    # wrong series file
+                lambda x: x['provenance']['coverage'].pop(1),                               # undeclared 4h rows
+                lambda x: x.pop('provenance')):
+        x = copy.deepcopy(straddle_doc(series))
+        mut(x)
+        with pytest.raises(R.RunnerError):
+            R.StraddleArtifact(x, R.canon(x), cut)
+
+
+def test_straddle_artifact_binds_manifest_and_upstream_hashes_and_covers_reads(tmp_path):
+    store = tmp_path / 'store'
+    cut = S.parse_utc('2021-02-10T00:00:00Z')
+    files = []
+    for y_m, lo, n in (('2021-01', '2021-01-01T00:00:00Z', 93), ('2021-02', '2021-02-01T00:00:00Z', 84)):
+        ts = [S.parse_utc(lo) + i * 8 * H + 5 for i in range(n)]
+        rel = f'um/monthly/fundingRate/AAAUSDT/AAAUSDT-fundingRate-{y_m}.zip'
+        csv = 'calc_time,funding_interval_hours,last_funding_rate\n' + ''.join(f'{t},8,0.0001\n' for t in ts)
+        files.append({'path': rel, 'series': 'fundingRate', 'symbol': 'AAAUSDT', 'interval': None,
+                      'sha256': _zip(store, rel, csv), 'bytes': 1, 'rows': n,
+                      'first_open_ms': ts[0], 'last_open_ms': ts[-1], 'source': {}})
+    man = tmp_path / 'm.json.gz'
+    with gzip.open(man, 'wt', encoding='utf-8') as f:
+        f.write(json.dumps({'format': 'x', 'files': files}, indent=1))
+    feb = S.parse_utc('2021-02-01T00:00:00Z')
+    pre = [[feb + i * 8 * H + 5, 1e-4, 8] for i in range(27)]           # 9 days x 3 pre-cutoff rows
+    msha = R.file_sha(str(man))
+
+    def art(upstream_sha=files[1]['sha256'], manifest_sha=msha, rows=27):
+        cov = [{'symbol': 'AAAUSDT', 'series': 'funding', 'from': '2021-02-01T00:00:00Z',
+                'to': '2021-02-10T00:00:00Z', 'rows': rows, 'upstream': [files[1]['path']]}]
+        doc = {'format': R.STRADDLE_FORMAT, 'cutoff': S.utc(cut),
+               'provenance': prov('binance-vision-archive', [(files[1]['path'], upstream_sha)], cov, manifest_sha),
+               'series': {'funding': {'AAAUSDT': pre}}}
+        return R.StraddleArtifact(doc, R.canon(doc), cut)
+    src = R.ArchiveSource(str(man), str(store), ['AAAUSDT'], cut)
+    with pytest.raises(R.RunnerError, match='upstream hash'):
+        src.attach_straddle(art(upstream_sha='9' * 64))
+    with pytest.raises(R.RunnerError, match='source manifest'):
+        src.attach_straddle(art(manifest_sha='9' * 64))
+    src.attach_straddle(art())
+    rows = src.funding('AAAUSDT', S.parse_utc('2021-01-31T00:00:00Z'), S.parse_utc('2021-02-02T00:00:00Z'))
+    assert len(rows) == 6 and src.identity()['straddle']['sha256'] == src.straddle.sha256
+    src.attach_straddle(art(rows=28))                                 # count mismatch: every read there is unproven
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        src.funding('AAAUSDT', feb, S.parse_utc('2021-02-02T00:00:00Z'))
 
 
 class LossSynth(Synth):
@@ -893,13 +1086,59 @@ def test_real_memory_counters_report_private_and_working_set():
     assert ws > 0 and pv > 0 and R.rss_mb() == max(ws, pv)
 
 
-def test_archive_cache_is_clamped_to_the_cap_and_checked_around_decompress(tmp_path):
-    src = R.ArchiveSource.__new__(R.ArchiveSource)
-    src.cap, src.check = 512, None
-    src.set_memory(lambda: None, 200)
-    assert src.cap == 50
-    src.set_memory(lambda: None, 10)
-    assert src.cap == 8
+def _fund_store(tmp_path, months, member=None):
+    store = tmp_path / 'store'
+    files = []
+    for y_m in months:
+        lo = S.parse_utc(y_m + '-01T00:00:00Z')
+        ts = [lo + i * 8 * H + 5 for i in range(84)]
+        rel = f'um/monthly/fundingRate/AAAUSDT/AAAUSDT-fundingRate-{y_m}.zip'
+        csv = member if member is not None else \
+            'calc_time,funding_interval_hours,last_funding_rate\n' + ''.join(f'{t},8,0.0001\n' for t in ts)
+        p = store / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(p, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr(rel.rsplit('/', 1)[1][:-4] + '.csv', csv)
+        h = hashlib.sha256(p.read_bytes()).hexdigest()
+        (store / (rel + '.ok')).write_text(h)
+        files.append({'path': rel, 'series': 'fundingRate', 'symbol': 'AAAUSDT', 'interval': None, 'sha256': h,
+                      'bytes': 1, 'rows': 84, 'first_open_ms': ts[0], 'last_open_ms': ts[-1], 'source': {}})
+    man = tmp_path / 'm.json.gz'
+    with gzip.open(man, 'wt', encoding='utf-8') as f:
+        f.write(json.dumps({'format': 'x', 'files': files}, indent=1))
+    return R.ArchiveSource(str(man), str(store), ['AAAUSDT'], S.parse_utc('2022-01-01T00:00:00Z'))
+
+
+def test_small_archive_that_expands_past_the_budget_is_refused_before_the_peak(tmp_path, monkeypatch):
+    bomb = '0' * (20 * 2 ** 20)                                       # ~20 KB compressed, 20 MB expanded
+    src = _fund_store(tmp_path, ['2021-02'], member=bomb)
+    zp = tmp_path / 'store' / 'um/monthly/fundingRate/AAAUSDT/AAAUSDT-fundingRate-2021-02.zip'
+    assert zp.stat().st_size < 2 ** 20
+    monkeypatch.setattr(R, '_mem_counters', lambda: (90.0, 90.0))      # 10 MB of a 100 MB cap remain
+    src.set_memory(lambda: None, 100)
+
+    def never(*a, **k):
+        raise AssertionError('expanded before admission')
+    monkeypatch.setattr(src, '_stream_rows', never)
+    with pytest.raises(R.MemoryLimit, match='before decompressing'):
+        src.funding('AAAUSDT', S.parse_utc('2021-02-02T00:00:00Z'), S.parse_utc('2021-02-03T00:00:00Z'))
+
+
+def test_archive_rows_stream_with_checkpoints_and_cache_evicts_by_measured_bytes(tmp_path, monkeypatch):
+    src = _fund_store(tmp_path, ['2021-02', '2021-03', '2021-04'])
+    calls = []
+    src.set_memory(lambda: calls.append(1), 8192)
+    src.CHECK_ROWS = 10
+    assert src.cache_budget == 8192 * 2 ** 20 // 4
+    rows = src.funding('AAAUSDT', S.parse_utc('2021-02-02T00:00:00Z'), S.parse_utc('2021-02-03T00:00:00Z'))
+    assert len(rows) == 3 and len(calls) >= 84 // 10 + 2               # per-N-rows checkpoints + before/after
+    one = src.cache_bytes
+    assert one == next(iter(src._lru.values()))[2] and one > 84 * 100  # measured, not a per-month estimate
+    src.cache_budget = int(one * 1.5)                                  # room for one measured month only
+    src.funding('AAAUSDT', S.parse_utc('2021-03-02T00:00:00Z'), S.parse_utc('2021-03-03T00:00:00Z'))
+    src.funding('AAAUSDT', S.parse_utc('2021-04-02T00:00:00Z'), S.parse_utc('2021-04-03T00:00:00Z'))
+    assert list(src._lru) == ['um/monthly/fundingRate/AAAUSDT/AAAUSDT-fundingRate-2021-04.zip']
+    assert src.cache_bytes == src._lru[list(src._lru)[0]][2]
 
 
 @pytest.mark.parametrize('name,value', [('BOOT_N', 9999), ('BOOT_SEED', 1), ('BOOT_BLOCK', 20), ('B0_BOOKS', 999),
