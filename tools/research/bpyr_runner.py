@@ -667,8 +667,10 @@ def price_episode(pos: Pos, row: str) -> dict:
 def entry_set(data: dict, windows: Windows, mgmt_s1: dict, check=None) -> dict:
     """E = every S1 entry under the fill-time re-arm rule, symbol ascending. A signal at the close of i fills at the
     open of i+1 when i is eligible, i+1 is contiguous and inside [dev start, last-entry cutoff), and the previous S1
-    episode freed the symbol at or before that open (phase-1 exits free it for the same open)."""
-    eps, incomplete, unfilled = [], [], 0
+    episode freed the symbol at or before that open (phase-1 exits free it for the same open). A signal whose next
+    fill bar is missing (in the entry window) is a data-gap INCOMPLETE kept in `unfilled` (symbol, expected fill time,
+    slice); run() adds it to every stage's per-slice K9 numerator; `unfilled_gap` stays its count."""
+    eps, incomplete, unfilled = [], [], []
     for sym in sorted(data):
         if check:
             check()
@@ -679,7 +681,9 @@ def entry_set(data: dict, windows: Windows, mgmt_s1: dict, check=None) -> dict:
                 continue
             f = i + 1
             if f >= len(sd.t) or not sd.contiguous(f):
-                unfilled += 1 if windows.entry_ok(sd.t[i] + TF) else 0
+                if windows.entry_ok(sd.t[i] + TF):
+                    unfilled.append({'sym': sym, 't': sd.t[i] + TF, 'reason': 'unfilled_fill_bar',
+                                     'slice': windows.slice_of(sd.t[i] + TF)})
                 continue
             if not windows.entry_ok(sd.t[f]) or f < free:
                 continue
@@ -692,7 +696,7 @@ def entry_set(data: dict, windows: Windows, mgmt_s1: dict, check=None) -> dict:
                 continue
             eps.append({'sym': sym, 'f': f, 't': sd.t[f], 'slice': windows.slice_of(sd.t[f]), 'free': pos.exit[2]})
             free = pos.exit[2]
-    return {'episodes': eps, 'incomplete': incomplete, 'unfilled_gap': unfilled}
+    return {'episodes': eps, 'incomplete': incomplete, 'unfilled': unfilled, 'unfilled_gap': len(unfilled)}
 
 
 def unit_replays(data: dict, E: dict, p: dict, stage: str, rows=tuple(ROWS), check=None) -> dict:
@@ -1421,7 +1425,22 @@ def rules_of(pit):
             return pit.lookup(sym, t)
         except E5.Incomplete:
             return None
+    at.identity = getattr(pit, "identity", None)        # no identity -> rules_identity() refuses
     return at
+
+
+def rules_identity(rules) -> dict:
+    """The rules callable's immutable identity (PitRules.identity via rules_of): a 64-hex artifact sha256 and no bad /
+    unauthenticated / causally-unsupported / unsourced entry; anything else refuses."""
+    fn = getattr(rules, 'identity', None)
+    ident = fn() if callable(fn) else None
+    h = ident.get('sha256') if isinstance(ident, dict) else None
+    if not (isinstance(h, str) and len(h) == 64 and all(ch in '0123456789abcdef' for ch in h)):
+        raise RunnerError('the point-in-time rules have no immutable identity (sha256); refusing')
+    if any(ident.get(k) for k in ('bad_coverage_entries', 'unauthenticated_entries', 'causally_unsupported_intervals',
+                                  'unsourced_intervals')):
+        raise RunnerError('the point-in-time rules identity carries bad / unauthenticated / unsourced entries')
+    return json.loads(canon(ident))
 
 
 # ------------------------------------------------------------------ run (in memory only)
@@ -1471,14 +1490,17 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
             raise IdentityMismatch(f'{universe} needs exactly its {len(allowed)} symbols; missing '
                                    f'{sorted(allowed - set(data))}, extra {sorted(set(data) - allowed)}')
         universe = f'PARTIAL-TEST({universe})'                 # engine tests only: never a gated result
+    for key, sd in data.items():
+        if getattr(sd, 'sym', None) != key:
+            raise IdentityMismatch(f'data[{key!r}] holds SymbolData for {getattr(sd, "sym", None)!r}')
     for sd in data.values():
         if sd.t and sd.t[-1] >= w.sealed:
             raise HoldoutRefused(f'{sd.sym}: bar at or after the sealed cutoff')
     s1 = stage_mgmt(p, 'S1')
     E = entry_set(data, w, s1, check)
     stages = {s: unit_replays(data, E, p, s, check=check) for s in STAGE_IDS}
-    for s in STAGE_IDS:                                        # E's own INCOMPLETE entries count in every stage's data gate
-        stages[s]['incomplete'] = stages[s]['incomplete'] + E['incomplete']
+    for s in STAGE_IDS:     # E's own INCOMPLETE entries and its unfilled-fill-bar data gaps count in every stage's K9
+        stages[s]['incomplete'] = stages[s]['incomplete'] + E['incomplete'] + E['unfilled']
     out = {'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code, 'evaluated': False,
            'decided': False, 'universe': universe, 'report_only': universe != 'FIXED-17', 'disclosures': list(DISCLOSURES),
            'parity_declared': list(PARITY_DECLARED),
@@ -1542,11 +1564,12 @@ DECISION_KEYS = ('H1', 'H2', 'H3', 'credited_stage')     # withheld from report-
 def gate_inputs(g: dict, book: dict | None, gated_risk) -> dict:
     """Pure: the exact dict decide() consumes (GATE_KEYS) plus its detail, from the gate dict and the CREDITED
     stage's book (None when no stage is credited or the book was replayed for another stage: then the book inputs are
-    failing, so no survival can be read from it). data = S1 data AND the credited stage's own data gate AND the
+    failing, so no survival can be read from it). data = the data gate of EVERY sequential stage S1, S2 and S3 (K9
+    precedence: an untestable later stage never falls back to a lower-stage survival; S1-T stays report-only) AND the
     credited book's data state (<= 2% INCOMPLETE per slice, no unfilled-for-data entry, no unresolved accounting row)
     at base and x1.5; causality = book_causality() at base and x1.5; tails = worst credited-stage episode >= -3R."""
     st = g['credited_stage']
-    data = bool(g['data']) and (st is None or bool(g['data_by_stage'][st]['pass']))
+    data = bool(g['data']) and all(bool(g['data_by_stage'][s]['pass']) for s in ('S1', 'S2', 'S3'))
     out = {'activity': bool(g['activity']), 'b0': g['b0'], 'H1': g['H1'], 'H2': g['H2'], 'H3': g['H3'],
            'credited_stage': st}
     if book is None:
@@ -1640,6 +1663,7 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
         raise IdentityMismatch(f'the symbol plan must be exactly {universe}: missing {sorted(want - set(plan))}, '
                                f'extra {sorted(set(plan) - want)}')
     src_id = source_identity(src)
+    rules_id = rules_identity(rules)
     ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
     if os.path.commonpath([os.path.abspath(outdir), ledger_dir]) == ledger_dir:
         raise WriteRefused('the run directory may not be the ledger directory')
@@ -1648,7 +1672,7 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
              'warmup_start': ws, 'slip': {'c': SLIP_C_CRYPTO, 'floor_bps': SLIP_FLOOR_BPS}, 'rows': list(ROWS),
              'b0_replicates': b0_replicates, 'resamples': resamples, 'disclosures': list(DISCLOSURES),
              'parity_declared': list(PARITY_DECLARED), 'authorization': [authorization.issuer, authorization.comment_id],
-             'source_identity': src_id, 'universe': universe,
+             'source_identity': src_id, 'rules_identity': rules_id, 'universe': universe,
              'boundaries': {'holdout_read': False, 'ledger_written': False, 'verdict_written': False, 'mainnet': False}}
     os.makedirs(outdir, exist_ok=True)
     idp = os.path.join(outdir, 'run.json')
@@ -1699,8 +1723,11 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
               universe=universe)
     if source_identity(src) != src_id:
         raise RunnerError('the source identity changed during pass 2; result discarded')
+    if rules_identity(rules) != rules_id:
+        raise RunnerError('the point-in-time rules identity changed during the run; result discarded')
     res['identity_sha256'] = run_digest
     res['source_identity'] = src_id
+    res['rules_identity'] = rules_id
     res['evaluated'], res['decided'] = True, False     # authorized market-data statistics; no decision / verdict
     return res
 

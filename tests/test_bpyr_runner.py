@@ -601,8 +601,15 @@ def _fixed_src():
     return _SRC['src']
 
 
+def _pit_rules(h='c' * 64, **bad):
+    """A rules callable carrying an immutable PitRules-shaped identity (test-only)."""
+    f = lambda s, t: RULE                                                                # noqa: E731
+    f.identity = lambda: dict({'format': 'test-rules', 'sha256': h}, **bad)
+    return f
+
+
 def _execute(pf, out, **kw):
-    args = dict(symbols=list(reversed(FIXED)), rules=lambda s, t: RULE, authorization=AUTH(pf), max_rss_mb=4096,
+    args = dict(symbols=list(reversed(FIXED)), rules=_pit_rules(), authorization=AUTH(pf), max_rss_mb=4096,
                 rss=lambda: 100.0, warmup_start=T0 - 300 * TF, b0_replicates=2, windows=W(400, warm=240), resamples=20)
     src = kw.pop('src', None) or _fixed_src()
     args.update(kw)
@@ -759,6 +766,51 @@ def test_report_only_universes_carry_no_decision_inputs(pf):
             R.decide(dict(res['report_statistics'], report_only=True))
     assert res['book']['stage'] == 'S3'                                   # an explicit report book only
     assert R.run(_dummy(FIXED), pf, windows=w, resamples=10)['gate_inputs'] is not None   # the primary universe does
+
+
+def test_execute_binds_an_immutable_rules_identity(pf, tmp_path):
+    for bad in (lambda s, t: RULE, _pit_rules(h='xyz'), _pit_rules(unauthenticated_entries=1), _pit_rules(unsourced_intervals=2)):
+        with pytest.raises(R.RunnerError, match='rules'):
+            _execute(pf, tmp_path / 'x', rules=bad)
+        assert not (tmp_path / 'x').exists()                               # refused before any read or write
+    a = _execute(pf, tmp_path / 'a', stop_after=1)
+    run_a = json.loads((tmp_path / 'a' / 'run.json').read_text())
+    assert run_a['rules_identity']['sha256'] == 'c' * 64
+    with pytest.raises(R.RunnerError, match='identity differs'):          # other rules: other run identity
+        _execute(pf, tmp_path / 'a', rules=_pit_rules(h='d' * 64))
+    assert a['status'] == 'PARTIAL'
+    flip = _pit_rules()
+    calls = [0]
+
+    def ident():
+        calls[0] += 1
+        return {'format': 'test-rules', 'sha256': ('c' if calls[0] == 1 else 'e') * 64}
+    flip.identity = ident
+    with pytest.raises(R.RunnerError, match='rules identity changed'):    # swapped mid-run: result discarded
+        _execute(pf, tmp_path / 'b', rules=flip)
+    res = _execute(pf, tmp_path / 'c')
+    assert res['rules_identity'] == run_a['rules_identity']
+
+
+def test_run_refuses_a_symbol_data_under_another_key(pf):
+    w = W(400)
+    data = _dummy(FIXED)
+    data['BTCUSDT'], data['ETHUSDT'] = data['ETHUSDT'], data['BTCUSDT']
+    with pytest.raises(R.IdentityMismatch, match='holds SymbolData'):
+        R.run(data, pf, windows=w, resamples=10)
+
+
+def test_unfilled_fill_bar_is_a_k9_data_gap_in_every_stage(pf):
+    w = W(400)
+    sd = mk('BTCUSDT', flat(400), le={150}, drop={151})                  # the next (fill) bar is missing
+    E = R.entry_set({'BTCUSDT': sd}, w, R.stage_mgmt(pf.prereg, 'S1'))
+    assert E['unfilled'] == [{'sym': 'BTCUSDT', 't': T0 + 151 * TF, 'reason': 'unfilled_fill_bar', 'slice': 2}]
+    assert E['unfilled_gap'] == 1 and not E['episodes']
+    res = R.run({'BTCUSDT': sd}, pf, windows=w, resamples=10, allow_partial_universe_test_only=True)
+    assert res['E']['unfilled_gap'] == 1
+    for s in ('S1', 'S2', 'S3'):
+        d = res['report_statistics']['data_by_stage'][s]
+        assert d['incomplete_frac'][1] == 1.0 and d['pass'] is False         # inside the per-slice 2% fraction
 
 
 def test_execute_requires_the_exact_frozen_universe(pf, tmp_path):
@@ -1329,6 +1381,11 @@ def test_gate_inputs_are_exactly_what_decide_consumes():
     assert R.decide(R.gate_inputs(_g(), _bk(dd=False), 0.01)) == 'FAIL'
     assert R.decide(R.gate_inputs(_g(), _bk(data=False), 0.01)) == 'INCOMPLETE'      # unresolved / book data state
     assert R.decide(R.gate_inputs(_g(s_data=False), _bk(), 0.01)) == 'INCOMPLETE'   # credited stage's own data gate
+    for later in ('S2', 'S3'):                     # K9 precedence: an untestable later stage never falls back to S1/S2
+        g = _g(stage='S1' if later == 'S2' else 'S2', H2=False if later == 'S2' else True)
+        g['data_by_stage'][later]['pass'] = False
+        gi = R.gate_inputs(g, _bk(stage=g['credited_stage']), 0.01)
+        assert gi['data'] is False and R.decide(gi) == 'INCOMPLETE'
     assert R.decide(R.gate_inputs(_g(), None, 0.01)) == 'FAIL'                       # no credited-stage book: never survives
     none = R.gate_inputs(_g(stage=None, H1=False, H2=False), None, 0.01)
     assert R.decide(none) == 'FALSIFIED' and none['causality'] is False
