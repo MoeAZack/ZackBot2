@@ -1,0 +1,149 @@
+{
+  "contract": "AI-SCAN-04",
+  "title": "producer wiring prerequisites: bounded integrity refresh, active-segment exposure, process-private pages (PAPER / shadow only)",
+  "version": 1,
+  "status": "DRAFT",
+  "signed_by": null,
+  "frozen_at": null,
+  "base_commit": "50ec4e3",
+  "doc": "AI_SCAN_04_CONTRACT.md",
+  "assignment": "6468672436",
+  "ruling_source": "Codex 6468672436 (pre-producer requirements a, b, c)",
+  "builds_on": {
+    "AI-SCAN-03": {"pr": 227, "state": "merged", "accepted_merge_sha": "612b53733043912e6ce8ce29acb725ad13a88e68", "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "contracts/ai_scan_03/ai_scan_03_contract.v1.json", "edited_here": false},
+    "AI-SCAN-03A": {"pr": 229, "state": "merged", "accepted_merge_sha": "f75606863c63e0ccdd49e3e61433c10af3ea2f29", "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ai_scan_ledger.py", "edited_here": false}
+  },
+  "slice": {
+    "kind": "contract_only",
+    "runtime_code_changed": false,
+    "files": [
+      "contracts/ai_scan_04/AI_SCAN_04_CONTRACT.md",
+      "contracts/ai_scan_04/ai_scan_04_contract.v1.json",
+      "tests/test_ai_scan04_contract.py"
+    ],
+    "untouched_runtime_files": ["ai_scan.py", "ai_scan_ledger.py", "engine.py", "app.py", "actual_costs.py", "ml_shadow/pairs.py"]
+  },
+  "scope": {
+    "flag": "AI_SCAN",
+    "producer_default_on": false,
+    "producer_enable_requires": "a separate Integration ruling after this contract is FROZEN and its implementation slice is accepted; this contract grants nothing",
+    "paper_only": true,
+    "live_behavior": "refused",
+    "authority": "none",
+    "grants": [],
+    "order_gating": false,
+    "trading_reads_output": false,
+    "model_calls": false,
+    "network_calls": false,
+    "paper_order_authority": false,
+    "settings_writes": false,
+    "engine_state_writes": false,
+    "holds_engine_lock": false
+  },
+  "ledger_constants": {
+    "source": "ai_scan_ledger.py @ f756068 (AI-SCAN-03A); equal to contracts/ai_scan_03 rotation_prerequisite.limits",
+    "SEG_MIN": 1048576,
+    "SEG_MAX": 16777216,
+    "SEGS_PER_READ": 4,
+    "MAX_SEGMENTS": 4096,
+    "max_corpus_bytes": 68719476736
+  },
+  "threat_model": {
+    "detects": ["accidental corruption (bit rot, torn writes, partial copies)", "uncoordinated edits to sealed or active bytes", "a stale eligibility generation after the writer stalls or dies"],
+    "does_not_detect": "a local actor with write access who recomputes record_hash, segment sha256, chain and manifest_hash together; all hashes are unkeyed (keyed authentication is DEFERRED: keyed_ledger_authentication)",
+    "readers_independent_of_eligibility": "read_page re-hashes every sealed segment it reads, so a sealed edit can never reach a verified read; requirement (a) bounds how long the PRODUCER may keep appending after such an edit"
+  },
+  "refresh_cadence": {
+    "requirement": "a",
+    "problem": "eligibility stays True after a sealed-segment edit until the next refresh(); append() never re-verifies sealed files; the AI-SCAN-03A refresh() re-reads every sealed byte (up to 64 GiB) and runs after every seal",
+    "thread": "writer thread only; never the trading thread",
+    "tick_period_s": 60,
+    "tick_basis": "same 60 s schedule as the AI-SCAN-03 C1 heartbeat, so one writer timer drives both",
+    "per_tick": [
+      "load_manifest and require manifest_hash equal to the writer's in-memory manifest_hash (at most MAX_SEGMENTS entries)",
+      "verify the next sealed_segments_per_tick sealed entries at the rolling cursor with _read_entry (bytes, sha256, rows, no malformed line); the cursor wraps to segment 1",
+      "verify the active segment against the in-memory running digest (requirement b)",
+      "on success publish a new eligibility generation stamped with time.monotonic(); on any mismatch disable the producer (manifest_invalid or active_corrupt) and publish ineligible"
+    ],
+    "sealed_segments_per_tick": 4,
+    "max_sealed_bytes_per_tick": 67108864,
+    "max_active_bytes_per_tick": 16777216,
+    "max_segment_bytes_per_tick": 83886080,
+    "max_full_sweep_ticks": 1024,
+    "max_full_sweep_s": 61440,
+    "sweep_basis": "ceil(MAX_SEGMENTS / sealed_segments_per_tick) * tick_period_s = 1024 * 60 s = 61440 s (about 17.1 h) at the 4096-segment cap; at 100 sealed segments the sweep is 25 ticks (25 min)",
+    "seal_refresh": "after a seal, verify only the manifest_hash and the newly sealed entry (at most SEG_MAX bytes); never the whole corpus",
+    "max_bytes_per_seal_refresh": 16777216,
+    "startup": "full verification of every sealed segment (the existing restart index) once per writer start; see open_questions Q1",
+    "overrun": "ticks never overlap; a tick still running when the next is due skips that slot (counted refresh_overrun)",
+    "eligibility_max_age_s": 180,
+    "eligibility_age_rule": "the hook treats a generation older than eligibility_max_age_s (3 ticks) by time.monotonic() as ineligible (counted eligibility_stale): one cached tuple read plus one monotonic clock read, no disk I/O, hashing or manifest traversal (G4 unchanged)",
+    "proposal_for_integration": true
+  },
+  "active_segment": {
+    "requirement": "b",
+    "problem": "the active segment is not hash-bound: a same-size edit to already-written rows is undetected until it is sealed, and seal() would then bind the edited bytes into the manifest",
+    "running_digest": "the writer keeps an in-memory sha256 state and byte length over exactly the bytes it appended (including any torn-line closing newline) since the active segment was opened",
+    "digest_check": "every refresh tick re-reads the active file (at most segment_bound bytes) and requires length and sha256 equal to the running digest",
+    "pre_seal_check": "_rotate / seal compares the file bytes with the running digest before hashing them into a manifest entry; a mismatch refuses the seal and disables (active_corrupt)",
+    "max_active_bytes": "segment_bound (a plain int in [SEG_MIN, SEG_MAX]); unchanged AI-SCAN-03A rotation",
+    "max_active_bytes_cap": 16777216,
+    "max_active_rows": 10000,
+    "max_active_age_s": 21600,
+    "forced_seal": "the writer seals the active segment when the next row would exceed max_active_bytes, when it holds max_active_rows rows, or at the first tick at which it is older than max_active_age_s (counted forced_seals)",
+    "max_undetected_exposure_s": 60,
+    "exposure_basis": "with the writer alive an active edit is detected within one tick; at most max_active_rows rows / max_active_age_s / SEG_MAX bytes are ever unbound at once, which is also the most a quarantine can drop",
+    "manifest_lifetime_basis": "age-only seals every 6 h fill 4096 segments in 4096 * 6 h = 1024 days (about 2.8 years) before manifest_full",
+    "startup_seal": "the running digest does not survive a restart, so a non-empty active segment found at writer start is parsed (every line a valid record) and sealed BEFORE the first append; a parse failure goes to recovery",
+    "recovery": [
+      {"step": 1, "id": "disable", "action": "disable the producer (active_corrupt), publish ineligible; append and seal are refused"},
+      {"step": 2, "id": "persist_marker", "action": "write the manifest disable marker active_corrupt atomically so a restart stays disabled"},
+      {"step": 3, "id": "open_gap", "action": "open a durable coverage gap from the last sealed end through the detection time; any window crossing it is ineligible (G2)"},
+      {"step": 4, "id": "quarantine", "action": "at the next writer start, rename the active file to seg-NNNNNN.jsonl.quarantine-<UTC>; never deleted, never truncated, never sealed, never read as data; valid prefix rows are not re-imported"},
+      {"step": 5, "id": "fresh_active", "action": "open a fresh empty active segment with the same number n and clear the marker only after a full startup verification passes"},
+      {"step": 6, "id": "rearm_limit", "action": "at most max_auto_recoveries per recovery_window_s; a further active_corrupt keeps the producer disabled until a separate Integration ruling"}
+    ],
+    "torn_tail": "a torn final line is treated as corruption: no salvage, same recovery steps",
+    "max_auto_recoveries": 1,
+    "recovery_window_s": 86400,
+    "proposal_for_integration": true
+  },
+  "page_privacy": {
+    "requirement": "c",
+    "problem": "fold_pages trusts the page dicts returned by read_page; a page that crossed a process or serialization boundary could be forged",
+    "chosen_option": "process_private",
+    "rules": [
+      "page dicts from read_page exist only inside one read_window / fold_pages call in one process",
+      "fold_pages consumes only a lazy generator over read_page in the same call; pages are never stored, cached, queued, pickled, JSON-serialized, logged or returned",
+      "the API / UI returns only the fold result (complete, views, error, pages); never a page object or its records"
+    ],
+    "pages_cross_process_boundary": false,
+    "pages_serialized": false,
+    "api_returns_page_objects": false,
+    "max_pages_held_per_fold": 1,
+    "max_page_bytes_in_memory": 67108864,
+    "external_boundary_requires": "a separate contract adding authenticated page contents (per-segment canonical line boundaries the receiver re-hashes against the verified manifest, or a keyed MAC) before any IPC; DEFERRED: ipc_page_transport",
+    "proposal_for_integration": true
+  },
+  "counters_added": ["refresh_ticks", "refresh_overrun", "sweeps_completed", "eligibility_stale", "active_digest_mismatch", "forced_seals", "startup_seals", "active_quarantined", "recovery_refused"],
+  "test_plan": [
+    {"name": "test_refresh_tick_verifies_at_most_four_sealed_segments", "asserts": "one tick reads at most sealed_segments_per_tick sealed entries (<= 64 MiB) plus the active segment; the cursor wraps"},
+    {"name": "test_full_sweep_covers_every_sealed_segment_within_bound", "asserts": "a same-size sealed edit anywhere disables the producer within ceil(n / 4) ticks"},
+    {"name": "test_seal_refresh_verifies_only_the_new_entry", "asserts": "a seal reads only the new segment, never the corpus"},
+    {"name": "test_stale_eligibility_is_refused_on_the_hot_path", "asserts": "a generation older than 180 s is ineligible with no disk I/O or hashing"},
+    {"name": "test_active_same_size_edit_detected_within_one_tick", "asserts": "the running digest catches a same-size edit (including one with a recomputed record_hash) at the next tick"},
+    {"name": "test_pre_seal_digest_mismatch_refuses_the_seal", "asserts": "an edited active segment is never bound into the manifest"},
+    {"name": "test_forced_seal_at_bytes_rows_and_age", "asserts": "each of the three caps seals the active segment"},
+    {"name": "test_startup_seals_a_nonempty_active_before_append", "asserts": "the first append after a restart lands in a fresh segment"},
+    {"name": "test_corrupt_active_is_quarantined_never_sealed_or_deleted", "asserts": "recovery steps 1-5 in order; the quarantined bytes are preserved; the span is a coverage gap"},
+    {"name": "test_second_corruption_in_window_stays_disabled", "asserts": "a second active_corrupt within 24 h is not auto-recovered"},
+    {"name": "test_pages_never_leave_the_fold", "asserts": "no page dict is serialized, queued, cached or returned by the API; fold_pages gets only the in-process read_page generator"},
+    {"name": "test_producer_stays_default_off", "asserts": "nothing in the slice enables the producer or reads the flag as on"}
+  ],
+  "deferred": ["runtime_producer_hook", "producer_enable", "ipc_page_transport", "keyed_ledger_authentication", "remote_model_api_call", "model_promotion", "ui_controls", "trading_authority", "paper_order_authority"],
+  "open_questions": [
+    {"id": "Q1", "question": "startup still verifies every sealed byte (up to 64 GiB at the cap) to build the restart index; accept as a once-per-start cost, or require a bounded startup (index sidecar) before the producer is enabled?"},
+    {"id": "Q2", "question": "is the unkeyed threat model acceptable for PAPER, with keyed_ledger_authentication deferred?"},
+    {"id": "Q3", "question": "tick 60 s, 4 segments per tick (17.1 h worst-case sweep), active age 6 h, 10000 rows, 1 auto-recovery per 24 h: accept or retune?"}
+  ]
+}
