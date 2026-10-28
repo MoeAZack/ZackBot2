@@ -98,30 +98,64 @@ def test_three_slices_before_sealed_cutoff_and_no_holdout():
     assert 'fold_stability' not in p['gates']
 
 
-def test_entry_only_gate_precedes_pyramiding_credit():
+def test_entry_only_gate_precedes_trail_and_isolated_pyramid_credit():
     p = c()
     s, h = p['stages'], p['hypotheses']
-    assert h['H1']['stage'] == 'S1' and h['H2']['stage'] == 'S3' and h['H2']['requires'] == 'H1 PASS'
+    assert (h['H1']['stage'], h['H2']['stage'], h['H3']['stage']) == ('S1', 'S2', 'S3')
+    assert h['H2']['requires'] == 'H1 PASS' and h['H3']['requires'] == 'H1 PASS and H2 PASS'
     assert not set(s['S1']['mgmt']) & set(MGMT_LAYERS)                                  # entry-only, plain stop
     assert s['S1']['mgmt']['stop_atr'] == p['identity']['live_mgmt']['stop_atr']
-    assert {k: v for k, v in s['S3']['mgmt'].items() if k != 'max_bars'} == p['identity']['live_mgmt']
-    assert {k for k in s if k.startswith('S') and s[k]['gated']} == {'S1', 'S3'}
-    assert all(s[k]['gated'] is False for k in ('S1-T', 'S2'))                          # trail stage report-only
-    assert 'netR_S3(e) - netR_S1(e)' in p['episodes']['paired_increment']
-    assert 'identical for S3' in p['episodes']['entry_set'] and 'FALSIFIED' in h['order']
+    assert s['S3']['mgmt'] == p['identity']['live_mgmt'] == ST.merge_mgmt('breakout_pyramid', {})   # live default, no cap
+    assert s['S2']['mgmt'] == {k: v for k, v in s['S3']['mgmt'].items() if k != 'pyramid'}         # differ only by adds
+    assert 'max_bars' not in s['S2']['mgmt'] and 'max_bars' not in s['S3']['mgmt']
+    assert {k for k in s if k.startswith('S') and s[k]['gated']} == {'S1', 'S2', 'S3'} and s['S1-T']['gated'] is False
+    assert 'netR_S3(e) - netR_S2(e)' in p['episodes']['paired_increment']
+    assert 'base' in h['H2']['test'] and 'x1.5' in h['H2']['test'] and 'all 3 slices' in h['H2']['test']
+    assert 'D3 = S3 - S2' in h['H3']['test'] and 'FALSIFIED' in h['order']
     k = p['kill']
     assert all('FALSIFIED' in k[x] and k[x].startswith('S1 ') for x in ('K1', 'K2', 'K3', 'K4', 'K5'))
-    assert 'before any S3 number' in k['precedence']
+    assert 'before any S2 or S3 number' in k['precedence']
+
+
+def test_last_entry_cutoff_and_fail_closed_boundary():
+    from datetime import datetime, timedelta, timezone
+    w = c()['windows']
+    lc = w['last_entry_cutoff']
+    sealed = datetime.strptime(w['sealed_cutoff'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+    at = sealed - timedelta(hours=lc['bars'] * lc['bar_hours'])
+    assert (lc['bars'], lc['bar_hours']) == (180, 4) and at.strftime('%Y-%m-%dT%H:%M:%SZ') == lc['at'] == '2026-08-29T00:00:00Z'
+    assert ((sealed - at).total_seconds() / (4 * 3600)) == 180 and at.hour % 4 == 0      # on the 4h grid
+    b = w['boundary_rule']
+    assert 'INCOMPLETE' in b and 'excluded from every gate statistic' in b and 'counted' in b and 'no price at or after' in b
+
+
+def test_unit_replay_and_book_are_separate_and_declared():
+    p = c()
+    e, bk = p['episodes'], p['book']
+    assert 'independent paired analysis' in e['unit_replay'] and 'overlap is allowed here and only here' in e['unit_replay']
+    assert 'never fed into the book' in e['never_book'] and 'never from E' in bk['source']
+    assert 'one open episode per symbol' in bk['per_symbol'] and 'skipped and counted' in bk['per_symbol']
+    assert 'ascending timestamp' in bk['ordering'] and 'exits first, then adds, then new entries' in bk['ordering']
+    assert 'symbol name ascending' in bk['ordering']
+    assert 'open lots < 4' in bk['admission'] and '3x equity' in bk['admission'] and 'never scaled down' in bk['admission']
+
+
+def test_sizing_is_report_only_at_fixed_risks():
+    p = c()
+    assert 'sizing' not in p['gates'] and 'sizing' not in p['kill']['K8']
+    sz = p['sizing']
+    assert sz['status'].startswith('REPORT-ONLY') and sz['risk_per_trade'] == [0.01, 0.005, 0.0025]
+    assert 'PAPER admission contract' in sz['rule'] and 'PAPER admission contract' in p['deferred']['deployment_risk_budget']
 
 
 def test_finite_budget():
     p = c()
     tb = p['trial_budget']
-    assert tb['gated_variants'] == len(tb['gated_ids']) == 2 and tb['diagnostic_variants'] == len(tb['diagnostic_ids']) == 2
+    assert tb['gated_variants'] == len(tb['gated_ids']) == 3 and tb['diagnostic_variants'] == len(tb['diagnostic_ids']) == 1
     assert set(tb['gated_ids']) | set(tb['diagnostic_ids']) == {k for k in p['stages'] if k.startswith('S')}
     assert tb['baseline_rows'] == sum(len(b['for']) for b in p['baselines']) == 2
     assert tb['total_ledger_trial_records'] == tb['gated_variants'] + tb['diagnostic_variants'] + tb['baseline_rows'] == 6
-    assert 'fixed sequence H1 -> H2' in tb['multiplicity']
+    assert 'fixed sequence H1 -> H2 -> H3' in tb['multiplicity']
     assert p['bootstrap']['seed'] == 20261028 and p['bootstrap']['method'].endswith('10000 resamples')
 
 

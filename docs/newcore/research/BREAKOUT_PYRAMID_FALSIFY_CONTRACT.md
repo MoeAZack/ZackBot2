@@ -30,35 +30,46 @@ path order: gap first, then conservative stop-first.
 - Development window 2021-01-04 to **2026-09-28** (exclusive), after a 2020 warm-up. It is split into three
   chronological slices: 2021-01-04 to 2022-12-19, 2022-12-19 to 2024-12-16, and 2024-12-16 to 2026-09-28.
 - The 5 EDGE04 folds are reported but never gated.
+- Episodes belong to the slice of their entry fill and run past internal slice boundaries to their exit.
+- **Last-entry cutoff 2026-08-29T00:00Z** (180 x 4h bars before the sealed boundary). No stage and no book admits an entry from then on. An episode still open at 2026-09-28T00:00Z is INCOMPLETE: excluded from every gate statistic, counted and reported, and counted in the 2% data gate. No price on or after the boundary is read to close it.
 - Holdout: sealed. This contract does not open or schedule any holdout; whether a survivor needs one is **deferred to Integration**. The breadth_static40 registration is untouched.
 
-## Decision chain: entry-only -> pyramiding
+## Decision chain: entry-only -> trail -> pyramiding
 | Stage | Exit | Role |
 |---|---|---|
 | S1 | plain 2 ATR stop, exit after 42 bars | **H1** entry-only, gated |
-| S3 | live mgmt (trail + pyramid), 180-bar research cap | **H2** pyramiding, gated, paired over S1 |
+| S2 | 2 ATR stop + 3 ATR trail, no adds, no time cap | **H2** gated |
+| S3 | S2 + pyramid = live default management exactly, no time cap | **H3** gated, paired over S2 |
 | S1-T | plain stop + 3R target, 42 bars | report-only |
-| S2 | stop + trail, no adds | report-only (splits S3 - S1 into trail vs adds) |
 
-- One entry set E (from S1) is replayed under every stage, so stages differ only after the fill.
+- **Paired unit replay:** one entry set E (from S1) is replayed at quantity 1 under every stage, so stages differ only after the fill. This is an independent paired analysis. Because E re-arms on S1 exits, S2/S3 unit episodes on one symbol may overlap in time, which is allowed only in this analysis.
 - **H1 (S1)** needs all of the following, otherwise the family is **FALSIFIED**:
   - base mean net R > 0 with 95% LCB > 0, and mean net R > 0 at 1.5x cost;
   - positive in all 3 slices;
   - positive with the best symbol removed, within concentration limits;
   - above the 95th percentile of 1000 random-entry books;
   - the activity gate passed.
-- **H2** is tested only after H1 passes. The paired increment S3 - S1 must have base LCB > 0, be positive at 1.5x cost and positive in all 3 slices. S3 itself must pass the H1 gates except the random-entry one.
-- The deepest credited stage is the only one replayed as a book (10k USDT, 1% risk, max 4 open, 3x gross, taker).
+- **H2 (S2)** is tested only after H1 passes. S2 itself must be positive at base (LCB > 0) and at 1.5x, in all 3 slices, with the best symbol removed and within concentration limits.
+- **H3 (pyramiding)** is tested only after H1 and H2 pass. S2 and S3 differ only by the adds, so the paired increment S3 - S2 isolates them. It must have base LCB > 0, be positive at 1.5x and positive in all 3 slices, and S3 must also pass the H2 test. S2 - S1 is report-only.
+
+## Book (separate from E)
+- Only the deepest credited stage is replayed as a book. It is built from that stage's raw signals and exits; E is never fed into it.
+- One open episode per symbol. A signal on a symbol that is already open is skipped and counted.
+- Each 4h timestamp is processed in ascending order: exits first, then adds, then entries. Ties go by symbol name, ascending.
+- An entry is admitted only if fewer than 4 lots are open and gross notional stays <= 3x equity. Otherwise it is skipped and counted, never scaled down. An add that would breach the gross cap is skipped and counted.
+- Account: 10k USDT, 1.0% risk per entry, historical exchange filters, every fill taker.
 
 ## Costs and gates
 - Taker 0.05% per fill (including adds), slip-v1 (0.05% fallback), actual signed funding. Base and 1.5x are reported and gated; 2x is reported.
 - Activity: at least 300 episodes in total, at least 75 per slice, and at least 2 per 30 days in each slice. At least 15 of the 17 symbols must be active overall, and at least 8 per slice. Slice 1 predates SUI, ENA, WLD and 1000PEPE.
 - Book DD: ordinary (DD <= 35%, closed-R DD < 40R) or profitability rescue (DD <= 55%, Calmar >= 0.75, net R / closed-R DD >= 2.0). A rescue-only pass is a HIGH-RISK SLEEVE. Underwater must be <= 365 days.
-- Concentration: symbol share <= 25%, top 3 <= 50%. The worst episode must be >= -3R. Sizing must still be feasible after scaling to the portfolio DD budget, with no causality or accounting defect.
+- Concentration: symbol share <= 25%, top 3 <= 50%. The worst episode must be >= -3R, with no causality or accounting defect.
+- **Sizing is report-only, never a gate.** The book is reported at fixed 1.0%, 0.5% and 0.25% risk per trade. The deployment risk budget is deferred to the later PAPER admission contract.
+- The bootstrap is frozen in the JSON: moving blocks of 8 weeks over weekly mean net R, 10000 resamples, seed 20261028.
 
 ## Budget
-2 gated variants (S1, S3), 2 report-only diagnostics (S1-T, S2) and 2 baseline rows (B0 gated, B2 report-only) give 6
-ledger trial records. The fixed sequence H1 -> H2 at one-sided alpha 0.05 keeps family-wise error <= 0.05. Nothing is tuned.
+3 gated variants (S1, S2, S3), 1 report-only diagnostic (S1-T) and 2 baseline rows (B0 gated, B2 report-only) give 6
+ledger trial records. The fixed sequence H1 -> H2 -> H3 at one-sided alpha 0.05 each keeps family-wise error <= 0.05. Nothing is tuned.
 
 ## Deferred
 There is no runner yet. It must follow the EDGE05 runner pattern and reuse `backtest.py` path semantics plus `costs.py`.
