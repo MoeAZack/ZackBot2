@@ -44,7 +44,8 @@ def prov(kind, files, coverage, manifest_sha='f' * 64):
 SNAPDIR = tempfile.mkdtemp(prefix='edge05-synthetic-snapshots-')   # synthetic exchangeInfo files only
 atexit.register(shutil.rmtree, SNAPDIR, True)
 SNAP2 = 'exchangeInfo@2021-03-02T00:00:00Z'
-FILTER_OF = {'tick': ('PRICE_FILTER', 'tickSize'), 'step': ('LOT_SIZE', 'stepSize'), 'min_qty': ('LOT_SIZE', 'minQty'),
+FILTER_OF = {'tick': ('PRICE_FILTER', 'tickSize'), 'step': ('MARKET_LOT_SIZE', 'stepSize'),
+             'min_qty': ('MARKET_LOT_SIZE', 'minQty'),
              'max_qty': ('MARKET_LOT_SIZE', 'maxQty'), 'min_notional': ('MIN_NOTIONAL', 'notional'),
              'max_notional': ('MAX_NOTIONAL', 'maxNotional')}
 
@@ -1368,7 +1369,7 @@ def test_snapshot_missing_symbol_or_field_leaves_the_interval_unsupported():
     with pytest.raises(R.Incomplete, match='provenance_uncovered'):
         r.lookup(SYMS[1], D0)
     assert r.lookup(SYMS[0], D0)['tick'] == RULE['tick']
-    for strip in ('MIN_NOTIONAL', ('LOT_SIZE', 'stepSize'), 'MARKET_LOT_SIZE'):
+    for strip in ('MIN_NOTIONAL', ('MARKET_LOT_SIZE', 'stepSize'), ('MARKET_LOT_SIZE', 'minQty'), 'MARKET_LOT_SIZE'):
         r = pit(strip={SYMS[2]: (strip,)})                            # a missing filter field is never defaulted
         assert r.unsourced == 1 and r.at(SYMS[2], D0) is None
         with pytest.raises(R.Incomplete, match='provenance_uncovered'):
@@ -1413,3 +1414,30 @@ def test_snapshot_is_read_only_through_the_manifest_hash_and_memory_checked(monk
     finally:
         with open(snap_path, 'wb') as fh:
             fh.write(raw)
+
+
+
+def test_market_lot_size_feeds_step_and_min_qty_not_lot_size():
+    """Codex 6464073013: EDGE05 fills are market orders, so step / min_qty / max_qty come from MARKET_LOT_SIZE. A LOT_SIZE
+    filter that differs must change nothing - in the canonical tuple and in the Book's floor / refusal path."""
+    mkt = dict(RULE, step=0.1, min_qty=1.0)
+    ent = snap_entry('X', mkt)
+    lot = {'filterType': 'LOT_SIZE', 'stepSize': '0.001', 'minQty': '0.001', 'maxQty': '1e9'}   # the limit-order filter
+    ent['filters'] = sorted(ent['filters'] + [lot], key=lambda f: f['filterType'])
+    tup = dict(zip(R.RULE_KEYS, R.snapshot_rule_tuple(ent)))
+    assert tup['step'] == 0.1 and tup['min_qty'] == 1.0                                    # market values, not LOT_SIZE
+    assert R.snapshot_rule_tuple(dict(ent, filters=[f for f in ent['filters'] if f['filterType'] != 'LOT_SIZE'])) == \
+        R.snapshot_rule_tuple(ent)                                                         # LOT_SIZE is irrelevant
+    assert 'MARKET_LOT_SIZE.stepSize' in R.CONVENTIONS['snapshot_rule_values']
+    # Book path: the market minQty refuses a size the LOT_SIZE minimum would have admitted
+    q = prm()
+    ep = R.replay('long', D0, BASE, 0.5, _day(FLAT), ra, q, D0 + 10 * DAY)
+    ep['side'] = 'long'
+    b_lot = R.Book(q)
+    b_lot.cohort(D0, [{'symbol': 'X', 'f24': 0.0, 'qv24': 1e9, 'ep': dict(ep, rule=dict(ep['rule'], step=0.001, min_qty=0.001))}])
+    huge = 1e9                                                                             # far above any sized qty
+    b_mkt = R.Book(q)
+    b_mkt.cohort(D0, [{'symbol': 'X', 'f24': 0.0, 'qv24': 1e9,
+                       'ep': dict(ep, rule=dict(ep['rule'], step=0.001, min_qty=huge))}])
+    assert b_lot.refused == {} and len(b_lot.r) == 1
+    assert sum(b_mkt.refused.values()) == 1 and b_mkt.r == []                              # the market minimum binds

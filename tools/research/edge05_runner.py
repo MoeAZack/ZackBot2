@@ -124,8 +124,9 @@ CONVENTIONS = {
     'snapshot_rule_values': 'each authenticated exchangeInfo snapshot an interval cites is read via the bound '
                             'rules-source manifest (contained path, sha256 re-verified while streaming, size-bounded, '
                             'admitted against the memory cap) and parsed deterministically: symbols[].filters[] -> '
-                            'tick = PRICE_FILTER.tickSize; step = LOT_SIZE.stepSize; min_qty = LOT_SIZE.minQty; '
-                            'max_qty = MARKET_LOT_SIZE.maxQty (every fill is a market order); min_notional = '
+                            'tick = PRICE_FILTER.tickSize; step = MARKET_LOT_SIZE.stepSize; min_qty = MARKET_LOT_SIZE.minQty; '
+                            'max_qty = MARKET_LOT_SIZE.maxQty (every fill is a market order, so LOT_SIZE is never used; '
+                            'Codex 6464073013); min_notional = '
                             'MIN_NOTIONAL.notional; max_notional = MAX_NOTIONAL.maxNotional when that filter exists, '
                             'else derived = PRICE_FILTER.maxPrice x MARKET_LOT_SIZE.maxQty (the largest notional the '
                             'snapshot filters admit). A symbol absent from the snapshot, or any missing/non-numeric '
@@ -463,8 +464,8 @@ def snapshot_rule_tuple(entry) -> tuple | None:
         filters[ft] = x
     try:
         tick = _snap_num(filters, 'PRICE_FILTER', 'tickSize')
-        step = _snap_num(filters, 'LOT_SIZE', 'stepSize')
-        min_qty = _snap_num(filters, 'LOT_SIZE', 'minQty')
+        step = _snap_num(filters, 'MARKET_LOT_SIZE', 'stepSize')     # market orders: never LOT_SIZE (Codex 6464073013)
+        min_qty = _snap_num(filters, 'MARKET_LOT_SIZE', 'minQty')
         max_qty = _snap_num(filters, 'MARKET_LOT_SIZE', 'maxQty')
         min_notional = _snap_num(filters, 'MIN_NOTIONAL', 'notional')
         max_notional = _snap_num(filters, 'MAX_NOTIONAL', 'maxNotional') if 'MAX_NOTIONAL' in filters else \
