@@ -5,7 +5,7 @@
   "status": "DRAFT - UNSIGNED - NOT FROZEN",
   "signed": false,
   "drafted": "2026-10-28 Cairo by Build (claude-code), from Codex roadmap 6455796158 item 4",
-  "signing": "Integration (codex) freezes the numbers, then copies this JSON byte-identically to research_evidence/prereg/funding_carry_xsec.v1.json and creates research_evidence/ledger/funding_carry_xsec.jsonl plus one REGISTRY.jsonl line, before any market result",
+  "signing": "This file is the authoritative preregistration (Codex 6457583467). It lands DRAFT; Integration (codex) freezes the numbers and flips status/signed here before merge, then creates research_evidence/ledger/funding_carry_xsec.jsonl plus one REGISTRY.jsonl line, before any market result",
   "source": {
     "base_commit": "cee9c84",
     "universe_sha256": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031",

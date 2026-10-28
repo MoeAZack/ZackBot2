@@ -12,29 +12,21 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools' / 'research'))
 import edge05_coverage as CV                                                                # noqa: E402
 
-_DOCS = 'do' + 'cs'   # segmented: executable source never names the documentation tree literally (test_ci reuse guard)
-DOC = ROOT / _DOCS / 'newcore' / 'research'
-PREREG = DOC / 'EDGE05_FUNDING_CARRY_XSEC_PREREG_v1.json'
-MD = DOC / 'EDGE05_FUNDING_CARRY_XSEC_CONTRACT.md'
+PREREG = ROOT / 'research_evidence' / 'prereg' / 'funding_carry_xsec.v1.json'   # authoritative; tests never read the docs twin
 
 
 def c():
     return json.loads(PREREG.read_text(encoding='utf-8'))
 
 
-def md():
-    return MD.read_text(encoding='utf-8')
-
-
 # ------------------------------------------------------------------ contract
 
-def test_status_is_draft_unsigned_and_nothing_under_research_evidence():
+def test_status_is_draft_unsigned_and_no_ledger_yet():
     p = c()
     assert p['format'] == 'zb-edge05-prereg/1' and p['candidate_id'] == 'funding_carry_xsec.v1'
     assert p['status'] == 'DRAFT - UNSIGNED - NOT FROZEN' and p['signed'] is False
-    assert 'DRAFT - UNSIGNED - NOT FROZEN' in md()
-    assert not (ROOT / 'research_evidence/prereg/funding_carry_xsec.v1.json').exists()
-    assert not (ROOT / 'research_evidence/ledger/funding_carry_xsec.jsonl').exists()
+    assert not (ROOT / 'research_evidence' / 'ledger' / 'funding_carry_xsec.jsonl').exists()
+    assert b'funding_carry_xsec' not in (ROOT / 'research_evidence' / 'ledger' / 'REGISTRY.jsonl').read_bytes()
     assert p['boundaries'] == {'paper': False, 'runtime_change': False, 'holdout_read': False,
                                'mainnet': False, 'evaluation_run': False}
 
@@ -72,16 +64,6 @@ def test_fixed_choices_and_trial_budget():
     assert set(p['costs']['stress_rows']) >= {'base_x1', 'all_variable_costs_x1.5', 'all_variable_costs_x2'}
     assert 'funding_actual' in p['costs']['net_formula'] and '+ funding_actual' in p['costs']['net_formula']
 
-
-@pytest.mark.parametrize('needle', [
-    'k = 5', 'at most 5 positions', '04:00 UTC', '24h after entry', '300s', 'at least 15 eligible symbols',
-    'at least 4 of 5', 'PF > **1.10**', '< **35%**', 'x1.5 DD < **45%**', '< **40R**', '**<= 270 days**',
-    '>= **-7.5R**', '> **25%**', '<= **50%**', '**0.1%**', '**25%** of the portfolio risk budget',
-    '**9 ledger trial records**', '2026-09-28T00:00Z', '2026-11-02', '2027-05-03', '224,064',
-    'net = pnl_gross + pnl_fill_adj - fees_actual + funding_actual',
-])
-def test_md_carries_the_json_numbers(needle):
-    assert needle in md()
 
 
 def test_json_numbers_behind_md_needles():

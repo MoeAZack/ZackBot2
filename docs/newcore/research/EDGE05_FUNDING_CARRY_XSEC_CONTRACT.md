@@ -1,13 +1,14 @@
 # EDGE-05 — `funding_carry_xsec.v1` preregistration
 
 Status: **DRAFT - UNSIGNED - NOT FROZEN** (28 October 2026 Cairo, Build lane, from Codex roadmap 6455796158 item 4).
-The machine-readable twin is `EDGE05_FUNDING_CARRY_XSEC_PREREG_v1.json`; where they differ, the JSON wins and the
-parity test fails. No backtest, return, P&L or R has been computed for this family, and nothing on or after
+This page is the human-readable twin. The **authoritative** preregistration is
+`research_evidence/prereg/funding_carry_xsec.v1.json`; where they differ, the JSON wins. Tests and runners read only
+that JSON, never this page (the CI reuse guard: executed code must not depend on `docs/`). No backtest, return, P&L or R has been computed for this family, and nothing on or after
 2026-09-28T00:00Z has been read.
 
-Signing: Integration freezes the numbers below, then copies the JSON byte-identically to
-`research_evidence/prereg/funding_carry_xsec.v1.json` and creates `research_evidence/ledger/funding_carry_xsec.jsonl`
-plus one `REGISTRY.jsonl` line, all before any market result. Until then nothing lands under `research_evidence/`.
+Signing: the JSON lands DRAFT on this branch (a new file under the append-only `prereg/` dir). Integration freezes the
+numbers and flips `status`/`signed` in it before merge, then creates `research_evidence/ledger/funding_carry_xsec.jsonl`
+plus one `REGISTRY.jsonl` line, all before any market result. No ledger or REGISTRY line exists while it is DRAFT.
 
 ## Hypothesis
 
