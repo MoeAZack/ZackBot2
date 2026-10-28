@@ -362,11 +362,26 @@ def test_drawdown_flatten_resets_peak_once():
     assert not e.S['ENTRIES_PAUSED']                                             # no repeated re-pause
 
 
-def test_cairo_day_and_dst_fallback():
+def test_cairo_day_and_dst_fallback(monkeypatch):
     assert E._egypt_offset(datetime(2026, 7, 1)) == timedelta(hours=3)
     assert E._egypt_offset(datetime(2026, 12, 1)) == timedelta(hours=2)
     assert E._egypt_offset(datetime(2026, 10, 29)) == timedelta(hours=3) and E._egypt_offset(datetime(2026, 10, 30)) == timedelta(hours=2)
+    a = E.cairo_day_start_utc('2026-10-29')
+    b = E.cairo_day_start_utc('2026-10-30')
+    assert a == datetime(2026, 10, 28, 21, tzinfo=timezone.utc)
+    assert b == datetime(2026, 10, 29, 22, tzinfo=timezone.utc) and b - a == timedelta(hours=25)
+    monkeypatch.setattr(E, 'CAIRO', None)
+    assert E.cairo_day_start_utc('2026-10-29') == a and E.cairo_day_start_utc('2026-10-30') == b
     assert len(E.trading_day()) == 10 and E.next_reset_utc() > E.now_utc().isoformat()
+
+
+def test_daily_summary_includes_first_hour_of_dst_ending_day():
+    e, _ = mk_engine()
+    hist(e, 10, datetime(2026, 10, 28, 21, 30, tzinfo=timezone.utc))
+    sent = []
+    e.notify = sent.append
+    e.daily_summary('2026-10-29', 500, 510)
+    assert sent and '1 closed trades, 1 won' in sent[-1]
 
 
 def test_orphan_lot_still_gets_exit_signals():

@@ -992,11 +992,25 @@ def trading_day():
     return cairo_now().date().isoformat()
 
 
+def cairo_day_start_utc(day=None):
+    """UTC instant at midnight starting a Cairo calendar day.
+
+    Do not derive this as ``next_reset - 24h``: the Cairo day where DST ends is 25 hours long.
+    """
+    d = datetime.fromisoformat(day).date() if isinstance(day, str) else (day or cairo_now().date())
+    local = datetime.combine(d, datetime.min.time())
+    if CAIRO is not None:
+        return local.replace(tzinfo=CAIRO).astimezone(timezone.utc)
+    for hours in (2, 3):
+        candidate = (local - timedelta(hours=hours)).replace(tzinfo=timezone.utc)
+        if _egypt_offset(candidate) == timedelta(hours=hours):
+            return candidate
+    raise ValueError(f'cannot resolve Cairo midnight for {d.isoformat()}')
+
+
 def next_reset_utc():
     c = cairo_now()
-    nxt = datetime.combine(c.date() + timedelta(days=1), datetime.min.time())
-    if CAIRO is not None: return nxt.replace(tzinfo=CAIRO).astimezone(timezone.utc).isoformat(timespec='seconds')
-    return (nxt - _egypt_offset(nxt)).replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
+    return cairo_day_start_utc(c.date() + timedelta(days=1)).isoformat(timespec='seconds')
 
 
 SAVE_RETRY_S = (0.05, 0.1, 0.25, 0.5)   # AUD-05: os.replace on Windows fails with PermissionError while another process
@@ -5989,7 +6003,17 @@ class Engine:
         self.save_state()
 
     def daily_summary(self, day, start, end):
-        H = [h for h in self.history if h.get('closed', '')[:10] >= day]
+        cut = cairo_day_start_utc(day)
+        H = []
+        for h in self.history:
+            try:
+                closed = datetime.fromisoformat(str(h.get('closed', '')).replace('Z', '+00:00'))
+                if closed.tzinfo is None:
+                    closed = closed.replace(tzinfo=timezone.utc)
+                if closed >= cut:
+                    H.append(h)
+            except (TypeError, ValueError):
+                continue
         try:
             V = [AC.row_view(h) for h in H]                         # FILL-PNL-02: wins on the measured net only
             n = len(H); w = sum(1 for v in V if (v['pnl'] or 0) > 0); p = sum(1 for v in V if v['status'] == 'pending')
