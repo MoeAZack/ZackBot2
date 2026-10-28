@@ -1,4 +1,4 @@
-"""breakout_pyramid_falsify.v1: DRAFT falsification contract invariants + identity parity with the live definition (no data)."""
+"""breakout_pyramid_falsify.v1: frozen falsification contract invariants + identity parity (no data)."""
 import hashlib
 import inspect
 import json
@@ -26,13 +26,21 @@ def src_sha(obj):
     return hashlib.sha256(inspect.getsource(obj).replace('\r\n', '\n').encode()).hexdigest()
 
 
-def test_draft_unsigned_not_evaluated_no_ledger():
+def test_frozen_signed_not_evaluated_has_exact_trial_ledger():
     p = c()
     assert p['format'] == 'zb-falsify-prereg/1' and p['candidate_id'] == 'breakout_pyramid_falsify.v1'
     assert p['family'] == 'breakout_pyramid' and p['side'] == 'long' and '6468454634' in p['ruling']
-    assert p['status'].startswith('DRAFT') and p['signed'] is False
-    assert not (ROOT / 'research_evidence' / 'ledger' / 'breakout_pyramid_falsify.jsonl').exists()
-    assert b'breakout_pyramid_falsify' not in (ROOT / 'research_evidence' / 'ledger' / 'REGISTRY.jsonl').read_bytes()
+    assert p['status'].startswith('FROZEN - SIGNED BY CODEX - NOT EVALUATED') and p['signed'] is True
+    ledger = [json.loads(line) for line in (ROOT / 'research_evidence' / 'ledger' /
+                                             'breakout_pyramid_falsify.jsonl').read_text().splitlines()]
+    assert len(ledger) == p['trial_budget']['total_ledger_trial_records'] == 6
+    assert [r['detail']['id'] for r in ledger] == ['S1', 'S2', 'S3', 'S1-T', 'B0', 'B2']
+    assert [r['kind'] for r in ledger] == ['variant'] * 4 + ['baseline'] * 2
+    assert [r['detail']['gated'] for r in ledger] == [True, True, True, False, True, False]
+    registry = [json.loads(line) for line in (ROOT / 'research_evidence' / 'ledger' /
+                                               'REGISTRY.jsonl').read_text().splitlines()]
+    families = [r for r in registry if r['kind'] == 'family' and r['family'] == 'breakout_pyramid_falsify']
+    assert len(families) == 1 and families[0]['ref']['parent'] is None
     assert p['boundaries'] == {'paper': False, 'runtime_change': False, 'holdout_read': False,
                                'mainnet': False, 'evaluation_run': False}
 
