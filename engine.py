@@ -1005,7 +1005,10 @@ def cairo_day_start_utc(day=None):
         candidate = (local - timedelta(hours=hours)).replace(tzinfo=timezone.utc)
         if _egypt_offset(candidate) == timedelta(hours=hours):
             return candidate
-    raise ValueError(f'cannot resolve Cairo midnight for {d.isoformat()}')
+    # Egypt advances at local midnight: on the spring transition date 00:00 is
+    # nonexistent.  ZoneInfo(fold=0) maps that boundary to 22:00Z, the first
+    # real instant of the Cairo day.  Preserve the same result without tzdata.
+    return (local - timedelta(hours=2)).replace(tzinfo=timezone.utc)
 
 
 def next_reset_utc():
@@ -6004,13 +6007,15 @@ class Engine:
 
     def daily_summary(self, day, start, end):
         cut = cairo_day_start_utc(day)
+        d = datetime.fromisoformat(day).date() if isinstance(day, str) else day
+        cut_end = cairo_day_start_utc(d + timedelta(days=1))
         H = []
         for h in self.history:
             try:
                 closed = datetime.fromisoformat(str(h.get('closed', '')).replace('Z', '+00:00'))
                 if closed.tzinfo is None:
                     closed = closed.replace(tzinfo=timezone.utc)
-                if closed >= cut:
+                if cut <= closed < cut_end:
                     H.append(h)
             except (TypeError, ValueError):
                 continue

@@ -372,12 +372,26 @@ def test_cairo_day_and_dst_fallback(monkeypatch):
     assert b == datetime(2026, 10, 29, 22, tzinfo=timezone.utc) and b - a == timedelta(hours=25)
     monkeypatch.setattr(E, 'CAIRO', None)
     assert E.cairo_day_start_utc('2026-10-29') == a and E.cairo_day_start_utc('2026-10-30') == b
+    # Cairo advances at local midnight, so 00:00 on 24 April does not exist;
+    # the fallback must return the first real instant of that calendar day.
+    assert E.cairo_day_start_utc('2026-04-24') == datetime(2026, 4, 23, 22, tzinfo=timezone.utc)
+    assert E.cairo_day_start_utc('2026-04-25') == datetime(2026, 4, 24, 21, tzinfo=timezone.utc)
     assert len(E.trading_day()) == 10 and E.next_reset_utc() > E.now_utc().isoformat()
 
 
 def test_daily_summary_includes_first_hour_of_dst_ending_day():
     e, _ = mk_engine()
     hist(e, 10, datetime(2026, 10, 28, 21, 30, tzinfo=timezone.utc))
+    sent = []
+    e.notify = sent.append
+    e.daily_summary('2026-10-29', 500, 510)
+    assert sent and '1 closed trades, 1 won' in sent[-1]
+
+
+def test_daily_summary_excludes_the_next_cairo_day():
+    e, _ = mk_engine()
+    hist(e, 10, datetime(2026, 10, 29, 21, 30, tzinfo=timezone.utc))
+    hist(e, 20, datetime(2026, 10, 29, 22, 30, tzinfo=timezone.utc))
     sent = []
     e.notify = sent.append
     e.daily_summary('2026-10-29', 500, 510)
