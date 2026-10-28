@@ -32,6 +32,7 @@ import math
 import re
 import threading
 
+from actual_costs import MEASURED_COST_MODEL_ID   # noqa: F401  the measured-cost model id (shared with ML-PAIR-01)
 from ml_shadow.common import SECRET_NAME_RE, canonical_json, sha256_hex, to_utc
 from ml_shadow.ledger import decision_id
 
@@ -528,16 +529,34 @@ def _check_provenance(rec, k):
         raise AIScanError(f'{k}: snapshot provenance is not causal')
 
 
+def record_key(rec):
+    """The immutable identity of one record: signal -> decision id; shadow -> + epoch; outcome -> + source + cost
+    revision id / cost-model hash (never the ordering rev). The replay and the ledger dedupe on this key."""
+    sid, kind = rec.get('signal_id'), rec.get('kind')
+    key = {'signal': (sid,), 'shadow': (sid, rec.get('epoch')),
+           'outcome': (sid, rec.get('source'), rec.get('cost_revision_id'), rec.get('cost_model_hash'))}.get(kind)
+    if key is None: raise AIScanError(f'unknown record kind {kind!r}')
+    # Cowork 6460365559 R1 / Codex 6460427480: every active key part is a non-empty string and the inactive outcome
+    # identity is None, else AIScanError here - before any hashing or indexing (a TypeError never escapes fold / the index).
+    if kind == 'outcome':
+        src = key[1] if isinstance(key[1], str) else None
+        active = {'measured': (key[2], key[3]), 'simulated': (key[3], key[2])}.get(src)
+        if active is None: raise AIScanError(f'outcome record has a malformed key (source {key[1]!r})')
+        required, inactive = (key[0], active[0]), active[1]
+    else:
+        required, inactive = key, None
+    if not all(isinstance(x, str) and x for x in required) or inactive is not None:
+        raise AIScanError(f'{kind} record has a malformed key')
+    return (kind,) + key
+
+
 def fold(records):
     """Replay records (file order) into {signal_id: view}. Idempotent on exact duplicates; fails closed otherwise."""
     views, seen = {}, {}
     for rec in records:
         _verify(rec)
         sid, kind = rec['signal_id'], rec['kind']
-        key = {'signal': (sid,), 'shadow': (sid, rec.get('epoch')),
-               'outcome': (sid, rec.get('source'), rec.get('cost_revision_id'), rec.get('cost_model_hash'))}.get(kind)
-        if key is None: raise AIScanError(f'unknown record kind {kind!r}')
-        k = (kind,) + key
+        k = record_key(rec)
         if k in seen:
             if seen[k] != rec['record_hash']: raise AIScanError(f'{k}: conflicting replay of an immutable record')
             continue

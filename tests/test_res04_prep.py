@@ -528,6 +528,7 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
                      'core10_fundgap_g4_report.v1.json',                                       # #171 FUND-GAP-01 G4
                      'core10_fundgap_report.v1.json',                                          # #170 FUND-GAP-01 FG-1
                      'core10_gapfill_plan.v1.json', 'core10_gapfill_report.v1.json',            # #165 CORE-10 fill prereg
+                     'funding_carry_xsec.v1.json',                                             # #224 EDGE05 prereg (DRAFT)
                      'r4_gate.json', 'r4_gate_short.json', 'trend_ema_mom.v1.json', 'trend_ema_mom_short.v1.json']
     for n in names:
         rel = f'research_evidence/prereg/{n}'

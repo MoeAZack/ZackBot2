@@ -9,6 +9,10 @@ Funding follows Binance's income sign: negative = paid by the account, positive 
 import hashlib, math
 from datetime import datetime
 
+# The ONE id of the measured-cost model (the net formula of measured() below). ML-PAIR-01 pairing and AI-SCAN-01 both
+# read it from here, so their cost revision identities can never drift apart (Codex 6459654266 #5).
+MEASURED_COST_MODEL_ID = 'zackbot.actual_costs.measured.v1'
+
 COST_FIELDS = ('fees_actual_by_asset', 'fees_actual', 'fees_actual_partial', 'maker_fills', 'taker_fills', 'cost_refs',
                'cost_fills_applied', 'cost_fills_missing', 'cost_refs_done', 'funding_unattributed', 'funding_partial', 'funding_actual', 'funding_by_asset', 'funding_rows',
                'funding_keys', 'exit_px_unconfirmed', 'cost_refs_recovered', 'cost_order_keys',
