@@ -23,16 +23,23 @@ STATIC-40: `research_evidence/universe/static-top40-minhist365-contract-20261011
 fixed-18 are too narrow for k = 5 per side.
 
 A symbol is eligible at decision D only if its first settled funding event and its first 4h kline are each at least
-30 days before D, its funding sequence in (D-24h, D] passes `costs.check_funding_sequence`, and the 1d bars it needs
+30 days before D, its funding sequence in the window [D-24h, D) passes `costs.check_funding_sequence`, and the 1d bars it needs
 for the R unit exist. It needs **at least 15 eligible symbols**. On a day with fewer, no cohort opens; that day is
 reported, not counted as INCOMPLETE. There is no back-fill before a symbol's listing. If a 4h bar, mark bar or funding
 event is missing inside an open episode, that episode is INCOMPLETE. It is never dropped silently.
 
 ## 2. Signal
 
-**F24(s, D) = the sum of settled `fundingRate` over every funding event with nominal time T in (D-24h, D].**
+**F24(s, D) = the sum of settled `fundingRate` over every funding event whose nominal time T satisfies
+T + 300s in (D-24h, D], i.e. D-24h-300s < T <= D-300s.** Nominal times are whole hours, so this is exactly
+**T in [D-24h, D)** (Cowork 6459484792 B1: the window is defined on availability).
 
-- **Interval-agnostic:** the sum covers 3 events on the 8h grid, 6 on the 4h grid and 24 on the 1h grid.
+- **Interval-agnostic:** the sum covers exactly 3 events on the 8h grid, 6 on the 4h grid and 24 on the 1h grid. The
+  event at T = D is not yet available, so it is never in the window and never required.
+- **Sequence check:** `costs.check_funding_sequence(symbol, rows, start_ms=D-24h, end_ms=D)`. The rows run from the phase
+  anchor (the event at or immediately before D-24h) through the last event with T + 300s <= D. The covered interval is
+  [D-24h, D), so the event at D is not covered and is not passed. A missing, duplicated or off-grid event inside the
+  window makes the symbol ineligible at D.
 - **Why 24h:** the spec holds each position for about 24h, so the look-back equals the hold. A 24h sum is the only
   window that normalises the 1h, 4h and 8h cadences without a free parameter. It is not tuned, and no alternative
   window is evaluated.
@@ -61,6 +68,7 @@ Rank the eligible symbols by F24, breaking ties by symbol name.
 | Entry | Market at the first 4h open at or after D + lag, i.e. **04:00 UTC** |
 | Exit | Market at the 4h open **24h after entry**, or earlier by the protective stop |
 | Funding held | Every event with entry <= T < exit (`costs.py` rule); exactly 3 on an 8h grid |
+| Entry-bar stop | The 4h bar opening at entry is stop-checked, stop-first over its full range; gap-open does not apply to it (Cowork N2) |
 | R unit / stop | 2.0 x TR-SMA14 of the 15 closed 1d bars ending at D; on 4h bars the gap open is checked first, then stop-first |
 | Roll | A symbol re-selected next day is closed and re-opened as a new episode, with both fills charged |
 | Account | 10,000 USDT per book; 1% risk per position; max 3.0x gross per book (if a cohort would exceed it, every position is scaled down equally) |
@@ -123,6 +131,10 @@ ceiling above holds:
 - **Profitable / high-DD:** base DD **> 35% and <= 55%**, and annualized after-cost return / max DD **>= 0.75**, and
   total net R / closed-R DD **>= 2.0**.
 - **FAIL on any path:** base DD > **55%**, or x1.5 DD > **65%**.
+
+**Accepted consequence (Cowork N1):** the tiers are not monotone in DD. A book with base DD <= 35% but closed-R
+DD >= 40R fails, because the high-DD ratio tier needs base DD > 35%, while a book with base DD in (35%, 55%] that meets
+both ratios passes. This follows Codex ruling (a) and is recorded before freeze.
 
 The other gates (worst cohort, folds, expectancy, PF, cost stress, concentration, multiplicity) are unchanged. Return,
 max DD, return/DD (Calmar), PF, net expectancy, trade count, exposure time and the longest recovery are reported

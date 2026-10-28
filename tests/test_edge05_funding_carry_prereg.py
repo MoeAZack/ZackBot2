@@ -227,3 +227,33 @@ def test_dd_tier_rule_reference_cases(base, x15, closed_r, ann_ret, net_r, ok):
     assert _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater=200, worst=-5) is ok
     assert _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater=366, worst=-5) is False
     assert _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater=200, worst=-8) is False
+
+
+H = 3600
+
+
+@pytest.mark.parametrize('grid, n', [(8, 3), (4, 6), (1, 24)])
+def test_f24_window_is_defined_on_availability_and_never_needs_the_event_at_d(grid, n):
+    """Cowork 6459484792 B1: T + lag in (D - 24h, D]. On every Binance grid the window holds exactly the declared count,
+    the event at T = D (not yet available) is excluded and never required, and the D-24h event is in exactly one window."""
+    sig = c()['signal']
+    lag = sig['availability_lag_seconds']
+    assert sig['expected_events_per_grid'][str(grid)] == n
+    D = 1_788_220_800                                                   # 2026-09-01T00:00Z, synthetic: no data read
+    events = [D - k * grid * H for k in range(0, 48 // grid + 1)]       # D, D-g, ..., D-48h
+    in_window = [T for T in events if D - 24 * H < T + lag <= D]
+    assert len(in_window) == n
+    assert D not in in_window and D - 24 * H in in_window
+    assert all(T + lag <= D for T in in_window)                         # every summed event is already available
+    prev = [T for T in events if D - 48 * H < T + lag <= D - 24 * H]
+    assert len(prev) == n and not set(prev) & set(in_window)           # consecutive days never double-count
+    assert '[D - 24h, D)' in sig['definition'] and 'start_ms = D - 24h, end_ms = D' in sig['sequence_check']
+
+
+def test_entry_bar_is_stop_checked_and_dd_non_monotonicity_is_recorded():
+    p = c()
+    assert 'entry bar itself' in p['execution']['stop_path'] and 'IS stop-checked' in p['execution']['stop_path']
+    dd = p['gates']['drawdown_and_tail']
+    assert 'not monotone' in dd['accepted_consequence']
+    assert _dd_gate(dd, 0.30, 0.40, 45, 0.90, 225, underwater=200, worst=-5) is False   # better DD fails (recorded)
+    assert _dd_gate(dd, 0.40, 0.40, 45, 0.40, 90, underwater=200, worst=-5) is True     # worse DD passes

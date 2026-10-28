@@ -28,13 +28,13 @@
   },
   "signal": {
     "name": "F24",
-    "definition": "F24(s, D) = sum of the settled fundingRate of symbol s over every funding event with nominal time T in (D - 24h, D]",
-    "units": "fraction of notional per 24h (interval-agnostic: 3 events on an 8h grid, 6 on 4h, 24 on 1h)",
+    "definition": "F24(s, D) = sum of the settled fundingRate of symbol s over every funding event whose nominal time T satisfies T + availability_lag in (D - 24h, D], i.e. D - 24h - 300s < T <= D - 300s; for whole-hour nominal times this is exactly T in [D - 24h, D) (Cowork 6459484792 B1)",
+    "units": "fraction of notional per 24h (interval-agnostic: exactly 3 events on an 8h grid, 6 on 4h, 24 on 1h; the event at T = D is never in the window and never required)",
     "why": "the spec holds each position ~24h, so the look-back equals the hold horizon; a 24h sum is the only window that normalises the 1h/4h/8h Binance cadences without a free parameter. Not tuned; no alternative window is evaluated",
     "settled_only": "a funding event counts only once its archived calc_time (time_ms) <= T + 60 s (costs.FUNDING_TIME_TOLERANCE_MS) AND T + availability_lag <= D",
     "availability_lag_seconds": 300,
     "nominal_time": "range_vwap_rev.t_nom (whole hour within 60 s, interval in {1,2,4,8})",
-    "incomplete": "an expected event missing, duplicated or off-grid in (D - 24h, D] makes the symbol ineligible at D; if fewer than min_eligible symbols remain the day has no cohort"
+    "incomplete": "an expected event missing, duplicated or off-grid in the window [D - 24h, D) makes the symbol ineligible at D; the event at T = D is not yet available and is never required; if fewer than min_eligible symbols remain the day has no cohort", "sequence_check": "costs.check_funding_sequence(symbol, rows, start_ms = D - 24h, end_ms = D): rows are every archived event from the phase anchor (the event at or immediately before D - 24h) through the last event with T + 300s <= D; covered interval [D - 24h, D), so the event at D is not covered and must not be passed", "expected_events_per_grid": {"8": 3, "4": 6, "1": 24}
   },
   "selection": {
     "rule": "rank eligible symbols by F24 at D; ties broken by symbol name ascending",
@@ -57,7 +57,7 @@
     "funding_held": "every funding event with entry <= T < exit (costs.py rule): exactly 3 on an 8h grid",
     "r_unit": "stop distance = 2.0 x TR-SMA14 of the 15 closed 1d bars ending at D (costs.tr_sma14); 1R = that distance x quantity",
     "stop_atr_mult": 2.0,
-    "stop_path": "4h bars: gap-open first, then conservative stop-first; a stop the bar opens through fills at the open",
+    "stop_path": "4h bars: gap-open first, then conservative stop-first; a stop the bar opens through fills at the open. The entry bar itself (the 4h bar opening at entry) IS stop-checked, stop-first over its full high/low range (Cowork 6459484792 N2); gap-open does not apply to it because entry fills at its open",
     "rebalance_roll": "a symbol re-selected at D+1 is closed and re-opened as a new episode (both fills charged); no carry-over",
     "account": {"start_usdt": 10000, "risk_fraction_per_position": 0.01, "max_gross_leverage_per_book": 3.0, "lev_cap_rule": "if a cohort would exceed the cap, every position in it is scaled down by the same factor", "books": "long and short each run their own 10000 USDT book"},
     "filters": "historical stepSize, minQty and minNotional; quantities floored, never rounded up",
@@ -123,7 +123,7 @@
     "expectancy": {"combined_mean_net_r_gt": 0.0, "combined_pf_gt": 1.10, "lcb": "95% lower bound of combined walk-forward mean net R > 0 by moving-block bootstrap of daily cohort means, block 30 cohorts, 10000 resamples, seed 20261028"},
     "baselines": "mean net R above the 95th percentile of the 1000 B0 book means, and above B1 mean net R",
     "stress": {"x1_5_mean_net_r_gt": 0.0, "x2_mean_net_r_gt_for_promotion": 0.0, "rule": "x1.5 > 0 is a PASS gate; x2 > 0 is required for promotion to shadow/PAPER and otherwise reported"},
-    "drawdown_and_tail": {"tiers": {"ordinary": {"base_max_equity_dd_le": 0.35, "closed_r_dd_lt": 40}, "profitable_high_dd": {"base_max_equity_dd_gt": 0.35, "base_max_equity_dd_le": 0.55, "annualized_net_return_over_max_dd_ge": 0.75, "total_net_r_over_closed_r_dd_ge": 2.0}}, "tier_rule": "the DD gate passes when the ordinary tier OR the profitable_high_dd tier holds, AND every all-path ceiling holds; base DD > 55% or x1.5 DD > 65% is FAIL on any path", "x1_5_max_equity_dd_le": 0.65, "longest_underwater_days_le": 365, "worst_cohort_net_r_ge": -7.5, "policy": "Owner high-DD/profitability rule as encoded by Codex 6457763292: higher DD is not an automatic rejection when after-cost return, cost stress and recovery are credible; the tier is preregistered and no DD threshold may be relaxed after holdout P&L is seen"},
+    "drawdown_and_tail": {"tiers": {"ordinary": {"base_max_equity_dd_le": 0.35, "closed_r_dd_lt": 40}, "profitable_high_dd": {"base_max_equity_dd_gt": 0.35, "base_max_equity_dd_le": 0.55, "annualized_net_return_over_max_dd_ge": 0.75, "total_net_r_over_closed_r_dd_ge": 2.0}}, "tier_rule": "the DD gate passes when the ordinary tier OR the profitable_high_dd tier holds, AND every all-path ceiling holds; base DD > 55% or x1.5 DD > 65% is FAIL on any path", "x1_5_max_equity_dd_le": 0.65, "longest_underwater_days_le": 365, "worst_cohort_net_r_ge": -7.5, "accepted_consequence": "the tiers are not monotone in DD: a book with base DD <= 35% but closed-R DD >= 40R fails (the high-DD ratio tier needs base DD > 35%), while a book with base DD in (35%, 55%] meeting both ratios passes; recorded before freeze per Cowork 6459484792 N1 and Codex 6457951657 ruling (a)", "policy": "Owner high-DD/profitability rule as encoded by Codex 6457763292: higher DD is not an automatic rejection when after-cost return, cost stress and recovery are credible; the tier is preregistered and no DD threshold may be relaxed after holdout P&L is seen"},
     "concentration": {"max_symbol_share": 0.25, "max_top3_share": 0.50},
     "capacity": {"median_notional_over_prior_24h_quote_volume_le": 0.001, "turnover": "reported"},
     "multiplicity": "Holm alpha 0.05 across P-SHORT and P-LONG on the bootstrap p-value of mean net R <= 0",
