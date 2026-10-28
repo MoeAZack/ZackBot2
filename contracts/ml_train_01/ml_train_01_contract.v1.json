@@ -1,0 +1,544 @@
+{
+  "contract": "ML-TRAIN-01",
+  "version": 1,
+  "status": "DRAFT",
+  "signed_by": null,
+  "frozen_at": null,
+  "base_commit": "945f997",
+  "doc": "ML_TRAIN_01_CONTRACT.md",
+  "binding_inputs": [
+    "6452494807",
+    "6452143340",
+    "6452728797",
+    "6453098718",
+    "6453844773",
+    "6455506817",
+    "6455705215"
+  ],
+  "order": [
+    "PAIRED_LEDGER",
+    "DIAGNOSTICS",
+    "TRAINING",
+    "SHADOW_ONLY"
+  ],
+  "codex_reported": {
+    "source": "6452728797",
+    "read_by_build": false,
+    "unique_decisions": 11235,
+    "measured_close_labels": 308,
+    "surviving_joins": 128,
+    "orphaned_labels": 180,
+    "taken_decisions": 131,
+    "pending_decisions": 36,
+    "joined_decision_days": 6
+  },
+  "scope": {
+    "authority": "none",
+    "runtime_authority": "DEFERRED",
+    "future_authority_direction": "reduce_only",
+    "paper_only": true,
+    "default_on": false,
+    "ui_flag": "ML_TRAIN_UI",
+    "engine_imports_trainer": false,
+    "skipped_are_labels": false
+  },
+  "pair_ledger": {
+    "ticket": "ML-PAIR-01",
+    "schema": "ml_shadow.pair.v1",
+    "path": "<data>/ml_shadow/pairs/pairs.jsonl",
+    "durable_decision_store": "<data>/ml_shadow/pairs/labelable_decisions.jsonl",
+    "rotated": false,
+    "append_only": true,
+    "pair_key": [
+      "decision_id",
+      "cost_rev_id"
+    ],
+    "write_point": "engine._measured_done -> engine._ml_label -> LedgerWriter.submit('label') -> LedgerWriter._do_write",
+    "net_basis_paired": [
+      "measured"
+    ],
+    "require_costs_complete": true,
+    "fields": [
+      "kind",
+      "schema",
+      "pair_key",
+      "source",
+      "decision_id",
+      "corr_id",
+      "decision",
+      "label",
+      "costs",
+      "ids",
+      "mgmt",
+      "epoch_hash",
+      "provenance",
+      "paired_at",
+      "record_hash"
+    ],
+    "cost_fields": [
+      "gross",
+      "fees_actual",
+      "funding_actual",
+      "fill_adj",
+      "risk_usd",
+      "complete",
+      "why"
+    ],
+    "sources": [
+      "live",
+      "backfill_v1"
+    ],
+    "code_id": {
+      "build_id": "build_info.BUILD_ID",
+      "source_commit": "build.json source_commit",
+      "bundle_hash_modules": [
+        "engine.py",
+        "actual_costs.py",
+        "ml_shadow/*.py"
+      ],
+      "dev_build_training_eligible": false
+    },
+    "record_hash_excludes": [
+      "record_hash",
+      "paired_at"
+    ],
+    "paired_at_in_training_identity": false,
+    "replay_same_content": "no_op",
+    "content_change_same_key": "refused_duplicate_pairs",
+    "mgmt_snapshot": {
+      "fields": [
+        "effective_max_bars",
+        "runner",
+        "overlay_id",
+        "overlay_hash",
+        "mgmt_hash",
+        "canonical_mgmt_hash",
+        "tf",
+        "horizon_h",
+        "mgmt_close_hash",
+        "mgmt_changed"
+      ],
+      "taken_at": "lot_open",
+      "immutable": true,
+      "eligibility_source": "row_snapshot_not_registry",
+      "eligible_if": {
+        "runner": false,
+        "overlay_id": null,
+        "mgmt_hash_equals_canonical": true,
+        "effective_max_bars_equals_table": true
+      },
+      "excluded_counted": [
+        "runner",
+        "noncanonical_mgmt",
+        "mgmt_changed",
+        "mgmt_close_missing"
+      ],
+      "close_hash_source": "measured_close_history_mgmt_snapshot",
+      "close_missing_or_mismatch": "excluded_and_counted",
+      "inherit_registry_mgmt": false
+    },
+    "pending_in_v1_training": false,
+    "pending_follow_up": "separately_signed_pending_horizon_contract"
+  },
+  "diagnostics": {
+    "epoch": "pair_epoch.json:first_decision_candle",
+    "must_be_zero_since_epoch": [
+      "orphan_pairs",
+      "duplicate_pairs",
+      "missing_decision"
+    ],
+    "historical_diagnostic": [
+      "historical_orphans"
+    ],
+    "critical_features": [
+      "atr_pct",
+      "ema_slope",
+      "regime",
+      "session",
+      "family",
+      "side"
+    ]
+  },
+  "dataset": {
+    "source": "pairs_only",
+    "excluded_families": [
+      "Dip-DCA"
+    ],
+    "revision_rule": "latest_at_or_before_t_cut",
+    "label_definition": "ml_train_01.y_netr_gt0.v1",
+    "max_censored_frac": 0.05,
+    "sources_allowed": [
+      "live",
+      "backfill_v1_if_eligible"
+    ]
+  },
+  "split": {
+    "shuffle": false,
+    "block": "cairo_day",
+    "sealed_holdout_frac": 0.2,
+    "sealed_holdout_reads_in_fit": 0,
+    "purge": {
+      "rule": "per_row_strategy_horizon",
+      "global_embargo": false,
+      "row_kept_if_before_boundary": [
+        "candle_time_plus_horizon_h_le_boundary",
+        "closed_at_lt_boundary"
+      ],
+      "applies_to": [
+        "training",
+        "calibration"
+      ],
+      "boundary": [
+        "future_fold_start",
+        "sealed_holdout_start"
+      ],
+      "purge_exact_overlapping_symbol_episodes": true,
+      "short_rows_inherit_longest_horizon": false,
+      "horizon_from_future_or_holdout_duration": false,
+      "too_few_rows_outcome": "INSUFFICIENT_DATA",
+      "gates_relaxed": false,
+      "interval_semantics": "[start,end)",
+      "horizon_source": "row_mgmt_snapshot",
+      "holdout_rows_inspected": false,
+      "holdout_purge_uses": [
+        "dev_row_own_horizon",
+        "dev_row_closed_at_lt_holdout_start"
+      ],
+      "episode_overlap_scope": "development_fold_metadata_only"
+    }
+  },
+  "model": {
+    "kind": "logistic_l2",
+    "pooled": true,
+    "per_cell_models": false,
+    "l2": 1.0,
+    "hyperparameter_search": false,
+    "prior_baseline": "train_base_rate",
+    "feature_schema": "ml_train_01.features.v1",
+    "extra_categorical": [
+      "family",
+      "side"
+    ],
+    "feature_hash_covers_family_side": true,
+    "report_by": [
+      "family",
+      "side",
+      "regime"
+    ]
+  },
+  "calibration": {
+    "method": "platt",
+    "fit_on": "dev_out_of_fold",
+    "isotonic_min_labels": 5000,
+    "n_bins": 10,
+    "min_per_bin": 50
+  },
+  "leakage": {
+    "shuffle_perms": 200,
+    "null_skill_max": 0.005,
+    "canary_auc_flag": 0.9,
+    "max_corrupt_line_frac": 0.001
+  },
+  "thresholds": {
+    "source": "6452728797",
+    "may_tighten": true,
+    "may_weaken_silently": false,
+    "min_paired_labels": 1000,
+    "min_family_side_cell": 100,
+    "min_future_folds": 4,
+    "min_fold_labels": 50,
+    "min_cairo_days": 30,
+    "min_regimes": 2,
+    "min_oof_auc": 0.55,
+    "calibration_skill": "positive",
+    "tranche_net_r": "positive",
+    "tranche_day_block_lower_ci_gt": 0,
+    "min_positive_folds": 3,
+    "of_folds": 4,
+    "cost_stress_mult": 1.5,
+    "min_activity_retained": 0.3,
+    "max_concentration": 0.35,
+    "bootstrap_reps": 2000,
+    "bootstrap_ci": 0.95,
+    "prospective_min_closes": 200,
+    "prospective_min_cairo_days": 14,
+    "prospective_sources": [
+      "live"
+    ]
+  },
+  "ladder": {
+    "rungs": [
+      "CONTRACT",
+      "PAIRED_LEDGER",
+      "ARTIFACT_EXISTS",
+      "CALIBRATED_SHADOW",
+      "PROSPECTIVE_SHADOW",
+      "VETO_CONSIDERATION"
+    ],
+    "deferred": [
+      "VETO_CONSIDERATION"
+    ]
+  },
+  "artifact": {
+    "model_version": "ml_train_01.logit_platt.v1",
+    "statuses": [
+      "UNVERIFIED",
+      "CALIBRATED_SHADOW"
+    ],
+    "store": "<data>/ml_shadow/artifacts/ml_train_01/<dataset_digest[:16]>.json",
+    "immutable": true
+  },
+  "current_verdict": "INSUFFICIENT_DATA",
+  "failure_statuses": [
+    "PAIRING_DEFECT",
+    "INSUFFICIENT_DATA",
+    "DATASET_CONFLICT",
+    "LEAKAGE_SUSPECT",
+    "SOURCE_UNREADABLE",
+    "ARTIFACT_EXISTS"
+  ],
+  "tickets": [
+    "ML-PAIR-01",
+    "ML-PAIR-02",
+    "ML-BACKFILL-01",
+    "ML-DIAG-01",
+    "ML-TRAIN-01a",
+    "ML-TRAIN-01b",
+    "ML-SHADOW-UI"
+  ],
+  "path": "contracts/ml_train_01",
+  "non_training_closes": {
+    "bases": [
+      "acknowledged",
+      "booked"
+    ],
+    "training_pairs": false,
+    "stratum": "diagnostics_only"
+  },
+  "backfill": {
+    "tag": "backfill_v1",
+    "requires": [
+      "deterministic_reconstruction",
+      "full_pair_schema",
+      "measured",
+      "cost_complete",
+      "immutable_source_hashes"
+    ],
+    "counts_toward_prospective": false,
+    "counts_toward_training": "only_if_all_live_rules_pass",
+    "else": "diagnostics_only",
+    "synthesize_orphans": false,
+    "epoch": {
+      "file": "<data>/ml_shadow/pairs/backfill_epoch.json",
+      "create": "exclusive",
+      "immutable": true,
+      "fields": [
+        "reconstruction_code_id",
+        "source_file_hashes",
+        "created_at",
+        "backfill_epoch_hash"
+      ],
+      "compared_with_live_epoch": false,
+      "affects_live_must_be_zero": false
+    },
+    "existing_pair_key": {
+      "overwrite_live": false,
+      "action": "skip_no_op",
+      "counter": "backfill_existing_skipped",
+      "counts_as_duplicate_pairs": false
+    },
+    "repeat_idempotent_only_if": "canonical_content_hash_matches",
+    "hashes_like_live_row": false,
+    "training_requires_mgmt_reconstruction": {
+      "from": [
+        "decision",
+        "config",
+        "build"
+      ],
+      "immutable_evidence": true,
+      "hashes_recorded": "provenance.mgmt_evidence_hashes",
+      "else": "diagnostics_only",
+      "counter": "backfill_mgmt_unreconstructible"
+    }
+  },
+  "horizons": {
+    "rule": "ex_ante_max_bars_x_tf",
+    "observed_holding_used": false,
+    "eligible": [
+      {
+        "family": "Trend",
+        "strategy": "exp_trend",
+        "tf": "4h",
+        "max_bars": 180,
+        "hours": 720,
+        "source": "strategies.py:468"
+      },
+      {
+        "family": "Range",
+        "strategy": "exp_range",
+        "tf": "4h",
+        "max_bars": 30,
+        "hours": 120,
+        "source": "strategies.py:474"
+      },
+      {
+        "family": "Range",
+        "strategy": "exp_vwaprev",
+        "tf": "4h",
+        "max_bars": 30,
+        "hours": 120,
+        "source": "strategies.py:511"
+      },
+      {
+        "family": "Breakout",
+        "strategy": "exp_breakout",
+        "tf": "4h",
+        "max_bars": 60,
+        "hours": 240,
+        "source": "strategies.py:479"
+      },
+      {
+        "family": "Breakout",
+        "strategy": "exp_structure",
+        "tf": "15m",
+        "max_bars": 24,
+        "hours": 6,
+        "source": "strategies.py:490"
+      },
+      {
+        "family": "Momentum",
+        "strategy": "pullback_rsi",
+        "tf": "4h",
+        "max_bars": 60,
+        "hours": 240,
+        "source": "strategies.py:451"
+      },
+      {
+        "family": "Scalp",
+        "strategy": "exp_scalp",
+        "tf": "15m",
+        "max_bars": 16,
+        "hours": 4,
+        "source": "strategies.py:484"
+      },
+      {
+        "family": "Other",
+        "strategy": "range_scalp",
+        "tf": "15m",
+        "max_bars": 16,
+        "hours": 4,
+        "source": "strategies.py:518"
+      },
+      {
+        "family": "Other",
+        "strategy": "failed_breakout_scalp",
+        "tf": "15m",
+        "max_bars": 12,
+        "hours": 3,
+        "source": "strategies.py:525"
+      },
+      {
+        "family": "Other",
+        "strategy": "momentum_burst_scalp",
+        "tf": "15m",
+        "max_bars": 4,
+        "hours": 1,
+        "source": "strategies.py:531"
+      },
+      {
+        "family": "Other",
+        "strategy": "quick_bank_runner",
+        "tf": "15m",
+        "max_bars": 12,
+        "hours": 3,
+        "source": "strategies.py:357"
+      }
+    ],
+    "family_max_hours": {
+      "Trend": 720,
+      "Breakout": 240,
+      "Momentum": 240,
+      "Range": 120,
+      "Scalp": 4,
+      "Other": 4
+    },
+    "excluded_uncapped": [
+      "ema_st",
+      "ema_mom",
+      "donchian_ens",
+      "breakout_pyramid",
+      "squeeze_tp",
+      "bear_breakdown",
+      "hot_coin",
+      "exp_mom_short",
+      "rotation"
+    ],
+    "excluded_always": [
+      "dca_dip",
+      "exp_rip_sell_dca"
+    ],
+    "exclude_if": [
+      "runner_mgmt",
+      "overlay_max_bars_changed",
+      "horizon_breach"
+    ],
+    "v1_scope": "currently_capped_only",
+    "uncapped_excluded_from_v1": true,
+    "uncapped_blocks_strategy_or_paper_path": false,
+    "pair01_invents_uncapped_labels": false,
+    "follow_up": {
+      "contract": "ML-HORIZON-02",
+      "status": "DEFERRED",
+      "scope": "deterministic_causal_label_only_horizons",
+      "runtime_trade_management_change": false
+    }
+  },
+  "deferred_contracts": [
+    "ML-HORIZON-02"
+  ],
+  "epoch": {
+    "file": "<data>/ml_shadow/pairs/pair_epoch.json",
+    "create": "exclusive",
+    "immutable": true,
+    "fields": [
+      "build_id",
+      "source_commit",
+      "bundle_hash",
+      "first_decision_candle",
+      "created_at",
+      "epoch_hash"
+    ],
+    "referenced_by": [
+      "pair_rows",
+      "run_manifest"
+    ],
+    "reset": "new_signed_epoch_archive_operation",
+    "missing_or_conflicting": "PAIRING_DEFECT"
+  },
+  "outcomes": {
+    "no_artifact_run_record_only": [
+      "PAIRING_DEFECT",
+      "INSUFFICIENT_DATA",
+      "DATASET_CONFLICT",
+      "LEAKAGE_SUSPECT",
+      "SOURCE_UNREADABLE",
+      "ARTIFACT_EXISTS"
+    ],
+    "unverified_artifact_allowed_when": "completed_leakage_clean_fit_misses_predictive_or_promotion_threshold",
+    "predictive_gates": [
+      "min_oof_auc",
+      "calibration_skill",
+      "tranche_net_r",
+      "tranche_day_block_lower_ci_gt",
+      "min_positive_folds",
+      "cost_stress_mult",
+      "min_activity_retained",
+      "max_concentration"
+    ],
+    "calibrated_requires": "every_section_5_gate"
+  },
+  "open_questions_closed": {
+    "Q1": "6453844773",
+    "Q2": "6455506817"
+  }
+}
