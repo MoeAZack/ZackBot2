@@ -128,6 +128,10 @@ def _pair(r):
     c = r.get('costs') if isinstance(r.get('costs'), dict) else {}
     if c.get('complete') is not True: raise ValueError('only cost-complete closes are paired')
     code = ids.get('code_id') if isinstance(ids.get('code_id'), dict) else {}
+    build, commit, bundle = (_fmt(code.get('build_id'), _BUILD), _fmt(code.get('source_commit'), _HEX40),
+                             _h64(code.get('bundle_hash')))
+    if build in (None, 'dev') or commit is None or bundle is None:            # Codex 6459654266 #6: defense in depth
+        raise ValueError('a live pair needs the complete code identity')
     m = r.get('mgmt') if isinstance(r.get('mgmt'), dict) else {}
     mg = _mgmt_fields(m)
     mg.update(mgmt_close_hash=_h64(m.get('mgmt_close_hash')), mgmt_changed=_bool(m.get('mgmt_changed')))
@@ -143,8 +147,7 @@ def _pair(r):
                   'funding_actual': _num(c.get('funding_actual')), 'fill_adj': _num(c.get('fill_adj')),
                   'risk_usd': _num(c.get('risk_usd')), 'complete': True,
                   'why': [_txt(x, 40) for x in (c.get('why') or ())][:16]},
-        'ids': {'code_id': {'build_id': _fmt(code.get('build_id'), _BUILD), 'source_commit': _fmt(code.get('source_commit'), _HEX40),
-                            'bundle_hash': _h64(code.get('bundle_hash'))},
+        'ids': {'code_id': {'build_id': build, 'source_commit': commit, 'bundle_hash': bundle},
                 'decision_schema': _fmt(ids.get('decision_schema'), _NAME), 'label_schema': _fmt(ids.get('label_schema'), _NAME),
                 'feature_schema': _fmt(ids.get('feature_schema'), _NAME),
                 'feature_names_sha256': _h64(ids.get('feature_names_sha256')),

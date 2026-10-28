@@ -22,14 +22,16 @@ and nothing is written; reads verify record_hash and skip / count a corrupt or e
 Every PairStore method is fail-safe for trading (it never raises; errors are counted) and fail-closed for the data
 (anything not provably measured, cost-complete, joined and inside the epoch is not written).
 """
-import glob
 import json
 import logging
 import math
 import os
 import sys
+import re
 import threading
 from datetime import datetime, timezone
+
+import actual_costs as AC
 
 from .common import SCHEMA_VERSION, canonical_json, sha256_hex, to_utc
 from .features import FEATURE_NAMES
@@ -49,13 +51,19 @@ NET_BASIS = 'measured'
 # section 1.6 module-bundle hash (engine.py, actual_costs.py, ml_shadow/*.py) covers the code that produces it.
 COST_REV_SCHEMA = 'ai-scan-cost-rev-v2'
 COST_REV_FIELDS = ('fees_actual', 'funding_actual', 'pnl_gross', 'pnl_fill_adj', 'risk_usd')
-COST_MODEL_ID = 'zackbot.actual_costs.measured.v1'   # the measured-net formula of actual_costs.measured
+COST_MODEL_ID = AC.MEASURED_COST_MODEL_ID             # defined once in actual_costs (shared with ai_scan)
 FEATURE_SCHEMA = SCHEMA_VERSION                       # decision features as persisted by the ml_shadow.v2 decision row
 FEATURE_NAMES_SHA256 = sha256_hex(canonical_json(list(FEATURE_NAMES)))
 TF_HOURS = {'5m': 5 / 60, '15m': 0.25, '1h': 1.0, '4h': 4.0}
+# Section 1.6: the modules that produce a pair, exactly as installer.ps1 packages them (tests pin the lists equal).
+BUNDLE_MODULES = ('engine.py', 'actual_costs.py', 'ml_shadow/__init__.py', 'ml_shadow/common.py', 'ml_shadow/context.py',
+                  'ml_shadow/features.py', 'ml_shadow/labels.py', 'ml_shadow/ledger.py', 'ml_shadow/pairs.py',
+                  'ml_shadow/sanitize.py', 'ml_shadow/scoring.py', 'ml_shadow/trainer.py', 'ml_shadow/writer.py')
+BUILD_RE, COMMIT_RE, HASH_RE = (re.compile(r'^[A-Za-z0-9._-]{1,40}$'), re.compile(r'^[0-9a-f]{40}$'),
+                                re.compile(r'^[0-9a-f]{64}$'))
 PAIR_COUNTERS = ('pairs', 'pair_replays', 'duplicate_pairs', 'no_durable_decision', 'refused_skipped', 'cost_incomplete',
-                 'pre_epoch', 'no_epoch', 'epoch_invalid', 'durable_decisions', 'mgmt_snapshots', 'skipped_lines',
-                 'errors')
+                 'pre_epoch', 'no_epoch', 'epoch_invalid', 'epoch_refused_identity', 'identity_incomplete',
+                 'durable_decisions', 'mgmt_snapshots', 'skipped_lines', 'errors')
 
 
 class PairError(ValueError):
@@ -111,21 +119,12 @@ def bundle_base():
     return getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def bundle_modules(base):
-    pkg = os.path.join(base, 'ml_shadow')
-    mods = ['engine.py', 'actual_costs.py'] + sorted('ml_shadow/' + os.path.basename(p)
-                                                     for p in glob.glob(os.path.join(pkg, '*.py')))
-    return mods
-
-
 def bundle_hash(base=None):
-    """sha256 over the sorted (path, sha256) list of the modules that produce a pair, as packaged. None when any of them
-    cannot be read from the bundle (then the code_id is incomplete: diagnostics / engineering only)."""
+    """sha256 over the sorted (path, sha256) list of BUNDLE_MODULES as packaged. None when ANY of them cannot be read
+    from the bundle: the code identity is then incomplete and nothing is paired."""
     base = base or bundle_base()
-    mods = bundle_modules(base)
-    if not any(m.startswith('ml_shadow/') for m in mods): return None
     out = []
-    for m in sorted(mods):
+    for m in sorted(BUNDLE_MODULES):
         try:
             with open(os.path.join(base, *m.split('/')), 'rb') as fh: out.append([m, sha256_hex(fh.read())])
         except OSError:
@@ -147,13 +146,25 @@ def code_identity(data_dir, base=None):
         if isinstance(rec, dict) and rec.get('build_id') == bid and bid != 'dev': sc = rec.get('source_commit')
     except Exception:                                       # noqa: BLE001 - no record: no source commit
         sc = None
+    if not (isinstance(sc, str) and COMMIT_RE.match(sc)): sc = None
     try: bh = bundle_hash(base)
     except Exception: bh = None                             # noqa: BLE001
     return dict(build_id=str(bid), source_commit=sc, bundle_hash=bh)
 
 
+def identity_gap(code):
+    """The complete-code-identity gate (Codex 6459654266 #2): None when the identity is complete - a non-dev build id, a
+    40-hex source commit from the matching build.json and a 64-hex bundle hash - else the first missing part."""
+    c = code if isinstance(code, dict) else {}
+    b = c.get('build_id')
+    if not (isinstance(b, str) and BUILD_RE.match(b)) or b == 'dev': return 'dev_build'
+    if not (isinstance(c.get('source_commit'), str) and COMMIT_RE.match(c['source_commit'])): return 'source_commit'
+    if not (isinstance(c.get('bundle_hash'), str) and HASH_RE.match(c['bundle_hash'])): return 'bundle_hash'
+    return None
+
+
 def packaged(code):
-    return bool(code) and code.get('build_id') not in (None, '', 'dev')
+    return identity_gap(code) is None
 
 
 # ------------------------------------------------------------------ management snapshot (section 1.7)
@@ -254,12 +265,15 @@ def read_epoch(path):
     if not isinstance(e, dict) or e.get('epoch_hash') != chash({k: v for k, v in e.items() if k != 'epoch_hash'}):
         raise PairError('epoch_hash does not verify')
     if to_utc(e['first_decision_candle']) > to_utc(e['created_at']): raise PairError('epoch backdated')
+    if identity_gap(e) is not None: raise PairError('epoch code identity incomplete')
     return e
 
 
 def create_epoch(path, code, first_candle, now=None):
     """Exclusive create, once. -> the epoch (the existing one if another writer won). Raises PairError when refused."""
     created = now or _now()
+    gap = identity_gap(code)
+    if gap is not None: raise PairError(f'code identity incomplete ({gap})')
     if to_utc(first_candle) > to_utc(created): raise PairError('first decision candle after created_at')
     body = dict(schema=EPOCH_SCHEMA, build_id=code.get('build_id'), source_commit=code.get('source_commit'),
                 bundle_hash=code.get('bundle_hash'), first_decision_candle=first_candle, created_at=created)
@@ -285,11 +299,21 @@ class PairStore:
         self.ctr = (counters if counters is not None else {}).setdefault('pairs', {})
         for k in PAIR_COUNTERS: self.ctr.setdefault(k, 0)
         self.ctr.setdefault('non_training_closes', {'acknowledged': 0, 'booked': 0})
+        self.ctr.setdefault('identity_reasons', {})
         self.code = code if code is not None else code_identity(data_dir)
         self.now = now or _now
         self.durable = SealedJsonl(self.p['durable'], _durable_key)
         self.pairs = SealedJsonl(self.p['pairs'], _pair_key)
         self.ctr['skipped_lines'] = self.durable.skipped + self.pairs.skipped
+
+    def _gap(self, counter):
+        """Count an identity refusal under `counter` with its reason. -> the reason, None when the identity is complete."""
+        gap = identity_gap(self.code)
+        if gap is not None:
+            self.ctr[counter] += 1
+            self.ctr['identity_reasons'][gap] = self.ctr['identity_reasons'].get(gap, 0) + 1
+            self.ctr['identity_last'] = gap
+        return gap
 
     def _err(self, where, ex):
         self.ctr['errors'] += 1
@@ -303,8 +327,8 @@ class PairStore:
             if not labelable(row): return None
             rec = sanitize_row('decision', row)
             if self.durable.append(rec) == 'written': self.ctr['durable_decisions'] += 1
-            if packaged(self.code) and not os.path.exists(self.p['epoch']):
-                create_epoch(self.p['epoch'], self.code, rec['candle_time'], self.now())
+            if not os.path.exists(self.p['epoch']) and self._gap('epoch_refused_identity') is None:
+                create_epoch(self.p['epoch'], self.code, rec['candle_time'], self.now())   # complete identity only
             return rec
         except Exception as ex:                             # noqa: BLE001
             self._err('durable decision', ex); return None
@@ -338,6 +362,7 @@ class PairStore:
             self.ctr['non_training_closes'][st] += 1; return None
         if st != 'measured' or c.get('complete') is not True:
             self.ctr['cost_incomplete'] += 1; return None
+        if self._gap('identity_incomplete') is not None: return None   # never a pair without a complete code_id
         did = label.get('decision_id')
         dec = self.decision(did)
         if dec is None:

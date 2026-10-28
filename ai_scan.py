@@ -32,6 +32,7 @@ import math
 import re
 import threading
 
+from actual_costs import MEASURED_COST_MODEL_ID   # noqa: F401  the measured-cost model id (shared with ML-PAIR-01)
 from ml_shadow.common import SECRET_NAME_RE, canonical_json, sha256_hex, to_utc
 from ml_shadow.ledger import decision_id
 

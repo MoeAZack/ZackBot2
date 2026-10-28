@@ -88,11 +88,15 @@ def test_mgmt_drift_and_missing_close_hash_are_recorded_not_inherited(tmp_path):
 
 def test_sanitize_refuses_unmeasured_incomplete_or_foreign_source():
     good = dict(kind='pair', decision_id='d' * 32, pair_key=['d' * 32, 'c' * 64], source='live', decision={},
-                label=dict(net_basis='measured'), costs=dict(complete=True), ids=dict(cost_rev_id='c' * 64),
+                label=dict(net_basis='measured'), costs=dict(complete=True), ids=dict(cost_rev_id='c' * 64, code_id=PKG),
                 epoch_hash='e' * 64)
     assert sanitize_row('pair', good)['pair_key'] == ['d' * 32, 'c' * 64]
     for bad in (dict(label=dict(net_basis='acknowledged')), dict(costs=dict(complete=False)), dict(source='backfill_v1'),
-                dict(pair_key=['d' * 32, 'f' * 64]), dict(epoch_hash=None)):
+                dict(pair_key=['d' * 32, 'f' * 64]), dict(epoch_hash=None),
+                dict(ids=dict(cost_rev_id='c' * 64, code_id=dict(PKG, build_id='dev'))),
+                dict(ids=dict(cost_rev_id='c' * 64, code_id=dict(PKG, source_commit=None))),
+                dict(ids=dict(cost_rev_id='c' * 64, code_id=dict(PKG, bundle_hash='z' * 64))),
+                dict(ids=dict(cost_rev_id='c' * 64))):
         with pytest.raises(ValueError): sanitize_row('pair', dict(good, **bad))
 
 
@@ -127,7 +131,8 @@ def test_epoch_created_once_by_installed_build_and_dev_never_pairs_without_it(tm
     d = dec(); s.record_decision(d)
     assert not os.path.exists(s.p['epoch'])                                      # dev build: no epoch
     s.pair(label(d['decision_id']), close())
-    assert s.ctr['no_epoch'] == 1 and lines(s.p['pairs']) == []
+    assert s.ctr['identity_incomplete'] == 1 and s.ctr['identity_reasons'] == {'dev_build': 2}
+    assert s.ctr['epoch_refused_identity'] == 1 and lines(s.p['pairs']) == []
     s2, d2 = paired(tmp_path / 'pkg')
     e1 = open(s2.p['epoch'], 'rb').read()
     s2.record_decision(dec(t='2026-10-21 00:00:00'))
@@ -264,6 +269,109 @@ def test_engine_pairs_at_the_measured_close_and_trading_is_unchanged(tmp_path, m
     assert e.health['ml_shadow']['pairs']['pairs'] == 2 and e.health['ml_shadow']['pairs']['errors'] == 0
     raw = open(p['pairs'], encoding='utf-8').read()
     assert not any(k in raw for k in e.state.get('measured_wait', {})) and '|BTCUSDT|' not in raw
+
+
+# ------------------------------------------------------------------ Codex 6459654266: complete code identity
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def test_bundle_module_list_is_every_pair_source_and_the_installer_packages_each():
+    import glob as G
+    want = ['engine.py', 'actual_costs.py'] + sorted('ml_shadow/' + os.path.basename(p)
+                                                     for p in G.glob(os.path.join(ROOT, 'ml_shadow', '*.py')))
+    assert list(MLP.BUNDLE_MODULES) == want                                      # a new module must join the identity
+    src = open(os.path.join(ROOT, 'installer.ps1'), encoding='utf-8').read()
+    build = src[src.index("@('-m', 'PyInstaller'"):]
+    build = build[:build.index("Stop-Install 'PyInstaller failed")]
+    for m in MLP.BUNDLE_MODULES:
+        if '/' in m:
+            d, f = m.split('/')
+            line = "'--add-data', ([IO.Path]::Combine($src, '%s', '%s') + ';%s')" % (d, f, d)
+        else:
+            line = "'--add-data', ([IO.Path]::Combine($src, '%s') + ';.')" % m
+        assert line in build, f'{m} is not packaged where bundle_hash reads it'
+
+
+def stage(tmp, skip=()):
+    import shutil
+    for m in MLP.BUNDLE_MODULES:
+        if m in skip: continue
+        dst = os.path.join(str(tmp), *m.split('/'))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(os.path.join(ROOT, *m.split('/')), dst)
+    return str(tmp)
+
+
+def build(monkeypatch, data, rec, bid='20261028-055000'):
+    mod = type(sys)('build_info'); mod.BUILD_ID = bid
+    monkeypatch.setitem(sys.modules, 'build_info', mod)
+    if rec is not None: (data / 'build.json').write_text(json.dumps(rec))
+
+
+def run_identity(data, code):
+    s = store(data, code)
+    d = dec(); s.record_decision(d)
+    s.record_mgmt(MLP.mgmt_snapshot(d['decision_id'], {'max_bars': 16}, {'max_bars': 16}, tf='15m'))
+    return s, s.pair(label(d['decision_id']), close())
+
+
+def test_staged_real_bundle_hash_gives_a_complete_identity_that_pairs(tmp_path, monkeypatch):
+    import hashlib
+    base = stage(tmp_path / 'bundle')
+    want = MLP.chash([[m, hashlib.sha256(open(os.path.join(ROOT, *m.split('/')), 'rb').read()).hexdigest()]
+                      for m in sorted(MLP.BUNDLE_MODULES)])
+    assert MLP.bundle_hash(base) == want == MLP.bundle_hash(ROOT)
+    (tmp_path / 'data').mkdir()
+    build(monkeypatch, tmp_path / 'data', dict(build_id='20261028-055000', source_commit='c' * 40))
+    code = MLP.code_identity(str(tmp_path / 'data'), base)
+    assert code == dict(build_id='20261028-055000', source_commit='c' * 40, bundle_hash=want)
+    s, res = run_identity(tmp_path / 'data', code)
+    assert res == 'written' and MLP.read_epoch(s.p['epoch'])['bundle_hash'] == want
+    assert json.loads(lines(s.p['pairs'])[0])['ids']['code_id'] == code
+
+
+def test_one_missing_packaged_module_means_no_epoch_and_no_pair(tmp_path, monkeypatch):
+    base = stage(tmp_path / 'bundle', skip=('ml_shadow/writer.py',))
+    assert MLP.bundle_hash(base) is None
+    (tmp_path / 'data').mkdir()
+    build(monkeypatch, tmp_path / 'data', dict(build_id='20261028-055000', source_commit='c' * 40))
+    s, res = run_identity(tmp_path / 'data', MLP.code_identity(str(tmp_path / 'data'), base))
+    assert res is None and not os.path.exists(s.p['epoch']) and lines(s.p['pairs']) == []
+    assert s.ctr['identity_incomplete'] == 1 and s.ctr['epoch_refused_identity'] == 1
+    assert s.ctr['identity_reasons'] == {'bundle_hash': 2} and s.ctr['identity_last'] == 'bundle_hash'
+    assert s.decision(json.loads(lines(s.p['durable'])[0])['decision_id']) is not None   # diagnostic rows stay
+
+
+@pytest.mark.parametrize('rec', [dict(build_id='20261027-000000', source_commit='c' * 40),   # another build's record
+                                 dict(build_id='20261028-055000'),                            # no source commit
+                                 dict(build_id='20261028-055000', source_commit='C' * 40),    # not lowercase 40-hex
+                                 dict(build_id='20261028-055000', source_commit=''),
+                                 None])                                                       # no build.json at all
+def test_mismatched_or_incomplete_build_json_means_no_epoch_and_no_pair(tmp_path, monkeypatch, rec):
+    base = stage(tmp_path / 'bundle')
+    (tmp_path / 'data').mkdir()
+    build(monkeypatch, tmp_path / 'data', rec)
+    code = MLP.code_identity(str(tmp_path / 'data'), base)
+    assert code['source_commit'] is None and MLP.identity_gap(code) == 'source_commit'
+    s, res = run_identity(tmp_path / 'data', code)
+    assert res is None and not os.path.exists(s.p['epoch']) and lines(s.p['pairs']) == []
+    assert s.ctr['identity_reasons'] == {'source_commit': 2}
+
+
+def test_an_epoch_with_an_incomplete_identity_never_verifies(tmp_path):
+    with pytest.raises(MLP.PairError): MLP.create_epoch(str(tmp_path / 'e.json'), dict(PKG, bundle_hash=None), T0, T0)
+    body = dict(schema=MLP.EPOCH_SCHEMA, build_id='dev', source_commit=None, bundle_hash=None,
+                first_decision_candle=T0, created_at=T0)
+    body['epoch_hash'] = MLP.chash(body)
+    (tmp_path / 'e.json').write_text(json.dumps(body))
+    with pytest.raises(MLP.PairError): MLP.read_epoch(str(tmp_path / 'e.json'))
+
+
+def test_measured_cost_model_id_is_defined_once_in_actual_costs():
+    import actual_costs as AC, ai_scan as A
+    assert MLP.COST_MODEL_ID is AC.MEASURED_COST_MODEL_ID and A.MEASURED_COST_MODEL_ID is AC.MEASURED_COST_MODEL_ID
+    for f in ('ml_shadow/pairs.py', 'ai_scan.py'):
+        assert "'zackbot.actual_costs.measured.v1'" not in open(os.path.join(ROOT, f), encoding='utf-8').read()
 
 
 def test_engine_pairing_failure_never_changes_trading(tmp_path, monkeypatch):
