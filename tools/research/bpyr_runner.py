@@ -1,4 +1,4 @@
-"""breakout_pyramid_falsify.v1: deterministic code-only research runner (slices 1-2; no evaluation is authorized).
+"""breakout_pyramid_falsify.v1: deterministic code-only research runner (slices 1-3; no evaluation is authorized).
 
 Authoritative spec: research_evidence/prereg/breakout_pyramid_falsify.v1.json (signed; read by this module, nothing
 else is policy).
@@ -23,6 +23,13 @@ else is policy).
               funding-mark-proxy-v1 from the 1h mark bar ending at T, point-in-time rules via rules_of(PitRules).
   execute     authorized only: run.json identity + hash-chained, fsync'd, resumable symbols.jsonl, mandatory
               --max-rss-mb; returns the summary in memory.
+  gate_inputs the pure decide()-shaped dict (data incl. the credited stage's and book's own data state, activity, B0,
+              H1-H3, book DD tier, tails, causality / accounting checks); run() assembles it, never evaluates it.
+  CLI         main(): the real edge05 ArchiveSource (signed manifest index) and PitRules (rules artifact bound to its
+              rules-source manifest), every input file checked against an expected sha256; --max-rss-mb mandatory; a
+              dirty tree refused (no override flag). Without an Integration authorization (loaded only through the
+              Integration-owned module AUTH_LOADER, which this PR does not ship) it runs preflight / identity /
+              metadata-coverage checks only, opens no archive, writes nothing and exits.
 
 Disclosures (Codex 6478332951; also emitted in every result dict and in run.json as `disclosures`):
   1. B0 is not path-identical to E: E (and the book) permanently stop re-arming a symbol after an INCOMPLETE episode,
@@ -138,6 +145,10 @@ class BaselineIncomplete(RunnerError):
 
 class WriteRefused(RunnerError):
     pass
+
+
+class SourceUncovered(RunnerError):
+    """A source range the archive cannot prove (edge05 Incomplete), e.g. the straddle month without an artifact."""
 
 
 class Incomplete(Exception):
@@ -1241,7 +1252,8 @@ def book_metrics(bk: dict, windows: Windows) -> dict:
             'exposure': sum(1 for _, _, n in bk['curve'] if n) / n_bars if n_bars else 0.0, 'trades': len(tr),
             'per_slice_trades': [sum(x['slice'] == s for x in tr) for s in range(1, len(windows.slices) + 1)],
             'skips': bk['skips'], 'refusals': bk['refusals'], 'incomplete': len(bk['incomplete']),
-            'data': book_data(bk, windows), 'unresolved_accounting': unresolved(bk)}
+            'data': book_data(bk, windows), 'unresolved_accounting': unresolved(bk),
+            'causality': book_causality(bk, windows)}
 
 
 UNRESOLVED = ('rules_uncovered', 'add_rules_uncovered', 'exit_rules_uncovered', 'exit_above_max_qty')
@@ -1261,8 +1273,23 @@ def book_data(bk: dict, windows: Windows) -> dict:
         ok = sum(x['slice'] == k for x in bk['trades'])
         bad = sum(windows.slice_of(x['t_entry']) == k for x in bk['incomplete'])
         frac.append(bad / (ok + bad) if ok + bad else 0.0)
-    return {'incomplete_frac': frac, 'fill_gaps': bk['skips']['incomplete_fill_gap'],
-            'pass': all(f <= 0.02 for f in frac) and bk['skips']['incomplete_fill_gap'] == 0}
+    n_un = unresolved(bk)
+    return {'incomplete_frac': frac, 'fill_gaps': bk['skips']['incomplete_fill_gap'], 'unresolved_accounting': n_un,
+            'pass': all(f <= 0.02 for f in frac) and bk['skips']['incomplete_fill_gap'] == 0 and n_un == 0}
+
+
+def book_causality(bk: dict, windows: Windows) -> dict:
+    """gates.causality for one book replay: no unresolved accounting row, the frozen equity sequence and the event log
+    never run backwards in time, every entry fill inside [dev start, last-entry cutoff), every exit at or after its
+    entry and before the sealed cutoff."""
+    st = [t for t, _ in bk['equity_seq']]
+    et = [e[0] for e in bk['events']]
+    checks = {'no_unresolved_accounting': unresolved(bk) == 0,
+              'equity_sequence_causal': all(a <= b for a, b in zip(st, st[1:])),
+              'events_causal': all(a <= b for a, b in zip(et, et[1:])),
+              'entries_inside_window': all(windows.entry_ok(x['t_entry']) for x in bk['trades']),
+              'exits_before_seal': all(x['t_entry'] <= x['t_exit'] < windows.sealed for x in bk['trades'])}
+    return {'checks': checks, 'pass': all(checks.values())}
 
 
 def dd_tier(base: dict, x15: dict, p: dict) -> dict:
@@ -1352,11 +1379,15 @@ def load_symbol(src, sym: str, windows: Windows, *, warmup_start: int, check=Non
     import edge05_runner as E5
     g = E5.Guard(src, windows.sealed)
     g.scope(warmup_start, windows.sealed)
-    bars = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume) for b in g.bars(sym, '4h', warmup_start, windows.sealed)]
-    if check:
-        check()
-    raw_f = g.funding(sym, warmup_start, windows.sealed)
-    raw_m = g.mark(sym, warmup_start, windows.sealed)
+    try:
+        bars = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume)
+                for b in g.bars(sym, '4h', warmup_start, windows.sealed)]
+        if check:
+            check()
+        raw_f = g.funding(sym, warmup_start, windows.sealed)
+        raw_m = g.mark(sym, warmup_start, windows.sealed)
+    except E5.Incomplete as e:                     # e.g. the never-opened straddle month without a covering artifact
+        raise SourceUncovered(f'{sym}: source rows {e.reason} from {_iso(e.at_ms)}; refusing (fail closed)') from None
     digest = rows_digest(sym, bars, [(r.time_ms, r.rate, r.interval_hours) for r in raw_f],
                          [(m.open_ms, m.close) for m in raw_m])
     try:
@@ -1487,16 +1518,34 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
                        'dd_tier': dd_tier(books[f'{gr}:base_x1'], books[f'{gr}:all_variable_costs_x1.5'], p),
                        'tails_worst_ok': bool(tails) and min(tails) >= p['gates']['tails']['worst_episode_net_r_ge'],
                        'top1pct_share': _top1(tails)}
-        gb = books[f'{gr}:base_x1']
-        # decide()-shaped inputs (never evaluated here): the credited stage's own data gate and the credited book's
-        # unresolved accounting / INCOMPLETE state feed K9 data and the causality / accounting gate
-        out['gate_inputs'] = {
-            'data': g['data'] and g['data_by_stage'][stage]['pass'] and gb['data']['pass']
-            and books[f'{gr}:all_variable_costs_x1.5']['data']['pass'],
-            'activity': g['activity'], 'b0': g['b0'], 'H1': g['H1'], 'H2': g['H2'], 'H3': g['H3'],
-            'book_dd': out['book']['dd_tier'], 'tails': out['book']['tails_worst_ok'],
-            'causality': gb['unresolved_accounting'] == 0
-            and books[f'{gr}:all_variable_costs_x1.5']['unresolved_accounting'] == 0}
+    bk = out.get('book')
+    out['gate_inputs'] = gate_inputs(g, bk if bk and bk['stage'] == g['credited_stage'] else None,
+                                     p['sizing']['gated_risk'])
+    return out
+
+
+GATE_KEYS = ('data', 'activity', 'b0', 'H1', 'H2', 'H3', 'book_dd', 'tails', 'causality')
+
+
+def gate_inputs(g: dict, book: dict | None, gated_risk) -> dict:
+    """Pure: the exact dict decide() consumes (GATE_KEYS) plus its detail, from the gate dict and the CREDITED
+    stage's book (None when no stage is credited or the book was replayed for another stage: then the book inputs are
+    failing, so no survival can be read from it). data = S1 data AND the credited stage's own data gate AND the
+    credited book's data state (<= 2% INCOMPLETE per slice, no unfilled-for-data entry, no unresolved accounting row)
+    at base and x1.5; causality = book_causality() at base and x1.5; tails = worst credited-stage episode >= -3R."""
+    st = g['credited_stage']
+    data = bool(g['data']) and (st is None or bool(g['data_by_stage'][st]['pass']))
+    out = {'activity': bool(g['activity']), 'b0': g['b0'], 'H1': g['H1'], 'H2': g['H2'], 'H3': g['H3'],
+           'credited_stage': st}
+    if book is None:
+        out.update(data=data, book_dd={'pass': False, 'reason': 'no credited-stage book'}, tails=False,
+                   causality=False, causality_detail=None, book_data_detail=None)
+        return out
+    b, x = book['replays'][f'{gated_risk}:base_x1'], book['replays'][f'{gated_risk}:all_variable_costs_x1.5']
+    out.update(data=data and b['data']['pass'] and x['data']['pass'], book_dd=book['dd_tier'],
+               tails=bool(book['tails_worst_ok']), causality=b['causality']['pass'] and x['causality']['pass'],
+               causality_detail={'base_x1': b['causality'], 'all_variable_costs_x1.5': x['causality']},
+               book_data_detail={'base_x1': b['data'], 'all_variable_costs_x1.5': x['data']})
     return out
 
 
@@ -1675,5 +1724,187 @@ def write_result(result: dict, path: str, *, authorization: EvalAuthorization | 
             or 'verdict' in result or 'REGISTRY' in os.path.basename(ap):
         raise WriteRefused('verdict / ledger / registry writes are Integration-only')
     with open(ap, 'xb') as f:
-        f.write(canon(result))
+        f.write(canon(_json_safe(result)))
     return ap
+
+
+def _json_safe(x):
+    """Strict-JSON copy for writing: a non-finite float (an undefined Calmar / ratio, a nan mark) becomes the string
+    'Infinity' / '-Infinity' / 'NaN' instead of making canon() refuse the whole result."""
+    if isinstance(x, float) and not math.isfinite(x):
+        return 'NaN' if x != x else ('Infinity' if x > 0 else '-Infinity')
+    if isinstance(x, dict):
+        return {k: _json_safe(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_json_safe(v) for v in x]
+    return x
+
+
+def _iso(ms) -> str:
+    if ms is None:
+        return '?'
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+# ------------------------------------------------------------------ CLI (real ArchiveSource / PitRules wiring)
+AUTH_LOADER = 'bpyr_eval_authorization'     # Integration-owned `load(path, prereg_sha256) -> EvalAuthorization`;
+                                            # not shipped here, so every evaluation request is refused
+PREFLIGHT_FORMAT = 'zb-bpyr-preflight/1'
+SERIES_KINDS = ('4h', 'funding', 'mark')
+
+
+def _expect(path: str, expect: str | None, what: str) -> None:
+    if not expect:
+        raise RunnerError(f'--expect-{what}-sha256 is required with the {what} file')
+    got = file_sha(path)
+    if got != expect:
+        raise RunnerError(f'{what} file sha256 {got} != expected {expect}; refusing')
+
+
+def build_sources(a, manifest_path: str, symbols, cutoff_ms: int):
+    """The real inputs, built as edge05_runner.main builds them: ArchiveSource over the archive manifest (the index
+    only - no archive is opened here), the optional straddle artifact (+ daily source manifest) attached and
+    authenticated, and the point-in-time rules artifact bound to its rules-source manifest. Every artifact is checked
+    against an expected sha256 before it is parsed (SourceManifest.load enforces its own)."""
+    import edge05_runner as E5
+    src = E5.ArchiveSource(manifest_path, a.store, sorted(symbols), cutoff_ms, a.cache_months)
+    if a.straddle_artifact:
+        _expect(a.straddle_artifact, a.expect_straddle_sha256, 'straddle')
+        daily = E5.SourceManifest.load(a.straddle_daily_manifest, a.expect_straddle_daily_sha256,
+                                       'binance-vision-archive') if a.straddle_daily_manifest else None
+        src.attach_straddle(E5.StraddleArtifact.load(a.straddle_artifact, cutoff_ms), daily)
+    pit = None
+    if a.rules_artifact:
+        _expect(a.rules_artifact, a.expect_rules_sha256, 'rules')
+        if not a.rules_source_manifest:
+            raise RunnerError('--rules-source-manifest is required with --rules-artifact')
+        rsrc = E5.SourceManifest.load(a.rules_source_manifest, a.expect_rules_source_sha256,
+                                      'binance-um-exchangeinfo-snapshots', a.rules_snapshot_root)
+        pit = E5.PitRules.load(a.rules_artifact, rsrc, a.max_rss_mb)
+    return src, pit
+
+
+def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
+    """Metadata-only readiness (no archive opened, no row read): per symbol and series the manifest's monthly files
+    must tile [lo, sealed) up to the never-opened straddle month, whose pre-cutoff part needs GOOD (re-counted and
+    authenticated) straddle-artifact coverage; the rules artifact must carry no bad / unauthenticated / unsupported
+    entry and resolve every symbol at the first and the last possible entry time."""
+    hi, gaps = windows.sealed, []
+    for sym in sorted(symbols):
+        for kind in SERIES_KINDS:
+            cur = lo
+            for m_lo, m_hi, *_ in src.index.get((sym, kind), ()):
+                if m_hi <= cur:
+                    continue
+                if m_lo > cur:
+                    break
+                cur = m_hi
+            if cur < hi and src.straddle_month.get((sym, kind)) == cur and src.straddle is not None \
+                    and src.straddle.provenance.covered(sym, kind, cur, hi):
+                cur = hi
+            if cur < hi:
+                gaps.append({'symbol': sym, 'series': kind, 'uncovered_from': _iso(cur)})
+    rules_gaps, rid = [], None
+    if pit is None:
+        rules_ok = False
+    else:
+        rid = pit.identity()
+        at = rules_of(pit)
+        rules_gaps = [s for s in sorted(symbols)
+                      if at(s, windows.dev_start) is None or at(s, windows.last_entry - TF) is None]
+        rules_ok = not rules_gaps and not any(rid[k] for k in ('bad_coverage_entries', 'unauthenticated_entries',
+                                                               'causally_unsupported_intervals', 'unsourced_intervals'))
+    return {'series_gaps': gaps, 'rules_present': pit is not None, 'rules_gaps': rules_gaps, 'rules_ok': rules_ok,
+            'straddle_files_never_opened': src.straddle_skipped, 'ready': not gaps and rules_ok}
+
+
+def load_authorization(path: str, pf: Preflight) -> EvalAuthorization:
+    """Only the Integration-owned loader module can turn an authorization file into a token; this PR ships none, so
+    an evaluation is always refused here. A loader added later is untracked code until committed, and preflight
+    refuses a dirty tree."""
+    import importlib
+    try:
+        mod = importlib.import_module(AUTH_LOADER)
+    except ImportError:
+        raise WriteRefused(f'no Integration authorization loader ({AUTH_LOADER}) is installed; evaluation refused '
+                           '(preflight-only is available without --authorization)') from None
+    tok = mod.load(path, pf.prereg_sha256)
+    if not isinstance(tok, EvalAuthorization) or tok.issuer != 'codex' or tok.prereg_sha256 != pf.prereg_sha256 \
+            or not str(tok.comment_id).isdigit():
+        raise WriteRefused('the authorization loader returned no Integration token for this signed contract')
+    return tok
+
+
+def _runlock(out: str, universe: str, argv):
+    import runlock
+    return runlock.hold(REPO, 'bpyr-runner', {'out': os.path.abspath(out), 'universe': universe}, argv=argv)
+
+
+def main(argv=None, *, _inject=None) -> int:
+    """CLI. Exit 0 preflight report / authorized result written; 2 sealed-boundary refusal; 3 any other refusal;
+    4 memory cap. `_inject` (tests only: git, manifest_check, manifest_path, rss, lock) is not reachable from argv."""
+    import argparse
+    import edge05_runner as E5
+    inj = _inject or {}
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--store', required=True, help='Binance archive store root (read-only)')
+    ap.add_argument('--max-rss-mb', type=float, required=True, help='mandatory private-memory cap (MB)')
+    ap.add_argument('--universe', choices=('FIXED-17', 'STATIC-40'), default='FIXED-17')
+    ap.add_argument('--rules-artifact', help='point-in-time exchange rules (zb-exchange-rules-pit)')
+    ap.add_argument('--expect-rules-sha256')
+    ap.add_argument('--rules-source-manifest', help='exchangeInfo snapshot list (zb-upstream-source-manifest)')
+    ap.add_argument('--expect-rules-source-sha256')
+    ap.add_argument('--rules-snapshot-root')
+    ap.add_argument('--straddle-artifact', help='hash-bound pre-cutoff rows of the straddle month')
+    ap.add_argument('--expect-straddle-sha256')
+    ap.add_argument('--straddle-daily-manifest')
+    ap.add_argument('--expect-straddle-daily-sha256')
+    ap.add_argument('--cache-months', type=int, default=512)
+    ap.add_argument('--authorization', help='Integration evaluation authorization; without it only preflight runs')
+    ap.add_argument('--out', help='run directory (authorized runs only)')
+    a = ap.parse_args(argv)
+    try:
+        if not (math.isfinite(a.max_rss_mb) and a.max_rss_mb > 0):
+            raise RunnerError('a finite, positive --max-rss-mb is mandatory')
+        pf = preflight(git=inj.get('git'), manifest_check=inj.get('manifest_check'))     # dirty tree: DirtyTree
+        p = pf.prereg
+        w = Windows.of(p)
+        ws = iso_ms(p['windows']['calibration']['start'])
+        symbols = universe_symbols(p, a.universe)
+        man = inj.get('manifest_path') or _p(REPO, tuple(p['source']['manifest'].split('/')))
+        src, pit = build_sources(a, man, symbols, w.sealed)
+        cov = coverage_report(src, pit, symbols, ws, w)
+        report = {'format': PREFLIGHT_FORMAT, 'mode': 'authorized' if a.authorization else 'preflight-only',
+                  'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code,
+                  'universe': a.universe, 'symbols': sorted(symbols), 'sealed_cutoff': _iso(w.sealed),
+                  'warmup_start': _iso(ws), 'source_identity': source_identity(src),
+                  'rules_identity': pit.identity() if pit is not None else None, 'coverage': cov,
+                  'evaluated': False, 'written': None}
+        if not a.authorization:
+            print(json.dumps(report, sort_keys=True, indent=1))
+            return 0
+        tok = load_authorization(a.authorization, pf)
+        if not cov['ready']:
+            raise RunnerError('inputs are not ready (series gaps / straddle / rules); see the preflight report')
+        if not a.out:
+            raise RunnerError('--out is required for an authorized run')
+        with (inj.get('lock') or _runlock)(a.out, a.universe, argv):
+            res = execute(a.out, src, pf, symbols=sorted(symbols), rules=rules_of(pit), authorization=tok,
+                          max_rss_mb=a.max_rss_mb, rss=inj.get('rss'), universe=a.universe)
+            path = write_result(res, os.path.join(a.out, 'result.json'), authorization=tok)
+        print(json.dumps({'written': path, 'identity_sha256': res.get('identity_sha256')}, sort_keys=True))
+        return 0
+    except (MemoryLimit, E5.MemoryLimit) as e:
+        print(f'ABORTED (memory): {e}', file=sys.stderr)
+        return 4
+    except (HoldoutRefused, E5.HoldoutRefused) as e:
+        print(f'REFUSED (sealed): {e}', file=sys.stderr)
+        return 2
+    except (RunnerError, E5.RunnerError, E5.Incomplete, E5.CV.CoverageError, M.ManifestError, OSError,
+            ValueError) as e:
+        print(f'REFUSED: {e}', file=sys.stderr)
+        return 3
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -890,3 +890,425 @@ def test_underwater_and_dd_use_the_path_aware_equity_sequence(P):
     assert m['longest_underwater_days'] == R.underwater_days(bk['equity_seq'])
     seq_ts = [t for t, _ in bk['equity_seq']]
     assert seq_ts == sorted(seq_ts)                                                       # frozen event order is causal
+
+
+# ================================================================== slice 3: real store formats (tmp_path only), CLI, gate inputs
+import contextlib                                                                           # noqa: E402
+import gzip                                                                                 # noqa: E402
+import hashlib                                                                              # noqa: E402
+import zipfile                                                                              # noqa: E402
+from datetime import datetime, timezone                                                     # noqa: E402
+from types import SimpleNamespace                                                           # noqa: E402
+
+PRODUCER = {'commit': 'd' * 40, 'script': 'tools/research/produce_pit_rules.py', 'script_sha256': 'e' * 64}
+SER = {'4h': ('klines', '4h', TF), 'funding': ('fundingRate', None, 8 * R.HOUR), 'mark': ('markPriceKlines', '1h', R.HOUR)}
+
+
+def _month(t):
+    d = datetime.fromtimestamp(t / 1000, timezone.utc)
+    return f'{d.year:04d}-{d.month:02d}'
+
+
+def _month_bounds(ym):
+    y, m = map(int, ym.split('-'))
+    lo = int(datetime(y, m, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    return lo, int(datetime(y + m // 12, m % 12 + 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def _rel(sym, kind, ym):
+    series, iv, _ = SER[kind]
+    return (f'um/monthly/{series}/{sym}/{sym}-fundingRate-{ym}.zip' if kind == 'funding'
+            else f'um/monthly/{series}/{sym}/{iv}/{sym}-{iv}-{ym}.zip')
+
+
+def _entry(sym, kind, ym, sha, rows, first, last):
+    series, iv, _ = SER[kind]
+    return {'path': _rel(sym, kind, ym), 'series': series, 'symbol': sym, 'interval': iv, 'sha256': sha,
+            'bytes': 1, 'rows': rows, 'first_open_ms': first, 'last_open_ms': last, 'source': {}}
+
+
+def _write_manifest(path, files):
+    with gzip.open(path, 'wt', encoding='utf-8') as f:                  # pretty-printed: the store's streamed format
+        f.write(json.dumps({'format': 'x', 'files': files}, indent=1))
+    return path
+
+
+def _f(x):
+    return repr(float(x))
+
+
+def _series_rows(raw):
+    """4h bars, 8h funding (calc_time on the grid) and 1h mark klines from synthetic (t, o, h, l, c, v) rows."""
+    k4 = [(t, o, h, lo, c, v) for t, o, h, lo, c, v in raw]
+    fund = [(t, 0.0001, 8) for t, *_ in raw if t % (8 * R.HOUR) == 0]
+    mark = [(t, c, c, c, c, 0.0) for t0, _, _, _, c, _ in raw for t in range(t0, t0 + TF, R.HOUR)]
+    return {'4h': k4, 'funding': fund, 'mark': mark}
+
+
+def _csv(kind, rows):
+    if kind == 'funding':
+        return M.FUNDING_HEADER.decode() + '\n' + ''.join(f'{t},{iv},{_f(r)}\n' for t, r, iv in rows)
+    step = SER[kind][2]
+    return M.KLINE_HEADER.decode() + '\n' + ''.join(
+        f'{t},{_f(o)},{_f(h)},{_f(lo)},{_f(c)},{_f(v)},{t + step - 1},100.5,1,0,0,0\n' for t, o, h, lo, c, v in rows)
+
+
+def _archive(tmp, syms, lo, hi, lie_until=None):
+    """Synthetic store in the real layout (um/monthly/<series>/<SYM>/[<iv>/]<SYM>-<iv>-YYYY-MM.zip + .ok sha sidecar)
+    and a gzip manifest; rows from lo to hi. `lie_until`: the manifest understates last_open_ms of every month
+    holding rows at/after it (a corrupted manifest that would let a post-seal month be opened)."""
+    store, files, raws = tmp / 'store', [], {}
+    for k, sym in enumerate(syms):
+        raw = _walk((hi - lo) // TF, seed=50 + k, start=lo)
+        raws[sym] = raw
+        for kind, rows in _series_rows(raw).items():
+            by = {}
+            for r in rows:
+                by.setdefault(_month(r[0]), []).append(r)
+            for ym, rs in sorted(by.items()):
+                rel = _rel(sym, kind, ym)
+                p = store / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(p, 'w') as z:
+                    z.writestr(rel.rsplit('/', 1)[1][:-4] + '.csv', _csv(kind, rs))
+                h = hashlib.sha256(p.read_bytes()).hexdigest()
+                (store / (rel + '.ok')).write_text(h)
+                last = rs[-1][0]
+                if lie_until is not None and last >= lie_until:
+                    last = lie_until - 1
+                files.append(_entry(sym, kind, ym, h, len(rs), rs[0][0], last))
+    return _write_manifest(tmp / 'manifest.json.gz', files), store, raws, files
+
+
+def _mem_src(raws, cut):
+    bars, fund, marks = {}, {}, {}
+    for sym, raw in raws.items():
+        s = _series_rows(raw)
+        bars[sym] = [E5.Bar(t, float(o), float(h), float(lo), float(c), float(v), 100.5, t + TF)
+                     for t, o, h, lo, c, v in s['4h'] if t + TF <= cut]
+        fund[sym] = [E5.Funding(t, r, iv, t) for t, r, iv in s['funding'] if t < cut]
+        marks[sym] = [E5.Bar(t, float(c), float(c), float(c), float(c), 0.0, 100.5, t + R.HOUR)
+                      for t, _, _, _, c, _ in s['mark'] if t + R.HOUR <= cut]
+    return FakeSrc(bars, fund, marks)
+
+
+def _prov(kind, files, coverage, manifest_sha):
+    return {'source': {'kind': kind, 'endpoint': E5.PROVENANCE_SOURCES[kind]}, 'source_manifest_sha256': manifest_sha,
+            'upstream_files': [{'name': n, 'sha256': h, 'as_of': a} for n, h, a in files], 'producer': dict(PRODUCER),
+            'coverage': coverage}
+
+
+def _straddle(path, man, files, cut, syms, raws=None):
+    """zb-edge05-straddle artifact: pre-cutoff rows of the never-opened straddle month (empty series when raws is
+    None), each coverage entry citing that month's archive by its manifest sha256."""
+    m_lo = _month_bounds(_month(cut))[0]
+    by = {(f['symbol'], f['path']): f['sha256'] for f in files}
+    up, cov, series = [], [], {'4h': {}, 'funding': {}, 'mark': {}}
+    for sym in syms:
+        s = _series_rows(raws[sym]) if raws else {k: [] for k in SER}
+        for kind in SER:
+            step = SER[kind][2] if kind != 'funding' else 0
+            rows = [r for r in s[kind] if m_lo <= r[0] and r[0] + max(step, 1) <= cut]
+            if kind == 'funding':
+                series['funding'][sym] = [[t, r, iv] for t, r, iv in rows]
+            else:
+                series[kind][sym] = [[t, float(o), float(h), float(lo), float(c), float(v), 100.5]
+                                     for t, o, h, lo, c, v in rows]
+            rel = _rel(sym, kind, _month(cut))
+            up.append((rel, by[(sym, rel)], '2026-10-01T00:00:00Z'))
+            cov.append({'symbol': sym, 'series': kind, 'from': R._iso(m_lo), 'to': R._iso(cut), 'rows': len(rows),
+                        'upstream': [rel]})
+    doc = {'format': E5.STRADDLE_FORMAT, 'cutoff': R._iso(cut),
+           'provenance': _prov('binance-vision-archive', up, cov, R.file_sha(str(man))), 'series': series}
+    path.write_bytes(E5.canon(doc))
+    return path
+
+
+FILTER_OF = {'tick': ('PRICE_FILTER', 'tickSize'), 'step': ('MARKET_LOT_SIZE', 'stepSize'),
+             'min_qty': ('MARKET_LOT_SIZE', 'minQty'), 'max_qty': ('MARKET_LOT_SIZE', 'maxQty'),
+             'min_notional': ('MIN_NOTIONAL', 'notional'), 'max_notional': ('MAX_NOTIONAL', 'maxNotional')}
+FULL_RULE = {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0, 'max_qty': 1e9, 'max_notional': 1e12}
+SNAP = 'exchangeInfo@2019-01-01T00:00:00Z'
+
+
+def _rules(d, syms, frm='2019-01-01T00:00:00Z', to='2027-01-01T00:00:00Z'):
+    """Real zb-exchange-rules-pit artifact + its zb-upstream-source-manifest + one exchangeInfo snapshot file."""
+    snaps = d / 'snaps'
+    snaps.mkdir(parents=True, exist_ok=True)
+    ents = []
+    for s in sorted(syms):
+        by = {}
+        for k, (ft, key) in FILTER_OF.items():
+            by.setdefault(ft, {'filterType': ft})[key] = repr(float(FULL_RULE[k]))
+        ents.append({'symbol': s, 'status': 'TRADING', 'filters': [by[ft] for ft in sorted(by)]})
+    sb = E5.canon({'timezone': 'UTC', 'symbols': ents})
+    (snaps / 'snap.json').write_bytes(sb)
+    sm = {'format': E5.SOURCE_MANIFEST_FORMAT, 'kind': 'binance-um-exchangeinfo-snapshots',
+          'files': [{'name': SNAP, 'sha256': E5.sha(sb), 'as_of': '2019-01-01T00:00:00Z', 'path': 'snap.json'}]}
+    smb = E5.canon(sm)
+    (snaps / 'rules-source.json').write_bytes(smb)
+    cov = [{'symbol': s, 'series': 'rules', 'from': frm, 'to': to, 'rows': 1, 'upstream': [SNAP]} for s in sorted(syms)]
+    doc = {'format': E5.RULES_FORMAT,
+           'provenance': _prov('binance-um-exchangeinfo-snapshots', [(SNAP, E5.sha(sb), '2019-01-01T00:00:00Z')], cov,
+                               E5.sha(smb)),
+           'symbols': {s: [dict(FULL_RULE, **{'from': frm, 'to': to, 'snapshot': SNAP})] for s in sorted(syms)}}
+    (d / 'rules.json').write_bytes(E5.canon(doc))
+    return d / 'rules.json', snaps / 'rules-source.json'
+
+
+# ---- 2. the adapter end-to-end on the real archive / manifest / straddle / rules formats
+MAR1 = R.iso_ms('2021-03-01T00:00:00Z')
+DEC1 = R.iso_ms('2020-12-01T00:00:00Z')
+APR1 = R.iso_ms('2021-04-01T00:00:00Z')
+
+
+def test_archive_adapter_end_to_end_matches_the_in_memory_source(tmp_path):
+    w = W(336, warm=200)
+    assert w.sealed == MAR1
+    man, store, raws, files = _archive(tmp_path, ['BTCUSDT'], DEC1, APR1)
+    src = E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], MAR1)
+    assert src.straddle_skipped == 3                                     # the March files hold post-seal rows
+    for f in files:                                                      # ... and are provably never opened
+        if f['path'].endswith('2021-03.zip'):
+            (store / f['path']).write_bytes(b'not a zip')
+    sd = R.load_symbol(src, 'BTCUSDT', w, warmup_start=DEC1)
+    ref = R.load_symbol(_mem_src(raws, MAR1), 'BTCUSDT', w, warmup_start=DEC1)
+    assert sd.source_sha256 == ref.source_sha256                         # every bar / funding / mark row identical
+    assert sd.t == ref.t and sd.fund_runs == ref.fund_runs == [(DEC1, MAR1)] and sd.t[-1] == MAR1 - TF
+    assert R.source_identity(src)['manifest_file_sha256'] == R.file_sha(str(man))
+    (store / files[0]['path']).write_bytes(b'tampered')                  # bytes != .ok / manifest: refused
+    with pytest.raises(E5.RunnerError):
+        R.load_symbol(E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], MAR1), 'BTCUSDT', w, warmup_start=DEC1)
+
+
+def test_sealed_boundary_is_refused_before_and_after_the_read(tmp_path):
+    cut = R.iso_ms('2021-02-15T00:00:00Z')                              # mid-month: February straddles the seal
+    w = R.Windows(T0, cut - 40 * TF, cut, ((T0, cut),), 200)
+    man, store, raws, files = _archive(tmp_path, ['BTCUSDT'], DEC1, MAR1)
+    src = E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], cut)
+    assert src.straddle_skipped == 3
+    with pytest.raises(R.SourceUncovered, match='provenance_uncovered from 2021-02-01'):   # never opened, never guessed
+        R.load_symbol(src, 'BTCUSDT', w, warmup_start=DEC1)
+    with pytest.raises(E5.HoldoutRefused):                               # before the read: a request past the seal
+        E5.Guard(src, cut).bars('BTCUSDT', '4h', DEC1, cut + TF)
+    with pytest.raises(E5.HoldoutRefused):
+        E5.Guard(src, cut).scope(DEC1, cut + 1)
+    # after the read: a corrupted manifest lets the straddle month in, and a store that ignores the range hands back
+    # rows at/after the seal -> the guard refuses them after the read
+    man2 = _write_manifest(tmp_path / 'lie.json.gz', _archive(tmp_path / 'b', ['BTCUSDT'], DEC1, MAR1, lie_until=cut)[3])
+
+    class Leaky(E5.ArchiveSource):
+        def _rows(self, sym, kind, lo, hi):
+            return [r for m in self.index.get((sym, kind), ()) for r in self._month(m[2], m[3], m[4], kind)[1]]
+    leaky = Leaky(str(man2), str(tmp_path / 'b' / 'store'), ['BTCUSDT'], cut)
+    assert leaky.straddle_skipped == 0
+    with pytest.raises(E5.HoldoutRefused, match='sealed boundary'):
+        R.load_symbol(leaky, 'BTCUSDT', w, warmup_start=DEC1)
+    # with an authenticated pre-cutoff straddle artifact the same read succeeds and matches the in-memory rows
+    art = _straddle(tmp_path / 'straddle.json', man, files, cut, ['BTCUSDT'], raws)
+    src.attach_straddle(E5.StraddleArtifact.load(str(art), cut))
+    assert src.straddle.unauthenticated == 0 and src.straddle.bad_coverage == 0
+    sd = R.load_symbol(src, 'BTCUSDT', w, warmup_start=DEC1)
+    assert sd.source_sha256 == R.load_symbol(_mem_src(raws, cut), 'BTCUSDT', w, warmup_start=DEC1).source_sha256
+    assert sd.t[-1] == cut - TF
+
+
+def test_pit_rules_real_format_drive_rules_of(tmp_path):
+    rp, sp = _rules(tmp_path, ['BTCUSDT'], frm='2021-01-01T00:00:00Z')
+    rsrc = E5.SourceManifest.load(str(sp), R.file_sha(str(sp)), 'binance-um-exchangeinfo-snapshots')
+    pit = E5.PitRules.load(str(rp), rsrc)
+    ident = pit.identity()
+    assert (ident['bad_coverage_entries'], ident['unauthenticated_entries'], ident['unsourced_intervals']) == (0, 0, 0)
+    at = R.rules_of(pit)
+    assert at('BTCUSDT', T0)['min_notional'] == 5.0 and at('BTCUSDT', T0)['tick'] == 0.0001
+    assert at('BTCUSDT', R.iso_ms('2020-12-31T00:00:00Z')) is None and at('ETHUSDT', T0) is None   # uncovered
+    with pytest.raises(E5.RunnerError):                                  # a rules-source manifest of another hash
+        E5.SourceManifest.load(str(sp), '0' * 64, 'binance-um-exchangeinfo-snapshots')
+
+
+# ---- 1. CLI: real ArchiveSource / PitRules wiring; preflight-only without an Integration authorization
+SEALED = R.iso_ms('2026-09-28T00:00:00Z')
+
+
+def _meta_manifest(path, syms, drop=()):
+    """Metadata-only manifest over the real calibration..sealed span (no archive file exists: preflight opens none)."""
+    files, ym = [], '2020-02'
+    while ym <= '2026-09':
+        lo, hi = _month_bounds(ym)
+        for s in sorted(syms):
+            for kind in SER:
+                if (s, kind, ym) not in drop:
+                    step = SER[kind][2]
+                    files.append(_entry(s, kind, ym, hashlib.sha256(f'{s}{kind}{ym}'.encode()).hexdigest(),
+                                        (hi - lo) // step, lo, hi - step))
+        y, m = map(int, ym.split('-'))
+        ym = f'{y + m // 12:04d}-{m % 12 + 1:02d}'
+    return _write_manifest(path, files), files
+
+
+@pytest.fixture(scope='module')
+def cli_inputs(tmp_path_factory):
+    d = tmp_path_factory.mktemp('cli')
+    man, files = _meta_manifest(d / 'manifest.json.gz', FIXED)
+    rp, sp = _rules(d, FIXED)
+    st = _straddle(d / 'straddle.json', man, files, SEALED, FIXED)
+    return SimpleNamespace(d=d, man=man, files=files, rules=rp, rsrc=sp, straddle=st)
+
+
+def _cli(ci, *extra, manifest=None, git=CLEAN, rules=True, straddle=True, **inj):
+    args = ['--store', str(ci.d / 'no-store'), '--max-rss-mb', '512']
+    if rules:
+        args += ['--rules-artifact', str(ci.rules), '--expect-rules-sha256', R.file_sha(str(ci.rules)),
+                 '--rules-source-manifest', str(ci.rsrc), '--expect-rules-source-sha256', R.file_sha(str(ci.rsrc))]
+    if straddle:
+        args += ['--straddle-artifact', str(ci.straddle), '--expect-straddle-sha256', R.file_sha(str(ci.straddle))]
+    return R.main(args + list(extra), _inject=dict({'git': git, 'manifest_check': NO_MANIFEST,
+                                                     'manifest_path': str(manifest or ci.man)}, **inj))
+
+
+def test_cli_preflight_only_reports_identity_and_coverage_and_writes_nothing(cli_inputs, capsys, tmp_path):
+    out = tmp_path / 'out'
+    assert _cli(cli_inputs, '--out', str(out)) == 0
+    rep = json.loads(capsys.readouterr().out)
+    assert rep['mode'] == 'preflight-only' and rep['evaluated'] is False and rep['written'] is None
+    assert rep['coverage']['ready'] is True and rep['coverage']['straddle_files_never_opened'] == 17 * 3
+    assert rep['source_identity']['manifest_file_sha256'] == R.file_sha(str(cli_inputs.man))
+    assert rep['source_identity']['straddle']['unauthenticated_entries'] == 0
+    assert rep['rules_identity']['sha256'] == R.file_sha(str(cli_inputs.rules)) and rep['symbols'] == FIXED
+    assert rep['sealed_cutoff'] == '2026-09-28T00:00:00Z' and not out.exists()
+    assert not (cli_inputs.d / 'no-store').exists()                     # no archive opened in preflight
+    assert _cli(cli_inputs, straddle=False) == 0                        # without the straddle artifact: not ready
+    cov = json.loads(capsys.readouterr().out)['coverage']
+    assert not cov['ready'] and len(cov['series_gaps']) == 17 * 3
+    assert {g['uncovered_from'] for g in cov['series_gaps']} == {'2026-09-01T00:00:00Z'}
+    man, _ = _meta_manifest(tmp_path / 'gap.json.gz', FIXED, drop={('ETHUSDT', 'mark', '2023-05')})
+    assert _cli(cli_inputs, manifest=man) == 3                          # the straddle artifact binds the other manifest
+    assert 'another source manifest' in capsys.readouterr().err
+    assert _cli(cli_inputs, manifest=man, straddle=False) == 0
+    gaps = [g for g in json.loads(capsys.readouterr().out)['coverage']['series_gaps'] if g['symbol'] == 'ETHUSDT']
+    assert {'symbol': 'ETHUSDT', 'series': 'mark', 'uncovered_from': '2023-05-01T00:00:00Z'} in gaps and len(gaps) == 3
+    assert _cli(cli_inputs, rules=False) == 0
+    cov = json.loads(capsys.readouterr().out)['coverage']
+    assert cov['rules_present'] is False and cov['ready'] is False
+
+
+def test_cli_refuses_dirty_tree_bad_hashes_and_missing_rss_cap(cli_inputs, capsys):
+    assert _cli(cli_inputs, git=DIRTY) == 3 and 'dirty' in capsys.readouterr().err
+    with pytest.raises(SystemExit):                                     # --max-rss-mb is required
+        R.main(['--store', 'x'], _inject={'git': CLEAN, 'manifest_check': NO_MANIFEST})
+    capsys.readouterr()
+    assert R.main(['--store', 'x', '--max-rss-mb', 'nan'], _inject={'git': CLEAN}) == 3
+    ci = cli_inputs
+    bad = ['--store', 'x', '--max-rss-mb', '512', '--rules-artifact', str(ci.rules), '--expect-rules-sha256', '0' * 64,
+           '--rules-source-manifest', str(ci.rsrc), '--expect-rules-source-sha256', R.file_sha(str(ci.rsrc))]
+    assert R.main(bad, _inject={'git': CLEAN, 'manifest_check': NO_MANIFEST, 'manifest_path': str(ci.man)}) == 3
+    assert 'rules file sha256' in capsys.readouterr().err
+    bad[bad.index('--expect-rules-sha256') + 1] = R.file_sha(str(ci.rules))
+    bad[-1] = '0' * 64
+    assert R.main(bad, _inject={'git': CLEAN, 'manifest_check': NO_MANIFEST, 'manifest_path': str(ci.man)}) == 3
+    assert _cli(ci, '--expect-straddle-sha256', '1' * 64) == 3          # a later flag overrides the right hash
+    assert '--allow-dirty' not in (ROOT / 'tools' / 'research' / 'bpyr_runner.py').read_text(encoding='utf-8')
+
+
+def test_cli_never_evaluates_without_an_integration_loader(cli_inputs, capsys, tmp_path, monkeypatch, pf):
+    out = tmp_path / 'out'
+    auth = tmp_path / 'auth.json'
+    auth.write_text('{}')
+    monkeypatch.delitem(sys.modules, R.AUTH_LOADER, raising=False)
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3
+    assert 'no Integration authorization loader' in capsys.readouterr().err and not out.exists()
+    calls = []
+
+    def fake_execute(outdir, src, pf_, **kw):
+        calls.append(kw)
+        return {'candidate_id': R.CANDIDATE, 'prereg_sha256': pf_.prereg_sha256, 'identity_sha256': 'i' * 64,
+                'evaluated': False}
+    monkeypatch.setattr(R, 'execute', fake_execute)
+    lock = lambda *a: contextlib.nullcontext()                                           # noqa: E731
+    monkeypatch.setitem(sys.modules, R.AUTH_LOADER, SimpleNamespace(load=lambda p, h: 'not a token'))
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock) == 3 and not calls
+    monkeypatch.setitem(sys.modules, R.AUTH_LOADER, SimpleNamespace(load=lambda p, h: AUTH(pf)))
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), straddle=False, lock=lock) == 3
+    assert 'not ready' in capsys.readouterr().err and not calls          # not ready: refused before execute
+    assert _cli(cli_inputs, '--authorization', str(auth), lock=lock) == 3 and not calls   # no --out
+    out.mkdir()
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock) == 0
+    assert calls[0]['authorization'] == AUTH(pf) and calls[0]['max_rss_mb'] == 512.0 and calls[0]['universe'] == 'FIXED-17'
+    assert calls[0]['symbols'] == FIXED and calls[0]['rules']('BTCUSDT', T0)['tick'] == 0.0001
+    written = json.loads(capsys.readouterr().out)['written']
+    assert Path(written) == out / 'result.json' and 'verdict' not in (out / 'result.json').read_text()
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock) == 3   # never overwritten
+
+
+# ---- 3. gate_inputs: pure decide()-shaped assembly; the write path stays authorization-gated
+def _g(stage='S2', s_data=True, **kw):
+    g = {'data': True, 'activity': True, 'b0': {'status': 'OK', 'pass': True}, 'H1': True, 'H2': stage in ('S2', 'S3'),
+         'H3': stage == 'S3', 'credited_stage': stage, 'data_by_stage': {s: {'pass': True} for s in ('S1', 'S2', 'S3')}}
+    if stage:
+        g['data_by_stage'][stage]['pass'] = s_data
+    g.update(kw)
+    return g
+
+
+def _bk(stage='S2', caus=True, data=True, dd=True, tails=True):
+    rep = {'data': {'pass': data}, 'causality': {'pass': caus, 'checks': {}}}
+    return {'stage': stage, 'dd_tier': {'pass': dd}, 'tails_worst_ok': tails,
+            'replays': {'0.01:base_x1': rep, '0.01:all_variable_costs_x1.5': {'data': {'pass': True},
+                                                                               'causality': {'pass': True}}}}
+
+
+def test_gate_inputs_are_exactly_what_decide_consumes():
+    gi = R.gate_inputs(_g(), _bk(), 0.01)
+    assert set(R.GATE_KEYS) <= set(gi) and R.decide(gi) == 'SURVIVES_DEV(S2)'
+    assert R.decide(R.gate_inputs(_g(), _bk(caus=False), 0.01)) == 'FAIL'
+    assert R.decide(R.gate_inputs(_g(), _bk(tails=False), 0.01)) == 'FAIL'
+    assert R.decide(R.gate_inputs(_g(), _bk(dd=False), 0.01)) == 'FAIL'
+    assert R.decide(R.gate_inputs(_g(), _bk(data=False), 0.01)) == 'INCOMPLETE'      # unresolved / book data state
+    assert R.decide(R.gate_inputs(_g(s_data=False), _bk(), 0.01)) == 'INCOMPLETE'   # credited stage's own data gate
+    assert R.decide(R.gate_inputs(_g(), None, 0.01)) == 'FAIL'                       # no credited-stage book: never survives
+    none = R.gate_inputs(_g(stage=None, H1=False, H2=False), None, 0.01)
+    assert R.decide(none) == 'FALSIFIED' and none['causality'] is False
+
+
+CLOSED = (flat(2) + [(100.0, 100.3, 99.9, 100.2), (100.2, 103.0, 100.1, 102.9)] + flat(5, 102.9)
+          + [(95.0, 95.2, 94.8, 95.0)] + flat(3, 95.0))                          # one entry, stopped out: closed
+
+
+def test_book_causality_and_unresolved_rows_feed_data_and_causality(P):
+    w = W(400)
+    bk = R.run_book({'BTCUSDT': mk('BTCUSDT', CLOSED, le={0})},
+                    P, 'S1', w, lambda s, t: RULE)
+    m = R.book_metrics(bk, w)
+    assert len(bk['trades']) == 1 and not bk['incomplete']
+    assert m['causality']['pass'] and m['data']['pass'] and m['data']['unresolved_accounting'] == 0
+    back = dict(bk, equity_seq=list(reversed(bk['equity_seq'])))
+    assert R.book_causality(back, w)['checks']['equity_sequence_causal'] is False
+    late = dict(bk, trades=[dict(bk['trades'][0], t_exit=w.sealed)])
+    assert R.book_causality(late, w)['checks']['exits_before_seal'] is False
+    un = R.run_book({'BTCUSDT': mk('BTCUSDT', CLOSED, le={0})},
+                    P, 'S1', w, lambda s, t: None)
+    mu = R.book_metrics(un, w)
+    assert mu['unresolved_accounting'] == 1 and not mu['data']['pass'] and not mu['causality']['pass']
+
+
+def test_run_assembles_gate_inputs_and_never_decides(pf, tmp_path):
+    w = R.Windows.of(pf.prereg)
+    data = {s: R.prepare_symbol(s, _walk(900, seed=k, start=T0 - 300 * TF), w) for k, s in enumerate(('BTCUSDT', 'ETHUSDT'))}
+    res = R.run(data, pf, rules=lambda s, t: RULE, resamples=50, allow_partial_universe_test_only=True)
+    gi = res['gate_inputs']
+    assert set(R.GATE_KEYS) <= set(gi) and gi['credited_stage'] == res['gates']['credited_stage']
+    assert R.decide(gi) in ('INCOMPLETE', 'FALSIFIED', 'FAIL') or gi['credited_stage']      # pure, callable
+    assert not any(v in json.dumps(res) for v in ('SURVIVES_DEV', 'FALSIFIED', '"FAIL"'))   # run() never decides
+    res2 = R.run(data, pf, rules=lambda s, t: RULE, resamples=50, book_stage='S3', allow_partial_universe_test_only=True)
+    if res2['gates']['credited_stage'] != 'S3':                          # a book for another stage feeds nothing
+        assert res2['gate_inputs']['book_dd']['pass'] is False and res2['gate_inputs']['causality'] is False
+    ok = AUTH(pf)
+    p = R.write_result(res, str(tmp_path / 'result.json'), authorization=ok)
+    assert Path(p).read_bytes() == R.canon(R._json_safe(res))
+    assert R._json_safe({'a': [math.inf, -math.inf, math.nan, 1.0]}) == {'a': ['Infinity', '-Infinity', 'NaN', 1.0]}
+    with pytest.raises(FileExistsError):
+        R.write_result(res, p, authorization=ok)
+    with pytest.raises(R.WriteRefused):
+        R.write_result(dict(res, verdict='x'), str(tmp_path / 'r2.json'), authorization=ok)
+    with pytest.raises(R.WriteRefused):
+        R.write_result(res, str(tmp_path / 'r3.json'), authorization=R.EvalAuthorization('cowork', '1', pf.prereg_sha256))
