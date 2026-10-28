@@ -304,7 +304,10 @@ def test_rulings_f1_to_f5_are_applied(c, md):
               'test_api_view_bounded_and_causally_complete', 'test_one_trade_one_training_row'):
         assert n in names
     assert c['rulings_f']['source'].startswith('Codex 6461183917') and c['status'] == 'DRAFT'
-    assert all(c['builds_on'][p]['accepted_merge_sha'] is None for p in ('AI-SCAN-02', 'ML-PAIR-01'))
+    # R8: builds_on pins the accepted merge SHAs, never a review head
+    assert c['builds_on']['AI-SCAN-02']['accepted_merge_sha'] == 'd3740f1fea518e00a640ba05a6dd3f4f3b0c3983'
+    assert c['builds_on']['ML-PAIR-01']['accepted_merge_sha'] == 'db85b75aba19c3f037c55eb77d97d72152f41d96'
+    assert all(c['builds_on'][p]['state'] == 'merged' for p in ('AI-SCAN-02', 'ML-PAIR-01'))
     assert '`(kind, signal_id, source, cost_revision_id, cost_model_hash, rev)`' in md
 
 

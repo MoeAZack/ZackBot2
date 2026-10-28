@@ -10,8 +10,8 @@
   "assignment": "6460083994",
   "builds_on": {
     "AI-SCAN-01": {"pr": 201, "state": "merged", "module": "ai_scan.py"},
-    "AI-SCAN-02": {"pr": 222, "state": "under_review", "accepted_merge_sha": null, "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ai_scan_ledger.py", "edited_here": false},
-    "ML-PAIR-01": {"pr": 226, "state": "under_review", "accepted_merge_sha": null, "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ml_shadow/pairs.py", "imported_here": false}
+    "AI-SCAN-02": {"pr": 222, "state": "merged", "accepted_merge_sha": "d3740f1fea518e00a640ba05a6dd3f4f3b0c3983", "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ai_scan_ledger.py", "edited_here": false},
+    "ML-PAIR-01": {"pr": 226, "state": "merged", "accepted_merge_sha": "db85b75aba19c3f037c55eb77d97d72152f41d96", "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ml_shadow/pairs.py", "imported_here": false}
   },
   "slice": {
     "kind": "contract_only",
