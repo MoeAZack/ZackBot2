@@ -1,0 +1,215 @@
+{
+  "contract": "AI-SCAN-03",
+  "title": "writer hook: immutable decisions joined to measured cost revisions (PAPER / shadow only)",
+  "version": 1,
+  "status": "DRAFT",
+  "signed_by": null,
+  "frozen_at": null,
+  "base_commit": "fe84dbb",
+  "doc": "AI_SCAN_03_CONTRACT.md",
+  "assignment": "6460083994",
+  "builds_on": {
+    "AI-SCAN-01": {"pr": 201, "state": "merged", "module": "ai_scan.py"},
+    "AI-SCAN-02": {"pr": 222, "state": "under_review", "head": "64ef92c", "module": "ai_scan_ledger.py", "edited_here": false},
+    "ML-PAIR-01": {"pr": 226, "state": "under_review", "head": "c77c756", "module": "ml_shadow/pairs.py", "imported_here": false}
+  },
+  "slice": {
+    "kind": "contract_only",
+    "runtime_code_changed": false,
+    "files": [
+      "contracts/ai_scan_03/AI_SCAN_03_CONTRACT.md",
+      "contracts/ai_scan_03/ai_scan_03_contract.v1.json",
+      "tests/test_ai_scan03_contract.py"
+    ],
+    "untouched_runtime_files": ["ai_scan.py", "ai_scan_ledger.py", "engine.py", "app.py", "actual_costs.py", "ml_shadow/pairs.py"]
+  },
+  "scope": {
+    "flag": "AI_SCAN",
+    "default_on": false,
+    "paper_only": true,
+    "live_behavior": "refused",
+    "authority": "none",
+    "order_gating": false,
+    "trading_reads_output": false,
+    "model_calls": false,
+    "network_calls": false,
+    "settings_writes": false,
+    "engine_state_writes": false,
+    "holds_engine_lock": false
+  },
+  "hooks": [
+    {
+      "id": "decision",
+      "record_kind": "signal",
+      "call_site": "engine.Engine._ml_decision",
+      "fires": "after the engine has decided a candidate (taken | skipped | pending), at every existing _ml_decision call in the scan loop, independent of ML_SHADOW",
+      "builder": "ai_scan.build_signal",
+      "receives": ["sleeve", "strategy", "family", "symbol", "side", "tf", "candle_open", "decided_at", "rules_status",
+                   "rules_reason", "snapshot", "plan", "inputs", "costs"],
+      "copies": "detached deep copies built on the engine thread; the hook never keeps a reference to engine objects",
+      "runtime_status": "DEFERRED"
+    },
+    {
+      "id": "shadow",
+      "record_kind": "shadow",
+      "call_site": "ai_scan.ScanQueue consumer",
+      "fires": "only when a shadow producer exists; this slice has none, so zero shadow rows are written",
+      "builder": "ai_scan.build_shadow | ai_scan.build_shadow_failure",
+      "receives": ["signal", "epoch identity", "raw_response_hash", "opinion", "read_snapshot_hash", "read_plan_hash"],
+      "copies": "the sealed signal record only",
+      "runtime_status": "DEFERRED"
+    },
+    {
+      "id": "measured_close",
+      "record_kind": "outcome",
+      "call_site": "engine.Engine._measured_done",
+      "fires": "when a taken decision's lot closes and actual_costs.row_view(row).status == 'measured' and actual_costs.measured(row).complete",
+      "builder": "ai_scan.build_outcome(source='measured')",
+      "receives": ["decision_id", "actual_costs", "cost_basis", "cost_model_id", "rev", "closed_at", "exit_reason",
+                   "partial_exits", "adds"],
+      "copies": "a plain dict of the five COST_REV_FIELDS read from the closed row, plus rev = row['cost_rev']",
+      "runtime_status": "DEFERRED"
+    },
+    {
+      "id": "cost_restatement",
+      "record_kind": "outcome",
+      "call_site": "engine.Engine._row_changed",
+      "fires": "after cost_rev is bumped on a closed row that already reached a measured outcome and is still measured and complete",
+      "builder": "ai_scan.build_outcome(source='measured')",
+      "receives": ["decision_id", "actual_costs", "cost_basis", "cost_model_id", "rev", "closed_at", "exit_reason",
+                   "partial_exits", "adds"],
+      "copies": "same as measured_close",
+      "runtime_status": "DEFERRED"
+    }
+  ],
+  "decision_id": {
+    "function": "ml_shadow.ledger.decision_id",
+    "fields": ["sleeve", "strategy", "symbol", "side", "tf", "candle_open"],
+    "equals": "ai_scan signal_id",
+    "on_lot": "lot['ml_decision_id'] stamped at engine.Engine._ml_link; the runtime slice widens the stamp condition to ML_SHADOW or AI_SCAN",
+    "missing": "no outcome; counted no_decision_id"
+  },
+  "join": {
+    "record_key": {
+      "signal": ["kind", "signal_id"],
+      "shadow": ["kind", "signal_id", "epoch"],
+      "outcome": ["kind", "signal_id", "source", "cost_revision_id", "cost_model_hash"]
+    },
+    "economic_key": ["signal_id", "cost_revision_id"],
+    "order_field": "rev",
+    "order_field_in_key": false,
+    "latest": "highest rev among a decision's measured revisions",
+    "new_revision": "append",
+    "rewrite": false,
+    "exact_duplicate": "no_op",
+    "conflicting_replay": "refused_unwritten",
+    "same_rev_different_cost": "refused_unwritten",
+    "outcome_before_signal": "refused_unwritten",
+    "measured_requires_rules_status": "taken",
+    "eligible_close_status": ["measured"],
+    "never_measured_outcome": ["booked", "acknowledged", "pending", "incomplete"],
+    "hook_net_basis": "measured",
+    "cost_revision": {
+      "function": "ai_scan.cost_revision_id",
+      "schema": "ai-scan-cost-rev-v2",
+      "fields": ["fees_actual", "funding_actual", "pnl_gross", "pnl_fill_adj", "risk_usd"],
+      "net_formula": "pnl_gross + pnl_fill_adj - fees_actual + funding_actual",
+      "net_r": "net / risk_usd",
+      "cost_model_id": "actual_costs.MEASURED_COST_MODEL_ID (single definition arrives with #226)"
+    },
+    "ml_pair_01_consistency": {
+      "pair_key": ["decision_id", "cost_rev_id"],
+      "maps_to": ["signal_id", "cost_revision_id"],
+      "same_cost_identity": true,
+      "same_close_gate": "row_view status 'measured' and measured(row).complete",
+      "import_from_unmerged_branch": false,
+      "pinned_after_merge_by": "test_cost_identity_matches_ml_pair_01"
+    }
+  },
+  "never_gates": {
+    "mechanism": "the engine-thread hook only builds a sealed record inside try/except and offers it to a bounded, non-blocking queue; a dedicated writer daemon thread owns the scan ledger and does every disk write",
+    "queue": {"bounded": true, "offer_blocks": false, "offer_raises": false, "full": "drop and count queue_full"},
+    "writer_thread": {"daemon": true, "holds_engine_lock": false, "reads_engine_state": false, "single_writer_per_ledger": true},
+    "exceptions": "every exception in the hook or the writer is counted and swallowed; none reaches order flow",
+    "flag_read": "S.get('AI_SCAN') is True, read at each call; anything else is off",
+    "proof_test": "test_trading_byte_identical_with_ai_scan_on_off_and_failing_writer"
+  },
+  "paper_only": {
+    "default": false,
+    "live_check": "engine.live is True -> refused before any record is built; counted refused_live",
+    "model_or_api_call_in_slice": false,
+    "authority": "none"
+  },
+  "identity": {
+    "fields": ["build_id", "source_commit", "bundle_hash"],
+    "gate": "same rule as ML-PAIR-01 identity_gap: non-dev build_id, 40-hex source_commit from the matching build.json, 64-hex bundle_hash",
+    "bundle_modules_add": ["ai_scan.py", "ai_scan_ledger.py"],
+    "record_field": "code",
+    "schema_bump": "ai-scan-schema-v2 (record_hash covers code)",
+    "incomplete": {
+      "signal": "written with code_complete false; never eligible for fitting, calibration or pairing",
+      "shadow": "written with code_complete false; never verifies",
+      "outcome": "refused unwritten; counted identity_incomplete with identity_reason"
+    },
+    "reasons": ["dev_build", "source_commit", "bundle_hash"]
+  },
+  "counters": [
+    "signals", "shadows", "outcomes", "replays", "conflicts", "queue_full", "refused_live", "not_taken",
+    "non_measured_close", "cost_incomplete", "no_decision_id", "unknown_signal", "ambiguous_rev",
+    "identity_incomplete", "build_errors", "write_errors", "skipped_lines"
+  ],
+  "failure_modes": [
+    {"mode": "flag_off", "counter": null, "effect": "hook returns before building anything; ledger untouched"},
+    {"mode": "live_mode", "counter": "refused_live", "effect": "nothing built or written"},
+    {"mode": "queue_full", "counter": "queue_full", "effect": "record dropped; trading unaffected"},
+    {"mode": "exact_replay", "counter": "replays", "effect": "no-op"},
+    {"mode": "conflicting_replay", "counter": "conflicts", "effect": "refused unwritten"},
+    {"mode": "same_rev_two_costs", "counter": "ambiguous_rev", "effect": "refused unwritten"},
+    {"mode": "outcome_on_untaken", "counter": "not_taken", "effect": "refused unwritten"},
+    {"mode": "booked_acknowledged_or_pending_close", "counter": "non_measured_close", "effect": "no outcome"},
+    {"mode": "incomplete_costs", "counter": "cost_incomplete", "effect": "no outcome"},
+    {"mode": "lot_without_decision_id", "counter": "no_decision_id", "effect": "no outcome"},
+    {"mode": "outcome_without_signal", "counter": "unknown_signal", "effect": "refused unwritten"},
+    {"mode": "incomplete_identity", "counter": "identity_incomplete", "effect": "outcome refused; signal flagged"},
+    {"mode": "builder_exception", "counter": "build_errors", "effect": "swallowed"},
+    {"mode": "disk_error", "counter": "write_errors", "effect": "swallowed; next record retried"},
+    {"mode": "torn_or_edited_line", "counter": "skipped_lines", "effect": "skipped on read; never raises"}
+  ],
+  "health_block": "health['ai_scan']",
+  "test_plan": [
+    {"name": "test_flag_off_builds_and_writes_nothing", "asserts": "AI_SCAN False: no hook builds a record, the ledger file is not created, counters stay zero"},
+    {"name": "test_live_mode_refused_before_build", "asserts": "engine.live True with AI_SCAN True: refused_live counts, nothing built or written"},
+    {"name": "test_trading_byte_identical_with_ai_scan_on_off_and_failing_writer", "asserts": "the same replayed PAPER cycle with AI_SCAN off, on, on with a raising writer, and on with a full queue yields byte-identical orders, history, state and log of order calls"},
+    {"name": "test_hook_never_raises_into_order_flow", "asserts": "every builder and writer exception is counted in build_errors / write_errors and the cycle completes"},
+    {"name": "test_offer_never_blocks_when_queue_full_or_contended", "asserts": "offer returns False within a bound; queue_full counts"},
+    {"name": "test_writer_never_holds_engine_lock", "asserts": "the engine lock stays acquirable by the cycle while the writer is blocked on disk"},
+    {"name": "test_decision_hook_writes_one_signal_per_candidate", "asserts": "each _ml_decision call yields one signal whose signal_id equals ml_shadow.ledger.decision_id, with or without ML_SHADOW"},
+    {"name": "test_measured_close_appends_outcome_keyed_by_cost_revision", "asserts": "a measured, complete close of a taken decision appends one outcome with cost_revision_id computed from the payload and rev = cost_rev"},
+    {"name": "test_restatement_appends_new_revision_never_rewrites", "asserts": "a _row_changed restatement appends a second outcome; the first line is byte-unchanged; fold picks the highest rev"},
+    {"name": "test_restart_replay_is_idempotent", "asserts": "re-offering every record after a restart writes nothing and counts replays"},
+    {"name": "test_conflicting_replay_refused_unwritten", "asserts": "same record key, different record_hash: refused, conflicts counts, file bytes unchanged"},
+    {"name": "test_same_rev_two_costs_refused", "asserts": "two cost revisions sharing one rev: the second is refused and counted ambiguous_rev"},
+    {"name": "test_booked_acknowledged_pending_never_measured", "asserts": "booked, acknowledged, pending and incomplete closes produce no outcome and count non_measured_close / cost_incomplete"},
+    {"name": "test_outcome_only_for_taken_decisions", "asserts": "skipped and pending decisions get no measured outcome; not_taken counts"},
+    {"name": "test_incomplete_identity_refuses_outcome_flags_signal", "asserts": "dev build, missing source_commit or bundle_hash: outcome refused with identity_reason, signal written with code_complete false"},
+    {"name": "test_cost_identity_matches_ml_pair_01", "asserts": "for the same close, ai_scan cost_revision_id equals ml_shadow.pairs cost_revision_id and signal_id equals the pair decision_id (enabled once #226 merges)"},
+    {"name": "test_no_model_or_network_call", "asserts": "with sockets and the anthropic client patched to raise, every hook path completes and nothing is called"},
+    {"name": "test_api_view_unchanged_shape", "asserts": "GET /api/ai_scan returns ai_scan.api_off() when off and only ledger rows when on; no settings or engine state mutated"}
+  ],
+  "deferred": [
+    "runtime_producer_hook",
+    "remote_model_api_call",
+    "ledger_rotation",
+    "model_promotion",
+    "ui_controls",
+    "trading_authority",
+    "simulated_outcomes"
+  ],
+  "open_questions": [
+    "Should the decision-id stamp on the lot be widened to ML_SHADOW or AI_SCAN, or should AI_SCAN require ML_SHADOW on?",
+    "ai_scan.COST_BASES['measured'] still admits net basis 'booked'; should the runtime slice narrow it to 'measured' (this contract filters at the hook)?",
+    "ML-PAIR-01 pairs only at the first measured close; should it also pair restatements from _row_changed so both stores carry the same revisions?",
+    "Identity on records needs ai-scan-schema-v2; acceptable, or should identity live in a once-written ledger epoch file like pair_epoch.json?",
+    "Dedicated AI-SCAN writer thread, or a new row kind on the existing ml_shadow LedgerWriter?"
+  ]
+}
