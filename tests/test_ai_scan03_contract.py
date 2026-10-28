@@ -306,3 +306,130 @@ def test_rulings_f1_to_f5_are_applied(c, md):
     assert c['rulings_f']['source'].startswith('Codex 6461183917') and c['status'] == 'DRAFT'
     assert all(c['builds_on'][p]['accepted_merge_sha'] is None for p in ('AI-SCAN-02', 'ML-PAIR-01'))
     assert '`(kind, signal_id, source, cost_revision_id, cost_model_hash, rev)`' in md
+
+
+# ------------------------------------------------------------------ Codex 6462174084 rulings G1-G6 (reference models)
+def _eligible(window, signals, gaps, sessions):
+    """Reference G1/G2 model: a signal is eligible when its decided_at is covered by a clean enabled session, it is
+    named in no gap, and its decided_at is inside no time gap. Gaps: {'from', 'to', 'signals'}."""
+    lo, hi = window
+    out = []
+    for sid, t in signals.items():
+        if not lo <= t <= hi:
+            continue
+        covered = any(s['start'] <= t <= s['close'] and s['clean'] and s['enabled'] for s in sessions)
+        named = any(sid in g.get('signals', ()) for g in gaps)
+        timed = any(g['from'] <= t <= g['to'] for g in gaps)
+        out.append((sid, covered and not named and not timed))
+    return dict(out)
+
+
+def _coverage_gaps(sessions):
+    """G2: every interval between one session's clean close and the next durable start is a gap; a disabled or unclean
+    session's whole span is a gap."""
+    gaps, ss = [], sorted(sessions, key=lambda s: s['start'])
+    for a, b in zip(ss, ss[1:]):
+        if b['start'] > a['close']:
+            gaps.append({'from': a['close'], 'to': b['start']})
+    gaps += [{'from': s['start'], 'to': s['close']} for s in ss if not (s['clean'] and s['enabled'])]
+    return gaps
+
+
+class _Writer:
+    """G3 model: seq allocated at the enqueue attempt; a drop records its seq and owning context; no clean close while a
+    gap is pending or the queue is not drained."""
+    def __init__(self, cap):
+        self.seq, self.cap, self.q, self.pending = 0, cap, [], []
+
+    def offer(self, rec):
+        self.seq += 1
+        if len(self.q) >= self.cap:
+            self.pending.append({'seq': self.seq, 'signal_id': rec['signal_id'], 'decided_at': rec['decided_at']})
+            return False
+        self.q.append(dict(rec, seq=self.seq))
+        return True
+
+    def clean_close(self):
+        if self.q or self.pending:
+            raise RuntimeError('clean close forbidden: queue not drained or gap pending')
+        return 'closed'
+
+
+def _select(revs):
+    """G5: highest rev first; an invalid latest excludes the signal, no fallback."""
+    if not revs:
+        return None
+    top = max(revs, key=lambda r: r['rev'])
+    return top if top['valid'] else None
+
+
+def _apply_upgrade(orig, up):
+    """G6: an equal payload with a complete identity may upgrade; a mismatch is a conflict; the original is untouched."""
+    if up['payload'] != orig['payload']:
+        raise ValueError('conflict')
+    if not up['code_complete']:
+        return None
+    return {'kind': 'identity_upgrade', 'ref': orig['record_hash'], 'payload': up['payload']}
+
+
+def test_rulings_g1_to_g6_are_applied(c, md):
+    g, rp, f, i = c['queue_gaps'], c['rotation_prerequisite'], c['fitting'], c['identity']
+    assert 'owning signal decided_at' in g['window_axis'] and 'signal_id and the owning decided_at' in g['outcome_envelope']
+    assert 'conservatively incomplete' in g['unprovable_ownership']
+    assert 'clean close to the next durable start' in g['coverage'] and 'not counters only' in g['coverage']
+    assert 'enqueue attempt, before the non-blocking offer' in g['sequence'] and 'drained' in g['clean_close']
+    assert 'disables the session' in g['start_marker']
+    assert 'no disk I/O' in rp['hot_path'] and 'positive integer' in rp['segment_bound'] and 'never a truthy flag' in rp['segment_bound']
+    assert 'never fall back' in f['latest_rule'] and 'identity_upgrade record' in i['identity_upgrade']
+    for k in ('identity_upgrades', 'coverage_gaps'):
+        assert k in c['counters'] and any(fm['counter'] == k for fm in c['failure_modes'])
+    names = {t['name'] for t in c['test_plan']}
+    for n in ('test_dropped_outcome_makes_owning_signal_ineligible_by_decided_at', 'test_uncovered_and_disabled_intervals_are_gaps',
+              'test_sequence_allocated_at_enqueue_and_drop_records_it', 'test_clean_close_forbidden_with_pending_gap',
+              'test_hook_reads_cached_generation_only', 'test_invalid_latest_revision_excludes_signal_no_fallback',
+              'test_identity_upgrade_record_and_conflict'):
+        assert n in names
+    assert 'no fallback' in next(t['asserts'] for t in c['test_plan'] if t['name'] == 'test_one_trade_one_training_row')
+    assert c['rulings_g']['source'].startswith('Codex 6462174084') and c['status'] == 'DRAFT'
+    assert '**Window axis (G1):**' in md and '**Identity upgrade (G6):**' in md
+
+
+def test_g1_dropped_outcome_closing_outside_window_still_excludes_its_signal():
+    sess = [{'start': 0, 'close': 100, 'clean': True, 'enabled': True}]
+    w = _Writer(cap=0)                                                      # every offer drops
+    w.offer({'signal_id': 's1', 'decided_at': 10, 'closed_at': 250})        # outcome closes far outside the window
+    gaps = [{'from': p['decided_at'], 'to': p['decided_at'], 'signals': {p['signal_id']}} for p in w.pending]
+    v = _eligible((0, 50), {'s1': 10, 's2': 20}, gaps, sess)
+    assert v == {'s1': False, 's2': True}                                   # Cowork's 12:30-close probe now excluded
+
+
+def test_g2_clean_close_to_next_start_and_disabled_session_are_gaps():
+    sess = [{'start': 0, 'close': 110, 'clean': True, 'enabled': True},
+            {'start': 130, 'close': 200, 'clean': True, 'enabled': True},
+            {'start': 210, 'close': 260, 'clean': True, 'enabled': False}]    # producer_disabled
+    gaps = _coverage_gaps(sess)
+    assert {'from': 110, 'to': 130} in gaps and {'from': 210, 'to': 260} in gaps
+    v = _eligible((0, 300), {'a': 50, 'b': 120, 'c': 150, 'd': 220}, gaps, sess)
+    assert v == {'a': True, 'b': False, 'c': True, 'd': False}
+    assert _eligible((140, 190), {}, gaps, sess) == {}                      # zero events inside covered time: no row lost
+
+
+def test_g3_seq_at_enqueue_drop_records_seq_and_close_refused_while_pending():
+    w = _Writer(cap=1)
+    assert w.offer({'signal_id': 's1', 'decided_at': 1}) is True
+    assert w.offer({'signal_id': 's2', 'decided_at': 2}) is False
+    assert [r['seq'] for r in w.q] == [1] and w.pending == [{'seq': 2, 'signal_id': 's2', 'decided_at': 2}]
+    with pytest.raises(RuntimeError, match='clean close forbidden'):
+        w.clean_close()
+    w.q.clear(); w.pending.clear()                                          # drained and the gap flushed
+    assert w.clean_close() == 'closed'
+
+
+def test_g5_invalid_latest_excludes_without_fallback_and_g6_upgrade_rules():
+    assert _select([{'rev': 0, 'valid': True}, {'rev': 1, 'valid': True}])['rev'] == 1
+    assert _select([{'rev': 0, 'valid': True}, {'rev': 1, 'valid': False}]) is None
+    orig = {'record_hash': 'h' * 64, 'payload': {'net': 1.0}, 'code_complete': False}
+    up = _apply_upgrade(orig, {'payload': {'net': 1.0}, 'code_complete': True})
+    assert up == {'kind': 'identity_upgrade', 'ref': 'h' * 64, 'payload': {'net': 1.0}} and orig['code_complete'] is False
+    with pytest.raises(ValueError, match='conflict'):
+        _apply_upgrade(orig, {'payload': {'net': 2.0}, 'code_complete': True})

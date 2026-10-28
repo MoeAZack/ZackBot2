@@ -160,6 +160,7 @@
     "content_hash": "sha256 over the record excluding only code and record_hash (F2)",
     "cross_build_replay": "same v2 key and same content_hash with a different code is replays_other_build and a no-op; a different content_hash is a conflict (F2)",
     "fit_identity": "the signal code and the selected outcome code must each be complete but need not match, because a position may span an upgrade; both identities are kept in provenance (F2)",
+    "identity_upgrade": "never rewrite or silently bless an incomplete original row; a complete-identity replay with an equal economic payload may append an explicit identity_upgrade record referencing the original record_hash; fold uses it only when payload equality and the complete build identity validate; a payload mismatch is a conflict; audit keeps both; until an upgrade exists the signal stays ineligible (G6)",
     "per_record": "complete code identity on every record; a once-written epoch is insufficient because one append-only ledger spans several installed builds (R4)",
     "incomplete": {
       "signal": "written with code_complete false; never eligible for fitting, calibration or pairing",
@@ -171,7 +172,7 @@
   "counters": [
     "signals", "shadows", "outcomes", "replays", "conflicts", "queue_full", "refused_live", "not_taken",
     "non_measured_close", "cost_incomplete", "no_decision_id", "unknown_signal", "ambiguous_rev",
-    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps", "replays_other_build", "gap_flush_failed", "producer_disabled"
+    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps", "replays_other_build", "gap_flush_failed", "producer_disabled", "identity_upgrades", "coverage_gaps"
   ],
   "failure_modes": [
     {"mode": "flag_off", "counter": null, "effect": "hook returns before building anything; ledger untouched"},
@@ -181,6 +182,8 @@
     {"mode": "gap_flush_failure", "counter": "gap_flush_failed", "effect": "writer output blocks until the pending gap is durable; trading unaffected"},
     {"mode": "unclean_writer_close", "counter": "gaps", "effect": "implicit open-ended gap from the last durable event to the next writer's first event"},
     {"mode": "manifest_mismatch", "counter": "producer_disabled", "effect": "producer disabled; nothing appended"},
+    {"mode": "uncovered_interval", "counter": "coverage_gaps", "effect": "clean close to next start, or a disabled / flag-off / manifest-invalid / startup-failed / stopped interval, is a gap; windows crossing it are ineligible"},
+    {"mode": "identity_upgrade", "counter": "identity_upgrades", "effect": "explicit upgrade record appended; the original row is unchanged"},
     {"mode": "gap_in_window", "counter": "gaps", "effect": "any fit / calibration window crossing a gap is ineligible, never silently complete"},
     {"mode": "exact_replay", "counter": "replays", "effect": "no-op"},
     {"mode": "conflicting_replay", "counter": "conflicts", "effect": "refused unwritten"},
@@ -201,6 +204,8 @@
     "evidence": "Cowork measured about 1.06 s to fold 20k duplicate rows",
     "enable_check": "a hash-valid manifest and a configured segment bound, verified at startup and on every hook call (F4)",
     "on_mismatch": "the producer is disabled and counted producer_disabled; it never appends on",
+    "hot_path": "the per-hook check reads one atomic cached eligibility generation only: no disk I/O, hashing or manifest traversal on the trading thread; startup / writer-side refresh verifies manifest, hash and config and atomically publishes the generation (G4)",
+    "segment_bound": "a positive integer within frozen byte / segment limits, never a truthy flag",
     "read_path": "the API reads manifest-bounded segments within a hard byte / segment bound and shows only causally complete views; when completeness cannot be proven it returns a bounded incomplete / error result, never a partial plausible row",
     "requires": ["bounded_segment_size", "append_only_segments", "manifest_with_segment_hashes", "replay_across_segments_idempotent", "producer_enable_refused_without_rotation"]
   },
@@ -213,6 +218,13 @@
     "writer_session": "writer_id plus monotonic seq on every record, with manifest start and clean-close markers",
     "missing_clean_close": "an implicit open-ended gap from the last durable event through the next writer's first event",
     "merge_across_writer_ids": false,
+    "window_axis": "training / calibration membership is keyed to the owning signal decided_at, never an outcome closed_at (G1)",
+    "outcome_envelope": "every queued outcome carries signal_id and the owning decided_at; a dropped outcome opens a gap against that signal and decision time, and the owning signal is ineligible even when its close lies outside the fit window",
+    "unprovable_ownership": "if ownership or decision time cannot be proven, the affected writer session is conservatively incomplete",
+    "coverage": "every interval from one durable clean close to the next durable start is a coverage gap; producer_disabled, flag-off, manifest-invalid, startup-failed and stopped intervals are gaps, not counters only; a zero-event interval is eligible only when an enabled writer session durably covers it (G2)",
+    "sequence": "monotonic seq allocated at the enqueue attempt, before the non-blocking offer; a drop consumes a seq and records it with the owning signal / decision context in the pending gap (G3)",
+    "clean_close": "forbidden until the queue is drained and no pending or unflushed gap exists",
+    "start_marker": "durable before the first accepted record; a start-write failure disables the session and makes it unclean",
     "durable": true,
     "window_rule": "any downstream fit or calibration window that crosses a gap is ineligible, never silently complete (R7)"
   },
@@ -245,7 +257,14 @@
     {"name": "test_drop_crash_restart_window_ineligible", "asserts": "a queue drop, then a crash before the gap flush, then a restart: the missing clean close yields an implicit gap and the window crossing it is ineligible"},
     {"name": "test_manifest_mismatch_disables_producer", "asserts": "a missing or hash-invalid manifest, or no segment bound, refuses enable at startup and on a hook call; counted producer_disabled"},
     {"name": "test_api_view_bounded_and_causally_complete", "asserts": "the API reads manifest-bounded segments within a hard byte / segment bound and returns a bounded incomplete / error result, never a partial plausible row"},
-    {"name": "test_one_trade_one_training_row", "asserts": "fitting is refused while the ML restatement policy is unfrozen; afterwards one trade with three revisions yields exactly one training row"},
+    {"name": "test_one_trade_one_training_row", "asserts": "fitting is refused while the ML restatement policy is unfrozen; afterwards one trade with three revisions yields exactly one training row, and an invalid latest revision yields zero rows (no fallback)"},
+    {"name": "test_dropped_outcome_makes_owning_signal_ineligible_by_decided_at", "asserts": "a dropped outcome whose closed_at lies outside the fit window still makes its owning signal (keyed by decided_at) ineligible; unprovable ownership makes the writer session incomplete"},
+    {"name": "test_uncovered_and_disabled_intervals_are_gaps", "asserts": "clean close to next durable start, producer_disabled, flag-off, manifest-invalid, startup-failed and stopped intervals are gaps; a window crossing one is ineligible; a zero-event interval covered by an enabled session is eligible"},
+    {"name": "test_sequence_allocated_at_enqueue_and_drop_records_it", "asserts": "seq is allocated at the enqueue attempt before the offer; a drop consumes a seq and the pending gap records it with the owning signal / decision context"},
+    {"name": "test_clean_close_forbidden_with_pending_gap", "asserts": "no clean-close marker until the queue is drained and no pending / unflushed gap exists; a failed start marker disables the session and makes it unclean"},
+    {"name": "test_hook_reads_cached_generation_only", "asserts": "the per-hook check reads one atomic cached eligibility generation: no disk I/O, hashing or manifest traversal on the trading thread; segment_bound must be a positive integer within frozen limits"},
+    {"name": "test_invalid_latest_revision_excludes_signal_no_fallback", "asserts": "the highest rev is selected first; if it is identity- or cost-incomplete the signal is excluded and no older valid revision is used"},
+    {"name": "test_identity_upgrade_record_and_conflict", "asserts": "a complete-identity replay with an equal economic payload appends identity_upgrade referencing the original record hash and fold may use it; a payload mismatch is a conflict; the original row is never rewritten"},
     {"name": "test_api_view_unchanged_shape", "asserts": "GET /api/ai_scan returns ai_scan.api_off() when off and only ledger rows when on; no settings or engine state mutated"}
   ],
   "deferred": [
@@ -260,7 +279,8 @@
   "fitting": {
     "before_policy_frozen": "no fitting or calibration consumer may use AI-SCAN rows until the separate ML restatement policy is frozen (F5)",
     "after": "exactly one latest valid measured revision per signal_id, after gap and code checks",
-    "audit": "every revision is retained"
+    "audit": "every revision is retained",
+    "latest_rule": "select the highest rev first; if it is identity- or cost-incomplete the signal is excluded; never fall back to an older valid revision (G5)"
   },
   "rulings_f": {
     "source": "Codex 6461183917 on #227 @ 062086a (Cowork 6461086863 F1-F5)",
@@ -269,6 +289,15 @@
     "F3_gaps": "event_at timebase, inclusive UTC bounds, pending gap flushed before later records, writer_id + seq + clean-close markers, no cross-writer merge",
     "F4_rotation": "live manifest / segment-bound check at startup and every hook; mismatch disables; causally complete bounded API reads",
     "F5_fitting": "no fitting before the ML restatement policy is frozen; then one latest valid revision per signal_id"
+  },
+  "rulings_g": {
+    "source": "Codex 6462174084 on #227 @ e53544d (Cowork 6461915411 G1-G6)",
+    "G1_window_axis": "membership keyed to the owning signal decided_at; a dropped outcome makes its signal ineligible",
+    "G2_coverage": "clean close to next start and every disabled / failed / stopped interval is a gap",
+    "G3_sequence": "seq at enqueue attempt; no clean close with a pending gap; durable start marker first",
+    "G4_hot_path": "cached atomic eligibility generation only; segment_bound a positive integer within frozen limits",
+    "G5_latest": "highest rev first; an invalid latest excludes the signal, no fallback",
+    "G6_identity_upgrade": "explicit identity_upgrade record on equal payload; mismatch is a conflict; never rewrite"
   },
   "rulings": {
     "source": "Codex 6460621068 on #227 @ 45c299c",

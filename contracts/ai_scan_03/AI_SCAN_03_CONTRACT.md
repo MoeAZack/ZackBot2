@@ -96,7 +96,13 @@ ledger spans several installed builds. No v1 runtime producer exists, so the bum
 and `record_hash`. The same v2 key and content_hash with a different `code` counts `replays_other_build` and is a
 no-op. A different content_hash is a conflict. For fitting, the signal's code and the selected outcome's code must
 each be complete, but they need not match, because a position may span an upgrade. Both identities are kept in
-provenance. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
+provenance.
+
+**Identity upgrade (G6):** an incomplete original row is never rewritten or silently blessed. A complete-identity
+replay with an equal economic payload may append an explicit `identity_upgrade` record that references the original
+`record_hash` (counted `identity_upgrades`). Fold uses it only when payload equality and the complete build identity
+validate; a payload mismatch is a conflict. Audit keeps both rows, and until an upgrade exists the signal stays
+ineligible. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
 commit from the matching build.json, and a 64-hex bundle hash. The bundle adds `ai_scan.py` and `ai_scan_ledger.py`.
 
 When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_hash`):
@@ -108,7 +114,7 @@ When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_
 
 `signals`, `shadows`, `outcomes`, `replays`, `conflicts`, `queue_full`, `refused_live`, `not_taken`,
 `non_measured_close`, `cost_incomplete`, `no_decision_id`, `unknown_signal`, `ambiguous_rev`, `identity_incomplete`,
-`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`.
+`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`, `identity_upgrades`, `coverage_gaps`.
 
 When the flag is off, the hook returns before building anything and the ledger is untouched. A torn or edited line is
 skipped on read and never raises. A disk error is swallowed, and the next record is tried.
@@ -126,6 +132,17 @@ outside the hot path and counted in `gaps`. Any downstream fit or calibration wi
 - **Writer sessions:** each record carries `writer_id` and a monotonic `seq`, and the manifest has start and clean-close
   markers. A writer with no clean close creates an implicit open-ended gap from its last durable event through the next
   writer's first event. Gaps are never merged across writer IDs.
+- **Window axis (G1):** training / calibration membership is keyed to the owning signal's `decided_at`, never an
+  outcome's `closed_at`. Every queued outcome carries `signal_id` and the owning `decided_at`. A dropped outcome opens a
+  gap against that signal, and the signal is ineligible even when its close lies outside the fit window. If ownership or
+  decision time cannot be proven, the writer session is conservatively incomplete.
+- **Coverage (G2):** every interval from one durable clean close to the next durable start is a gap (`coverage_gaps`).
+  So are producer-disabled, flag-off, manifest-invalid, startup-failed and stopped intervals; they are not counters only.
+  A zero-event interval is eligible only when an enabled writer session durably covers it.
+- **Sequence and closure (G3):** `seq` is allocated at the enqueue attempt, before the non-blocking offer, so a drop
+  consumes a seq and the pending gap records it with the owning signal / decision context. A clean-close marker is
+  forbidden until the queue is drained and no pending or unflushed gap exists. The start marker is durable before the
+  first accepted record; a start-write failure disables the session and makes it unclean.
 
 ### 6b. Rotation prerequisite (R6)
 
@@ -135,6 +152,10 @@ implemented and tested. This is part of AI-SCAN-03 or a required predecessor, ne
 
 - **Live enable check (F4):** a hash-valid manifest and a configured segment bound, verified at startup and on every
   hook call. A mismatch disables the producer (`producer_disabled`); it never appends on.
+- **Hot path (G4):** the per-hook check reads one atomic, cached eligibility generation only: no disk I/O, hashing or
+  manifest traversal on the trading thread. Startup / writer-side refresh verifies the manifest, hash and config and
+  publishes the generation atomically. `segment_bound` is a positive integer within frozen byte / segment limits, never
+  a truthy flag.
 - **Bounded, causal reads:** the API reads manifest-bounded segments within a hard byte / segment bound and shows only
   causally complete views. When completeness cannot be proven, it returns a bounded incomplete / error result, never a
   partial plausible row.
@@ -143,7 +164,8 @@ implemented and tested. This is part of AI-SCAN-03 or a required predecessor, ne
 
 No fitting or calibration consumer may use AI-SCAN rows until the separate ML restatement policy is frozen. After
 that, a consumer selects exactly one latest valid measured revision per `signal_id`, after the gap and code checks.
-Audit keeps every revision.
+Audit keeps every revision. **Latest means latest (G5):** the highest `rev` is selected first; if it is identity- or
+cost-incomplete, the signal is excluded, and the fitter never falls back to an older valid revision.
 
 ## 7. Test plan (future implementation)
 
@@ -176,6 +198,13 @@ Audit keeps every revision.
 - `test_manifest_mismatch_disables_producer`
 - `test_api_view_bounded_and_causally_complete`
 - `test_one_trade_one_training_row`
+- `test_dropped_outcome_makes_owning_signal_ineligible_by_decided_at`
+- `test_uncovered_and_disabled_intervals_are_gaps`
+- `test_sequence_allocated_at_enqueue_and_drop_records_it`
+- `test_clean_close_forbidden_with_pending_gap`
+- `test_hook_reads_cached_generation_only`
+- `test_invalid_latest_revision_excludes_signal_no_fallback`
+- `test_identity_upgrade_record_and_conflict`
 - `test_api_view_unchanged_shape`
 
 The JSON twin states what each one asserts.
@@ -204,3 +233,12 @@ Follow-up rulings, Codex 6461183917 on Cowork 6461086863:
 - **F3 gaps:** `event_at` timebase, inclusive UTC bounds, pending gaps flushed first, writer_id + seq + clean close.
 - **F4 rotation:** a live enable check, disable on mismatch, bounded causally complete reads.
 - **F5 fitting:** none before the ML restatement policy is frozen; then one latest valid revision per signal.
+
+Completeness rulings, Codex 6462174084 on Cowork 6461915411:
+
+- **G1 window axis:** membership keyed to the owning signal's `decided_at`; a dropped outcome makes its signal ineligible.
+- **G2 coverage:** clean close → next start, and every disabled / failed / stopped interval, is a gap.
+- **G3 sequence:** seq at the enqueue attempt; no clean close with a pending gap; durable start marker first.
+- **G4 hot path:** a cached atomic eligibility generation only; `segment_bound` a positive integer within frozen limits.
+- **G5 latest:** highest rev first; an invalid latest excludes the signal, with no fallback.
+- **G6 identity upgrade:** an explicit `identity_upgrade` record on an equal payload; a mismatch is a conflict.
