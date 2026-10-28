@@ -1429,17 +1429,22 @@ def rules_of(pit):
     return at
 
 
+RULES_ZERO_KEYS = ('bad_coverage_entries', 'unauthenticated_entries', 'causally_unsupported_intervals',
+                   'unsourced_intervals')
+
+
 def rules_identity(rules) -> dict:
-    """The rules callable's immutable identity (PitRules.identity via rules_of): a 64-hex artifact sha256 and no bad /
-    unauthenticated / causally-unsupported / unsourced entry; anything else refuses."""
+    """The rules callable's immutable identity (PitRules.identity via rules_of): a 64-hex artifact sha256 and every
+    RULES_ZERO_KEYS count present and exactly 0 (an int, not a bool / missing / None); anything else refuses."""
     fn = getattr(rules, 'identity', None)
     ident = fn() if callable(fn) else None
     h = ident.get('sha256') if isinstance(ident, dict) else None
     if not (isinstance(h, str) and len(h) == 64 and all(ch in '0123456789abcdef' for ch in h)):
         raise RunnerError('the point-in-time rules have no immutable identity (sha256); refusing')
-    if any(ident.get(k) for k in ('bad_coverage_entries', 'unauthenticated_entries', 'causally_unsupported_intervals',
-                                  'unsourced_intervals')):
-        raise RunnerError('the point-in-time rules identity carries bad / unauthenticated / unsourced entries')
+    for k in RULES_ZERO_KEYS:                       # N7: present and exactly 0; absence is not a clean state
+        v = ident.get(k, None)
+        if type(v) is not int or v != 0:
+            raise RunnerError(f'the point-in-time rules identity needs {k} == 0 (got {v!r})')
     return json.loads(canon(ident))
 
 
@@ -1564,12 +1569,15 @@ DECISION_KEYS = ('H1', 'H2', 'H3', 'credited_stage')     # withheld from report-
 def gate_inputs(g: dict, book: dict | None, gated_risk) -> dict:
     """Pure: the exact dict decide() consumes (GATE_KEYS) plus its detail, from the gate dict and the CREDITED
     stage's book (None when no stage is credited or the book was replayed for another stage: then the book inputs are
-    failing, so no survival can be read from it). data = the data gate of EVERY sequential stage S1, S2 and S3 (K9
-    precedence: an untestable later stage never falls back to a lower-stage survival; S1-T stays report-only) AND the
+    failing, so no survival can be read from it). data = the data gate of every REACHED sequential stage: S1 always, S2
+    once H1 passes, S3 once H2 passes (K9 precedence: a reached stage that is untestable never falls back to a
+    lower-stage survival, while an unreached stage's gap never turns a valid earlier falsification into INCOMPLETE;
+    S1-T stays report-only) AND the
     credited book's data state (<= 2% INCOMPLETE per slice, no unfilled-for-data entry, no unresolved accounting row)
     at base and x1.5; causality = book_causality() at base and x1.5; tails = worst credited-stage episode >= -3R."""
     st = g['credited_stage']
-    data = bool(g['data']) and all(bool(g['data_by_stage'][s]['pass']) for s in ('S1', 'S2', 'S3'))
+    reached = ['S1'] + (['S2'] if g['H1'] else []) + (['S3'] if g['H2'] else [])   # Codex 6481285622 (N6)
+    data = bool(g['data']) and all(bool(g['data_by_stage'][s]['pass']) for s in reached)
     out = {'activity': bool(g['activity']), 'b0': g['b0'], 'H1': g['H1'], 'H2': g['H2'], 'H3': g['H3'],
            'credited_stage': st}
     if book is None:

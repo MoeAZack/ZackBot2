@@ -604,7 +604,7 @@ def _fixed_src():
 def _pit_rules(h='c' * 64, **bad):
     """A rules callable carrying an immutable PitRules-shaped identity (test-only)."""
     f = lambda s, t: RULE                                                                # noqa: E731
-    f.identity = lambda: dict({'format': 'test-rules', 'sha256': h}, **bad)
+    f.identity = lambda: dict({'format': 'test-rules', 'sha256': h}, **dict(dict.fromkeys(R.RULES_ZERO_KEYS, 0), **bad))
     return f
 
 
@@ -769,7 +769,11 @@ def test_report_only_universes_carry_no_decision_inputs(pf):
 
 
 def test_execute_binds_an_immutable_rules_identity(pf, tmp_path):
-    for bad in (lambda s, t: RULE, _pit_rules(h='xyz'), _pit_rules(unauthenticated_entries=1), _pit_rules(unsourced_intervals=2)):
+    missing = _pit_rules()
+    missing.identity = lambda: {'format': 'test-rules', 'sha256': 'c' * 64}               # N7: absent counts refuse
+    for bad in (lambda s, t: RULE, _pit_rules(h='xyz'), _pit_rules(unauthenticated_entries=1), _pit_rules(unsourced_intervals=2),
+                missing, _pit_rules(bad_coverage_entries=None), _pit_rules(causally_unsupported_intervals=False),
+                _pit_rules(unsourced_intervals=0.0)):
         with pytest.raises(R.RunnerError, match='rules'):
             _execute(pf, tmp_path / 'x', rules=bad)
         assert not (tmp_path / 'x').exists()                               # refused before any read or write
@@ -784,7 +788,7 @@ def test_execute_binds_an_immutable_rules_identity(pf, tmp_path):
 
     def ident():
         calls[0] += 1
-        return {'format': 'test-rules', 'sha256': ('c' if calls[0] == 1 else 'e') * 64}
+        return dict(dict.fromkeys(R.RULES_ZERO_KEYS, 0), format='test-rules', sha256=('c' if calls[0] == 1 else 'e') * 64)
     flip.identity = ident
     with pytest.raises(R.RunnerError, match='rules identity changed'):    # swapped mid-run: result discarded
         _execute(pf, tmp_path / 'b', rules=flip)
@@ -1234,6 +1238,7 @@ def test_pit_rules_real_format_drive_rules_of(tmp_path):
     assert (ident['bad_coverage_entries'], ident['unauthenticated_entries'], ident['unsourced_intervals']) == (0, 0, 0)
     at = R.rules_of(pit)
     assert at('BTCUSDT', T0)['min_notional'] == 5.0 and at('BTCUSDT', T0)['tick'] == 0.0001
+    assert R.rules_identity(at)['sha256'] == ident['sha256']          # the real PitRules identity carries every count
     assert at('BTCUSDT', R.iso_ms('2020-12-31T00:00:00Z')) is None and at('ETHUSDT', T0) is None   # uncovered
     with pytest.raises(E5.RunnerError):                                  # a rules-source manifest of another hash
         E5.SourceManifest.load(str(sp), '0' * 64, 'binance-um-exchangeinfo-snapshots')
@@ -1386,6 +1391,18 @@ def test_gate_inputs_are_exactly_what_decide_consumes():
         g['data_by_stage'][later]['pass'] = False
         gi = R.gate_inputs(g, _bk(stage=g['credited_stage']), 0.01)
         assert gi['data'] is False and R.decide(gi) == 'INCOMPLETE'
+    # N6: an UNREACHED stage's gap never turns a valid earlier result into INCOMPLETE
+    g = _g(stage=None, H1=False, H2=False)
+    g['data_by_stage']['S2']['pass'] = g['data_by_stage']['S3']['pass'] = False
+    gi = R.gate_inputs(g, None, 0.01)
+    assert gi['data'] is True and R.decide(gi) == 'FALSIFIED'                 # H1 failed: S2 / S3 never reached
+    g = _g(stage='S1', H2=False)
+    g['data_by_stage']['S3']['pass'] = False
+    gi = R.gate_inputs(g, _bk(stage='S1'), 0.01)
+    assert gi['data'] is True and R.decide(gi) == 'SURVIVES_DEV(S1)'          # H2 failed: S3 never reached
+    g = _g(stage=None, H1=False, H2=False)
+    g['data_by_stage']['S1']['pass'] = False
+    assert R.decide(R.gate_inputs(g, None, 0.01)) == 'INCOMPLETE'              # S1's own gate always applies
     assert R.decide(R.gate_inputs(_g(), None, 0.01)) == 'FAIL'                       # no credited-stage book: never survives
     none = R.gate_inputs(_g(stage=None, H1=False, H2=False), None, 0.01)
     assert R.decide(none) == 'FALSIFIED' and none['causality'] is False
