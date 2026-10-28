@@ -3,9 +3,9 @@
 **Status: DRAFT — unsigned.** This is a contract only. It adds no runtime code and calls no model. The machine twin
 `ai_scan_03_contract.v1.json` sits next to this file and is authoritative. Tests read the JSON and check this file
 against it. Signing sets `status` → `FROZEN`, plus `signed_by` and `frozen_at`. Assignment: Codex 6460083994 on #222.
-It is built from `origin/master` @ `fe84dbb`. For reference only, it also reads #222 (`ai-scan-02` @ `64ef92c`,
-`ai_scan_ledger.py`) and #226 (`claude/ml-pair-01` @ `c77c756`, `ml_shadow/pairs.py`). This slice does not edit or
-import either of them.
+It is built from `origin/master` @ `fe84dbb`. For reference only, it also reads #222 (`ai_scan_ledger.py`) and #226
+(`ml_shadow/pairs.py`). This slice does not edit or import either of them. Before freeze or implementation, `builds_on`
+is set to the **accepted merge SHAs** of #222 and #226; a superseded review head is never pinned (R8).
 
 ## 1. Scope
 
@@ -34,7 +34,8 @@ What each hook receives:
 
 The decision id is `ml_shadow.ledger.decision_id(sleeve, strategy, symbol, side, tf, candle_open)`, which equals the
 ai_scan `signal_id`. The lot carries it as `lot['ml_decision_id']`, stamped at `engine.Engine._ml_link`. The runtime
-slice widens that stamp to fire when ML_SHADOW **or** AI_SCAN is on. A lot without the id produces no outcome
+slice stamps it when ML_SHADOW **or** AI_SCAN is exactly True. **The flags are independent:** AI_SCAN works without
+ML_SHADOW and the reverse, and neither is a prerequisite for the other (R1). A lot without the id produces no outcome
 (`no_decision_id`).
 
 ## 3. Join: immutable decision → measured cost revisions
@@ -51,7 +52,8 @@ slice widens that stamp to fire when ML_SHADOW **or** AI_SCAN is on. A lot witho
   two costs that share one `rev`, and to an outcome with no recorded signal.
 - A measured outcome needs a decision whose rules status is `taken`.
 - **Only a `measured`, cost-complete close produces a measured outcome.** Booked, acknowledged, pending and incomplete
-  closes never do. The hook passes net basis `measured` only.
+  closes never do. The generic accepted ai_scan schema stays compatible, but the writer hook passes net basis
+  `measured` only (R2).
 - **Cost identity:** `ai_scan.cost_revision_id`, schema `ai-scan-cost-rev-v2`, over
   `fees_actual, funding_actual, pnl_gross, pnl_fill_adj, risk_usd`. Net is
   `pnl_gross + pnl_fill_adj - fees_actual + funding_actual`, and net R is that net divided by `risk_usd`. The cost model
@@ -59,14 +61,19 @@ slice widens that stamp to fire when ML_SHADOW **or** AI_SCAN is on. A lot witho
 - **Consistency with ML-PAIR-01 (#226):** its `pair_key = (decision_id, cost_rev_id)` maps one-to-one onto
   `(signal_id, cost_revision_id)`. Both use the same cost identity and the same close gate. Nothing here imports from an
   unmerged branch. Once #226 merges, `test_cost_identity_matches_ml_pair_01` pins the two equal.
+- **Restatements (R3):** AI-SCAN appends every measured cost restatement, for audit. ML-PAIR-01 stays
+  first-measured-close only in this milestone. Before training, a separate frozen ML-pair restatement policy must choose
+  append-plus-latest-collapse or first-finalized revision, so one trade is never silently multiplied into training rows.
 
 ## 4. Never gates orders
 
 The engine-thread hook only builds a sealed record inside `try/except`. It then offers the record to a **bounded,
-non-blocking queue**. An offer never blocks and never raises; a full queue drops the record and counts `queue_full`.
+non-blocking queue**. An offer never blocks and never raises; a full queue drops the record, counts `queue_full` and
+opens a durable health gap (§6a).
 
-A dedicated **writer daemon thread** owns the scan ledger and does every disk write. It never holds the engine lock
-and never reads engine state. Each ledger has a single writer.
+A **dedicated, bounded AI-SCAN writer daemon thread** owns the scan ledger and does every disk write. It starts when
+AI_SCAN is enabled, never holds the engine lock and never reads engine state. Each ledger has a single writer. Its
+failures and lifecycle are not coupled to the `ml_shadow` LedgerWriter (R5).
 
 Every exception in the hook or the writer is counted and swallowed, so none reaches order flow. The flag is read at
 each call as `S.get('AI_SCAN') is True`.
@@ -78,7 +85,8 @@ must be byte-identical across all four.
 ## 5. Identity
 
 Each record carries `code = {build_id, source_commit, bundle_hash}`. This needs `ai-scan-schema-v2`, and
-`record_hash` covers `code`. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
+`record_hash` covers `code`. Identity lives on **every record**, not in a once-written epoch, because one append-only
+ledger spans several installed builds. No v1 runtime producer exists, so the bump lands before the first write (R4). The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
 commit from the matching build.json, and a 64-hex bundle hash. The bundle adds `ai_scan.py` and `ai_scan_ledger.py`.
 
 When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_hash`):
@@ -90,10 +98,22 @@ When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_
 
 `signals`, `shadows`, `outcomes`, `replays`, `conflicts`, `queue_full`, `refused_live`, `not_taken`,
 `non_measured_close`, `cost_incomplete`, `no_decision_id`, `unknown_signal`, `ambiguous_rev`, `identity_incomplete`,
-`build_errors`, `write_errors`, `skipped_lines`.
+`build_errors`, `write_errors`, `skipped_lines`, `gaps`.
 
 When the flag is off, the hook returns before building anything and the ledger is untouched. A torn or edited line is
 skipped on read and never raises. A disk error is swallowed, and the next record is tried.
+
+### 6a. Queue gaps (R7)
+
+Every `queue_full` drop opens or extends a **durable gap** `{from, to, dropped}`, written by the writer thread outside
+the hot path and counted in `gaps`. Any downstream fit or calibration window that crosses a gap is **ineligible**, never
+silently complete.
+
+### 6b. Rotation prerequisite (R6)
+
+Cowork measured about 1.06 s to fold 20k duplicate rows. **A runtime producer may not be enabled** until bounded,
+append-only segmentation / rotation, with a manifest of segment hashes and idempotent replay across segments, is
+implemented and tested. This is part of AI-SCAN-03 or a required predecessor, never post-producer cleanup.
 
 ## 7. Test plan (future implementation)
 
@@ -114,22 +134,29 @@ skipped on read and never raises. A disk error is swallowed, and the next record
 - `test_incomplete_identity_refuses_outcome_flags_signal`
 - `test_cost_identity_matches_ml_pair_01`
 - `test_no_model_or_network_call`
+- `test_flags_independent_either_flag_stamps_decision_id`
+- `test_writer_thread_isolated_from_ml_shadow`
+- `test_every_record_carries_code_identity_schema_v2`
+- `test_rotation_segments_manifest_and_replay`
+- `test_producer_enable_refused_without_rotation`
+- `test_queue_drop_opens_durable_gap_and_window_ineligible`
 - `test_api_view_unchanged_shape`
 
 The JSON twin states what each one asserts.
 
 ## 8. DEFERRED
 
-`runtime_producer_hook`, `remote_model_api_call`, `ledger_rotation`, `model_promotion`, `ui_controls`,
-`trading_authority`, `simulated_outcomes`.
+`runtime_producer_hook`, `remote_model_api_call`, `model_promotion`, `ui_controls`, `trading_authority`,
+`simulated_outcomes`. Ledger rotation is **not** deferred: it is a prerequisite for the producer (§6b).
 
-## 9. Open questions for Codex
+## 9. Codex rulings (6460621068) — open questions: none
 
-1. Should the lot's decision-id stamp widen to ML_SHADOW **or** AI_SCAN, or should AI_SCAN require ML_SHADOW to be on?
-2. `ai_scan.COST_BASES['measured']` still admits net basis `booked`. Should the runtime slice narrow it? Today the hook
-   does the filtering.
-3. ML-PAIR-01 pairs only at the first measured close. Should it also pair restatements from `_row_changed`, so that
-   both stores carry the same revisions?
-4. Identity on each record needs `ai-scan-schema-v2`. Is that acceptable, or should identity live in a once-written
-   epoch file, as `pair_epoch.json` does?
-5. Should AI-SCAN have a dedicated writer thread, or a new row kind on the existing `ml_shadow` LedgerWriter?
+- **R1 independent flags:** either flag stamps the decision id; neither requires the other.
+- **R2 measured-only runtime:** generic schema compatible; the hook passes only `measured`.
+- **R3 restatements:** AI-SCAN appends all measured restatements; ML-PAIR-01 stays first-close; a frozen ML-pair
+  restatement policy is required before training.
+- **R4 identity:** `ai-scan-schema-v2`, complete code identity on every record, bumped before first write.
+- **R5 writer isolation:** dedicated bounded AI-SCAN writer, one per ledger, not coupled to ML_SHADOW.
+- **R6 rotation prerequisite:** segmentation / rotation + manifest + replay before any producer is enabled.
+- **R7 queue gaps:** durable gaps; windows crossing one are ineligible.
+- **R8 builds_on:** refreshed to the accepted merge SHAs of #222 / #226 before freeze.

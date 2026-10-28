@@ -65,7 +65,8 @@ def test_json_parses_and_is_draft_unsigned(c, md):
 
 def test_required_sections_and_keys(c):
     for k in ('builds_on', 'slice', 'scope', 'hooks', 'decision_id', 'join', 'never_gates', 'paper_only', 'identity',
-              'counters', 'failure_modes', 'test_plan', 'deferred', 'open_questions'):
+              'counters', 'failure_modes', 'test_plan', 'deferred', 'open_questions', 'rulings',
+              'rotation_prerequisite', 'queue_gaps'):
         assert k in c, k
     assert {h['id'] for h in c['hooks']} == {'decision', 'shadow', 'measured_close', 'cost_restatement'}
     for h in c['hooks']:
@@ -105,8 +106,9 @@ def test_forbids_order_gating_model_calls_and_live(c):
 
 
 def test_deferred_list(c):
-    assert set(c['deferred']) >= {'runtime_producer_hook', 'remote_model_api_call', 'ledger_rotation', 'model_promotion',
-                                  'ui_controls', 'trading_authority'}
+    assert set(c['deferred']) >= {'runtime_producer_hook', 'remote_model_api_call', 'model_promotion', 'ui_controls',
+                                  'trading_authority'}
+    assert 'ledger_rotation' not in c['deferred']                         # R6: a prerequisite, not deferred
 
 
 # ------------------------------------------------------------------ key / ordering vs the real ai_scan
@@ -226,4 +228,32 @@ def test_md_names_everything_the_json_lists(c, md):
         assert f in md
     assert f"`{c['join']['cost_revision']['net_formula']}`" in md and c['join']['cost_revision']['schema'] in md
     assert '**default OFF**' in md and '**PAPER only**' in md and '**No model or API call' in md
-    assert len(re.findall(r'^\d\. ', md.split('## 9. Open questions')[1], re.M)) == len(c['open_questions'])
+    assert c['open_questions'] == [] and 'open questions: none' in md
+
+
+# ------------------------------------------------------------------ Codex 6460621068 rulings R1-R8
+def test_rulings_r1_to_r8_are_applied(c, md):
+    r = c['rulings']
+    assert r['source'].startswith('Codex 6460621068') and sum(k.startswith('R') for k in r) == 8
+    assert 'neither feature is a prerequisite' in c['decision_id']['flag_independence']                     # R1
+    assert 'ML_SHADOW or AI_SCAN is exactly True' in c['decision_id']['on_lot']
+    assert c['join']['hook_net_basis'] == 'measured' and 'stays compatible' in c['join']['runtime_net_basis_rule']  # R2
+    rs = c['join']['ml_pair_01_consistency']['restatements']                                                 # R3
+    assert 'every measured' in rs['ai_scan'] and 'first measured close only' in rs['ml_pair_01']
+    assert 'never silently multiplied' in rs['before_training']
+    assert 'ai-scan-schema-v2' in c['identity']['schema_bump'] and 'every record' in c['identity']['per_record']  # R4
+    w = c['never_gates']['writer_thread']                                                                    # R5
+    assert w['dedicated'] is True and w['coupled_to_ml_shadow'] is False and w['single_writer_per_ledger'] is True
+    rp = c['rotation_prerequisite']                                                                          # R6
+    assert 'may not be enabled' in rp['rule'] and 'producer_enable_refused_without_rotation' in rp['requires']
+    g = c['queue_gaps']                                                                                      # R7
+    assert g['durable'] is True and 'ineligible' in g['window_rule'] and 'gaps' in c['counters']
+    assert any(fm['counter'] == 'gaps' for fm in c['failure_modes'])
+    for name in ('test_flags_independent_either_flag_stamps_decision_id', 'test_writer_thread_isolated_from_ml_shadow',
+                 'test_every_record_carries_code_identity_schema_v2', 'test_rotation_segments_manifest_and_replay',
+                 'test_producer_enable_refused_without_rotation', 'test_queue_drop_opens_durable_gap_and_window_ineligible'):
+        assert name in {t['name'] for t in c['test_plan']}
+    for pr in ('AI-SCAN-02', 'ML-PAIR-01'):                                                                  # R8
+        b = c['builds_on'][pr]
+        assert 'head' not in b and 'accepted_merge_sha' in b and 'superseded review head' in b['refresh_rule']
+    assert '**accepted merge SHAs**' in md

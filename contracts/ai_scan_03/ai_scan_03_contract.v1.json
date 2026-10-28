@@ -10,8 +10,8 @@
   "assignment": "6460083994",
   "builds_on": {
     "AI-SCAN-01": {"pr": 201, "state": "merged", "module": "ai_scan.py"},
-    "AI-SCAN-02": {"pr": 222, "state": "under_review", "head": "64ef92c", "module": "ai_scan_ledger.py", "edited_here": false},
-    "ML-PAIR-01": {"pr": 226, "state": "under_review", "head": "c77c756", "module": "ml_shadow/pairs.py", "imported_here": false}
+    "AI-SCAN-02": {"pr": 222, "state": "under_review", "accepted_merge_sha": null, "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ai_scan_ledger.py", "edited_here": false},
+    "ML-PAIR-01": {"pr": 226, "state": "under_review", "accepted_merge_sha": null, "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ml_shadow/pairs.py", "imported_here": false}
   },
   "slice": {
     "kind": "contract_only",
@@ -86,7 +86,8 @@
     "function": "ml_shadow.ledger.decision_id",
     "fields": ["sleeve", "strategy", "symbol", "side", "tf", "candle_open"],
     "equals": "ai_scan signal_id",
-    "on_lot": "lot['ml_decision_id'] stamped at engine.Engine._ml_link; the runtime slice widens the stamp condition to ML_SHADOW or AI_SCAN",
+    "on_lot": "lot['ml_decision_id'] stamped at engine.Engine._ml_link when ML_SHADOW or AI_SCAN is exactly True (R1)",
+    "flag_independence": "AI_SCAN works without ML_SHADOW and ML_SHADOW without AI_SCAN; neither feature is a prerequisite for the other (R1)",
     "missing": "no outcome; counted no_decision_id"
   },
   "join": {
@@ -109,6 +110,7 @@
     "eligible_close_status": ["measured"],
     "never_measured_outcome": ["booked", "acknowledged", "pending", "incomplete"],
     "hook_net_basis": "measured",
+    "runtime_net_basis_rule": "the generic accepted ai_scan schema stays compatible (COST_BASES unchanged); the writer hook passes only net_basis measured, so booked / acknowledged / pending / incomplete never enter the measured outcome ledger (R2)",
     "cost_revision": {
       "function": "ai_scan.cost_revision_id",
       "schema": "ai-scan-cost-rev-v2",
@@ -123,13 +125,14 @@
       "same_cost_identity": true,
       "same_close_gate": "row_view status 'measured' and measured(row).complete",
       "import_from_unmerged_branch": false,
-      "pinned_after_merge_by": "test_cost_identity_matches_ml_pair_01"
+      "pinned_after_merge_by": "test_cost_identity_matches_ml_pair_01",
+      "restatements": {"ai_scan": "append every measured cost restatement, for audit", "ml_pair_01": "first measured close only in this milestone", "before_training": "a separate frozen ML-pair restatement policy must choose append-plus-latest-collapse or first-finalized revision; one trade is never silently multiplied into training rows (R3)"}
     }
   },
   "never_gates": {
     "mechanism": "the engine-thread hook only builds a sealed record inside try/except and offers it to a bounded, non-blocking queue; a dedicated writer daemon thread owns the scan ledger and does every disk write",
-    "queue": {"bounded": true, "offer_blocks": false, "offer_raises": false, "full": "drop and count queue_full"},
-    "writer_thread": {"daemon": true, "holds_engine_lock": false, "reads_engine_state": false, "single_writer_per_ledger": true},
+    "queue": {"bounded": true, "offer_blocks": false, "offer_raises": false, "full": "drop, count queue_full and open a durable health gap"},
+    "writer_thread": {"daemon": true, "dedicated": true, "started_when": "AI_SCAN is enabled", "coupled_to_ml_shadow": false, "holds_engine_lock": false, "reads_engine_state": false, "single_writer_per_ledger": true, "isolation": "a dedicated bounded AI-SCAN writer; its failures and lifecycle never touch the ml_shadow LedgerWriter (R5)"},
     "exceptions": "every exception in the hook or the writer is counted and swallowed; none reaches order flow",
     "flag_read": "S.get('AI_SCAN') is True, read at each call; anything else is off",
     "proof_test": "test_trading_byte_identical_with_ai_scan_on_off_and_failing_writer"
@@ -145,7 +148,8 @@
     "gate": "same rule as ML-PAIR-01 identity_gap: non-dev build_id, 40-hex source_commit from the matching build.json, 64-hex bundle_hash",
     "bundle_modules_add": ["ai_scan.py", "ai_scan_ledger.py"],
     "record_field": "code",
-    "schema_bump": "ai-scan-schema-v2 (record_hash covers code)",
+    "schema_bump": "ai-scan-schema-v2 (record_hash covers code), made before the first runtime write; no v1 runtime producer exists",
+    "per_record": "complete code identity on every record; a once-written epoch is insufficient because one append-only ledger spans several installed builds (R4)",
     "incomplete": {
       "signal": "written with code_complete false; never eligible for fitting, calibration or pairing",
       "shadow": "written with code_complete false; never verifies",
@@ -156,12 +160,13 @@
   "counters": [
     "signals", "shadows", "outcomes", "replays", "conflicts", "queue_full", "refused_live", "not_taken",
     "non_measured_close", "cost_incomplete", "no_decision_id", "unknown_signal", "ambiguous_rev",
-    "identity_incomplete", "build_errors", "write_errors", "skipped_lines"
+    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps"
   ],
   "failure_modes": [
     {"mode": "flag_off", "counter": null, "effect": "hook returns before building anything; ledger untouched"},
     {"mode": "live_mode", "counter": "refused_live", "effect": "nothing built or written"},
-    {"mode": "queue_full", "counter": "queue_full", "effect": "record dropped; trading unaffected"},
+    {"mode": "queue_full", "counter": "queue_full", "effect": "record dropped; a durable health gap is opened; trading unaffected"},
+    {"mode": "gap_in_window", "counter": "gaps", "effect": "any fit / calibration window crossing a gap is ineligible, never silently complete"},
     {"mode": "exact_replay", "counter": "replays", "effect": "no-op"},
     {"mode": "conflicting_replay", "counter": "conflicts", "effect": "refused unwritten"},
     {"mode": "same_rev_two_costs", "counter": "ambiguous_rev", "effect": "refused unwritten"},
@@ -176,6 +181,16 @@
     {"mode": "torn_or_edited_line", "counter": "skipped_lines", "effect": "skipped on read; never raises"}
   ],
   "health_block": "health['ai_scan']",
+  "rotation_prerequisite": {
+    "rule": "a runtime producer may not be enabled until bounded append-only segmentation / rotation plus manifest and replay semantics are implemented and tested; part of AI-SCAN-03 or a required predecessor, never post-producer cleanup (R6)",
+    "evidence": "Cowork measured about 1.06 s to fold 20k duplicate rows",
+    "requires": ["bounded_segment_size", "append_only_segments", "manifest_with_segment_hashes", "replay_across_segments_idempotent", "producer_enable_refused_without_rotation"]
+  },
+  "queue_gaps": {
+    "record": "every queue_full drop opens or extends a durable gap {from, to, dropped} written by the writer thread, outside the hot path",
+    "durable": true,
+    "window_rule": "any downstream fit or calibration window that crosses a gap is ineligible, never silently complete (R7)"
+  },
   "test_plan": [
     {"name": "test_flag_off_builds_and_writes_nothing", "asserts": "AI_SCAN False: no hook builds a record, the ledger file is not created, counters stay zero"},
     {"name": "test_live_mode_refused_before_build", "asserts": "engine.live True with AI_SCAN True: refused_live counts, nothing built or written"},
@@ -194,22 +209,32 @@
     {"name": "test_incomplete_identity_refuses_outcome_flags_signal", "asserts": "dev build, missing source_commit or bundle_hash: outcome refused with identity_reason, signal written with code_complete false"},
     {"name": "test_cost_identity_matches_ml_pair_01", "asserts": "for the same close, ai_scan cost_revision_id equals ml_shadow.pairs cost_revision_id and signal_id equals the pair decision_id (enabled once #226 merges)"},
     {"name": "test_no_model_or_network_call", "asserts": "with sockets and the anthropic client patched to raise, every hook path completes and nothing is called"},
+    {"name": "test_flags_independent_either_flag_stamps_decision_id", "asserts": "AI_SCAN on with ML_SHADOW off (and the reverse) stamps lot['ml_decision_id']; neither flag requires the other"},
+    {"name": "test_writer_thread_isolated_from_ml_shadow", "asserts": "a raising or stopped ml_shadow LedgerWriter leaves the AI-SCAN writer running, and the reverse"},
+    {"name": "test_every_record_carries_code_identity_schema_v2", "asserts": "signal, shadow and outcome records carry code and schema ai-scan-schema-v2; record_hash covers code"},
+    {"name": "test_rotation_segments_manifest_and_replay", "asserts": "segments stay bounded and append-only, the manifest lists every segment hash, replay across segments is idempotent"},
+    {"name": "test_producer_enable_refused_without_rotation", "asserts": "enabling the runtime producer without the rotation prerequisite is refused"},
+    {"name": "test_queue_drop_opens_durable_gap_and_window_ineligible", "asserts": "a full queue writes a durable gap; a fit / calibration window crossing it is ineligible"},
     {"name": "test_api_view_unchanged_shape", "asserts": "GET /api/ai_scan returns ai_scan.api_off() when off and only ledger rows when on; no settings or engine state mutated"}
   ],
   "deferred": [
     "runtime_producer_hook",
     "remote_model_api_call",
-    "ledger_rotation",
     "model_promotion",
     "ui_controls",
     "trading_authority",
     "simulated_outcomes"
   ],
-  "open_questions": [
-    "Should the decision-id stamp on the lot be widened to ML_SHADOW or AI_SCAN, or should AI_SCAN require ML_SHADOW on?",
-    "ai_scan.COST_BASES['measured'] still admits net basis 'booked'; should the runtime slice narrow it to 'measured' (this contract filters at the hook)?",
-    "ML-PAIR-01 pairs only at the first measured close; should it also pair restatements from _row_changed so both stores carry the same revisions?",
-    "Identity on records needs ai-scan-schema-v2; acceptable, or should identity live in a once-written ledger epoch file like pair_epoch.json?",
-    "Dedicated AI-SCAN writer thread, or a new row kind on the existing ml_shadow LedgerWriter?"
-  ]
+  "open_questions": [],
+  "rulings": {
+    "source": "Codex 6460621068 on #227 @ 45c299c",
+    "R1_independent_flags": "AI_SCAN works without ML_SHADOW; stamp the shared decision id when either flag is exactly true; neither is a prerequisite for the other",
+    "R2_measured_only_runtime": "generic ai_scan schema stays compatible; the writer hook passes only net_basis measured",
+    "R3_restatements": "AI-SCAN appends every measured restatement; ML-PAIR-01 stays first-measured-close; a frozen ML-pair restatement policy is required before training",
+    "R4_identity": "ai-scan-schema-v2 with complete code identity on each record, bumped before first write",
+    "R5_writer_isolation": "dedicated bounded AI-SCAN writer thread, one per ledger, started when AI_SCAN is enabled, not coupled to ML_SHADOW",
+    "R6_rotation_prerequisite": "bounded append-only segmentation / rotation with manifest and replay semantics, implemented and tested before any runtime producer is enabled",
+    "R7_queue_gaps": "queue-full / drop counters surface a durable health gap; windows crossing a gap are ineligible",
+    "R8_builds_on": "refresh builds_on to the accepted merge SHAs of #222 / #226 before freeze or implementation"
+  }
 }
