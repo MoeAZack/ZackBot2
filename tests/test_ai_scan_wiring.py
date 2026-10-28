@@ -12,7 +12,7 @@ os.environ['LOCALAPPDATA'] = tempfile.mkdtemp()            # never the real %LOC
 import ai_scan as A                                        # noqa: E402
 import ai_scan_ledger as L                                 # noqa: E402
 import engine as E                                         # noqa: E402
-from test_ai_scan import sig, shadow, outcome, sim, CR1   # noqa: E402
+from test_ai_scan import sig, shadow, outcome, outcome1, sim   # noqa: E402
 
 NOW = '2026-10-20T12:20:00Z'
 
@@ -44,10 +44,10 @@ def test_a_second_revision_appends_and_a_conflicting_record_is_refused_unwritten
     p = L.ledger_path(tmp_path)
     s = sig()
     led, _ = write_all(p, [s, outcome(s)])
-    o1 = outcome(s, cost_revision_id=CR1, rev=1, net_r=0.9, net_pnl=9.0, cost_basis='measured')
+    o1 = outcome1(s)                                                           # cost_revision_id derived from COSTS1
     assert led.append(o1) == o1                                                # same decision, new cost revision id
     raw = open(p, 'rb').read()
-    for bad in (outcome(s, net_r=0.1), sig(rules_reason='edited')):           # same key, other content
+    for bad in (outcome(s, exit_reason='sl'), sig(rules_reason='edited')):    # same key, other content
         with pytest.raises(A.AIScanError, match='conflicting replay'):
             led.append(bad)
         with pytest.raises(A.AIScanError, match='conflicting replay'):
