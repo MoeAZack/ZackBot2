@@ -328,7 +328,7 @@ def test_add_gross_cap_refusal_is_counted(P):
 
 def test_book_boundary_incomplete_and_cutoff(P):
     b = _book(P, {'BTCUSDT': mk('BTCUSDT', flat(30), le={0})})
-    assert b['incomplete'] == [{'sym': 'BTCUSDT', 't_entry': T0 + TF, 'reason': 'incomplete.boundary'}]
+    assert [{k: x[k] for k in ('sym', 't_entry', 'reason')} for x in b['incomplete']] ==         [{'sym': 'BTCUSDT', 't_entry': T0 + TF, 'reason': 'incomplete.boundary'}]
     b = _book(P, {'BTCUSDT': mk('BTCUSDT', flat(100), le={50})}, w=W(100, last=51))
     assert b['events'] == [] and b['trades'] == []
 
@@ -378,7 +378,7 @@ def test_b0_unmatched_fails_closed(P):
 def test_run_is_in_memory_without_verdict_and_writes_are_refused(pf, tmp_path):
     w = R.Windows.of(pf.prereg)
     data = {s: R.prepare_symbol(s, _walk(900, seed=k, start=T0 - 300 * TF), w) for k, s in enumerate(('BTCUSDT', 'ETHUSDT'))}
-    res = R.run(data, pf, rules=lambda s, t: RULE, b0_replicates=2, book_stage='S3')
+    res = R.run(data, pf, rules=lambda s, t: RULE, b0_replicates=2, book_stage='S3', resamples=50)
     assert res['evaluated'] is False and 'verdict' not in json.dumps(res).lower() and set(res['stages']) == set(R.STAGE_IDS)
     assert res['B0']['status'] in ('OK', 'INCOMPLETE') and res['book']['stage'] == 'S3'
     with pytest.raises(R.IdentityMismatch):
@@ -400,3 +400,304 @@ def test_run_is_in_memory_without_verdict_and_writes_are_refused(pf, tmp_path):
     assert not out.exists()
     src = (ROOT / 'tools' / 'research' / 'bpyr_runner.py').read_text(encoding='utf-8')
     assert 'EvalAuthorization(' not in src                                  # nothing in the runner issues a token
+
+
+# ================================================================== slice 2
+import edge05_runner as E5                                                                  # noqa: E402
+
+H1MS = R.HOUR
+
+
+# ------------------------------------------------------------------ disclosures (Codex 6478332951 items 4 and 6)
+def test_disclosures_are_in_docstring_result_and_run_json(pf, tmp_path):
+    assert len(R.DISCLOSURES) == 2
+    assert 'not path-identical' in R.DISCLOSURES[0] and 'discards' in R.DISCLOSURES[0] and '6478332951' in R.DISCLOSURES[0]
+    assert 'conservatively' in R.DISCLOSURES[1] and '8h' in R.DISCLOSURES[1] and '6478332951' in R.DISCLOSURES[1]
+    doc = R.__doc__
+    assert 'B0 is not path-identical to E' in doc and 'charged conservatively' in doc and '(the 8h grid) are exact' in doc
+    res = R.run({'BTCUSDT': mk('BTCUSDT', flat(60), le={0})}, pf, windows=W(400), resamples=20)
+    assert res['disclosures'] == list(R.DISCLOSURES) and res['parity_declared'] == list(R.PARITY_DECLARED)
+    out = _execute(pf, tmp_path / 'r', stop_after=1)
+    assert out['status'] == 'PARTIAL'
+    assert json.loads((tmp_path / 'r' / 'run.json').read_text())['disclosures'] == list(R.DISCLOSURES)
+
+
+# ------------------------------------------------------------------ conservative later-in-bar funding
+def test_later_in_bar_funding_is_conservative_and_open_events_exact(P):
+    t2 = T0 + 2 * TF
+    fund = [(t2, 0.001, 100.0), (t2 + H1MS, 0.001, 100.0), (t2 + 2 * H1MS, -0.001, 100.0)]
+    # S3: the add fires in bar 2 (high 102.5), no exit -> paid later event on the larger qty, received on the smaller
+    sd = mk('BTCUSDT', flat(2) + [(100.5, 102.5, 100.4, 102.4)] + flat(3, 102.4) + [(80.0, 80, 80, 80)], le={0},
+            funding=fund)
+    pos = R.replay_unit(sd, 1, R.stage_mgmt(P, 'S3'))
+    assert {t: q for t, _, _, q in pos.funding} == {t2: 1.0, t2 + H1MS: 1.5, t2 + 2 * H1MS: 1.0}
+    # intrabar stop exit in bar 2: paid later events still charged, received ones dropped (0)
+    sd = mk('BTCUSDT', flat(2) + [(99.0, 99.2, 97.0, 97.5)] + flat(3), le={0}, funding=fund)
+    pos = R.replay_unit(sd, 1, R.stage_mgmt(P, 'S1'))
+    assert {t: q for t, _, _, q in pos.funding} == {t2: 1.0, t2 + H1MS: 1.0, t2 + 2 * H1MS: 0.0}
+    # missing mark -> INCOMPLETE; unproven funding span -> INCOMPLETE
+    bad = mk('BTCUSDT', flat(2) + [(97.0, 97.5, 96.0, 97.2)] + flat(5), le={0}, funding=[(T0 + TF, 0.001, math.nan)])
+    with pytest.raises(R.Incomplete, match='incomplete.mark'):
+        R.replay_unit(bad, 1, R.stage_mgmt(P, 'S1'))
+    unproven = mk('BTCUSDT', flat(2) + [(97.0, 97.5, 96.0, 97.2)] + flat(5), le={0})
+    unproven.fund_runs = [(T0 + 2 * TF, T0 + 9 * TF)]
+    with pytest.raises(R.Incomplete, match='incomplete.funding'):
+        R.replay_unit(unproven, 1, R.stage_mgmt(P, 'S1'))
+
+
+# ------------------------------------------------------------------ statistics
+def test_bootstrap_lcb_is_seeded_week_blocked_and_conservative():
+    wk = 7 * 24 * H1MS
+    eps = [(T0 + k * wk + 3 * H1MS, 0.5 if k % 3 else -0.4) for k in range(60)]
+    m, lcb = R.bootstrap_lcb(eps, resamples=500)
+    assert m == pytest.approx(sum(r for _, r in eps) / 60) and lcb < m
+    assert (m, lcb) == R.bootstrap_lcb(eps, resamples=500) and lcb != R.bootstrap_lcb(eps, resamples=500, seed=1)[1]
+    assert R.iso_week(T0) == R.iso_week(T0 + 6 * 24 * H1MS + 23 * H1MS) != R.iso_week(T0 + wk)   # T0 is a Monday
+    assert R.bootstrap_lcb([], resamples=10) == (None, None)
+    sparse = [(T0, 1.0), (T0 + 30 * wk, 1.0)]                               # empty resamples count as -inf
+    assert R.bootstrap_lcb(sparse, resamples=200)[1] == -math.inf
+
+
+def _ep(sym, sl, r, t=T0):
+    return {'sym': sym, 'slice': sl, 't': t, 'f': 1, 'rows': {k: {'net_r': r, 'gross': r, 'fill_adj': 0.0, 'fees': 0.0,
+                                                                   'funding': 0.0, 'net': r, 'r_unit': 1.0} for k in R.ROWS}}
+
+
+def test_concentration_remove_best_activity_and_b0_gate(P):
+    eps = [_ep(f'S{i:02d}', 1 + i % 3, 1.0) for i in range(20)]
+    assert R.concentration(eps, P)['pass'] and R.remove_best_symbol(eps)['pass']
+    lop = eps + [_ep('S00', 1, 30.0)]
+    assert R.concentration(lop, P)['pass'] is False and R.concentration(lop, P)['max_share'] > 0.25
+    neg = [_ep('A', 1, 10.0)] + [_ep('B', 1, -1.0)] * 3
+    assert R.remove_best_symbol(neg) == {'removed': 'A', 'mean': -1.0, 'pass': False}
+    w = R.Windows.of(P)
+    many = [_ep(f'S{i % 17:02d}', s, 0.1) for s in (1, 2, 3) for i in range(100)]
+    a = R.activity(many, P, w)
+    assert a['total'] == 300 and a['per_slice'] == [100] * 3 and a['active_total'] == 17
+    assert R.slice_spans(P, w)[2] == (w.last_entry - w.slices[2][0]) / R.DAY_MS                    # slice 3 ends 08-29
+    assert a['pass'] is True
+    assert R.activity(many[:274], P, w)['pass'] is False                   # slice 3 at 74 < 75
+    assert R.b0_gate(0.2, [0.0] * 950 + [0.3] * 50)['pass'] is True        # p95 = order statistic 950 -> 0.0
+    assert R.b0_gate(0.2, [0.0] * 949 + [0.3] * 51)['pass'] is False
+    assert R.b0_gate(0.2, None) == {'status': 'INCOMPLETE', 'p95': None, 'pass': False}
+    assert R.b0_gate(0.2, [0.1, None])['pass'] is False
+
+
+def test_paired_d3_and_stage_quality(P):
+    w = W(400)
+    s2 = {'stage': 'S2', 'episodes': [_ep('A', 1 + k % 3, 0.1) for k in range(60)], 'incomplete': []}
+    s3 = {'stage': 'S3', 'episodes': [_ep('A', 1 + k % 3, 0.3) for k in range(60)], 'incomplete': []}
+    for k, (a, b) in enumerate(zip(s2['episodes'], s3['episodes'])):
+        a['f'] = b['f'] = k
+        a['t'] = b['t'] = T0 + k * 7 * 24 * H1MS
+    d = R.paired_d3(s2, s3, w, resamples=200)
+    assert d['n'] == 60 and d['base']['mean'] == pytest.approx(0.2) and d['pass'] is True
+    q = R.stage_quality(s3, P, w, resamples=200)
+    assert q['checks']['expectancy'] and q['checks']['slices'] and q['concentration']['pass'] is False   # one symbol
+    assert q['data']['pass'] and q['rows']['base_x1']['pf'] == math.inf
+
+
+def test_dd_tier_paths_and_decide_precedence(P):
+    base = {'max_equity_dd': 0.30, 'closed_r_dd': 20, 'longest_underwater_days': 100, 'calmar': 0.1,
+            'total_r_over_closed_r_dd': 1.0}
+    x15 = {'max_equity_dd': 0.40}
+    assert R.dd_tier(base, x15, P) == {'ordinary': True, 'rescue': False, 'ceilings': True, 'pass': True, 'label': None}
+    rescue = dict(base, max_equity_dd=0.50, calmar=0.8, total_r_over_closed_r_dd=2.5)
+    assert R.dd_tier(rescue, x15, P)['label'] == 'HIGH-RISK SLEEVE'
+    assert R.dd_tier(dict(rescue, max_equity_dd=0.56), x15, P)['pass'] is False                   # > 55% on any path
+    assert R.dd_tier(base, {'max_equity_dd': 0.66}, P)['pass'] is False
+    assert R.dd_tier(dict(base, longest_underwater_days=366), x15, P)['pass'] is False
+    ok = {'data': True, 'activity': True, 'b0': {'status': 'OK'}, 'H1': True, 'H2': True, 'H3': False,
+          'book_dd': {'pass': True}, 'tails': True, 'causality': True}
+    assert R.decide(ok) == 'SURVIVES_DEV(S2)' and R.decide(dict(ok, H2=False)) == 'SURVIVES_DEV(S1)'
+    assert R.decide(dict(ok, H1=False, H2=True, H3=True)) == 'FALSIFIED'                           # never credited later
+    assert R.decide(dict(ok, b0={'status': 'INCOMPLETE'})) == 'INCOMPLETE'
+    assert R.decide(dict(ok, activity=False, H1=False)) == 'INCOMPLETE'
+    assert R.decide(dict(ok, book_dd={'pass': False})) == 'FAIL'
+    assert R.credited_stage(True, True, True) == 'S3' and R.credited_stage(False, True, True) is None
+
+
+# ------------------------------------------------------------------ data adapter (synthetic in-memory source)
+class FakeSrc:
+    def __init__(self, bars, funding, marks):
+        self.b, self.f, self.m = bars, funding, marks
+
+    def bars(self, sym, iv, lo, hi):
+        return [b for b in self.b.get(sym, []) if lo <= b.open_ms < hi]
+
+    def funding(self, sym, lo, hi):
+        return [r for r in self.f.get(sym, []) if lo <= r.time_ms < hi]
+
+    def mark(self, sym, lo, hi):
+        return [b for b in self.m.get(sym, []) if lo <= b.open_ms < hi]
+
+    def first_ms(self, sym):
+        return {}
+
+    def identity(self):
+        return {'kind': 'fake'}
+
+
+def _src(syms, n=700, start=T0 - 300 * TF, drop_funding=(), seed=0):
+    bars, fund, marks = {}, {}, {}
+    for k, s in enumerate(syms):
+        raw = _walk(n, seed=seed + k, start=start)
+        bars[s] = [E5.Bar(t, o, h, l, c, v, v, t + TF) for t, o, h, l, c, v in raw]
+        fund[s] = [E5.Funding(t, 0.0001, 8, t) for t in range(start, start + n * TF, 8 * H1MS) if t not in drop_funding]
+        marks[s] = [E5.Bar(t, c, c, c, c, 0, 0, t + H1MS) for t0, _, _, _, c, _ in raw for t in range(t0, t0 + TF, H1MS)]
+    return FakeSrc(bars, fund, marks)
+
+
+def test_adapter_loads_through_guard_with_cadence_proof_and_marks():
+    w = W(400, warm=240)
+    src = _src(['BTCUSDT'])
+    sd = R.load_symbol(src, 'BTCUSDT', w, warmup_start=T0 - 300 * TF)
+    assert len(sd.t) == 700 and sd.fund_runs == [(T0 - 300 * TF, T0 + 400 * TF)]
+    assert math.isnan(sd.funding[0][2]) and all(math.isfinite(m) for _, _, m in sd.funding[1:])   # no mark before data
+    assert sd.trend is not None
+    hole = T0 + 100 * TF
+    sd2 = R.load_symbol(_src(['BTCUSDT'], drop_funding={hole}), 'BTCUSDT', w, warmup_start=T0 - 300 * TF)
+    assert len(sd2.fund_runs) == 2 and not sd2.funding_covered(hole - TF, hole + TF)
+    leaky = _src(['BTCUSDT'], n=701)
+    leaky.bars = lambda sym, iv, lo, hi: leaky.b[sym]                      # ignores the range: hands back the seal bar
+    with pytest.raises(E5.HoldoutRefused):
+        R.load_symbol(leaky, 'BTCUSDT', w, warmup_start=T0 - 300 * TF)
+    with pytest.raises(E5.HoldoutRefused):                                 # a read request past the seal is refused
+        E5.Guard(src, w.sealed).bars('BTCUSDT', '4h', T0, w.sealed + TF)
+    off = _src(['BTCUSDT'])
+    r5 = off.f['BTCUSDT'][5]
+    off.f['BTCUSDT'][5] = E5.Funding(r5.time_ms + 30 * 60_000, 0.0001, 8, r5.time_ms)
+    assert R.load_symbol(off, 'BTCUSDT', w, warmup_start=T0 - 300 * TF).fund_runs == []   # off-grid: fail closed
+
+
+def test_rules_of_maps_uncovered_to_refusal():
+    class Pit:
+        def lookup(self, sym, t):
+            if t < T0:
+                raise E5.Incomplete('provenance_uncovered', t)
+            return RULE
+    at = R.rules_of(Pit())
+    assert at('BTCUSDT', T0) == RULE and at('BTCUSDT', T0 - 1) is None
+
+
+# ------------------------------------------------------------------ authorized, resumable, chained execution
+def AUTH(pf):                                                                # test-only Integration token
+    return R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256)
+
+
+def _execute(pf, out, **kw):
+    src = kw.pop('src', None) or _src(['BTCUSDT', 'ETHUSDT'])
+    return R.execute(str(out), src, pf, symbols=kw.pop('symbols', ['ETHUSDT', 'BTCUSDT']), rules=lambda s, t: RULE,
+                     authorization=kw.pop('authorization', AUTH(pf)), max_rss_mb=kw.pop('max_rss_mb', 4096),
+                     rss=kw.pop('rss', lambda: 100.0), warmup_start=T0 - 300 * TF, b0_replicates=2,
+                     windows=W(400, warm=240), resamples=20, **kw)
+
+
+def test_execute_is_authorized_rss_guarded_chained_and_resumable(pf, tmp_path):
+    with pytest.raises(R.WriteRefused):
+        _execute(pf, tmp_path / 'a', authorization=None)
+    with pytest.raises(R.RunnerError, match='max-rss-mb'):
+        _execute(pf, tmp_path / 'a', max_rss_mb=None)
+    with pytest.raises(R.MemoryLimit):
+        _execute(pf, tmp_path / 'a', rss=lambda: 5000.0)
+    with pytest.raises(R.DirtyTree):
+        _execute(R.Preflight(pf.prereg, pf.prereg_sha256, dict(pf.code, dirty=True), pf.sources), tmp_path / 'a')
+    with pytest.raises(R.WriteRefused):
+        _execute(pf, ROOT.joinpath(*R.LEDGER_REL[:-1]))
+    out = tmp_path / 'r'
+    assert _execute(pf, out, stop_after=1) == {'status': 'PARTIAL', 'symbols_done': 1, 'symbols_total': 2}
+    first = (out / 'symbols.jsonl').read_bytes()
+    res = _execute(pf, out)                                                   # resumes after BTCUSDT
+    lines = (out / 'symbols.jsonl').read_bytes()
+    assert lines.startswith(first) and lines.count(b'\n') == 2
+    assert res['evaluated'] is False and res['identity_sha256'] and 'verdict' not in json.dumps(res).lower()
+    full = tmp_path / 'f'
+    _execute(pf, full)                                                        # uninterrupted run: byte-identical
+    assert (full / 'symbols.jsonl').read_bytes() == lines and (full / 'run.json').read_bytes() == (out / 'run.json').read_bytes()
+    bad = tmp_path / 'b'
+    _execute(pf, bad, stop_after=1)
+    (bad / 'symbols.jsonl').write_bytes((bad / 'symbols.jsonl').read_bytes().replace(b'"n":', b'"n": '))
+    with pytest.raises(R.RunnerError, match='hash'):
+        _execute(pf, bad)
+    with pytest.raises(R.RunnerError, match='identity'):
+        _execute(pf, out, symbols=['BTCUSDT'])
+
+
+# ------------------------------------------------------------------ (d) parity with backtest.py
+def _par_bars(n, seed):
+    rng = np.random.default_rng(seed)
+    cl = 100 * np.exp(np.cumsum(rng.normal(0.001, 0.02, n)))
+    op = np.r_[cl[0], cl[:-1]]
+    hi = np.maximum(op, cl) * (1 + np.abs(rng.normal(0, 0.01, n)))
+    lo = np.minimum(op, cl) * (1 - np.abs(rng.normal(0, 0.01, n)))
+    op = np.where(rng.random(n) < 0.03, op * 0.93, op)                      # gap-down opens (gap stops)
+    op = np.where(rng.random(n) < 0.02, op * 1.05, op)                      # gap-up opens (adds at the open)
+    hi, lo = np.maximum(hi, op), np.minimum(lo, op)
+    return [(T0 + k * TF, float(op[k]), float(hi[k]), float(lo[k]), float(cl[k]), 1.0) for k in range(n)]
+
+
+def _parity(P, seeds, stage, override, n=1500):
+    import pandas as pd
+    import backtest as BT
+    w = R.Windows(T0, T0 + n * TF, T0 + n * TF, ((T0, T0 + n * TF),), 240)
+    data, raw = {}, {}
+    for s, seed in zip(('BTCUSDT', 'ETHUSDT'), seeds):
+        raw[s] = _par_bars(n, seed)
+        data[s] = R.prepare_symbol(s, raw[s], w)
+        data[s].slip = [2.0] * n                                              # backtest.SLIP = 2 bp
+    legacy = lambda s, t: {'step': None, 'min_qty': 0.0, 'min_notional': BT.MIN_NOTIONAL.get(s, 5)}   # noqa: E731
+    bk = R.run_book(data, P, stage, w, legacy)
+    ours = {s: [] for s in data}
+    for x in sorted(bk['trades'] + bk['incomplete'], key=lambda x: x['t_entry']):
+        ours[x['sym']] += [(k, j, round(ref, 9), gap) for k, j, ref, gap in x['fills']]
+    log = []
+    dfs = {s: pd.DataFrame(raw[s], columns=list('tohlcv')) for s in raw}
+    for d in dfs.values():
+        d['t'] = pd.to_datetime(d['t'], unit='ms')
+    BT.run(BT.Book(dfs), [dict(key='breakout_pyramid', share=1.0, risk=0.01, max_pos=4, mgmt=override)],
+           start=10000.0, max_lev=1000.0, daily_halt=1e9, warmup=239, fund_per_bar=0.0, maint_margin=0, fill_log=log)
+    theirs = {s: [(x['kind'], x['i'], round(x['ref'], 9), x['gap']) for x in log if x['sym'] == s] for s in data}
+    return ours, theirs, data
+
+
+@pytest.mark.parametrize('stage,override', [('S2', {'pyramid': {'n': 0}}), ('S3', {})])
+def test_backtest_parity_fill_for_fill(P, stage, override):
+    """Same bars, same strategy / mgmt, slippage pinned to backtest.SLIP: every entry / add / stop / trail exit
+    (reference price, bar, gap flag) of the runner's book equals backtest.run's fill_log, two symbols at once."""
+    ours, theirs, _ = _parity(P, (1, 5), stage, override)
+    for s in ours:
+        assert ours[s] == theirs[s] and len(ours[s]) >= 30
+    allf = ours['BTCUSDT'] + ours['ETHUSDT']
+    assert sum(x[3] for x in allf) >= 5 and any(x[0] == 'exit' and not x[3] for x in allf)
+    assert (stage == 'S3') == any(x[0] == 'add' for x in allf)
+
+
+def test_backtest_parity_over_many_seeds_diverges_only_by_declared_fill_time_rearm(P):
+    """20 seed pairs x 2 symbols, S3: each symbol's fill sequence is identical to backtest.py, or its FIRST
+    difference is PARITY_DECLARED[1] - a runner entry at the very open where its previous episode was gap-stopped
+    (phase 1 frees the symbol), a signal backtest.py had already dropped."""
+    same = declared = 0
+    for seed in range(10, 30):
+        ours, theirs, _ = _parity(P, (seed, seed + 100), 'S3', {}, n=1200)
+        for s in ours:
+            o, t = ours[s], theirs[s]
+            k = next((i for i, (a, b) in enumerate(zip(o, t)) if a != b), None)
+            if k is None:
+                assert len(o) == len(t)
+                same += 1
+                continue
+            assert o[k - 1][0] == 'exit' and o[k - 1][3] is True and o[k][0] == 'entry' and o[k][1] == o[k - 1][1]
+            assert t[k][1] > o[k][1]
+            declared += 1
+    assert same >= 10 and declared >= 1
+
+
+def test_backtest_parity_declared_time_exit(P):
+    """PARITY_DECLARED[0]: S1 exits at the OPEN after 42 bars; backtest.py at the CLOSE of that bar. Up to the first
+    time exit the fills are identical."""
+    ours, theirs, data = _parity(P, (1, 5), 'S1', {'pyramid': {'n': 0}, 'trail_atr': 0, 'max_bars': 42})
+    o, t = ours['BTCUSDT'], theirs['BTCUSDT']
+    k = next(i for i, x in enumerate(o) if x[0] == 'exit' and x[1] == o[i - 1][1] + 42 and not x[3])
+    f = o[k - 1][1]
+    assert o[:k] == t[:k] and o[k] == ('exit', f + 42, round(data['BTCUSDT'].o[f + 42], 9), False)
+    assert t[k] == ('exit', f + 42, round(data['BTCUSDT'].c[f + 42], 9), False)

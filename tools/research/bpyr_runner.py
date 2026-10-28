@@ -1,7 +1,7 @@
-"""breakout_pyramid_falsify.v1: deterministic code-only research runner, slice 1 (no data adapter, no evaluation).
+"""breakout_pyramid_falsify.v1: deterministic code-only research runner (slices 1-2; no evaluation is authorized).
 
 Authoritative spec: research_evidence/prereg/breakout_pyramid_falsify.v1.json (signed; read by this module, nothing
-else is policy). This slice implements, on caller-supplied closed 4h bars only:
+else is policy).
 
   preflight   the signed contract (bytes hash == the `prereg_sha256` every frozen ledger row records), the six frozen
               ledger IDs exactly (S1, S2, S3, S1-T, B0, B2: kinds, gated flags, hash chain, REGISTRY genesis), the pinned
@@ -12,16 +12,31 @@ else is policy). This slice implements, on caller-supplied closed 4h bars only:
               path_points convention and the walk_path FBL-BT01 rules for every intrabar event.
   unit replay entry set E (S1 entries, fill-time re-arm) and the paired per-stage quantity-1 replays S1 / S1-T / S2 / S3.
   book        the account replay of one stage from the raw signals (admission on phase-1 state only, skips counted).
-  B0          the seeded random-entry sampler (without replacement, no overlap under the fill-time re-arm rule,
-              per symbol / slice count match, fail-closed BaselineIncomplete).
+  B0 / B2     the seeded random-entry sampler (without replacement, no overlap under the fill-time re-arm rule,
+              per symbol / slice count match, fail-closed BaselineIncomplete); B2 = report-only trend-filtered draws.
+  statistics  bootstrap per-episode LCB (8-ISO-week moving blocks, multiplicity weights), PF, slices, remove-best-symbol,
+              concentration, activity / data gates, D3 paired increment, B0 95th-percentile gate, DD tiers / ceilings /
+              underwater / Calmar, sizing replays, folds; H1 -> H2 -> H3 credit order. decide() is pure and never called
+              by run(); nothing writes a verdict.
+  adapter     load_symbol(): edge05-compatible source (Bar / Funding rows) through edge05 Guard (sealed-cutoff refusal
+              before and after every read), funding cadence proof (costs.check_funding_sequence) as proven runs,
+              funding-mark-proxy-v1 from the 1h mark bar ending at T, point-in-time rules via rules_of(PitRules).
+  execute     authorized only: run.json identity + hash-chained, fsync'd, resumable symbols.jsonl, mandatory
+              --max-rss-mb; returns the summary in memory.
 
-Deferred to slice 2: the streaming archive data adapter (klines / funding / mark / point-in-time rules, funding cadence
-proof via costs.check_funding_sequence), run.json + hash-chained resumable lines + --max-rss-mb, bootstrap LCB, PF,
-B0 percentile gate, DD tiers / underwater / Calmar, concentration, folds and every gate / verdict computation.
+Disclosures (Codex 6478332951; also emitted in every result dict and in run.json as `disclosures`):
+  1. B0 is not path-identical to E: E (and the book) permanently stop re-arming a symbol after an INCOMPLETE episode,
+     while B0 discards an INCOMPLETE random draw and keeps sampling.
+  2. Later-in-bar (1h / 2h) funding is charged conservatively because its order against intrabar adds / exits is
+     unknowable: paid on the larger quantity even after an intrabar exit, received on the smaller (0 after an exit).
+     Events at the bar open (the 8h grid) are exact.
 
-Nothing here writes a verdict or spends a ledger row: run() returns an in-memory dict. write_result() refuses unless
-an EvalAuthorization bound to the signed contract hash is passed, and never writes under the ledger directory.
-No network, no market-data path, no wall clock in any result byte.
+Declared, contract-sanctioned differences from backtest.py are listed in PARITY_DECLARED; tests/test_bpyr_runner.py
+proves fill-for-fill parity with backtest.run on synthetic bars outside those cases.
+
+Nothing here writes a verdict or spends a ledger row: run() returns an in-memory dict. write_result() and execute()
+refuse unless an EvalAuthorization bound to the signed contract hash is passed, and never write under the ledger
+directory. No network, no market-data path, no wall clock in any result byte.
 """
 from __future__ import annotations
 
@@ -58,7 +73,8 @@ LEDGER_IDS = ('S1', 'S2', 'S3', 'S1-T', 'B0', 'B2')                 # frozen ord
 LEDGER_KINDS = ('variant', 'variant', 'variant', 'variant', 'baseline', 'baseline')
 STAGE_IDS = ('S1', 'S1-T', 'S2', 'S3')
 CODE_MODULES = ('backtest.py', 'feasibility.py', 'strategies.py', 'tools/research/costs.py',
-                'tools/research/manifest.py', 'tools/research/bpyr_runner.py')
+                'tools/research/manifest.py', 'tools/research/edge05_runner.py', 'tools/research/edge05_coverage.py',
+                'tools/research/splits.py', 'tools/research/bpyr_runner.py')
 HOUR = 3_600_000
 TF = 4 * HOUR
 SLIP_C_CRYPTO = 0.05                     # slip-cal-v1 crypto coefficient (same accounting input as the EDGE05 runner)
@@ -351,7 +367,9 @@ class SymbolData:
     le: list                             # long entry signal at the close of bar i
     elig: list                           # >= warmup contiguous closed bars ending at i
     slip: list                           # charged bps for a market fill at the open of bar i (nan: no 15-bar history)
-    funding: list = field(default_factory=list)      # [(time_ms, rate, mark_px)] sorted
+    funding: list = field(default_factory=list)      # [(time_ms, rate, mark_px)] sorted; mark nan = no mark bar
+    trend: list | None = None                         # EMA50 > EMA200 at the close of bar i (B2 draw filter)
+    fund_runs: list | None = None                     # proven-complete funding spans [(lo, hi)]; None = unchecked
     _ft: list = field(default_factory=list)
 
     def __post_init__(self):
@@ -365,6 +383,12 @@ class SymbolData:
         a, b = bisect.bisect_left(self._ft, t0), bisect.bisect_left(self._ft, t0 + TF)
         return self.funding[a:b]
 
+    def funding_covered(self, lo: int, hi: int) -> bool:
+        """Every settled event due in [lo, hi) is proven present (adapter cadence proof); unchecked data passes."""
+        if self.fund_runs is None:
+            return True
+        return any(a <= lo and hi <= b for a, b in self.fund_runs)
+
 
 class _Bar:
     __slots__ = ('high', 'low', 'close')
@@ -373,7 +397,7 @@ class _Bar:
         self.high, self.low, self.close = h, l, c
 
 
-def prepare_symbol(sym: str, bars, windows: Windows, funding=()) -> SymbolData:
+def prepare_symbol(sym: str, bars, windows: Windows, funding=(), fund_runs=None) -> SymbolData:
     """bars: [(open_ms, o, h, l, c, v)] closed 4h bars. Indicators and signals are computed per contiguous segment
     (no forward fill across a gap); a bar at or after the sealed cutoff is refused, never read."""
     import pandas as pd
@@ -385,6 +409,7 @@ def prepare_symbol(sym: str, bars, windows: Windows, funding=()) -> SymbolData:
     t = [int(b[0]) for b in bars]
     o, h, l, c = ([float(b[k]) for b in bars] for k in (1, 2, 3, 4))
     atr, le, elig, slip = [math.nan] * len(t), [False] * len(t), [False] * len(t), [math.nan] * len(t)
+    trend = [False] * len(t)
     seg = 0
     for j in range(len(t) + 1):
         if j == len(t) or (j and t[j] != t[j - 1] + TF):
@@ -396,12 +421,13 @@ def prepare_symbol(sym: str, bars, windows: Windows, funding=()) -> SymbolData:
                 for k in range(len(df)):
                     atr[seg + k] = float(d['atr'].iloc[k])
                     le[seg + k] = bool(s['le'].iloc[k])
+                    trend[seg + k] = bool(d['e50'].iloc[k] > d['e200'].iloc[k])
                     elig[seg + k] = k + 1 >= windows.warmup_bars
                     if k >= C.SLIP_BARS:
                         win = [_Bar(h[x], l[x], c[x]) for x in range(seg + k - C.SLIP_BARS, seg + k)]
                         slip[seg + k] = max(C.slip_bps(win, SLIP_C_CRYPTO), SLIP_FLOOR_BPS)
             seg = j
-    return SymbolData(sym, t, o, h, l, c, atr, le, elig, slip, list(funding))
+    return SymbolData(sym, t, o, h, l, c, atr, le, elig, slip, list(funding), trend, fund_runs)
 
 
 # ------------------------------------------------------------------ position + bar phases
@@ -432,6 +458,9 @@ class Pos:
         sd = self.sd
         if not math.isfinite(sd.slip[j]):
             raise Incomplete('incomplete.slip_history', sd.t[j])
+        t_exit = sd.t[j] if free_from == j else sd.t[j] + TF            # an intrabar exit is costed to the bar end
+        if not sd.funding_covered(sd.t[self.f], t_exit):
+            raise Incomplete('incomplete.funding', sd.t[self.f])
         self.fills.append(dict(kind='exit', j=j, ref=ref, bps=sd.slip[j], gap=gap, qty=self.qty, why=why))
         self.exit = (j, why, free_from)
         return self.px(ref, 'sell', sd.slip[j], gap)
@@ -448,10 +477,38 @@ def phase1(pos: Pos, j: int):
     return None
 
 
+def _event(pos: Pos, t, rate, mark, qty) -> tuple:
+    if not (isinstance(mark, (int, float)) and math.isfinite(mark) and mark > 0):
+        raise Incomplete('incomplete.mark', t)
+    rec = (t, rate, mark, qty)
+    pos.funding.append(rec)
+    return rec
+
+
+def charge_open(pos: Pos, j: int) -> list:
+    """The event AT the open of bar j (the 8h / 4h grid) on the quantity held after phases 1-2 (entry <= T < exit)."""
+    t0 = pos.sd.t[j]
+    return [_event(pos, t, rate, mark, pos.qty) for t, rate, mark in pos.sd.events(t0) if t == t0]
+
+
+def charge_later(pos: Pos, j: int, q_open: float, closed: bool) -> list:
+    """Events later in bar j (1h / 2h cadence): their order against intrabar adds and exits is unknowable from a 4h
+    bar, so each is charged conservatively (DISCLOSURES[1]): a PAID event on the larger of the open / end quantity
+    (even when the position exited inside the bar), a RECEIVED event on the smaller (0 when it exited inside the bar)."""
+    t0 = pos.sd.t[j]
+    q_end = 0.0 if closed else pos.qty
+    out = []
+    for t, rate, mark in pos.sd.events(t0):
+        if t == t0:
+            continue
+        pays = rate > 0                                              # a long pays a positive rate
+        out.append(_event(pos, t, rate, mark, max(q_open, pos.qty) if pays else min(q_open, q_end)))
+    return out
+
+
 def charge_funding(pos: Pos, j: int) -> None:
-    """Settled events in [open_j, open_j + 4h) on the quantity held at the open (entry <= T < exit)."""
-    for t, rate, mark in pos.sd.events(pos.sd.t[j]):
-        pos.funding.append((t, rate, mark, pos.qty))
+    """Unit-replay convenience: the open event only (later-in-bar events are charged by charge_later after phase 3)."""
+    charge_open(pos, j)
 
 
 def walk(pos: Pos, j: int, add_gate):
@@ -531,8 +588,11 @@ def replay_unit(sd: SymbolData, f: int, mgmt: dict) -> Pos:
                 raise Incomplete('incomplete.gap', sd.t[j])
             if phase1(pos, j) is not None:
                 return pos
-        charge_funding(pos, j)
-        if walk(pos, j, _unit_gate) is not None:
+        charge_open(pos, j)
+        q_open = pos.qty
+        done = walk(pos, j, _unit_gate) is not None
+        charge_later(pos, j, q_open, done)
+        if done:
             return pos
         phase4(pos, j)
         j += 1
@@ -569,7 +629,7 @@ def price_episode(pos: Pos, row: str) -> dict:
     net = fill_pnl - fees + funding
     r_unit = pos.R * pos.q0
     return {'gross': gross, 'fill_adj': fill_pnl - gross, 'fees': fees, 'funding': funding, 'net': net,
-            'net_r': net / r_unit}
+            'net_r': net / r_unit, 'r_unit': r_unit}
 
 
 # ------------------------------------------------------------------ entry set E + paired unit replays
@@ -631,6 +691,10 @@ def summarize(rep: dict, windows: Windows) -> dict:
 
 
 # ------------------------------------------------------------------ book (account replay of one stage)
+def _fills(q: Pos) -> list:
+    return [(x['kind'], x['j'], x['ref'], x['gap']) for x in q.fills]
+
+
 def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: float = 0.01,
              row: str = 'base_x1') -> dict:
     """Causal four-phase account replay from the raw stage signals (never from E). `rules(sym, t_ms)` -> the
@@ -656,7 +720,7 @@ def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: 
         cash += q.qty * fill - q.cost - out_fee
         trades.append({'sym': s, 't_entry': data[s].t[q.f], 't_exit': data[s].t[j], 'why': q.exit[1], 'adds': q.adds,
                        'slice': windows.slice_of(data[s].t[q.f]), 'pnl': q.qty * fill - q.cost - q.fee_paid - out_fee
-                       - q.funding_paid, 'r_usd': q.R * q.q0})
+                       - q.funding_paid, 'r_usd': q.R * q.q0, 'fills': _fills(q)})
         events.append((data[s].t[j], 1 if q.exit[1] in ('stop_gap', 'time') else 3, s, 'exit:' + q.exit[1]))
         del pos[s]
 
@@ -668,20 +732,28 @@ def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: 
             gross += q.qty * x
         return cash + upl, gross
 
+    def pay(q, recs):
+        nonlocal cash
+        paid = math.fsum(funding_paid(rate, qq, mark, row) for _, rate, mark, qq in recs)
+        q.funding_paid += paid
+        cash -= paid
+
+    def drop(s, reason):
+        incomplete.append({'sym': s, 't_entry': data[s].t[pos[s].f], 'reason': reason, 'fills': _fills(pos[s])})
+        del pos[s]                                       # exit unknown: removed from the book, counted (data gate)
+
     for T in times:
         bar = {s: idx[s].get(T) for s in syms}
         # ---- phase 1: open-known events, symbol ascending
         for s in sorted(pos):
             j = bar[s]
             if j is None or not data[s].contiguous(j):
-                incomplete.append({'sym': s, 't_entry': data[s].t[pos[s].f], 'reason': 'incomplete.gap'})
-                del pos[s]                                   # exit unknown: removed from the book, counted (data gate)
+                drop(s, 'incomplete.gap')
                 continue
             try:
                 fill = phase1(pos[s], j)
             except Incomplete as e:
-                incomplete.append({'sym': s, 't_entry': data[s].t[pos[s].f], 'reason': e.reason})
-                del pos[s]
+                drop(s, e.reason)
                 continue
             if fill is not None:
                 finish(s, fill, j)
@@ -727,13 +799,15 @@ def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: 
             events.append((T, 2, s, 'entry'))
         pend = {}
         # funding at the open on the quantity held after phases 1-2
+        q_open = {}
         for s in sorted(pos):
             q = pos[s]
-            n0 = len(q.funding)
-            charge_funding(q, bar[s])
-            paid = math.fsum(funding_paid(rate, qq, mark, row) for _, rate, mark, qq in q.funding[n0:])
-            q.funding_paid += paid
-            cash -= paid
+            try:
+                pay(q, charge_open(q, bar[s]))
+            except Incomplete as e:
+                drop(s, e.reason)
+                continue
+            q_open[s] = q.qty
 
         # ---- phase 3: intrabar paths, symbol ascending (including phase-2 admissions)
         def add_gate(q, ref, qty, _T=T):
@@ -753,13 +827,14 @@ def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: 
             na = len(q.fills)
             try:
                 fill = walk(q, j, add_gate)
+                pay(q, charge_later(q, j, q_open[s], fill is not None))
             except Incomplete as e:
-                incomplete.append({'sym': s, 't_entry': data[s].t[q.f], 'reason': e.reason})
-                del pos[s]
+                drop(s, e.reason)
                 continue
             for x in q.fills[na:]:
                 if x['kind'] == 'add':
-                    a_fee = fee(q.px(x['ref'], 'buy', x['bps'], x['gap']) * x['qty'])
+                    a_fill = q.px(x['ref'], 'buy', x['bps'], x['gap'])
+                    a_fee = fee(a_fill * x['qty'])
                     q.fee_paid += a_fee
                     cash -= a_fee
                     events.append((T, 3, s, 'add'))
@@ -776,11 +851,11 @@ def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: 
             sd = data[s]
             if sd.le[j] and sd.elig[j] and windows.entry_ok(T + TF):
                 pend[s] = j
-        curve.append((T, marks(T, lambda s: last_px[s])[0]))
+        curve.append((T, marks(T, lambda s: last_px[s])[0], len(pos)))
     for s in sorted(pos):                                       # boundary INCOMPLETE: never closed with a later price
-        incomplete.append({'sym': s, 't_entry': data[s].t[pos[s].f], 'reason': 'incomplete.boundary'})
+        drop(s, 'incomplete.boundary')
     peak, dd = START_EQUITY, 0.0
-    for _, e in curve:
+    for _, e, _n in curve:
         peak = max(peak, e)
         dd = max(dd, 1 - e / peak if peak > 0 else 0.0)
     return {'stage': stage, 'row': row, 'risk': risk, 'trades': trades, 'skips': skips, 'refusals': refusals,
@@ -789,23 +864,27 @@ def run_book(data: dict, p: dict, stage: str, windows: Windows, rules, *, risk: 
 
 
 # ------------------------------------------------------------------ B0 random-entry baseline
-def b0_candidates(sd: SymbolData, windows: Windows, slice_no: int) -> list:
+def b0_candidates(sd: SymbolData, windows: Windows, slice_no: int, trend_only: bool = False) -> list:
+    """Eligible entry bars of one symbol / slice: a contiguous open before the last-entry cutoff whose decision bar is
+    eligible; B2 (report-only) additionally needs EMA50 > EMA200 at the decision bar."""
     a, b = windows.slices[slice_no - 1]
     return [f for f in range(1, len(sd.t)) if sd.contiguous(f) and sd.elig[f - 1] and a <= sd.t[f] < b
-            and windows.entry_ok(sd.t[f])]
+            and windows.entry_ok(sd.t[f]) and (not trend_only or (sd.trend is not None and sd.trend[f - 1]))]
 
 
 def b0_sample(data: dict, E: dict, windows: Windows, mgmt_s1: dict, *, replicates: int, base_seed: int,
-              _cache=None) -> list:
+              _cache=None, trend_only: bool = False) -> list:
     """Per replicate r: random.Random(base_seed + r); symbols then slices ascending; eligible entry bars drawn in a
     seeded random order WITHOUT replacement; a draw is accepted only if its S1 episode [fill, free) does not overlap
     an accepted one of that symbol (fill-time re-arm rule); stop at the S1 count of that symbol and slice. A draw whose
-    S1 episode is INCOMPLETE is not accepted. Exhaustion -> BaselineIncomplete (the B0 gate fails closed)."""
+    S1 episode is INCOMPLETE is discarded and sampling continues (DISCLOSURES[0]: E instead stops re-arming that
+    symbol, so B0 is not path-identical to E). Exhaustion -> BaselineIncomplete (the B0 gate fails closed)."""
     need = {}
     for e in E['episodes']:
         need[(e['sym'], e['slice'])] = need.get((e['sym'], e['slice']), 0) + 1
     cache = {} if _cache is None else _cache
-    cands = {(s, k): b0_candidates(data[s], windows, k) for s in sorted(data) for k in range(1, len(windows.slices) + 1)}
+    cands = {(s, k): b0_candidates(data[s], windows, k, trend_only) for s in sorted(data)
+             for k in range(1, len(windows.slices) + 1)}
     out = []
     for r in range(replicates):
         rng = random.Random(base_seed + r)
@@ -854,44 +933,559 @@ def b0_means(data: dict, reps: list, mgmt_s1: dict, row: str = 'base_x1', _cache
     return res
 
 
-# ------------------------------------------------------------------ run (in memory only) + guarded write
+# ------------------------------------------------------------------ statistics (gates.*, bootstrap, hypotheses)
+DAY_MS = 24 * HOUR
+
+
+def iso_week(t_ms: int) -> int:
+    """Monday-based UTC ISO week ordinal (1970-01-01 is a Thursday, so day + 3 starts the week on Monday)."""
+    return (t_ms // DAY_MS + 3) // 7
+
+
+def bootstrap_lcb(eps, *, seed: int = 20261028, resamples: int = 10000, block: int = 8, alpha: float = 0.05):
+    """bootstrap block: per-episode mean net R; episodes grouped by the ISO week of their entry fill; moving blocks of
+    `block` consecutive calendar ISO weeks (empty weeks included) drawn with replacement, ceil(W / block) per resample;
+    every episode in a sampled block is retained (weight = multiplicity); LCB = the lower 5th percentile order
+    statistic (index ceil(alpha * n) - 1). A resample with no episode has no mean and counts as -inf (conservative).
+    eps: [(entry_ms, net_r)]. Returns (point, lcb) or (None, None) when empty."""
+    if not eps:
+        return None, None
+    wk = [iso_week(t) for t, _ in eps]
+    w0, W = min(wk), max(wk) - min(wk) + 1
+    sums, cnts = [0.0] * W, [0] * W
+    for w, (_, r) in zip(wk, eps):
+        sums[w - w0] += r
+        cnts[w - w0] += 1
+    b = min(block, W)
+    nb = W - b + 1
+    bs = [math.fsum(sums[i:i + b]) for i in range(nb)]
+    bc = [sum(cnts[i:i + b]) for i in range(nb)]
+    k = math.ceil(W / b)
+    rng = random.Random(seed)
+    stats = []
+    for _ in range(resamples):
+        s = c = 0
+        for _ in range(k):
+            i = rng.randrange(nb)
+            s += bs[i]
+            c += bc[i]
+        stats.append(s / c if c else -math.inf)
+    stats.sort()
+    return math.fsum(r for _, r in eps) / len(eps), stats[max(0, math.ceil(alpha * resamples) - 1)]
+
+
+def pf_of(xs):
+    gain, loss = math.fsum(x for x in xs if x > 0), -math.fsum(x for x in xs if x < 0)
+    return gain / loss if loss > 0 else (math.inf if gain > 0 else None)
+
+
+def _mean(xs):
+    return math.fsum(xs) / len(xs) if xs else None
+
+
+def _pos(x):
+    return x is not None and x > 0
+
+
+def describe(xs_t, *, lcb: bool = True, seed: int = 20261028, resamples: int = 10000) -> dict:
+    xs = [r for _, r in xs_t]
+    out = {'n': len(xs), 'mean': _mean(xs), 'median': (sorted(xs)[len(xs) // 2] if len(xs) % 2 else
+                                                       _mean(sorted(xs)[len(xs) // 2 - 1:len(xs) // 2 + 1])) if xs else None,
+           'pf': pf_of(xs), 'win_rate': sum(x > 0 for x in xs) / len(xs) if xs else None,
+           'worst': min(xs) if xs else None}
+    if lcb:
+        out['lcb'] = bootstrap_lcb(xs_t, seed=seed, resamples=resamples)[1]
+    return out
+
+
+def by_symbol(eps, row='base_x1') -> dict:
+    out = {}
+    for e in eps:
+        out[e['sym']] = out.get(e['sym'], 0.0) + e['rows'][row]['net_r']
+    return out
+
+
+def concentration(eps, p: dict) -> dict:
+    """gates.concentration: each symbol's share of the stage's total base net R (undefined -> fails when total <= 0)."""
+    g = p['gates']['concentration']
+    sym = by_symbol(eps)
+    tot = math.fsum(sym.values())
+    top = sorted(sym.values(), reverse=True)
+    if not tot > 0:
+        return {'max_share': None, 'top3_share': None, 'pass': False}
+    s1, s3 = top[0] / tot, math.fsum(top[:3]) / tot
+    return {'max_share': s1, 'top3_share': s3, 'pass': s1 <= g['max_symbol_share'] and s3 <= g['max_top3_share']}
+
+
+def remove_best_symbol(eps) -> dict:
+    sym = by_symbol(eps)
+    if not sym:
+        return {'removed': None, 'mean': None, 'pass': False}
+    best = max(sorted(sym), key=lambda s: sym[s])
+    rest = [e['rows']['base_x1']['net_r'] for e in eps if e['sym'] != best]
+    m = _mean(rest)
+    return {'removed': best, 'mean': m, 'pass': _pos(m)}
+
+
+def slice_spans(p: dict, windows: Windows) -> list:
+    """gates.activity.per_30d_span: slices 1-2 full span, slice 3 up to the last-entry cutoff (entry-eligible days)."""
+    return [((min(b, windows.last_entry) - a) / DAY_MS) for a, b in windows.slices]
+
+
+def activity(eps, p: dict, windows: Windows) -> dict:
+    a = p['gates']['activity']
+    k = len(windows.slices)
+    per = [[e for e in eps if e['slice'] == s] for s in range(1, k + 1)]
+    act = lambda es: sorted(s for s, n in _count(es).items() if n >= 5)                    # noqa: E731
+    spans = slice_spans(p, windows)
+    rate = [len(x) / (d / 30) if d > 0 else 0.0 for x, d in zip(per, spans)]
+    out = {'total': len(eps), 'per_slice': [len(x) for x in per], 'per_30d': rate,
+           'active_total': len(act(eps)), 'active_per_slice': [len(act(x)) for x in per]}
+    out['pass'] = (out['total'] >= a['min_episodes_total'] and all(n >= a['min_episodes_per_slice'] for n in out['per_slice'])
+                   and all(r >= a['min_episodes_per_30d_each_slice'] for r in rate)
+                   and out['active_total'] >= a['min_active_symbols_total']
+                   and all(n >= a['min_active_symbols_per_slice'] for n in out['active_per_slice']))
+    return out
+
+
+def _count(es):
+    out = {}
+    for e in es:
+        out[e['sym']] = out.get(e['sym'], 0) + 1
+    return out
+
+
+def data_gate(rep: dict, windows: Windows, extra_incomplete=()) -> dict:
+    """gates.data: per slice at most 2% INCOMPLETE (data gaps and boundary together) of that slice's episodes."""
+    k = len(windows.slices)
+    inc = list(rep['incomplete']) + list(extra_incomplete)
+    frac = []
+    for s in range(1, k + 1):
+        n_ok = sum(e['slice'] == s for e in rep['episodes'])
+        n_bad = sum(e.get('slice') == s for e in inc)
+        frac.append(n_bad / (n_ok + n_bad) if n_ok + n_bad else 0.0)
+    return {'incomplete_frac': frac, 'pass': all(f <= 0.02 for f in frac)}
+
+
+def stage_quality(rep: dict, p: dict, windows: Windows, *, resamples: int = 10000) -> dict:
+    """The per-stage H-test on the stage's OWN episodes (gates.stage_scope): base mean > 0 and LCB > 0, x1.5 mean > 0,
+    every slice mean > 0, remove-best-symbol and concentration; plus the reported cost rows and per-slice rows."""
+    eps = rep['episodes']
+    rows = {}
+    for r in ROWS:
+        xs = [(e['t'], e['rows'][r]['net_r']) for e in eps]
+        rows[r] = describe(xs, lcb=r in ('base_x1', 'all_variable_costs_x1.5', 'all_variable_costs_x2'),
+                           resamples=resamples)
+    sl = [_mean([e['rows']['base_x1']['net_r'] for e in eps if e['slice'] == s]) for s in range(1, len(windows.slices) + 1)]
+    out = {'rows': rows, 'slice_means': sl, 'remove_best_symbol': remove_best_symbol(eps),
+           'concentration': concentration(eps, p), 'data': data_gate(rep, windows),
+           'decomposition_r': {k: math.fsum(e['rows']['base_x1'][k] / e['rows']['base_x1']['r_unit'] for e in eps)
+                               for k in ('gross', 'fill_adj', 'fees', 'funding')}}
+    b = rows['base_x1']
+    out['checks'] = {'expectancy': _pos(b['mean']) and _pos(b['lcb']), 'x1_5': _pos(rows['all_variable_costs_x1.5']['mean']),
+                     'slices': all(_pos(m) for m in sl), 'remove_best_symbol': out['remove_best_symbol']['pass'],
+                     'concentration': out['concentration']['pass']}
+    out['pass'] = all(out['checks'].values())
+    return out
+
+
+def paired_d3(s2: dict, s3: dict, windows: Windows, *, resamples: int = 10000) -> dict:
+    """D3(e) = netR_S3(e) - netR_S2(e) on the episodes complete in both; gated by mean / LCB, x1.5 and three slices
+    only (never remove-best-symbol or concentration). Report-only S2 - S1 uses the same function."""
+    a = {(e['sym'], e['f']): e for e in s2['episodes']}
+    pairs = [(e, a[(e['sym'], e['f'])]) for e in s3['episodes'] if (e['sym'], e['f']) in a]
+    d = lambda r: [(x['t'], x['rows'][r]['net_r'] - y['rows'][r]['net_r']) for x, y in pairs]   # noqa: E731
+    base = describe(d('base_x1'), resamples=resamples)
+    x15 = _mean([v for _, v in d('all_variable_costs_x1.5')])
+    sl = [_mean([x['rows']['base_x1']['net_r'] - y['rows']['base_x1']['net_r'] for x, y in pairs if x['slice'] == s])
+          for s in range(1, len(windows.slices) + 1)]
+    checks = {'expectancy': _pos(base['mean']) and _pos(base['lcb']), 'x1_5': _pos(x15), 'slices': all(_pos(m) for m in sl)}
+    return {'n': len(pairs), 'base': base, 'x1_5_mean': x15, 'slice_means': sl, 'checks': checks,
+            'pass': all(checks.values())}
+
+
+def b0_gate(s1_mean, means) -> dict:
+    """K5: S1 base mean net R strictly above the 95th percentile (order statistic ceil(0.95 n) - 1) of the B0
+    replicate means; any missing replicate mean or an INCOMPLETE B0 fails closed."""
+    if means is None or not means or any(m is None for m in means):
+        return {'status': 'INCOMPLETE', 'p95': None, 'pass': False}
+    xs = sorted(means)
+    p95 = xs[max(0, math.ceil(0.95 * len(xs)) - 1)]
+    rank = sum(m < s1_mean for m in xs) / len(xs) if s1_mean is not None else None
+    return {'status': 'OK', 'p95': p95, 'percentile_rank': rank, 'pass': s1_mean is not None and s1_mean > p95}
+
+
+def folds_report(p: dict, rep: dict) -> list:
+    """windows.report_only_folds: per-fold base mean net R by entry fill (report-only, never gated)."""
+    import re
+    ds = [iso_ms(d + 'T00:00:00Z') for d in re.findall(r'\d{4}-\d\d-\d\d', p['windows']['report_only_folds'])]
+    out = []
+    for a, b in zip(ds, ds[1:]):
+        xs = [e['rows']['base_x1']['net_r'] for e in rep['episodes'] if a <= e['t'] < b]
+        out.append({'start': a, 'end': b, 'n': len(xs), 'mean': _mean(xs)})
+    return out
+
+
+def book_metrics(bk: dict, windows: Windows) -> dict:
+    """Credited-stage book: max equity DD, closed-R DD, longest underwater days, annualized after-cost return over the
+    development window, Calmar, total net R / closed-R DD, exposure, trade count; per entry slice trade counts."""
+    tr = sorted(bk['trades'], key=lambda x: (x['t_exit'], x['sym']))
+    rs = [x['pnl'] / x['r_usd'] for x in tr]
+    cum = peak = crdd = 0.0
+    for r in rs:
+        cum += r
+        peak = max(peak, cum)
+        crdd = max(crdd, peak - cum)
+    uw, pk, since = 0.0, START_EQUITY, None
+    for t, e, _ in bk['curve']:
+        if e >= pk:
+            pk, since = e, None
+        elif since is None:
+            since = t
+        if since is not None:
+            uw = max(uw, (t - since) / DAY_MS)
+    end = bk['end_equity_closed']
+    years = (windows.sealed - windows.dev_start) / (365.25 * DAY_MS)
+    ann = (end / START_EQUITY) ** (1 / years) - 1 if end > 0 and years > 0 else -1.0
+    dd = bk['max_equity_dd']
+    tot = math.fsum(rs)
+    n_bars = len(bk['curve'])
+    return {'max_equity_dd': dd, 'closed_r_dd': crdd, 'longest_underwater_days': uw, 'annualized_return': ann,
+            'calmar': ann / dd if dd > 0 else (math.inf if ann > 0 else None),
+            'total_net_r': tot, 'total_r_over_closed_r_dd': tot / crdd if crdd > 0 else (math.inf if tot > 0 else None),
+            'exposure': sum(1 for _, _, n in bk['curve'] if n) / n_bars if n_bars else 0.0, 'trades': len(tr),
+            'per_slice_trades': [sum(x['slice'] == s for x in tr) for s in range(1, len(windows.slices) + 1)],
+            'skips': bk['skips'], 'refusals': bk['refusals'], 'incomplete': len(bk['incomplete'])}
+
+
+def dd_tier(base: dict, x15: dict, p: dict) -> dict:
+    """gates.drawdown_and_tail: (ordinary OR profitability_rescue) AND every all-path ceiling (base DD <= 55%,
+    x1.5 DD <= 65%, longest underwater <= 365 d); passing only via rescue is a HIGH-RISK SLEEVE."""
+    g = p['gates']['drawdown_and_tail']
+    o, r = g['tiers']['ordinary'], g['tiers']['profitability_rescue']
+    ordinary = base['max_equity_dd'] <= o['base_max_equity_dd_le'] and base['closed_r_dd'] < o['closed_r_dd_lt']
+    rescue = (base['max_equity_dd'] <= r['base_max_equity_dd_le'] and (base['calmar'] or -1) >= r['annualized_net_return_over_max_dd_ge']
+              and (base['total_r_over_closed_r_dd'] or -1) >= r['total_net_r_over_closed_r_dd_ge'])
+    ceilings = (base['max_equity_dd'] <= r['base_max_equity_dd_le'] and x15['max_equity_dd'] <= g['x1_5_max_equity_dd_le']
+                and base['longest_underwater_days'] <= g['longest_underwater_days_le'])
+    ok = (ordinary or rescue) and ceilings
+    return {'ordinary': ordinary, 'rescue': rescue, 'ceilings': ceilings, 'pass': ok,
+            'label': ('HIGH-RISK SLEEVE' if ok and not ordinary else None)}
+
+
+def credited_stage(h1: bool, h2: bool, h3: bool):
+    """hypotheses.credited_stage + order: a stage is never credited when an earlier one failed."""
+    if not h1:
+        return None
+    if not h2:
+        return 'S1'
+    return 'S3' if h3 else 'S2'
+
+
+def decide(g: dict) -> str:
+    """Pure kill-rule precedence over a computed gate dict (K9 -> INCOMPLETE; K1-K5 -> FALSIFIED; K6/K7 credit;
+    K8 -> FAIL). Used by tests only in this PR: run() never calls it and nothing writes its result."""
+    if not g['data'] or not g['activity'] or g['b0']['status'] != 'OK':
+        return 'INCOMPLETE'
+    if not g['H1']:
+        return 'FALSIFIED'
+    st = credited_stage(g['H1'], g['H2'], g['H3'])
+    if not (g['book_dd']['pass'] and g['tails'] and g['causality']):
+        return 'FAIL'
+    return f'SURVIVES_DEV({st})'
+
+
+def gates(p: dict, windows: Windows, stages: dict, b0_means_: list | None, *, resamples: int = 10000) -> dict:
+    """Every gated statistic per the signed JSON, in the fixed H1 -> H2 -> H3 order (one-sided alpha 0.05 each,
+    sequential, no adjustment: trial_budget.multiplicity). No verdict string is produced here."""
+    q = {s: stage_quality(stages[s], p, windows, resamples=resamples) for s in ('S1', 'S2', 'S3')}
+    act = activity(stages['S1']['episodes'], p, windows)
+    b0 = b0_gate(q['S1']['rows']['base_x1']['mean'], b0_means_)
+    d3 = paired_d3(stages['S2'], stages['S3'], windows, resamples=resamples)
+    h1 = q['S1']['pass'] and b0['pass']
+    h2 = h1 and q['S2']['pass']
+    h3 = h2 and d3['pass'] and q['S3']['pass']
+    return {'quality': q, 'activity': act['pass'], 'activity_detail': act, 'data': q['S1']['data']['pass'],
+            'b0': b0, 'D3': d3, 'S2_minus_S1': paired_d3(stages['S1'], stages['S2'], windows, resamples=resamples),
+            'H1': h1, 'H2': h2, 'H3': h3, 'credited_stage': credited_stage(h1, h2, h3)}
+
+
+# ------------------------------------------------------------------ data adapter (repo store formats, guarded reads)
+def funding_runs(sym: str, rows) -> list:
+    """Cadence proof (costs.check_funding_sequence) split into maximal proven runs: each run [first event, last event
+    + interval) has every settled event present; an off-grid row (edge05 t_nom) ends the data there (fail closed)."""
+    rows = sorted(rows, key=lambda r: r.time_ms)
+    runs, cur = [], []
+    for r in rows:
+        if cur:
+            try:
+                C.check_funding_sequence(sym, [cur[-1], r])
+            except C.CostError:
+                runs.append(cur)
+                cur = []
+        cur.append(r)
+    if cur:
+        runs.append(cur)
+    out = []
+    for run_ in runs:
+        C.check_funding_sequence(sym, run_)
+        out.append((run_[0].time_ms, run_[-1].time_ms + run_[-1].interval_hours * HOUR))
+    return out
+
+
+def load_symbol(src, sym: str, windows: Windows, *, warmup_start: int, check=None) -> SymbolData:
+    """One symbol from an edge05-compatible source (`bars(sym, '4h', lo, hi)` / `funding(sym, lo, hi)` /
+    `mark(sym, lo, hi)` rows: Bar / Funding namedtuples of tools/research/edge05_runner.py), through edge05 Guard:
+    every read is clipped to [warmup_start, sealed cutoff) and refused before and after the read at the seal.
+    Funding: nominal grid (t_nom), proven runs (funding_runs), funding-mark-proxy-v1 = close of the 1h mark bar
+    ending at T (nan when absent -> the episode charged there is INCOMPLETE)."""
+    import edge05_runner as E5
+    g = E5.Guard(src, windows.sealed)
+    g.scope(warmup_start, windows.sealed)
+    bars = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume) for b in g.bars(sym, '4h', warmup_start, windows.sealed)]
+    if check:
+        check()
+    try:
+        fr = E5.nominal(g.funding(sym, warmup_start, windows.sealed))
+    except E5.Incomplete:
+        fr = []
+    marks = {m.open_ms: m.close for m in g.mark(sym, warmup_start, windows.sealed)}
+    if check:
+        check()
+    ev = [(r.time_ms, r.rate, marks.get(r.time_ms - HOUR, math.nan)) for r in fr]
+    return prepare_symbol(sym, bars, windows, funding=ev, fund_runs=funding_runs(sym, fr))
+
+
+def rules_of(pit):
+    """Point-in-time exchange rules (edge05 PitRules.lookup); uncovered -> None (a counted refusal, never a guess)."""
+    import edge05_runner as E5
+
+    def at(sym, t):
+        try:
+            return pit.lookup(sym, t)
+        except E5.Incomplete:
+            return None
+    return at
+
+
+# ------------------------------------------------------------------ run (in memory only)
+DISCLOSURES = (
+    'B0 is not path-identical to E: E (and the book) permanently stop re-arming a symbol after an INCOMPLETE '
+    'episode (its exit is unknown), while B0 discards an INCOMPLETE random draw and continues sampling '
+    '(Codex 6478332951 item 4).',
+    'Funding later in a 4h bar (1h / 2h cadence) is charged conservatively because its order against intrabar adds '
+    'and exits is unknowable: a paid event on the larger of the open / end quantity even after an intrabar exit, a '
+    'received event on the smaller (0 after an intrabar exit). Events at the bar open (the 8h grid) are charged '
+    'exactly on the quantity held after phases 1-2 (Codex 6478332951 item 6).',
+)
+PARITY_DECLARED = (
+    'time exit: the runner fills at the open after the 42-bar cap (fills.time_exit_fill); backtest.py closes at the '
+    'close of the cap bar',
+    're-arm: the runner decides re-arm / skipped_open_symbol at fill time after phase-1 exits (params.rearm_rule); '
+    'backtest.py drops a signal raised while the position is still open, even when a gap stop frees it at the next open',
+    'cross-symbol order: the runner admits entries on the phase-1 state (book.capacity_for_open_entries); backtest.py '
+    'fills pending entries before any exit of that bar and caps by max_pos per sleeve',
+    'admission: the runner skips an entry above 3x gross (never scaled); backtest.py scales it to max_lev',
+    'costs: the runner prices slip-v1 / actual funding / taker fees on adds and stops (costs block); backtest.py uses '
+    'flat SLIP / FEE / per-bar funding and fills adds without slippage',
+)
+
+
 def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None, b0_replicates: int = 0,
-        book_stage: str | None = None) -> dict:
-    """Slice-1 orchestration on caller-supplied SymbolData: E, the four paired unit replays with descriptive
-    summaries, optional B0 draws and an optional book replay. Returns a dict; writes nothing; carries no verdict."""
+        book_stage: str | None = None, universe: str = 'FIXED-17', resamples: int = 10000) -> dict:
+    """In-memory orchestration on SymbolData: E, the four paired unit replays, gate statistics, B0 (+ report-only B2),
+    the 1.0% book of the credited stage (base + x1.5) with report-only 0.5% / 0.25% replays, folds. Writes nothing and
+    carries no verdict string (decide() is never called here)."""
     if not isinstance(pf, Preflight):
         raise PreflightError('run() needs a passed Preflight')
     p = pf.prereg
     w = windows or Windows.of(p)
-    universe = set(p['universe']['symbols'])
-    bad = sorted(set(data) - universe)
+    if universe == 'FIXED-17':
+        allowed = set(p['universe']['symbols'])
+    elif universe == 'STATIC-40':
+        allowed = {x['symbol'] for x in json.loads(open(_p(REPO, UNIVERSE_REL), 'rb').read())['symbols']}
+    else:
+        raise IdentityMismatch(f'unknown universe {universe!r}')
+    bad = sorted(set(data) - allowed)
     if bad:
-        raise IdentityMismatch(f'symbols outside the FIXED-17 book: {bad}')
+        raise IdentityMismatch(f'symbols outside the {universe} book: {bad}')
     for sd in data.values():
         if sd.t and sd.t[-1] >= w.sealed:
             raise HoldoutRefused(f'{sd.sym}: bar at or after the sealed cutoff')
     s1 = stage_mgmt(p, 'S1')
     E = entry_set(data, w, s1)
     stages = {s: unit_replays(data, E, p, s) for s in STAGE_IDS}
+    for s in STAGE_IDS:                                        # E's own INCOMPLETE entries count in every stage's data gate
+        stages[s]['incomplete'] = stages[s]['incomplete'] + E['incomplete']
     out = {'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code, 'evaluated': False,
+           'universe': universe, 'report_only': universe != 'FIXED-17', 'disclosures': list(DISCLOSURES),
+           'parity_declared': list(PARITY_DECLARED),
            'E': {'n': len(E['episodes']), 'incomplete': len(E['incomplete']), 'unfilled_gap': E['unfilled_gap']},
-           'stages': {s: summarize(stages[s], w) for s in STAGE_IDS}}
+           'stages': {s: summarize(stages[s], w) for s in STAGE_IDS},
+           'S1-T': stage_quality(stages['S1-T'], p, w, resamples=resamples)['rows'],
+           'folds': {s: folds_report(p, stages[s]) for s in STAGE_IDS}}
+    means = None
     if b0_replicates:
         b0 = next(b for b in p['baselines'] if b['id'] == 'B0')
+        cache = {}
         try:
-            reps = b0_sample(data, E, w, s1, replicates=b0_replicates, base_seed=b0['seed']['base'])
-            out['B0'] = {'status': 'OK', 'means_base': b0_means(data, reps, s1)}
+            reps = b0_sample(data, E, w, s1, replicates=b0_replicates, base_seed=b0['seed']['base'], _cache=cache)
+            means = b0_means(data, reps, s1, _cache=cache)
+            out['B0'] = {'status': 'OK', 'replicates': len(means)}
         except BaselineIncomplete as e:
             out['B0'] = {'status': 'INCOMPLETE', 'reason': str(e)}
-    if book_stage:
+        try:
+            r2 = b0_sample(data, E, w, s1, replicates=b0_replicates, base_seed=b0['seed']['base'], _cache=cache,
+                           trend_only=True)
+            m2 = b0_means(data, r2, s1, _cache=cache)
+            out['B2'] = {'status': 'OK', 'report_only': True, 'mean_of_means': _mean(m2)}
+        except BaselineIncomplete as e:
+            out['B2'] = {'status': 'INCOMPLETE', 'report_only': True, 'reason': str(e)}
+    g = gates(p, w, stages, means, resamples=resamples)
+    out['gates'] = g
+    stage = book_stage or g['credited_stage']
+    if stage:
         if rules is None:
             raise RunnerError('the book needs point-in-time exchange rules')
-        bk = run_book(data, p, book_stage, w, rules)
-        out['book'] = {k: bk[k] for k in ('stage', 'row', 'risk', 'skips', 'refusals', 'max_equity_dd')} | \
-            {'trades': len(bk['trades']), 'incomplete': len(bk['incomplete'])}
+        books = {}
+        for risk in p['sizing']['risk_per_trade']:
+            for row in (('base_x1', 'all_variable_costs_x1.5') if risk == p['sizing']['gated_risk'] else ('base_x1',)):
+                books[f'{risk}:{row}'] = book_metrics(run_book(data, p, stage, w, rules, risk=risk, row=row), w)
+        gr = p['sizing']['gated_risk']
+        tails = [e['rows']['base_x1']['net_r'] for e in stages[stage]['episodes']]
+        out['book'] = {'stage': stage, 'replays': books,
+                       'dd_tier': dd_tier(books[f'{gr}:base_x1'], books[f'{gr}:all_variable_costs_x1.5'], p),
+                       'tails_worst_ok': bool(tails) and min(tails) >= p['gates']['tails']['worst_episode_net_r_ge'],
+                       'top1pct_share': _top1(tails)}
     return out
 
 
+def _top1(xs):
+    tot = math.fsum(xs)
+    if not xs or not tot > 0:
+        return None
+    k = max(1, math.ceil(len(xs) * 0.01))
+    return math.fsum(sorted(xs, reverse=True)[:k]) / tot
+
+
+# ------------------------------------------------------------------ resumable streaming execution (authorized only)
+RUN_FORMAT = 'zb-bpyr-run/1'
+LINE_FORMAT = 'zb-bpyr-symbol/1'
+
+
+def _fsync_append(fh, b: bytes):
+    fh.write(b)
+    fh.flush()
+    os.fsync(fh.fileno())
+
+
+def iter_chain(path: str, run_digest: str, plan: list):
+    """Yield each verified line: canonical bytes, its own record hash, the prev chain, the run identity, the plan."""
+    prev, n = run_digest, 0
+    with open(path, 'rb') as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+                h = rec.pop('hash')
+            except (ValueError, KeyError, AttributeError):
+                raise RunnerError(f'symbols.jsonl line {n + 1} is not a hashed record; refusing') from None
+            if line != canon(dict(rec, hash=h)) + b'\n' or sha(canon(rec)) != h:
+                raise RunnerError(f'symbols.jsonl line {n + 1}: content does not match its hash; refusing')
+            if rec.get('prev') != prev or rec.get('run') != run_digest:
+                raise RunnerError(f'symbols.jsonl line {n + 1}: broken chain or another run identity; refusing')
+            if n >= len(plan) or rec.get('sym') != plan[n]:
+                raise RunnerError(f'symbols.jsonl line {n + 1} does not match the run plan; refusing to resume')
+            prev, n = h, n + 1
+            yield rec, h
+
+
+def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: EvalAuthorization | None = None,
+            max_rss_mb: float | None = None, rss=None, warmup_start: int | None = None, b0_replicates: int = 1000,
+            stop_after: int | None = None, windows: Windows | None = None, resamples: int = 10000) -> dict:
+    """Authorized streaming run. Pass 1 (resumable): one symbol at a time -> its E entries and the four priced unit
+    replays as ONE canonical, hash-chained line of symbols.jsonl (flush + fsync); a resumed run re-verifies every
+    retained line and continues. Pass 2: every symbol reloaded (RSS checked after each load), run() for B0 / B2,
+    gates and books. Returns the summary in memory; run.json carries identity + disclosures. --max-rss-mb mandatory."""
+    if not isinstance(authorization, EvalAuthorization) or authorization.issuer != 'codex' or \
+            authorization.prereg_sha256 != pf.prereg_sha256 or not str(authorization.comment_id).isdigit():
+        raise WriteRefused('execute() needs an Integration EvalAuthorization for this signed contract')
+    if pf.code.get('dirty'):
+        raise DirtyTree('the code tree is dirty; commit first')
+    if max_rss_mb is None or not (isinstance(max_rss_mb, (int, float)) and math.isfinite(max_rss_mb) and max_rss_mb > 0):
+        raise RunnerError('a finite --max-rss-mb is mandatory (low-RAM run)')
+    if rss is None:
+        import edge05_runner as E5
+        rss = E5.rss_mb
+    rss()
+
+    def check():
+        v = rss()
+        if v > max_rss_mb:
+            raise MemoryLimit(f'memory {v:.0f} MB > --max-rss-mb {max_rss_mb:g}; rerun the same command to resume')
+    p = pf.prereg
+    w = windows or Windows.of(p)
+    ws = warmup_start if warmup_start is not None else iso_ms(p['windows']['calibration']['start'])
+    plan = sorted(symbols)
+    ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
+    if os.path.commonpath([os.path.abspath(outdir), ledger_dir]) == ledger_dir:
+        raise WriteRefused('the run directory may not be the ledger directory')
+    ident = {'format': RUN_FORMAT, 'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code,
+             'sources': pf.sources, 'symbols': plan, 'windows': [w.dev_start, w.last_entry, w.sealed, list(w.slices)],
+             'warmup_start': ws, 'slip': {'c': SLIP_C_CRYPTO, 'floor_bps': SLIP_FLOOR_BPS}, 'rows': list(ROWS),
+             'b0_replicates': b0_replicates, 'resamples': resamples, 'disclosures': list(DISCLOSURES),
+             'parity_declared': list(PARITY_DECLARED), 'authorization': [authorization.issuer, authorization.comment_id],
+             'source_identity': src.identity() if hasattr(src, 'identity') else None,
+             'boundaries': {'holdout_read': False, 'ledger_written': False, 'verdict_written': False, 'mainnet': False}}
+    os.makedirs(outdir, exist_ok=True)
+    idp = os.path.join(outdir, 'run.json')
+    ib = json.dumps(ident, sort_keys=True, indent=1).encode('ascii') + b'\n'
+    if os.path.exists(idp):
+        if open(idp, 'rb').read() != ib:
+            raise RunnerError('run.json identity differs from this command/code; refusing to resume into it')
+    else:
+        with open(idp, 'wb') as fh:
+            _fsync_append(fh, ib)
+    run_digest = sha(canon(ident))
+    lp = os.path.join(outdir, 'symbols.jsonl')
+    done, prev = 0, run_digest
+    if os.path.exists(lp):
+        for _, h in iter_chain(lp, run_digest, plan):
+            done, prev = done + 1, h
+    s1 = stage_mgmt(p, 'S1')
+    with open(lp, 'ab') as fh:
+        for n in range(done, len(plan)):
+            sym = plan[n]
+            sd = load_symbol(src, sym, w, warmup_start=ws, check=check)
+            check()
+            E = entry_set({sym: sd}, w, s1)
+            reps = {s: unit_replays({sym: sd}, E, p, s) for s in STAGE_IDS}
+            rec = {'format': LINE_FORMAT, 'sym': sym, 'run': run_digest, 'prev': prev,
+                   'E': {'n': len(E['episodes']), 'incomplete': E['incomplete'], 'unfilled_gap': E['unfilled_gap']},
+                   'stages': {s: {'episodes': [{k: e[k] for k in ('f', 't', 'slice', 'exit_j', 'why', 'adds')} |
+                                               {'net_r': {r: e['rows'][r]['net_r'] for r in ROWS}}
+                                               for e in r_['episodes']],
+                                  'incomplete': [x['reason'] for x in r_['incomplete']]} for s, r_ in reps.items()}}
+            del sd, E, reps
+            check()
+            prev = rec['hash'] = sha(canon(rec))
+            _fsync_append(fh, canon(rec) + b'\n')
+            if stop_after is not None and n + 1 - done >= stop_after:
+                return {'status': 'PARTIAL', 'symbols_done': n + 1, 'symbols_total': len(plan)}
+    list(iter_chain(lp, run_digest, plan))                    # re-verify the whole chain before pass 2
+    data = {}
+    for sym in plan:
+        data[sym] = load_symbol(src, sym, w, warmup_start=ws, check=check)
+        check()
+    res = run(data, pf, windows=w, rules=rules, b0_replicates=b0_replicates, resamples=resamples)
+    res['identity_sha256'] = run_digest
+    return res
+
+
+class MemoryLimit(RunnerError):
+    pass
+
+
+# ------------------------------------------------------------------ guarded write
 @dataclass(frozen=True)
 class EvalAuthorization:
     """Issued only by Integration (codex) for an authorized evaluation; nothing in this module constructs one."""
