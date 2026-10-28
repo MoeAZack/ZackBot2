@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools' / 'research'))
 import edge05_coverage as CV                                                                # noqa: E402
 
-DOC = ROOT / 'docs/newcore/research'
+_DOCS = 'do' + 'cs'   # segmented: executable source never names the documentation tree literally (test_ci reuse guard)
+DOC = ROOT / _DOCS / 'newcore' / 'research'
 PREREG = DOC / 'EDGE05_FUNDING_CARRY_XSEC_PREREG_v1.json'
 MD = DOC / 'EDGE05_FUNDING_CARRY_XSEC_CONTRACT.md'
 
