@@ -40,6 +40,8 @@
     "entry": "le at the close of 4h bar t = close_t > max(high over bars t-20..t-1) AND EMA50_t > EMA200_t",
     "signal_exit": "none (lx is never true); every exit is the stage's stop / time cap / trail",
     "reentry": "one open episode per symbol; a symbol re-arms only after its episode closes",
+    "rearm_time": "fill_time_after_phase_1",
+    "rearm_rule": "re-arm (E) and skipped_open_symbol (book) are both evaluated at FILL time, the open of bar t+1, after that bar's phase-1 exits; a pending signal from the close of t is not an episode until it fills, so an episode that closes by gap stop or scheduled exit at that open frees the symbol for it",
     "searched": false
   },
   "fills": {
@@ -77,9 +79,10 @@
     "never_book": "E and the unit episodes are never fed into the book"
   },
   "book": {
-    "applies_to": "the deepest credited stage only (DD, underwater, tails and sizing report)",
+    "applies_to": "the deepest credited stage only (DD, underwater, tails)",
+    "gated_replay": "the 1.0% risk book is the sole gated account replay; the 0.5% and 0.25% books are separate report-only replays (see sizing), each with its own admission and skip path",
     "source": "built from the raw stage signals (le at bar close t, fill at the t+1 open), replayed with that stage's own exits; never from E",
-    "per_symbol": "at most one open episode per symbol; a signal arriving while that symbol's episode is open is skipped and counted (skipped_open_symbol)",
+    "per_symbol": "at most one open episode per symbol; a pending entry whose symbol still has an open episode at fill time (open of t+1, after phase-1 exits) is skipped and counted (skipped_open_symbol)",
     "bar_phases": ["open_known_events", "admit_open_entries", "intrabar_paths", "close_signals"],
     "phase_rules": {
       "open_known_events": "phase 1, at the bar open: execute only events knowable and fillable at the open, symbol name ascending: gap stops (the open price is at or through the stop, filled at the open) and scheduled next-open exits (time cap / signal exits due at this open)",
@@ -95,8 +98,8 @@
   },
   "hypotheses": {
     "H1": {"claim": "the breakout entry has positive after-cost expectancy with a plain stop and no management", "stage": "S1", "gates": ["activity", "expectancy (base mean net R > 0 and 95% LCB > 0)", "x1.5 cost mean net R > 0", "all 3 chronological slices mean net R > 0", "remove-best-symbol mean net R > 0", "concentration", "mean net R above the 95th percentile of the 1000 B0 random-entry books with the same exit"]},
-    "H2": {"claim": "the trail stage (live management without adds) is itself positive after costs on the same entries", "stage": "S2", "requires": "H1 PASS", "test": "S2 base mean net R > 0 with 95% LCB > 0, x1.5 mean net R > 0, mean net R > 0 in all 3 slices, plus the H1 remove-best-symbol and concentration gates", "credit": "only if H1 passed"},
-    "H3": {"claim": "pyramid adds add after-cost value over S2 on the same entries", "stage": "S3", "requires": "H1 PASS and H2 PASS", "test": "paired D3 = S3 - S2: base mean > 0 with 95% LCB > 0, x1.5 mean > 0, positive in all 3 slices; AND S3 alone passes the H2 test", "credit": "only if H1 and H2 passed"},
+    "H2": {"claim": "the trail stage (live management without adds) is itself positive after costs on the same entries", "stage": "S2", "requires": "H1 PASS", "test": "S2 base mean net R > 0 with 95% LCB > 0, x1.5 mean net R > 0, mean net R > 0 in all 3 slices, plus remove-best-symbol and concentration evaluated on S2's own episodes", "credit": "only if H1 passed"},
+    "H3": {"claim": "pyramid adds add after-cost value over S2 on the same entries", "stage": "S3", "requires": "H1 PASS and H2 PASS", "test": "paired D3 = S3 - S2: base mean > 0 with 95% LCB > 0, x1.5 mean > 0, positive in all 3 slices, remove-best-symbol and concentration on the paired S3 - S2 increments; AND S3 alone passes the H2 test on S3's own episodes", "credit": "only if H1 and H2 passed"},
     "order": "fixed sequence H1 -> H2 -> H3; a stage is never credited when an earlier one failed, whatever its own numbers; if H1 fails the family is FALSIFIED",
     "report_only": "S1-T and the S2 - S1 increment are diagnostics: never gated, never credited, never a rescue",
     "credited_stage": "S3 if H1, H2 and H3 pass; S2 if H1 and H2 pass; S1 if only H1 passes; none if H1 fails"
@@ -133,8 +136,8 @@
     "contamination": "the parameters come from legacy research (research_long2 BRK1, research_combos BRK8, the #114 static-40 packet) and the universe from the factory triage; every pre-cutoff window is development evidence. A FAIL here is binding; a PASS is never acceptance or promotion evidence"
   },
   "baselines": [
-    {"id": "B0", "for": ["S1"], "gated": true, "rule": "1000 seeded random-entry books: per symbol and per slice the same number of entries as E, at uniformly drawn eligible 4h bar opens (same re-arm rule), with the S1 exit, R unit and costs", "seed": "sha256('breakout_pyramid_falsify.v1|S1|' + symbol + '|' + slice + '|' + book_index)"},
-    {"id": "B2", "for": ["S1"], "gated": false, "rule": "report-only: as B0 but drawn only from bars with EMA50 > EMA200 (the trend filter without the breakout)"}
+    {"id": "B0", "for": ["S1"], "gated": true, "claim": "S1 entry edge over random entry", "replicates": 1000, "rule": "per replicate, per symbol and per slice: draw eligible entry bars (4h opens before the last-entry cutoff) in a seeded random order WITHOUT replacement; accept a bar only if its episode (S1 exit) does not overlap an already accepted one under the same fill-time re-arm rule; stop when the S1 episode count of that symbol and slice is matched; S1 exit, R unit and costs", "seed": {"base": 20261028, "derivation": "replicate r in 0..999 uses random.Random(base + r); symbols then slices are processed in ascending order within a replicate"}, "unmatched": "if any symbol/slice cannot reach its S1 count, B0 is INCOMPLETE and the B0 gate fails closed: H1 cannot PASS (verdict INCOMPLETE)"},
+    {"id": "B2", "for": ["S1"], "gated": false, "rule": "report-only: as B0 but drawn only from bars with EMA50 > EMA200; descriptive only, never a gate and never cited as an edge claim"}
   ],
   "trial_budget": {
     "gated_variants": 3,
@@ -143,20 +146,21 @@
     "diagnostic_ids": ["S1-T"],
     "baseline_rows": 2,
     "total_ledger_trial_records": 6,
-    "book_replays": "1 (the credited stage only; not a trial)",
+    "book_replays": "3 account replays of the credited stage only: 1.0% (the sole gated replay) plus 0.5% and 0.25% (report-only, own admission/skip paths); not trials",
     "multiplicity": "three gated hypotheses in a fixed sequence H1 -> H2 -> H3, each at one-sided alpha 0.05; each is tested only if every earlier one rejected, so the family-wise error is <= 0.05 without adjustment. Diagnostics and B2 carry no test",
     "prior_looks": "at least 4 unledgered development looks at this family plus the Integration triage on this exact book; acknowledged by treating every result as development-only",
     "rule": "no result-dependent variant, no alternative channel / EMA / ATR / stop / horizon / trail / pyramid setting or symbol list; stress rows, report-only universes, folds, diagnostics and baselines never replace or rescue a failed stage"
   },
-  "bootstrap": {"unit": "mean net R per UTC ISO week of entry", "method": "moving-block bootstrap, block 8 weeks, 10000 resamples", "seed": 20261028, "lcb": "one-sided 95% lower bound"},
+  "bootstrap": {"statistic": "per-episode mean net R", "blocks": "episodes grouped by the UTC ISO week of their entry fill; moving blocks of 8 consecutive ISO weeks", "method": "moving-block bootstrap, block 8 weeks, 10000 resamples", "resample": "every episode in a sampled block is retained; a block sampled k times contributes its episodes k times (episode weight = multiplicity); the resample statistic is the weighted per-episode mean", "point_estimate": "the same per-episode mean on the original sample", "seed": 20261028, "lcb": "one-sided 95% lower bound (5th percentile of the resampled per-episode means)"},
   "metrics": ["per stage and per cost row (base, x1.5, x2): episodes, mean / median net R, PF, win rate, 95% LCB", "per slice and per report-only fold", "D3 (S3 - S2) mean, LCB, per slice; report-only S2 - S1", "gross vs funding vs fee/slippage decomposition", "B0 percentile rank; B2 report", "STATIC-40 report-only rows", "boundary-INCOMPLETE episodes per stage and in the book", "book skip counts: skipped_open_symbol, skipped_max_open, skipped_gross_cap, skipped_add_gross_cap, exchange-filter refusals", "sizing report: the credited-stage book at fixed 1.0%, 0.5% and 0.25% risk per trade (DD, return, refusals)", "episodes per 30 days and active symbols, per slice", "credited-stage book: max equity DD, closed-R DD, longest underwater days, annualized after-cost return, return / max DD (Calmar), total net R / closed-R DD, exposure, trade count", "per-symbol net R and share; remove-best-symbol result; top-1% episode share; worst episode and worst Cairo-day net R", "notional / prior-24h quote volume, refusals by exchange filter"],
   "gates": {
     "data": "every slice has at most 2% INCOMPLETE episodes (data gaps and boundary-INCOMPLETE together) and no unresolved accounting row; otherwise INCOMPLETE, not FAIL",
-    "activity": {"min_episodes_total": 300, "min_episodes_per_slice": 75, "min_episodes_per_30d_each_slice": 2.0, "min_active_symbols_total": 15, "min_active_symbols_per_slice": 8, "active_symbol": ">= 5 closed episodes", "why": "300 / 75 keep the standard error near 0.09R overall and 0.17R per slice at a 1.5R episode spread, so a sign is readable per slice; 2 per 30 days rejects a book that trades too rarely to run; slice 1 predates SUI, ENA, WLD and 1000PEPE, so 8 of the 13 symbols then listed is the per-slice floor and 15 of 17 the whole-window floor"},
+    "activity": {"min_episodes_total": 300, "min_episodes_per_slice": 75, "min_episodes_per_30d_each_slice": 2.0, "per_30d_span": "episodes / (entry-eligible days / 30); slices 1 and 2 use their full span, slice 3 uses 2024-12-16T00:00:00Z -> 2026-08-29T00:00:00Z (the last-entry cutoff)", "slice3_eligible_end": "2026-08-29T00:00:00Z", "min_active_symbols_total": 15, "min_active_symbols_per_slice": 8, "active_symbol": ">= 5 closed episodes", "why": "300 / 75 keep the standard error near 0.09R overall and 0.17R per slice at a 1.5R episode spread, so a sign is readable per slice; 2 per 30 days rejects a book that trades too rarely to run; slice 1 predates SUI, ENA, WLD and 1000PEPE, so 8 of the 13 symbols then listed is the per-slice floor and 15 of 17 the whole-window floor"},
     "slices": {"positive_slices_min": 3, "slices": 3, "rule": "mean net R > 0 in every slice at base cost"},
     "expectancy": {"mean_net_r_gt": 0.0, "lcb_gt": 0.0},
     "stress": {"base_mean_net_r_gt": 0.0, "x1_5_mean_net_r_gt": 0.0, "rule": "base and x1.5 > 0 are PASS gates for every gated stage; x2 is reported"},
     "remove_best_symbol": "drop the symbol with the largest net-R contribution; mean net R of the remaining 16 > 0",
+    "stage_scope": "remove-best-symbol and concentration are evaluated on each stage's OWN data: H1 on S1, H2 on S2, H3 on S3 and on the paired S3 - S2 increments; never borrowed from another stage",
     "concentration": {"max_symbol_share": 0.25, "max_top3_share": 0.50},
     "tails": {"worst_episode_net_r_ge": -3.0, "top1pct_episode_share_of_net_r": "reported"},
     "drawdown_and_tail": {"applies_to": "the credited-stage book replay", "tiers": {"ordinary": {"base_max_equity_dd_le": 0.35, "closed_r_dd_lt": 40}, "profitability_rescue": {"base_max_equity_dd_le": 0.55, "annualized_net_return_over_max_dd_ge": 0.75, "total_net_r_over_closed_r_dd_ge": 2.0}}, "tier_rule": "PASS when the ordinary tier OR the profitability_rescue tier holds AND every all-path ceiling holds (monotone, as funding_carry_xsec.v1); base DD > 55% is FAIL on any path", "x1_5_max_equity_dd_le": 0.65, "longest_underwater_days_le": 365, "high_risk_sleeve": "a book that passes only via profitability_rescue is labelled HIGH-RISK SLEEVE and can only enter a separate explicit risk sleeve"},
@@ -175,7 +179,7 @@
     "precedence": "K1-K5 decide the family before any S2 or S3 number is read for credit"
   },
   "verdicts": ["FALSIFIED", "FAIL", "INCOMPLETE", "SURVIVES_DEV(S1|S2|S3)"],
-  "sizing": {"status": "REPORT-ONLY, never a gate", "risk_per_trade": [0.01, 0.005, 0.0025], "rule": "the credited-stage book is reported at each fixed risk; no result-dependent risk budget is chosen here; the deployment risk budget is deferred to the later PAPER admission contract"},
+  "sizing": {"status": "REPORT-ONLY, never a gate", "risk_per_trade": [0.01, 0.005, 0.0025], "gated_risk": 0.01, "rule": "1.0% is the sole gated account replay; 0.5% and 0.25% are separate report-only replays of the credited stage, each run from scratch with its own admission and skip path (never rescaled from the 1.0% book); no result-dependent risk budget is chosen here; the deployment risk budget is deferred to the later PAPER admission contract"},
   "verdict_rule": "SURVIVES_DEV only names the deepest credited stage; it is development evidence, never acceptance, and never enables PAPER, shadow or live by itself",
   "deferred": {
     "runner": "no runner exists for this contract; a low-RAM streaming runner (EDGE05 runner pattern: run.json identity, hash-chained resumable lines, sealed-boundary refusal, --max-rss-mb) must reuse backtest.py path semantics and costs.py, and pass a synthetic parity test against backtest.py before any data read",

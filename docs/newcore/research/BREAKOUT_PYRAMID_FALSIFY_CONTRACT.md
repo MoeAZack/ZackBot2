@@ -43,14 +43,15 @@ path order: gap first, then conservative stop-first.
 | S1-T | plain stop + 3R target, 42 bars | report-only |
 
 - **Paired unit replay:** one entry set E (from S1) is replayed at quantity 1 under every stage, so stages differ only after the fill. This is an independent paired analysis. Because E re-arms on S1 exits, S2/S3 unit episodes on one symbol may overlap in time, which is allowed only in this analysis.
+- **Re-arm at fill time:** the E re-arm and the book's `skipped_open_symbol` are both evaluated at the fill (open of t+1), after that bar's phase-1 exits. A pending signal is not an episode until it fills.
 - **H1 (S1)** needs all of the following, otherwise the family is **FALSIFIED**:
   - base mean net R > 0 with 95% LCB > 0, and mean net R > 0 at 1.5x cost;
   - positive in all 3 slices;
   - positive with the best symbol removed, within concentration limits;
-  - above the 95th percentile of 1000 random-entry books;
+  - above the 95th percentile of 1000 random-entry books (B0, an edge **over random entry**). Each B0 replicate draws entry bars without replacement and without overlap, under the same re-arm rule, until each symbol/slice S1 count is matched. Replicate r uses seed 20261028 + r. If a count cannot be matched, B0 is INCOMPLETE and H1 cannot pass;
   - the activity gate passed.
-- **H2 (S2)** is tested only after H1 passes. S2 itself must be positive at base (LCB > 0) and at 1.5x, in all 3 slices, with the best symbol removed and within concentration limits.
-- **H3 (pyramiding)** is tested only after H1 and H2 pass. S2 and S3 differ only by the adds, so the paired increment S3 - S2 isolates them. It must have base LCB > 0, be positive at 1.5x and positive in all 3 slices, and S3 must also pass the H2 test. S2 - S1 is report-only.
+- **H2 (S2)** is tested only after H1 passes. S2 itself must be positive at base (LCB > 0) and at 1.5x, in all 3 slices, with the best symbol removed and within concentration limits, both measured on S2's own episodes.
+- **H3 (pyramiding)** is tested only after H1 and H2 pass. S2 and S3 differ only by the adds, so the paired increment S3 - S2 isolates them. It must have base LCB > 0, be positive at 1.5x and positive in all 3 slices, with remove-best-symbol and concentration measured on the paired increments. S3 must also pass the H2 test on its own episodes. S2 - S1 is report-only.
 
 ## Book (separate from E)
 - Only the deepest credited stage is replayed as a book. It is built from that stage's raw signals and exits; E is never fed into it.
@@ -61,15 +62,15 @@ path order: gap first, then conservative stop-first.
   3. **Intrabar:** each open position's path is walked, symbol ascending, including positions admitted in phase 2. This follows the `backtest.py` `path_points` convention (green candle open, low, high, close; red candle open, high, low, close) and the FBL-BT01 `walk_path` rules. Adds, stops and trail updates happen only here. An add that would breach the gross cap is skipped and counted.
   4. **Close:** signals are computed on the closed bar and become pending for the next open.
 - No intrabar event can free or consume capacity for the same bar's open entries. Where `backtest.py`'s cross-symbol loop differs, the contract wins.
-- Account: 10k USDT, 1.0% risk per entry, historical exchange filters, every fill taker.
+- Account: 10k USDT, 1.0% risk per entry, historical exchange filters, every fill taker. This 1.0% book is the **sole gated** account replay. The 0.5% and 0.25% books are separate report-only replays, each with its own admission and skip path.
 
 ## Costs and gates
 - Taker 0.05% per fill (including adds), slip-v1 (0.05% fallback), actual signed funding. Base and 1.5x are reported and gated; 2x is reported.
-- Activity: at least 300 episodes in total, at least 75 per slice, and at least 2 per 30 days in each slice. At least 15 of the 17 symbols must be active overall, and at least 8 per slice. Slice 1 predates SUI, ENA, WLD and 1000PEPE.
+- Activity: at least 300 episodes in total, at least 75 per slice, and at least 2 per 30 days in each slice. Slice 3's rate is normalised over its entry-eligible span, which ends at 2026-08-29. At least 15 of the 17 symbols must be active overall, and at least 8 per slice. Slice 1 predates SUI, ENA, WLD and 1000PEPE.
 - Book DD: ordinary (DD <= 35%, closed-R DD < 40R) or profitability rescue (DD <= 55%, Calmar >= 0.75, net R / closed-R DD >= 2.0). A rescue-only pass is a HIGH-RISK SLEEVE. Underwater must be <= 365 days.
 - Concentration: symbol share <= 25%, top 3 <= 50%. The worst episode must be >= -3R, with no causality or accounting defect.
-- **Sizing is report-only, never a gate.** The book is reported at fixed 1.0%, 0.5% and 0.25% risk per trade. The deployment risk budget is deferred to the later PAPER admission contract.
-- The bootstrap is frozen in the JSON: moving blocks of 8 weeks over weekly mean net R, 10000 resamples, seed 20261028.
+- **Sizing is report-only, never a gate.** Only the 1.0% replay is gated, for drawdown. The 0.5% and 0.25% replays are report-only. The deployment risk budget is deferred to the later PAPER admission contract.
+- The bootstrap is frozen in the JSON. The statistic is the **per-episode** mean net R. Episodes are resampled in blocks of 8 entry ISO weeks (10000 resamples, seed 20261028), and every episode in a sampled block is kept. A block sampled k times counts its episodes k times. The point estimate and the LCB use the same per-episode mean.
 
 ## Budget
 3 gated variants (S1, S2, S3), 1 report-only diagnostic (S1-T) and 2 baseline rows (B0 gated, B2 report-only) give 6

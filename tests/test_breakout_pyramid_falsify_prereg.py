@@ -204,3 +204,51 @@ def test_sources_match_edge05_and_evaluation_deferred():
         assert p['source'][k] == e5['source'][k]
     assert hashlib.sha256((ROOT / 'tools' / 'research' / 'costs.py').read_bytes()).hexdigest() == p['source']['costs_sha256']
     assert 'Integration authorization' in p['deferred']['evaluation_run'] and 'EDGE04' in p['deferred']['evaluation_run']
+
+
+# ------------------------------------------------------------------ Cowork clarifications frozen (Codex 6471565981)
+
+def test_c1_rearm_and_open_symbol_skip_at_fill_time():
+    p = c()
+    pr = p['params']
+    assert pr['rearm_time'] == 'fill_time_after_phase_1' and 'open of bar t+1' in pr['rearm_rule']
+    assert 'not an episode until it fills' in pr['rearm_rule'] and 'skipped_open_symbol' in pr['rearm_rule']
+    assert 'at fill time (open of t+1, after phase-1 exits)' in p['book']['per_symbol']
+
+
+def test_c2_lcb_is_per_episode_mean_over_week_blocks_with_multiplicity():
+    b = c()['bootstrap']
+    assert b['statistic'] == 'per-episode mean net R' and 'ISO week of their entry fill' in b['blocks']
+    assert '8 consecutive ISO weeks' in b['blocks'] and b['method'].endswith('10000 resamples') and b['seed'] == 20261028
+    assert 'every episode in a sampled block is retained' in b['resample'] and 'episode weight = multiplicity' in b['resample']
+    assert 'same per-episode mean' in b['point_estimate']
+
+
+def test_c3_one_point_zero_is_the_sole_gated_replay():
+    p = c()
+    assert p['sizing']['gated_risk'] == 0.01 and p['sizing']['risk_per_trade'] == [0.01, 0.005, 0.0025]
+    assert 'sole gated account replay' in p['book']['gated_replay'] and 'own admission and skip path' in p['book']['gated_replay']
+    assert 'sole gated' in p['trial_budget']['book_replays'] and not p['trial_budget']['book_replays'].startswith('1 ')
+    assert 'never rescaled' in p['sizing']['rule']
+
+
+def test_c4_b0_is_over_random_entry_without_replacement_seeded_and_fails_closed():
+    p = c()
+    b0 = next(b for b in p['baselines'] if b['id'] == 'B0')
+    assert b0['claim'] == 'S1 entry edge over random entry' and b0['replicates'] == 1000
+    assert 'WITHOUT replacement' in b0['rule'] and 'does not overlap' in b0['rule'] and 'same fill-time re-arm rule' in b0['rule']
+    assert b0['seed']['base'] == 20261028 and 'random.Random(base + r)' in b0['seed']['derivation']
+    assert 'INCOMPLETE' in b0['unmatched'] and 'fails closed' in b0['unmatched'] and 'cannot PASS' in b0['unmatched']
+    txt = json.dumps(p).lower()
+    assert 'breakout edge' not in txt and 'over the trend filter' not in txt
+
+
+def test_c5_own_stage_data_and_slice3_activity_span():
+    p = c()
+    g, h = p['gates'], p['hypotheses']
+    assert "OWN data: H1 on S1, H2 on S2, H3 on S3 and on the paired S3 - S2 increments" in g['stage_scope']
+    assert "S2's own episodes" in h['H2']['test'] and 'paired S3 - S2 increments' in h['H3']['test']
+    a = g['activity']
+    assert a['slice3_eligible_end'] == p['windows']['last_entry_cutoff']['at'] == '2026-08-29T00:00:00Z'
+    assert '2024-12-16T00:00:00Z -> 2026-08-29T00:00:00Z' in a['per_30d_span']
+    assert p['windows']['slices'][2]['start'] == '2024-12-16T00:00:00Z'
