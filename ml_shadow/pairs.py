@@ -264,7 +264,11 @@ def read_epoch(path):
         raise PairError(f'epoch unreadable ({type(ex).__name__})')
     if not isinstance(e, dict) or e.get('epoch_hash') != chash({k: v for k, v in e.items() if k != 'epoch_hash'}):
         raise PairError('epoch_hash does not verify')
-    if to_utc(e['first_decision_candle']) > to_utc(e['created_at']): raise PairError('epoch backdated')
+    try:                                                    # a missing / malformed field is epoch_invalid (Codex N3)
+        backdated = to_utc(e['first_decision_candle']) > to_utc(e['created_at'])
+    except (KeyError, TypeError, ValueError) as ex:
+        raise PairError(f'epoch field missing or malformed ({type(ex).__name__})')
+    if backdated: raise PairError('epoch backdated')
     if identity_gap(e) is not None: raise PairError('epoch code identity incomplete')
     return e
 
@@ -407,10 +411,23 @@ class PairStore:
         return res
 
 
-def read_pairs(data_dir):
-    """Read-only: (verified pair rows in file order, skipped line count). Never creates a file."""
+def read_pairs(data_dir, stats=None):
+    """Read-only: (verified pair rows in file order, one per pair_key - first valid row wins, skipped line count).
+    Never creates a file. Two writers overlapping a restart can each append the same pair; the reader keeps one, so a
+    label is never double-weighted (Codex 6460424043 N2). `stats`, when given, receives duplicate / conflict counts."""
     p = paths(data_dir)['pairs']
     if not os.path.exists(p): return [], 0
     led = SealedJsonl.__new__(SealedJsonl)
     led.path, led.key = p, _pair_key
-    return led.records(), led.skipped
+    out, first, dup, conflict = [], {}, 0, 0
+    for r in led.records():
+        k = _pair_key(r)
+        if k in first:
+            dup += 1
+            conflict += first[k] != r['record_hash']
+            continue
+        first[k] = r['record_hash']
+        out.append(r)
+    if dup: log.warning('ml_shadow: %d duplicate pair row(s) ignored (%d conflicting)', dup, conflict)
+    if stats is not None: stats.update(duplicates=dup, conflicts=conflict)
+    return out, led.skipped

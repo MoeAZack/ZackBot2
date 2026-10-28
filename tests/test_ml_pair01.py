@@ -397,3 +397,36 @@ def test_identity_gate_is_a_full_match_and_rejects_a_trailing_newline(field, bad
     from ml_shadow.sanitize import _fmt, _HEX40, _HEX64, _BUILD
     rx = {'source_commit': _HEX40, 'bundle_hash': _HEX64, 'build_id': _BUILD}[field]
     assert _fmt(bad, rx) is None and _fmt(good[field], rx) == good[field]
+
+
+# ------------------------------------------------------------------ Codex 6460424043 N2 / N3
+def test_two_store_duplicate_pair_reads_as_one_training_row(tmp_path):
+    """N2: two writers overlapping a restart can each append the same pair; the reader keeps the first, once."""
+    s1, d = paired(tmp_path)
+    s2 = store(tmp_path)                                    # constructed before s1 writes: it has not seen the pair
+    assert s1.pair(label(d['decision_id']), close()) == 'written'
+    s2.pair(label(d['decision_id']), close())
+    first = lines(s1.p['pairs'])[0]
+    with open(s1.p['pairs'], 'ab') as fh: fh.write(first + b'\n')       # force the duplicate whatever s2 did
+    assert len(lines(s1.p['pairs'])) >= 2
+    st = {}
+    rows, skipped = MLP.read_pairs(str(tmp_path), stats=st)
+    assert len(rows) == 1 and skipped == 0 and json.loads(first)['record_hash'] == rows[0]['record_hash']
+    assert st['duplicates'] == len(lines(s1.p['pairs'])) - 1 and st['conflicts'] == 0
+    assert MLP.read_pairs(str(tmp_path))[0] == rows                    # stats is optional
+
+
+@pytest.mark.parametrize('drop, bad', [('created_at', None), ('first_decision_candle', None),
+                                        (None, ('created_at', ['2026'])), (None, ('created_at', 'not-a-time'))])
+def test_hash_valid_epoch_with_a_missing_or_malformed_field_is_epoch_invalid(tmp_path, drop, bad):
+    """N3: a re-hashed epoch missing created_at (or with a malformed time) is a PairError, counted as epoch_invalid."""
+    s, d = paired(tmp_path)
+    ep = json.load(open(s.p['epoch']))
+    ep.pop('epoch_hash')
+    if drop: ep.pop(drop)
+    if bad: ep[bad[0]] = bad[1]
+    ep['epoch_hash'] = MLP.chash(ep)
+    open(s.p['epoch'], 'w').write(json.dumps(ep))
+    with pytest.raises(MLP.PairError, match='epoch field missing or malformed'): MLP.read_epoch(s.p['epoch'])
+    s.pair(label(d['decision_id']), close())
+    assert s.ctr['epoch_invalid'] == 1 and lines(s.p['pairs']) == []
