@@ -378,11 +378,13 @@ def test_b0_unmatched_fails_closed(P):
 def test_run_is_in_memory_without_verdict_and_writes_are_refused(pf, tmp_path):
     w = R.Windows.of(pf.prereg)
     data = {s: R.prepare_symbol(s, _walk(900, seed=k, start=T0 - 300 * TF), w) for k, s in enumerate(('BTCUSDT', 'ETHUSDT'))}
-    res = R.run(data, pf, rules=lambda s, t: RULE, b0_replicates=2, book_stage='S3', resamples=50)
+    res = R.run(data, pf, rules=lambda s, t: RULE, b0_replicates=2, book_stage='S3', resamples=50,
+                allow_partial_universe_test_only=True)
+    assert res['universe'] == 'PARTIAL-TEST(FIXED-17)'
     assert res['evaluated'] is False and 'verdict' not in json.dumps(res).lower() and set(res['stages']) == set(R.STAGE_IDS)
     assert res['B0']['status'] in ('OK', 'INCOMPLETE') and res['book']['stage'] == 'S3'
     with pytest.raises(R.IdentityMismatch):
-        R.run({'LSKUSDT': data['BTCUSDT']}, pf)
+        R.run({'LSKUSDT': data['BTCUSDT']}, pf, allow_partial_universe_test_only=True)
     with pytest.raises(R.PreflightError):
         R.run(data, pf.prereg)
     out = tmp_path / 'result.json'
@@ -415,7 +417,8 @@ def test_disclosures_are_in_docstring_result_and_run_json(pf, tmp_path):
     assert 'conservatively' in R.DISCLOSURES[1] and '8h' in R.DISCLOSURES[1] and '6478332951' in R.DISCLOSURES[1]
     doc = R.__doc__
     assert 'B0 is not path-identical to E' in doc and 'charged conservatively' in doc and '(the 8h grid) are exact' in doc
-    res = R.run({'BTCUSDT': mk('BTCUSDT', flat(60), le={0})}, pf, windows=W(400), resamples=20)
+    res = R.run({'BTCUSDT': mk('BTCUSDT', flat(60), le={0})}, pf, windows=W(400), resamples=20,
+                allow_partial_universe_test_only=True)
     assert res['disclosures'] == list(R.DISCLOSURES) and res['parity_declared'] == list(R.PARITY_DECLARED)
     out = _execute(pf, tmp_path / 'r', stop_after=1)
     assert out['status'] == 'PARTIAL'
@@ -535,7 +538,7 @@ class FakeSrc:
         return {}
 
     def identity(self):
-        return {'kind': 'fake'}
+        return {'kind': 'fake', 'manifest_file_sha256': 'a' * 64}
 
 
 def _src(syms, n=700, start=T0 - 300 * TF, drop_funding=(), seed=0):
@@ -585,12 +588,22 @@ def AUTH(pf):                                                                # t
     return R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256)
 
 
+FIXED = sorted(json.loads((ROOT / 'research_evidence' / 'prereg' / 'breakout_pyramid_falsify.v1.json').read_text())['universe']['symbols'])
+_SRC = {}
+
+
+def _fixed_src():
+    if 'src' not in _SRC:
+        _SRC['src'] = _src(FIXED)
+    return _SRC['src']
+
+
 def _execute(pf, out, **kw):
-    src = kw.pop('src', None) or _src(['BTCUSDT', 'ETHUSDT'])
-    return R.execute(str(out), src, pf, symbols=kw.pop('symbols', ['ETHUSDT', 'BTCUSDT']), rules=lambda s, t: RULE,
-                     authorization=kw.pop('authorization', AUTH(pf)), max_rss_mb=kw.pop('max_rss_mb', 4096),
-                     rss=kw.pop('rss', lambda: 100.0), warmup_start=T0 - 300 * TF, b0_replicates=2,
-                     windows=W(400, warm=240), resamples=20, **kw)
+    args = dict(symbols=list(reversed(FIXED)), rules=lambda s, t: RULE, authorization=AUTH(pf), max_rss_mb=4096,
+                rss=lambda: 100.0, warmup_start=T0 - 300 * TF, b0_replicates=2, windows=W(400, warm=240), resamples=20)
+    src = kw.pop('src', None) or _fixed_src()
+    args.update(kw)
+    return R.execute(str(out), src, pf, **args)
 
 
 def test_execute_is_authorized_rss_guarded_chained_and_resumable(pf, tmp_path):
@@ -605,11 +618,11 @@ def test_execute_is_authorized_rss_guarded_chained_and_resumable(pf, tmp_path):
     with pytest.raises(R.WriteRefused):
         _execute(pf, ROOT.joinpath(*R.LEDGER_REL[:-1]))
     out = tmp_path / 'r'
-    assert _execute(pf, out, stop_after=1) == {'status': 'PARTIAL', 'symbols_done': 1, 'symbols_total': 2}
+    assert _execute(pf, out, stop_after=1) == {'status': 'PARTIAL', 'symbols_done': 1, 'symbols_total': 17}
     first = (out / 'symbols.jsonl').read_bytes()
     res = _execute(pf, out)                                                   # resumes after BTCUSDT
     lines = (out / 'symbols.jsonl').read_bytes()
-    assert lines.startswith(first) and lines.count(b'\n') == 2
+    assert lines.startswith(first) and lines.count(b'\n') == 17
     assert res['evaluated'] is False and res['identity_sha256'] and 'verdict' not in json.dumps(res).lower()
     full = tmp_path / 'f'
     _execute(pf, full)                                                        # uninterrupted run: byte-identical
@@ -620,7 +633,7 @@ def test_execute_is_authorized_rss_guarded_chained_and_resumable(pf, tmp_path):
     with pytest.raises(R.RunnerError, match='hash'):
         _execute(pf, bad)
     with pytest.raises(R.RunnerError, match='identity'):
-        _execute(pf, out, symbols=['BTCUSDT'])
+        _execute(pf, out, resamples=21)
 
 
 # ------------------------------------------------------------------ (d) parity with backtest.py
@@ -649,7 +662,7 @@ def _parity(P, seeds, stage, override, n=1500):
     bk = R.run_book(data, P, stage, w, legacy)
     ours = {s: [] for s in data}
     for x in sorted(bk['trades'] + bk['incomplete'], key=lambda x: x['t_entry']):
-        ours[x['sym']] += [(k, j, round(ref, 9), gap) for k, j, ref, gap in x['fills']]
+        ours[x['sym']] += [(k, j, round(ref, 9), gap) for k, j, ref, gap, _tick in x['fills']]
     log = []
     dfs = {s: pd.DataFrame(raw[s], columns=list('tohlcv')) for s in raw}
     for d in dfs.values():
@@ -701,3 +714,179 @@ def test_backtest_parity_declared_time_exit(P):
     f = o[k - 1][1]
     assert o[:k] == t[:k] and o[k] == ('exit', f + 42, round(data['BTCUSDT'].o[f + 42], 9), False)
     assert t[k] == ('exit', f + 42, round(data['BTCUSDT'].c[f + 42], 9), False)
+
+
+# ================================================================== Codex 6478876708 regressions
+import sys as _sys                                                                          # noqa: E402
+
+
+# ---- 1. frozen universe: exact set equality for run() and execute()
+def _dummy(syms):
+    return {s: mk(s, flat(60)) for s in syms}
+
+
+def test_run_requires_the_exact_frozen_universe(pf):
+    w = W(400)
+    assert R.run(_dummy(FIXED), pf, windows=w, resamples=10)['universe'] == 'FIXED-17'
+    for syms in (FIXED[:-1], FIXED + ['LSKUSDT'], FIXED[:-1] + ['LSKUSDT']):              # subset, superset, swap
+        with pytest.raises(R.IdentityMismatch):
+            R.run(_dummy(syms), pf, windows=w, resamples=10)
+    for syms in (FIXED + ['LSKUSDT'], FIXED[:-1] + ['LSKUSDT']):                          # the test flag never widens
+        with pytest.raises(R.IdentityMismatch):
+            R.run(_dummy(syms), pf, windows=w, resamples=10, allow_partial_universe_test_only=True)
+    with pytest.raises(R.IdentityMismatch):                                               # STATIC-40 is exact too
+        R.run(_dummy(FIXED), pf, windows=w, resamples=10, universe='STATIC-40')
+    s40 = sorted(R.universe_symbols(pf.prereg, 'STATIC-40'))
+    assert len(s40) == 40 and R.run(_dummy(s40), pf, windows=w, resamples=10, universe='STATIC-40')['report_only']
+
+
+def test_execute_requires_the_exact_frozen_universe(pf, tmp_path):
+    for k, syms in enumerate((FIXED[:-1], FIXED + ['LSKUSDT'], FIXED[:-1] + ['LSKUSDT'], FIXED + [FIXED[0]])):
+        with pytest.raises(R.IdentityMismatch):
+            _execute(pf, tmp_path / str(k), symbols=syms)
+        assert not (tmp_path / str(k)).exists()                                          # refused before any write
+
+
+# ---- 2. every credited stage needs its own data gate
+def _stage(name, r, n_inc=0, inc_slice=1):
+    eps = []
+    for k in range(300):
+        e = _ep(FIXED[k % 17], 1 + k // 100, r + 0.01 * (k % 5), t=T0 + k * 2 * 24 * H1MS)
+        e['f'] = k
+        eps.append(e)
+    return {'stage': name, 'episodes': eps,
+            'incomplete': [{'sym': 'BTCUSDT', 'slice': inc_slice, 'reason': 'incomplete.gap'}] * n_inc}
+
+
+def test_s2_or_s3_breaching_their_own_data_gate_are_never_credited(P):
+    w, means = W(400), [0.0] * 20
+    clean = {'S1': _stage('S1', 0.4), 'S2': _stage('S2', 0.5), 'S3': _stage('S3', 0.6)}
+    g = R.gates(P, w, clean, means, resamples=200)
+    assert (g['H1'], g['H2'], g['H3'], g['credited_stage']) == (True, True, True, 'S3')
+    assert set(g['data_by_stage']) == {'S1', 'S2', 'S3'} and all(d['pass'] for d in g['data_by_stage'].values())
+    bad2 = dict(clean, S2=_stage('S2', 0.5, n_inc=3))                                     # 3 / 103 > 2% in slice 1
+    g = R.gates(P, w, bad2, means, resamples=200)
+    assert g['data'] is True and g['data_by_stage']['S2']['pass'] is False
+    assert g['quality']['S2']['checks']['data'] is False and g['credited_stage'] == 'S1' and g['H3'] is False
+    bad3 = dict(clean, S3=_stage('S3', 0.6, n_inc=5, inc_slice=3))
+    g = R.gates(P, w, bad3, means, resamples=200)
+    assert g['credited_stage'] == 'S2' and g['data_by_stage']['S3']['pass'] is False
+    ok2 = dict(clean, S2=_stage('S2', 0.5, n_inc=2))                                      # 2 / 102 <= 2%: credited
+    assert R.gates(P, w, ok2, means, resamples=200)['credited_stage'] == 'S3'
+
+
+# ---- 3. point-in-time rules are queried at every order (adds, exits), never carried from the entry
+def _rule_book(P, after):
+    bars = (flat(2) + [(100.0, 100.3, 99.9, 100.2), (100.2, 103.0, 100.1, 102.9)] + flat(5, 102.9)
+            + [(95.0, 95.2, 94.8, 95.0)] + flat(3, 95.0))
+    before = dict(RULE, tick=0.01)
+    rules = lambda s, t: before if t < T0 + 3 * TF else after                       # noqa: E731
+    return R.run_book({'BTCUSDT': mk('BTCUSDT', bars, le={0})}, P, 'S3', W(400), rules)
+
+
+def test_rule_change_between_entry_and_add_or_exit_applies_the_new_rule(P):
+    bk = _rule_book(P, dict(RULE, min_notional=1e9, tick=0.5))
+    tr = bk['trades'][0]
+    assert bk['refusals'] == {'add_below_min_notional': 1} and tr['adds'] == 0           # the new minimum refused it
+    assert tr['fills'][0][4] == 0.01 and tr['fills'][-1][:2] == ('exit', 9) and tr['fills'][-1][4] == 0.5
+    assert R.unresolved(bk) == 0
+    bk = _rule_book(P, None)                                                              # no rule after the change
+    assert bk['refusals'] == {'add_rules_uncovered': 1, 'exit_rules_uncovered': 1} and R.unresolved(bk) == 2
+    assert R.book_metrics(bk, W(400))['unresolved_accounting'] == 2
+    bk = _rule_book(P, dict(RULE, max_qty=10.0))                                          # exit above the new max
+    assert bk['refusals'].get('exit_above_max_qty') == 1 and R.unresolved(bk) == 1
+    tight = _rule_book(P, dict(RULE, tick=0.01))
+    assert tight['refusals'] == {} and tight['trades'][0]['adds'] == 1
+
+
+# ---- 4. --max-rss-mb bounds the heavy loops (B0 replicates, bootstrap batches, books, unit replays)
+def _trip_in(fn):
+    def rss():
+        f = _sys._getframe(1)
+        while f is not None:
+            if f.f_code.co_name == fn:
+                return 5000.0
+            f = f.f_back
+        return 100.0
+    return rss
+
+
+@pytest.mark.parametrize('where', ['b0_sample', 'bootstrap_lcb', 'unit_replays'])
+def test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint(pf, tmp_path, where):
+    out = tmp_path / 'r'
+    with pytest.raises(R.MemoryLimit):
+        _execute(pf, out, rss=_trip_in(where))
+    files = sorted(x.name for x in out.iterdir())
+    assert files == ['run.json', 'symbols.jsonl']
+    n = (out / 'symbols.jsonl').read_bytes().count(b'\n')
+    assert n == (0 if where == 'unit_replays' else 17)
+    full = tmp_path / 'f'
+    _execute(pf, full)
+    _execute(pf, out)                                                                     # resumes to the same chain
+    assert (out / 'symbols.jsonl').read_bytes() == (full / 'symbols.jsonl').read_bytes()
+
+
+def test_run_book_calls_the_guard():
+    calls = []
+    R.run_book({'BTCUSDT': mk('BTCUSDT', flat(600), le={0})}, json.loads(
+        (ROOT.joinpath(*R.PREREG_REL)).read_text(encoding='utf-8')), 'S1', W(600, last=560), lambda s, t: RULE,
+        check=lambda: calls.append(1))
+    assert len(calls) == 3                                                                # bars 0, 256, 512
+
+
+# ---- 5. pass 2 is bound to the verified pass-1 chain and an immutable source identity
+class _Mutating:
+    def __init__(self, base, after_calls, mutate_bars=False, mutate_identity=False, identity=None):
+        self.base, self.n, self.after = base, 0, after_calls
+        self.mb, self.mi, self.ident = mutate_bars, mutate_identity, identity
+
+    def bars(self, sym, iv, lo, hi):
+        self.n += 1
+        rows = self.base.bars(sym, iv, lo, hi)
+        if self.mb and self.n > self.after and sym == 'BTCUSDT':
+            b = rows[400]
+            rows = rows[:400] + [b._replace(close=b.close * 1.0001)] + rows[401:]
+        return rows
+
+    def funding(self, sym, lo, hi):
+        return self.base.funding(sym, lo, hi)
+
+    def mark(self, sym, lo, hi):
+        return self.base.mark(sym, lo, hi)
+
+    def identity(self):
+        if self.ident is not None:
+            return self.ident
+        h = 'b' * 64 if (self.mi and self.n > self.after) else 'a' * 64
+        return {'kind': 'fake', 'manifest_file_sha256': h}
+
+
+def test_pass2_refuses_a_source_mutated_between_passes_or_without_identity(pf, tmp_path):
+    with pytest.raises(R.RunnerError, match='pass-1 chain'):
+        _execute(pf, tmp_path / 'a', src=_Mutating(_fixed_src(), 17, mutate_bars=True))
+    with pytest.raises(R.RunnerError, match='identity changed'):
+        _execute(pf, tmp_path / 'b', src=_Mutating(_fixed_src(), 17, mutate_identity=True))
+    for k, ident in enumerate(({'kind': 'fake'}, {'manifest_file_sha256': None}, {'manifest_file_sha256': 'x' * 64})):
+        with pytest.raises(R.RunnerError, match='immutable identity'):
+            _execute(pf, tmp_path / f'c{k}', src=_Mutating(_fixed_src(), 0, identity=ident))
+    lines = [json.loads(x) for x in (tmp_path / 'a' / 'symbols.jsonl').read_text().splitlines()]
+    assert len(lines) == 17 and all(len(x['source_sha256']) == 64 for x in lines)
+    assert json.loads((tmp_path / 'a' / 'run.json').read_text())['source_identity']['manifest_file_sha256'] == 'a' * 64
+
+
+# ---- ruling 4 amended: underwater on the path-aware equity sequence (same as DD)
+def test_underwater_and_dd_use_the_path_aware_equity_sequence(P):
+    assert R.underwater_days([(0, 10000.0), (H1MS, 9900.0), (2 * H1MS, 10100.0), (4 * H1MS, 10100.0)]) == 1 / 24
+    assert R.underwater_days([(0, 10000.0), (H1MS, 9000.0), (TF, 9000.0)]) == 3 / 24      # still under at the end
+    bars = flat(2) + [(100.0, 101.0, 99.9, 101.0), (101.0, 102.0, 100.9, 102.0), (102.0, 103.0, 101.9, 103.0),
+                      (103.0, 104.0, 99.0, 104.0)] + flat(3, 104.0)
+    bk = R.run_book({'BTCUSDT': mk('BTCUSDT', bars, le={0})}, P, 'S1', W(400), lambda s, t: RULE)
+    close_dd = R.max_dd([(t, e) for t, e, _ in bk['curve']])
+    t5 = T0 + 5 * TF
+    dip = min(e for t, e in bk['equity_seq'] if t5 < t < t5 + TF)
+    assert dip < min(e for t, e, _ in bk['curve'] if t == t5) - 150                       # intrabar low captured
+    assert bk['max_equity_dd'] > close_dd + 0.01 and bk['max_equity_dd'] == R.max_dd(bk['equity_seq'])
+    m = R.book_metrics(bk, W(400))
+    assert m['longest_underwater_days'] == R.underwater_days(bk['equity_seq'])
+    seq_ts = [t for t, _ in bk['equity_seq']]
+    assert seq_ts == sorted(seq_ts)                                                       # frozen event order is causal
