@@ -2,6 +2,7 @@
 grants no producer / network / PAPER / trading authority, and carries concrete numeric bounds for the three pre-producer
 requirements: (a) bounded periodic integrity refresh, (b) active-segment exposure + fail-closed recovery, (c)
 process-private pagination pages. Overlapping limits must equal the ai_scan_ledger constants on master.
+Integration review 6480873345: R1 durable active checkpoint; Q1/Q2/Q3 resolved; Q3 numbers frozen (16 segments/tick).
 
 Contract only - no runtime code. Parity is checked from the JSON side: every name the JSON lists must appear in the md.
 """
@@ -54,12 +55,17 @@ def test_json_parses_and_is_draft_unsigned(c, md):
 
 def test_required_sections_and_keys(c):
     for k in ('builds_on', 'slice', 'scope', 'ledger_constants', 'threat_model', 'refresh_cadence', 'active_segment',
-              'page_privacy', 'counters_added', 'test_plan', 'deferred', 'open_questions'):
+              'page_privacy', 'counters_added', 'test_plan', 'deferred', 'open_questions', 'resolved_questions'):
         assert k in c, k
     assert (c['refresh_cadence']['requirement'], c['active_segment']['requirement'],
             c['page_privacy']['requirement']) == ('a', 'b', 'c')
     for k in ('refresh_cadence', 'active_segment', 'page_privacy'):
-        assert c[k]['proposal_for_integration'] is True and c[k]['problem']
+        assert c[k]['problem']
+    assert '6480873345' in c['integration_rulings']
+    for k in ('refresh_cadence', 'active_segment'):                       # Q3 numbers frozen by ruling, not proposals
+        assert c[k]['proposal_for_integration'] is False
+        assert c[k]['numbers_status'].startswith('frozen by Integration ruling 6480873345')
+    assert c['page_privacy']['proposal_for_integration'] is True
 
 
 def test_builds_on_pins_accepted_merge_shas(c, md):
@@ -122,17 +128,40 @@ def test_a_refresh_cadence_has_concrete_bounds(c):
               'max_segment_bytes_per_tick', 'max_full_sweep_ticks', 'max_full_sweep_s', 'max_bytes_per_seal_refresh',
               'eligibility_max_age_s'):
         assert _posint(r[k]), k
-    assert r['tick_period_s'] == 60 and r['sealed_segments_per_tick'] == L.SEGS_PER_READ
-    assert r['max_sealed_bytes_per_tick'] == r['sealed_segments_per_tick'] * L.SEG_MAX == 64 * MIB
-    assert r['max_active_bytes_per_tick'] == L.SEG_MAX
+    assert r['tick_period_s'] == 60 and r['sealed_segments_per_tick'] == 16             # Q3 ruling 6480873345
+    assert r['max_sealed_bytes_per_tick'] == r['sealed_segments_per_tick'] * L.SEG_MAX == 16 * (16 * MIB) == 256 * MIB
+    assert r['max_active_bytes_per_tick'] == L.SEG_MAX == 16 * MIB
     assert r['max_segment_bytes_per_tick'] == r['max_sealed_bytes_per_tick'] + r['max_active_bytes_per_tick']
-    assert r['max_full_sweep_ticks'] == math.ceil(L.MAX_SEGMENTS / r['sealed_segments_per_tick']) == 1024
-    assert r['max_full_sweep_s'] == r['max_full_sweep_ticks'] * r['tick_period_s'] <= 24 * 3600
+    assert r['max_full_sweep_ticks'] == math.ceil(L.MAX_SEGMENTS / r['sealed_segments_per_tick']) == math.ceil(4096 / 16) == 256
+    assert r['max_full_sweep_s'] == r['max_full_sweep_ticks'] * r['tick_period_s'] == 256 * 60 == 15360
+    assert r['max_full_sweep_s'] == 4 * 3600 + 16 * 60                                  # 4 h 16 m
+    assert r['eligibility_max_age_s'] == 180
     assert r['max_bytes_per_seal_refresh'] == L.SEG_MAX                    # never a corpus re-read on a seal
     assert r['max_segment_bytes_per_tick'] < L.MAX_SEGMENTS * L.SEG_MAX
     assert r['tick_period_s'] < r['eligibility_max_age_s'] <= 3 * r['tick_period_s']
     assert 'never the trading thread' in r['thread'] and 'never the whole corpus' in r['seal_refresh']
     assert 'no disk I/O' in r['eligibility_age_rule'] and 'eligibility_stale' in r['eligibility_age_rule']
+    assert 'fail-closed' in r['repeated_overrun'] and 'eligibility_max_age_s' in r['repeated_overrun']
+
+
+def test_a_sealed_verification_is_sequential_one_buffer(c, md):
+    r = c['refresh_cadence']
+    assert r['verification_order'] == 'sequential' and r['max_segments_held_in_memory'] == 1
+    assert 'never held simultaneously' in r['memory_bound']
+    assert "one segment's streaming buffer at a time" in r['memory_bound']
+    assert 'sequentially' in r['per_tick'][1]
+    assert r['max_segments_held_in_memory'] * L.SEG_MAX < r['max_sealed_bytes_per_tick']   # bound is one, not 16
+    assert '**sequentially**' in md and "**one segment's streaming buffer at a time**" in md
+    assert 'test_refresh_tick_holds_one_segment_buffer_at_a_time' in [t['name'] for t in c['test_plan']]
+
+
+def test_a_startup_verification_q1_conditions(c):
+    r = c['refresh_cadence']
+    sr = r['startup_rules']
+    assert sr['off_trading_thread'] is True and sr['producer_ineligible_until_complete'] is True
+    assert sr['blocks_engine_or_paper_startup'] is False
+    assert 'pre-live optimization' in sr['bounded_indexed_startup'] and 'not a blocker' in sr['bounded_indexed_startup']
+    assert 'exclusively off the trading thread' in r['startup'] and 'never blocks engine or PAPER startup' in r['startup']
 
 
 def _sweep(n_sealed, per_tick, edited):
@@ -168,6 +197,48 @@ def test_b_active_segment_bounds(c):
     assert 'before hashing' in a['pre_seal_check'] and 'BEFORE the first append' in a['startup_seal']
 
 
+def test_b_durable_checkpoint_fields_and_atomic_replace(c, md):
+    a = c['active_segment']
+    cp = a['durable_checkpoint']
+    assert {'segment', 'byte_length', 'sha256'} <= set(cp['fields'])
+    assert 'after every fsynced append' in cp['written']
+    assert cp['atomic_replace'] == ['write temp file', 'fsync temp file', 'os.replace over the checkpoint']
+    assert cp['never_written_in_place'] is True
+    assert 'durable checkpoint' in a['digest_check']
+    assert '**temp + fsync + `os.replace`**' in md and '**every fsynced append**' in md
+
+
+def test_b_startup_seal_requires_checkpoint_match(c, md):
+    a = c['active_segment']
+    assert 'only when its bytes match the durable checkpoint' in a['startup_seal']
+    for f in ('segment', 'byte_length', 'sha256'):
+        assert f in a['startup_match_rule']
+    m = a['startup_mismatch']
+    assert all(w in m for w in ('missing', 'malformed', 'mismatched', 'active_corrupt', 'durable gap', 'quarantine'))
+    ids = [s['id'] for s in a['recovery']]
+    assert ids.index('disable') < ids.index('open_gap') < ids.index('quarantine')
+    assert 'checkpoint_mismatch' in c['counters_added']
+    assert 'does not survive' not in json.dumps(c) and 'does not survive' not in md   # no in-memory-only startup basis
+    assert '**only when its bytes match the checkpoint**' in md and '**missing, malformed or mismatched checkpoint**' in md
+
+
+def test_b_restart_tamper_test_is_required(c, md):
+    name = 'test_restart_refuses_same_size_parse_valid_active_edit'
+    plan = {t['name']: t for t in c['test_plan']}
+    assert plan[name].get('required') is True
+    assert 'same-size, parse-valid edit' in plan[name]['asserts'] and 'writer is down' in plan[name]['asserts']
+    assert 'refused at restart' in plan[name]['asserts']
+    assert a_txt(c).startswith(name) and f'`{name}` (required)' in md
+    for n in ('test_checkpoint_atomically_replaced_after_every_fsynced_append',
+              'test_startup_seals_a_nonempty_active_only_when_checkpoint_matches',
+              'test_missing_malformed_or_mismatched_checkpoint_is_active_corrupt'):
+        assert n in plan
+
+
+def a_txt(c):
+    return c['active_segment']['restart_tamper_test_required']
+
+
 def test_b_recovery_steps_are_ordered_and_fail_closed(c):
     steps = c['active_segment']['recovery']
     assert [s['step'] for s in steps] == list(range(1, len(steps) + 1))
@@ -196,17 +267,36 @@ def test_test_plan_covers_a_b_c(c):
     names = [t['name'] for t in c['test_plan']]
     assert len(names) == len(set(names)) and all(n.startswith('test_') and t['asserts'] for n, t in
                                                   zip(names, c['test_plan']))
-    for need in ('test_refresh_tick_verifies_at_most_four_sealed_segments', 'test_stale_eligibility_is_refused_on_the_hot_path',
+    assert not any('four' in n for n in names)
+    for need in ('test_refresh_tick_verifies_at_most_sixteen_sealed_segments', 'test_stale_eligibility_is_refused_on_the_hot_path',
                  'test_active_same_size_edit_detected_within_one_tick', 'test_corrupt_active_is_quarantined_never_sealed_or_deleted',
                  'test_pages_never_leave_the_fold', 'test_producer_stays_default_off'):
         assert need in names
 
 
-def test_open_questions_are_listed(c, md):
-    ids = [q['id'] for q in c['open_questions']]
-    assert ids == ['Q1', 'Q2', 'Q3']
-    for q in ids:
-        assert f'**{q}:**' in md
+def test_open_questions_resolved_by_ruling(c, md):
+    assert c['open_questions'] == []
+    rq = {q['id']: q for q in c['resolved_questions']}
+    assert list(rq) == ['Q1', 'Q2', 'Q3'] and all(q['ruling'] == '6480873345' for q in rq.values())
+    for q in rq:
+        assert f'**{q} (resolved):**' in md
+    assert '## 10. Resolved by Integration ruling 6480873345' in md and 'Open questions' not in md
+    q1 = rq['Q1']
+    assert q1['scope'] == 'PAPER/shadow only' and 'pre-live optimization' in q1['pre_live']
+    assert all(w in q1['resolution'] for w in ('exclusively off the trading thread', 'ineligible until complete',
+                                                 'never blocks engine/PAPER startup'))
+    q2 = rq['Q2']
+    assert q2['scope'] == 'PAPER only' and 'mandatory pre-live decision' in q2['pre_live']
+    assert 'claims no protection against a local actor who can rewrite the chain' in q2['resolution']
+    t = c['threat_model']
+    assert t['local_rewrite_protection_claimed'] is False and 'PAPER only' in t['accepted_for']
+    assert 'mandatory pre-live decision' in t['pre_live_requirement']
+    assert '**no protection against a local actor who can rewrite the chain**' in md
+    q3 = rq['Q3']['resolution']
+    for frag in ('16 sequential', '256 MiB sealed + 16 MiB active', '256 ticks = 15360 s', '4 h 16 m', '180 s',
+                 '10000-row', 'fail-closed', 'frozen'):
+        assert frag in q3, frag
+    assert '17.1' not in json.dumps(c) and '17.1' not in md and '61440' not in json.dumps(c)
 
 
 def test_md_names_everything_the_json_lists(c, md):
