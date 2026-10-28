@@ -546,6 +546,20 @@ function Invoke-BuildSteps {
         '--add-data', ([IO.Path]::Combine($src, 'engine.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'strategies.py') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'paper_books.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'book_ledger.py') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'backtest.py') + ';.'),
+        # ML-PAIR-01 (Codex 6459654266): the pair code_id hashes engine.py + actual_costs.py + every ml_shadow/*.py as
+        # packaged; a source missing from the exe makes the identity incomplete and pairing refuses (ml_shadow.pairs).
+        '--add-data', ([IO.Path]::Combine($src, 'actual_costs.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', '__init__.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'common.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'context.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'features.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'labels.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'ledger.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'pairs.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'sanitize.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'scoring.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'trainer.py') + ';ml_shadow'),
+        '--add-data', ([IO.Path]::Combine($src, 'ml_shadow', 'writer.py') + ';ml_shadow'),
         '--collect-data', 'tzdata',
         '--distpath', [IO.Path]::Combine($s.Stage, 'dist'), '--workpath', [IO.Path]::Combine($s.Stage, 'work'),
         '--specpath', [IO.Path]::Combine($s.Stage, 'work'), [IO.Path]::Combine($src, 'app.py'))

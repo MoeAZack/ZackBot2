@@ -1,6 +1,6 @@
 # ML-TRAIN-01 — paired training ledger, then time-split baseline + calibration (shadow-only)
 
-**Status: DRAFT — unsigned.** Contract only: no training run, and Build read no data. Codex signs it only after this
+**Status: FROZEN — signed by Codex, 28 Oct 2026 05:50 Cairo (02:50 UTC); ruling 6459327957, accepted head `9ea2cd92`, merge `fe84dbbc`.** Contract only: no training run, and Build read no data. Codex signs it only after this
 revision, a Cowork adversarial contract review and green CI. Signing sets `status` → `FROZEN`, `signed_by` and
 `frozen_at` in the machine twin `ml_train_01_contract.v1.json`, which sits next to this file. Both twins live under
 `contracts/ml_train_01/` rather than the documentation tree, so every edit goes through normal verification
