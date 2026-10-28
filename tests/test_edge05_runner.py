@@ -31,24 +31,41 @@ PRODUCER = {'commit': 'd' * 40, 'script': 'tools/research/produce_pit_rules.py',
 
 
 def prov(kind, files, coverage, manifest_sha='f' * 64):
+    """files: [(name, sha256[, as_of])]."""
     return {'source': {'kind': kind, 'endpoint': R.PROVENANCE_SOURCES[kind]}, 'source_manifest_sha256': manifest_sha,
-            'upstream_files': [{'name': n, 'sha256': h, 'as_of': '2026-09-28T00:00:00Z'} for n, h in files],
+            'upstream_files': [{'name': f[0], 'sha256': f[1], 'as_of': f[2] if len(f) > 2 else '2026-09-28T00:00:00Z'}
+                               for f in files],
             'producer': dict(PRODUCER), 'coverage': coverage}
+
+
+def source_manifest(kind, files, expect=True):
+    """An independently bound upstream list: files [(name, sha256, as_of)]."""
+    doc = {'format': R.SOURCE_MANIFEST_FORMAT, 'kind': kind,
+           'files': [{'name': n, 'sha256': h, 'as_of': a} for n, h, a in files]}
+    raw = R.canon(doc)
+    return R.SourceManifest(doc, raw, R.sha(raw) if expect is True else expect, kind)
+
+
+SNAP_FILES = [(SNAP, 'a' * 64, '2019-01-01T00:00:00Z'),
+              ('exchangeInfo@2021-03-02T00:00:00Z', 'b' * 64, '2021-03-02T00:00:00Z')]
+RSRC = source_manifest('binance-um-exchangeinfo-snapshots', SNAP_FILES)
 
 
 def rules_doc(per=None, syms=SYMS):
     per = per or {}
-    symbols = {s: per.get(s, [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})])
+    symbols = {s: [dict(iv) if 'snapshot' in iv else dict(iv, snapshot=SNAP) for iv in
+                   per.get(s, [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})])]
                for s in syms}
-    cov = [{'symbol': s, 'series': 'rules', 'from': iv['from'], 'to': iv['to'], 'rows': 1, 'upstream': [SNAP]}
-           for s, ivs in symbols.items() for iv in ivs]
-    return {'format': R.RULES_FORMAT, 'provenance': prov('binance-um-exchangeinfo-snapshots', [(SNAP, 'a' * 64)], cov),
+    cov = [{'symbol': s, 'series': 'rules', 'from': iv['from'], 'to': iv['to'], 'rows': 1,
+            'upstream': [iv['snapshot']]} for s, ivs in symbols.items() for iv in ivs]
+    return {'format': R.RULES_FORMAT,
+            'provenance': prov('binance-um-exchangeinfo-snapshots', SNAP_FILES, cov, RSRC.sha256),
             'symbols': symbols}
 
 
 def pit(per=None):
     doc = rules_doc(per)
-    return R.PitRules(doc, R.canon(doc))
+    return R.PitRules(doc, R.canon(doc), RSRC)
 
 
 RULES = pit()
@@ -872,10 +889,10 @@ def test_rules_provenance_free_text_bad_hash_and_bad_coverage():
         d = copy.deepcopy(doc)
         mut(d)
         with pytest.raises(R.RunnerError):
-            R.PitRules(d, R.canon(d))
+            R.PitRules(d, R.canon(d), RSRC)
     d = copy.deepcopy(doc)                                            # omitted row: coverage says 2 intervals
     d['provenance']['coverage'][0]['rows'] = 2
-    r = R.PitRules(d, R.canon(d))
+    r = R.PitRules(d, R.canon(d), RSRC)
     assert r.bad_coverage == 1 and r.identity()['bad_coverage_entries'] == 1
     with pytest.raises(R.Incomplete, match='provenance_uncovered'):
         r.lookup(SYMS[0], D0)
@@ -883,13 +900,13 @@ def test_rules_provenance_free_text_bad_hash_and_bad_coverage():
     d = copy.deepcopy(doc)                                            # a symbol without declared coverage
     d['provenance']['coverage'] = [c for c in d['provenance']['coverage'] if c['symbol'] != SYMS[2]]
     with pytest.raises(R.Incomplete, match='provenance_uncovered'):
-        R.PitRules(d, R.canon(d)).lookup(SYMS[2], D0)
+        R.PitRules(d, R.canon(d), RSRC).lookup(SYMS[2], D0)
 
 
 def test_uncovered_rules_fail_the_data_gate_even_below_two_percent(tmp_path):
     d = rules_doc()
     d['provenance']['coverage'][0]['rows'] = 2                        # one symbol of 18 voided -> few episodes
-    r = R.PitRules(d, R.canon(d))
+    r = R.PitRules(d, R.canon(d), RSRC)
     summ = _run(tmp_path / 'u', rules=r, only_keys=['walk_forward[0]'])
     folds = [summ['walk_forward'][s]['data']['folds']['walk_forward[0]'] for s in R.SIDES]
     assert sum(f['gate_failing_incomplete'] for f in folds) > 0
@@ -916,7 +933,8 @@ def test_straddle_artifact_is_pre_cutoff_only_and_hash_bound():
     t = S.parse_utc('2026-09-27T16:00:00Z')
     doc = straddle_doc({'funding': {'AUSDT': [[t + 5, 1e-4, 8]]}, '4h': {'AUSDT': [[t, 1, 2, 0.5, 1.5, 3, 4]]}})
     art = R.StraddleArtifact(doc, R.canon(doc), cut)
-    assert art.bad_coverage == 0 and art.provenance.covered('AUSDT', 'funding', S.parse_utc('2026-09-01T00:00:00Z'), cut)
+    assert art.bad_coverage == 0 and art.unauthenticated == 2           # nothing is covered until a source vouches
+    assert not art.provenance.covered('AUSDT', 'funding', S.parse_utc('2026-09-01T00:00:00Z'), cut)
     assert art.sha256 == hashlib.sha256(R.canon(doc)).hexdigest()
     assert [r.time_ms for r in art.slice('AUSDT', 'funding', t, cut)] == [t + 5]
     for bad in ([[cut, 0.0, 8]], [[S.parse_utc('2026-08-31T16:00:00Z'), 0.0, 8]]):
@@ -940,8 +958,8 @@ def test_straddle_provenance_mutants():
     series = {'funding': {'AUSDT': [[t + 5, 1e-4, 8]]}, '4h': {'AUSDT': [[t, 1, 2, 0.5, 1.5, 3, 4]]}}
     d = straddle_doc(series, cov_rows=(2, 1))                         # omitted row: count mismatch voids the entry
     art = R.StraddleArtifact(d, R.canon(d), cut)
-    assert art.bad_coverage == 1 and not art.provenance.covered('AUSDT', 'funding', t, cut)
-    assert art.provenance.covered('AUSDT', '4h', t, cut)
+    assert art.bad_coverage == 1 and [e[3] for e in art.provenance.coverage[('AUSDT', 'funding')]] == [False]
+    assert [e[3] for e in art.provenance.coverage[('AUSDT', '4h')]] == [True]
     for mut in (lambda x: x['provenance'].__setitem__('source', 'data.binance.vision'),          # free text
                 lambda x: x['provenance']['upstream_files'][0].__setitem__('sha256', 'Z' * 64),
                 lambda x: x['provenance']['coverage'][0].__setitem__('upstream', [K4_SEP]),    # wrong series file
@@ -971,11 +989,12 @@ def test_straddle_artifact_binds_manifest_and_upstream_hashes_and_covers_reads(t
     pre = [[feb + i * 8 * H + 5, 1e-4, 8] for i in range(27)]           # 9 days x 3 pre-cutoff rows
     msha = R.file_sha(str(man))
 
-    def art(upstream_sha=files[1]['sha256'], manifest_sha=msha, rows=27):
+    def art(upstream_sha=files[1]['sha256'], manifest_sha=msha, rows=27, name=files[1]['path'], cited=None):
+        cited = cited or [(name, upstream_sha)]
         cov = [{'symbol': 'AAAUSDT', 'series': 'funding', 'from': '2021-02-01T00:00:00Z',
-                'to': '2021-02-10T00:00:00Z', 'rows': rows, 'upstream': [files[1]['path']]}]
+                'to': '2021-02-10T00:00:00Z', 'rows': rows, 'upstream': [c[0] for c in cited]}]
         doc = {'format': R.STRADDLE_FORMAT, 'cutoff': S.utc(cut),
-               'provenance': prov('binance-vision-archive', [(files[1]['path'], upstream_sha)], cov, manifest_sha),
+               'provenance': prov('binance-vision-archive', cited, cov, manifest_sha),
                'series': {'funding': {'AAAUSDT': pre}}}
         return R.StraddleArtifact(doc, R.canon(doc), cut)
     src = R.ArchiveSource(str(man), str(store), ['AAAUSDT'], cut)
@@ -989,6 +1008,74 @@ def test_straddle_artifact_binds_manifest_and_upstream_hashes_and_covers_reads(t
     src.attach_straddle(art(rows=28))                                 # count mismatch: every read there is unproven
     with pytest.raises(R.Incomplete, match='provenance_uncovered'):
         src.funding('AAAUSDT', feb, S.parse_utc('2021-02-02T00:00:00Z'))
+    absent = 'um/monthly/fundingRate/AAAUSDT/AAAUSDT-fundingRate-2020-12.zip'
+    with pytest.raises(R.RunnerError, match='absent from the run source manifest'):
+        src.attach_straddle(art(name=absent, upstream_sha='9' * 64))
+    src.attach_straddle(art(name=files[0]['path'], upstream_sha=files[0]['sha256']))   # January file for February
+    assert src.straddle.unauthenticated == 1                          # time-disjoint: supports nothing
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        src.funding('AAAUSDT', feb, S.parse_utc('2021-02-02T00:00:00Z'))
+    days = [f'um/daily/fundingRate/AAAUSDT/AAAUSDT-fundingRate-2021-02-{d:02d}.zip' for d in range(1, 10)]
+    daily_files = [(n, f'{i:064x}', f'2021-02-{i + 1:02d}T00:00:00Z') for i, n in enumerate(days, 1)]
+    by_day = art(manifest_sha=msha, cited=daily_files)
+    src.attach_straddle(by_day)                                       # no bound daily manifest: unauthenticated
+    assert by_day.unauthenticated == 1 and src.identity()['daily_source_manifest'] is None
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        src.funding('AAAUSDT', feb, S.parse_utc('2021-02-02T00:00:00Z'))
+    daily = source_manifest('binance-vision-archive', daily_files)
+    src.attach_straddle(by_day, daily)
+    assert by_day.unauthenticated == 0 and src.identity()['daily_source_manifest']['sha256'] == daily.sha256
+    assert len(src.funding('AAAUSDT', feb, S.parse_utc('2021-02-02T00:00:00Z'))) == 3
+    with pytest.raises(R.RunnerError, match='absent from the bound daily'):
+        src.attach_straddle(by_day, source_manifest('binance-vision-archive', daily_files[1:]))
+    with pytest.raises(R.RunnerError, match='differ from the daily'):
+        src.attach_straddle(by_day, source_manifest('binance-vision-archive',
+                                                    [daily_files[0][:1] + ('f' * 64, daily_files[0][2])]
+                                                    + daily_files[1:]))
+    late = [(n, h, '2021-02-11T00:00:00Z' if i == 8 else a) for i, (n, h, a) in enumerate(daily_files)]
+    src.attach_straddle(art(manifest_sha=msha, cited=late), source_manifest('binance-vision-archive', late))
+    assert src.straddle.unauthenticated == 1                          # a file published after the cutoff is not used
+    with pytest.raises(R.RunnerError, match='as_of precedes'):         # captured before its own data ended
+        source_manifest('binance-vision-archive', [(days[0], '1' * 64, '2021-02-01T12:00:00Z')])
+    with pytest.raises(R.RunnerError, match='expected value'):
+        source_manifest('binance-vision-archive', daily_files, expect=None)
+
+
+def test_rules_need_a_bound_source_manifest_and_causal_snapshots(tmp_path):
+    doc = rules_doc()
+    with pytest.raises(R.RunnerError, match='expected value'):        # unbound rules-source manifest
+        source_manifest('binance-um-exchangeinfo-snapshots', SNAP_FILES, expect=None)
+    with pytest.raises(R.RunnerError, match='expected value'):
+        source_manifest('binance-um-exchangeinfo-snapshots', SNAP_FILES, expect='0' * 64)
+    other = source_manifest('binance-um-exchangeinfo-snapshots', SNAP_FILES[:1])
+    with pytest.raises(R.RunnerError, match='another rules-source manifest'):   # mismatched manifest
+        R.PitRules(doc, R.canon(doc), other)
+    d = copy.deepcopy(doc)
+    d['provenance']['source_manifest_sha256'] = other.sha256
+    with pytest.raises(R.RunnerError, match='absent'):                # cited snapshot absent from the manifest
+        R.PitRules(d, R.canon(d), other)
+    d = copy.deepcopy(doc)
+    d['provenance']['upstream_files'][0]['sha256'] = '0' * 64
+    with pytest.raises(R.RunnerError, match='differ'):                # snapshot hash mismatch
+        R.PitRules(d, R.canon(d), RSRC)
+    with pytest.raises(R.RunnerError, match='capture time'):
+        source_manifest('binance-um-exchangeinfo-snapshots', [(SNAP, 'a' * 64, '2019-02-01T00:00:00Z')])
+    unbound = R.PitRules(doc, R.canon(doc))                           # no source manifest: nothing authenticated
+    assert unbound.unauthenticated == len(SYMS)
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        unbound.lookup(SYMS[0], D0)
+    with pytest.raises(R.RunnerError, match='rules-source manifest'):
+        _run(tmp_path / 'u', rules=unbound)
+    # a later snapshot (captured 2021-03-02) claimed for an interval starting 2021-03-01: backfill, unsupported
+    a = dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2021-03-01T00:00:00Z'})
+    b = dict(RULE, snapshot='exchangeInfo@2021-03-02T00:00:00Z',
+             **{'from': '2021-03-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})
+    r = pit({SYMS[0]: [a, b]})
+    assert r.unsupported == 1 and r.at(SYMS[0], D0 + 4 * H) is None and r.bad_coverage == 1
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        r.lookup(SYMS[0], D0 + 4 * H)
+    ok = pit({SYMS[0]: [a, dict(b, **{'from': '2021-03-02T00:00:00Z'})], })   # gap before it: also uncovered
+    assert ok.unsupported == 0 and ok.lookup(SYMS[0], S.parse_utc('2021-03-02T04:00:00Z'))['tick'] == RULE['tick']
 
 
 class LossSynth(Synth):

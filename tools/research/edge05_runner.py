@@ -52,12 +52,13 @@ import splits as S                                                              
 sys.path.insert(0, M.REPO)
 import feasibility as F                                                                     # noqa: E402
 
-FORMAT = 'zb-edge05-run/4'
+FORMAT = 'zb-edge05-run/5'
 DAY_FORMAT = 'zb-edge05-day/2'
 SUMMARY_FORMAT = 'zb-edge05-summary/4'
-RULES_FORMAT = 'zb-exchange-rules-pit/3'
-STRADDLE_FORMAT = 'zb-edge05-straddle/2'
+RULES_FORMAT = 'zb-exchange-rules-pit/4'
+STRADDLE_FORMAT = 'zb-edge05-straddle/3'
 AMENDMENT_FORMAT = 'zb-edge05-amendment/1'
+SOURCE_MANIFEST_FORMAT = 'zb-upstream-source-manifest/1'
 ACCOUNTING_REL = ('research_evidence', 'accounting', 'strat00-accounting-inputs-v1.json')
 PREREG_REL = ('research_evidence', 'prereg', 'funding_carry_xsec.v1.json')
 CANDIDATE = 'funding_carry_xsec.v1'
@@ -108,6 +109,18 @@ CONVENTIONS = {
                   'required (symbol, series, time) outside GOOD coverage is INCOMPLETE provenance_uncovered, which '
                   'fails the data gate (never inside the 2% allowance); a real run binds the expected artifact '
                   'sha256 (--expect-rules-sha256 / --expect-straddle-sha256) and refuses any other artifact',
+    'source_authentication': 'artifact metadata is never self-authenticating. Straddle: every cited monthly archive '
+                             'must EXIST in the run source manifest with the same sha256 (absent/mismatch refuses); '
+                             'every cited daily archive must exist with the same sha256 and as_of in a separately '
+                             'hash-bound daily source manifest (none bound -> its rows are unauthenticated); a '
+                             'daily file with as_of after the cutoff or before its own data end is never used; the '
+                             'authenticated files\' time spans must tile each coverage entry (a time-disjoint file '
+                             'supports nothing); straddle rows themselves obey the prereg per-row availability rule '
+                             '(pre-cutoff only). Rules: a hash-bound rules-source manifest lists every exchangeInfo '
+                             'snapshot (sha256, capture as_of = the name time); every cited snapshot must exist and '
+                             'hash-match; each interval names its snapshot and is causally supported only if that '
+                             'snapshot\'s as_of <= the interval start (no backfill). Coverage/count checks run only on '
+                             'authenticated, causally supported rows/intervals; anything else is provenance_uncovered',
     'amendment': 'no ad-hoc end: the only shortened end is a signed zb-edge05-amendment/1 record for this exact '
                  'prereg, loaded with --expect-amendment-sha256, its sha256 and dev_end bound in identity',
     'codex_rulings_r4': {'AGE-ONLY-NO-COHORT-REPORTED': 'a no-cohort day caused only by listing age is counted and '
@@ -406,6 +419,42 @@ def _upstream_meta(kind: str, name: str):
         meta['month_end_ms']
 
 
+class SourceManifest:
+    """`zb-upstream-source-manifest/1`: an independently produced, hash-bound list of upstream files {format, kind,
+    files: [{name, sha256 (published), as_of (capture / publication)}]}. kind 'binance-um-exchangeinfo-snapshots'
+    (names exchangeInfo@<UTC>, as_of = that time) or 'binance-vision-archive' (DAILY archive names only, as_of >= the
+    file's data end). Loaded only against an expected sha256."""
+
+    def __init__(self, doc: dict, raw: bytes, expect_sha256: str | None, kind: str):
+        self.sha256 = sha(raw)
+        if not expect_sha256 or self.sha256 != expect_sha256:
+            raise RunnerError(f'{kind} source manifest sha256 differs from its expected value (or none was given)')
+        if not isinstance(doc, dict) or set(doc) != {'format', 'kind', 'files'} or \
+                doc['format'] != SOURCE_MANIFEST_FORMAT or doc['kind'] != kind or not isinstance(doc['files'], list):
+            raise RunnerError(f'source manifest must be {SOURCE_MANIFEST_FORMAT} of kind {kind}')
+        self.kind, self.files = kind, {}
+        for f in doc['files']:
+            if not isinstance(f, dict) or set(f) != {'name', 'sha256', 'as_of'} or not HEX64.match(str(f['sha256'])):
+                raise RunnerError(f'source manifest entry {f!r} needs {{name, sha256, as_of}}')
+            if f['name'] in self.files:
+                raise RunnerError(f'source manifest lists {f["name"]} twice')
+            meta = _upstream_meta(kind, f['name'])
+            t = S.parse_utc(f['as_of'])
+            if kind == 'binance-um-exchangeinfo-snapshots' and t != meta[2]:
+                raise RunnerError(f'{f["name"]}: as_of must equal the snapshot capture time')
+            if kind == 'binance-vision-archive' and (not DAILY_RE.match(f['name']) or t < meta[3]):
+                raise RunnerError(f'{f["name"]}: a daily archive whose as_of precedes its own data end')
+            self.files[f['name']] = (f['sha256'], t, meta)
+
+    @classmethod
+    def load(cls, path: str, expect_sha256: str | None, kind: str) -> 'SourceManifest':
+        raw = open(path, 'rb').read()
+        return cls(json.loads(raw), raw, expect_sha256, kind)
+
+    def identity(self) -> dict:
+        return {'format': SOURCE_MANIFEST_FORMAT, 'kind': self.kind, 'sha256': self.sha256, 'files': len(self.files)}
+
+
 class Provenance:
     """Authenticity + completeness declaration of an input artifact: the upstream source kind and its canonical
     endpoint, the source-manifest sha256, every upstream file with its published sha256 and as-of time, the producer
@@ -428,7 +477,7 @@ class Provenance:
                 or not HEX40.match(str(pr['commit'])) or not HEX64.match(str(pr['script_sha256'])):
             raise RunnerError('provenance producer must be {commit: 40-hex, script, script_sha256}')
         M.check_rel_path(pr['script'])
-        files, self.files = {}, {}
+        files, self.files, self.as_of = {}, {}, {}
         for f in prov['upstream_files'] or ():
             if not isinstance(f, dict) or set(f) != {'name', 'sha256', 'as_of'} or not HEX64.match(str(f['sha256'])):
                 raise RunnerError(f'provenance upstream file {f!r} needs {{name, sha256 (published), as_of}}')
@@ -437,6 +486,7 @@ class Provenance:
                 raise RunnerError(f'provenance upstream file {f["name"]} listed twice')
             files[f['name']] = _upstream_meta(self.kind, f['name'])
             self.files[f['name']] = f['sha256']
+            self.as_of[f['name']] = S.parse_utc(f['as_of'])
         if not files:
             raise RunnerError('provenance lists no upstream files')
         self.coverage = {}
@@ -453,7 +503,9 @@ class Provenance:
                 ser, sym, _, _ = files[name]
                 if ser != 'rules' and (ser != c['series'] or sym != c['symbol']):
                     raise RunnerError(f'coverage {c["symbol"]}/{c["series"]} cites {name} ({sym}/{ser})')
-            self.coverage.setdefault((c['symbol'], c['series']), []).append([lo, hi, c['rows'], True])
+            # [from, to, rows, count_ok, authenticated, cited files]; unauthenticated until a source vouches
+            self.coverage.setdefault((c['symbol'], c['series']), []).append([lo, hi, c['rows'], True, False,
+                                                                             tuple(c['upstream'])])
         if not self.coverage:
             raise RunnerError('provenance declares no coverage')
         for v in self.coverage.values():
@@ -473,11 +525,21 @@ class Provenance:
                 bad += not e[3]
         return bad
 
+    def authenticate(self, fn) -> int:
+        """`fn(symbol, series, lo, hi, cited names)` -> True when authenticated, causal sources back the entry.
+        Returns the number of entries left unauthenticated."""
+        bad = 0
+        for (sym, ser), v in self.coverage.items():
+            for e in v:
+                e[4] = bool(fn(sym, ser, e[0], e[1], e[5]))
+                bad += not e[4]
+        return bad
+
     def covered(self, sym: str, series: str, lo: int, hi: int) -> bool:
-        """[lo, hi) lies inside the union of GOOD coverage entries for (symbol, series)."""
+        """[lo, hi) lies inside the union of GOOD (re-counted AND authenticated) coverage entries."""
         cur = lo
-        for a, b, _, ok in self.coverage.get((sym, series), ()):
-            if not ok:
+        for a, b, _, ok, auth, _ in self.coverage.get((sym, series), ()):
+            if not (ok and auth):
                 continue
             if a <= cur < b:
                 cur = b
@@ -493,14 +555,24 @@ class PitRules:
     (series 'rules', rows = intervals inside [from, to), which must tile it) is re-counted; `lookup` raises
     `provenance_uncovered` outside GOOD coverage and never substitutes another interval."""
 
-    def __init__(self, doc: dict, raw: bytes):
+    def __init__(self, doc: dict, raw: bytes, source: SourceManifest | None = None):
         if not isinstance(doc, dict) or doc.get('format') != RULES_FORMAT or set(doc) != {'format', 'provenance',
                                                                                          'symbols'}:
             raise RunnerError(f'rules artifact must be {RULES_FORMAT} {{format, provenance, symbols}}')
         if not isinstance(doc.get('symbols'), dict):
             raise RunnerError('rules artifact needs a symbols map')
-        self.sha256, self._iv = sha(raw), {}
+        self.sha256, self._iv, self.source, self.unsupported = sha(raw), {}, source, 0
         self.provenance = Provenance(doc['provenance'], ('binance-um-exchangeinfo-snapshots',), ('rules',))
+        if source is not None:
+            if source.kind != 'binance-um-exchangeinfo-snapshots' or \
+                    self.provenance.doc['source_manifest_sha256'] != source.sha256:
+                raise RunnerError('rules artifact was produced from another rules-source manifest')
+            for name, h in self.provenance.files.items():
+                got = source.files.get(name)
+                if got is None:
+                    raise RunnerError(f'rules snapshot {name} is absent from the bound rules-source manifest')
+                if got[0] != h or got[1] != self.provenance.as_of[name]:
+                    raise RunnerError(f'rules snapshot {name}: sha256/as_of differ from the rules-source manifest')
         for sym, ivs in doc['symbols'].items():
             rows = []
             for iv in ivs:
@@ -513,12 +585,21 @@ class PitRules:
                         or rule['step'] <= 0 or rule['min_qty'] < 0 or rule['min_notional'] < 0 \
                         or rule['max_qty'] <= 0 or rule['max_notional'] <= 0:
                     raise RunnerError(f'{sym}: invalid rules interval {iv!r}')
-                rows.append((lo, hi, dict(rule, **{'from': iv['from'], 'to': iv['to']})))
+                snap = iv.get('snapshot')
+                if snap not in self.provenance.files:
+                    raise RunnerError(f'{sym}: interval {iv!r} must name a cited upstream snapshot')
+                rows.append((lo, hi, dict(rule, **{'from': iv['from'], 'to': iv['to'], 'snapshot': snap})))
             rows.sort(key=lambda r: r[0])
             if any(b[0] < a[1] for a, b in zip(rows, rows[1:])):
                 raise RunnerError(f'{sym}: rules intervals overlap')
-            self._iv[sym] = ([r[0] for r in rows], rows)
+            # causal support: an authenticated snapshot captured at or before the interval start (no backfill)
+            ok = [r for r in rows if source is not None and r[2]['snapshot'] in source.files
+                  and source.files[r[2]['snapshot']][1] <= r[0]]
+            self.unsupported += len(rows) - len(ok)
+            self._iv[sym] = ([r[0] for r in ok], ok)
         self.bad_coverage = self.provenance.recount(self._count)
+        self.unauthenticated = self.provenance.authenticate(
+            lambda s, k, lo, hi, names: source is not None and all(n in source.files for n in names))
 
     def _count(self, sym, series, lo, hi):
         """Intervals inside [lo, hi); -1 unless they tile it exactly (a gap is a count mismatch)."""
@@ -531,13 +612,15 @@ class PitRules:
         return len(rows) if cur == hi else -1
 
     @classmethod
-    def load(cls, path: str) -> 'PitRules':
+    def load(cls, path: str, source: SourceManifest | None = None) -> 'PitRules':
         raw = open(path, 'rb').read()
-        return cls(json.loads(raw), raw)
+        return cls(json.loads(raw), raw, source)
 
     def identity(self) -> dict:
         return {'format': RULES_FORMAT, 'sha256': self.sha256, 'provenance': self.provenance.doc,
-                'bad_coverage_entries': self.bad_coverage}
+                'source_manifest': self.source.identity() if self.source else None,
+                'bad_coverage_entries': self.bad_coverage, 'unauthenticated_entries': self.unauthenticated,
+                'causally_unsupported_intervals': self.unsupported}
 
     def at(self, sym: str, t: int):
         starts, rows = self._iv.get(sym, ((), ()))
@@ -632,13 +715,15 @@ class StraddleArtifact:
                     if x[0] < mon or avail > cutoff_ms or x[0] >= cutoff_ms:
                         raise HoldoutRefused(f'straddle artifact row {sym} {kind} {x[0]} is outside '
                                              '[cutoff month start, cutoff)')
-                    if not any(a <= x[0] < b for a, b, _, _ in self.provenance.coverage.get((sym, kind), ())):
+                    if not any(e[0] <= x[0] < e[1] for e in self.provenance.coverage.get((sym, kind), ())):
                         raise RunnerError(f'straddle artifact row {sym} {kind} {x[0]} is outside every declared '
                                           'coverage entry')
                     out.append(x)
                 out.sort()
                 self.rows[(sym, kind)] = ([x[0] for x in out], out)
         self.bad_coverage = self.provenance.recount(lambda s, k, lo, hi: len(self.slice(s, k, lo, hi)))
+        self.cutoff = cutoff_ms
+        self.unauthenticated = self.provenance.authenticate(lambda *a: False)     # until a source vouches for it
 
     @classmethod
     def load(cls, path: str, cutoff_ms: int) -> 'StraddleArtifact':
@@ -647,7 +732,7 @@ class StraddleArtifact:
 
     def identity(self) -> dict:
         return {'format': STRADDLE_FORMAT, 'sha256': self.sha256, 'provenance': self.provenance.doc,
-                'bad_coverage_entries': self.bad_coverage}
+                'bad_coverage_entries': self.bad_coverage, 'unauthenticated_entries': self.unauthenticated}
 
     def slice(self, sym, kind, lo, hi):
         keys, rows = self.rows.get((sym, kind), ((), ()))
@@ -686,6 +771,8 @@ class ArchiveSource:
         self.straddle_from = None                  # month start of the earliest never-opened straddle month
         self.straddle_month: dict = {}             # (symbol, kind) -> start of its never-opened straddle month
         self.straddle_files: dict = {}             # never-opened straddle month path -> manifest sha256
+        self.manifest_files: dict = {}             # every listed universe file: path -> (sha256, [month lo, hi))
+        self.daily = None                          # bound daily-archive SourceManifest (straddle daily files)
         self.straddle = None                       # StraddleArtifact serving that month's pre-cutoff rows
         self.check = None
         self.max_mb = None
@@ -701,6 +788,7 @@ class ArchiveSource:
             fk = (e['symbol'], kind)
             self.first[fk] = first if fk not in self.first else min(self.first[fk], first)
             meta = M.archive_meta(e['path'])
+            self.manifest_files[e['path']] = (e['sha256'], meta['month_start_ms'], meta['month_end_ms'])
             if last >= cutoff_ms:
                 self.straddle_skipped += 1
                 self.straddle_files[e['path']] = e['sha256']
@@ -718,17 +806,47 @@ class ArchiveSource:
 
     def identity(self) -> dict:
         return {'kind': 'binance-archive', 'manifest_file_sha256': self.manifest_sha256,
+                'daily_source_manifest': self.daily.identity() if self.daily else None,
                 'straddle': self.straddle.identity() if self.straddle else None}
 
-    def attach_straddle(self, art: StraddleArtifact) -> None:
-        """The artifact must name THIS run's source manifest, and every upstream month file it cites that the
-        manifest lists must carry the manifest's (published) sha256."""
+    def attach_straddle(self, art: StraddleArtifact, daily: SourceManifest | None = None) -> None:
+        """Authenticate the artifact against INDEPENDENT sources. It must name this run's source manifest; every
+        cited monthly archive must exist in that manifest with the same sha256 (absent or different refuses); every
+        cited daily archive must exist with the same sha256/as_of in the bound daily source manifest (none bound ->
+        unauthenticated), and is used only when its as_of is at or before the cutoff. A coverage entry is
+        authenticated only when its usable files' time spans tile it."""
         if art.provenance.doc['source_manifest_sha256'] != self.manifest_sha256:
             raise RunnerError('straddle artifact was produced from another source manifest')
+        if daily is not None and daily.kind != 'binance-vision-archive':
+            raise RunnerError('the straddle daily source manifest must be of kind binance-vision-archive')
+        spans = {}
         for name, h in art.provenance.files.items():
-            if name in self.straddle_files and self.straddle_files[name] != h:
-                raise RunnerError(f'straddle artifact upstream hash for {name} differs from the manifest')
-        self.straddle = art
+            if DAILY_RE.match(name):
+                if daily is None:
+                    continue                                       # unauthenticated: no bound daily manifest
+                got = daily.files.get(name)
+                if got is None:
+                    raise RunnerError(f'straddle upstream {name} is absent from the bound daily source manifest')
+                if got[0] != h or got[1] != art.provenance.as_of[name]:
+                    raise RunnerError(f'straddle upstream {name}: sha256/as_of differ from the daily source manifest')
+                if got[1] <= self.cutoff:
+                    spans[name] = (got[2][2], got[2][3])
+            else:
+                got = self.manifest_files.get(name)
+                if got is None:
+                    raise RunnerError(f'straddle upstream {name} is absent from the run source manifest')
+                if got[0] != h:
+                    raise RunnerError(f'straddle upstream hash for {name} differs from the manifest')
+                spans[name] = (got[1], got[2])
+
+        def tiled(sym, ser, lo, hi, names):
+            cur = lo
+            for a, b in sorted(spans[n] for n in names if n in spans):
+                if a <= cur < b:
+                    cur = b
+            return cur >= hi
+        art.unauthenticated = art.provenance.authenticate(tiled)
+        self.straddle, self.daily = art, daily
 
     def set_memory(self, check, max_mb: float) -> None:
         """Memory checkpoint during every expansion; admission against the cap; cache budget = 1/4 of the cap."""
@@ -1369,6 +1487,9 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
                           'signed amendment ending at or before that month); no silent drop of scheduled data')
     if rules is None:
         raise RunnerError('no point-in-time exchange-rules artifact; refusing a real run (dry-run reports coverage)')
+    if getattr(rules, 'source', None) is None:
+        raise RunnerError('the rules artifact is not verified against a hash-bound rules-source manifest '
+                          '(--rules-source-manifest + --expect-rules-source-sha256)')
     if mism:
         raise RunnerError(f'expected artifact sha256 missing or different for: {", ".join(mism)}; an evidence run '
                           'accepts only the frozen artifacts (--expect-rules-sha256 / --expect-straddle-sha256)')
@@ -1938,6 +2059,10 @@ def main(argv=None) -> int:
     ap.add_argument('--out', help='result directory (append-only chained days.jsonl + summary.json)')
     ap.add_argument('--max-rss-mb', type=float, required=True, help='mandatory private-memory cap (MB)')
     ap.add_argument('--expect-rules-sha256', help='sha256 of the frozen rules artifact; any other is refused')
+    ap.add_argument('--rules-source-manifest', help=f'exchangeInfo snapshot list ({SOURCE_MANIFEST_FORMAT})')
+    ap.add_argument('--expect-rules-source-sha256', help='sha256 of the rules-source manifest')
+    ap.add_argument('--straddle-daily-manifest', help=f'daily archive list for the straddle ({SOURCE_MANIFEST_FORMAT})')
+    ap.add_argument('--expect-straddle-daily-sha256', help='sha256 of the straddle daily source manifest')
     ap.add_argument('--straddle-artifact', help=f'hash-bound pre-cutoff rows of the straddle month ({STRADDLE_FORMAT})')
     ap.add_argument('--expect-straddle-sha256', help='sha256 of the frozen straddle artifact; any other is refused')
     ap.add_argument('--amendment-record', help=f'signed prereg amendment ({AMENDMENT_FORMAT}); the only shortened end')
@@ -1954,11 +2079,15 @@ def main(argv=None) -> int:
         if file_sha(uni) != prereg['source']['universe_sha256']:
             raise RunnerError('universe artifact hash differs from the prereg')
         symbols = CV.load_universe(uni)
-        rules = PitRules.load(a.rules_artifact) if a.rules_artifact else None
+        rsrc = SourceManifest.load(a.rules_source_manifest, a.expect_rules_source_sha256,
+                                   'binance-um-exchangeinfo-snapshots') if a.rules_source_manifest else None
+        rules = PitRules.load(a.rules_artifact, rsrc) if a.rules_artifact else None
         man = os.path.join(M.REPO, *prereg['source']['manifest'].split('/'))
         src = ArchiveSource(man, a.store, symbols, prm.cutoff_ms, a.cache_months)
         if a.straddle_artifact:
-            src.attach_straddle(StraddleArtifact.load(a.straddle_artifact, prm.cutoff_ms))
+            daily = SourceManifest.load(a.straddle_daily_manifest, a.expect_straddle_daily_sha256,
+                                        'binance-vision-archive') if a.straddle_daily_manifest else None
+            src.attach_straddle(StraddleArtifact.load(a.straddle_artifact, prm.cutoff_ms), daily)
         amend = Amendment.load(a.amendment_record, raw, prm.cutoff_ms, a.expect_amendment_sha256) \
             if a.amendment_record else None
         kw = dict(only_keys=a.split, holdout_freeze_record=a.holdout_freeze_record, amendment=amend,
