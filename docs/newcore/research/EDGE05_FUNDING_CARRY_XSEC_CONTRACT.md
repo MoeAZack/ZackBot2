@@ -110,14 +110,23 @@ Everything on or after 2026-09-28 is sealed. The proposed holdout runs from 2026
 | Expectancy | Combined WF mean net R > 0, PF > **1.10**, and a 95% LCB > 0 (moving-block bootstrap of daily cohort means, block 30, 10,000 resamples, seed 20261028) |
 | Baselines | Above the 95th percentile of the B0 book means, and above B1 |
 | Stress | x1.5 mean net R > 0 (PASS gate); x2 > 0 (required for promotion) |
-| Drawdown and tail | Max equity DD < **35%**; x1.5 DD < **45%**; closed-R DD < **40R**; longest underwater **<= 270 days**; worst cohort >= **-7.5R** |
+| Drawdown and tail | Tiered (below). On every path: x1.5 DD <= **65%**, longest underwater **<= 365 days**, worst cohort >= **-7.5R** |
 | Concentration | No symbol > **25%** of absolute net R; top 3 <= **50%** |
 | Capacity | Median position notional <= **0.1%** of the prior-24h quote volume; turnover reported |
 | Multiplicity | Holm alpha 0.05 across P-SHORT and P-LONG |
 
-The DD policy follows the Codex ruling: a higher DD is not an automatic rejection for a longer-hold book with robust
-positive after-cost expectancy, which is why the DD limit here is 35% against 25% for EDGE04. The tail and the
-recovery time must still be bounded. A passing book enters shadow with at most **25%** of the portfolio risk budget
+**DD tiers (owner high-DD/profitability rule, Codex 6457763292).** A higher DD is not an automatic rejection when the
+after-cost return, cost stress and recovery are credible. The DD gate passes when either tier holds and every all-path
+ceiling above holds:
+
+- **Ordinary:** base max equity DD **<= 35%**, and closed-R DD < **40R**.
+- **Profitable / high-DD:** base DD **> 35% and <= 55%**, and annualized after-cost return / max DD **>= 0.75**, and
+  total net R / closed-R DD **>= 2.0**.
+- **FAIL on any path:** base DD > **55%**, or x1.5 DD > **65%**.
+
+The other gates (worst cohort, folds, expectancy, PF, cost stress, concentration, multiplicity) are unchanged. Return,
+max DD, return/DD (Calmar), PF, net expectancy, trade count, exposure time and the longest recovery are reported
+together (Codex 6457388087). No DD threshold may be relaxed after holdout P&L is seen. A passing book enters shadow with at most **25%** of the portfolio risk budget
 and at most 5% open risk.
 
 ## 8. Nulls and baselines

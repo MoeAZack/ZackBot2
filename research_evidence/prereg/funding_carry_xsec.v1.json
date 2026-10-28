@@ -115,7 +115,7 @@
     "prior_funding_carry_looks": 0,
     "rule": "no result-dependent variant, no alternative k / window / lag / stop; diagnostics, baselines and stress rows never replace a failed primary"
   },
-  "metrics": ["net R per episode and per cohort, per side", "fold-level mean net R and PF", "gross vs funding vs fee/slippage decomposition", "stressed mean net R at x1.5 and x2", "max equity DD, closed-R DD, longest underwater days", "worst cohort net R, 1st-percentile episode net R", "symbol share of absolute net-R", "daily turnover (notional traded / equity), position notional / prior-24h quote volume", "incomplete and no-cohort day counts"],
+  "metrics": ["net R per episode and per cohort, per side", "fold-level mean net R and PF", "gross vs funding vs fee/slippage decomposition", "stressed mean net R at x1.5 and x2", "max equity DD, closed-R DD, longest underwater days, and the DD tier that applied", "annualized after-cost return, return / max DD (Calmar), total net R / closed-R DD, exposure time; reported together with PF, net expectancy and trade count (Codex 6457388087)", "worst cohort net R, 1st-percentile episode net R", "symbol share of absolute net-R", "daily turnover (notional traded / equity), position notional / prior-24h quote volume", "incomplete and no-cohort day counts"],
   "gates": {
     "data": "every walk-forward fold has at most 2% INCOMPLETE episodes and no unresolved accounting row; otherwise the side is INCOMPLETE, not FAIL",
     "activity": "at least 1000 closed episodes per side across walk-forward and at least 200 cohort days in every fold",
@@ -123,11 +123,11 @@
     "expectancy": {"combined_mean_net_r_gt": 0.0, "combined_pf_gt": 1.10, "lcb": "95% lower bound of combined walk-forward mean net R > 0 by moving-block bootstrap of daily cohort means, block 30 cohorts, 10000 resamples, seed 20261028"},
     "baselines": "mean net R above the 95th percentile of the 1000 B0 book means, and above B1 mean net R",
     "stress": {"x1_5_mean_net_r_gt": 0.0, "x2_mean_net_r_gt_for_promotion": 0.0, "rule": "x1.5 > 0 is a PASS gate; x2 > 0 is required for promotion to shadow/PAPER and otherwise reported"},
-    "drawdown_and_tail": {"max_equity_dd_lt": 0.35, "x1_5_max_equity_dd_lt": 0.45, "closed_r_dd_lt": 40, "longest_underwater_days_le": 270, "worst_cohort_net_r_ge": -7.5, "policy": "Codex DD policy: higher DD is not an automatic rejection for a longer-hold strategy with robust positive after-cost expectancy, but the tail and recovery time must be bounded"},
+    "drawdown_and_tail": {"tiers": {"ordinary": {"base_max_equity_dd_le": 0.35, "closed_r_dd_lt": 40}, "profitable_high_dd": {"base_max_equity_dd_gt": 0.35, "base_max_equity_dd_le": 0.55, "annualized_net_return_over_max_dd_ge": 0.75, "total_net_r_over_closed_r_dd_ge": 2.0}}, "tier_rule": "the DD gate passes when the ordinary tier OR the profitable_high_dd tier holds, AND every all-path ceiling holds; base DD > 55% or x1.5 DD > 65% is FAIL on any path", "x1_5_max_equity_dd_le": 0.65, "longest_underwater_days_le": 365, "worst_cohort_net_r_ge": -7.5, "policy": "Owner high-DD/profitability rule as encoded by Codex 6457763292: higher DD is not an automatic rejection when after-cost return, cost stress and recovery are credible; the tier is preregistered and no DD threshold may be relaxed after holdout P&L is seen"},
     "concentration": {"max_symbol_share": 0.25, "max_top3_share": 0.50},
     "capacity": {"median_notional_over_prior_24h_quote_volume_le": 0.001, "turnover": "reported"},
     "multiplicity": "Holm alpha 0.05 across P-SHORT and P-LONG on the bootstrap p-value of mean net R <= 0",
-    "verdict": "PASS only if every gate passes for that primary; long and short are judged separately"
+    "verdict": "PASS only if every gate passes for that primary (the DD gate via its preregistered tier rule); long and short are judged separately"
   },
   "promotion_allocation": {"max_share_of_portfolio_risk_budget": 0.25, "max_open_risk_per_book": 0.05, "rule": "a passing book enters shadow at a risk allocation that cannot dominate the portfolio"},
   "failure_modes": {

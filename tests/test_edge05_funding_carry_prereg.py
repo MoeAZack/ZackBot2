@@ -71,8 +71,11 @@ def test_json_numbers_behind_md_needles():
     g = p['gates']
     assert g['expectancy']['combined_pf_gt'] == 1.10
     dd = g['drawdown_and_tail']
-    assert (dd['max_equity_dd_lt'], dd['x1_5_max_equity_dd_lt'], dd['closed_r_dd_lt'],
-            dd['longest_underwater_days_le'], dd['worst_cohort_net_r_ge']) == (0.35, 0.45, 40, 270, -7.5)
+    assert (dd['x1_5_max_equity_dd_le'], dd['longest_underwater_days_le'], dd['worst_cohort_net_r_ge']) == (0.65, 365, -7.5)
+    assert dd['tiers'] == {'ordinary': {'base_max_equity_dd_le': 0.35, 'closed_r_dd_lt': 40},
+                           'profitable_high_dd': {'base_max_equity_dd_gt': 0.35, 'base_max_equity_dd_le': 0.55,
+                                                  'annualized_net_return_over_max_dd_ge': 0.75,
+                                                  'total_net_r_over_closed_r_dd_ge': 2.0}}
     assert (g['concentration']['max_symbol_share'], g['concentration']['max_top3_share']) == (0.25, 0.50)
     assert g['capacity']['median_notional_over_prior_24h_quote_volume_le'] == 0.001
     assert p['promotion_allocation']['max_share_of_portfolio_risk_budget'] == 0.25
@@ -193,3 +196,34 @@ def test_tool_never_opens_archives_or_computes_returns():
     src = (ROOT / 'tools/research/edge05_coverage.py').read_text(encoding='utf-8')
     for banned in ('zipfile', 'import manifest', 'read_archive', 'pnl', 'pit.Access', 'backtest'):
         assert banned not in src
+
+
+def _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater, worst):
+    """Reference reading of the preregistered DD tier rule (Codex 6457763292); evaluation code must match it."""
+    t = dd['tiers']
+    o, h = t['ordinary'], t['profitable_high_dd']
+    ordinary = base <= o['base_max_equity_dd_le'] and closed_r < o['closed_r_dd_lt']
+    high = (h['base_max_equity_dd_gt'] < base <= h['base_max_equity_dd_le']
+            and ann_ret / base >= h['annualized_net_return_over_max_dd_ge']
+            and net_r / closed_r >= h['total_net_r_over_closed_r_dd_ge'])
+    ceilings = (x15 <= dd['x1_5_max_equity_dd_le'] and underwater <= dd['longest_underwater_days_le']
+                and worst >= dd['worst_cohort_net_r_ge'])
+    return (ordinary or high) and ceilings
+
+
+@pytest.mark.parametrize('base, x15, closed_r, ann_ret, net_r, ok', [
+    (0.30, 0.40, 30, 0.10, 50, True),     # ordinary
+    (0.35, 0.60, 39, 0.00, 0, True),      # ordinary at the inclusive 35% edge
+    (0.45, 0.60, 60, 0.40, 130, True),    # high-DD: 0.40/0.45 = 0.89 >= 0.75, 130/60 = 2.17 >= 2.0
+    (0.45, 0.60, 60, 0.30, 130, False),   # high-DD: return/DD 0.67 < 0.75
+    (0.45, 0.60, 60, 0.40, 110, False),   # high-DD: net R / closed-R DD 1.83 < 2.0
+    (0.56, 0.60, 60, 0.90, 200, False),   # base DD > 55% fails on any path
+    (0.30, 0.66, 30, 0.10, 50, False),    # x1.5 DD > 65% fails on any path
+    (0.30, 0.40, 40, 0.10, 50, False),    # ordinary needs closed-R DD < 40R
+])
+def test_dd_tier_rule_reference_cases(base, x15, closed_r, ann_ret, net_r, ok):
+    """Synthetic numbers only, no market result: the tier rule is unambiguous before any evaluation exists."""
+    dd = c()['gates']['drawdown_and_tail']
+    assert _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater=200, worst=-5) is ok
+    assert _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater=366, worst=-5) is False
+    assert _dd_gate(dd, base, x15, closed_r, ann_ret, net_r, underwater=200, worst=-8) is False
