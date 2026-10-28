@@ -64,8 +64,13 @@ class ScanLedger:
         self.path = str(path)
         self._lock = threading.Lock()
         self.skipped = 0                                 # corrupt / torn / edited lines seen by the last full read
+        self.error = None                                # set when the ledger path cannot be read: appends refuse
         os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
-        self._seen = {A.record_key(r): r['record_hash'] for r in self.records()}
+        try:
+            self._seen = {A.record_key(r): r['record_hash'] for r in self.records()}
+        except A.AIScanError as ex:                      # never raises through construction (Codex 6460427480)
+            self._seen, self.error = {}, str(ex)[:200]
+            log.warning('ai_scan: ledger unreadable, appends refused (%s)', self.error)
 
     def records(self):
         """Every valid record, file order. Invalid lines are skipped and counted (self.skipped), never raised."""
@@ -78,6 +83,7 @@ class ScanLedger:
     def append(self, rec):
         """Append one sealed record. -> the record, or None when its key is already on disk with the same hash.
         A conflicting record (same key, different content) or an unsealed / forged one raises AIScanError, unwritten."""
+        if self.error is not None: raise A.AIScanError(f'ledger unreadable, append refused: {self.error}')
         if not isinstance(rec, dict): raise A.AIScanError('a ledger row must be a sealed record')
         A._verify(rec)
         key = A.record_key(rec)

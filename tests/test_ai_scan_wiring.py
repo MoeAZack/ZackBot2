@@ -228,6 +228,9 @@ def _resealed(rec, **kw):
     lambda s, o: _resealed(s, signal_id=['x']), lambda s, o: _resealed(s, signal_id={'a': 1}),
     lambda s, o: _resealed(s, signal_id=None), lambda s, o: _resealed(shadow(s), epoch=['e']),
     lambda s, o: _resealed(o, cost_revision_id=['r']), lambda s, o: _resealed(o, source={'m': 1}),
+    lambda s, o: _resealed(s, signal_id=''), lambda s, o: _resealed(o, cost_revision_id=None),
+    lambda s, o: _resealed(o, cost_model_hash='b' * 64),                       # measured with the inactive id set too
+    lambda s, o: _resealed(o, source='other'),
 ])
 def test_a_resealed_line_with_a_malformed_key_is_skipped_never_raised(tmp_path, make):
     """Cowork 6460365559 R1: an unhashable or None key part used to escape as TypeError from fold / the ledger index."""
@@ -249,5 +252,8 @@ def test_a_directory_at_the_ledger_path_fails_closed_with_an_error_not_an_except
     os.makedirs(p)
     v = L.scan_view({'AI_SCAN': True}, tmp_path, now=NOW)
     assert v['on'] is True and v['rows'] == [] and 'ledger unreadable' in v['error']
-    with pytest.raises(A.AIScanError, match='ledger unreadable'):
-        L.ScanLedger(p)
+    led = L.ScanLedger(p)                                                      # construction never raises
+    assert 'ledger unreadable' in led.error and led.records is not None
+    with pytest.raises(A.AIScanError, match='append refused'):
+        led.append(sig())
+    assert os.path.isdir(p)

@@ -535,10 +535,16 @@ def record_key(rec):
     key = {'signal': (sid,), 'shadow': (sid, rec.get('epoch')),
            'outcome': (sid, rec.get('source'), rec.get('cost_revision_id'), rec.get('cost_model_hash'))}.get(kind)
     if key is None: raise AIScanError(f'unknown record kind {kind!r}')
-    # Cowork 6460365559 R1: a resealed line with a non-string (unhashable or None) key part fails closed here, as an
-    # AIScanError, instead of escaping as a TypeError from the dict build in fold / the ledger index.
-    required, optional = key[:2] if kind == 'outcome' else key, key[2:] if kind == 'outcome' else ()
-    if not all(isinstance(x, str) and x for x in required) or not all(x is None or isinstance(x, str) for x in optional):
+    # Cowork 6460365559 R1 / Codex 6460427480: every active key part is a non-empty string and the inactive outcome
+    # identity is None, else AIScanError here - before any hashing or indexing (a TypeError never escapes fold / the index).
+    if kind == 'outcome':
+        src = key[1] if isinstance(key[1], str) else None
+        active = {'measured': (key[2], key[3]), 'simulated': (key[3], key[2])}.get(src)
+        if active is None: raise AIScanError(f'outcome record has a malformed key (source {key[1]!r})')
+        required, inactive = (key[0], active[0]), active[1]
+    else:
+        required, inactive = key, None
+    if not all(isinstance(x, str) and x for x in required) or inactive is not None:
         raise AIScanError(f'{kind} record has a malformed key')
     return (kind,) + key
 
