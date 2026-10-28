@@ -9,6 +9,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,7 +22,7 @@ import splits as S                                                              
 PREREG = ROOT / 'research_evidence' / 'prereg' / 'funding_carry_xsec.v1.json'
 H, DAY, TF = R.HOUR, R.DAY, R.TF
 SYMS = [f'S{i:02d}USDT' for i in range(18)]
-RULE = {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0}
+RULE = {'tick': 0.0001, 'step': 0.001, 'min_qty': 0.001, 'min_notional': 5.0, 'max_qty': 1e9, 'max_notional': 1e12}
 CODE = {'commit': 'c' * 40, 'dirty': False, 'modules': {m: '0' * 64 for m in R.CODE_MODULES}}
 
 
@@ -423,9 +424,10 @@ def test_classify_ok_incomplete_and_unresolved():
 
 
 # ------------------------------------------------------------------ full runs, resume, memory, holdout
-def _run(out, src=None, rules=RULES, code=CODE, **kw):
+def _run(out, src=None, rules=RULES, code=CODE, max_rss_mb=8192, **kw):
     p, raw = short_prereg()
-    return R.run(str(out), src or Synth(grids={SYMS[3]: 4, SYMS[7]: 1}), SYMS, rules, p, raw, code=code, **kw)
+    return R.run(str(out), src or Synth(grids={SYMS[3]: 4, SYMS[7]: 1}), SYMS, rules, p, raw, code=code,
+                 max_rss_mb=max_rss_mb, **kw)
 
 
 def _bytes(d):
@@ -442,7 +444,10 @@ def test_full_run_summary_identity_and_conventions(full, tmp_path):
     summ, b = full
     wf = summ['walk_forward']
     assert set(wf) == {'short', 'long'} and all(wf[s]['verdict'] in ('PASS', 'FAIL', 'INCOMPLETE') for s in wf)
-    assert wf['short']['checks']['activity'] is False and wf['short']['unresolved'] == 0
+    assert wf['short']['checks']['activity'] is False and wf['short']['checks']['data'] is True
+    assert all(f['unresolved'] == 0 and f['days'] == f['scheduled_days'] for f in wf['short']['data']['folds'].values())
+    assert wf['short']['capacity_inputs_missing'] == 0 and wf['short']['checks']['capacity'] is True
+    assert summ['policy']['boot_n'] == 10000 and summ['dev_end'] is None
     assert summ['conventions'] == R.CONVENTIONS and 'WORST-COHORT-NET-R-IS-SUM' in summ['labels']
     ident = json.loads(b['run.json'])
     assert ident['code'] == CODE and ident['rules'] == RULES.identity() and ident['conventions'] == R.CONVENTIONS
@@ -605,7 +610,12 @@ def test_unmeasurable_rss_refuses_to_start(tmp_path, monkeypatch):
     with pytest.raises(R.RunnerError, match='RSS'):
         _run(tmp_path / 'n', max_rss_mb=500)
     assert not (tmp_path / 'n' / 'days.jsonl').exists()
-    assert R.rss_mb is broken and _run(tmp_path / 'n2', stop_after_days=1)['status'] == 'PARTIAL'   # no limit: runs
+    monkeypatch.undo()
+    with pytest.raises(R.RunnerError, match='mandatory'):           # no cap at all: refused
+        _run(tmp_path / 'n2', max_rss_mb=None)
+    with pytest.raises(R.RunnerError, match='mandatory'):
+        _run(tmp_path / 'n2', max_rss_mb=float('inf'))
+    assert not (tmp_path / 'n2').exists()
 
 
 def test_real_rss_is_positive():
@@ -657,7 +667,7 @@ def test_holdout_and_split_boundary_are_refused(tmp_path):
     cut = R.params_of(p).cutoff_ms
     assert cut == S.parse_utc('2021-07-05T00:00:00Z')
     with pytest.raises(R.HoldoutRefused):
-        R.run(str(tmp_path / 'x'), Synth(leak=cut), SYMS, RULES, p, raw, code=CODE)
+        R.run(str(tmp_path / 'x'), Synth(leak=cut), SYMS, RULES, p, raw, code=CODE, max_rss_mb=8192)
 
 
 def test_dry_run_writes_nothing(tmp_path):
@@ -733,3 +743,222 @@ def test_archive_source_reads_months_lazily_and_never_opens_the_straddle_month(t
     src2 = R.ArchiveSource(str(man), str(store), ['AAAUSDT'], cut)
     with pytest.raises(Exception):
         src2.funding('AAAUSDT', S.parse_utc('2021-01-10T00:00:00Z'), S.parse_utc('2021-01-11T00:00:00Z'))
+
+
+# ------------------------------------------------------------------ review addendum mutants
+class StraddleSynth(Synth):
+    """A source whose archive has a never-opened month straddling the cutoff from 2021-06-01."""
+    straddle_from = S.parse_utc('2021-06-01T00:00:00Z')
+    straddle = None
+
+
+def test_straddle_month_is_never_a_silent_drop(tmp_path):
+    with pytest.raises(R.RunnerError, match='straddle'):
+        _run(tmp_path / 's', src=StraddleSynth())
+    assert not (tmp_path / 's').exists()
+    rep = _run(tmp_path / 's', src=StraddleSynth(), dry_run=True)
+    assert rep['straddle_unresolved_from'] == '2021-06-01T00:00:00Z'
+    with pytest.raises(R.RunnerError, match='straddle'):             # a dev-end past the straddle month: refused
+        _run(tmp_path / 's', src=StraddleSynth(), dev_end=S.parse_utc('2021-06-10T00:00:00Z'))
+    with pytest.raises(R.HoldoutRefused):
+        _run(tmp_path / 's', src=StraddleSynth(), dev_end=S.parse_utc('2021-06-01T12:00:00Z'))
+    dev = S.parse_utc('2021-06-01T00:00:00Z')
+    summ = _run(tmp_path / 's', src=StraddleSynth(), dev_end=dev)
+    ident = json.loads((tmp_path / 's' / 'run.json').read_bytes())
+    assert ident['dev_end'] == summ['dev_end'] == '2021-06-01T00:00:00Z'
+    assert summ['dev_end_excluded_days']['walk_forward[4]'] > 0 == summ['dev_end_excluded_days']['walk_forward[0]']
+    assert ident['dev_end_excluded_days'] == summ['dev_end_excluded_days']
+    last = json.loads((tmp_path / 's' / 'days.jsonl').read_bytes().splitlines()[-1])
+    assert S.parse_utc(last['D']) + R.ENTRY_OFFSET + DAY + TF <= dev
+    art = StraddleSynth()
+    art.straddle = object()                                           # an attached pre-cutoff artifact
+    assert _run(tmp_path / 't', src=art, stop_after_days=1)['status'] == 'PARTIAL'
+
+
+def test_straddle_artifact_is_pre_cutoff_only_and_hash_bound():
+    cut = S.parse_utc('2026-09-28T00:00:00Z')
+    t = S.parse_utc('2026-09-27T16:00:00Z')
+    doc = {'format': R.STRADDLE_FORMAT, 'cutoff': '2026-09-28T00:00:00Z',
+           'series': {'funding': {'AUSDT': [[t + 5, 1e-4, 8]]}, '4h': {'AUSDT': [[t, 1, 2, 0.5, 1.5, 3, 4]]}}}
+    art = R.StraddleArtifact(doc, R.canon(doc), cut)
+    assert art.sha256 == hashlib.sha256(R.canon(doc)).hexdigest()
+    assert [r.time_ms for r in art.slice('AUSDT', 'funding', t, cut)] == [t + 5]
+    for bad in ([[cut, 0.0, 8]], [[S.parse_utc('2026-08-31T16:00:00Z'), 0.0, 8]]):
+        d = copy.deepcopy(doc)
+        d['series']['funding']['AUSDT'] = bad
+        with pytest.raises(R.HoldoutRefused):
+            R.StraddleArtifact(d, R.canon(d), cut)
+    d = copy.deepcopy(doc)
+    d['series']['4h']['AUSDT'] = [[S.parse_utc('2026-09-27T22:00:00Z') - 2 * H, 1, 2, 0.5, 1.5, 3, 4]]   # closes 00:00
+    R.StraddleArtifact(d, R.canon(d), cut)
+    d['series']['4h']['AUSDT'] = [[S.parse_utc('2026-09-27T21:00:00Z'), 1, 2, 0.5, 1.5, 3, 4]]          # closes 01:00
+    with pytest.raises(R.HoldoutRefused):
+        R.StraddleArtifact(d, R.canon(d), cut)
+    with pytest.raises(R.HoldoutRefused):
+        R.StraddleArtifact(dict(doc, cutoff='2026-09-01T00:00:00Z'), b'', cut)
+
+
+class LossSynth(Synth):
+    """Funding for four symbols goes missing over a stretch of fold 0: data-loss no-cohort days."""
+    def funding(self, s, lo, hi):
+        rows = super().funding(s, lo, hi)
+        a, b = S.parse_utc('2021-02-01T00:00:00Z'), S.parse_utc('2021-02-10T00:00:00Z')
+        return [r for r in rows if not (s in SYMS[:4] and a <= r.time_ms < b)]
+
+
+def test_data_loss_no_cohort_days_are_gated(tmp_path):
+    summ = _run(tmp_path / 'l', src=LossSynth(), only_keys=['walk_forward[0]'])
+    f = summ['walk_forward']['short']['data']['folds']['walk_forward[0]']
+    assert f['data_loss_no_cohort_days'] > 0 and f['ok'] is False
+    assert summ['walk_forward']['short']['verdict'] == 'INCOMPLETE'
+    assert summ['counts']['walk_forward[0]']['data_loss_no_cohort_days'] == f['data_loss_no_cohort_days']
+
+
+def _mutate_rows(monkeypatch, fn):
+    real_replay = R.replay
+
+    def mut(side, D, st, *a, **kw):
+        return fn(side, st, real_replay(side, D, st, *a, **kw))
+    monkeypatch.setattr(R, 'replay', mut)
+
+
+def test_stress_only_incomplete_counts_in_the_data_gate(tmp_path, monkeypatch):
+    def fn(side, st, ep):
+        if side == 'short' and st.name == 'all_variable_costs_x1.5':
+            raise R.Incomplete('incomplete.gap', ep['entry_ms'])
+        return ep
+    _mutate_rows(monkeypatch, fn)
+    summ = _run(tmp_path / 'x', only_keys=['walk_forward[0]'])
+    f = summ['walk_forward']['short']['data']['folds']['walk_forward[0]']
+    assert f['incomplete_share']['all_variable_costs_x1.5'] == 1.0 and f['incomplete_share']['base_x1'] == 0.0
+    assert f['stress_only_incomplete'] > 0 and summ['walk_forward']['short']['verdict'] == 'INCOMPLETE'
+    assert summ['walk_forward']['long']['checks']['data'] is True
+
+
+def test_stress_episode_identity_mismatch_is_incomplete(tmp_path, monkeypatch):
+    def fn(side, st, ep):
+        if side == 'long' and st.name == 'all_variable_costs_x2':
+            ep = dict(ep, entry_ms=ep['entry_ms'] + TF)                   # a different episode under the stress row
+        return ep
+    _mutate_rows(monkeypatch, fn)
+    summ = _run(tmp_path / 'y', only_keys=['walk_forward[0]'])
+    f = summ['walk_forward']['long']['data']['folds']['walk_forward[0]']
+    assert f['identity_mismatch'] > 0 and summ['walk_forward']['long']['verdict'] == 'INCOMPLETE'
+
+
+class NoVolumeSynth(Synth):
+    def _bars(self, s, iv, lo, hi):
+        return [b._replace(quote_volume=None) if iv == TF else b for b in super()._bars(s, iv, lo, hi)]
+
+
+def test_missing_capacity_inputs_cannot_evade_the_gate(tmp_path):
+    summ = _run(tmp_path / 'c', src=NoVolumeSynth(), only_keys=['walk_forward[0]'])
+    w = summ['walk_forward']['short']
+    assert w['capacity_inputs_missing'] > 0 and w['median_notional_over_qv24'] is None
+    assert w['checks']['capacity'] is False
+    assert summ['splits']['walk_forward[0]']['short']['rows']['base_x1']['capacity_inputs_missing'] > 0
+
+
+def test_drawdown_and_underwater_continue_across_a_fold_boundary():
+    d = [S.parse_utc('2021-01-01T00:00:00Z') + i * DAY for i in range(20)]
+    f0 = SimpleNamespace(path=[(d[0], 1.0, True), (d[5], 0.9, True)], eq=9000.0, e0=10000.0, first_D=d[0], last_D=d[5])
+    f1 = SimpleNamespace(path=[(d[10], 0.95, True), (d[15], 0.97, True), (d[19], 1.2, True)], eq=12000.0,
+                         e0=10000.0, first_D=d[10], last_D=d[19])
+    ch = R.chain_folds([f0, f1])
+    assert ch['max_equity_dd'] == pytest.approx(1 - 0.9 * 0.95)          # 14.5%: not reset at the boundary
+    assert ch['max_equity_dd'] > max(0.10, 0.05)                         # both fold-local values are smaller
+    assert ch['longest_underwater_days'] == 14                            # d[5] -> recovery d[19], across the boundary
+    assert R.chain_folds([f1])['longest_underwater_days'] == 9            # fold-local would start the clock at d[10]
+    assert ch['growth'] == pytest.approx(0.9 * 1.2)
+    rec = SimpleNamespace(path=[(d[10], 1.2, True)], eq=12000.0, e0=10000.0, first_D=d[10], last_D=d[10])
+    assert R.chain_folds([f0, rec])['longest_underwater_days'] == 5      # recovered at the first point of fold 1
+
+
+def test_private_high_working_set_low_trips_the_guard(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, '_mem_counters', lambda: (10.0, 10_000.0))
+    assert R.rss_mb() == 10_000.0
+    with pytest.raises(R.MemoryLimit):
+        _run(tmp_path / 'pv', max_rss_mb=500)
+    assert not (tmp_path / 'pv' / 'days.jsonl').read_bytes()
+    monkeypatch.setattr(R, '_mem_counters', lambda: (_ for _ in ()).throw(OSError('no counters')))
+    with pytest.raises(R.RunnerError, match='measure'):
+        R.rss_mb()
+    monkeypatch.setattr(R, '_mem_counters', lambda: (0.0, 0.0))
+    with pytest.raises(R.RunnerError, match='measure'):
+        R.rss_mb()
+
+
+def test_real_memory_counters_report_private_and_working_set():
+    ws, pv = R._mem_counters()
+    assert ws > 0 and pv > 0 and R.rss_mb() == max(ws, pv)
+
+
+def test_archive_cache_is_clamped_to_the_cap_and_checked_around_decompress(tmp_path):
+    src = R.ArchiveSource.__new__(R.ArchiveSource)
+    src.cap, src.check = 512, None
+    src.set_memory(lambda: None, 200)
+    assert src.cap == 50
+    src.set_memory(lambda: None, 10)
+    assert src.cap == 8
+
+
+@pytest.mark.parametrize('name,value', [('BOOT_N', 9999), ('BOOT_SEED', 1), ('BOOT_BLOCK', 20), ('B0_BOOKS', 999),
+                                        ('ENTRY_OFFSET', 8 * H), ('AGE_DAYS', 29), ('DAILY_BARS', 14),
+                                        ('SLIP_FLOOR_BPS', 4.0), ('SLIP_C_CRYPTO', 0.06), ('HOLM_ALPHA', 0.1),
+                                        ('DATA_MAX_INCOMPLETE', 0.05), ('LOOKBACK_BARS', 170)])
+def test_policy_constant_drift_in_code_refuses(monkeypatch, name, value):
+    monkeypatch.setattr(R, name, value)
+    with pytest.raises(R.RunnerError, match='policy drift'):
+        R.params_of(real()[0])
+
+
+def test_policy_drift_in_sources_refuses(monkeypatch):
+    p, _ = real()
+    for path, old, new in [(('gates', 'expectancy', 'lcb'), 'seed 20261028', 'seed 1'),
+                           (('costs', 'stress_rows', 'all_variable_costs_x2'), 'fees x2', 'fees x3'),
+                           (('costs', 'fee'), 'taker 0.05%', 'taker 0.04%'),
+                           (('execution', 'entry'), '04:00 UTC', '08:00 UTC')]:
+        q = copy.deepcopy(p)
+        node = q
+        for k in path[:-1]:
+            node = node[k]
+        assert old in node[path[-1]]
+        node[path[-1]] = node[path[-1]].replace(old, new)
+        with pytest.raises(R.RunnerError, match='policy drift'):
+            R.params_of(q)
+    q = copy.deepcopy(p)
+    q['signal']['availability_lag_seconds'] = 4 * 3600 + 1                 # entry would move to 08:00
+    with pytest.raises(R.RunnerError, match='policy drift'):
+        R.params_of(q)
+    with pytest.raises(R.RunnerError, match='costs_sha256'):
+        R.params_of(p, costs_sha='0' * 64)
+    acc = json.loads((ROOT / 'research_evidence' / 'accounting' / 'strat00-accounting-inputs-v1.json').read_bytes())
+    acc['costs']['slip_c'] = 0.07
+    with pytest.raises(R.RunnerError, match='policy drift'):
+        R.params_of(p, accounting=acc)
+    monkeypatch.setitem(R.STRESS_ROWS, 'all_variable_costs_x2', R.Stress('all_variable_costs_x2', mult=1.9))
+    with pytest.raises(R.RunnerError, match='stress_rows'):
+        R.params_of(p)
+
+
+def test_max_qty_and_max_notional_refuse_and_count():
+    q = prm()
+    ep = R.replay('long', D0, BASE, 0.5, _day(FLAT), ra, q, D0 + 10 * DAY)
+    ep['side'] = 'long'
+    for rule_key, lim, code in [('rule', {'max_notional': 100.0}, 'above_max_notional'),
+                                ('rule', {'max_qty': 0.01}, 'above_max_qty'),
+                                ('rule_exit', {'max_qty': 0.01}, 'exit_above_max_qty'),
+                                ('rule_exit', {'max_notional': 100.0}, 'exit_above_max_notional')]:
+        b = R.Book(q)
+        b.cohort(D0, [{'symbol': 'X', 'f24': 0.0, 'qv24': 1e9, 'ep': dict(ep, **{rule_key: dict(ep[rule_key], **lim)})}])
+        assert b.refused == {code: 1} and b.r == [], code
+    b = R.Book(q)
+    b.cohort(D0, [{'symbol': 'X', 'f24': 0.0, 'qv24': 1e9, 'ep': ep}])
+    assert b.refused == {} and len(b.r) == 1
+    iv = dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})
+    for bad in ({k: v for k, v in iv.items() if k != 'max_qty'}, dict(iv, max_notional=0.0)):
+        with pytest.raises(R.RunnerError):
+            pit({SYMS[0]: [bad]})
+    late = pit({SYMS[0]: [dict(iv, to='2021-03-01T00:00:00Z')]})               # no effective interval at entry
+    ep2 = R.safe_replay('long', D0, BASE, 0.5, _day(FLAT), lambda t: late.at(SYMS[0], t), q, D0 + 10 * DAY)
+    assert ep2['why'] == 'rules_uncovered'

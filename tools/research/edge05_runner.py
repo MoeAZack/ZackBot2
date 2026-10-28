@@ -35,6 +35,7 @@ import json
 import math
 import os
 import random
+import re
 import subprocess
 import sys
 from collections import OrderedDict, namedtuple
@@ -49,10 +50,12 @@ import splits as S                                                              
 sys.path.insert(0, M.REPO)
 import feasibility as F                                                                     # noqa: E402
 
-FORMAT = 'zb-edge05-run/2'
+FORMAT = 'zb-edge05-run/3'
 DAY_FORMAT = 'zb-edge05-day/2'
-SUMMARY_FORMAT = 'zb-edge05-summary/2'
-RULES_FORMAT = 'zb-exchange-rules-pit/1'
+SUMMARY_FORMAT = 'zb-edge05-summary/3'
+RULES_FORMAT = 'zb-exchange-rules-pit/2'
+STRADDLE_FORMAT = 'zb-edge05-straddle/1'
+ACCOUNTING_REL = ('research_evidence', 'accounting', 'strat00-accounting-inputs-v1.json')
 PREREG_REL = ('research_evidence', 'prereg', 'funding_carry_xsec.v1.json')
 CANDIDATE = 'funding_carry_xsec.v1'
 HOUR = 3_600_000
@@ -63,17 +66,20 @@ FUNDING_GRIDS = (1, 2, 4, 8)                           # same nominal-grid rule 
 SIDES = ('short', 'long')
 ROWS = ('base_x1', 'all_variable_costs_x1.5', 'all_variable_costs_x2', 'funding_zero', 'funding_mark_adverse',
         'entry_latency_1bar')
-# Constants the prereg states in prose (not as numeric fields); tests assert each one against the prereg text.
+# Policy-bearing constants. Every one is re-derived from the frozen prereg (or the hash-bound registry input) at
+# startup by `policy_of`; a drift between the code value and its source refuses the run.
 AGE_DAYS = 30                                          # universe.eligibility_at_decision "at least 30 days before D"
 DAILY_BARS = 15                                        # execution.r_unit "the 15 closed 1d bars ending at D"
-ENTRY_OFFSET = 4 * HOUR                                # execution.entry "i.e. 04:00 UTC"
+ENTRY_OFFSET = 4 * HOUR                                # execution.entry: first 4h open at or after D + lag
 LOOKBACK_BARS, HORIZON_BARS = 180, 6                   # windows.split_rule
 B0_BOOKS = 1000                                        # baselines B0 "1000 seeded random books"
 BOOT_BLOCK, BOOT_N, BOOT_SEED = 30, 10_000, 20261028   # gates.expectancy.lcb
-SLIP_C_CRYPTO = 0.05                                   # slip-cal-v1 crypto c (unfitted; SLIP-C-UNFITTED)
-SLIP_FLOOR_BPS = 5.0                                   # "the 0.05% unfitted fallback each market fill"
+HOLM_ALPHA = 0.05                                      # gates.multiplicity
+DATA_MAX_INCOMPLETE = 0.02                             # gates.data "at most 2%"
+SLIP_C_CRYPTO = 0.05                                   # slip-cal-v1 crypto c: strat00 accounting input costs.slip_c
+SLIP_FLOOR_BPS = 5.0                                   # costs.slippage "the 0.05% unfitted fallback each market fill"
 RESULT_FILES = ('days.jsonl', 'summary.json')
-RULE_KEYS = ('tick', 'step', 'min_qty', 'min_notional')
+RULE_KEYS = ('tick', 'step', 'min_qty', 'min_notional', 'max_qty', 'max_notional')
 INCOMPLETE_REASONS = ('incomplete.gap', 'incomplete.slip_history', 'incomplete.stop', 'incomplete.funding',
                       'incomplete.mark', 'incomplete.split_end', 'rules_uncovered')
 # every repo module this runner imports (a test re-derives the list in a fresh interpreter)
@@ -104,8 +110,20 @@ CONVENTIONS = {
                            'Book as the primaries at base costs',
     'bootstrap': 'moving-block, non-circular, block 30 daily cohort means, 10000 resamples, seed 20261028; lcb95 = 5th '
                  'percentile (one-sided); p = (#means <= 0 + 1) / (N + 1); Holm alpha 0.05 over P-SHORT, P-LONG',
-    'fold_chain': 'walk-forward combined: max equity DD = worst fold; annualized return = chained fold growth over '
-                  'summed fold spans; closed-R DD on the chained cumulative-R curve; PF in R',
+    'fold_chain': 'fresh books per fold; combined acceptance chains normalized fold equity chronologically (a '
+                  'drawdown and its underwater run continue across a fold boundary): combined max DD, underwater days '
+                  'and Calmar come from the chain; annualized return = chained growth over summed fold spans; closed-R '
+                  'DD on the chained cumulative-R curve; PF in R; fold-local values reported alongside',
+    'max_limits': 'an order whose quantity exceeds max_qty or whose notional exceeds max_notional of the entry-time '
+                  'OR the exit-time rule is refused and counted (never clamped)',
+    'data_gate': 'per walk-forward fold: <= 2% INCOMPLETE episodes in EACH of base, x1.5 and x2 (stress-only '
+                 'INCOMPLETE counts); identical episode identities (symbol, entry) across base/x1.5/x2; no UNRESOLVED; '
+                 'every scheduled day present; data-loss no-cohort days (a non-age ineligibility) <= 2% of scheduled '
+                 'days; missing capacity inputs count as infinite notional/volume in the capacity median',
+    'sealed_month': 'an archive month containing rows at/after the cutoff is never opened; a real run needs either a '
+                    'hash-bound pre-cutoff straddle artifact or an explicit --dev-end at or before that month',
+    'memory': 'a finite --max-rss-mb is mandatory; measured = max(private committed, working set); checked between '
+              'symbols, after each day and around every archive decompress; month cache clamped to the cap',
 }
 
 Bar = namedtuple('Bar', 'open_ms open high low close volume quote_volume available_ms')
@@ -172,6 +190,7 @@ class Params:
     cutoff_ms: int
     expected: dict
     gates: dict
+    policy: dict
 
 
 def prereg_path(repo: str = M.REPO) -> str:
@@ -183,7 +202,84 @@ def load_prereg(path: str | None = None) -> tuple[dict, bytes]:
     return json.loads(raw), raw
 
 
-def params_of(p: dict) -> Params:
+def accounting_path(repo: str = M.REPO) -> str:
+    return os.path.join(repo, *ACCOUNTING_REL)
+
+
+def _num(pattern: str, text: str, what: str) -> float:
+    m = re.search(pattern, text)
+    if not m:
+        raise RunnerError(f'policy drift: {what} not found in the prereg text')
+    return float(m.group(1))
+
+
+def policy_of(p: dict, accounting: dict, costs_sha: str) -> dict:
+    """Re-derive every policy-bearing code constant from the frozen prereg / registry input; refuse any drift."""
+    sig, ex, w, g, co = p['signal'], p['execution'], p['windows'], p['gates'], p['costs']
+    lag_ms = sig['availability_lag_seconds'] * 1000
+    pol = {
+        'age_days': _num(r'at least (\d+) days before D', p['universe']['eligibility_at_decision'], 'age rule'),
+        'daily_bars': _num(r'the (\d+) closed 1d bars ending at D', ex['r_unit'], 'R-unit bars'),
+        'entry_offset_ms': -(-lag_ms // TF) * TF,
+        'entry_text_hour': _num(r'i\.e\. (\d\d):00 UTC', ex['entry'], 'entry hour'),
+        'decision_hour': _num(r'^(\d\d):00 daily', ex['decision_time_utc'], 'decision time'),
+        'lookback_bars': _num(r'lookback (\d+) bars', w['split_rule'], 'lookback'),
+        'horizon_bars': _num(r'horizon (\d+) bars', w['split_rule'], 'horizon'),
+        'signal_interval': _num(r'(\d+)h signal interval', w['split_rule'], 'signal interval'),
+        'b0_books': _num(r'(\d+) seeded random books', p['baselines'][0]['rule'], 'B0 books'),
+        'boot_block': _num(r'block (\d+) cohorts', g['expectancy']['lcb'], 'bootstrap block'),
+        'boot_n': _num(r'(\d+) resamples', g['expectancy']['lcb'], 'bootstrap N'),
+        'boot_seed': _num(r'seed (\d+)', g['expectancy']['lcb'], 'bootstrap seed'),
+        'holm_alpha': _num(r'Holm alpha ([0-9.]+)', g['multiplicity'], 'Holm alpha'),
+        'data_max_incomplete': _num(r'at most ([0-9.]+)% INCOMPLETE', g['data'], 'data gate') / 100,
+        'taker': _num(r'taker ([0-9.]+)% each fill', co['fee'], 'taker fee') / 100,
+        'slip_floor_bps': _num(r'the ([0-9.]+)% unfitted fallback', co['slippage'], 'slippage floor') * 100,
+        'slip_c': float(accounting['costs']['slip_c']),
+        'hold_bars': ex['holding_cap_hours'] * HOUR // TF,
+    }
+    if 'slip-cal-v1' not in co['slippage'] or 'slip-cal-v1 crypto' not in accounting['conventions']['slip_bps']:
+        raise RunnerError('policy drift: the slippage coefficient source is not slip-cal-v1 crypto')
+    if costs_sha != p['source']['costs_sha256']:
+        raise RunnerError('policy drift: costs.py differs from the prereg-bound costs_sha256')
+    if ex.get('maker') != 'none; every fill is taker':
+        raise RunnerError('policy drift: maker policy')
+    stress = {}
+    for name, text in co['stress_rows'].items():
+        m = re.search(r'fees x([0-9.]+), slippage x([0-9.]+), funding paid x([0-9.]+), funding received / ([0-9.]+)',
+                      text)
+        if m:
+            vals = {float(x) for x in m.groups()}
+            if len(vals) != 1:
+                raise RunnerError(f'policy drift: {name} multipliers are not uniform')
+            stress[name] = Stress(name, mult=vals.pop())
+        elif text == 'fees x1, slippage x1, funding as settled':
+            stress[name] = Stress(name)
+        elif 'funding set to 0' in text:
+            stress[name] = Stress(name, funding='zero')
+        elif 'costs.py funding_mark_adverse row' in text:
+            stress[name] = Stress(name, mark_bps=C.STRESS['funding_mark_adverse'].mark_adverse_bps)
+        elif 'one 4h bar later' in text:
+            stress[name] = Stress(name, latency_bars=1)
+        else:
+            raise RunnerError(f'policy drift: stress row {name!r} has no implementation')
+    code = {'age_days': AGE_DAYS, 'daily_bars': DAILY_BARS, 'entry_offset_ms': ENTRY_OFFSET,
+            'entry_text_hour': ENTRY_OFFSET // HOUR, 'decision_hour': 0, 'lookback_bars': LOOKBACK_BARS,
+            'horizon_bars': HORIZON_BARS, 'signal_interval': TF // HOUR, 'b0_books': B0_BOOKS,
+            'boot_block': BOOT_BLOCK, 'boot_n': BOOT_N, 'boot_seed': BOOT_SEED, 'holm_alpha': HOLM_ALPHA,
+            'data_max_incomplete': DATA_MAX_INCOMPLETE, 'taker': C.TAKER, 'slip_floor_bps': SLIP_FLOOR_BPS,
+            'slip_c': SLIP_C_CRYPTO, 'hold_bars': HORIZON_BARS}
+    bad = sorted(k for k in code if not math.isclose(float(code[k]), float(pol[k]), rel_tol=1e-12, abs_tol=1e-15))
+    if C.CRYPTO.taker != C.TAKER:
+        bad.append('costs.CRYPTO.taker')
+    if tuple(stress) != ROWS or stress != STRESS_ROWS:
+        bad.append('stress_rows')
+    if bad:
+        raise RunnerError(f'policy drift between code and the frozen prereg/registry: {bad}; refusing')
+    pol['stress_rows'] = {k: [v.mult, v.funding, v.mark_bps, v.latency_bars] for k, v in stress.items()}
+    return pol
+
+
+def params_of(p: dict, accounting: dict | None = None, costs_sha: str | None = None) -> Params:
     """Validate the frozen prereg and pull every numeric the runner uses from it (fail closed)."""
     if p.get('format') != 'zb-edge05-prereg/1' or p.get('candidate_id') != CANDIDATE:
         raise RunnerError('not the funding_carry_xsec.v1 prereg')
@@ -198,7 +294,10 @@ def params_of(p: dict) -> Params:
     if sel['k'] != sel['max_positions_per_book'] or 2 * sel['k'] >= p['universe']['min_eligible']:
         raise RunnerError('prereg k / min_eligible inconsistent')
     acct = ex['account']
-    return Params(k=sel['k'], lag_ms=sig['availability_lag_seconds'] * 1000, min_eligible=p['universe']['min_eligible'],
+    if accounting is None:
+        accounting = json.loads(open(accounting_path(), 'rb').read())
+    pol = policy_of(p, accounting, costs_sha or file_sha(C.__file__))
+    return Params(policy=pol, k=sel['k'], lag_ms=sig['availability_lag_seconds'] * 1000, min_eligible=p['universe']['min_eligible'],
                   stop_mult=float(ex['stop_atr_mult']), hold_ms=ex['holding_cap_hours'] * HOUR,
                   start_usdt=float(acct['start_usdt']), risk=float(acct['risk_fraction_per_position']),
                   lev_cap=float(acct['max_gross_leverage_per_book']), cutoff_ms=cutoff,
@@ -218,15 +317,22 @@ def evaluated_keys(plan: S.SplitPlan) -> list[str]:
     return [k for k in plan.keys() if k == 'train' or k.startswith('walk_forward')]
 
 
-def decision_days(plan: S.SplitPlan, key: str, prm: Params) -> list[int]:
+def split_end(plan: S.SplitPlan, key: str, end_ms: int | None = None) -> int:
+    """The effective end of a split's reads: the split end, shortened by an explicit --dev-end."""
+    hi = plan.access_range(key)[1]
+    return hi if end_ms is None else min(hi, end_ms)
+
+
+def decision_days(plan: S.SplitPlan, key: str, prm: Params, end_ms: int | None = None) -> list[int]:
     """D (00:00 UTC) whose entry/hold sits in the split's decision range and whose exit bar is fully available
-    inside the split (exit bar open + 4h <= split end, so its row never reads past the boundary)."""
+    inside the split (exit bar open + 4h <= split end, or <= --dev-end, so its row never reads past it)."""
     if key not in evaluated_keys(plan):
         raise HoldoutRefused(f'{key} is never evaluated (calibration = warm-up only, holdout = sealed)')
     lo, hi = plan.access_range(key)
     first, last = plan.decision_range(key)
     if hi > prm.cutoff_ms:
         raise HoldoutRefused(f'{key} ends after the sealed cutoff')
+    hi = split_end(plan, key, end_ms)
     out, d = [], -(-lo // DAY) * DAY
     while d < hi:
         entry = d + ENTRY_OFFSET
@@ -238,7 +344,8 @@ def decision_days(plan: S.SplitPlan, key: str, prm: Params) -> list[int]:
 
 # ------------------------------------------------------------------ point-in-time exchange rules
 class PitRules:
-    """`zb-exchange-rules-pit/1`: {format, source, symbols: {SYM: [{from, to, tick, step, min_qty, min_notional}]}}
+    """`zb-exchange-rules-pit/2`: {format, source, symbols: {SYM: [{from, to, tick, step, min_qty, min_notional,
+    max_qty, max_notional}]}}
     with strict UTC [from, to) intervals, sorted and non-overlapping. `at` never substitutes another interval."""
 
     def __init__(self, doc: dict, raw: bytes):
@@ -256,7 +363,8 @@ class PitRules:
                 except (KeyError, TypeError, ValueError, S.SplitError) as e:
                     raise RunnerError(f'{sym}: bad rules interval {iv!r} ({e})') from None
                 if not lo < hi or not all(math.isfinite(v) for v in rule.values()) or rule['tick'] <= 0 \
-                        or rule['step'] <= 0 or rule['min_qty'] < 0 or rule['min_notional'] < 0:
+                        or rule['step'] <= 0 or rule['min_qty'] < 0 or rule['min_notional'] < 0 \
+                        or rule['max_qty'] <= 0 or rule['max_notional'] <= 0:
                     raise RunnerError(f'{sym}: invalid rules interval {iv!r}')
                 rows.append((lo, hi, dict(rule, **{'from': iv['from'], 'to': iv['to']})))
             rows.sort(key=lambda r: r[0])
@@ -324,6 +432,52 @@ class Guard:
         return self.src.first_ms(sym)
 
 
+class StraddleArtifact:
+    """`zb-edge05-straddle/1`: hash-bound PRE-CUTOFF rows of the archive month that straddles the sealed cutoff,
+    produced by Integration without this runner ever opening that month. {format, cutoff, series: {funding:
+    {SYM: [[time_ms, rate, interval_h], ...]}, 4h | 1d | mark: {SYM: [[open_ms, o, h, l, c, v, quote_v], ...]}}}.
+    Every row must lie in the cutoff's month and be available before the cutoff (bars: open + interval <= cutoff)."""
+
+    IV = {'4h': TF, '1d': DAY, 'mark': HOUR}
+
+    def __init__(self, doc: dict, raw: bytes, cutoff_ms: int):
+        if not isinstance(doc, dict) or doc.get('format') != STRADDLE_FORMAT:
+            raise RunnerError(f'straddle artifact must be {STRADDLE_FORMAT}')
+        if doc.get('cutoff') != S.utc(cutoff_ms):
+            raise HoldoutRefused('straddle artifact cutoff differs from the run cutoff')
+        self.sha256 = sha(raw)
+        mon = CV.parse_utc(CV.month_key(cutoff_ms) + '-01T00:00:00Z')
+        self.month_start = mon
+        self.rows = {}
+        for kind, per in doc.get('series', {}).items():
+            if kind not in ('funding', '4h', '1d', 'mark'):
+                raise RunnerError(f'straddle artifact: unknown series {kind!r}')
+            for sym, rows in per.items():
+                out = []
+                for r in rows:
+                    if kind == 'funding':
+                        x = Funding(int(r[0]), float(r[1]), int(r[2]), int(r[0]))
+                        avail = x.time_ms
+                    else:
+                        x = Bar(int(r[0]), *map(float, r[1:7]), int(r[0]) + self.IV[kind])
+                        avail = x.available_ms
+                    if x[0] < mon or avail > cutoff_ms or x[0] >= cutoff_ms:
+                        raise HoldoutRefused(f'straddle artifact row {sym} {kind} {x[0]} is outside '
+                                             '[cutoff month start, cutoff)')
+                    out.append(x)
+                out.sort()
+                self.rows[(sym, kind)] = ([x[0] for x in out], out)
+
+    @classmethod
+    def load(cls, path: str, cutoff_ms: int) -> 'StraddleArtifact':
+        raw = open(path, 'rb').read()
+        return cls(json.loads(raw), raw, cutoff_ms)
+
+    def slice(self, sym, kind, lo, hi):
+        keys, rows = self.rows.get((sym, kind), ((), ()))
+        return list(rows[bisect.bisect_left(keys, lo):bisect.bisect_left(keys, hi)])
+
+
 class ArchiveSource:
     """Binance archive store, indexed from a streamed manifest (never loaded whole). Months are parsed on demand into
     a small LRU; a month file whose last row is at/after the sealed cutoff (the straddle month) is never opened."""
@@ -338,6 +492,9 @@ class ArchiveSource:
         self.index: dict = {}
         self.first: dict = {}
         self.straddle_skipped = 0
+        self.straddle_from = None                  # month start of the earliest never-opened straddle month
+        self.straddle = None                       # StraddleArtifact serving that month's pre-cutoff rows
+        self.check = None
         for e in CV.iter_file_entries(manifest_path):
             kind = self.SERIES.get((e.get('series'), e.get('interval')))
             if kind is None or e.get('symbol') not in want:
@@ -347,10 +504,13 @@ class ArchiveSource:
                 continue
             fk = (e['symbol'], kind)
             self.first[fk] = first if fk not in self.first else min(self.first[fk], first)
+            meta = M.archive_meta(e['path'])
             if last >= cutoff_ms:
                 self.straddle_skipped += 1
+                if meta['month_start_ms'] < cutoff_ms:
+                    self.straddle_from = meta['month_start_ms'] if self.straddle_from is None else \
+                        min(self.straddle_from, meta['month_start_ms'])
                 continue
-            meta = M.archive_meta(e['path'])
             self.index.setdefault(fk, []).append((meta['month_start_ms'], meta['month_end_ms'], e['path'], e['sha256'],
                                                   e['rows']))
         for v in self.index.values():
@@ -358,13 +518,24 @@ class ArchiveSource:
         self._lru: OrderedDict = OrderedDict()
 
     def identity(self) -> dict:
-        return {'kind': 'binance-archive', 'manifest_file_sha256': self.manifest_sha256}
+        return {'kind': 'binance-archive', 'manifest_file_sha256': self.manifest_sha256,
+                'straddle_artifact_sha256': self.straddle.sha256 if self.straddle else None}
+
+    def attach_straddle(self, art: StraddleArtifact) -> None:
+        self.straddle = art
+
+    def set_memory(self, check, max_mb: float) -> None:
+        """Memory checkpoint around every decompress; the month cache is clamped to the cap (~4 MB per month)."""
+        self.check = check
+        self.cap = max(8, min(self.cap, int(max_mb // 4)))
 
     def _month(self, path, sha256, rows, kind):
         if path in self._lru:
             self._lru.move_to_end(path)
             return self._lru[path]
         ap = M.contained(self.store, path)
+        if self.check:
+            self.check()
         _, published, data = M.read_archive(ap, path)
         if published != sha256:
             raise RunnerError(f'{path}: bytes no longer match the manifest sha256')
@@ -378,6 +549,9 @@ class ArchiveSource:
                        int(r[0]) + iv) for r in raw]
         if len(out) != rows:
             raise RunnerError(f'{path}: {len(out)} rows != manifest {rows}')
+        del raw
+        if self.check:
+            self.check()
         keys = [r[0] for r in out]
         self._lru[path] = (keys, out)
         while len(self._lru) > self.cap:
@@ -391,6 +565,8 @@ class ArchiveSource:
                 continue
             keys, rs = self._month(path, sha256, rows, kind)
             out.extend(rs[bisect.bisect_left(keys, lo):bisect.bisect_left(keys, hi)])
+        if self.straddle is not None:
+            out.extend(self.straddle.slice(sym, kind, lo, hi))
         return out
 
     def funding(self, sym, lo, hi):
@@ -613,9 +789,10 @@ def classify(ep) -> tuple[str, str]:
         return 'UNRESOLVED', 'non_finite'
     if not isinstance(ep.get('mtm_u'), list) or any(not _finite(x) for x in ep['mtm_u']):
         return 'UNRESOLVED', 'non_finite'
-    rule = ep.get('rule')
-    if not isinstance(rule, dict) or any(not _finite(rule.get(k)) for k in RULE_KEYS):
-        return 'UNRESOLVED', 'no_rule'
+    for rk in ('rule', 'rule_exit'):
+        rule = ep.get(rk)
+        if not isinstance(rule, dict) or any(not _finite(rule.get(k)) for k in RULE_KEYS):
+            return 'UNRESOLVED', 'no_rule'
     for k in ('slip_in', 'slip_out'):
         s = ep.get(k)
         if not isinstance(s, dict) or any(not _finite(s.get(x)) for x in ('model_bps', 'floor_bps', 'charged_bps')) \
@@ -705,35 +882,46 @@ def run_day(src: Guard, symbols, D: int, key: str, prm: Params, rules: PitRules,
 
 
 # ------------------------------------------------------------------ memory guard
-def rss_mb() -> float:
-    """Current resident set in MB; raises RunnerError when it cannot be measured (never a silent 0)."""
-    try:
-        if os.name == 'nt':
-            import ctypes
-            from ctypes import wintypes
+def _mem_counters() -> tuple[float, float]:
+    """(working set MB, private committed MB) of this process."""
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
 
-            class PMC(ctypes.Structure):
-                _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD),
-                            ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
-                            ('QuotaPeakPagedPoolUsage', ctypes.c_size_t), ('QuotaPagedPoolUsage', ctypes.c_size_t),
-                            ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
-                            ('QuotaNonPagedPoolUsage', ctypes.c_size_t), ('PagefileUsage', ctypes.c_size_t),
-                            ('PeakPagefileUsage', ctypes.c_size_t)]
-            c = PMC()
-            c.cb = ctypes.sizeof(PMC)
-            k32 = ctypes.WinDLL('kernel32')
-            k32.GetCurrentProcess.restype = wintypes.HANDLE
-            psapi = ctypes.WinDLL('psapi')
-            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
-            v = c.WorkingSetSize / 2 ** 20 if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c),
-                                                                        c.cb) else 0.0
-        else:
-            with open('/proc/self/statm') as f:
-                v = int(f.read().split()[1]) * os.sysconf('SC_PAGE_SIZE') / 2 ** 20
+        class PMC(ctypes.Structure):
+            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD),
+                        ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
+                        ('QuotaPeakPagedPoolUsage', ctypes.c_size_t), ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaNonPagedPoolUsage', ctypes.c_size_t), ('PagefileUsage', ctypes.c_size_t),
+                        ('PeakPagefileUsage', ctypes.c_size_t), ('PrivateUsage', ctypes.c_size_t)]
+        c = PMC()
+        c.cb = ctypes.sizeof(PMC)
+        k32 = ctypes.WinDLL('kernel32')
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi = ctypes.WinDLL('psapi')
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+        if not psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+            raise OSError('GetProcessMemoryInfo failed')
+        return c.WorkingSetSize / 2 ** 20, max(c.PrivateUsage, c.PagefileUsage) / 2 ** 20
+    vals = {}
+    with open('/proc/self/status') as f:
+        for ln in f:
+            k, _, v = ln.partition(':')
+            if k in ('VmRSS', 'RssAnon', 'VmData'):
+                vals[k] = int(v.split()[0]) / 1024
+    return vals['VmRSS'], max(vals.get('RssAnon', 0.0), vals.get('VmData', 0.0))
+
+
+def rss_mb() -> float:
+    """max(private committed, working set) in MB; raises RunnerError when it cannot be measured (never a silent 0)."""
+    try:
+        ws, pv = _mem_counters()
     except Exception as e:                              # noqa: BLE001
-        raise RunnerError(f'cannot measure RSS ({e})') from None
-    if not v > 0:
-        raise RunnerError('cannot measure RSS (zero reading)')
+        raise RunnerError(f'cannot measure process memory ({e})') from None
+    v = max(ws, pv)
+    if not (math.isfinite(v) and v > 0):
+        raise RunnerError('cannot measure process memory (non-positive reading)')
     return v
 
 
@@ -745,8 +933,11 @@ def _fsync_append(fh, line: bytes):
 
 
 def identity_doc(prereg_raw: bytes, symbols, rules, source_identity: dict, keys, code: dict,
-                 freeze_sha: str | None) -> dict:
+                 freeze_sha: str | None, prm: Params, dev_end: int | None, schedule: dict, excluded: dict) -> dict:
     return {'format': FORMAT, 'candidate_id': CANDIDATE, 'prereg_sha256': sha(prereg_raw),
+            'accounting_input_sha256': file_sha(accounting_path()), 'policy': prm.policy,
+            'dev_end': S.utc(dev_end) if dev_end is not None else None,
+            'scheduled_days': schedule, 'dev_end_excluded_days': excluded,
             'universe': list(symbols), 'rules': rules.identity() if rules is not None else None,
             'source': source_identity, 'splits': list(keys), 'code': code,
             'holdout_freeze_record_sha256': freeze_sha, 'conventions': CONVENTIONS,
@@ -808,30 +999,49 @@ def _resume_point(path: str, plan_keys: list, run_digest: str) -> tuple[int, str
 
 def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, max_rss_mb: float | None = None,
         dry_run: bool = False, only_keys=None, progress=None, stop_after_days: int | None = None,
-        code: dict | None = None, allow_dirty_test_only: bool = False, holdout_freeze_record: str | None = None) -> dict:
+        code: dict | None = None, allow_dirty_test_only: bool = False, holdout_freeze_record: str | None = None,
+        dev_end: int | None = None) -> dict:
     prm = params_of(prereg)
     plan = split_plan(prereg)
     keys = [k for k in evaluated_keys(plan) if only_keys is None or k in only_keys]
-    guard = Guard(src, prm.cutoff_ms)
-    schedule = [(k, d) for k in keys for d in decision_days(plan, k, prm)]
+    if dev_end is not None and (dev_end % DAY or dev_end > prm.cutoff_ms):
+        raise HoldoutRefused('--dev-end must be a UTC midnight at or before the sealed cutoff')
+    cut = prm.cutoff_ms if dev_end is None else dev_end
+    guard = Guard(src, cut)
+    schedule = [(k, d) for k in keys for d in decision_days(plan, k, prm, dev_end)]
+    sched_n = {k: sum(1 for kk, _ in schedule if kk == k) for k in keys}
+    excluded = {k: len(decision_days(plan, k, prm)) - sched_n[k] for k in keys}
     code = code if code is not None else code_identity()
     freeze_sha = file_sha(holdout_freeze_record) if holdout_freeze_record else None
-    ident = identity_doc(prereg_raw, symbols, rules, src.identity(), keys, code, freeze_sha)
+    ident = identity_doc(prereg_raw, symbols, rules, src.identity(), keys, code, freeze_sha, prm, dev_end, sched_n,
+                         excluded)
+    straddle_from = getattr(src, 'straddle_from', None)
+    straddle_open = straddle_from is not None and getattr(src, 'straddle', None) is None and \
+        (dev_end is None or dev_end > straddle_from)
     if dry_run:
-        return dry_report(guard, symbols, rules, schedule, plan, prm, ident)
+        rep = dry_report(guard, symbols, rules, schedule, plan, prm, ident)
+        rep['straddle_unresolved_from'] = S.utc(straddle_from) if straddle_open else None
+        return rep
+    if straddle_open:
+        raise RunnerError(f'archive months from {S.utc(straddle_from)} straddle the sealed cutoff and are never '
+                          'opened: pass a hash-bound --straddle-artifact or --dev-end at or before that month '
+                          '(no silent drop of scheduled data)')
     if rules is None:
         raise RunnerError('no point-in-time exchange-rules artifact; refusing a real run (dry-run reports coverage)')
     if code.get('dirty') and not allow_dirty_test_only:
         raise RunnerError('the code tree is dirty; commit first (a real run binds a clean commit)')
-    if max_rss_mb is not None:
-        rss_mb()                                       # refuse to start when RSS cannot be measured
+    if max_rss_mb is None or not (isinstance(max_rss_mb, (int, float)) and math.isfinite(max_rss_mb)
+                                  and max_rss_mb > 0):
+        raise RunnerError('a finite --max-rss-mb is mandatory (low-RAM run)')
+    rss_mb()                                           # refuse to start when memory cannot be measured
 
     def check():
-        if max_rss_mb is not None:
-            v = rss_mb()
-            if v > max_rss_mb:
-                raise MemoryLimit(f'RSS {v:.0f} MB > --max-rss-mb {max_rss_mb:g}; no partial day written, '
-                                  'rerun the same command to resume')
+        v = rss_mb()
+        if v > max_rss_mb:
+            raise MemoryLimit(f'memory {v:.0f} MB > --max-rss-mb {max_rss_mb:g}; no partial day written, '
+                              'rerun the same command to resume')
+    if hasattr(src, 'set_memory'):
+        src.set_memory(check, max_rss_mb)
     os.makedirs(outdir, exist_ok=True)
     idp = os.path.join(outdir, 'run.json')
     ib = json.dumps(ident, sort_keys=True, indent=1).encode('ascii') + b'\n'
@@ -851,7 +1061,7 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
     with open(days_path, 'ab') as fh:
         for i in range(done, len(schedule)):
             k, D = schedule[i]
-            lo, hi = plan.access_range(k)
+            lo, hi = plan.access_range(k)[0], split_end(plan, k, dev_end)
             guard.scope(lo, hi)
             rec = run_day(guard, symbols, D, k, prm, rules, hi, check)
             check()
@@ -863,7 +1073,9 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
                 progress(i + 1, len(schedule), k, rec['D'])
             if stop_after_days is not None and did >= stop_after_days:
                 return {'status': 'PARTIAL', 'days_done': i + 1, 'days_total': len(schedule)}
-    summ = summarize(days_path, prereg, keys, run_digest)
+    summ = summarize(days_path, prereg, keys, run_digest, sched_n)
+    summ['dev_end'] = ident['dev_end']
+    summ['dev_end_excluded_days'] = excluded
     summ['identity_sha256'] = run_digest
     sp = os.path.join(outdir, 'summary.json')
     tmp = sp + '.tmp'
@@ -919,6 +1131,8 @@ class Book:
         self.decomp = {'gross': 0.0, 'fill_adj': 0.0, 'fees': 0.0, 'funding': 0.0}
         self.sym_abs = {}
         self.f24_sign = {'pos': 0, 'zero': 0, 'neg': 0}
+        self.cap_missing = 0
+        self.path = []                             # (D, equity / e0, closed?) for the cross-fold chain
 
     def _mark(self, v):
         if v > self.peak:
@@ -956,9 +1170,11 @@ class Book:
                 x[2] = _floor(x[1] * f, x[0]['ep']['rule']['step'])
         fills = []
         for p, qraw, q in sized:
-            chk = F.size_check(qraw, q, p['ep']['fill_in'], p['ep']['rule'])
-            if chk['ok'] is not True:
-                self.refused[chk['code']] = self.refused.get(chk['code'], 0) + 1
+            ep = p['ep']
+            chk = F.size_check(qraw, q, ep['fill_in'], ep['rule'])
+            code = chk['code'] if chk['ok'] is not True else max_limit_code(chk['qty'], ep)
+            if code:
+                self.refused[code] = self.refused.get(code, 0) + 1
                 continue
             fills.append((p, chk['qty']))
         if not fills:
@@ -966,8 +1182,10 @@ class Book:
         if not self.light:
             n_bars = max(len(p['ep']['mtm_u']) for p, _ in fills)
             for j in range(n_bars):
-                self._mark(E + math.fsum(q * (p['ep']['mtm_u'][j] if j < len(p['ep']['mtm_u']) else p['ep']['net_u'])
-                                         for p, q in fills))
+                v = E + math.fsum(q * (p['ep']['mtm_u'][j] if j < len(p['ep']['mtm_u']) else p['ep']['net_u'])
+                                  for p, q in fills)
+                self._mark(v)
+                self.path.append((D, v / self.e0, False))
         self.eq = E + math.fsum(q * p['ep']['net_u'] for p, q in fills)
         rs = [p['ep']['r'] for p, _ in fills]
         self.sum_r += math.fsum(rs)
@@ -975,12 +1193,13 @@ class Book:
         if self.light:
             return
         self._mark(self.eq)
+        self.path.append((D, self.eq / self.e0, True))
+        if self.uw_start is not None:                    # the run lasts until the recovery point itself
+            self.uw_max = max(self.uw_max, (D - self.uw_start) // DAY)
         if self.eq >= self.peak:
             self.uw_start = None
         elif self.uw_start is None:
             self.uw_start = D
-        if self.uw_start is not None:
-            self.uw_max = max(self.uw_max, (D - self.uw_start) // DAY)
         for p, q in fills:
             ep = p['ep']
             d = ep['dist']
@@ -990,8 +1209,11 @@ class Book:
             self.decomp['funding'] += ep['funding_u'] / d
             self.sym_abs[p['symbol']] = self.sym_abs.get(p['symbol'], 0.0) + abs(ep['r'])
             self.notional_traded.append(q * (ep['fill_in'] + ep['fill_out']) / E)
-            if p.get('qv24'):
-                self.cap_ratio.append(q * ep['fill_in'] / p['qv24'])
+            qv = p.get('qv24')
+            if _finite(qv) and qv > 0:
+                self.cap_ratio.append(q * ep['fill_in'] / qv)
+            else:
+                self.cap_missing += 1                  # counted, and +inf in the capacity median
         self.exposure_ms += max(p['ep']['exit_ms'] - p['ep']['entry_ms'] for p, _ in fills)
         self.r.extend(rs)
         self.cohort_r.append(math.fsum(rs))
@@ -1002,6 +1224,50 @@ class Book:
 
     def mean_r(self):
         return self.sum_r / self.n_r if self.n_r else None
+
+
+def max_limit_code(q: float, ep: dict) -> str:
+    """'' when the order fits max_qty / max_notional of both the entry-time and the exit-time rule; else the refusal
+    code (refuse and count, never clamp). feasibility.size_check has already applied the entry max_qty."""
+    ri, rx = ep['rule'], ep['rule_exit']
+    if q * ep['fill_in'] > ri['max_notional'] * (1 + 1e-12):
+        return 'above_max_notional'
+    if q > rx['max_qty'] * (1 + 1e-12):
+        return 'exit_above_max_qty'
+    if q * ep['fill_out'] > rx['max_notional'] * (1 + 1e-12):
+        return 'exit_above_max_notional'
+    return ''
+
+
+def capacity_median(ratios, missing: int):
+    """Median notional / prior-24h quote volume with every missing capacity input as +inf (None when that is the
+    median: the capacity gate cannot pass on missing inputs)."""
+    m = _pct(list(ratios) + [math.inf] * missing, 0.5)
+    return None if m is None or m == math.inf else m
+
+
+def chain_folds(books) -> dict:
+    """Chain normalized fold equity chronologically: fresh books per fold, but a drawdown and its underwater run
+    continue across a fold boundary. Underwater duration is measured on closed points, in days."""
+    level, peak, maxdd, uw_start, uw_max, days = 1.0, 1.0, 0.0, None, 0, 0
+    for b in books:
+        for D, v, closed in b.path:
+            x = level * v
+            peak = max(peak, x)
+            maxdd = max(maxdd, (peak - x) / peak)
+            if closed:
+                if uw_start is not None:                 # the run lasts until the recovery point itself
+                    uw_max = max(uw_max, (D - uw_start) // DAY)
+                if x >= peak:
+                    uw_start = None
+                elif uw_start is None:
+                    uw_start = D
+        level *= b.eq / b.e0
+        if b.first_D is not None:
+            days += (b.last_D - b.first_D) // DAY + 1
+    ann = (level ** (365.0 / days) - 1.0) if days and level > 0 else None
+    return {'max_equity_dd': maxdd, 'longest_underwater_days': uw_max, 'growth': level, 'annualized_return': ann,
+            'calmar': (ann / maxdd) if ann is not None and maxdd > 0 else None}
 
 
 def _pf(rs):
@@ -1021,9 +1287,12 @@ def _mean(xs):
     return math.fsum(xs) / len(xs) if xs else None
 
 
-def bootstrap(xs, block=BOOT_BLOCK, n=BOOT_N, seed=BOOT_SEED) -> dict:
+def bootstrap(xs, block=None, n=None, seed=None) -> dict:
     """Moving-block bootstrap of the mean (non-circular blocks, uniform starts, concatenated and cut to len(xs)).
     lcb95 = 5th percentile of the resampled means (one-sided); p = (#means <= 0 + 1) / (n + 1)."""
+    block = BOOT_BLOCK if block is None else block
+    n = BOOT_N if n is None else n
+    seed = BOOT_SEED if seed is None else seed
     m = len(xs)
     if m == 0:
         return {'lcb95': None, 'p': None, 'n': 0}
@@ -1070,27 +1339,43 @@ def _book_metrics(b: Book) -> dict:
             'funding_contribution_r': b.decomp['funding'],
             'price_contribution_r': b.decomp['gross'] + b.decomp['fill_adj'] + b.decomp['fees'],
             'daily_turnover_mean': (math.fsum(b.notional_traded) / len(b.cohort_r)) if b.cohort_r else None,
-            'median_notional_over_qv24': _pct(b.cap_ratio, 0.5)}
+            'median_notional_over_qv24': capacity_median(b.cap_ratio, b.cap_missing),
+            'capacity_inputs_missing': b.cap_missing}
 
 
-def summarize(days_path: str, prereg: dict, keys, run_digest: str) -> dict:
+MANDATORY_ROWS = ('base_x1', 'all_variable_costs_x1.5', 'all_variable_costs_x2')
+
+
+def summarize(days_path: str, prereg: dict, keys, run_digest: str, scheduled: dict | None = None) -> dict:
     """Pass 2: stream and re-verify days.jsonl once; every book (primaries and baselines) through Book."""
     prm = params_of(prereg)
     books, b1, b2, b0 = {}, {}, {}, {}                 # b0: (split, side) -> [1000 light Books]
-    counts = {}
+    counts = {k: {'days': 0, 'scheduled_days': (scheduled or {}).get(k), 'no_cohort_days': 0,
+                  'data_loss_no_cohort_days': 0, 'ineligible': {}} for k in keys}
+    stress = {}                                        # (split, side) -> {mismatch, stress_only_incomplete}
     for d, _ in iter_verified(days_path, run_digest):
         k, D = d['split'], S.parse_utc(d['D'])
-        c = counts.setdefault(k, {'days': 0, 'no_cohort_days': 0, 'ineligible': {}})
+        c = counts[k]
         c['days'] += 1
         for r, n in d['ineligible'].items():
             c['ineligible'][r] = c['ineligible'].get(r, 0) + n
         if d['no_cohort']:
             c['no_cohort_days'] += 1
+            if any(r != 'age' for r in d['ineligible']):
+                c['data_loss_no_cohort_days'] += 1     # data went missing, not a listing-age shortfall
             continue
         for side in SIDES:
+            st = stress.setdefault((k, side), {'identity_mismatch': 0, 'stress_only_incomplete': 0})
+            for p in d['primary'][side]:
+                eps = [p['rows'].get(r) for r in MANDATORY_ROWS]
+                cls = [classify(e)[0] for e in eps]
+                if len(set(cls)) > 1:
+                    st['stress_only_incomplete'] += 1
+                if all(x == 'OK' for x in cls) and len({(e['entry_ms'], e['side']) for e in eps}) != 1:
+                    st['identity_mismatch'] += 1
             for row in ROWS:
                 books.setdefault((k, side, row), Book(prm)).cohort(
-                    D, [{'symbol': p['symbol'], 'f24': p['f24'], 'qv24': p['qv24'], 'ep': p['rows'][row]}
+                    D, [{'symbol': p['symbol'], 'f24': p['f24'], 'qv24': p['qv24'], 'ep': p['rows'].get(row)}
                         for p in d['primary'][side]])
             base = {s: {'symbol': s, 'f24': d['f24'][s], 'qv24': d['qv24'][s], 'ep': ep, 'cls': classify(ep)}
                     for s, ep in d['base'][side].items()}
@@ -1103,22 +1388,22 @@ def summarize(days_path: str, prereg: dict, keys, run_digest: str) -> dict:
             for i in range(B0_BOOKS):
                 per[i].cohort(D, [base[s] for s in random.Random(b0_seed(side, d['D'], i)).sample(elig, prm.k)])
     out = {'format': SUMMARY_FORMAT, 'candidate_id': CANDIDATE, 'splits': {}, 'counts': counts,
-           'conventions': CONVENTIONS,
+           'conventions': CONVENTIONS, 'policy': prm.policy,
            'labels': ['SLIP-C-UNFITTED', 'SLIP-FLOOR-5BP', C.FUNDING_MARK_LABEL, 'STATIC-40-SURVIVOR-BIASED',
-                      'PIT-EXCHANGE-RULES', 'WORST-COHORT-NET-R-IS-SUM', 'NOT-A-LEDGER-RECORD']}
+                      'PIT-EXCHANGE-RULES', 'WORST-COHORT-NET-R-IS-SUM', 'FOLD-CHAINED-DD', 'NOT-A-LEDGER-RECORD']}
     for k in keys:
         out['splits'][k] = {}
         for side in SIDES:
             rows = {row: _book_metrics(books[(k, side, row)]) for row in ROWS if (k, side, row) in books}
             means = sorted(m for m in (b.mean_r() for b in b0.get((k, side)) or ()) if m is not None)
             out['splits'][k][side] = {
-                'rows': rows,
+                'rows': rows, 'stress_identity': stress.get((k, side)),
                 'B1': _book_metrics(b1[(k, side)]) if (k, side) in b1 else None,
                 'B2': _book_metrics(b2[(k, side)]) if (k, side) in b2 else None,
                 'B0_p95_mean_r': _pct(means, 0.95), 'B0_median_mean_r': _pct(means, 0.5),
                 'B0_refused': _sum_dicts(b.refused for b in b0.get((k, side)) or ()),
             }
-    out['walk_forward'] = gates(books, b1, b0, keys, prm)
+    out['walk_forward'] = gates(books, b1, b0, keys, prm, counts, stress)
     return out
 
 
@@ -1141,15 +1426,36 @@ def _combined(books, keys, side, row):
             cum += x
             peak = max(peak, cum)
             dd = max(dd, peak - cum)
-    days = sum(((b.last_D - b.first_D) // DAY + 1) for b in bs if b.first_D is not None)
-    growth = math.prod(b.eq / b.e0 for b in bs) if bs else None
-    ann = (growth ** (365.0 / days) - 1.0) if days and growth and growth > 0 else None
-    maxdd = max((b.maxdd for b in bs), default=None)
-    return {'books': bs, 'folds': wf, 'r': rs, 'cohort_means': cm, 'closed_r_dd': dd, 'ann': ann, 'maxdd': maxdd,
-            'total_r': math.fsum(rs)}
+    ch = chain_folds(bs)
+    return {'books': bs, 'folds': wf, 'r': rs, 'cohort_means': cm, 'closed_r_dd': dd, 'chain': ch,
+            'ann': ch['annualized_return'], 'maxdd': ch['max_equity_dd'] if bs else None,
+            'uw': ch['longest_underwater_days'], 'total_r': math.fsum(rs)}
 
 
-def gates(books, b1, b0, keys, prm: Params) -> dict:
+def data_checks(books, keys, side, counts, stress) -> dict:
+    """gates.data per walk-forward fold (Integration ruling 3 + the addendum): every loss is gated, none evades."""
+    wf = [k for k in keys if k.startswith('walk_forward')]
+    per = {}
+    for k in wf:
+        c = counts.get(k, {})
+        sched = c.get('scheduled_days')
+        inc = {r: (books[(k, side, r)].incomplete / books[(k, side, r)].selected)
+               if (k, side, r) in books and books[(k, side, r)].selected else None for r in MANDATORY_ROWS}
+        unresolved = sum(books[(k, side, r)].unresolved for r in ROWS if (k, side, r) in books)
+        loss = c.get('data_loss_no_cohort_days', 0)
+        st = stress.get((k, side)) or {'identity_mismatch': 0, 'stress_only_incomplete': 0}
+        ok = (all((k, side, r) in books for r in MANDATORY_ROWS)
+              and all(v is not None and v <= DATA_MAX_INCOMPLETE for v in inc.values())
+              and unresolved == 0 and st['identity_mismatch'] == 0
+              and sched is not None and c.get('days') == sched
+              and (loss / sched if sched else 1.0) <= DATA_MAX_INCOMPLETE)
+        per[k] = {'ok': ok, 'incomplete_share': inc, 'unresolved': unresolved, 'days': c.get('days'),
+                  'scheduled_days': sched, 'data_loss_no_cohort_days': loss,
+                  'no_cohort_days': c.get('no_cohort_days'), **st}
+    return {'ok': bool(per) and all(v['ok'] for v in per.values()), 'folds': per}
+
+
+def gates(books, b1, b0, keys, prm: Params, counts=None, stress=None) -> dict:
     g = prm.gates
     res = {}
     wf = [k for k in keys if k.startswith('walk_forward')]
@@ -1163,8 +1469,7 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
         mean = _mean(c['r'])
         boot = bootstrap(c['cohort_means'])
         fold_means = [_mean(b.r) for b in c['books']]
-        inc = [(b.incomplete / b.selected) if b.selected else 0.0 for b in c['books']]
-        unresolved = sum(books[(k, side, row)].unresolved for k in wf for row in ROWS if (k, side, row) in books)
+        data = data_checks(books, keys, side, counts or {}, stress or {})
         b0m = []
         for i in range(B0_BOOKS):
             s = n = 0
@@ -1188,7 +1493,7 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
                   and calmar >= tiers['profitability_rescue']['annualized_net_return_over_max_dd_ge']
                   and ratio >= tiers['profitability_rescue']['total_net_r_over_closed_r_dd_ge'])
         worst = min((x for b in c['books'] for x in b.cohort_r), default=None)
-        uw = max(b.uw_max for b in c['books'])
+        uw = c['uw']
         ceilings = (x15['maxdd'] is not None and x15['maxdd'] <= dd['x1_5_max_equity_dd_le']
                     and uw <= dd['longest_underwater_days_le'] and worst is not None
                     and worst >= dd['worst_cohort_net_r_ge'])
@@ -1199,9 +1504,11 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
         tot_abs = math.fsum(sym_abs.values())
         shares = sorted((v / tot_abs for v in sym_abs.values()), reverse=True) if tot_abs else []
         caps = [x for b in c['books'] for x in b.cap_ratio]
+        cap_missing = sum(b.cap_missing for b in c['books'])
+        cap_med = capacity_median(caps, cap_missing)
         conc = g['concentration']
         checks = {
-            'data': len(c['books']) == len(c['folds']) and all(x <= 0.02 for x in inc) and unresolved == 0,
+            'data': data['ok'] and len(c['books']) == len(c['folds']),
             'activity': len(c['r']) >= 1000 and all(len(b.cohort_r) >= 200 for b in c['books'])
                         and len(c['books']) == len(c['folds']),
             'fold_stability': sum(1 for m in fold_means if m is not None and m > 0)
@@ -1216,23 +1523,28 @@ def gates(books, b1, b0, keys, prm: Params) -> dict:
                                  and c['maxdd'] <= tiers['profitability_rescue']['base_max_equity_dd_le'],
             'concentration': bool(shares) and shares[0] <= conc['max_symbol_share']
                              and sum(shares[:3]) <= conc['max_top3_share'],
-            'capacity': bool(caps) and _pct(caps, 0.5) <= g['capacity']['median_notional_over_prior_24h_quote_volume_le'],
+            'capacity': cap_med is not None
+                        and cap_med <= g['capacity']['median_notional_over_prior_24h_quote_volume_le'],
         }
-        res[side] = {'checks': checks, 'mean_r': mean, 'pf': _pf(c['r']), 'episodes': len(c['r']),
-                     'fold_mean_r': fold_means, 'fold_incomplete_share': inc, 'unresolved': unresolved,
-                     'bootstrap': boot, 'B0_p95_mean_r': _pct(b0m, 0.95), 'B1_mean_r': b1_mean,
-                     'x1_5_mean_r': _mean(x15['r']), 'x2_mean_r': _mean(x2['r']),
+        res[side] = {'checks': checks, 'data': data, 'mean_r': mean, 'pf': _pf(c['r']), 'episodes': len(c['r']),
+                     'fold_mean_r': fold_means, 'bootstrap': boot, 'B0_p95_mean_r': _pct(b0m, 0.95),
+                     'B1_mean_r': b1_mean, 'x1_5_mean_r': _mean(x15['r']), 'x2_mean_r': _mean(x2['r']),
                      'promotion_x2_ok': (_mean(x2['r']) or 0) > g['stress']['x2_mean_net_r_gt_for_promotion'],
-                     'max_equity_dd': c['maxdd'], 'x1_5_max_equity_dd': x15['maxdd'], 'closed_r_dd': c['closed_r_dd'],
-                     'annualized_return': c['ann'], 'calmar': calmar if calmar != math.inf else None,
+                     'max_equity_dd_chained': c['maxdd'], 'x1_5_max_equity_dd_chained': x15['maxdd'],
+                     'longest_underwater_days_chained': uw, 'annualized_return_chained': c['ann'],
+                     'calmar_chained': calmar if calmar != math.inf else None,
+                     'fold_local': {'max_equity_dd': [b.maxdd for b in c['books']],
+                                    'x1_5_max_equity_dd': [b.maxdd for b in x15['books']],
+                                    'longest_underwater_days': [b.uw_max for b in c['books']]},
+                     'closed_r_dd': c['closed_r_dd'],
                      'total_r_over_closed_r_dd': ratio if ratio != math.inf else None,
                      'dd_tier': 'ordinary' if ordinary else 'profitability_rescue' if rescue else None,
-                     'longest_underwater_days': uw, 'worst_cohort_net_r_sum': worst,
+                     'worst_cohort_net_r_sum': worst,
                      'max_symbol_share': shares[0] if shares else None,
                      'top3_share': sum(shares[:3]) if shares else None,
-                     'median_notional_over_qv24': _pct(caps, 0.5)}
+                     'median_notional_over_qv24': cap_med, 'capacity_inputs_missing': cap_missing}
     ps = {s: res[s]['bootstrap']['p'] for s in SIDES if 'bootstrap' in res[s] and res[s]['bootstrap']['p'] is not None}
-    holm = holm_reject(ps, 0.05)
+    holm = holm_reject(ps, HOLM_ALPHA)
     for side in SIDES:
         if 'checks' not in res[side]:
             continue
@@ -1259,7 +1571,9 @@ def main(argv=None) -> int:
     ap.add_argument('--rules-artifact', help=f'point-in-time exchange rules ({RULES_FORMAT}); required for a real run')
     ap.add_argument('--holdout-freeze-record', help='Integration holdout freeze record; its sha256 is bound')
     ap.add_argument('--out', help='result directory (append-only chained days.jsonl + summary.json)')
-    ap.add_argument('--max-rss-mb', type=float, default=None)
+    ap.add_argument('--max-rss-mb', type=float, required=True, help='mandatory private-memory cap (MB)')
+    ap.add_argument('--dev-end', help='shortened development end (UTC midnight, e.g. 2026-09-01T00:00:00Z)')
+    ap.add_argument('--straddle-artifact', help=f'hash-bound pre-cutoff rows of the straddle month ({STRADDLE_FORMAT})')
     ap.add_argument('--dry-run', action='store_true', help='validate inputs/coverage; write nothing')
     ap.add_argument('--split', action='append', help='limit to these split keys (default: train + walk_forward)')
     ap.add_argument('--cache-months', type=int, default=512)
@@ -1275,9 +1589,13 @@ def main(argv=None) -> int:
         rules = PitRules.load(a.rules_artifact) if a.rules_artifact else None
         man = os.path.join(M.REPO, *prereg['source']['manifest'].split('/'))
         src = ArchiveSource(man, a.store, symbols, prm.cutoff_ms, a.cache_months)
-        kw = dict(only_keys=a.split, holdout_freeze_record=a.holdout_freeze_record)
+        if a.straddle_artifact:
+            src.attach_straddle(StraddleArtifact.load(a.straddle_artifact, prm.cutoff_ms))
+        kw = dict(only_keys=a.split, holdout_freeze_record=a.holdout_freeze_record,
+                  dev_end=S.parse_utc(a.dev_end) if a.dev_end else None)
         if a.dry_run:
-            print(json.dumps(run(a.out or '', src, symbols, rules, prereg, raw, dry_run=True, **kw),
+            print(json.dumps(run(a.out or '', src, symbols, rules, prereg, raw, dry_run=True,
+                                 max_rss_mb=a.max_rss_mb, **kw),
                              indent=1, sort_keys=True))
             return 0
         if not a.out:
