@@ -4604,6 +4604,10 @@ class Engine:
                  hours=rec.get('hours'))
         if isinstance(lot.get('ml_decision_id'), str):             # ML-SHADOW-01: the only key the hook adds (ON only)
             w['ml'] = dict(ml_decision_id=lot['ml_decision_id'])
+            try:                                                    # ML-PAIR-01: the management the lot closed under
+                import ml_shadow.pairs as MLP
+                w['ml']['mgmt_close_hash'] = MLP.chash(lot.get('mgmt') or {})
+            except Exception: pass                                  # noqa: BLE001 - missing = excluded, never inherited
         v = AC.row_view(rec)
         if v['status'] == 'pending':
             w['audit_lot'] = {k: copy.deepcopy(v_) for k, v_ in lot.items() if k != 'ml_decision_id'}   # #178 canary:
@@ -4712,13 +4716,19 @@ class Engine:
                                       MLS.JsonlLedger(p['labels'], self.ML_MAX_BYTES, self.ML_MAX_FILES))
             return led
 
+    def _ml_pairs(self):
+        """ML-PAIR-01: the durable labelable-decision store + append-only pairs ledger (opened on the writer thread)."""
+        import ml_shadow.pairs as MLP
+        return MLP.PairStore(self.dir, self._ml_health())
+
     def _ml_writer(self):
         """#104: the one background writer of this engine's ML ledgers (created on first use; no file I/O here)."""
         w = self.__dict__.get('_ml_w')
         if w is None:
             from ml_shadow import writer as MLW
             w = self._ml_w = MLW.register(MLW.LedgerWriter(self._ml_ledgers, self._ml_health(),
-                                                           key=os.path.normcase(os.path.realpath(self.ml_paths()['dir']))))
+                                                           key=os.path.normcase(os.path.realpath(self.ml_paths()['dir'])),
+                                                           open_pairs=self._ml_pairs))
         return w
 
     def ml_close(self, timeout=2.0):
@@ -4748,7 +4758,25 @@ class Engine:
             if not t: return
             did = MLS.decision_id(sl['id'], sl.get('key'), plan['sym'], plan['side'], sl.get('tf'), t)
             direct = self.__dict__.get('_ml_direct') == (sl['id'], plan['sym'], plan['side'], str(t))
-            if direct or self._ml_writer().known(did) is not False: lot['ml_decision_id'] = did
+            if direct or self._ml_writer().known(did) is not False:
+                lot['ml_decision_id'] = did
+                self._ml_mgmt(did, lot, sl)
+        except Exception:                                   # noqa: BLE001
+            try: self._ml_health()['errors'] += 1
+            except Exception: pass
+
+    def _ml_mgmt(self, did, lot, sl):
+        """ML-PAIR-01 (contract section 1.7): the lot's effective management as the engine will apply it, recorded once
+        beside the durable decision when the lot opens. Observation only: reads the lot / registry / settings, writes
+        nothing to them, never raises."""
+        try:
+            import ml_shadow.pairs as MLP
+            key = sl.get('key')
+            ov = (self.S.get('ROTATION_MGMT_OVERLAY') or {}).get(key)
+            applied = isinstance(ov, dict) and bool(ov) and (sl.get('mgmt') or None) == ov
+            snap = MLP.mgmt_snapshot(did, copy.deepcopy(lot.get('mgmt') or {}), (S.STRATEGIES.get(key) or {}).get('mgmt'),
+                                     overlay_id=key if applied else None, overlay=ov if applied else None, tf=lot.get('tf'))
+            self._ml_writer().submit('mgmt', snap)
         except Exception:                                   # noqa: BLE001
             try: self._ml_health()['errors'] += 1
             except Exception: pass
@@ -4827,7 +4855,14 @@ class Engine:
                                          mae_r=mae.get('r') if full else None,
                                          target_before_stop=(bool(touched) if target_known else None), trade_id=key,
                                          closed_at=rec.get('closed'))
-            self._ml_writer().submit('label', row)           # #104: the writer checks the decision ledger, then appends
+            close = None
+            try:                                             # ML-PAIR-01: what pairing needs from the measured close
+                import ml_shadow.pairs as MLP
+                close = dict(cost=MLP.cost_inputs(rec, AC.row_view(rec), AC.measured(rec)),
+                             mgmt_close_hash=(lot or {}).get('mgmt_close_hash'))
+            except Exception:                                # noqa: BLE001 - no inputs: no pair, the label still goes
+                self._ml_health()['errors'] += 1
+            self._ml_writer().submit('label', row, close)    # #104: the writer checks the decision ledger, then appends
         except Exception:                                   # noqa: BLE001
             try: self._ml_health()['errors'] += 1
             except Exception: pass
