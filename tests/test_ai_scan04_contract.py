@@ -3,6 +3,8 @@ grants no producer / network / PAPER / trading authority, and carries concrete n
 requirements: (a) bounded periodic integrity refresh, (b) active-segment exposure + fail-closed recovery, (c)
 process-private pagination pages. Overlapping limits must equal the ai_scan_ledger constants on master.
 Integration review 6480873345: R1 durable active checkpoint; Q1/Q2/Q3 resolved; Q3 numbers frozen (16 segments/tick).
+Integration ruling 6483289354: C1 two-phase intent/commit checkpoint, C2 sealed exposure, C3 startup I/O cap, C4
+checkpoint persistence failure is fail-closed.
 
 Contract only - no runtime code. Parity is checked from the JSON side: every name the JSON lists must appear in the md.
 """
@@ -61,7 +63,8 @@ def test_required_sections_and_keys(c):
             c['page_privacy']['requirement']) == ('a', 'b', 'c')
     for k in ('refresh_cadence', 'active_segment', 'page_privacy'):
         assert c[k]['problem']
-    assert '6480873345' in c['integration_rulings']
+    assert c['integration_rulings'] == ['6480873345', '6483289354']
+    assert set(c['ruling_6483289354']) == {'C1', 'C2', 'C3', 'C4'}
     for k in ('refresh_cadence', 'active_segment'):                       # Q3 numbers frozen by ruling, not proposals
         assert c[k]['proposal_for_integration'] is False
         assert c[k]['numbers_status'].startswith('frozen by Integration ruling 6480873345')
@@ -200,9 +203,11 @@ def test_b_active_segment_bounds(c):
 def test_b_durable_checkpoint_fields_and_atomic_replace(c, md):
     a = c['active_segment']
     cp = a['durable_checkpoint']
-    assert {'segment', 'byte_length', 'sha256'} <= set(cp['fields'])
-    assert 'after every fsynced append' in cp['written']
-    assert cp['atomic_replace'] == ['write temp file', 'fsync temp file', 'os.replace over the checkpoint']
+    assert cp['fields'] == ['committed', 'pending']
+    assert {'segment', 'byte_length', 'sha256'} <= set(cp['state_fields'])
+    assert 'intent before every append' in cp['written'] and 'after every fsynced append' in cp['written']
+    assert cp['atomic_replace'] == ['write temp file', 'fsync temp file', 'os.replace over the checkpoint',
+                                    'fsync the directory']
     assert cp['never_written_in_place'] is True
     assert 'durable checkpoint' in a['digest_check']
     assert '**temp + fsync + `os.replace`**' in md and '**every fsynced append**' in md
@@ -308,3 +313,116 @@ def test_md_names_everything_the_json_lists(c, md):
             if _posint(v) and k != 'max_active_bytes_cap':
                 assert f'`{k}`' in md, k
     assert '`max_active_bytes_cap`' in md and '`process_private`' in md
+
+
+# ------------------------------------------------------------------ Integration ruling 6483289354 (C1..C4)
+def _startup_state(file_state, committed, pending):
+    """C1 model: -> 'committed' (discard pending), 'pending' (promote) or 'active_corrupt'."""
+    if file_state == committed: return 'committed'
+    if pending is not None and file_state == pending: return 'pending'
+    return 'active_corrupt'
+
+
+def test_c1_two_phase_intent_commit_checkpoint(c, md):
+    a = c['active_segment']
+    cp = a['durable_checkpoint']
+    assert cp['protocol'] == 'two_phase_intent_commit' and cp['protocol_ruling'].startswith('6483289354 (C1)')
+    assert [s['id'] for s in cp['sequence']] == ['persist_intent', 'append_fsync', 'commit']
+    assert [s['step'] for s in cp['sequence']] == [1, 2, 3]
+    assert 'before each append' in cp['sequence'][0]['action'] and '{committed, pending}' in cp['sequence'][0]['action']
+    assert 'fsync' in cp['sequence'][1]['action'] and 'promote pending to committed' in cp['sequence'][2]['action']
+    assert all(w in cp['pending_rule'] for w in ('segment n', 'byte_length', 'sha256'))
+    assert set(cp['startup_accepted_states']) == {'committed', 'pending'} and len(cp['startup_accepted_states']) == 2
+    assert set(cp['startup_state_rules']) == {'committed', 'pending'}
+    assert 'discard pending' in cp['startup_state_rules']['committed']
+    assert 'promote pending' in cp['startup_state_rules']['pending']
+    assert all(w in cp['other_states'] for w in ('partial', 'third state', 'active_corrupt', 'gap', 'quarantine'))
+    assert cp['benign_crash_spends_recovery_budget'] is False
+    assert all(w in cp['benign_crash'] for w in ('never discards a valid complete tail', 'never quarantines',
+                                                 'max_auto_recoveries'))
+    assert 'crash between the append fsync and the checkpoint replace' not in json.dumps(c) + md   # old rule gone
+    assert 'neither committed nor pending' in a['startup_mismatch']
+    plan = {t['name']: t for t in c['test_plan']}
+    for n in ('test_restart_refuses_same_size_parse_valid_active_edit', 'test_crash_after_intent_before_append_accepts_committed',
+              'test_crash_after_append_fsync_before_commit_promotes_pending', 'test_torn_or_partial_append_is_active_corrupt'):
+        assert plan[n].get('required') is True and f'`{n}`' in md, n
+    assert 'recovery budget is untouched' in plan['test_crash_after_append_fsync_before_commit_promotes_pending']['asserts']
+    assert {'checkpoint_pending_promoted', 'checkpoint_pending_discarded'} <= set(c['counters_added'])
+    assert '**Startup accepts exactly two states:**' in md and '**never spends the automatic-recovery budget**' in md
+
+
+@pytest.mark.parametrize('case,expect', [
+    ('crash_after_intent_before_append', 'committed'),
+    ('crash_after_append_fsync_before_commit', 'pending'),
+    ('clean_after_commit', 'committed'),
+    ('torn_partial_append', 'active_corrupt'),
+    ('same_size_edit', 'active_corrupt'),
+])
+def test_c1_startup_state_model(case, expect):
+    import hashlib
+    old, row = b'{"a":1}\n', b'{"b":2}\n'
+    st = lambda b: (1, len(b), hashlib.sha256(b).hexdigest())      # noqa: E731
+    committed, pending = st(old), st(old + row)
+    file_bytes = {'crash_after_intent_before_append': old, 'crash_after_append_fsync_before_commit': old + row,
+                  'clean_after_commit': old + row, 'torn_partial_append': old + row[:3],
+                  'same_size_edit': old.replace(b'1', b'9')}[case]
+    if case == 'clean_after_commit':
+        committed, pending = pending, None
+    assert _startup_state(st(file_bytes), committed, pending) == expect
+
+
+def test_c2_sealed_exposure_is_published_separately(c, md):
+    r, a = c['refresh_cadence'], c['active_segment']
+    se = r['sealed_exposure']
+    assert _posint(r['sealed_max_undetected_s']) and r['sealed_max_undetected_s'] == 15360 == r['max_full_sweep_s']
+    assert r['sealed_max_undetected_s'] == math.ceil(L.MAX_SEGMENTS / r['sealed_segments_per_tick']) * r['tick_period_s']
+    assert a['max_undetected_exposure_s'] == 60 and r['eligibility_max_age_s'] == 180
+    assert len({r['sealed_max_undetected_s'], a['max_undetected_exposure_s'], r['eligibility_max_age_s']}) == 3
+    assert se['ruling'].startswith('6483289354 (C2)') and se['active_bound_covers_sealed'] is False
+    assert se['worst_case_refusal_s'] == r['sealed_max_undetected_s'] + r['eligibility_max_age_s'] == 15540
+    assert 'within sealed_max_undetected_s' in se['worst_case'] and 'at most eligibility_max_age_s' in se['worst_case']
+    assert 'ACTIVE segment only' in a['exposure_scope'] and 'sealed_max_undetected_s' in a['exposure_scope']
+    flat = ' '.join(md.split())
+    assert '**detected within 15,360 s**' in flat and '**at most the 180 s eligibility age on top**' in flat
+    assert 'it does not cover sealed files' in flat
+
+
+def test_c3_startup_io_is_bounded(c, md):
+    r, k = c['refresh_cadence'], c['ledger_constants']
+    io = r['startup_io']
+    assert io['ruling'].startswith('6483289354 (C3)')
+    assert io['off_trading_thread'] is True and io['producer_ineligible_until_complete'] is True
+    assert io['blocks_engine_or_paper_startup'] is False
+    assert io['read_cap_bytes_per_s'] == 64 * MIB and io['max_segment_buffers'] == 1
+    assert io['read_cap_configurable'].startswith('downward only')
+    assert 'cooperative yield' in io['yield_between_segments'] and 'every segment' in io['yield_between_segments']
+    assert io['max_bytes'] == k['max_corpus_bytes'] == 64 << 30
+    assert io['worst_case_s'] == io['max_bytes'] // io['read_cap_bytes_per_s'] == (64 << 30) // (64 << 20) == 1024
+    assert io['max_bytes'] % io['read_cap_bytes_per_s'] == 0
+    assert '64 GiB / 64 MiB/s = 1024 s' in io['worst_case_basis']
+    flat = ' '.join(md.split())
+    assert '**64 GiB / 64 MiB/s = 1024 s**' in flat and '**configurable downward only**' in flat
+    assert '`read_cap_bytes_per_s`' in flat and '**cooperative yield between segments**' in flat
+
+
+def test_c4_checkpoint_persist_failure_is_fail_closed(c, md):
+    f = c['active_segment']['checkpoint_persist_failure']
+    assert f['ruling'].startswith('6483289354 (C4)')
+    assert [p.split(' (')[0] for p in f['failure_points']] == ['temp write', 'temp fsync', 'os.replace', 'directory fsync']
+    assert 'PermissionError retries' in f['failure_points'][2]
+    assert f['counter'] == 'checkpoint_persist_failed' and f['counter'] in c['counters_added']
+    assert f['fail_closed'] is True and f['trading_affected'] is False
+    assert f['in_ram_digest_may_lead_durable_state'] is False
+    assert 'immediately' in f['action'] and 'append and seal are refused' in f['action']
+    assert 'normal recovery path' in f['recovery'] and 'in-RAM digest ahead of the durable state' in f['rule']
+    assert 'test_checkpoint_persist_failure_disables_the_producer' in [t['name'] for t in c['test_plan']]
+    flat = ' '.join(md.split())
+    assert '**disabled immediately**' in flat
+    assert '**never continues with an in-RAM digest ahead of the durable state**' in flat
+
+
+def test_ruling_6483289354_keeps_draft_off_no_authority(c):
+    assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
+    s = c['scope']
+    assert s['producer_default_on'] is False and s['authority'] == 'none' and s['grants'] == []
+    assert c['slice']['runtime_code_changed'] is False

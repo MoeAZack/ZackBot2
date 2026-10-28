@@ -10,6 +10,10 @@ the JSON and check this file against it. Assignment: Codex 6468672436, which set
 resolved by ruling (§10). The §4 and §5 numbers are **frozen by Integration ruling 6480873345**, not proposals. §6
 remains a proposal.
 
+**Integration ruling 6483289354 is applied** (JSON `ruling_6483289354`). C1: a **two-phase intent/commit checkpoint**
+(§5). C2: **sealed exposure is published separately** (§4). C3: **startup I/O is bounded** (§4). C4: **checkpoint
+persistence failure is fail-closed** (§5).
+
 ## 1. Scope and authority
 
 - The producer stays **default OFF**. Enabling it needs **a separate Integration ruling** after this contract is
@@ -50,6 +54,7 @@ re-verifies sealed files. The 03A `refresh()` reads every sealed byte, up to 64 
 | `max_active_bytes_per_tick` | 16 MiB | The active digest check reads at most `segment_bound`. |
 | `max_segment_bytes_per_tick` | 272 MiB | Sealed plus active. The manifest is extra and bounded by 4096 entries. |
 | `max_full_sweep_ticks` / `max_full_sweep_s` | 256 / 15360 | ceil(4096 / 16) = 256 ticks; 256 × 60 s = 15,360 s (4 h 16 m) at the cap. At 100 segments it is 7 min. |
+| `sealed_max_undetected_s` | 15360 | C2 ruling. One full cursor sweep: the sealed-edit exposure. Distinct from the active 60 s and the 180 s eligibility age. |
 | `max_segments_held_in_memory` | 1 | The memory bound is **one segment's streaming buffer at a time** (≤ `SEG_MAX`), never 16 × `SEG_MAX`. |
 | `max_bytes_per_seal_refresh` | 16 MiB | A seal verifies only the manifest and the new entry, never the corpus. |
 | `eligibility_max_age_s` | 180 | 3 ticks. If the writer stalls or dies, the hook fails closed. |
@@ -64,6 +69,17 @@ up. **Startup (Q1 ruling):** full verification of the corpus once per start is a
 runs **exclusively off the trading thread**, the producer is **published ineligible until it completes**, and it
 **never blocks engine/PAPER startup**. A bounded/indexed startup is a **pre-live optimization**, not a blocker now.
 
+**Sealed exposure (C2 ruling 6483289354).** `sealed_max_undetected_s` = 15,360 s, the 4 h 16 m full cursor sweep. A
+sealed edit is **detected within 15,360 s**; refusal follows on detection, with **at most the 180 s eligibility age on
+top** (worst case 15,540 s). The active `max_undetected_exposure_s` = 60 s covers **the active segment only**; it does
+not cover sealed files.
+
+**Startup I/O (C3 ruling 6483289354, JSON `refresh_cadence.startup_io`).** Full startup verification stays **off the
+trading thread** and the producer is **ineligible** until it completes. Reads are capped at **64 MiB/s** by default
+(`read_cap_bytes_per_s` = 67108864), **configurable downward only**. It holds **one segment buffer** and makes a
+**cooperative yield between segments**. It never blocks engine or PAPER startup. Worst case at the cap: **64 GiB /
+64 MiB/s = 1024 s** (about 17 min).
+
 ## 5. (b) Active-segment exposure and fail-closed recovery
 
 **Problem.** The active segment is not hash-bound. A same-size edit to rows already written goes undetected, and
@@ -74,27 +90,45 @@ appended. Every tick re-reads the active file and compares it to that digest. **
 compares again before hashing the file into a manifest entry, and a mismatch refuses the seal. A row edited with a
 recomputed `record_hash` is still caught, because the digest covers the raw bytes.
 
-**Durable checkpoint (R1).** Active integrity must survive a process crash, so the digest is not memory-only. After
-**every fsynced append** the writer atomically replaces (**temp + fsync + `os.replace`**, never in place) an active
-checkpoint holding at least the `segment` number, `byte_length` and `sha256`. Each tick also checks the file against
-it.
+**Durable checkpoint (R1), two-phase intent/commit (C1 ruling 6483289354).** Active integrity must survive a process
+crash, so the digest is not memory-only. The checkpoint holds `{committed, pending}`; each state is the `segment`
+number, `byte_length` and `sha256`. Every write is an atomic replace (**temp + fsync + `os.replace`** + directory
+fsync, never in place). For each append:
+
+1. `persist_intent`: before the append, persist and fsync `{committed, pending}`, where pending is the next segment
+   `n`, byte length and sha256.
+2. `append_fsync`: append the bytes and fsync.
+3. `commit`: promote pending to committed after **every fsynced append**.
+
+Each tick also checks the file against it. **Startup accepts exactly two states:** file bytes == committed (the append
+did not land; discard pending, `checkpoint_pending_discarded`) or file bytes == pending (the append landed; promote
+pending, `checkpoint_pending_promoted`). Any partial or third state stays `active_corrupt` → gap → quarantine. A
+**benign crash** between the append fsync and the commit is the pending state: it never discards a valid complete
+tail, never quarantines and **never spends the automatic-recovery budget**.
+
+**Persistence failure is fail-closed (C4 ruling 6483289354).** If the temp write, its fsync, `os.replace` (after the
+repo's `PermissionError` retries, `engine._replace_retry`) or the directory fsync fails, the producer is **disabled
+immediately** and `checkpoint_persist_failed` is counted. Trading is unaffected. The normal recovery path is required
+before it appends again. The writer **never continues with an in-RAM digest ahead of the durable state**.
 
 | Parameter | Value | Why |
 |---|---|---|
 | `max_active_bytes_cap` | 16 MiB | This is `segment_bound` ≤ `SEG_MAX`, the unchanged 03A rotation. |
 | `max_active_rows` | 10000 | It matches the AI-SCAN-03 basis that 16 MiB ≈ 10k rows ≈ 0.5 s to fold. |
 | `max_active_age_s` | 21600 | 6 h. Age-only seals fill 4096 segments in 1024 days (≈ 2.8 y) before `manifest_full`. |
-| `max_undetected_exposure_s` | 60 | One tick while the writer is alive. |
+| `max_undetected_exposure_s` | 60 | One tick while the writer is alive. **Active segment only**; sealed is `sealed_max_undetected_s`. |
 | `max_auto_recoveries` / `recovery_window_s` | 1 / 86400 | One automatic recovery a day. A repeat needs Integration. |
 
 **Forced seal:** when the next row would exceed the bytes cap, when the segment reaches the row cap, or at the first
 tick past the age cap (`forced_seals`). These caps also bound what a quarantine can drop. **Startup seal:** a non-empty active segment is
-sealed before the first append **only when its bytes match the checkpoint** (segment, byte length and sha256) and every
-line parses (`startup_seals`). A **missing, malformed or mismatched checkpoint** is `active_corrupt` and takes the
-recovery path below: durable gap, then quarantine (`checkpoint_mismatch`). That includes a crash between the append
-fsync and the checkpoint replace; there is no salvage. **Required implementation test:**
+sealed before the first append **only when its bytes match the checkpoint** (segment, byte length and sha256, as
+committed or as pending, which is promoted first) and every line parses (`startup_seals`). A **missing, malformed or mismatched checkpoint** is `active_corrupt` and takes the
+recovery path below: durable gap, then quarantine (`checkpoint_mismatch`). That includes a torn or partial append
+whose bytes equal neither committed nor pending; there is no salvage. **Required implementation tests:**
 `test_restart_refuses_same_size_parse_valid_active_edit`, where a same-size, parse-valid edit made while the writer is
-down is refused at restart.
+down is refused at restart; `test_crash_after_intent_before_append_accepts_committed`;
+`test_crash_after_append_fsync_before_commit_promotes_pending` (no quarantine, recovery budget untouched); and
+`test_torn_or_partial_append_is_active_corrupt`.
 
 **Fail-closed recovery** (in order, JSON `active_segment.recovery`):
 
@@ -124,7 +158,8 @@ MAC. That work is DEFERRED (`ipc_page_transport`).
 ## 7. Counters added
 
 `checkpoint_mismatch`, `refresh_ticks`, `refresh_overrun`, `sweeps_completed`, `eligibility_stale`, `active_digest_mismatch`, `forced_seals`,
-`startup_seals`, `active_quarantined`, `recovery_refused`.
+`startup_seals`, `active_quarantined`, `recovery_refused`, `checkpoint_pending_promoted`, `checkpoint_pending_discarded`,
+`checkpoint_persist_failed`.
 
 ## 8. Test plan for the implementation slice
 
@@ -139,6 +174,11 @@ MAC. That work is DEFERRED (`ipc_page_transport`).
 - `test_pre_seal_digest_mismatch_refuses_the_seal`
 - `test_forced_seal_at_bytes_rows_and_age`
 - `test_checkpoint_atomically_replaced_after_every_fsynced_append`
+- `test_crash_after_intent_before_append_accepts_committed` (required)
+- `test_crash_after_append_fsync_before_commit_promotes_pending` (required)
+- `test_torn_or_partial_append_is_active_corrupt` (required)
+- `test_startup_verification_reads_at_most_the_cap_with_one_buffer`
+- `test_checkpoint_persist_failure_disables_the_producer`
 - `test_startup_seals_a_nonempty_active_only_when_checkpoint_matches`
 - `test_missing_malformed_or_mismatched_checkpoint_is_active_corrupt`
 - `test_restart_refuses_same_size_parse_valid_active_edit` (required)

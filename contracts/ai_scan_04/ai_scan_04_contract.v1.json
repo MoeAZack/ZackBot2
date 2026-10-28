@@ -9,8 +9,14 @@
   "doc": "AI_SCAN_04_CONTRACT.md",
   "assignment": "6468672436",
   "ruling_source": "Codex 6468672436 (pre-producer requirements a, b, c)",
-  "integration_rulings": ["6480873345"],
+  "integration_rulings": ["6480873345", "6483289354"],
   "review_6480873345": "R1 blocking (durable active checkpoint) applied; Q1, Q2 and Q3 resolved by ruling; the Q3 numbers are frozen by Integration ruling 6480873345, not proposals",
+  "ruling_6483289354": {
+    "C1": "two-phase intent/commit active checkpoint; startup accepts exactly {committed, pending}; a benign crash between the append fsync and the commit is promoted, never quarantined, and spends no recovery budget",
+    "C2": "sealed exposure published separately: sealed_max_undetected_s = 15360 (full cursor sweep), distinct from the active max_undetected_exposure_s = 60 and the 180 s eligibility age",
+    "C3": "startup I/O bounded: off the trading thread, producer-ineligible, 64 MiB/s default read cap (configurable downward only), one segment buffer, cooperative yield between segments; worst case 64 GiB / 64 MiB/s = 1024 s",
+    "C4": "checkpoint persistence failure is fail-closed: disable the producer immediately and count checkpoint_persist_failed; trading unaffected; the normal recovery path is required; never an in-RAM digest ahead of the durable state"
+  },
   "builds_on": {
     "AI-SCAN-03": {"pr": 227, "state": "merged", "accepted_merge_sha": "612b53733043912e6ce8ce29acb725ad13a88e68", "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "contracts/ai_scan_03/ai_scan_03_contract.v1.json", "edited_here": false},
     "AI-SCAN-03A": {"pr": 229, "state": "merged", "accepted_merge_sha": "f75606863c63e0ccdd49e3e61433c10af3ea2f29", "refresh_rule": "set to the accepted merge SHA before freeze or implementation; never pin a superseded review head (R8)", "module": "ai_scan_ledger.py", "edited_here": false}
@@ -70,13 +76,22 @@
       "verify the active segment against the in-memory running digest and the durable active checkpoint (requirement b)",
       "on success publish a new eligibility generation stamped with time.monotonic(); on any mismatch disable the producer (manifest_invalid or active_corrupt) and publish ineligible"
     ],
-    "numbers_status": "frozen by Integration ruling 6480873345 (Q3), not proposals",
+    "numbers_status": "frozen by Integration ruling 6480873345 (Q3), not proposals; sealed exposure (C2) and startup I/O (C3) per Integration ruling 6483289354",
     "sealed_segments_per_tick": 16,
     "max_sealed_bytes_per_tick": 268435456,
     "max_active_bytes_per_tick": 16777216,
     "max_segment_bytes_per_tick": 285212672,
     "max_full_sweep_ticks": 256,
     "max_full_sweep_s": 15360,
+    "sealed_max_undetected_s": 15360,
+    "sealed_exposure": {
+      "ruling": "6483289354 (C2)",
+      "basis": "a sealed edit is re-verified by the rolling cursor within one full sweep: max_full_sweep_s = 256 ticks * 60 s = 15360 s (4 h 16 m) at the 4096-segment cap",
+      "worst_case": "a sealed edit is detected within sealed_max_undetected_s (15360 s); refusal follows on detection (the producer is disabled and publishes ineligible), with at most eligibility_max_age_s (180 s) on top for a hook still holding the previous generation",
+      "worst_case_refusal_s": 15540,
+      "distinct_from": ["active_segment.max_undetected_exposure_s (60 s, the ACTIVE segment only)", "eligibility_max_age_s (180 s, generation staleness)"],
+      "active_bound_covers_sealed": false
+    },
     "sweep_basis": "ceil(MAX_SEGMENTS / sealed_segments_per_tick) * tick_period_s = ceil(4096 / 16) * 60 s = 256 * 60 s = 15360 s (4 h 16 m) at the 4096-segment cap; at 100 sealed segments the sweep is 7 ticks (7 min)",
     "verification_order": "sequential",
     "max_segments_held_in_memory": 1,
@@ -89,6 +104,19 @@
       "producer_ineligible_until_complete": true,
       "blocks_engine_or_paper_startup": false,
       "bounded_indexed_startup": "pre-live optimization, not a blocker now"
+    },
+    "startup_io": {
+      "ruling": "6483289354 (C3)",
+      "off_trading_thread": true,
+      "producer_ineligible_until_complete": true,
+      "blocks_engine_or_paper_startup": false,
+      "read_cap_bytes_per_s": 67108864,
+      "read_cap_configurable": "downward only; a configured value above the default is refused and the default is used",
+      "max_segment_buffers": 1,
+      "yield_between_segments": "cooperative yield (sleep 0 / scheduler yield) after every segment so the writer never starves the process",
+      "max_bytes": 68719476736,
+      "worst_case_s": 1024,
+      "worst_case_basis": "max_corpus_bytes / read_cap_bytes_per_s = 64 GiB / 64 MiB/s = 1024 s (about 17 min) at the cap; the producer stays ineligible for that time, engine and PAPER run normally"
     },
     "overrun": "ticks never overlap; a tick still running when the next is due skips that slot (counted refresh_overrun)",
     "repeated_overrun": "a repeated overrun that makes the newest generation older than eligibility_max_age_s stays fail-closed: the hook reports ineligible (eligibility_stale) until a tick completes; the per-tick caps are never raised to catch up",
@@ -103,10 +131,38 @@
     "running_digest": "the writer keeps an in-memory sha256 state and byte length over exactly the bytes it appended (including any torn-line closing newline) since the active segment was opened",
     "durable_checkpoint": {
       "purpose": "active-segment integrity survives a process crash (R1, Integration review 6480873345)",
-      "fields": ["segment", "byte_length", "sha256"],
-      "written": "after every fsynced append, from the running digest",
-      "atomic_replace": ["write temp file", "fsync temp file", "os.replace over the checkpoint"],
-      "never_written_in_place": true
+      "protocol": "two_phase_intent_commit",
+      "protocol_ruling": "6483289354 (C1); replaces the former 'checkpoint after append, a crash in between is active_corrupt' rule",
+      "fields": ["committed", "pending"],
+      "state_fields": ["segment", "byte_length", "sha256"],
+      "pending_rule": "pending holds the next state (segment n, byte_length and sha256 of the file after the append), or null when no append is in flight",
+      "sequence": [
+        {"step": 1, "id": "persist_intent", "action": "before each append, atomically persist and fsync {committed, pending}"},
+        {"step": 2, "id": "append_fsync", "action": "append the bytes to the active segment and fsync"},
+        {"step": 3, "id": "commit", "action": "atomically promote pending to committed ({committed: pending, pending: null})"}
+      ],
+      "written": "an intent before every append and a commit after every fsynced append, from the running digest",
+      "atomic_replace": ["write temp file", "fsync temp file", "os.replace over the checkpoint", "fsync the directory"],
+      "never_written_in_place": true,
+      "startup_accepted_states": ["committed", "pending"],
+      "startup_state_rules": {
+        "committed": "file bytes == committed (segment, byte_length, sha256): the append did not land; discard pending",
+        "pending": "file bytes == pending: the append landed; promote pending to committed"
+      },
+      "other_states": "any partial or third state (a torn or partial append, a length or sha256 matching neither) stays active_corrupt -> durable gap -> quarantine",
+      "benign_crash": "a crash between the append fsync and the commit leaves file bytes == pending: accepted and promoted; it never discards a valid complete tail, never quarantines and never spends the max_auto_recoveries budget",
+      "benign_crash_spends_recovery_budget": false
+    },
+    "checkpoint_persist_failure": {
+      "ruling": "6483289354 (C4)",
+      "failure_points": ["temp write", "temp fsync", "os.replace (after the repo's PermissionError retries, engine._replace_retry / SAVE_RETRY_S)", "directory fsync"],
+      "action": "disable the producer immediately and publish ineligible; append and seal are refused",
+      "counter": "checkpoint_persist_failed",
+      "fail_closed": true,
+      "trading_affected": false,
+      "recovery": "the normal recovery path (active_segment.recovery) is required before the producer appends again",
+      "in_ram_digest_may_lead_durable_state": false,
+      "rule": "never continue with an in-RAM digest ahead of the durable state"
     },
     "digest_check": "every refresh tick re-reads the active file (at most segment_bound bytes) and requires length and sha256 equal to the running digest and to the durable checkpoint",
     "pre_seal_check": "_rotate / seal compares the file bytes with the running digest before hashing them into a manifest entry; a mismatch refuses the seal and disables (active_corrupt)",
@@ -116,11 +172,12 @@
     "max_active_age_s": 21600,
     "forced_seal": "the writer seals the active segment when the next row would exceed max_active_bytes, when it holds max_active_rows rows, or at the first tick at which it is older than max_active_age_s (counted forced_seals)",
     "max_undetected_exposure_s": 60,
+    "exposure_scope": "the ACTIVE segment only; sealed segments are bounded separately by refresh_cadence.sealed_max_undetected_s (15360 s, C2 ruling 6483289354)",
     "exposure_basis": "with the writer alive an active edit is detected within one tick; an edit made while the writer is down is detected at restart by the durable checkpoint; at most max_active_rows rows / max_active_age_s / SEG_MAX bytes are ever unbound at once, which is also the most a quarantine can drop",
     "manifest_lifetime_basis": "age-only seals every 6 h fill 4096 segments in 4096 * 6 h = 1024 days (about 2.8 years) before manifest_full",
-    "startup_seal": "a non-empty active segment found at writer start is sealed BEFORE the first append only when its bytes match the durable checkpoint (same segment number, byte_length and sha256) and every line parses as a valid record",
-    "startup_match_rule": "seal only on an exact match of segment, byte_length and sha256 against the durable checkpoint",
-    "startup_mismatch": "a missing, malformed or mismatched checkpoint for a non-empty active segment is active_corrupt and takes the recovery path below (disable, persist marker, durable gap, quarantine); this includes a crash between the append fsync and the checkpoint replace (no salvage, like a torn tail)",
+    "startup_seal": "a non-empty active segment found at writer start is sealed BEFORE the first append only when its bytes match the durable checkpoint (same segment number, byte_length and sha256 as committed, or as pending, which is then promoted first) and every line parses as a valid record",
+    "startup_match_rule": "seal only on an exact match of segment, byte_length and sha256 against the committed or the pending checkpoint state",
+    "startup_mismatch": "a missing, malformed or mismatched checkpoint for a non-empty active segment (bytes equal to neither committed nor pending, including a torn or partial append) is active_corrupt and takes the recovery path below (disable, persist marker, durable gap, quarantine); no salvage, like a torn tail",
     "restart_tamper_test_required": "test_restart_refuses_same_size_parse_valid_active_edit: a same-size, parse-valid edit made to the active segment while the writer is down is refused at restart (active_corrupt, never sealed)",
     "recovery": [
       {"step": 1, "id": "disable", "action": "disable the producer (active_corrupt), publish ineligible; append and seal are refused"},
@@ -152,7 +209,7 @@
     "external_boundary_requires": "a separate contract adding authenticated page contents (per-segment canonical line boundaries the receiver re-hashes against the verified manifest, or a keyed MAC) before any IPC; DEFERRED: ipc_page_transport",
     "proposal_for_integration": true
   },
-  "counters_added": ["checkpoint_mismatch", "refresh_ticks", "refresh_overrun", "sweeps_completed", "eligibility_stale", "active_digest_mismatch", "forced_seals", "startup_seals", "active_quarantined", "recovery_refused"],
+  "counters_added": ["checkpoint_mismatch", "refresh_ticks", "refresh_overrun", "sweeps_completed", "eligibility_stale", "active_digest_mismatch", "forced_seals", "startup_seals", "active_quarantined", "recovery_refused", "checkpoint_pending_promoted", "checkpoint_pending_discarded", "checkpoint_persist_failed"],
   "test_plan": [
     {"name": "test_refresh_tick_verifies_at_most_sixteen_sealed_segments", "asserts": "one tick reads at most sealed_segments_per_tick sealed entries (<= 256 MiB) plus the active segment (<= 16 MiB); the cursor wraps"},
     {"name": "test_refresh_tick_holds_one_segment_buffer_at_a_time", "asserts": "the 16 sealed segments are verified sequentially; peak memory is one segment's streaming buffer, never 16 held at once"},
@@ -164,7 +221,12 @@
     {"name": "test_active_same_size_edit_detected_within_one_tick", "asserts": "the running digest catches a same-size edit (including one with a recomputed record_hash) at the next tick"},
     {"name": "test_pre_seal_digest_mismatch_refuses_the_seal", "asserts": "an edited active segment is never bound into the manifest"},
     {"name": "test_forced_seal_at_bytes_rows_and_age", "asserts": "each of the three caps seals the active segment"},
-    {"name": "test_checkpoint_atomically_replaced_after_every_fsynced_append", "asserts": "segment, byte_length and sha256 are written via temp + fsync + os.replace after each fsynced append, never in place"},
+    {"name": "test_checkpoint_atomically_replaced_after_every_fsynced_append", "asserts": "the intent {committed, pending} is persisted before each append and pending is promoted to committed after each fsynced append, each via temp + fsync + os.replace + directory fsync, never in place"},
+    {"name": "test_crash_after_intent_before_append_accepts_committed", "required": true, "asserts": "file bytes == committed: pending is discarded, nothing is quarantined, the recovery budget is untouched"},
+    {"name": "test_crash_after_append_fsync_before_commit_promotes_pending", "required": true, "asserts": "file bytes == pending: pending is promoted, the complete tail is kept, no quarantine, the recovery budget is untouched"},
+    {"name": "test_torn_or_partial_append_is_active_corrupt", "required": true, "asserts": "bytes equal to neither committed nor pending are active_corrupt: durable gap, quarantine, never sealed"},
+    {"name": "test_startup_verification_reads_at_most_the_cap_with_one_buffer", "asserts": "startup reads at most read_cap_bytes_per_s, holds one segment buffer, yields between segments; a configured cap above the default is refused"},
+    {"name": "test_checkpoint_persist_failure_disables_the_producer", "asserts": "a failure of the temp write, fsync, os.replace (after retries) or directory fsync disables the producer at once, counts checkpoint_persist_failed, leaves trading untouched and never keeps an in-RAM digest ahead of the durable state"},
     {"name": "test_startup_seals_a_nonempty_active_only_when_checkpoint_matches", "asserts": "a matching active is sealed before the first append, and the first append lands in a fresh segment"},
     {"name": "test_missing_malformed_or_mismatched_checkpoint_is_active_corrupt", "asserts": "each case disables, opens a durable gap and quarantines; nothing is sealed"},
     {"name": "test_restart_refuses_same_size_parse_valid_active_edit", "required": true, "asserts": "a same-size, parse-valid edit made while the writer is down is refused at restart (active_corrupt, never sealed)"},
