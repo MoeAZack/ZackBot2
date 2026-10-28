@@ -135,8 +135,26 @@ def test_unit_replay_and_book_are_separate_and_declared():
     assert 'independent paired analysis' in e['unit_replay'] and 'overlap is allowed here and only here' in e['unit_replay']
     assert 'never fed into the book' in e['never_book'] and 'never from E' in bk['source']
     assert 'one open episode per symbol' in bk['per_symbol'] and 'skipped and counted' in bk['per_symbol']
-    assert 'ascending timestamp' in bk['ordering'] and 'exits first, then adds, then new entries' in bk['ordering']
-    assert 'symbol name ascending' in bk['ordering']
+    assert 'ordering' not in bk and 'exits first' not in json.dumps(p)
+
+
+def test_book_phases_are_causal_open_entries_before_intrabar_events():
+    bk = c()['book']
+    ph, r = bk['bar_phases'], bk['phase_rules']
+    assert ph == ['open_known_events', 'admit_open_entries', 'intrabar_paths', 'close_signals'] and set(r) == set(ph)
+    assert ph.index('admit_open_entries') < ph.index('intrabar_paths')                  # entries precede intrabar adds/exits
+    assert bk['capacity_for_open_entries'] == 'open_state_after_phase_1_only'
+    assert 'gap stops' in r['open_known_events'] and 'scheduled next-open exits' in r['open_known_events']
+    assert 'add' not in r['open_known_events'].replace('admit', '')                     # no add at phase 1
+    assert 'after phase 1' in r['admit_open_entries'] and 'open lots < 4' in r['admit_open_entries']
+    assert '3x equity' in r['admit_open_entries'] and 'skipped and counted' in r['admit_open_entries']
+    assert 'adds, stops and trail updates happen only here' in r['intrabar_paths']
+    assert 'path_points' in r['intrabar_paths'] and 'symbol name ascending' in r['intrabar_paths']
+    assert 'skipped and counted' in r['intrabar_paths'] and 'next open' in r['close_signals']
+    assert 'same bar' in bk['no_lookahead'] and 'free or consume capacity' in bk['no_lookahead']
+    import backtest as BT                                                               # the cited path convention exists
+    assert BT.path_points(1.0, 2.0, 0.5, 1.5, 1) == (1.0, 0.5, 2.0, 1.5)                # green: open -> low -> high -> close
+    assert BT.path_points(1.5, 2.0, 0.5, 1.0, 1) == (1.5, 2.0, 0.5, 1.0)                # red: open -> high -> low -> close
     assert 'open lots < 4' in bk['admission'] and '3x equity' in bk['admission'] and 'never scaled down' in bk['admission']
 
 

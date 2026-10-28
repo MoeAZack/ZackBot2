@@ -55,8 +55,12 @@ path order: gap first, then conservative stop-first.
 ## Book (separate from E)
 - Only the deepest credited stage is replayed as a book. It is built from that stage's raw signals and exits; E is never fed into it.
 - One open episode per symbol. A signal on a symbol that is already open is skipped and counted.
-- Each 4h timestamp is processed in ascending order: exits first, then adds, then entries. Ties go by symbol name, ascending.
-- An entry is admitted only if fewer than 4 lots are open and gross notional stays <= 3x equity. Otherwise it is skipped and counted, never scaled down. An add that would breach the gross cap is skipped and counted.
+- Each 4h bar runs four causal phases, in this order:
+  1. **Open:** only events knowable at the open: gap stops (filled at the open) and scheduled next-open exits. Symbols go in name order, ascending.
+  2. **Admit:** entries pending from the previous close are admitted, symbol ascending, using the open-time state after phase 1 only (`capacity_for_open_entries: open_state_after_phase_1_only`). An entry needs fewer than 4 open lots and gross notional <= 3x equity; otherwise it is skipped and counted, never scaled down.
+  3. **Intrabar:** each open position's path is walked, symbol ascending, including positions admitted in phase 2. This follows the `backtest.py` `path_points` convention (green candle open, low, high, close; red candle open, high, low, close) and the FBL-BT01 `walk_path` rules. Adds, stops and trail updates happen only here. An add that would breach the gross cap is skipped and counted.
+  4. **Close:** signals are computed on the closed bar and become pending for the next open.
+- No intrabar event can free or consume capacity for the same bar's open entries. Where `backtest.py`'s cross-symbol loop differs, the contract wins.
 - Account: 10k USDT, 1.0% risk per entry, historical exchange filters, every fill taker.
 
 ## Costs and gates

@@ -80,7 +80,16 @@
     "applies_to": "the deepest credited stage only (DD, underwater, tails and sizing report)",
     "source": "built from the raw stage signals (le at bar close t, fill at the t+1 open), replayed with that stage's own exits; never from E",
     "per_symbol": "at most one open episode per symbol; a signal arriving while that symbol's episode is open is skipped and counted (skipped_open_symbol)",
-    "ordering": "events are processed per 4h bar open in ascending timestamp; at one timestamp all exits first, then adds, then new entries; ties broken by symbol name ascending",
+    "bar_phases": ["open_known_events", "admit_open_entries", "intrabar_paths", "close_signals"],
+    "phase_rules": {
+      "open_known_events": "phase 1, at the bar open: execute only events knowable and fillable at the open, symbol name ascending: gap stops (the open price is at or through the stop, filled at the open) and scheduled next-open exits (time cap / signal exits due at this open)",
+      "admit_open_entries": "phase 2: admit the entries pending from the previous close, symbol name ascending, using the open-time state after phase 1 (open lots, gross notional and equity marked at the open prices); admitted only if open lots < 4 AND gross notional after the fill <= 3x equity, else skipped and counted",
+      "intrabar_paths": "phase 3: walk the bar's intrabar path for every open position, including those admitted in phase 2, symbol name ascending; within a symbol the backtest.py path_points convention (green candle open -> low -> high -> close, red candle open -> high -> low -> close) and the walk_path FBL-BT01 rules (levels fire in path order; adds fire before the stop on the path; stop-first when the open's stop is inside the range); adds, stops and trail updates happen only here; an add that would breach the gross cap is skipped and counted",
+      "close_signals": "phase 4, at the bar close: compute signals on the closed bar; they become pending entries for the next open (phase 2 of the next bar); the trail is raised from the closed bar for the next bar"
+    },
+    "capacity_for_open_entries": "open_state_after_phase_1_only",
+    "no_lookahead": "no phase-3 event (intrabar stop, add, trail exit) of a bar can free or consume capacity, equity or gross for that same bar's open entries; the same holds across symbols (a later symbol's intrabar event never precedes an earlier symbol's open admission)",
+    "runner_note": "the runner implements these phases itself; where backtest.py's cross-symbol loop differs, this contract wins",
     "admission": "an entry is admitted only if open lots < 4 AND gross notional after the fill <= 3x equity; otherwise skipped and counted (skipped_max_open / skipped_gross_cap), never scaled down; an add that would breach the gross cap is skipped and counted (skipped_add_gross_cap)",
     "account": "10000 USDT, 1.0% risk of equity per entry, historical stepSize/minQty/minNotional (floored, never rounded up; below minimum = counted refusal), every fill taker"
   },
