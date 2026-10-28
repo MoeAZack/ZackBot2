@@ -99,6 +99,14 @@
     "economic_key": ["signal_id", "cost_revision_id"],
     "order_field": "rev",
     "order_field_in_key": false,
+    "v1_note": "record_key and order_field_in_key describe the accepted ai_scan v1 key (#222); schema-v2 measured outcomes use record_key_v2 (F1)",
+    "record_key_v2": {
+      "signal": ["kind", "signal_id"],
+      "shadow": ["kind", "signal_id", "epoch"],
+      "outcome_measured": ["kind", "signal_id", "source", "cost_revision_id", "cost_model_hash", "rev"]
+    },
+    "order_field_in_key_v2": true,
+    "revert": "A -> B -> A appends rev 0 / 1 / 2 and fold selects rev 2; the economic identity stays (signal_id, cost_revision_id), the record identity also carries the integer rev; fitting never consumes every revision (F1, F5)",
     "latest": "highest rev among a decision's measured revisions",
     "new_revision": "append",
     "rewrite": false,
@@ -149,6 +157,9 @@
     "bundle_modules_add": ["ai_scan.py", "ai_scan_ledger.py"],
     "record_field": "code",
     "schema_bump": "ai-scan-schema-v2 (record_hash covers code), made before the first runtime write; no v1 runtime producer exists",
+    "content_hash": "sha256 over the record excluding only code and record_hash (F2)",
+    "cross_build_replay": "same v2 key and same content_hash with a different code is replays_other_build and a no-op; a different content_hash is a conflict (F2)",
+    "fit_identity": "the signal code and the selected outcome code must each be complete but need not match, because a position may span an upgrade; both identities are kept in provenance (F2)",
     "per_record": "complete code identity on every record; a once-written epoch is insufficient because one append-only ledger spans several installed builds (R4)",
     "incomplete": {
       "signal": "written with code_complete false; never eligible for fitting, calibration or pairing",
@@ -160,12 +171,16 @@
   "counters": [
     "signals", "shadows", "outcomes", "replays", "conflicts", "queue_full", "refused_live", "not_taken",
     "non_measured_close", "cost_incomplete", "no_decision_id", "unknown_signal", "ambiguous_rev",
-    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps"
+    "identity_incomplete", "build_errors", "write_errors", "skipped_lines", "gaps", "replays_other_build", "gap_flush_failed", "producer_disabled"
   ],
   "failure_modes": [
     {"mode": "flag_off", "counter": null, "effect": "hook returns before building anything; ledger untouched"},
     {"mode": "live_mode", "counter": "refused_live", "effect": "nothing built or written"},
     {"mode": "queue_full", "counter": "queue_full", "effect": "record dropped; a durable health gap is opened; trading unaffected"},
+    {"mode": "other_build_replay", "counter": "replays_other_build", "effect": "no-op; not a conflict"},
+    {"mode": "gap_flush_failure", "counter": "gap_flush_failed", "effect": "writer output blocks until the pending gap is durable; trading unaffected"},
+    {"mode": "unclean_writer_close", "counter": "gaps", "effect": "implicit open-ended gap from the last durable event to the next writer's first event"},
+    {"mode": "manifest_mismatch", "counter": "producer_disabled", "effect": "producer disabled; nothing appended"},
     {"mode": "gap_in_window", "counter": "gaps", "effect": "any fit / calibration window crossing a gap is ineligible, never silently complete"},
     {"mode": "exact_replay", "counter": "replays", "effect": "no-op"},
     {"mode": "conflicting_replay", "counter": "conflicts", "effect": "refused unwritten"},
@@ -184,10 +199,20 @@
   "rotation_prerequisite": {
     "rule": "a runtime producer may not be enabled until bounded append-only segmentation / rotation plus manifest and replay semantics are implemented and tested; part of AI-SCAN-03 or a required predecessor, never post-producer cleanup (R6)",
     "evidence": "Cowork measured about 1.06 s to fold 20k duplicate rows",
+    "enable_check": "a hash-valid manifest and a configured segment bound, verified at startup and on every hook call (F4)",
+    "on_mismatch": "the producer is disabled and counted producer_disabled; it never appends on",
+    "read_path": "the API reads manifest-bounded segments within a hard byte / segment bound and shows only causally complete views; when completeness cannot be proven it returns a bounded incomplete / error result, never a partial plausible row",
     "requires": ["bounded_segment_size", "append_only_segments", "manifest_with_segment_hashes", "replay_across_segments_idempotent", "producer_enable_refused_without_rotation"]
   },
   "queue_gaps": {
-    "record": "every queue_full drop opens or extends a durable gap {from, to, dropped} written by the writer thread, outside the hot path",
+    "record": "every queue_full drop opens or extends a durable gap {writer_id, from, to, dropped} written by the writer thread, outside the hot path",
+    "event_at": {"signal": "decided_at", "shadow": "created_at", "outcome": "closed_at"},
+    "bounds": "inclusive UTC event_at; every queued envelope carries event_at (F3)",
+    "pending": "a drop sets a pending gap that is retried and flushed before any later record",
+    "flush_failure": "a failed gap flush blocks writer output, never trading",
+    "writer_session": "writer_id plus monotonic seq on every record, with manifest start and clean-close markers",
+    "missing_clean_close": "an implicit open-ended gap from the last durable event through the next writer's first event",
+    "merge_across_writer_ids": false,
     "durable": true,
     "window_rule": "any downstream fit or calibration window that crosses a gap is ineligible, never silently complete (R7)"
   },
@@ -215,6 +240,12 @@
     {"name": "test_rotation_segments_manifest_and_replay", "asserts": "segments stay bounded and append-only, the manifest lists every segment hash, replay across segments is idempotent"},
     {"name": "test_producer_enable_refused_without_rotation", "asserts": "enabling the runtime producer without the rotation prerequisite is refused"},
     {"name": "test_queue_drop_opens_durable_gap_and_window_ineligible", "asserts": "a full queue writes a durable gap; a fit / calibration window crossing it is ineligible"},
+    {"name": "test_v2_restatement_revert_appends_and_latest_is_rev2", "asserts": "A -> B -> A appends rev 0 / 1 / 2 under the v2 key and fold selects rev 2 (costs A); same key + different content is a conflict"},
+    {"name": "test_other_build_replay_is_noop_not_conflict", "asserts": "same v2 key and content_hash with a different code is counted replays_other_build and writes nothing; a different content_hash is a conflict"},
+    {"name": "test_drop_crash_restart_window_ineligible", "asserts": "a queue drop, then a crash before the gap flush, then a restart: the missing clean close yields an implicit gap and the window crossing it is ineligible"},
+    {"name": "test_manifest_mismatch_disables_producer", "asserts": "a missing or hash-invalid manifest, or no segment bound, refuses enable at startup and on a hook call; counted producer_disabled"},
+    {"name": "test_api_view_bounded_and_causally_complete", "asserts": "the API reads manifest-bounded segments within a hard byte / segment bound and returns a bounded incomplete / error result, never a partial plausible row"},
+    {"name": "test_one_trade_one_training_row", "asserts": "fitting is refused while the ML restatement policy is unfrozen; afterwards one trade with three revisions yields exactly one training row"},
     {"name": "test_api_view_unchanged_shape", "asserts": "GET /api/ai_scan returns ai_scan.api_off() when off and only ledger rows when on; no settings or engine state mutated"}
   ],
   "deferred": [
@@ -226,6 +257,19 @@
     "simulated_outcomes"
   ],
   "open_questions": [],
+  "fitting": {
+    "before_policy_frozen": "no fitting or calibration consumer may use AI-SCAN rows until the separate ML restatement policy is frozen (F5)",
+    "after": "exactly one latest valid measured revision per signal_id, after gap and code checks",
+    "audit": "every revision is retained"
+  },
+  "rulings_f": {
+    "source": "Codex 6461183917 on #227 @ 062086a (Cowork 6461086863 F1-F5)",
+    "F1_revert": "option (a): integer rev is in the schema-v2 measured record key",
+    "F2_cross_build": "content_hash excludes only code and record_hash; other-build replay is a no-op; code identities each complete, need not match",
+    "F3_gaps": "event_at timebase, inclusive UTC bounds, pending gap flushed before later records, writer_id + seq + clean-close markers, no cross-writer merge",
+    "F4_rotation": "live manifest / segment-bound check at startup and every hook; mismatch disables; causally complete bounded API reads",
+    "F5_fitting": "no fitting before the ML restatement policy is frozen; then one latest valid revision per signal_id"
+  },
   "rulings": {
     "source": "Codex 6460621068 on #227 @ 45c299c",
     "R1_independent_flags": "AI_SCAN works without ML_SHADOW; stamp the shared decision id when either flag is exactly true; neither is a prerequisite for the other",

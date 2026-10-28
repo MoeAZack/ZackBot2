@@ -257,3 +257,52 @@ def test_rulings_r1_to_r8_are_applied(c, md):
         b = c['builds_on'][pr]
         assert 'head' not in b and 'accepted_merge_sha' in b and 'superseded review head' in b['refresh_rule']
     assert '**accepted merge SHAs**' in md
+
+
+# ------------------------------------------------------------------ Codex 6461183917 rulings F1-F5
+def _v2_fold(c, outcomes):
+    """Reference v2 semantics from the contract (no runtime code): key = record_key_v2.outcome_measured."""
+    key, seen, latest = c['join']['record_key_v2']['outcome_measured'], {}, None
+    for o in outcomes:
+        k = tuple(o[f] for f in key)
+        if k in seen:
+            if seen[k] != o['content']: raise ValueError('conflicting replay')
+            continue
+        seen[k] = o['content']
+        latest = o if latest is None or o['rev'] > latest['rev'] else latest
+    return seen, latest
+
+
+def test_rulings_f1_to_f5_are_applied(c, md):
+    j = c['join']
+    v1, v2 = j['record_key']['outcome'], j['record_key_v2']['outcome_measured']
+    assert v2 == v1 + ['rev'] and j['order_field_in_key_v2'] is True                                       # F1
+    assert j['economic_key'] == ['signal_id', 'cost_revision_id'] and 'rev 2' in j['revert']
+    base = dict(kind='outcome', signal_id='s' * 64, source='measured', cost_model_hash='m' * 64)
+    A_, B_ = dict(base, cost_revision_id='a' * 64), dict(base, cost_revision_id='b' * 64)
+    seen, latest = _v2_fold(c, [dict(A_, rev=0, content=1), dict(B_, rev=1, content=2), dict(A_, rev=2, content=1)])
+    assert len(seen) == 3 and latest['rev'] == 2 and latest['cost_revision_id'] == 'a' * 64
+    with pytest.raises(ValueError, match='conflicting replay'):
+        _v2_fold(c, [dict(A_, rev=0, content=1), dict(A_, rev=0, content=9)])
+    i = c['identity']                                                                                        # F2
+    assert 'excluding only code and record_hash' in i['content_hash'] and 'no-op' in i['cross_build_replay']
+    assert 'need not match' in i['fit_identity'] and 'provenance' in i['fit_identity']
+    g = c['queue_gaps']                                                                                      # F3
+    assert g['event_at'] == {'signal': 'decided_at', 'shadow': 'created_at', 'outcome': 'closed_at'}
+    assert 'inclusive UTC' in g['bounds'] and g['merge_across_writer_ids'] is False
+    assert 'seq' in g['writer_session'] and 'clean-close' in g['writer_session'] and 'never trading' in g['flush_failure']
+    rp = c['rotation_prerequisite']                                                                          # F4
+    assert 'every hook call' in rp['enable_check'] and 'disabled' in rp['on_mismatch']
+    assert 'never a partial plausible row' in rp['read_path']
+    f = c['fitting']                                                                                         # F5
+    assert 'frozen' in f['before_policy_frozen'] and 'exactly one latest valid' in f['after']
+    for k in ('replays_other_build', 'gap_flush_failed', 'producer_disabled'):
+        assert k in c['counters'] and any(fm['counter'] == k for fm in c['failure_modes'])
+    names = {t['name'] for t in c['test_plan']}
+    for n in ('test_v2_restatement_revert_appends_and_latest_is_rev2', 'test_other_build_replay_is_noop_not_conflict',
+              'test_drop_crash_restart_window_ineligible', 'test_manifest_mismatch_disables_producer',
+              'test_api_view_bounded_and_causally_complete', 'test_one_trade_one_training_row'):
+        assert n in names
+    assert c['rulings_f']['source'].startswith('Codex 6461183917') and c['status'] == 'DRAFT'
+    assert all(c['builds_on'][p]['accepted_merge_sha'] is None for p in ('AI-SCAN-02', 'ML-PAIR-01'))
+    assert '`(kind, signal_id, source, cost_revision_id, cost_model_hash, rev)`' in md

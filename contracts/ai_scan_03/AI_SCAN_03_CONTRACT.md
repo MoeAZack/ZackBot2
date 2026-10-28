@@ -46,6 +46,10 @@ ML_SHADOW and the reverse, and neither is a prerequisite for the other (R1). A l
   - outcome: `(kind, signal_id, source, cost_revision_id, cost_model_hash)`
 - The **economic key** is `(signal_id, cost_revision_id)`. **`rev` orders revisions only and is never part of the
   key.** The latest revision is the one with the highest `rev`.
+- **Schema-v2 measured key (F1):** v2 measured outcomes add the integer `rev` to the record key:
+  `(kind, signal_id, source, cost_revision_id, cost_model_hash, rev)`. A restatement back to earlier costs (A → B → A)
+  therefore appends rev 0 / 1 / 2, and fold selects rev 2. The economic identity stays `(signal_id, cost_revision_id)`.
+  The key above is today's accepted v1 key from #222.
 - **A new cost revision appends. Nothing is ever rewritten.**
 - An exact duplicate is a no-op, which makes restart replay idempotent.
 - A **conflicting replay** (same key, different `record_hash`) is refused and nothing is written. The same applies to
@@ -86,7 +90,13 @@ must be byte-identical across all four.
 
 Each record carries `code = {build_id, source_commit, bundle_hash}`. This needs `ai-scan-schema-v2`, and
 `record_hash` covers `code`. Identity lives on **every record**, not in a once-written epoch, because one append-only
-ledger spans several installed builds. No v1 runtime producer exists, so the bump lands before the first write (R4). The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
+ledger spans several installed builds. No v1 runtime producer exists, so the bump lands before the first write (R4).
+
+**Cross-build replay (F2):** each record also carries a `content_hash`, computed over the record excluding only `code`
+and `record_hash`. The same v2 key and content_hash with a different `code` counts `replays_other_build` and is a
+no-op. A different content_hash is a conflict. For fitting, the signal's code and the selected outcome's code must
+each be complete, but they need not match, because a position may span an upgrade. Both identities are kept in
+provenance. The completeness rule is #226's `identity_gap`: a non-dev build id, a 40-hex source
 commit from the matching build.json, and a 64-hex bundle hash. The bundle adds `ai_scan.py` and `ai_scan_ledger.py`.
 
 When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_hash`):
@@ -98,22 +108,42 @@ When the identity is incomplete (reason `dev_build`, `source_commit` or `bundle_
 
 `signals`, `shadows`, `outcomes`, `replays`, `conflicts`, `queue_full`, `refused_live`, `not_taken`,
 `non_measured_close`, `cost_incomplete`, `no_decision_id`, `unknown_signal`, `ambiguous_rev`, `identity_incomplete`,
-`build_errors`, `write_errors`, `skipped_lines`, `gaps`.
+`build_errors`, `write_errors`, `skipped_lines`, `gaps`, `replays_other_build`, `gap_flush_failed`, `producer_disabled`.
 
 When the flag is off, the hook returns before building anything and the ledger is untouched. A torn or edited line is
 skipped on read and never raises. A disk error is swallowed, and the next record is tried.
 
 ### 6a. Queue gaps (R7)
 
-Every `queue_full` drop opens or extends a **durable gap** `{from, to, dropped}`, written by the writer thread outside
-the hot path and counted in `gaps`. Any downstream fit or calibration window that crosses a gap is **ineligible**, never
-silently complete.
+Every `queue_full` drop opens or extends a **durable gap** `{writer_id, from, to, dropped}`, written by the writer thread
+outside the hot path and counted in `gaps`. Any downstream fit or calibration window that crosses a gap is
+**ineligible**, never silently complete.
+
+- **Timebase (F3):** every queued envelope carries `event_at`: `decided_at` for a signal, `created_at` for a shadow,
+  `closed_at` for an outcome. Gap bounds are inclusive UTC `event_at`.
+- **Pending gaps:** a drop sets a pending gap, retried and flushed before any later record. A failed flush blocks writer
+  output (`gap_flush_failed`), never trading.
+- **Writer sessions:** each record carries `writer_id` and a monotonic `seq`, and the manifest has start and clean-close
+  markers. A writer with no clean close creates an implicit open-ended gap from its last durable event through the next
+  writer's first event. Gaps are never merged across writer IDs.
 
 ### 6b. Rotation prerequisite (R6)
 
 Cowork measured about 1.06 s to fold 20k duplicate rows. **A runtime producer may not be enabled** until bounded,
 append-only segmentation / rotation, with a manifest of segment hashes and idempotent replay across segments, is
 implemented and tested. This is part of AI-SCAN-03 or a required predecessor, never post-producer cleanup.
+
+- **Live enable check (F4):** a hash-valid manifest and a configured segment bound, verified at startup and on every
+  hook call. A mismatch disables the producer (`producer_disabled`); it never appends on.
+- **Bounded, causal reads:** the API reads manifest-bounded segments within a hard byte / segment bound and shows only
+  causally complete views. When completeness cannot be proven, it returns a bounded incomplete / error result, never a
+  partial plausible row.
+
+### 6c. Fitting (F5)
+
+No fitting or calibration consumer may use AI-SCAN rows until the separate ML restatement policy is frozen. After
+that, a consumer selects exactly one latest valid measured revision per `signal_id`, after the gap and code checks.
+Audit keeps every revision.
 
 ## 7. Test plan (future implementation)
 
@@ -140,6 +170,12 @@ implemented and tested. This is part of AI-SCAN-03 or a required predecessor, ne
 - `test_rotation_segments_manifest_and_replay`
 - `test_producer_enable_refused_without_rotation`
 - `test_queue_drop_opens_durable_gap_and_window_ineligible`
+- `test_v2_restatement_revert_appends_and_latest_is_rev2`
+- `test_other_build_replay_is_noop_not_conflict`
+- `test_drop_crash_restart_window_ineligible`
+- `test_manifest_mismatch_disables_producer`
+- `test_api_view_bounded_and_causally_complete`
+- `test_one_trade_one_training_row`
 - `test_api_view_unchanged_shape`
 
 The JSON twin states what each one asserts.
@@ -160,3 +196,11 @@ The JSON twin states what each one asserts.
 - **R6 rotation prerequisite:** segmentation / rotation + manifest + replay before any producer is enabled.
 - **R7 queue gaps:** durable gaps; windows crossing one are ineligible.
 - **R8 builds_on:** refreshed to the accepted merge SHAs of #222 / #226 before freeze.
+
+Follow-up rulings, Codex 6461183917 on Cowork 6461086863:
+
+- **F1 revert:** integer `rev` is in the schema-v2 measured record key.
+- **F2 cross-build:** `content_hash` excludes only `code` and `record_hash`; an other-build replay is a no-op.
+- **F3 gaps:** `event_at` timebase, inclusive UTC bounds, pending gaps flushed first, writer_id + seq + clean close.
+- **F4 rotation:** a live enable check, disable on mismatch, bounded causally complete reads.
+- **F5 fitting:** none before the ML restatement policy is frozen; then one latest valid revision per signal.
