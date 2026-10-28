@@ -1,0 +1,167 @@
+{
+  "format": "zb-falsify-prereg/1",
+  "candidate_id": "breakout_pyramid_falsify.v1",
+  "family": "breakout_pyramid",
+  "side": "long",
+  "status": "DRAFT - UNSIGNED - NOT EVALUATED",
+  "signed": false,
+  "drafted": "2026-10-28 Cairo by Build (claude-code), from the Integration roadmap item (one finite breakout_pyramid falsification contract; positive entry edge before management/pyramiding credit), revised to Integration ruling Codex 6468454634",
+  "ruling": "Codex 6468454634: isolate entry edge before management credit; entry-only/plain-stop vs the same entries with pyramiding; causal next-open fills; actual/base plus 1.5x costs; the fixed 17-symbol no-LSK book; three chronological slices; per-symbol concentration / remove-best-symbol; drawdown; a minimum episode/frequency gate. The existing triage result is development triage, not acceptance evidence. No sealed holdout, no PAPER settings",
+  "signing": "This file is the authoritative contract; the docs twin is a summary. It lands DRAFT; Integration (codex) freezes the numbers and flips status/signed before merge, then creates research_evidence/ledger/breakout_pyramid_falsify.jsonl plus one REGISTRY.jsonl line, before any market result is computed",
+  "motivation": "Integration local triage (development packet, legacy flat-funding / filter assumptions) flagged breakout_pyramid long on the fixed 17-symbol book as a high-drawdown probation candidate. No triage number is evidence here",
+  "source": {
+    "base_commit": "612b537",
+    "universe_sha256": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031",
+    "costs_sha256": "41275d4e75fbadda93b3d30be7a7d743dd2c22215ba6fd3bd784b8a500e98350",
+    "manifest": "research_evidence/manifests/binance-um-archive-v1.json.gz",
+    "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+    "coverage": "all 17 symbols are STATIC-40 members (ranks 1-20); the EDGE05 metadata coverage check (funding_carry_xsec.v1 coverage_check) reports 40/40 symbols with no month gaps for 4h klines, fundingRate and 1h mark klines over 2020-02-03 to 2026-09-28; no new data is needed"
+  },
+  "identity": {
+    "module": "strategies.py",
+    "registry_key": "breakout_pyramid",
+    "fn": "sig_breakout_pyramid",
+    "registry_sides": "long",
+    "style": "aggressive",
+    "tf": "4h",
+    "source_sha256_rule": "sha256 of inspect.getsource(obj) with CRLF normalised to LF (function-level binding: unrelated edits elsewhere in strategies.py do not move it)",
+    "fn_source_sha256": "9c701b7137c6ac4799250e95a9d65cf626dd9593bef2d12a2b0a434273686c84",
+    "indicators_source_sha256": "dfcfb920b272b2e291a2395e4706ed7cc4f0a1d847bdcf9058384c781466ec26",
+    "ema_source_sha256": "246eb7475bd366b17987e5bc78219c908e388e2aa514fd8811f40205a928a489",
+    "file_sha256_at_base_commit": {"strategies.py": "9c58dd236f0e70f6d138e8601cb35498c00499a19710f6cacd190599ebb68908", "backtest.py": "d9d4856429c62a0a78a6141f5e8897ad4123812190a64f99ed7be002782a3025", "note": "informational; the runner binds its own code identity (git commit + dirty flag + sha256 of every module it imports) into run.json as the EDGE05 runner does"},
+    "live_mgmt": {"stop_atr": 2.0, "trail_atr": 3.0, "pyramid": {"n": 2, "step_r": 1.0, "frac": 0.5}},
+    "live_mgmt_source": "strategies.merge_mgmt('breakout_pyramid', {}) at base_commit"
+  },
+  "params": {
+    "channel_bars": 20,
+    "ema_fast": 50,
+    "ema_slow": 200,
+    "atr": "Wilder ATR14 (true range ewm alpha 1/14, adjust False)",
+    "entry": "le at the close of 4h bar t = close_t > max(high over bars t-20..t-1) AND EMA50_t > EMA200_t",
+    "signal_exit": "none (lx is never true); every exit is the stage's stop / time cap / trail",
+    "reentry": "one open episode per symbol; a symbol re-arms only after its episode closes",
+    "searched": false
+  },
+  "fills": {
+    "causal": true,
+    "signal": "computed on the CLOSED 4h bar t only (the channel high is shifted one bar; no intrabar or future value)",
+    "entry_fill": "market (taker) at the open of bar t+1; never at the signal bar's close",
+    "time_exit_fill": "market at the open of the bar after the cap is reached",
+    "stop_and_add_fills": "intrabar at the level in backtest.py path order (FBL-BT01): gap/open first, then conservative stop-first; a bar that opens through a stop fills at the open; pyramid adds fire in path order before the stop",
+    "stop_reference": "the stop distance uses ATR of signal bar t, set from the t+1 fill price"
+  },
+  "universe": {
+    "primary": "FIXED-17 (no-LSK)",
+    "rule": "engine.CAND_FIXED18 at base_commit minus LSKUSDT (Integration ruling Codex 6468454634)",
+    "symbols": ["1000PEPEUSDT", "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "ENAUSDT", "ETHUSDT", "LINKUSDT", "NEARUSDT", "QNTUSDT", "SOLUSDT", "SUIUSDT", "UNIUSDT", "WLDUSDT", "XRPUSDT", "ZECUSDT"],
+    "size": 17,
+    "symbols_sha256": "7e7af1309754adc4cda256867040ff627bf67458f2f52eef07643b1b1f6189f7",
+    "symbols_sha256_rule": "sha256 of json.dumps(sorted(symbols), separators=(',', ':'))",
+    "selection_bias": "Integration chose this list, and the fixed-18 list was itself picked after factory results; the book is survivor- and selection-biased. A pass here is weaker evidence than a pass on a pre-existing list",
+    "report_only": "STATIC-40 (research_evidence/universe/static-top40-minhist365-contract-20261011.json) is reported beside the primary as a selection-bias check; it adds no trial and can neither pass nor rescue anything",
+    "eligibility": "a symbol is decided only once its contiguous closed 4h history inside the opened slice reaches 240 bars; a gap restarts the count; no forward fill; symbols listed later simply start later"
+  },
+  "stages": {
+    "S1": {"role": "H1 primary entry-only test (plain stop)", "gated": true, "mgmt": {"stop_atr": 2.0, "max_bars": 42}, "rule": "plain 2.0 ATR stop, exit at the next open after 42 bars (7 days); no target, trail, breakeven, partial, add or ttp"},
+    "S3": {"role": "H2 pyramiding (= live family management)", "gated": true, "mgmt": {"stop_atr": 2.0, "trail_atr": 3.0, "pyramid": {"n": 2, "step_r": 1.0, "frac": 0.5}, "max_bars": 180}, "rule": "live mgmt exactly: up to 2 adds of 0.5 x initial quantity at every +1R, 3 ATR chandelier trail"},
+    "S1-T": {"role": "report-only entry-only variant", "gated": false, "mgmt": {"stop_atr": 2.0, "tp_r": 3.0, "max_bars": 42}, "rule": "plain stop plus a fixed 3R target, 42-bar cap"},
+    "S2": {"role": "report-only trail decomposition", "gated": false, "mgmt": {"stop_atr": 2.0, "trail_atr": 3.0, "max_bars": 180}, "rule": "live stop and trail without adds; splits the S3 - S1 increment into trail and adds"},
+    "choices": "42 bars = strategies ret42 = 7 days; 3R = house target; not tuned, no alternative is evaluated",
+    "research_cap": "max_bars 180 (30 days) on S2/S3 is a research horizon cap equal to the split purge horizon (live has none); episodes closed by it are counted and reported",
+    "r_unit": "1R = initial stop distance x initial quantity; adds and their costs are measured in that same initial R"
+  },
+  "episodes": {
+    "entry_set": "E = every S1 entry under the reentry rule (per symbol, re-arm only after the S1 episode closes). E is built once and is identical for S3, S1-T and S2: stages differ only in what happens after the entry fill",
+    "unit_replay": "each episode in E is replayed at quantity 1 per stage (paired design)",
+    "paired_increment": "D(e) = netR_S3(e) - netR_S1(e); report-only split: netR_S2 - netR_S1 (trail) and netR_S3 - netR_S2 (adds)",
+    "book_replay": "the deepest credited stage only is also run as a book over the 17 symbols: 10000 USDT, 1% risk of equity per entry, max 4 open lots, gross notional <= 3x equity, historical stepSize/minQty/minNotional (floored, never rounded up), every fill taker"
+  },
+  "hypotheses": {
+    "H1": {"claim": "the breakout entry has positive after-cost expectancy with a plain stop and no management", "stage": "S1", "gates": ["activity", "expectancy (base mean net R > 0 and 95% LCB > 0)", "x1.5 cost mean net R > 0", "all 3 chronological slices mean net R > 0", "remove-best-symbol mean net R > 0", "concentration", "mean net R above the 95th percentile of the 1000 B0 random-entry books with the same exit"]},
+    "H2": {"claim": "pyramiding (live management) adds after-cost value over the plain stop on the same entries", "stage": "S3", "requires": "H1 PASS", "test": "paired increment D: base mean > 0 with 95% LCB > 0, x1.5 mean > 0, positive in all 3 slices; AND S3 alone passes every H1 gate except B0", "credit": "only if H1 passed"},
+    "order": "fixed sequence H1 -> H2; pyramiding is never credited when H1 failed, whatever its own numbers; if H1 fails the family is FALSIFIED",
+    "report_only": "S1-T and S2 are diagnostics: never gated, never credited, never a rescue",
+    "credited_stage": "S3 if H1 and H2 pass; S1 if only H1 passes; none if H1 fails"
+  },
+  "costs": {
+    "fee": "Binance UM VIP0 taker 0.05% each fill, entries, adds and exits (costs.TAKER)",
+    "slippage": "slip-v1 on 4h closed bars with the slip-cal-v1 crypto coefficient; the 0.05% unfitted fallback each market fill while SLIP-C-UNFITTED",
+    "funding": "actual signed settled rate x funding-mark-proxy-v1 notional at each held event (entry <= T < exit); longs pay positive; the legacy flat per-bar funding is never used",
+    "net_formula": "net = pnl_gross + pnl_fill_adj - fees_actual + funding_actual (actual_costs.measured)",
+    "stress_rows": {
+      "base_x1": "actual/base: fees x1, slippage x1, funding as settled",
+      "all_variable_costs_x1.5": "fees x1.5, slippage x1.5, funding paid x1.5, funding received / 1.5",
+      "all_variable_costs_x2": "report-only: fees x2, slippage x2, funding paid x2, funding received / 2",
+      "funding_zero": "report-only: funding set to 0"
+    },
+    "gated_rows": ["base_x1", "all_variable_costs_x1.5"],
+    "stress_rule": "base and x1.5 are both reported for every stage and both gate every gated stage; stress reprices the same episodes and is not a variant; received funding is never inflated"
+  },
+  "windows": {
+    "calibration": {"start": "2020-02-03T00:00:00Z", "end": "2021-01-04T00:00:00Z", "use": "warm-up only; no result reported"},
+    "development": {"start": "2021-01-04T00:00:00Z", "end": "2026-09-28T00:00:00Z", "end_exclusive": true},
+    "slices": [
+      {"slice": 1, "start": "2021-01-04T00:00:00Z", "end": "2022-12-19T00:00:00Z"},
+      {"slice": 2, "start": "2022-12-19T00:00:00Z", "end": "2024-12-16T00:00:00Z"},
+      {"slice": 3, "start": "2024-12-16T00:00:00Z", "end": "2026-09-28T00:00:00Z"}
+    ],
+    "slice_source": "three contiguous chronological slices of the development window on existing EDGE04 / R4 / EDGE05 boundaries (about 2, 2 and 1.8 years); fixed before any result",
+    "slice_rule": "splits.py zb-splits/1, 4h; lookback 240 bars, horizon 180 bars; purge max(240,180) bars, embargo 1 bar; fresh books per slice; an episode belongs wholly to one slice; one cut by a boundary is INCOMPLETE",
+    "report_only_folds": "the 5 EDGE04 walk-forward folds (2021-12-20 / 2022-12-19 / 2023-12-18 / 2024-12-16 / 2025-12-15 / 2026-09-28) are reported, never gated",
+    "sealed_cutoff": "2026-09-28T00:00:00Z",
+    "holdout": {"status": "SEALED - not read, not opened, not scheduled by this contract", "rule": "nothing on or after the sealed cutoff is read", "deferred_to_integration": "whether a development survivor gets a new forward holdout or defers to the existing breadth_static40.v1 forward registration of breakout_pyramid.long (defaults mgmt, 2026-10-19 -> 2027-10-18) is for Integration; this contract neither opens nor alters it"},
+    "contamination": "the parameters come from legacy research (research_long2 BRK1, research_combos BRK8, the #114 static-40 packet) and the universe from the factory triage; every pre-cutoff window is development evidence. A FAIL here is binding; a PASS is never acceptance or promotion evidence"
+  },
+  "baselines": [
+    {"id": "B0", "for": ["S1"], "gated": true, "rule": "1000 seeded random-entry books: per symbol and per slice the same number of entries as E, at uniformly drawn eligible 4h bar opens (same re-arm rule), with the S1 exit, R unit and costs", "seed": "sha256('breakout_pyramid_falsify.v1|S1|' + symbol + '|' + slice + '|' + book_index)"},
+    {"id": "B2", "for": ["S1"], "gated": false, "rule": "report-only: as B0 but drawn only from bars with EMA50 > EMA200 (the trend filter without the breakout)"}
+  ],
+  "trial_budget": {
+    "gated_variants": 2,
+    "gated_ids": ["S1", "S3"],
+    "diagnostic_variants": 2,
+    "diagnostic_ids": ["S1-T", "S2"],
+    "baseline_rows": 2,
+    "total_ledger_trial_records": 6,
+    "book_replays": "1 (the credited stage only; not a trial)",
+    "multiplicity": "two gated hypotheses in a fixed sequence H1 -> H2, each at one-sided alpha 0.05; H2 is tested only if H1 rejects, so the family-wise error is <= 0.05 without adjustment. Diagnostics and B2 carry no test",
+    "prior_looks": "at least 4 unledgered development looks at this family plus the Integration triage on this exact book; acknowledged by treating every result as development-only",
+    "rule": "no result-dependent variant, no alternative channel / EMA / ATR / stop / horizon / trail / pyramid setting or symbol list; stress rows, report-only universes, folds, diagnostics and baselines never replace or rescue a failed stage"
+  },
+  "bootstrap": {"unit": "mean net R per UTC ISO week of entry", "method": "moving-block bootstrap, block 8 weeks, 10000 resamples", "seed": 20261028, "lcb": "one-sided 95% lower bound"},
+  "metrics": ["per stage and per cost row (base, x1.5, x2): episodes, mean / median net R, PF, win rate, 95% LCB", "per slice and per report-only fold", "D (S3 - S1) mean, LCB, per slice; trail vs adds split", "gross vs funding vs fee/slippage decomposition", "B0 percentile rank; B2 report", "STATIC-40 report-only rows", "share of S2/S3 episodes closed by the 180-bar research cap", "episodes per 30 days and active symbols, per slice", "credited-stage book: max equity DD, closed-R DD, longest underwater days, annualized after-cost return, return / max DD (Calmar), total net R / closed-R DD, exposure, trade count", "per-symbol net R and share; remove-best-symbol result; top-1% episode share; worst episode and worst Cairo-day net R", "notional / prior-24h quote volume, refusals by exchange filter"],
+  "gates": {
+    "data": "every slice has at most 2% INCOMPLETE episodes and no unresolved accounting row; otherwise INCOMPLETE, not FAIL",
+    "activity": {"min_episodes_total": 300, "min_episodes_per_slice": 75, "min_episodes_per_30d_each_slice": 2.0, "min_active_symbols_total": 15, "min_active_symbols_per_slice": 8, "active_symbol": ">= 5 closed episodes", "why": "300 / 75 keep the standard error near 0.09R overall and 0.17R per slice at a 1.5R episode spread, so a sign is readable per slice; 2 per 30 days rejects a book that trades too rarely to run; slice 1 predates SUI, ENA, WLD and 1000PEPE, so 8 of the 13 symbols then listed is the per-slice floor and 15 of 17 the whole-window floor"},
+    "slices": {"positive_slices_min": 3, "slices": 3, "rule": "mean net R > 0 in every slice at base cost"},
+    "expectancy": {"mean_net_r_gt": 0.0, "lcb_gt": 0.0},
+    "stress": {"base_mean_net_r_gt": 0.0, "x1_5_mean_net_r_gt": 0.0, "rule": "base and x1.5 > 0 are PASS gates for every gated stage; x2 is reported"},
+    "remove_best_symbol": "drop the symbol with the largest net-R contribution; mean net R of the remaining 16 > 0",
+    "concentration": {"max_symbol_share": 0.25, "max_top3_share": 0.50},
+    "tails": {"worst_episode_net_r_ge": -3.0, "top1pct_episode_share_of_net_r": "reported"},
+    "drawdown_and_tail": {"applies_to": "the credited-stage book replay", "tiers": {"ordinary": {"base_max_equity_dd_le": 0.35, "closed_r_dd_lt": 40}, "profitability_rescue": {"base_max_equity_dd_le": 0.55, "annualized_net_return_over_max_dd_ge": 0.75, "total_net_r_over_closed_r_dd_ge": 2.0}}, "tier_rule": "PASS when the ordinary tier OR the profitability_rescue tier holds AND every all-path ceiling holds (monotone, as funding_carry_xsec.v1); base DD > 55% is FAIL on any path", "x1_5_max_equity_dd_le": 0.65, "longest_underwater_days_le": 365, "high_risk_sleeve": "a book that passes only via profitability_rescue is labelled HIGH-RISK SLEEVE and can only enter a separate explicit risk sleeve"},
+    "sizing": "feasible after scaling the risk fraction so the book DD fits the portfolio DD budget Integration assigns: at the scaled risk at least 90% of entries and adds still clear stepSize/minQty/minNotional on a 10000 USDT book",
+    "causality": "no causality or accounting defect: fills obey the fills block, the runner's causal and accounting checks pass"
+  },
+  "kill": {
+    "K1": "S1 base mean net R <= 0 or 95% LCB <= 0 -> FALSIFIED",
+    "K2": "S1 x1.5 mean net R <= 0 -> FALSIFIED",
+    "K3": "S1 mean net R <= 0 in any of the 3 slices -> FALSIFIED",
+    "K4": "S1 remove-best-symbol mean net R <= 0, or concentration exceeded -> FALSIFIED",
+    "K5": "S1 not above the B0 95th percentile -> FALSIFIED (no entry edge over random entry)",
+    "K6": "H1 passes but H2 fails -> pyramiding is not credited; only S1 remains, judged by the book gates",
+    "K7": "the credited-stage book fails the DD tier rule, tails, underwater, sizing or causality -> FAIL",
+    "K8": "data or activity gate fails -> INCOMPLETE (never PASS, never silently FAIL)",
+    "precedence": "K1-K5 decide the family before any S3 number is read for credit"
+  },
+  "verdicts": ["FALSIFIED", "FAIL", "INCOMPLETE", "SURVIVES_DEV(S1|S3)"],
+  "verdict_rule": "SURVIVES_DEV only names the deepest credited stage; it is development evidence, never acceptance, and never enables PAPER, shadow or live by itself",
+  "deferred": {
+    "runner": "no runner exists for this contract; a low-RAM streaming runner (EDGE05 runner pattern: run.json identity, hash-chained resumable lines, sealed-boundary refusal, --max-rss-mb) must reuse backtest.py path semantics and costs.py, and pass a synthetic parity test against backtest.py before any data read",
+    "evaluation_run": "requires Integration authorization and RAM release by EDGE04",
+    "holdout": "DEFERRED to Integration: this contract does not open or schedule any holdout",
+    "ledger": "Integration writes the family ledger and REGISTRY line on signing",
+    "paper_live": "no PAPER settings, testnet, shadow or live change"
+  },
+  "boundaries": {"paper": false, "runtime_change": false, "holdout_read": false, "mainnet": false, "evaluation_run": false}
+}
