@@ -314,7 +314,7 @@ def _eligible(window, signals, gaps, sessions):
     named in no gap, and its decided_at is inside no time gap. Gaps: {'from', 'to', 'signals'}."""
     lo, hi = window
     out = []
-    spans = [(s['start'], s['close']) for s in sessions if s['clean'] and s['enabled']]
+    spans = _hb_spans([s['heartbeats'] for s in sessions if s['clean'] and s['enabled']])   # C1 x C2: heartbeats only
     whole = _covered(window, spans)                         # C2: the whole [start, end) window, never the point alone
     for sid, t in signals.items():
         if not lo <= t < hi:                                # half-open [start, end) (Codex 6462613229 #4)
@@ -324,6 +324,14 @@ def _eligible(window, signals, gaps, sessions):
         timed = any(g['from'] <= t <= g['to'] for g in gaps)
         out.append((sid, covered and not named and not timed))
     return dict(out)
+
+
+def _S(start, close, clean=True, enabled=True, hole=None):
+    """A session fixture whose heartbeats run every 60 s from start to close; hole=(a, b) drops beats strictly inside."""
+    beats = list(range(start, close, 60)) + [close]
+    if hole:
+        beats = [b for b in beats if not hole[0] < b < hole[1]]
+    return {'start': start, 'close': close, 'clean': clean, 'enabled': enabled, 'heartbeats': beats}
 
 
 def _coverage_gaps(sessions):
@@ -397,7 +405,7 @@ def test_rulings_g1_to_g6_are_applied(c, md):
 
 
 def test_g1_dropped_outcome_closing_outside_window_still_excludes_its_signal():
-    sess = [{'start': 0, 'close': 100, 'clean': True, 'enabled': True}]
+    sess = [_S(0, 100)]
     w = _Writer(cap=0)                                                      # every offer drops
     w.offer({'signal_id': 's1', 'decided_at': 10, 'closed_at': 250})        # outcome closes far outside the window
     gaps = [{'from': p['decided_at'], 'to': p['decided_at'], 'signals': {p['signal_id']}} for p in w.pending]
@@ -406,9 +414,7 @@ def test_g1_dropped_outcome_closing_outside_window_still_excludes_its_signal():
 
 
 def test_g2_clean_close_to_next_start_and_disabled_session_are_gaps():
-    sess = [{'start': 0, 'close': 110, 'clean': True, 'enabled': True},
-            {'start': 130, 'close': 200, 'clean': True, 'enabled': True},
-            {'start': 210, 'close': 260, 'clean': True, 'enabled': False}]    # producer_disabled
+    sess = [_S(0, 110), _S(130, 200), _S(210, 260, enabled=False)]           # the last one is producer_disabled
     gaps = _coverage_gaps(sess)
     assert {'from': 110, 'to': 130} in gaps and {'from': 210, 'to': 260} in gaps
     sig = {'a': 50, 'b': 120, 'c': 150, 'd': 220}
@@ -527,7 +533,7 @@ def test_h3_window_needs_continuous_coverage_including_endcaps(c):
 
 def test_h4_window_boundary_is_half_open(c):
     assert '[start, end)' in c['queue_gaps']['window_interval']
-    sess = [{'start': 0, 'close': 300, 'clean': True, 'enabled': True}]
+    sess = [_S(0, 300)]
     a = _eligible((0, 100), {'s': 100}, [], sess)
     b = _eligible((100, 200), {'s': 100}, [], sess)
     assert a == {} and b == {'s': True}                                                      # exactly one membership
@@ -561,13 +567,16 @@ def _hb_spans(sessions, max_gap=75):
     return spans
 
 
-def _paginate(pages, max_segments=4):
-    """L1: each page <= max_segments and chained by prev-hash; a missing / changed page makes the window incomplete."""
+def _paginate(pages, expect, max_segments=4):
+    """L1 + Codex 6463297130 #3: each page <= max_segments, chained by prev-hash, AND the walk must reach the bound
+    terminal: expected page count and final end hash from the verified manifest. A truncated prefix is incomplete."""
     prev = None
     for p in pages:
         if len(p['segments']) > max_segments or p['prev'] != prev:
             return 'incomplete'
         prev = p['hash']
+    if len(pages) != expect['pages'] or prev != expect['end_hash']:
+        return 'incomplete'
     return 'complete'
 
 
@@ -614,7 +623,7 @@ def test_c1_heartbeat_hole_and_backward_step():
 
 
 def test_c2_whole_window_and_t_equals_close():
-    sess = [{'start': 0, 'close': 100, 'clean': True, 'enabled': True}]
+    sess = [_S(0, 100)]
     assert _eligible((50, 150), {'s': 60}, [], sess) == {'s': False}                         # signal covered, window not
     assert _eligible((0, 100), {'s': 60}, [], sess) == {'s': True}
     assert not _covered((100, 101), [(0, 100)])                                              # t == close is outside [0, 100)
@@ -631,6 +640,34 @@ def test_d1_decided_at_canonical_form_and_mismatch():
 
 def test_l1_pagination_continuity():
     pages = [{'segments': [1, 2, 3, 4], 'prev': None, 'hash': 'h1'}, {'segments': [5, 6], 'prev': 'h1', 'hash': 'h2'}]
-    assert _paginate(pages) == 'complete'
-    assert _paginate([pages[0], dict(pages[1], prev='hX')]) == 'incomplete'                 # changed / missing page
-    assert _paginate([{'segments': [1, 2, 3, 4, 5], 'prev': None, 'hash': 'h'}]) == 'incomplete'
+    exp = {'pages': 2, 'end_hash': 'h2'}
+    assert _paginate(pages, exp) == 'complete'
+    assert _paginate([pages[0], dict(pages[1], prev='hX')], exp) == 'incomplete'            # changed page
+    assert _paginate([{'segments': [1, 2, 3, 4, 5], 'prev': None, 'hash': 'h'}], {'pages': 1, 'end_hash': 'h'}) == 'incomplete'
+
+
+def test_pagination_must_reach_the_bound_terminal(c):
+    assert 'terminal cursor' in c['rotation_prerequisite']['pagination_terminal']
+    p1 = {'segments': [1, 2, 3, 4], 'prev': None, 'hash': 'h1'}
+    p2 = {'segments': [5, 6, 7, 8], 'prev': 'h1', 'hash': 'h2'}
+    p3 = {'segments': [9], 'prev': 'h2', 'hash': 'h3'}
+    exp = {'pages': 3, 'end_hash': 'h3'}
+    assert _paginate([p1, p2, p3], exp) == 'complete'
+    assert _paginate([p1, p2], exp) == 'incomplete'                                          # valid prefix, final page missing
+    assert _paginate([p1, p3], exp) == 'incomplete'                                          # missing middle page
+    assert _paginate([p1], exp) == 'incomplete'
+
+
+
+def test_clean_close_session_with_heartbeat_hole_fails_whole_window():
+    """Codex 6463297130 #2: C1 composed with C2 - a clean, enabled session whose heartbeats stall for 10 minutes."""
+    sess = [_S(0, 1800, hole=(600, 1260))]                                                   # beats 600 ... 1260 gap = 660 s
+    assert _eligible((0, 1800), {'s': 100}, [], sess) == {'s': False}
+    assert _eligible((0, 600), {'s': 100}, [], sess) == {'s': True}                          # before the hole
+    assert _eligible((1260, 1800), {'s': 1300}, [], sess) == {'s': True}                     # after it
+    assert _eligible((0, 1800), {'s': 100}, [], [_S(0, 1800)]) == {'s': True}               # no hole: eligible
+
+
+def test_test_plan_has_no_session_scoped_decided_at_clause(c):
+    for t in c['test_plan']:
+        assert 'missing decided_at makes the writer session' not in t['asserts'], t['name']

@@ -155,7 +155,8 @@ outside the hot path and counted in `gaps`. Any downstream fit or calibration wi
 - **Window axis (G1):** training / calibration membership is keyed to the owning signal's `decided_at`, never an
   outcome's `closed_at`. Every queued outcome carries `signal_id` and the owning `decided_at`. A dropped outcome opens a
   gap against that signal, and the signal is ineligible even when its close lies outside the fit window. If ownership or
-  decision time cannot be proven, the writer session is conservatively incomplete.
+  decision time cannot be proven for a dropped record, the writer session is conservatively incomplete. A lot that only
+  lacks `ml_decided_at` is signal-scoped (D1).
 - **Coverage (G2):** every interval from one durable clean close to the next durable start is a gap (`coverage_gaps`).
   So are producer-disabled, flag-off, manifest-invalid, startup-failed and stopped intervals; they are not counters only.
   A zero-event interval is eligible only when an enabled writer session durably covers it.
@@ -172,6 +173,8 @@ outside the hot path and counted in `gaps`. Any downstream fit or calibration wi
   opens a hole until a new durable session starts.
 - **Whole-window eligibility (C2):** a window is eligible only when `_covered([start, end))` holds continuously over
   the whole window. Checking only the signal's timestamp is forbidden. Session and heartbeat spans are half-open `[a, b)`.
+  Coverage spans come from heartbeats (C1), never from clean start / close alone, so a clean-close session with a
+  heartbeat hole fails whole-window eligibility.
 - **Sequence and closure (G3):** `seq` is allocated at the enqueue attempt, before the non-blocking offer, so a drop
   consumes a seq and the pending gap records it with the owning signal / decision context. A clean-close marker is
   forbidden until the queue is drained and no pending or unflushed gap exists. The start marker is durable before the
@@ -194,7 +197,9 @@ implemented and tested. This is part of AI-SCAN-03 or a required predecessor, ne
   `producer_disabled` / `manifest_full`.
 - **Pagination (L1):** a window needing more than 4 segments is processed only by verified manifest pagination: each
   read covers at most 4 segments with hash-chain / cursor continuity, and any missing or changed page makes the window
-  incomplete. The UI / API never returns a plausible partial row.
+  incomplete. The UI / API never returns a plausible partial row. The reader binds the expected page count, terminal
+  cursor and final manifest end hash from the verified manifest first, so a valid truncated prefix, a missing middle
+  page or a missing final page is incomplete.
 - **Measurement (L1):** before runtime implementation, representative serialized signal / outcome / upgrade rows are
   measured and fold latency and resource evidence is recorded. The confirmed limits remain conservative v1 caps.
 - **Bounded, causal reads:** the API reads manifest-bounded segments within a hard byte / segment bound and shows only
