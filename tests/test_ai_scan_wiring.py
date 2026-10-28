@@ -217,3 +217,37 @@ def test_endpoint_is_get_only(appmod, tmp_path, monkeypatch):
             assert call(m)[0] == 501
     finally:
         srv.shutdown(); srv.server_close()
+
+
+def _resealed(rec, **kw):
+    """Anyone with write access can reseal a line (the record hash is unkeyed): the reader must still fail closed."""
+    return A._seal({**copy.deepcopy(rec), **kw})
+
+
+@pytest.mark.parametrize('make', [
+    lambda s, o: _resealed(s, signal_id=['x']), lambda s, o: _resealed(s, signal_id={'a': 1}),
+    lambda s, o: _resealed(s, signal_id=None), lambda s, o: _resealed(shadow(s), epoch=['e']),
+    lambda s, o: _resealed(o, cost_revision_id=['r']), lambda s, o: _resealed(o, source={'m': 1}),
+])
+def test_a_resealed_line_with_a_malformed_key_is_skipped_never_raised(tmp_path, make):
+    """Cowork 6460365559 R1: an unhashable or None key part used to escape as TypeError from fold / the ledger index."""
+    p = L.ledger_path(tmp_path)
+    s = sig(); o = outcome(s)
+    write_all(p, [s, o])
+    with pytest.raises(A.AIScanError, match='malformed key'):
+        A.record_key(make(s, o))
+    with open(p, 'ab') as f:
+        f.write(json.dumps(make(s, o)).encode() + b'\n')
+    led = L.ScanLedger(p)                                                      # constructs; the line is skipped
+    assert led.records() == [s, o] and led.skipped == 1
+    v = L.scan_view({'AI_SCAN': True}, tmp_path, now=NOW)
+    assert v['on'] is True and v['skipped'] == 1 and v['error'] is None and len(v['rows']) == 1
+
+
+def test_a_directory_at_the_ledger_path_fails_closed_with_an_error_not_an_exception(tmp_path):
+    p = L.ledger_path(tmp_path)
+    os.makedirs(p)
+    v = L.scan_view({'AI_SCAN': True}, tmp_path, now=NOW)
+    assert v['on'] is True and v['rows'] == [] and 'ledger unreadable' in v['error']
+    with pytest.raises(A.AIScanError, match='ledger unreadable'):
+        L.ScanLedger(p)

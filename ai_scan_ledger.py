@@ -34,10 +34,15 @@ def ledger_path(data_dir):
 
 
 def read_records(path):
-    """-> (valid records in file order, skipped count). Invalid lines are skipped with a warning, never raised."""
+    """-> (valid records in file order, skipped count). Invalid lines are skipped with a warning, never raised; an
+    unreadable ledger path raises AIScanError, which scan_view turns into an error response."""
     bad, out = 0, []
     if os.path.exists(path):
-        with open(path, 'rb') as fh:
+        try:
+            fh = open(path, 'rb')
+        except OSError as ex:                                   # e.g. a directory at the ledger path (Cowork R1)
+            raise A.AIScanError(f'ledger unreadable ({type(ex).__name__})') from ex
+        with fh:
             for n, raw in enumerate(fh, 1):
                 line = raw.strip()
                 if not line: continue
@@ -103,7 +108,10 @@ def scan_view(settings, data_dir, now=None, limit=VIEW_LIMIT):
     the ledger, newest decision first. A replay that fails closed returns no rows and the reason - never a guess."""
     if (settings or {}).get(A.FLAG) is not True:
         return A.api_off()
-    recs, skipped = read_records(ledger_path(data_dir))       # read-only: never creates the folder or the file
+    try:
+        recs, skipped = read_records(ledger_path(data_dir))   # read-only: never creates the folder or the file
+    except A.AIScanError as ex:
+        return dict(on=True, rows=[], skipped=0, error=str(ex)[:200])
     try:
         views = A.fold(recs)
     except A.AIScanError as ex:
