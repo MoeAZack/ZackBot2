@@ -52,13 +52,13 @@ import splits as S                                                              
 sys.path.insert(0, M.REPO)
 import feasibility as F                                                                     # noqa: E402
 
-FORMAT = 'zb-edge05-run/5'
+FORMAT = 'zb-edge05-run/6'
 DAY_FORMAT = 'zb-edge05-day/2'
 SUMMARY_FORMAT = 'zb-edge05-summary/4'
-RULES_FORMAT = 'zb-exchange-rules-pit/4'
+RULES_FORMAT = 'zb-exchange-rules-pit/5'
 STRADDLE_FORMAT = 'zb-edge05-straddle/3'
 AMENDMENT_FORMAT = 'zb-edge05-amendment/1'
-SOURCE_MANIFEST_FORMAT = 'zb-upstream-source-manifest/1'
+SOURCE_MANIFEST_FORMAT = 'zb-upstream-source-manifest/2'
 ACCOUNTING_REL = ('research_evidence', 'accounting', 'strat00-accounting-inputs-v1.json')
 PREREG_REL = ('research_evidence', 'prereg', 'funding_carry_xsec.v1.json')
 CANDIDATE = 'funding_carry_xsec.v1'
@@ -121,6 +121,17 @@ CONVENTIONS = {
                              'hash-match; each interval names its snapshot and is causally supported only if that '
                              'snapshot\'s as_of <= the interval start (no backfill). Coverage/count checks run only on '
                              'authenticated, causally supported rows/intervals; anything else is provenance_uncovered',
+    'snapshot_rule_values': 'each authenticated exchangeInfo snapshot an interval cites is read via the bound '
+                            'rules-source manifest (contained path, sha256 re-verified while streaming, size-bounded, '
+                            'admitted against the memory cap) and parsed deterministically: symbols[].filters[] -> '
+                            'tick = PRICE_FILTER.tickSize; step = LOT_SIZE.stepSize; min_qty = LOT_SIZE.minQty; '
+                            'max_qty = MARKET_LOT_SIZE.maxQty (every fill is a market order); min_notional = '
+                            'MIN_NOTIONAL.notional; max_notional = MAX_NOTIONAL.maxNotional when that filter exists, '
+                            'else derived = PRICE_FILTER.maxPrice x MARKET_LOT_SIZE.maxQty (the largest notional the '
+                            'snapshot filters admit). A symbol absent from the snapshot, or any missing/non-numeric '
+                            'field or duplicated filter type, makes the interval unsupported (never defaulted); an '
+                            'interval whose claimed tuple differs from the parsed tuple refuses the artifact. The '
+                            'canonical per-symbol tuple digest of every parsed snapshot is bound in identity',
     'amendment': 'no ad-hoc end: the only shortened end is a signed zb-edge05-amendment/1 record for this exact '
                  'prereg, loaded with --expect-amendment-sha256, its sha256 and dev_end bound in identity',
     'codex_rulings_r4': {'AGE-ONLY-NO-COHORT-REPORTED': 'a no-cohort day caused only by listing age is counted and '
@@ -419,23 +430,87 @@ def _upstream_meta(kind: str, name: str):
         meta['month_end_ms']
 
 
+SNAPSHOT_MAX_BYTES = 64 * 2 ** 20                       # an exchangeInfo snapshot is ~1-3 MB; refuse anything larger
+SNAPSHOT_EXPAND = 12                                     # parsed JSON objects vs raw bytes (memory admission bound)
+
+
+class _NoSource(Exception):
+    pass
+
+
+def _snap_num(filters: dict, ftype: str, key: str) -> float:
+    x = filters.get(ftype)
+    v = x.get(key) if isinstance(x, dict) else None
+    if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+        raise _NoSource(f'{ftype}.{key}')
+    try:
+        f = float(v)
+    except ValueError:
+        raise _NoSource(f'{ftype}.{key}') from None
+    if not math.isfinite(f):
+        raise _NoSource(f'{ftype}.{key}')
+    return f
+
+
+def snapshot_rule_tuple(entry) -> tuple | None:
+    """The canonical RULE_KEYS tuple of one exchangeInfo symbols[] entry, or None when any field has no source
+    (missing filter / key, non-numeric, or a filter type listed twice). Field sources are fixed (see CONVENTIONS)."""
+    filters = {}
+    for x in (entry.get('filters') if isinstance(entry, dict) else None) or ():
+        ft = x.get('filterType') if isinstance(x, dict) else None
+        if not isinstance(ft, str) or ft in filters:
+            return None
+        filters[ft] = x
+    try:
+        tick = _snap_num(filters, 'PRICE_FILTER', 'tickSize')
+        step = _snap_num(filters, 'LOT_SIZE', 'stepSize')
+        min_qty = _snap_num(filters, 'LOT_SIZE', 'minQty')
+        max_qty = _snap_num(filters, 'MARKET_LOT_SIZE', 'maxQty')
+        min_notional = _snap_num(filters, 'MIN_NOTIONAL', 'notional')
+        max_notional = _snap_num(filters, 'MAX_NOTIONAL', 'maxNotional') if 'MAX_NOTIONAL' in filters else \
+            _snap_num(filters, 'PRICE_FILTER', 'maxPrice') * max_qty
+    except _NoSource:
+        return None
+    return (tick, step, min_qty, min_notional, max_qty, max_notional)          # RULE_KEYS order
+
+
+def snapshot_tuples(doc, want) -> dict:
+    """{symbol: tuple | None} for the wanted symbols present in an exchangeInfo document (absent = not a key)."""
+    syms = doc.get('symbols') if isinstance(doc, dict) else None
+    if not isinstance(syms, list):
+        raise RunnerError('not an exchangeInfo snapshot (no symbols[] list)')
+    out = {}
+    for e in syms:
+        sym = e.get('symbol') if isinstance(e, dict) else None
+        if sym not in want:
+            continue
+        if sym in out:
+            raise RunnerError(f'exchangeInfo snapshot lists {sym} twice')
+        out[sym] = snapshot_rule_tuple(e)
+    return out
+
+
 class SourceManifest:
     """`zb-upstream-source-manifest/1`: an independently produced, hash-bound list of upstream files {format, kind,
     files: [{name, sha256 (published), as_of (capture / publication)}]}. kind 'binance-um-exchangeinfo-snapshots'
     (names exchangeInfo@<UTC>, as_of = that time) or 'binance-vision-archive' (DAILY archive names only, as_of >= the
-    file's data end). Loaded only against an expected sha256."""
+    file's data end). Snapshot entries also carry `path` (relative to `root`), the only way a snapshot is read.
+    Loaded only against an expected sha256."""
 
-    def __init__(self, doc: dict, raw: bytes, expect_sha256: str | None, kind: str):
+    def __init__(self, doc: dict, raw: bytes, expect_sha256: str | None, kind: str, root: str | None = None):
         self.sha256 = sha(raw)
         if not expect_sha256 or self.sha256 != expect_sha256:
             raise RunnerError(f'{kind} source manifest sha256 differs from its expected value (or none was given)')
         if not isinstance(doc, dict) or set(doc) != {'format', 'kind', 'files'} or \
                 doc['format'] != SOURCE_MANIFEST_FORMAT or doc['kind'] != kind or not isinstance(doc['files'], list):
             raise RunnerError(f'source manifest must be {SOURCE_MANIFEST_FORMAT} of kind {kind}')
-        self.kind, self.files = kind, {}
+        self.kind, self.files, self.paths, self.root = kind, {}, {}, root
+        keys = {'name', 'sha256', 'as_of'} | ({'path'} if kind == 'binance-um-exchangeinfo-snapshots' else set())
         for f in doc['files']:
-            if not isinstance(f, dict) or set(f) != {'name', 'sha256', 'as_of'} or not HEX64.match(str(f['sha256'])):
-                raise RunnerError(f'source manifest entry {f!r} needs {{name, sha256, as_of}}')
+            if not isinstance(f, dict) or set(f) != keys or not HEX64.match(str(f['sha256'])):
+                raise RunnerError(f'source manifest entry {f!r} needs exactly {sorted(keys)}')
+            if 'path' in f:
+                self.paths[f['name']] = M.check_rel_path(f['path'])
             if f['name'] in self.files:
                 raise RunnerError(f'source manifest lists {f["name"]} twice')
             meta = _upstream_meta(kind, f['name'])
@@ -447,12 +522,49 @@ class SourceManifest:
             self.files[f['name']] = (f['sha256'], t, meta)
 
     @classmethod
-    def load(cls, path: str, expect_sha256: str | None, kind: str) -> 'SourceManifest':
+    def load(cls, path: str, expect_sha256: str | None, kind: str, root: str | None = None) -> 'SourceManifest':
         raw = open(path, 'rb').read()
-        return cls(json.loads(raw), raw, expect_sha256, kind)
+        return cls(json.loads(raw), raw, expect_sha256, kind,
+                   root if root is not None else os.path.dirname(os.path.abspath(path)))
 
     def identity(self) -> dict:
         return {'format': SOURCE_MANIFEST_FORMAT, 'kind': self.kind, 'sha256': self.sha256, 'files': len(self.files)}
+
+    def snapshot_rules(self, name: str, want, max_mb: float | None = None) -> dict:
+        """Read ONE snapshot through this manifest (contained path, size bound, memory admission, sha256 verified
+        while streaming) and return {symbol: canonical tuple | None} for `want`."""
+        if name not in self.paths or self.root is None:
+            raise RunnerError(f'rules snapshot {name} has no readable path in the bound rules-source manifest')
+        ap = M.contained(self.root, self.paths[name])
+        try:
+            size = os.path.getsize(ap)
+        except OSError:
+            raise RunnerError(f'rules snapshot {name}: file missing') from None
+        if size > SNAPSHOT_MAX_BYTES:
+            raise RunnerError(f'rules snapshot {name}: {size} bytes exceeds the {SNAPSHOT_MAX_BYTES} bound')
+        if max_mb is not None:
+            remaining = (max_mb - rss_mb()) * 2 ** 20
+            if size * SNAPSHOT_EXPAND > remaining:
+                raise MemoryLimit(f'rules snapshot {name}: parsing needs ~{size * SNAPSHOT_EXPAND / 2 ** 20:.1f} MB, '
+                                  f'{max(remaining, 0) / 2 ** 20:.1f} MB remain; refused before reading')
+        h, buf = hashlib.sha256(), bytearray()
+        with open(ap, 'rb') as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b''):
+                h.update(chunk)
+                buf += chunk
+                if len(buf) > SNAPSHOT_MAX_BYTES:
+                    raise RunnerError(f'rules snapshot {name}: grew past the size bound while reading')
+        if h.hexdigest() != self.files[name][0]:
+            raise RunnerError(f'rules snapshot {name}: bytes differ from the rules-source manifest sha256')
+        try:
+            doc = json.loads(bytes(buf))
+        except ValueError as e:
+            raise RunnerError(f'rules snapshot {name}: not JSON ({e})') from None
+        del buf
+        out = snapshot_tuples(doc, want)
+        del doc
+        gc.collect()
+        return out
 
 
 class Provenance:
@@ -550,18 +662,21 @@ class Provenance:
 
 # ------------------------------------------------------------------ point-in-time exchange rules
 class PitRules:
-    """`zb-exchange-rules-pit/3`: {format, provenance, symbols: {SYM: [{from, to, tick, step, min_qty, min_notional,
-    max_qty, max_notional}]}} with strict UTC [from, to) intervals, sorted and non-overlapping. Provenance coverage
+    """`zb-exchange-rules-pit/5`: {format, provenance, symbols: {SYM: [{from, to, snapshot, tick, step, min_qty,
+    min_notional, max_qty, max_notional}]}} with strict UTC [from, to) intervals, sorted and non-overlapping. Every
+    interval's values must equal the tuple parsed from its cited snapshot (else refused); a symbol/field the snapshot
+    lacks leaves the interval unsupported. Provenance coverage
     (series 'rules', rows = intervals inside [from, to), which must tile it) is re-counted; `lookup` raises
     `provenance_uncovered` outside GOOD coverage and never substitutes another interval."""
 
-    def __init__(self, doc: dict, raw: bytes, source: SourceManifest | None = None):
+    def __init__(self, doc: dict, raw: bytes, source: SourceManifest | None = None, max_mb: float | None = None):
         if not isinstance(doc, dict) or doc.get('format') != RULES_FORMAT or set(doc) != {'format', 'provenance',
                                                                                          'symbols'}:
             raise RunnerError(f'rules artifact must be {RULES_FORMAT} {{format, provenance, symbols}}')
         if not isinstance(doc.get('symbols'), dict):
             raise RunnerError('rules artifact needs a symbols map')
         self.sha256, self._iv, self.source, self.unsupported = sha(raw), {}, source, 0
+        self.unsourced, self.snapshot_digests, tuples = 0, {}, {}
         self.provenance = Provenance(doc['provenance'], ('binance-um-exchangeinfo-snapshots',), ('rules',))
         if source is not None:
             if source.kind != 'binance-um-exchangeinfo-snapshots' or \
@@ -573,6 +688,13 @@ class PitRules:
                     raise RunnerError(f'rules snapshot {name} is absent from the bound rules-source manifest')
                 if got[0] != h or got[1] != self.provenance.as_of[name]:
                     raise RunnerError(f'rules snapshot {name}: sha256/as_of differ from the rules-source manifest')
+            want = set(doc['symbols'])
+            cited = sorted({iv.get('snapshot') for ivs in doc['symbols'].values() for iv in ivs
+                            if isinstance(iv, dict) and iv.get('snapshot') in source.files})
+            for name in cited:                                  # one snapshot in memory at a time
+                tuples[name] = source.snapshot_rules(name, want, max_mb)
+                self.snapshot_digests[name] = sha(canon({k: list(v) if v is not None else None
+                                                         for k, v in sorted(tuples[name].items())}))
         for sym, ivs in doc['symbols'].items():
             rows = []
             for iv in ivs:
@@ -592,9 +714,19 @@ class PitRules:
             rows.sort(key=lambda r: r[0])
             if any(b[0] < a[1] for a, b in zip(rows, rows[1:])):
                 raise RunnerError(f'{sym}: rules intervals overlap')
+            # value support: the interval's tuple must be exactly the one parsed from its snapshot
+            sourced = []
+            for r in rows:
+                parsed = tuples.get(r[2]['snapshot'], {}).get(sym)
+                if parsed is None:
+                    self.unsourced += 1                       # symbol/field absent from the snapshot: unsupported
+                    continue
+                if tuple(r[2][k] for k in RULE_KEYS) != parsed:
+                    raise RunnerError(f'{sym} {r[2]["from"]}: rule values differ from snapshot {r[2]["snapshot"]} '
+                                      f'({dict(zip(RULE_KEYS, parsed))})')
+                sourced.append(r)
             # causal support: an authenticated snapshot captured at or before the interval start (no backfill)
-            ok = [r for r in rows if source is not None and r[2]['snapshot'] in source.files
-                  and source.files[r[2]['snapshot']][1] <= r[0]]
+            ok = [r for r in sourced if source.files[r[2]['snapshot']][1] <= r[0]]
             self.unsupported += len(rows) - len(ok)
             self._iv[sym] = ([r[0] for r in ok], ok)
         self.bad_coverage = self.provenance.recount(self._count)
@@ -612,15 +744,16 @@ class PitRules:
         return len(rows) if cur == hi else -1
 
     @classmethod
-    def load(cls, path: str, source: SourceManifest | None = None) -> 'PitRules':
+    def load(cls, path: str, source: SourceManifest | None = None, max_mb: float | None = None) -> 'PitRules':
         raw = open(path, 'rb').read()
-        return cls(json.loads(raw), raw, source)
+        return cls(json.loads(raw), raw, source, max_mb)
 
     def identity(self) -> dict:
         return {'format': RULES_FORMAT, 'sha256': self.sha256, 'provenance': self.provenance.doc,
                 'source_manifest': self.source.identity() if self.source else None,
                 'bad_coverage_entries': self.bad_coverage, 'unauthenticated_entries': self.unauthenticated,
-                'causally_unsupported_intervals': self.unsupported}
+                'causally_unsupported_intervals': self.unsupported, 'unsourced_intervals': self.unsourced,
+                'snapshot_tuple_digests': dict(sorted(self.snapshot_digests.items()))}
 
     def at(self, sym: str, t: int):
         starts, rows = self._iv.get(sym, ((), ()))
@@ -2061,6 +2194,8 @@ def main(argv=None) -> int:
     ap.add_argument('--expect-rules-sha256', help='sha256 of the frozen rules artifact; any other is refused')
     ap.add_argument('--rules-source-manifest', help=f'exchangeInfo snapshot list ({SOURCE_MANIFEST_FORMAT})')
     ap.add_argument('--expect-rules-source-sha256', help='sha256 of the rules-source manifest')
+    ap.add_argument('--rules-snapshot-root', help='directory the rules-source manifest paths are relative to '
+                                                  '(default: the manifest\'s directory)')
     ap.add_argument('--straddle-daily-manifest', help=f'daily archive list for the straddle ({SOURCE_MANIFEST_FORMAT})')
     ap.add_argument('--expect-straddle-daily-sha256', help='sha256 of the straddle daily source manifest')
     ap.add_argument('--straddle-artifact', help=f'hash-bound pre-cutoff rows of the straddle month ({STRADDLE_FORMAT})')
@@ -2080,8 +2215,9 @@ def main(argv=None) -> int:
             raise RunnerError('universe artifact hash differs from the prereg')
         symbols = CV.load_universe(uni)
         rsrc = SourceManifest.load(a.rules_source_manifest, a.expect_rules_source_sha256,
-                                   'binance-um-exchangeinfo-snapshots') if a.rules_source_manifest else None
-        rules = PitRules.load(a.rules_artifact, rsrc) if a.rules_artifact else None
+                                   'binance-um-exchangeinfo-snapshots', a.rules_snapshot_root) \
+            if a.rules_source_manifest else None
+        rules = PitRules.load(a.rules_artifact, rsrc, a.max_rss_mb) if a.rules_artifact else None
         man = os.path.join(M.REPO, *prereg['source']['manifest'].split('/'))
         src = ArchiveSource(man, a.store, symbols, prm.cutoff_ms, a.cache_months)
         if a.straddle_artifact:

@@ -1,12 +1,15 @@
 """EDGE05 low-RAM runner: synthetic in-memory / tmp_path data only (no market data directory is ever read)."""
+import atexit
 import copy
 import gzip
 import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,34 +41,85 @@ def prov(kind, files, coverage, manifest_sha='f' * 64):
             'producer': dict(PRODUCER), 'coverage': coverage}
 
 
+SNAPDIR = tempfile.mkdtemp(prefix='edge05-synthetic-snapshots-')   # synthetic exchangeInfo files only
+atexit.register(shutil.rmtree, SNAPDIR, True)
+SNAP2 = 'exchangeInfo@2021-03-02T00:00:00Z'
+FILTER_OF = {'tick': ('PRICE_FILTER', 'tickSize'), 'step': ('LOT_SIZE', 'stepSize'), 'min_qty': ('LOT_SIZE', 'minQty'),
+             'max_qty': ('MARKET_LOT_SIZE', 'maxQty'), 'min_notional': ('MIN_NOTIONAL', 'notional'),
+             'max_notional': ('MAX_NOTIONAL', 'maxNotional')}
+
+
 def source_manifest(kind, files, expect=True):
-    """An independently bound upstream list: files [(name, sha256, as_of)]."""
+    """An independently bound upstream list: files [(name, sha256, as_of[, path])]."""
     doc = {'format': R.SOURCE_MANIFEST_FORMAT, 'kind': kind,
-           'files': [{'name': n, 'sha256': h, 'as_of': a} for n, h, a in files]}
+           'files': [dict({'name': f[0], 'sha256': f[1], 'as_of': f[2]}, **({'path': f[3]} if len(f) > 3 else {}))
+                     for f in files]}
     raw = R.canon(doc)
-    return R.SourceManifest(doc, raw, R.sha(raw) if expect is True else expect, kind)
+    return R.SourceManifest(doc, raw, R.sha(raw) if expect is True else expect, kind, SNAPDIR)
 
 
-SNAP_FILES = [(SNAP, 'a' * 64, '2019-01-01T00:00:00Z'),
-              ('exchangeInfo@2021-03-02T00:00:00Z', 'b' * 64, '2021-03-02T00:00:00Z')]
-RSRC = source_manifest('binance-um-exchangeinfo-snapshots', SNAP_FILES)
+def snap_entry(sym, rule, strip=()):
+    """A Binance futures exchangeInfo symbols[] entry carrying exactly `rule` (keys absent from it are omitted)."""
+    by = {}
+    for k, (ft, key) in FILTER_OF.items():
+        if k in rule and (ft, key) not in strip and ft not in strip:
+            by.setdefault(ft, {'filterType': ft})[key] = repr(float(rule[k]))
+    return {'symbol': sym, 'status': 'TRADING', 'filters': [by[ft] for ft in sorted(by)]}
 
 
-def rules_doc(per=None, syms=SYMS):
+def write_snapshot(entries, strip=None):
+    strip = strip or {}
+    doc = {'timezone': 'UTC', 'symbols': [snap_entry(sym, r, strip.get(sym, ())) for sym, r in sorted(entries.items())]}
+    b = R.canon(doc)
+    rel = R.sha(b) + '.json'
+    with open(os.path.join(SNAPDIR, rel), 'wb') as fh:
+        fh.write(b)
+    return R.sha(b), rel
+
+
+def build(per=None, syms=SYMS, drop=(), strip=None):
+    """(rules doc, its bound rules-source manifest): every interval's values are written into a synthetic snapshot
+    (a symbol needing two different tuples gets a further snapshot captured at 2019-01-01T00:00:0k)."""
     per = per or {}
-    symbols = {s: [dict(iv) if 'snapshot' in iv else dict(iv, snapshot=SNAP) for iv in
+    symbols = {s: [dict(iv) for iv in
                    per.get(s, [dict(RULE, **{'from': '2019-01-01T00:00:00Z', 'to': '2027-01-01T00:00:00Z'})])]
                for s in syms}
+    contents = {SNAP: {}, SNAP2: {}}
+    for s, ivs in symbols.items():
+        for iv in ivs:
+            rule = {k: iv[k] for k in R.RULE_KEYS if k in iv}
+            if 'snapshot' not in iv:
+                k = 0
+                while True:
+                    name = SNAP if k == 0 else f'exchangeInfo@2019-01-01T00:00:{k:02d}Z'
+                    have = contents.setdefault(name, {}).get(s)
+                    if have is None or have == rule:
+                        break
+                    k += 1
+                iv['snapshot'] = name
+            contents.setdefault(iv['snapshot'], {})[s] = rule
+    files = []
+    for name, entries in sorted(contents.items()):
+        h, rel = write_snapshot({k: v for k, v in entries.items() if k not in drop}, strip)
+        files.append((name, h, name.split('@')[1], rel))
+    src = source_manifest('binance-um-exchangeinfo-snapshots', files)
     cov = [{'symbol': s, 'series': 'rules', 'from': iv['from'], 'to': iv['to'], 'rows': 1,
             'upstream': [iv['snapshot']]} for s, ivs in symbols.items() for iv in ivs]
     return {'format': R.RULES_FORMAT,
-            'provenance': prov('binance-um-exchangeinfo-snapshots', SNAP_FILES, cov, RSRC.sha256),
-            'symbols': symbols}
+            'provenance': prov('binance-um-exchangeinfo-snapshots', [f[:3] for f in files], cov, src.sha256),
+            'symbols': symbols}, src, files
 
 
-def pit(per=None):
-    doc = rules_doc(per)
-    return R.PitRules(doc, R.canon(doc), RSRC)
+_, RSRC, SNAP_FILES = build()
+
+
+def rules_doc(per=None, syms=SYMS):
+    return build(per, syms)[0]
+
+
+def pit(per=None, **kw):
+    doc, src, _ = build(per, **kw)
+    return R.PitRules(doc, R.canon(doc), src)
 
 
 RULES = pit()
@@ -1059,7 +1113,9 @@ def test_rules_need_a_bound_source_manifest_and_causal_snapshots(tmp_path):
     with pytest.raises(R.RunnerError, match='differ'):                # snapshot hash mismatch
         R.PitRules(d, R.canon(d), RSRC)
     with pytest.raises(R.RunnerError, match='capture time'):
-        source_manifest('binance-um-exchangeinfo-snapshots', [(SNAP, 'a' * 64, '2019-02-01T00:00:00Z')])
+        source_manifest('binance-um-exchangeinfo-snapshots', [(SNAP, 'a' * 64, '2019-02-01T00:00:00Z', 'x.json')])
+    with pytest.raises(R.RunnerError, match='exactly'):               # a snapshot entry without a readable path
+        source_manifest('binance-um-exchangeinfo-snapshots', [(SNAP, 'a' * 64, '2019-01-01T00:00:00Z')])
     unbound = R.PitRules(doc, R.canon(doc))                           # no source manifest: nothing authenticated
     assert unbound.unauthenticated == len(SYMS)
     with pytest.raises(R.Incomplete, match='provenance_uncovered'):
@@ -1288,3 +1344,72 @@ def test_max_qty_and_max_notional_refuse_and_count():
     late = pit({SYMS[0]: [dict(iv, to='2021-03-01T00:00:00Z')]})               # no effective interval at entry
     ep2 = R.safe_replay('long', D0, BASE, 0.5, _day(FLAT), lambda t: late.at(SYMS[0], t), q, D0 + 10 * DAY)
     assert ep2['why'] == 'rules_uncovered'
+
+
+# ------------------------------------------------------------------ rule values parsed from the cited snapshot
+def test_interval_values_must_equal_the_tuple_parsed_from_the_cited_snapshot():
+    doc = rules_doc()
+    for key, val in (('tick', 0.5), ('step', 0.01), ('min_qty', 0.002), ('min_notional', 6.0), ('max_qty', 1e8),
+                     ('max_notional', 1e11)):
+        d = copy.deepcopy(doc)                                        # hash-valid snapshot, altered claimed value
+        d['symbols'][SYMS[0]][0][key] = val
+        with pytest.raises(R.RunnerError, match='differ from snapshot'):
+            R.PitRules(d, R.canon(d), RSRC)
+    ident = RULES.identity()
+    assert set(ident['snapshot_tuple_digests']) == {SNAP} and ident['unsourced_intervals'] == 0
+    parsed = RSRC.snapshot_rules(SNAP, set(SYMS))
+    assert parsed[SYMS[0]] == tuple(float(RULE[k]) for k in R.RULE_KEYS)
+    assert ident['snapshot_tuple_digests'][SNAP] == R.sha(R.canon({k: list(v) for k, v in sorted(parsed.items())}))
+
+
+def test_snapshot_missing_symbol_or_field_leaves_the_interval_unsupported():
+    r = pit(drop={SYMS[1]})                                           # the snapshot does not list S01
+    assert r.unsourced == 1 and r.identity()['unsourced_intervals'] == 1
+    with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+        r.lookup(SYMS[1], D0)
+    assert r.lookup(SYMS[0], D0)['tick'] == RULE['tick']
+    for strip in ('MIN_NOTIONAL', ('LOT_SIZE', 'stepSize'), 'MARKET_LOT_SIZE'):
+        r = pit(strip={SYMS[2]: (strip,)})                            # a missing filter field is never defaulted
+        assert r.unsourced == 1 and r.at(SYMS[2], D0) is None
+        with pytest.raises(R.Incomplete, match='provenance_uncovered'):
+            r.lookup(SYMS[2], D0)
+
+
+def test_snapshot_field_sources_and_max_notional_derivation():
+    ent = snap_entry('X', RULE)
+    assert R.snapshot_rule_tuple(ent) == tuple(float(RULE[k]) for k in R.RULE_KEYS)
+    no_max = {'symbol': 'X', 'filters': [f for f in ent['filters'] if f['filterType'] != 'MAX_NOTIONAL']}
+    assert R.snapshot_rule_tuple(no_max) is None                      # no MAX_NOTIONAL and no maxPrice: no source
+    for f in no_max['filters']:
+        if f['filterType'] == 'PRICE_FILTER':
+            f['maxPrice'] = '2000'
+    assert R.snapshot_rule_tuple(no_max)[5] == 2000 * RULE['max_qty']  # derived maxPrice x MARKET_LOT_SIZE.maxQty
+    dup = dict(ent, filters=ent['filters'] + [ent['filters'][0]])
+    assert R.snapshot_rule_tuple(dup) is None
+    bad = copy.deepcopy(ent)
+    bad['filters'][0][next(k for k in bad['filters'][0] if k != 'filterType')] = 'NaN-ish'
+    assert R.snapshot_rule_tuple(bad) is None
+    with pytest.raises(R.RunnerError, match='twice'):
+        R.snapshot_tuples({'symbols': [ent, ent]}, {'X'})
+    with pytest.raises(R.RunnerError, match='exchangeInfo'):
+        R.snapshot_tuples({'rateLimits': []}, {'X'})
+
+
+def test_snapshot_is_read_only_through_the_manifest_hash_and_memory_checked(monkeypatch):
+    doc, src, files = build({SYMS[0]: [dict(RULE, tick=0.125, **{'from': '2019-01-01T00:00:00Z',
+                                                                  'to': '2027-01-01T00:00:00Z'})]})
+    R.PitRules(doc, R.canon(doc), src)
+    monkeypatch.setattr(R, '_mem_counters', lambda: (90.0, 90.0))
+    with pytest.raises(R.MemoryLimit, match='before reading'):
+        R.PitRules(doc, R.canon(doc), src, max_mb=90.0001)
+    monkeypatch.undo()
+    snap_path = os.path.join(SNAPDIR, dict((f[0], f[3]) for f in files)[SNAP])
+    raw = open(snap_path, 'rb').read()
+    try:
+        with open(snap_path, 'wb') as fh:                             # same path, tampered bytes
+            fh.write(raw.replace(b'0.125', b'0.250'))
+        with pytest.raises(R.RunnerError, match='bytes differ'):
+            R.PitRules(doc, R.canon(doc), src)
+    finally:
+        with open(snap_path, 'wb') as fh:
+            fh.write(raw)
