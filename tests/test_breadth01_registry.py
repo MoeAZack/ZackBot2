@@ -48,6 +48,7 @@ SHAPES = dict(trend=dict(n=600, dr=0.004, A=0.10, P=40.0),          # up-drift +
 # key -> sides its signal function is designed to emit
 EMITS = {'ema_st': ('le', 'se'), 'ema_mom': ('le', 'se'), 'donchian_ens': ('le', 'se'), 'breakout_pyramid': ('le', 'se'),
          'squeeze_tp': ('le', 'se'), 'pullback_rsi': ('le', 'se'), 'dca_dip': ('le',), 'bear_breakdown': ('se',),
+         'fib_pullback': ('le', 'se'),
          'rotation': ('le', 'se'), 'hot_coin': ('le',), 'exp_trend': ('le', 'se'), 'exp_range': ('le', 'se'),
          'exp_breakout': ('le', 'se'), 'exp_scalp': ('le', 'se'), 'exp_structure': ('le', 'se'), 'exp_vwaprev': ('le', 'se'),
          'exp_mom_short': ('se',), 'exp_rip_sell_dca': ('se',),
@@ -59,10 +60,10 @@ SIDE_PARAMS = {('rotation', 'se'): dict(shorts=True)}
 LONG_DEFAULT_SHORT_EMITTERS = {'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi',
                                'rotation'}
 RUNTIME_UNTESTED_SHORTS = {'ema_st', 'ema_mom', 'breakout_pyramid', 'pullback_rsi', 'rotation'}
-ONE_SIDE = {k for k in S.STRATEGIES if k.startswith('exp_')} | E.SCALP_KEYS      # wrapped in strategies._one_side
+ONE_SIDE = {k for k in S.STRATEGIES if k.startswith('exp_')} | E.SCALP_KEYS | {'fib_pullback'}
 
 FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend', 'exp_trend': 'Trend',
-          'pullback_rsi': 'Momentum', 'hot_coin': 'Momentum',
+          'pullback_rsi': 'Momentum', 'fib_pullback': 'Momentum', 'hot_coin': 'Momentum',
           'exp_range': 'Range', 'exp_vwaprev': 'Range',
           'breakout_pyramid': 'Breakout', 'squeeze_tp': 'Breakout', 'bear_breakdown': 'Breakout', 'exp_breakout': 'Breakout',
           'exp_structure': 'Breakout',

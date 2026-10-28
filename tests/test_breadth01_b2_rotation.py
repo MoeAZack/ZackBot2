@@ -33,21 +33,22 @@ def test_groups_at_most_six_equal_shares_and_cover_every_strategy():
     assert all(1 <= len(g) <= E.ROTATION_MAX_ACTIVE for g in groups)
     assert max(map(len, groups)) - min(map(len, groups)) <= 1
     flat = [k for g in groups for k in g]
-    rotated = sorted(k for k in S.STRATEGIES if k not in E.SCALP_KEYS)                  # SCALP-4 slots are never rotated
+    rotated = sorted(k for k in S.STRATEGIES if k not in E.SCALP_KEYS and k not in E.RESEARCH_ONLY_KEYS)
     assert sorted(flat) == rotated and len(flat) == len(set(flat))                       # each strategy in exactly one group
     sl = E.breadth_sleeves()
-    assert {x['key'] for x in sl} == set(S.STRATEGIES) and len({x['id'] for x in sl}) == len(sl)
+    assert {x['key'] for x in sl} == set(S.STRATEGIES) - E.RESEARCH_ONLY_KEYS
+    assert len({x['id'] for x in sl}) == len(sl)
     by_key = {x['key']: x for x in sl}
     for g in groups:
         shares = [by_key[k]['share'] for k in g]
         assert all(abs(s - 1 / len(g)) < 1e-12 for s in shares) and abs(sum(shares) - 1) < 1e-9
-    fams = {E.BREADTH_FAMILY.get(k, 'Other') for k in S.STRATEGIES}
+    fams = {E.BREADTH_FAMILY.get(k, 'Other') for k in S.STRATEGIES if k not in E.RESEARCH_ONLY_KEYS}
     assert set(E.BREADTH_FAMILIES) <= fams                                               # every family gets a turn
 
 
 def test_families_spread_across_groups():
     for fam in E.BREADTH_FAMILIES:
-        keys = [k for k in S.STRATEGIES if E.BREADTH_FAMILY.get(k) == fam]
+        keys = [k for k in S.STRATEGIES if k not in E.RESEARCH_ONLY_KEYS and E.BREADTH_FAMILY.get(k) == fam]
         n_groups = len({group_of(k) for k in keys})
         assert n_groups == min(len(keys), len(E.breadth_groups())), fam
 
@@ -181,6 +182,7 @@ def _tape(n=700, drift=0.0, seed=0, period=40.0):
 def test_both_sides_only_where_designed():
     by_key = {x['key']: x for x in E.breadth_sleeves()}
     for k, st in S.STRATEGIES.items():
+        if k in E.RESEARCH_ONLY_KEYS: continue
         want = 'both' if (k in E.BREADTH_BOTH or st['sides'] == 'both') else st['sides']
         assert by_key[k]['sides'] == want, k
     assert by_key['dca_dip']['sides'] == 'long' and by_key['hot_coin']['sides'] == 'long'
@@ -191,6 +193,7 @@ def test_both_sides_only_where_designed():
     ctx = S.build_context(dfs, 'BTCUSDT')
     fired = {}
     for k in S.STRATEGIES:
+        if k in E.RESEARCH_ONLY_KEYS: continue
         if k == 'exp_vwaprev': continue                                                  # needs a gap-free qv window
         for s, d in dfs.items():
             r = S.signals(k, d, ctx[s], None, mask_sides=False)

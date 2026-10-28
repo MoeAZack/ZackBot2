@@ -675,6 +675,7 @@ BREADTH_FAMILY = {'ema_st': 'Trend', 'ema_mom': 'Trend', 'donchian_ens': 'Trend'
 # strategy keeps its registry sides (dca_dip / hot_coin long, bear_breakdown short; rotation shorts need params.shorts).
 BREADTH_BOTH = frozenset({'ema_st', 'ema_mom', 'donchian_ens', 'breakout_pyramid', 'squeeze_tp', 'pullback_rsi'})
 BREADTH_ALL_SYMBOLS = frozenset({'rotation', 'hot_coin'})          # cross-sectional ranks: whole universe, others core 8
+RESEARCH_ONLY_KEYS = frozenset(k for k, st in S.STRATEGIES.items() if st.get('research_only'))
 # SCALP-4 (PAPER): four 15m scalp strategies run as INDEPENDENT slots of the breadth rotation profile. They are NOT part of
 # the 6-slot rotation: breadth_groups() leaves their keys out (so the existing groups / schedule stay byte-identical) and a
 # scalp slot is eligible for new entries whenever its own `enabled` flag is on. PAPER/testnet only: every new entry of a
@@ -775,7 +776,8 @@ def breadth_groups(keys=None, tradfi=False):
     """Deterministic groups of <= ROTATION_MAX_ACTIVE strategy keys. Keys are ordered by family, then dealt round-robin
     into ceil(n / 6) groups, so each family is spread across the groups and group sizes differ by at most one.
     tradfi=True (TRADFI-01 T4) adds the TRADFI_SLOTS ids to the same pool."""
-    keys = (sorted(k for k in S.STRATEGIES if k not in SCALP_KEYS) + (sorted(TRADFI_SLOTS) if tradfi else [])) \
+    keys = (sorted(k for k in S.STRATEGIES if k not in SCALP_KEYS and k not in RESEARCH_ONLY_KEYS) +
+            (sorted(TRADFI_SLOTS) if tradfi else [])) \
         if keys is None else list(keys)                  # SCALP-4: scalp slots are independent, never in a rotation group
     fo = {f: i for i, f in enumerate(BREADTH_FAMILIES)}
     order = sorted(keys, key=lambda k: (fo.get(_bfam(k), len(fo)), k))
