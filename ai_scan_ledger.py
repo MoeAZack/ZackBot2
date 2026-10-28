@@ -233,8 +233,8 @@ def _write_manifest(seg_dir, m):
 
 
 def _read_entry(seg_dir, e):
-    """One sealed segment, verified against its manifest entry: bytes, sha256 and valid-row count. -> (records, skipped).
-    Missing, changed or truncated -> AIScanError."""
+    """One sealed segment, verified against its manifest entry: bytes, sha256 and row count, and every line a valid
+    record. -> (records, 0). Missing, changed, truncated or any malformed / torn line -> AIScanError (never skipped)."""
     try:
         with open(os.path.join(str(seg_dir), e['name']), 'rb') as fh:
             data = fh.read(e['bytes'] + 1)               # never more than the bound + 1 byte
@@ -243,6 +243,7 @@ def _read_entry(seg_dir, e):
     if len(data) != e['bytes'] or hashlib.sha256(data).hexdigest() != e['sha256']:
         raise A.AIScanError(f"{e['name']}: segment changed or truncated")
     recs, bad = _parse_lines(data.split(b'\n'))
+    if bad: raise A.AIScanError(f"{e['name']}: {bad} malformed line(s) in a sealed segment")
     if len(recs) != e['rows']: raise A.AIScanError(f"{e['name']}: row count differs from the manifest")
     return recs, bad
 
@@ -303,12 +304,16 @@ class RotatingLedger:
                 self._index(recs, bad)
             active = self._active_path()
             recs, bad = read_records(active)
-            self._index(recs, bad)
             self._active_bytes = os.path.getsize(active) if os.path.isfile(active) else 0
             if self._active_bytes > self.bound: raise A.AIScanError('active segment exceeds segment_bound')
         except (A.AIScanError, OSError) as ex:
             self._disable('manifest_invalid', ex)
             return
+        if bad:                                          # a malformed / torn active line is never indexed or sealed
+            self.counters['skipped_lines'] += bad
+            self._disable('active_corrupt', A.AIScanError(f'{bad} malformed line(s) in the active segment'))
+            return
+        self._index(recs, 0)
         if m['disabled']:
             self._disable(m['disabled'])
             return
@@ -331,29 +336,38 @@ class RotatingLedger:
 
     def refresh(self):
         """Writer-side re-verification (startup, after a seal, or periodic - never the trading thread): the manifest on
-        disk is hash-valid and identical to ours, the bound matches config, every sealed file has its recorded size.
-        Publishes a new eligibility generation; a mismatch disables the producer. -> the published generation."""
+        disk is hash-valid and identical to ours, the bound matches config, every sealed file matches its entry (bytes,
+        sha256, rows, no malformed line) and the active segment has no malformed line. Publishes a new eligibility
+        generation; a mismatch disables the producer. -> the published generation. Cost: reads every sealed byte."""
         if self.disabled: return self.eligibility.check()
         try:
             m = load_manifest(self.dir)
             if m is None or m['manifest_hash'] != self._m['manifest_hash']: raise A.AIScanError('manifest changed')
             if m['segment_bound'] != self.bound: raise A.AIScanError('segment_bound differs from the manifest')
-            for e in m['segments']:
-                if os.path.getsize(os.path.join(self.dir, e['name'])) != e['bytes']:
-                    raise A.AIScanError(f"{e['name']}: size differs from the manifest")
+            for e in m['segments']: _read_entry(self.dir, e)
+            bad = read_records(self._active_path())[1]
         except (A.AIScanError, OSError) as ex:
             self._disable('manifest_invalid', ex)
+            return self.eligibility.check()
+        if bad:
+            self._disable('active_corrupt', A.AIScanError(f'{bad} malformed line(s) in the active segment'))
             return self.eligibility.check()
         return self.eligibility.publish(True)
 
     def _rotate(self):
         """Seal the active segment as manifest entry k (caller holds the lock; active is non-empty). -> True when that
-        left the manifest full (producer now disabled)."""
+        left the manifest full (producer now disabled). An active segment with any malformed / torn line is never sealed:
+        the producer is disabled (active_corrupt) and AIScanError raised, the manifest unchanged."""
         segs, k = self._m['segments'], len(self._m['segments']) + 1
         with open(self._active_path(), 'rb') as fh:
             data = fh.read()
+        recs, bad = _parse_lines(data.split(b'\n'))
+        if bad:
+            self.counters['skipped_lines'] += bad
+            self._disable('active_corrupt', A.AIScanError(f'{bad} malformed line(s) in the active segment'))
+            raise A.AIScanError('producer disabled (active_corrupt), seal refused')
         e = dict(n=k, name=seg_name(k), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data),
-                 rows=len(_parse_lines(data.split(b'\n'))[0]), prev=segs[-1]['chain'] if segs else GENESIS)
+                 rows=len(recs), prev=segs[-1]['chain'] if segs else GENESIS)
         e['chain'] = _chain(e)
         full = k >= MAX_SEGMENTS
         m = _new_manifest(self.bound, segs + [e], 'manifest_full' if full else None)
@@ -394,48 +408,69 @@ class RotatingLedger:
 
 
 # ------------------------------------------------------------------ verified pagination (reader side)
-def bind_read(seg_dir):
-    """Bind BEFORE reading: -> {manifest_hash, end_hash, page_count, cursors[(start, end)]} from the verified manifest.
-    Pages are consecutive runs of <= SEGS_PER_READ sealed segments; a page's cursors are its first prev / last chain."""
-    m = load_manifest(seg_dir)
-    if m is None: raise A.AIScanError('no rotation manifest')
+def _derive_binding(m):
     segs = m['segments']
     pages = [segs[i:i + SEGS_PER_READ] for i in range(0, len(segs), SEGS_PER_READ)]
     return dict(manifest_hash=m['manifest_hash'], end_hash=segs[-1]['chain'] if segs else GENESIS,
                 page_count=len(pages), cursors=[(p[0]['prev'], p[-1]['chain']) for p in pages])
 
 
-def read_page(seg_dir, binding, i):
-    """Read page i (<= SEGS_PER_READ segments) under the binding: the manifest must still hash to the bound one and
-    every segment must match its entry. -> {index, manifest_hash, start, end, records, skipped}; else AIScanError."""
+def bind_read(seg_dir):
+    """Bind BEFORE reading: -> {manifest_hash, end_hash, page_count, cursors[(start, end)]} from the verified manifest.
+    Pages are consecutive runs of <= SEGS_PER_READ sealed segments; a page's cursors are its first prev / last chain."""
     m = load_manifest(seg_dir)
-    if m is None or m['manifest_hash'] != binding['manifest_hash']: raise A.AIScanError('manifest changed since bind')
-    if not (_int(i) and 0 <= i < binding['page_count']): raise A.AIScanError(f'page {i!r} outside the binding')
-    recs, bad = [], 0
+    if m is None: raise A.AIScanError('no rotation manifest')
+    return _derive_binding(m)
+
+
+def _check_binding(seg_dir, binding):
+    """A binding is never trusted as given: re-derive every field from the verified manifest on disk, which must hash to
+    binding['manifest_hash']. -> the re-derived binding; any forged / stale field or a changed manifest -> AIScanError."""
+    m = load_manifest(seg_dir)
+    if m is None or not isinstance(binding, dict) or m['manifest_hash'] != binding.get('manifest_hash'):
+        raise A.AIScanError('manifest changed since bind')
+    d = _derive_binding(m)
+    try:
+        same = set(binding) == set(d) and all(binding[k] == d[k] for k in ('manifest_hash', 'end_hash', 'page_count')) \
+            and _int(binding['page_count']) and [tuple(c) for c in binding['cursors']] == d['cursors']
+    except TypeError:
+        same = False
+    if not same: raise A.AIScanError('binding does not match the verified manifest')
+    return d, m
+
+
+def read_page(seg_dir, binding, i):
+    """Read page i (<= SEGS_PER_READ segments) under the binding, re-derived from the manifest (_check_binding); every
+    segment must match its entry. -> {index, manifest_hash, start, end, records, skipped}; else AIScanError."""
+    d, m = _check_binding(seg_dir, binding)
+    if not (_int(i) and 0 <= i < d['page_count']): raise A.AIScanError(f'page {i!r} outside the binding')
+    recs = []
     for e in m['segments'][i * SEGS_PER_READ:(i + 1) * SEGS_PER_READ]:
-        r, b = _read_entry(seg_dir, e)
-        recs += r
-        bad += b
-    start, end = binding['cursors'][i]
-    return dict(index=i, manifest_hash=m['manifest_hash'], start=start, end=end, records=recs, skipped=bad)
+        recs += _read_entry(seg_dir, e)[0]
+    start, end = d['cursors'][i]
+    return dict(index=i, manifest_hash=m['manifest_hash'], start=start, end=end, records=recs, skipped=0)
 
 
-def fold_pages(binding, pages):
-    """Fold pages against the binding -> {complete, views, error}. Complete only when exactly page_count pages arrive in
-    order under the bound manifest hash, each starting at the previous end cursor (GENESIS first) and the last ending on
-    end_hash. A missing middle / final page, a changed or reordered page or a valid truncated prefix is incomplete with
-    NO views - never a plausible partial row. `pages` may be lazy: one page (<= SEGS_PER_READ segments) at a time."""
+def fold_pages(seg_dir, binding, pages):
+    """Fold pages against the binding -> {complete, views, error}. The binding is re-derived from the verified manifest
+    before and again after the pages (_check_binding). Complete only when exactly page_count pages arrive in order under
+    that manifest hash, each starting at the previous end cursor (GENESIS first) and the last ending on end_hash. A
+    forged binding, a missing middle / final page, a changed or reordered page or a valid truncated prefix is incomplete
+    with NO views - never a plausible partial row. `pages` may be lazy: one page (<= SEGS_PER_READ segments) at a time.
+    Page records are trusted as returned by read_page (same process); their segments were hash-verified there."""
     def stream():
+        d = _check_binding(seg_dir, binding)[0]
         cur, n = GENESIS, 0
         for p in pages:
-            if not (isinstance(p, dict) and n < binding['page_count'] and p.get('index') == n
-                    and p.get('manifest_hash') == binding['manifest_hash'] and p.get('start') == cur
-                    and p.get('end') == binding['cursors'][n][1]):
+            if not (isinstance(p, dict) and n < d['page_count'] and p.get('index') == n
+                    and p.get('manifest_hash') == d['manifest_hash'] and p.get('start') == cur == d['cursors'][n][0]
+                    and p.get('end') == d['cursors'][n][1] and p.get('skipped') == 0):
                 raise A.AIScanError(f'page {n} missing, changed or out of order')
             yield from p['records']
             cur, n = p['end'], n + 1
-        if n != binding['page_count'] or cur != binding['end_hash']:
-            raise A.AIScanError(f"incomplete: {n} of {binding['page_count']} pages, terminal cursor not reached")
+        if n != d['page_count'] or cur != d['end_hash']:
+            raise A.AIScanError(f"incomplete: {n} of {d['page_count']} pages, terminal cursor not reached")
+        _check_binding(seg_dir, binding)                     # the manifest did not change under the fold
     try:
         return dict(complete=True, views=A.fold(stream()), error=None)
     except A.AIScanError as ex:
@@ -453,6 +488,6 @@ def read_window(seg_dir, max_pages=None):
     if max_pages is not None and b['page_count'] > max_pages:
         return dict(complete=False, views={}, error=f"window needs {b['page_count']} pages > bound {max_pages}",
                     pages=b['page_count'])
-    out = fold_pages(b, (read_page(seg_dir, b, i) for i in range(b['page_count'])))
+    out = fold_pages(seg_dir, b, (read_page(seg_dir, b, i) for i in range(b['page_count'])))
     out['pages'] = b['page_count']
     return out

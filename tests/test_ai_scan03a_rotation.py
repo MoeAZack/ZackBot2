@@ -218,7 +218,7 @@ def test_pagination_binds_count_cursor_and_end_hash_and_pages_are_continuous(nin
     assert [len(p['records']) for p in pages] == [4, 4, 2]       # <= 4 segments per read
     assert pages[0]['start'] == L.GENESIS and pages[-1]['end'] == b['end_hash']
     assert all(pages[i]['start'] == pages[i - 1]['end'] for i in (1, 2))
-    r = L.fold_pages(b, pages)
+    r = L.fold_pages(d, b, pages)
     assert r['complete'] and len(r['views']) == 9 and r['views'][s9[0]['signal_id']]['measured'] is not None
     assert L.read_window(d) == dict(r, pages=3)
 
@@ -229,16 +229,16 @@ def test_missing_middle_final_reordered_or_truncated_pages_are_incomplete(nine):
     p = [L.read_page(d, b, i) for i in range(3)]
     for bad in ([p[0], p[2]], [p[0], p[1]], [p[1], p[0], p[2]], [p[0], None, p[2]], [], p + [p[2]],
                 [p[0], dict(p[1], start='f' * 64), p[2]], [p[0], dict(p[1], manifest_hash='0' * 64), p[2]]):
-        r = L.fold_pages(b, bad)
+        r = L.fold_pages(d, b, bad)
         assert r['complete'] is False and r['views'] == {} and r['error'], bad
     # a valid, self-consistent truncated prefix manifest written after the bind
     m = L.load_manifest(d)
     L._write_manifest(d, L._new_manifest(m['segment_bound'], m['segments'][:4]))
     with pytest.raises(A.AIScanError, match='changed since bind'): L.read_page(d, b, 2)
-    r = L.fold_pages(b, (L.read_page(d, b, i) for i in range(3)))
+    r = L.fold_pages(d, b, (L.read_page(d, b, i) for i in range(3)))
     assert r['complete'] is False and r['views'] == {}
     bp = L.bind_read(d)                                          # pages of the prefix never satisfy the full binding
-    assert L.fold_pages(b, [L.read_page(d, bp, 0)])['complete'] is False
+    assert L.fold_pages(d, b, [L.read_page(d, bp, 0)])['complete'] is False
 
 
 @pytest.mark.parametrize('how', ['missing_middle', 'missing_final', 'changed', 'truncated'])
@@ -258,6 +258,107 @@ def test_bounded_read_refuses_a_window_beyond_its_page_bound(nine):
     assert L.read_window(d, max_pages=2) == dict(complete=False, views={}, error='window needs 3 pages > bound 2', pages=3)
     assert L.read_window(d, max_pages=3)['complete'] is True
     assert L.read_window(os.path.join(d, 'none'))['complete'] is False          # no manifest: not provably complete
+
+
+# ------------------------------------------------------------------ Codex PR #229 review: forged binding / corruption
+def _forge(b, how):
+    f = dict(b, cursors=list(b['cursors']))
+    if how == 'partial':                                         # Codex repro: one page, ending at page 0's end
+        f.update(page_count=1, cursors=[b['cursors'][0]], end_hash=b['cursors'][0][1])
+    elif how == 'page_count': f['page_count'] = 2
+    elif how == 'page_count_bool': f['page_count'] = True
+    elif how == 'cursor_start': f['cursors'][1] = ('f' * 64, b['cursors'][1][1])
+    elif how == 'cursor_end': f['cursors'][0] = (b['cursors'][0][0], 'f' * 64)
+    elif how == 'end_hash': f['end_hash'] = b['cursors'][1][1]
+    elif how == 'manifest_hash': f['manifest_hash'] = 'f' * 64
+    elif how == 'extra_key': f['complete'] = True
+    return f
+
+
+@pytest.mark.parametrize('how', ['partial', 'page_count', 'page_count_bool', 'cursor_start', 'cursor_end', 'end_hash',
+                                 'manifest_hash', 'extra_key'])
+def test_a_forged_binding_is_refused_by_read_page_and_fold_pages(nine, how):
+    d, _ = nine
+    b = L.bind_read(d)
+    f = _forge(b, how)
+    with pytest.raises(A.AIScanError): L.read_page(d, f, 0)
+    real = [L.read_page(d, b, i) for i in range(3)]
+    for pages in (real, real[:f['page_count'] if _int_ok(f['page_count']) else 1]):
+        r = L.fold_pages(d, f, pages)
+        assert r['complete'] is False and r['views'] == {} and r['error']
+    assert L.fold_pages(d, b, real)['complete'] is True                     # the genuine binding still works
+
+
+def _int_ok(v):
+    return type(v) is int and 0 <= v <= 3
+
+
+def test_a_same_size_sealed_edit_fails_the_writer_refresh(tmp_path):
+    d = str(tmp_path)
+    led = small_segments(d, [[sig(sleeve='P0')], [sig(sleeve='P9')]])
+    g = led.refresh()
+    assert g[1] is True
+    p = os.path.join(d, L.seg_name(1))
+    data = open(p, 'rb').read()
+    open(p, 'wb').write(data.replace(b'P0', b'P1'))                          # same length, different sha256
+    assert len(open(p, 'rb').read()) == len(data)
+    gen, ok, why = led.refresh()
+    assert gen > g[0] and (ok, led.disabled) == (False, 'manifest_invalid') and led.eligibility.check()[1] is False
+    with pytest.raises(A.AIScanError, match='disabled'): led.append(sig(sleeve='P5'))
+
+
+def _corrupt_active(d, n, junk=b'{bad}\n'):
+    open(os.path.join(d, L.seg_name(n)), 'ab').write(junk)
+
+
+@pytest.mark.parametrize('junk', [b'{bad}\n', b'{"kind":"sig'])            # malformed line / torn tail
+def test_a_corrupt_active_segment_is_never_sealed(tmp_path, junk):
+    d = str(tmp_path)
+    s0, s1 = sig(sleeve='C0'), sig(sleeve='C1')
+    led = small_segments(d, [[s0]])
+    led.append(s1)
+    _corrupt_active(d, 2, junk)
+    m = L.load_manifest(d)
+    with pytest.raises(A.AIScanError, match='active_corrupt'): led.seal()
+    assert led.disabled == 'active_corrupt' and led.eligibility.check()[1:] == (False, 'active_corrupt')
+    assert L.load_manifest(d) == m                                           # nothing sealed
+    r = L.read_window(d)
+    assert set(r['views']) == {s0['signal_id']}                               # the corrupt bytes never became readable
+    with pytest.raises(A.AIScanError, match='disabled'): led.append(sig(sleeve='C2'))
+
+
+@pytest.mark.parametrize('junk', [b'{bad}\n', b'{"kind":"sig'])
+def test_a_corrupt_active_segment_disables_the_writer_on_restart(tmp_path, junk):
+    d = str(tmp_path)
+    s0 = sig(sleeve='C0')
+    led = small_segments(d, [[s0]])
+    led.append(sig(sleeve='C1'))
+    _corrupt_active(d, 2, junk)
+    m, raw = L.load_manifest(d), files(d)
+    led2 = L.RotatingLedger(d, MIB)
+    assert led2.disabled == 'active_corrupt' and led2.eligibility.check()[1] is False
+    with pytest.raises(A.AIScanError, match='disabled'): led2.seal()
+    with pytest.raises(A.AIScanError, match='disabled'): led2.append(sig(sleeve='C2'))
+    assert L.load_manifest(d) == m and files(d) == raw
+    assert set(L.read_window(d)['views']) == {s0['signal_id']}
+    _corrupt_active(d, 2, b'\n')                                             # a live writer's refresh catches it too
+    led.refresh()
+    assert led.disabled == 'active_corrupt'
+
+
+def test_a_bad_line_inside_a_hash_valid_sealed_segment_is_incomplete(tmp_path):
+    d = str(tmp_path)
+    s = sig()
+    small_segments(d, [[s]])
+    p = os.path.join(d, L.seg_name(1))
+    open(p, 'ab').write(b'{bad}\n')                                           # re-sealed as if the bytes were genuine
+    data = open(p, 'rb').read()
+    e = dict(L.load_manifest(d)['segments'][0], sha256=__import__('hashlib').sha256(data).hexdigest(), bytes=len(data))
+    e['chain'] = L._chain(e)
+    L._write_manifest(d, L._new_manifest(MIB, [e]))
+    r = L.read_window(d)
+    assert r['complete'] is False and r['views'] == {} and 'malformed' in r['error']
+    assert L.RotatingLedger(d, MIB).disabled == 'manifest_invalid'
 
 
 # ------------------------------------------------------------------ G4 eligibility seam
