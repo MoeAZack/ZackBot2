@@ -21,10 +21,10 @@ def c():
 
 # ------------------------------------------------------------------ contract
 
-def test_status_is_draft_unsigned_and_no_ledger_yet():
+def test_status_is_frozen_signed_not_evaluated_and_no_ledger_yet():
     p = c()
     assert p['format'] == 'zb-edge05-prereg/1' and p['candidate_id'] == 'funding_carry_xsec.v1'
-    assert p['status'] == 'DRAFT - UNSIGNED - NOT FROZEN' and p['signed'] is False
+    assert p['status'].startswith('FROZEN - SIGNED BY CODEX - NOT EVALUATED') and p['signed'] is True
     assert not (ROOT / 'research_evidence' / 'ledger' / 'funding_carry_xsec.jsonl').exists()
     assert b'funding_carry_xsec' not in (ROOT / 'research_evidence' / 'ledger' / 'REGISTRY.jsonl').read_bytes()
     assert p['boundaries'] == {'paper': False, 'runtime_change': False, 'holdout_read': False,

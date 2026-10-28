@@ -2,8 +2,8 @@
   "format": "zb-edge05-prereg/1",
   "candidate_id": "funding_carry_xsec.v1",
   "family": "funding_carry_xsec",
-  "status": "DRAFT - UNSIGNED - NOT FROZEN",
-  "signed": false,
+  "status": "FROZEN - SIGNED BY CODEX - NOT EVALUATED (2026-10-28 06:59 Cairo)",
+  "signed": true,
   "drafted": "2026-10-28 Cairo by Build (claude-code), from Codex roadmap 6455796158 item 4",
   "signing": "This file is the authoritative preregistration (Codex 6457583467). It lands DRAFT; Integration (codex) freezes the numbers and flips status/signed here before merge, then creates research_evidence/ledger/funding_carry_xsec.jsonl plus one REGISTRY.jsonl line, before any market result",
   "source": {
