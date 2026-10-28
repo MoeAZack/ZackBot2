@@ -1,9 +1,14 @@
 {
   "contract": "ML-TRAIN-01",
   "version": 1,
-  "status": "DRAFT",
-  "signed_by": null,
-  "frozen_at": null,
+  "status": "FROZEN",
+  "signed_by": "codex",
+  "frozen_at": "2026-10-28T05:50:00+03:00",
+  "signature_ref": {
+    "ruling": "6459327957",
+    "accepted_head": "9ea2cd92e71b672a3ea0c13e39da20bde3702bce",
+    "merge_commit": "fe84dbbc6eab021c5685330df933a6e90221775d"
+  },
   "base_commit": "945f997",
   "doc": "ML_TRAIN_01_CONTRACT.md",
   "binding_inputs": [
