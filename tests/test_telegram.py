@@ -1,6 +1,7 @@
 """Telegram two-way control: auth, every command, confirm flows, PIN, persistence, rate limit, backoff, token hygiene.
 No network: a fake Bot API serves scripted getUpdates and records every call."""
 import hashlib, io, json, logging, os, sys, time, threading
+from datetime import datetime, timezone
 import pytest, requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -121,7 +122,8 @@ def test_no_positions():
     assert say(tg, http, '/positions') == 'No open positions.'
 
 
-def test_profit_and_daily():
+def test_profit_and_daily(monkeypatch):
+    monkeypatch.setattr(E, 'now_utc', lambda: datetime(2026, 10, 28, 21, 30, tzinfo=timezone.utc))
     e, tg, http, _ = setup()
     assert 'No closed trades' in say(tg, http, '/profit')
     hist(e, 30); hist(e, -10); hist(e, 5, E.now_utc() - E.timedelta(days=20))

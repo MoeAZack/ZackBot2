@@ -475,7 +475,7 @@ class TelegramControl:
         with e.lock:
             d0, g, day = e.state.get('day_start_equity'), e.guard_eq, e.state.get('day')
             H = list(e.history)
-        try: start = _parse_ts(E.next_reset_utc()) - timedelta(days=1)
+        try: start = E.cairo_day_start_utc()
         except Exception: start = datetime.now(timezone.utc) - timedelta(days=1)
         T = [h for h in H if _parse_ts(h.get('closed')) and _parse_ts(h['closed']) >= start]
         V = [AC.row_view(h) for h in T]                      # FILL-PNL-02: measured net only
