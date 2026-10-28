@@ -540,6 +540,9 @@ class FakeSrc:
     def identity(self):
         return {'kind': 'fake', 'manifest_file_sha256': 'a' * 64}
 
+    def set_memory(self, check, max_mb):
+        self.bound = (check, max_mb)
+
 
 def _src(syms, n=700, start=T0 - 300 * TF, drop_funding=(), seed=0):
     bars, fund, marks = {}, {}, {}
@@ -623,7 +626,8 @@ def test_execute_is_authorized_rss_guarded_chained_and_resumable(pf, tmp_path):
     res = _execute(pf, out)                                                   # resumes after BTCUSDT
     lines = (out / 'symbols.jsonl').read_bytes()
     assert lines.startswith(first) and lines.count(b'\n') == 17
-    assert res['evaluated'] is False and res['identity_sha256'] and 'verdict' not in json.dumps(res).lower()
+    assert res['evaluated'] is True and res['decided'] is False                # authorized statistics, no decision
+    assert res['identity_sha256'] and 'verdict' not in json.dumps(res).lower()
     full = tmp_path / 'f'
     _execute(pf, full)                                                        # uninterrupted run: byte-identical
     assert (full / 'symbols.jsonl').read_bytes() == lines and (full / 'run.json').read_bytes() == (out / 'run.json').read_bytes()
@@ -737,7 +741,24 @@ def test_run_requires_the_exact_frozen_universe(pf):
     with pytest.raises(R.IdentityMismatch):                                               # STATIC-40 is exact too
         R.run(_dummy(FIXED), pf, windows=w, resamples=10, universe='STATIC-40')
     s40 = sorted(R.universe_symbols(pf.prereg, 'STATIC-40'))
-    assert len(s40) == 40 and R.run(_dummy(s40), pf, windows=w, resamples=10, universe='STATIC-40')['report_only']
+    assert len(s40) == 40
+
+
+def test_report_only_universes_carry_no_decision_inputs(pf):
+    w = W(400)
+    s40 = sorted(R.universe_symbols(pf.prereg, 'STATIC-40'))
+    for res in (R.run(_dummy(s40), pf, windows=w, resamples=10, universe='STATIC-40', rules=lambda s, t: RULE),
+                R.run(_dummy(FIXED[:2]), pf, windows=w, resamples=10, allow_partial_universe_test_only=True,
+                      book_stage='S3', rules=lambda s, t: RULE)):
+        assert res['report_only'] and res['gate_inputs'] is None and 'gates' not in res
+        assert 'report-only universe' in res['decision_inputs_refused']
+        assert not set(R.DECISION_KEYS) & set(res['report_statistics'])   # no H1-H3 / credited stage to read
+        with pytest.raises(R.RunnerError, match='no decision inputs'):
+            R.decide(res['gate_inputs'])
+        with pytest.raises(R.RunnerError, match='no decision inputs'):
+            R.decide(dict(res['report_statistics'], report_only=True))
+    assert res['book']['stage'] == 'S3'                                   # an explicit report book only
+    assert R.run(_dummy(FIXED), pf, windows=w, resamples=10)['gate_inputs'] is not None   # the primary universe does
 
 
 def test_execute_requires_the_exact_frozen_universe(pf, tmp_path):
@@ -847,6 +868,9 @@ class _Mutating:
             b = rows[400]
             rows = rows[:400] + [b._replace(close=b.close * 1.0001)] + rows[401:]
         return rows
+
+    def set_memory(self, check, max_mb):
+        self.base.set_memory(check, max_mb)
 
     def funding(self, sym, lo, hi):
         return self.base.funding(sym, lo, hi)
@@ -1081,6 +1105,43 @@ def test_archive_adapter_end_to_end_matches_the_in_memory_source(tmp_path):
         R.load_symbol(E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], MAR1), 'BTCUSDT', w, warmup_start=DEC1)
 
 
+def test_execute_binds_the_rss_cap_to_the_source_before_any_read(pf, tmp_path, monkeypatch):
+    seen = []
+
+    class Spy(FakeSrc):
+        def set_memory(self, check, max_mb):
+            seen.append(('bind', max_mb, check))
+
+        def bars(self, sym, iv, lo, hi):
+            seen.append(('read', sym))
+            return super().bars(sym, iv, lo, hi)
+    base = _fixed_src()
+    spy = Spy(base.b, base.f, base.m)
+    rss = [100.0]
+    _execute(pf, tmp_path / 's', src=spy, stop_after=1, max_rss_mb=777, rss=lambda: rss[0])
+    assert seen[0][:2] == ('bind', 777) and seen[1][0] == 'read'          # bound first, with the mandatory cap
+    rss[0] = 900.0
+    with pytest.raises(R.MemoryLimit):                                    # the bound check is execute()'s own guard
+        seen[0][2]()
+
+    class NoBind(FakeSrc):
+        set_memory = None
+    with pytest.raises(R.RunnerError, match='set_memory'):                # unbindable source: refused before any read
+        _execute(pf, tmp_path / 'n', src=NoBind(base.b, base.f, base.m))
+    assert not (tmp_path / 'n').exists()
+    # the real ArchiveSource, once bound, refuses a month expansion that would cross the cap BEFORE decompressing
+    w = W(336, warm=200)
+    man, store, raws, files = _archive(tmp_path / 'a', ['BTCUSDT'], DEC1, APR1)
+    src = E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], MAR1)
+    src.set_memory(lambda: None, 64)
+    monkeypatch.setattr(E5, 'rss_mb', lambda: 63.999)
+    opened = []
+    monkeypatch.setattr(src, '_stream_rows', lambda *a, **k: opened.append(1) or [])
+    with pytest.raises(E5.MemoryLimit, match='refused before decompressing'):
+        R.load_symbol(src, 'BTCUSDT', w, warmup_start=DEC1)
+    assert not opened
+
+
 def test_sealed_boundary_is_refused_before_and_after_the_read(tmp_path):
     cut = R.iso_ms('2021-02-15T00:00:00Z')                              # mid-month: February straddles the seal
     w = R.Windows(T0, cut - 40 * TF, cut, ((T0, cut),), 200)
@@ -1214,30 +1275,33 @@ def test_cli_never_evaluates_without_an_integration_loader(cli_inputs, capsys, t
     out = tmp_path / 'out'
     auth = tmp_path / 'auth.json'
     auth.write_text('{}')
-    monkeypatch.delitem(sys.modules, R.AUTH_LOADER, raising=False)
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3
-    assert 'no Integration authorization loader' in capsys.readouterr().err and not out.exists()
+    assert 'identity-pinned authorization verifier' in capsys.readouterr().err and not out.exists()
+    for name in ('bpyr_eval_authorization', 'bpyr_auth'):                # a module planted on sys.path is never used
+        monkeypatch.setitem(sys.modules, name, SimpleNamespace(load=lambda p, h: AUTH(pf)))
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3 and not out.exists()
+    assert 'importlib' not in (ROOT / 'tools' / 'research' / 'bpyr_runner.py').read_text(encoding='utf-8')
     calls = []
 
     def fake_execute(outdir, src, pf_, **kw):
         calls.append(kw)
         return {'candidate_id': R.CANDIDATE, 'prereg_sha256': pf_.prereg_sha256, 'identity_sha256': 'i' * 64,
-                'evaluated': False}
+                'evaluated': True, 'decided': False}
     monkeypatch.setattr(R, 'execute', fake_execute)
     lock = lambda *a: contextlib.nullcontext()                                           # noqa: E731
-    monkeypatch.setitem(sys.modules, R.AUTH_LOADER, SimpleNamespace(load=lambda p, h: 'not a token'))
-    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock) == 3 and not calls
-    monkeypatch.setitem(sys.modules, R.AUTH_LOADER, SimpleNamespace(load=lambda p, h: AUTH(pf)))
-    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), straddle=False, lock=lock) == 3
+    bad_tok = lambda p, pf_: 'not a token'                                              # noqa: E731
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock, authorize=bad_tok) == 3 and not calls
+    tok = lambda p, pf_: AUTH(pf_)                                                       # noqa: E731  test-only seam
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), straddle=False, lock=lock, authorize=tok) == 3
     assert 'not ready' in capsys.readouterr().err and not calls          # not ready: refused before execute
-    assert _cli(cli_inputs, '--authorization', str(auth), lock=lock) == 3 and not calls   # no --out
+    assert _cli(cli_inputs, '--authorization', str(auth), lock=lock, authorize=tok) == 3 and not calls   # no --out
     out.mkdir()
-    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock) == 0
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock, authorize=tok) == 0
     assert calls[0]['authorization'] == AUTH(pf) and calls[0]['max_rss_mb'] == 512.0 and calls[0]['universe'] == 'FIXED-17'
     assert calls[0]['symbols'] == FIXED and calls[0]['rules']('BTCUSDT', T0)['tick'] == 0.0001
     written = json.loads(capsys.readouterr().out)['written']
     assert Path(written) == out / 'result.json' and 'verdict' not in (out / 'result.json').read_text()
-    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock) == 3   # never overwritten
+    assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock, authorize=tok) == 3   # never overwritten
 
 
 # ---- 3. gate_inputs: pure decide()-shaped assembly; the write path stays authorization-gated
@@ -1293,13 +1357,14 @@ def test_book_causality_and_unresolved_rows_feed_data_and_causality(P):
 
 def test_run_assembles_gate_inputs_and_never_decides(pf, tmp_path):
     w = R.Windows.of(pf.prereg)
-    data = {s: R.prepare_symbol(s, _walk(900, seed=k, start=T0 - 300 * TF), w) for k, s in enumerate(('BTCUSDT', 'ETHUSDT'))}
-    res = R.run(data, pf, rules=lambda s, t: RULE, resamples=50, allow_partial_universe_test_only=True)
+    data = {s: R.prepare_symbol(s, _walk(900, seed=k, start=T0 - 300 * TF), w) for k, s in enumerate(FIXED)}
+    res = R.run(data, pf, rules=lambda s, t: RULE, resamples=50)
+    assert res['evaluated'] is False and res['decided'] is False and not res['report_only']
     gi = res['gate_inputs']
     assert set(R.GATE_KEYS) <= set(gi) and gi['credited_stage'] == res['gates']['credited_stage']
     assert R.decide(gi) in ('INCOMPLETE', 'FALSIFIED', 'FAIL') or gi['credited_stage']      # pure, callable
     assert not any(v in json.dumps(res) for v in ('SURVIVES_DEV', 'FALSIFIED', '"FAIL"'))   # run() never decides
-    res2 = R.run(data, pf, rules=lambda s, t: RULE, resamples=50, book_stage='S3', allow_partial_universe_test_only=True)
+    res2 = R.run(data, pf, rules=lambda s, t: RULE, resamples=50, book_stage='S3')
     if res2['gates']['credited_stage'] != 'S3':                          # a book for another stage feeds nothing
         assert res2['gate_inputs']['book_dd']['pass'] is False and res2['gate_inputs']['causality'] is False
     ok = AUTH(pf)

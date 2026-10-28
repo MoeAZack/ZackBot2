@@ -27,8 +27,8 @@ else is policy).
               H1-H3, book DD tier, tails, causality / accounting checks); run() assembles it, never evaluates it.
   CLI         main(): the real edge05 ArchiveSource (signed manifest index) and PitRules (rules artifact bound to its
               rules-source manifest), every input file checked against an expected sha256; --max-rss-mb mandatory; a
-              dirty tree refused (no override flag). Without an Integration authorization (loaded only through the
-              Integration-owned module AUTH_LOADER, which this PR does not ship) it runs preflight / identity /
+              dirty tree refused (no override flag). Every --authorization request is refused (no committed,
+              identity-pinned verifier exists yet; nothing is imported by name), so it runs preflight / identity /
               metadata-coverage checks only, opens no archive, writes nothing and exits.
 
 Disclosures (Codex 6478332951; also emitted in every result dict and in run.json as `disclosures`):
@@ -1318,7 +1318,10 @@ def credited_stage(h1: bool, h2: bool, h3: bool):
 
 def decide(g: dict) -> str:
     """Pure kill-rule precedence over a computed gate dict (K9 -> INCOMPLETE; K1-K5 -> FALSIFIED; K6/K7 credit;
-    K8 -> FAIL). Used by tests only in this PR: run() never calls it and nothing writes its result."""
+    K8 -> FAIL). Used by tests only in this PR: run() never calls it and nothing writes its result. A report-only
+    universe has no gate inputs (None), which is refused rather than read."""
+    if not isinstance(g, dict) or g.get('report_only'):
+        raise RunnerError('no decision inputs (report-only universe or missing gate inputs)')
     if not g['data'] or not g['activity'] or g['b0']['status'] != 'OK':
         return 'INCOMPLETE'
     if not g['H1']:
@@ -1477,7 +1480,7 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
     for s in STAGE_IDS:                                        # E's own INCOMPLETE entries count in every stage's data gate
         stages[s]['incomplete'] = stages[s]['incomplete'] + E['incomplete']
     out = {'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code, 'evaluated': False,
-           'universe': universe, 'report_only': universe != 'FIXED-17', 'disclosures': list(DISCLOSURES),
+           'decided': False, 'universe': universe, 'report_only': universe != 'FIXED-17', 'disclosures': list(DISCLOSURES),
            'parity_declared': list(PARITY_DECLARED),
            'E': {'n': len(E['episodes']), 'incomplete': len(E['incomplete']), 'unfilled_gap': E['unfilled_gap']},
            'stages': {s: summarize(stages[s], w) for s in STAGE_IDS},
@@ -1502,8 +1505,13 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
         except BaselineIncomplete as e:
             out['B2'] = {'status': 'INCOMPLETE', 'report_only': True, 'reason': str(e)}
     g = gates(p, w, stages, means, resamples=resamples, check=check)
-    out['gates'] = g
-    stage = book_stage or g['credited_stage']
+    ro = out['report_only']         # STATIC-40 / PARTIAL-TEST: statistics only; it can never replace or rescue FIXED-17
+    if ro:
+        out['report_statistics'] = {k: v for k, v in g.items() if k not in DECISION_KEYS}
+        out['decision_inputs_refused'] = f'report-only universe {universe}: no credited stage or gate inputs'
+    else:
+        out['gates'] = g
+    stage = book_stage or (None if ro else g['credited_stage'])
     if stage:
         if rules is None:
             raise RunnerError('the book needs point-in-time exchange rules')
@@ -1519,12 +1527,16 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
                        'tails_worst_ok': bool(tails) and min(tails) >= p['gates']['tails']['worst_episode_net_r_ge'],
                        'top1pct_share': _top1(tails)}
     bk = out.get('book')
+    if ro:
+        out['gate_inputs'] = None
+        return out
     out['gate_inputs'] = gate_inputs(g, bk if bk and bk['stage'] == g['credited_stage'] else None,
                                      p['sizing']['gated_risk'])
     return out
 
 
 GATE_KEYS = ('data', 'activity', 'b0', 'H1', 'H2', 'H3', 'book_dd', 'tails', 'causality')
+DECISION_KEYS = ('H1', 'H2', 'H3', 'credited_stage')     # withheld from report-only universes
 
 
 def gate_inputs(g: dict, book: dict | None, gated_risk) -> dict:
@@ -1615,6 +1627,10 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
         v = rss()
         if v > max_rss_mb:
             raise MemoryLimit(f'memory {v:.0f} MB > --max-rss-mb {max_rss_mb:g}; rerun the same command to resume')
+    bind = getattr(src, 'set_memory', None)         # ArchiveSource: admission BEFORE each month expansion + cache budget
+    if not callable(bind):
+        raise RunnerError('the source cannot bind the --max-rss-mb guard (no set_memory); refusing before any read')
+    bind(check, max_rss_mb)
     p = pf.prereg
     w = windows or Windows.of(p)
     ws = warmup_start if warmup_start is not None else iso_ms(p['windows']['calibration']['start'])
@@ -1685,6 +1701,7 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
         raise RunnerError('the source identity changed during pass 2; result discarded')
     res['identity_sha256'] = run_digest
     res['source_identity'] = src_id
+    res['evaluated'], res['decided'] = True, False     # authorized market-data statistics; no decision / verdict
     return res
 
 
@@ -1723,6 +1740,8 @@ def write_result(result: dict, path: str, *, authorization: EvalAuthorization | 
     if os.path.commonpath([ap, ledger_dir]) == ledger_dir or 'verdict' in os.path.basename(ap).lower() \
             or 'verdict' in result or 'REGISTRY' in os.path.basename(ap):
         raise WriteRefused('verdict / ledger / registry writes are Integration-only')
+    if result.get('decided') is not False:
+        raise WriteRefused('a written result must be explicitly decided: false (no decision is made here)')
     with open(ap, 'xb') as f:
         f.write(canon(_json_safe(result)))
     return ap
@@ -1747,8 +1766,6 @@ def _iso(ms) -> str:
 
 
 # ------------------------------------------------------------------ CLI (real ArchiveSource / PitRules wiring)
-AUTH_LOADER = 'bpyr_eval_authorization'     # Integration-owned `load(path, prereg_sha256) -> EvalAuthorization`;
-                                            # not shipped here, so every evaluation request is refused
 PREFLIGHT_FORMAT = 'zb-bpyr-preflight/1'
 SERIES_KINDS = ('4h', 'funding', 'mark')
 
@@ -1819,20 +1836,12 @@ def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
 
 
 def load_authorization(path: str, pf: Preflight) -> EvalAuthorization:
-    """Only the Integration-owned loader module can turn an authorization file into a token; this PR ships none, so
-    an evaluation is always refused here. A loader added later is untracked code until committed, and preflight
-    refuses a dirty tree."""
-    import importlib
-    try:
-        mod = importlib.import_module(AUTH_LOADER)
-    except ImportError:
-        raise WriteRefused(f'no Integration authorization loader ({AUTH_LOADER}) is installed; evaluation refused '
-                           '(preflight-only is available without --authorization)') from None
-    tok = mod.load(path, pf.prereg_sha256)
-    if not isinstance(tok, EvalAuthorization) or tok.issuer != 'codex' or tok.prereg_sha256 != pf.prereg_sha256 \
-            or not str(tok.comment_id).isdigit():
-        raise WriteRefused('the authorization loader returned no Integration token for this signed contract')
-    return tok
+    """Fail-closed. No module is imported by name (PYTHONPATH / site-packages sit outside the dirty-tree check and
+    the frozen code identity, so any such loader would be forgeable). A real evaluation needs a committed,
+    identity-pinned verifier for a hash/signature-bound Integration authorization artifact; until Integration
+    defines one, every --authorization request is refused here."""
+    raise WriteRefused(f'no committed, identity-pinned authorization verifier exists ({path}); evaluation refused '
+                       '(preflight-only is available without --authorization)')
 
 
 def _runlock(out: str, universe: str, argv):
@@ -1842,7 +1851,8 @@ def _runlock(out: str, universe: str, argv):
 
 def main(argv=None, *, _inject=None) -> int:
     """CLI. Exit 0 preflight report / authorized result written; 2 sealed-boundary refusal; 3 any other refusal;
-    4 memory cap. `_inject` (tests only: git, manifest_check, manifest_path, rss, lock) is not reachable from argv."""
+    4 memory cap. `_inject` (tests only: git, manifest_check, manifest_path, rss, lock, authorize) is not reachable
+    from argv."""
     import argparse
     import edge05_runner as E5
     inj = _inject or {}
@@ -1883,7 +1893,10 @@ def main(argv=None, *, _inject=None) -> int:
         if not a.authorization:
             print(json.dumps(report, sort_keys=True, indent=1))
             return 0
-        tok = load_authorization(a.authorization, pf)
+        tok = (inj.get('authorize') or load_authorization)(a.authorization, pf)
+        if not isinstance(tok, EvalAuthorization) or tok.issuer != 'codex' or \
+                tok.prereg_sha256 != pf.prereg_sha256 or not str(tok.comment_id).isdigit():
+            raise WriteRefused('no Integration token for this signed contract')
         if not cov['ready']:
             raise RunnerError('inputs are not ready (series gaps / straddle / rules); see the preflight report')
         if not a.out:
