@@ -48,23 +48,40 @@ non-str bounds, impossible dates, end <= start, a null manifest start, and a req
 
 Request: `REQ_DATE`, `REQ_ORDER`, `REQ_CUTOFF`, `REQ_SYMBOL`, `REQ_WINDOW`. Schema: `SCHEMA_NOT_OBJECT`,
 `SCHEMA_UNKNOWN_FIELD`, `SCHEMA_MISSING_FIELD`, `SCHEMA_VERSION`, `SCHEMA_TYPE`, `SCHEMA_DATE`, `SCHEMA_SYMBOLS`,
-`SCHEMA_TOTAL_BYTES`, `SCHEMA_DIGEST`, `SCHEMA_NONFINITE`, `SCHEMA_GROUPS`, `SCHEMA_INVALID`. Any precondition failure
-refuses before the conjuncts are evaluated; then every failing conjunct (P1–P6) is reported.
+`SCHEMA_TOTAL_BYTES`, `SCHEMA_DIGEST`, `SCHEMA_NONFINITE`, `SCHEMA_GROUPS`, `SCHEMA_COVERAGE_ENVELOPE`,
+`SCHEMA_MALFORMED`. Any precondition failure refuses before the conjuncts are evaluated (P3/P4 are still reported); then
+every failing conjunct (P1–P6) is reported. Disk: `DISK:missing`, `DISK:unreadable`, `DISK:size`, `DISK:sha256`.
 
-**Cowork 6490219007 hardening (H1, H2).** H1: evaluation never raises. NaN or ±Infinity anywhere is refused
-(`SCHEMA_NONFINITE`) before the digest; every file-entry and coverage value is type- and strict-ISO-checked before use
-(`SCHEMA_TYPE`, e.g. a list `path` or `listed_first` = `2026-9-1`); any residual exception is `SCHEMA_INVALID`.
-H2: `bytes` is capped at `max_bytes_per_file` = 1 GiB (1073741824) per daily zip; `groups` is **binding**: a dict of
-the three groups, each the sorted symbol list derived from `coverage[*].group`, exactly as `groups()` @ f850323 writes
-it (`SCHEMA_GROUPS`).
+**Cowork 6490219007 hardening, ruled by Integration 6490439004.** H1: every malformed value refuses with a
+deterministic `SCHEMA_*` code and never raises. Types are validated before any hashing, membership test or date
+arithmetic; a bool is refused wherever an int is required; dates are exact zero-padded ISO; NaN or ±Infinity anywhere
+is refused at schema entry (`SCHEMA_NONFINITE`). The catch-all `SCHEMA_MALFORMED` covers only unexpected malformed
+input during validation; a programmer error on a valid manifest propagates. H2: `bytes` is an int in
+[1, 104857600] (100 MiB), no clamping (Q8). `groups` is **binding** (Q7): exactly the three keys, each a sorted
+duplicate-free symbol list, the lists exactly partition `symbols`, and each symbol sits in the list matching
+`coverage[symbol].group` (`SCHEMA_GROUPS`).
 
-## 6. Forbidden in this PR
+## 6. Integration ruling 6490314342 (Q1–Q6, resolved)
+
+- **Q1** sub-windows allowed, never outside `[manifest.start, manifest.end + 1 day)` (`REQ_WINDOW`).
+- **Q2** digest and `total_bytes` stay global fail-closed preconditions, separate from P6; identity covers every entry.
+- **Q3** `disk_verification` is a **MANDATORY loader step**: before any row is read, every file admitted for the
+  request must match its exact size and SHA-256 on disk; missing or mismatched refuses. The reference evaluator models
+  it with an injected `read_bytes(path)`, called only after P1–P6 hold.
+- **Q4** per-symbol evidence, **all-or-nothing** batch admission; a single-symbol request stands alone.
+- **Q5** exact coverage envelope: `coverage.required_start == manifest.start` and
+  `coverage.required_end_exclusive == manifest.end + 1 day` for every symbol (`SCHEMA_COVERAGE_ENVELOPE`), even when
+  `covers()` passes.
+- **Q6** only the `failures` / `stopped` container types are preconditions; non-empty / non-null refuses via P4 / P3
+  before any file read; malformed nested content only adds `DIAG:audit_content`. Scope (6490439004): this relaxes no
+  file, coverage, groups, date, numeric or digest check.
+
+## 7. Forbidden in this PR
 
 Loader implementation, archive or network access, bulk run, feature computation, ML use, runtime import, PAPER
 authority, reading any zip or row, synthesizing a missing day.
 
-## 7. Open questions for Integration
+## 8. Open questions for Integration
 
-Q1 sub-window requests · Q2 digest/total_bytes as preconditions · Q3 on-disk re-hash at load time · Q4 per-symbol vs
-all-or-nothing · Q5 coverage required-interval match · Q6 failures/stopped content schema · Q7 groups
-binding vs non-binding · Q8 the 1 GiB per-file cap. Proposals are in the JSON.
+None open: Q1–Q6 resolved by 6490314342, Q7 and Q8 by 6490439004. Signing still waits for #225 to merge, this
+branch to be refreshed onto that master, the exact code/blob rebind, and independent evidence.

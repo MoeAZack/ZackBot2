@@ -38,6 +38,7 @@ ISO = re.compile(C['date_semantics']['iso_date_regex'])
 SYM = re.compile(IDR['symbol_regex'])
 SHA = re.compile(IDR['sha256_regex'])
 MONTH = re.compile(S['value_rules']['month_regex'])
+MIN_BYTES = S['min_bytes_per_file']
 MAX_BYTES = S['max_bytes_per_file']
 CUTOFF = dt.date.fromisoformat(C['date_semantics']['cutoff_exclusive'])
 ONE = dt.timedelta(days=1)
@@ -127,6 +128,25 @@ def covers(cov, rs, re_x):
     return not any(rs <= dt.date.fromisoformat(m) < re_x for m in missing)
 
 
+AUDIT = ('failures', 'stopped')                            # Q6: nested content is audit payload only
+
+
+def _groups_ok(m, syms):
+    """H2 / ruling 6490439004: groups is binding and exactly partitions `symbols` by coverage[symbol].group."""
+    g = m['groups']
+    if not isinstance(g, dict) or set(g) != set(S['groups']):
+        return False
+    seen = []
+    for name in S['groups']:
+        v = g[name]
+        if type(v) is not list or not all(type(s) is str for s in v) or v != sorted(set(v)):
+            return False                                   # not a list of str, unsorted or duplicated
+        seen += v
+    if len(seen) != len(set(seen)) or set(seen) != set(syms):
+        return False                                       # a symbol in two lists, or missing from the partition
+    return all(s in g[m['coverage'][s]['group']] for s in syms)
+
+
 def _preconditions(m, symbol, req_start, req_end_x):
     rs, rx = _iso(req_start), _iso(req_end_x)
     if rs is None or rx is None:
@@ -137,18 +157,17 @@ def _preconditions(m, symbol, req_start, req_end_x):
         raise Refuse('REQ_CUTOFF')
     if not isinstance(m, dict):
         raise Refuse('SCHEMA_NOT_OBJECT')
-    if _nonfinite(m):
+    if _nonfinite(m):                                      # NaN / Infinity anywhere, refused at schema entry
         raise Refuse('SCHEMA_NONFINITE')
     _fields(m, S['top_level_fields'])
     for k, v in PIN.items():
-        if type(m[k]) is not type(v) or m[k] != v:
+        if type(m[k]) is not type(v) or m[k] != v:         # type equality: a bool never passes for gate_months
             raise Refuse('SCHEMA_VERSION')
     if (type(m['authoritative']) is not bool or type(m['complete']) is not bool or type(m['files']) is not list
             or type(m['failures']) is not list or type(m['symbols']) is not list
-            or not (m['stopped'] is None or isinstance(m['stopped'], dict)) or type(m['total_bytes']) is not int):
+            or not (m['stopped'] is None or isinstance(m['stopped'], dict)) or type(m['total_bytes']) is not int
+            or type(m['digest']) is not str):
         raise Refuse('SCHEMA_TYPE')
-    if m['stopped'] is not None:
-        _fields(m['stopped'], S['stopped_fields'])
     for f in m['files']:
         _fields(f, S['file_entry_fields'])
         if (any(type(f[k]) is not str for k in ('path', 'symbol', 'date', 'sha256', 'source'))
@@ -161,7 +180,6 @@ def _preconditions(m, symbol, req_start, req_end_x):
     if (not all(type(s) is str and SYM.fullmatch(s) for s in syms) or syms != sorted(set(syms))
             or not isinstance(m['coverage'], dict) or set(m['coverage']) != set(syms)):
         raise Refuse('SCHEMA_SYMBOLS')
-    _fields(m['groups'], S['groups'])
     for cov in m['coverage'].values():
         _fields(cov, S['coverage_entry_fields'])
         for g in ('leading_gap', 'trailing_gap'):
@@ -171,25 +189,28 @@ def _preconditions(m, symbol, req_start, req_end_x):
             _fields(cov[r], S['month_run_fields'])
         if not _coverage_values_ok(cov):
             raise Refuse('SCHEMA_TYPE')
-    want = {g: sorted(s for s in syms if m['coverage'][s]['group'] == g) for g in S['groups']}
-    if m['groups'] != want or any(type(v) is not list for v in m['groups'].values()):
+    if not _groups_ok(m, syms):
         raise Refuse('SCHEMA_GROUPS')
-    if symbol not in syms:
+    for cov in m['coverage'].values():                     # Q5: exact envelope, covers() cannot excuse it
+        if cov['required_start'] != m['start'] or cov['required_end_exclusive'] != (me + ONE).isoformat():
+            raise Refuse('SCHEMA_COVERAGE_ENVELOPE')
+    if type(symbol) is not str or symbol not in syms:
         raise Refuse('REQ_SYMBOL')
-    if rs < ms or rx > me + ONE:
+    if rs < ms or rx > me + ONE:                           # Q1: sub-windows only
         raise Refuse('REQ_WINDOW')
-    if any(type(f['bytes']) is not int for f in m['files']) or m['total_bytes'] != sum(f['bytes'] for f in m['files']):
+    if m['total_bytes'] != sum(f['bytes'] for f in m['files']):
         raise Refuse('SCHEMA_TOTAL_BYTES')
-    if type(m['digest']) is not str or m['digest'] != digest_of(m):
+    if m['digest'] != digest_of(m):
         raise Refuse('SCHEMA_DIGEST')
     return rs, rx, ms, me
 
 
 def _p6(m, symbol, rs, rx, ms, me):
+    """Runs on a validated manifest only: every value is already type-checked."""
     bad, paths = [], set()
     for f in m['files']:
         d = _iso(f['date'])
-        if type(f['symbol']) is not str or not SYM.fullmatch(f['symbol']) or f['symbol'] not in m['symbols']:
+        if not SYM.fullmatch(f['symbol']) or f['symbol'] not in m['symbols']:
             bad.append('entry_symbol')
         elif d is None:
             bad.append('entry_date')
@@ -199,9 +220,9 @@ def _p6(m, symbol, rs, rx, ms, me):
             bad.append('entry_path')
         elif f['source'] != IDR['source_template'].format(path=f['path']):
             bad.append('entry_source')
-        elif type(f['sha256']) is not str or not SHA.fullmatch(f['sha256']):
+        elif not SHA.fullmatch(f['sha256']):
             bad.append('entry_sha256')
-        elif type(f['bytes']) is not int or not 0 < f['bytes'] <= MAX_BYTES:
+        elif not MIN_BYTES <= f['bytes'] <= MAX_BYTES:     # no clamping
             bad.append('entry_bytes')
         if f['path'] in paths:
             bad.append('duplicate_path')
@@ -217,18 +238,60 @@ def _p6(m, symbol, rs, rx, ms, me):
     return sorted(set(bad))
 
 
-def evaluate(m, symbol, req_start, req_end_x):
-    """(admitted, reasons). Reasons: one precondition code, or every failing conjunct (P6 as 'P6:<detail>')."""
+def _audit(m):
+    """Q6: P3/P4 from well-typed audit containers, plus a diagnostic for malformed nested content. Never raises."""
+    out = []
     try:
-        return _evaluate(m, symbol, req_start, req_end_x)
+        st, fl = m['stopped'], m['failures']
+        if isinstance(st, dict):
+            out.append('P3')
+        if type(fl) is list and fl:
+            out.append('P4')
+        bad = ((isinstance(st, dict) and set(st) != set(S['stopped_fields']))
+               or (type(fl) is list and not all(isinstance(x, dict) for x in fl)))
+    except Exception:                                      # audit payload only: never decides admission
+        bad = True
+    if bad:
+        out.append('DIAG:audit_content')
+    return out
+
+
+def _disk(m, symbol, rs, rx, read_bytes):
+    """Q3: every admitted file must match its exact size and sha256 on disk before any row is read."""
+    bad = []
+    for f in m['files']:
+        if f['symbol'] != symbol or not rs <= dt.date.fromisoformat(f['date']) < rx:
+            continue
+        try:
+            data = read_bytes(f['path'])
+        except FileNotFoundError:
+            bad.append('DISK:missing')
+            continue
+        except OSError:
+            bad.append('DISK:unreadable')
+            continue
+        if data is None:
+            bad.append('DISK:missing')
+        elif type(data) is not bytes:
+            bad.append('DISK:unreadable')
+        elif len(data) != f['bytes']:
+            bad.append('DISK:size')
+        elif hashlib.sha256(data).hexdigest() != f['sha256']:
+            bad.append('DISK:sha256')
+    return sorted(set(bad))
+
+
+def evaluate_symbol(m, symbol, req_start, req_end_x, read_bytes):
+    """(admitted, reasons) for ONE symbol. DIAG:* entries are diagnostics only.
+    SCHEMA_MALFORMED catches unexpected errors ONLY while validating the input; once the manifest is validated, an
+    exception is a programmer error and propagates (never silently turned into a refusal)."""
+    audit = _audit(m) if isinstance(m, dict) else []
+    try:
+        rs, rx, ms, me = _preconditions(m, symbol, req_start, req_end_x)
     except Refuse as r:
-        return False, [str(r)]
-    except Exception:                                           # never raise: any residual error refuses
-        return False, ['SCHEMA_INVALID']
-
-
-def _evaluate(m, symbol, req_start, req_end_x):
-    rs, rx, ms, me = _preconditions(m, symbol, req_start, req_end_x)
+        return False, [str(r)] + [a for a in audit if a in ('P3', 'P4')]
+    except Exception:
+        return False, ['SCHEMA_MALFORMED']
     reasons = []
     if m['authoritative'] is not True:
         reasons.append('P1')
@@ -241,7 +304,19 @@ def _evaluate(m, symbol, req_start, req_end_x):
     if not covers(m['coverage'][symbol], rs, rx):
         reasons.append('P5')
     reasons += ['P6:' + b for b in _p6(m, symbol, rs, rx, ms, me)]
-    return not reasons, reasons
+    if not reasons:                                        # disk reads only after all six hold (never after P3/P4)
+        reasons = _disk(m, symbol, rs, rx, read_bytes)
+    reasons += [a for a in audit if a.startswith('DIAG:')]
+    return not [r for r in reasons if not r.startswith('DIAG:')], reasons
+
+
+def admit(m, symbols, req_start, req_end_x, read_bytes):
+    """Q4: (admitted, {symbol: reasons}). All-or-nothing over the requested set."""
+    if (type(symbols) is not list or not symbols or not all(type(s) is str for s in symbols)
+            or len(set(symbols)) != len(symbols)):
+        return False, {'*': ['REQ_SYMBOL']}
+    per = {s: evaluate_symbol(m, s, req_start, req_end_x, read_bytes) for s in symbols}
+    return all(ok for ok, _ in per.values()), {s: r for s, (_, r) in per.items()}
 
 
 def heads(reasons):
@@ -249,11 +324,23 @@ def heads(reasons):
 
 
 # ------------------------------------------------------------------ manifest builder (shape of build_manifest @ f850323)
+def content(path, size=1234):
+    return (path.encode() * (size // len(path) + 1))[:size]      # deterministic fake zip bytes
+
+
+def STORE(path):                                                    # injected read_bytes: a consistent fake disk
+    return content(path)
+
+
 def entry(sym, day, size=1234):
     path = f'daily/metrics/{sym}/{sym}-metrics-{day}.zip'
     return {'path': path, 'symbol': sym, 'date': day, 'bytes': size,
-            'sha256': hashlib.sha256(path.encode()).hexdigest(),
+            'sha256': hashlib.sha256(content(path, size)).hexdigest(),
             'source': 'https://data.binance.vision/data/futures/um/' + path}
+
+
+def evaluate(m, symbol, req_start, req_end_x, read_bytes=STORE):
+    return evaluate_symbol(m, symbol, req_start, req_end_x, read_bytes)
 
 
 def days(a, b_incl):
@@ -464,9 +551,9 @@ def test_size_non_int_refused(bad):
     assert evaluate(m, *REQ) == (False, ['SCHEMA_TYPE'])
 
 
-def test_size_cap_is_one_gib_and_cap_itself_admitted():
-    assert MAX_BYTES == 1 << 30
-    assert evaluate(edit(BASE, _set(0, bytes=MAX_BYTES)), *REQ) == (True, [])
+def test_size_bounds_are_1_to_100_mib_and_cap_itself_passes_p6():
+    assert (MIN_BYTES, MAX_BYTES) == (1, 104857600)
+    assert evaluate(edit(BASE, _set(0, bytes=MAX_BYTES)), *REQ) == (False, ['DISK:size'])   # passes P6, not the disk
 
 
 # ------------------------------------------------------------------ H1 (Cowork 6490219007): mistyped values refuse, never raise
@@ -479,9 +566,8 @@ def _raw(fn):
 @pytest.mark.parametrize('name,fn', [
     ('nan_top_level', lambda m: m.update(total_bytes=float('nan'))),
     ('inf_in_entry', lambda m: m['files'][0].update(bytes=float('inf'))),
-    ('neg_inf_in_failure', lambda m: m.update(failures=[{'x': float('-inf')}])),
+    ('nan_in_groups', lambda m: m['groups'].update(short_history=[float('nan')])),
     ('nan_in_coverage', lambda m: m['coverage']['BTCUSDT']['longest_complete_month_run'].update(months=float('nan'))),
-    ('nan_in_stopped', lambda m: m.update(stopped={'reason': 'r', 'url': 'u', 'status': float('nan')})),
 ])
 def test_non_finite_refused_before_digest(name, fn):
     assert evaluate(_raw(fn), *REQ) == (False, ['SCHEMA_NONFINITE'])
@@ -528,11 +614,26 @@ def test_null_listed_bounds_are_well_typed_but_fail_p5():
     assert evaluate(m, *REQ) == (False, ['P5'])
 
 
-def test_residual_exception_maps_to_schema_invalid(monkeypatch):
+class _HostileDict(dict):
+    def items(self):
+        raise KeyError('hostile mapping')
+
+
+def test_unexpected_malformed_input_maps_to_schema_malformed():
+    assert evaluate(_HostileDict(BASE), *REQ) == (False, ['SCHEMA_MALFORMED'])
+
+
+def test_internal_bug_on_a_valid_manifest_is_not_hidden(monkeypatch):
+    """Ruling 6490439004: SCHEMA_MALFORMED must never hide a programmer error on VALID input."""
     def boom(*a):
-        raise RuntimeError('unexpected')
+        raise RuntimeError('injected internal bug')
     monkeypatch.setitem(globals(), 'covers', boom)
-    assert evaluate(BASE, *REQ) == (False, ['SCHEMA_INVALID'])
+    with pytest.raises(RuntimeError, match='injected internal bug'):
+        evaluate(BASE, *REQ)
+    monkeypatch.undo()
+    monkeypatch.setitem(globals(), '_p6', boom)
+    with pytest.raises(RuntimeError):
+        evaluate(BASE, *REQ)
 
 
 @pytest.mark.parametrize('m', [None, [], 'x', 7])
@@ -542,32 +643,43 @@ def test_non_object_manifest_refused_not_raised(m):
 
 # ------------------------------------------------------------------ H2 (Cowork 6490219007): groups is binding
 GROUPS_CASES = {
-    'groups_value_str': lambda m: m['groups'].update(strict_complete='BTCUSDT'),
-    'groups_value_tuple_like_dict': lambda m: m['groups'].update(short_history={'BTCUSDT': 1}),
-    'groups_inconsistent': lambda m: m['groups'].update(strict_complete=[], short_history=['BTCUSDT']),
-    'groups_unsorted': lambda m: m['groups'].update(strict_complete=['ETHUSDT', 'BTCUSDT']),
-    'groups_vs_coverage_group': _cov(group='conditional_with_holes'),
+    'missing_key': lambda m: m['groups'].pop('short_history'),
+    'extra_key': lambda m: m['groups'].update(other=[]),
+    'not_a_dict': lambda m: m.update(groups=['strict_complete']),
+    'value_str': lambda m: m['groups'].update(strict_complete='BTCUSDT'),
+    'value_dict': lambda m: m['groups'].update(short_history={'BTCUSDT': 1}),
+    'value_non_str_item': lambda m: m['groups'].update(short_history=[7]),
+    'unsorted': lambda m: m['groups'].update(strict_complete=['ETHUSDT', 'BTCUSDT']),
+    'duplicate': lambda m: m['groups'].update(strict_complete=['BTCUSDT', 'BTCUSDT', 'ETHUSDT']),
+    'missing_from_partition': lambda m: m['groups'].update(strict_complete=['BTCUSDT']),
+    'in_two_lists': lambda m: m['groups'].update(short_history=['ETHUSDT']),
+    'unknown_symbol': lambda m: m['groups'].update(short_history=['SOLUSDT']),
+    'group_vs_coverage_mismatch': lambda m: m['groups'].update(strict_complete=['BTCUSDT'], short_history=['ETHUSDT']),
+    'coverage_group_changed': _cov(group='conditional_with_holes'),
 }
 
 
 @pytest.mark.parametrize('name', list(GROUPS_CASES))
-def test_groups_type_and_consistency_refused(name):
-    m = edit(manifest(symbols=('BTCUSDT', 'ETHUSDT')) if name == 'groups_unsorted' else BASE, GROUPS_CASES[name])
+def test_groups_partition_attacks_refused(name):
+    m = edit(manifest(symbols=('BTCUSDT', 'ETHUSDT')), GROUPS_CASES[name])
     assert evaluate(m, *REQ) == (False, ['SCHEMA_GROUPS'])
 
 
-def test_groups_not_a_dict_refused():
-    assert evaluate(edit(BASE, lambda m: m.update(groups=['strict_complete'])), *REQ) == (False, ['SCHEMA_NOT_OBJECT'])
+def test_groups_valid_mixed_partition_admitted():
+    def mixed(m):
+        m['coverage']['ETHUSDT']['group'] = 'conditional_with_holes'
+        m['groups'].update(strict_complete=['BTCUSDT'], conditional_with_holes=['ETHUSDT'])
+    assert evaluate(edit(manifest(symbols=('BTCUSDT', 'ETHUSDT')), mixed), *REQ) == (True, [])
 
 
 def test_h1_h2_recorded_in_contract():
-    assert C['manifest_schema']['max_bytes_per_file'] == 1073741824
+    assert C['manifest_schema']['max_bytes_per_file'] == 104857600 and C['manifest_schema']['min_bytes_per_file'] == 1
     assert 'binding' in C['manifest_schema']['groups_rule'] and 'f850323' in C['manifest_schema']['groups_rule']
     codes = [p['code'] for p in C['preconditions_fail_closed']]
-    assert {'SCHEMA_NONFINITE', 'SCHEMA_GROUPS', 'SCHEMA_INVALID'} <= set(codes)
+    assert {'SCHEMA_NONFINITE', 'SCHEMA_GROUPS', 'SCHEMA_MALFORMED'} <= set(codes) and 'SCHEMA_INVALID' not in codes
     assert codes.index('SCHEMA_NONFINITE') < codes.index('SCHEMA_DIGEST')
-    assert {'Q7', 'Q8'} <= {q['id'] for q in C['open_questions']}
     assert set(C['review_6490219007']) == {'source', 'H1', 'H2'}
+    assert set(C['ruling_6490439004']) == {'H1', 'H2_bytes', 'H2_groups', 'Q6_scope'}
 
 
 # ------------------------------------------------------------------ Cowork N1/N2 partial-run shape
@@ -586,8 +698,7 @@ def test_unknown_fields_refused():
     for fn in (lambda m: m.update(extra=1),
                lambda m: m['files'][0].update(status='fetched'),
                lambda m: m['coverage']['BTCUSDT'].update(x=1),
-               lambda m: m['coverage']['BTCUSDT']['longest_complete_month_run'].update(x=1),
-               lambda m: m['groups'].update(other=[])):
+               lambda m: m['coverage']['BTCUSDT']['longest_complete_month_run'].update(x=1)):
         assert evaluate(edit(BASE, fn), *REQ) == (False, ['SCHEMA_UNKNOWN_FIELD'])
 
 
@@ -633,3 +744,194 @@ def test_type_symbol_total_digest_refused():
     m = copy.deepcopy(BASE)
     m['complete'] = False                                   # edited after sealing: digest no longer matches
     assert evaluate(m, *REQ) == (False, ['SCHEMA_DIGEST'])
+
+
+# ------------------------------------------------------------------ ruling 6490314342 (Q1-Q6)
+def test_all_questions_resolved_by_ruling():
+    rq = {q['id']: q['ruling'] for q in C['resolved_questions']}
+    assert list(rq) == ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8']
+    assert {rq[q] for q in ('Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6')} == {'6490314342'}
+    assert rq['Q7'] == rq['Q8'] == '6490439004'
+    assert C['open_questions'] == []
+    assert set(C['ruling_6490314342']) == {'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6'}
+    assert C['disk_verification']['status'] == 'MANDATORY loader step'
+    assert set(C['disk_verification']['refusals']) == {'DISK:missing', 'DISK:unreadable', 'DISK:size', 'DISK:sha256'}
+    assert C['status'] == 'DRAFT' and C['signed_by'] is None
+    assert 'rebind' in json.dumps(C['code_identity'])
+
+
+def test_q1_sub_window_inside_admitted_outside_refused():
+    assert evaluate(BASE, 'BTCUSDT', '2026-09-02', '2026-09-03') == (True, [])
+    assert evaluate(BASE, 'BTCUSDT', '2026-08-31', '2026-09-02') == (False, ['REQ_WINDOW'])
+    assert evaluate(BASE, 'BTCUSDT', '2026-09-03', '2026-09-05') == (False, ['REQ_WINDOW'])
+
+
+def test_q2_digest_and_total_bytes_are_global_not_p6():
+    m = copy.deepcopy(BASE)
+    m['files'][0]['sha256'] = '0' * 64                         # identity-valid, but the digest no longer matches
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_DIGEST'])
+    m2 = edit(manifest(symbols=('BTCUSDT', 'ETHUSDT')), _set(-1, sha256='A' * 64))   # corrupt ETH entry
+    assert evaluate(m2, *REQ) == (False, ['P6:entry_sha256'])  # refuses a BTC request too
+
+
+def _reader(override):
+    def rb(path):
+        if path in override:
+            v = override[path]
+            if isinstance(v, BaseException):
+                raise v
+            return v
+        return STORE(path)
+    return rb
+
+
+P02 = 'daily/metrics/BTCUSDT/BTCUSDT-metrics-2026-09-02.zip'
+
+
+@pytest.mark.parametrize('name,value,want', [
+    ('missing_raises', FileNotFoundError(P02), 'DISK:missing'),
+    ('missing_none', None, 'DISK:missing'),
+    ('unreadable', PermissionError('denied'), 'DISK:unreadable'),
+    ('not_bytes', 'text', 'DISK:unreadable'),
+    ('size_short', content(P02)[:-1], 'DISK:size'),
+    ('size_long', content(P02) + b'x', 'DISK:size'),
+    ('hash_same_size', b'z' * 1234, 'DISK:sha256'),
+])
+def test_q3_disk_verification_refuses(name, value, want):
+    assert evaluate(BASE, *REQ, read_bytes=_reader({P02: value})) == (False, [want])
+
+
+def test_q3_disk_reads_only_requested_files_and_never_after_p3_p4():
+    seen = []
+
+    def rb(path):
+        seen.append(path)
+        return STORE(path)
+    assert evaluate(BASE, 'BTCUSDT', '2026-09-02', '2026-09-03', read_bytes=rb) == (True, [])
+    assert seen == [P02]
+    seen.clear()
+    for cid in ('P3', 'P4'):
+        assert evaluate(edit(BASE, ALONE[cid]), *REQ, read_bytes=rb) == (False, [cid])
+    assert seen == []
+
+
+TWO = manifest(symbols=('BTCUSDT', 'ETHUSDT'))
+REQ2 = ('2026-09-01', '2026-09-04')
+
+
+def test_q4_all_symbols_admitted():
+    ok, per = admit(TWO, ['BTCUSDT', 'ETHUSDT'], *REQ2, STORE)
+    assert ok is True and per == {'BTCUSDT': [], 'ETHUSDT': []}
+
+
+def test_q4_one_symbol_refused_refuses_the_set_with_per_symbol_evidence():
+    m = edit(TWO, lambda m: m['files'].remove(next(f for f in m['files'] if f['symbol'] == 'ETHUSDT')))
+    ok, per = admit(m, ['BTCUSDT', 'ETHUSDT'], *REQ2, STORE)
+    assert ok is False and per == {'BTCUSDT': [], 'ETHUSDT': ['P6:missing_day']}
+    assert admit(m, ['BTCUSDT'], *REQ2, STORE) == (True, {'BTCUSDT': []})      # single symbol stands alone
+
+
+def test_q4_disk_failure_on_one_symbol_refuses_the_set():
+    eth = 'daily/metrics/ETHUSDT/ETHUSDT-metrics-2026-09-03.zip'
+    ok, per = admit(TWO, ['BTCUSDT', 'ETHUSDT'], *REQ2, _reader({eth: None}))
+    assert ok is False and per == {'BTCUSDT': [], 'ETHUSDT': ['DISK:missing']}
+
+
+def test_q4_unknown_symbol_in_batch_refuses_the_set():
+    ok, per = admit(TWO, ['BTCUSDT', 'SOLUSDT'], *REQ2, STORE)
+    assert ok is False and per == {'BTCUSDT': [], 'SOLUSDT': ['REQ_SYMBOL']}
+
+
+@pytest.mark.parametrize('syms', [[], ['BTCUSDT', 'BTCUSDT'], 'BTCUSDT', ['BTCUSDT', 7], None, [['BTCUSDT']]])
+def test_q4_malformed_symbol_list_refused(syms):
+    assert admit(TWO, syms, *REQ2, STORE) == (False, {'*': ['REQ_SYMBOL']})
+
+
+@pytest.mark.parametrize('field,value', [
+    ('required_start', '2026-08-31'), ('required_start', '2026-09-02'),
+    ('required_end_exclusive', '2026-09-03'), ('required_end_exclusive', '2026-09-05'),
+])
+def test_q5_coverage_envelope_mismatch_refused_even_when_covers_passes(field, value):
+    m = edit(BASE, _cov(**{field: value}))
+    assert covers(m['coverage']['BTCUSDT'], dt.date(2026, 9, 1), dt.date(2026, 9, 4)) is True
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_COVERAGE_ENVELOPE'])
+
+
+def test_q5_envelope_checked_for_every_symbol():
+    m = edit(TWO, lambda m: m['coverage']['ETHUSDT'].update(required_start='2026-09-02'))
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_COVERAGE_ENVELOPE'])
+
+
+def _raw_audit(**kw):
+    m = copy.deepcopy(BASE)
+    m.update(**kw)
+    try:
+        m['digest'] = digest_of(m)
+    except ValueError:
+        pass                                                # NaN payload: digest cannot be sealed
+    return m
+
+
+@pytest.mark.parametrize('name,kw,want', [
+    ('stopped_empty_object', {'stopped': {}}, ['P3', 'DIAG:audit_content']),
+    ('stopped_extra_fields', {'stopped': {'reason': 'r', 'url': 'u', 'status': 1, 'x': 2}}, ['P3', 'DIAG:audit_content']),
+    ('stopped_nested_junk', {'stopped': {'reason': [1], 'url': {}, 'status': None}}, ['P3']),
+    ('failure_item_int', {'failures': [1]}, ['P4', 'DIAG:audit_content']),
+    ('failure_item_list', {'failures': [['a']]}, ['P4', 'DIAG:audit_content']),
+    ('failure_unhashable_path', {'failures': [{'path': ['x'], 'reason': {}}]}, ['P4']),
+    ('failure_nan', {'failures': [{'x': float('nan')}]}, ['SCHEMA_NONFINITE', 'P4']),
+    ('stopped_inf', {'stopped': {'reason': 'r', 'url': 'u', 'status': float('inf')}}, ['SCHEMA_NONFINITE', 'P3']),
+])
+def test_q6_nested_audit_content_is_diagnostic_only(name, kw, want):
+    called = []
+    ok, reasons = evaluate(_raw_audit(**kw), *REQ, read_bytes=lambda p: called.append(p))
+    assert (ok, reasons) == (False, want) and called == []
+
+
+def test_q6_container_types_are_the_only_audit_precondition():
+    assert evaluate(_raw_audit(failures={'a': 1}), *REQ) == (False, ['SCHEMA_TYPE'])
+    assert evaluate(_raw_audit(stopped=['x']), *REQ) == (False, ['SCHEMA_TYPE'])
+
+
+def test_q6_precondition_refusal_still_reports_p3_p4():
+    m = _raw_audit(failures=[dict(FAIL)], stopped={'reason': 'r', 'url': 'u', 'status': 429})
+    m['format'] = 'zb-oi-metrics-fetch/2'
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_VERSION', 'P3', 'P4'])
+
+
+# ------------------------------------------------------------------ ruling 6490439004 (H1 / H2 / Q6 scope)
+@pytest.mark.parametrize('name,fn', [
+    ('gate_months_bool', lambda m: m.update(gate_months=True)),
+    ('gap_days_bool', _cov(leading_gap={'start': '2026-08-01', 'end_exclusive': '2026-08-02', 'days': True})),
+    ('month_run_months_bool', _cov(longest_complete_month_run={'months': False, 'start': None, 'end': None})),
+    ('total_bytes_bool', lambda m: m.update(total_bytes=True)),
+])
+def test_bools_rejected_where_ints_required(name, fn):
+    m = copy.deepcopy(BASE)
+    fn(m)
+    m['digest'] = digest_of(m)
+    ok, reasons = evaluate(m, *REQ)
+    assert ok is False and reasons[0] in ('SCHEMA_VERSION', 'SCHEMA_TYPE')
+
+
+@pytest.mark.parametrize('field,value', [('start', '2026-9-01'), ('end', '2026-09-3'), ('start', ' 2026-09-01'),
+                                         ('end', '2026-09-03\n'), ('start', '+2026-09-01')])
+def test_manifest_dates_must_be_exact_zero_padded_iso(field, value):
+    assert evaluate(edit(BASE, lambda m: m.update({field: value})), *REQ) == (False, ['SCHEMA_DATE'])
+
+
+def test_q6_scope_does_not_relax_other_checks():
+    """A refused audit payload never excuses a file, coverage, groups, date, numeric or digest defect."""
+    base = dict(failures=[dict(FAIL)])
+    for fn, code in ((lambda m: m['files'][0].update(bytes=True), 'SCHEMA_TYPE'),
+                     (_cov(listed_first='2026-9-1'), 'SCHEMA_TYPE'),
+                     (lambda m: m['groups'].pop('short_history'), 'SCHEMA_GROUPS'),
+                     (lambda m: m.update(end='2026-09-03T00:00'), 'SCHEMA_DATE'),
+                     (lambda m: m['files'][0].update(bytes=float('inf')), 'SCHEMA_NONFINITE')):
+        m = copy.deepcopy(BASE)
+        m.update(**copy.deepcopy(base))
+        fn(m)
+        assert evaluate(m, *REQ) == (False, [code, 'P4'])
+    m = _raw_audit(failures=[dict(FAIL)])
+    m['digest'] = '0' * 64
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_DIGEST', 'P4'])
