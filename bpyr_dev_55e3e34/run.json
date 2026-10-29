@@ -1,0 +1,166 @@
+{
+ "amendment": {
+  "dev_end": "2026-09-01T00:00:00Z",
+  "format": "zb-bpyr-amendment/1",
+  "last_entry": "2026-08-02T00:00:00Z",
+  "path": "research_evidence/prereg/breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json",
+  "prereg_sha256": "8c9f61b0117062a331f179b7575a68093abaef7f9aacdaaba9956c9b6039ae0e",
+  "ruling": "6498348689",
+  "sealed_cutoff": "2026-09-28T00:00:00Z",
+  "sha256": "b96d0e957c389933c85dfb2de8edfce33c709153bcfd3facca65c30493f3bdde",
+  "signed_by": "codex: MoeAZack/ZackBot2 issuecomment-6498348689 (BPYR SEPTEMBER RULING - GO A, 2026-10-29 16:45 Cairo)"
+ },
+ "authorization": {
+  "artifact_sha256": "c093f779a1ca864b319340f94563d3568395c7924fff04cb407aeb9f4870dc0a",
+  "code_commit": "9615eb6c4fa1c5f4a4de3c27344421b2bdbb560c",
+  "comment_id": "6505594823",
+  "issuer": "codex",
+  "prereg_sha256": "8c9f61b0117062a331f179b7575a68093abaef7f9aacdaaba9956c9b6039ae0e",
+  "scope": [
+   "development"
+  ]
+ },
+ "b0_replicates": 1000,
+ "boundaries": {
+  "holdout_read": false,
+  "ledger_written": false,
+  "mainnet": false,
+  "verdict_written": false
+ },
+ "candidate_id": "breakout_pyramid_falsify.v1",
+ "code": {
+  "commit": "55e3e3444afcd79867245b3e1fb7594712af8c62",
+  "dirty": false,
+  "modules": {
+   "backtest.py": "d9d4856429c62a0a78a6141f5e8897ad4123812190a64f99ed7be002782a3025",
+   "feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+   "strategies.py": "edd475c8c3bc6ac1d93abca4cc1dd5fc91b0d32ddb69223bb6fa4596906ee68e",
+   "tools/research/bpyr_runner.py": "b36ab0c11ab8339812686a9c7111c13f803ed9b9a8776a89cb1e16eb0cde9c1a",
+   "tools/research/costs.py": "41275d4e75fbadda93b3d30be7a7d743dd2c22215ba6fd3bd784b8a500e98350",
+   "tools/research/edge05_coverage.py": "2cb718b24e6708db30063ee90ca2391911b4e47b28a8552a40d5e41fafd636e0",
+   "tools/research/edge05_runner.py": "e435d3c494e092e13a4ae2da844fc4b26ebffff005cc54fe0e6f57136fbfd031",
+   "tools/research/manifest.py": "f3d3c729aae6ac3e965fa8eee1314d79966475fd39a810460613c1e77fa87fae",
+   "tools/research/splits.py": "69b7e1cc56ed097bd508fddec18bf253cadeac7cde87c1c7196a817371b7e18a"
+  },
+  "path_points_sha256": "849d022d93e5451df709c1b6987caeeb8114df53858252f236fef1bcda6c88c1"
+ },
+ "dev_end": 1788220800000,
+ "disclosures": [
+  "B0 is not path-identical to E: E (and the book) permanently stop re-arming a symbol after an INCOMPLETE episode (its exit is unknown), while B0 discards an INCOMPLETE random draw and continues sampling (Codex 6478332951 item 4).",
+  "Funding later in a 4h bar (1h / 2h cadence) is charged conservatively because its order against intrabar adds and exits is unknowable: a paid event on the larger of the open / end quantity even after an intrabar exit, a received event on the smaller (0 after an intrabar exit). Events at the bar open (the 8h grid) are charged exactly on the quantity held after phases 1-2 (Codex 6478332951 item 6)."
+ ],
+ "format": "zb-bpyr-run/1",
+ "non_promotable_rules": "prospective",
+ "parity_declared": [
+  "time exit: the runner fills at the open after the 42-bar cap (fills.time_exit_fill); backtest.py closes at the close of the cap bar",
+  "re-arm: the runner decides re-arm / skipped_open_symbol at fill time after phase-1 exits (params.rearm_rule); backtest.py drops a signal raised while the position is still open, even when a gap stop frees it at the next open",
+  "cross-symbol order: the runner admits entries on the phase-1 state (book.capacity_for_open_entries); backtest.py fills pending entries before any exit of that bar and caps by max_pos per sleeve",
+  "admission: the runner skips an entry above 3x gross (never scaled); backtest.py scales it to max_lev",
+  "costs: the runner prices slip-v1 / actual funding / taker fees on adds and stops (costs block); backtest.py uses flat SLIP / FEE / per-bar funding and fills adds without slippage"
+ ],
+ "prereg_sha256": "8c9f61b0117062a331f179b7575a68093abaef7f9aacdaaba9956c9b6039ae0e",
+ "resamples": 10000,
+ "rows": [
+  "base_x1",
+  "all_variable_costs_x1.5",
+  "all_variable_costs_x2",
+  "funding_zero"
+ ],
+ "rules_identity": {
+  "causality": "bypassed (current-rule feasibility; snapshot as_of not <= interval start)",
+  "listing_skips": {},
+  "mode": "prospective",
+  "non_promotable_rules": "prospective",
+  "onboard_dates": {
+   "1000PEPEUSDT": "2023-05-05T00:00:00Z",
+   "ADAUSDT": "2020-01-31T08:00:00Z",
+   "AVAXUSDT": "2020-09-23T07:00:00Z",
+   "BNBUSDT": "2020-02-10T08:00:00Z",
+   "BTCUSDT": "2019-09-08T17:55:00Z",
+   "DOGEUSDT": "2020-07-10T09:00:00Z",
+   "ENAUSDT": "2024-04-02T12:30:00Z",
+   "ETHUSDT": "2019-11-27T07:45:00Z",
+   "LINKUSDT": "2020-01-17T08:00:00Z",
+   "NEARUSDT": "2020-10-15T08:00:00Z",
+   "QNTUSDT": "2022-10-18T07:00:00Z",
+   "SOLUSDT": "2020-09-14T07:00:00Z",
+   "SUIUSDT": "2023-05-03T00:00:00Z",
+   "UNIUSDT": "2020-09-18T07:00:00Z",
+   "WLDUSDT": "2023-07-24T12:00:00Z",
+   "XRPUSDT": "2020-01-06T08:20:00Z",
+   "ZECUSDT": "2020-02-05T08:00:00Z"
+  },
+  "rules_source": {
+   "kind": "committed-exchangeinfo-snapshot",
+   "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json",
+   "sha256": "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83"
+  },
+  "ruling": "6497964865",
+  "sha256": "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83",
+  "skipped_by_reason": {},
+  "skipped_symbols": {},
+  "snapshot_path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json",
+  "snapshot_tuple_digest": "d672d0010dad2515a88580e9af0d5c98bc2a0d90c68dedc004605358e6212b43",
+  "symbols_with_rules": 17
+ },
+ "rules_mode": "prospective",
+ "rules_snapshot": {
+  "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json",
+  "sha256": "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83"
+ },
+ "slip": {
+  "c": 0.05,
+  "floor_bps": 5.0
+ },
+ "source_identity": {
+  "daily_source_manifest": null,
+  "kind": "binance-archive",
+  "manifest_file_sha256": "94617184d0b6d409e90b5eb15f2a41f40f0465fb01fa5d659899be25e1a199fb",
+  "straddle": null
+ },
+ "sources": {
+  "ema_source_sha256": "246eb7475bd366b17987e5bc78219c908e388e2aa514fd8811f40205a928a489",
+  "fn_source_sha256": "9c701b7137c6ac4799250e95a9d65cf626dd9593bef2d12a2b0a434273686c84",
+  "indicators_source_sha256": "dfcfb920b272b2e291a2395e4706ed7cc4f0a1d847bdcf9058384c781466ec26"
+ },
+ "symbols": [
+  "1000PEPEUSDT",
+  "ADAUSDT",
+  "AVAXUSDT",
+  "BNBUSDT",
+  "BTCUSDT",
+  "DOGEUSDT",
+  "ENAUSDT",
+  "ETHUSDT",
+  "LINKUSDT",
+  "NEARUSDT",
+  "QNTUSDT",
+  "SOLUSDT",
+  "SUIUSDT",
+  "UNIUSDT",
+  "WLDUSDT",
+  "XRPUSDT",
+  "ZECUSDT"
+ ],
+ "universe": "FIXED-17",
+ "warmup_start": 1580688000000,
+ "windows": [
+  1609718400000,
+  1785628800000,
+  1790553600000,
+  [
+   [
+    1609718400000,
+    1671408000000
+   ],
+   [
+    1671408000000,
+    1734307200000
+   ],
+   [
+    1734307200000,
+    1788220800000
+   ]
+  ]
+ ]
+}
