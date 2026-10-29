@@ -1,8 +1,11 @@
-"""FACTORY-F01F02-FAMILY correlated-family contract (Codex 6507317942, DRAFT): pins the JSON twin to the engine
-(CANDIDATE_* constants, family map, source sha256 of the candidate functions, slot priority in Engine.cycle) and to the
-SIGNED repro contract's 160 / 171 / 131 numbers, and exercises candidate_block / candidate_guard behaviour for the
-family: same-bar collision dedup (C-F01 wins), the shared cap of 4 across both slots, every auto-disable trigger and the
-fail-closed guard error. Synthetic data only (tests/test_safety.FakeX); never reads market data or packets."""
+"""FACTORY-F01F02-FAMILY correlated-family contract (Codex 6507317942, DRAFT; amendment 1 encodes the resolved rulings
+6507748888 / 6508164005 / 6508707059): pins the JSON twin to the FACTORY-CAND-02 engine (CANDIDATE_* constants incl.
+CANDIDATE_PENDING_KEY, family map, source sha256 of the seven candidate functions, slot priority in Engine.cycle), to the
+SIGNED repro contract's 160 / 171 / 131 numbers and to the OQ1-OQ6 resolved-rulings block, and exercises candidate_block /
+candidate_guard behaviour for the family: same-bar collision dedup (C-F01 wins), the shared cap of 4 across both slots,
+family-level fail-closed on every auto-disable trigger, the order pins and the fail-closed guard error. The OQ5/OQ6
+adversarial proofs live in tests/test_factory_cand02_family_safety.py and are cited by name. Synthetic data only
+(tests/test_safety.FakeX); never reads market data or packets."""
 import ast
 import hashlib
 import json
@@ -21,6 +24,8 @@ CDIR = os.path.join(ROOT, 'contracts', 'factory_f01f02_family')
 JS = os.path.join(CDIR, 'factory_f01f02_family_contract.v1.json')
 MD = os.path.join(CDIR, 'FACTORY_F01F02_FAMILY_CONTRACT.md')
 REPRO = os.path.join(ROOT, 'contracts', 'factory_f01f02_repro', 'factory_f01f02_repro_contract.v1.json')
+CAND02 = os.path.join(ROOT, 'tests', 'test_factory_cand02_family_safety.py')
+RULINGS = ('6507748888', '6508164005', '6508707059')
 F01, F02 = 'C-F01', 'C-F02'
 SG = dict(close=100.0, atr=2.0, time='2026-10-04 00:00:00', le=True, se=False, lx=False, sx=False)
 
@@ -70,7 +75,10 @@ def on(tmp_path):
 def test_status_is_unsigned_draft_and_md_present(c):
     assert c['contract'] == 'FACTORY-F01F02-FAMILY' and c['version'] == 1
     assert c['status'] == 'DRAFT' and c['signed_by'] is None and '6507317942' in c['assignment']
-    assert os.path.exists(MD) and 'DRAFT' in open(MD, encoding='utf-8').read()
+    md = open(MD, encoding='utf-8').read()
+    assert 'DRAFT' in md and 'Amendment 1' in md
+    for r in RULINGS: assert r in c['amended_at'] and r in c['assignment'] and r in md
+    assert c['code']['citation_base_short'] == '2683be7' and '0dc9f05' in c['code']['original_citation_base']
 
 
 def test_engine_constants_equal_the_json(c):
@@ -84,13 +92,16 @@ def test_engine_constants_equal_the_json(c):
     assert k['CANDIDATE_COST_PENDING_S'] == E.CANDIDATE_COST_PENDING_S == 6 * 3600
     assert tuple(k['CANDIDATE_STOP_FAIL']) == E.CANDIDATE_STOP_FAIL and tuple(k['CANDIDATE_CARD']) == E.CANDIDATE_CARD
     assert tuple(k['CAND_FIXED18']) == E.CAND_FIXED18
+    assert k['CANDIDATE_PENDING_KEY'] == E.CANDIDATE_PENDING_KEY == 'candidate_cost_pending'
     assert c['family']['primary'] == F01 and c['family']['secondary'] == F02
 
 
 def test_candidate_function_sources_match_their_pins(c, engine_src):
     src, fns = engine_src
     pins = {k: v for k, v in c['code']['pinned_function_sha256'].items() if not k.startswith('_')}
-    assert len(pins) == 4
+    assert len(pins) == 7 and {p.split('.')[-1] for p in pins} == {
+        '_claims', 'candidate_block', 'candidate_drift', 'candidate_guard',
+        '_candidate_pending_why', '_candidate_pending_note', '_candidate_pending_clear'}
     for cite, sha in pins.items():
         name = cite.split('.')[-1]
         assert hashlib.sha256(ast.get_source_segment(src, fns[name]).encode('utf-8')).hexdigest() == sha, cite
@@ -113,7 +124,8 @@ def test_every_cited_engine_function_exists(c, engine_src):
         for part in s.replace('(', ',').replace(')', ',').split(','):
             part = part.strip().split(' ')[0]
             if part.startswith('engine.py:'): names.add(part[len('engine.py:'):])
-    assert {'Engine._claims', 'Engine.candidate_block', 'Engine.candidate_guard', 'Engine.cycle'} <= names
+    assert {'Engine._claims', 'Engine.candidate_block', 'Engine.candidate_guard', 'Engine.cycle', 'Engine._reconsider_one',
+            'Engine._finish', 'Engine._cost_final', 'Engine._candidate_pending_why', 'Engine._candidate_pending_clear'} <= names
     for n in names:
         if n.startswith('Engine.'): assert n.split('.', 1)[1] in fns, n
         else: assert n in mod, n
@@ -161,16 +173,46 @@ def test_replay_is_labelled_derived_and_internally_consistent(c, repro):
 
 def test_auto_disable_triggers_and_reenable_owner(c):
     a = c['auto_disable']
-    assert [t['id'] for t in a['triggers']] == ['drift', 'protection', 'accounting', 'guard_error']
+    assert [t['id'] for t in a['triggers']] == ['drift', 'protection', 'family_order', 'accounting', 'guard_error']
     assert 'Integration' in a['re_enable'] and 'never' in a['re_enable']
+    assert a['scope'].startswith('per family') and 'every enabled member' in a['family_effect']
+    d = a['durable_pending_index']
+    assert "state['candidate_cost_pending']" in d['key'] and '_finish' in d['set'] and 'exactly once' in d['cleared']
+    assert 'acknowledged' in d['cleared'] and 'save_state()' in d['persisted'] and 'never time-cleared' in d['evicted_unsettleable']
+    assert 'C-F01 ONLY' in c['family']['enable_policy'] and 'OFF' in c['family']['enable_policy']
     assert c['collision']['slot_priority']['winner_on_same_bar_collision'] == F01
 
 
-def test_forbidden_and_open_questions(c):
+def test_forbidden_and_resolved_rulings(c):
     f = ' '.join(c['forbidden'])
     for word in ('2026-09-28', 'PAPER', 'full-risk', 'order ids', 'mainnet', 'tuning', 'promoting'):
         assert word in f
-    assert [q['id'] for q in c['open_questions']] == [f'OQ{i}' for i in range(1, 7)]
+    assert c['open_questions'] == []
+    rr = c['resolved_rulings']
+    assert [q['id'] for q in rr] == [f'OQ{i}' for i in range(1, 7)]
+    assert all('6507748888' in q['ruling'] for q in rr) and all(r in rr[5]['ruling'] for r in RULINGS)
+    want = {'OQ1': 'family-level fail closed', 'OQ2': 'C-F01 before C-F02', 'OQ3': 'exact ordered CAND_FIXED18',
+            'OQ4': 'C-F01 only', 'OQ5': 'counted in _claims', 'OQ6': 'durable'}
+    for q in rr: assert want[q['id']] in q['resolution'], q['id']
+    assert 'never time-cleared' in rr[5]['resolution'] and 'FILL-PNL-02' in rr[5]['resolution']
+
+
+# the OQ5 / OQ6 adversarial proofs required by the rulings (cited by name; they run in their own module)
+CAND02_PROOFS = {
+    'OQ5': ('test_a_deferred_entry_reserves_its_coin_against_every_other_slot',
+            'test_a_deferred_entry_counts_toward_the_shared_family_cap', 'test_a_deferred_retry_never_counts_against_itself'),
+    'OQ6': ('test_a_pending_cost_row_older_than_3000_newer_rows_still_disables',
+            'test_an_evicted_pending_candidate_close_still_disables_the_family_after_a_restart',
+            'test_settlement_clears_the_index_entry_exactly_once', 'test_the_guard_reconciles_a_settled_row_still_in_history',
+            'test_a_malformed_index_fails_closed'),
+}
+
+
+def test_the_ruling_proofs_exist():
+    with open(CAND02, encoding='utf-8') as fh:
+        have = {n.name for n in ast.parse(fh.read()).body if isinstance(n, ast.FunctionDef)}
+    for oq, names in CAND02_PROOFS.items():
+        for n in names: assert n in have, (oq, n)
 
 
 # ------------------------------------------------------------------ behaviour: collision dedup + shared cap
@@ -222,20 +264,23 @@ def test_mixed_family_claims_count_once_each_toward_the_cap(on):
 
 def test_secondary_trades_only_when_the_primary_is_off(on):
     e, _ = on
-    slot(e, F01)['enabled'] = False                                            # OQ1: the current per-slot behaviour
+    slot(e, F01)['enabled'] = False                     # an Integration switch-off (OQ4 policy keeps C-F02 OFF instead)
     cycle4(e, {f'{F01}|BTCUSDT': SG, f'{F02}|BTCUSDT': SG})
     assert not lots(e, F01) and len(lots(e, F02, 'BTCUSDT')) == 1
 
 
 # ------------------------------------------------------------------ behaviour: auto-disable
 def _guard_once(e, sid):
-    assert e.candidate_guard() == [sid]
-    assert slot(e, sid)['enabled'] is False and sid in e.state['candidate_disabled']
-    assert e.candidate_guard() == [] and slot(e, sid)['enabled'] is False         # never re-enabled automatically
+    """OQ1: the triggering member and every other enabled family member go off in the same pass, never back on."""
+    assert e.candidate_guard() == [F01, F02]
+    why = e.state['candidate_disabled']
+    other = F02 if sid == F01 else F01
+    assert why[other]['why'] == f"family trend_long fail-closed by {sid}: {why[sid]['why']}"
+    assert e.candidate_guard() == [] and not slot(e, F01)['enabled'] and not slot(e, F02)['enabled']
 
 
 @pytest.mark.parametrize('why', ['restoring', 'owner_check'])
-def test_protection_trigger_disables_only_that_slot_and_keeps_the_lot(on, why):
+def test_protection_trigger_disables_the_family_and_keeps_the_lot(on, why):
     e, _ = on
     cycle4(e, {f'{F01}|BTCUSDT': SG})
     (l,) = lots(e, F01, 'BTCUSDT')
@@ -244,7 +289,7 @@ def test_protection_trigger_disables_only_that_slot_and_keeps_the_lot(on, why):
     l['stop_miss_why'] = why
     _guard_once(e, F01)
     assert e.state['candidate_disabled'][F01]['why'] == f'protection: BTCUSDT stop {why}'
-    assert lots(e, F01, 'BTCUSDT') == [l] and l['stop_id'] in e.trade.stops and slot(e, F02)['enabled'] is True
+    assert lots(e, F01, 'BTCUSDT') == [l] and l['stop_id'] in e.trade.stops
 
 
 def test_drift_trigger(on):
@@ -254,13 +299,28 @@ def test_drift_trigger(on):
     assert e.state['candidate_disabled'][F01]['why'] == 'drift: max_pos differ from the frozen card'
 
 
+def test_symbol_order_is_pinned_oq3(on):
+    e, _ = on
+    sl = slot(e, F02); sl['symbols'] = list(reversed(sl['symbols']))           # same set, different order
+    assert e.candidate_drift(sl) == ['symbols']
+    _guard_once(e, F02)
+
+
+def test_family_priority_order_is_pinned_oq2(on):
+    e, _ = on
+    sv = e.S['SLEEVES']; i, j = sv.index(slot(e, F01)), sv.index(slot(e, F02))
+    sv[i], sv[j] = sv[j], sv[i]                                                # C-F02 before C-F01
+    assert sorted(e.candidate_guard()) == [F01, F02]
+    assert e.state['candidate_disabled'][F01]['why'].startswith('drift: family trend_long order')
+
+
 def test_accounting_trigger_at_exactly_six_hours(on, monkeypatch):
     e, _ = on
     monkeypatch.setattr(E.AC, 'row_view', lambda row: dict(status=row['_st'], pnl=None))
     t0 = 1_800_000_000.0
     e.history.append(dict(sleeve=F01, symbol='ETHUSDT', closed=E.pd.Timestamp(t0, unit='s', tz='UTC').isoformat(), _st='pending'))
     assert e.candidate_guard(now=t0 + 6 * 3600 - 1) == []
-    assert e.candidate_guard(now=t0 + 6 * 3600) == [F01] and slot(e, F02)['enabled'] is True
+    assert e.candidate_guard(now=t0 + 6 * 3600) == [F01, F02] and slot(e, F02)['enabled'] is False
 
 
 def test_guard_error_fails_closed_for_the_whole_family(on, monkeypatch):

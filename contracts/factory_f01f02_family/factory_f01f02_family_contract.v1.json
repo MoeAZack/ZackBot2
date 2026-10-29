@@ -4,20 +4,25 @@
   "status": "DRAFT",
   "signed_by": null,
   "drafted_at": "2026-10-29T23:20+03:00 (Cairo; 20:20 UTC)",
+  "amended_at": "2026-10-29T23:47+02:00 (Cairo; 21:47 UTC) - amendment 1 encodes Integration rulings 6507748888 / 6508164005 / 6508707059 (OQ1-OQ6 resolved) against the FACTORY-CAND-02 engine; status stays DRAFT pending Integration signature",
   "doc": "FACTORY_F01F02_FAMILY_CONTRACT.md",
   "authority": "JSON is authoritative; the md is a short human summary and the JSON wins any conflict.",
-  "assignment": "Codex ruling issuecomment 6507317942: contract/repro-only preparation of the F01/F02 correlated family (shared fills, collision dedup + shared capacity, auto-disable proof)",
+  "assignment": "Codex ruling issuecomment 6507317942: contract/repro-only preparation of the F01/F02 correlated family (shared fills, collision dedup + shared capacity, auto-disable proof); amended per 6508380081 (merge held for the resolved amendment) to encode rulings 6507748888, 6508164005, 6508707059",
   "build_role": "Build drafted this contract and its pinning tests only. No new market evaluation, no backtest over market data, no holdout read, no PAPER/runtime change.",
   "evidence_class": "contract + derived arithmetic over existing pre-cutoff development packets; non-promotable, not an evaluation. Execution-grade EDGE04 H1-H4 remains the acceptance authority.",
   "code": {
-    "citation_base": "master 0dc9f058c1fd022973c5783da2adf311c959a239",
-    "citation_base_short": "0dc9f05",
+    "citation_base": "FACTORY-CAND-02 engine: PR #247 claude/factory-cand02-family-safety 2683be745c0b5506785b8f76e1a71e4a7bdc1804 (on master 0dc9f05); re-cite the master merge commit once #247 merges - engine.py content, and so every pin below, is identical",
+    "citation_base_short": "2683be7",
+    "original_citation_base": "master 0dc9f058c1fd022973c5783da2adf311c959a239 (amendment 0; of its four pins only candidate_block is unchanged by #247)",
     "pinned_function_sha256": {
       "_rule": "sha256 of the utf-8 source text of each function (ast.get_source_segment of the engine.py file, LF). A mismatch means the collision / guard semantics this contract describes changed: the contract must be re-drafted before Integration relies on it.",
-      "engine.py:Engine._claims": "7f8943bfcca1e2411b4779f77b9b70a92def8041202f4cb3651c40d7eaa6acdf",
+      "engine.py:Engine._claims": "fdfe3d70290c7508a563ae471e85ca16d42cf1a5d9150a07337dea82e86e77cc",
       "engine.py:Engine.candidate_block": "1cfba70db9cc97fc5e68423b33a9f4663cdf2607754fca9ec86820042b35f1ff",
-      "engine.py:Engine.candidate_drift": "6a312ca8dcab1928a98a701897ba3958c166750795bb1a15532eb12523e72891",
-      "engine.py:Engine.candidate_guard": "002445243d3a254587207268853231e2a5c056bc4a050315902b05cdbe6a44fc"
+      "engine.py:Engine.candidate_drift": "f4b4c90f56e0e4c9513bd3e0208e76a75edcf04e54c694762bb7fd64d7e8d2c8",
+      "engine.py:Engine.candidate_guard": "90125553420ccb52ca7cc9ecfcbcfd53d14b214bdc21c8417476bc020307215a",
+      "engine.py:Engine._candidate_pending_why": "405c567a1d332476cfca5693fd67395dee25fbb469d90c02d4dc01ca8a5134c6",
+      "engine.py:Engine._candidate_pending_note": "6cbaf2999380149ae437d05659ab54390b274ceee2fb9dd8344a95905e370216",
+      "engine.py:Engine._candidate_pending_clear": "cee7c8aea8e3713c465be8e5156d2fdfd6c7452de3f4677d1c80b22b26051318"
     }
   },
   "repro_contract": {
@@ -42,10 +47,12 @@
     "primary": "C-F01",
     "secondary": "C-F02",
     "rule": "one correlated family; F01 primary; never two full independent risk budgets. Engine: CANDIDATE_FAMILY maps both slots to trend_long and candidate_block counts both slots' claims against ONE cap of CANDIDATE_MAX_POS.",
+    "enable_policy": "OQ4 (ruling 6507748888): the next cell is C-F01 ONLY. C-F02 stays OFF as the reference / alternative-management cell; it may get its own separately authorized evaluation later and must never run beside C-F01 merely to record zero trades. Both slots stay CANDIDATE_DEFAULT_ENABLED = false; enabling C-F01 is Integration's PAPER call.",
     "signal_identity": "exp_trend = _one_side(sig_ema_mom) (strategies.py:sig_exp_trend, strategies.py:_one_side); the slot sides are 'long' for both, so on every bar both slots see the same long entry signal set (228 raw each in the packets). They differ only by management: F02 adds tp_r 3.0 and max_bars 180 (strategies.py STRATEGIES['exp_trend'].mgmt); F01 has stop_atr 2.5 only."
   },
   "engine_constants": {
-    "source": "engine.py module constants at 0dc9f05 (FACTORY-CAND-01)",
+    "source": "engine.py module constants at 2683be7 (FACTORY-CAND-01 + FACTORY-CAND-02)",
+    "CANDIDATE_PENDING_KEY": "candidate_cost_pending",
     "CANDIDATE_SLOTS": {"C-F01": ["ema_mom", "long"], "C-F02": ["exp_trend", "long"]},
     "CANDIDATE_FAMILY": {"C-F01": "trend_long", "C-F02": "trend_long"},
     "CANDIDATE_MAX_POS": 4,
@@ -60,8 +67,8 @@
   },
   "collision": {
     "claims": {
-      "rule": "A coin is claimed by a slot when that slot has an open lot, a pending (trailing) entry, a resting (maker) entry or an unconfirmed entry on it. An unconfirmed entry's slot comes from its plan, else from its 'UE|<slot>|..' key.",
-      "source": "engine.py:Engine._claims, engine.py:candidate_owner",
+      "rule": "A coin is claimed by a slot when that slot has an open lot, a pending (trailing) entry, a resting (maker) entry, an unconfirmed entry or an ORDER-SYM-01 deferred entry (self._deferred) on it. An unconfirmed entry's slot comes from its plan, else from its 'UE|<slot>|..' key. OQ5 (ruling 6507748888, explicit coverage): a deferred reservation counts against isolation and the shared cap; the one being re-decided (self._defer_cur, set in _reconsider_one) never counts against itself.",
+      "source": "engine.py:Engine._claims, engine.py:candidate_owner, engine.py:Engine._reconsider_one",
       "code_defined": true
     },
     "isolation": {
@@ -80,6 +87,8 @@
       "rule": "On a candle-close cycle, entries are decided slot by slot in S['SLEEVES'] order (outer loop), then coin by coin in the slot's symbol order (inner loop: sleeve_symbols -> sl['symbols'], i.e. CAND_FIXED18 order). with_candidate_slots / sync_candidate_slots append the missing slots in CANDIDATE_SLOTS order, so C-F01 precedes C-F02. C-F01 therefore decides ALL its same-bar signals (and its lots/claims exist) before C-F02 decides any. The signal dict's own order plays no part.",
       "winner_on_same_bar_collision": "C-F01",
       "source": "engine.py:Engine.cycle (for sl in sleeves: ... for s in self.sleeve_symbols(sl, include_off=True)), engine.py:Engine.sleeve_symbols, engine.py:with_candidate_slots, engine.py:Engine.sync_candidate_slots",
+      "order_pins": "OQ2 (ruling 6507748888): when more than one family member is enabled, their order in S['SLEEVES'] must be exactly CANDIDATE_SLOTS order (C-F01 before C-F02); a mismatch is family drift and candidate_guard switches every enabled member off ('drift: family trend_long order [...] differs from the pinned priority [...]'). OQ3: candidate_drift compares symbols as the exact ordered CAND_FIXED18 list, so a reordered list is drift.",
+      "order_pin_source": "engine.py:Engine.candidate_guard, engine.py:Engine.candidate_drift",
       "entry_gate_order": "coin off -> slot off -> scalp_block (PAPER only) -> candidate_block -> paused -> halted -> held -> per-slot max_pos -> ... -> open_lot (entry_block re-checks candidate_block)",
       "guard_first": "candidate_guard runs once per cycle before the entry loop (engine.py:Engine.cycle)",
       "code_defined": true
@@ -87,7 +96,7 @@
     "shared_fill_fate": {
       "rule": "With both slots enabled, each of the 131 shared round-trip fills (and every one of the 160 shared entries) is a signal both slots see on the same bar. C-F01 decides first and opens (or reserves) the coin; C-F02 is then refused by isolation for that coin. Each shared fill is executed ONCE, as a C-F01 lot under F01 management (no 3R target, no 180-bar cap). C-F02 never holds a duplicate.",
       "c_f02_can_trade_only_when": [
-        "C-F01 is switched off (by Integration, or by candidate_guard) - C-F02 then takes the family signals with F02 management",
+        "C-F01 is switched off by Integration while C-F02 is on - which the OQ4 C-F01-only policy forbids (a candidate_guard disable of C-F01 now switches C-F02 off too, OQ1)",
         "C-F01 is refused for a slot-specific reason that does not also refuse C-F02 on that coin/bar (e.g. an order failure inside open_lot, a sizing/floor skip specific to its own share basis); these are runtime events the packets cannot show",
         "the coin is not claimed by C-F01 and the family has < 4 claims - which, given identical signals and F01 priority, only arises through the two cases above"
       ],
@@ -96,21 +105,31 @@
   },
   "auto_disable": {
     "where": "engine.py:Engine.candidate_guard, called under the lock in engine.py:Engine.cycle before any entry decision",
-    "scope": "per slot; only enabled candidate slots are examined; non-candidate slots are never touched",
+    "scope": "per family (OQ1, ruling 6507748888): triggers are evaluated per enabled candidate slot; any member's trigger switches EVERY enabled member of its CANDIDATE_FAMILY off in the same pass. Non-candidate slots are never touched.",
     "triggers": [
-      {"id": "drift", "rule": "the slot differs from its frozen card on any CANDIDATE_CARD field (symbols compared as a sorted set, mgmt None == {})", "why_prefix": "drift: ", "source": "engine.py:Engine.candidate_drift"},
+      {"id": "drift", "rule": "the slot differs from its frozen card on any CANDIDATE_CARD field (symbols compared as the exact ordered list - OQ3; mgmt None == {})", "why_prefix": "drift: ", "source": "engine.py:Engine.candidate_drift"},
       {"id": "protection", "rule": "a lot of the slot has stop_miss with stop_miss_why in CANDIDATE_STOP_FAIL ('restoring' or 'owner_check'); any other stop_miss_why (e.g. 'checking') does not disable", "why_prefix": "protection: ", "source": "engine.py:Engine.candidate_guard"},
-      {"id": "accounting", "rule": "a closed trade of the slot among the last 3000 history rows still has AC.row_view status 'pending' >= CANDIDATE_COST_PENDING_S (6 h) after its close; an unparseable close time counts as infinitely old", "why_prefix": "accounting: ", "source": "engine.py:Engine.candidate_guard"},
+      {"id": "family_order", "rule": "OQ2: more than one family member enabled and their S['SLEEVES'] order differs from CANDIDATE_SLOTS order", "why_prefix": "drift: family ", "source": "engine.py:Engine.candidate_guard"},
+      {"id": "accounting", "rule": "OQ6: a closed trade of the slot anywhere in self.history, or an entry of the slot in the durable index state['candidate_cost_pending'], still has costs 'pending' >= CANDIDATE_COST_PENDING_S (6 h) after its close; an unparseable / NaT close time counts as infinitely old; an unreadable index fails closed for every slot", "why_prefix": "accounting: ", "source": "engine.py:Engine.candidate_guard, engine.py:Engine._candidate_pending_why"},
       {"id": "guard_error", "rule": "any exception inside the guard switches EVERY enabled candidate slot off (fails closed)", "why_prefix": "guard_error: ", "source": "engine.py:Engine.candidate_guard (except branch)"}
     ],
-    "trigger_precedence": "drift, then protection, then accounting (first match is the recorded why)",
+    "trigger_precedence": "per slot: drift, then protection, then history accounting, then index accounting; then family order (only where the slot has no own trigger). A member without its own trigger records 'family trend_long fail-closed by <member>: <member's why>'.",
     "effect": "sl['enabled'] = False; state['candidate_disabled'][slot] = {why, t}; err() alert; settings and state saved. Only NEW entries stop: open lots keep their exchange stop and management and are never closed by the guard. A switched-off slot is refused at the 'strategy slot switched off' gate.",
     "re_enable": "Integration only. The guard never sets enabled = True; there is no automatic re-enable path.",
-    "family_effect": "per slot: disabling C-F01 leaves C-F02 enabled (see open question OQ1)",
+    "family_effect": "OQ1 (ruling 6507748888): family-level fail closed - a drift / order / protection / accounting disable of either enabled member disables every enabled member of trend_long; open lots remain managed. No silent fallback to C-F02 with different management.",
+    "durable_pending_index": {
+      "key": "state['candidate_cost_pending'] = {history row id: {sleeve, symbol, closed}}",
+      "set": "at close, in engine.py:Engine._finish via engine.py:Engine._candidate_pending_note, for a candidate row whose costs are still pending (an unreadable status is indexed anyway - fail closed); it survives the history[-3000:] eviction and restarts (rulings 6507748888 OQ6, 6508164005)",
+      "cleared": "exactly once, when the row settles - AC.row_view status 'measured' or 'acknowledged' (the FILL-PNL-02 operator acknowledgement counts as settlement, ruling 6508707059 (b)) - by engine.py:Engine._candidate_pending_clear, called from engine.py:Engine._cost_final (kind 'row', reached from engine.py:Engine.apply_costs) or from the guard's reconciliation in engine.py:Engine._candidate_pending_why; idempotent",
+      "persisted": "every successful clear calls save_state() immediately (ruling 6508707059); a failed save leaves the entry on disk, so a restart stays fail-closed",
+      "evicted_unsettleable": "an index entry whose row has left history keeps the family OFF on its stored close time until a future explicit Integration acknowledgement path clears it; it is never time-cleared (ruling 6508707059 (a))",
+      "source": "engine.py:Engine._finish, engine.py:Engine._candidate_pending_note, engine.py:Engine._candidate_pending_clear, engine.py:Engine._cost_final, engine.py:Engine.apply_costs, engine.py:Engine._candidate_pending_why"
+    },
     "code_defined": true
   },
   "family_book_replay": {
     "label": "DERIVED REPLAY OF EXISTING PACKETS - arithmetic over recorded trade lists, non-promotable, NOT an evaluation, no market data read",
+    "evidence_ref": "branch evidence/f01f02-core20-packets @ 1ef6f11f6408d9869f2d6a286c0f502df94bf8b0 holds both packets at its root; their blob sha256 equal the file_sha256 pins below (checked at amendment 1)",
     "inputs": {
       "F01": {"path": "C:/Dev/ZackBot2_data/strategy_factory_20261027/corrected_core20/F01_ema_mom_long_CORE20X.json", "file_sha256": "6eca0d333a3fe5f4e3ce4a16995385347d36d046ce003c8392e867aa09103da9"},
       "F02": {"path": "C:/Dev/ZackBot2_data/strategy_factory_20261027/corrected_core20/F02_exp_trend_long_CORE20X.json", "file_sha256": "861ded849203da4397dac2c5f8656ad5dc7bb77e6bb1e5e70493dba3252f3fe8"},
@@ -139,7 +158,7 @@
       "sum_note": "subset sums are sums of the packets' 6-dp per-trade R; full-set values are the packets' aggregate r_sum"
     },
     "limits": [
-      "Runtime differs from the packets: each candidate sizes on its own CANDIDATE_SHARE (1/6) basis, and runtime-only refusals (order failure, exchange rules, cost-pending deferral, guard disable of C-F01) can hand individual signals to C-F02. The replay does not model these.",
+      "Runtime differs from the packets: each candidate sizes on its own CANDIDATE_SHARE (1/6) basis, and runtime-only refusals (order failure, exchange rules, cost-pending deferral) could hand individual signals to C-F02 if both were enabled. The replay does not model these. Under the OQ4 C-F01-only policy C-F02 is OFF, and a guard disable of C-F01 no longer hands the family to C-F02 (OQ1).",
       "3 of the 11 F02-only suppressions rest on C-F01 lots open at END (see above)."
     ]
   },
@@ -153,18 +172,20 @@
     "credentials, API keys, mainnet or live funds",
     "tuning parameters or management"
   ],
-  "open_questions": [
-    {"id": "OQ1", "topic": "primary disabled", "question": "candidate_guard disables per slot. When C-F01 is switched off (drift / protection / accounting), C-F02 stays enabled and inherits every family signal with F02 management (3R target, 180-bar cap). Should a guard disable of the primary also switch off the secondary (family-level disable), or is C-F02 an intended fallback?"},
-    {"id": "OQ2", "topic": "slot order", "question": "Slot priority is S['SLEEVES'] order, which is persisted settings. sync appends in CANDIDATE_SLOTS order (F01 first), but a saved settings file holding C-F02 before C-F01 (or only C-F02 re-added) would invert priority, and candidate_drift does not check slot order. Pin F01-before-F02 in the guard, or accept?"},
-    {"id": "OQ3", "topic": "symbol order", "question": "candidate_drift compares symbols as a sorted set, so a reordered list is not drift; the order decides which coin gets the last family slot on a same-bar cap collision. Accept order as non-binding?"},
-    {"id": "OQ4", "topic": "both enabled", "question": "Given the replay (C-F02 takes 0 trades when C-F01 is on), is enabling C-F02 alongside C-F01 useful at all, or should Integration enable only C-F01 and keep C-F02 off as the reference cell?"},
-    {"id": "OQ5", "topic": "deferred entries", "question": "ORDER-SYM-01 deferred entries (_deferred, memory only) are not in _claims. Candidates have no true book (true_book_block returns None), so a candidate cost_pending deferral is believed unreachable; confirm, or require _claims to include deferred candidate entries."},
-    {"id": "OQ6", "topic": "accounting window", "question": "The accounting trigger scans only history[-3000:]; a pending-cost candidate row older than that would never disable. Accept the window?"}
+  "open_questions": [],
+  "resolved_rulings": [
+    {"id": "OQ1", "topic": "primary disabled", "ruling": "6507748888", "resolution": "family-level fail closed: any drift/protection/accounting disable of either enabled member disables every enabled member of trend_long; open lots remain managed", "source": "engine.py:Engine.candidate_guard"},
+    {"id": "OQ2", "topic": "slot order", "ruling": "6507748888", "resolution": "with more than one member enabled, S['SLEEVES'] order must be exactly C-F01 before C-F02; mismatch is family drift and fails closed", "source": "engine.py:Engine.candidate_guard"},
+    {"id": "OQ3", "topic": "symbol order", "ruling": "6507748888", "resolution": "symbols compare as the exact ordered CAND_FIXED18 list, not a sorted set", "source": "engine.py:Engine.candidate_drift"},
+    {"id": "OQ4", "topic": "both enabled", "ruling": "6507748888", "resolution": "C-F01 only; C-F02 stays OFF as the reference / alternative-management cell (family.enable_policy)"},
+    {"id": "OQ5", "topic": "deferred entries", "ruling": "6507748888", "resolution": "explicit coverage: candidate _deferred reservations are counted in _claims (the entry being re-decided excluded)", "source": "engine.py:Engine._claims, engine.py:Engine._reconsider_one"},
+    {"id": "OQ6", "topic": "accounting window", "ruling": "6507748888, 6508164005, 6508707059", "resolution": "3,000-row window rejected: whole-history scan plus the durable state['candidate_cost_pending'] index, set at close in _finish, cleared once on measured/acknowledged settlement in _cost_final or guard reconciliation and persisted immediately; an evicted unsettleable row keeps the family OFF until a future explicit Integration acknowledgement (never time-cleared); the FILL-PNL-02 acknowledgement counts as settlement", "source": "engine.py:Engine.candidate_guard, engine.py:Engine._candidate_pending_why, engine.py:Engine._candidate_pending_note, engine.py:Engine._candidate_pending_clear, engine.py:Engine._finish, engine.py:Engine._cost_final"}
   ],
   "roadmap_fit": "FACTORY-F01F02 family gate before any Integration opt-in of C-F01/C-F02 in PAPER (FACTORY-CAND-01 slots exist, default OFF).",
   "deferred": [
     "an authorized family-book run (one account, both cells, engine collision rules) to confirm the 3 end-of-window suppressions and runtime share-basis sizing",
-    "any change to candidate_guard / candidate_block answering OQ1-OQ6",
+    "a future explicit Integration acknowledgement path for evicted unsettleable pending-index entries (ruling 6508707059)",
+    "a separately authorized C-F02 alternative-management evaluation (OQ4)",
     "PAPER enablement (Integration call after its parity gate)"
   ]
 }
