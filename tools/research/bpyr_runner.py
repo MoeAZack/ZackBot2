@@ -1935,6 +1935,12 @@ def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = 
                                   check=True).stdout
         except (OSError, subprocess.CalledProcessError, UnicodeError) as e:      # A2: undecodable git output
             refuse(f'git {a[0]} failed ({e})')
+    def real_show(rel_):                                     # A1: bytes mode; text mode would fold CRLF / lone CR
+        try:
+            return subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel_}'], capture_output=True,
+                                  check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as e:
+            refuse(f'git show failed ({e})')
     g = git or real_git
     if not isinstance(expect_sha256, str) or len(expect_sha256) != 64 or not _HEX.fullmatch(expect_sha256):
         refuse('--expect-authorization-sha256 (64 lowercase hex) is required')
@@ -1952,8 +1958,8 @@ def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = 
     if b'\r' in raw:                                         # A1: canonical bytes are raw ASCII with LF only
         refuse('CR byte in the artifact (canonical bytes are LF-only)')
     body = raw
-    try:
-        committed = g('show', f'HEAD:{rel}').encode('utf-8')
+    try:                                                     # injected test git returns str; the real path is raw bytes
+        committed = g('show', f'HEAD:{rel}').encode('utf-8') if git else real_show(rel)
     except UnicodeError as e:
         refuse(f'HEAD:{rel} is not decodable ({e})')
     if committed != body:

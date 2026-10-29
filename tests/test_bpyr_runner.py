@@ -1471,6 +1471,10 @@ def _git(repo, *a):
                           capture_output=True, text=True, check=True).stdout
 
 
+def _git_bytes(repo, *a):
+    return subprocess.run(['git', '-C', str(repo), *a], capture_output=True, check=True).stdout
+
+
 def _auth_repo(tmp_path, pf, name='a.json', drop=(), between=False, raw=None, **over):
     """code commit c0, then (optionally an unrelated change, then) the artifact committed on top -> HEAD."""
     repo = tmp_path / 'repo'
@@ -1576,6 +1580,18 @@ def test_load_authorization_refuses_any_cr_byte(tmp_path, pf):
     repo, f, pf_, _ = _auth_repo(tmp_path / 'crlf', pf, raw=crlf)
     with pytest.raises(R.AuthorizationRefused, match='CR byte'):
         _load(repo, f, pf_)
+
+
+def test_load_authorization_compares_raw_head_bytes_not_text(tmp_path, pf):
+    """Codex 6496652384: HEAD holds CRLF bytes, the working tree is rewritten to canonical LF and pinned. A text-mode
+    `git show` would fold the CRLF and compare equal; the raw-byte comparison refuses."""
+    _, f0, _, _ = _auth_repo(tmp_path / 'lf', pf)
+    lf = f0.read_bytes()
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'crlf', pf, raw=lf[:-1] + b'\r\n')
+    assert _git_bytes(repo, 'show', 'HEAD:research_evidence/authorizations/a.json').endswith(b'\r\n')
+    f.write_bytes(lf)
+    with pytest.raises(R.AuthorizationRefused, match='differs from HEAD'):
+        R.load_authorization(str(f), pf_, expect_sha256=R.file_sha(str(f)), repo=str(repo))
 
 
 def test_load_authorization_types_undecodable_git_output(tmp_path, pf):
