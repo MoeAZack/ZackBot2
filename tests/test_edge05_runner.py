@@ -1441,3 +1441,139 @@ def test_market_lot_size_feeds_step_and_min_qty_not_lot_size():
                        'ep': dict(ep, rule=dict(ep['rule'], step=0.001, min_qty=huge))}])
     assert b_lot.refused == {} and len(b_lot.r) == 1
     assert sum(b_mkt.refused.values()) == 1 and b_mkt.r == []                              # the market minimum binds
+
+
+# ------------------------------------------------------------------ EDGE05-AB-01 (Codex ruling 6495672591)
+AMEND_REL = 'research_evidence/prereg/funding_carry_xsec.v1.amendment_dev_end_20260901.json'
+RAW_SNAP_REL = 'research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json'
+
+
+def _git(repo, *a):
+    return subprocess.run(['git', '-C', str(repo), *a], capture_output=True, check=True).stdout
+
+
+def prospective_repo(tmp_path, drop=(), strip=None, commit=True):
+    """A throwaway git repo holding one synthetic raw exchangeInfo snapshot: (repo, path, sha256)."""
+    repo = tmp_path / 'repo'
+    repo.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    strip = strip or {}
+    doc = {'timezone': 'UTC', 'symbols': [snap_entry(s, RULE, strip.get(s, ())) for s in SYMS if s not in drop]}
+    raw = R.canon(doc)
+    p = repo / 'snap.json'
+    p.write_bytes(raw)
+    if commit:
+        _git(repo, 'add', 'snap.json')
+        _git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 's')
+    return repo, p, R.sha(raw)
+
+
+def test_prospective_rules_accepts_a_committed_snapshot_and_counts_skips(tmp_path):
+    repo, p, h = prospective_repo(tmp_path, drop=(SYMS[1],), strip={SYMS[2]: (('MARKET_LOT_SIZE', 'maxQty'),)})
+    pr = R.ProspectiveRules.load(str(p), h, SYMS, repo=str(repo))
+    ident = pr.identity()
+    assert ident['mode'] == ident['non_promotable_rules'] == 'prospective' and ident['ruling'] == '6495672591'
+    assert ident['sha256'] == h and ident['snapshot_path'] == 'snap.json' and ident['rules_source']['sha256'] == h
+    assert ident['skipped_symbols'] == {SYMS[1]: 'absent_from_snapshot', SYMS[2]: 'missing_or_non_numeric_field'}
+    assert ident['skipped_by_reason'] == {'absent_from_snapshot': 1, 'missing_or_non_numeric_field': 1}
+    assert ident['symbols_with_rules'] == len(SYMS) - 2
+    early = S.parse_utc('2019-01-01T00:00:00Z')                      # causality bypassed: same tuple at every time
+    assert pr.lookup(SYMS[0], early) == pr.lookup(SYMS[0], early + 10 ** 11)
+    assert {k: pr.lookup(SYMS[0], early)[k] for k in R.RULE_KEYS} == RULE
+    assert pr.lookup(SYMS[1], early) is None and pr.lookup(SYMS[2], early) is None    # never defaulted
+
+
+def test_prospective_rules_refuses_uncommitted_modified_or_unbound_snapshots(tmp_path):
+    repo, p, h = prospective_repo(tmp_path / 'a', commit=False)
+    with pytest.raises(R.RunnerError, match='not committed'):
+        R.ProspectiveRules.load(str(p), h, SYMS, repo=str(repo))
+    repo, p, h = prospective_repo(tmp_path / 'b')
+    for bad in (None, '', 'xyz'):
+        with pytest.raises(R.RunnerError, match='expect-prospective-rules-sha256'):
+            R.ProspectiveRules.load(str(p), bad, SYMS, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='differs from --expect-prospective'):
+        R.ProspectiveRules.load(str(p), '0' * 64, SYMS, repo=str(repo))
+    p.write_bytes(p.read_bytes() + b' ')
+    with pytest.raises(R.RunnerError, match='differs from --expect-prospective'):    # modified: not the bound hash
+        R.ProspectiveRules.load(str(p), h, SYMS, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):                      # modified and re-bound: refused
+        R.ProspectiveRules.load(str(p), R.sha(p.read_bytes()), SYMS, repo=str(repo))
+    out = tmp_path / 'outside.json'
+    out.write_bytes(b'{}')
+    with pytest.raises(R.RunnerError, match='inside the repo'):
+        R.ProspectiveRules.load(str(out), R.sha(b'{}'), SYMS, repo=str(repo))
+
+
+@pytest.mark.parametrize('extra', [['--rules-artifact', 'r.json'], ['--rules-source-manifest', 'm.json'],
+                                   ['--expect-rules-sha256', 'ab' * 32], ['--expect-rules-source-sha256', 'ab' * 32]])
+def test_prospective_rules_cli_is_exclusive_with_the_pit_arguments(extra, capsys):
+    rc = R.main(['--store', 'x', '--max-rss-mb', '100', '--dry-run', '--prospective-rules', RAW_SNAP_REL,
+                 '--expect-prospective-rules-sha256', 'ab' * 32] + extra)
+    assert rc == 3 and 'mutually exclusive' in capsys.readouterr().err
+    rc = R.main(['--store', 'x', '--max-rss-mb', '100', '--dry-run', '--expect-prospective-rules-sha256', 'ab' * 32])
+    assert rc == 3 and 'without --prospective-rules' in capsys.readouterr().err
+
+
+def test_prospective_run_binds_identity_and_labels_every_packet(tmp_path):
+    repo, p, h = prospective_repo(tmp_path / 'r')
+    pr = R.ProspectiveRules.load(str(p), h, SYMS, repo=str(repo))
+    summ = _run(tmp_path / 'p', rules=pr, only_keys=['walk_forward[1]'])
+    ident = json.loads((tmp_path / 'p' / 'run.json').read_bytes())
+    assert ident['rules'] == pr.identity() and ident['rules_mode'] == ident['non_promotable_rules'] == 'prospective'
+    assert '6495672591' in ident['conventions']['prospective_rules']
+    lines = (tmp_path / 'p' / 'days.jsonl').read_bytes().splitlines()
+    assert lines and all(json.loads(ln)['non_promotable_rules'] == 'prospective' for ln in lines)
+    assert summ['non_promotable_rules'] == summ['rules_mode'] == 'prospective' and summ['promotable'] is False
+    assert 'PROSPECTIVE-EXCHANGE-RULES' in summ['labels'] and 'PIT-EXCHANGE-RULES' not in summ['labels']
+    assert summ['rules_snapshot'] == {'path': 'snap.json', 'sha256': h} and summ['rules_skips']['count'] == 0
+    for s in R.SIDES:
+        wf = summ['walk_forward'][s]
+        if 'promotion_x2_ok' in wf:
+            assert wf['promotion_x2_ok'] is False and isinstance(wf['promotion_x2_ok_computed'], bool)
+    repo2, p2, h2 = prospective_repo(tmp_path / 's', drop=(SYMS[4],))
+    sk = R.ProspectiveRules.load(str(p2), h2, SYMS, repo=str(repo2))
+    rep = _run(tmp_path / 'd', rules=sk, dry_run=True)
+    assert rep['non_promotable_rules'] == 'prospective' and SYMS[4] in rep['rules_uncovered_days_by_symbol']
+    assert rep['rules']['skipped_symbols'] == {SYMS[4]: 'absent_from_snapshot'} and not (tmp_path / 'd').exists()
+
+
+def test_pit_default_path_carries_no_prospective_labels(full):
+    _, b = full
+    ident = json.loads(b['run.json'])
+    assert 'rules_mode' not in ident and 'non_promotable_rules' not in ident
+    assert all('non_promotable_rules' not in json.loads(ln) for ln in b['days.jsonl'].splitlines())
+    summ = json.loads(b['summary.json'])
+    assert 'PIT-EXCHANGE-RULES' in summ['labels'] and 'non_promotable_rules' not in summ
+
+
+def test_committed_raw_snapshot_is_the_2026_10_11_mainnet_capture_and_parses():
+    raw = (ROOT / RAW_SNAP_REL).read_bytes()
+    derived = json.loads((ROOT / 'data' / 'exchange_rules_mainnet.json').read_bytes())
+    assert R.sha(raw) == derived['raw_sha256'] and derived['fetched_at'].startswith('2026-10-11')
+    p, _ = real()
+    syms = R.CV.load_universe(str(ROOT / p['universe']['artifact']))
+    t = R.snapshot_tuples(json.loads(raw), set(syms))
+    assert set(t) == set(syms) and all(v is not None for v in t.values())
+
+
+def test_committed_dev_end_amendment_binds_ruling_and_needs_no_straddle(tmp_path):
+    p, raw = real()
+    b = (ROOT / AMEND_REL).read_bytes()
+    cutoff = R.params_of(p).cutoff_ms
+    am = R.Amendment.load(str(ROOT / AMEND_REL), raw, cutoff, R.sha(b))
+    assert am.doc['dev_end'] == '2026-09-01T00:00:00Z' and '6495672591' in am.identity()['signed_by']
+    assert am.identity()['sha256'] == R.sha(b) and '6495672591' in am.doc['reason']
+    with pytest.raises(R.RunnerError, match='expect-amendment'):
+        R.Amendment.load(str(ROOT / AMEND_REL), raw, cutoff, '0' * 64)
+
+    class SeptStraddle(Synth):                                        # the real never-opened month: Sep 2026
+        straddle_from, straddle = S.parse_utc('2026-09-01T00:00:00Z'), None
+
+    rep = R.run(str(tmp_path / 'x'), SeptStraddle(), SYMS, RULES, p, raw, dry_run=True, max_rss_mb=8192, code=CODE,
+                amendment=am, expect_rules_sha256=RULES.sha256)
+    assert rep['straddle_unresolved_from'] is None and rep['expected_artifact_mismatch'] == []
+    assert rep['splits']['walk_forward[4]']['last_D'] < '2026-09-01'
+    rep0 = R.run(str(tmp_path / 'x'), SeptStraddle(), SYMS, RULES, p, raw, dry_run=True, max_rss_mb=8192, code=CODE,
+                 expect_rules_sha256=RULES.sha256)
+    assert rep0['straddle_unresolved_from'] == '2026-09-01T00:00:00Z' and rep0['expected_artifact_mismatch'] == ['straddle']
+    assert not (tmp_path / 'x').exists()

@@ -1,0 +1,10 @@
+{
+ "candidate_id": "funding_carry_xsec.v1",
+ "dev_end": "2026-09-01T00:00:00Z",
+ "format": "zb-edge05-amendment/1",
+ "prereg_sha256": "8c8cdcb419273449f9e23685f45114d480908edc0cee83ce7fbce6ddfdb84390",
+ "reason": "Codex ruling 6495672591 (B): EDGE05 development ends 2026-09-01T00:00:00Z exclusive; WF4 loses its final 26 days; no straddle artifact is required or read; holdout stays sealed. Answers blocker comment 6495247261.",
+ "signed": true,
+ "signed_by": "codex: MoeAZack/ZackBot2 issuecomment-6495672591 (GO A + B, 2026-10-29 14:38 Cairo)",
+ "status": "FROZEN - AUTHORIZED BY CODEX RULING 6495672591 (record drafted by claude-code; Integration confirms on review)"
+}
