@@ -18,6 +18,11 @@ persistence failure is fail-closed** (§5).
 (§5). E2: **orphan checkpoint temp files are never authoritative** (§5). E3: **one row per transaction, frozen** (§5).
 E4: **a partial append or ENOSPC is confirmed fail-closed** (§5).
 
+**Integration ruling 6484022181 is applied** (JSON `ruling_6484022181`). R1: **the E1 advance hashes sealed file n and
+requires file n+1 absent or empty** (§5). R2: **the forced seal and the startup seal are distinct paths**, and a
+forced-seal checkpoint-advance persist failure recovers through E1 (§5). Matching: **E1 uses the committed triple with
+pending == null** (§5).
+
 ## 1. Scope and authority
 
 - The producer stays **default OFF**. Enabling it needs **a separate Integration ruling** after this contract is
@@ -129,6 +134,23 @@ quarantine). Examples: the checkpoint names n+1 while the manifest lacks n, or m
 checkpoint. **Required implementation tests:** `test_crash_between_seal_and_checkpoint_advance` (forced seal and startup
 seal) and `test_seal_reverse_order_state_is_refused`.
 
+**E1 advance proof (R1 ruling 6484022181, JSON `seal_rotation.advance_proof`).** Before E1 advances the checkpoint from
+n to empty n+1, startup **hashes sealed file n** within the existing 16 MiB bound (`max_bytes_per_seal_refresh`) and
+**requires exact equality with manifest entry n** (byte length and sha256). File n+1 **must be absent or empty**. A
+same-size edit to file n, a non-empty n+1, a missing or over-bound file n, or any other ambiguity **fails closed as
+`active_corrupt`**. Only the exact match advances, with no quarantine and no recovery-budget spend. **Required
+implementation test:** `test_seal_advance_requires_exact_file_n_and_empty_next`.
+
+**Matching (ruling 6484022181, JSON `seal_rotation.matching`).** **E1 matching uses the committed triple with pending ==
+null.** A **non-null pending alongside manifest entry n stays fail-closed** (`active_corrupt`).
+
+**Two distinct seal paths (R2 ruling 6484022181, JSON `seal_rotation.paths`).** The **forced seal** runs in a live
+writer, so step 2 (`advance_checkpoint`) can fail to persist. The **startup seal** runs with no live writer, from the
+pre-append state before the first append. **If forced-seal step 2 (checkpoint advance) cannot persist, C4 disables the
+producer** (`checkpoint_persist_failed`), **and the next startup recovers through E1 rather than quarantine when the
+manifest/file proof is exact.** **Required implementation test:**
+`test_forced_seal_checkpoint_advance_persist_failure_recovers_via_e1`.
+
 **Orphan temp files (E2 ruling 6483743382).** An orphan checkpoint temp file is **never authoritative**. Startup
 ignores it and **removes it only after the canonical checkpoint is validated**. A malformed canonical checkpoint still
 fails closed.
@@ -211,6 +233,8 @@ MAC. That work is DEFERRED (`ipc_page_transport`).
 - `test_crash_after_append_fsync_before_commit_promotes_pending` (required)
 - `test_torn_or_partial_append_is_active_corrupt` (required)
 - `test_crash_between_seal_and_checkpoint_advance` (required)
+- `test_seal_advance_requires_exact_file_n_and_empty_next` (required)
+- `test_forced_seal_checkpoint_advance_persist_failure_recovers_via_e1` (required)
 - `test_seal_reverse_order_state_is_refused` (required)
 - `test_orphan_checkpoint_temp_is_never_authoritative`
 - `test_one_row_per_checkpoint_transaction`

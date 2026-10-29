@@ -7,6 +7,9 @@ Integration ruling 6483289354: C1 two-phase intent/commit checkpoint, C2 sealed 
 checkpoint persistence failure is fail-closed.
 Integration ruling 6483743382: E1 seal/rotation crash protocol, E2 orphan checkpoint temp files never authoritative,
 E3 one row per transaction (frozen, no batching), E4 partial append / ENOSPC confirmed fail-closed.
+Integration ruling 6484022181: R1 the E1 advance hashes sealed file n and requires n+1 absent/empty, R2 forced and
+startup seal are distinct paths (a forced-seal step-2 persist failure is C4, then E1 at the next start), and E1
+matching uses the committed triple with pending == null.
 
 Contract only - no runtime code. Parity is checked from the JSON side: every name the JSON lists must appear in the md.
 """
@@ -65,7 +68,7 @@ def test_required_sections_and_keys(c):
             c['page_privacy']['requirement']) == ('a', 'b', 'c')
     for k in ('refresh_cadence', 'active_segment', 'page_privacy'):
         assert c[k]['problem']
-    assert c['integration_rulings'] == ['6480873345', '6483289354', '6483743382']
+    assert c['integration_rulings'] == ['6480873345', '6483289354', '6483743382', '6484022181']
     assert set(c['ruling_6483289354']) == {'C1', 'C2', 'C3', 'C4'}
     assert set(c['ruling_6483743382']) == {'E1', 'E2', 'E3', 'E4'}
     for k in ('refresh_cadence', 'active_segment'):                       # Q3 numbers frozen by ruling, not proposals
@@ -435,26 +438,60 @@ def test_ruling_6483289354_keeps_draft_off_no_authority(c):
 EMPTY_SHA = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 
 
-def _startup_seal_boundary(cp, manifest, file_state, orphan_temp=False):
-    """C1 + E1/E2/E4 startup model.
+SEAL_HASH_BOUND = 16 * MIB                                   # max_bytes_per_seal_refresh (R1 ruling 6484022181)
+
+
+def _trip(seg, b):
+    import hashlib
+    return (seg, len(b), hashlib.sha256(b).hexdigest())
+
+
+def _startup_seal_boundary(cp, manifest, files, seal, orphan_temp=False, step2='crashed'):
+    """C1 + E1/E2/E4 + ruling 6484022181 startup model.
 
     cp: None (malformed canonical) or {'committed': (seg, len, sha), 'pending': state or None}; manifest: {seg: (seg,
-    len, sha)} of durable sealed entries; file_state: the active file's (seg, len, sha), or 'partial' / 'enospc'.
-    -> (outcome, quarantined, recovery_budget_spent, orphan_temp_removed)."""
+    len, sha)} of durable sealed entries; files: {seg: bytes} on disk (a missing key = absent), or 'partial' / 'enospc'
+    for the active file. seal: 'forced_seal' or 'startup_seal' (R2: distinct paths); step2: how the prior run's
+    advance_checkpoint ended, 'crashed' or 'persist_failed'.
+    -> (prior_run, startup); prior_run = (writer, step-2 result, producer state); startup = (outcome, quarantined,
+    recovery_budget_spent, orphan_temp_removed)."""
+    if seal == 'forced_seal':                                # R2: a live writer seals while appending
+        if step2 == 'persist_failed':                        # C4: step 2 cannot persist -> producer disabled
+            prior = ('live_writer', 'checkpoint_persist_failed', 'producer_disabled')
+        else:
+            prior = ('live_writer', 'crashed', None)
+    elif seal == 'startup_seal':                             # R2: no live writer, the pre-append state
+        assert step2 == 'crashed', 'a startup seal has no live writer to observe a persist failure'
+        prior = ('pre_append', 'crashed', None)
+    else:
+        raise AssertionError(seal)
+    return prior, _startup_after_seal(cp, manifest, files, orphan_temp)
+
+
+def _startup_after_seal(cp, manifest, files, orphan_temp):
     corrupt = ('active_corrupt', True, True, False)          # E4: gap -> quarantine, budget accounted; temp untouched
     if cp is None:
         return corrupt                                       # E2: malformed canonical fails closed; temp never used
     n = cp['committed'][0]
     last = max(manifest, default=0)
     if last == n:                                            # E1: crash between the seal and the checkpoint advance
-        if manifest[n] != cp['committed'] or cp['pending'] is not None:
-            return corrupt
+        if cp['pending'] is not None or manifest[n] != cp['committed']:
+            return corrupt                                   # matching: committed triple with pending == null only
+        fn = files.get(n)
+        if not isinstance(fn, bytes) or len(fn) > SEAL_HASH_BOUND:
+            return corrupt                                   # R1: missing / over-bound / ambiguous file n
+        if _trip(n, fn) != manifest[n]:
+            return corrupt                                   # R1: file n edited (same size included)
+        nxt = files.get(n + 1)
+        if nxt is not None and nxt != b'':
+            return corrupt                                   # R1: n+1 must be absent or empty
         return ('seal_advanced', False, False, orphan_temp)
     if last != n - 1:                                        # reverse / ambiguous: names n+1 while manifest lacks n
         return corrupt
-    if file_state in ('partial', 'enospc'):
+    active = files.get(n, b'')
+    if active in ('partial', 'enospc'):
         return corrupt                                       # E4: third state, no truncation salvage
-    st = _startup_state(file_state, cp['committed'], cp['pending'])
+    st = _startup_state(_trip(n, active), cp['committed'], cp['pending'])
     if st == 'active_corrupt':
         return corrupt
     return (st, False, False, orphan_temp)                   # E2: temp removed only after validation
@@ -494,40 +531,139 @@ def test_e1_seal_rotation_crash_protocol(c, md):
     assert '`test_seal_reverse_order_state_is_refused` (required)' in md
 
 
+N_SEAL, BODY = 3, b'{"a":1}\n'
+BODY_EDIT = b'{"a":2}\n'                                     # same size, parse-valid
+CORRUPT = ('active_corrupt', True, True, False)
+ADVANCED = ('seal_advanced', False, False, False)
+PRIOR = {'forced_seal': ('live_writer', 'crashed', None), 'startup_seal': ('pre_append', 'crashed', None)}
+
+
+def _seal_fixture():
+    n = N_SEAL
+    sealed_n, empty_next = _trip(n, BODY), (n + 1, 0, EMPTY_SHA)
+    before = {i: _trip(i, BODY) for i in range(1, n)}                      # durable entries 1..n-1
+    after = {**before, n: sealed_n}                                         # entry n durable
+    cp_old = {'committed': sealed_n, 'pending': None}
+    cp_new = {'committed': empty_next, 'pending': None}
+    cp_inflight = {'committed': empty_next, 'pending': _trip(n + 1, BODY)}
+    return n, sealed_n, before, after, cp_old, cp_new, cp_inflight
+
+
 @pytest.mark.parametrize('seal', ['forced_seal', 'startup_seal'])
 @pytest.mark.parametrize('case,expect', [
-    ('cp_n_manifest_n_equal', ('seal_advanced', False, False, False)),
+    ('cp_n_manifest_n_equal', ADVANCED),
+    ('cp_n_manifest_n_equal_next_empty', ADVANCED),
     ('cp_n_manifest_n_equal_orphan_temp', ('seal_advanced', False, False, True)),
-    ('cp_n_plus_1_manifest_lacks_n', ('active_corrupt', True, True, False)),
-    ('manifest_n_mismatches_cp', ('active_corrupt', True, True, False)),
+    ('cp_n_manifest_n_equal_file_n_edited_same_size', CORRUPT),
+    ('cp_n_manifest_n_equal_next_nonempty', CORRUPT),
+    ('cp_n_manifest_n_equal_pending_non_null', CORRUPT),
+    ('cp_n_manifest_n_equal_file_n_missing', CORRUPT),
+    ('cp_n_plus_1_manifest_lacks_n', CORRUPT),
+    ('manifest_n_mismatches_cp', CORRUPT),
     ('advanced_clean', ('committed', False, False, False)),
     ('orphan_temp_after_validation', ('committed', False, False, True)),
-    ('malformed_canonical_with_orphan_temp', ('active_corrupt', True, True, False)),
-    ('partial_append', ('active_corrupt', True, True, False)),
-    ('enospc', ('active_corrupt', True, True, False)),
+    ('malformed_canonical_with_orphan_temp', CORRUPT),
+    ('partial_append', CORRUPT),
+    ('enospc', CORRUPT),
 ])
 def test_e1_e2_e4_startup_seal_boundary_model(seal, case, expect):
-    import hashlib
-    n, body = 3, b'{"a":1}\n'
-    trip = lambda seg, b: (seg, len(b), hashlib.sha256(b).hexdigest())      # noqa: E731
-    sealed_n, empty_next = trip(n, body), (n + 1, 0, EMPTY_SHA)
-    before = {i: trip(i, body) for i in range(1, n)}                        # durable entries 1..n-1
-    after = {**before, n: sealed_n}                                   # entry n durable
-    cp_old, cp_new = {'committed': sealed_n, 'pending': None}, {'committed': empty_next, 'pending': None}
-    cp_inflight = {'committed': empty_next, 'pending': trip(n + 1, body)}
+    n, sealed_n, before, after, cp_old, cp_new, cp_inflight = _seal_fixture()
     temp = 'orphan_temp' in case
     args = {
-        'cp_n_manifest_n_equal': (cp_old, after, sealed_n),
-        'cp_n_manifest_n_equal_orphan_temp': (cp_old, after, sealed_n),
-        'cp_n_plus_1_manifest_lacks_n': (cp_new, before, empty_next),
-        'manifest_n_mismatches_cp': (cp_old, {**before, n: trip(n, body + b"x")}, sealed_n),
-        'advanced_clean': (cp_new, after, empty_next),
-        'orphan_temp_after_validation': (cp_new, after, empty_next),
-        'malformed_canonical_with_orphan_temp': (None, after, empty_next),
-        'partial_append': (cp_inflight, after, 'partial'),
-        'enospc': (cp_inflight, after, 'enospc'),
+        'cp_n_manifest_n_equal': (cp_old, after, {n: BODY}),
+        'cp_n_manifest_n_equal_next_empty': (cp_old, after, {n: BODY, n + 1: b''}),
+        'cp_n_manifest_n_equal_orphan_temp': (cp_old, after, {n: BODY}),
+        'cp_n_manifest_n_equal_file_n_edited_same_size': (cp_old, after, {n: BODY_EDIT}),
+        'cp_n_manifest_n_equal_next_nonempty': (cp_old, after, {n: BODY, n + 1: BODY}),
+        'cp_n_manifest_n_equal_pending_non_null': ({'committed': sealed_n, 'pending': _trip(n, BODY + BODY)}, after,
+                                                   {n: BODY}),
+        'cp_n_manifest_n_equal_file_n_missing': (cp_old, after, {}),
+        'cp_n_plus_1_manifest_lacks_n': (cp_new, before, {n + 1: b''}),
+        'manifest_n_mismatches_cp': (cp_old, {**before, n: _trip(n, BODY + b'x')}, {n: BODY}),
+        'advanced_clean': (cp_new, after, {n: BODY, n + 1: b''}),
+        'orphan_temp_after_validation': (cp_new, after, {n: BODY, n + 1: b''}),
+        'malformed_canonical_with_orphan_temp': (None, after, {n: BODY, n + 1: b''}),
+        'partial_append': (cp_inflight, after, {n: BODY, n + 1: 'partial'}),
+        'enospc': (cp_inflight, after, {n: BODY, n + 1: 'enospc'}),
     }[case]
-    assert _startup_seal_boundary(*args, orphan_temp=temp) == expect, (seal, case)
+    prior, startup = _startup_seal_boundary(*args, seal=seal, orphan_temp=temp)
+    assert startup == expect, (seal, case)
+    assert prior == PRIOR[seal], (seal, case)                # R2: the two paths are distinct
+    if seal == 'forced_seal':
+        assert prior[0] == 'live_writer'
+    else:
+        assert prior[0] == 'pre_append'
+
+
+def test_r1_same_size_edit_is_real_and_over_bound_file_n_fails_closed():
+    n, sealed_n, before, *_ = _seal_fixture()
+    assert len(BODY_EDIT) == len(BODY) and _trip(n, BODY_EDIT)[2] != sealed_n[2]
+    big = b'x' * (SEAL_HASH_BOUND + 1)
+    _, startup = _startup_seal_boundary({'committed': _trip(n, big), 'pending': None}, {**before, n: _trip(n, big)},
+                                        {n: big}, seal='startup_seal')
+    assert startup == CORRUPT                                # R1: hashing is bounded; over the bound is ambiguity
+
+
+def test_r2_forced_seal_step2_persist_failure_recovers_via_e1():
+    n, _, _, after, cp_old, *_ = _seal_fixture()
+    prior, startup = _startup_seal_boundary(cp_old, after, {n: BODY}, seal='forced_seal', step2='persist_failed')
+    assert prior == ('live_writer', 'checkpoint_persist_failed', 'producer_disabled')   # C4
+    assert startup == ADVANCED                               # next start: E1 advance, no quarantine, no budget
+    prior, startup = _startup_seal_boundary(cp_old, after, {n: BODY_EDIT}, seal='forced_seal', step2='persist_failed')
+    assert prior[1] == 'checkpoint_persist_failed' and startup == CORRUPT   # proof not exact -> still fail-closed
+    prior, startup = _startup_seal_boundary(cp_old, after, {n: BODY, n + 1: BODY}, seal='forced_seal',
+                                            step2='persist_failed')
+    assert startup == CORRUPT                                # n+1 non-empty -> still fail-closed
+    with pytest.raises(AssertionError):
+        _startup_seal_boundary(cp_old, after, {n: BODY}, seal='startup_seal', step2='persist_failed')
+
+
+def test_ruling_6484022181_r1_r2_matching(c, md):
+    r = c['ruling_6484022181']
+    assert set(r) == {'R1', 'R2', 'matching'}
+    assert 'hashes sealed file n' in r['R1'] and 'absent or empty' in r['R1'] and 'same-size edit' in r['R1']
+    assert 'C4' in r['R2'] and 'through E1, not quarantine' in r['R2'] and 'pre-append' in r['R2']
+    assert 'pending == null' in r['matching'] and 'stays fail-closed' in r['matching']
+    sr = c['active_segment']['seal_rotation']
+    ap = sr['advance_proof']
+    assert ap['ruling'].startswith('6484022181 (R1)') and ap['hash_file_n'] is True
+    assert ap['hash_bound'] == 'max_bytes_per_seal_refresh'
+    assert ap['hash_bound_bytes'] == c['refresh_cadence']['max_bytes_per_seal_refresh'] == SEAL_HASH_BOUND == L.SEG_MAX
+    assert 'byte length and sha256' in ap['file_n_must_equal'] and ap['file_n_plus_1'] == 'absent or empty'
+    fcc = ' '.join(ap['fail_closed_cases'])
+    assert 'same-size edit to file n' in fcc and 'non-empty file n+1' in fcc and 'ambiguity' in fcc
+    assert ap['fail_closed_outcome'] == 'active_corrupt'
+    assert 'no quarantine, no recovery-budget spend' in ap['exact_match_outcome']
+    m = sr['matching']
+    assert m['uses'] == 'committed' and m['pending_required'] is None
+    assert 'pending == null' in m['rule'] and 'non-null pending alongside manifest entry n stays fail-closed' in m['rule']
+    assert 'file n+1 is absent or empty' in sr['startup_seal_boundary']
+    p = sr['paths']
+    assert set(p) == {'ruling', 'forced_seal', 'startup_seal'} and p['forced_seal'] != p['startup_seal']
+    assert 'live writer' in p['forced_seal'] and 'no live writer' in p['startup_seal'] and 'pre-append' in p['startup_seal']
+    f = sr['forced_seal_step2_persist_failure']
+    assert f['ruling'].startswith('6484022181 (R2)') and f['step'] == 'advance_checkpoint' and f['path'] == 'C4'
+    assert f['counter'] == 'checkpoint_persist_failed' and f['counter'] in c['counters_added']
+    assert f['producer'] == 'disabled' and 'E1' in f['next_start'] and 'not quarantine' in f['next_start']
+    assert f['next_start_quarantines'] is False and f['next_start_spends_recovery_budget'] is False
+    fs = ' '.join(sr['fail_closed_states'])
+    assert 'non-null pending' in fs and 'same-size edit' in fs and 'n+1 is non-empty' in fs
+    plan = {t['name']: t for t in c['test_plan']}
+    for name in ('test_seal_advance_requires_exact_file_n_and_empty_next',
+                 'test_forced_seal_checkpoint_advance_persist_failure_recovers_via_e1'):
+        assert plan[name].get('required') is True, name
+        assert f'`{name}` (required)' in md, name
+    r2 = plan['test_forced_seal_checkpoint_advance_persist_failure_recovers_via_e1']['asserts']
+    assert 'checkpoint_persist_failed' in r2 and 'checkpoint_seal_advanced' in r2
+    flat = ' '.join(md.split())
+    assert '**Integration ruling 6484022181 is applied**' in flat
+    assert '**hashes sealed file n**' in flat and '**requires exact equality with manifest entry n**' in flat
+    assert '**must be absent or empty**' in flat and '**fails closed as `active_corrupt`**' in flat
+    assert '**E1 matching uses the committed triple with pending == null.**' in flat
+    assert '**non-null pending alongside manifest entry n stays fail-closed**' in flat
+    assert '**If forced-seal step 2 (checkpoint advance) cannot persist, C4 disables the producer**' in flat
+    assert ('**and the next startup recovers through E1 rather than quarantine when the manifest/file proof is exact.**'
+            in flat)
 
 
 def test_e2_orphan_checkpoint_temp_never_authoritative(c, md):
@@ -574,6 +710,13 @@ def test_e4_partial_append_or_enospc_is_fail_closed(c, md):
 
 
 def test_ruling_6483743382_keeps_draft_off_no_authority(c):
+    assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
+    s = c['scope']
+    assert s['producer_default_on'] is False and s['authority'] == 'none' and s['grants'] == []
+    assert c['slice']['runtime_code_changed'] is False
+
+
+def test_ruling_6484022181_keeps_draft_off_no_authority(c):
     assert c['status'] == 'DRAFT' and c['signed_by'] is None and c['frozen_at'] is None
     s = c['scope']
     assert s['producer_default_on'] is False and s['authority'] == 'none' and s['grants'] == []
