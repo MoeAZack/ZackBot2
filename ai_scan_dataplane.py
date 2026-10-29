@@ -19,6 +19,16 @@ ProducerLedger extends ai_scan_ledger.RotatingLedger with:
   the hot path once older than 180 s (one tuple read + one clock read);
 - an off-thread-capable startup verification (start()) under a downward-only read cap (64 MiB/s) with a cooperative
   yield between segments; the producer is ineligible until it completes.
+Integration ruling 6486610866:
+- M1 every verify path (startup / restart index, tick, seal refresh, pre-seal, E1 file-n proof, active check) streams
+  fixed STREAM_CHUNK reads: sha256 per chunk, rows parsed and indexed one line at a time - never a whole-file buffer
+  plus its parsed rows;
+- M2 the lifetime dedupe index is capped (INDEX_MAX_ROWS rows, INDEX_MAX_BYTES canonical record bytes; overrides
+  downward only) on rebuild and append: refused before exceeding -> ineligible, disabled index_full, counted, never
+  evicted. Not a durable marker: every start re-derives it from the rebuild;
+- M3 recovery is idempotent: a durable recovery_in_progress intent precedes the first quarantine rename (stable attempt
+  suffix), a restart resumes the same attempt with no budget check, and only the final state clears the intent, records
+  the evidence and charges the one recovery.
 """
 import hashlib
 import json
@@ -47,11 +57,16 @@ READ_CAP_BPS = 64 << 20                                  # startup read cap, byt
 SEAL_HASH_BOUND = 16 << 20                               # max_bytes_per_seal_refresh (R1)
 EMPTY_SHA = hashlib.sha256(b'').hexdigest()
 SAVE_RETRY_S = (0.05, 0.1, 0.25, 0.5)                    # same schedule as engine.SAVE_RETRY_S (engine never imported)
+STREAM_CHUNK = 1 << 16                                   # M1: fixed streaming read size (one buffer, never a whole file)
+INDEX_MAX_ROWS = 1_000_000                               # M2: lifetime dedupe index caps, configurable downward only
+INDEX_MAX_BYTES = 384 << 20                              # canonical record bytes held behind the index
 
 CHECKPOINT_NAME, STATE_NAME, TMP = 'active_checkpoint.json', 'producer_state.json', '.tmp'
 CP_SCHEMA, STATE_SCHEMA = 'ai-scan-active-checkpoint-v1', 'ai-scan-producer-state-v1'
 _CP_KEYS = {'schema', 'committed', 'pending', 'opened_at', 'first_row_at', 'checkpoint_hash'}
-_ST_KEYS = {'schema', 'recoveries', 'gaps', 'quarantined', 'state_hash'}
+_ST_KEYS = {'schema', 'recoveries', 'gaps', 'quarantined', 'recovery_in_progress', 'state_hash'}
+_INTENT_KEYS = {'attempt', 'at', 'last_sealed', 'after_end'}
+_STAMP_RE = re.compile(r'^\d{8}T\d{6}Z$')
 _TRIPLE = ('segment', 'byte_length', 'sha256')
 _SEG_RE = re.compile(r'^seg-(\d{6})\.jsonl$')
 
@@ -59,7 +74,7 @@ COUNTERS = ('producer_disabled', 'manifest_full', 'rotations', 'skipped_lines', 
             'checkpoint_mismatch', 'refresh_ticks', 'refresh_overrun', 'sweeps_completed', 'eligibility_stale',
             'active_digest_mismatch', 'forced_seals', 'startup_seals', 'active_quarantined', 'recovery_refused',
             'checkpoint_pending_promoted', 'checkpoint_pending_discarded', 'checkpoint_persist_failed',
-            'checkpoint_seal_advanced')
+            'checkpoint_seal_advanced', 'index_full', 'recovery_resumed')
 
 
 # ------------------------------------------------------------------ durable primitives (fault-injection seams)
@@ -120,22 +135,61 @@ def _append_bytes(path, data):
         _fsync_file(fh)
 
 
-def _read_limited(path, limit):
-    """-> the file's bytes, b'' when absent, or None when larger than `limit` (never reads more than limit + 1 bytes)."""
+def _parse_row(raw):
+    """One raw line -> (record, stripped length) | (None, 0) for a blank line; invalid -> ValueError family (the same
+    acceptance as ai_scan_ledger._parse_lines: JSON object, sealed, keyed)."""
+    ln = raw.strip()
+    if not ln: return None, 0
+    rec = json.loads(ln.decode('utf-8'))
+    if not isinstance(rec, dict): raise ValueError('not a record')
+    A._verify(rec)
+    A.record_key(rec)
+    return rec, len(ln)
+
+
+def _stream(path, limit, on_row=None, parse=True, missing_ok=False):
+    """M1 one-buffer read: the file in fixed STREAM_CHUNK reads, sha256 updated per chunk and (parse=True) rows parsed
+    and handed to on_row(record, nbytes) one line at a time - the segment's bytes and its parsed rows are never held
+    together; peak is one chunk plus the longest line. Never reads more than limit + 1 bytes.
+    -> (bytes, sha256 hasher, rows, malformed lines), or None when the file holds more than `limit` bytes.
+    Absent -> (0, empty hasher, 0, 0) when missing_ok, else FileNotFoundError."""
+    h, n, rows, bad, lineno, carry = hashlib.sha256(), 0, 0, 0, 0, b''
+
+    def take(raw):
+        nonlocal rows, bad, lineno
+        lineno += 1
+        try:
+            rec, size = _parse_row(raw)
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError) as ex:   # AIScanError is a ValueError
+            bad += 1
+            log.warning('ai_scan: invalid line %d in %s (%s)', lineno, os.path.basename(path), type(ex).__name__)
+            return
+        if rec is not None:
+            rows += 1
+            if on_row is not None: on_row(rec, size)
     try:
-        with open(path, 'rb') as fh:
-            data = fh.read(limit + 1)
+        fh = open(path, 'rb')
     except FileNotFoundError:
-        return b''
-    return None if len(data) > limit else data
+        if missing_ok: return 0, h, 0, 0
+        raise
+    with fh:
+        while True:
+            buf = fh.read(min(STREAM_CHUNK, limit + 1 - n))
+            if not buf: break
+            n += len(buf)
+            if n > limit: return None
+            h.update(buf)
+            if not parse: continue
+            parts = (carry + buf).split(b'\n')
+            carry = parts.pop()
+            for raw in parts: take(raw)
+            del parts
+    if parse and carry: take(carry)
+    return n, h, rows, bad
 
 
 def is_orphan_temp(name):
     return name.endswith(TMP) and name.startswith(tuple(f'{b}.' for b in (CHECKPOINT_NAME, STATE_NAME, L.MANIFEST_NAME)))
-
-
-def _triple(n, data):
-    return (n, len(data), hashlib.sha256(data).hexdigest())
 
 
 def _st(t):
@@ -181,16 +235,25 @@ def verify_checkpoint(d):
     return d
 
 
-def state_doc(recoveries=(), gaps=(), quarantined=()):
-    d = dict(schema=STATE_SCHEMA, recoveries=list(recoveries), gaps=list(gaps), quarantined=list(quarantined))
+def state_doc(recoveries=(), gaps=(), quarantined=(), recovery_in_progress=None):
+    """recovery_in_progress (M3): None, or the durable intent {attempt (UTC stamp, the stable quarantine suffix), at,
+    last_sealed, after_end} persisted before the first quarantine rename and cleared by the final state."""
+    d = dict(schema=STATE_SCHEMA, recoveries=list(recoveries), gaps=list(gaps), quarantined=list(quarantined),
+             recovery_in_progress=recovery_in_progress)
     d['state_hash'] = sha256_hex(canonical_json(d))
     return d
+
+
+def _valid_intent(i):
+    return i is None or (isinstance(i, dict) and set(i) == _INTENT_KEYS and isinstance(i['attempt'], str)
+                         and bool(_STAMP_RE.match(i['attempt'])) and _num(i['at']) and L._int(i['last_sealed'])
+                         and i['last_sealed'] >= 0 and A._hex64(i['after_end']))
 
 
 def verify_state(d):
     if not (isinstance(d, dict) and set(d) == _ST_KEYS and d['schema'] == STATE_SCHEMA
             and all(isinstance(d[k], list) for k in ('recoveries', 'gaps', 'quarantined'))
-            and all(_num(t) for t in d['recoveries'])):
+            and all(_num(t) for t in d['recoveries']) and _valid_intent(d['recovery_in_progress'])):
         raise A.AIScanError('not a producer state document')
     if d['state_hash'] != sha256_hex(canonical_json({k: v for k, v in d.items() if k != 'state_hash'})):
         raise A.AIScanError('producer state hash mismatch')
@@ -259,6 +322,18 @@ class _Corrupt(Exception):
     pass
 
 
+class _IndexFull(A.AIScanError):
+    pass
+
+
+def _index_cap(v, default, what):
+    """M2: a cap override may only lower the frozen default - a plain positive int <= default; anything else raises."""
+    if v is None: return default
+    if not (L._int(v) and 0 < v <= default):
+        raise A.AIScanError(f'{what} must be an int in [1, {default}] (downward only), got {v!r}')
+    return v
+
+
 # ------------------------------------------------------------------ the producer ledger (writer side, OFF by default)
 class ProducerLedger(L.RotatingLedger):
     """Writer side of the AI-SCAN-04 data plane. Construction is cheap and does no segment I/O: the producer is
@@ -267,7 +342,10 @@ class ProducerLedger(L.RotatingLedger):
 
     def __init__(self, seg_dir, segment_bound, eligibility=None, clock=time.time, mono=time.monotonic,
                  sleep=_sleep, read_cap=None, max_active_rows=MAX_ACTIVE_ROWS, max_active_age_s=MAX_ACTIVE_AGE_S,
-                 sealed_per_tick=SEALED_PER_TICK):
+                 sealed_per_tick=SEALED_PER_TICK, max_index_rows=None, max_index_bytes=None):
+        self.max_index_rows = _index_cap(max_index_rows, INDEX_MAX_ROWS, 'max_index_rows')
+        self.max_index_bytes = _index_cap(max_index_bytes, INDEX_MAX_BYTES, 'max_index_bytes')
+        self._irows, self._ibytes = 0, 0
         self.dir, self._lock, self._tick_lock = str(seg_dir), threading.RLock(), threading.Lock()
         self.counters = {k: 0 for k in COUNTERS}
         self.eligibility = eligibility if eligibility is not None else AgedEligibility(mono, counters=self.counters)
@@ -329,7 +407,28 @@ class ProducerLedger(L.RotatingLedger):
     # ---------------------------------------------------------------- disable / corrupt path
     def _disable(self, reason, ex=None):
         self.ready = False
+        if reason == 'index_full': self.counters['index_full'] += 1
         super()._disable(reason, ex)
+
+    # ---------------------------------------------------------------- M2: bounded lifetime dedupe index
+    def _room(self, nbytes):
+        return self._irows + 1 <= self.max_index_rows and self._ibytes + nbytes <= self.max_index_bytes
+
+    def _index_full(self, nbytes):
+        why = (f'dedupe index full: {self._irows} rows / {self._ibytes} bytes, +1 row / +{nbytes} bytes exceeds '
+               f'{self.max_index_rows} rows / {self.max_index_bytes} bytes')
+        if self.disabled != 'index_full': self._disable('index_full', A.AIScanError(why))
+        raise _IndexFull(f'producer disabled (index_full), {why}')
+
+    def _admit(self, rec, nbytes):
+        """Index one record (restart rebuild). An already-indexed key keeps its first hash (unchanged semantics) and
+        costs nothing; a new key that would push either cap past its bound refuses BEFORE it is indexed: publish
+        ineligible, disable index_full, count it. Nothing is ever evicted."""
+        key = A.record_key(rec)
+        if key in self._seen: return
+        if not self._room(nbytes): self._index_full(nbytes)
+        self._seen[key] = rec['record_hash']
+        self._irows, self._ibytes = self._irows + 1, self._ibytes + nbytes
 
     def _mark_active_corrupt(self, why):
         """Recovery steps 1-3: disable (publish ineligible), persist the manifest marker active_corrupt, open a durable
@@ -345,7 +444,7 @@ class ProducerLedger(L.RotatingLedger):
         start = self._cp['opened_at'] if self._cp else self._mtime(L.MANIFEST_NAME)
         gap = dict(from_utc=start, to_utc=self._clock(), segment=len(segs) + 1,
                    after_end=segs[-1]['chain'] if segs else L.GENESIS, reason=str(why)[:200])
-        new = state_doc(st['recoveries'], st['gaps'] + [gap], st['quarantined'])
+        new = state_doc(st['recoveries'], st['gaps'] + [gap], st['quarantined'], st['recovery_in_progress'])
         if self._try_persist(STATE_NAME, new): self._state = new
         self.trail.append('open_gap')
 
@@ -387,7 +486,8 @@ class ProducerLedger(L.RotatingLedger):
         if m['disabled'] == 'manifest_full':
             self._disable('manifest_full')
             return
-        recovering, active = m['disabled'] == 'active_corrupt', b''
+        recovering = m['disabled'] == 'active_corrupt' or self._state['recovery_in_progress'] is not None
+        active = 0
         if recovering:                                   # marker + gap were persisted at live detection
             self._disable('active_corrupt')
             self.trail.append('disable')
@@ -406,9 +506,14 @@ class ProducerLedger(L.RotatingLedger):
             self._persist(L.MANIFEST_NAME, m)
             self._m, self.disabled, self.error = m, None, None
             self.trail.append('clear_marker')
-        recs, _ = L._parse_lines(active.split(b'\n'))
-        self._index(recs, 0)
-        self._active_bytes, self._arows, self._digest = len(active), len(recs), hashlib.sha256(active)
+        n = len(self._m['segments']) + 1
+        if active:                                       # index the active rows after every sealed one (stream, M1)
+            r = _stream(self._p(L.seg_name(n)), self.bound, self._admit)
+            if r is None or r[3] or _tt(self._cp['committed']) != (n, r[0], r[1].hexdigest()):
+                raise A.AIScanError('active segment changed during startup')
+            self._active_bytes, self._digest, self._arows = r[0], r[1], r[2]
+        else:
+            self._active_bytes, self._digest, self._arows = 0, hashlib.sha256(), 0
         if active:
             self._seal_locked('startup')
             if self.disabled: return
@@ -416,7 +521,8 @@ class ProducerLedger(L.RotatingLedger):
         self.eligibility.publish(True)
 
     def _recover_checkpoint(self):
-        """C1 / E1 / R1 / E2 / E4 startup state model. -> the active bytes (committed state) or raises _Corrupt."""
+        """C1 / E1 / R1 / E2 / E4 startup state model. -> the active byte length (committed state, hashed and
+        parsed by streaming - M1) or raises _Corrupt."""
         segs = self._m['segments']
         last, active_n = len(segs), len(segs) + 1
         try:
@@ -424,11 +530,11 @@ class ProducerLedger(L.RotatingLedger):
         except A.AIScanError as ex:
             raise _Corrupt(f'malformed canonical checkpoint ({ex})') from ex
         if cp is None:
-            data = _read_limited(self._p(L.seg_name(active_n)), self.bound)
-            if data != b'': raise _Corrupt('checkpoint missing for a non-empty active segment')
+            r = _stream(self._p(L.seg_name(active_n)), self.bound, parse=False, missing_ok=True)
+            if r is None or r[0]: raise _Corrupt('checkpoint missing for a non-empty active segment')
             self._set_cp((active_n, 0, EMPTY_SHA), opened_at=self._clock())
             self._remove_orphans()
-            return b''
+            return 0
         self._cp = cp
         c, p = _tt(cp['committed']), _tt(cp['pending'])
         n = c[0]
@@ -436,8 +542,9 @@ class ProducerLedger(L.RotatingLedger):
             if p is not None: raise _Corrupt('pending alongside sealed manifest entry n')
             e = segs[-1]
             if (e['n'], e['bytes'], e['sha256']) != c: raise _Corrupt('manifest entry n mismatches the checkpoint')
-            fn = _read_limited(self._p(L.seg_name(n)), SEAL_HASH_BOUND)
-            if not os.path.isfile(self._p(L.seg_name(n))) or fn is None or _triple(n, fn) != c:
+            fp = self._p(L.seg_name(n))                  # R1 file-n proof: streamed sha256, one buffer
+            fn = _stream(fp, SEAL_HASH_BOUND, parse=False) if os.path.isfile(fp) else None
+            if fn is None or (n, fn[0], fn[1].hexdigest()) != c:
                 raise _Corrupt('sealed file n differs from manifest entry n (R1)')
             nxt = self._p(L.seg_name(n + 1))
             if os.path.exists(nxt) and (not os.path.isfile(nxt) or os.path.getsize(nxt) != 0):
@@ -445,11 +552,11 @@ class ProducerLedger(L.RotatingLedger):
             self._set_cp((n + 1, 0, EMPTY_SHA), opened_at=self._clock())
             self.counters['checkpoint_seal_advanced'] += 1
             self._remove_orphans()
-            return b''
+            return 0
         if n != active_n: raise _Corrupt('checkpoint names a segment out of seal order')
-        data = _read_limited(self._p(L.seg_name(active_n)), self.bound)
-        if data is None: raise _Corrupt('active segment exceeds segment_bound')
-        t = _triple(active_n, data)
+        r = _stream(self._p(L.seg_name(active_n)), self.bound, missing_ok=True)   # hash + parse, no rows kept
+        if r is None: raise _Corrupt('active segment exceeds segment_bound')
+        t = (active_n, r[0], r[1].hexdigest())
         if t == c:
             if p is not None:
                 self._set_cp(c, None, first_row_at=cp['first_row_at'] if c[1] else None)
@@ -459,50 +566,88 @@ class ProducerLedger(L.RotatingLedger):
             self.counters['checkpoint_pending_promoted'] += 1
         else:
             raise _Corrupt('active bytes match neither committed nor pending')
-        bad = L._parse_lines(data.split(b'\n'))[1]
+        bad = r[3]
         if bad:
             self.counters['skipped_lines'] += bad
             raise _Corrupt(f'{bad} malformed line(s) in the active segment')
         self._remove_orphans()
-        return data
+        return r[0]
 
     def _auto_recover(self):
-        """Recovery steps 4-6 at writer start: within the budget (MAX_AUTO_RECOVERIES per RECOVERY_WINDOW_S, durable),
-        rename every unsealed segment file to .quarantine-<UTC> (never deleted / truncated / sealed / read) and open a
-        fresh empty active segment n. Over budget: recovery_refused, stays disabled. -> True when recovered."""
-        now, st = self._clock(), self._state
-        if sum(1 for t in st['recoveries'] if now - t < RECOVERY_WINDOW_S) >= MAX_AUTO_RECOVERIES:
-            self.counters['recovery_refused'] += 1
-            log.warning('ai_scan: active_corrupt again inside the recovery window, producer stays disabled')
-            return False
+        """Recovery steps 4-6 at writer start (M3: idempotent, budget charged on completion only).
+        - no durable intent: a NEW attempt obeys the budget (MAX_AUTO_RECOVERIES per RECOVERY_WINDOW_S, durable; over it
+          -> recovery_refused, stays disabled); the intent {attempt, at, last_sealed, after_end} is persisted BEFORE the
+          first quarantine rename. Nothing is charged yet.
+        - a durable intent (crash mid-recovery): the SAME attempt resumes - no new budget check, no charge - provided the
+          sealed boundary is unchanged (else it stays disabled).
+        Every unsealed segment file is renamed to <name>.quarantine-<attempt> (stable suffix, never deleted / truncated /
+        sealed / read; an existing target fails closed), the folder fsynced, a fresh committed-empty active checkpoint
+        persisted; only then the final state atomically clears the intent, appends the quarantine records (every file
+        carrying the attempt suffix, once) and charges one recovery timestamp. -> True when recovered."""
+        st, segs = self._state, self._m['segments']
+        last, end = len(segs), segs[-1]['chain'] if segs else L.GENESIS
+        intent = st['recovery_in_progress']
         try:
-            st = state_doc(st['recoveries'] + [now], st['gaps'], st['quarantined'])
-            self._persist(STATE_NAME, st)
-            self._state, last, moved = st, len(self._m['segments']), []
+            if intent is None:
+                if self._recovery_already_complete(last):
+                    self.trail.append('fresh_active')    # crash after the final state, before the marker cleared
+                    return True
+                now = self._clock()
+                if sum(1 for t in st['recoveries'] if now - t < RECOVERY_WINDOW_S) >= MAX_AUTO_RECOVERIES:
+                    self.counters['recovery_refused'] += 1
+                    log.warning('ai_scan: active_corrupt again inside the recovery window, producer stays disabled')
+                    return False
+                intent = dict(attempt=_utc_stamp(now), at=now, last_sealed=last, after_end=end)
+                st = state_doc(st['recoveries'], st['gaps'], st['quarantined'], intent)
+                self._persist(STATE_NAME, st)            # durable intent BEFORE any rename
+                self._state = st
+            else:
+                if (intent['last_sealed'], intent['after_end']) != (last, end):
+                    log.warning('ai_scan: recovery intent names another sealed boundary, producer stays disabled')
+                    return False
+                self.counters['recovery_resumed'] += 1
+            suffix = f".quarantine-{intent['attempt']}"
             for name in sorted(os.listdir(self.dir)):
                 mm = _SEG_RE.match(name)
                 if mm and int(mm.group(1)) > last:
-                    q = self._quarantine_name(name, now)
-                    os.rename(self._p(name), self._p(q))
-                    moved.append(dict(name=q, segment=int(mm.group(1)), at=now))
+                    if os.path.exists(self._p(name + suffix)):
+                        raise A.AIScanError(f'{name + suffix} already exists, quarantine refused')
+                    os.rename(self._p(name), self._p(name + suffix))
                     self.counters['active_quarantined'] += 1
+            _fsync_dir(self.dir)                         # the quarantine renames are durable before the final state
             self.trail.append('quarantine')
-            if moved:
-                st = state_doc(st['recoveries'], st['gaps'], st['quarantined'] + moved)
-                self._persist(STATE_NAME, st)
-                self._state = st
+            moved = []
+            for name in sorted(os.listdir(self.dir)):    # this attempt's evidence, renamed now or before a crash
+                if name.endswith(suffix):
+                    mm = _SEG_RE.match(name[:-len(suffix)])
+                    if mm and int(mm.group(1)) > last:
+                        moved.append(dict(name=name, segment=int(mm.group(1)), at=intent['at']))
             self._cp = None
-            self._set_cp((last + 1, 0, EMPTY_SHA), opened_at=now)
-            self.trail.append('fresh_active')         # orphans stay until a later start validates normally (E2)
+            self._set_cp((last + 1, 0, EMPTY_SHA), opened_at=intent['at'])
+            self.trail.append('fresh_active')            # orphans stay until a later start validates normally (E2)
+            done = {q['name'] for q in st['quarantined']}
+            st = state_doc(st['recoveries'] + [intent['at']], st['gaps'],
+                           st['quarantined'] + [q for q in moved if q['name'] not in done], None)
+            self._persist(STATE_NAME, st)                # final: clear intent + evidence + one charge, atomically
+            self._state = st
         except (A.AIScanError, OSError) as ex:
             log.warning('ai_scan: automatic recovery failed (%s)', type(ex).__name__)
             return False
         return True
 
-    def _quarantine_name(self, name, now):
-        q, i = f'{name}.quarantine-{_utc_stamp(now)}', 0
-        while os.path.exists(self._p(q if not i else f'{q}-{i}')): i += 1
-        return q if not i else f'{q}-{i}'
+    def _recovery_already_complete(self, last):
+        """No intent, nothing unsealed left to quarantine and the durable checkpoint is already the committed-empty
+        active last + 1: the previous attempt completed (final state durable) and only the marker clear was lost."""
+        for name in os.listdir(self.dir):
+            mm = _SEG_RE.match(name)
+            if mm and int(mm.group(1)) > last: return False
+        try:
+            cp = _load_json(self._p(CHECKPOINT_NAME), verify_checkpoint)
+        except A.AIScanError:
+            return False
+        if cp is None or cp['pending'] is not None or _tt(cp['committed']) != (last + 1, 0, EMPTY_SHA): return False
+        self._cp = cp
+        return True
 
     def _verify_all(self):
         """Full startup verification: every sealed segment, sequentially, one buffer at a time, under the read cap with a
@@ -516,15 +661,17 @@ class ProducerLedger(L.RotatingLedger):
             self._sleep(0)                               # cooperative yield between segments
 
     def _verify_entry(self, e, index=False):
-        """One sealed segment against its manifest entry (bytes, sha256, rows, every line a valid record). The buffer
-        is dropped before returning. -> bytes read."""
-        data = _read_limited(self._p(e['name']), e['bytes'])
-        if not data or len(data) != e['bytes'] or hashlib.sha256(data).hexdigest() != e['sha256']:
+        """One sealed segment against its manifest entry (bytes, sha256, rows, every line a valid record), streamed
+        (M1): fixed-size chunks, sha256 per chunk, rows parsed and (index=True) admitted to the dedupe index one line at
+        a time - the segment's bytes and its parsed rows are never held together. -> bytes read."""
+        try:
+            r = _stream(self._p(e['name']), e['bytes'], self._admit if index else None)
+        except OSError as ex:
+            raise A.AIScanError(f"{e['name']}: segment missing or unreadable ({type(ex).__name__})") from ex
+        if r is None or r[0] != e['bytes'] or r[1].hexdigest() != e['sha256']:
             raise A.AIScanError(f"{e['name']}: segment missing, changed or truncated")
-        recs, bad = L._parse_lines(data.split(b'\n'))
-        if bad or len(recs) != e['rows']: raise A.AIScanError(f"{e['name']}: malformed line or row count differs")
-        if index: self._index(recs, 0)
-        return len(data)
+        if r[3] or r[2] != e['rows']: raise A.AIScanError(f"{e['name']}: malformed line or row count differs")
+        return r[0]
 
     # ---------------------------------------------------------------- seal (E1: seal manifest, then advance checkpoint)
     def _seal_locked(self, kind):
@@ -532,18 +679,21 @@ class ProducerLedger(L.RotatingLedger):
         running digest and the durable committed checkpoint, else active_corrupt and nothing is sealed."""
         segs = self._m['segments']
         n = len(segs) + 1
-        data = _read_limited(self._p(L.seg_name(n)), self.bound)
-        if (data is None or len(data) != self._active_bytes or hashlib.sha256(data).hexdigest() != self._digest.hexdigest()
-                or self._cp['pending'] is not None or _tt(self._cp['committed']) != _triple(n, data)):
+        try:
+            r = _stream(self._p(L.seg_name(n)), self.bound)          # hash + parse in one streamed pass (M1)
+        except OSError:
+            r = None
+        if (r is None or r[0] != self._active_bytes or r[1].hexdigest() != self._digest.hexdigest()
+                or self._cp['pending'] is not None or _tt(self._cp['committed']) != (n, r[0], r[1].hexdigest())):
             self.counters['active_digest_mismatch'] += 1
             self._mark_active_corrupt('active segment differs from the running digest / checkpoint (pre-seal)')
             raise A.AIScanError('producer disabled (active_corrupt), seal refused')
-        recs, bad = L._parse_lines(data.split(b'\n'))
+        bad = r[3]
         if bad:
             self.counters['skipped_lines'] += bad
             self._mark_active_corrupt(f'{bad} malformed line(s) in the active segment')
             raise A.AIScanError('producer disabled (active_corrupt), seal refused')
-        e = dict(n=n, name=L.seg_name(n), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data), rows=len(recs),
+        e = dict(n=n, name=L.seg_name(n), sha256=r[1].hexdigest(), bytes=r[0], rows=r[2],
                  prev=segs[-1]['chain'] if segs else L.GENESIS)
         e['chain'] = L._chain(e)
         full = n >= L.MAX_SEGMENTS
@@ -597,6 +747,7 @@ class ProducerLedger(L.RotatingLedger):
                 if have != rec['record_hash']: raise A.AIScanError(f'{key}: conflicting replay of an immutable record')
                 return None
             if len(line) + 1 > self.bound: raise A.AIScanError('row larger than segment_bound')
+            if not self._room(len(line) - 1): self._index_full(len(line) - 1)   # M2: refuse before exceeding
             if self._active_bytes and (self._active_bytes + len(line) + 1 > self.bound or
                                        self._arows >= self.max_active_rows):
                 kind = 'bytes' if self._active_bytes + len(line) + 1 > self.bound else 'rows'
@@ -621,6 +772,7 @@ class ProducerLedger(L.RotatingLedger):
             self._cp, self._digest, self._active_bytes = cp, nd, pending[1]
             self._arows += 1
             self._seen[key] = rec['record_hash']
+            self._irows, self._ibytes = self._irows + 1, self._ibytes + len(line) - 1
         return rec
 
     # ---------------------------------------------------------------- refresh tick (writer thread, every 60 s)
@@ -670,11 +822,14 @@ class ProducerLedger(L.RotatingLedger):
 
     def _active_ok(self):
         n = len(self._m['segments']) + 1
-        data = _read_limited(self._p(L.seg_name(n)), self.bound)
-        if data is None or len(data) != self._active_bytes or hashlib.sha256(data).hexdigest() != self._digest.hexdigest():
+        try:
+            r = _stream(self._p(L.seg_name(n)), self.bound, parse=False, missing_ok=True)
+        except OSError:
+            return False
+        if r is None or r[0] != self._active_bytes or r[1].hexdigest() != self._digest.hexdigest():
             return False
         try:
             disk = _load_json(self._p(CHECKPOINT_NAME), verify_checkpoint)
         except A.AIScanError:
             return False
-        return disk == self._cp and disk['pending'] is None and _tt(disk['committed']) == _triple(n, data)
+        return disk == self._cp and disk['pending'] is None and _tt(disk['committed']) == (n, r[0], r[1].hexdigest())

@@ -18,6 +18,7 @@ from test_ai_scan import sig                               # noqa: E402
 
 JS = os.path.join(ROOT, 'contracts', 'ai_scan_04', 'ai_scan_04_contract.v1.json')
 MIB = 1 << 20
+STREAM_SLACK = 1 << 20                                     # M1: small constant above the one-buffer bound
 
 
 class Crash(BaseException):
@@ -132,8 +133,8 @@ def test_refresh_tick_verifies_at_most_sixteen_sealed_segments(tmp_path):
     led = mk(tmp_path)
     seen, orig = [], led._verify_entry
     led._verify_entry = lambda e, index=False: (seen.append(e['n']), orig(e, index))[1]
-    reads, rl = [], D._read_limited
-    D._read_limited, restore = (lambda p, lim: (reads.append((os.path.basename(p), lim)), rl(p, lim))[1]), rl
+    reads, rl = [], D._stream
+    D._stream, restore = (lambda p, lim, *a, **k: (reads.append((os.path.basename(p), lim)), rl(p, lim, *a, **k))[1]), rl
     try:
         assert led.tick()[1] is True
         assert seen == list(range(1, 17))                                   # 16 sealed, sequential from the cursor
@@ -144,7 +145,7 @@ def test_refresh_tick_verifies_at_most_sixteen_sealed_segments(tmp_path):
         assert seen == [17, 18, 19, 20] + list(range(1, 13))                # the cursor wraps to segment 1
         assert led.counters['sweeps_completed'] == 1 and led.counters['refresh_ticks'] == 2
     finally:
-        D._read_limited = restore
+        D._stream = restore
     assert sum(e['bytes'] for e in L.load_manifest(str(tmp_path))['segments'][:16]) <= 16 * L.SEG_MAX
 
 
@@ -174,8 +175,9 @@ def test_refresh_tick_holds_one_segment_buffer_at_a_time(tmp_path):
         tick_peak = tracemalloc.get_traced_memory()[1]
     finally:
         tracemalloc.stop()
-    assert peak_depth[0] == 1
-    assert tick_peak < 3 * one                                               # ~one segment, never 16 held at once
+    assert peak_depth[0] == 1 and one < STREAM_SLACK
+    assert tick_peak < L.SEG_MAX + STREAM_SLACK                              # M1: bounded directly against SEG_MAX
+    assert tick_peak < STREAM_SLACK                                          # one streaming buffer, never 16 segments
 
 
 @pytest.mark.parametrize('k', [1, 17, 40])
@@ -251,7 +253,7 @@ def test_stale_eligibility_is_refused_on_the_hot_path(tmp_path, monkeypatch):
 
     def boom(*a, **k): raise AssertionError('I/O or hashing on the hot path')
     for mod, name in ((__import__('builtins'), 'open'), (os, 'stat'), (os.path, 'getsize'), (os.path, 'exists'),
-                      (hashlib, 'sha256'), (L, 'load_manifest'), (D, '_load_json'), (D, '_read_limited')):
+                      (hashlib, 'sha256'), (L, 'load_manifest'), (D, '_load_json'), (D, '_stream')):
         monkeypatch.setattr(mod, name, boom)
     mono.t += D.ELIGIBILITY_MAX_AGE_S
     assert led.eligibility.check() == g                                       # exactly 180 s: still fresh
@@ -784,3 +786,262 @@ def test_durable_state_documents_are_hash_checked(tmp_path):
     led2 = mk(tmp_path)
     assert led2.disabled == 'state_invalid' and led2.eligibility.check()[1] is False
     assert D.window_eligible(str(tmp_path), 0, 10) is False                  # fail closed
+
+
+# ------------------------------------------------------------------ M1 (ruling 6486610866): one-buffer streaming verify
+def _near_max_segment(d):
+    """One sealed segment of SEG_MAX - (< one row) bytes: a repeated canonical row (keys may repeat in a sealed
+    segment; verification counts rows, the index keeps the first hash). -> (entry, row)."""
+    os.makedirs(str(d), exist_ok=True)
+    r = sig(sleeve='BIG')
+    ln = line(r)
+    data = ln * ((L.SEG_MAX - 1) // len(ln))
+    write(seg(d, 1), data)
+    e = dict(n=1, name=L.seg_name(1), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data),
+             rows=len(data) // len(ln), prev=L.GENESIS)
+    e['chain'] = L._chain(e)
+    L._write_manifest(str(d), L._new_manifest(L.SEG_MAX, [e]))
+    D.atomic_write(os.path.join(str(d), D.CHECKPOINT_NAME), D.checkpoint_doc((2, 0, D.EMPTY_SHA), None, 0.0, None))
+    del data
+    return e, r
+
+
+def test_streaming_verify_peak_is_bounded_by_seg_max_on_a_near_16mib_segment(tmp_path):
+    """Startup verification + restart index, the refresh tick and the E1 file-n proof over a near-16 MiB sealed
+    segment: tracemalloc peak < SEG_MAX + a small constant (the old whole-file read + split + record list held the
+    segment bytes plus every parsed row at once, i.e. well above SEG_MAX)."""
+    e, r = _near_max_segment(tmp_path)
+    assert L.SEG_MAX - e['bytes'] < len(line(r)) and e['bytes'] > L.SEG_MAX - 4096
+    led = D.ProducerLedger(str(tmp_path), L.SEG_MAX, sleep=lambda s: None)
+    peaks = {}
+    tracemalloc.start()
+    try:
+        led.start()
+        peaks['startup'] = tracemalloc.get_traced_memory()[1]
+        tracemalloc.reset_peak()
+        g = led.tick()
+        peaks['tick'] = tracemalloc.get_traced_memory()[1]
+        tracemalloc.reset_peak()
+        proof = D._stream(seg(tmp_path, 1), D.SEAL_HASH_BOUND, parse=False)
+        peaks['e1_proof'] = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert led.disabled is None and g[1] is True and led._irows == 1 and led._seen[A.record_key(r)] == r['record_hash']
+    assert proof[0] == e['bytes'] and proof[1].hexdigest() == e['sha256']
+    print('tracemalloc peaks vs SEG_MAX', peaks, L.SEG_MAX)
+    for k, v in peaks.items():
+        assert v < L.SEG_MAX + STREAM_SLACK, (k, v)                          # the frozen one-buffer bound
+        assert v < STREAM_SLACK, (k, v)                                      # streaming: far below one segment
+
+
+def test_stream_parses_incrementally_and_matches_the_whole_file_parse(tmp_path, monkeypatch):
+    rows = [sig(sleeve=f'ST{i}') for i in range(30)]
+    data = b''.join(line(r) for r in rows) + b'{torn'
+    p = os.path.join(str(tmp_path), 'f')
+    write(p, data)
+    monkeypatch.setattr(D, 'STREAM_CHUNK', 7)                                 # rows straddle every chunk boundary
+    got = []
+    n, h, cnt, bad = D._stream(p, len(data), lambda rec, size: got.append((rec['record_hash'], size)))
+    want, wbad = L._parse_lines(data.split(b'\n'))
+    assert (n, h.hexdigest(), cnt, bad) == (len(data), hashlib.sha256(data).hexdigest(), len(want), wbad) == \
+        (len(data), hashlib.sha256(data).hexdigest(), 30, 1)
+    assert got == [(r['record_hash'], len(line(r)) - 1) for r in rows]
+    assert D._stream(p, len(data) - 1) is None                               # never more than limit + 1 bytes
+    assert D._stream(p + 'x', 10, missing_ok=True)[0] == 0
+    with pytest.raises(FileNotFoundError): D._stream(p + 'x', 10)
+
+
+# ------------------------------------------------------------------ M2: bounded lifetime dedupe index
+def test_index_caps_are_frozen_and_downward_only(tmp_path):
+    assert (D.INDEX_MAX_ROWS, D.INDEX_MAX_BYTES) == (1_000_000, 384 * MIB)
+    led = D.ProducerLedger(str(tmp_path), MIB)
+    assert (led.max_index_rows, led.max_index_bytes) == (D.INDEX_MAX_ROWS, D.INDEX_MAX_BYTES)
+    for kw in (dict(max_index_rows=D.INDEX_MAX_ROWS + 1), dict(max_index_bytes=D.INDEX_MAX_BYTES + 1),
+               dict(max_index_rows=0), dict(max_index_bytes=-1), dict(max_index_rows=True), dict(max_index_rows=2.0),
+               dict(max_index_bytes='5')):
+        with pytest.raises(A.AIScanError, match='downward only'): D.ProducerLedger(str(tmp_path), MIB, **kw)
+    low = D.ProducerLedger(str(tmp_path), MIB, max_index_rows=5, max_index_bytes=D.INDEX_MAX_BYTES)
+    assert (low.max_index_rows, low.max_index_bytes) == (5, D.INDEX_MAX_BYTES)
+    assert 'index_full' in D.COUNTERS and low.counters['index_full'] == 0
+
+
+def _size(r):
+    return len(line(r)) - 1                                                   # canonical record bytes
+
+
+@pytest.mark.parametrize('cap', ['rows', 'bytes'])
+def test_index_append_exact_bound_accepted_one_over_refused(tmp_path, cap):
+    rows = [sig(sleeve=f'IX{i}') for i in range(4)]
+    kw = dict(max_index_rows=3) if cap == 'rows' else dict(max_index_bytes=sum(_size(r) for r in rows[:3]))
+    led = mk(tmp_path, **kw)
+    assert [led.append(r) for r in rows[:3]] == rows[:3]                      # exactly at the bound: accepted
+    assert led.append(rows[0]) is None                                        # replay no-op still works at the bound
+    with pytest.raises(A.AIScanError, match='conflicting'):                   # immutable conflict never weakened
+        led.append(sig(sleeve='IX0', rules_reason='edited'))
+    assert led.disabled is None and led.counters['index_full'] == 0
+    before = (read(seg(tmp_path, 1)), cp(tmp_path))
+    with pytest.raises(A.AIScanError, match='index_full'): led.append(rows[3])   # one row / one byte over
+    assert led.disabled == 'index_full' and led.counters['index_full'] == 1
+    assert led.eligibility.check()[1] is False and led.eligibility.check()[2] == 'index_full'
+    assert (read(seg(tmp_path, 1)), cp(tmp_path)) == before                   # refused BEFORE the intent / append
+    assert A.record_key(rows[3]) not in led._seen and all(A.record_key(r) in led._seen for r in rows[:3])  # no evict
+    with pytest.raises(A.AIScanError, match='disabled'): led.append(rows[3])
+
+
+def test_index_append_one_byte_over_is_refused(tmp_path):
+    rows = [sig(sleeve=f'IB{i}') for i in range(3)]
+    led = mk(tmp_path, max_index_bytes=sum(_size(r) for r in rows) - 1)
+    led.append(rows[0])
+    led.append(rows[1])
+    with pytest.raises(A.AIScanError, match='index_full'): led.append(rows[2])
+    assert led.disabled == 'index_full' and led.counters['index_full'] == 1 and led._ibytes == _size(rows[0]) + \
+        _size(rows[1])
+
+
+@pytest.mark.parametrize('cap', ['rows', 'bytes'])
+def test_index_restart_rebuild_exact_bound_and_overflow(tmp_path, cap):
+    groups = [[sig(sleeve=f'RB{i}-{j}') for j in range(2)] for i in range(2)]
+    build_sealed(tmp_path, groups)
+    led = mk(tmp_path)
+    extra = sig(sleeve='RB-active')
+    led.append(extra)                                                         # 4 sealed rows + 1 active row
+    allr = [r for g in groups for r in g] + [extra]
+    exact = dict(max_index_rows=5) if cap == 'rows' else dict(max_index_bytes=sum(_size(r) for r in allr))
+    over = dict(max_index_rows=4) if cap == 'rows' else dict(max_index_bytes=sum(_size(r) for r in allr) - 1)
+    ok = mk(tmp_path, **exact)                                                # exact bound on rebuild: eligible
+    assert ok.disabled is None and ok.eligibility.check()[1] is True and ok._irows == 5
+    assert ok.append(extra) is None                                           # dedupe still sees the active row
+    full = mk(tmp_path, **over)                                               # one row / one byte over on rebuild
+    assert full.disabled == 'index_full' and full.counters['index_full'] == 1
+    assert full.eligibility.check()[1] is False and full.counters['producer_disabled'] == 1
+    with pytest.raises(A.AIScanError, match='disabled'): full.append(sig(sleeve='RB-new'))
+    assert quarantined(tmp_path) == [] and L.load_manifest(str(tmp_path))['disabled'] is None
+    assert len(L.load_manifest(str(tmp_path))['segments']) == 3 and state(tmp_path)['recoveries'] == []
+    small = mk(tmp_path, max_index_rows=3)                                    # overflow inside the sealed rebuild
+    assert small.disabled == 'index_full' and small._irows == 3 and small.counters['index_full'] == 1
+
+
+# ------------------------------------------------------------------ M3: idempotent recovery, charged on completion
+def _corrupt_two_unsealed(d, clock):
+    """Sealed seg 1, a live-detected corrupt active seg 2 (marker + gap durable) and a stray seg 3. -> raw bytes."""
+    led = mk(d, clock=clock)
+    led.append(sig(sleeve='M0'))
+    led.seal()
+    led.append(sig(sleeve='M1'))
+    with open(seg(d, 2), 'ab') as fh: fh.write(b'{bad}\n')
+    write(seg(d, 3), b'stray\n')
+    clock.t += 10
+    led.tick()
+    assert led.disabled == 'active_corrupt' and L.load_manifest(str(d))['disabled'] == 'active_corrupt'
+    return {2: read(seg(d, 2)), 3: read(seg(d, 3))}
+
+
+def _arm(monkeypatch, where):
+    """Crash injection: os.rename (call k) or the producer-state persist (intent / final)."""
+    calls, real_rename, real_write = [], os.rename, D.atomic_write
+
+    def rename(a, b):
+        calls.append(('rename', os.path.basename(a)))
+        if where == ('rename', sum(1 for c in calls if c[0] == 'rename')): raise Crash(where)
+        real_rename(a, b)
+
+    def aw(path, obj):
+        if os.path.basename(path) == D.STATE_NAME:
+            phase = 'intent' if obj.get('recovery_in_progress') else 'final'
+            calls.append(('state', phase))
+            if where == ('state', phase): raise Crash(where)
+        if os.path.basename(path) == L.MANIFEST_NAME and where == ('manifest', 'clear') and obj['disabled'] is None:
+            raise Crash(where)
+        real_write(path, obj)
+    monkeypatch.setattr(os, 'rename', rename)
+    monkeypatch.setattr(D, 'atomic_write', aw)
+    return calls
+
+
+@pytest.mark.parametrize('where', [('state', 'intent'), ('rename', 1), ('rename', 2), ('state', 'final'),
+                                   ('manifest', 'clear')])
+def test_recovery_crash_and_resume_is_idempotent_and_charged_once(tmp_path, monkeypatch, where):
+    clock = Clock()
+    raw = _corrupt_two_unsealed(tmp_path, clock)
+    clock.t += 5
+    t_attempt = clock.t
+    with monkeypatch.context() as mp:
+        calls = _arm(mp, where)
+        with pytest.raises(Crash):
+            mk(tmp_path, clock=clock)
+    st = state(tmp_path)
+    if where == ('state', 'intent'):                                          # nothing durable: no intent, no rename
+        assert st['recovery_in_progress'] is None and quarantined(tmp_path) == []
+    elif where != ('manifest', 'clear'):
+        it = st['recovery_in_progress']                                       # durable intent, budget NOT charged
+        assert it == dict(attempt=D._utc_stamp(t_attempt), at=t_attempt, last_sealed=1,
+                          after_end=L.load_manifest(str(tmp_path))['segments'][0]['chain'])
+        assert st['recoveries'] == [] and st['quarantined'] == []
+        assert len(quarantined(tmp_path)) == {('rename', 1): 0, ('rename', 2): 1, ('state', 'final'): 2}[where]
+        assert ('state', 'intent') in calls and calls.index(('state', 'intent')) < calls.index(('rename', L.seg_name(2)))
+    else:                                                                     # final state durable, marker not cleared
+        assert st['recovery_in_progress'] is None and st['recoveries'] == [t_attempt] and len(st['quarantined']) == 2
+    if where in (('rename', 1), ('rename', 2), ('state', 'final')):           # resume ignores the budget entirely:
+        p = os.path.join(str(tmp_path), D.STATE_NAME)                         # even a charge inside the window
+        D.atomic_write(p, D.state_doc([t_attempt - 3600], st['gaps'], st['quarantined'], st['recovery_in_progress']))
+    clock.t += 30                                                             # the restart is later; same attempt
+    led = mk(tmp_path, clock=clock)
+    st = state(tmp_path)
+    assert led.disabled is None and led.eligibility.check()[1] is True
+    assert L.load_manifest(str(tmp_path))['disabled'] is None and st['recovery_in_progress'] is None
+    resumed = where in (('rename', 1), ('rename', 2), ('state', 'final'))
+    assert led.counters['recovery_resumed'] == (1 if resumed else 0)
+    t0 = t_attempt if where != ('state', 'intent') else clock.t
+    assert st['recoveries'] == ([t_attempt - 3600, t0] if resumed else [t0])  # exactly one charge for the attempt
+    q = quarantined(tmp_path)
+    assert q == [f'{L.seg_name(2)}.quarantine-{D._utc_stamp(t0)}', f'{L.seg_name(3)}.quarantine-{D._utc_stamp(t0)}']
+    assert [x['name'] for x in st['quarantined']] == q                        # no duplicated or lost evidence
+    assert [read(os.path.join(str(tmp_path), n)) for n in q] == [raw[2], raw[3]]
+    assert not os.path.exists(seg(tmp_path, 2)) and not os.path.exists(seg(tmp_path, 3))
+    assert cp(tmp_path)['committed'] == dict(segment=2, byte_length=0, sha256=D.EMPTY_SHA)
+    assert len(st['gaps']) == 1
+    assert led.append(sig(sleeve='M2')) is not None
+    led2 = mk(tmp_path, clock=clock)                                          # a clean restart charges nothing more
+    assert led2.disabled is None and state(tmp_path)['recoveries'] == st['recoveries']
+
+
+def test_recovery_fsyncs_the_quarantine_dir_before_the_final_state(tmp_path, monkeypatch):
+    clock = Clock()
+    _corrupt_two_unsealed(tmp_path, clock)
+    ev, real_rename, real_write = [], os.rename, D.atomic_write
+    monkeypatch.setattr(os, 'rename', lambda a, b: (ev.append('rename'), real_rename(a, b))[1])
+    monkeypatch.setattr(D, '_fsync_dir', lambda d: ev.append(('fsync_dir', os.path.normcase(os.path.abspath(d)))))
+    monkeypatch.setattr(D, 'atomic_write', lambda p, o: (
+        ev.append(('state', o['recovery_in_progress'] is None)) if os.path.basename(p) == D.STATE_NAME else None,
+        real_write(p, o))[1])
+    led = mk(tmp_path, clock=clock)
+    assert led.disabled is None
+    last_rename = max(i for i, x in enumerate(ev) if x == 'rename')
+    final = ev.index(('state', True))
+    here = ('fsync_dir', os.path.normcase(os.path.abspath(str(tmp_path))))
+    assert ev.index(('state', False)) < ev.index('rename') and here in ev[last_rename:final]
+
+
+def test_recovery_new_attempt_still_obeys_the_window_and_a_mismatched_intent_stays_disabled(tmp_path):
+    clock = Clock()
+    _corrupt_two_unsealed(tmp_path, clock)
+    led = mk(tmp_path, clock=clock)
+    assert led.disabled is None and len(state(tmp_path)['recoveries']) == 1
+    led.append(sig(sleeve='W1'))
+    with open(seg(tmp_path, 2), 'ab') as fh: fh.write(b'{bad}\n')
+    clock.t += 60
+    led.tick()
+    led2 = mk(tmp_path, clock=clock)                                          # a NEW attempt inside 24 h: refused
+    assert led2.disabled == 'active_corrupt' and led2.counters['recovery_refused'] == 1
+    assert state(tmp_path)['recovery_in_progress'] is None and len(state(tmp_path)['recoveries']) == 1
+    st = state(tmp_path)                                                      # an intent for another boundary
+    p = os.path.join(str(tmp_path), D.STATE_NAME)
+    D.atomic_write(p, D.state_doc(st['recoveries'], st['gaps'], st['quarantined'],
+                                  dict(attempt=D._utc_stamp(clock.t), at=clock.t, last_sealed=7, after_end=L.GENESIS)))
+    raw = sorted(os.listdir(str(tmp_path)))
+    led3 = mk(tmp_path, clock=clock)
+    assert led3.disabled == 'active_corrupt' and sorted(os.listdir(str(tmp_path))) == raw
+    assert state(tmp_path)['recoveries'] == st['recoveries']
+    bad = D.state_doc(st['recoveries'], st['gaps'], st['quarantined'], dict(attempt='x', at=1, last_sealed=1,
+                                                                            after_end=L.GENESIS))
+    with pytest.raises(A.AIScanError): D.verify_state(bad)                   # the intent is hash- and shape-checked
