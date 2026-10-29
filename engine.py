@@ -713,9 +713,17 @@ CANDIDATE_SLOTS = {'C-F01': ('ema_mom', 'long'), 'C-F02': ('exp_trend', 'long')}
 # Correlated candidates share ONE position cap (Codex 6443422894: F01/F02 share 131 fills, Jaccard 0.655 - one family, never
 # two full independent risk budgets)
 CANDIDATE_FAMILY = {'C-F01': 'trend_long', 'C-F02': 'trend_long'}
+# FACTORY-CAND-02 (Codex ruling 6507748888): the family fails closed as ONE unit (any member's drift / protection / accounting
+# disable switches every enabled member off), its enabled members keep CANDIDATE_SLOTS priority order (C-F01 before C-F02) in
+# SLEEVES, and the symbol list is pinned in order. OQ4: C-F01-only policy - every slot stays default OFF.
 CANDIDATE_CARD = ('key', 'sides', 'risk', 'max_pos', 'symbols', 'mgmt', 'tf')      # fields a slot may not drift from
 CANDIDATE_SHARE, CANDIDATE_RISK, CANDIDATE_MAX_POS, CANDIDATE_DEFAULT_ENABLED = 1 / 6, 0.01, 4, False
 CANDIDATE_COST_PENDING_S = 6 * 3600
+# FACTORY-CAND-02 (Codex 6508164005): state[CANDIDATE_PENDING_KEY] = {row id: {sleeve, symbol, closed}} - a durable index of
+# candidate closes whose costs were still pending when they closed. History keeps only the newest 3000 rows, so the index is
+# what holds an unresolved close past its eviction (and across restarts). Set in _finish, cleared once the row settles
+# (measured, or the operator's FILL-PNL-02 acknowledgement); an evicted entry fails closed on its stored close time.
+CANDIDATE_PENDING_KEY = 'candidate_cost_pending'
 CANDIDATE_STOP_FAIL = ('restoring', 'owner_check')     # a stop Binance does not hold (re-checks alone do not disable)
 
 
@@ -2276,6 +2284,8 @@ class Engine:
         out += [(p.get('sleeve'), p.get('symbol')) for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending]
         out += [(r.get('sleeve'), r.get('symbol')) for r in (st.get('resting_entries') or {}).values()]
         out += [(candidate_owner(u, k), u.get('symbol')) for k, u in (st.get('unconfirmed_entries') or {}).items()]
+        cur = getattr(self, '_defer_cur', None)          # FACTORY-CAND-02 (OQ5): a deferred entry reserves its coin too
+        out += [(r['sl'].get('id'), r['sym']) for r in (getattr(self, '_deferred', None) or ()) if r is not cur]
         return out
 
     def candidate_block(self, sl, sym, skip_pending=None):
@@ -2298,8 +2308,8 @@ class Engine:
         """FACTORY-CAND-01: the card fields where a candidate slot differs from its frozen card (empty = none)."""
         card = next((c for c in candidate_sleeves() if c['id'] == (sl or {}).get('id')), None)
         if card is None: return []
-        def norm(f, v):
-            if f == 'symbols' and isinstance(v, (list, tuple)): return sorted(v)
+        def norm(f, v):                                  # FACTORY-CAND-02 (OQ3): symbols compare as the exact ordered list
+            if f == 'symbols' and isinstance(v, (list, tuple)): return list(v)
             return (v or {}) if f == 'mgmt' else v
         return [f for f in CANDIDATE_CARD if norm(f, sl.get(f)) != norm(f, card[f])]
 
@@ -2308,22 +2318,35 @@ class Engine:
         lot of it has lost its exchange stop (restoring / owner_check), a closed trade of it still has unmeasured costs
         CANDIDATE_COST_PENDING_S after closing, or its slot drifted from the frozen card (candidate_drift). Only new entries stop: open lots keep their stop and management. The reason
         stays in state['candidate_disabled'] for the panel; switching the slot back on is Integration's call. Returns the
-        ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off."""
+        ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off.
+        FACTORY-CAND-02 (6507748888): a member's disable, or family members out of CANDIDATE_SLOTS order, switches every
+        enabled member of its CANDIDATE_FAMILY off in the same pass; each reason names the triggering member and cause."""
         off = []
         try:
             now = time.time() if now is None else now
-            for sl in self.S.get('SLEEVES') or []:
-                if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
+            on, trig = [sl for sl in self.S.get('SLEEVES') or [] if sl.get('id') in CANDIDATE_SLOTS and sl.get('enabled')], {}
+            for sl in on:
                 drift = self.candidate_drift(sl)
                 why = f"drift: {', '.join(drift)} differ from the frozen card" if drift else None
                 why = why or next((f"protection: {l['symbol']} stop {l.get('stop_miss_why')}" for l in self.state['lots'].values()
                                    if l['sleeve'] == sl['id'] and l.get('stop_miss') and l.get('stop_miss_why') in CANDIDATE_STOP_FAIL), None)
-                for h in self.history[-3000:] if why is None else ():
+                for h in self.history if why is None else ():      # FACTORY-CAND-02 (OQ6): every row, not the last 3000
                     if h.get('sleeve') != sl['id'] or AC.row_view(h)['status'] != 'pending': continue
                     try: age = now - pd.Timestamp(h['closed']).timestamp()
                     except (KeyError, TypeError, ValueError): age = float('inf')
                     if age >= CANDIDATE_COST_PENDING_S:
                         why = f"accounting: {h.get('symbol')} trade costs unmeasured {age / 3600:.1f} h after close"; break
+                if why is None: why = self._candidate_pending_why(sl['id'], now)    # OQ6: the durable index
+                if why: trig.setdefault(sl['id'], why)
+            for fam in set(CANDIDATE_FAMILY.values()):           # OQ2: enabled members in CANDIDATE_SLOTS priority order
+                got = [sl['id'] for sl in on if CANDIDATE_FAMILY.get(sl['id']) == fam]
+                want = [i for i in CANDIDATE_SLOTS if i in got]
+                if len(got) > 1 and got != want:
+                    for i in got: trig.setdefault(i, f"drift: family {fam} order {got} differs from the pinned priority {want}")
+            for sl in on:                                        # OQ1: one member off -> every enabled member of its family off
+                why, fam = trig.get(sl['id']), CANDIDATE_FAMILY.get(sl['id'])
+                src = next((i for i in trig if fam is not None and CANDIDATE_FAMILY.get(i) == fam), None) if why is None else None
+                if src: why = f"family {fam} fail-closed by {src}: {trig[src]}"
                 if why:
                     sl['enabled'] = False
                     self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(why=why, t=now_utc().isoformat(timespec='seconds'))
@@ -2771,6 +2794,44 @@ class Engine:
                           key='save|state')
             except Exception: pass
 
+    def _candidate_pending_why(self, sid, now):
+        """FACTORY-CAND-02 (6508164005): the accounting reason from the durable pending index for candidate slot sid, or
+        None. An entry whose row is still in history and settled is cleared here (reconcile); an evicted or still-pending row
+        counts from its stored close time. A malformed entry (or index) fails closed: pending for every slot, age unknown."""
+        idx = self.state.get(CANDIDATE_PENDING_KEY)
+        if idx is None: return None
+        if not isinstance(idx, dict): return f"accounting: pending-cost index unreadable ({type(idx).__name__}) - fail closed"
+        rows = {h.get('id'): h for h in self.history if h.get('id') in idx}
+        for rid in list(idx):
+            ent = idx[rid]
+            if rid in rows and AC.row_view(rows[rid])['status'] in ('measured', 'acknowledged'):
+                self._candidate_pending_clear(rows[rid]); continue
+            ok = isinstance(ent, dict) and ent.get('sleeve') in CANDIDATE_SLOTS
+            if ok and ent['sleeve'] != sid: continue
+            try: age = now - pd.Timestamp(ent['closed']).timestamp()
+            except Exception: age = float('inf')
+            if age != age: age = float('inf')                         # NaT / NaN: unknown age fails closed
+            if age >= CANDIDATE_COST_PENDING_S:
+                sym = ent.get('symbol') if isinstance(ent, dict) and ent.get('symbol') else rid
+                return f"accounting: {sym} trade costs unmeasured {age / 3600:.1f} h after close"
+        return None
+
+    def _candidate_pending_note(self, rec):
+        """FACTORY-CAND-02: a candidate close whose costs are still pending enters the durable index (by its lot key)."""
+        if rec.get('sleeve') in CANDIDATE_SLOTS and AC.row_view(rec)['status'] == 'pending':
+            self.state.setdefault(CANDIDATE_PENDING_KEY, {})[rec['id']] = dict(
+                sleeve=rec['sleeve'], symbol=rec.get('symbol'), closed=rec.get('closed'))
+
+    def _candidate_pending_clear(self, row):
+        """FACTORY-CAND-02: the row's costs settled (measured, or operator-acknowledged) - its index entry goes, once.
+        Idempotent: a second settlement or guard pass finds nothing to remove. Nothing else ever clears an entry."""
+        idx = self.state.get(CANDIDATE_PENDING_KEY)
+        if not isinstance(idx, dict) or row.get('id') not in idx: return False
+        if AC.row_view(row)['status'] not in ('measured', 'acknowledged'): return False
+        idx.pop(row['id'], None)
+        self.save_state()        # durable at once (blocker 6508164005-2): a failed save leaves the entry on disk = fail closed
+        return True
+
     def save_state(self):
         return self._save_safe('state', self.state)
 
@@ -2892,6 +2953,9 @@ class Engine:
         AC.finalize(t, quote, booked, now_ms=time.time() * 1000, wait_ms=self.COST_WAIT_S * 1000)
         AC.finalize_px(t, 1 if t.get('side') == 'LONG' else -1, TA.ENTRY_KINDS, now_ms=time.time() * 1000,
                        wait_ms=self.COST_WAIT_S * 1000)             # FILL-PNL-01: measured-price P&L correction
+        if kind == 'row':                                           # FACTORY-CAND-02: settled -> leaves the pending index
+            try: self._candidate_pending_clear(t)
+            except Exception as e: log.warning(f'candidate pending index not cleared ({e}) - stays pending (fail closed)')
 
     def _px_unmeasured(self, lot, measured=False):
         """FILL-PNL-01: a fill of this lot was booked without a cost record - at a price that is not exchange truth
@@ -4613,6 +4677,12 @@ class Engine:
         except Exception as e: log.warning(f'actual costs not carried to history ({e})')
         if lot.get('cohort_id'): rec['cohort_id'] = lot['cohort_id']     # RUN-PACK-01: carried, never re-derived
         rec['risk_fill'] = self.risk_fill_view(lot)                      # RISK-FILL-01: planned vs measured, action
+        try: self._candidate_pending_note(rec)                           # FACTORY-CAND-02: survives history eviction
+        except Exception as e:                                           # cannot tell: indexed anyway (fail closed)
+            log.warning(f'candidate pending status unreadable ({e}) - indexed as pending')
+            if rec.get('sleeve') in CANDIDATE_SLOTS and isinstance(self.state.get(CANDIDATE_PENDING_KEY, {}), dict):
+                self.state.setdefault(CANDIDATE_PENDING_KEY, {})[rec['id']] = dict(
+                    sleeve=rec['sleeve'], symbol=rec.get('symbol'), closed=rec.get('closed'))
         self.history.append(rec); self.history = self.history[-3000:]
         if rec.get('cohort_id') and self._cohort_ok() and rec['cohort_id'] == self.state['cohort']['id']:
             self._cohort_row(rec)                                  # RUN-PACK-01 evidence copy (never read by trading)
@@ -6204,9 +6274,9 @@ class Engine:
         s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
         self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
         try:
-            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
+            self._ml_direct, self._defer_cur = (sl['id'], s, side, str(sg.get('time'))), r   # OQ5: never counts against itself
             try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
-            finally: self._ml_direct = None
+            finally: self._ml_direct = self._defer_cur = None
         except Exception as e:
             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
         why = '' if opened else self.last_skip or 'order failed'
