@@ -343,23 +343,39 @@ def preflight(repo: str = REPO, *, git=None, manifest_check=None, allow_dirty_te
 class Windows:
     dev_start: int
     last_entry: int                      # no entry fill at or after this
-    sealed: int                          # nothing at or after this is read
+    sealed: int                          # holdout boundary (unchanged by any amendment); never read at or after
     slices: tuple                        # ((start, end), ...) by entry fill
     warmup_bars: int = 240
+    dev_end: int | None = None           # signed amendment only: development (= read) end, exclusive; None -> sealed
+    amendment: 'Amendment | None' = None
+
+    @property
+    def end(self) -> int:
+        """The read end: nothing at or after it is read (the amendment dev_end, else the sealed cutoff)."""
+        return self.sealed if self.dev_end is None else self.dev_end
 
     @staticmethod
-    def of(p: dict) -> 'Windows':
+    def of(p: dict, amendment: 'Amendment | None' = None) -> 'Windows':
         w = p['windows']
         sealed = iso_ms(w['sealed_cutoff'])
         lec = w['last_entry_cutoff']
-        last = sealed - lec['bars'] * lec['bar_hours'] * HOUR
+        buf = lec['bars'] * lec['bar_hours'] * HOUR
+        last = sealed - buf
         if last != iso_ms(lec['at']) or iso_ms(w['development']['end']) != sealed:
             raise PreregInvalid('last-entry cutoff / development end inconsistent with the sealed cutoff')
         sl = tuple((iso_ms(s['start']), iso_ms(s['end'])) for s in w['slices'])
         if sl[0][0] != iso_ms(w['development']['start']) or sl[-1][1] != sealed or \
                 any(a[1] != b[0] for a, b in zip(sl, sl[1:])):
             raise PreregInvalid('slices are not contiguous over the development window')
-        return Windows(sl[0][0], last, sealed, sl, 240)
+        if amendment is None:
+            return Windows(sl[0][0], last, sealed, sl, 240)
+        if not isinstance(amendment, Amendment):
+            raise RunnerError('a shortened development end comes only from a loaded, signed Amendment')
+        de, le = amendment.dev_end, amendment.last_entry
+        if amendment.sealed != sealed or de > sealed or not sl[-1][0] < le < de or le != de - buf:
+            raise PreregInvalid('amendment dev_end / last_entry inconsistent with the frozen windows '
+                                '(dev_end <= sealed, last_entry == dev_end - the frozen 180x4h buffer)')
+        return Windows(sl[0][0], le, sealed, sl[:-1] + ((sl[-1][0], de),), 240, de, amendment)
 
     def slice_of(self, t: int):
         for k, (a, b) in enumerate(self.slices, 1):
@@ -425,8 +441,8 @@ def prepare_symbol(sym: str, bars, windows: Windows, funding=(), fund_runs=None)
     (no forward fill across a gap); a bar at or after the sealed cutoff is refused, never read."""
     import pandas as pd
     bars = sorted(bars)
-    if any(b[0] >= windows.sealed for b in bars) or any(e[0] >= windows.sealed for e in funding):
-        raise HoldoutRefused(f'{sym}: input reaches the sealed cutoff')
+    if any(b[0] >= windows.end for b in bars) or any(e[0] >= windows.end for e in funding):
+        raise HoldoutRefused(f'{sym}: input reaches the sealed cutoff / amended development end')
     if any(b[0] % TF for b in bars) or len({b[0] for b in bars}) != len(bars):
         raise RunnerError(f'{sym}: bars are not unique 4h opens')
     t = [int(b[0]) for b in bars]
@@ -1256,7 +1272,7 @@ def book_metrics(bk: dict, windows: Windows) -> dict:
         crdd = max(crdd, peak - cum)
     uw = underwater_days(bk['equity_seq'])                    # same sequence as max equity DD (ruling 4 amended)
     end = bk['end_equity_closed']
-    years = (windows.sealed - windows.dev_start) / (365.25 * DAY_MS)
+    years = (windows.end - windows.dev_start) / (365.25 * DAY_MS)
     ann = (end / START_EQUITY) ** (1 / years) - 1 if end > 0 and years > 0 else -1.0
     dd = bk['max_equity_dd']
     tot = math.fsum(rs)
@@ -1303,7 +1319,7 @@ def book_causality(bk: dict, windows: Windows) -> dict:
               'equity_sequence_causal': all(a <= b for a, b in zip(st, st[1:])),
               'events_causal': all(a <= b for a, b in zip(et, et[1:])),
               'entries_inside_window': all(windows.entry_ok(x['t_entry']) for x in bk['trades']),
-              'exits_before_seal': all(x['t_entry'] <= x['t_exit'] < windows.sealed for x in bk['trades'])}
+              'exits_before_seal': all(x['t_entry'] <= x['t_exit'] < windows.end for x in bk['trades'])}
     return {'checks': checks, 'pass': all(checks.values())}
 
 
@@ -1395,15 +1411,16 @@ def load_symbol(src, sym: str, windows: Windows, *, warmup_start: int, check=Non
     Funding: nominal grid (t_nom), proven runs (funding_runs), funding-mark-proxy-v1 = close of the 1h mark bar
     ending at T (nan when absent -> the episode charged there is INCOMPLETE)."""
     import edge05_runner as E5
-    g = E5.Guard(src, windows.sealed)
-    g.scope(warmup_start, windows.sealed)
+    hi = windows.end                                # the amendment dev_end when one is bound: the guard refuses past it
+    g = E5.Guard(src, hi)
+    g.scope(warmup_start, hi)
     try:
         bars = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume)
-                for b in g.bars(sym, '4h', warmup_start, windows.sealed)]
+                for b in g.bars(sym, '4h', warmup_start, hi)]
         if check:
             check()
-        raw_f = g.funding(sym, warmup_start, windows.sealed)
-        raw_m = g.mark(sym, warmup_start, windows.sealed)
+        raw_f = g.funding(sym, warmup_start, hi)
+        raw_m = g.mark(sym, warmup_start, hi)
     except E5.Incomplete as e:                     # e.g. the never-opened straddle month without a covering artifact
         raise SourceUncovered(f'{sym}: source rows {e.reason} from {_iso(e.at_ms)}; refusing (fail closed)') from None
     digest = rows_digest(sym, bars, [(r.time_ms, r.rate, r.interval_hours) for r in raw_f],
@@ -1573,6 +1590,111 @@ class ProspectiveRules:
         return self.listing.get(sym)
 
 
+AMENDMENT_FORMAT = 'zb-bpyr-amendment/1'
+AMENDMENT_RULING = '6498348689'
+AMENDMENT_REF = f'codex: MoeAZack/ZackBot2 issuecomment-{AMENDMENT_RULING}'
+AMENDMENT_DEV_END = '2026-09-01T00:00:00Z'          # exclusive (ruling 6498348689, GO A)
+AMENDMENT_LAST_ENTRY = '2026-08-02T00:00:00Z'       # exclusive; dev_end - the frozen 180x4h buffer
+AMENDMENT_SEALED = '2026-09-28T00:00:00Z'           # unchanged holdout boundary
+AMENDMENT_KEYS = frozenset({'format', 'candidate_id', 'prereg_sha256', 'dev_end', 'last_entry', 'sealed_cutoff',
+                            'signed', 'signed_by', 'status', 'reason'})
+AMENDMENT_MAX_BYTES = 65536
+
+
+@dataclass(frozen=True)
+class Amendment:
+    """`zb-bpyr-amendment/1` (Codex ruling 6498348689, GO A): the ONLY route to a shortened BPYR development end. Built
+    only by Amendment.load() from a committed, raw-byte-pinned record. Development (and every read) ends at dev_end
+    2026-09-01 exclusive; the last new entry is before 2026-08-02 (the frozen 180x4h close buffer preserved); the sealed
+    holdout boundary 2026-09-28 is unchanged. An episode unresolved at dev_end stays INCOMPLETE (boundary) and is
+    charged to the 2% per-slice data gate as before: nothing is waived or relabelled."""
+    sha256: str
+    rel: str
+    prereg_sha256: str
+    dev_end: int
+    last_entry: int
+    sealed: int
+    signed_by: str
+
+    def identity(self) -> dict:
+        return {'format': AMENDMENT_FORMAT, 'ruling': AMENDMENT_RULING, 'path': self.rel, 'sha256': self.sha256,
+                'prereg_sha256': self.prereg_sha256, 'dev_end': _iso(self.dev_end),
+                'last_entry': _iso(self.last_entry), 'sealed_cutoff': _iso(self.sealed), 'signed_by': self.signed_by}
+
+    @classmethod
+    def load(cls, path: str, expect_sha256: str | None, pf: 'Preflight', repo: str = REPO) -> 'Amendment':
+        """Fail-closed (RunnerError) unless ALL hold: --expect-amendment-sha256 is 64 lowercase hex and equals the file
+        bytes; the real path sits directly under <repo>/research_evidence/prereg/; the path is tracked and its raw
+        bytes equal `git show HEAD:<path>` (bytes mode); the bytes are ASCII JSON without duplicate keys, keys exactly
+        AMENDMENT_KEYS, format zb-bpyr-amendment/1, this candidate, prereg_sha256 == the signed contract (pf), signed
+        true, status FROZEN..., signed_by citing issuecomment-6498348689, a reason, and dev_end / last_entry /
+        sealed_cutoff exactly the ruling's values (dev_end <= sealed, last_entry == dev_end - 180x4h)."""
+        def refuse(why):
+            raise RunnerError(f'amendment refused ({path}): {why}')
+        if not isinstance(expect_sha256, str) or len(expect_sha256) != 64 or not _HEX.fullmatch(expect_sha256):
+            refuse('--expect-amendment-sha256 (64 lowercase hex) is required')
+        if not isinstance(pf, Preflight):
+            refuse('needs a passed Preflight (the signed contract hash)')
+        root = os.path.realpath(_p(repo, PREREG_REL[:-1]))
+        real = os.path.realpath(path)
+        if os.path.dirname(real) != root or not os.path.isfile(real):
+            refuse(f'the record must be a file directly under {"/".join(PREREG_REL[:-1])}/')
+        if os.path.getsize(real) > AMENDMENT_MAX_BYTES:
+            refuse('record too large')
+        with open(real, 'rb') as fh:
+            raw = fh.read()
+        if sha(raw) != expect_sha256:
+            refuse(f'file sha256 {sha(raw)} != expected {expect_sha256}')
+        rel = '/'.join(PREREG_REL[:-1] + (os.path.basename(real),))
+        try:
+            subprocess.run(['git', '-C', repo, 'ls-files', '--error-unmatch', '--', rel], capture_output=True,
+                           check=True)
+            head = subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel}'], capture_output=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            refuse('not committed (untracked or absent at HEAD)')
+        if head != raw:
+            refuse('working bytes differ from HEAD (modified)')
+
+        def no_dupes(pairs):
+            keys = [k for k, _ in pairs]
+            if len(set(keys)) != len(keys):
+                refuse('duplicate key')
+            return dict(pairs)
+        try:
+            d = json.loads(raw.decode('ascii'), object_pairs_hook=no_dupes)
+        except (UnicodeDecodeError, ValueError):
+            refuse('not ASCII JSON')
+        if not isinstance(d, dict) or set(d) != AMENDMENT_KEYS:
+            refuse(f'keys must be exactly {sorted(AMENDMENT_KEYS)}')
+        if d['format'] != AMENDMENT_FORMAT or d['candidate_id'] != CANDIDATE:
+            refuse('wrong format / candidate_id')
+        if d['prereg_sha256'] != pf.prereg_sha256:
+            refuse('prereg_sha256 is not the signed contract hash')
+        sb, st, why = d['signed_by'], d['status'], d['reason']
+        if d['signed'] is not True or not isinstance(st, str) or not st.startswith('FROZEN'):
+            refuse('not frozen and signed (signed true, status FROZEN...)')
+        if not isinstance(sb, str) or not sb.startswith(AMENDMENT_REF) or \
+                (len(sb) > len(AMENDMENT_REF) and sb[len(AMENDMENT_REF)].isdigit()):
+            refuse(f'signed_by must cite {AMENDMENT_REF}')
+        if not isinstance(why, str) or not why.strip():
+            refuse('reason is required')
+        if (d['dev_end'], d['last_entry'], d['sealed_cutoff']) != (AMENDMENT_DEV_END, AMENDMENT_LAST_ENTRY,
+                                                                   AMENDMENT_SEALED):
+            refuse(f'dev_end / last_entry / sealed_cutoff must be exactly {AMENDMENT_DEV_END} / '
+                   f'{AMENDMENT_LAST_ENTRY} / {AMENDMENT_SEALED} (ruling {AMENDMENT_RULING})')
+        w = pf.prereg['windows']
+        lec = w['last_entry_cutoff']
+        de, le, se = iso_ms(d['dev_end']), iso_ms(d['last_entry']), iso_ms(d['sealed_cutoff'])
+        if se != iso_ms(w['sealed_cutoff']) or de > se or le != de - lec['bars'] * lec['bar_hours'] * HOUR:
+            refuse('dev_end / last_entry inconsistent with the frozen sealed cutoff and 180x4h buffer')
+        return cls(expect_sha256, rel, d['prereg_sha256'], de, le, se, sb)
+
+
+def _amendment_check(amd, prereg_sha256: str) -> None:
+    if not isinstance(amd, Amendment) or amd.prereg_sha256 != prereg_sha256:
+        raise RunnerError('the amendment is not a loaded Amendment for this signed contract')
+
+
 def is_prospective(rules) -> bool:
     """True for ProspectiveRules or a rules_of() callable over one (its identity carries mode=prospective)."""
     if isinstance(rules, ProspectiveRules):
@@ -1633,8 +1755,8 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
         if getattr(sd, 'sym', None) != key:
             raise IdentityMismatch(f'data[{key!r}] holds SymbolData for {getattr(sd, "sym", None)!r}')
     for sd in data.values():
-        if sd.t and sd.t[-1] >= w.sealed:
-            raise HoldoutRefused(f'{sd.sym}: bar at or after the sealed cutoff')
+        if sd.t and sd.t[-1] >= w.end:
+            raise HoldoutRefused(f'{sd.sym}: bar at or after the sealed cutoff / amended development end')
     s1 = stage_mgmt(p, 'S1')
     E = entry_set(data, w, s1, check)
     stages = {s: unit_replays(data, E, p, s, check=check) for s in STAGE_IDS}
@@ -1647,6 +1769,9 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
            'stages': {s: summarize(stages[s], w) for s in STAGE_IDS},
            'S1-T': stage_quality(stages['S1-T'], p, w, resamples=resamples, check=check)['rows'],
            'folds': {s: folds_report(p, stages[s]) for s in STAGE_IDS}}
+    if w.amendment is not None:                     # bound into every result built on an amended window
+        _amendment_check(w.amendment, pf.prereg_sha256)
+        out['amendment'] = w.amendment.identity()
     means = None
     if b0_replicates:
         b0 = next(b for b in p['baselines'] if b['id'] == 'B0')
@@ -1817,6 +1942,11 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
     pro = rules_id.get('mode') == PROSPECTIVE
     if pro:                                         # BPYR-INPUTS-01: non-promotable, bound mode / sha256 / path
         ident.update(_prospective_label(rules_id))
+    amd = w.amendment
+    if amd is not None:                             # ruling 6498348689: the signed amendment is part of the identity
+        _amendment_check(amd, pf.prereg_sha256)
+        ident['amendment'] = amd.identity()
+        ident['dev_end'] = w.end
     os.makedirs(outdir, exist_ok=True)
     idp = os.path.join(outdir, 'run.json')
     ib = json.dumps(ident, sort_keys=True, indent=1).encode('ascii') + b'\n'
@@ -1851,6 +1981,8 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
             check()
             if pro:
                 rec['non_promotable_rules'] = PROSPECTIVE
+            if amd is not None:
+                rec['amendment_sha256'] = amd.sha256
             prev = rec['hash'] = sha(canon(rec))
             _fsync_append(fh, canon(rec) + b'\n')
             if stop_after is not None and n + 1 - done >= stop_after:
@@ -1875,6 +2007,8 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
     res['rules_identity'] = rules_id
     if pro:
         res.update(_prospective_label(rules_id), promotable=False)
+    if amd is not None:
+        res['amendment'] = amd.identity()
     res['evaluated'], res['decided'] = True, False     # authorized market-data statistics; no decision / verdict
     return res
 
@@ -2025,7 +2159,7 @@ def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
     L moves only the initial boundary: a series of an already-listed symbol missing its early months (first month
     after L's month), an onboardDate later than the first archived month, and every post-start hole still refuse.
     Without a bound snapshot (PIT rules) nothing changes. rules_gaps checks a late symbol at max(dev_start, L)."""
-    hi, gaps, listing = windows.sealed, [], {}
+    hi, gaps, listing = windows.end, [], {}
     listing_of = pit.listing_ms if isinstance(pit, ProspectiveRules) else (lambda s: None)
     for sym in sorted(symbols):
         L = listing_of(sym)
@@ -2067,6 +2201,9 @@ def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
            'ready': not gaps and rules_ok}
     if isinstance(pit, ProspectiveRules):
         out['rules_mode'] = out['non_promotable_rules'] = PROSPECTIVE
+    if windows.amendment is not None:
+        out['coverage_end'] = _iso(hi)
+        out['amendment_sha256'] = windows.amendment.sha256
     return out
 
 
@@ -2210,17 +2347,24 @@ def main(argv=None, *, _inject=None) -> int:
     ap.add_argument('--authorization', help='Integration evaluation authorization; without it only preflight runs')
     ap.add_argument('--expect-authorization-sha256', help='sha256 of the committed authorization artifact')
     ap.add_argument('--out', help='run directory (authorized runs only)')
+    ap.add_argument('--amendment-record', help=f'signed BPYR amendment ({AMENDMENT_FORMAT}, ruling {AMENDMENT_RULING}): '
+                                               'the only shortened development end')
+    ap.add_argument('--expect-amendment-sha256', help='sha256 of the committed amendment record (raw bytes)')
     a = ap.parse_args(argv)
     try:
         if not (math.isfinite(a.max_rss_mb) and a.max_rss_mb > 0):
             raise RunnerError('a finite, positive --max-rss-mb is mandatory')
         pf = preflight(git=inj.get('git'), manifest_check=inj.get('manifest_check'))     # dirty tree: DirtyTree
         p = pf.prereg
-        w = Windows.of(p)
+        if a.expect_amendment_sha256 is not None and not a.amendment_record:
+            raise RunnerError('--expect-amendment-sha256 without --amendment-record')
+        amd = Amendment.load(a.amendment_record, a.expect_amendment_sha256, pf, repo=inj.get('amendment_repo', REPO)) \
+            if a.amendment_record else None
+        w = Windows.of(p, amd)
         ws = iso_ms(p['windows']['calibration']['start'])
         symbols = universe_symbols(p, a.universe)
         man = inj.get('manifest_path') or _p(REPO, tuple(p['source']['manifest'].split('/')))
-        src, pit = build_sources(a, man, symbols, w.sealed)
+        src, pit = build_sources(a, man, symbols, w.end)     # amended: the archive cutoff is dev_end (09 never opened)
         cov = coverage_report(src, pit, symbols, ws, w)
         report = {'format': PREFLIGHT_FORMAT, 'mode': 'authorized' if a.authorization else 'preflight-only',
                   'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code,
@@ -2230,6 +2374,9 @@ def main(argv=None, *, _inject=None) -> int:
                   'evaluated': False, 'written': None}
         if isinstance(pit, ProspectiveRules):
             report.update(_prospective_label(pit.identity()))
+        if amd is not None:
+            report.update(amendment=amd.identity(), dev_end=_iso(w.end), last_entry=_iso(w.last_entry),
+                          slices=[[_iso(x), _iso(y)] for x, y in w.slices])
         if not a.authorization:
             print(json.dumps(report, sort_keys=True, indent=1))
             return 0
@@ -2242,7 +2389,7 @@ def main(argv=None, *, _inject=None) -> int:
             raise RunnerError('--out is required for an authorized run')
         with (inj.get('lock') or _runlock)(a.out, a.universe, argv):
             res = execute(a.out, src, pf, symbols=sorted(symbols), rules=rules_of(pit), authorization=tok,
-                          max_rss_mb=a.max_rss_mb, rss=inj.get('rss'), universe=a.universe)
+                          max_rss_mb=a.max_rss_mb, rss=inj.get('rss'), universe=a.universe, windows=w)
             path = write_result(res, os.path.join(a.out, 'result.json'), authorization=tok)
         print(json.dumps({'written': path, 'identity_sha256': res.get('identity_sha256')}, sort_keys=True))
         return 0

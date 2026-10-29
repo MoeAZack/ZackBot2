@@ -1964,3 +1964,205 @@ def test_cli_preflight_with_the_committed_snapshot_admits_real_listings(tmp_path
     gaps = json.loads(capsys.readouterr().out)['coverage']['series_gaps']
     assert {(g['series'], g['uncovered_from']) for g in gaps if g['symbol'] == 'SOLUSDT'} == \
         {(k, '2020-02-03T00:00:00Z') for k in SER}                         # listing month missing: refused
+
+
+# ---- BPYR amendment (Codex ruling 6498348689, GO A): dev_end 2026-09-01, last entry 2026-08-02, seal unchanged
+AMD_REL = 'research_evidence/prereg/breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json'
+AMD_SHA = R.sha((ROOT / AMD_REL).read_bytes())
+AUG2 = R.iso_ms('2026-08-02T00:00:00Z')
+JUL1 = R.iso_ms('2026-07-01T00:00:00Z')
+OCT1 = R.iso_ms('2026-10-01T00:00:00Z')
+AMD_ARGS = ('--amendment-record', str(ROOT / AMD_REL), '--expect-amendment-sha256', AMD_SHA)
+
+
+def _amd(pf):
+    return R.Amendment.load(str(ROOT / AMD_REL), AMD_SHA, pf)
+
+
+def test_committed_amendment_is_signed_and_sets_the_exact_boundaries(pf, P):
+    amd = _amd(pf)
+    assert _git_bytes(ROOT, 'show', f'HEAD:{AMD_REL}') == (ROOT / AMD_REL).read_bytes()     # raw-byte exact at HEAD
+    ident = amd.identity()
+    assert ident == {'format': 'zb-bpyr-amendment/1', 'ruling': '6498348689', 'path': AMD_REL, 'sha256': AMD_SHA,
+                     'prereg_sha256': pf.prereg_sha256, 'dev_end': '2026-09-01T00:00:00Z',
+                     'last_entry': '2026-08-02T00:00:00Z', 'sealed_cutoff': '2026-09-28T00:00:00Z',
+                     'signed_by': json.loads((ROOT / AMD_REL).read_bytes())['signed_by']}
+    base, w = R.Windows.of(P), R.Windows.of(P, amd)
+    assert base.end == base.sealed == SEALED and base.dev_end is None and base.amendment is None   # unchanged default
+    assert (w.dev_start, w.end, w.last_entry, w.sealed) == (base.dev_start, SEP1, AUG2, SEALED)
+    assert w.last_entry == w.end - 180 * TF and w.end <= w.sealed
+    assert w.slices[:-1] == base.slices[:-1] and w.slices[-1] == (base.slices[-1][0], SEP1)    # slice 3 ends at dev_end
+    assert not w.entry_ok(AUG2) and w.entry_ok(AUG2 - TF) and w.slice_of(SEP1) is None
+    assert R.slice_spans(P, w)[-1] == (AUG2 - base.slices[-1][0]) / R.DAY_MS
+    with pytest.raises(R.RunnerError, match='signed Amendment'):
+        R.Windows.of(P, ident)                                                   # a dict is not a loaded amendment
+    for de, le in ((SEP1, AUG2 + TF), (SEALED + R.DAY_MS, SEALED + R.DAY_MS - 180 * TF), (SEP1, SEP1)):
+        forged = R.Amendment(AMD_SHA, AMD_REL, pf.prereg_sha256, de, le, SEALED, ident['signed_by'])
+        with pytest.raises(R.PreregInvalid):
+            R.Windows.of(P, forged)
+
+
+def _amd_doc(pf, **over):
+    d = json.loads((ROOT / AMD_REL).read_bytes())
+    d.update(over)
+    return {k: v for k, v in d.items() if v is not ...}
+
+
+def _amd_repo(tmp_path, pf, raw=None, commit=True, sub='research_evidence/prereg', name='a.json', **over):
+    repo = tmp_path / 'repo'
+    (repo / sub).mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    if raw is None:
+        raw = (json.dumps(_amd_doc(pf, **over), sort_keys=True, indent=1) + '\n').encode('ascii')
+    f = repo / sub / name
+    f.write_bytes(raw)
+    if commit:
+        _git(repo, 'add', '-A')
+        _git(repo, 'commit', '-qm', 'a')
+    return repo, f, R.sha(raw)
+
+
+@pytest.mark.parametrize('over, why', [
+    ({'prereg_sha256': 'e' * 64}, 'signed contract'),                                  # wrong prereg base
+    ({'signed_by': 'codex: MoeAZack/ZackBot2 issuecomment-6495672591'}, 'must cite'),   # wrong ruling
+    ({'signed_by': 'codex: MoeAZack/ZackBot2 issuecomment-64983486890'}, 'must cite'),  # a longer id is another one
+    ({'signed_by': 'claude-code: issuecomment-6498348689'}, 'must cite'),
+    ({'signed': False}, 'frozen and signed'), ({'signed': 'true'}, 'frozen and signed'),
+    ({'status': 'DRAFT'}, 'frozen and signed'), ({'reason': ' '}, 'reason'),
+    ({'format': 'zb-edge05-amendment/1'}, 'format'), ({'candidate_id': 'funding_carry_xsec.v1'}, 'candidate'),
+    ({'dev_end': '2026-09-28T00:00:00Z'}, 'exactly'), ({'dev_end': '2026-08-31T00:00:00Z'}, 'exactly'),
+    ({'last_entry': '2026-08-29T00:00:00Z'}, 'exactly'), ({'sealed_cutoff': '2026-10-28T00:00:00Z'}, 'exactly'),
+    ({'extra': 1}, 'keys must be exactly'), ({'reason': ...}, 'keys must be exactly'),
+])
+def test_amendment_loader_refuses_mutated_records(tmp_path, pf, over, why):
+    repo, f, h = _amd_repo(tmp_path, pf, **over)
+    with pytest.raises(R.RunnerError, match=why):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+
+
+def test_amendment_loader_refuses_missing_unpinned_uncommitted_modified_or_misplaced(tmp_path, pf):
+    repo, f, h = _amd_repo(tmp_path / 'ok', pf)
+    assert R.Amendment.load(str(f), h, pf, repo=str(repo)).sha256 == h                  # the control loads
+    for bad in (None, '', h.upper(), h[:-1], 'e' * 64):
+        with pytest.raises(R.RunnerError, match='sha256'):
+            R.Amendment.load(str(f), bad, pf, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='directly under'):
+        R.Amendment.load(str(f.parent / 'missing.json'), h, pf, repo=str(repo))
+    f.write_bytes(f.read_bytes().replace(b'\n', b'\r\n'))                            # modified after the commit
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):
+        R.Amendment.load(str(f), R.sha(f.read_bytes()), pf, repo=str(repo))
+    repo, f, h = _amd_repo(tmp_path / 'u', pf, commit=False)
+    with pytest.raises(R.RunnerError, match='not committed'):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+    repo, f, h = _amd_repo(tmp_path / 'm', pf, sub='research_evidence/authorizations')
+    with pytest.raises(R.RunnerError, match='directly under'):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+    dup = (ROOT / AMD_REL).read_bytes().replace(b'{\n', b'{\n "signed": true,\n', 1)
+    repo, f, h = _amd_repo(tmp_path / 'd', pf, raw=dup)
+    with pytest.raises(R.RunnerError, match='duplicate key'):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='Preflight'):
+        R.Amendment.load(str(ROOT / AMD_REL), AMD_SHA, pf.prereg_sha256)
+
+
+def test_amended_read_never_reaches_dev_end(tmp_path, pf, P, monkeypatch):
+    w = R.Windows.of(P, _amd(pf))
+    man, store, raws, _ = _archive(tmp_path, ['BTCUSDT'], JUL1, OCT1)             # September exists in the store
+    opened = []
+    real = E5.ArchiveSource._month
+
+    def spy(self, path, *a):
+        opened.append(str(path))
+        return real(self, path, *a)
+    monkeypatch.setattr(E5.ArchiveSource, '_month', spy)
+    src = E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], w.end)
+    assert src.straddle_skipped == 3 and src.straddle_month == {}      # September never opened, no straddle month
+    sd = R.load_symbol(src, 'BTCUSDT', w, warmup_start=JUL1)
+    assert opened and not any('2026-09' in x for x in opened)
+    assert sd.t[-1] == SEP1 - TF and all(t < SEP1 for t, *_ in sd.funding)
+    with pytest.raises(E5.HoldoutRefused):                                 # a request past dev_end, before the read
+        E5.Guard(src, w.end).bars('BTCUSDT', '4h', JUL1, SEP1 + TF)
+    with pytest.raises(E5.HoldoutRefused):
+        E5.Guard(src, w.end).scope(JUL1, SEP1 + 1)
+    leaky = _mem_src(raws, OCT1)                                           # a source that ignores the range
+    leaky.bars = lambda sym, iv, lo, hi: leaky.b[sym]
+    with pytest.raises(E5.HoldoutRefused):                                 # September rows refused after the read
+        R.load_symbol(leaky, 'BTCUSDT', w, warmup_start=JUL1)
+    bars = [(t, 1.0, 1.0, 1.0, 1.0, 1.0) for t in range(SEP1 - 2 * TF, SEP1 + TF, TF)]
+    with pytest.raises(R.HoldoutRefused, match='amended development end'):
+        R.prepare_symbol('BTCUSDT', bars, w)
+
+
+def test_episode_open_at_dev_end_is_incomplete_and_charged_to_the_data_gate(P):
+    de = T0 + 360 * TF
+    wd = R.Windows(T0, de - 40 * TF, T0 + 400 * TF, ((T0, T0 + 100 * TF), (T0 + 100 * TF, T0 + 200 * TF),
+                                                       (T0 + 200 * TF, de)), 1, de, None)
+    s1 = R.stage_mgmt(P, 'S1')
+    sd = mk('BTCUSDT', flat(360), le={250, 318})               # 251 closes on time; 319 is still open at dev_end
+    E = R.entry_set({'BTCUSDT': sd}, wd, s1)
+    assert [e['f'] for e in E['episodes']] == [251]
+    assert [(x['f'], x['reason'], x['slice']) for x in E['incomplete']] == [(319, 'incomplete.boundary', 3)]
+    g = R.data_gate({'episodes': E['episodes'], 'incomplete': E['incomplete']}, wd)
+    assert g == {'incomplete_frac': [0.0, 0.0, 0.5], 'pass': False}          # charged, never waived or relabelled
+    with pytest.raises(R.HoldoutRefused):                                    # a bar at dev_end is never accepted
+        R.prepare_symbol('BTCUSDT', [(T0 + k * TF, 1.0, 1.0, 1.0, 1.0, 1.0) for k in range(361)], wd)
+
+
+def test_coverage_needs_no_straddle_with_the_amendment(pf, P, tmp_path):
+    src = _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, straddle=False)
+    pro = _pro(tmp_path)
+    base = R.coverage_report(src, pro, FIXED, WARM, R.Windows.of(P))
+    assert not base['ready'] and {g['uncovered_from'] for g in base['series_gaps']} == {'2026-09-01T00:00:00Z'}
+    cov = R.coverage_report(src, pro, FIXED, WARM, R.Windows.of(P, _amd(pf)))
+    assert cov['ready'] is True and cov['series_gaps'] == [] and cov['rules_ok'] is True
+    assert cov['coverage_end'] == '2026-09-01T00:00:00Z' and cov['amendment_sha256'] == AMD_SHA
+    hole = _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, drop={('BTCUSDT', '2026-08')}, straddle=False)
+    cov = R.coverage_report(hole, pro, FIXED, WARM, R.Windows.of(P, _amd(pf)))
+    assert not cov['ready'] and _gaps(cov, 'BTCUSDT') == [(k, '2026-08-01T00:00:00Z') for k in sorted(R.SERIES_KINDS)]
+
+
+def test_cli_preflight_with_the_amendment_is_ready_without_a_straddle(tmp_path, capsys, pf):
+    snap = json.loads((ROOT / RAW_SNAP_REL).read_bytes())
+    onboard = {e['symbol']: e['onboardDate'] for e in snap['symbols'] if e['symbol'] in FIXED}
+    drop = set()
+    for s, ob in onboard.items():
+        ym = '2020-02'
+        while ym < _month(ob):
+            drop |= {(s, k, ym) for k in SER}
+            ym = _next_ym(ym)
+    man, _ = _meta_manifest(tmp_path / 'm.json.gz', FIXED, drop=drop)
+    ci = SimpleNamespace(d=tmp_path, man=man)
+    pro = ('--prospective-rules', str(ROOT / RAW_SNAP_REL), '--expect-prospective-rules-sha256', RAW_SNAP_SHA)
+    assert _cli(ci, *pro, *AMD_ARGS, rules=False, straddle=False) == 0
+    rep = json.loads(capsys.readouterr().out)
+    cov = rep['coverage']
+    assert cov['ready'] is True and cov['series_gaps'] == [] and cov['rules_ok'] is True
+    assert cov['straddle_files_never_opened'] == 17 * 3 and cov['coverage_end'] == '2026-09-01T00:00:00Z'
+    assert rep['amendment'] == _amd(pf).identity() and rep['amendment']['sha256'] == AMD_SHA
+    assert (rep['dev_end'], rep['last_entry'], rep['sealed_cutoff']) == \
+        ('2026-09-01T00:00:00Z', '2026-08-02T00:00:00Z', '2026-09-28T00:00:00Z')
+    assert rep['slices'][-1][1] == '2026-09-01T00:00:00Z' and rep['evaluated'] is False
+    assert not (tmp_path / 'no-store').exists()
+    assert _cli(ci, *pro, rules=False, straddle=False) == 0                  # without it: unchanged (straddle gap)
+    rep = json.loads(capsys.readouterr().out)
+    assert 'amendment' not in rep and not rep['coverage']['ready']
+    assert _cli(ci, *pro, '--expect-amendment-sha256', AMD_SHA, rules=False, straddle=False) == 3
+    assert _cli(ci, *pro, AMD_ARGS[0], AMD_ARGS[1], AMD_ARGS[2], 'e' * 64, rules=False, straddle=False) == 3
+    assert _cli(ci, *pro, AMD_ARGS[0], AMD_ARGS[1], rules=False, straddle=False) == 3
+    assert 'amendment refused' in capsys.readouterr().err
+
+
+def test_amended_execute_binds_the_amendment_into_run_json_lines_and_result(pf, tmp_path):
+    amd = _amd(pf)
+    de = T0 + 360 * TF
+    wd = R.Windows(T0, de - 40 * TF, T0 + 400 * TF, ((T0, T0 + 100 * TF), (T0 + 100 * TF, T0 + 200 * TF),
+                                                       (T0 + 200 * TF, de)), 240, de, amd)
+    out = tmp_path / 'r'
+    res = _execute(pf, out, windows=wd)
+    run = json.loads((out / 'run.json').read_text())
+    assert run['amendment'] == amd.identity() and run['dev_end'] == de and run['windows'][2] == T0 + 400 * TF
+    lines = (out / 'symbols.jsonl').read_bytes().splitlines()
+    assert len(lines) == 17 and all(json.loads(x)['amendment_sha256'] == AMD_SHA for x in lines)
+    assert res['amendment'] == amd.identity()
+    with pytest.raises(R.RunnerError, match='identity differs'):            # resuming without the amendment fails
+        _execute(pf, out)
