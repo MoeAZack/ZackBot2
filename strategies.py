@@ -644,3 +644,67 @@ def signals(key, d, ctx, params=None, mask_sides=True):
     if mask_sides and st['sides'] == 'long': out['se'][:] = False
     if mask_sides and st['sides'] == 'short': out['le'][:] = False
     return out
+
+
+# Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
+FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
+
+
+def sig_fib_pullback(d, p, ctx):
+    """Causal confirmed-swing Fibonacci pullback candidate; research-only."""
+    left, right = int(p.get('left', FIB['left'])), int(p.get('right', FIB['right']))
+    if left < 1 or right < 1: raise ValueError('fib_pullback: left/right must be >= 1')
+    zlo, trig = float(p.get('zone_lo', FIB['zone_lo'])), float(p.get('trigger', FIB['trigger']))
+    zhi, inval = float(p.get('zone_hi', FIB['zone_hi'])), float(p.get('invalid', FIB['invalid']))
+    if not (0 < zlo < trig < zhi < inval < 1):
+        raise ValueError('fib_pullback: require 0 < zone_lo < trigger < zone_hi < invalid < 1')
+    n, w = len(d), left + right + 1
+    ch, cl = d.h.shift(right), d.l.shift(right)
+    ph = (ch == d.h.rolling(w).max()).fillna(False).to_numpy(bool)
+    pl = (cl == d.l.rolling(w).min()).fillna(False).to_numpy(bool)
+    h, l, o, c, a = (d[k].to_numpy(float) for k in ('h', 'l', 'o', 'c', 'atr'))
+    e50, e200 = d.e50.to_numpy(float), d.e200.to_numpy(float)
+    le = np.zeros(n, bool); se = np.zeros(n, bool); lx = np.zeros(n, bool); sx = np.zeros(n, bool)
+    dist = np.asarray(a, float).copy()
+    hi_i = lo_i = -1; hi = lo = np.nan
+    long_arm = short_arm = False
+    long_tag = short_tag = None
+    min_x = float(p.get('min_impulse_atr', FIB['min_impulse_atr']))
+    for i in range(n):
+        j = i - right
+        if ph[i] and j >= 0: hi_i, hi, long_arm = j, h[j], False
+        if pl[i] and j >= 0: lo_i, lo, short_arm = j, l[j], False
+        if lo_i >= 0 and hi_i > lo_i and np.isfinite(a[i]) and hi > lo:
+            span = hi - lo; tag = (lo_i, hi_i)
+            f382, f500, f618, f786 = hi - zlo * span, hi - trig * span, hi - zhi * span, hi - inval * span
+            valid = span >= min_x * a[i] and e50[i] > e200[i]
+            if long_tag != tag: long_tag, long_arm = tag, False
+            if c[i] <= f786 or not valid: long_arm = False
+            elif l[i] <= f382 and h[i] >= f618: long_arm = True
+            if long_arm and i and c[i - 1] <= f500 < c[i] and c[i] > o[i]:
+                le[i] = True; dist[i] = c[i] - f786; long_arm = False
+            lx[i] = (c[i] <= f786) or (e50[i] <= e200[i])
+        if hi_i >= 0 and lo_i > hi_i and np.isfinite(a[i]) and hi > lo:
+            span = hi - lo; tag = (hi_i, lo_i)
+            f382, f500, f618, f786 = lo + zlo * span, lo + trig * span, lo + zhi * span, lo + inval * span
+            valid = span >= min_x * a[i] and e50[i] < e200[i]
+            if short_tag != tag: short_tag, short_arm = tag, False
+            if c[i] >= f786 or not valid: short_arm = False
+            elif h[i] >= f382 and l[i] <= f618: short_arm = True
+            if short_arm and i and c[i - 1] >= f500 > c[i] and c[i] < o[i]:
+                se[i] = True; dist[i] = f786 - c[i]; short_arm = False
+            sx[i] = (c[i] >= f786) or (e50[i] >= e200[i])
+    out = _one_side(dict(le=pd.Series(le, d.index), se=pd.Series(se, d.index),
+                         lx=pd.Series(lx, d.index), sx=pd.Series(sx, d.index)))
+    out['atr'] = pd.Series(np.where(np.isfinite(dist) & (dist > 0), dist, np.nan), index=d.index)
+    return out
+
+
+STRATEGIES['fib_pullback'] = dict(
+    name='[RESEARCH] Fibonacci pullback L/S', style='balanced', fn=sig_fib_pullback, sides='both', tf='4h',
+    research_only=True, params=dict(FIB),
+    desc='RESEARCH-ONLY: confirmed 3/3 swings, trend-qualified 0.382-0.618 retracement, 0.5 reclaim entry and 0.786 '
+         'structural invalidation. Long/short mirrored; excluded from PAPER until historical, walk-forward and '
+         'untouched-holdout gates pass.',
+    mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)

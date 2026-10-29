@@ -214,7 +214,7 @@ def test_frozen_horizons_match_strategy_code(c, md):
     for k in h['excluded_always']:
         assert f'`{k}`' in md
     covered = {e['strategy'] for e in h['eligible']} | set(h['excluded_uncapped']) | set(h['excluded_always'])
-    assert covered == set(S.STRATEGIES)                         # every registered strategy is classified
+    assert covered == {k for k, st in S.STRATEGIES.items() if not st.get('research_only')}
 
 
 def test_per_row_horizon_purging_no_global_embargo(c, md):

@@ -1186,7 +1186,9 @@ class App:
     def meta(self):
         e = self.engine
         return dict(version=VERSION, build=BUILD_ID, presets={k: dict(name=v['name'], note=v['note'], bt=v.get('bt'), sleeves=v['sleeves']) for k, v in PRESETS.items()},
-                    library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt'], tf=v.get('tf', '4h')) for k, v in S.STRATEGIES.items()},
+                    library={k: dict(name=v['name'], style=v['style'], sides=v['sides'], desc=v['desc'], mgmt=v['mgmt'],
+                                             tf=v.get('tf', '4h'), research_only=bool(v.get('research_only')))
+                             for k, v in S.STRATEGIES.items()},
                     core8=CORE8, top40=TOP40, tradable=sorted(e.rules) if e.rules else [], manual_max_risk=MANUAL_MAX_RISK * 100,
                     risk_rule_defaults=RISK_RULE_DEFAULTS, grid_defaults=GRID.clean_cfg({}), gov_mult_max=GOV_MULT_MAX)
 
@@ -1565,8 +1567,10 @@ def check_rotation_sleeves(e, sl):
     if any(v > 1.0001 for v in tot.values()): raise ValueError('capital shares of a rotation group add up to more than 100%')
 
 
-def validate_sleeve(sl, i):
+def validate_sleeve(sl, i, allow_research=False):
     if not isinstance(sl, dict) or sl.get('key') not in S.STRATEGIES: raise ValueError(f'unknown strategy {str(sl.get("key"))[:30]}')
+    if S.STRATEGIES[sl['key']].get('research_only') and not allow_research:
+        raise ValueError(f"{sl['key']} is research-only and cannot be added to PAPER/runtime sleeves")
     sid = str(sl.get('id') or f'S{i + 1}')[:12]
     if not re.fullmatch(r'[A-Za-z0-9_\-]{1,12}', sid): raise ValueError('slot names: letters, digits, - and _ only (max 12)')
     if sid == 'MAN': raise ValueError('MAN is reserved for manual trades')
@@ -1760,7 +1764,7 @@ def handle(path, b):
                    max_lev=_num(b.get('max_lev', 10), 1, 50, 'max leverage'), daily_halt=_num(b.get('daily_halt', 0.08), 0.01, 1, 'daily halt'),
                    universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
         if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
-        req['sleeves'] = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'][:MAX_SLEEVES])]
+        req['sleeves'] = [validate_sleeve(x, i, allow_research=True) for i, x in enumerate(b['sleeves'][:MAX_SLEEVES])]
         if b.get('run_options'): req['run_options'] = LAB._validate_run_options(b['run_options'])
         JOBS[jid] = dict(id=jid, status='queued')
         try: enqueue(run_backtest_job, jid, req)
