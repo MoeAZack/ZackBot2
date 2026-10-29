@@ -1136,6 +1136,10 @@ def test_every_registered_v2_envelope_and_run_digest_is_golden():
 APPEND_ONLY_BASE = '0944547'
 APPEND_ONLY_DIRS = ('research_evidence/prereg/', 'research_evidence/ledger/', 'research_evidence/runs/')
 APPEND_ONLY_REGISTRY = 'research_evidence/ledger/REGISTRY.jsonl'
+# Codex 6489143562: FIB-PULLBACK-02's two immutable source manifests, admitted by exact path only (manifests/ itself
+# stays closed to any other new file).
+APPEND_ONLY_EXACT = ('research_evidence/manifests/klines_1h_core20_fib02.json',
+                     'research_evidence/manifests/klines_4h_btc_fib02.json')
 
 
 def _baseline_bytes(rel: str) -> bytes:
@@ -1160,7 +1164,7 @@ def _append_only_violations(name_status: str, old_bytes, new_bytes) -> list:
         if not line.strip():
             continue
         status, _, rel = line.partition('\t')
-        if status == 'A' and rel.startswith(APPEND_ONLY_DIRS):
+        if status == 'A' and (rel.startswith(APPEND_ONLY_DIRS) or rel in APPEND_ONLY_EXACT):
             continue
         if status == 'M' and rel == APPEND_ONLY_REGISTRY and _is_line_append(old_bytes(rel), new_bytes(rel)):
             continue
@@ -1194,6 +1198,18 @@ _REG_OLD = b'{"a":1}\n{"b":2}\n'
     ('A\tresearch_evidence/runs-old/x.json\n', _REG_OLD, False),
     ('A\tresearch_evidence/ledger/REGISTRY.jsonl.bak\n', _REG_OLD, True),                       # inside ledger/, a new file
     ('A\tresearch_evidence/prereg/a.json\nM\tresearch_evidence/manifests/m.json.gz\n', _REG_OLD, False),
+    ('A\tresearch_evidence/manifests/klines_1h_core20_fib02.json\n', _REG_OLD, True),            # exact-path allowlist
+    ('A\tresearch_evidence/manifests/klines_4h_btc_fib02.json\n', _REG_OLD, True),
+    ('A\tresearch_evidence/manifests/klines_1h_core20_fib02.json\n'
+     'A\tresearch_evidence/manifests/klines_4h_btc_fib02.json\n', _REG_OLD, True),
+    ('A\tresearch_evidence/manifests/klines_1h_core20_fib03.json\n', _REG_OLD, False),           # look-alikes refused
+    ('A\tresearch_evidence/manifests/klines_1h_core20_fib02.json.gz\n', _REG_OLD, False),
+    ('A\tresearch_evidence/manifests/sub/klines_4h_btc_fib02.json\n', _REG_OLD, False),
+    ('A\tresearch_evidence/manifests/KLINES_4H_BTC_FIB02.json\n', _REG_OLD, False),
+    ('M\tresearch_evidence/manifests/klines_1h_core20_fib02.json\n', _REG_OLD, False),           # add only, never modify
+    ('D\tresearch_evidence/manifests/klines_4h_btc_fib02.json\n', _REG_OLD, False),
+    ('A\tresearch_evidence/manifests/klines_4h_btc_fib02.json\n'
+     'A\tresearch_evidence/manifests/new.json.gz\n', _REG_OLD, False),
 ])
 def test_research_evidence_is_append_only(name_status, new_registry, ok):
     old = {APPEND_ONLY_REGISTRY: _REG_OLD, 'research_evidence/ledger/range_vwap_rev.jsonl': _REG_OLD}
