@@ -117,23 +117,52 @@ def test_code_pins_match_master_files(c):
             assert hashlib.sha256(_blob_at(base, path)).hexdigest() == want, path
 
 
-F01F02_FUNCS = ('sig_ema_mom', 'sig_exp_trend', 'xup', '_one_side')
+F01F02_FUNCS = ('sig_ema_mom', 'sig_exp_trend', 'xup', '_one_side', 'X')
+F01F02_REGISTRY = ('ema_mom', 'exp_trend')         # Cowork 6492014303 G1: mgmt (stop_atr / tp_r / max_bars), sides, tf
 
 
-def _func_sources(src: str) -> dict:
+def _guarded_sources(src: str) -> dict:
+    """Source segments of the F01/F02 functions and of their STRATEGIES registry entries (the dict literals that carry
+    the management values the cells depend on)."""
     tree = ast.parse(src)
-    return {n.name: ast.get_source_segment(src, n) for n in tree.body
-            if isinstance(n, ast.FunctionDef) and n.name in F01F02_FUNCS}
+    out = {n.name: ast.get_source_segment(src, n) for n in tree.body
+           if isinstance(n, ast.FunctionDef) and n.name in F01F02_FUNCS}
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'STRATEGIES' for t in n.targets) \
+                and isinstance(n.value, ast.Dict):
+            for k, v in zip(n.value.keys, n.value.values):
+                if isinstance(k, ast.Constant) and k.value in F01F02_REGISTRY:
+                    out['STRATEGIES[%s]' % k.value] = ast.get_source_segment(src, v)
+    return out
+
+
+def _pinned_strategies_src(c) -> str:
+    return _blob_at(c['code']['master_reference'], 'strategies.py').decode('utf-8')
 
 
 def test_head_f01f02_functions_identical_to_pinned_base(c):
-    """HEAD guard (Codex 6491486092): the strategy functions this contract reproduces are byte-identical to their
-    f189ff7 definitions, so a real behaviour change still fails even though the pins are read from git."""
-    pinned = _func_sources(_blob_at(c['code']['master_reference'], 'strategies.py').decode('utf-8'))
+    """HEAD guard (Codex 6491486092, widened per Cowork 6492014303 G1): the F01/F02 strategy functions, the `X` helper
+    and the two registry entries are byte-identical to their f189ff7 definitions, so a real behaviour change still
+    fails even though the pins are read from git."""
+    pinned = _guarded_sources(_pinned_strategies_src(c))
     with open(os.path.join(ROOT, 'strategies.py'), 'rb') as fh:
-        head = _func_sources(fh.read().replace(b'\r\n', b'\n').decode('utf-8'))
-    assert set(pinned) == set(F01F02_FUNCS), sorted(pinned)
+        head = _guarded_sources(fh.read().replace(b'\r\n', b'\n').decode('utf-8'))
+    want = set(F01F02_FUNCS) | {'STRATEGIES[%s]' % k for k in F01F02_REGISTRY}
+    assert set(pinned) == want, sorted(pinned)
     assert head == pinned
+
+
+@pytest.mark.parametrize('old, new', [
+    ('mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180)', 'mgmt=dict(stop_atr=1.0, tp_r=1.0, max_bars=10)'),  # Cowork probe
+    ("fn=sig_ema_mom, sides='long'", "fn=sig_ema_mom, sides='both'"),
+    ("only when 7d and 30d returns are positive. Was slot B of the first bot.',\n                    mgmt=dict(stop_atr=2.5)),",
+     "only when 7d and 30d returns are positive. Was slot B of the first bot.',\n                    mgmt=dict(stop_atr=2.0)),"),
+    ('return s.fillna(False).astype(bool)', 'return s.fillna(True).astype(bool)'),
+])
+def test_head_guard_detects_registry_and_helper_mutations(c, old, new):
+    src = _pinned_strategies_src(c)
+    assert src.count(old) == 1, old
+    assert _guarded_sources(src.replace(old, new)) != _guarded_sources(src)
 
 
 # ------------------------------------------------------------------ window / slices / universe / costs
