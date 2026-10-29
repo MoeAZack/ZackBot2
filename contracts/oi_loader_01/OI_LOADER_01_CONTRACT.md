@@ -6,10 +6,11 @@ Background rulings: 6489828197 (N1/N2) and 6489428240 (J1–J3). Built from `ori
 
 ## 1. Code identity
 
-**Rebound (ruling 6493041460).** #225 merged as master `f8f03df` (f8f03df265dfd812becaa2a5bb9e9373490d4344).
-Every citation now points at `f8f03df`: the OI fetcher `tools/research/oi_metrics_fetch.py`, `oi_metrics_probe.py`
+**Rebound (rulings 6493041460, 6494813780).** #225 merged as master `f8f03df`; #237 then merged as master `93642d8`
+(93642d833ef0c45a3d4c143c4938f4a810421308), and the cited OI files are byte-identical across both, so the pins are unchanged.
+Every citation now points at `93642d8`: the OI fetcher `tools/research/oi_metrics_fetch.py`, `oi_metrics_probe.py`
 (which holds `CUTOFF` and `parse_key`), `manifest.py` (`canonical`) and `tests/test_oi_metrics_fetch.py`. Each is pinned
-by the sha256 of its git blob at `f8f03df` (JSON `code_identity.pinned_files`), so a moving master cannot break the
+by the sha256 of its git blob at `93642d8` (JSON `code_identity.pinned_files`), so a moving master cannot break the
 pin. The files are byte-identical to the drafted #225 head `f850323`. The contract stays DRAFT and unsigned until
 Integration signs.
 
@@ -27,7 +28,7 @@ Integration signs.
 `authoritative`, `covers()`, `missing_days == []` and `strict_complete` are each **never sufficient alone**. Cowork's
 N1/N2 partial-run shape (authoritative, complete false, one failure, `covers()` true) is refused by P2, P4 and P6.
 
-## 3. Manifest fields (`build_manifest` @ f8f03df)
+## 3. Manifest fields (`build_manifest` @ 93642d8)
 
 Pinned: `format` = `zb-oi-metrics-fetch/1`, `loader_version` = `zb-oi-metrics-raw-zip/1`, `source_class`,
 `data_root`, `series`, `mode` = `bulk`, `cutoff_exclusive` = `2026-09-28`, `gate_months` = 36, `available_rule`.
@@ -42,7 +43,7 @@ entries share a path.
 ## 4. Dates and cutoff
 
 The request is `[required_start, required_end_exclusive)`. `required_end_exclusive` may **equal** the sealed cutoff
-`2026-09-28` (last day `2026-09-27`); past it is refused (`covers` @ f8f03df). The manifest `end` is inclusive, so its
+`2026-09-28` (last day `2026-09-27`); past it is refused (`covers` @ 93642d8). The manifest `end` is inclusive, so its
 window is `[start, end + 1 day)`. Refused as ambiguous: non-ISO or basic-form dates, time- or timezone-bearing values,
 non-str bounds, impossible dates, end <= start, a null manifest start, and a request outside the manifest window.
 
@@ -86,4 +87,4 @@ authority, reading any zip or row, synthesizing a missing day.
 ## 8. Open questions for Integration
 
 None open: Q1–Q6 resolved by 6490314342, Q7 and Q8 by 6490439004. #225 has merged and the code identity is
-rebound to `f8f03df` (6493041460); signing waits only for independent evidence and Integration's signature.
+rebound to `93642d8` (6493041460, 6494813780); signing waits only for independent evidence and Integration's signature.
