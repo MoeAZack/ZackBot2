@@ -449,3 +449,14 @@ def test_a_fresh_autocrlf_clone_passes_the_manifest_check(tmp_path):
         V.ROOT = str(dst); assert V.manifest_check(rep)
     finally:
         V.ROOT = old
+
+
+def test_shallow_ci_fetches_the_f01f02_repro_pin_commit():
+    """Codex 6492724762: the FACTORY-F01F02-REPRO contract hashes `git show f189ff7:<path>` blobs, which a shallow
+    Actions checkout lacks. Both workflows that run the fast tests must fetch that exact commit and fail closed."""
+    sha = 'f189ff7ba64a4ce2a3ed0a6699f556335df33e14'
+    for name in ('verify-fast.yml', 'verify.yml'):
+        wf = WORKFLOWS[name]
+        assert f'git fetch --no-tags --depth=1 origin {sha}\n' in wf, name
+        assert f"git cat-file -e '{sha}^{{commit}}'\n" in wf, name
+        assert wf.index(f'origin {sha}') < wf.index(f"cat-file -e '{sha}"), name

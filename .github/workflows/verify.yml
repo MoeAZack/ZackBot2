@@ -65,6 +65,9 @@ jobs:
           # BT-EXEC-OBS-01 pins registered prereg bytes and the empty /2 envelope set at this immutable baseline.
           git fetch --no-tags --depth=1 origin 09445476a1bb694ee7135f350928762bc793db50
           git cat-file -e '0944547^{commit}'
+          # FACTORY-F01F02-REPRO pins its reproduced code identity as content-addressed blobs of this exact commit.
+          git fetch --no-tags --depth=1 origin f189ff7ba64a4ce2a3ed0a6699f556335df33e14
+          git cat-file -e 'f189ff7ba64a4ce2a3ed0a6699f556335df33e14^{commit}'
       - name: Fetch the breadth_static40 registration tag (annotated, peels to Y)
         run: |
           git fetch --no-tags --depth=2 origin +refs/tags/zb-breadth-static40-v1-registration-20261016:refs/tags/zb-breadth-static40-v1-registration-20261016
