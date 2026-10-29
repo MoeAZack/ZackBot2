@@ -27,9 +27,11 @@ else is policy).
               H1-H3, book DD tier, tails, causality / accounting checks); run() assembles it, never evaluates it.
   CLI         main(): the real edge05 ArchiveSource (signed manifest index) and PitRules (rules artifact bound to its
               rules-source manifest), every input file checked against an expected sha256; --max-rss-mb mandatory; a
-              dirty tree refused (no override flag). Every --authorization request is refused (no committed,
-              identity-pinned verifier exists yet; nothing is imported by name), so it runs preflight / identity /
-              metadata-coverage checks only, opens no archive, writes nothing and exits.
+              dirty tree refused (no override flag). Without --authorization it runs preflight / identity /
+              metadata-coverage checks only, opens no archive, writes nothing and exits. --authorization is checked
+              by load_authorization(), the committed verifier (nothing is imported by name): a canonical
+              zb-eval-authorization/1 artifact under research_evidence/authorizations/, byte-identical to HEAD,
+              hash-pinned by --expect-authorization-sha256 and bound to the signed contract and the code commit.
 
 Disclosures (Codex 6478332951; also emitted in every result dict and in run.json as `disclosures`):
   1. B0 is not path-identical to E: E (and the book) permanently stop re-arming a symbol after an INCOMPLETE episode,
@@ -54,6 +56,7 @@ import json
 import math
 import os
 import random
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -145,6 +148,10 @@ class BaselineIncomplete(RunnerError):
 
 class WriteRefused(RunnerError):
     pass
+
+
+class AuthorizationRefused(WriteRefused):
+    """load_authorization(): the artifact is not a committed, hash-pinned Integration authorization for this run."""
 
 
 class SourceUncovered(RunnerError):
@@ -1756,10 +1763,14 @@ class MemoryLimit(RunnerError):
 # ------------------------------------------------------------------ guarded write
 @dataclass(frozen=True)
 class EvalAuthorization:
-    """Issued only by Integration (codex) for an authorized evaluation; nothing in this module constructs one."""
+    """Issued only by Integration (codex) for an authorized evaluation; only load_authorization()
+    constructs one, from a committed, hash-pinned artifact it has verified."""
     issuer: str
     comment_id: str
     prereg_sha256: str
+    artifact_sha256: str | None = None       # set by load_authorization(); recorded, not yet bound into run.json
+    code_commit: str | None = None
+    scope: tuple = ()
 
 
 def write_result(result: dict, path: str, *, authorization: EvalAuthorization | None = None) -> str:
@@ -1870,13 +1881,98 @@ def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
             'straddle_files_never_opened': src.straddle_skipped, 'ready': not gaps and rules_ok}
 
 
-def load_authorization(path: str, pf: Preflight) -> EvalAuthorization:
-    """Fail-closed. No module is imported by name (PYTHONPATH / site-packages sit outside the dirty-tree check and
-    the frozen code identity, so any such loader would be forgeable). A real evaluation needs a committed,
-    identity-pinned verifier for a hash/signature-bound Integration authorization artifact; until Integration
-    defines one, every --authorization request is refused here."""
-    raise WriteRefused(f'no committed, identity-pinned authorization verifier exists ({path}); evaluation refused '
-                       '(preflight-only is available without --authorization)')
+AUTH_FORMAT = 'zb-eval-authorization/1'
+AUTH_DIR_REL = ('research_evidence', 'authorizations')
+AUTH_KEYS = frozenset({'format', 'candidate_id', 'prereg_sha256', 'issuer', 'comment_id', 'code_commit', 'scope'})
+AUTH_SCOPES = (('development',),)        # execute() runs the whole development window; nothing narrower exists
+_HEX = re.compile(r'[0-9a-f]+')
+
+
+def authorization_bytes(fields: dict) -> bytes:
+    """The canonical artifact bytes (canon(fields) + LF) Integration commits; no EvalAuthorization is made here."""
+    return canon(fields) + b'\n'
+
+
+def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = None, repo: str = REPO,
+                       git=None) -> EvalAuthorization:
+    """The committed, identity-pinned verifier. Fail-closed (AuthorizationRefused) unless ALL hold:
+      * pin     expect_sha256 (CLI --expect-authorization-sha256) is 64 lowercase hex and equals sha256(file bytes);
+      * place   the real path sits directly under <repo>/research_evidence/authorizations/ (no symlink escape);
+      * commit  the path is tracked and its LF-normalised bytes equal `git show HEAD:<path>`; HEAD is the preflight
+                commit; artifact.code_commit is HEAD or an ancestor and `git diff --name-only code_commit HEAD` is
+                exactly this artifact (the artifact cannot name the commit that contains it, so Integration commits
+                it on top of the code commit it authorizes, and nothing else may change in between);
+      * form    the bytes are canonical (authorization_bytes), keys exactly AUTH_KEYS, format zb-eval-authorization/1,
+                candidate_id this candidate, prereg_sha256 == the signed contract hash, issuer 'codex', comment_id
+                ASCII digits (the issuing GitHub comment), code_commit 40 lowercase hex, scope ['development'].
+    No module is imported by name (PYTHONPATH / site-packages sit outside the dirty-tree check and the frozen code
+    identity, so any such loader would be forgeable). `git(*args) -> stdout` is injectable for tests; the returned
+    token records artifact_sha256 / code_commit / scope (run.json still binds issuer + comment_id only)."""
+    def refuse(why):
+        raise AuthorizationRefused(f'authorization refused ({path}): {why}')
+
+    def real_git(*a):
+        try:
+            return subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, encoding='utf-8',
+                                  check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as e:
+            refuse(f'git {a[0]} failed ({e})')
+    g = git or real_git
+    if not isinstance(expect_sha256, str) or len(expect_sha256) != 64 or not _HEX.fullmatch(expect_sha256):
+        refuse('--expect-authorization-sha256 (64 lowercase hex) is required')
+    root = os.path.realpath(_p(repo, AUTH_DIR_REL))
+    real = os.path.realpath(path)
+    if os.path.dirname(real) != root or not os.path.isfile(real):
+        refuse(f'the artifact must be a file directly under {"/".join(AUTH_DIR_REL)}/')
+    with open(real, 'rb') as f:
+        raw = f.read()
+    if sha(raw) != expect_sha256:
+        refuse(f'file sha256 {sha(raw)} != expected {expect_sha256}')
+    rel = '/'.join(AUTH_DIR_REL + (os.path.basename(real),))
+    if g('ls-files', '--', rel).strip() != rel:
+        refuse('the artifact is not tracked (commit it)')
+    body = raw.replace(b'\r\n', b'\n')
+    if g('show', f'HEAD:{rel}').replace('\r\n', '\n').encode('utf-8') != body:
+        refuse('the working-tree artifact differs from HEAD (modified or uncommitted)')
+    head = g('rev-parse', 'HEAD').strip()
+    if head != pf.code.get('commit'):
+        refuse(f'HEAD {head} is not the preflight commit {pf.code.get("commit")}')
+
+    def no_dupes(pairs):
+        keys = [k for k, _ in pairs]
+        if len(set(keys)) != len(keys):
+            refuse('duplicate key')
+        return dict(pairs)
+    try:
+        d = json.loads(body.decode('ascii'), object_pairs_hook=no_dupes)
+    except (UnicodeDecodeError, ValueError):
+        refuse('not ASCII JSON')
+    if not isinstance(d, dict) or set(d) != AUTH_KEYS:
+        refuse(f'keys must be exactly {sorted(AUTH_KEYS)}')
+    if authorization_bytes(d) != body:
+        refuse('not canonical (sorted keys, compact separators, ASCII, one trailing LF)')
+    if d['format'] != AUTH_FORMAT or d['candidate_id'] != CANDIDATE:
+        refuse('wrong format / candidate_id')
+    if d['prereg_sha256'] != pf.prereg_sha256:
+        refuse('prereg_sha256 is not the signed contract hash')
+    if d['issuer'] != 'codex':
+        refuse('issuer is not codex (Integration)')
+    cid, cc, scope = d['comment_id'], d['code_commit'], d['scope']
+    if not isinstance(cid, str) or not cid.isascii() or not cid.isdigit():
+        refuse('comment_id must be an ASCII-digit string')
+    if not isinstance(cc, str) or len(cc) != 40 or not _HEX.fullmatch(cc):
+        refuse('code_commit must be 40 lowercase hex')
+    if not isinstance(scope, list) or tuple(scope) not in AUTH_SCOPES:
+        refuse(f'scope must be one of {[list(x) for x in AUTH_SCOPES]}')
+    if cc != head:
+        try:
+            g('merge-base', '--is-ancestor', cc, head)
+        except AuthorizationRefused:
+            refuse(f'code_commit {cc} is not an ancestor of HEAD')
+        if sorted(x for x in g('diff', '--name-only', cc, head).split('\n') if x.strip()) != [rel]:
+            refuse(f'code_commit {cc} differs from HEAD in more than this artifact')
+    return EvalAuthorization('codex', cid, d['prereg_sha256'], artifact_sha256=expect_sha256, code_commit=cc,
+                             scope=tuple(scope))
 
 
 def _runlock(out: str, universe: str, argv):
@@ -1906,6 +2002,7 @@ def main(argv=None, *, _inject=None) -> int:
     ap.add_argument('--expect-straddle-daily-sha256')
     ap.add_argument('--cache-months', type=int, default=512)
     ap.add_argument('--authorization', help='Integration evaluation authorization; without it only preflight runs')
+    ap.add_argument('--expect-authorization-sha256', help='sha256 of the committed authorization artifact')
     ap.add_argument('--out', help='run directory (authorized runs only)')
     a = ap.parse_args(argv)
     try:
@@ -1928,7 +2025,8 @@ def main(argv=None, *, _inject=None) -> int:
         if not a.authorization:
             print(json.dumps(report, sort_keys=True, indent=1))
             return 0
-        tok = (inj.get('authorize') or load_authorization)(a.authorization, pf)
+        tok = inj['authorize'](a.authorization, pf) if inj.get('authorize') else \
+            load_authorization(a.authorization, pf, expect_sha256=a.expect_authorization_sha256)
         if not isinstance(tok, EvalAuthorization) or tok.issuer != 'codex' or \
                 tok.prereg_sha256 != pf.prereg_sha256 or not str(tok.comment_id).isdigit():
             raise WriteRefused('no Integration token for this signed contract')

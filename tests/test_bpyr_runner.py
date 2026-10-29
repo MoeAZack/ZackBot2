@@ -401,7 +401,8 @@ def test_run_is_in_memory_without_verdict_and_writes_are_refused(pf, tmp_path):
         R.write_result(res, str(tmp_path / 'verdict.json'), authorization=ok)
     assert not out.exists()
     src = (ROOT / 'tools' / 'research' / 'bpyr_runner.py').read_text(encoding='utf-8')
-    assert 'EvalAuthorization(' not in src                                  # nothing in the runner issues a token
+    body = src[src.index('def load_authorization('):src.index('def _runlock(')]
+    assert src.count('EvalAuthorization(') == body.count('EvalAuthorization(') == 1   # only the verifier issues one
 
 
 # ================================================================== slice 2
@@ -1333,7 +1334,10 @@ def test_cli_never_evaluates_without_an_integration_loader(cli_inputs, capsys, t
     auth = tmp_path / 'auth.json'
     auth.write_text('{}')
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3
-    assert 'identity-pinned authorization verifier' in capsys.readouterr().err and not out.exists()
+    assert 'expect-authorization-sha256' in capsys.readouterr().err and not out.exists()
+    assert _cli(cli_inputs, '--authorization', str(auth), '--expect-authorization-sha256', R.file_sha(str(auth)),
+                '--out', str(out)) == 3                                 # the real verifier: outside the committed dir
+    assert 'research_evidence/authorizations/' in capsys.readouterr().err and not out.exists()
     for name in ('bpyr_eval_authorization', 'bpyr_auth'):                # a module planted on sys.path is never used
         monkeypatch.setitem(sys.modules, name, SimpleNamespace(load=lambda p, h: AUTH(pf)))
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3 and not out.exists()
@@ -1455,3 +1459,111 @@ def test_run_assembles_gate_inputs_and_never_decides(pf, tmp_path):
         R.write_result(dict(res, verdict='x'), str(tmp_path / 'r2.json'), authorization=ok)
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(tmp_path / 'r3.json'), authorization=R.EvalAuthorization('cowork', '1', pf.prereg_sha256))
+
+
+# ---- 4. load_authorization: the committed, identity-pinned verifier (temp git repo; no real artifact is committed)
+import subprocess                                                                           # noqa: E402
+
+
+def _git(repo, *a):
+    return subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t', '-c',
+                           'core.autocrlf=false', '-c', 'commit.gpgsign=false', *a],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _auth_repo(tmp_path, pf, name='a.json', drop=(), between=False, raw=None, **over):
+    """code commit c0, then (optionally an unrelated change, then) the artifact committed on top -> HEAD."""
+    repo = tmp_path / 'repo'
+    d = repo / 'research_evidence' / 'authorizations'
+    d.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    (repo / 'code.py').write_text('x = 1\n')
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'code')
+    c0 = _git(repo, 'rev-parse', 'HEAD').strip()
+    if between:
+        (repo / 'code.py').write_text('x = 2\n')
+    fields = {'format': R.AUTH_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256,
+              'issuer': 'codex', 'comment_id': '6478332951', 'code_commit': c0, 'scope': ['development']}
+    fields.update(over)
+    for k in drop:
+        del fields[k]
+    f = d / name
+    f.write_bytes(raw if raw is not None else R.authorization_bytes(fields))
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'auth')
+    head = _git(repo, 'rev-parse', 'HEAD').strip()
+    return repo, f, R.Preflight(pf.prereg, pf.prereg_sha256, dict(pf.code, commit=head), pf.sources), c0
+
+
+def _load(repo, f, pf_, sha=None):
+    return R.load_authorization(str(f), pf_, expect_sha256=sha or R.file_sha(str(f)), repo=str(repo))
+
+
+def test_load_authorization_accepts_a_committed_pinned_artifact(tmp_path, pf):
+    repo, f, pf_, c0 = _auth_repo(tmp_path, pf)
+    tok = _load(repo, f, pf_)
+    assert isinstance(tok, R.EvalAuthorization)
+    assert (tok.issuer, tok.comment_id, tok.prereg_sha256) == ('codex', '6478332951', pf.prereg_sha256)
+    assert tok.artifact_sha256 == R.file_sha(str(f)) and tok.code_commit == c0 and tok.scope == ('development',)
+    assert tok == R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256, R.file_sha(str(f)), c0, ('development',))
+    assert not list(ROOT.glob('research_evidence/authorizations/*'))     # no real artifact is committed
+
+
+@pytest.mark.parametrize('over, drop, why', [
+    ({'prereg_sha256': '0' * 64}, (), 'signed contract hash'),
+    ({'issuer': 'cowork'}, (), 'issuer'),
+    ({'comment_id': '64x1'}, (), 'comment_id'),
+    ({'comment_id': 6478332951}, (), 'comment_id'),
+    ({'code_commit': 'f' * 40}, (), 'not an ancestor'),
+    ({'code_commit': 'F' * 40}, (), 'code_commit'),
+    ({'scope': ['S1']}, (), 'scope'),
+    ({'candidate_id': 'other.v1'}, (), 'candidate_id'),
+    ({'format': 'zb-eval-authorization/2'}, (), 'format'),
+    ({'extra': 1}, (), 'keys must be exactly'),
+    ({}, ('scope',), 'keys must be exactly'),
+])
+def test_load_authorization_refuses_bad_fields(tmp_path, pf, over, drop, why):
+    repo, f, pf_, _ = _auth_repo(tmp_path, pf, drop=drop, **over)
+    with pytest.raises(R.AuthorizationRefused, match=why):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_refuses_unpinned_uncommitted_or_misplaced_files(tmp_path, pf):
+    repo, f, pf_, c0 = _auth_repo(tmp_path, pf)
+    with pytest.raises(R.AuthorizationRefused, match='sha256'):                     # hash mismatch
+        _load(repo, f, pf_, sha='0' * 64)
+    for bad in (None, 'A' * 64, 'abc'):
+        with pytest.raises(R.AuthorizationRefused, match='expect-authorization-sha256'):
+            R.load_authorization(str(f), pf_, expect_sha256=bad, repo=str(repo))
+    u = f.with_name('b.json')                                                       # untracked
+    u.write_bytes(f.read_bytes())
+    with pytest.raises(R.AuthorizationRefused, match='not tracked'):
+        _load(repo, u, pf_)
+    out = repo / 'a.json'                                                           # outside the directory
+    out.write_bytes(f.read_bytes())
+    with pytest.raises(R.AuthorizationRefused, match='directly under'):
+        _load(repo, out, pf_)
+    with pytest.raises(R.AuthorizationRefused, match='directly under'):            # missing file
+        _load(repo, f.with_name('nope.json'), pf_, sha='0' * 64)
+    other = R.Preflight(pf_.prereg, pf_.prereg_sha256, dict(pf_.code, commit=c0), pf_.sources)
+    with pytest.raises(R.AuthorizationRefused, match='preflight commit'):          # HEAD is not the preflight commit
+        _load(repo, f, other)
+    f.write_bytes(f.read_bytes().replace(b'6478332951', b'6478332952'))             # modified after commit
+    with pytest.raises(R.AuthorizationRefused, match='differs from HEAD'):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_refuses_code_drift_and_non_canonical_bytes(tmp_path, pf):
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'drift', pf, between=True)              # code changed after code_commit
+    with pytest.raises(R.AuthorizationRefused, match='more than this artifact'):
+        _load(repo, f, pf_)
+    fields = {'format': R.AUTH_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256,
+              'issuer': 'codex', 'comment_id': '1', 'code_commit': '0' * 40, 'scope': ['development']}
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'pretty', pf, raw=json.dumps(fields, indent=1).encode())
+    with pytest.raises(R.AuthorizationRefused, match='canonical'):
+        _load(repo, f, pf_)
+    dup = R.authorization_bytes(fields)[:-2] + b',"issuer":"codex"}\n'
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'dup', pf, raw=dup)
+    with pytest.raises(R.AuthorizationRefused, match='duplicate'):
+        _load(repo, f, pf_)
