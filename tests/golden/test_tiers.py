@@ -173,7 +173,7 @@ def test_ci_runs_core_per_commit_and_both_tiers_at_the_full_gate():
     `tests`) = pytest on every test -> core + extended. `slow` is a registered marker."""
     rd = lambda *p: open(os.path.join(REPO_ROOT, *p), encoding='utf-8').read()
     v = rd('verify.py')
-    assert "pytest_step(rep, 'tests (fast set: -m \"not slow\")', ['-m', 'not slow', 'tests'], 2400)" in v
+    assert "pytest_step(rep, 'tests (fast set: -m \"not slow\")', ['-m', 'not slow', '-n', '4', '--dist', 'loadfile', 'tests'], 3600)" in v
     assert "('tests (all)', lambda rep: pytest_step(rep, 'tests (all)', ['tests'], 3600))" in v
     assert "'tests': ['tests (all)']" in rd('verify_ci.py')
     assert 'python verify.py fast' in rd('.github', 'workflows', 'verify-fast.yml')

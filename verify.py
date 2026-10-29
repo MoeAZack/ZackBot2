@@ -361,9 +361,10 @@ def main():
     static_checks(rep)
     manifest_check(rep)
     if a.level == 'fast':
-        # The fast set now runs close to 30 minutes on GitHub's shared Linux runners. Keep the
-        # workflow's 45-minute outer limit, but leave enough headroom for normal runner variance.
-        pytest_step(rep, 'tests (fast set: -m "not slow")', ['-m', 'not slow', 'tests'], 2400)
+        # Serially the fast set runs 33-40 minutes on GitHub's shared Linux runners. Four pytest-xdist workers
+        # (loadfile keeps each module's fixtures on one worker) ran the identical test set in 10-18 minutes
+        # (Codex 6498193748, 6499534889). The 3600 s step and the workflow's 70-minute outer limit stay as backstop.
+        pytest_step(rep, 'tests (fast set: -m "not slow")', ['-m', 'not slow', '-n', '4', '--dist', 'loadfile', 'tests'], 3600)
         installer_mode(rep, 'preflight', 600)
     else:
         run_full_plan(rep)
