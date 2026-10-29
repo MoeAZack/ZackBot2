@@ -213,6 +213,9 @@ def test_settlement_clears_the_index_entry_exactly_once(on, monkeypatch):
     assert e._candidate_pending_clear(row) is False and e.state[E.CANDIDATE_PENDING_KEY] == {}
     assert e.candidate_guard(now=t) == [] and e.candidate_guard(now=t) == []
     assert slot(e, F01)['enabled'] and slot(e, F02)['enabled']
+    from test_safety import mk_engine
+    e2, _ = mk_engine(on[1])                                 # restart WITHOUT an explicit save: the clear itself persisted
+    assert e2.state.get(E.CANDIDATE_PENDING_KEY) == {}
 
 
 def test_the_guard_reconciles_a_settled_row_still_in_history(on, monkeypatch):
@@ -223,6 +226,9 @@ def test_the_guard_reconciles_a_settled_row_still_in_history(on, monkeypatch):
     row['_settled'] = True                                   # settled without passing the hook (e.g. an older build)
     assert e.candidate_guard(now=E.pd.Timestamp(row['closed']).timestamp() + 10 * 3600) == []
     assert e.state[E.CANDIDATE_PENDING_KEY] == {}
+    from test_safety import mk_engine
+    e2, _ = mk_engine(on[1])                                 # restart WITHOUT an explicit save: the reconciliation persisted
+    assert e2.state.get(E.CANDIDATE_PENDING_KEY) == {}
 
 
 def test_a_pending_non_candidate_close_never_enters_the_index(on):

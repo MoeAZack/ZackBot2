@@ -2829,6 +2829,7 @@ class Engine:
         if not isinstance(idx, dict) or row.get('id') not in idx: return False
         if AC.row_view(row)['status'] not in ('measured', 'acknowledged'): return False
         idx.pop(row['id'], None)
+        self.save_state()        # durable at once (blocker 6508164005-2): a failed save leaves the entry on disk = fail closed
         return True
 
     def save_state(self):
