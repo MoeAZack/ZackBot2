@@ -24,6 +24,12 @@ Sealed boundary: every source read is clipped to its split and refused at or aft
 before and after the read (HoldoutRefused). Archive months that straddle the cutoff are never opened. Calibration and
 holdout splits are never evaluated.
 
+Prospective rules (development only, Codex ruling 6495672591): `--prospective-rules <committed raw exchangeInfo>` +
+`--expect-prospective-rules-sha256` replaces the PIT artifact with ONE committed snapshot's current-rule tuples for every
+interval of every symbol, bypassing only the `as_of <= interval start` causality requirement. Fail-closed (tracked,
+bytes == HEAD, sha256 bound; never combined with the PIT arguments); its mode, sha256 and path are bound in identity
+and every day line and the summary carry `non_promotable_rules: prospective`. Never historical promotability evidence.
+
 No network, no exchange ids, no ledger write (Integration owns the ledger), no wall clock in any result byte.
 """
 from __future__ import annotations
@@ -133,6 +139,16 @@ CONVENTIONS = {
                             'field or duplicated filter type, makes the interval unsupported (never defaulted); an '
                             'interval whose claimed tuple differs from the parsed tuple refuses the artifact. The '
                             'canonical per-symbol tuple digest of every parsed snapshot is bound in identity',
+    'prospective_rules': 'development-only mode (Codex ruling 6495672591): --prospective-rules names ONE raw '
+                         'exchangeInfo snapshot that must be tracked in the repo with bytes == HEAD and sha256 == '
+                         '--expect-prospective-rules-sha256; every interval of every symbol uses the tuple parsed from '
+                         'it by snapshot_rule_values (current-rule feasibility); only the as_of <= interval start '
+                         'causality requirement is bypassed. Mutually exclusive with --rules-artifact / '
+                         '--rules-source-manifest. A symbol absent from the snapshot, a missing/non-numeric field or a '
+                         'non-positive limit is a counted skip (episodes rules_uncovered, never defaulted). Mode, '
+                         'snapshot sha256 and path are bound in identity; every day line and the summary carry '
+                         'non_promotable_rules=prospective and every promotion flag is false. Valid for development '
+                         'screening and isolated PAPER decisions only, never historical promotability or live evidence',
     'amendment': 'no ad-hoc end: the only shortened end is a signed zb-edge05-amendment/1 record for this exact '
                  'prereg, loaded with --expect-amendment-sha256, its sha256 and dev_end bound in identity',
     'codex_rulings_r4': {'AGE-ONLY-NO-COHORT-REPORTED': 'a no-cohort day caused only by listing age is counted and '
@@ -768,6 +784,95 @@ class PitRules:
         if not self.provenance.covered(sym, 'rules', t, t + 1):
             raise Incomplete('provenance_uncovered', t)
         return self.at(sym, t)
+
+
+PROSPECTIVE = 'prospective'
+PROSPECTIVE_RULING = '6495672591'
+
+
+class ProspectiveRules:
+    """Development-only current-rule feasibility (Codex ruling 6495672591): ONE committed raw exchangeInfo snapshot
+    supplies the tuple for every interval of every symbol. Only the PIT causality requirement (as_of <= interval start)
+    is bypassed; fields are parsed exactly as `snapshot_rule_tuple`. Every skip is counted and bound in identity."""
+
+    mode = PROSPECTIVE
+
+    def __init__(self, raw: bytes, rel: str, symbols):
+        self.sha256, self.rel = sha(raw), rel
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            raise RunnerError('prospective rules snapshot is not JSON') from None
+        tuples = snapshot_tuples(doc, set(symbols))
+        self._rule, self.skips = {}, {}
+        for s in symbols:
+            t = tuples.get(s, False)
+            if t is False:
+                self.skips[s] = 'absent_from_snapshot'
+            elif t is None:
+                self.skips[s] = 'missing_or_non_numeric_field'
+            else:
+                r = dict(zip(RULE_KEYS, t))
+                if not all(math.isfinite(v) for v in t) or r['tick'] <= 0 or r['step'] <= 0 or r['min_qty'] < 0 \
+                        or r['min_notional'] < 0 or r['max_qty'] <= 0 or r['max_notional'] <= 0:
+                    self.skips[s] = 'invalid_value'
+                else:
+                    self._rule[s] = dict(r, snapshot=rel)
+        self.digest = sha(canon({s: [r[k] for k in RULE_KEYS] for s, r in sorted(self._rule.items())}))
+        self.source = {'kind': 'committed-exchangeinfo-snapshot', 'path': rel, 'sha256': self.sha256}
+
+    @classmethod
+    def load(cls, path: str, expect_sha256: str | None, symbols, repo: str = M.REPO,
+             max_mb: float | None = None) -> 'ProspectiveRules':
+        if not expect_sha256 or not HEX64.match(str(expect_sha256)):
+            raise RunnerError('--prospective-rules needs --expect-prospective-rules-sha256')
+        ap = os.path.realpath(path)
+        rel = os.path.relpath(ap, os.path.realpath(repo)).replace(os.sep, '/')
+        if rel == '..' or rel.startswith('../') or os.path.isabs(rel):
+            raise RunnerError('prospective rules snapshot must be a file inside the repo')
+        try:
+            size = os.path.getsize(ap)
+        except OSError:
+            raise RunnerError('prospective rules snapshot: file missing') from None
+        if size > SNAPSHOT_MAX_BYTES:
+            raise RunnerError(f'prospective rules snapshot: {size} bytes exceeds the {SNAPSHOT_MAX_BYTES} bound')
+        if max_mb is not None and size * SNAPSHOT_EXPAND > (max_mb - rss_mb()) * 2 ** 20:
+            raise MemoryLimit('prospective rules snapshot: parsing would exceed --max-rss-mb; refused before reading')
+        with open(ap, 'rb') as fh:
+            raw = fh.read()
+        if sha(raw) != expect_sha256:
+            raise RunnerError('prospective rules snapshot sha256 differs from --expect-prospective-rules-sha256')
+        try:
+            subprocess.run(['git', '-C', repo, 'ls-files', '--error-unmatch', '--', rel], capture_output=True,
+                           check=True)
+            head = subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel}'], capture_output=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            raise RunnerError(f'prospective rules snapshot {rel} is not committed (untracked or absent at HEAD)') \
+                from None
+        if head != raw:
+            raise RunnerError(f'prospective rules snapshot {rel}: working bytes differ from HEAD (modified)')
+        return cls(raw, rel, symbols)
+
+    def identity(self) -> dict:
+        return {'mode': PROSPECTIVE, 'ruling': PROSPECTIVE_RULING, 'non_promotable_rules': PROSPECTIVE,
+                'snapshot_path': self.rel, 'sha256': self.sha256, 'rules_source': dict(self.source),
+                'causality': 'bypassed (current-rule feasibility; snapshot as_of not <= interval start)',
+                'symbols_with_rules': len(self._rule), 'skipped_symbols': dict(sorted(self.skips.items())),
+                'skipped_by_reason': {r: sum(1 for v in self.skips.values() if v == r)
+                                      for r in sorted(set(self.skips.values()))},
+                'snapshot_tuple_digest': self.digest}
+
+    def at(self, sym: str, t: int):
+        r = self._rule.get(sym)
+        return dict(r) if r is not None else None
+
+    def lookup(self, sym: str, t: int):
+        """The snapshot rule for every t; None (-> rules_uncovered, counted) for a skipped symbol."""
+        return self.at(sym, t)
+
+
+def is_prospective(rules) -> bool:
+    return isinstance(rules, ProspectiveRules)
 
 
 # ------------------------------------------------------------------ guarded source
@@ -1523,7 +1628,8 @@ def identity_doc(prereg_raw: bytes, symbols, rules, source_identity: dict, keys,
             'source': source_identity, 'splits': list(keys), 'code': code,
             'holdout_freeze_record_sha256': freeze_sha, 'conventions': CONVENTIONS,
             'slip': {'c': SLIP_C_CRYPTO, 'floor_bps': SLIP_FLOOR_BPS}, 'rows': list(ROWS),
-            'boundaries': {'holdout_read': False, 'ledger_written': False, 'mainnet': False}}
+            'boundaries': {'holdout_read': False, 'ledger_written': False, 'mainnet': False},
+            **({'rules_mode': PROSPECTIVE, 'non_promotable_rules': PROSPECTIVE} if is_prospective(rules) else {})}
 
 
 def iter_verified(path: str, run_digest: str, plan_keys=None):
@@ -1614,6 +1720,8 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
         rep = dry_report(guard, symbols, rules, schedule, plan, prm, ident)
         rep['straddle_unresolved_from'] = S.utc(straddle_from) if straddle_open else None
         rep['expected_artifact_mismatch'] = mism
+        if is_prospective(rules):
+            rep['rules_mode'] = rep['non_promotable_rules'] = PROSPECTIVE
         return rep
     if straddle_open:
         raise RunnerError(f'archive months from {S.utc(straddle_from)} straddle the sealed cutoff and are never '
@@ -1664,6 +1772,8 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
             guard.scope(lo, hi)
             rec = run_day(guard, symbols, D, k, prm, rules, hi, check)
             check()
+            if is_prospective(rules):
+                rec['non_promotable_rules'] = PROSPECTIVE
             rec['run'], rec['prev'] = run_digest, prev
             prev = rec['hash'] = sha(canon(rec))
             _fsync_append(fh, canon(rec) + b'\n')
@@ -1676,12 +1786,34 @@ def run(outdir: str, src, symbols, rules, prereg: dict, prereg_raw: bytes, *, ma
     summ['dev_end'] = ident['dev_end']
     summ['dev_end_excluded_days'] = excluded
     summ['identity_sha256'] = run_digest
+    if is_prospective(rules):
+        _label_prospective(summ, rules)
     sp = os.path.join(outdir, 'summary.json')
     tmp = sp + '.tmp'
     with open(tmp, 'wb') as fh:
         _fsync_append(fh, json.dumps(summ, sort_keys=True, indent=1, allow_nan=False).encode('ascii') + b'\n')
     os.replace(tmp, sp)
     return summ
+
+
+def _label_prospective(summ: dict, rules) -> None:
+    """Prospective-rules packet: labelled non-promotable; every promotion flag forced false (computed value kept)."""
+    def walk(o):
+        if isinstance(o, dict):
+            for k in list(o):
+                if k.startswith(('promotion', 'promotable')) and isinstance(o[k], bool):
+                    o[k + '_computed'], o[k] = o[k], False
+                else:
+                    walk(o[k])
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+    walk(summ)
+    summ['labels'] = ['PROSPECTIVE-EXCHANGE-RULES' if x == 'PIT-EXCHANGE-RULES' else x for x in summ['labels']]
+    summ['rules_mode'] = summ['non_promotable_rules'] = PROSPECTIVE
+    summ['promotable'] = False
+    summ['rules_snapshot'] = {'path': rules.rel, 'sha256': rules.sha256}
+    summ['rules_skips'] = {'skipped_symbols': dict(sorted(rules.skips.items())), 'count': len(rules.skips)}
 
 
 def dry_report(guard: Guard, symbols, rules, schedule, plan, prm, ident) -> dict:
@@ -2197,6 +2329,9 @@ def main(argv=None) -> int:
     ap.add_argument('--expect-rules-source-sha256', help='sha256 of the rules-source manifest')
     ap.add_argument('--rules-snapshot-root', help='directory the rules-source manifest paths are relative to '
                                                   '(default: the manifest\'s directory)')
+    ap.add_argument('--prospective-rules', help='DEVELOPMENT ONLY (ruling 6495672591): one committed raw exchangeInfo '
+                                                'snapshot used for every interval; non-promotable')
+    ap.add_argument('--expect-prospective-rules-sha256', help='sha256 of the committed prospective rules snapshot')
     ap.add_argument('--straddle-daily-manifest', help=f'daily archive list for the straddle ({SOURCE_MANIFEST_FORMAT})')
     ap.add_argument('--expect-straddle-daily-sha256', help='sha256 of the straddle daily source manifest')
     ap.add_argument('--straddle-artifact', help=f'hash-bound pre-cutoff rows of the straddle month ({STRADDLE_FORMAT})')
@@ -2215,10 +2350,19 @@ def main(argv=None) -> int:
         if file_sha(uni) != prereg['source']['universe_sha256']:
             raise RunnerError('universe artifact hash differs from the prereg')
         symbols = CV.load_universe(uni)
+        if a.prospective_rules and (a.rules_artifact or a.rules_source_manifest or a.expect_rules_sha256
+                                    or a.expect_rules_source_sha256 or a.rules_snapshot_root):
+            raise RunnerError('--prospective-rules is mutually exclusive with the PIT rules arguments')
+        if a.expect_prospective_rules_sha256 and not a.prospective_rules:
+            raise RunnerError('--expect-prospective-rules-sha256 without --prospective-rules')
         rsrc = SourceManifest.load(a.rules_source_manifest, a.expect_rules_source_sha256,
                                    'binance-um-exchangeinfo-snapshots', a.rules_snapshot_root) \
             if a.rules_source_manifest else None
         rules = PitRules.load(a.rules_artifact, rsrc, a.max_rss_mb) if a.rules_artifact else None
+        if a.prospective_rules:
+            rules = ProspectiveRules.load(a.prospective_rules, a.expect_prospective_rules_sha256, symbols,
+                                          max_mb=a.max_rss_mb)
+            a.expect_rules_sha256 = rules.sha256
         man = os.path.join(M.REPO, *prereg['source']['manifest'].split('/'))
         src = ArchiveSource(man, a.store, symbols, prm.cutoff_ms, a.cache_months)
         if a.straddle_artifact:
