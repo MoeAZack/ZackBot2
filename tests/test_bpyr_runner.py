@@ -1686,3 +1686,281 @@ def test_run_json_binds_the_complete_authorization_and_resume_under_another_fail
         with pytest.raises(R.RunnerError, match='identity'):
             _execute(pf, out, authorization=dataclasses.replace(AUTH(pf), **{k: v}))
     assert _execute(pf, out, stop_after=1)['symbols_done'] == 2           # the same authorization resumes
+
+
+# ---- BPYR-INPUTS-01 (Codex ruling 6497964865 item 1): prospective rules + listing-aware coverage
+RAW_SNAP_REL = 'research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json'
+RAW_SNAP_SHA = 'b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83'
+WARM = R.iso_ms('2020-02-03T00:00:00Z')
+SEP1 = R.iso_ms('2026-09-01T00:00:00Z')
+LATE = 'AVAXUSDT'                                                   # synthetic listing 2020-09-23, like the real one
+LATE_L = R.iso_ms('2020-09-23T07:00:00Z')
+EARLY_L = R.iso_ms('2020-01-31T08:00:00Z')
+
+
+def _next_ym(ym):
+    y, m = map(int, ym.split('-'))
+    return f'{y + m // 12:04d}-{m % 12 + 1:02d}'
+
+
+def _snap_entry(sym, onboard=None, drop_field=False):
+    by = {}
+    for k, (ft, key) in FILTER_OF.items():
+        by.setdefault(ft, {'filterType': ft})[key] = repr(float(FULL_RULE[k]))
+    if drop_field:
+        del by['MARKET_LOT_SIZE']['maxQty']
+    e = {'symbol': sym, 'status': 'TRADING', 'filters': [by[ft] for ft in sorted(by)]}
+    if onboard is not None:
+        e['onboardDate'] = onboard
+    return e
+
+
+def _pro_repo(tmp_path, onboard, drop=(), strip=(), commit=True):
+    """A throwaway git repo holding one synthetic raw exchangeInfo snapshot: (repo, path, sha256)."""
+    repo = tmp_path / 'repo'
+    repo.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    ents = [_snap_entry(s, onboard.get(s, EARLY_L), s in strip) for s in FIXED if s not in drop]
+    raw = E5.canon({'timezone': 'UTC', 'symbols': ents})
+    p = repo / 'snap.json'
+    p.write_bytes(raw)
+    if commit:
+        _git(repo, 'add', 'snap.json')
+        _git(repo, 'commit', '-qm', 's')
+    return repo, p, R.sha(raw)
+
+
+def _pro(tmp_path, onboard=None, **kw):
+    repo, p, h = _pro_repo(tmp_path, {LATE: LATE_L} if onboard is None else onboard, **kw)
+    return R.ProspectiveRules.load(str(p), h, FIXED, repo=str(repo))
+
+
+def test_prospective_rules_accept_a_committed_snapshot_and_count_skips(tmp_path):
+    pr = _pro(tmp_path, onboard={LATE: LATE_L, 'BNBUSDT': 'x', 'ADAUSDT': True}, drop=('ETHUSDT',),
+              strip=('SOLUSDT',))
+    ident = pr.identity()
+    assert ident['mode'] == ident['non_promotable_rules'] == 'prospective' and ident['ruling'] == '6497964865'
+    assert ident['snapshot_path'] == 'snap.json' and ident['rules_source']['sha256'] == ident['sha256']
+    assert ident['skipped_symbols'] == {'ETHUSDT': 'absent_from_snapshot', 'SOLUSDT': 'missing_or_non_numeric_field'}
+    assert ident['symbols_with_rules'] == 15
+    assert ident['listing_skips'] == {'ADAUSDT': 'onboard_date_missing_or_invalid', 'BNBUSDT':
+                                      'onboard_date_missing_or_invalid', 'ETHUSDT': 'absent_from_snapshot'}
+    assert ident['onboard_dates'][LATE] == '2020-09-23T07:00:00Z' and pr.listing_ms('ADAUSDT') is None
+    at = R.rules_of(pr)
+    assert at('BTCUSDT', 0) == at('BTCUSDT', SEALED) and at('BTCUSDT', 0)['max_qty'] == 1e9   # causality bypassed
+    assert at('ETHUSDT', T0) is None and at('SOLUSDT', T0) is None                         # never defaulted
+    assert R.rules_identity(at)['sha256'] == ident['sha256'] and R.is_prospective(at)
+
+
+def test_prospective_rules_refuse_uncommitted_modified_swapped_or_unbound_snapshots(tmp_path):
+    repo, p, h = _pro_repo(tmp_path / 'a', {}, commit=False)
+    with pytest.raises(R.RunnerError, match='not committed'):
+        R.ProspectiveRules.load(str(p), h, FIXED, repo=str(repo))
+    repo, p, h = _pro_repo(tmp_path / 'b', {})
+    for bad in (None, '', 'xyz', h.upper()):
+        with pytest.raises(R.RunnerError, match='expect-prospective-rules-sha256'):
+            R.ProspectiveRules.load(str(p), bad, FIXED, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='differs from --expect-prospective'):          # hash swap
+        R.ProspectiveRules.load(str(p), RAW_SNAP_SHA, FIXED, repo=str(repo))
+    p.write_bytes(p.read_bytes().replace(b'"1000000000.0"', b'"9000000000.0"', 1))
+    with pytest.raises(R.RunnerError, match='differs from --expect-prospective'):          # modified, old hash
+        R.ProspectiveRules.load(str(p), h, FIXED, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):                           # modified and re-bound
+        R.ProspectiveRules.load(str(p), R.sha(p.read_bytes()), FIXED, repo=str(repo))
+    _git(repo, 'checkout', '--', 'snap.json')
+    p.write_bytes(p.read_bytes() + b'\r\n')
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):                           # raw bytes, no text folding
+        R.ProspectiveRules.load(str(p), R.sha(p.read_bytes()), FIXED, repo=str(repo))
+    out = tmp_path / 'outside.json'
+    out.write_bytes(b'{}')
+    with pytest.raises(R.RunnerError, match='inside the repo'):
+        R.ProspectiveRules.load(str(out), R.sha(b'{}'), FIXED, repo=str(repo))
+
+
+def test_committed_raw_snapshot_is_bound_and_covers_fixed_17():
+    raw = (ROOT / RAW_SNAP_REL).read_bytes()
+    assert R.sha(raw) == RAW_SNAP_SHA
+    attr = _git(ROOT, 'check-attr', 'text', '--', RAW_SNAP_REL)
+    assert attr.strip().endswith('text: unset')                                           # -text: never EOL-converted
+    pr = R.ProspectiveRules.load(str(ROOT / RAW_SNAP_REL), RAW_SNAP_SHA, FIXED)
+    ident = pr.identity()
+    assert ident['symbols_with_rules'] == 17 and ident['skipped_symbols'] == {} and ident['listing_skips'] == {}
+    assert ident['onboard_dates']['ENAUSDT'] == '2024-04-02T12:30:00Z'
+
+
+@pytest.mark.parametrize('extra', [['--rules-artifact', 'r.json'], ['--rules-source-manifest', 'm.json'],
+                                   ['--expect-rules-sha256', 'ab' * 32], ['--expect-rules-source-sha256', 'ab' * 32],
+                                   ['--rules-snapshot-root', '.']])
+def test_prospective_rules_cli_is_exclusive_with_the_pit_arguments(cli_inputs, extra, capsys):
+    assert _cli(cli_inputs, '--prospective-rules', RAW_SNAP_REL, '--expect-prospective-rules-sha256', RAW_SNAP_SHA,
+                *extra, rules=False) == 3
+    assert 'mutually exclusive' in capsys.readouterr().err
+    assert _cli(cli_inputs, '--expect-prospective-rules-sha256', RAW_SNAP_SHA, rules=False) == 3
+    assert 'without --prospective-rules' in capsys.readouterr().err
+    assert _cli(cli_inputs, '--prospective-rules', str(ROOT / RAW_SNAP_REL), '--expect-prospective-rules-sha256',
+                '0' * 64, rules=False) == 3                                          # hash swap at the CLI
+    assert 'differs from --expect-prospective' in capsys.readouterr().err
+
+
+class _CovSrc:
+    """Metadata-only source for coverage_report: monthly index entries per (sym, kind); Sep 2026 straddle covered."""
+    def __init__(self, first, drop=(), straddle=True):
+        self.index, self.straddle_month, self.straddle_skipped = {}, {}, 0
+        cov = SimpleNamespace(covered=lambda s, k, lo, hi: straddle)
+        self.straddle = SimpleNamespace(provenance=cov)
+        for s in FIXED:
+            for kind in R.SERIES_KINDS:
+                ym, ents = _month(first.get(s, R.iso_ms('2020-02-01T00:00:00Z'))), []
+                while ym <= '2026-08':
+                    if (s, kind, ym) not in drop and (s, ym) not in drop:
+                        ents.append((*_month_bounds(ym), 'p', 'h', 1))
+                    ym = _next_ym(ym)
+                self.index[(s, kind)] = ents
+                self.straddle_month[(s, kind)] = SEP1
+
+
+def _cov(P, src, pit):
+    return R.coverage_report(src, pit, FIXED, WARM, R.Windows.of(P))
+
+
+def _gaps(cov, sym):
+    return sorted({(g['series'], g['uncovered_from']) for g in cov['series_gaps'] if g['symbol'] == sym})
+
+
+def test_late_listed_symbol_starts_at_its_authenticated_listing(P, tmp_path):
+    src = _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')})
+    cov = _cov(P, src, _pro(tmp_path))
+    assert cov['ready'] is True and cov['series_gaps'] == [] and cov['rules_ok'] is True
+    assert cov['non_promotable_rules'] == 'prospective'
+    lb = cov['listing_boundaries']
+    assert set(lb) == {LATE} and lb[LATE]['onboard_date'] == '2020-09-23T07:00:00Z'
+    assert set(lb[LATE]['series']) == set(R.SERIES_KINDS)
+    assert all(v == {'start': '2020-09-23T07:00:00Z', 'first_month': '2020-09-01T00:00:00Z', 'admitted': True}
+               for v in lb[LATE]['series'].values())
+    pit = _cov(P, src, None)                                                     # no bound snapshot: unchanged
+    assert not pit['ready'] and _gaps(pit, LATE) == [(k, '2020-02-03T00:00:00Z') for k in sorted(R.SERIES_KINDS)]
+    assert pit['listing_boundaries'] == {}
+
+
+@pytest.mark.parametrize('first, onboard, drop, want', [
+    # already listed before warm-up, early month missing: still a gap from warm-up
+    ({LATE: R.iso_ms('2020-03-01T00:00:00Z')}, {LATE: EARLY_L}, (), '2020-02-03T00:00:00Z'),
+    # late listing but its listing month is missing (first archived month after listing): refused
+    ({LATE: R.iso_ms('2020-10-01T00:00:00Z')}, {LATE: LATE_L}, (), '2020-02-03T00:00:00Z'),
+    # forged onboardDate LATER than the first archived month: refused
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: R.iso_ms('2020-11-05T00:00:00Z')}, (), '2020-02-03T00:00:00Z'),
+    # forged onboardDate EARLIER than the first archived month: refused
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: R.iso_ms('2020-07-10T09:00:00Z')}, (), '2020-02-03T00:00:00Z'),
+    # onboardDate not an int: no listing, refused
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: str(LATE_L)}, (), '2020-02-03T00:00:00Z'),
+    # admitted late start, then a mid-series hole: refused at the hole
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: LATE_L}, ((LATE, '2023-05'),), '2023-05-01T00:00:00Z'),
+    # the listing month missing in one series only (mark): that series refused, the others admitted
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: LATE_L}, ((LATE, 'mark', '2020-09'),), None),
+])
+def test_listing_moves_only_the_initial_boundary_and_never_admits_a_hole(P, tmp_path, first, onboard, drop, want):
+    cov = _cov(P, _CovSrc(first, drop=drop), _pro(tmp_path, onboard=onboard))
+    assert cov['ready'] is False
+    g = _gaps(cov, LATE)
+    if want is None:
+        assert g == [('mark', '2020-02-03T00:00:00Z')]
+        assert cov['listing_boundaries'][LATE]['series']['mark']['admitted'] is False
+        assert cov['listing_boundaries'][LATE]['series']['4h']['admitted'] is True
+    else:
+        assert g == [(k, want) for k in sorted(R.SERIES_KINDS)]
+    assert all(g_['symbol'] == LATE for g_ in cov['series_gaps'])
+
+
+def test_symbol_absent_from_snapshot_is_refused_in_series_and_rules(P, tmp_path):
+    cov = _cov(P, _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}), _pro(tmp_path, drop=(LATE,)))
+    assert not cov['ready'] and cov['rules_gaps'] == [LATE] and cov['rules_ok'] is False
+    assert _gaps(cov, LATE) == [(k, '2020-02-03T00:00:00Z') for k in sorted(R.SERIES_KINDS)]
+
+
+def test_straddle_still_required_after_a_late_start(P, tmp_path):
+    cov = _cov(P, _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, straddle=False), _pro(tmp_path))
+    assert not cov['ready'] and {g['uncovered_from'] for g in cov['series_gaps']} == {'2026-09-01T00:00:00Z'}
+    assert len(cov['series_gaps']) == 17 * 3
+
+
+def test_rules_gaps_resolve_a_late_symbol_at_its_listing(P, tmp_path):
+    late, L = 'ENAUSDT', R.iso_ms('2024-04-02T12:30:00Z')
+    pr = _pro(tmp_path, onboard={late: L})
+    seen = {}
+
+    class Spy(R.ProspectiveRules):
+        def lookup(self, sym, t):
+            seen.setdefault(sym, []).append(t)
+            return None if sym == late and t < L else super().lookup(sym, t)
+    spy = Spy.__new__(Spy)
+    spy.__dict__.update(pr.__dict__)
+    cov = _cov(P, _CovSrc({late: R.iso_ms('2024-04-01T00:00:00Z')}), spy)
+    assert cov['rules_gaps'] == [] and cov['ready'] is True
+    assert seen[late][0] == L and seen['BTCUSDT'][0] == R.Windows.of(P).dev_start      # max(dev_start, listing)
+
+
+def test_prospective_execute_binds_identity_and_labels_every_packet(pf, tmp_path):
+    pr = _pro(tmp_path / 's')
+    out = tmp_path / 'r'
+    res = _execute(pf, out, rules=R.rules_of(pr))
+    run = json.loads((out / 'run.json').read_text())
+    ident = pr.identity()
+    assert run['rules_identity'] == json.loads(R.canon(ident)) and run['rules_identity']['mode'] == 'prospective'
+    assert run['rules_mode'] == run['non_promotable_rules'] == 'prospective'
+    assert run['rules_snapshot'] == {'path': 'snap.json', 'sha256': ident['sha256']}
+    lines = (out / 'symbols.jsonl').read_bytes().splitlines()
+    assert len(lines) == 17 and all(json.loads(x)['non_promotable_rules'] == 'prospective' for x in lines)
+    assert res['non_promotable_rules'] == res['rules_mode'] == 'prospective' and res['promotable'] is False
+    assert res['rules_identity']['sha256'] == ident['sha256'] and res['rules_snapshot'] == run['rules_snapshot']
+    other = _pro(tmp_path / 't', onboard={LATE: LATE_L + 1})                 # another snapshot: another run identity
+    with pytest.raises(R.RunnerError, match='identity differs'):
+        _execute(pf, out, rules=R.rules_of(other))
+    bad = R.rules_of(pr)
+    bad.identity = lambda: dict(ident, non_promotable_rules=None)            # an unlabelled prospective identity
+    with pytest.raises(R.RunnerError, match='prospective rules identity'):
+        _execute(pf, tmp_path / 'x', rules=bad)
+    bad.identity = lambda: dict(ident, rules_source=dict(ident['rules_source'], sha256='e' * 64))
+    with pytest.raises(R.RunnerError, match='prospective rules identity'):
+        _execute(pf, tmp_path / 'x', rules=bad)
+    assert not (tmp_path / 'x').exists()
+
+
+def test_pit_default_path_carries_no_prospective_label(pf, tmp_path, cli_inputs, capsys):
+    _execute(pf, tmp_path / 'p', stop_after=1)
+    run = json.loads((tmp_path / 'p' / 'run.json').read_text())
+    assert not {'rules_mode', 'non_promotable_rules', 'rules_snapshot'} & set(run)
+    assert all('non_promotable_rules' not in json.loads(x)
+               for x in (tmp_path / 'p' / 'symbols.jsonl').read_bytes().splitlines())
+    assert _cli(cli_inputs) == 0
+    rep = json.loads(capsys.readouterr().out)
+    assert 'non_promotable_rules' not in rep and 'rules_mode' not in rep['coverage']
+    assert rep['coverage']['listing_boundaries'] == {} and rep['coverage']['ready'] is True
+
+
+def test_cli_preflight_with_the_committed_snapshot_admits_real_listings(tmp_path, capsys):
+    snap = json.loads((ROOT / RAW_SNAP_REL).read_bytes())
+    onboard = {e['symbol']: e['onboardDate'] for e in snap['symbols'] if e['symbol'] in FIXED}
+    drop = set()
+    for s, ob in onboard.items():
+        ym = '2020-02'
+        while ym < _month(ob):
+            drop |= {(s, k, ym) for k in SER}
+            ym = _next_ym(ym)
+    man, _ = _meta_manifest(tmp_path / 'm.json.gz', FIXED, drop=drop)
+    pro = ('--prospective-rules', str(ROOT / RAW_SNAP_REL), '--expect-prospective-rules-sha256', RAW_SNAP_SHA)
+    assert _cli(SimpleNamespace(d=tmp_path, man=man), *pro, rules=False, straddle=False) == 0
+    rep = json.loads(capsys.readouterr().out)
+    cov = rep['coverage']
+    assert rep['non_promotable_rules'] == rep['rules_mode'] == 'prospective'
+    assert rep['rules_identity']['sha256'] == RAW_SNAP_SHA and rep['rules_identity']['snapshot_path'] == RAW_SNAP_REL
+    assert rep['rules_snapshot'] == {'path': RAW_SNAP_REL, 'sha256': RAW_SNAP_SHA}
+    assert cov['rules_ok'] is True and cov['rules_gaps'] == []
+    assert {g['uncovered_from'] for g in cov['series_gaps']} == {'2026-09-01T00:00:00Z'}     # only the straddle
+    late = {s for s, ob in onboard.items() if ob > WARM}
+    assert set(cov['listing_boundaries']) == late and len(late) == 12
+    assert all(v['admitted'] for s in late for v in cov['listing_boundaries'][s]['series'].values())
+    man2, _ = _meta_manifest(tmp_path / 'm2.json.gz', FIXED, drop=drop | {('SOLUSDT', k, '2020-09') for k in SER})
+    assert _cli(SimpleNamespace(d=tmp_path, man=man2), *pro, rules=False, straddle=False) == 0
+    gaps = json.loads(capsys.readouterr().out)['coverage']['series_gaps']
+    assert {(g['series'], g['uncovered_from']) for g in gaps if g['symbol'] == 'SOLUSDT'} == \
+        {(k, '2020-02-03T00:00:00Z') for k in SER}                         # listing month missing: refused
