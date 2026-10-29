@@ -708,3 +708,103 @@ STRATEGIES['fib_pullback'] = dict(
          'untouched-holdout gates pass.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# FIB-PULLBACK-02 (research-only, Codex 6486879287): v1 above stays byte-identical; this is a new key and a new frozen
+# parameter set. The economic change is the structure/participation confirmation of the entry candle.
+FIB02 = dict(left=2, right=2, min_impulse_atr=3.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786,
+             body_atr=0.35, vol_median_bars=20)
+
+
+def fib02_pivots(d, left=FIB02['left'], right=FIB02['right']):
+    """(ph, pl): ph[i] True when the candle i - right is a confirmed swing high (its high is the max of the `left` candles
+    before it, itself and the `right` candles after it). It is set on candle i, i.e. only once the right-th candle after
+    the pivot has CLOSED; pl mirrored. Rolling windows read candles <= i only."""
+    w = left + right + 1
+    ph = (d.h.shift(right) == d.h.rolling(w).max()).fillna(False).to_numpy(bool)
+    pl = (d.l.shift(right) == d.l.rolling(w).min()).fillna(False).to_numpy(bool)
+    return ph, pl
+
+
+def sig_fib_pullback_02(d, p, ctx):
+    """Causal confirmed 2/2-swing Fibonacci continuation with structure/participation confirmation; research-only.
+    Per side and per confirmed impulse (latest confirmed low -> high for longs, high -> low for shorts):
+      valid  = impulse >= min_impulse_atr x ATR(14) and EMA50/EMA200 aligned with the side (checked every candle);
+      arming = a candle overlaps the zone_lo..zone_hi retracement while valid and closing beyond `invalid`; arming only
+               counts from the NEXT candle on (the entry candle cannot arm itself);
+      entry  = armed, valid, and the closed candle: crosses `trigger` in the trend direction (prior close at/through it),
+               closes beyond the prior candle's high (long) / low (short), has a with-trend real body >= body_atr x ATR,
+               and volume >= the median of the vol_median_bars candles before it. One entry per impulse;
+      disarm = a close at/through `invalid` (0.786), or the impulse turning invalid.
+    0.786 is the DECISION-TIME invalidation and the sizing anchor: the emitted 'atr' is the decision close's distance to
+    it (mgmt stop_atr = 1). The backtester opens on the next candle with slippage and places its stop that distance from
+    the fill, so the resting stop shifts by the entry gap / slippage and is not guaranteed to sit exactly at L(0.786).
+    The exit signal (lx / sx) on a close at/through L(0.786) is kept."""
+    left, right = int(p.get('left', FIB02['left'])), int(p.get('right', FIB02['right']))
+    if left < 1 or right < 1: raise ValueError('fib_pullback_02: left/right must be >= 1')
+    zlo, trig = float(p.get('zone_lo', FIB02['zone_lo'])), float(p.get('trigger', FIB02['trigger']))
+    zhi, inval = float(p.get('zone_hi', FIB02['zone_hi'])), float(p.get('invalid', FIB02['invalid']))
+    if not (0 < zlo < trig < zhi < inval < 1):
+        raise ValueError('fib_pullback_02: require 0 < zone_lo < trigger < zone_hi < invalid < 1')
+    min_x, body_x = float(p.get('min_impulse_atr', FIB02['min_impulse_atr'])), float(p.get('body_atr', FIB02['body_atr']))
+    nvol = int(p.get('vol_median_bars', FIB02['vol_median_bars']))
+    if nvol < 1: raise ValueError('fib_pullback_02: vol_median_bars must be >= 1')
+    n = len(d)
+    ph, pl = fib02_pivots(d, left, right)
+    h, l, o, c, a = (d[k].to_numpy(float) for k in ('h', 'l', 'o', 'c', 'atr'))
+    e50, e200 = d.e50.to_numpy(float), d.e200.to_numpy(float)
+    v = d.v.astype(float)
+    vmed = v.shift(1).rolling(nvol).median().to_numpy(float)       # the nvol candles BEFORE this one
+    vol_ok = np.isfinite(vmed) & (v.to_numpy(float) >= vmed)
+    le = np.zeros(n, bool); se = np.zeros(n, bool); lx = np.zeros(n, bool); sx = np.zeros(n, bool)
+    dist = np.asarray(a, float).copy()                             # entries overwrite with the 0.786 distance (as v1)
+    hi_i = lo_i = -1; hi = lo = np.nan
+    long_arm = short_arm = False
+    long_tag = short_tag = long_done = short_done = None
+    for i in range(n):
+        j = i - right
+        if ph[i] and j >= 0: hi_i, hi = j, h[j]
+        if pl[i] and j >= 0: lo_i, lo = j, l[j]
+        ok_a = np.isfinite(a[i]) and a[i] > 0
+        if lo_i >= 0 and hi_i > lo_i and ok_a and hi > lo:
+            span = hi - lo; tag = (lo_i, hi_i)
+            f382, f500, f618, f786 = hi - zlo * span, hi - trig * span, hi - zhi * span, hi - inval * span
+            valid = span >= min_x * a[i] and e50[i] > e200[i]
+            if long_tag != tag: long_tag, long_arm = tag, False
+            if (long_arm and valid and long_done != tag and i and c[i] > f786
+                    and c[i - 1] <= f500 < c[i]                      # reclaims 0.5 upward
+                    and c[i] > h[i - 1]                              # closes above the prior candle's high
+                    and c[i] - o[i] >= body_x * a[i]                 # bullish real body >= 0.35 ATR
+                    and vol_ok[i]):                                  # volume >= trailing 20-candle median
+                le[i] = True; dist[i] = c[i] - f786; long_arm = False; long_done = tag
+            elif c[i] <= f786 or not valid: long_arm = False
+            elif l[i] <= f382 and h[i] >= f618: long_arm = True     # armed for the following candles
+            lx[i] = (c[i] <= f786) or (e50[i] <= e200[i])
+        if hi_i >= 0 and lo_i > hi_i and ok_a and hi > lo:
+            span = hi - lo; tag = (hi_i, lo_i)
+            f382, f500, f618, f786 = lo + zlo * span, lo + trig * span, lo + zhi * span, lo + inval * span
+            valid = span >= min_x * a[i] and e50[i] < e200[i]
+            if short_tag != tag: short_tag, short_arm = tag, False
+            if (short_arm and valid and short_done != tag and i and c[i] < f786
+                    and c[i - 1] >= f500 > c[i]
+                    and c[i] < l[i - 1]
+                    and o[i] - c[i] >= body_x * a[i]
+                    and vol_ok[i]):
+                se[i] = True; dist[i] = f786 - c[i]; short_arm = False; short_done = tag
+            elif c[i] >= f786 or not valid: short_arm = False
+            elif h[i] >= f382 and l[i] <= f618: short_arm = True
+            sx[i] = (c[i] >= f786) or (e50[i] >= e200[i])
+    out = _one_side(dict(le=pd.Series(le, d.index), se=pd.Series(se, d.index),
+                         lx=pd.Series(lx, d.index), sx=pd.Series(sx, d.index)))
+    out['atr'] = pd.Series(np.where(np.isfinite(dist) & (dist > 0), dist, np.nan), index=d.index)
+    return out
+
+
+STRATEGIES['fib_pullback_02'] = dict(
+    name='[RESEARCH] Fibonacci pullback v2 L/S 1h', style='balanced', fn=sig_fib_pullback_02, sides='both', tf='1h',
+    research_only=True, params=dict(FIB02),
+    desc='RESEARCH-ONLY (FIB-PULLBACK-02): 1h, confirmed 2/2 swings, impulse >= 3 ATR with aligned EMA50/EMA200, armed by '
+         'a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a '
+         '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
+    mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)
