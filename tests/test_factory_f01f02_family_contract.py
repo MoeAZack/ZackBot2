@@ -72,11 +72,11 @@ def on(tmp_path):
 
 
 # ------------------------------------------------------------------ the contract pins the code
-def test_status_is_unsigned_draft_and_md_present(c):
+def test_status_is_signed_and_md_present(c):
     assert c['contract'] == 'FACTORY-F01F02-FAMILY' and c['version'] == 1
-    assert c['status'] == 'DRAFT' and c['signed_by'] is None and '6507317942' in c['assignment']
+    assert c['status'] == 'SIGNED' and '6511411795' in c['signed_by'] and '6507317942' in c['assignment']
     md = open(MD, encoding='utf-8').read()
-    assert 'DRAFT' in md and 'Amendment 1' in md
+    assert 'SIGNED' in md and '6511411795' in md and 'Amendment 1' in md
     for r in RULINGS: assert r in c['amended_at'] and r in c['assignment'] and r in md
     assert c['code']['citation_base_short'] == '7b8e3e9' and '0dc9f05' in c['code']['original_citation_base']
 

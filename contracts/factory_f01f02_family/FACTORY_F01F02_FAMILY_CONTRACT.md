@@ -1,6 +1,6 @@
 # FACTORY-F01F02-FAMILY: correlated-family contract (C-F01 `ema_mom` / C-F02 `exp_trend` long)
 
-**Status: DRAFT — unsigned, pending Integration signature.** `factory_f01f02_family_contract.v1.json` is authoritative;
+**Status: SIGNED — Codex Integration ruling 6511411795.** `factory_f01f02_family_contract.v1.json` is authoritative;
 the JSON wins any conflict.
 
 Assignment: Codex ruling 6507317942 (contract/repro only). **Amendment 1** (per 6508380081) encodes the resolved
