@@ -24,8 +24,10 @@ Rules:
     longest-clean-run probe only screens. Loaders must gate on `covers(cov, start, end_exclusive)`, never on
     `missing_days == []` alone;
   * the zip is never opened: no CSV row or series value is read here (the PIT loader is a later ticket);
+  * a real (authoritative) run needs explicit `--start` AND `--end`, refused before any network call otherwise;
+    its manifest says `mode: bulk`, `authoritative: true`;
   * `--dry-run`: listing GETs only, prints the plan (files per symbol, listed bytes); no `.zip` / `.CHECKSUM` GET and
-    nothing written.
+    nothing written. It may use default bounds and is labelled `mode: screening`, `authoritative: false`.
 
 Usage (repo root):
   py -3.14 tools/research/oi_metrics_fetch.py --dry-run --symbols BTCUSDT,ETHUSDT
@@ -140,12 +142,14 @@ def coverage(symbol: str, keys, required_start=None, required_end_exclusive: dt.
     """Coverage of the pre-cutoff listing against the REQUIRED interval [required_start, required_end_exclusive)
     (`required_start` None = the first listed day, i.e. the CLI default). Every absent day inside
     [first listed, last listed] is listed explicitly (never filled); days the listing does not reach at either end are
-    recorded as `leading_gap` / `trailing_gap`. Groups (Codex rulings 6458228546 + 6489311350):
-      strict_complete        the ENTIRE required interval is covered: no missing day in the listing, no leading and
-                             no trailing gap, and the GATE_MONTHS screening probe passes;
-      conditional_with_holes missing days and/or a boundary gap, and the listing would reach GATE_MONTHS only if its
-                             internal holes were excused;
+    recorded as `leading_gap` / `trailing_gap`. `missing_days` (whole listing) is kept for provenance;
+    `missing_required_days` (inside the required interval only) drives the group (Codex rulings 6458228546,
+    6489311350, 6489428240):
+      strict_complete        the ENTIRE required interval is covered: no missing required day, no leading and no
+                             trailing gap, and >= GATE_MONTHS of listed history (holes outside the window excused);
+      conditional_with_holes a missing required day and/or a boundary gap, with >= GATE_MONTHS of history;
       short_history          everything else (incl. no files).
+    A hole wholly outside the required interval does not fail that interval.
     The longest-clean-run / excused-holes runs are SCREENING aids only and never grant strict_complete on their own.
     No file or value is ever synthesized for a missing day."""
     if required_end_exclusive > CUTOFF:
@@ -159,13 +163,17 @@ def coverage(symbol: str, keys, required_start=None, required_end_exclusive: dt.
     excused, _ = P.month_runs(set(dates) | {dt.date.fromisoformat(m) for m in missing}, CUTOFF)
     best = summ['longest_complete_month_run']
     lead, trail = boundary_gaps(summ['first'], summ['last'], required_start, required_end_exclusive)
-    if not missing and lead is None and trail is None and best['months'] >= P.GATE_MONTHS:
+    lo = (required_start or dt.date.min).isoformat()
+    missing_req = [m for m in missing if lo <= m < required_end_exclusive.isoformat()]
+    history_ok = summ['first'] is not None and excused['months'] >= P.GATE_MONTHS
+    if not missing_req and lead is None and trail is None and history_ok:
         group = 'strict_complete'
-    elif (missing or lead or trail) and summ['first'] is not None and excused['months'] >= P.GATE_MONTHS:
+    elif (missing_req or lead or trail) and history_ok:
         group = 'conditional_with_holes'
     else:
         group = 'short_history'
-    return {'group': group, 'missing_days': missing, 'first': summ['first'], 'last': summ['last'],
+    return {'group': group, 'missing_days': missing, 'missing_required_days': missing_req,
+            'first': summ['first'], 'last': summ['last'],
             'required_start': required_start.isoformat() if required_start else summ['first'],
             'required_end_exclusive': required_end_exclusive.isoformat(),
             'leading_gap': lead, 'trailing_gap': trail,
@@ -176,8 +184,10 @@ def covers(cov: dict, required_start: dt.date, required_end_exclusive: dt.date) 
     """Loader availability gate: True only when the coverage record `cov` (a plan `per_symbol` / manifest `coverage`
     entry) has every day of [required_start, required_end_exclusive) listed. `missing_days == []` alone is NOT
     sufficient: it only describes holes BETWEEN the first and last listed day, so the listed boundaries are checked
-    against the required range too. Fails closed on an incomplete record; refuses a range reaching the cutoff."""
-    P.check_end(required_end_exclusive - dt.timedelta(days=1), CUTOFF)
+    against the required range too. Fails closed on an incomplete record. `required_end_exclusive` may EQUAL the
+    sealed cutoff (2026-09-28, i.e. last day 2026-09-27); a range extending past the cutoff is refused."""
+    if required_end_exclusive > CUTOFF:
+        raise FetchError(f'required_end_exclusive {required_end_exclusive} is past the cutoff {CUTOFF}: refused')
     if required_start >= required_end_exclusive:
         raise FetchError('required_start must be before required_end_exclusive')
     try:
@@ -221,6 +231,7 @@ def plan(symbols, start, end: dt.date, list_fetch=None) -> dict:
         known = [r['listed_bytes'] for r in rows]
         cov = coverage(s, listed, start, min(end + dt.timedelta(days=1), CUTOFF))
         per_symbol[s] = {'group': cov['group'], 'missing_days': cov['missing_days'],
+                         'missing_required_days': cov['missing_required_days'],
                          'listed_first': cov['first'], 'listed_last': cov['last'],
                          'required_start': cov['required_start'],
                          'required_end_exclusive': cov['required_end_exclusive'],
@@ -233,7 +244,8 @@ def plan(symbols, start, end: dt.date, list_fetch=None) -> dict:
         items += rows
     known = [r['listed_bytes'] for r in items]
     return {'items': items, 'per_symbol': per_symbol, 'files': len(items), 'groups': groups(per_symbol),
-            'listed_bytes': sum(known) if None not in known else None}
+            'listed_bytes': sum(known) if None not in known else None,
+            'mode': 'screening', 'authoritative': False}           # a listing-only plan never certifies a window
 
 
 # ------------------------------------------------------------------ network (injectable; tests replace http_open)
@@ -437,7 +449,9 @@ def build_manifest(entries, failures, *, symbols, start, end, stopped=None, per_
            'stopped': stopped, 'complete': not fails and stopped is None,
            'total_bytes': sum(f['bytes'] for f in files)}
     per_symbol = per_symbol or {}
-    doc['coverage'] = {s: {k: v[k] for k in ('group', 'missing_days', 'listed_first', 'listed_last',
+    doc['mode'], doc['authoritative'] = 'bulk', True
+    doc['coverage'] = {s: {k: v[k] for k in ('group', 'missing_days', 'missing_required_days',
+                                             'listed_first', 'listed_last',
                                              'required_start', 'required_end_exclusive', 'leading_gap',
                                              'trailing_gap', 'longest_complete_month_run',
                                              'month_run_if_holes_excused')}
@@ -451,6 +465,10 @@ def build_manifest(entries, failures, *, symbols, start, end, stopped=None, per_
 def run(symbols, dest: str, start, end: dt.date, *, list_fetch=None, fetcher: Fetcher = None, workers=2,
         manifest_path=None) -> dict:
     P.check_end(end, CUTOFF)                        # before any network call
+    if start is None or end is None:                # authoritative output needs explicit bounds (ruling 6489428240)
+        raise FetchError('an authoritative fetch/manifest run needs explicit --start and --end: refused')
+    if start > end:
+        raise FetchError('start after end')
     if not 1 <= workers <= 8:
         raise FetchError('workers must be 1..8')
     fetcher = fetcher or Fetcher()
@@ -497,14 +515,19 @@ def main(argv=None) -> int:
     ap.add_argument('--universe', default=UNIVERSE, help='static-top40 contract JSON (its `symbols` list)')
     ap.add_argument('--symbols', default=None, help='comma list; overrides --universe')
     ap.add_argument('--dest', default=DEFAULT_DEST)
-    ap.add_argument('--start', default=None, help='first date (YYYY-MM-DD); default = first listed')
-    ap.add_argument('--end', default=(CUTOFF - dt.timedelta(days=1)).isoformat(), help='last date, < cutoff')
+    ap.add_argument('--start', default=None, help='first date (YYYY-MM-DD); REQUIRED except with --dry-run '
+                                                  '(screening default = first listed)')
+    ap.add_argument('--end', default=None, help='last date, < cutoff; REQUIRED except with --dry-run '
+                                                '(screening default = the day before the cutoff)')
     ap.add_argument('--workers', type=int, default=2)
     ap.add_argument('--retries', type=int, default=3)
     ap.add_argument('--min-gap', type=float, default=0.25, help='seconds between request starts (shared)')
     ap.add_argument('--dry-run', action='store_true', help='listing only: print the plan, fetch and write nothing')
     a = ap.parse_args(argv)
-    end = P.check_end(dt.date.fromisoformat(a.end), CUTOFF)          # refuse before anything else
+    if not a.dry_run and not (a.start and a.end):                     # refuse before anything else
+        raise SystemExit('refused: a fetch/manifest run needs explicit --start and --end (only --dry-run screens '
+                         'with defaults)')
+    end = P.check_end(dt.date.fromisoformat(a.end) if a.end else CUTOFF - dt.timedelta(days=1), CUTOFF)
     start = dt.date.fromisoformat(a.start) if a.start else None
     if start and start > end:
         raise SystemExit('start after end')
@@ -513,6 +536,8 @@ def main(argv=None) -> int:
         pl = plan(syms, start, end)
         out = {k: v for k, v in pl.items() if k != 'items'}
         out['requests_if_fetched'] = 2 * pl['files']
+        out['explicit_bounds'] = bool(a.start and a.end)
+        out['note'] = 'SCREENING ONLY: not bulk-ready; groups do not certify a research window (use covers())'
         print(json.dumps(out, indent=1, sort_keys=True))
         return 0
     doc = run(syms, a.dest, start, end, workers=a.workers,

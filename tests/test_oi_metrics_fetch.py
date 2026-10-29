@@ -93,7 +93,7 @@ def fetcher(net, **k):
     return F.Fetcher(opener=net.opener, min_gap=0, sleep=lambda s: None, **k)
 
 
-def go(net, tmp_path, syms, end=D(2026, 9, 27), start=None, workers=2, **k):
+def go(net, tmp_path, syms, end=D(2026, 9, 27), start=D(2000, 1, 1), workers=2, **k):
     return F.run(syms, str(tmp_path), start, end, list_fetch=net.list_fetch, fetcher=fetcher(net, **k),
                  workers=workers)
 
@@ -170,7 +170,7 @@ def test_interrupted_stream_leaves_no_file(tmp_path):
         r = net.opener(url)
         return r if url.endswith('.CHECKSUM') else Broken(r.data, url)
     f = F.Fetcher(opener=opener, min_gap=0, sleep=lambda s: None, retries=2)
-    doc = F.run(['BTCUSDT'], str(tmp_path), None, D(2026, 9, 27), list_fetch=net.list_fetch, fetcher=f)
+    doc = F.run(['BTCUSDT'], str(tmp_path), D(2000, 1, 1), D(2026, 9, 27), list_fetch=net.list_fetch, fetcher=f)
     assert doc['failures'][0]['reason'] == 'retries_exhausted' and F.exit_code(doc) == 1
     p = F.local_path(str(tmp_path), F.key_for('BTCUSDT', D(2026, 1, 1)))
     assert not os.path.exists(p) and not os.path.exists(p + '.part')
@@ -192,7 +192,7 @@ def test_resume_skips_verified_and_refetches_corrupt(tmp_path):
 def test_stop_status_halts_run(tmp_path):
     net = Net({'BTCUSDT': days(D(2026, 1, 1), D(2026, 1, 5))})
     f = F.Fetcher(opener=lambda u: Resp(b'', u, status=429), min_gap=0, sleep=lambda s: None)
-    doc = F.run(['BTCUSDT'], str(tmp_path), None, D(2026, 9, 27), list_fetch=net.list_fetch, fetcher=f, workers=1)
+    doc = F.run(['BTCUSDT'], str(tmp_path), D(2000, 1, 1), D(2026, 9, 27), list_fetch=net.list_fetch, fetcher=f, workers=1)
     assert doc['stopped']['reason'] == 'rate_limited' and F.exit_code(doc) == 2 and not doc['files']
 
 
@@ -204,7 +204,7 @@ def test_retries_then_success_with_backoff(tmp_path):
         n['k'] += 1
         return Resp(b'', url, status=503) if n['k'] <= 2 else net.opener(url)
     f = F.Fetcher(opener=flaky, min_gap=0, sleep=sleeps.append, retries=3, backoff=1.0)
-    doc = F.run(['BTCUSDT'], str(tmp_path), None, D(2026, 9, 27), list_fetch=net.list_fetch, fetcher=f)
+    doc = F.run(['BTCUSDT'], str(tmp_path), D(2000, 1, 1), D(2026, 9, 27), list_fetch=net.list_fetch, fetcher=f)
     assert F.exit_code(doc) == 0 and sleeps == [1.0, 2.0]
 
 
@@ -267,7 +267,10 @@ def test_group_split_from_listing(tmp_path, monkeypatch):
     assert pl['per_symbol']['ZECUSDT']['month_run_if_holes_excused']['months'] == 4
     doc = F.run(list(files), str(tmp_path), D(2026, 9, 1), D(2026, 9, 2), list_fetch=net.list_fetch,
                 fetcher=fetcher(net))
-    assert doc['groups'] == want                    # groups use the full listing, not the --start/--end window
+    # ruling 6489428240: groups are relative to the required window; ZEC's June holes lie wholly outside 9/1..9/2
+    assert doc['groups'] == dict(want, strict_complete=['BTCUSDT', 'ZECUSDT'], conditional_with_holes=[])
+    assert doc['coverage']['ZECUSDT']['missing_days'] == ['2026-06-10', '2026-06-11']      # provenance kept
+    assert doc['coverage']['ZECUSDT']['missing_required_days'] == []
     holed_big = [d for d in full if d.month != 6]                                   # a whole missing month
     assert F.coverage('X', [F.key_for('X', d) for d in holed_big])['group'] == 'conditional_with_holes'
     sparse = [d for d in full if d.day % 2]                                          # holes everywhere, short
@@ -348,3 +351,46 @@ def test_manifest_records_boundary_gaps(tmp_path):
     assert cov['required_start'] == '2025-12-30' and cov['required_end_exclusive'] == '2026-09-28'
     assert cov['leading_gap']['days'] == 2 and cov['trailing_gap']['start'] == '2026-01-11'
     assert cov['group'] != 'strict_complete'
+
+
+# ------------------------------------------------------------------ Codex ruling 6489428240: bounds, window, cutoff
+def test_authoritative_run_needs_explicit_bounds(tmp_path):
+    net = Net({'BTCUSDT': [D(2026, 9, 1)]})
+    with pytest.raises(F.FetchError, match='explicit'):
+        go(net, tmp_path, ['BTCUSDT'], start=None)
+    for argv in (['--end', '2026-09-27'], ['--start', '2026-01-01'], []):
+        with pytest.raises(SystemExit, match='explicit'):
+            F.main(['--symbols', 'BTCUSDT', '--dest', str(tmp_path)] + argv)
+    assert net.list_calls == [] and net.body_calls == [] and not os.listdir(tmp_path)
+
+
+def test_manifest_labelled_authoritative(tmp_path):
+    doc = go(Net({'BTCUSDT': [D(2026, 9, 1)]}), tmp_path, ['BTCUSDT'], start=D(2026, 9, 1), end=D(2026, 9, 1))
+    assert doc['mode'] == 'bulk' and doc['authoritative'] is True
+
+
+def test_dry_run_labelled_screening(tmp_path, monkeypatch, capsys):
+    net = Net({'BTCUSDT': days(D(2026, 1, 1), D(2026, 1, 4))})
+    monkeypatch.setattr(O, 'http_get', net.list_fetch)
+    assert F.main(['--dry-run', '--symbols', 'BTCUSDT', '--dest', str(tmp_path / 's')]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out['mode'] == 'screening' and out['authoritative'] is False and out['explicit_bounds'] is False
+    assert 'SCREENING' in out['note'] and net.body_calls == []
+
+
+def test_hole_outside_window_strict_inside_not(gate3):
+    ds = [d for d in days(D(2026, 1, 1), D(2026, 9, 27)) if d != D(2026, 2, 10)]
+    out = _cov(ds, start=D(2026, 5, 1))
+    assert out['missing_days'] == ['2026-02-10'] and out['missing_required_days'] == []
+    assert out['group'] == 'strict_complete'
+    inside = _cov(ds, start=D(2026, 2, 1))
+    assert inside['missing_required_days'] == ['2026-02-10'] and inside['group'] == 'conditional_with_holes'
+    edge = _cov(ds, start=D(2026, 1, 1), end_excl=D(2026, 2, 10))                  # end-exclusive excludes the hole
+    assert edge['missing_required_days'] == [] and edge['group'] == 'strict_complete'
+
+
+def test_covers_cutoff_equality_allowed_past_refused():
+    rec = {'listed_first': '2026-01-01', 'listed_last': '2026-09-27', 'missing_days': []}
+    assert F.covers(rec, D(2026, 9, 1), F.CUTOFF) is True                         # end_exclusive == cutoff
+    with pytest.raises(F.FetchError, match='cutoff'):
+        F.covers(rec, D(2026, 9, 1), F.CUTOFF + dt.timedelta(days=1))
