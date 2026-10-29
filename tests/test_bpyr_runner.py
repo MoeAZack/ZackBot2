@@ -1569,6 +1569,61 @@ def test_load_authorization_refuses_code_drift_and_non_canonical_bytes(tmp_path,
         _load(repo, f, pf_)
 
 
+# ---- 4b. Codex 6496429137 (Cowork A1-A3): CR bytes, undecodable git output, renames
+def test_load_authorization_refuses_any_cr_byte(tmp_path, pf):
+    _, f, _, _ = _auth_repo(tmp_path, pf)
+    crlf = f.read_bytes()[:-1] + b'\r\n'                                            # committed with CRLF
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'crlf', pf, raw=crlf)
+    with pytest.raises(R.AuthorizationRefused, match='CR byte'):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_types_undecodable_git_output(tmp_path, pf):
+    repo, f, pf_, _ = _auth_repo(tmp_path, pf)
+    real = lambda *a: _git(repo, *a)                                                     # noqa: E731
+
+    def bad_show(*a):                                       # HEAD:<path> output that cannot be re-encoded
+        return '\udcff' if a[0] == 'show' else real(*a)
+    with pytest.raises(R.AuthorizationRefused, match='not decodable'):
+        R.load_authorization(str(f), pf_, expect_sha256=R.file_sha(str(f)), repo=str(repo), git=bad_show)
+
+
+def test_load_authorization_types_a_decode_error_in_the_real_git_wrapper(tmp_path, pf, monkeypatch):
+    repo, f, pf_, _ = _auth_repo(tmp_path, pf)
+
+    def undecodable(*a, **k):                               # subprocess text decoding fails inside real_git
+        raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'invalid start byte')
+    monkeypatch.setattr(R.subprocess, 'run', undecodable)
+    with pytest.raises(R.AuthorizationRefused, match='git ls-files failed'):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_refuses_a_rename_into_the_artifact(tmp_path, pf):
+    """A3: code_commit holds a file that HEAD renames into the artifact. With rename detection `--name-only` would list
+    only the artifact path; --no-renames lists the deleted source too, so the delta is refused."""
+    repo = tmp_path / 'repo'
+    d = repo / 'research_evidence' / 'authorizations'
+    d.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    _git(repo, 'commit', '-q', '--allow-empty', '-m', 'root')
+    fields = {'format': R.AUTH_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256,
+              'issuer': 'codex', 'comment_id': '6478332951', 'code_commit': '0' * 40, 'scope': ['development']}
+    (repo / 'old.json').write_bytes(R.authorization_bytes(fields))
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'code')
+    c0 = _git(repo, 'rev-parse', 'HEAD').strip()
+    _git(repo, 'mv', 'old.json', 'research_evidence/authorizations/a.json')
+    f = d / 'a.json'
+    f.write_bytes(R.authorization_bytes(dict(fields, code_commit=c0)))
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'auth')
+    assert _git(repo, 'diff', '-M', '--name-only', c0, 'HEAD').split() == ['research_evidence/authorizations/a.json']
+    head = _git(repo, 'rev-parse', 'HEAD').strip()
+    pf_ = R.Preflight(pf.prereg, pf.prereg_sha256, dict(pf.code, commit=head), pf.sources)
+    with pytest.raises(R.AuthorizationRefused, match='more than this artifact'):
+        _load(repo, f, pf_)
+
+
 # ---- 5. Codex review #239: strict ancestor, complete token, full run-identity binding
 def test_load_authorization_refuses_code_commit_equal_to_head(tmp_path, pf):
     repo, f, pf_, c0 = _auth_repo(tmp_path, pf)

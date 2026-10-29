@@ -1915,8 +1915,9 @@ def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = 
     """The committed, identity-pinned verifier. Fail-closed (AuthorizationRefused) unless ALL hold:
       * pin     expect_sha256 (CLI --expect-authorization-sha256) is 64 lowercase hex and equals sha256(file bytes);
       * place   the real path sits directly under <repo>/research_evidence/authorizations/ (no symlink escape);
-      * commit  the path is tracked and its LF-normalised bytes equal `git show HEAD:<path>`; HEAD is the preflight
-                commit; artifact.code_commit is a STRICT ancestor of HEAD and `git diff --name-only code_commit HEAD` is
+      * commit  the path is tracked, holds no CR byte, and its raw bytes equal `git show HEAD:<path>`; HEAD is the
+                preflight commit; artifact.code_commit is a STRICT ancestor of HEAD and
+                `git diff --no-renames --name-only code_commit HEAD` is
                 exactly this artifact (the artifact cannot name the commit that contains it, so Integration commits
                 it on top of the code commit it authorizes, and nothing else may change in between);
       * form    the bytes are canonical (authorization_bytes), keys exactly AUTH_KEYS, format zb-eval-authorization/1,
@@ -1932,7 +1933,7 @@ def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = 
         try:
             return subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, encoding='utf-8',
                                   check=True).stdout
-        except (OSError, subprocess.CalledProcessError) as e:
+        except (OSError, subprocess.CalledProcessError, UnicodeError) as e:      # A2: undecodable git output
             refuse(f'git {a[0]} failed ({e})')
     g = git or real_git
     if not isinstance(expect_sha256, str) or len(expect_sha256) != 64 or not _HEX.fullmatch(expect_sha256):
@@ -1948,8 +1949,14 @@ def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = 
     rel = '/'.join(AUTH_DIR_REL + (os.path.basename(real),))
     if g('ls-files', '--', rel).strip() != rel:
         refuse('the artifact is not tracked (commit it)')
-    body = raw.replace(b'\r\n', b'\n')
-    if g('show', f'HEAD:{rel}').replace('\r\n', '\n').encode('utf-8') != body:
+    if b'\r' in raw:                                         # A1: canonical bytes are raw ASCII with LF only
+        refuse('CR byte in the artifact (canonical bytes are LF-only)')
+    body = raw
+    try:
+        committed = g('show', f'HEAD:{rel}').encode('utf-8')
+    except UnicodeError as e:
+        refuse(f'HEAD:{rel} is not decodable ({e})')
+    if committed != body:
         refuse('the working-tree artifact differs from HEAD (modified or uncommitted)')
     head = g('rev-parse', 'HEAD').strip()
     if head != pf.code.get('commit'):
@@ -1987,7 +1994,7 @@ def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = 
         g('merge-base', '--is-ancestor', cc, head)
     except AuthorizationRefused:
         refuse(f'code_commit {cc} is not an ancestor of HEAD')
-    if sorted(x for x in g('diff', '--name-only', cc, head).split('\n') if x.strip()) != [rel]:
+    if sorted(x for x in g('diff', '--no-renames', '--name-only', cc, head).split('\n') if x.strip()) != [rel]:   # A3
         refuse(f'code_commit {cc} differs from HEAD in more than this artifact')
     return EvalAuthorization('codex', cid, d['prereg_sha256'], artifact_sha256=expect_sha256, code_commit=cc,
                              scope=tuple(scope))
