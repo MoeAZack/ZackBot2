@@ -206,7 +206,7 @@ def _sha(o):
 
 def test_existing_groups_and_schedule_byte_identical():
     assert E.breadth_groups() == FROZEN_GROUPS and E.breadth_groups(tradfi=True) == FROZEN_GROUPS_TRADFI
-    pre = sorted(k for k in S.STRATEGIES if k not in E.SCALP_KEYS)
+    pre = sorted(k for k in S.STRATEGIES if k not in E.SCALP_KEYS and k not in E.RESEARCH_ONLY_KEYS)
     assert E.breadth_groups() == E.breadth_groups(pre)                         # = the list computed without the new keys
     assert not E.SCALP_KEYS & {k for g in E.breadth_groups(tradfi=True) for k in g}
     rot = lambda tr: [x for x in E.breadth_sleeves(tradfi=tr) if x['key'] not in E.SCALP_KEYS]
