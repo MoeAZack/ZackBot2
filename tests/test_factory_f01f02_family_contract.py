@@ -78,7 +78,7 @@ def test_status_is_unsigned_draft_and_md_present(c):
     md = open(MD, encoding='utf-8').read()
     assert 'DRAFT' in md and 'Amendment 1' in md
     for r in RULINGS: assert r in c['amended_at'] and r in c['assignment'] and r in md
-    assert c['code']['citation_base_short'] == '2683be7' and '0dc9f05' in c['code']['original_citation_base']
+    assert c['code']['citation_base_short'] == '7b8e3e9' and '0dc9f05' in c['code']['original_citation_base']
 
 
 def test_engine_constants_equal_the_json(c):
@@ -169,6 +169,15 @@ def test_replay_is_labelled_derived_and_internally_consistent(c, repro):
     assert o['verified_from_closed_trades'] + o['not_derivable_from_closed_trades'] == o['n'] == 171 - 160
     assert abs(b['shared_round_trip']['sum_r'] + b['same_entry_different_exit']['f02_sum_r'] + o['sum_r']
                - res['f02_suppressed_standalone_net_r']) < 1e-4
+
+
+def test_the_same_bar_exit_convention_behind_8_proven_is_stated(c, repro):
+    """Codex 6510348874: 8 vs 7 proven depends on whether a C-F01 lot exiting on the F02 fill bar still holds its slot. The
+    contract must state the convention and tie it to the signed per-bar order (fills at step 2, before that bar's exits)."""
+    conv = c['family_book_replay']['f02_suppression_breakdown']['f02_only_entries']['same_bar_exit_convention']
+    assert 'still occupies' in conv and '(step 2)' in conv and '(step 3)' in conv and 'would be 7' in conv
+    order = repro['semantics']['per_bar_management_order']['rule']
+    assert order.index('(2) fill pending entries') < order.index('(3) for each open position')
 
 
 def test_auto_disable_triggers_and_reenable_owner(c):

@@ -11,8 +11,8 @@
   "build_role": "Build drafted this contract and its pinning tests only. No new market evaluation, no backtest over market data, no holdout read, no PAPER/runtime change.",
   "evidence_class": "contract + derived arithmetic over existing pre-cutoff development packets; non-promotable, not an evaluation. Execution-grade EDGE04 H1-H4 remains the acceptance authority.",
   "code": {
-    "citation_base": "FACTORY-CAND-02 engine: PR #247 claude/factory-cand02-family-safety 2683be745c0b5506785b8f76e1a71e4a7bdc1804 (on master 0dc9f05); re-cite the master merge commit once #247 merges - engine.py content, and so every pin below, is identical",
-    "citation_base_short": "2683be7",
+    "citation_base": "master 7b8e3e98de2b69f6902d85ed92f5bee9d9aba5ad (#247 FACTORY-CAND-02 squash; engine.py byte-identical to the reviewed #247 head 2683be745c0b5506785b8f76e1a71e4a7bdc1804, so every pin below holds)",
+    "citation_base_short": "7b8e3e9",
     "original_citation_base": "master 0dc9f058c1fd022973c5783da2adf311c959a239 (amendment 0; of its four pins only candidate_block is unchanged by #247)",
     "pinned_function_sha256": {
       "_rule": "sha256 of the utf-8 source text of each function (ast.get_source_segment of the engine.py file, LF). A mismatch means the collision / guard semantics this contract describes changed: the contract must be re-drafted before Integration relies on it.",
@@ -51,7 +51,7 @@
     "signal_identity": "exp_trend = _one_side(sig_ema_mom) (strategies.py:sig_exp_trend, strategies.py:_one_side); the slot sides are 'long' for both, so on every bar both slots see the same long entry signal set (228 raw each in the packets). They differ only by management: F02 adds tp_r 3.0 and max_bars 180 (strategies.py STRATEGIES['exp_trend'].mgmt); F01 has stop_atr 2.5 only."
   },
   "engine_constants": {
-    "source": "engine.py module constants at 2683be7 (FACTORY-CAND-01 + FACTORY-CAND-02)",
+    "source": "engine.py module constants at 7b8e3e9 (FACTORY-CAND-01 + FACTORY-CAND-02)",
     "CANDIDATE_PENDING_KEY": "candidate_cost_pending",
     "CANDIDATE_SLOTS": {"C-F01": ["ema_mom", "long"], "C-F02": ["exp_trend", "long"]},
     "CANDIDATE_FAMILY": {"C-F01": "trend_long", "C-F02": "trend_long"},
@@ -152,6 +152,7 @@
       "same_entry_different_exit": {"n": 29, "f02_exit_why": "tp (all 29)", "fate": "C-F01 holds the entry with its own exit (signal/stop) instead of F02's 3R target", "f02_sum_r": 85.403283, "f01_counterpart_sum_r": 142.890708},
       "f02_only_entries": {"n": 11, "fate": "refused by the shared cap / isolation", "sum_r": 13.088532,
                            "verified_from_closed_trades": 8, "verified_reason": "C-F01 had 4 positions open at that fill bar",
+                           "same_bar_exit_convention": "A C-F01 lot whose t_out equals the F02 fill bar still occupies its slot at that bar: per_bar_management_order (repro contract, backtest.py:run) fills pending entries at the bar OPEN (step 2) before any exit of that bar (step 3). This decides 8 vs 7: ETHUSDT 2026-08-06T08:00Z sees 4 open under it (C-F01 BTCUSDT and UNIUSDT exit at 08:00); under a strict t_in <= bar < t_out rule it would see 2 and the proven count would be 7 (Cowork 6509310909).",
                            "not_derivable_from_closed_trades": 3,
                            "not_derivable_detail": "ENAUSDT 2026-09-18T04:00Z, BNBUSDT 2026-09-18T00:00Z, XRPUSDT 2026-09-19T12:00Z: the closed C-F01 trades show < 4 open and no same-coin hold. Consistent with C-F01 lots still open at END (not in the closed-trade list; F01 curve_end 1279.365808 > 500 + net pnl 686.743824), but only a future authorized run can confirm it."},
       "check": "131 + 29 + 11 = 171",

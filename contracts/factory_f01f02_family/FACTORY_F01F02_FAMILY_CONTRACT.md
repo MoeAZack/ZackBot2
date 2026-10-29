@@ -4,10 +4,9 @@
 the JSON wins any conflict.
 
 Assignment: Codex ruling 6507317942 (contract/repro only). **Amendment 1** (per 6508380081) encodes the resolved
-Integration rulings 6507748888, 6508164005 and 6508707059 (OQ1–OQ6) against the FACTORY-CAND-02 engine (PR #247,
-`2683be7`). Builds on the SIGNED `contracts/factory_f01f02_repro` (160 F01 / 171 F02 closed trades, 131 shared round
-trips, Jaccard 0.655; entry stream 160 / 171; 228 raw long signals each). Citations are file:function at `2683be7`
-(re-cite the master merge commit once #247 merges; the engine content is identical). Seven candidate functions are
+Integration rulings 6507748888, 6508164005 and 6508707059 (OQ1–OQ6) against the FACTORY-CAND-02 engine (merged as
+master `7b8e3e9`; engine.py byte-identical to the reviewed #247 head `2683be7`). Builds on the SIGNED `contracts/factory_f01f02_repro` (160 F01 / 171 F02 closed trades, 131 shared round
+trips, Jaccard 0.655; entry stream 160 / 171; 228 raw long signals each). Citations are file:function at master `7b8e3e9`. Seven candidate functions are
 pinned by source sha256 in the JSON; a mismatch means this contract must be re-drafted.
 
 ## Family identity
@@ -92,6 +91,12 @@ full, the halt is active, or the same floor/sizing applies. This is the basis fo
 | shared round trips executed once by C-F01 | 131 (Σ R −41.799091) |
 | same entry, F02 exits at tp, C-F01 keeps its own exit | 29 (F02 Σ R +85.403283 vs F01 +142.890708) |
 | F02-only entries refused by cap/isolation | 11 (Σ R +13.088532): 8 proven from closed trades; 3 (Sep 18-19, 2026) need C-F01 lots still open at END, which only an authorized run can confirm |
+
+**Same-bar exit convention (decides 8 vs 7).** A C-F01 lot whose `t_out` equals an F02 fill bar still occupies its slot at
+that bar: the signed per-bar order (repro contract `per_bar_management_order`, backtest.py:run) fills pending entries at
+the bar open (step 2) before any exit of that bar (step 3). So ETHUSDT 2026-08-06T08:00Z sees 4 open (C-F01 BTCUSDT and
+UNIUSDT exit at 08:00) and counts as proven; under a strict `t_in <= bar < t_out` rule it would see 2 and the proven
+count would be 7 (Cowork 6509310909).
 
 Limits: runtime sizes each slot on its own 1/6 share. Runtime-only refusals are not modelled: order failure and
 exchange rules. A guard disable of C-F01 no longer hands the family to C-F02 (OQ1).
