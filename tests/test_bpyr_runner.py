@@ -394,7 +394,7 @@ def test_run_is_in_memory_without_verdict_and_writes_are_refused(pf, tmp_path):
         R.write_result(res, str(out), authorization='yes')
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(out), authorization=R.EvalAuthorization('codex', '1', '0' * 64))
-    ok = R.EvalAuthorization('codex', '1', pf.prereg_sha256)
+    ok = AUTH(pf)
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(ROOT.joinpath(*R.LEDGER_REL[:-1], 'x.json')), authorization=ok)
     with pytest.raises(R.WriteRefused):
@@ -589,7 +589,7 @@ def test_rules_of_maps_uncovered_to_refusal():
 
 # ------------------------------------------------------------------ authorized, resumable, chained execution
 def AUTH(pf):                                                                # test-only Integration token
-    return R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256)
+    return R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256, 'a' * 64, 'b' * 40, ('development',))
 
 
 FIXED = sorted(json.loads((ROOT / 'research_evidence' / 'prereg' / 'breakout_pyramid_falsify.v1.json').read_text())['universe']['symbols'])
@@ -1567,3 +1567,51 @@ def test_load_authorization_refuses_code_drift_and_non_canonical_bytes(tmp_path,
     repo, f, pf_, _ = _auth_repo(tmp_path / 'dup', pf, raw=dup)
     with pytest.raises(R.AuthorizationRefused, match='duplicate'):
         _load(repo, f, pf_)
+
+
+# ---- 5. Codex review #239: strict ancestor, complete token, full run-identity binding
+def test_load_authorization_refuses_code_commit_equal_to_head(tmp_path, pf):
+    repo, f, pf_, c0 = _auth_repo(tmp_path, pf)
+    real = lambda *a: _git(repo, *a)                                                     # noqa: E731
+
+    def head_is_c0(*a):                                     # a HEAD that equals the authorized code_commit
+        return c0 + '\n' if a == ('rev-parse', 'HEAD') else real(*a)
+    pinned = R.Preflight(pf_.prereg, pf_.prereg_sha256, dict(pf_.code, commit=c0), pf_.sources)
+    with pytest.raises(R.AuthorizationRefused, match='strict ancestor'):
+        R.load_authorization(str(f), pinned, expect_sha256=R.file_sha(str(f)), repo=str(repo), git=head_is_c0)
+
+
+def _forged(pf):
+    import dataclasses
+    ok = AUTH(pf)
+    return [dataclasses.replace(ok, artifact_sha256=None), dataclasses.replace(ok, artifact_sha256='A' * 64),
+            dataclasses.replace(ok, artifact_sha256='a' * 63), dataclasses.replace(ok, code_commit=None),
+            dataclasses.replace(ok, code_commit='b' * 39), dataclasses.replace(ok, scope=()),
+            dataclasses.replace(ok, scope=('S1',)), dataclasses.replace(ok, scope=['development']),
+            dataclasses.replace(ok, scope=('development', 'holdout')),
+            R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256)]
+
+
+def test_execute_and_write_result_refuse_incomplete_or_forged_tokens(pf, tmp_path):
+    for i, tok in enumerate(_forged(pf)):
+        out = tmp_path / f'e{i}'
+        with pytest.raises(R.WriteRefused, match='incomplete authorization'):
+            _execute(pf, out, authorization=tok)
+        assert not out.exists()                                          # refused before anything is written
+        res = {'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'decided': False}
+        with pytest.raises(R.WriteRefused, match='incomplete authorization'):
+            R.write_result(res, str(tmp_path / f'r{i}.json'), authorization=tok)
+        assert not (tmp_path / f'r{i}.json').exists()
+
+
+def test_run_json_binds_the_complete_authorization_and_resume_under_another_fails(pf, tmp_path):
+    import dataclasses
+    out = tmp_path / 'r'
+    _execute(pf, out, stop_after=1)
+    got = json.loads((out / 'run.json').read_text())['authorization']
+    assert got == {'issuer': 'codex', 'comment_id': '6478332951', 'prereg_sha256': pf.prereg_sha256,
+                   'artifact_sha256': 'a' * 64, 'code_commit': 'b' * 40, 'scope': ['development']}
+    for k, v in (('artifact_sha256', 'c' * 64), ('code_commit', 'd' * 40), ('comment_id', '6478332952')):
+        with pytest.raises(R.RunnerError, match='identity'):
+            _execute(pf, out, authorization=dataclasses.replace(AUTH(pf), **{k: v}))
+    assert _execute(pf, out, stop_after=1)['symbols_done'] == 2           # the same authorization resumes
