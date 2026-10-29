@@ -1444,8 +1444,8 @@ def test_market_lot_size_feeds_step_and_min_qty_not_lot_size():
 
 
 # ------------------------------------------------------------------ EDGE05-AB-01 (Codex ruling 6495672591)
-AMEND_REL = 'research_evidence/amendments/edge05_dev_end_20260901.json'
-RAW_SNAP_REL = 'research_evidence/rules/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json'
+AMEND_REL = 'research_evidence/prereg/funding_carry_xsec.v1.amendment_dev_end_20260901.json'
+RAW_SNAP_REL = 'research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json'
 
 
 def _git(repo, *a):

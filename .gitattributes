@@ -18,5 +18,4 @@ research_evidence/prereg/*.json text eol=lf
 research_evidence/notices/*.json text eol=lf
 research_evidence/notices/*.md text eol=lf
 research_evidence/breadth_prereg/*.json text eol=lf
-research_evidence/amendments/*.json text eol=lf
-research_evidence/rules/*.json -text
+research_evidence/prereg/binance-um-exchangeinfo-*.json -text
