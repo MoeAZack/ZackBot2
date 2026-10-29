@@ -713,6 +713,9 @@ CANDIDATE_SLOTS = {'C-F01': ('ema_mom', 'long'), 'C-F02': ('exp_trend', 'long')}
 # Correlated candidates share ONE position cap (Codex 6443422894: F01/F02 share 131 fills, Jaccard 0.655 - one family, never
 # two full independent risk budgets)
 CANDIDATE_FAMILY = {'C-F01': 'trend_long', 'C-F02': 'trend_long'}
+# FACTORY-CAND-02 (Codex ruling 6507748888): the family fails closed as ONE unit (any member's drift / protection / accounting
+# disable switches every enabled member off), its enabled members keep CANDIDATE_SLOTS priority order (C-F01 before C-F02) in
+# SLEEVES, and the symbol list is pinned in order. OQ4: C-F01-only policy - every slot stays default OFF.
 CANDIDATE_CARD = ('key', 'sides', 'risk', 'max_pos', 'symbols', 'mgmt', 'tf')      # fields a slot may not drift from
 CANDIDATE_SHARE, CANDIDATE_RISK, CANDIDATE_MAX_POS, CANDIDATE_DEFAULT_ENABLED = 1 / 6, 0.01, 4, False
 CANDIDATE_COST_PENDING_S = 6 * 3600
@@ -2276,6 +2279,8 @@ class Engine:
         out += [(p.get('sleeve'), p.get('symbol')) for k, p in (st.get('pending_entries') or {}).items() if k != skip_pending]
         out += [(r.get('sleeve'), r.get('symbol')) for r in (st.get('resting_entries') or {}).values()]
         out += [(candidate_owner(u, k), u.get('symbol')) for k, u in (st.get('unconfirmed_entries') or {}).items()]
+        cur = getattr(self, '_defer_cur', None)          # FACTORY-CAND-02 (OQ5): a deferred entry reserves its coin too
+        out += [(r['sl'].get('id'), r['sym']) for r in (getattr(self, '_deferred', None) or ()) if r is not cur]
         return out
 
     def candidate_block(self, sl, sym, skip_pending=None):
@@ -2298,8 +2303,8 @@ class Engine:
         """FACTORY-CAND-01: the card fields where a candidate slot differs from its frozen card (empty = none)."""
         card = next((c for c in candidate_sleeves() if c['id'] == (sl or {}).get('id')), None)
         if card is None: return []
-        def norm(f, v):
-            if f == 'symbols' and isinstance(v, (list, tuple)): return sorted(v)
+        def norm(f, v):                                  # FACTORY-CAND-02 (OQ3): symbols compare as the exact ordered list
+            if f == 'symbols' and isinstance(v, (list, tuple)): return list(v)
             return (v or {}) if f == 'mgmt' else v
         return [f for f in CANDIDATE_CARD if norm(f, sl.get(f)) != norm(f, card[f])]
 
@@ -2308,22 +2313,34 @@ class Engine:
         lot of it has lost its exchange stop (restoring / owner_check), a closed trade of it still has unmeasured costs
         CANDIDATE_COST_PENDING_S after closing, or its slot drifted from the frozen card (candidate_drift). Only new entries stop: open lots keep their stop and management. The reason
         stays in state['candidate_disabled'] for the panel; switching the slot back on is Integration's call. Returns the
-        ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off."""
+        ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off.
+        FACTORY-CAND-02 (6507748888): a member's disable, or family members out of CANDIDATE_SLOTS order, switches every
+        enabled member of its CANDIDATE_FAMILY off in the same pass; each reason names the triggering member and cause."""
         off = []
         try:
             now = time.time() if now is None else now
-            for sl in self.S.get('SLEEVES') or []:
-                if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
+            on, trig = [sl for sl in self.S.get('SLEEVES') or [] if sl.get('id') in CANDIDATE_SLOTS and sl.get('enabled')], {}
+            for sl in on:
                 drift = self.candidate_drift(sl)
                 why = f"drift: {', '.join(drift)} differ from the frozen card" if drift else None
                 why = why or next((f"protection: {l['symbol']} stop {l.get('stop_miss_why')}" for l in self.state['lots'].values()
                                    if l['sleeve'] == sl['id'] and l.get('stop_miss') and l.get('stop_miss_why') in CANDIDATE_STOP_FAIL), None)
-                for h in self.history[-3000:] if why is None else ():
+                for h in self.history if why is None else ():      # FACTORY-CAND-02 (OQ6): every row, not the last 3000
                     if h.get('sleeve') != sl['id'] or AC.row_view(h)['status'] != 'pending': continue
                     try: age = now - pd.Timestamp(h['closed']).timestamp()
                     except (KeyError, TypeError, ValueError): age = float('inf')
                     if age >= CANDIDATE_COST_PENDING_S:
                         why = f"accounting: {h.get('symbol')} trade costs unmeasured {age / 3600:.1f} h after close"; break
+                if why: trig.setdefault(sl['id'], why)
+            for fam in set(CANDIDATE_FAMILY.values()):           # OQ2: enabled members in CANDIDATE_SLOTS priority order
+                got = [sl['id'] for sl in on if CANDIDATE_FAMILY.get(sl['id']) == fam]
+                want = [i for i in CANDIDATE_SLOTS if i in got]
+                if len(got) > 1 and got != want:
+                    for i in got: trig.setdefault(i, f"drift: family {fam} order {got} differs from the pinned priority {want}")
+            for sl in on:                                        # OQ1: one member off -> every enabled member of its family off
+                why, fam = trig.get(sl['id']), CANDIDATE_FAMILY.get(sl['id'])
+                src = next((i for i in trig if fam is not None and CANDIDATE_FAMILY.get(i) == fam), None) if why is None else None
+                if src: why = f"family {fam} fail-closed by {src}: {trig[src]}"
                 if why:
                     sl['enabled'] = False
                     self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(why=why, t=now_utc().isoformat(timespec='seconds'))
@@ -6204,9 +6221,9 @@ class Engine:
         s, side, sg, fr = r['sym'], r['side'], r['sg'], r['frames']
         self.last_skip = ''; lk0 = getattr(self, '_last_lot_key', None)
         try:
-            self._ml_direct = (sl['id'], s, side, str(sg.get('time')))
+            self._ml_direct, self._defer_cur = (sl['id'], s, side, str(sg.get('time'))), r   # OQ5: never counts against itself
             try: opened = self.open_lot(sl, s, side, sg, (fr or {}).get(s), self.equity())
-            finally: self._ml_direct = None
+            finally: self._ml_direct = self._defer_cur = None
         except Exception as e:
             self.err(f'entry {s} [{sl["id"]}] failed: {e}'); opened, self.last_skip = False, f'order failed: {e}'
         why = '' if opened else self.last_skip or 'order failed'
