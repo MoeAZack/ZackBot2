@@ -362,7 +362,7 @@ def main():
     manifest_check(rep)
     if a.level == 'fast':
         # The fast set now runs close to 30 minutes on GitHub's shared Linux runners. Keep the
-        # workflow's 45-minute outer limit, but leave enough headroom for normal runner variance.
+        # workflow's 70-minute outer limit, but leave enough headroom for normal runner variance.
         pytest_step(rep, 'tests (fast set: -m "not slow")', ['-m', 'not slow', 'tests'], 3600)
         installer_mode(rep, 'preflight', 600)
     else:
