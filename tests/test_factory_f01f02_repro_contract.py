@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+from urllib.parse import urlparse
 from fractions import Fraction
 
 import pytest
@@ -148,8 +149,15 @@ def test_data_pins(c):
         assert f['rows'] == (4504 if s in FIXED18 else f['rows']) and (s in FIXED18) == ('excluded' not in f)
     assert 'IS the committed compact manifest' in d['manifest'] and 'INCONCLUSIVE' in d['verify_before_compute']
     assert 'BEFORE any computation' in d['verify_before_compute']
-    assert 'fapi.binance.com' in d['redownload_rule'] and 'INCONCLUSIVE for provenance' in d['redownload_rule']
+    assert 'data.redownload_endpoint' in d['redownload_rule'] and 'INCONCLUSIVE for provenance' in d['redownload_rule']
     assert 'exact pinned bytes' in d['redownload_rule'] and 'never a silent substitution' in d['redownload_rule']
+
+
+def test_redownload_endpoint_is_the_exact_public_klines_url(c):
+    u = urlparse(c['data']['redownload_endpoint'])
+    assert u.scheme == 'https' and u.hostname == 'fapi.binance.com' and u.path == '/fapi/v1/klines'
+    assert u.username is None and u.password is None and u.port is None
+    assert not u.query and not u.fragment and not u.params
 
 
 def test_canonical_data_digest_recomputes(c, md):

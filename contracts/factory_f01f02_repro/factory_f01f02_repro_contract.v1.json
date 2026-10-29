@@ -249,7 +249,8 @@
       }
     },
     "read_rule": "Read only rows with open time in [warm-up start, END) of the run being reproduced; any row at or after 2026-09-28T00:00:00Z is never parsed into the computation.",
-    "redownload_rule": "Allowed only from the public endpoint https://fapi.binance.com/fapi/v1/klines (no key) and only for diagnosis. REPRODUCED requires the exact pinned bytes. A row-equal re-download may diagnose results but the verdict stays INCONCLUSIVE for provenance; never a silent substitution (ruling 6489310660 #7).",
+    "redownload_endpoint": "https://fapi.binance.com/fapi/v1/klines",
+    "redownload_rule": "Allowed only from the public endpoint in data.redownload_endpoint (no key) and only for diagnosis. REPRODUCED requires the exact pinned bytes. A row-equal re-download may diagnose results but the verdict stays INCONCLUSIVE for provenance; never a silent substitution (ruling 6489310660 #7).",
     "manifest": "this JSON: data.files, in its stated order, with per-file sha256 and rows, IS the committed compact manifest (ruling 6489310660 #3); no separate manifest file",
     "canonicalization": "ascii bytes of json.dumps([[symbol, sha256, rows] for symbol, f in data.files.items()], separators=(',', ':')) in the stated data.files order (fixed-18 order, then HYPEUSDT, PUMPUSDT); digest = sha256 hex of those bytes",
     "canonical_digest_sha256": "dec91dfb9f64e871c462ab43816b7878cca0941d811c214cc81ea49f2d2c68bd",
