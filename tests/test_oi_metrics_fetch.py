@@ -272,3 +272,79 @@ def test_group_split_from_listing(tmp_path, monkeypatch):
     assert F.coverage('X', [F.key_for('X', d) for d in holed_big])['group'] == 'conditional_with_holes'
     sparse = [d for d in full if d.day % 2]                                          # holes everywhere, short
     assert F.coverage('X', [F.key_for('X', d) for d in sparse[:20]])['group'] == 'short_history'
+
+
+# ------------------------------------------------------------------ Codex ruling 6489311350: required-range coverage
+def _cov(ds, start=None, end_excl=F.CUTOFF):
+    return F.coverage('X', [F.key_for('X', d) for d in ds], start, end_excl)
+
+
+@pytest.fixture
+def gate3(monkeypatch):
+    monkeypatch.setattr(O, 'GATE_MONTHS', 3)
+
+
+def test_leading_gap_not_strict(gate3):
+    c = _cov(days(D(2026, 5, 10), D(2026, 9, 27)), start=D(2026, 5, 1))
+    assert c['leading_gap'] == {'start': '2026-05-01', 'end_exclusive': '2026-05-10', 'days': 9}
+    assert c['trailing_gap'] is None and c['missing_days'] == []
+    assert c['group'] == 'conditional_with_holes'
+    assert not F.covers({'listed_first': c['first'], 'listed_last': c['last'], 'missing_days': []},
+                        D(2026, 5, 1), F.CUTOFF)
+
+
+def test_trailing_gap_not_strict(gate3):
+    c = _cov(days(D(2026, 1, 1), D(2026, 8, 31)))                     # required end = the cutoff
+    assert c['required_start'] == '2026-01-01' and c['required_end_exclusive'] == '2026-09-28'
+    assert c['leading_gap'] is None
+    assert c['trailing_gap'] == {'start': '2026-09-01', 'end_exclusive': '2026-09-28', 'days': 27}
+    assert c['missing_days'] == [] and c['group'] == 'conditional_with_holes'
+
+
+def test_both_boundary_gaps(gate3):
+    c = _cov(days(D(2026, 2, 1), D(2026, 8, 31)), start=D(2026, 1, 15))
+    assert c['leading_gap']['days'] == 17 and c['trailing_gap']['days'] == 27
+    assert c['group'] != 'strict_complete'
+
+
+def test_exact_full_cover_is_strict(gate3):
+    c = _cov(days(D(2026, 5, 1), D(2026, 9, 27)), start=D(2026, 5, 1))
+    assert c['leading_gap'] is None and c['trailing_gap'] is None and c['group'] == 'strict_complete'
+    rec = {'listed_first': c['first'], 'listed_last': c['last'], 'missing_days': c['missing_days']}
+    assert F.covers(rec, D(2026, 5, 1), F.CUTOFF) and F.covers(rec, D(2026, 6, 3), D(2026, 6, 4))
+
+
+def test_internal_one_day_hole_conditional(gate3):
+    c = _cov([d for d in days(D(2026, 5, 1), D(2026, 9, 27)) if d != D(2026, 7, 15)], start=D(2026, 5, 1))
+    assert c['missing_days'] == ['2026-07-15'] and c['group'] == 'conditional_with_holes'
+    assert c['leading_gap'] is None and c['trailing_gap'] is None
+    rec = {'listed_first': c['first'], 'listed_last': c['last'], 'missing_days': c['missing_days']}
+    assert not F.covers(rec, D(2026, 5, 1), F.CUTOFF)
+    assert F.covers(rec, D(2026, 7, 16), F.CUTOFF)                   # a sub-range that avoids the hole is covered
+
+
+def test_probe_pass_with_early_hole_not_strict(gate3):
+    ds = [d for d in days(D(2026, 1, 1), D(2026, 9, 27)) if d != D(2026, 1, 5)]
+    c = _cov(ds)
+    assert c['longest_complete_month_run']['months'] >= O.GATE_MONTHS          # the screening probe passes
+    assert c['group'] == 'conditional_with_holes'
+
+
+def test_covers_refuses_empty_missing_with_uncovered_boundaries():
+    rec = {'listed_first': '2026-03-01', 'listed_last': '2026-08-31', 'missing_days': []}
+    assert not F.covers(rec, D(2026, 2, 1), D(2026, 4, 1))                    # leading boundary uncovered
+    assert not F.covers(rec, D(2026, 8, 1), F.CUTOFF)                         # trailing boundary uncovered
+    assert F.covers(rec, D(2026, 3, 1), D(2026, 9, 1))
+    assert not F.covers({'missing_days': []}, D(2026, 3, 1), D(2026, 4, 1))   # incomplete record fails closed
+    assert not F.covers({'listed_first': None, 'listed_last': None, 'missing_days': []}, D(2026, 3, 1), D(2026, 4, 1))
+    with pytest.raises(ValueError):
+        F.covers(rec, D(2026, 9, 1), D(2026, 9, 29))                          # reaching past the cutoff is refused
+
+
+def test_manifest_records_boundary_gaps(tmp_path):
+    net = Net({'NEARUSDT': days(D(2026, 1, 1), D(2026, 1, 10))})
+    doc = go(net, tmp_path, ['NEARUSDT'], start=D(2025, 12, 30))
+    cov = doc['coverage']['NEARUSDT']
+    assert cov['required_start'] == '2025-12-30' and cov['required_end_exclusive'] == '2026-09-28'
+    assert cov['leading_gap']['days'] == 2 and cov['trailing_gap']['start'] == '2026-01-11'
+    assert cov['group'] != 'strict_complete'

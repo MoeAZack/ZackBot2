@@ -17,8 +17,12 @@ Rules:
   * bounded retries with exponential backoff on network errors / 5xx; HTTP 429 / 418 / 403, an HTML body or an
     off-archive redirect STOPS the run (exit 2); requests share one pacer (`--min-gap`) over `--workers` (default 2);
   * every ABSENT archive day inside [first listed, last listed before the cutoff] is recorded per symbol in
-    `missing_days` (never forward-filled, interpolated or synthesized); symbols are grouped `strict_complete` /
-    `conditional_with_holes` / `short_history` from the listing (Codex ruling 6458228546), in the plan and manifest;
+    `missing_days` (never forward-filled, interpolated or synthesized); days the listing does not reach inside the
+    REQUIRED interval [--start or first listed, --end + 1 day) are recorded as `leading_gap` / `trailing_gap`;
+    symbols are grouped `strict_complete` / `conditional_with_holes` / `short_history` (Codex rulings 6458228546,
+    6489311350), in the plan and manifest. `strict_complete` = the ENTIRE required interval is covered; the
+    longest-clean-run probe only screens. Loaders must gate on `covers(cov, start, end_exclusive)`, never on
+    `missing_days == []` alone;
   * the zip is never opened: no CSV row or series value is read here (the PIT loader is a later ticket);
   * `--dry-run`: listing GETs only, prints the plan (files per symbol, listed bytes); no `.zip` / `.CHECKSUM` GET and
     nothing written.
@@ -112,27 +116,80 @@ def list_with_sizes(symbol: str, list_fetch=None) -> dict:
     return {k: sizes.get(k) for k in keys}
 
 
-def coverage(symbol: str, keys) -> dict:
-    """Coverage of the WHOLE pre-cutoff listing (probe logic, independent of --start/--end): every absent day inside
-    [first listed, last listed before the cutoff] explicitly (never filled), and the group:
-      strict_complete        no missing day and >= GATE_MONTHS consecutive complete months ending before the cutoff;
-      conditional_with_holes has missing days, and would reach GATE_MONTHS only if those days were excused;
+def _gap(a: dt.date, b: dt.date):
+    """An explicit uncovered stretch [a, b), or None when it is empty."""
+    return {'start': a.isoformat(), 'end_exclusive': b.isoformat(), 'days': (b - a).days} if a < b else None
+
+
+def boundary_gaps(listed_first, listed_last, required_start, required_end_exclusive: dt.date):
+    """(leading_gap, trailing_gap) of the listing [listed_first, listed_last] against the required interval
+    [required_start, required_end_exclusive) (Codex ruling 6489311350). An empty listing leaves the whole required
+    interval uncovered (`days` None when no explicit start was requested)."""
+    if listed_first is None or listed_last is None:
+        if required_start is None:
+            return ({'start': None, 'end_exclusive': required_end_exclusive.isoformat(), 'days': None}, None)
+        return (_gap(required_start, required_end_exclusive), None)
+    lf, ll = dt.date.fromisoformat(listed_first), dt.date.fromisoformat(listed_last)
+    rs = required_start if required_start is not None else lf
+    lead = _gap(rs, min(lf, required_end_exclusive))
+    trail = _gap(max(ll + dt.timedelta(days=1), rs), required_end_exclusive)
+    return lead, trail
+
+
+def coverage(symbol: str, keys, required_start=None, required_end_exclusive: dt.date = CUTOFF) -> dict:
+    """Coverage of the pre-cutoff listing against the REQUIRED interval [required_start, required_end_exclusive)
+    (`required_start` None = the first listed day, i.e. the CLI default). Every absent day inside
+    [first listed, last listed] is listed explicitly (never filled); days the listing does not reach at either end are
+    recorded as `leading_gap` / `trailing_gap`. Groups (Codex rulings 6458228546 + 6489311350):
+      strict_complete        the ENTIRE required interval is covered: no missing day in the listing, no leading and
+                             no trailing gap, and the GATE_MONTHS screening probe passes;
+      conditional_with_holes missing days and/or a boundary gap, and the listing would reach GATE_MONTHS only if its
+                             internal holes were excused;
       short_history          everything else (incl. no files).
-    The excused-holes run is a CLASSIFICATION aid only: no file or value is ever synthesized for a missing day."""
+    The longest-clean-run / excused-holes runs are SCREENING aids only and never grant strict_complete on their own.
+    No file or value is ever synthesized for a missing day."""
+    if required_end_exclusive > CUTOFF:
+        raise FetchError(f'required_end_exclusive {required_end_exclusive} is after the cutoff {CUTOFF}')
+    if required_start is not None and required_start >= required_end_exclusive:
+        raise FetchError('required_start must be before required_end_exclusive')
     summ = P.summarize(symbol, keys, CUTOFF)
     missing = [(dt.date.fromisoformat(a) + dt.timedelta(days=i)).isoformat()
                for a, _, n in summ['gaps'] for i in range(n)]
     dates = [d for d in (P.parse_key(k, symbol) for k in keys) if d is not None and d < CUTOFF]
     excused, _ = P.month_runs(set(dates) | {dt.date.fromisoformat(m) for m in missing}, CUTOFF)
     best = summ['longest_complete_month_run']
-    if not missing and best['months'] >= P.GATE_MONTHS:
+    lead, trail = boundary_gaps(summ['first'], summ['last'], required_start, required_end_exclusive)
+    if not missing and lead is None and trail is None and best['months'] >= P.GATE_MONTHS:
         group = 'strict_complete'
-    elif missing and excused['months'] >= P.GATE_MONTHS:
+    elif (missing or lead or trail) and summ['first'] is not None and excused['months'] >= P.GATE_MONTHS:
         group = 'conditional_with_holes'
     else:
         group = 'short_history'
     return {'group': group, 'missing_days': missing, 'first': summ['first'], 'last': summ['last'],
+            'required_start': required_start.isoformat() if required_start else summ['first'],
+            'required_end_exclusive': required_end_exclusive.isoformat(),
+            'leading_gap': lead, 'trailing_gap': trail,
             'longest_complete_month_run': best, 'month_run_if_holes_excused': excused}
+
+
+def covers(cov: dict, required_start: dt.date, required_end_exclusive: dt.date) -> bool:
+    """Loader availability gate: True only when the coverage record `cov` (a plan `per_symbol` / manifest `coverage`
+    entry) has every day of [required_start, required_end_exclusive) listed. `missing_days == []` alone is NOT
+    sufficient: it only describes holes BETWEEN the first and last listed day, so the listed boundaries are checked
+    against the required range too. Fails closed on an incomplete record; refuses a range reaching the cutoff."""
+    P.check_end(required_end_exclusive - dt.timedelta(days=1), CUTOFF)
+    if required_start >= required_end_exclusive:
+        raise FetchError('required_start must be before required_end_exclusive')
+    try:
+        lf, ll, missing = cov['listed_first'], cov['listed_last'], cov['missing_days']
+    except (KeyError, TypeError):
+        return False
+    if lf is None or ll is None or missing is None:
+        return False
+    if (dt.date.fromisoformat(lf) > required_start
+            or dt.date.fromisoformat(ll) < required_end_exclusive - dt.timedelta(days=1)):
+        return False
+    return not any(required_start <= dt.date.fromisoformat(m) < required_end_exclusive for m in missing)
 
 
 GROUPS = ('strict_complete', 'conditional_with_holes', 'short_history')
@@ -162,9 +219,12 @@ def plan(symbols, start, end: dt.date, list_fetch=None) -> dict:
             rows.append({'symbol': s, 'date': d.isoformat(), 'key': k, 'listed_bytes': size})
         rows.sort(key=lambda r: r['date'])
         known = [r['listed_bytes'] for r in rows]
-        cov = coverage(s, listed)
+        cov = coverage(s, listed, start, min(end + dt.timedelta(days=1), CUTOFF))
         per_symbol[s] = {'group': cov['group'], 'missing_days': cov['missing_days'],
                          'listed_first': cov['first'], 'listed_last': cov['last'],
+                         'required_start': cov['required_start'],
+                         'required_end_exclusive': cov['required_end_exclusive'],
+                         'leading_gap': cov['leading_gap'], 'trailing_gap': cov['trailing_gap'],
                          'longest_complete_month_run': cov['longest_complete_month_run'],
                          'month_run_if_holes_excused': cov['month_run_if_holes_excused'], 'files': len(rows), 'first': rows[0]['date'] if rows else None,
                          'last': rows[-1]['date'] if rows else None,
@@ -378,7 +438,9 @@ def build_manifest(entries, failures, *, symbols, start, end, stopped=None, per_
            'total_bytes': sum(f['bytes'] for f in files)}
     per_symbol = per_symbol or {}
     doc['coverage'] = {s: {k: v[k] for k in ('group', 'missing_days', 'listed_first', 'listed_last',
-                                             'longest_complete_month_run', 'month_run_if_holes_excused')}
+                                             'required_start', 'required_end_exclusive', 'leading_gap',
+                                             'trailing_gap', 'longest_complete_month_run',
+                                             'month_run_if_holes_excused')}
                        for s, v in sorted(per_symbol.items())}
     doc['groups'] = groups(per_symbol)
     doc['gate_months'] = P.GATE_MONTHS
