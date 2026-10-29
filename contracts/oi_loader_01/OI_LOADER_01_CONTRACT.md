@@ -48,8 +48,15 @@ non-str bounds, impossible dates, end <= start, a null manifest start, and a req
 
 Request: `REQ_DATE`, `REQ_ORDER`, `REQ_CUTOFF`, `REQ_SYMBOL`, `REQ_WINDOW`. Schema: `SCHEMA_NOT_OBJECT`,
 `SCHEMA_UNKNOWN_FIELD`, `SCHEMA_MISSING_FIELD`, `SCHEMA_VERSION`, `SCHEMA_TYPE`, `SCHEMA_DATE`, `SCHEMA_SYMBOLS`,
-`SCHEMA_TOTAL_BYTES`, `SCHEMA_DIGEST`. Any precondition failure refuses before the conjuncts are evaluated; then every
-failing conjunct (P1–P6) is reported.
+`SCHEMA_TOTAL_BYTES`, `SCHEMA_DIGEST`, `SCHEMA_NONFINITE`, `SCHEMA_GROUPS`, `SCHEMA_INVALID`. Any precondition failure
+refuses before the conjuncts are evaluated; then every failing conjunct (P1–P6) is reported.
+
+**Cowork 6490219007 hardening (H1, H2).** H1: evaluation never raises. NaN or ±Infinity anywhere is refused
+(`SCHEMA_NONFINITE`) before the digest; every file-entry and coverage value is type- and strict-ISO-checked before use
+(`SCHEMA_TYPE`, e.g. a list `path` or `listed_first` = `2026-9-1`); any residual exception is `SCHEMA_INVALID`.
+H2: `bytes` is capped at `max_bytes_per_file` = 1 GiB (1073741824) per daily zip; `groups` is **binding**: a dict of
+the three groups, each the sorted symbol list derived from `coverage[*].group`, exactly as `groups()` @ f850323 writes
+it (`SCHEMA_GROUPS`).
 
 ## 6. Forbidden in this PR
 
@@ -59,4 +66,5 @@ authority, reading any zip or row, synthesizing a missing day.
 ## 7. Open questions for Integration
 
 Q1 sub-window requests · Q2 digest/total_bytes as preconditions · Q3 on-disk re-hash at load time · Q4 per-symbol vs
-all-or-nothing · Q5 coverage required-interval match · Q6 failures/stopped content schema. Proposals are in the JSON.
+all-or-nothing · Q5 coverage required-interval match · Q6 failures/stopped content schema · Q7 groups
+binding vs non-binding · Q8 the 1 GiB per-file cap. Proposals are in the JSON.

@@ -9,7 +9,10 @@
   "doc": "OI_LOADER_01_CONTRACT.md",
   "assignment": "6489944476",
   "ruling_source": "Codex 6489944476 (GO: OI-LOADER-01 admission contract, DRAFT docs/tests only)",
-  "integration_rulings": ["6489828197", "6489428240"],
+  "integration_rulings": [
+    "6489828197",
+    "6489428240"
+  ],
   "ruling_6489828197": {
     "N1_N2": "authoritative true means the bulk request used explicit frozen bounds; it does not mean the dataset is complete or usable. covers() alone is never a loader admission gate. The loader fails closed unless authoritative, complete, stopped null, failures empty, covers() and a verified file entry for every required day all hold."
   },
@@ -59,26 +62,91 @@
     },
     "pinned_values_citation": "oi_metrics_fetch.py module constants FORMAT, LOADER_VERSION, SOURCE_CLASS, DATA_ROOT, AVAILABLE_RULE, CUTOFF (= oi_metrics_probe.CUTOFF) and oi_metrics_probe.GATE_MONTHS @ f850323",
     "top_level_fields": [
-      "authoritative", "available_rule", "complete", "coverage", "cutoff_exclusive", "data_root", "digest", "end",
-      "failures", "files", "format", "gate_months", "groups", "loader_version", "mode", "series", "source_class",
-      "start", "stopped", "symbols", "total_bytes"
+      "authoritative",
+      "available_rule",
+      "complete",
+      "coverage",
+      "cutoff_exclusive",
+      "data_root",
+      "digest",
+      "end",
+      "failures",
+      "files",
+      "format",
+      "gate_months",
+      "groups",
+      "loader_version",
+      "mode",
+      "series",
+      "source_class",
+      "start",
+      "stopped",
+      "symbols",
+      "total_bytes"
     ],
-    "file_entry_fields": ["bytes", "date", "path", "sha256", "source", "symbol"],
+    "file_entry_fields": [
+      "bytes",
+      "date",
+      "path",
+      "sha256",
+      "source",
+      "symbol"
+    ],
     "file_entry_note": "the size field is named `bytes`; `status` (fetched/resumed) is dropped by build_manifest and is not a manifest field",
     "coverage_entry_fields": [
-      "group", "leading_gap", "listed_first", "listed_last", "longest_complete_month_run", "missing_days",
-      "missing_required_days", "month_run_if_holes_excused", "required_end_exclusive", "required_start", "trailing_gap"
+      "group",
+      "leading_gap",
+      "listed_first",
+      "listed_last",
+      "longest_complete_month_run",
+      "missing_days",
+      "missing_required_days",
+      "month_run_if_holes_excused",
+      "required_end_exclusive",
+      "required_start",
+      "trailing_gap"
     ],
     "coverage_citation": "oi_metrics_fetch.py:build_manifest (doc['coverage']) and :plan (per_symbol) @ f850323",
-    "gap_fields": ["days", "end_exclusive", "start"],
+    "gap_fields": [
+      "days",
+      "end_exclusive",
+      "start"
+    ],
     "gap_citation": "oi_metrics_fetch.py:_gap and :boundary_gaps @ f850323; a gap is null or exactly these fields",
-    "month_run_fields": ["end", "months", "start"],
+    "month_run_fields": [
+      "end",
+      "months",
+      "start"
+    ],
     "month_run_citation": "oi_metrics_probe.py:month_runs @ f850323",
-    "groups": ["strict_complete", "conditional_with_holes", "short_history"],
-    "stopped_fields": ["reason", "status", "url"],
+    "groups": [
+      "strict_complete",
+      "conditional_with_holes",
+      "short_history"
+    ],
+    "stopped_fields": [
+      "reason",
+      "status",
+      "url"
+    ],
     "digest_rule": "digest == sha256 hex of canonical(manifest without `digest`), canonical = json.dumps(sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) encoded ascii",
     "digest_citation": "oi_metrics_fetch.py:build_manifest and tools/research/manifest.py:canonical @ f850323",
-    "total_bytes_rule": "total_bytes == sum of every file entry `bytes`"
+    "total_bytes_rule": "total_bytes == sum of every file entry `bytes`",
+    "max_bytes_per_file": 1073741824,
+    "max_bytes_per_file_note": "1 GiB per daily metrics zip; real files are kilobytes, so the cap only refuses corrupt or hostile values",
+    "groups_rule": "binding: groups == {g: sorted(s for s in symbols if coverage[s].group == g) for g in groups}, exactly as oi_metrics_fetch.py:groups @ f850323 writes it (a dict of three sorted lists of str)",
+    "value_rules": {
+      "non_finite": "no float NaN, Infinity or -Infinity anywhere in the manifest (json.load accepts them; canonical() refuses them)",
+      "file_entry": "path, symbol, date, sha256 and source are str; bytes is int (never bool), 0 < bytes <= max_bytes_per_file",
+      "coverage_group": "one of the three groups",
+      "coverage_listed_first_last": "null or a strict ISO date (iso_date_rule)",
+      "coverage_missing_days": "missing_days and missing_required_days are lists of strict ISO dates",
+      "coverage_required_bounds": "required_start and required_end_exclusive are strict ISO dates",
+      "coverage_gap": "null or {start: null or strict ISO date, end_exclusive: strict ISO date, days: null or int >= 0}",
+      "coverage_month_run": "{months: int >= 0, start: null or YYYY-MM, end: null or YYYY-MM}",
+      "month_regex": "^[0-9]{4}-[0-9]{2}$",
+      "never_raise": "evaluation never raises: a value check runs before every use, and any residual exception is a SCHEMA_INVALID refusal"
+    }
   },
   "date_semantics": {
     "cutoff_exclusive": "2026-09-28",
@@ -115,43 +183,143 @@
     "date_rule": "entry date obeys iso_date_rule, lies inside the manifest window [start, end] and is before the cutoff",
     "sha256_regex": "^[0-9a-f]{64}$",
     "sha256_rule": "str, exactly 64 lowercase hex characters",
-    "bytes_rule": "type is int (never bool, float or str) and value > 0",
+    "bytes_rule": "type is int (never bool, float or str) and 0 < value <= manifest_schema.max_bytes_per_file",
     "uniqueness": "no two file entries share a path; per required day exactly one entry for (requested symbol, day)",
     "scope_of_identity_check": "every file entry in the manifest is checked, not only the requested symbol's: one bad entry anywhere refuses the whole manifest"
   },
   "preconditions_fail_closed": [
-    {"code": "REQ_DATE", "rule": "a request bound violates iso_date_rule"},
-    {"code": "REQ_ORDER", "rule": "required_end_exclusive <= required_start"},
-    {"code": "REQ_CUTOFF", "rule": "required_end_exclusive > cutoff_exclusive (equality allowed)"},
-    {"code": "SCHEMA_NOT_OBJECT", "rule": "the manifest, a file entry, a coverage entry, groups or a non-null gap / stopped is not a JSON object"},
-    {"code": "SCHEMA_UNKNOWN_FIELD", "rule": "any field not listed in manifest_schema at the top level, in a file entry, a coverage entry, a gap, a month run or stopped"},
-    {"code": "SCHEMA_MISSING_FIELD", "rule": "any listed field absent at any of those levels"},
-    {"code": "SCHEMA_VERSION", "rule": "any pinned_values field differs (unknown format, loader_version, source_class, data_root, series, mode, cutoff_exclusive, gate_months or available_rule)"},
-    {"code": "SCHEMA_TYPE", "rule": "authoritative or complete not a bool; files, failures or symbols not a list; stopped neither null nor an object; total_bytes not an int"},
-    {"code": "SCHEMA_DATE", "rule": "manifest start or end violates iso_date_rule (start null included), end >= cutoff, or start > end"},
-    {"code": "SCHEMA_SYMBOLS", "rule": "symbols not a sorted duplicate-free list of symbol_regex strings, coverage keys != symbols, or groups keys != the three groups"},
-    {"code": "REQ_SYMBOL", "rule": "requested symbol not in manifest symbols"},
-    {"code": "REQ_WINDOW", "rule": "request interval not inside the manifest window [start, end + 1 day)"},
-    {"code": "SCHEMA_TOTAL_BYTES", "rule": "total_bytes != sum of file entry bytes"},
-    {"code": "SCHEMA_DIGEST", "rule": "digest does not match digest_rule"}
+    {
+      "code": "REQ_DATE",
+      "rule": "a request bound violates iso_date_rule"
+    },
+    {
+      "code": "REQ_ORDER",
+      "rule": "required_end_exclusive <= required_start"
+    },
+    {
+      "code": "REQ_CUTOFF",
+      "rule": "required_end_exclusive > cutoff_exclusive (equality allowed)"
+    },
+    {
+      "code": "SCHEMA_NOT_OBJECT",
+      "rule": "the manifest, a file entry, a coverage entry, groups or a non-null gap / stopped is not a JSON object"
+    },
+    {
+      "code": "SCHEMA_NONFINITE",
+      "rule": "a NaN or +/-Infinity float anywhere in the manifest; checked before any other value use and before the digest"
+    },
+    {
+      "code": "SCHEMA_UNKNOWN_FIELD",
+      "rule": "any field not listed in manifest_schema at the top level, in a file entry, a coverage entry, a gap, a month run or stopped"
+    },
+    {
+      "code": "SCHEMA_MISSING_FIELD",
+      "rule": "any listed field absent at any of those levels"
+    },
+    {
+      "code": "SCHEMA_VERSION",
+      "rule": "any pinned_values field differs (unknown format, loader_version, source_class, data_root, series, mode, cutoff_exclusive, gate_months or available_rule)"
+    },
+    {
+      "code": "SCHEMA_TYPE",
+      "rule": "authoritative or complete not a bool; files, failures or symbols not a list; stopped neither null nor an object; total_bytes not an int; any file-entry or coverage value violating manifest_schema.value_rules"
+    },
+    {
+      "code": "SCHEMA_DATE",
+      "rule": "manifest start or end violates iso_date_rule (start null included), end >= cutoff, or start > end"
+    },
+    {
+      "code": "SCHEMA_SYMBOLS",
+      "rule": "symbols not a sorted duplicate-free list of symbol_regex strings, coverage keys != symbols, or groups keys != the three groups"
+    },
+    {
+      "code": "SCHEMA_GROUPS",
+      "rule": "groups differs from the grouping derived from coverage (manifest_schema.groups_rule)"
+    },
+    {
+      "code": "REQ_SYMBOL",
+      "rule": "requested symbol not in manifest symbols"
+    },
+    {
+      "code": "REQ_WINDOW",
+      "rule": "request interval not inside the manifest window [start, end + 1 day)"
+    },
+    {
+      "code": "SCHEMA_TOTAL_BYTES",
+      "rule": "total_bytes != sum of file entry bytes"
+    },
+    {
+      "code": "SCHEMA_DIGEST",
+      "rule": "digest does not match digest_rule"
+    },
+    {
+      "code": "SCHEMA_INVALID",
+      "rule": "any residual exception while evaluating; the evaluator refuses and never raises"
+    }
   ],
   "admission_predicate": {
     "combinator": "ALL",
     "rule": "admit only when every precondition passes AND all six conjuncts are true together; any failure refuses",
     "conjuncts": [
-      {"id": "P1", "expr": "authoritative is true", "field": "authoritative", "citation": "oi_metrics_fetch.py:build_manifest (mode bulk, authoritative True) and :plan (screening, False) @ f850323"},
-      {"id": "P2", "expr": "complete is true", "field": "complete", "citation": "oi_metrics_fetch.py:build_manifest (complete = not failures and stopped is None) @ f850323"},
-      {"id": "P3", "expr": "stopped is null", "field": "stopped", "citation": "oi_metrics_fetch.py:run (stop dict on BAF.StopRun) @ f850323"},
-      {"id": "P4", "expr": "failures == []", "field": "failures", "citation": "oi_metrics_fetch.py:fetch_one / :run failure entries @ f850323"},
-      {"id": "P5", "expr": "covers(manifest_coverage, required_start, required_end_exclusive)", "field": "coverage[symbol]", "citation": "oi_metrics_fetch.py:covers @ f850323 (listed_first <= required_start, listed_last >= required_end_exclusive - 1 day, no missing_days inside the interval; incomplete record -> False)"},
-      {"id": "P6", "expr": "every required day in [required_start, required_end_exclusive) has exactly one verified manifest file entry whose path/date/symbol/hash/size identity is valid and belongs to the requested symbol and window", "field": "files", "citation": "oi_metrics_fetch.py:build_manifest files[] @ f850323; identity_rules"}
+      {
+        "id": "P1",
+        "expr": "authoritative is true",
+        "field": "authoritative",
+        "citation": "oi_metrics_fetch.py:build_manifest (mode bulk, authoritative True) and :plan (screening, False) @ f850323"
+      },
+      {
+        "id": "P2",
+        "expr": "complete is true",
+        "field": "complete",
+        "citation": "oi_metrics_fetch.py:build_manifest (complete = not failures and stopped is None) @ f850323"
+      },
+      {
+        "id": "P3",
+        "expr": "stopped is null",
+        "field": "stopped",
+        "citation": "oi_metrics_fetch.py:run (stop dict on BAF.StopRun) @ f850323"
+      },
+      {
+        "id": "P4",
+        "expr": "failures == []",
+        "field": "failures",
+        "citation": "oi_metrics_fetch.py:fetch_one / :run failure entries @ f850323"
+      },
+      {
+        "id": "P5",
+        "expr": "covers(manifest_coverage, required_start, required_end_exclusive)",
+        "field": "coverage[symbol]",
+        "citation": "oi_metrics_fetch.py:covers @ f850323 (listed_first <= required_start, listed_last >= required_end_exclusive - 1 day, no missing_days inside the interval; incomplete record -> False)"
+      },
+      {
+        "id": "P6",
+        "expr": "every required day in [required_start, required_end_exclusive) has exactly one verified manifest file entry whose path/date/symbol/hash/size identity is valid and belongs to the requested symbol and window",
+        "field": "files",
+        "citation": "oi_metrics_fetch.py:build_manifest files[] @ f850323; identity_rules"
+      }
     ],
-    "p6_refusal_details": ["entry_symbol", "entry_date", "outside_window", "entry_path", "entry_source", "entry_sha256", "entry_bytes", "duplicate_path", "missing_day", "duplicate_day"],
+    "p6_refusal_details": [
+      "entry_symbol",
+      "entry_date",
+      "outside_window",
+      "entry_path",
+      "entry_source",
+      "entry_sha256",
+      "entry_bytes",
+      "duplicate_path",
+      "missing_day",
+      "duplicate_day"
+    ],
     "p6_note": "P6 checks the manifest record only. The future loader must also re-hash each admitted zip on disk and match sha256 and bytes before reading a row (deferred, see open question Q3).",
-    "never_sufficient_alone": ["authoritative", "covers()", "missing_days == []", "group == strict_complete"],
+    "never_sufficient_alone": [
+      "authoritative",
+      "covers()",
+      "missing_days == []",
+      "group == strict_complete"
+    ],
     "n1_n2_shape": "authoritative true, complete false, one failure, stopped null, covers() still true (the listing reaches every day) and the failed day has no file entry: refused by P2, P4 and P6"
   },
-  "evaluation_order": "request bound checks, then schema/version/type/date/symbol/window/total_bytes/digest preconditions (first failure refuses, no conjunct evaluated), then all six conjuncts evaluated and every failing one reported",
+  "evaluation_order": "request bound checks, then the non-finite scan, then schema/version/type/value/date/symbol/groups/window/total_bytes/digest preconditions (first failure refuses, no conjunct evaluated), then all six conjuncts evaluated and every failing one reported; any residual exception is SCHEMA_INVALID",
   "forbidden": [
     "loader implementation in this PR",
     "archive or network access",
@@ -173,23 +341,74 @@
   ],
   "test_plan": {
     "file": "tests/test_oi_loader01_contract.py",
-    "positive": ["single-day manifest admitted", "multi-day manifest admitted", "sub-window of a manifest admitted", "required_end_exclusive == cutoff admitted"],
+    "positive": [
+      "single-day manifest admitted",
+      "multi-day manifest admitted",
+      "sub-window of a manifest admitted",
+      "required_end_exclusive == cutoff admitted"
+    ],
     "negative": [
       "each of P1..P6 failing alone with the other five true",
-      "missing required-day entry", "duplicate required-day entry", "entry outside the manifest window",
-      "wrong symbol, wrong date and wrong path identity", "hash absent or malformed (length, uppercase, non-hex)",
-      "size absent, zero, negative or non-int", "coverage claims strict_complete while a file entry is absent",
-      "Cowork N1/N2 partial-run shape", "unknown field, unknown version, ambiguous date boundary",
-      "required_end_exclusive == cutoff + 1 day refused"
+      "missing required-day entry",
+      "duplicate required-day entry",
+      "entry outside the manifest window",
+      "wrong symbol, wrong date and wrong path identity",
+      "hash absent or malformed (length, uppercase, non-hex)",
+      "size absent, zero, negative or non-int",
+      "coverage claims strict_complete while a file entry is absent",
+      "Cowork N1/N2 partial-run shape",
+      "unknown field, unknown version, ambiguous date boundary",
+      "required_end_exclusive == cutoff + 1 day refused",
+      "H1: NaN/Infinity anywhere, path as list or dict, coverage listed_first/listed_last/missing_days non-str or non-strict ISO, every file-entry value mistyped",
+      "H2: bytes above max_bytes_per_file (10**400), groups mistyped or inconsistent with coverage"
     ]
   },
   "open_questions": [
-    {"id": "Q1", "question": "Sub-window requests: may the loader admit a request strictly inside the manifest window, or must the request equal the manifest's required interval exactly?", "proposal": "allow a sub-window (as drafted: REQ_WINDOW only refuses a request outside [start, end + 1 day)); entries outside the request but inside the manifest window are ignored, not refused"},
-    {"id": "Q2", "question": "Digest and total_bytes are drafted as fail-closed preconditions beyond the six frozen conjuncts. Keep them, or fold them into P6?", "proposal": "keep as preconditions; they are integrity checks on the manifest bytes, not admission semantics"},
-    {"id": "Q3", "question": "On-disk verification: should the signed contract require the loader to re-hash every admitted zip (sha256 and bytes) and fail closed on any mismatch, or is the manifest record enough?", "proposal": "require the re-hash at load time; the manifest alone proves only what the fetcher saw"},
-    {"id": "Q4", "question": "Multi-symbol requests: is admission per symbol (one refused symbol leaves others admissible) or all-or-nothing across a requested symbol set?", "proposal": "per symbol, each with its own predicate evaluation; a cross-sectional consumer needing all symbols must refuse when any one is refused"},
-    {"id": "Q5", "question": "Should a manifest whose coverage entry for the requested symbol has required_start/required_end_exclusive not containing the request be refused even when covers() passes?", "proposal": "no extra rule; covers() over listed_first/listed_last/missing_days is the coverage gate per J3"},
-    {"id": "Q6", "question": "Do the failure entries and stopped object need a schema check when P3/P4 already refuse any non-empty value?", "proposal": "only the type check (failures list, stopped null or object with exactly reason/status/url); content is irrelevant because any non-empty value refuses"}
+    {
+      "id": "Q1",
+      "question": "Sub-window requests: may the loader admit a request strictly inside the manifest window, or must the request equal the manifest's required interval exactly?",
+      "proposal": "allow a sub-window (as drafted: REQ_WINDOW only refuses a request outside [start, end + 1 day)); entries outside the request but inside the manifest window are ignored, not refused"
+    },
+    {
+      "id": "Q2",
+      "question": "Digest and total_bytes are drafted as fail-closed preconditions beyond the six frozen conjuncts. Keep them, or fold them into P6?",
+      "proposal": "keep as preconditions; they are integrity checks on the manifest bytes, not admission semantics"
+    },
+    {
+      "id": "Q3",
+      "question": "On-disk verification: should the signed contract require the loader to re-hash every admitted zip (sha256 and bytes) and fail closed on any mismatch, or is the manifest record enough?",
+      "proposal": "require the re-hash at load time; the manifest alone proves only what the fetcher saw"
+    },
+    {
+      "id": "Q4",
+      "question": "Multi-symbol requests: is admission per symbol (one refused symbol leaves others admissible) or all-or-nothing across a requested symbol set?",
+      "proposal": "per symbol, each with its own predicate evaluation; a cross-sectional consumer needing all symbols must refuse when any one is refused"
+    },
+    {
+      "id": "Q5",
+      "question": "Should a manifest whose coverage entry for the requested symbol has required_start/required_end_exclusive not containing the request be refused even when covers() passes?",
+      "proposal": "no extra rule; covers() over listed_first/listed_last/missing_days is the coverage gate per J3"
+    },
+    {
+      "id": "Q6",
+      "question": "Do the failure entries and stopped object need a schema check when P3/P4 already refuse any non-empty value?",
+      "proposal": "only the type check (failures list, stopped null or object with exactly reason/status/url); content is irrelevant because any non-empty value refuses"
+    },
+    {
+      "id": "Q7",
+      "question": "groups is drafted as BINDING (exact dict of three sorted symbol lists equal to the coverage-derived grouping). Keep binding, or declare it non-binding provenance and ignore it?",
+      "proposal": "binding: it is a fixed field the fetcher always writes, and an inconsistent copy signals a hand-edited or corrupt manifest"
+    },
+    {
+      "id": "Q8",
+      "question": "Per-file cap max_bytes_per_file = 1 GiB (1073741824). Accept the value, or tighten it to a measured bound from real daily metrics zips?",
+      "proposal": "accept 1 GiB now; tighten only after the bulk run measures real sizes"
+    }
   ],
-  "resolved_questions": []
+  "resolved_questions": [],
+  "review_6490219007": {
+    "source": "Cowork result on #238 @ 937f14e: predicate PASS; hardening H1, H2 applied here",
+    "H1": "malformed value types must refuse, never raise: non-finite numbers refused before the digest; every file-entry and coverage value type- and ISO-checked before use; any residual exception maps to SCHEMA_INVALID",
+    "H2": "per-file bytes capped at max_bytes_per_file; groups is binding: a dict of exactly the three groups, each a sorted list of symbols, equal to the grouping derived from coverage[*].group"
+  }
 }

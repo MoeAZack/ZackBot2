@@ -9,6 +9,7 @@ import copy
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import re
 
@@ -36,6 +37,8 @@ IDR = C['identity_rules']
 ISO = re.compile(C['date_semantics']['iso_date_regex'])
 SYM = re.compile(IDR['symbol_regex'])
 SHA = re.compile(IDR['sha256_regex'])
+MONTH = re.compile(S['value_rules']['month_regex'])
+MAX_BYTES = S['max_bytes_per_file']
 CUTOFF = dt.date.fromisoformat(C['date_semantics']['cutoff_exclusive'])
 ONE = dt.timedelta(days=1)
 
@@ -51,6 +54,47 @@ def _iso(v):
         return dt.date.fromisoformat(v)
     except ValueError:
         return None
+
+
+def _nonfinite(v):
+    if type(v) is float:
+        return not math.isfinite(v)
+    if isinstance(v, dict):
+        return any(_nonfinite(x) for x in v.values())
+    if isinstance(v, list):
+        return any(_nonfinite(x) for x in v)
+    return False
+
+
+def _iso_or_none(v):
+    return v is None or _iso(v) is not None
+
+
+def _nonneg_int(v):
+    return type(v) is int and v >= 0
+
+
+def _coverage_values_ok(cov):
+    if cov['group'] not in S['groups']:
+        return False
+    if not (_iso_or_none(cov['listed_first']) and _iso_or_none(cov['listed_last'])):
+        return False
+    for k in ('missing_days', 'missing_required_days'):
+        if type(cov[k]) is not list or not all(_iso(d) is not None for d in cov[k]):
+            return False
+    if _iso(cov['required_start']) is None or _iso(cov['required_end_exclusive']) is None:
+        return False
+    for g in ('leading_gap', 'trailing_gap'):
+        gap = cov[g]
+        if gap is not None and not (_iso_or_none(gap['start']) and _iso(gap['end_exclusive']) is not None
+                                    and (gap['days'] is None or _nonneg_int(gap['days']))):
+            return False
+    for r in ('longest_complete_month_run', 'month_run_if_holes_excused'):
+        run = cov[r]
+        if not _nonneg_int(run['months']) or not all(
+                x is None or (type(x) is str and MONTH.fullmatch(x)) for x in (run['start'], run['end'])):
+            return False
+    return True
 
 
 def _fields(obj, fields):
@@ -91,6 +135,10 @@ def _preconditions(m, symbol, req_start, req_end_x):
         raise Refuse('REQ_ORDER')
     if rx > CUTOFF:
         raise Refuse('REQ_CUTOFF')
+    if not isinstance(m, dict):
+        raise Refuse('SCHEMA_NOT_OBJECT')
+    if _nonfinite(m):
+        raise Refuse('SCHEMA_NONFINITE')
     _fields(m, S['top_level_fields'])
     for k, v in PIN.items():
         if type(m[k]) is not type(v) or m[k] != v:
@@ -103,6 +151,9 @@ def _preconditions(m, symbol, req_start, req_end_x):
         _fields(m['stopped'], S['stopped_fields'])
     for f in m['files']:
         _fields(f, S['file_entry_fields'])
+        if (any(type(f[k]) is not str for k in ('path', 'symbol', 'date', 'sha256', 'source'))
+                or type(f['bytes']) is not int):
+            raise Refuse('SCHEMA_TYPE')
     ms, me = _iso(m['start']), _iso(m['end'])
     if ms is None or me is None or me >= CUTOFF or ms > me:
         raise Refuse('SCHEMA_DATE')
@@ -118,6 +169,11 @@ def _preconditions(m, symbol, req_start, req_end_x):
                 _fields(cov[g], S['gap_fields'])
         for r in ('longest_complete_month_run', 'month_run_if_holes_excused'):
             _fields(cov[r], S['month_run_fields'])
+        if not _coverage_values_ok(cov):
+            raise Refuse('SCHEMA_TYPE')
+    want = {g: sorted(s for s in syms if m['coverage'][s]['group'] == g) for g in S['groups']}
+    if m['groups'] != want or any(type(v) is not list for v in m['groups'].values()):
+        raise Refuse('SCHEMA_GROUPS')
     if symbol not in syms:
         raise Refuse('REQ_SYMBOL')
     if rs < ms or rx > me + ONE:
@@ -145,7 +201,7 @@ def _p6(m, symbol, rs, rx, ms, me):
             bad.append('entry_source')
         elif type(f['sha256']) is not str or not SHA.fullmatch(f['sha256']):
             bad.append('entry_sha256')
-        elif type(f['bytes']) is not int or f['bytes'] <= 0:
+        elif type(f['bytes']) is not int or not 0 < f['bytes'] <= MAX_BYTES:
             bad.append('entry_bytes')
         if f['path'] in paths:
             bad.append('duplicate_path')
@@ -164,9 +220,15 @@ def _p6(m, symbol, rs, rx, ms, me):
 def evaluate(m, symbol, req_start, req_end_x):
     """(admitted, reasons). Reasons: one precondition code, or every failing conjunct (P6 as 'P6:<detail>')."""
     try:
-        rs, rx, ms, me = _preconditions(m, symbol, req_start, req_end_x)
+        return _evaluate(m, symbol, req_start, req_end_x)
     except Refuse as r:
         return False, [str(r)]
+    except Exception:                                           # never raise: any residual error refuses
+        return False, ['SCHEMA_INVALID']
+
+
+def _evaluate(m, symbol, req_start, req_end_x):
+    rs, rx, ms, me = _preconditions(m, symbol, req_start, req_end_x)
     reasons = []
     if m['authoritative'] is not True:
         reasons.append('P1')
@@ -372,9 +434,10 @@ P6_CASES = {
     'hash_long': (_set(0, sha256='a' * 65), ['P6:entry_sha256']),
     'hash_uppercase': (_set(0, sha256='A' * 64), ['P6:entry_sha256']),
     'hash_non_hex': (_set(0, sha256='g' * 64), ['P6:entry_sha256']),
-    'hash_null': (_set(0, sha256=None), ['P6:entry_sha256']),
     'size_zero': (_set(0, bytes=0), ['P6:entry_bytes']),
     'size_negative': (_set(0, bytes=-5), ['P6:entry_bytes']),
+    'size_above_cap': (_set(0, bytes=MAX_BYTES + 1), ['P6:entry_bytes']),
+    'size_10_pow_400': (_set(0, bytes=10 ** 400), ['P6:entry_bytes']),
     'coverage_claims_complete_but_entry_absent': (
         lambda m: (_drop_day(m), m['coverage']['BTCUSDT'].update(group='strict_complete', missing_days=[])),
         ['P6:missing_day']),
@@ -398,8 +461,113 @@ def test_size_non_int_refused(bad):
     m = copy.deepcopy(BASE)
     m['files'][0]['bytes'] = bad
     m['digest'] = digest_of(m)
-    ok, reasons = evaluate(m, *REQ)
-    assert ok is False and reasons in (['SCHEMA_TOTAL_BYTES'], ['P6:entry_bytes'])
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_TYPE'])
+
+
+def test_size_cap_is_one_gib_and_cap_itself_admitted():
+    assert MAX_BYTES == 1 << 30
+    assert evaluate(edit(BASE, _set(0, bytes=MAX_BYTES)), *REQ) == (True, [])
+
+
+# ------------------------------------------------------------------ H1 (Cowork 6490219007): mistyped values refuse, never raise
+def _raw(fn):
+    m = copy.deepcopy(BASE)
+    fn(m)
+    return m                                               # not resealed: digest_of would refuse NaN itself
+
+
+@pytest.mark.parametrize('name,fn', [
+    ('nan_top_level', lambda m: m.update(total_bytes=float('nan'))),
+    ('inf_in_entry', lambda m: m['files'][0].update(bytes=float('inf'))),
+    ('neg_inf_in_failure', lambda m: m.update(failures=[{'x': float('-inf')}])),
+    ('nan_in_coverage', lambda m: m['coverage']['BTCUSDT']['longest_complete_month_run'].update(months=float('nan'))),
+    ('nan_in_stopped', lambda m: m.update(stopped={'reason': 'r', 'url': 'u', 'status': float('nan')})),
+])
+def test_non_finite_refused_before_digest(name, fn):
+    assert evaluate(_raw(fn), *REQ) == (False, ['SCHEMA_NONFINITE'])
+
+
+ENTRY_TYPE_CASES = {
+    'path_list': _set(0, path=['daily', 'metrics']), 'path_dict': _set(0, path={'p': 1}),
+    'symbol_int': _set(0, symbol=7), 'date_int': _set(0, date=20260901), 'date_list': _set(0, date=['2026-09-01']),
+    'sha256_null': _set(0, sha256=None), 'sha256_int': _set(0, sha256=12), 'source_null': _set(0, source=None),
+}
+
+
+@pytest.mark.parametrize('name', list(ENTRY_TYPE_CASES))
+def test_file_entry_value_types_refused(name):
+    assert evaluate(edit(BASE, ENTRY_TYPE_CASES[name]), *REQ) == (False, ['SCHEMA_TYPE'])
+
+
+def _cov(**kw):
+    return lambda m: m['coverage']['BTCUSDT'].update(**kw)
+
+
+COVERAGE_TYPE_CASES = {
+    'listed_first_int': _cov(listed_first=20230101), 'listed_first_loose_iso': _cov(listed_first='2026-9-1'),
+    'listed_first_datetime': _cov(listed_first='2023-01-01T00:00Z'), 'listed_last_list': _cov(listed_last=['x']),
+    'listed_last_loose_iso': _cov(listed_last='2026-09-3'), 'missing_days_str': _cov(missing_days='2026-09-02'),
+    'missing_days_null': _cov(missing_days=None), 'missing_days_int_item': _cov(missing_days=[20260902]),
+    'missing_days_loose_iso': _cov(missing_days=['2026-9-2']), 'missing_required_days_dict': _cov(missing_required_days={}),
+    'group_unknown': _cov(group='complete'), 'required_start_null': _cov(required_start=None),
+    'required_end_exclusive_bad': _cov(required_end_exclusive='2026-09-04Z'),
+    'gap_days_negative': _cov(leading_gap={'start': '2026-09-01', 'end_exclusive': '2026-09-02', 'days': -1}),
+    'gap_end_null': _cov(trailing_gap={'start': None, 'end_exclusive': None, 'days': None}),
+    'month_run_bad_month': _cov(longest_complete_month_run={'months': 1, 'start': '2026-9', 'end': None}),
+    'month_run_bool_months': _cov(month_run_if_holes_excused={'months': True, 'start': None, 'end': None}),
+}
+
+
+@pytest.mark.parametrize('name', list(COVERAGE_TYPE_CASES))
+def test_coverage_value_types_refused(name):
+    assert evaluate(edit(BASE, COVERAGE_TYPE_CASES[name]), *REQ) == (False, ['SCHEMA_TYPE'])
+
+
+def test_null_listed_bounds_are_well_typed_but_fail_p5():
+    m = edit(BASE, _cov(listed_first=None, listed_last=None))
+    assert evaluate(m, *REQ) == (False, ['P5'])
+
+
+def test_residual_exception_maps_to_schema_invalid(monkeypatch):
+    def boom(*a):
+        raise RuntimeError('unexpected')
+    monkeypatch.setitem(globals(), 'covers', boom)
+    assert evaluate(BASE, *REQ) == (False, ['SCHEMA_INVALID'])
+
+
+@pytest.mark.parametrize('m', [None, [], 'x', 7])
+def test_non_object_manifest_refused_not_raised(m):
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_NOT_OBJECT'])
+
+
+# ------------------------------------------------------------------ H2 (Cowork 6490219007): groups is binding
+GROUPS_CASES = {
+    'groups_value_str': lambda m: m['groups'].update(strict_complete='BTCUSDT'),
+    'groups_value_tuple_like_dict': lambda m: m['groups'].update(short_history={'BTCUSDT': 1}),
+    'groups_inconsistent': lambda m: m['groups'].update(strict_complete=[], short_history=['BTCUSDT']),
+    'groups_unsorted': lambda m: m['groups'].update(strict_complete=['ETHUSDT', 'BTCUSDT']),
+    'groups_vs_coverage_group': _cov(group='conditional_with_holes'),
+}
+
+
+@pytest.mark.parametrize('name', list(GROUPS_CASES))
+def test_groups_type_and_consistency_refused(name):
+    m = edit(manifest(symbols=('BTCUSDT', 'ETHUSDT')) if name == 'groups_unsorted' else BASE, GROUPS_CASES[name])
+    assert evaluate(m, *REQ) == (False, ['SCHEMA_GROUPS'])
+
+
+def test_groups_not_a_dict_refused():
+    assert evaluate(edit(BASE, lambda m: m.update(groups=['strict_complete'])), *REQ) == (False, ['SCHEMA_NOT_OBJECT'])
+
+
+def test_h1_h2_recorded_in_contract():
+    assert C['manifest_schema']['max_bytes_per_file'] == 1073741824
+    assert 'binding' in C['manifest_schema']['groups_rule'] and 'f850323' in C['manifest_schema']['groups_rule']
+    codes = [p['code'] for p in C['preconditions_fail_closed']]
+    assert {'SCHEMA_NONFINITE', 'SCHEMA_GROUPS', 'SCHEMA_INVALID'} <= set(codes)
+    assert codes.index('SCHEMA_NONFINITE') < codes.index('SCHEMA_DIGEST')
+    assert {'Q7', 'Q8'} <= {q['id'] for q in C['open_questions']}
+    assert set(C['review_6490219007']) == {'source', 'H1', 'H2'}
 
 
 # ------------------------------------------------------------------ Cowork N1/N2 partial-run shape
