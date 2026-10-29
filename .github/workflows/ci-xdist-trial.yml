@@ -1,0 +1,209 @@
+# CI-XDIST-TRIAL - EXPERIMENT ONLY, NOT FOR MERGE (Codex ruling 6497067465, option "A").
+# Runs the fast set (-m "not slow" tests) under pytest-xdist -n 4 --dist loadfile twice, plus one serial baseline on the same
+# head, and checks: identical collection serial vs xdist workers, executed ids == collected ids, deterministic outcomes across
+# the two xdist repetitions, no xdist-only failures, and no repo-relative writes. verify.py / verify-fast.yml are untouched.
+#
+# How list B is obtained: pytest-xdist silently runs `--collect-only` serially (it registers DSession only when collectonly is
+# off), so `--collect-only -n 4` would NOT reflect what workers collect. Instead a throw-away plugin (written to RUNNER_TEMP,
+# never into the repo) records the ids each worker reports through `pytest_xdist_node_collection_finished` during the real
+# -n 4 run, plus every test report the controller receives. List A is the serial `--collect-only -p no:xdist` set.
+name: ci-xdist-trial
+
+on:
+  push:
+    branches: [claude/ci-xdist-trial]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-xdist-trial-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TZ: Africa/Cairo
+
+jobs:
+  run:
+    name: fast set (${{ matrix.leg }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [serial, xdist-1, xdist-2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Fetch pinned commits/tag the fast set needs; golden base = current master tip
+        run: |
+          echo "ZB_TRIAL_DIR=$RUNNER_TEMP/zbtrial" >> "$GITHUB_ENV"
+          git fetch --no-tags --depth=1 origin master
+          echo "ZB_GOLDEN_BASE=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_ENV"
+          git fetch --no-tags --depth=1 origin 09445476a1bb694ee7135f350928762bc793db50
+          git fetch --no-tags --depth=1 origin f189ff7ba64a4ce2a3ed0a6699f556335df33e14
+          git fetch --no-tags --depth=2 origin +refs/tags/zb-breadth-static40-v1-registration-20261016:refs/tags/zb-breadth-static40-v1-registration-20261016
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install pinned dependencies (includes pytest-xdist pin)
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          python -m pip show pytest pytest-xdist execnet | grep -E '^(Name|Version)'
+          nproc
+      - name: Write the trial recorder plugin (outside the repo)
+        run: |
+          mkdir -p "$ZB_TRIAL_DIR/plugin" "$ZB_TRIAL_DIR/out"
+          cat > "$ZB_TRIAL_DIR/plugin/zb_xdist_trial.py" <<'EOF'
+          import json, os
+          import pytest
+          OUT = os.environ['ZB_TRIAL_JSON']
+          _collected, _results, _is_worker = {}, {}, [False]
+
+          def _worker(config):
+              return hasattr(config, 'workerinput')
+
+          def pytest_configure(config):
+              _is_worker[0] = _worker(config)
+
+          @pytest.hookimpl(optionalhook=True)
+          def pytest_xdist_node_collection_finished(node, ids):
+              _collected[node.gateway.id] = list(ids)
+
+          def pytest_collection_finish(session):
+              if not _worker(session.config) and not getattr(session.config.option, 'numprocesses', None):
+                  _collected['serial'] = [i.nodeid for i in session.items]
+
+          def pytest_runtest_logreport(report):
+              if _is_worker[0]:
+                  return
+              prev = _results.get(report.nodeid)
+              if report.failed:
+                  out = 'failed' if report.when == 'call' else 'error'
+              elif report.when == 'call' or (report.when == 'setup' and report.skipped):
+                  out = report.outcome
+              else:
+                  out = None
+              if out and prev not in ('failed', 'error'):
+                  _results[report.nodeid] = out
+
+          def pytest_sessionfinish(session):
+              if _worker(session.config):
+                  return
+              json.dump(dict(collected=_collected, results=_results), open(OUT, 'w'), indent=0, sort_keys=True)
+          EOF
+          echo "PYTHONPATH=$ZB_TRIAL_DIR/plugin" >> "$GITHUB_ENV"
+      - name: Repo status BEFORE
+        run: |
+          git status --porcelain > "$ZB_TRIAL_DIR/out/status_before.txt"
+          git status --porcelain --ignored | grep -v '__pycache__' > "$ZB_TRIAL_DIR/out/ignored_before.txt" || true
+          cat "$ZB_TRIAL_DIR/out/status_before.txt"
+          test ! -s "$ZB_TRIAL_DIR/out/status_before.txt"
+      - name: List A - serial collection (-p no:xdist)
+        env:
+          ZB_TRIAL_JSON: ${{ runner.temp }}/zbtrial/out/collect_serial.json
+        run: |
+          python -m pytest -m "not slow" tests --collect-only -q -p no:cacheprovider -p no:xdist -p zb_xdist_trial \
+            > "$ZB_TRIAL_DIR/out/collect_serial.txt"
+          tail -3 "$ZB_TRIAL_DIR/out/collect_serial.txt"
+      - name: Run the fast set (${{ matrix.leg }})
+        env:
+          ZB_TRIAL_JSON: ${{ runner.temp }}/zbtrial/out/run.json
+          LEG: ${{ matrix.leg }}
+        run: |
+          if [ "$LEG" = serial ]; then MODE="-p no:xdist"; else MODE="-n 4 --dist loadfile"; fi
+          start=$(date +%s)
+          set +e
+          timeout 3600 python -m pytest -q -p no:cacheprovider $MODE -p zb_xdist_trial \
+            --junitxml="$ZB_TRIAL_DIR/out/junit.xml" -m "not slow" tests > "$ZB_TRIAL_DIR/out/pytest.txt" 2>&1
+          rc=$?
+          set -e
+          end=$(date +%s)
+          printf '{"leg": "%s", "mode": "%s", "rc": %d, "wall_seconds": %d}\n' "$LEG" "$MODE" "$rc" "$((end-start))" \
+            > "$ZB_TRIAL_DIR/out/timing.json"
+          cat "$ZB_TRIAL_DIR/out/timing.json"
+          tail -25 "$ZB_TRIAL_DIR/out/pytest.txt"
+      - name: Repo status AFTER (repo-relative write collision check)
+        if: always()
+        run: |
+          git status --porcelain > "$ZB_TRIAL_DIR/out/status_after.txt"
+          git status --porcelain --ignored | grep -v '__pycache__' > "$ZB_TRIAL_DIR/out/ignored_after.txt" || true
+          echo "--- tracked/untracked changes after run:"; cat "$ZB_TRIAL_DIR/out/status_after.txt"
+          echo "--- new ignored paths (informational):"; diff "$ZB_TRIAL_DIR/out/ignored_before.txt" "$ZB_TRIAL_DIR/out/ignored_after.txt" || true
+      - name: Upload leg evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: xdist-trial-${{ matrix.leg }}
+          path: ${{ runner.temp }}/zbtrial/out/
+          retention-days: 30
+
+  compare:
+    name: compare serial vs xdist
+    needs: run
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: xdist-trial-*
+          path: legs
+      - name: Compare collection, execution, outcomes, timing, repo writes
+        run: |
+          cat > compare.py <<'EOF'
+          import json, os, sys, xml.etree.ElementTree as ET
+          legs, ok, lines = {}, True, []
+          def say(s): lines.append(s); print(s)
+          for leg in ('serial', 'xdist-1', 'xdist-2'):
+              d = os.path.join('legs', f'xdist-trial-{leg}')
+              if not os.path.isdir(d): say(f'MISSING leg {leg}'); ok = False; continue
+              L = legs[leg] = {}
+              L['A'] = json.load(open(os.path.join(d, 'collect_serial.json')))['collected']['serial']
+              run = json.load(open(os.path.join(d, 'run.json')))
+              L['run_collected'], L['results'] = run['collected'], run['results']
+              L['timing'] = json.load(open(os.path.join(d, 'timing.json')))
+              r = ET.parse(os.path.join(d, 'junit.xml')).getroot(); s = r if r.tag == 'testsuite' else r.find('testsuite')
+              L['junit'] = {k: int(s.get(k, 0)) for k in ('tests', 'failures', 'errors', 'skipped')}
+              L['status_after'] = open(os.path.join(d, 'status_after.txt')).read().strip()
+          A = sorted(legs['serial']['A']) if 'serial' in legs else None
+          for leg, L in legs.items():
+              a = sorted(L['A'])
+              if a != A: say(f'{leg}: serial collection differs from serial leg ({len(a)} vs {len(A)})'); ok = False
+              lists = L['run_collected']
+              if leg.startswith('xdist'):
+                  workers = sorted(k for k in lists if k != 'serial')
+                  same = all(sorted(lists[w]) == a for w in workers)
+                  say(f'{leg}: A={len(a)} workers={len(workers)} B(per worker)={[len(lists[w]) for w in workers]} identical={same}')
+                  ok &= same and len(workers) == 4
+              executed = sorted(L['results'])
+              ex_ok = executed == a
+              say(f'{leg}: executed ids={len(executed)} == A: {ex_ok}'
+                  + ('' if ex_ok else f' missing={sorted(set(a)-set(executed))[:10]} extra={sorted(set(executed)-set(a))[:10]}'))
+              ok &= ex_ok
+              say(f'{leg}: junit={L["junit"]} rc={L["timing"]["rc"]} wall={L["timing"]["wall_seconds"]}s')
+              ok &= L['timing']['rc'] == 0
+              if L['status_after']: say(f'{leg}: REPO WRITES:\n{L["status_after"]}'); ok = False
+              else: say(f'{leg}: git status --porcelain clean after run')
+          bad = lambda L: {k for k, v in L['results'].items() if v in ('failed', 'error')}
+          if 'serial' in legs:
+              for leg in ('xdist-1', 'xdist-2'):
+                  if leg in legs:
+                      only = sorted(bad(legs[leg]) - bad(legs['serial']))
+                      say(f'{leg}: xdist-only failures={len(only)} {only[:20]}'); ok &= not only
+          if 'xdist-1' in legs and 'xdist-2' in legs:
+              r1, r2 = legs['xdist-1']['results'], legs['xdist-2']['results']
+              diff = sorted(k for k in set(r1) | set(r2) if r1.get(k) != r2.get(k))
+              say(f'xdist-1 vs xdist-2 outcome differences={len(diff)} {diff[:20]}'); ok &= not diff
+          say('TRIAL GATES: ' + ('PASS' if ok else 'FAIL'))
+          open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write('```\n' + '\n'.join(lines) + '\n```\n')
+          sys.exit(0 if ok else 1)
+          EOF
+          python compare.py
