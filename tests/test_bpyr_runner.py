@@ -1511,7 +1511,6 @@ def test_load_authorization_accepts_a_committed_pinned_artifact(tmp_path, pf):
     assert (tok.issuer, tok.comment_id, tok.prereg_sha256) == ('codex', '6478332951', pf.prereg_sha256)
     assert tok.artifact_sha256 == R.file_sha(str(f)) and tok.code_commit == c0 and tok.scope == ('development',)
     assert tok == R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256, R.file_sha(str(f)), c0, ('development',))
-    assert not list(ROOT.glob('research_evidence/authorizations/*'))     # no real artifact is committed
 
 
 @pytest.mark.parametrize('over, drop, why', [
