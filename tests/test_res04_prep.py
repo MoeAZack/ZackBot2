@@ -524,7 +524,9 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
         pytest.skip('not a git checkout')
     d = os.path.join(ROOT, 'research_evidence', 'prereg')
     names = sorted(n for n in os.listdir(d) if n.endswith('.json'))
-    assert names == ['breakout_pyramid_falsify.v1.json',                                       # breakout_pyramid falsification (DRAFT)
+    raw_names = ['binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json',                   # #242 raw-byte snapshot
+                 'breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json']                 # #242 signed amendment
+    assert names == raw_names + ['breakout_pyramid_falsify.v1.json',                           # breakout_pyramid falsification (DRAFT)
                      'core10_fundgap_g3_report.v1.json',                                       # #171 FUND-GAP-01 G3
                      'core10_fundgap_g4_report.v1.json',                                       # #171 FUND-GAP-01 G4
                      'core10_fundgap_report.v1.json',                                          # #170 FUND-GAP-01 FG-1
@@ -535,11 +537,15 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
         rel = f'research_evidence/prereg/{n}'
         attr = subprocess.run(['git', 'check-attr', 'text', 'eol', '--', rel], cwd=ROOT, capture_output=True,
                               text=True, check=True).stdout
-        assert f'{rel}: text: set' in attr and f'{rel}: eol: lf' in attr, attr
         blob = subprocess.run(['git', 'show', f'HEAD:{rel}'], cwd=ROOT, capture_output=True, check=True).stdout
         with open(os.path.join(d, n), 'rb') as f:
             work = f.read()
-        assert b'\r\n' not in blob and b'\r\n' not in work
+        if n in raw_names:
+            assert f'{rel}: text: unset' in attr, attr
+            assert work == blob
+        else:
+            assert f'{rel}: text: set' in attr and f'{rel}: eol: lf' in attr, attr
+            assert b'\r\n' not in blob and b'\r\n' not in work
 
 
 def test_committed_prereg_validates():
