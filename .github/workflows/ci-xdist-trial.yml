@@ -11,7 +11,7 @@ name: ci-xdist-trial
 
 on:
   push:
-    branches: [claude/ci-xdist-trial]
+    branches: [claude/ci-xdist-trial, claude/ci-xdist-confirm]
   workflow_dispatch:
 
 permissions:
