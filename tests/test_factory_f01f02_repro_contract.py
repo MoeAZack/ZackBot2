@@ -5,11 +5,13 @@ PAPER/runtime wiring, dual full-risk allocation and order/trade ids.
 
 Contract only - reads the JSON (and, for sha pins, the committed files on master). Never reads market data or packets.
 """
+import ast
 import hashlib
 import json
 import math
 import os
 import re
+import subprocess
 from urllib.parse import urlparse
 from fractions import Fraction
 
@@ -101,11 +103,37 @@ def test_every_relevant_code_file_is_pinned_and_mismatch_is_inconclusive(c):
     assert any('pinned code file' in x for x in c['verdict_schema']['inconclusive_when'])
 
 
+def _blob_at(commit, rel):
+    return subprocess.run(['git', '-C', ROOT, 'show', f'{commit}:{rel}'], stdin=subprocess.DEVNULL,
+                          capture_output=True, check=True).stdout.replace(b'\r\n', b'\n')
+
+
 def test_code_pins_match_master_files(c):
-    """The pins are the f189ff7 bytes; a later change to a relevant file must update the contract on purpose."""
+    """Codex 6491486092 (Option A): the pins are content-addressed f189ff7 blobs, hashed from git, not the moving
+    worktree, so a later additive change on master cannot invalidate the reproduced identity."""
+    base = c['code']['master_reference']
     for path, want in c['code']['pinned_files'].items():
         if not path.startswith('_'):
-            assert _sha_lf(path) == want, path
+            assert hashlib.sha256(_blob_at(base, path)).hexdigest() == want, path
+
+
+F01F02_FUNCS = ('sig_ema_mom', 'sig_exp_trend', 'xup', '_one_side')
+
+
+def _func_sources(src: str) -> dict:
+    tree = ast.parse(src)
+    return {n.name: ast.get_source_segment(src, n) for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.name in F01F02_FUNCS}
+
+
+def test_head_f01f02_functions_identical_to_pinned_base(c):
+    """HEAD guard (Codex 6491486092): the strategy functions this contract reproduces are byte-identical to their
+    f189ff7 definitions, so a real behaviour change still fails even though the pins are read from git."""
+    pinned = _func_sources(_blob_at(c['code']['master_reference'], 'strategies.py').decode('utf-8'))
+    with open(os.path.join(ROOT, 'strategies.py'), 'rb') as fh:
+        head = _func_sources(fh.read().replace(b'\r\n', b'\n').decode('utf-8'))
+    assert set(pinned) == set(F01F02_FUNCS), sorted(pinned)
+    assert head == pinned
 
 
 # ------------------------------------------------------------------ window / slices / universe / costs
