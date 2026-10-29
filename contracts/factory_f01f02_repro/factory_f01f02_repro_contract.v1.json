@@ -440,13 +440,28 @@
     "exact_fill_key": [
       "symbol",
       "t_in",
+      "t_out",
       "side"
     ],
-    "exact_fill_definition_status": "FROZEN by ruling 6489310660 #1",
+    "exact_fill_definition_status": "AMENDED by ruling 6491343078 (supersedes 6489310660 #1): round-trip key",
+    "entry_stream": {
+      "key": [
+        "symbol",
+        "t_in",
+        "side"
+      ],
+      "shared": 160,
+      "union": 171,
+      "jaccard": 0.935673,
+      "jaccard_formula": "160 / (160 + 171 - 160) = 160 / 171",
+      "every_f01_entry_in_f02": true,
+      "note": "recorded separately (ruling 6491343078): every F01 entry is also an F02 entry; F02 differs only by management (3R target / 180-bar cap) and slot availability"
+    },
+    "amendment_evidence": "Cowork reproduction 6491270238 and Build packet-row hash match 6491291898: 131/200 holds only on the round-trip key; (symbol, t_in, side) gives 160/171",
     "population": "closed trades only (the packet of record trades list); positions still open at END are excluded",
     "family_consequence": "one correlated family, F01 primary; never two full independent risk budgets (engine CANDIDATE_FAMILY trend_long shares one cap of 4)",
     "mechanism_code_defined": "exp_trend = _one_side(sig_ema_mom) (strategies.py:sig_exp_trend), so on the long side both keys emit the SAME entry signals (raw 228 each, 76/61/91 per slice). Every difference in the trade lists comes from management (F02 adds tp_r 3.0 and max_bars 180) and from which signals find a free slot or an empty symbol.",
-    "exact_fill_definition": "closed trades only, exact match on (symbol, t_in, side). Entry fill price and exit fields (t_out, why, R) are reproduced and checked separately but are not part of the overlap key. Positions still open at END are excluded."
+    "exact_fill_definition": "closed trades only, exact match on the round trip (symbol, t_in, t_out, side). Entry fill price, why and R are reproduced and checked separately but are not part of the overlap key. Positions still open at END are excluded."
   },
   "semantics": {
     "_legend": "Each item states what a reproducer must implement. 'source' cites file:function at the packet commit (identical on master). code_defined = true means no preregistration fixes the item; only the code does.",
@@ -550,7 +565,7 @@
     "max_dd_r_abs": 0.0001,
     "max_dd_equity_abs": 0.0001,
     "slice_sign": "exact (positive / non-positive) for each of S1-S3",
-    "overlap": "shared_exact_fills exact (131) and jaccard exact as the rational 131/200",
+    "overlap": "round-trip shared_exact_fills exact (131) and jaccard exact as the rational 131/200; entry-stream shared exact (160) and jaccard exact as the rational 160/171",
     "comparison_rule": "compare the reproducer's value rounded to 6 dp with the packet value; any check outside its tolerance is DIVERGED",
     "win_rate": "exact (count of pnl > 0 trades must match; win_rate value equal at 6 dp)",
     "net_pnl_usd_abs": 0.0001
@@ -645,7 +660,8 @@
     {
       "id": "Q1",
       "topic": "overlap key",
-      "ruling": "closed trades only, exact (symbol, t_in, side); fill price and exit fields checked separately, not in the key; open-at-END excluded"
+      "ruling": "closed trades only, exact (symbol, t_in, side); fill price and exit fields checked separately, not in the key; open-at-END excluded",
+      "amended_by": "6491343078: round-trip key (symbol, t_in, t_out, side) = 131/200; entry-stream key (symbol, t_in, side) = 160/171 recorded separately"
     },
     {
       "id": "Q2",

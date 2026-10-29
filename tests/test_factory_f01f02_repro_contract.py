@@ -219,10 +219,19 @@ def test_overlap_131_and_jaccard(c):
     assert o['pair'] == ['F01', 'F02'] and o['shared_exact_fills'] == 131 and o['jaccard'] == 0.655
     j = Fraction(o['shared_exact_fills'], n1 + n2 - o['shared_exact_fills'])
     assert j == Fraction(131, 200) and float(j) == o['jaccard']
-    assert o['exact_fill_key'] == ['symbol', 't_in', 'side'] and RULING in o['exact_fill_definition_status']
+    assert o['exact_fill_key'] == ['symbol', 't_in', 't_out', 'side']          # round trip (ruling 6491343078)
+    assert '6491343078' in o['exact_fill_definition_status']
     assert 'closed trades only' in o['exact_fill_definition'] and 'open at END are excluded' in o['exact_fill_definition']
     assert 'not part of the overlap key' in o['exact_fill_definition']
-    assert 'never two full independent risk budgets' in o['family_consequence']
+
+
+def test_overlap_entry_stream_recorded_separately(c):
+    e, n1, n2 = c['overlap']['entry_stream'], 160, 171
+    assert e['key'] == ['symbol', 't_in', 'side'] and e['shared'] == 160 and e['union'] == n1 + n2 - e['shared'] == 171
+    assert round(float(Fraction(e['shared'], e['union'])), 6) == e['jaccard'] == 0.935673
+    assert e['every_f01_entry_in_f02'] is True and e['shared'] == n1                  # all F01 entries are F02 entries
+    assert '160/171' in c['tolerances']['overlap'].replace(' ', '') or '160/171' in c['tolerances']['overlap']
+    assert 'never two full independent risk budgets' in c['overlap']['family_consequence']
 
 
 # ------------------------------------------------------------------ semantics / tolerances / verdict

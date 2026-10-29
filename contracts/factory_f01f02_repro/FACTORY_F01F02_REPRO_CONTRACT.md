@@ -43,7 +43,7 @@ rerun or reinterpret the evidence.
 | F01 (primary) | `ema_mom`, stop 2.5 ATR | 160 | +101.091624 | 0.631823 | 2.773052 | 7.551214 | + / + / + |
 | F02 | `exp_trend`, stop 2.5 ATR, target 3R, 180 bars | 171 | +56.692730 | 0.331536 | 1.996836 | 7.619501 | + / + / + |
 
-**Overlap:** 131 exact shared fills, and Jaccard = 131 / (160 + 171 - 131) = 0.655.
+**Overlap (amended by ruling 6491343078):** on the round-trip key (symbol, t_in, t_out, side), 131 shared and Jaccard = 131 / (160 + 171 - 131) = 0.655. On the entry-stream key (symbol, t_in, side), recorded separately, 160 shared out of a union of 171 (Jaccard 160/171 = 0.935673). Every F01 entry is also an F02 entry.
 - The key is (symbol, t_in, side), counted over closed trades only. Positions still open at END are excluded.
 - Entry fill price and exit fields are reproduced separately but are not part of the key.
 - The two cells are one correlated family with F01 as primary. Never give both full independent risk.
