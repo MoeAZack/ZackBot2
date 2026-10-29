@@ -153,6 +153,7 @@ SEGS_PER_READ, MAX_SEGMENTS = 4, 4096                   # max segments per verif
 GENESIS = '0' * 64
 _ENTRY = ('n', 'name', 'sha256', 'bytes', 'rows', 'prev')
 _MANIFEST = {'schema', 'segment_bound', 'segments', 'disabled', 'manifest_hash'}
+DISABLE_MARKERS = (None, 'manifest_full', 'active_corrupt')    # AI-SCAN-04A adds the durable active_corrupt marker
 
 
 def segments_dir(data_dir):
@@ -195,7 +196,7 @@ def verify_rotation_manifest(m):
         raise A.AIScanError('not a rotation manifest')
     if m['manifest_hash'] != _manifest_hash(m): raise A.AIScanError('manifest hash mismatch (edited manifest)')
     bound, segs = check_bound(m['segment_bound']), m['segments']
-    if not (isinstance(segs, list) and len(segs) <= MAX_SEGMENTS) or m['disabled'] not in (None, 'manifest_full'):
+    if not (isinstance(segs, list) and len(segs) <= MAX_SEGMENTS) or m['disabled'] not in DISABLE_MARKERS:
         raise A.AIScanError('manifest segment list or disable marker is malformed')
     prev = GENESIS
     for i, e in enumerate(segs, 1):
