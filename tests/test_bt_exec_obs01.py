@@ -1134,7 +1134,8 @@ def test_every_registered_v2_envelope_and_run_digest_is_golden():
 # lines appended after its baseline bytes. New files may land only in the exact approved evidence dirs; every tracked
 # evidence file is still walked by the v2 envelope scan above.
 APPEND_ONLY_BASE = '0944547'
-APPEND_ONLY_DIRS = ('research_evidence/prereg/', 'research_evidence/ledger/', 'research_evidence/runs/')
+APPEND_ONLY_DIRS = ('research_evidence/prereg/', 'research_evidence/ledger/', 'research_evidence/runs/',
+                    'research_evidence/authorizations/')
 APPEND_ONLY_REGISTRY = 'research_evidence/ledger/REGISTRY.jsonl'
 # Codex 6489143562: FIB-PULLBACK-02's two immutable source manifests, admitted by exact path only (manifests/ itself
 # stays closed to any other new file).
@@ -1180,6 +1181,7 @@ _REG_OLD = b'{"a":1}\n{"b":2}\n'
     ('A\tresearch_evidence/prereg/core10_gapfill_plan.v1.json\n', _REG_OLD, True),
     ('A\tresearch_evidence/ledger/range_vwap_rev.jsonl\n', _REG_OLD, True),
     ('A\tresearch_evidence/runs/rex-x/CORE-10/final-1.json\n', _REG_OLD, True),
+    ('A\tresearch_evidence/authorizations/a.json\n', _REG_OLD, True),
     ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', _REG_OLD + b'{"c":3}\n', True),            # whole-line append
     ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', _REG_OLD + b'{"c":3}\n{"d":4}\n', True),
     ('M\tresearch_evidence/ledger/REGISTRY.jsonl\n', b'{"a":9}\n{"b":2}\n{"c":3}\n', False),    # earlier line rewritten
@@ -1196,6 +1198,7 @@ _REG_OLD = b'{"a":1}\n{"b":2}\n'
     ('A\tresearch_evidence/prereg_extra/x.json\n', _REG_OLD, False),                            # prefix look-alikes
     ('A\tresearch_evidence/ledgerX/x.jsonl\n', _REG_OLD, False),
     ('A\tresearch_evidence/runs-old/x.json\n', _REG_OLD, False),
+    ('A\tresearch_evidence/authorizations-old/x.json\n', _REG_OLD, False),
     ('A\tresearch_evidence/ledger/REGISTRY.jsonl.bak\n', _REG_OLD, True),                       # inside ledger/, a new file
     ('A\tresearch_evidence/prereg/a.json\nM\tresearch_evidence/manifests/m.json.gz\n', _REG_OLD, False),
     ('A\tresearch_evidence/manifests/klines_1h_core20_fib02.json\n', _REG_OLD, True),            # exact-path allowlist
