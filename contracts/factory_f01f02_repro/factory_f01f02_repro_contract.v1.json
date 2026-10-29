@@ -1,0 +1,392 @@
+{
+  "contract": "FACTORY-F01F02-REPRO",
+  "version": 1,
+  "status": "DRAFT",
+  "signed_by": null,
+  "frozen_at": null,
+  "doc": "FACTORY_F01F02_REPRO_CONTRACT.md",
+  "authority": "JSON is authoritative; the md is a short human summary and the JSON wins any conflict.",
+  "assignment": "Codex 6488285235 (scope correction: F01/F02 = Strategy Factory candidates, not Fibonacci)",
+  "evidence_sources": {
+    "headline": "Codex #219 6468259657 (local strategy factory, 28 Oct 14:55 Cairo)",
+    "fixed18_rerun_and_slices": "Codex #13 6442094571 (18-asset canonical rerun + fixed-18 chronological slices)",
+    "family_ruling": "Codex #13 6443422894 (F01/F02 share 131 fills, Jaccard 0.655: one correlated family, F01 primary)"
+  },
+  "purpose": "Independent reproduction contract: a lane other than Build (Evidence/Cowork) re-derives the F01 and F02 fixed-18 development packets from first principles, without importing Build's strategy, backtest or runner code, and returns a mechanical REPRODUCED / DIVERGED / INCONCLUSIVE verdict per cell, per slice and for the overlap.",
+  "build_role": "Build drafted this contract only. Build does NOT rerun, re-read trade rows or reinterpret the evidence; all computation is Cowork's.",
+  "evidence_class": "development triage packets with legacy funding/filter assumptions; not promotion evidence (Codex 6468259657). Execution-grade EDGE04 H1-H4 remains the acceptance authority.",
+
+  "code": {
+    "packet_commit": "b5957d58f82e0247717e2111ab5b2b41dac9a24e",
+    "packet_commit_note": "the commit every F01/F02 packet records (clean tree, worktree C:/Dev/ZackBot2_edge04_legacy); not an ancestor of master",
+    "master_reference": "184ec2e587f79047eec068e86c6f05f0a2e14b18",
+    "master_reference_short": "184ec2e",
+    "master_equivalence": {
+      "tools/research/run_breadth_candidate.py": "byte-identical (sha256 below)",
+      "tools/research/run_vwaprev_candidate.py": "byte-identical (sha256 below)",
+      "backtest.py": "no diff b5957d5..184ec2e",
+      "feasibility.py": "no diff b5957d5..184ec2e",
+      "strategies.py": "additive diff only (fib_pullback research key); sig_ema_mom, sig_exp_trend, xup, _one_side, indicators and the ema_mom / exp_trend registry entries unchanged",
+      "tools/research/pit_run.py": "differs (window guard module); affects only the runner's window validation, not any number"
+    },
+    "runner": {
+      "path": "tools/research/run_breadth_candidate.py",
+      "sha256": "dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2",
+      "helper_path": "tools/research/run_vwaprev_candidate.py",
+      "helper_sha256": "c2f43564cc1da4cd79e12253ece82d10b3f82c1ecdbbc11aeafa80202060d23e",
+      "engine": "backtest.Book + backtest.run, backtest VERSION v3.1",
+      "mgmt_mode": "defaults",
+      "invocations": {
+        "full_window": "run_breadth_candidate.py --cache <cache_4h> --cache-extra <candles_4h_core_research> --window 2024-10-14T00:00:00Z/2026-09-28T00:00:00Z --tier CORE-20 --mgmt defaults --key <key> --side long",
+        "slices": "run_breadth_candidate.py --cache <cache_4h> --cache-extra <candles_4h_core_research> --window <slice> --symbols <fixed-18, in the order below> --mgmt defaults --key <key> --side long",
+        "queue_scripts": [
+          "C:/Dev/ZackBot2_data/strategy_factory_20261027/run_corrected_core20_queue.ps1",
+          "C:/Dev/ZackBot2_data/strategy_factory_20261027/run_fixed18_chronological_queue.ps1"
+        ]
+      }
+    }
+  },
+
+  "window": {
+    "start": "2024-10-14T00:00:00Z",
+    "end": "2026-09-28T00:00:00Z",
+    "end_exclusive": true,
+    "tf": "4h",
+    "bars": 4284,
+    "warmup_bars": 220,
+    "warmup_start": "2024-09-07T08:00:00Z",
+    "sealed_cutoff": "2026-09-28T00:00:00Z"
+  },
+  "slices": {
+    "source": "code-defined: run_fixed18_chronological_queue.ps1 (not committed); no prereg fixes the split",
+    "account_reset_per_slice": true,
+    "warmup_per_slice": "each slice is an independent run: 220 x 4h warm-up bars before the slice start, fresh $500 account, no position carried across a boundary",
+    "list": [
+      {"id": "S1", "start": "2024-10-14T00:00:00Z", "end": "2025-06-16T00:00:00Z", "end_exclusive": true},
+      {"id": "S2", "start": "2025-06-16T00:00:00Z", "end": "2026-02-16T00:00:00Z", "end_exclusive": true},
+      {"id": "S3", "start": "2026-02-16T00:00:00Z", "end": "2026-09-28T00:00:00Z", "end_exclusive": true}
+    ]
+  },
+
+  "universe": {
+    "name": "fixed-18",
+    "static_universe_file": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+    "static_universe_file_sha256_lf": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031",
+    "static_universe_id": "static-top40-minhist365-contract-20261011",
+    "static_universe_digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+    "definition": "CORE-20 of the static universe minus the two symbols INCOMPLETE over [warm-up start, END): HYPEUSDT and PUMPUSDT. Order = CORE-20 order; it is also the sleeve symbol order that decides fill priority.",
+    "symbols": ["BTCUSDT", "ETHUSDT", "ZECUSDT", "SOLUSDT", "XRPUSDT", "NEARUSDT", "DOGEUSDT", "UNIUSDT", "SUIUSDT", "QNTUSDT",
+                "BNBUSDT", "LSKUSDT", "ENAUSDT", "1000PEPEUSDT", "WLDUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT"],
+    "expected_exclusions": [
+      {"symbol": "HYPEUSDT", "status": "INCOMPLETE", "missing_4h_bars": 1590, "rows": 2914},
+      {"symbol": "PUMPUSDT", "status": "INCOMPLETE", "missing_4h_bars": 1835, "rows": 2669}
+    ],
+    "runtime_mirror": "engine.CAND_FIXED18 (FACTORY-CAND-01) holds the same 18 symbols in the same order"
+  },
+
+  "data": {
+    "format": "app._get_candles CSV <SYMBOL>_4h.csv: t (open time, ms), o, h, l, c, v, qv; Binance USD-M trade klines (fapi /fapi/v1/klines)",
+    "committed_manifest_on_master": null,
+    "committed_manifest_note": "No committed manifest covers this cache on master. The per-file sha256 below are taken from the packets' own cache records and are the authority. Nine files also match research_evidence/manifests/klines_4h_core10_research.json on branch c1-core10-evidence (commit 23cd6934d9c254515cac7659f2ece73f04e5ea9c, manifest sha256 1e28f3d284c98942646c36c20f8d069744e6eaaa3e43920009f9b8b603edd4e6), not on master.",
+    "dirs": {
+      "cache": "C:/Dev/ZackBot_cowork_data/edge01_20261023/cache_4h",
+      "cache_extra": "C:/Dev/ZackBot_cowork_data/candles_4h_core_research"
+    },
+    "files": {
+      "BTCUSDT": {"sha256": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9", "dir": "cache", "rows": 4504},
+      "ETHUSDT": {"sha256": "4dcd3502009cb5f485404e9c82e39f953c95b2ec0a3a5635e13ac26a0338bb86", "dir": "cache_extra", "rows": 4504},
+      "ZECUSDT": {"sha256": "6c5599b32f38770916a4a9a752435eca0b51cf69c941fdd9469f03bad9a790b2", "dir": "cache_extra", "rows": 4504},
+      "SOLUSDT": {"sha256": "1ad0f6960f9cd8fbcdb4883f8a8d7abba02c355093e32f293a95265cca35ac0e", "dir": "cache_extra", "rows": 4504},
+      "XRPUSDT": {"sha256": "ada4e1fe0412c81ca656001ce6425e886fda0442a6289ce65ff8d86326d6202e", "dir": "cache_extra", "rows": 4504},
+      "NEARUSDT": {"sha256": "b3587ec1e9d262fb12ac692d52026c1b06cdaaa84da9ee547b50b2583ced82b4", "dir": "cache_extra", "rows": 4504},
+      "DOGEUSDT": {"sha256": "e6a2f2fcc88cd1b8d3aff63f9ae36a9bb33f75e41b1fd3872401f0cc9411c53a", "dir": "cache_extra", "rows": 4504},
+      "UNIUSDT": {"sha256": "c914f0580b1f47386c91563849ded9252a5b44d8fe849e5080299be4ec2187c9", "dir": "cache_extra", "rows": 4504},
+      "SUIUSDT": {"sha256": "1dd46be48c2994f26a24cf55ecd7746fcbc50bad7cb87ca0758537ac1746fb7b", "dir": "cache_extra", "rows": 4504},
+      "QNTUSDT": {"sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651", "dir": "cache", "rows": 4504},
+      "BNBUSDT": {"sha256": "a7b2b1c5919a3da2552acffd2bd78ce554b27a3570ba2a18e149320e3367284b", "dir": "cache", "rows": 4504},
+      "LSKUSDT": {"sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd", "dir": "cache", "rows": 4504},
+      "ENAUSDT": {"sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9", "dir": "cache", "rows": 4504},
+      "1000PEPEUSDT": {"sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5", "dir": "cache", "rows": 4504},
+      "WLDUSDT": {"sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0", "dir": "cache", "rows": 4504},
+      "ADAUSDT": {"sha256": "047d58c453a383f889b3bc8ead17a9a79e415a0a2f6ee06f0ffcfafd8aa1be59", "dir": "cache", "rows": 4504},
+      "AVAXUSDT": {"sha256": "565e8b46191003f06c714f3d8830c90b83963732e9b747a77304b0a91c8b33a2", "dir": "cache", "rows": 4504},
+      "LINKUSDT": {"sha256": "861bd51d0f3d2628fe8c9ab6a87c6a61ead776d2ab03c08c6dde44a9f809c387", "dir": "cache", "rows": 4504},
+      "HYPEUSDT": {"sha256": "a9c96e11bd815368c31bf0499ace222a36ec418096a35806897578bc595cde67", "dir": "cache_extra", "rows": 2914, "excluded": "INCOMPLETE"},
+      "PUMPUSDT": {"sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09", "dir": "cache", "rows": 2669, "excluded": "INCOMPLETE"}
+    },
+    "read_rule": "Read only rows with open time in [warm-up start, END) of the run being reproduced; any row at or after 2026-09-28T00:00:00Z is never parsed into the computation.",
+    "redownload_rule": "Allowed only from the public endpoint https://fapi.binance.com/fapi/v1/klines (no key). Re-downloaded bars are accepted only if, serialized in the format above, they equal the pinned file bytes (sha256) or row-for-row equal its in-window rows; otherwise the verdict is INCONCLUSIVE (data), never a silent substitution."
+  },
+
+  "costs": {
+    "fee_taker_per_fill": 0.0005,
+    "slippage_per_fill": 0.0002,
+    "slippage_direction": "always adverse: entry fill = open x (1 + 0.0002) for a long; every exit fill (stop, target, signal, time) = level x (1 - 0.0002)",
+    "funding_per_bar": 0.00005,
+    "funding_note": "legacy funding assumption: a flat 0.5 bp of notional (qty x bar close) per 4h bar per open position, always a cost, regardless of the real funding rate or sign",
+    "exchange_floor": "legacy (exchange_rules=None): no step rounding, no minQty; minimum notional 50 USDT for BTCUSDT, 20 for ETHUSDT and LINKUSDT, 5 for every other symbol; an entry below it is skipped, never rounded up (backtest.legacy_rule, feasibility.size_check)",
+    "entry_order": "market (taker)",
+    "account": {"start_usd": 500.0, "risk_per_trade": 0.01, "max_positions": 4, "max_leverage": 10.0, "daily_halt": 0.08, "share": 1.0, "kelly": null}
+  },
+
+  "cells": {
+    "F01": {
+      "role": "family primary",
+      "strategy_key": "ema_mom",
+      "side": "long",
+      "registry_sides": "long",
+      "mgmt": {"stop_atr": 2.5},
+      "params": {},
+      "full_packet": {
+        "path": "C:/Dev/ZackBot2_data/strategy_factory_20261027/corrected_core20/F01_ema_mom_long_CORE20X.json",
+        "file_sha256": "6eca0d333a3fe5f4e3ce4a16995385347d36d046ce003c8392e867aa09103da9",
+        "packet_sha256": "aab4d71d05b12877e3bf45d1d7442ad034483e6714ff09ed46383c5cfa7e1539",
+        "tier_arg": "CORE-20"
+      },
+      "full_packet_equivalent": {
+        "path": "C:/Dev/ZackBot2_data/strategy_factory_20261027/f01_f02_independent_20261028/F01_ema_mom_long_FULL.json",
+        "file_sha256": "3b11c6df7ad4c7764a2f358603afb379b499df99b087262f827249d5c0ba9ca3",
+        "packet_sha256": "433a7183f74636234e4380832f1e7a6f2f22c2e5e68e2572af53269641607ff3",
+        "note": "same commit and runner, --symbols fixed-18 instead of --tier CORE-20; identical headline stats; NOT independent (Build's runner)"
+      },
+      "expected": {
+        "raw_entry_signals": 228,
+        "closed_trades": 160,
+        "symbols": 18,
+        "net_r": 101.091624,
+        "mean_r": 0.631823,
+        "pf": 2.773052,
+        "max_dd_r": 7.551214,
+        "win_rate": 0.35,
+        "net_pnl_usd": 686.743824,
+        "max_dd_equity": -0.196536,
+        "liquidations": 0,
+        "busted": false
+      },
+      "slices": {
+        "S1": {"packet": "C:/Dev/ZackBot2_data/strategy_factory_20261027/fixed18_chronological/F01_ema_mom_long_S1.json",
+               "file_sha256": "4631726183b203d3d8287ff1a84100567bc6af4cbeed931056da733c50761a22",
+               "packet_sha256": "a6d7c003ddc61ceada41412a63029e96fb034556cb7a403b9f751837168ae01d",
+               "raw_entry_signals": 76, "closed_trades": 55, "net_r": 13.179368, "pf": 1.686394, "max_dd_r": 5.62625, "sign": "positive"},
+        "S2": {"packet": "C:/Dev/ZackBot2_data/strategy_factory_20261027/fixed18_chronological/F01_ema_mom_long_S2.json",
+               "file_sha256": "7cdc95a7ba76c3bf159bea95d377c01100c568deff2736ac54c6db28c9bd9b44",
+               "packet_sha256": "2a80ac1c591c333b2d562a1678055a1f923c671f27437e00847467d77bf79978",
+               "raw_entry_signals": 61, "closed_trades": 44, "net_r": 43.786356, "pf": 3.720772, "max_dd_r": 4.455384, "sign": "positive"},
+        "S3": {"packet": "C:/Dev/ZackBot2_data/strategy_factory_20261027/fixed18_chronological/F01_ema_mom_long_S3.json",
+               "file_sha256": "e720ec39e6bb7427797280db35df20f8051f747b0f180988cb00b73869315fad",
+               "packet_sha256": "6fba270262429312f9feeea04700eff22d3bea9603aa5d7cb140f42927ee7d98",
+               "raw_entry_signals": 91, "closed_trades": 61, "net_r": 44.1259, "pf": 2.832752, "max_dd_r": 7.551214, "sign": "positive"}
+      }
+    },
+    "F02": {
+      "role": "family secondary (correlated with F01)",
+      "strategy_key": "exp_trend",
+      "side": "long",
+      "registry_sides": "both",
+      "mgmt": {"stop_atr": 2.5, "tp_r": 3.0, "max_bars": 180},
+      "params": {},
+      "full_packet": {
+        "path": "C:/Dev/ZackBot2_data/strategy_factory_20261027/corrected_core20/F02_exp_trend_long_CORE20X.json",
+        "file_sha256": "861ded849203da4397dac2c5f8656ad5dc7bb77e6bb1e5e70493dba3252f3fe8",
+        "packet_sha256": "220fb4d0d728eb7035d77b992f89892d1b86faa6ac177a9fde58130d6d29a128",
+        "tier_arg": "CORE-20"
+      },
+      "full_packet_equivalent": {
+        "path": "C:/Dev/ZackBot2_data/strategy_factory_20261027/f01_f02_independent_20261028/F02_exp_trend_long_FULL.json",
+        "file_sha256": "84f37d223f61a47dba91456034f849eeb37477179a19e273d16bfc5183d4953b",
+        "packet_sha256": "434d71aaf728a7a169d5b66fa9c1ea2e53bd8c76ea3e36ef8785160d76daeae6",
+        "note": "same commit and runner, --symbols fixed-18 instead of --tier CORE-20; identical headline stats; NOT independent (Build's runner)"
+      },
+      "expected": {
+        "raw_entry_signals": 228,
+        "closed_trades": 171,
+        "symbols": 18,
+        "net_r": 56.69273,
+        "mean_r": 0.331536,
+        "pf": 1.996836,
+        "max_dd_r": 7.619501,
+        "win_rate": 0.368421,
+        "net_pnl_usd": 344.778207,
+        "max_dd_equity": -0.11141,
+        "liquidations": 0,
+        "busted": false
+      },
+      "slices": {
+        "S1": {"packet": "C:/Dev/ZackBot2_data/strategy_factory_20261027/fixed18_chronological/F02_exp_trend_long_S1.json",
+               "file_sha256": "018b5b83be37a844e756ab0523c4c170bd301ff0829adf9d2d2c963dbd7d2b44",
+               "packet_sha256": "8f6fdb745d772bc19ca98036b892da04cd27238b7ef9c1a389df179bdaef7edd",
+               "raw_entry_signals": 76, "closed_trades": 56, "net_r": 17.117602, "pf": 1.980142, "max_dd_r": 4.828301, "sign": "positive"},
+        "S2": {"packet": "C:/Dev/ZackBot2_data/strategy_factory_20261027/fixed18_chronological/F02_exp_trend_long_S2.json",
+               "file_sha256": "cf9bde5438985bd1067d7a3ec310a9e86631a3a46a49ca3b44cdc7b1105ec13b",
+               "packet_sha256": "ac98fb388e715e5d835ed1955fa9bac54d87be2210cb667dec1ed2bf5e8a4b8a",
+               "raw_entry_signals": 61, "closed_trades": 45, "net_r": 8.456235, "pf": 1.544023, "max_dd_r": 5.054549, "sign": "positive"},
+        "S3": {"packet": "C:/Dev/ZackBot2_data/strategy_factory_20261027/fixed18_chronological/F02_exp_trend_long_S3.json",
+               "file_sha256": "e1839716be7b8553aae97031f08fd53ebdf9d9498ec4af1c784f14630c6db4fc",
+               "packet_sha256": "2e54a4c0b2c6bfc9ed3666a962b3a552920f7a08cc25532198e503f232432b24",
+               "raw_entry_signals": 91, "closed_trades": 70, "net_r": 31.118893, "pf": 2.242098, "max_dd_r": 7.619501, "sign": "positive"}
+      }
+    }
+  },
+  "headline_rounding_note": "Codex 6468259657 rounds the same values (+101.09R / PF 2.77 / DD 7.55R; +56.69R / PF 2.00 / DD 7.62R); the 6-dp packet values above are the comparison targets.",
+  "slice_additivity_observed": "In these packets the slice trade counts and net R add up exactly to the full-window values (F01 55+44+61 = 160, 13.179368+43.786356+44.1259 = 101.091624; F02 56+45+70 = 171, 17.117602+8.456235+31.118893 = 56.69273). This is an observation, not a rule: a reproducer reports it, a mismatch is not by itself DIVERGED.",
+
+  "overlap": {
+    "pair": ["F01", "F02"],
+    "basis": "the two full-window packets (corrected_core20)",
+    "shared_exact_fills": 131,
+    "jaccard": 0.655,
+    "jaccard_formula": "shared / (F01 closed trades + F02 closed trades - shared) = 131 / (160 + 171 - 131) = 131 / 200",
+    "exact_fill_key": ["symbol", "t_in", "side"],
+    "exact_fill_definition_status": "PROPOSED, code-undefined: no committed code computes the 131; Codex's computation is not in the repository. Under the runner's rules fill price = open(t_in) x (1 + slip) is a pure function of (symbol, t_in, side), so adding the fill price cannot change the count. Integration to confirm (open question Q1).",
+    "population": "closed trades only (packet trades list); positions still open at END are not trades",
+    "family_consequence": "one correlated family, F01 primary; never two full independent risk budgets (engine CANDIDATE_FAMILY trend_long shares one cap of 4)",
+    "mechanism_code_defined": "exp_trend = _one_side(sig_ema_mom) (strategies.py:sig_exp_trend), so on the long side both keys emit the SAME entry signals (raw 228 each, 76/61/91 per slice). Every difference in the trade lists comes from management (F02 adds tp_r 3.0 and max_bars 180) and from which signals find a free slot or an empty symbol."
+  },
+
+  "semantics": {
+    "_legend": "Each item states what a reproducer must implement. 'source' cites file:function at the packet commit (identical on master). code_defined = true means no preregistration fixes the item; only the code does.",
+    "frame_and_warmup": {
+      "rule": "Per run (full or slice): take the rows with open time in [start - 220 x 4h, end). All 18 symbols plus BTCUSDT are complete on the 4h grid, so the book's timestamp intersection keeps every bar. Indicators are computed on THIS slice only, seeded at its first row; nothing from before the warm-up start is used. Decision bars are those with open time in [start, end); the first 220 rows are warm-up only.",
+      "source": "run_vwaprev_candidate.py:slice_frame; backtest.py:Book.__init__; backtest.py:run (warmup, t0, t1)",
+      "code_defined": true
+    },
+    "indicators": {
+      "ema": "e20, e50, e200 = pandas ewm(span=n, adjust=False) of close, seeded with the first close of the slice",
+      "atr": "TR = max(h - l, |h - c_prev|, |l - c_prev|), first row TR = h - l; ATR = ewm(alpha=1/14, adjust=False) of TR, seeded with TR[0] (Wilder-style recursion, not an SMA seed)",
+      "ret42": "c / c.shift(42) - 1 (NaN for the first 42 rows)",
+      "ret180": "c / c.shift(180) - 1 (NaN for the first 180 rows)",
+      "source": "strategies.py:ema, strategies.py:indicators",
+      "code_defined": true
+    },
+    "entry_signal": {
+      "rule": "Long entry on closed bar i when ALL hold: xup(e20, e50) i.e. e20[i] > e50[i] and e20[i-1] <= e50[i-1]; c[i] > e200[i]; ret42[i] > 0; ret180[i] > 0. A NaN in any term means no signal. F02 applies _one_side (drop a bar with both le and se); on these data le and se are mutually exclusive (c > e200 vs c < e200), so the long signal set equals F01's.",
+      "source": "strategies.py:sig_ema_mom, strategies.py:xup, strategies.py:sig_exp_trend, strategies.py:_one_side",
+      "code_defined": true
+    },
+    "signal_exit": {
+      "rule": "Long exit signal lx[i] = (e20[i] < e50[i]) OR NOT (ret42[i] > 0 AND ret180[i] > 0) (NaN counts as not > 0). Checked at the close of every managed bar, including the fill bar, after the intrabar walk; filled at close[i] with exit slippage.",
+      "source": "strategies.py:sig_ema_mom; backtest.py:run (step 6, signal / time exits at close)",
+      "code_defined": true
+    },
+    "pending_and_fill": {
+      "rule": "A signal on decision bar i (inside the window, i + 1 < number of book bars, account not halted, symbol not currently held) becomes a pending entry filled at the OPEN of bar i + 1. A signal on a symbol that already has an open position is dropped, not queued. A signal on the last window bar never fills. Pending entries are processed in the sleeve symbol order (the fixed-18 order); when 4 positions are open or the account is halted, processing stops and every remaining pending entry is discarded.",
+      "fill_price": "open[i+1] x (1 + 0.0002)",
+      "source": "backtest.py:run (fills of pending entries; new signals -> fill next candle)",
+      "code_defined": true
+    },
+    "sizing": {
+      "rule": "sl_eq = realized cash equity (eq) at the start of the bar's fill loop (fixed for all fills of that bar). risk_usd = sl_eq x 0.01. stop distance R_dist = 2.5 x ATR[i] where i is the DECISION bar (the bar before the fill). qty = risk_usd / R_dist, then capped by leverage: qty <= max(0, 10 x sl_eq - sum(open qty x close[fill bar - 1])) / fill_price (positions opened earlier in the same loop count). Legacy floor: skip if qty x fill_price < min notional. On fill: eq -= qty x fill_price x 0.0005 (entry fee booked into the trade's realized P&L). Initial stop = fill_price - R_dist; e0 = avg = fill_price.",
+      "source": "backtest.py:run.open_pos; feasibility.py:risk_qty; feasibility.py:size_check; backtest.py:_sig_atr (ema_mom/exp_trend supply no own 'atr', so the book ATR of the decision bar is used); backtest.py:legacy_rule",
+      "code_defined": true
+    },
+    "per_bar_management_order": {
+      "rule": "For each window bar, in this order: (1) Cairo-calendar-day rollover resets the halt and records day_start = eq + unrealized at the previous close; (2) fill pending entries; (3) for each open position in insertion order: charge funding eq -= qty x close[i] x 0.00005; if open[i] <= stop, close all at open[i] (gap stop) and skip the rest; else walk the intrabar path; then the signal exit / time exit at close[i]; (4) liquidation check (maintenance margin 0.005 cross, at each position's adverse extreme); (5) daily halt if (eq + unrealized at close[i]) / day_start - 1 <= -0.08 (blocks fills and new signals until the next Cairo day); (6) new signals -> pending; (7) equity curve point = eq + unrealized at close[i]; stop the run if it is <= 2% of start.",
+      "source": "backtest.py:run (main loop)",
+      "code_defined": true
+    },
+    "intrabar_path": {
+      "rule": "Path points for a long: green bar (c > o): o, l, h, c; red bar (c < o): o, h, l, c; doji (c == o): o, h, l, c. The stop is tested on adverse legs only (not at the bare open, which the gap rule already handled) and fills at the stop level, or at the leg's start price if that is already through it. F02 target = e0 + 3.0 x R_dist, tested on favourable legs, fills at the target level. Stop-first: if the stop as it stood at the open lies inside the bar (low <= stop), no target can fire in that bar even if the path reaches it first. No breakeven, trail, partial, pyramid or DCA applies to either cell.",
+      "source": "backtest.py:path_points; backtest.py:run.walk_path (adverse_leg, favourable_leg)",
+      "code_defined": true
+    },
+    "time_exit": {
+      "rule": "F02 only: close at close[i] when i - fill_bar >= 180 (bar indices; so at most 181 managed bars). F01 has no time exit.",
+      "source": "backtest.py:run (step 6); strategies.py STRATEGIES['exp_trend'].mgmt",
+      "code_defined": true
+    },
+    "exit_accounting": {
+      "rule": "Exit fill px' = level x (1 - 0.0002); pnl of the fill = (px' - avg) x qty - qty x px' x 0.0005. Trade realized P&L = - entry fee - all funding charges + exit pnl. Trade R = realized / risk_usd (risk_usd fixed at entry). why in {stop, tp, signal, time, liquidated}.",
+      "source": "backtest.py:run.close",
+      "code_defined": true
+    },
+    "end_of_run": {
+      "rule": "Positions still open at END are not closed and are not trades; they count only in the equity curve.",
+      "source": "backtest.py:run",
+      "code_defined": true
+    },
+    "stats": {
+      "closed_trades": "number of trades",
+      "net_r": "sum of trade R",
+      "mean_r": "mean of trade R",
+      "win_rate": "share of trades with pnl > 0 (USD, not R)",
+      "pf": "sum of positive trade pnl / -(sum of negative trade pnl), in USD (not R): sizing compounding on equity matters",
+      "max_dd_r": "max drawdown of cumulative trade R in exit order: sort by (i_out, i_in), prepend 0, max over (running max - value)",
+      "max_dd_equity": "min over bars of (curve / running max of curve - 1)",
+      "raw_entry_signals": "count of long entry signals on the 18 run symbols over decision bars in [start, end), before any slot / halt / floor filter",
+      "rounding": "packet values are Python round(x, 6)",
+      "source": "run_vwaprev_candidate.py:trade_stats; run_breadth_candidate.py:stats, curve_dd, emitted",
+      "code_defined": true
+    },
+    "incomplete_rule": {
+      "rule": "A symbol is INCOMPLETE (excluded from the book and from every aggregate, never filled) when [warm-up start, END) on the 4h grid has any missing bar, an off-grid bar or a duplicate; BTCUSDT incomplete refuses the run.",
+      "source": "run_breadth_candidate.py:completeness, run_breadth_candidate.py:run",
+      "code_defined": true
+    },
+    "trade_identity_fields": {
+      "rule": "t_in / t_out = UTC open time of the fill bar / exit bar, format %Y-%m-%dT%H:%M:%SZ; side = 1 for long",
+      "source": "run_breadth_candidate.py:run (trades)",
+      "code_defined": true
+    }
+  },
+
+  "tolerances": {
+    "trade_set": "the set of (symbol, t_in, side) must match the packet exactly, per cell and per slice",
+    "trade_exit": "for every matched trade, t_out and why must match exactly",
+    "closed_trades": "exact",
+    "raw_entry_signals": "exact",
+    "per_trade_r_abs": 1e-6,
+    "mean_r_abs": 1e-6,
+    "net_r_abs": 1e-4,
+    "pf_abs": 1e-4,
+    "max_dd_r_abs": 1e-4,
+    "max_dd_equity_abs": 1e-4,
+    "slice_sign": "exact (positive / non-positive) for each of S1-S3",
+    "overlap": "shared_exact_fills exact (131) and jaccard exact as the rational 131/200",
+    "comparison_rule": "compare the reproducer's value rounded to 6 dp with the packet value; any check outside its tolerance is DIVERGED"
+  },
+
+  "verdict_schema": {
+    "values": ["REPRODUCED", "DIVERGED", "INCONCLUSIVE"],
+    "per_check": "one verdict for each of: F01 full, F02 full, F01 S1-S3, F02 S1-S3, overlap",
+    "overall": "REPRODUCED only if every check is REPRODUCED; DIVERGED if any check is DIVERGED; otherwise INCONCLUSIVE",
+    "inconclusive_when": [
+      "an input file is missing or its sha256 differs from the pin",
+      "a packet's file_sha256 or packet_sha256 differs from the pin",
+      "the reproducer could not complete (error, timeout)",
+      "a forbidden action was needed to finish"
+    ],
+    "first_divergence": "for a DIVERGED check: the first divergent trade in (t_in, symbol) order with both sides' fields (or the missing / extra trade), plus the first failed aggregate and its delta",
+    "output_fields": ["contract", "contract_sha256", "reproducer_commit", "reproducer_sha256", "input_sha256s", "checks", "overall", "first_divergence", "notes"],
+    "forbidden_output_fields": ["orderId", "clientOrderId", "tradeId", "exchange_order_id", "exchange_trade_id"]
+  },
+
+  "forbidden": [
+    "importing strategies, backtest, feasibility, engine or app modules",
+    "importing tools/research runner modules (run_breadth_candidate, run_vwaprev_candidate, pit_run or any Build runner)",
+    "any read of market data at or after 2026-09-28T00:00:00Z (sealed holdout)",
+    "network access other than re-downloading public Binance klines that are then checked against the pinned sha256s",
+    "PAPER registration, enabling C-F01 / C-F02 or any slot",
+    "runtime wiring or any change to settings, sleeves or the running bot",
+    "full-risk dual allocation of F01 and F02 (they are one correlated family)",
+    "writing exchange order ids or trade ids",
+    "credentials, API keys, mainnet or live funds",
+    "tuning parameters or changing management to make a check pass",
+    "Build rerunning or reinterpreting the evidence (Cowork computes; Build only drafted this contract)"
+  ],
+
+  "open_questions": [
+    {"id": "Q1", "topic": "overlap key", "question": "Confirm the exact-shared-fill key. Proposed (symbol, t_in, side) on closed trades of the two full-window packets; does Integration's 131 also require equal fill price, equal t_out, or include positions still open at END?"},
+    {"id": "Q2", "topic": "packet commit not on master", "question": "Every packet records b5957d58 (EDGE-04 research head), not an ancestor of master. Relevant code is byte-identical on master 184ec2e except tools/research/pit_run.py. Accept 184ec2e as the citation base, or require b5957d58 pushed/merged?"},
+    {"id": "Q3", "topic": "data manifest", "question": "No committed manifest on master covers the 4h cache. The per-file sha256 pins come from the packets themselves. Should a committed manifest (e.g. cherry-pick of klines_4h_core10_research.json from c1-core10-evidence plus the edge01 cache_4h files) be required before the verdict counts?"},
+    {"id": "Q4", "topic": "full-window packet of record", "question": "Two full-window packets per cell exist with identical stats but different packet_sha256 (corrected_core20 --tier CORE-20 vs f01_f02_independent_20261028 --symbols). This contract treats corrected_core20 as the packet of record; is that correct?"},
+    {"id": "Q5", "topic": "slice split", "question": "The S1/S2/S3 boundaries (2025-06-16, 2026-02-16) are defined only in an uncommitted queue script. Are they frozen as written, and is per-slice account reset (independent runs) the intended semantics?"},
+    {"id": "Q6", "topic": "DD tie order", "question": "max_dd_r sorts by (i_out, i_in); trades with equal i_out and i_in on different symbols keep the engine's close order. Should the reproducer break such ties by symbol, by sleeve order, or is the DD tolerance enough?"},
+    {"id": "Q7", "topic": "re-download acceptance", "question": "If Cowork cannot read the pinned local caches, is a re-download that matches row-for-row (but not byte-for-byte) acceptable, or must the bytes match?"},
+    {"id": "Q8", "topic": "secondary values", "question": "Should win_rate, net_pnl_usd and max_dd_equity be binding checks (tolerance 1e-4) or report-only? This draft makes max_dd_equity binding and the other two report-only."}
+  ],
+  "binding_checks": ["trade_set", "trade_exit", "closed_trades", "raw_entry_signals", "per_trade_r", "mean_r", "net_r", "pf", "max_dd_r", "max_dd_equity", "slice_sign", "overlap"],
+  "report_only": ["win_rate", "net_pnl_usd", "symbols", "slice_additivity"],
+
+  "roadmap_fit": "Binance strategy discovery -> trustworthy isolated PAPER admission (independent parity before any C-F01/C-F02 opt-in).",
+  "deferred": ["PAPER enablement", "sealed holdout", "promotion", "mainnet", "other venues", "ML labels for ema_mom (ML-HORIZON-02)"]
+}
