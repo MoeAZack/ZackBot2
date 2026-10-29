@@ -736,7 +736,10 @@ def sig_fib_pullback_02(d, p, ctx):
                closes beyond the prior candle's high (long) / low (short), has a with-trend real body >= body_atr x ATR,
                and volume >= the median of the vol_median_bars candles before it. One entry per impulse;
       disarm = a close at/through `invalid` (0.786), or the impulse turning invalid.
-    The emitted 'atr' is the decision candle's distance to the 0.786 level (structural stop with mgmt stop_atr = 1)."""
+    0.786 is the DECISION-TIME invalidation and the sizing anchor: the emitted 'atr' is the decision close's distance to
+    it (mgmt stop_atr = 1). The backtester opens on the next candle with slippage and places its stop that distance from
+    the fill, so the resting stop shifts by the entry gap / slippage and is not guaranteed to sit exactly at L(0.786).
+    The exit signal (lx / sx) on a close at/through L(0.786) is kept."""
     left, right = int(p.get('left', FIB02['left'])), int(p.get('right', FIB02['right']))
     if left < 1 or right < 1: raise ValueError('fib_pullback_02: left/right must be >= 1')
     zlo, trig = float(p.get('zone_lo', FIB02['zone_lo'])), float(p.get('trigger', FIB02['trigger']))
@@ -802,6 +805,6 @@ STRATEGIES['fib_pullback_02'] = dict(
     research_only=True, params=dict(FIB02),
     desc='RESEARCH-ONLY (FIB-PULLBACK-02): 1h, confirmed 2/2 swings, impulse >= 3 ATR with aligned EMA50/EMA200, armed by '
          'a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a '
-         '>= 0.35 ATR body and >= median-20 volume; 0.786 structural invalidation. Excluded from PAPER.',
+         '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )

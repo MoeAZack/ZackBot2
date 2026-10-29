@@ -16,6 +16,12 @@ preregistered explicit equivalents, scoped to the call and restored in `finally`
      (step / minQty / minNotional; an entry below the floor is skipped, never rounded up - backtest BT02). The packet's
      costs.exchange_rules text is replaced, a `fib02` block records the snapshot identity and the feasibility counts, and
      packet_sha256 is recomputed exactly the runner's way (sha256 of the canonical packet without the field).
+     E2 is a PROSPECTIVE / CURRENT-RULE feasibility check, not point-in-time historical exchange rules; it cannot by
+     itself make a packet promotable (the packet stays non_promotable).
+
+The runner writes a sibling staging file; the final --out path is published atomically only after the wrapped packet
+is complete (see run()). The `fib02.breadth` block reports closed_trades, symbols_with_trades and breadth_ok
+(>= 100 closed trades across >= 8 symbols with trades) and the preregistered development verdict.
 
 No parameter grid, no params / mgmt override and no symbol list on the command line (--tier only). Never reads anything
 at or after the sealed cutoff (the runner's window guard). Reads no settings, credentials or app data folder.
@@ -102,24 +108,42 @@ def _feas_summary(f) -> dict:
     return json.loads(json.dumps(out, default=str))
 
 
-def run(*, cache, regime_cache, window, out, side, tier=None, symbols=None, repo=B.VC.ROOT, plan=None,
-        rules_path=None, **acct) -> dict:
-    """One FIB-02 development cell. `symbols` is for synthetic tests only (the CLI exposes --tier only)."""
-    if os.path.exists(out):
-        raise Fib02Error(f'fib02: {out} exists; a packet is never overwritten')
-    if B.ST.STRATEGIES[KEY].get('tf') != TF or not B.ST.STRATEGIES[KEY].get('research_only'):
-        raise Fib02Error('fib02: fib_pullback_02 must be the research-only 1h key')
-    snap, ident = load_rules(rules_path or os.path.join(ROOT, RULES))
-    with scoped_equivalents(snap) as seen:
-        B.run(cache=cache, window=window, out=out, key=KEY, side=side, mgmt_mode='defaults', custom=None, tier=tier,
-              symbols=symbols, regime_cache=regime_cache, repo=repo, plan=plan, **acct)
-    if len(seen) != 1:
-        raise Fib02Error(f'fib02: expected one backtest.run call, saw {len(seen)}')
-    with open(out, 'rb') as f:
-        pkt = json.loads(f.read())
-    pkt.pop('packet_sha256', None)
-    pkt['costs']['exchange_rules'] = (f'mainnet snapshot {ident["path"]} (fetched {ident["fetched_at"]}): step / minQty / '
-                                      'minNotional; entries below the floor skipped, never rounded up (backtest BT02)')
+BREADTH_MIN_TRADES, BREADTH_MIN_SYMBOLS = 100, 8          # Codex 6487245023: the next gate's breadth floor
+E2_LABEL = ('PROSPECTIVE / CURRENT-RULE FEASIBILITY CHECK: the current mainnet snapshot applied to the whole window; '
+            'not point-in-time historical exchange rules, and it cannot by itself make this packet promotable')
+
+
+def staging_paths(out) -> tuple[str, str]:
+    """(staging, staging tmp): the sibling the shared runner writes, and the runner's own .tmp of it."""
+    st = out + '.staging'
+    return st, st + '.tmp'
+
+
+def breadth(pkt) -> dict:
+    agg = pkt['stats']['aggregate']
+    n = int(agg.get('trades') or 0)
+    syms = sorted(s for s, x in (pkt['stats'].get('per_symbol') or {}).items() if int(x.get('trades') or 0) > 0)
+    ok = n >= BREADTH_MIN_TRADES and len(syms) >= BREADTH_MIN_SYMBOLS
+    r = agg.get('r_mean')
+    verdict = ('REJECT (mean net R <= 0 or no trades)' if r is None or r <= 0 else
+               'DEVELOPMENT SURVIVOR (breadth ok; next: independent review + anchored walk-forward ruling)' if ok else
+               'INCONCLUSIVE / INSUFFICIENT BREADTH')
+    return {'closed_trades': n, 'symbols_with_trades': len(syms), 'symbols': syms,
+            'rule': f'>= {BREADTH_MIN_TRADES} closed trades across >= {BREADTH_MIN_SYMBOLS} symbols with trades',
+            'breadth_ok': ok, 'mean_net_r': r, 'development_verdict': verdict}
+
+
+def wrap(staged: dict, ident: dict, feas) -> dict:
+    """The staged runner packet -> the FIB-02 packet (envelope added, packet_sha256 recomputed the runner's way)."""
+    pkt = dict(staged)
+    want = pkt.pop('packet_sha256', None)
+    if want != hashlib.sha256(B._canon(pkt)).hexdigest():
+        raise Fib02Error('fib02: staged runner packet fails its own packet_sha256; not published')
+    if pkt.get('strategy', {}).get('key') != KEY or pkt.get('window', {}).get('tf') != TF:
+        raise Fib02Error('fib02: staged packet is not a fib_pullback_02 1h packet; not published')
+    pkt['costs'] = dict(pkt['costs'], exchange_rules=(
+        f'{E2_LABEL}. Mainnet snapshot {ident["path"]} (fetched {ident["fetched_at"]}): step / minQty / minNotional; '
+        'entries below the floor skipped, never rounded up (backtest BT02)'))
     prereg = os.path.join(ROOT, PREREG)
     pkt['fib02'] = {
         'format': FORMAT, 'prereg': PREREG,
@@ -127,14 +151,63 @@ def run(*, cache, regime_cache, window, out, side, tier=None, symbols=None, repo
         if os.path.exists(prereg) else None,
         'wrapper_sha256': _sha_file(os.path.abspath(__file__)),
         'equivalents': {'E1_timeframe': f'{TF} added to the frozen runner TFS for this call',
-                        'E2_exchange_floors': 'mainnet snapshot passed to backtest.run for this call'},
-        'exchange_rules': ident, 'feasibility': _feas_summary(seen[0]),
+                        'E2_exchange_floors': f'{E2_LABEL} (mainnet snapshot passed to backtest.run for this call)'},
+        'e2_label': 'prospective/current-rule feasibility, not point-in-time; not promotable by itself',
+        'exchange_rules': ident, 'feasibility': _feas_summary(feas),
+        'breadth': breadth(pkt), 'runner_packet_sha256': want,
     }
     pkt['packet_sha256'] = hashlib.sha256(B._canon(pkt)).hexdigest()
+    return pkt
+
+
+def publish(pkt: dict, out: str) -> None:
+    """Durable atomic publish: temp file, flush + fsync, os.replace onto the final path."""
     tmp = out + '.tmp'
     with open(tmp, 'wb') as f:
         f.write(json.dumps(pkt, sort_keys=True, indent=1, allow_nan=False).encode())
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, out)
+
+
+def _rm(path) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(path)
+
+
+def run(*, cache, regime_cache, window, out, side, tier=None, symbols=None, repo=B.VC.ROOT, plan=None,
+        rules_path=None, **acct) -> dict:
+    """One FIB-02 development cell. `symbols` is for synthetic tests only (the CLI exposes --tier only).
+
+    Evidence atomicity (Codex 6487245023 F1): the shared runner writes a sibling STAGING file (<out>.staging); the
+    wrapper validates, wraps and re-hashes it and only then publishes <out> atomically (temp + fsync + os.replace).
+    The final path therefore holds either nothing or the complete wrapped packet. Any failure after the runner starts
+    removes the staging files (never published, so not evidence). Stale staging policy: REFUSE - a staging / temp
+    file left by a hard crash (power loss, kill) is never reused or silently deleted; the run refuses and names it,
+    and the operator removes it before rerunning."""
+    staging, staging_tmp = staging_paths(out)
+    if os.path.exists(out):
+        raise Fib02Error(f'fib02: {out} exists; a packet is never overwritten')
+    stale = [p for p in (staging, staging_tmp, out + '.tmp') if os.path.exists(p)]
+    if stale:
+        raise Fib02Error(f'fib02: stale staging from an interrupted run: {stale}; remove it and rerun (never reused)')
+    if B.ST.STRATEGIES[KEY].get('tf') != TF or not B.ST.STRATEGIES[KEY].get('research_only'):
+        raise Fib02Error('fib02: fib_pullback_02 must be the research-only 1h key')
+    snap, ident = load_rules(rules_path or os.path.join(ROOT, RULES))
+    try:
+        with scoped_equivalents(snap) as seen:
+            B.run(cache=cache, window=window, out=staging, key=KEY, side=side, mgmt_mode='defaults', custom=None,
+                  tier=tier, symbols=symbols, regime_cache=regime_cache, repo=repo, plan=plan, **acct)
+        if len(seen) != 1:
+            raise Fib02Error(f'fib02: expected one backtest.run call, saw {len(seen)}')
+        with open(staging, 'rb') as f:
+            pkt = wrap(json.loads(f.read()), ident, seen[0])
+        publish(pkt, out)
+    except BaseException:
+        for p in (staging, staging_tmp, out + '.tmp'):
+            _rm(p)
+        raise
+    _rm(staging)
     return pkt
 
 
@@ -153,8 +226,10 @@ def main(argv=None) -> int:
         print(f'REFUSED: {e}', file=sys.stderr)
         return 2
     agg = pkt['stats']['aggregate']
-    print(f"{KEY} {a.side} {a.tier}: {pkt['status']} {agg['trades']} trades, R sum {agg['r_sum']}, PF {agg['pf']}, "
-          f"packet {pkt['packet_sha256'][:12]} -> {a.out}")
+    br = pkt['fib02']['breadth']
+    print(f"{KEY} {a.side} {a.tier}: {pkt['status']} {agg['trades']} trades on {br['symbols_with_trades']} symbols, "
+          f"R sum {agg['r_sum']}, mean R {agg['r_mean']}, PF {agg['pf']}, breadth_ok {br['breadth_ok']}: "
+          f"{br['development_verdict']}; packet {pkt['packet_sha256'][:12]} -> {a.out}")
     return 0
 
 

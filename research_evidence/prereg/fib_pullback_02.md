@@ -3,6 +3,8 @@
 Status: **FROZEN / NOT EVALUATED / RESEARCH ONLY**  
 Frozen: 29 October 2026, Cairo (before any market-data evaluation of this key)  
 Authority: Codex, ZackBot2 #219 comment 6486879287 (frozen economic hypothesis, one parameter set)  
+Review corrections before any evaluation: Codex, PR #236 comment 6487245023 (stop wording, E2 label, breadth gate,
+atomic packet publication); no rule or parameter changed  
 Strategy key: `fib_pullback_02` (new key; `fib_pullback` v1 and its recorded rejection are unchanged)  
 Timeframe: 1h  
 Order authority: none; excluded from PAPER rotation, settings, runtime sleeves and live execution
@@ -44,10 +46,12 @@ separate cells. Fibonacci levels alone are not presumed predictive, and no Fibon
   5. participation: volume[i] >= median(volume[i-20 .. i-1]) (the 20 candles before it; undefined -> no entry).
 - One entry per confirmed impulse and side. The order fills at the **next candle's open** (backtester next-open entry
   with its normal adverse slippage).
-- Structural invalidation: L(0.786). A close at/through it disarms the impulse. The emitted stop distance is the
-  decision candle's distance to L(0.786) (`atr` signal column; management `stop_atr = 1.0`), so the initial stop sits
-  at L(0.786) relative to the decision close. Exit signal: close at/through L(0.786) or the EMA50/EMA200 alignment
-  flipping.
+- Invalidation: L(0.786) is the **decision-time invalidation and the sizing anchor**. A close at/through it disarms
+  the impulse. The emitted stop distance is the decision close's distance to L(0.786) (`atr` signal column;
+  management `stop_atr = 1.0`), which sizes the position. The backtester fills at the next candle's open with
+  slippage and rests its stop that distance from the fill, so the actual stop shifts by the entry gap and slippage
+  and is **not guaranteed to sit exactly at L(0.786)**. The exit signal is retained: a close at/through L(0.786) or
+  the EMA50/EMA200 alignment flipping. The core backtester is not changed for this record.
 - Management, frozen and identical to v1 in bar units: 50% at +1R, breakeven at +1R, full target +2R, maximum 30
   candles (30 h on 1h). Existing backtester stop-first intrabar ordering is unchanged.
 - Long/short are produced by one mirrored function; an ambiguous candle with both entries takes neither (`_one_side`).
@@ -69,7 +73,13 @@ difference and are preregistered as explicit equivalents, scoped to the call:
   were `non_promotable` partly for this). For the call, the backtester receives the committed, directly fetched
   mainnet snapshot `data/exchange_rules_mainnet.json` (step size, minimum quantity, minimum notional). An entry below
   the floor is skipped, never rounded up. Skips are reported. The snapshot postdates the window; exchange rules are
-  not market data and only tighten execution.
+  not market data and only tighten execution. E2 is labelled, in this record and in every packet, a
+  **prospective / current-rule feasibility check, not point-in-time historical exchange rules**; it cannot by itself
+  make a packet promotable (packets stay `non_promotable`).
+- **Packet publication.** The shared runner writes a sibling staging file; the wrapper validates it, adds the FIB-02
+  envelope, recomputes `packet_sha256` and only then publishes the requested path atomically (temp file, fsync,
+  replace). The final path holds nothing or the complete wrapped packet. A staging file left by an interrupted run
+  is never reused or silently deleted: the run refuses until it is removed.
 
 ## Evaluation plan (development only)
 
@@ -77,7 +87,8 @@ difference and are preregistered as explicit equivalents, scoped to the call:
    prefix causality, each entry condition gating independently (reclaim, prior-candle break, body, volume, zone
    arming, 0.786 invalidation, impulse, EMA alignment), one entry per impulse, runtime exclusion (not in PAPER
    rotation, dropped by the engine load guard with `integrity|research-only-sleeve`, refused by `validate_sleeve`
-   without `allow_research`), v1 unchanged, and the wrapper's scoped equivalents. No market data is read in Phase A.
+   without `allow_research`), v1 unchanged, the wrapper's scoped equivalents, and atomic packet publication under an
+   injected post-run / pre-publish failure. No market data is read in Phase A.
 2. Phase B development run, on a separate go-ahead:
    - Universe: the entire declared Binance tier the shared runner accepts, **CORE-20** of the owner-approved frozen
      static universe `static-top40-minhist365-contract-20261011` (`research_evidence/universe/`), the CORE-10 tier v1
@@ -102,10 +113,13 @@ difference and are preregistered as explicit equivalents, scoped to the call:
 
 - If a cell's development **net expectancy (mean net R per closed trade) is <= 0**, that cell is rejected immediately
   and recorded; no walk-forward, holdout or exit tuning follows for this version.
-- If a cell's net expectancy is > 0 with enough breadth (trades spread over more than one market regime and not
-  carried by one or two symbols), it is handed off for independent Evidence review (causality, multiplicity,
-  cost/floor and frequency/breadth checks) and an Integration anchored walk-forward ruling. The holdout stays sealed
-  until that ruling.
+- A cell with net expectancy > 0 is only a **development survivor**, not a pass. The breadth gate for the next step
+  is **at least 100 closed trades across at least 8 symbols with trades** (packet `fib02.breadth`:
+  `closed_trades`, `symbols_with_trades`, `breadth_ok`). A positive cell that misses it is
+  **INCONCLUSIVE / INSUFFICIENT BREADTH**, never a PAPER pass.
+- A positive cell that meets the breadth gate is handed off for independent Evidence review (causality,
+  multiplicity, cost/floor, regime spread and frequency/breadth checks) and an Integration anchored walk-forward
+  ruling. The holdout stays sealed until that ruling.
 - Any revision is a new preregistered version; this record is never tuned or relabelled.
 
 ## Multiplicity

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 KEY, V1 = 'fib_pullback_02', 'fib_pullback'
 ENTRY = 258                               # the decision candle of the base tape
 PREREG = 'research_evidence/prereg/fib_pullback_02.md'
-PREREG_SHA256_LF = 'a71fa17c9ca28533a4b1c15ed15efc3ac690cf3e05cdf5b67bdc159684186fed'
+PREREG_SHA256_LF = '256318453ddede993fccc0a043756877e7f1c9173ec78ff888ec7c053081df48'
 # v1 at master 184ec2e: the signal source and its preregistration (LF bytes) must not move. (Its recorded result lives
 # under the documentation tree, which executed code never reads - test_ci.test_nothing_executed_reads_docs.)
 V1_SOURCE_SHA256 = '1f710fc4b8464e82358a153238b44401e4e8635d02aaed3e58915dfda88b1f90'
@@ -77,6 +77,8 @@ def test_registered_research_only_1h_one_parameter_set():
     assert st['params'] == S.FIB02 == dict(left=2, right=2, min_impulse_atr=3.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618,
                                            invalid=0.786, body_atr=0.35, vol_median_bars=20)
     assert st['mgmt'] == S.STRATEGIES[V1]['mgmt']                                  # frozen management reused
+    assert 'decision-time invalidation / sizing anchor' in st['desc'] and 'structural invalidation' not in st['desc']
+    assert 'not guaranteed to sit exactly at L(0.786)' in S.sig_fib_pullback_02.__doc__
 
 
 def test_absent_from_paper_rotation_settings_and_slots():
@@ -243,7 +245,11 @@ def test_prereg_frozen_and_complete():
               '3.0 x ATR(14)', '0.382-0.618', 'close[i] > high[i-1]', '0.35 x ATR(14)', 'median(volume[i-20 .. i-1])',
               'L(0.786)', "next candle's open", 'E1 timeframe', 'E2 exchange floors', 'CORE-20',
               '2026-09-28T00:00:00Z exclusive', 'net expectancy (mean net R per closed trade) is <= 0',
-              'anchored walk-forward', 'Two cells (long, short), one parameter set', 'holdout'):
+              'anchored walk-forward', 'Two cells (long, short), one parameter set', 'holdout',
+              'decision-time invalidation and the sizing anchor', 'not guaranteed to sit exactly at L(0.786)',
+              'prospective / current-rule feasibility check, not point-in-time', 'development survivor',
+              'at least 100 closed trades across at least 8 symbols with trades', 'INCONCLUSIVE / INSUFFICIENT BREADTH',
+              'publishes the requested path atomically'):
         assert s in md, s
 
 
@@ -306,7 +312,13 @@ def test_wrapper_runs_frozen_runner_with_scoped_equivalents(fx, tmp_path):
     assert pkt['costs']['fund_per_bar'] == pytest.approx(BT.FUND_PER_BAR / 4)
     f = pkt['fib02']
     assert f['feasibility']['mode'] == 'rules' and f['exchange_rules']['environment'] == 'mainnet'
-    assert f['prereg_sha256_lf'] == PREREG_SHA256_LF and 'mainnet snapshot' in pkt['costs']['exchange_rules']
+    assert f['prereg_sha256_lf'] == PREREG_SHA256_LF and 'Mainnet snapshot' in pkt['costs']['exchange_rules']
+    assert pkt['costs']['exchange_rules'].startswith('PROSPECTIVE / CURRENT-RULE FEASIBILITY CHECK')
+    assert 'not point-in-time' in f['e2_label'] and 'not point-in-time' in f['equivalents']['E2_exchange_floors']
+    br = f['breadth']
+    assert br['closed_trades'] == pkt['stats']['aggregate']['trades'] and br['breadth_ok'] is False   # tiny synthetic run
+    assert br['symbols_with_trades'] == sum(1 for x in pkt['stats']['per_symbol'].values() if x['trades'] > 0)
+    assert not os.path.exists(out + '.staging') and not os.path.exists(out + '.tmp')
     body = {k: v for k, v in pkt.items() if k != 'packet_sha256'}
     assert hashlib.sha256(B._canon(body)).hexdigest() == pkt['packet_sha256']
     with open(out, 'rb') as fh:
@@ -336,3 +348,79 @@ def test_wrapper_cli_has_no_grid_symbol_or_mgmt_override(fx):
     src = inspect.getsource(W.main)
     for flag in ('--symbols', '--mgmt', '--params', '--key', '--tp1', '--be-r', '--max-bars'):
         assert flag not in src, flag
+
+
+def _wrapper_env(tmp_path):
+    import test_vwaprev_candidate_runner as VT
+    return dict(cache=_cache_1h(str(tmp_path / 'c1h'), VT), regime_cache=VT.write_cache(str(tmp_path / 'c4h'), VT.frames()),
+                window=VT.WINDOW, side='short', symbols=VT.SYMS, repo=VT.git_repo(str(tmp_path / 'repo')),
+                rules_path=_rules(tmp_path))
+
+
+def test_f1_injected_failure_after_run_before_publish_leaves_no_final_packet(fx, tmp_path, monkeypatch):
+    B, W = fx
+    env, out = _wrapper_env(tmp_path), str(tmp_path / 'short.json')
+    staging, _ = W.staging_paths(out)
+    real_wrap, seen = W.wrap, []
+
+    def boom(staged, ident, feas):
+        seen.append(os.path.exists(staging) and not os.path.exists(out))   # the runner has finished into staging only
+        raise OSError('injected post-run / pre-publish failure')
+
+    monkeypatch.setattr(W, 'wrap', boom)
+    with pytest.raises(OSError, match='injected'):
+        W.run(out=out, **env)
+    assert seen == [True]
+    assert not os.path.exists(out) and not os.path.exists(staging) and not os.path.exists(out + '.tmp')
+    monkeypatch.setattr(W, 'wrap', real_wrap)
+    pkt = W.run(out=out, **env)                                                # rerun succeeds, nothing stale
+    with open(out, 'rb') as f:
+        assert json.loads(f.read())['packet_sha256'] == pkt['packet_sha256']
+    assert not os.path.exists(staging)
+
+
+def test_f1_publish_failure_leaves_no_final_packet(fx, tmp_path, monkeypatch):
+    _, W = fx
+    env, out = _wrapper_env(tmp_path), str(tmp_path / 'short.json')
+
+    real, calls = os.replace, []
+
+    def fail_replace(src, dst):                    # the runner's own staging replace passes; only the publish fails
+        calls.append(os.path.basename(str(dst)))
+        if str(dst) == out:
+            raise OSError('injected replace failure')
+        return real(src, dst)
+
+    monkeypatch.setattr(W.os, 'replace', fail_replace)
+    with pytest.raises(OSError, match='injected replace'):
+        W.run(out=out, **env)
+    monkeypatch.undo()
+    assert calls == ['short.json.staging', 'short.json']
+    assert not os.path.exists(out) and not os.path.exists(out + '.tmp') and not os.path.exists(W.staging_paths(out)[0])
+
+
+@pytest.mark.parametrize('which', [0, 1, 2])
+def test_f1_stale_staging_is_refused_never_reused(fx, tmp_path, which):
+    _, W = fx
+    env, out = _wrapper_env(tmp_path), str(tmp_path / 'short.json')
+    stale = [*W.staging_paths(out), out + '.tmp'][which]
+    with open(stale, 'w') as f:
+        f.write('{"packet_sha256": "stale"}')
+    with pytest.raises(W.Fib02Error, match='stale staging'):
+        W.run(out=out, **env)
+    assert os.path.exists(stale) and not os.path.exists(out)                  # neither deleted nor published
+    os.remove(stale)
+    assert W.run(out=out, **env)['fib02']['format'] == W.FORMAT
+
+
+@pytest.mark.parametrize('trades,syms,r,ok,verdict', [
+    (100, 8, 0.05, True, 'DEVELOPMENT SURVIVOR'), (99, 8, 0.05, False, 'INCONCLUSIVE / INSUFFICIENT BREADTH'),
+    (100, 7, 0.05, False, 'INCONCLUSIVE / INSUFFICIENT BREADTH'), (400, 12, 0.0, True, 'REJECT'),
+    (400, 12, -0.1, True, 'REJECT'), (0, 0, None, False, 'REJECT')])
+def test_breadth_gate(fx, trades, syms, r, ok, verdict):
+    _, W = fx
+    per = {f'S{i}': {'trades': trades // max(syms, 1) + (1 if i < trades % max(syms, 1) else 0)} for i in range(syms)}
+    per['ZERO'] = {'trades': 0}
+    br = W.breadth({'stats': {'aggregate': {'trades': trades, 'r_mean': r}, 'per_symbol': per}})
+    assert (br['closed_trades'], br['symbols_with_trades'], br['breadth_ok']) == (trades, syms, ok)
+    assert br['development_verdict'].startswith(verdict)
