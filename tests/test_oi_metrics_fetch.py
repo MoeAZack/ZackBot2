@@ -356,8 +356,9 @@ def test_manifest_records_boundary_gaps(tmp_path):
 # ------------------------------------------------------------------ Codex ruling 6489428240: bounds, window, cutoff
 def test_authoritative_run_needs_explicit_bounds(tmp_path):
     net = Net({'BTCUSDT': [D(2026, 9, 1)]})
-    with pytest.raises(F.FetchError, match='explicit'):
-        go(net, tmp_path, ['BTCUSDT'], start=None)
+    for bounds in ({'start': None}, {'end': None}, {'start': None, 'end': None}):   # each one-sided omission
+        with pytest.raises(F.FetchError, match='explicit'):
+            go(net, tmp_path, ['BTCUSDT'], **bounds)
     for argv in (['--end', '2026-09-27'], ['--start', '2026-01-01'], []):
         with pytest.raises(SystemExit, match='explicit'):
             F.main(['--symbols', 'BTCUSDT', '--dest', str(tmp_path)] + argv)

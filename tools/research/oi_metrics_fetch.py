@@ -464,9 +464,9 @@ def build_manifest(entries, failures, *, symbols, start, end, stopped=None, per_
 
 def run(symbols, dest: str, start, end: dt.date, *, list_fetch=None, fetcher: Fetcher = None, workers=2,
         manifest_path=None) -> dict:
-    P.check_end(end, CUTOFF)                        # before any network call
     if start is None or end is None:                # authoritative output needs explicit bounds (ruling 6489428240)
         raise FetchError('an authoritative fetch/manifest run needs explicit --start and --end: refused')
+    P.check_end(end, CUTOFF)                        # before any network call
     if start > end:
         raise FetchError('start after end')
     if not 1 <= workers <= 8:
