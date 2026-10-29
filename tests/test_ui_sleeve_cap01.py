@@ -131,7 +131,7 @@ def test_scalp_slots_are_their_own_share_group(app):
 
 
 def _custom(n, share):
-    keys = [k for k in A.S.STRATEGIES]
+    keys = [k for k, st in A.S.STRATEGIES.items() if not st.get('research_only')]
     return [dict(id=f'C{i}', key=keys[i % len(keys)], share=share, risk=0.005, max_pos=1, enabled=True) for i in range(n)]
 
 
