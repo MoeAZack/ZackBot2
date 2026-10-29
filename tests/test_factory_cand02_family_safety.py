@@ -154,6 +154,111 @@ def test_a_pending_cost_row_older_than_3000_newer_rows_still_disables(on, monkey
     assert e.state['candidate_disabled'][F01]['why'].startswith('accounting: ETHUSDT trade costs unmeasured')
 
 
+# ------------------------------------------------------------------ OQ6 (Codex 6508164005): the durable pending-cost index
+def _close_f01(e):
+    """A real candidate close (open via the cycle, close via _finish): FakeX leaves its costs pending."""
+    cycle4(e, {f'{F01}|BTCUSDT': SG})
+    (k,) = [k for k, l in e.state['lots'].items() if l['sleeve'] == F01]
+    e._finish(k, 'stop')
+    row = e.history[-1]
+    assert row['id'] == k and E.AC.row_view(row)['status'] == 'pending'
+    return k, row
+
+
+def _other_close(e, sym='ETHUSDT'):
+    """A real close of a NON-candidate lot (test_safety's sleeve 'T'; the rotation's group gate is not under test here)."""
+    from test_safety import opened
+    gate, e.rotation_block = e.rotation_block, lambda sl, ts=None: None
+    try: e._finish(opened(e, sym), 'stop')
+    finally: e.rotation_block = gate
+
+
+def _reenable(e):
+    for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+
+
+def test_an_evicted_pending_candidate_close_still_disables_the_family_after_a_restart(on):
+    from test_safety import mk_engine
+    e, tmp = on
+    k, row = _close_f01(e)
+    assert e.state[E.CANDIDATE_PENDING_KEY] == {k: dict(sleeve=F01, symbol='BTCUSDT', closed=row['closed'])}
+    e.history[:] = [row] + [dict(id=f'x{i}', sleeve='ema_mom', symbol='ETHUSDT', closed=row['closed']) for i in range(3000)]
+    _other_close(e)                                          # one more real close: the trim evicts the candidate row
+    assert len(e.history) == 3000 and all(h.get('id') != k for h in e.history)
+    e.save_state()
+    e2, _ = mk_engine(tmp)                                   # restart from the persisted state + history
+    _reenable(e2)
+    assert all(h.get('id') != k for h in e2.history) and k in e2.state[E.CANDIDATE_PENDING_KEY]
+    t = E.pd.Timestamp(row['closed']).timestamp()
+    assert e2.candidate_guard(now=t + E.CANDIDATE_COST_PENDING_S - 1) == []
+    assert e2.candidate_guard(now=t + E.CANDIDATE_COST_PENDING_S) == [F01, F02]
+    why = e2.state['candidate_disabled']
+    assert why[F01]['why'] == 'accounting: BTCUSDT trade costs unmeasured 6.0 h after close'
+    assert why[F02]['why'] == f'family {FAM} fail-closed by {F01}: accounting: BTCUSDT trade costs unmeasured 6.0 h after close'
+    assert k in e2.state[E.CANDIDATE_PENDING_KEY]                # only a settlement clears it
+
+
+def test_settlement_clears_the_index_entry_exactly_once(on, monkeypatch):
+    e, _ = on
+    real = E.AC.row_view
+    monkeypatch.setattr(E.AC, 'row_view', lambda r: dict(status='measured', pnl=0.0, r=None, why=[]) if r.get('_settled') else real(r))
+    k, row = _close_f01(e)
+    t = E.pd.Timestamp(row['closed']).timestamp() + E.CANDIDATE_COST_PENDING_S
+    e._cost_final('row', row)                                # a settlement pass that is still incomplete: kept
+    assert k in e.state[E.CANDIDATE_PENDING_KEY]
+    row['_settled'] = True
+    e._cost_final('row', row)                                # the settlement path every cost record goes through
+    assert e.state[E.CANDIDATE_PENDING_KEY] == {}
+    e._cost_final('row', row)                                # second settlement: a no-op, never an error
+    assert e._candidate_pending_clear(row) is False and e.state[E.CANDIDATE_PENDING_KEY] == {}
+    assert e.candidate_guard(now=t) == [] and e.candidate_guard(now=t) == []
+    assert slot(e, F01)['enabled'] and slot(e, F02)['enabled']
+
+
+def test_the_guard_reconciles_a_settled_row_still_in_history(on, monkeypatch):
+    e, _ = on
+    real = E.AC.row_view
+    monkeypatch.setattr(E.AC, 'row_view', lambda r: dict(status='measured', pnl=0.0, r=None, why=[]) if r.get('_settled') else real(r))
+    k, row = _close_f01(e)
+    row['_settled'] = True                                   # settled without passing the hook (e.g. an older build)
+    assert e.candidate_guard(now=E.pd.Timestamp(row['closed']).timestamp() + 10 * 3600) == []
+    assert e.state[E.CANDIDATE_PENDING_KEY] == {}
+
+
+def test_a_pending_non_candidate_close_never_enters_the_index(on):
+    e, _ = on
+    _other_close(e)
+    assert E.AC.row_view(e.history[-1])['status'] == 'pending' and e.history[-1]['sleeve'] not in E.CANDIDATE_SLOTS
+    assert not e.state.get(E.CANDIDATE_PENDING_KEY)
+
+
+@pytest.mark.parametrize('idx,sym', [({'r1': 'garbage'}, 'r1'), ({'r1': dict(sleeve=F01, symbol='SOLUSDT', closed='not a time')}, 'SOLUSDT'),
+                                     ({'r1': dict(sleeve='??', symbol='SOLUSDT', closed='2020-01-01T00:00:00+00:00')}, 'SOLUSDT'),
+                                     ({'r1': dict(symbol='SOLUSDT')}, 'SOLUSDT'), (['r1'], None)])
+def test_a_malformed_index_fails_closed(on, idx, sym):
+    e, _ = on
+    e.state[E.CANDIDATE_PENDING_KEY] = idx
+    assert e.candidate_guard() == [F01, F02]
+    why = e.state['candidate_disabled'][F01]['why']
+    assert why.startswith(f'accounting: {sym} trade costs unmeasured' if sym else 'accounting: pending-cost index unreadable')
+
+
+def test_an_older_state_without_the_index_loads_and_passes(on):
+    from test_safety import mk_engine
+    e, tmp = on
+    e.state.pop(E.CANDIDATE_PENDING_KEY, None); e.save_state()
+    e2, _ = mk_engine(tmp)
+    _reenable(e2)
+    assert E.CANDIDATE_PENDING_KEY not in e2.state and e2.candidate_guard() == []
+
+
+def test_history_retention_is_unchanged(on):
+    e, _ = on
+    e.history[:] = [dict(id=f'x{i}', sleeve='ema_mom') for i in range(3000)]
+    _other_close(e)
+    assert len(e.history) == 3000 and e.history[0]['id'] == 'x1'
+
+
 # ------------------------------------------------------------------ OQ4: C-F01-only policy, defaults unchanged
 def test_defaults_stay_off():
     assert E.CANDIDATE_DEFAULT_ENABLED is False and all(not x['enabled'] for x in E.candidate_sleeves())
