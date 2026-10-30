@@ -60,7 +60,21 @@ This ticket installs nothing, enables nothing, changes no settings or state, rea
     - `t_in` is on or before the check bar;
     - it has not exited before the check bar (exiting on the check bar still occupies the slot, per the signed same-bar
       convention);
-    - it is in the replay's `rp_state.open`, with `cap_count == len(open) >= 4`.
+    - it is in the replay's `rp_state.open`.
+
+  **Integrity fixes (Cowork BLOCK 6513562875):**
+  - **M-A, no stale evidence:** `rp_check_bar` must equal the step bar of the runtime-only entry being excused. P01 must
+    equal that step bar on both sides.
+  - **M-B, numeric checks fail closed:** P04 is accepted only when both values are finite real numbers (not bool, NaN,
+    +-inf, None or str). The check is a positive test, `|rt - rp| <= 1e-9 x |rp|`, with exact equality when rp is 0.
+    `quant_ok` uses the same predicate.
+  - **M-C, open-set integrity:**
+    - the excused entry's symbol must not be held in `rp_state.open` (no same-coin exemption);
+    - the open keys must be unique;
+    - `cap_count == len(open) ==` the count named in the cited reason, which is 4.
+
+  **Note (Cowork, non-blocking):** registered refusal prefixes match by `startswith`, so any suffix after a registered
+  prefix still opens a window. This is the ruled prefix design, kept as a conscious choice.
 - **What always fails:**
   - an open-ended same-symbol exemption;
   - a post-hoc reason;
@@ -73,7 +87,7 @@ This ticket installs nothing, enables nothing, changes no settings or state, rea
   verdict is **INCONCLUSIVE**, with the open window(s) listed. It is never PARITY-PASS and it is not a defect
   PARITY-FAIL. **Do not extend risk or duration, and do not force-close, to manufacture a closure.**
 
-The algorithm and 26 test vectors are in `causal_window`:
+The algorithm and 35 test vectors are in `causal_window`:
 
 | vectors | case | verdict |
 |---|---|---|
@@ -85,6 +99,7 @@ The algorithm and 26 test vectors are in `causal_window`:
 | V12 | window still open at the end | INCONCLUSIVE |
 | V13-V25 | mutations (see below) | PARITY-FAIL |
 | V26 | predecessor exits on the check bar (same-bar convention) | PASS |
+| V27-V35 | M-A / M-B / M-C mutations (see below) | PARITY-FAIL |
 
 The V13-V25 mutations are:
 - a non-cap reason, or a generic cap-like text;
@@ -93,6 +108,13 @@ The V13-V25 mutations are:
 - a wrong window id;
 - P01, P02, P03, P04 or P05 mismatched;
 - P04 missing.
+
+The V27-V35 mutations are:
+- M-A: a stale `rp_check_bar`, or P01 differing from the step bar;
+- M-B: P04 as NaN vs a number, NaN / NaN, inf / inf, or bool / bool;
+- M-C: the same coin as the predecessor, duplicate open keys, or 5 open with cap_count 5.
+
+Non-finite floats are encoded as `{"float": "nan"}` (see `value_encoding`).
 
 The tests implement the algorithm as a reference helper inside the test module only, never in the engine.
 

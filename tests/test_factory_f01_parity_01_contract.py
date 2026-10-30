@@ -5,6 +5,7 @@ and adds the offline failure injections the existing suites lack (restart mid-po
 protection with the lot still managed) plus runtime anchors for the MUST-MATCH sizing / stop fields.
 Synthetic data only (tests/test_safety.FakeX); never reads market data, settings or state of a real bot."""
 import ast
+import math
 import hashlib
 import json
 import os
@@ -356,6 +357,20 @@ def _bar(b):
     return int(str(b)[1:])                                  # opaque bar labels b0, b1, ... in bar order
 
 
+def _real(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def num_close(a, b, rel=1e-9):
+    """Cowork 6513562875 M-B: ONE numeric predicate for pre_gate P04 and quant_ok - both finite real numbers (not bool,
+    NaN, +-inf, None, str) and |a - b| <= rel x |b| written as a positive test; b == 0 -> exact equality."""
+    if not (_real(a) and _real(b)): return False
+    return a == b if b == 0 else abs(a - b) <= rel * abs(b)
+
+
+PRE_TYPES = {'P01': (str,), 'P02': (bool,), 'P03': (bool,), 'P05': (int,)}
+
+
 def pre_gate_equal(pg):
     """6513165844: pre-gate match is COMPUTED from P01..P05 (P04 at rel 1e-9), never a free boolean."""
     if not isinstance(pg, dict): return False
@@ -363,27 +378,36 @@ def pre_gate_equal(pg):
         f = pg.get(pid)
         if not isinstance(f, dict) or 'rt' not in f or 'rp' not in f: return False
         if pid == 'P04':
-            if not (isinstance(f['rt'], (int, float)) and isinstance(f['rp'], (int, float))) or \
-                    abs(f['rt'] - f['rp']) > 1e-9 * abs(f['rp']): return False
-        elif f['rt'] != f['rp'] or type(f['rt']) is not type(f['rp']): return False
+            if not num_close(f['rt'], f['rp']): return False
+            continue
+        rt, rp, ty = f['rt'], f['rp'], PRE_TYPES[pid]
+        if not (isinstance(rt, ty) and isinstance(rp, ty)) or type(rt) is not type(rp) or rt != rp: return False
+        if pid == 'P05' and isinstance(rt, bool): return False
     return True
 
 
-def mirror_ok(ev, window_id, explained, cap_reasons):
-    """N1 mirror capacity, evidence-derived (6512978555 + 6513165844)."""
+def mirror_ok(ev, window_id, explained, cap_reasons, step_bar=None):
+    """N1 mirror capacity, evidence-derived (6512978555 + 6513165844 + Cowork 6513562875 M-A / M-B / M-C).
+    cap_reasons: {frozen reason text: the cap count it names}."""
     pr, rs = ev.get('predecessor') or {}, ev.get('rp_state') or {}
     key, chk = pr.get('key'), ev.get('rp_check_bar')
     if window_id is None or pr.get('window_id') != window_id: return False                 # (1)
     if not key or list(key) not in explained: return False                                  # (2)
-    if not pre_gate_equal(ev.get('pre_gate')): return False                                  # (3)
-    if ev.get('rp_refusal_reason') not in cap_reasons: return False                          # (4) exact frozen text
-    if chk is None or pr.get('t_in') is None or _bar(pr['t_in']) > _bar(chk): return False   # (5) entered by the check bar
+    pg = ev.get('pre_gate')
+    if not pre_gate_equal(pg): return False                                                  # (3)
+    if step_bar is None or chk != step_bar or pg['P01']['rt'] != step_bar: return False     # (3b) M-A: no stale evidence
+    reason = ev.get('rp_refusal_reason')
+    if reason not in cap_reasons: return False                                               # (4) exact frozen text
+    if pr.get('t_in') is None or _bar(pr['t_in']) > _bar(chk): return False                 # (5) entered by the check bar
     if pr.get('t_out') is not None and _bar(pr['t_out']) < _bar(chk): return False           #     not exited before it
     op = [list(x) for x in rs.get('open') or []]                                              # (6) counted in the cap
-    return list(key) in op and rs.get('cap_count') == len(op) >= E.CANDIDATE_MAX_POS
+    if list(key) not in op or len({tuple(x) for x in op}) != len(op): return False           #     M-C: unique keys
+    n = cap_reasons[reason]
+    if not (rs.get('cap_count') == len(op) == n): return False                               #     M-C: exactly the cited count
+    return ev.get('symbol') not in {x[1] for x in op}                                         # (7) M-C: no same-coin exemption
 
 
-def causal_verdict(steps, prefixes, cap_reasons=()):
+def causal_verdict(steps, prefixes, cap_reasons=None):
     """Reference implementation of causal_window.algorithm - test-module only, never runtime code."""
     window, windows, excluded, explained, wid = None, [], [], [], None
     for st in steps:
@@ -392,7 +416,7 @@ def causal_verdict(steps, prefixes, cap_reasons=()):
             if t == 'pre_gate_mismatch':
                 return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
             if t == 'rt_only_entry':                   # N1 (6512978555): mirror capacity, bounded to the open window
-                if window is None or not mirror_ok(ev, wid, explained, cap_reasons):
+                if window is None or not mirror_ok(ev, wid, explained, cap_reasons or {}, st['bar']):
                     return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
                 k_ = ev['predecessor']['key']
                 excluded.append([st['bar'], ev['symbol'], 'mirror_cap', wid, k_[0], k_[1]])
@@ -414,13 +438,22 @@ def causal_verdict(steps, prefixes, cap_reasons=()):
     return dict(verdict='PASS', windows=windows, excluded=excluded)
 
 
+def decode(x):
+    """causal_window.value_encoding: {"float": "nan" | "inf" | "-inf"} -> IEEE float."""
+    if isinstance(x, dict):
+        if set(x) == {'float'}: return float(x['float'])
+        return {k: decode(v) for k, v in x.items()}
+    if isinstance(x, list): return [decode(v) for v in x]
+    return x
+
+
 def test_causal_window_test_vectors(c):
     cw = c['causal_window']
     assert cw['ruling'] == RULING and 'never in engine/runtime code' in cw['status']
     vs = cw['test_vectors']
     assert len(vs) >= 12 and {v['expect']['verdict'] for v in vs} == {'PASS', 'PARITY-FAIL', 'INCONCLUSIVE'}
     for v in vs:
-        got = causal_verdict(v['steps'], cw['registered_refusal_prefixes'], cw['mirror_cap_reasons'])
+        got = causal_verdict(decode(v['steps']), cw['registered_refusal_prefixes'], cw['mirror_cap_reason_counts'])
         assert {k_: got.get(k_) for k_ in v['expect']} == v['expect'], v['id']
 
 
@@ -483,7 +516,7 @@ def test_mirror_exception_is_evidence_derived(c):
 def test_mirror_fails_on_each_pre_gate_mismatch(c, pid, bad):
     cw = c['causal_window']
     v9 = json.loads(json.dumps(next(v for v in cw['test_vectors'] if v['id'] == 'V9')))
-    pre, reasons = cw['registered_refusal_prefixes'], cw['mirror_cap_reasons']
+    pre, reasons = cw['registered_refusal_prefixes'], cw['mirror_cap_reason_counts']
     assert causal_verdict(v9['steps'], pre, reasons)['verdict'] == 'PASS'
     v9['steps'][1]['events'][0]['pre_gate'][pid] = bad
     assert causal_verdict(v9['steps'], pre, reasons) == dict(verdict='PARITY-FAIL', fail_at='b2')
@@ -501,7 +534,7 @@ def test_mirror_fails_on_each_occupancy_mutation(c, mut):
     elif mut == 'cap': ev['rp_state']['cap_count'] = 5
     elif mut == 'window': ev['predecessor']['window_id'] = 'W0'
     elif mut == 'key': ev['predecessor']['key'] = ['b1', 'ETHUSDT']
-    got = causal_verdict(v9['steps'], cw['registered_refusal_prefixes'], cw['mirror_cap_reasons'])
+    got = causal_verdict(v9['steps'], cw['registered_refusal_prefixes'], cw['mirror_cap_reason_counts'])
     assert got == dict(verdict='PARITY-FAIL', fail_at='b2'), mut
 
 
@@ -513,8 +546,9 @@ def test_registered_refusal_prefixes_are_literal_engine_text(c):
 
 # ------------------------------------------------------------------ OQ6: exact post-quantization equality
 def quant_ok(raw_rt, raw_rule, q_rt, step, raw_rel=1e-9):
-    """P17 / P19: raw within rel AND the exchange-quantized value (floor to step / tick) equal EXACTLY."""
-    return abs(raw_rt - raw_rule) <= raw_rel * abs(raw_rule) and q_rt == F.round_step(raw_rule, step)
+    """P17 / P19: raw within rel AND the exchange-quantized value (floor to step / tick) equal EXACTLY. Same numeric
+    predicate as pre_gate P04 (num_close; Cowork 6513562875 M-B)."""
+    return num_close(raw_rt, raw_rule, raw_rel) and _real(q_rt) and q_rt == F.round_step(raw_rule, step)
 
 
 def test_quantization_vectors_raw_rel_passes_but_one_step_fails(c):
@@ -526,3 +560,68 @@ def test_quantization_vectors_raw_rel_passes_but_one_step_fails(c):
     assert abs(q2['raw_rt'] - q2['raw_rule']) <= 1e-9 * q2['raw_rule']                               # raw passes ...
     assert not quant_ok(q2['raw_rt'], q2['raw_rule'], q2['q_rt'], q2['step'])                        # ... one step fails
     assert not quant_ok(0.5, 0.5, 0.499, 0.001) and not quant_ok(95.0, 95.0, 95.01, 0.01)
+
+
+# ------------------------------------------------------------------ Cowork BLOCK 6513562875: M-A / M-B / M-C
+def _v9(c):
+    return json.loads(json.dumps(next(v for v in c['causal_window']['test_vectors'] if v['id'] == 'V9')))
+
+
+def _run(c, steps):
+    cw = c['causal_window']
+    return causal_verdict(decode(steps), cw['registered_refusal_prefixes'], cw['mirror_cap_reason_counts'])
+
+
+def test_cowork_block_fix_is_recorded(c):
+    cw = c['causal_window']
+    assert '6513562875' in cw['mirror_integrity_fix'] and '6513562875' in c['amended_at']
+    assert 'startswith' in cw['registered_prefix_match_note'] and '6513562875' in cw['registered_prefix_match_note']
+    assert cw['mirror_cap_reason_counts'] == {r: E.CANDIDATE_MAX_POS for r in cw['mirror_cap_reasons']}
+    alg = ' '.join(cw['algorithm'])
+    for w in ('M-A', 'M-B', 'M-C', 'step bar', 'finite', 'unique', 'same-coin'):
+        assert w in alg, w
+    notes = {v['note'] for v in cw['test_vectors']}
+    for frag in ('M-A stale rp_check_bar', 'M-A P01 decision bar', 'M-B P04 rt NaN', 'M-B P04 NaN / NaN', 'M-B P04 inf / inf',
+                 'M-B P04 bool True / True', 'M-C runtime-only entry on the same coin', 'M-C four duplicate', 'M-C 5 open'):
+        assert any(frag in n_ for n_ in notes), frag
+    md = open(MD, encoding='utf-8').read()
+    assert '6513562875' in md and 'startswith' in md
+
+
+def test_m_a_stale_check_bar_reproduces_cowork_and_fails(c):
+    stale = next(v for v in c['causal_window']['test_vectors'] if v['note'].startswith('mutation: M-A stale'))
+    assert _run(c, stale['steps']) == dict(verdict='PARITY-FAIL', fail_at='b4')
+    v9 = _v9(c)
+    v9['steps'][1]['events'][0]['pre_gate']['P01'] = {'rt': 'b9', 'rp': 'b9'}
+    assert _run(c, v9['steps']) == dict(verdict='PARITY-FAIL', fail_at='b2')
+
+
+@pytest.mark.parametrize('rt,rp', [(float('nan'), 0.4321), (float('nan'), float('nan')), (float('inf'), float('inf')),
+                                   (float('-inf'), float('-inf')), (True, True), (None, None), ('0.4321', '0.4321'),
+                                   (0.4321, float('nan'))])
+def test_m_b_non_finite_or_non_real_p04_fails_closed(c, rt, rp):
+    v9 = _v9(c)
+    v9['steps'][1]['events'][0]['pre_gate']['P04'] = {'rt': rt, 'rp': rp}
+    assert _run(c, v9['steps']) == dict(verdict='PARITY-FAIL', fail_at='b2')
+    assert not num_close(rt, rp)
+
+
+def test_m_b_num_close_and_quant_ok_agree():
+    for a, b in ((float('nan'), 1.0), (float('inf'), float('inf')), (True, True), (None, 1.0)):
+        assert not num_close(a, b) and not quant_ok(a, b, 1.0, 0.001)
+    assert num_close(0.0, 0.0) and not num_close(1e-300, 0.0)                     # rp == 0: exact equality
+    assert num_close(1.0, 1.0 + 1e-10) and not num_close(1.0, 1.0 + 1e-6)
+    assert quant_ok(0.5, 0.5, 0.5, 0.001) and not quant_ok(0.5, 0.5, float('nan'), 0.001)
+
+
+@pytest.mark.parametrize('mut', ['same_coin', 'dup_keys', 'five_open', 'cap_count_mismatch'])
+def test_m_c_coin_and_open_set_integrity(c, mut):
+    v9 = _v9(c)
+    ev = v9['steps'][1]['events'][0]
+    if mut == 'same_coin': ev['symbol'] = ev['predecessor']['key'][1]
+    elif mut == 'dup_keys': ev['rp_state'] = {'open': [ev['predecessor']['key']] * 4, 'cap_count': 4}
+    elif mut == 'five_open':
+        ev['rp_state']['open'] = ev['rp_state']['open'] + [['b0', 'DOGEUSDT']]; ev['rp_state']['cap_count'] = 5
+    elif mut == 'cap_count_mismatch': ev['rp_state']['cap_count'] = 3
+    assert _run(c, v9['steps']) == dict(verdict='PARITY-FAIL', fail_at='b2'), mut
+    assert _run(c, _v9(c)['steps'])['verdict'] == 'PASS'                           # the unmutated V9 still passes

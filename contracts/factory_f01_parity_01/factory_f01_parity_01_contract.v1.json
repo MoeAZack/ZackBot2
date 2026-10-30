@@ -830,7 +830,7 @@
   "UI work",
   "mainnet / live"
  ],
- "amended_at": "2026-10-30T03:45+02:00 (Cairo; 01:45 UTC) - amendment 1 encodes Integration ruling 6512712537 (OQ1-OQ8 resolved) on reviewed head 0bcb6c4; amendment 3 2026-10-30T04:20+02:00 (Cairo) makes the N1 mirror exception evidence-derived per 6513165844 on reviewed head 91d86c8; amendment 2 2026-10-30T04:00+02:00 (Cairo) encodes delta review 6512978555 (N1 mirror capacity, open window at canary end = INCONCLUSIVE) on reviewed head daa8197",
+ "amended_at": "2026-10-30T03:45+02:00 (Cairo; 01:45 UTC) - amendment 1 encodes Integration ruling 6512712537 (OQ1-OQ8 resolved) on reviewed head 0bcb6c4; amendment 4 2026-10-30T04:40+02:00 (Cairo) fixes Cowork BLOCK 6513562875 M-A / M-B / M-C in the mirror exception on reviewed head 7a64faf; amendment 3 2026-10-30T04:20+02:00 (Cairo) makes the N1 mirror exception evidence-derived per 6513165844 on reviewed head 91d86c8; amendment 2 2026-10-30T04:00+02:00 (Cairo) encodes delta review 6512978555 (N1 mirror capacity, open window at canary end = INCONCLUSIVE) on reviewed head daa8197",
  "causal_window": {
   "ruling": "6512712537",
   "status": "specified algorithm (offline); implemented only as a reference helper in tests/test_factory_f01_parity_01_contract.py, never in engine/runtime code",
@@ -849,7 +849,7 @@
    "  pre_gate_mismatch -> PARITY-FAIL (also inside a window)",
    "  rt_refused_rp_entered -> PASS only if reason starts with a registered prefix AND logged_at_decision is true (else PARITY-FAIL: unregistered or post-hoc); it opens a window at this bar if none is open; the decision is listed as explained",
    "  rp_only_entry -> excluded (listed) only while a window is open; otherwise PARITY-FAIL",
-   "  rt_only_entry -> N1 mirror capacity (6512978555, made evidence-derived by 6513165844): LISTED / excluded ONLY when ALL hold: (1) a window is ALREADY open and predecessor.window_id is its id; (2) predecessor.key is an explained refusal of THAT window; (3) pre_gate P01..P05 all present and equal (computed); (4) rp_refusal_reason is EXACTLY one of mirror_cap_reasons; (5) predecessor.t_in <= rp_check_bar and (t_out is null or t_out >= rp_check_bar) - a lot exiting ON the check bar still occupies its slot (signed same-bar convention, repro per_bar_management_order step 2 before step 3); (6) predecessor.key is in rp_state.open and rp_state.cap_count == len(rp_state.open) >= CANDIDATE_MAX_POS (4). Listed as [bar, symbol, \"mirror_cap\", window id, predecessor bar, predecessor symbol]. Anything else -> PARITY-FAIL",
+   "  rt_only_entry -> N1 mirror capacity (6512978555, made evidence-derived by 6513165844): LISTED / excluded ONLY when ALL hold: (1) a window is ALREADY open and predecessor.window_id is its id; (2) predecessor.key is an explained refusal of THAT window; (3) pre_gate P01..P05 all present and equal (computed): P01 str, P02 / P03 bool, P05 int (not bool) equal exactly; P04 both finite real numbers (not bool, NaN, +-inf, None or str) with |rt - rp| <= 1e-9 x |rp| as a positive test (rp == 0 -> exact equality) (Cowork 6513562875 M-B); (3b) rp_check_bar == the step bar of this event AND P01 rt == rp == the step bar (M-A: no stale evidence); (4) rp_refusal_reason is EXACTLY one of mirror_cap_reasons; (5) predecessor.t_in <= rp_check_bar and (t_out is null or t_out >= rp_check_bar) - a lot exiting ON the check bar still occupies its slot (signed same-bar convention, repro per_bar_management_order step 2 before step 3); (6) predecessor.key is in rp_state.open; rp_state.open keys are unique; rp_state.cap_count == len(rp_state.open) == the count named by the cited reason (mirror_cap_reason_counts, 4); (7) the excused entry symbol is NOT a symbol of rp_state.open (no same-coin exemption, OQ4) (M-C). Listed as [bar, symbol, \"mirror_cap\", window id, predecessor bar, predecessor symbol]. Anything else -> PARITY-FAIL",
    "  match -> nothing",
    "3 after the step: if a window is open and rt_flat_after and rp_flat_after -> close it at this bar",
    "4 end (ruling 6512978555): a window still open (runtime / replay not resynchronized to candidate-flat) -> INCONCLUSIVE with the open window(s) listed (close null): never PARITY-PASS and not a defect PARITY-FAIL; otherwise PASS with the windows and exclusions",
@@ -877,6 +877,13 @@
    "an open trade on this coin is waiting for its stop"
   ],
   "registered_prefix_rule": "every prefix is literal engine.py refusal text (P08 / P09 / P10); a reason outside this list never explains a divergence",
+  "registered_prefix_match_note": "Cowork 6513562875 (non-blocking): registered prefixes match by startswith, so a logged reason with any suffix after a registered prefix opens a window; this is the ruled prefix design, kept as a conscious choice",
+  "mirror_cap_reason_counts": {
+   "candidate family trend_long: 4 open (one shared cap of 4)": 4,
+   "max positions reached (4)": 4
+  },
+  "value_encoding": "test vectors encode non-finite floats as {\"float\": \"nan\" | \"inf\" | \"-inf\"} (standard JSON has no NaN / Infinity); a reader decodes them to IEEE floats before applying the algorithm",
+  "helper_numeric_rule": "pre_gate P04 and quant_ok (P17 / P19 raw) share one predicate: both finite real numbers (not bool) and |a - b| <= rel x |b| (b == 0 -> exact equality)",
   "mirror_cap_reasons": [
    "candidate family trend_long: 4 open (one shared cap of 4)",
    "max positions reached (4)"
@@ -2941,9 +2948,916 @@
      ]
     },
     "id": "V26"
+   },
+   {
+    "note": "mutation: M-A stale rp_check_bar (window b1, predecessor exits b3, runtime-only entry at b4 cites the b2 cap state)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b4",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b4",
+          "rp": "b4"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": 0.4321,
+          "rp": 0.4321
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": "b3"
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b4"
+    },
+    "id": "V27"
+   },
+   {
+    "note": "mutation: M-A P01 decision bar differs from the step bar (rt = rp = b9 on a b2 step)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b9",
+          "rp": "b9"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": 0.4321,
+          "rp": 0.4321
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V28"
+   },
+   {
+    "note": "mutation: M-B P04 rt NaN vs 0.4321",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": {
+           "float": "nan"
+          },
+          "rp": 0.4321
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V29"
+   },
+   {
+    "note": "mutation: M-B P04 NaN / NaN",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": {
+           "float": "nan"
+          },
+          "rp": {
+           "float": "nan"
+          }
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V30"
+   },
+   {
+    "note": "mutation: M-B P04 inf / inf",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": {
+           "float": "inf"
+          },
+          "rp": {
+           "float": "inf"
+          }
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V31"
+   },
+   {
+    "note": "mutation: M-B P04 bool True / True",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": true,
+          "rp": true
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V32"
+   },
+   {
+    "note": "mutation: M-C runtime-only entry on the same coin as the predecessor (replay holds it)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "SOLUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": 0.4321,
+          "rp": 0.4321
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V33"
+   },
+   {
+    "note": "mutation: M-C four duplicate predecessor keys in rp_state.open",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": 0.4321,
+          "rp": 0.4321
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b1",
+           "SOLUSDT"
+          ]
+         ],
+         "cap_count": 4
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V34"
+   },
+   {
+    "note": "mutation: M-C 5 open / cap_count 5 (the cited reason names 4)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "pre_gate": {
+         "P01": {
+          "rt": "b2",
+          "rp": "b2"
+         },
+         "P02": {
+          "rt": true,
+          "rp": true
+         },
+         "P03": {
+          "rt": false,
+          "rp": false
+         },
+         "P04": {
+          "rt": 0.4321,
+          "rp": 0.4321
+         },
+         "P05": {
+          "rt": 3,
+          "rp": 3
+         }
+        },
+        "rp_refusal_reason": "candidate family trend_long: 4 open (one shared cap of 4)",
+        "rp_check_bar": "b2",
+        "rp_state": {
+         "open": [
+          [
+           "b1",
+           "SOLUSDT"
+          ],
+          [
+           "b0",
+           "BTCUSDT"
+          ],
+          [
+           "b0",
+           "ETHUSDT"
+          ],
+          [
+           "b0",
+           "XRPUSDT"
+          ],
+          [
+           "b0",
+           "DOGEUSDT"
+          ]
+         ],
+         "cap_count": 5
+        },
+        "predecessor": {
+         "key": [
+          "b1",
+          "SOLUSDT"
+         ],
+         "window_id": "W1",
+         "t_in": "b2",
+         "t_out": null
+        }
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    },
+    "id": "V35"
    }
   ],
   "mirror_evidence_ruling": "6513165844",
+  "mirror_integrity_fix": "Cowork BLOCK 6513562875 (M-A stale evidence, M-B non-finite fail-open, M-C coin / open-set integrity) fixed in amendment 4",
   "end_of_canary_rule": "ruling 6512978555: an open causal window at canary end -> INCONCLUSIVE with the open window(s) listed; never PARITY-PASS, not a defect PARITY-FAIL. Do NOT extend risk or duration, and do NOT force-close, to manufacture closure.",
   "notes_for_integration": [
    "N1 RULED (6512978555) and made evidence-derived (6513165844): mirror capacity is allowed only inside an already-open window with the exact frozen same-decision replay cap reason, P01-P05 computed equal, and a predecessor replay entry of that window (key + window id) proven open and counted in the replay cap at the check bar; every other runtime-only entry is PARITY-FAIL."
