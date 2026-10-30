@@ -27,6 +27,8 @@ REPRO = os.path.join(ROOT, 'contracts', 'factory_f01f02_repro', 'factory_f01f02_
 F01, F02 = 'C-F01', 'C-F02'
 SG = dict(close=100.0, atr=2.0, time='2026-10-04 00:00:00', le=True, se=False, lx=False, sx=False)
 RULING = '6512712537'
+with open(os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json'), encoding='utf-8') as _fh:
+    AMEND = json.load(_fh)
 CLASSES = {'MUST-MATCH', 'MEASURED-DIFF', 'NOT-COMPARABLE'}
 
 
@@ -76,6 +78,8 @@ def f01(tmp_path):
     assert e.sync_candidate_slots() == [F01, F02]
     slot(e, F01)['enabled'] = True
     assert slot(e, F02)['enabled'] is False
+    from test_factory_cand01 import canary                 # FACTORY-F01-IMPL-01: C-F01 trades only inside the canary
+    canary(e, tmp)
     return e, tmp
 
 
@@ -123,6 +127,11 @@ def test_signed_contract_files_match_their_pins(c):
 def test_every_pinned_function_source_matches(c):
     pins = {k: v for k, v in c['code']['pinned_function_sha256'].items() if not k.startswith('_')}
     assert len(pins) == 34
+    amend = AMEND['amended']                               # FACTORY-F01-IMPL-01 pin amendment (signed JSON stays byte-identical)
+    assert set(amend) == {'engine.py:Engine.open_lot', 'engine.py:Engine._create_lot'}
+    for cite, ch in amend.items():
+        assert pins[cite] == ch['from'], cite
+        pins[cite] = ch['to']
     for cite, sha in pins.items():
         path, name = cite.split(':')
         src = _src(path)

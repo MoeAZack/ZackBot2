@@ -20,6 +20,7 @@ import true_books as TB
 import book_ledger as BL
 import run_pack as RP
 import feasibility as F
+import f01_canary as FC
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from binance_client import AuditSkipped
 from ai_filter import review
@@ -2369,6 +2370,86 @@ class Engine:
                 except Exception: pass
         return off
 
+    # ------------------------------------------------------------ FACTORY-F01-IMPL-01: bounded C-F01 PAPER canary
+    def f01_canary_block(self, sl):
+        """Refusal text for a NEW automatic C-F01 entry, else None. Other slots -> None (unchanged). C-F01 trades only inside
+        the bounded canary (Codex 6514109966 #2): the flag (settings F01_CANARY) missing, malformed or OFF, ON outside
+        PAPER / testnet, a malformed config, before the frozen start, at a bound (30 days / 8 closed trades / 4.0 R measured
+        drawdown), a pending-cost or uncountable C-F01 close -> refused (fail closed, logged once per reason). Never closes
+        or touches an open lot (OQ8)."""
+        if (sl or {}).get('id') != FC.SLOT: return None
+        try:
+            cfg = FC.config(self.S)
+            if cfg is None:
+                why = 'F01 canary flag missing, malformed or OFF - C-F01 trades only inside the bounded canary (fail closed)'
+            else:
+                why = FC.env_refusal(getattr(self, 'live', True), getattr(getattr(self, 'trade', None), 'base', None), TESTNET)
+            if why is None:
+                why = FC.bound_status(cfg, self.history, self.state.get(CANDIDATE_PENDING_KEY), now_utc(),
+                                      extra=getattr(self, 'cohort_rows', None) or ())['block']
+        except Exception as e:
+            why = f'F01 canary: bound check failed ({type(e).__name__}) - no new C-F01 entry (fail closed)'
+        if why and why != getattr(self, '_f01_last', None):
+            self._f01_last = why
+            log.warning(f'FACTORY-F01 canary: {why}')
+        return why
+
+    def f01_canary_preflight(self, pins_expected=None, write=False):
+        """The contract's C1-C10 start record (nothing is switched, saved or sent). pins_expected: the contract's
+        pinned_function_sha256 map, re-hashed against this build's source; C9 also compares the installed-build provenance
+        (build_info.BUILD_ID + matching build.json source_commit) and the running source manifest with the source_commit /
+        source_manifest frozen in F01_CANARY. Two-stage start: run with C-F01 disabled and a future start_utc. The record's
+        sha256 is returned in 'record_sha256'; write=True also stores it as an immutable 'preflight' extract."""
+        sl = next((x for x in self.S.get('SLEEVES') or [] if x.get('id') == FC.SLOT), None)
+        try: ctrl = (self.ctrl_now() or {}).get('long_factor')
+        except Exception: ctrl = None
+        pf = FC.preflight(self.S, self.state, live=getattr(self, 'live', True), base=getattr(getattr(self, 'trade', None), 'base', None),
+                            testnet=TESTNET, deferred=getattr(self, '_deferred', None) or (),
+                            drift=self.candidate_drift(sl) if sl else None, governor_mult=self.governor_mult(),
+                            kelly_mult=self.kelly_mult(sl) if sl else None, ctrl_long_factor=ctrl, now=now_utc(),
+                            identity=FC.running_identity(os.path.dirname(self.F['install'])),
+                            pins_expected=pins_expected, pins_actual=FC.function_pins(pins_expected or {}))
+        pf['record_sha256'] = FC.sha256(FC.canonical(pf))
+        if write:
+            rec = dict(pf, kind='preflight'); rec.pop('record_sha256')
+            pf['extract_sha256'] = self._f01_extract('preflight', lambda: rec)
+        return pf
+
+    def _f01_frame(self, sym, tf, df):
+        """The closed 4h frame engine.candles hands to compute_signals, hashed (FC.frame_record) and kept per symbol for the
+        decision extracts; written as a 'frame' extract only while the canary is ON in PAPER/testnet with a cohort_dir.
+        Observe only: nothing reads it back into signals, and it never raises into trading."""
+        try:
+            if FC.config(getattr(self, 'S', None)) is None: return
+            rec = FC.frame_record(sym, tf, df)
+            self.__dict__.setdefault('_f01_fh', {})[sym] = rec
+            self._f01_extract('frame', lambda: rec)
+        except Exception as e:
+            log.warning(f'FACTORY-F01 frame record {sym} not written: {type(e).__name__}')
+
+    def _f01_extract(self, kind, make):
+        """Write one immutable C-F01 extract when the canary is ON in PAPER/testnet and settings name a cohort_dir.
+        Observe only: never raises into a trading path."""
+        try:
+            cfg = FC.config(self.S)
+            if cfg is None or not cfg['cohort_dir']: return None
+            if FC.env_refusal(getattr(self, 'live', True), getattr(getattr(self, 'trade', None), 'base', None), TESTNET): return None
+            return FC.ExtractWriter(cfg['cohort_dir']).write(kind, make())
+        except Exception as e:
+            log.warning(f'FACTORY-F01 extract ({kind}) not written: {type(e).__name__}: {e}')
+            return None
+
+    def _f01_decision(self, sym, sg, outcome, reason, logged_at):
+        def make():
+            claims = self._claims()
+            fam = sum(1 for o, _s in claims if CANDIDATE_FAMILY.get(o) == CANDIDATE_FAMILY[FC.SLOT])
+            held = sum(1 for l in self.state['lots'].values() if l['sleeve'] == FC.SLOT)
+            fr = (getattr(self, '_f01_fh', None) or {}).get(sym)
+            if fr and FC._ts(FC._iso(sg.get('time'))) != FC._ts(fr.get('last_bar_open')): fr = None   # another bar's frame
+            return FC.decision_record(sym, sg, outcome, reason, logged_at, self._sig_raw.get(f'{FC.SLOT}|{sym}'), fam, held,
+                                      FC.config(self.S), fr)
+        return self._f01_extract('decision', make)
+
     def is_tradfi(self, sym):
         return sym in TU.GOLD_FAMILY or sym in TU.STOCK_SET or sym in TU.OIL_SET or \
             (getattr(self, 'rules', None) or {}).get(sym, {}).get('kind') == 'tradfi'
@@ -2622,6 +2703,7 @@ class Engine:
         df['t'] = pd.to_datetime(df.t, unit='ms')
         df = S.indicators(df[['t', 'o', 'h', 'l', 'c', 'v', 'qv']])
         self._kc[(sym, tf)] = (df, last_open)
+        if tf == '4h' and sym in CAND_FIXED18: Engine._f01_frame(self, sym, tf, df)     # FACTORY-F01-IMPL-01 (observe only)
         return df
 
     def _orphan_sleeves(self, tf):
@@ -3800,6 +3882,11 @@ class Engine:
             placed = f"ME|{sl['id']}|{sym}|{side}" in (self.state.get('resting_entries') or {})
             self._audit_cand(sl, sym, side, sg, 'order_placed' if placed else 'taken')
         except Exception: pass
+        if (sl or {}).get('id') == FC.SLOT:                          # FACTORY-F01-IMPL-01 (never raises)
+            lot = (self.state.get('lots') or {}).get(getattr(self, '_last_lot_key', None)) or {}
+            taken = lot.get('sleeve') == FC.SLOT and lot.get('symbol') == sym
+            self._f01_decision(sym, sg, 'taken' if taken else 'order_placed', None, now_utc().isoformat(timespec='seconds'))
+            if taken: self._f01_extract('trade', lambda: FC.entry_record(lot, (getattr(self, 'rules', None) or {}).get(sym), sg))
 
     def _audit_hold(self, k, l, d, closing, ex, ex0):
         try:
@@ -4698,6 +4785,7 @@ class Engine:
         prices / fees are not measured yet waits (state['measured_wait'] with a copy of the closed lot, survives restarts)
         and is completed by _measured_followup when the row is revised; it is announced as pending - never with its booked
         figure presented as actual."""
+        if rec.get('sleeve') == FC.SLOT: self._f01_extract('trade', lambda: FC.trade_record(rec))   # FACTORY-F01-IMPL-01
         w = dict(key=key, sleeve=lot['sleeve'], manual=bool(lot.get('manual')), risk_usd=lot.get('risk_usd'), why=why,
                  hours=rec.get('hours'))
         if isinstance(lot.get('ml_decision_id'), str):             # ML-SHADOW-01: the only key the hook adds (ON only)
@@ -4786,6 +4874,7 @@ class Engine:
             v = AC.row_view(row)
             if v['status'] == 'pending': return
             self.state['measured_wait'].pop(row['id'], None)
+            if row.get('sleeve') == FC.SLOT: self._f01_extract('trade', lambda: FC.trade_record(row))   # FACTORY-F01-IMPL-01
             self._measured_done(row, w, v, 'MEASURED')
         except Exception as e: log.warning(f'measured close follow-up failed ({e})')
 
@@ -5164,6 +5253,7 @@ class Engine:
                                               (kind or 'not_taken'), reason, self._sig_raw.get(f"{sl['id']}|{sym}")))
         except Exception: pass
         if not kind: self._audit_missed_short(sl['id'], sym, side, sg['time'], 'not_taken', self._sig_raw.get(f"{sl['id']}|{sym}"), reason)
+        if not kind and sl.get('id') == FC.SLOT: self._f01_decision(sym, sg, 'not_taken', reason, rec['logged'])   # FACTORY-F01-IMPL-01
         self.missed.append(rec)
         self.missed = self.missed[-600:]
         self._save_aux('missed', self.missed)
@@ -6879,7 +6969,7 @@ class Engine:
             log.warning(f'RISK WARNING {sym} {side}: {w_}')
             if sl and not manual: self.miss(sl, sym, side, sg, 'WARNING: ' + w_, kind='warning')
         plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name', 'share') if k in sl}, sym=sym, side=side, qty=qty,
-                    stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
+                    qty_raw=qty_raw, stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
                     sg=dict(time=sg.get('time'), close=sg.get('close')), book=book,
                     book_eq=sleeve_eq if book_mode else None)
         if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
@@ -7510,6 +7600,8 @@ class Engine:
         if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
+        if (plan.get('sl') or {}).get('id') in CANDIDATE_SLOTS:   # FACTORY-F01-IMPL-01: observe-only evidence, never read by trading
+            lot['sizing_raw'] = dict(qty_raw=plan.get('qty_raw'), stop_raw=fill - sd * plan['stop_dist'], stop_dist=plan['stop_dist'])
         if plan.get('lev_exception'): lot['lev_exception'] = True    # T03c r1: entered while Binance leverage stayed above the cap
         if 'pyramid' in g: lot['next_add'] = fill + sd * g['pyramid']['step_r'] * lot['R']
         if 'dca' in g:
@@ -7627,6 +7719,10 @@ class Engine:
         return out
 
     def _rules_block(self, sl, sym, side, size=None, manual=False):
+        cb = None if manual else self.f01_canary_block(sl)      # FACTORY-F01-IMPL-01: canary bounds (C-F01 only, flag ON)
+        if cb:
+            self._rule_warns = []
+            return cb
         hits = self._rules_eval(sl, sym, side, size, manual)
         self._rule_warns = [m for _, mode, m in hits if mode == 'warn']
         enf = [f'risk rule {n}: {m}' for n, mode, m in hits if mode == 'enforce']

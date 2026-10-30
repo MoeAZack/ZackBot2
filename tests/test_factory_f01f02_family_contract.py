@@ -68,6 +68,8 @@ def on(tmp_path):
     e, tmp = mk_engine(str(tmp_path)); e.apply_preset(E.ROTATION_PRESET)
     assert e.sync_candidate_slots() == [F01, F02]
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    from test_factory_cand01 import canary                 # FACTORY-F01-IMPL-01: C-F01 trades only inside the canary
+    canary(e, tmp)
     return e, tmp
 
 

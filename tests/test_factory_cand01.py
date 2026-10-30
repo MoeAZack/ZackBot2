@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_safety import mk_engine                       # noqa: E402  (FakeX engine, PAPER)
 import candidates as CD                                  # noqa: E402
 import engine as E                                       # noqa: E402
+import f01_canary as FC                                  # noqa: E402
 
 FIXED18 = {'BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT', 'QNTUSDT',
            'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT'}
@@ -48,7 +49,17 @@ def rot(tmp_path):
 def on(rot):
     e, tmp = rot
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    canary(e, tmp)
     return e, tmp
+
+
+def canary(e, tmp):
+    """FACTORY-F01-IMPL-01 (Codex 6514109966 #2): an enabled C-F01 trades only inside the bounded testnet canary."""
+    from datetime import datetime, timedelta, timezone
+    e.trade.base = E.TESTNET
+    e.S['F01_CANARY'] = dict(on=True, start_utc=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec='seconds'),
+                             authorization_comment_id='6514109966', cohort_dir=os.path.join(os.path.abspath(tmp), 'f01_cohort'),
+                             source_commit='c' * 40, source_manifest={n: 'd' * 64 for n in FC.MANIFEST_FILES})
 
 
 # ------------------------------------------------------------------ the frozen cards
@@ -314,6 +325,7 @@ def _book_engine(true_books):
     e.S['TRUE_BOOKS'] = true_books
     e.S['SLEEVES'] = [T_SL] + E.candidate_sleeves()
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    canary(e, tmp)
     return e, T_SL
 
 
