@@ -27,6 +27,8 @@
     "side": "long",
     "timeframe": "4h",
     "family": "trend_long",
+    "signal": "EMA20 crosses above EMA50, close>EMA200, ret42>0 and ret180>0",
+    "exit": "EMA20<EMA50 or either momentum return is non-positive",
     "management": {"stop_atr": 2.5, "tp_r": 3.0, "max_bars": 180},
     "signal_identity": "The signed family contract proves C-F02 has the same long entry signal set as C-F01; only management differs.",
     "development_context_only": {"closed_trades": 171, "net_r": 56.69273},
@@ -40,6 +42,9 @@
     "variant": "H3.primary",
     "strategy": "exp_trend",
     "prereg_path": "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json",
+    "prereg_sha256": "ac914c1647652e5d4e9f267b45414bae32cc59e308837812a3ffdfbd98194bd2",
+    "h3_signal": "EMA20 crosses above EMA50, close>EMA200, ret42>0 and ret180>0; exit EMA20<EMA50 or either momentum return is non-positive",
+    "runtime_parity": "The runtime C-F02 exp_trend signal and exit set must remain identical to this H3 definition; source drift before a cohort is INCONCLUSIVE.",
     "rule": "Consume only the final signed, immutable H3 primary result produced by the accepted EDGE04 execution-grade path. A draft, partial, failed, superseded or unsigned output is INCONCLUSIVE and cannot authorize PAPER.",
     "no_duplicate": "EDGE04 H3 is the execution-grade C-F02 evaluation already in progress; this ticket must not launch another market-data run."
   },
@@ -52,13 +57,15 @@
     "stress": "all-variable-costs x1.5 mean net R>0; no sign flip at 60-second latency; fees/slippage x2 reported",
     "concentration": "no symbol exceeds 35% of absolute net-R contribution and top three do not exceed 60%",
     "drawdown": "base max equity drawdown<25%, closed-trade max drawdown<25R, and all-variable-costs x1.5 max equity drawdown<35%",
-    "multiplicity": "Holm alpha 0.05 across the four EDGE04 primaries; report deflated/search-aware statistics with the preregistered trial inventory",
-    "verdict": "PASS only if every gate passes for H3.primary; diagnostics, development packets and PAPER cannot rescue a failed primary"
+    "multiplicity": "Holm alpha 0.05 across the four primaries; report deflated/search-aware statistics with 75 prior+new strategy looks",
+    "verdict": "PASS only if every gate passes for the frozen primary; diagnostics cannot rescue it",
+    "additional_no_rescue": "Development packets and PAPER cannot rescue a failed H3 primary."
   },
   "decision": {
     "eligible_for_paper": "EDGE04 H3 final status PASS, every frozen gate true, signed immutable output and independent reproduction of the result envelope.",
     "park": "Any frozen gate false gives REJECT/PARK with no tuning on the evaluated windows; advance the next preregistered candidate.",
     "inconclusive": "Incomplete data/costs/B0, unsigned or moving head, missing independent evidence, or a changed gate/result schema.",
+    "inconclusive_rerun": "An INCONCLUSIVE H3 may be re-run only under a new signed amendment that preserves the append-only trial history; never silently restart or take a second look.",
     "high_drawdown": "Drawdown is permitted only inside the frozen numeric gates; profitability never waives a failed protection, accounting, data or multiplicity gate."
   },
   "paper_pack": {
