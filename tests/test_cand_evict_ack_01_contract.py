@@ -51,7 +51,7 @@ def test_authority_and_safety_terms(c):
     assert set(c['input']['required']) == {'row_id', 'reason', 'comment_id'}
     assert c['effect']['persist'] == 'save_state' and c['effect']['fail_closed_on_save_failure'] is True
     assert any('re-enable' in n for n in c['never']) and any('order' in n for n in c['never'])
-    assert c['open_questions'] and all(re.fullmatch(r'OQ\d+', k) for k in c['open_questions'])
+    assert all(re.fullmatch(r'OQ\d+', k) for k in c['resolved_questions'])
 
 
 def test_index_key_matches_engine(c):
@@ -65,3 +65,42 @@ def test_index_key_matches_engine(c):
 def test_cited_functions_exist(c, path):
     names = c['cited_functions'][path]
     assert names and [n for n in names if n not in _defs(path)] == []
+
+
+RULING = '6515377452'
+
+
+def test_rulings_resolved_no_open_oqs(c):
+    assert c['status'] == 'DRAFT' and c['open_questions'] == {}
+    assert c['ruling'] == RULING and c['resolved_questions_source'] == RULING
+    assert sorted(c['resolved_questions']) == [f'OQ{i}' for i in range(1, 9)]
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    assert '## Open questions' not in md and f'## RESOLVED (Integration ruling {RULING}' in md
+    assert 'verbatim' not in md.replace('not recorded verbatim', '')     # OQ5: the A3.6/A6/T9 contradiction is gone
+    assert c['canary']['resolved'] is True and c['canary']['scope'] == 'C-F01 only' and 'never assume 0 R' in c['canary']['rule']
+    assert c['authority']['rows_per_call'] == 1 and 'no CLI' in c['authority']['transport']
+
+
+def test_record_whitelist_and_save_fault(c):
+    r = c['record']
+    assert r['entry_whitelist'] == ['sleeve', 'symbol', 'closed'] and r['raw_entry_stored'] is False
+    assert 'entry_sha256' in r['fields']
+    e = c['effect']
+    assert e['rollback_removes_new_empty_ack_dict'] is True
+    assert '_persist_fault' in e['failed_save_side_effects'] and 'ENTRIES_PAUSED' in e['failed_save_side_effects']
+    assert 'self.lock' in e['concurrency']
+
+
+def test_required_tests_cover_pause_and_interleaving(c):
+    assert c['required_tests'] == [f'T{i}' for i in range(1, 21)]
+    n = c['required_test_notes']
+    assert 'ENTRIES_PAUSED' in n['T7'] and 'state_untrusted' in n['T7'] and 'empty' in n['T7']
+    assert 'interleaving' in n['T17'] and 'half-state' in n['T17']
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    t7 = next(l for l in md.splitlines() if l.startswith('| T7 |'))
+    t17 = next(l for l in md.splitlines() if l.startswith('| T17 |'))
+    assert 'ENTRIES_PAUSED' in t7 and 'state_untrusted' in t7
+    assert 'interleaving' in t17 and 'self.lock' in t17
+    assert 'f01_canary' in n['T14'] and '#249' in c['ordering']

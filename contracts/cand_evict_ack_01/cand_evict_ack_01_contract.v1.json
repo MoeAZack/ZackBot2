@@ -10,24 +10,48 @@
   "base_master": "06379c5",
   "parent_contract": "contracts/factory_f01f02_family (OQ6, deferred item)",
   "cited_functions": {
-    "engine.py": ["_finish", "_candidate_pending_note", "_candidate_pending_clear", "_candidate_pending_why",
-                  "_cost_final", "ack_unmeasured", "save_state", "_save_safe"],
-    "actual_costs.py": ["acknowledge"],
-    "f01_canary.py (PR #249, not on master)": ["bound_status"]
+    "engine.py": [
+      "_finish",
+      "_candidate_pending_note",
+      "_candidate_pending_clear",
+      "_candidate_pending_why",
+      "_cost_final",
+      "ack_unmeasured",
+      "save_state",
+      "_save_safe",
+      "_persist_fault"
+    ],
+    "actual_costs.py": [
+      "acknowledge"
+    ],
+    "f01_canary.py (PR #249, not on master)": [
+      "bound_status"
+    ]
   },
   "index_key": "candidate_cost_pending",
   "ack_record_key": "candidate_cost_pending_ack",
   "authority": {
     "who": "integration",
     "comment_id_pattern": "^[0-9]{6,12}$",
-    "transport": "PAPER API, operator HMAC (same as /api/capital/ack)",
-    "paper_only": true
+    "transport": "PAPER HMAC API only (same as /api/capital/ack); no CLI in v1",
+    "paper_only": true,
+    "github_calls": "never - runtime records the numeric comment id only",
+    "evidence": "acceptance/activation evidence resolves the id to a signed Codex comment naming the exact row",
+    "rows_per_call": 1
   },
   "input": {
-    "required": ["row_id", "reason", "comment_id"],
-    "reason_len": [1, 200],
+    "required": [
+      "row_id",
+      "reason",
+      "comment_id"
+    ],
+    "reason_len": [
+      1,
+      200
+    ],
     "extra_keys": "refused",
-    "net_field": "absent - no P&L is supplied or invented"
+    "net_field": "absent - no P&L is supplied or invented",
+    "row_id_list": "refused"
   },
   "admission": [
     "live -> refused",
@@ -35,16 +59,23 @@
     "index missing or not a dict -> refused (guard stays fail-closed)",
     "row_id not in index and not in ack record -> refused: unknown",
     "row_id still in history -> refused: not evicted",
-    "malformed entry (non-dict or unknown sleeve) -> allowed, kept verbatim (OQ5)"
+    "malformed entry (non-dict or unknown sleeve) -> allowed; raw entry NOT stored (OQ5)",
+    "same path for every slot in CANDIDATE_SLOTS (OQ8)"
   ],
   "effect": {
     "lock": "self.lock",
-    "steps": ["write ack record {row_id, entry, reason, comment_id, t, by}",
-              "pop exactly that index entry",
-              "save_state(); on failure roll back both changes and refuse (fail closed)",
-              "WARNING log line"],
+    "steps": [
+      "write ack record (whitelisted scalar entry + entry_sha256)",
+      "pop exactly that index entry",
+      "save_state(); on failure roll back both changes, delete a newly created empty ack dict, refuse (fail closed)",
+      "WARNING log line"
+    ],
     "persist": "save_state",
-    "fail_closed_on_save_failure": true
+    "fail_closed_on_save_failure": true,
+    "rollback_removes_new_empty_ack_dict": true,
+    "failed_save_side_effects": "_save_safe -> _persist_fault latches state_untrusted and sets ENTRIES_PAUSED; a held file also returns False with entries paused; the ack path must not suppress it",
+    "outputs": "state record + WARNING log only (OQ7)",
+    "concurrency": "A4 runs under self.lock; the guard read (_candidate_pending_why) sees before or after, never entry popped with record missing"
   },
   "idempotent": {
     "repeat_same_row": "ok, 'already acknowledged', no write, no save, first record kept"
@@ -55,23 +86,91 @@
     "change any P&L, R, px_ack, pnl_fill_adj, cost_rev, ML label, audit, cohort or evidence figure",
     "clear by time, restart or any automatic path",
     "clear an entry whose row is still in history",
-    "edit the existing FILL-PNL-02 acknowledgement"
+    "edit the existing FILL-PNL-02 acknowledgement",
+    "persist raw unexpected keys or identifier-bearing content from a malformed entry",
+    "write or mutate cohort (RUN-PACK) evidence or the evidence store",
+    "suppress the AUD-05 pause caused by a failed save",
+    "call GitHub or any network client"
   ],
   "canary": {
     "question": "OQ1",
-    "proposal": "an acked evicted C-F01 row is NOT settled: it counts in closed (S6) and keeps blocking new C-F01 entries when closed >= start_utc or unreadable; resume only via a new Integration-frozen start_utc",
-    "proposed_block_text": "F01 canary: <n> evicted C-F01 close(s) acknowledged without a measured net - drawdown not measurable, no new C-F01 entry (fail closed)"
+    "resolved": true,
+    "rule": "an acked evicted C-F01 close after the frozen start counts toward the 8-close bound, stays unmeasured and blocks new C-F01 risk; only a later Integration-frozen start after that close excludes it; never assume 0 R",
+    "scope": "C-F01 only",
+    "gated_on": "PR #249 (f01_canary) merged",
+    "block_text": "F01 canary: <n> evicted C-F01 close(s) acknowledged without a measured net - drawdown not measurable, no new C-F01 entry (fail closed)"
   },
-  "required_tests": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14", "T15", "T16"],
-  "open_questions": {
-    "OQ1": "canary: acked evicted C-F01 row blocking (proposed) or settled?",
-    "OQ2": "transport: PAPER API route (proposed), CLI, or both?",
-    "OQ3": "authority: record comment id only (proposed) or verify author via gh api?",
-    "OQ4": "one id per call (proposed) or bulk under one comment id?",
-    "OQ5": "malformed entries ackable (proposed) or separate state-repair contract?",
-    "OQ6": "ack record retention: unbounded in state (proposed) or capped + evidence file?",
-    "OQ7": "mirror the ack into RUN-PACK cohort evidence as an audit-only line?",
-    "OQ8": "same path for C-F02 and future slots (proposed yes; canary rule C-F01 only)?"
+  "required_tests": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "T9",
+    "T10",
+    "T11",
+    "T12",
+    "T13",
+    "T14",
+    "T15",
+    "T16",
+    "T17",
+    "T18",
+    "T19",
+    "T20"
+  ],
+  "open_questions": {},
+  "deferred": [
+    "implementation",
+    "PAPER enablement",
+    "C-F02 evaluation"
+  ],
+  "amended_at": "2026-10-30",
+  "ruling": "6515377452",
+  "cowork_advisories": "6515360579",
+  "ordering": "implementation after PR #249 merge; T14 gated on f01_canary on master",
+  "record": {
+    "fields": [
+      "row_id",
+      "entry",
+      "entry_sha256",
+      "reason",
+      "comment_id",
+      "t",
+      "by"
+    ],
+    "entry_whitelist": [
+      "sleeve",
+      "symbol",
+      "closed"
+    ],
+    "entry_value_types": "str (<=64 chars), finite int/float, None; anything else -> None",
+    "entry_sha256": "sha256 of json.dumps(original, sort_keys=True, separators=(\",\", \":\"), default=repr)",
+    "raw_entry_stored": false,
+    "retention": "unbounded durable state audit, no cap or eviction (OQ6)"
   },
-  "deferred": ["implementation", "PAPER enablement", "C-F02 evaluation"]
+  "required_test_notes": {
+    "T3": "byte-identical state; no empty candidate_cost_pending_ack left behind",
+    "T7": "save failure: rollback incl. new empty ack dict; state_untrusted latched and ENTRIES_PAUSED True on the write-exception path",
+    "T11": "malformed entry: whitelisted scalars + entry_sha256 only",
+    "T14": "canary rule, gated on f01_canary",
+    "T17": "guard/ack interleaving: no half-state (entry popped, record missing)",
+    "T18": "no cohort/evidence write, no GitHub/network call",
+    "T19": "C-F02 entry acked by the same path",
+    "T20": "1,000 acks -> 1,000 records"
+  },
+  "resolved_questions_source": "6515377452",
+  "resolved_questions": {
+    "OQ1": "A7 accepted: counts toward 8-close bound, unmeasured, blocks new C-F01 risk; later frozen start excludes; never 0 R",
+    "OQ2": "PAPER HMAC API only; no CLI in v1",
+    "OQ3": "record numeric comment id, never call GitHub; evidence resolves it to a signed Codex comment naming the row",
+    "OQ4": "one row id per call",
+    "OQ5": "ackable, not verbatim: whitelisted scalar sleeve/symbol/closed + sha256 of canonical original",
+    "OQ6": "durable unbounded state audit in v1; no cap or eviction",
+    "OQ7": "state record + WARNING log only; never write or mutate cohort evidence",
+    "OQ8": "same path for all CANDIDATE_SLOTS; A7 scoring is C-F01 only"
+  }
 }
