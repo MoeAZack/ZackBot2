@@ -1,0 +1,77 @@
+{
+  "contract": "CAND-EVICT-ACK-01",
+  "version": 1,
+  "status": "DRAFT",
+  "signed_by": null,
+  "signed_at": null,
+  "drafted_at": "2026-10-30T04:47:55Z",
+  "doc": "contracts/cand_evict_ack_01/CAND_EVICT_ACK_01_CONTRACT.md",
+  "build_role": "contract only - no runtime code, settings or state",
+  "base_master": "06379c5",
+  "parent_contract": "contracts/factory_f01f02_family (OQ6, deferred item)",
+  "cited_functions": {
+    "engine.py": ["_finish", "_candidate_pending_note", "_candidate_pending_clear", "_candidate_pending_why",
+                  "_cost_final", "ack_unmeasured", "save_state", "_save_safe"],
+    "actual_costs.py": ["acknowledge"],
+    "f01_canary.py (PR #249, not on master)": ["bound_status"]
+  },
+  "index_key": "candidate_cost_pending",
+  "ack_record_key": "candidate_cost_pending_ack",
+  "authority": {
+    "who": "integration",
+    "comment_id_pattern": "^[0-9]{6,12}$",
+    "transport": "PAPER API, operator HMAC (same as /api/capital/ack)",
+    "paper_only": true
+  },
+  "input": {
+    "required": ["row_id", "reason", "comment_id"],
+    "reason_len": [1, 200],
+    "extra_keys": "refused",
+    "net_field": "absent - no P&L is supplied or invented"
+  },
+  "admission": [
+    "live -> refused",
+    "bad row_id / blank reason / comment_id not matching pattern -> refused",
+    "index missing or not a dict -> refused (guard stays fail-closed)",
+    "row_id not in index and not in ack record -> refused: unknown",
+    "row_id still in history -> refused: not evicted",
+    "malformed entry (non-dict or unknown sleeve) -> allowed, kept verbatim (OQ5)"
+  ],
+  "effect": {
+    "lock": "self.lock",
+    "steps": ["write ack record {row_id, entry, reason, comment_id, t, by}",
+              "pop exactly that index entry",
+              "save_state(); on failure roll back both changes and refuse (fail closed)",
+              "WARNING log line"],
+    "persist": "save_state",
+    "fail_closed_on_save_failure": true
+  },
+  "idempotent": {
+    "repeat_same_row": "ok, 'already acknowledged', no write, no save, first record kept"
+  },
+  "never": [
+    "re-enable a slot or touch candidate_disabled",
+    "write exchange order / trade / client order ids",
+    "change any P&L, R, px_ack, pnl_fill_adj, cost_rev, ML label, audit, cohort or evidence figure",
+    "clear by time, restart or any automatic path",
+    "clear an entry whose row is still in history",
+    "edit the existing FILL-PNL-02 acknowledgement"
+  ],
+  "canary": {
+    "question": "OQ1",
+    "proposal": "an acked evicted C-F01 row is NOT settled: it counts in closed (S6) and keeps blocking new C-F01 entries when closed >= start_utc or unreadable; resume only via a new Integration-frozen start_utc",
+    "proposed_block_text": "F01 canary: <n> evicted C-F01 close(s) acknowledged without a measured net - drawdown not measurable, no new C-F01 entry (fail closed)"
+  },
+  "required_tests": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14", "T15", "T16"],
+  "open_questions": {
+    "OQ1": "canary: acked evicted C-F01 row blocking (proposed) or settled?",
+    "OQ2": "transport: PAPER API route (proposed), CLI, or both?",
+    "OQ3": "authority: record comment id only (proposed) or verify author via gh api?",
+    "OQ4": "one id per call (proposed) or bulk under one comment id?",
+    "OQ5": "malformed entries ackable (proposed) or separate state-repair contract?",
+    "OQ6": "ack record retention: unbounded in state (proposed) or capped + evidence file?",
+    "OQ7": "mirror the ack into RUN-PACK cohort evidence as an audit-only line?",
+    "OQ8": "same path for C-F02 and future slots (proposed yes; canary rule C-F01 only)?"
+  },
+  "deferred": ["implementation", "PAPER enablement", "C-F02 evaluation"]
+}
