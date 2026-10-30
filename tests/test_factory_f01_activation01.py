@@ -202,7 +202,9 @@ def test_installer_recipe_builds_the_exact_f01_frozen_layout_and_every_input_fai
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     text = open(os.path.join(root, 'installer.ps1'), encoding='utf-8-sig').read()
     # The simulated bundle is derived from the recipe itself: every literal $src Combine add-data source and destination.
-    pat = re.compile(r"'--add-data', \(\[IO\.Path\]::Combine\(\$src,\s*((?:'[^']+'\s*,?\s*)+)\) \+ ';([^']+)'\)")
+    # Each recipe entry is one source line; stop at Combine's first ')' instead of nesting an
+    # unbounded repeated capture (which can backtrack exponentially on hostile input).
+    pat = re.compile(r"'--add-data', \(\[IO\.Path\]::Combine\(\$src,\s*([^)]*)\) \+ ';([^']+)'\)")
     entries = []
     for parts, dest in pat.findall(text):
         rel = os.path.join(*re.findall(r"'([^']+)'", parts)); entries.append((rel, dest))
