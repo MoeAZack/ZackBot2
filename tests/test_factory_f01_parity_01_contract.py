@@ -352,25 +352,55 @@ def test_canary_execution_and_market_data_stay_forbidden(c):
 
 
 # ------------------------------------------------------------------ OQ4: bounded causal window (reference helper, test only)
-def causal_verdict(steps, prefixes):
+def _bar(b):
+    return int(str(b)[1:])                                  # opaque bar labels b0, b1, ... in bar order
+
+
+def pre_gate_equal(pg):
+    """6513165844: pre-gate match is COMPUTED from P01..P05 (P04 at rel 1e-9), never a free boolean."""
+    if not isinstance(pg, dict): return False
+    for pid in ('P01', 'P02', 'P03', 'P04', 'P05'):
+        f = pg.get(pid)
+        if not isinstance(f, dict) or 'rt' not in f or 'rp' not in f: return False
+        if pid == 'P04':
+            if not (isinstance(f['rt'], (int, float)) and isinstance(f['rp'], (int, float))) or \
+                    abs(f['rt'] - f['rp']) > 1e-9 * abs(f['rp']): return False
+        elif f['rt'] != f['rp'] or type(f['rt']) is not type(f['rp']): return False
+    return True
+
+
+def mirror_ok(ev, window_id, explained, cap_reasons):
+    """N1 mirror capacity, evidence-derived (6512978555 + 6513165844)."""
+    pr, rs = ev.get('predecessor') or {}, ev.get('rp_state') or {}
+    key, chk = pr.get('key'), ev.get('rp_check_bar')
+    if window_id is None or pr.get('window_id') != window_id: return False                 # (1)
+    if not key or list(key) not in explained: return False                                  # (2)
+    if not pre_gate_equal(ev.get('pre_gate')): return False                                  # (3)
+    if ev.get('rp_refusal_reason') not in cap_reasons: return False                          # (4) exact frozen text
+    if chk is None or pr.get('t_in') is None or _bar(pr['t_in']) > _bar(chk): return False   # (5) entered by the check bar
+    if pr.get('t_out') is not None and _bar(pr['t_out']) < _bar(chk): return False           #     not exited before it
+    op = [list(x) for x in rs.get('open') or []]                                              # (6) counted in the cap
+    return list(key) in op and rs.get('cap_count') == len(op) >= E.CANDIDATE_MAX_POS
+
+
+def causal_verdict(steps, prefixes, cap_reasons=()):
     """Reference implementation of causal_window.algorithm - test-module only, never runtime code."""
-    window, windows, excluded, explained = None, [], [], []
+    window, windows, excluded, explained, wid = None, [], [], [], None
     for st in steps:
         for ev in st['events']:
             t = ev['type']
             if t == 'pre_gate_mismatch':
                 return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
             if t == 'rt_only_entry':                   # N1 (6512978555): mirror capacity, bounded to the open window
-                trace = ev.get('rp_slot_trace')
-                if not (window is not None and ev.get('rp_cap_refusal_logged') is True and ev.get('pre_gate_match') is True
-                        and trace is not None and list(trace) in explained):
+                if window is None or not mirror_ok(ev, wid, explained, cap_reasons):
                     return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
-                excluded.append([st['bar'], ev['symbol'], 'mirror_cap', window[0], trace[0], trace[1]])
+                k_ = ev['predecessor']['key']
+                excluded.append([st['bar'], ev['symbol'], 'mirror_cap', wid, k_[0], k_[1]])
             elif t == 'rt_refused_rp_entered':
                 if not (ev.get('logged_at_decision') is True and any(ev['reason'].startswith(p) for p in prefixes)):
                     return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
                 if window is None:
-                    window = [st['bar'], None]; windows.append(window); explained = []
+                    window = [st['bar'], None]; windows.append(window); explained = []; wid = f'W{len(windows)}'
                 explained.append([st['bar'], ev['symbol']])
             elif t == 'rp_only_entry':
                 if window is None: return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
@@ -378,7 +408,7 @@ def causal_verdict(steps, prefixes):
             elif t != 'match':
                 raise ValueError(t)
         if window is not None and st['rt_flat_after'] and st['rp_flat_after']:
-            window[1] = st['bar']; window = None; explained = []
+            window[1] = st['bar']; window = None; explained = []; wid = None
     if window is not None:                             # 6512978555: not resynchronized at canary end -> never PASS
         return dict(verdict='INCONCLUSIVE', open_windows=[w for w in windows if w[1] is None], windows=windows, excluded=excluded)
     return dict(verdict='PASS', windows=windows, excluded=excluded)
@@ -390,14 +420,14 @@ def test_causal_window_test_vectors(c):
     vs = cw['test_vectors']
     assert len(vs) >= 12 and {v['expect']['verdict'] for v in vs} == {'PASS', 'PARITY-FAIL', 'INCONCLUSIVE'}
     for v in vs:
-        got = causal_verdict(v['steps'], cw['registered_refusal_prefixes'])
+        got = causal_verdict(v['steps'], cw['registered_refusal_prefixes'], cw['mirror_cap_reasons'])
         assert {k_: got.get(k_) for k_ in v['expect']} == v['expect'], v['id']
 
 
 def test_causal_window_is_bounded_and_has_no_same_symbol_exemption(c):
     pre = c['causal_window']['registered_refusal_prefixes']
     ref = dict(type='rt_refused_rp_entered', symbol='SOLUSDT', reason='daily loss halt', logged_at_decision=True)
-    rp = dict(type='rp_only_entry', symbol='SOLUSDT')
+    rp = dict(type='rp_only_entry', symbol='SOLUSDT')                                # replay-only path unchanged
     inside = [dict(bar='b1', events=[ref], rt_flat_after=True, rp_flat_after=False),
               dict(bar='b2', events=[rp], rt_flat_after=True, rp_flat_after=False)]
     got = causal_verdict(inside, pre)                                              # still open at the end: INCONCLUSIVE
@@ -422,13 +452,57 @@ def test_n1_mirror_capacity_and_open_window_at_end_rulings(c):
     assert vs['V12']['expect'] == {'verdict': 'INCONCLUSIVE', 'open_windows': [['b1', None]]}
     md = open(MD, encoding='utf-8').read()
     assert '6512978555' in md and 'INCONCLUSIVE' in md and 'mirror' in md
-    pre = cw['registered_refusal_prefixes']                         # each N1 condition is necessary
-    base = dict(type='rt_only_entry', symbol='ADAUSDT', rp_cap_refusal_logged=True, pre_gate_match=True, rp_slot_trace=['b1', 'SOLUSDT'])
-    ref = dict(type='rt_refused_rp_entered', symbol='SOLUSDT', reason='daily loss halt', logged_at_decision=True)
-    for drop in ({}, dict(rp_cap_refusal_logged=False), dict(pre_gate_match=False), dict(rp_slot_trace=None), dict(rp_slot_trace=['b1', 'ETHUSDT'])):
-        steps = [dict(bar='b1', events=[ref], rt_flat_after=True, rp_flat_after=False),
-                 dict(bar='b2', events=[dict(base, **drop)], rt_flat_after=True, rp_flat_after=True)]
-        assert causal_verdict(steps, pre)['verdict'] == ('PASS' if not drop else 'PARITY-FAIL'), drop
+    assert vs['V9']['expect']['excluded'] == [['b2', 'ADAUSDT', 'mirror_cap', 'W1', 'b1', 'SOLUSDT']]
+
+
+def test_mirror_exception_is_evidence_derived(c):
+    """6513165844: no free booleans; exact frozen cap reason; predecessor proven open and counted at the check bar."""
+    cw = c['causal_window']
+    assert cw['mirror_evidence_ruling'] == '6513165844' and '6513165844' in c['amended_at']
+    ev9 = next(v for v in cw['test_vectors'] if v['id'] == 'V9')['steps'][1]['events'][0]
+    assert {'rp_cap_refusal_logged', 'pre_gate_match', 'rp_slot_trace'}.isdisjoint(ev9)
+    assert set(ev9['pre_gate']) == {'P01', 'P02', 'P03', 'P04', 'P05'}
+    assert set(ev9['predecessor']) == {'key', 'window_id', 't_in', 't_out'} and set(ev9['rp_state']) == {'open', 'cap_count'}
+    src = _src('engine.py')                                   # the frozen reasons are the engine's own cap texts
+    assert "f'candidate family {fam}: {n} open (one shared cap of {CANDIDATE_MAX_POS})'" in src
+    assert 'f"max positions reached ({sl[\'max_pos\']})"' in src
+    want = ['candidate family {}: {} open (one shared cap of {})'.format(E.CANDIDATE_FAMILY['C-F01'], E.CANDIDATE_MAX_POS, E.CANDIDATE_MAX_POS),
+            'max positions reached ({})'.format(E.CANDIDATE_MAX_POS)]
+    assert cw['mirror_cap_reasons'] == want
+    muts = [v for v in cw['test_vectors'] if v['note'].startswith('mutation:')]
+    assert len(muts) >= 13 and all(v['expect']['verdict'] == 'PARITY-FAIL' for v in muts)
+    for pid in ('P01', 'P02', 'P03', 'P04', 'P05'):
+        assert any(v['note'] == f'mutation: {pid} mismatch at the mirror decision' for v in muts), pid
+    for frag in ('non-cap replay refusal reason', 'exited before the check bar', 'not counted in the replay cap state'):
+        assert any(frag in v['note'] for v in muts), frag
+
+
+@pytest.mark.parametrize('pid,bad', [('P01', {'rt': 'b2', 'rp': 'b1'}), ('P02', {'rt': True, 'rp': False}),
+                                     ('P03', {'rt': False, 'rp': True}), ('P04', {'rt': 1.0, 'rp': 1.0 + 1e-6}),
+                                     ('P05', {'rt': 3, 'rp': 2}), ('P05', None)])
+def test_mirror_fails_on_each_pre_gate_mismatch(c, pid, bad):
+    cw = c['causal_window']
+    v9 = json.loads(json.dumps(next(v for v in cw['test_vectors'] if v['id'] == 'V9')))
+    pre, reasons = cw['registered_refusal_prefixes'], cw['mirror_cap_reasons']
+    assert causal_verdict(v9['steps'], pre, reasons)['verdict'] == 'PASS'
+    v9['steps'][1]['events'][0]['pre_gate'][pid] = bad
+    assert causal_verdict(v9['steps'], pre, reasons) == dict(verdict='PARITY-FAIL', fail_at='b2')
+
+
+@pytest.mark.parametrize('mut', ['reason', 'closed', 'late', 'uncounted', 'cap', 'window', 'key'])
+def test_mirror_fails_on_each_occupancy_mutation(c, mut):
+    cw = c['causal_window']
+    v9 = json.loads(json.dumps(next(v for v in cw['test_vectors'] if v['id'] == 'V9')))
+    ev = v9['steps'][1]['events'][0]
+    if mut == 'reason': ev['rp_refusal_reason'] = 'max positions reached (5)'
+    elif mut == 'closed': ev['predecessor']['t_out'] = 'b1'
+    elif mut == 'late': ev['predecessor']['t_in'] = 'b3'
+    elif mut == 'uncounted': ev['rp_state']['open'] = [x for x in ev['rp_state']['open'] if x != ev['predecessor']['key']] + [['b0', 'ADAUSDT']]
+    elif mut == 'cap': ev['rp_state']['cap_count'] = 5
+    elif mut == 'window': ev['predecessor']['window_id'] = 'W0'
+    elif mut == 'key': ev['predecessor']['key'] = ['b1', 'ETHUSDT']
+    got = causal_verdict(v9['steps'], cw['registered_refusal_prefixes'], cw['mirror_cap_reasons'])
+    assert got == dict(verdict='PARITY-FAIL', fail_at='b2'), mut
 
 
 def test_registered_refusal_prefixes_are_literal_engine_text(c):

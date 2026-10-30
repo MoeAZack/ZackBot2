@@ -49,6 +49,18 @@ This ticket installs nothing, enables nothing, changes no settings or state, rea
   - (c) the occupied replay slot traces directly to the window's explained refusal.
 
   The excluded entry records its predecessor refusal and window id.
+
+  **Evidence-derived (6513165844):** the conditions above are proven from evidence recorded in the event. No condition
+  can be met by a bare true/false flag.
+  - **Pre-gate match:** computed from the event's P01-P05 `{rt, rp}` values.
+  - **Replay refusal:** `rp_refusal_reason` must be **exactly** one of the frozen engine cap texts:
+    - `candidate family trend_long: 4 open (one shared cap of 4)`
+    - `max positions reached (4)`
+  - **Predecessor:** the event names it by key and window id, and must prove it occupied a cap slot:
+    - `t_in` is on or before the check bar;
+    - it has not exited before the check bar (exiting on the check bar still occupies the slot, per the signed same-bar
+      convention);
+    - it is in the replay's `rp_state.open`, with `cap_count == len(open) >= 4`.
 - **What always fails:**
   - an open-ended same-symbol exemption;
   - a post-hoc reason;
@@ -61,16 +73,26 @@ This ticket installs nothing, enables nothing, changes no settings or state, rea
   verdict is **INCONCLUSIVE**, with the open window(s) listed. It is never PARITY-PASS and it is not a defect
   PARITY-FAIL. **Do not extend risk or duration, and do not force-close, to manufacture a closure.**
 
-The algorithm and 12 test vectors are in `causal_window`:
+The algorithm and 26 test vectors are in `causal_window`:
 
 | vectors | case | verdict |
 |---|---|---|
 | V1, V8 | standard windows | PASS |
-| V9 | mirror capacity | PASS |
+| V9 | mirror capacity, with full evidence | PASS |
 | V2-V7 | rule violations | PARITY-FAIL |
 | V10 | slot not traceable to the window's refusal | PARITY-FAIL |
 | V11 | runtime-only entry outside a window | PARITY-FAIL |
 | V12 | window still open at the end | INCONCLUSIVE |
+| V13-V25 | mutations (see below) | PARITY-FAIL |
+| V26 | predecessor exits on the check bar (same-bar convention) | PASS |
+
+The V13-V25 mutations are:
+- a non-cap reason, or a generic cap-like text;
+- a predecessor that exited before the check bar, or entered after it;
+- a predecessor not counted in the replay cap, or a cap count below 4;
+- a wrong window id;
+- P01, P02, P03, P04 or P05 mismatched;
+- P04 missing.
 
 The tests implement the algorithm as a reference helper inside the test module only, never in the engine.
 
