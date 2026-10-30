@@ -1,0 +1,172 @@
+{
+ "manifest": "FACTORY-F01-IMPL-01 bounded C-F01 PAPER canary cohort pack",
+ "version": 1,
+ "status": "NOT ACTIVATED",
+ "authorization": null,
+ "authorization_comment_id": null,
+ "assignment": "Codex ruling issuecomment 6513808658 (parallel implementation; only activation waits)",
+ "parity_contract": {
+  "pr": 248,
+  "branch": "claude/factory-f01-parity-01",
+  "head": "d255b3fbd91bff689f699869256b2f8e96f6d98a",
+  "status_at_pack": "DRAFT - Cowork exact-head re-mutation pending",
+  "rulings": [
+   "6512712537 (OQ1-OQ8)",
+   "6512978555 (N1)",
+   "6513165844",
+   "6513562875 (M-A/M-B/M-C)"
+  ],
+  "rule": "the parity contract governs; this pack only operationalizes it. A contract amendment that changes bounds, preconditions or pins supersedes this pack"
+ },
+ "environment": "PAPER / Binance Futures testnet only. Never mainnet, never MODE / LIVE_CONFIRM, never credentials",
+ "flag": {
+  "settings_key": "F01_CANARY",
+  "default": "absent (OFF)",
+  "shape": {
+   "on": "true (exactly the JSON boolean) = ON; anything else = OFF",
+   "start_utc": "tz-aware ISO-8601 UTC timestamp, frozen by Integration at authorization, before any scored bar is read",
+   "authorization_comment_id": "the Integration (Codex) authorization comment id",
+   "cohort_dir": "absolute evidence directory OUTSIDE the repo, or null (extracts disabled)"
+  },
+  "testnet_guard": "honoured only when Engine.live is False AND the trading client base URL is exactly binance_client.TESTNET; otherwise every new C-F01 entry is refused and logged (S7, fail closed)",
+  "does_not": [
+   "enable C-F01 (its SLEEVES enabled flag stays Integration's switch)",
+   "touch C-F02 (stays OFF)",
+   "change any global PAPER setting",
+   "close or resize any lot"
+  ],
+  "code": "f01_canary.py; engine.py Engine.f01_canary_block (called from Engine._rules_block, automatic entries only), Engine.f01_canary_preflight, Engine._f01_extract / _f01_decision (observe-only hooks in miss, _audit_opened, _measured_close, _measured_followup)",
+  "pinned_functions_untouched": "none of the 34 functions pinned by the parity contract is edited (re-hash test in tests/test_factory_f01_impl01.py)"
+ },
+ "bounds": {
+  "ruling": "OQ1 6512712537",
+  "duration_days": 30,
+  "max_closed_trades": 8,
+  "drawdown_stop_r": 4.0,
+  "max_concurrent": 4,
+  "risk_per_trade": "frozen 1 % of the 1/6 sleeve (card unchanged)",
+  "counting": "C-F01 rows opened AND closed at / after start_utc (a pre-canary lot is never counted)",
+  "drawdown_basis": "cumulative measured net R (row_view measured / acknowledged pnl / risk_usd) from a 0 R start; the peak includes 0; drawdown = max(peak - cum)",
+  "pending_rule": "any counted C-F01 close with pending costs (row view, or the durable candidate_cost_pending index) blocks new C-F01 entries until measured (fail closed)",
+  "on_reach": "new C-F01 entries refused with the bound text; open lots keep confirmed protection and normal management; nothing is force-closed (OQ8)"
+ },
+ "frozen_start_rule": "Integration writes start_utc once, in the same settings change that sets on=true, only after preflight.pass is true; it is never moved. Before start_utc the gate refuses new C-F01 entries",
+ "scoring_start_rule": "OQ2: >= 250 older closed 4h bars are warm-up only. Scoring starts at the first fully closed 4h decision bar after BOTH the authorization and a successful preflight; a runtime decision is marked scored when its bar open time >= start_utc (the whole bar lies after the frozen start)",
+ "preflight": {
+  "call": "Engine.f01_canary_preflight(head_sha=<running head>, pins_expected=<pins_expected below>) -> {pass, checks{ENV, C1, C1b, C2..C10}, recorded}",
+  "read_only": true,
+  "record_as": "extract kind 'preflight' (ExtractWriter.write) -> preflight.json at finalize",
+  "pass_rule": "every check ok; C9 needs the head SHA and every pin to match; C10 needs authorization_comment_id and start_utc"
+ },
+ "clean_cohort_record_template": {
+  "cohort_id": "<Integration-chosen run id>",
+  "head_sha": null,
+  "authorization_comment_id": null,
+  "start_utc": null,
+  "preflight_sha256": null,
+  "preflight_pass": null,
+  "c_f01_slot": "<preflight recorded.slot_f01>",
+  "c_f02_enabled": false,
+  "pending_index_size": 0,
+  "other_open_slots": "<preflight checks.C1b.other_open: symbol, slot, side only>",
+  "ai_filter": null,
+  "fee_edge_gate": null,
+  "entry_order": "market",
+  "max_leverage": 10,
+  "reset": "candidate-flat (C1): no C-F01 / C-F02 lot or pending / resting / unconfirmed / deferred entry; no pre-canary lot imported",
+  "notes": "no order, trade, stop or client ids"
+ },
+ "rollback": {
+  "owner": "Integration only (Build and Evidence never edit settings)",
+  "command": "On the PAPER bot only, through its own settings path with the bot running: SLEEVES[id == 'C-F01'].enabled = false (one field). No installer, no restart, no MODE / LIVE_CONFIRM change. Turning F01_CANARY.on off is NOT a rollback (it removes the bounds)",
+  "steps": [
+   "R1 Integration sets the C-F01 slot enabled = false",
+   "R2 open C-F01 lots are not closed: they keep confirmed exchange protection and normal signal / stop management (OQ8)",
+   "R2b force-close only for unknown account state, lost / unrestorable protection, environment uncertainty or a separately recorded safety decision",
+   "R3 after the next 4h cycle confirm: no new C-F01 entry, every open C-F01 lot has a confirmed stop (no stop_miss), C-F02 enabled false",
+   "R4 finalize the extracts with the stop condition id; Cowork publishes verdict.json"
+  ]
+ },
+ "telemetry_checks_read_only": [
+  "each 4h cycle: bot log lines 'FACTORY-F01 canary:' (logged once per distinct refusal reason)",
+  "settings: F01_CANARY unchanged since authorization; C-F01 enabled as authorized; C-F02 enabled false",
+  "state: candidate_disabled has no C-F01 entry (S1); no C-F01 lot with stop_miss_why restoring / owner_check (S3); no C-F01 candidate_cost_pending entry >= 6 h old (S4)",
+  "f01_canary.bound_status(cfg, history rows, candidate_cost_pending) -> closed, net_r, drawdown_r, stop (S5 / S6)",
+  "cohort_dir/extracts/*: each file name equals the sha256 of its bytes (ExtractWriter.records verifies)"
+ ],
+ "stop_conditions": {
+  "S1": "candidate_guard disables C-F01",
+  "S2": "a MUST-MATCH parity divergence (incl. P13 C-F02 activity)",
+  "S3": "C-F01 protection loss",
+  "S4": "C-F01 costs pending >= 21600 s",
+  "S5": "4.0 R measured net drawdown from the canary peak (runtime gate)",
+  "S6": "30 calendar days or 8 closed C-F01 trades (runtime gate)",
+  "S7": "mainnet / live / credential / non-testnet event (runtime gate refuses)"
+ },
+ "evidence_outputs": {
+  "dir": "<cohort_dir> (outside the repo)",
+  "runtime_extracts": "extracts/{decision,trade,preflight}/<sha256>.json - canonical JSON (sorted keys, ASCII, non-finite floats as {\"float\": \"nan\"}), written once (exclusive create); the same bytes again = no-op, different bytes = error",
+  "finalize": "ExtractWriter(cohort_dir).finalize() -> preflight.json, decisions.csv, trades.csv, MANIFEST.sha256 (\"<sha256>  <name>\" per line); each file written once",
+  "not_by_build": "verdict.json (Cowork, OQ7); the rp_* / causal_window_id / result columns stay empty in Build's CSVs",
+  "deferred": "frames_manifest.json (closed 4h frame sha256 per symbol) needs a hook inside the pinned compute_signals / cycle - open question Q1",
+  "forbidden_fields": [
+   "API_KEY",
+   "API_SECRET",
+   "cid",
+   "clientOrderId",
+   "exchange_order_id",
+   "exchange_trade_id",
+   "orderId",
+   "stop_id",
+   "tradeId"
+  ]
+ },
+ "pins_expected": {
+  "_source": "parity contract code.pinned_function_sha256 at d255b3f",
+  "engine.py:Engine._claims": "fdfe3d70290c7508a563ae471e85ca16d42cf1a5d9150a07337dea82e86e77cc",
+  "engine.py:Engine.candidate_block": "1cfba70db9cc97fc5e68423b33a9f4663cdf2607754fca9ec86820042b35f1ff",
+  "engine.py:Engine.candidate_drift": "f4b4c90f56e0e4c9513bd3e0208e76a75edcf04e54c694762bb7fd64d7e8d2c8",
+  "engine.py:Engine.candidate_guard": "90125553420ccb52ca7cc9ecfcbcfd53d14b214bdc21c8417476bc020307215a",
+  "engine.py:Engine._candidate_pending_why": "405c567a1d332476cfca5693fd67395dee25fbb469d90c02d4dc01ca8a5134c6",
+  "engine.py:Engine._candidate_pending_note": "6cbaf2999380149ae437d05659ab54390b274ceee2fb9dd8344a95905e370216",
+  "engine.py:Engine._candidate_pending_clear": "cee7c8aea8e3713c465be8e5156d2fdfd6c7452de3f4677d1c80b22b26051318",
+  "engine.py:Engine.cycle": "80dca26537094f5e98f8ec471706bd29accae10a638c9a6c04cf912aab637ff4",
+  "engine.py:Engine.compute_signals": "d5df45ebd4d3c21691a5d7f67ff5012d6a4b4f5da52e342fd6be8c67feeb94cc",
+  "engine.py:Engine.entry_block": "2f43a3ef138e5f6f884ab64f1bbe0e981745b04738de4b8f72c0318e20b28a1b",
+  "engine.py:Engine.open_lot": "3c53176b58188852ff8be5ef637558eb6f5dcd1a29ce7024a2422b77de17b789",
+  "engine.py:Engine._market_entry": "e612630777dfd25fed883e77b73df95e503cdac89ced9fd4dd2b4b1eadca5bf2",
+  "engine.py:Engine._create_lot": "20a2e3cc0eee7584a08673bc027e36486712b3f6710b85dea88732767b2a7e09",
+  "engine.py:Engine._finish": "8fc9ffc1c4dbe5f05781f6a99d2ccfbe844caeb2d29f67eef82fb1aab0ebfb60",
+  "engine.py:Engine._cost_final": "fe43877088d0d86db2acc14f1fbf6896a03047a6661262bfbf5da0dc8dd45e2a",
+  "engine.py:Engine.scalp_block": "fddafa504e5c5c96ae853d17e787c14dbc7dc9fa706edb41c613de130826e95c",
+  "engine.py:Engine.sync_candidate_slots": "515f2d3d8fc952d6c777fc7ded8531e5e3e849bd2db03ab70d2728c5c973324c",
+  "engine.py:Engine.sleeve_symbols": "f183320abdf80fc0283f78b9105d5337b1929626c35953ccf5ba1771585048cb",
+  "engine.py:Engine.mgmt": "c17091218778a6b732542a68edf736bedf074513b1c17ed5fa19f9b3cb23751f",
+  "engine.py:Engine.kelly_mult": "a23e68a03c1fd838404c630d236cab0ec90056cfdf026bc6bbe3e41d72fb068c",
+  "engine.py:Engine.governor_mult": "0508f150b8d41bc8017efbae88d992bd9943299761fa6949a2beaba05606e4b6",
+  "engine.py:candidate_sleeves": "3f97bdded08013bfa2e2ecbf7e5aceb0a34b364c284b7082894404272bef6c7e",
+  "engine.py:with_candidate_slots": "69c1532b22e0db4052b768706a1c31920ce500778e5bddac7e71466d710eb6ca",
+  "engine.py:candidate_owner": "d15288d76d524cb784f0217863d4e760487ba7dfd120aa6d28ec06ea3db4d771",
+  "engine.py:sleeve": "6f4fc0f1efbee2efabb5164b24263d504b6bd8c6b43db6ee04e19bd62ced8284",
+  "engine.py:_sig_atr": "9d985dc89dc9b77f26e9c719d48985847d885c3cac382033d21ad0a0930a0032",
+  "strategies.py:sig_ema_mom": "377f0c5f1cb09cbd3c1267d6cbc334a8a2c490aeaa7a420e90b09ef09f1352a9",
+  "strategies.py:xup": "fa5cc2f28f124234ca06bdb574d32fea4cd419e509288791be668119aa699b53",
+  "strategies.py:indicators": "4383d4c0ee8a9361ae944acaf160ee9740348bbd677c03949dd30299ce0c2437",
+  "strategies.py:ema": "acdcf2fb28b35240c0b91c9590ac2d8a80591213daa046128ea0f55feb275107",
+  "strategies.py:merge_mgmt": "5f7757b22e868ea04c305b5f5567e217cd29282f7b0cfed96396753fb58c121e",
+  "feasibility.py:risk_qty": "915774c71722bcaf0f62773c13732b521b9de3381c501664d580ab760cb27821",
+  "feasibility.py:size_check": "d1df693e6592f62fe5d812b2c8e51e334b119935c0e7532d74099229dc946429",
+  "feasibility.py:round_step": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f"
+ },
+ "open_questions": [
+  "Q1 frames_manifest.json and the true raw qty / raw stop (P17 / P19 raw side) are computed inside pinned functions (compute_signals, open_lot, _create_lot). The extracts record the quantized values sent plus raw values re-derived from the lot inputs. Integration: accept derived raw values, or amend the contract pins for a minimal observe-only hook",
+  "Q2 the runtime gate is independent of the slot's enabled flag: with F01_CANARY absent, an Integration-enabled C-F01 trades without canary bounds (pre-existing behaviour). Should enabling C-F01 require the canary flag?",
+  "Q3 scored = decision bar open >= start_utc (the whole bar after the start); confirm this reading of OQ2"
+ ],
+ "roadmap_fit": "Strategy Factory -> rapid candidate-to-PAPER pipeline",
+ "deferred": [
+  "activation (needs Cowork PASS on #248 exact head + Integration authorization)",
+  "mainnet",
+  "tuning from canary outcomes"
+ ]
+}
