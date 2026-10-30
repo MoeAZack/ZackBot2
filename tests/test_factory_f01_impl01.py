@@ -243,6 +243,9 @@ def test_counting_needs_usable_unique_ids_and_both_times_after_start(measured):
     early = dict(row(1, -9.0), closed=iso(NOW - timedelta(days=2)), opened=iso(NOW - timedelta(days=1)))   # closed < start
     st = FC.bound_status(cfg(), [early], now=NOW)
     assert st['closed'] == 0 and st['block'] is None
+    spans = dict(row(1, -9.0), opened=iso(NOW - timedelta(days=2)), closed=iso(NOW - timedelta(hours=12)))   # opened < start <= closed
+    st = FC.bound_status(cfg(), [spans] * 1 + [dict(spans, id=f'{F01}|BTCUSDT|LONG|{i}') for i in range(2, 9)], now=NOW)
+    assert st['closed'] == 0 and st['stop'] is None                    # a lot opened before the start never counts (Codex 6514667877)
     assert FC.bound_status(cfg(), [dict(row(1, 0.1), sleeve='ema_mom', id=None)], now=NOW)['block'] is None   # other slots
 
 
@@ -651,3 +654,11 @@ def test_cohort_pack_is_not_activated():
     assert m['bounds']['max_closed_trades'] == FC.MAX_CLOSED_TRADES and m['bounds']['drawdown_stop_r'] == FC.DRAWDOWN_STOP_R
     md = open(os.path.join(os.path.dirname(MANIFEST), 'COHORT_PACK.md'), encoding='utf-8').read()
     assert 'NOT ACTIVATED' in md and '`authorization: null`' in md
+
+
+def test_hex_identities_reject_a_trailing_newline():
+    """Codex 6514667877: `$` also matches before a final newline, so identities are checked with fullmatch."""
+    assert not FC.cfg_problems(cfg())
+    assert any('source_commit' in p for p in FC.cfg_problems(cfg(commit=SC + '\n')))
+    bad = dict(MAN); bad[next(iter(bad))] += '\n'
+    assert any('manifest' in p for p in FC.cfg_problems(cfg(manifest=bad)))

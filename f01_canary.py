@@ -49,8 +49,8 @@ TRADE_COLUMNS = ('row_key_sha256', 'symbol', 'entry_bar', 'exit_bar', 'rt_why', 
                  'rt_r', 'rp_r', 'cost_status')
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 TF_S = 4 * 3600                                                     # C-F01 decides on closed 4h bars
-HEX40 = re.compile(r'^[0-9a-f]{40}$')
-HEX64 = re.compile(r'^[0-9a-f]{64}$')
+HEX40 = re.compile(r'[0-9a-f]{40}')
+HEX64 = re.compile(r'[0-9a-f]{64}')
 BUILD_RE = re.compile(r'^[A-Za-z0-9._-]{1,40}$')                     # ml_shadow.pairs.BUILD_RE
 # Codex 6514438491 #2: the frozen source manifest - sha256 of each file's bytes with CRLF normalized to LF (git autocrlf
 # may convert the installed copy); compared with the running bundle at preflight C9.
@@ -98,10 +98,10 @@ def cfg_problems(cfg, repo_root=None):
     if _ts(c.get('start_utc')) is None: out.append('no frozen tz-aware start timestamp')
     if not auth_id_ok(c.get('authorization_comment_id')): out.append('authorization id is not a positive numeric GitHub comment id')
     if not cohort_dir_ok(c.get('cohort_dir'), repo_root): out.append('cohort_dir is not an absolute path outside the repository')
-    if not (isinstance(c.get('source_commit'), str) and HEX40.match(c['source_commit'])):
+    if not (isinstance(c.get('source_commit'), str) and HEX40.fullmatch(c['source_commit'])):
         out.append('source_commit is not the full 40-hex accepted merged commit')
     m = c.get('source_manifest')
-    if not (isinstance(m, dict) and set(m) == set(MANIFEST_FILES) and all(isinstance(v, str) and HEX64.match(v) for v in m.values())):
+    if not (isinstance(m, dict) and set(m) == set(MANIFEST_FILES) and all(isinstance(v, str) and HEX64.fullmatch(v) for v in m.values())):
         out.append('source_manifest is not the sha256 map of ' + ', '.join(MANIFEST_FILES))
     return out
 
@@ -132,7 +132,7 @@ def running_identity(data_dir, root=None):
         if isinstance(rec, dict) and rec.get('build_id') == bid and bid != 'dev': sc = rec.get('source_commit')
     except Exception:
         sc = None
-    if not (isinstance(sc, str) and HEX40.match(sc)): sc = None
+    if not (isinstance(sc, str) and HEX40.fullmatch(sc)): sc = None
     return dict(build_id=str(bid), source_commit=sc, manifest=source_manifest(root))
 
 
@@ -142,7 +142,7 @@ def identity_gap(ident, cfg):
     i, c = ident or {}, cfg or {}
     b = i.get('build_id')
     if not (isinstance(b, str) and BUILD_RE.match(b)) or b == 'dev': return 'dev_build'
-    if not (isinstance(i.get('source_commit'), str) and HEX40.match(i['source_commit'])): return 'source_commit_missing'
+    if not (isinstance(i.get('source_commit'), str) and HEX40.fullmatch(i['source_commit'])): return 'source_commit_missing'
     if i['source_commit'] != c.get('source_commit'): return 'source_commit_mismatch'
     m, want = i.get('manifest') or {}, c.get('source_manifest')
     if not isinstance(want, dict) or set(want) != set(MANIFEST_FILES): return 'source_manifest_missing'
