@@ -1274,8 +1274,17 @@ def cli_inputs(tmp_path_factory):
     return SimpleNamespace(d=d, man=man, files=files, rules=rp, rsrc=sp, straddle=st)
 
 
+CLI_HEADROOM_MB = 512
+
+
+def _cli_cap():
+    """The CLI's --max-rss-mb, relative to this process's measured baseline: the admission check compares against the
+    whole pytest process, which grows across a single-process full suite (install gate 20261030-095145: 10 failures)."""
+    return float(math.ceil(E5.rss_mb()) + CLI_HEADROOM_MB)
+
+
 def _cli(ci, *extra, manifest=None, git=CLEAN, rules=True, straddle=True, **inj):
-    args = ['--store', str(ci.d / 'no-store'), '--max-rss-mb', '512']
+    args = ['--store', str(ci.d / 'no-store'), '--max-rss-mb', '%g' % _cli_cap()]
     if rules:
         args += ['--rules-artifact', str(ci.rules), '--expect-rules-sha256', R.file_sha(str(ci.rules)),
                  '--rules-source-manifest', str(ci.rsrc), '--expect-rules-source-sha256', R.file_sha(str(ci.rsrc))]
@@ -1358,7 +1367,7 @@ def test_cli_never_evaluates_without_an_integration_loader(cli_inputs, capsys, t
     assert _cli(cli_inputs, '--authorization', str(auth), lock=lock, authorize=tok) == 3 and not calls   # no --out
     out.mkdir()
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock, authorize=tok) == 0
-    assert calls[0]['authorization'] == AUTH(pf) and calls[0]['max_rss_mb'] == 512.0 and calls[0]['universe'] == 'FIXED-17'
+    assert calls[0]['authorization'] == AUTH(pf) and calls[0]['max_rss_mb'] >= CLI_HEADROOM_MB and calls[0]['universe'] == 'FIXED-17'
     assert calls[0]['symbols'] == FIXED and calls[0]['rules']('BTCUSDT', T0)['tick'] == 0.0001
     written = json.loads(capsys.readouterr().out)['written']
     assert Path(written) == out / 'result.json' and 'verdict' not in (out / 'result.json').read_text()
