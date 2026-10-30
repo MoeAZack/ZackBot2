@@ -355,6 +355,23 @@ Every candidate begins with a written mechanism and a stop condition. It is reje
 after-cost baselines, causal truncation, anchored walk-forward testing, untouched holdout, parameter-neighbour checks,
 symbol/year concentration checks and gap/funding/slippage stress. More strategies are not automatically better.
 
+#### Continuous research conveyor — owner ruling, 26 October 2026
+
+Strategy discovery does not pause while one result, review, CI gate, long backtest or forward cohort is pending. Keep a
+replenished queue and, where files/data do not conflict, run these stages in parallel: mechanism/preregistration, causal
+implementation, historical Stage-A screening, execution-grade Stage-B screening, and shadow/forward observation of
+already qualified candidates. Completion of one cell immediately parks it or advances it and releases the next queued
+cell; it never leaves the research lane idle merely because another lane is waiting.
+
+The target is the largest **credible and non-duplicative** candidate catalog the available data can support, not the
+largest raw count of tuned variants. Every attempted side remains in the permanent trial ledger, including failures,
+incomplete/data-blocked cells and superseded versions. Parameters, stop conditions and the trial budget are frozen
+before results; a failed result may inform a separately preregistered new hypothesis but cannot be rescued in place.
+Backtesting is the high-throughput discovery filter. Execution simulation, shadow and PAPER/front testing are reserved
+for survivors or existing runtime strategies and run concurrently where safe; forward time is not spent discovering an
+edge that already fails historical costs and chronology. Profitability, sustainability, concentration and tail risk are
+measured continuously as results arrive, while the next independent candidates keep running.
+
 | Order | Ticket | Deliverable | Promotion gate |
 |---:|---|---|---|
 | D1 | DATA-01 market-data integrity | Point-in-time candles, funding, mark, OI, taker and long/short data with freshness/provenance. | Frozen manifest, gap report, survivorship policy. |
@@ -396,9 +413,11 @@ stricter after results are seen:
 The first implementation slice is `EDGE-01A`: reproduce the exact frozen `exp_scalp.v0` and `range_scalp.v0` rules in
 the shared research harness, generate their honest baseline, and reject or advance only a small registered repair matrix.
 Initial repair hypotheses are a cost/edge admission margin, liquidity/spread and volatility vetoes, regime qualification,
-turnover control, and alternative exits using identical entries and initial risk. `EDGE-01B` scouts additional frequent
-families only after each hypothesis, trial budget and stop condition is written. All candidates remain shadow/research-only
-until they pass; no almost-break-even result is promoted merely to increase trade count.
+turnover control, and alternative exits using identical entries and initial risk. The completed EDGE-01 baselines were
+negative and remain parked. `EDGE-01B` is now active as `EDGE-02`: the frozen replacement-family queue, trial budget,
+stop conditions and fresh-holdout boundary are in
+[`EDGE02_REPLACEMENT_SCOUT_CONTRACT.md`](newcore/research/EDGE02_REPLACEMENT_SCOUT_CONTRACT.md). All candidates remain
+shadow/research-only until they pass; no almost-break-even result is promoted merely to increase trade count.
 
 #### Required strategy-coverage matrix
 
