@@ -186,10 +186,52 @@ def test_recover_stage_refuses_pass_enabled_and_durable_ever_enabled_proof(api):
     refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'ever enabled.*candidate_disabled')
 
 
+@pytest.mark.parametrize('source', [
+    'lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries', 'pending_index',
+    'unreadable_pending_index', 'history', 'cohort', 'unreadable_time', 'trade_extract',
+    'unreadable_trade_extract', 'trade_path_is_file',
+])
+def test_recover_stage_refuses_each_durable_ever_enabled_source(api, source):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    owned = dict(sleeve=F01, opened=iso(START))
+    if source in ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries'):
+        e.state[source] = {'owned': copy.deepcopy(owned)}
+    elif source == 'pending_index':
+        e.state[E.CANDIDATE_PENDING_KEY] = {'owned': copy.deepcopy(owned)}
+    elif source == 'unreadable_pending_index':
+        e.state[E.CANDIDATE_PENDING_KEY] = []
+    elif source == 'history':
+        e.history.append(copy.deepcopy(owned))
+    elif source == 'cohort':
+        e.cohort_rows.append(copy.deepcopy(owned))
+    elif source == 'unreadable_time':
+        e.history.append(dict(sleeve=F01, opened='not-a-time'))
+    elif source == 'trade_extract':
+        FC.ExtractWriter(CD[0]).write('trade', dict(kind='entry', slot=F01, opened=iso(START)))
+    elif source == 'unreadable_trade_extract':
+        d = os.path.join(CD[0], 'extracts', 'trade'); os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'bad.json'), 'w', encoding='utf-8') as f: f.write('{}')
+    else:
+        d = os.path.join(CD[0], 'extracts'); os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'trade'), 'w', encoding='utf-8') as f: f.write('corrupt')
+    refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'ever enabled.*durable|unreadable durable')
+
+
+def test_recover_stage_is_strictly_one_time_even_with_the_new_hash(api):
+    A, e = api
+    first = A.handle('/api/f01_canary/recover_stage', recovery_body(_stage_for_recovery(A)))
+    second = recovery_body(first['config_sha256'])
+    second.update(authorization_comment_id='6525193999', cohort_dir=CD[0] + '_recovered_twice',
+                  start_utc=iso(START + timedelta(hours=2)))
+    refused(A, e, '/api/f01_canary/recover_stage', second, 'one-time.*already used')
+    assert len(e.S[FA.RECOVERY_KEY]) == 1
+
+
 def test_recover_stage_save_failure_restores_all_three_settings_subtrees(api, monkeypatch):
     A, e = api
     old_hash = _stage_for_recovery(A)
-    e.S[FA.PREFLIGHT_KEY] = {'passed': False}; e.S[FA.RECOVERY_KEY] = [{'prior': True}]
+    e.S[FA.PREFLIGHT_KEY] = {'passed': False}; e.S[FA.RECOVERY_KEY] = []
     e.commit_settings(copy.deepcopy(e.S))
     before = snap(e), copy.deepcopy((e.S[FC.CANARY_KEY], e.S[FA.PREFLIGHT_KEY], e.S[FA.RECOVERY_KEY]))
     monkeypatch.setattr(e, '_save_safe', lambda *a, **k: (_ for _ in ()).throw(OSError('disk full')))

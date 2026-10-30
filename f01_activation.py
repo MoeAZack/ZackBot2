@@ -141,6 +141,9 @@ def _ever_enabled(e, cfg):
             if rows is not None: return f'unreadable durable {name} records'
             continue
         if any(_owned(r) and _at_or_after_start(r, start) for r in rows): return f'durable {name} C-F01 record'
+    trade_dir = os.path.join(cfg['cohort_dir'], 'extracts', 'trade')
+    if os.path.lexists(trade_dir) and not os.path.isdir(trade_dir):
+        return 'unreadable durable cohort trade records (not a directory)'
     try:
         rows = FC.ExtractWriter(cfg['cohort_dir']).records('trade')
     except (OSError, ValueError, TypeError) as ex:
@@ -176,6 +179,11 @@ def recover_stage(e, b):
         pf = e.S.get(PREFLIGHT_KEY)
         if isinstance(pf, dict) and pf.get('passed') is True:
             raise ValueError('a PASS preflight is stored - recovery refused')
+        prior = e.S.get(RECOVERY_KEY, [])
+        if not isinstance(prior, list):
+            raise ValueError('the F01 recovery audit is malformed - refused (fail closed)')
+        if prior:
+            raise ValueError('the one-time F01 stage recovery was already used - recovery refused')
         proof = _ever_enabled(e, old_cfg)
         if proof: raise ValueError(f'C-F01 was ever enabled under the staged config ({proof}) - recovery refused')
         if new_cfg['authorization_comment_id'] == old_cfg.get('authorization_comment_id'):
@@ -194,8 +202,6 @@ def recover_stage(e, b):
         ns = copy.deepcopy(e.S)
         ns[FC.CANARY_KEY] = new_cfg
         ns.pop(PREFLIGHT_KEY, None)                 # only a non-PASS value can reach here
-        prior = ns.get(RECOVERY_KEY, [])
-        if not isinstance(prior, list): raise ValueError('the F01 recovery audit is malformed - refused (fail closed)')
         ns[RECOVERY_KEY] = copy.deepcopy(prior) + [audit]
         e.commit_settings(ns)                       # one durable atomic replacement; memory changes only after success
     ENG.log.info(f"FACTORY-F01 stage recovered: {old_hash} -> {new_hash}, authorization {new_cfg['authorization_comment_id']}")
