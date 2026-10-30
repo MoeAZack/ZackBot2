@@ -190,9 +190,12 @@ def canary_rows(rows, start, extra=()):
     return [r for _c, r in sorted(out, key=lambda x: x[0])], bad
 
 
-def bound_status(cfg, rows, pending_index=None, now=None, extra=(), repo_root=None):
+def bound_status(cfg, rows, pending_index=None, now=None, extra=(), repo_root=None, acked=None):
     """-> dict(block, stop, closed, net_r, peak_r, drawdown_r, pending, days). block = the refusal text for a NEW C-F01 entry
-    (None = entries allowed); stop = {'id', 'why'} once a terminal bound (S5 / S6) is reached. Pure."""
+    (None = entries allowed); stop = {'id', 'why'} once a terminal bound (S5 / S6) is reached. Pure.
+    acked: state['candidate_cost_pending_ack'] (CAND-EVICT-ACK-01 A7 / OQ1): an Integration-acknowledged evicted C-F01 close
+    at / after the start (or with an unreadable close) counts toward the closed-trade bound, stays UNMEASURED (never 0 R)
+    and blocks new C-F01 entries; only a later Integration-frozen start excludes it."""
     now = _ts(now) or datetime.now(timezone.utc)
     start = _ts((cfg or {}).get('start_utc'))
     out = dict(block=None, stop=None, closed=0, net_r=0.0, peak_r=0.0, drawdown_r=0.0, pending=[], days=None)
@@ -220,10 +223,17 @@ def bound_status(cfg, rows, pending_index=None, now=None, extra=(), repo_root=No
         if rid in ids or not isinstance(ent, dict) or ent.get('sleeve') != SLOT: continue
         c = _ts(ent.get('closed'))
         if c is None or c >= start: out['pending'].append(ent.get('symbol'))     # unreadable close -> fail closed
+    unmeasured = []
+    for rid, a in (acked or {}).items() if isinstance(acked, dict) else ():   # CAND-EVICT-ACK-01 A7: acked, not settled
+        ent = a.get('entry') if isinstance(a, dict) else None
+        if rid in ids or not isinstance(ent, dict) or ent.get('sleeve') != SLOT: continue
+        c = _ts(ent.get('closed'))
+        if c is None or c >= start: unmeasured.append(ent.get('symbol'))
+    out['closed'] = len(got) + len(unmeasured)
     out.update(net_r=round(cum, 6), peak_r=round(peak, 6), drawdown_r=round(dd, 6))
     if now >= start + timedelta(days=DURATION_DAYS):
         out['stop'] = dict(id='S6', why=f'F01 canary bound reached: {DURATION_DAYS} calendar days since the frozen start')
-    elif len(got) >= MAX_CLOSED_TRADES:
+    elif out['closed'] >= MAX_CLOSED_TRADES:
         out['stop'] = dict(id='S6', why=f'F01 canary bound reached: {MAX_CLOSED_TRADES} closed C-F01 trades since the start')
     elif dd >= DRAWDOWN_STOP_R:
         out['stop'] = dict(id='S5', why=f'F01 canary bound reached: measured net drawdown {dd:.2f} R >= {DRAWDOWN_STOP_R} R from the canary peak')
@@ -232,6 +242,9 @@ def bound_status(cfg, rows, pending_index=None, now=None, extra=(), repo_root=No
     elif out['pending']:
         out['block'] = (f"F01 canary: {len(out['pending'])} closed C-F01 trade(s) with costs pending - drawdown not measurable, "
                         'no new C-F01 entry until measured (fail closed)')
+    elif unmeasured:
+        out['block'] = (f'F01 canary: {len(unmeasured)} evicted C-F01 close(s) acknowledged without a measured net - drawdown '
+                        'not measurable, no new C-F01 entry (fail closed)')
     return out
 
 

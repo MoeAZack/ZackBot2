@@ -35,10 +35,13 @@ comment.
 - **Raw sizing capture** (review #1). `open_lot` passes the exact pre-quantization qty in the entry plan. For a candidate
   lot, `_create_lot` stores `lot['sizing_raw'] = {qty_raw, stop_raw, stop_dist}`. The capture is observe-only: no trading,
   sizing, stop or exit path reads it. The values sent are unchanged.
-- **Pins:** 32 of the 34 pinned functions are unchanged. `open_lot` and `_create_lot` carry the capture.
+- **Pins:** 31 of the 34 pinned functions are unchanged. `open_lot` and `_create_lot` carry the capture; `candidate_guard` takes `self.lock` (ruling 6518282215).
   - #248 is not merged, so the pin change is proposed in a separate file, `pin_amendment.v1.json`. The #248 files are not
     edited.
   - A test re-hashes all 34 functions against `pins_expected`, which is the contract pins with the amendment applied.
+  - CAND-EVICT-ACK-01 (#250): `pins_expected` carries `candidate_guard` at `5c70e0d9…30748` (its body now holds
+    `self.lock`), per pin ruling Codex 6518282215 and the manifest-only correction Codex 6518560081
+    (`contracts/cand_evict_ack_01/pin_amendment.v1.json`). Every other pin is unchanged.
 
 ## Bounds (OQ1) and rollback semantics (OQ8)
 
