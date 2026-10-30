@@ -80,11 +80,11 @@ def f01(tmp_path):
 
 
 # ------------------------------------------------------------------ status, binding, pins
-def test_status_is_draft_unsigned_and_md_present(c):
+def test_status_is_signed_and_md_present(c):
     assert c['contract'] == 'FACTORY-F01-PARITY-01' and c['version'] == 1
-    assert c['status'] == 'DRAFT' and c['signed_by'] is None and '6512403017' in c['assignment']
+    assert c['status'] == 'SIGNED' and '6513888459' in c['signed_by'] and '6512403017' in c['assignment']
     md = open(MD, encoding='utf-8').read()
-    assert 'DRAFT' in md and 'unsigned' in md and '6512403017' in md and 'NOT AUTHORIZED' in md
+    assert 'SIGNED' in md and '6513888459' in md and '6512403017' in md and 'NOT AUTHORIZED' in md
     assert c['code']['citation_base_short'] == '2204e35' and c['code']['citation_base'].startswith('master 2204e35')
 
 
@@ -306,7 +306,7 @@ def test_fi4_lost_protection_disables_c_f01_and_the_lot_is_still_managed(f01, wh
 # ------------------------------------------------------------------ amendment 1: rulings 6512712537 (OQ1-OQ8)
 def test_every_ruling_is_encoded_with_its_values(c):
     assert RULING in c['amended_at'] and RULING in c['assignment'] and RULING in c['resolved_questions_source']
-    assert c['status'] == 'DRAFT' and c['signed_by'] is None
+    assert c['status'] == 'SIGNED' and '6513888459' in c['signed_by']
     k = c['canary']
     b = k['bounds']                                                                                   # OQ1
     assert b['ruling'] == RULING
@@ -341,7 +341,7 @@ def test_every_ruling_is_encoded_with_its_values(c):
     assert k['force_close_only_for'] == ['unknown account state', 'lost or unrestorable protection', 'environment uncertainty',
                                          'a separately recorded safety decision']
     md = open(MD, encoding='utf-8').read()
-    assert RULING in md and 'DRAFT' in md
+    assert RULING in md and 'SIGNED' in md
     for i in range(1, 9): assert f'OQ{i}' in md
 
 

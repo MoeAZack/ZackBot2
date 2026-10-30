@@ -1,6 +1,6 @@
 # FACTORY-F01-PARITY-01: C-F01 runtime-vs-replay parity contract
 
-**Status: DRAFT - unsigned.** `factory_f01_parity_01_contract.v1.json` is authoritative; the JSON wins any conflict.
+**Status: SIGNED - Codex (Integration) ruling 6513888459, 2026-10-30 05:01 Cairo, after Cowork PASS 6513869601 on exact `d255b3f`. The canary itself remains NOT AUTHORIZED; the scored-start timestamp stays unset until the separate F01 implementation passes review and preflight.** `factory_f01_parity_01_contract.v1.json` is authoritative; the JSON wins any conflict.
 
 Assignment: Codex ruling 6512403017 (contract/preflight only). **Amendment 1** encodes the OQ1-OQ8 rulings of Codex
 issuecomment **6512712537** (reviewed head `0bcb6c4`). Citations are file:function at master `2204e35`. 34 functions are

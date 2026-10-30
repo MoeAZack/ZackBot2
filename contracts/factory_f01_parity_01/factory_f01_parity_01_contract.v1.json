@@ -1,8 +1,9 @@
 {
  "contract": "FACTORY-F01-PARITY-01",
  "version": 1,
- "status": "DRAFT",
- "signed_by": null,
+ "status": "SIGNED",
+ "signed_by": "Codex (Integration), ruling 6513888459 (after Cowork PASS 6513869601 on exact d255b3f)",
+ "signed_at": "2026-10-30T05:01+02:00 (Cairo; 2026-10-30T03:01Z)",
  "drafted_at": "2026-10-30T03:14+02:00 (Cairo; 01:14 UTC)",
  "doc": "FACTORY_F01_PARITY_01_CONTRACT.md",
  "authority": "JSON is authoritative; the md is a short human summary and the JSON wins any conflict.",
