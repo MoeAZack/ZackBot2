@@ -101,6 +101,7 @@ import ai_filter                   # noqa: E402  (DEFAULT_MODEL for the non-secr
 import shadow_analyst as SA       # noqa: E402  ML-SHADOW-01: report-only analyst (never feeds trading)
 import ai_scan as AI_SCAN       # noqa: E402  AI-SCAN-01: schema (pure; never feeds trading)
 import ai_scan_ledger as AISL  # noqa: E402  AI-SCAN-01: append-only scan ledger + read-only view
+import f01_activation as F01ACT  # noqa: E402  FACTORY-F01-ACT-01: stage / preflight / enable the C-F01 canary (PAPER/testnet)
 
 
 # ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
@@ -1607,6 +1608,8 @@ def settings_update(e, b):
     if not isinstance(b, dict): raise ValueError('bad settings')
     ns, after = copy.deepcopy(e.S), []
     for k, v in b.items():
+        if k in F01ACT.OWNED_KEYS:                 # FACTORY-F01-ACT-01: immutable here - only /api/f01_canary/* writes them
+            raise ValueError(f'{k} is set only through /api/f01_canary/stage and /preflight (immutable once staged)')
         if k in LIMITS:
             ns[k] = _num(v, *LIMITS[k], k)
             if k == 'MAX_LEVERAGE': after.append(('leverage reset', lambda: setattr(e, '_lev', {})))   # re-applied next entry
@@ -1688,6 +1691,10 @@ def settings_update(e, b):
 def handle(path, b):
     e = APP.engine
     if path.startswith('/api/analyst/'): return analyst_action(APP, path, b)       # ML-SHADOW-01 (report only)
+    if path.startswith(F01ACT.ROUTE):                     # FACTORY-F01-ACT-01: PAPER/testnet only, engine lock + atomic commit
+        out = F01ACT.handle(e, path, b)
+        APP.preview()
+        return out
     if path == '/api/settings':
         with e.lock:
             ns, after = settings_update(e, b)      # AUD-05: EVERY key validated on a copy - any error: nothing applied or saved
@@ -1724,6 +1731,8 @@ def handle(path, b):
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]
         if len({x['id'] for x in sl}) != len(sl): raise ValueError('each strategy slot needs a unique name')
         with e.lock:
+            sl = F01ACT.sleeves_guard(e.S, sl, lambda x: validate_sleeve(x, 0))   # FACTORY-F01-ACT-01: C-F01 never switched on here;
+            #   staged -> card frozen, only the rollback enabled -> disabled
             rot = e.S.get('PRESET') == ENG.ROTATION_PRESET
             if rot: check_rotation_sleeves(e, sl)          # UI-SLEEVE-CAP-01: the rotation (PAPER) stays the rotation
             else:
