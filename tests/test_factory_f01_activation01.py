@@ -10,6 +10,8 @@ import copy
 import io
 import json
 import os
+import re
+import shutil
 import sys
 import types
 from datetime import timedelta
@@ -28,6 +30,12 @@ START = NOW + timedelta(hours=2)
 
 def body(**kw):
     c = cfg(start=START, **kw); c.pop('on'); return c
+
+
+def recovery_body(old_hash, **kw):
+    c = cfg(start=START + timedelta(hours=1), auth='6525193522', cohort_dir=CD[0] + '_recovered', **kw)
+    c.pop('on')
+    return dict(config_sha256=old_hash, **c)
 
 
 @pytest.fixture
@@ -88,7 +96,7 @@ def _post(A, path, b, token):
 def test_routes_need_the_panel_token(api, token):
     A, e = api
     before = snap(e)
-    for act in ('stage', 'preflight', 'enable'):
+    for act in ('stage', 'recover_stage', 'preflight', 'enable'):
         code, obj = _post(A, f'/api/f01_canary/{act}', body(), token)
         assert code == 401 and obj['ok'] is False
     assert snap(e) == before and FC.CANARY_KEY not in e.S
@@ -98,6 +106,184 @@ def test_authenticated_post_stages(api):
     A, e = api
     code, obj = _post(A, '/api/f01_canary/stage', body(), A.TOKEN)
     assert code == 200 and obj['ok'] and e.S[FC.CANARY_KEY]['start_utc'] == iso(START)
+
+
+# ------------------------------------------------------------------ one-time packaged-pins recovery (#254)
+def _stage_for_recovery(A):
+    return A.handle('/api/f01_canary/stage', body())['config_sha256']
+
+
+def test_recover_stage_replaces_failed_stage_atomically_and_preserves_everything_else(api):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    old_cfg = copy.deepcopy(e.S[FC.CANARY_KEY])
+    old_evidence = os.path.join(CD[0], 'old-evidence.json')
+    os.makedirs(CD[0], exist_ok=True)
+    with open(old_evidence, 'w', encoding='utf-8') as f: json.dump({'keep': True}, f)
+    e.S[FA.PREFLIGHT_KEY] = {'passed': False, 'record_sha256': 'f' * 64}
+    e.commit_settings(copy.deepcopy(e.S))
+    untouched = copy.deepcopy((e.state, e.history, getattr(e, 'cohort_rows', None), e.S['SLEEVES'], e.S.get('ENTRIES_PAUSED')))
+
+    out = A.handle('/api/f01_canary/recover_stage', recovery_body(old_hash))
+
+    assert out['recovered'] and out['config_sha256'] == FA._sha(e.S[FC.CANARY_KEY]) != old_hash
+    assert FA.PREFLIGHT_KEY not in e.S and slot(e, F01)['enabled'] is False
+    assert os.path.exists(old_evidence) and json.load(open(old_evidence, encoding='utf-8')) == {'keep': True}
+    assert (e.state, e.history, getattr(e, 'cohort_rows', None), e.S['SLEEVES'], e.S.get('ENTRIES_PAUSED')) == untouched
+    audit = e.S[FA.RECOVERY_KEY][-1]
+    assert audit == out['audit'] and audit['old_config_sha256'] == old_hash
+    assert audit['new_config_sha256'] == out['config_sha256']
+    assert audit['old_authorization_comment_id'] == old_cfg['authorization_comment_id']
+    assert audit['new_authorization_comment_id'] == '6525193522'
+    assert audit['reason'] == 'packaged_pins_missing' and FC._ts(audit['at_utc']) is not None
+    disk = json.load(open(e.F['settings'], encoding='utf-8'))
+    assert disk[FC.CANARY_KEY] == out['config'] and disk[FA.RECOVERY_KEY] == [audit]
+    refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'does not match')
+
+
+@pytest.mark.parametrize('env', ['live', E.MAINNET, None, 'https://example.invalid'])
+def test_recover_stage_is_paper_testnet_only(api, env):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    if env == 'live': e.live = True
+    else: e.trade.base = env
+    refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash),
+            'PAPER/testnet only|not confirmed as Binance Futures testnet')
+
+
+@pytest.mark.parametrize('change,match', [
+    (lambda b: b.update(config_sha256='x'), 'exact 64-hex'),
+    (lambda b: b.update(config_sha256='0' * 64), 'does not match'),
+    (lambda b: b.update(extra=True), 'unknown'),
+    (lambda b: b.update(start_utc='2026-11-01T09:00:00'), 'tz-aware'),
+    (lambda b: b.update(start_utc=iso(NOW)), 'strictly in the future'),
+    (lambda b: b.update(cohort_dir='relative'), 'absolute path'),
+    (lambda b: b.update(cohort_dir=FC.REPO_ROOT), 'outside the repository'),
+    (lambda b: b.update(source_commit='a' * 39), 'full 40-hex'),
+    (lambda b: b.update(source_manifest={'engine.py': '0' * 64}), 'sha256 map'),
+    (lambda b: b.update(authorization_comment_id=cfg()['authorization_comment_id']), 'new Codex authorization'),
+    (lambda b: b.update(cohort_dir=CD[0]), 'new cohort directory'),
+])
+def test_recover_stage_rejects_bad_or_partial_replacement(api, change, match):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    b = recovery_body(old_hash); change(b)
+    refused(A, e, '/api/f01_canary/recover_stage', b, match)
+
+
+def test_recover_stage_refuses_pass_enabled_and_durable_ever_enabled_proof(api):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    e.S[FA.PREFLIGHT_KEY] = {'passed': True}; e.commit_settings(copy.deepcopy(e.S))
+    refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'PASS preflight')
+    ns = copy.deepcopy(e.S); ns[FA.PREFLIGHT_KEY] = {'passed': False}; FA._slot(ns)['enabled'] = True; e.commit_settings(ns)
+    before = snap(e)
+    with pytest.raises(ValueError, match='is enabled'):
+        A.handle('/api/f01_canary/recover_stage', recovery_body(old_hash))
+    assert snap(e) == before and slot(e, F01)['enabled'] is True
+    ns = copy.deepcopy(e.S); FA._slot(ns)['enabled'] = False; e.commit_settings(ns)
+    e.state.setdefault('candidate_disabled', {})[F01] = {'why': 'guard disabled after enable'}
+    refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'ever enabled.*candidate_disabled')
+
+
+@pytest.mark.parametrize('source', [
+    'lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries', 'pending_index',
+    'unreadable_pending_index', 'history', 'cohort', 'unreadable_time', 'trade_extract',
+    'unreadable_trade_extract', 'trade_path_is_file',
+])
+def test_recover_stage_refuses_each_durable_ever_enabled_source(api, source):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    owned = dict(sleeve=F01, opened=iso(START))
+    if source in ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries'):
+        e.state[source] = {'owned': copy.deepcopy(owned)}
+    elif source == 'pending_index':
+        e.state[E.CANDIDATE_PENDING_KEY] = {'owned': copy.deepcopy(owned)}
+    elif source == 'unreadable_pending_index':
+        e.state[E.CANDIDATE_PENDING_KEY] = []
+    elif source == 'history':
+        e.history.append(copy.deepcopy(owned))
+    elif source == 'cohort':
+        e.cohort_rows.append(copy.deepcopy(owned))
+    elif source == 'unreadable_time':
+        e.history.append(dict(sleeve=F01, opened='not-a-time'))
+    elif source == 'trade_extract':
+        FC.ExtractWriter(CD[0]).write('trade', dict(kind='entry', slot=F01, opened=iso(START)))
+    elif source == 'unreadable_trade_extract':
+        d = os.path.join(CD[0], 'extracts', 'trade'); os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'bad.json'), 'w', encoding='utf-8') as f: f.write('{}')
+    else:
+        d = os.path.join(CD[0], 'extracts'); os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'trade'), 'w', encoding='utf-8') as f: f.write('corrupt')
+    refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'ever enabled.*durable|unreadable durable')
+
+
+def test_recover_stage_is_strictly_one_time_even_with_the_new_hash(api):
+    A, e = api
+    first = A.handle('/api/f01_canary/recover_stage', recovery_body(_stage_for_recovery(A)))
+    second = recovery_body(first['config_sha256'])
+    second.update(authorization_comment_id='6525193999', cohort_dir=CD[0] + '_recovered_twice',
+                  start_utc=iso(START + timedelta(hours=2)))
+    refused(A, e, '/api/f01_canary/recover_stage', second, 'one-time.*already used')
+    assert len(e.S[FA.RECOVERY_KEY]) == 1
+
+
+def test_recover_stage_save_failure_restores_all_three_settings_subtrees(api, monkeypatch):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    e.S[FA.PREFLIGHT_KEY] = {'passed': False}; e.S[FA.RECOVERY_KEY] = []
+    e.commit_settings(copy.deepcopy(e.S))
+    before = snap(e), copy.deepcopy((e.S[FC.CANARY_KEY], e.S[FA.PREFLIGHT_KEY], e.S[FA.RECOVERY_KEY]))
+    monkeypatch.setattr(e, '_save_safe', lambda *a, **k: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'):
+        A.handle('/api/f01_canary/recover_stage', recovery_body(old_hash))
+    assert (snap(e), (e.S[FC.CANARY_KEY], e.S[FA.PREFLIGHT_KEY], e.S[FA.RECOVERY_KEY])) == before
+
+
+def test_installer_recipe_builds_the_exact_f01_frozen_layout_and_every_input_fails_closed_if_changed(tmp_path):
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    text = open(os.path.join(root, 'installer.ps1'), encoding='utf-8-sig').read()
+    # The simulated bundle is derived from the recipe itself: every literal $src Combine add-data source and destination.
+    # Each recipe entry is one source line; stop at Combine's first ')' instead of nesting an
+    # unbounded repeated capture (which can backtrack exponentially on hostile input).
+    pat = re.compile(r"'--add-data', \(\[IO\.Path\]::Combine\(\$src,\s*([^)]*)\) \+ ';([^']+)'\)")
+    entries = []
+    for parts, dest in pat.findall(text):
+        rel = os.path.join(*re.findall(r"'([^']+)'", parts)); entries.append((rel, dest))
+    layout = tmp_path / 'bundle'
+    for rel, dest in entries:
+        src, out = os.path.join(root, rel), layout / dest / os.path.basename(rel)
+        if os.path.isfile(src): out.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(src, out)
+    pins = FA.bundled_pins(str(layout))
+    assert {k: v for k, v in FC.function_pins(pins, str(layout)).items() if not k.startswith('_')} == \
+           {k: v for k, v in pins.items() if not k.startswith('_')}
+    expected_manifest = FC.source_manifest(root)
+    assert FC.source_manifest(str(layout)) == expected_manifest
+
+    pins_path = layout / FA.PINS_FILE
+    original_pins = pins_path.read_bytes()
+    for victim in (FA.PINS_FILE, *FC.MANIFEST_FILES):
+        path = layout / victim; original = path.read_bytes(); path.unlink()
+        if victim == FA.PINS_FILE:
+            with pytest.raises(ValueError, match='not bundled'): FA.bundled_pins(str(layout))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            altered = json.loads(original)
+            key = next(k for k in altered['pins_expected'] if not k.startswith('_'))
+            altered['pins_expected'][key] = '0' * 64
+            path.write_text(json.dumps(altered), encoding='utf-8')
+        else:
+            assert FC.identity_gap({'build_id': 'packaged', 'source_commit': SC, 'manifest': FC.source_manifest(str(layout))},
+                                   cfg(commit=SC, manifest=expected_manifest)) == f'source_manifest_mismatch: {victim}'
+            path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(original + b'\n# altered')
+        if victim == FA.PINS_FILE:
+            changed = FA.bundled_pins(str(layout))
+            actual = FC.function_pins(changed, str(layout))
+            assert actual[key] != changed[key]                         # preflight C9 fails closed on a valid-looking alteration
+        else: assert victim in FC.identity_gap({'build_id': 'packaged', 'source_commit': SC,
+                                                'manifest': FC.source_manifest(str(layout))},
+                                               cfg(commit=SC, manifest=expected_manifest))
+        path.write_bytes(original)
+    assert pins_path.read_bytes() == original_pins and FC.source_manifest(str(layout)) == expected_manifest
 
 
 # ------------------------------------------------------------------ environment

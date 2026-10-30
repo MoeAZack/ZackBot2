@@ -18,20 +18,22 @@ perform the rollback enabled -> disabled with every other C-F01 field unchanged 
 before staging it may not switch C-F01 on. So this module is the only writer that can switch C-F01 on.
 
 A stored F01_CANARY that is malformed, OFF or otherwise not what stage writes can only come from corruption or a manual
-edit: it is never replaced here and every step stays refused (fail closed) until Integration recovers it out of band
-(Codex 6518282236 Q2).
+edit: it is never replaced here and every step stays refused (fail closed). The sole replacement is recover_stage below,
+bounded to the confirmed packaged-pins failure and a well-formed, disabled, never-enabled stage (#254).
 
 Nothing here starts a second Engine, patches a live file by hand, or touches strategy logic or a pinned function.
 """
 import copy
 import json
 import os
+from datetime import timezone
 
 import engine as ENG
 import f01_canary as FC
 
 PREFLIGHT_KEY = 'F01_CANARY_PREFLIGHT'
-OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY)
+RECOVERY_KEY = 'F01_CANARY_RECOVERY'
+OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY)
 CFG_FIELDS = ('start_utc', 'authorization_comment_id', 'cohort_dir', 'source_commit', 'source_manifest')
 PINS_FILE = os.path.join('contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 ROUTE = '/api/f01_canary/'
@@ -92,7 +94,7 @@ def stage(e, b):
     if bad: raise ValueError('F01 canary config refused: ' + '; '.join(bad))
     with e.lock:
         _env(e)
-        if FC.CANARY_KEY in e.S or PREFLIGHT_KEY in e.S:
+        if any(k in e.S for k in OWNED_KEYS):
             raise ValueError('F01 canary already staged - the config is immutable and its start never moves')
         sl = _slot(e.S)
         if sl is None: raise ValueError('C-F01 slot not present - nothing to stage')
@@ -104,6 +106,106 @@ def stage(e, b):
         e.commit_settings(ns)                       # durable first; on failure nothing is applied
     ENG.log.info(f"FACTORY-F01 canary staged: start {cfg['start_utc']}, authorization {cfg['authorization_comment_id']}")
     return dict(staged=True, config=copy.deepcopy(cfg), config_sha256=_sha(cfg))
+
+
+def _owned(x, key=None):
+    """Whether a durable/current candidate record belongs to C-F01."""
+    return ENG.candidate_owner(x, key) == FC.SLOT
+
+
+def _at_or_after_start(row, start):
+    """A candidate row is attributable to this staged config only from its immutable start onward."""
+    for field in ('opened', 'decision_bar', 'closed'):
+        t = FC._ts((row or {}).get(field))
+        if t is not None: return t >= start
+    return True                         # an owned record with unreadable time fails closed
+
+
+def _ever_enabled(e, cfg):
+    """Return durable/current proof that C-F01 was enabled under cfg, else None.
+
+    A successful enable normally leaves its PASS preflight (checked separately). These candidate/cohort records are the
+    independent durable proof required by the recovery contract, including activity which survived history trimming.
+    """
+    st, start = e.state or {}, FC._ts(cfg.get('start_utc'))
+    if (st.get('candidate_disabled') or {}).get(FC.SLOT) is not None:
+        return 'durable candidate_disabled record'
+    for family in ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries'):
+        vals = (st.get(family) or {}).items() if isinstance(st.get(family), dict) else enumerate(st.get(family) or ())
+        if any(_owned(v, k) for k, v in vals): return f'durable {family} record'
+    idx = st.get(ENG.CANDIDATE_PENDING_KEY)
+    if not isinstance(idx, dict) and idx is not None: return 'unreadable durable candidate pending index'
+    if any(_owned(v, k) for k, v in (idx or {}).items()): return 'durable candidate pending record'
+    for name, rows in (('history', getattr(e, 'history', None)), ('cohort', getattr(e, 'cohort_rows', None))):
+        if not isinstance(rows, list):
+            if rows is not None: return f'unreadable durable {name} records'
+            continue
+        if any(_owned(r) and _at_or_after_start(r, start) for r in rows): return f'durable {name} C-F01 record'
+    trade_dir = os.path.join(cfg['cohort_dir'], 'extracts', 'trade')
+    if os.path.lexists(trade_dir) and not os.path.isdir(trade_dir):
+        return 'unreadable durable cohort trade records (not a directory)'
+    try:
+        rows = FC.ExtractWriter(cfg['cohort_dir']).records('trade')
+    except (OSError, ValueError, TypeError) as ex:
+        return f'unreadable durable cohort trade records ({type(ex).__name__})'
+    if any((r or {}).get('slot') == FC.SLOT and (r or {}).get('kind') in ('entry', 'trade')
+           and _at_or_after_start(r, start) for r in rows):
+        return 'durable cohort trade extract'
+    return None
+
+
+def recover_stage(e, b):
+    """Replace only a failed, never-enabled immutable stage after the packaged-pins defect (#254)."""
+    if not isinstance(b, dict): raise ValueError('bad request')
+    fields = {'config_sha256', *CFG_FIELDS}
+    extra = sorted(set(b) - fields)
+    if extra: raise ValueError('unknown F01 recovery field(s): ' + ', '.join(str(k)[:30] for k in extra)[:120])
+    missing = [k for k in ('config_sha256', *CFG_FIELDS) if k not in b]
+    if missing: raise ValueError('missing F01 recovery field(s): ' + ', '.join(missing))
+    old_hash = b['config_sha256']
+    if not isinstance(old_hash, str) or not FC.HEX64.fullmatch(old_hash):
+        raise ValueError('config_sha256 must be the exact 64-hex old config hash')
+    if not isinstance(b['start_utc'], str): raise ValueError('start_utc must be a tz-aware ISO UTC string')
+    new_cfg = dict(on=True, **{k: copy.deepcopy(b[k]) for k in CFG_FIELDS})
+    bad = FC.cfg_problems(new_cfg)
+    if bad: raise ValueError('F01 canary recovery config refused: ' + '; '.join(bad))
+    with e.lock:
+        _env(e)
+        old_cfg = _staged(e)
+        if old_hash != _sha(old_cfg): raise ValueError('config_sha256 does not match the exact staged config')
+        sl = _slot(e.S)
+        if sl is None: raise ValueError('C-F01 slot not present - nothing to recover')
+        if sl.get('enabled') is not False: raise ValueError('C-F01 is enabled - recovery refused')
+        pf = e.S.get(PREFLIGHT_KEY)
+        if isinstance(pf, dict) and pf.get('passed') is True:
+            raise ValueError('a PASS preflight is stored - recovery refused')
+        prior = e.S.get(RECOVERY_KEY, [])
+        if not isinstance(prior, list):
+            raise ValueError('the F01 recovery audit is malformed - refused (fail closed)')
+        if prior:
+            raise ValueError('the one-time F01 stage recovery was already used - recovery refused')
+        proof = _ever_enabled(e, old_cfg)
+        if proof: raise ValueError(f'C-F01 was ever enabled under the staged config ({proof}) - recovery refused')
+        if new_cfg['authorization_comment_id'] == old_cfg.get('authorization_comment_id'):
+            raise ValueError('a new Codex authorization comment id is required')
+        if os.path.realpath(new_cfg['cohort_dir']) == os.path.realpath(old_cfg.get('cohort_dir', '')):
+            raise ValueError('a new cohort directory is required')
+        if not FC._ts(new_cfg['start_utc']) > ENG.now_utc():
+            raise ValueError('start_utc must be strictly in the future')
+        new_hash = _sha(new_cfg)
+        if new_hash == old_hash: raise ValueError('the replacement config must be new, not a start-only retry')
+        audit = dict(old_config_sha256=old_hash, new_config_sha256=new_hash,
+                     old_authorization_comment_id=old_cfg['authorization_comment_id'],
+                     new_authorization_comment_id=new_cfg['authorization_comment_id'],
+                     at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'),
+                     reason='packaged_pins_missing')
+        ns = copy.deepcopy(e.S)
+        ns[FC.CANARY_KEY] = new_cfg
+        ns.pop(PREFLIGHT_KEY, None)                 # only a non-PASS value can reach here
+        ns[RECOVERY_KEY] = copy.deepcopy(prior) + [audit]
+        e.commit_settings(ns)                       # one durable atomic replacement; memory changes only after success
+    ENG.log.info(f"FACTORY-F01 stage recovered: {old_hash} -> {new_hash}, authorization {new_cfg['authorization_comment_id']}")
+    return dict(recovered=True, config=copy.deepcopy(new_cfg), config_sha256=new_hash, audit=copy.deepcopy(audit))
 
 
 def preflight(e, b=None):
@@ -195,7 +297,7 @@ def sleeves_guard(S, new_sleeves, normalize):
     return [keep if isinstance(x, dict) and x.get('id') == FC.SLOT else x for x in new_sleeves]
 
 
-ACTIONS = dict(stage=stage, preflight=preflight, enable=enable)
+ACTIONS = dict(stage=stage, recover_stage=recover_stage, preflight=preflight, enable=enable)
 
 
 def handle(e, path, b):
