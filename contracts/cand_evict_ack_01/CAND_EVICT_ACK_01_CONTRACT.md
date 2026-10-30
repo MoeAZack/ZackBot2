@@ -1,10 +1,11 @@
 # CAND-EVICT-ACK-01: Integration acknowledgement of evicted candidate pending-cost entries
 
-**Status: DRAFT** (Build lane, 2026-10-30 06:47 Cairo / 04:47 UTC). Contract only: no runtime code, no settings, no state.
-Not signed. Nothing in this document is authorized until Integration signs the JSON twin
-(`cand_evict_ack_01_contract.v1.json`). Amended 2026-10-30 with Integration ruling **6515377452** (OQ1-OQ8 resolved,
+**Status: SIGNED** by Codex (Integration), authorization 6517958103 (after Cowork PASS 6517853909 on exact `feddc63`),
+2026-10-30T10:07+02:00 Cairo. Drafted by the Build lane at 2026-10-30 06:47 Cairo / 04:47 UTC. Signed together with
+Cowork's two mandatory advisories (A4.1: `re.fullmatch` for `SYM_RE`, and `closed` must be a `str`). The JSON twin is
+`cand_evict_ack_01_contract.v1.json`. Amended 2026-10-30 with Integration ruling **6515377452** (OQ1-OQ8 resolved,
 see RESOLVED) and the Cowork advisories on `d84fc4a` (**6515360579**). Amended again with the Codex signing fixes **6515460695** (content-strict sanitization, guard lock, save-failure
-wording). Status stays DRAFT pending the Codex signature.
+wording).
 
 **Ordering:** implementation starts only after PR #249 (f01_canary.py) is merged. T14 is gated on f01_canary being on
 master.
@@ -86,8 +87,10 @@ Under `self.lock`, in this order:
    - `sleeve`: stored only if it is a `str` that is an exact member of engine.py `CANDIDATE_SLOTS`.
    - `symbol`: stored only if it is a `str` that fully matches engine.py `SYM_RE` (`^[A-Z0-9]{2,20}USDT$`, the engine's
      normalized tradable-symbol form; app.py `SYM` is the same pattern). An id-shaped value such as `"8389765432123"`
-     or `"x-ab12cd"` is stored as `null`.
-   - `closed`: stored only if it parses with `pd.Timestamp` (the parser engine.py:Engine._candidate_pending_why uses) to
+     or `"x-ab12cd"` is stored as `null`. The match uses **`re.fullmatch` semantics** (Cowork advisory, mandatory at
+     signing). `SYM_RE.match` / `search` with `$` would accept a trailing newline, so `"BTCUSDT\n"` is stored as `null`.
+   - `closed`: must be a **`str`** before any parsing (Cowork advisory, mandatory at signing). A non-`str` value (int,
+     float, datetime, `pd.Timestamp`, None) is stored as `null` without being parsed. A `str` is stored only if it parses with `pd.Timestamp` (the parser engine.py:Engine._candidate_pending_why uses) to
      a non-NaT time. A naive time is taken as UTC, as `.timestamp()` does there. It is stored as the canonical UTC
      string `ts.tz_convert('UTC').isoformat()` (naive: `ts.tz_localize('UTC').isoformat()`). Anything else is `null`.
    Unexpected keys and any identifier-bearing content are never persisted (OQ5). `entry_sha256` is the sha256 of the
@@ -174,7 +177,7 @@ silently would understate drawdown. For that reason:
 | T8 | LIVE engine: refused. |
 | T9 | The record and state diff hold no `orderId`, `clientOrderId`, `tradeId` or `id_fields` hit (reuse f01_canary.id_fields), even when the malformed original carried ids as keys or as the `symbol` / `sleeve` / `closed` values. |
 | T10 | Totals, R, equity curve, cohort rows, evidence store and history are byte-identical before and after an ack. |
-| T11 | A malformed but JSON-serializable index entry (non-dict, unknown sleeve, extra keys including `orderId`, nested values) can be acked. The record holds only content-strict `sleeve` / `symbol` / `closed` plus an `entry_sha256` equal to the sha256 of the strict canonical JSON of the original. It holds no extra key or nested value. Cases: sleeve `"C-F01 "` or `"c-f01"` -> null; symbol `"8389765432123"`, `"x-ab12cd"`, `"btcusdt"` or `"BTCUSDT/1"` -> null; symbol `"BTCUSDT"` kept; closed `"2026-10-01 12:00:00"` -> `"2026-10-01T12:00:00+00:00"`; closed `"not a time"`, `NaT` or `12345` (int) -> null. |
+| T11 | A malformed but JSON-serializable index entry (non-dict, unknown sleeve, extra keys including `orderId`, nested values) can be acked. The record holds only content-strict `sleeve` / `symbol` / `closed` plus an `entry_sha256` equal to the sha256 of the strict canonical JSON of the original. It holds no extra key or nested value. Cases: sleeve `"C-F01 "` or `"c-f01"` -> null; symbol `"8389765432123"`, `"x-ab12cd"`, `"btcusdt"` or `"BTCUSDT/1"` -> null; symbol `"BTCUSDT"` kept; symbol `"BTCUSDT\n"` (trailing newline) -> null (fullmatch); closed `"2026-10-01 12:00:00"` -> `"2026-10-01T12:00:00+00:00"`; closed `"not a time"`, `NaT` or `12345` (int) -> null; closed `1759320000.0` (float epoch) -> null (non-str, never parsed). |
 | T11a | An original that is not strictly JSON-serializable (a `set`, an object, NaN/inf, a non-str key under `sort_keys`) is refused. The entry stays, no record is written, and nothing is saved. No `default=repr` path exists. |
 | T12 | Index not a dict: refused, and the guard still fails closed. |
 | T13 | Restart after the ack: the entry stays cleared and the record survives the state round trip. |

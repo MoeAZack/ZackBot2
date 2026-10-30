@@ -1,4 +1,4 @@
-"""CAND-EVICT-ACK-01 (DRAFT, contract only): structural checks of the JSON twin and MD, and that every cited engine /
+"""CAND-EVICT-ACK-01 (SIGNED 6517958103, contract): structural checks of the JSON twin and MD, and that every cited engine /
 actual_costs function exists on this head. Parses source with ast; imports nothing from the bot, reads no state."""
 import ast
 import hashlib
@@ -29,8 +29,8 @@ def _defs(path):
 
 
 def test_json_draft_and_keys(c):
-    assert c['contract'] == 'CAND-EVICT-ACK-01' and c['status'] == 'DRAFT'
-    assert c['signed_by'] is None and c['signed_at'] is None
+    assert c['contract'] == 'CAND-EVICT-ACK-01' and c['status'] == 'SIGNED'
+    assert '6517958103' in c['signed_by'] and 'feddc63' in c['signed_by'] and c['signed_at'] == '2026-10-30T10:07+02:00'
     assert [k for k in REQUIRED if k not in c] == []
 
 
@@ -38,7 +38,7 @@ def test_md_exists_and_draft(c):
     assert os.path.isfile(MD) and c['doc'] == 'contracts/cand_evict_ack_01/CAND_EVICT_ACK_01_CONTRACT.md'
     with open(MD, encoding='utf-8') as fh:
         md = fh.read()
-    assert '**Status: DRAFT**' in md
+    assert '**Status: SIGNED**' in md
     for q in c['open_questions']:
         assert f'**{q}**' in md
     for t in c['required_tests']:
@@ -72,7 +72,7 @@ RULING = '6515377452'
 
 
 def test_rulings_resolved_no_open_oqs(c):
-    assert c['status'] == 'DRAFT' and c['open_questions'] == {}
+    assert c['status'] == 'SIGNED' and c['open_questions'] == {}
     assert c['ruling'] == RULING and c['resolved_questions_source'] == RULING
     assert sorted(c['resolved_questions']) == [f'OQ{i}' for i in range(1, 9)]
     with open(MD, encoding='utf-8') as fh:
@@ -151,7 +151,7 @@ def _strict_sha(entry):
 
 
 def test_signing_fixes_recorded(c):
-    assert c['signing_fixes'] == SIGN and c['status'] == 'DRAFT'
+    assert c['signing_fixes'] == SIGN and c['status'] == 'SIGNED'
     with open(MD, encoding='utf-8') as fh:
         md = fh.read()
     assert f'**Signing fixes (Codex {SIGN}):**' in md
@@ -180,6 +180,8 @@ def test_content_strict_rules_match_engine(c):
     ({'sleeve': 'C-F02', 'symbol': 'btcusdt', 'closed': '2026-10-01T15:00:00+03:00'},
      {'sleeve': 'C-F02', 'symbol': None, 'closed': '2026-10-01T12:00:00+00:00'}),
     (['C-F01', 'BTCUSDT'], {'sleeve': None, 'symbol': None, 'closed': None}),
+    ({'sleeve': 'C-F01', 'symbol': 'BTCUSDT\n', 'closed': 1759320000.0},          # Cowork 6517853909
+     {'sleeve': 'C-F01', 'symbol': None, 'closed': None}),
 ])
 def test_content_strict_worked_cases(entry, want):
     k = _engine_consts()
@@ -222,3 +224,17 @@ def test_save_failure_wording(c):
     a4 = md[md.index('### A4. Effect'):md.index('### A5.')]
     assert 'byte-identical' not in a4 and 'Exactly two subtrees are restored exactly' in a4
     assert 'T11a' in c['required_tests']
+
+
+def test_signing_advisories_fullmatch_and_closed_str(c):
+    adv = c['signing_advisories']
+    assert adv['source'] == '6517853909' and 'fullmatch' in adv['symbol_fullmatch'] and 'str' in adv['closed_str_only']
+    rules = c['record']['entry_rules']
+    assert 're.fullmatch' in rules['symbol'] and rules['closed'].startswith('str only')
+    pat = _engine_consts()['sym']
+    assert re.match(pat, 'BTCUSDT\n') and not re.fullmatch(pat, 'BTCUSDT\n')    # why fullmatch is mandatory
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    assert '**`re.fullmatch` semantics**' in md and 'must be a **`str`** before any parsing' in md
+    t11 = next(l for l in md.splitlines() if l.startswith('| T11 |'))
+    assert '"BTCUSDT\\n"' in t11 and '1759320000.0' in t11

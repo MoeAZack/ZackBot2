@@ -1,9 +1,9 @@
 {
   "contract": "CAND-EVICT-ACK-01",
   "version": 1,
-  "status": "DRAFT",
-  "signed_by": null,
-  "signed_at": null,
+  "status": "SIGNED",
+  "signed_by": "Codex (Integration), authorization 6517958103 (after Cowork PASS 6517853909 on exact feddc63)",
+  "signed_at": "2026-10-30T10:07+02:00",
   "drafted_at": "2026-10-30T04:47:55Z",
   "doc": "contracts/cand_evict_ack_01/CAND_EVICT_ACK_01_CONTRACT.md",
   "build_role": "contract only - no runtime code, settings or state",
@@ -162,8 +162,8 @@
     "retention": "unbounded durable state audit, no cap or eviction (OQ6)",
     "entry_rules": {
       "sleeve": "str and exact member of engine.CANDIDATE_SLOTS, else null",
-      "symbol": "str and full match of engine.SYM_RE ^[A-Z0-9]{2,20}USDT$, else null",
-      "closed": "pd.Timestamp parses to non-NaT; naive taken as UTC; stored as canonical UTC isoformat, else null",
+      "symbol": "str and re.fullmatch of engine.SYM_RE ^[A-Z0-9]{2,20}USDT$ (trailing newline rejected), else null",
+      "closed": "str only (non-str -> null, never parsed); pd.Timestamp parses to non-NaT; naive taken as UTC; stored as canonical UTC isoformat, else null",
       "repair_or_truncate": false
     },
     "non_serializable_original": "refused, entry kept, fail closed"
@@ -171,7 +171,7 @@
   "required_test_notes": {
     "T3": "byte-identical state; no empty candidate_cost_pending_ack left behind",
     "T7": "save failure: only the pending-index and ack-record subtrees restored exactly (incl. new empty ack dict removed); state_untrusted latched and ENTRIES_PAUSED True remain after rollback; no whole-state equality",
-    "T11": "content-strict: id-shaped symbol \"8389765432123\" -> null, \"BTCUSDT\" kept, sleeve \"c-f01\" -> null, closed \"2026-10-01 12:00:00\" -> \"2026-10-01T12:00:00+00:00\", unparseable closed -> null; sha256 of strict canonical original",
+    "T11": "content-strict: id-shaped symbol \"8389765432123\" -> null, \"BTCUSDT\" kept, sleeve \"c-f01\" -> null, closed \"2026-10-01 12:00:00\" -> \"2026-10-01T12:00:00+00:00\", unparseable closed -> null; sha256 of strict canonical original; symbol \"BTCUSDT\n\" -> null (fullmatch); closed float epoch 1759320000.0 -> null (non-str)",
     "T14": "canary rule, gated on f01_canary",
     "T17": "guard/ack interleaving: competing thread calls candidate_guard() directly (no caller lock, not via cycle); no half-state (entry popped, record missing); guard blocks while another thread holds self.lock",
     "T18": "no cohort/evidence write, no GitHub/network call",
@@ -201,5 +201,11 @@
     "app.py": [
       "SYM"
     ]
+  },
+  "signed_head": "feddc63",
+  "signing_advisories": {
+    "source": "6517853909",
+    "symbol_fullmatch": "re.fullmatch(SYM_RE) - trailing newline rejected",
+    "closed_str_only": "closed must be a str before timestamp parsing; non-str -> null"
   }
 }
