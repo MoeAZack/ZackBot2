@@ -2,7 +2,7 @@
  "amendment": "FACTORY-F01-IMPL-01 pin amendment to FACTORY-F01-PARITY-01 code.pinned_function_sha256",
  "version": 1,
  "status": "PROPOSED - pending Integration acceptance",
- "why_separate_file": "PR #248 (the parity contract) is not merged into master (OPEN, signed head 9fd904a, ruling 6513888459). Per Codex review 6514109966 #1 the pin amendment lives in this #249 pack; #248 files are not edited. Integration folds it into the contract when it accepts #249",
+ "why_separate_file": "Written while PR #248 was open (signed head 9fd904a, ruling 6513888459); per Codex review 6514109966 #1 it lives in this #249 pack. #248 merged as master 06379c5; the signed #248 contract JSON stays byte-identical, and tests/test_factory_f01_parity_01_contract.py applies this amendment (each 'from' must equal the signed pin) until Integration folds it in",
  "base_contract": {
   "pr": 248,
   "head": "9fd904a1cbb696d8d3adbeba076376568f18c5af",
