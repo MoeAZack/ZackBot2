@@ -1,0 +1,82 @@
+{
+  "format": "zb-factory-f02-eval/1",
+  "ticket": "FACTORY-F02-EVAL-01",
+  "status": "DRAFT - frozen before any EDGE04 H3 result is consumed",
+  "purpose": "Bind the already-running execution-grade EDGE04 H3 exp_trend evaluation to a later isolated C-F02 PAPER decision without launching a duplicate backtest or tuning on its result.",
+  "boundaries": {
+    "market_data_opened": false,
+    "edge04_result_read": false,
+    "holdout_read": false,
+    "paper_changed": false,
+    "runtime_changed": false,
+    "mainnet": false
+  },
+  "parents": {
+    "family": {
+      "path": "contracts/factory_f01f02_family/factory_f01f02_family_contract.v1.json",
+      "sha256": "0bfcbfcb35d815fbe8793ee57067746bb76e5a8d05b3152e8f72616450f522f4"
+    },
+    "reproduction": {
+      "path": "contracts/factory_f01f02_repro/factory_f01f02_repro_contract.v1.json",
+      "sha256": "4c0fbcf6140378aa6468d81a9f7650397ba7594160433fed6f55e2dfd0e763e7"
+    }
+  },
+  "candidate": {
+    "slot": "C-F02",
+    "strategy": "exp_trend",
+    "side": "long",
+    "timeframe": "4h",
+    "family": "trend_long",
+    "management": {"stop_atr": 2.5, "tp_r": 3.0, "max_bars": 180},
+    "signal_identity": "The signed family contract proves C-F02 has the same long entry signal set as C-F01; only management differs.",
+    "development_context_only": {"closed_trades": 171, "net_r": 56.69273},
+    "development_context_warning": "Legacy flat funding/filter assumptions; never promotion evidence and never used to change the frozen gates below."
+  },
+  "edge04_binding": {
+    "repository_pr": 217,
+    "observed_head_at_freeze": "aa9013fa5251e61a1412e4c0225448965c1fa66e",
+    "candidate_id": "edge04_legacy_reeval.v1",
+    "hypothesis": "H3",
+    "variant": "H3.primary",
+    "strategy": "exp_trend",
+    "prereg_path": "docs/newcore/research/EDGE04_LEGACY_REEVAL_PREREG_v1.json",
+    "rule": "Consume only the final signed, immutable H3 primary result produced by the accepted EDGE04 execution-grade path. A draft, partial, failed, superseded or unsigned output is INCONCLUSIVE and cannot authorize PAPER.",
+    "no_duplicate": "EDGE04 H3 is the execution-grade C-F02 evaluation already in progress; this ticket must not launch another market-data run."
+  },
+  "frozen_gates": {
+    "data": "every headline symbol/split complete; no account bust; no unresolved accounting row",
+    "activity": "at least 60 closed episodes and at least 0.75 closed episodes per week across development+walk-forward",
+    "walk_forward": "at least 4 of 5 folds have positive net R; combined walk-forward mean net R>0 and PF>1.10",
+    "expectancy": "episode-clustered 95% lower confidence bound of combined walk-forward mean net R>0; pre-cost gross mean R>0",
+    "baselines": "base net return exceeds B1 and the episode-clustered 95% lower bound of candidate-minus-B0 mean R is >0",
+    "stress": "all-variable-costs x1.5 mean net R>0; no sign flip at 60-second latency; fees/slippage x2 reported",
+    "concentration": "no symbol exceeds 35% of absolute net-R contribution and top three do not exceed 60%",
+    "drawdown": "base max equity drawdown<25%, closed-trade max drawdown<25R, and all-variable-costs x1.5 max equity drawdown<35%",
+    "multiplicity": "Holm alpha 0.05 across the four EDGE04 primaries; report deflated/search-aware statistics with the preregistered trial inventory",
+    "verdict": "PASS only if every gate passes for H3.primary; diagnostics, development packets and PAPER cannot rescue a failed primary"
+  },
+  "decision": {
+    "eligible_for_paper": "EDGE04 H3 final status PASS, every frozen gate true, signed immutable output and independent reproduction of the result envelope.",
+    "park": "Any frozen gate false gives REJECT/PARK with no tuning on the evaluated windows; advance the next preregistered candidate.",
+    "inconclusive": "Incomplete data/costs/B0, unsigned or moving head, missing independent evidence, or a changed gate/result schema.",
+    "high_drawdown": "Drawdown is permitted only inside the frozen numeric gates; profitability never waives a failed protection, accounting, data or multiplicity gate."
+  },
+  "paper_pack": {
+    "prepared_only_after_eligibility": true,
+    "isolation": "C-F02 runs alone in the trend_long candidate family; C-F01 must be OFF for the full cohort.",
+    "default": "OFF until a separate Codex PAPER authorization on an accepted installed build.",
+    "entry_and_cost_parity": "Use the accepted runtime signal, next-executable-open convention, measured fees/funding/slippage, exchange filters and candidate accounting; any parity gap is fail-closed.",
+    "risk": "Reuse the signed candidate share/family cap/protection contract; no result-derived risk increase.",
+    "minimum_observation": "Preregister exact duration/close count and parity fields in the cohort pack before enable; PAPER is confirmation/operations evidence, not a failed-backtest rescue.",
+    "rollback": "Disable only C-F02, preserve and manage open lots, archive immutable evidence, and never fall back silently to C-F01.",
+    "protection": "Every admitted lot needs confirmed Binance testnet protection; any unknown environment or protection gap refuses new risk."
+  },
+  "deferred": [
+    "reading or interpreting the active EDGE04 H3 result",
+    "changing EDGE04, strategy, management, cost, window, gate or trial definitions",
+    "implementing or enabling a C-F02 activation route",
+    "PAPER/testnet mutation",
+    "mainnet/live action"
+  ],
+  "roadmap_fit": "Continuous Strategy Factory conveyor: prepare the evidence-to-PAPER binding while EDGE04 H3/B0 runs; only dependent promotion waits."
+}
