@@ -76,6 +76,7 @@ from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_
 from binance_client import Futures, MAINNET   # noqa: E402
 import grid as GRID             # noqa: E402
 import actual_costs as AC       # noqa: E402
+import cand_evict_ack as CEA     # noqa: E402  (CAND-EVICT-ACK-01)
 
 
 def _hist_view(h):
@@ -1713,6 +1714,8 @@ def handle(path, b):
         ok, msg, status = e.ack_unmeasured(rid, net, note)
         if not ok: raise ValueError(msg)
         return dict(row_id=rid, status=status, msg=msg)
+    if path == CEA.ROUTE:                                 # CAND-EVICT-ACK-01: Integration ack of an evicted pending-cost entry
+        return CEA.api(e, b)
     if path == '/api/install/confirm':                    # AUD-05 r3: the owner confirms the account of this data folder
         if b.get('CONFIRM') != 'THIS_ACCOUNT': raise ValueError('type THIS_ACCOUNT to confirm the account of this data folder')
         return e.confirm_install()

@@ -29,6 +29,8 @@ SG = dict(close=100.0, atr=2.0, time='2026-10-04 00:00:00', le=True, se=False, l
 RULING = '6512712537'
 with open(os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json'), encoding='utf-8') as _fh:
     AMEND = json.load(_fh)
+with open(os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8') as _fh:
+    EVICT_AMEND = json.load(_fh)                          # CAND-EVICT-ACK-01 one-function pin amendment (Codex 6518282215)
 CLASSES = {'MUST-MATCH', 'MEASURED-DIFF', 'NOT-COMPARABLE'}
 
 
@@ -130,6 +132,10 @@ def test_every_pinned_function_source_matches(c):
     amend = AMEND['amended']                               # FACTORY-F01-IMPL-01 pin amendment (signed JSON stays byte-identical)
     assert set(amend) == {'engine.py:Engine.open_lot', 'engine.py:Engine._create_lot'}
     for cite, ch in amend.items():
+        assert pins[cite] == ch['from'], cite
+        pins[cite] = ch['to']
+    assert set(EVICT_AMEND['amended']) == {'engine.py:Engine.candidate_guard'}
+    for cite, ch in EVICT_AMEND['amended'].items():       # signed JSON stays byte-identical; 'from' == the signed pin
         assert pins[cite] == ch['from'], cite
         pins[cite] = ch['to']
     for cite, sha in pins.items():

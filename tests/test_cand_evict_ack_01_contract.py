@@ -59,7 +59,8 @@ def test_index_key_matches_engine(c):
     with open(os.path.join(ROOT, 'engine.py'), encoding='utf-8') as fh:
         src = fh.read()
     assert f"CANDIDATE_PENDING_KEY = '{c['index_key']}'" in src
-    assert c['ack_record_key'] not in src              # contract only: no runtime code yet
+    with open(os.path.join(ROOT, 'cand_evict_ack.py'), encoding='utf-8') as fh:
+        assert f"ACK_KEY = '{c['ack_record_key']}'" in fh.read()      # the implementation (Codex 6518282215)
 
 
 @pytest.mark.parametrize('path', ['engine.py', 'actual_costs.py'])

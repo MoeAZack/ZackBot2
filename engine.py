@@ -21,6 +21,7 @@ import book_ledger as BL
 import run_pack as RP
 import feasibility as F
 import f01_canary as FC
+import cand_evict_ack as CEA
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from binance_client import AuditSkipped
 from ai_filter import review
@@ -2322,53 +2323,54 @@ class Engine:
         ids switched off; never raises. The guard fails CLOSED: an error of its own switches every enabled candidate off.
         FACTORY-CAND-02 (6507748888): a member's disable, or family members out of CANDIDATE_SLOTS order, switches every
         enabled member of its CANDIDATE_FAMILY off in the same pass; each reason names the triggering member and cause."""
-        off = []
-        try:
-            now = time.time() if now is None else now
-            on, trig = [sl for sl in self.S.get('SLEEVES') or [] if sl.get('id') in CANDIDATE_SLOTS and sl.get('enabled')], {}
-            for sl in on:
-                drift = self.candidate_drift(sl)
-                why = f"drift: {', '.join(drift)} differ from the frozen card" if drift else None
-                why = why or next((f"protection: {l['symbol']} stop {l.get('stop_miss_why')}" for l in self.state['lots'].values()
-                                   if l['sleeve'] == sl['id'] and l.get('stop_miss') and l.get('stop_miss_why') in CANDIDATE_STOP_FAIL), None)
-                for h in self.history if why is None else ():      # FACTORY-CAND-02 (OQ6): every row, not the last 3000
-                    if h.get('sleeve') != sl['id'] or AC.row_view(h)['status'] != 'pending': continue
-                    try: age = now - pd.Timestamp(h['closed']).timestamp()
-                    except (KeyError, TypeError, ValueError): age = float('inf')
-                    if age >= CANDIDATE_COST_PENDING_S:
-                        why = f"accounting: {h.get('symbol')} trade costs unmeasured {age / 3600:.1f} h after close"; break
-                if why is None: why = self._candidate_pending_why(sl['id'], now)    # OQ6: the durable index
-                if why: trig.setdefault(sl['id'], why)
-            for fam in set(CANDIDATE_FAMILY.values()):           # OQ2: enabled members in CANDIDATE_SLOTS priority order
-                got = [sl['id'] for sl in on if CANDIDATE_FAMILY.get(sl['id']) == fam]
-                want = [i for i in CANDIDATE_SLOTS if i in got]
-                if len(got) > 1 and got != want:
-                    for i in got: trig.setdefault(i, f"drift: family {fam} order {got} differs from the pinned priority {want}")
-            for sl in on:                                        # OQ1: one member off -> every enabled member of its family off
-                why, fam = trig.get(sl['id']), CANDIDATE_FAMILY.get(sl['id'])
-                src = next((i for i in trig if fam is not None and CANDIDATE_FAMILY.get(i) == fam), None) if why is None else None
-                if src: why = f"family {fam} fail-closed by {src}: {trig[src]}"
-                if why:
-                    sl['enabled'] = False
-                    self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(why=why, t=now_utc().isoformat(timespec='seconds'))
-                    self.err(f"FACTORY candidate {sl['id']} switched off: {why} - open lots stay protected and managed")
-                    off.append(sl['id'])
-            if off: self.save_settings(); self.save_state()
-        except Exception as e:
-            log.warning(f'candidate guard failed ({type(e).__name__}: {e}) - every enabled candidate is switched off')
+        with self.lock:
+            off = []
             try:
-                for sl in self.S.get('SLEEVES') or []:
-                    if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
-                    sl['enabled'] = False
-                    self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(
-                        why=f'guard_error: {type(e).__name__}', t=now_utc().isoformat(timespec='seconds'))
-                    if sl['id'] not in off: off.append(sl['id'])
-                self.err(f'FACTORY candidate guard failed ({type(e).__name__}) - candidates {off} switched off; open lots stay protected')
-            except Exception: pass
-            for save in (self.save_settings, self.save_state):           # durable where possible; never raises
-                try: save()
+                now = time.time() if now is None else now
+                on, trig = [sl for sl in self.S.get('SLEEVES') or [] if sl.get('id') in CANDIDATE_SLOTS and sl.get('enabled')], {}
+                for sl in on:
+                    drift = self.candidate_drift(sl)
+                    why = f"drift: {', '.join(drift)} differ from the frozen card" if drift else None
+                    why = why or next((f"protection: {l['symbol']} stop {l.get('stop_miss_why')}" for l in self.state['lots'].values()
+                                       if l['sleeve'] == sl['id'] and l.get('stop_miss') and l.get('stop_miss_why') in CANDIDATE_STOP_FAIL), None)
+                    for h in self.history if why is None else ():      # FACTORY-CAND-02 (OQ6): every row, not the last 3000
+                        if h.get('sleeve') != sl['id'] or AC.row_view(h)['status'] != 'pending': continue
+                        try: age = now - pd.Timestamp(h['closed']).timestamp()
+                        except (KeyError, TypeError, ValueError): age = float('inf')
+                        if age >= CANDIDATE_COST_PENDING_S:
+                            why = f"accounting: {h.get('symbol')} trade costs unmeasured {age / 3600:.1f} h after close"; break
+                    if why is None: why = self._candidate_pending_why(sl['id'], now)    # OQ6: the durable index
+                    if why: trig.setdefault(sl['id'], why)
+                for fam in set(CANDIDATE_FAMILY.values()):           # OQ2: enabled members in CANDIDATE_SLOTS priority order
+                    got = [sl['id'] for sl in on if CANDIDATE_FAMILY.get(sl['id']) == fam]
+                    want = [i for i in CANDIDATE_SLOTS if i in got]
+                    if len(got) > 1 and got != want:
+                        for i in got: trig.setdefault(i, f"drift: family {fam} order {got} differs from the pinned priority {want}")
+                for sl in on:                                        # OQ1: one member off -> every enabled member of its family off
+                    why, fam = trig.get(sl['id']), CANDIDATE_FAMILY.get(sl['id'])
+                    src = next((i for i in trig if fam is not None and CANDIDATE_FAMILY.get(i) == fam), None) if why is None else None
+                    if src: why = f"family {fam} fail-closed by {src}: {trig[src]}"
+                    if why:
+                        sl['enabled'] = False
+                        self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(why=why, t=now_utc().isoformat(timespec='seconds'))
+                        self.err(f"FACTORY candidate {sl['id']} switched off: {why} - open lots stay protected and managed")
+                        off.append(sl['id'])
+                if off: self.save_settings(); self.save_state()
+            except Exception as e:
+                log.warning(f'candidate guard failed ({type(e).__name__}: {e}) - every enabled candidate is switched off')
+                try:
+                    for sl in self.S.get('SLEEVES') or []:
+                        if sl.get('id') not in CANDIDATE_SLOTS or not sl.get('enabled'): continue
+                        sl['enabled'] = False
+                        self.state.setdefault('candidate_disabled', {})[sl['id']] = dict(
+                            why=f'guard_error: {type(e).__name__}', t=now_utc().isoformat(timespec='seconds'))
+                        if sl['id'] not in off: off.append(sl['id'])
+                    self.err(f'FACTORY candidate guard failed ({type(e).__name__}) - candidates {off} switched off; open lots stay protected')
                 except Exception: pass
-        return off
+                for save in (self.save_settings, self.save_state):           # durable where possible; never raises
+                    try: save()
+                    except Exception: pass
+            return off
 
     # ------------------------------------------------------------ FACTORY-F01-IMPL-01: bounded C-F01 PAPER canary
     def f01_canary_block(self, sl):
@@ -2386,7 +2388,8 @@ class Engine:
                 why = FC.env_refusal(getattr(self, 'live', True), getattr(getattr(self, 'trade', None), 'base', None), TESTNET)
             if why is None:
                 why = FC.bound_status(cfg, self.history, self.state.get(CANDIDATE_PENDING_KEY), now_utc(),
-                                      extra=getattr(self, 'cohort_rows', None) or ())['block']
+                                      extra=getattr(self, 'cohort_rows', None) or (),
+                                      acked=self.state.get(CEA.ACK_KEY))['block']     # CAND-EVICT-ACK-01 A7
         except Exception as e:
             why = f'F01 canary: bound check failed ({type(e).__name__}) - no new C-F01 entry (fail closed)'
         if why and why != getattr(self, '_f01_last', None):
@@ -2913,6 +2916,12 @@ class Engine:
         idx.pop(row['id'], None)
         self.save_state()        # durable at once (blocker 6508164005-2): a failed save leaves the entry on disk = fail closed
         return True
+
+    def ack_evicted_pending(self, b):
+        """CAND-EVICT-ACK-01 (signed 6517958103): Integration's acknowledgement of ONE pending-cost index entry whose row
+        was evicted from history - the only clear of such an entry (never by time). Under self.lock; durable record
+        state['candidate_cost_pending_ack']; never re-enables a slot or touches P&L. -> (ok, message, record)."""
+        return CEA.ack(self, b, slots=CANDIDATE_SLOTS, sym_re=SYM_RE, index_key=CANDIDATE_PENDING_KEY)
 
     def save_state(self):
         return self._save_safe('state', self.state)
