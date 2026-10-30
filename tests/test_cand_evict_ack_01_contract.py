@@ -1,6 +1,7 @@
 """CAND-EVICT-ACK-01 (DRAFT, contract only): structural checks of the JSON twin and MD, and that every cited engine /
 actual_costs function exists on this head. Parses source with ast; imports nothing from the bot, reads no state."""
 import ast
+import hashlib
 import json
 import os
 import re
@@ -93,7 +94,7 @@ def test_record_whitelist_and_save_fault(c):
 
 
 def test_required_tests_cover_pause_and_interleaving(c):
-    assert c['required_tests'] == [f'T{i}' for i in range(1, 21)]
+    assert [t for t in c['required_tests'] if t != 'T11a'] == [f'T{i}' for i in range(1, 21)]
     n = c['required_test_notes']
     assert 'ENTRIES_PAUSED' in n['T7'] and 'state_untrusted' in n['T7'] and 'empty' in n['T7']
     assert 'interleaving' in n['T17'] and 'half-state' in n['T17']
@@ -104,3 +105,120 @@ def test_required_tests_cover_pause_and_interleaving(c):
     assert 'ENTRIES_PAUSED' in t7 and 'state_untrusted' in t7
     assert 'interleaving' in t17 and 'self.lock' in t17
     assert 'f01_canary' in n['T14'] and '#249' in c['ordering']
+
+
+# --- Codex 6515460695 signing fixes -------------------------------------------------------------------------------
+SIGN = '6515460695'
+
+
+def _engine_src():
+    with open(os.path.join(ROOT, 'engine.py'), encoding='utf-8') as fh:
+        return fh.read()
+
+
+def _engine_consts():
+    tree = ast.parse(_engine_src())
+    out = {}
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
+            if n.targets[0].id == 'CANDIDATE_SLOTS':
+                out['slots'] = set(ast.literal_eval(n.value))
+            elif n.targets[0].id == 'SYM_RE':
+                out['sym'] = n.value.args[0].value
+    return out
+
+
+def _ref_sanitize(entry, slots, sym_pat):
+    """Reference reading of A4.1 (content-strict), used only to pin the contract's worked cases."""
+    from datetime import datetime, timezone
+    e = entry if isinstance(entry, dict) else {}
+    sl, sy, cl = e.get('sleeve'), e.get('symbol'), e.get('closed')
+    out = dict(sleeve=sl if isinstance(sl, str) and sl in slots else None,
+               symbol=sy if isinstance(sy, str) and re.fullmatch(sym_pat, sy) else None, closed=None)
+    if isinstance(cl, str):
+        try:
+            ts = datetime.fromisoformat(cl)
+            ts = ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts.astimezone(timezone.utc)
+            out['closed'] = ts.isoformat()
+        except ValueError:
+            pass
+    return out
+
+
+def _strict_sha(entry):
+    return hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
+                                     allow_nan=False).encode('ascii')).hexdigest()
+
+
+def test_signing_fixes_recorded(c):
+    assert c['signing_fixes'] == SIGN and c['status'] == 'DRAFT'
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    assert f'**Signing fixes (Codex {SIGN}):**' in md
+
+
+def test_content_strict_rules_match_engine(c):
+    k = _engine_consts()
+    rules = c['record']['entry_rules']
+    assert 'CANDIDATE_SLOTS' in rules['sleeve'] and k['sym'] == '^[A-Z0-9]{2,20}USDT$' and k['sym'] in rules['symbol']
+    assert 'UTC' in rules['closed'] and rules['repair_or_truncate'] is False
+    assert set(c['cited_constants']['engine.py']) >= {'CANDIDATE_SLOTS', 'SYM_RE'}
+    assert 'default=' not in c['record']['entry_sha256'].replace('no default=', '')
+    assert 'refused' in c['record']['non_serializable_original']
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    assert 'default=repr' not in md.replace('No `default=repr` path exists', '')
+    assert '`SYM_RE`' in md and 'exact member of engine.py `CANDIDATE_SLOTS`' in md
+
+
+@pytest.mark.parametrize('entry,want', [
+    ({'sleeve': 'C-F01', 'symbol': 'BTCUSDT', 'closed': '2026-10-01 12:00:00'},
+     {'sleeve': 'C-F01', 'symbol': 'BTCUSDT', 'closed': '2026-10-01T12:00:00+00:00'}),
+    ({'sleeve': 'c-f01', 'symbol': '8389765432123', 'closed': 'not a time', 'orderId': 8389765432123},
+     {'sleeve': None, 'symbol': None, 'closed': None}),
+    ({'sleeve': 'C-F01 ', 'symbol': 'x-ab12cd', 'closed': 12345}, {'sleeve': None, 'symbol': None, 'closed': None}),
+    ({'sleeve': 'C-F02', 'symbol': 'btcusdt', 'closed': '2026-10-01T15:00:00+03:00'},
+     {'sleeve': 'C-F02', 'symbol': None, 'closed': '2026-10-01T12:00:00+00:00'}),
+    (['C-F01', 'BTCUSDT'], {'sleeve': None, 'symbol': None, 'closed': None}),
+])
+def test_content_strict_worked_cases(entry, want):
+    k = _engine_consts()
+    got = _ref_sanitize(entry, k['slots'], k['sym'])
+    assert got == want
+    assert set(got) == {'sleeve', 'symbol', 'closed'}                  # no extra / id-bearing keys survive
+    assert len(_strict_sha(entry)) == 64
+
+
+@pytest.mark.parametrize('bad', [{'symbol': {1, 2}}, {'closed': float('nan')}, {'x': object()}])
+def test_non_serializable_original_has_no_hash(bad):
+    with pytest.raises((TypeError, ValueError)):
+        _strict_sha(bad)                                                # A3.6a: refused, never hashed via repr
+
+
+def test_concurrency_both_paths_lock(c):
+    e = c['effect']
+    assert e['guard_must_acquire_lock'] is True and 'candidate_guard acquires self.lock itself' in e['concurrency']
+    assert {'candidate_guard', 'cycle'} <= set(c['cited_functions']['engine.py'])
+    src = _engine_src()
+    assert 'self.lock = threading.RLock()' in src                        # re-entrant: cycle() -> guard stays valid
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    assert '**both** paths must hold `self.lock`' in md and 'must acquire `self.lock` **itself**' in md
+    t17 = next(l for l in md.splitlines() if l.startswith('| T17 |'))
+    assert 'calls `engine.candidate_guard()` **directly**' in t17 and 'not through `cycle()`' in t17
+    assert 'directly' in c['required_test_notes']['T17']
+
+
+def test_save_failure_wording(c):
+    e = c['effect']
+    assert e['whole_state_unchanged_on_failed_save'] is False
+    assert e['rollback_restores_exactly'][0] == 'candidate_cost_pending'
+    assert 'remains' in e['failed_save_side_effects']
+    with open(MD, encoding='utf-8') as fh:
+        md = fh.read()
+    t7 = next(l for l in md.splitlines() if l.startswith('| T7 |'))
+    assert 'byte-identical' not in t7 and 'Exactly the pending-index and ack-record subtrees are restored' in t7
+    assert 'must remain' in t7 and 'does not assert the whole state unchanged' in t7
+    a4 = md[md.index('### A4. Effect'):md.index('### A5.')]
+    assert 'byte-identical' not in a4 and 'Exactly two subtrees are restored exactly' in a4
+    assert 'T11a' in c['required_tests']
