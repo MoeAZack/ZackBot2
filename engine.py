@@ -710,6 +710,8 @@ def with_scalp_slots(sleeves):
 # trade's costs stay unmeasured past CANDIDATE_COST_PENDING_S.
 CAND_FIXED18 = ('BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT', 'QNTUSDT',
                 'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT')
+PRESET_FROZEN = ('profile changes are refused while the F01 canary is staged - the C-F01 card is frozen '
+                 '(roll back C-F01 through /api/sleeves; Integration recovers the canary)')   # FACTORY-F01-ACT-01
 CANDIDATE_SLOTS = {'C-F01': ('ema_mom', 'long'), 'C-F02': ('exp_trend', 'long')}     # slot id -> (strategy key, side)
 # Correlated candidates share ONE position cap (Codex 6443422894: F01/F02 share 131 fills, Jaccard 0.655 - one family, never
 # two full independent risk budgets)
@@ -2188,6 +2190,8 @@ class Engine:
         else:
             sleeves, label = copy.deepcopy(PRESETS[name]['sleeves']), PRESETS[name]['name']
         with self.lock:
+            if FC.CANARY_KEY in (self.S or {}):            # FACTORY-F01-ACT-01: staged canary -> the C-F01 card is frozen
+                raise ValueError(PRESET_FROZEN)
             self.S['SLEEVES'] = sleeves
             self.S['PRESET'] = name
             if ov is not None: self.S['ROTATION_MGMT_OVERLAY'] = ov
@@ -7832,6 +7836,8 @@ class Engine:
             if rs['on'] and mode == 'auto' and 'profile' in r['then'] and not rs.get('done'):
                 key = r['then']['profile']
                 if key not in PRESETS: rs['done'] = True; self.err(f'governor: unknown profile {key}')
+                elif FC.CANARY_KEY in self.S:                # FACTORY-F01-ACT-01: no automatic profile switch while staged
+                    rs['done'] = True; self.err(f'governor: profile switch to {key} refused - {PRESET_FROZEN}')
                 elif now - (gs.get('last_switch') or 0) >= GOV_COOLDOWN_S:
                     self.apply_preset(key); gs['last_switch'] = now; rs['done'] = True
                     self.notify(f"🧭 Risk governor switched the profile to {PRESETS[key]['name']} (open trades keep their own management)")
