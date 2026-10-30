@@ -382,3 +382,21 @@ def test_the_governor_never_switches_the_profile_while_staged(api, monkeypatch):
     e.governor_tick(); e.governor_tick()
     assert e.S['SLEEVES'] == sleeves and e.S['PRESET'] == preset
     assert len(errs) == 1 and 'refused while the F01 canary is staged' in errs[0]
+
+
+def test_staged_with_a_missing_card_refuses_every_sleeves_edit(api):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    card = copy.deepcopy(slot(e, F01))
+    e.S['SLEEVES'] = [x for x in e.S['SLEEVES'] if x['id'] != F01]                 # simulated missing stored card
+    e.save_settings()
+    others = [dict(x) for x in e.S['SLEEVES']]
+    for posted in (others + [dict(card)],                                           # re-add the frozen card
+                   others + [dict(card, enabled=True)],                             # add it switched on
+                   others + [dict(card, risk=0.02)],                                # add a replacement card
+                   others):                                                         # any other edit
+        before = snap(e)
+        with pytest.raises(ValueError, match='stored C-F01 card is missing'):
+            A.handle('/api/sleeves', dict(sleeves=posted))
+        assert snap(e) == before and FA._slot(e.S) is None
+        assert FA._slot(json.load(open(e.F['settings'], encoding='utf-8'))) is None

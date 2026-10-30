@@ -181,7 +181,9 @@ def sleeves_guard(S, new_sleeves, normalize):
     if FC.CANARY_KEY not in (S or {}):
         if new is not None and new.get('enabled') and (cur or {}).get('enabled') is not True: raise ValueError(ENABLE_HINT)
         return new_sleeves
-    if cur is None: return new_sleeves                  # nothing to freeze (stage requires the slot; preflight refuses)
+    if cur is None:                                     # staged without its card = corruption / manual edit: fail closed
+        raise ValueError('the F01 canary is staged but the stored C-F01 card is missing - slot edits are refused '
+                         'until Integration recovers it (fail closed)')
     if new is None: raise ValueError('the C-F01 card is frozen while the F01 canary is staged - it cannot be removed')
     was, now = cur.get('enabled') is True, new.get('enabled') is True
     if now and not was: raise ValueError(ENABLE_HINT)
