@@ -26,10 +26,16 @@ else is policy).
   gate_inputs the pure decide()-shaped dict (data incl. the credited stage's and book's own data state, activity, B0,
               H1-H3, book DD tier, tails, causality / accounting checks); run() assembles it, never evaluates it.
   CLI         main(): the real edge05 ArchiveSource (signed manifest index) and PitRules (rules artifact bound to its
-              rules-source manifest), every input file checked against an expected sha256; --max-rss-mb mandatory; a
-              dirty tree refused (no override flag). Every --authorization request is refused (no committed,
-              identity-pinned verifier exists yet; nothing is imported by name), so it runs preflight / identity /
-              metadata-coverage checks only, opens no archive, writes nothing and exits.
+              rules-source manifest) or, development only (Codex ruling 6497964865), --prospective-rules: ONE committed
+              raw exchangeInfo snapshot (tracked, raw bytes == HEAD, --expect-prospective-rules-sha256; never with the
+              PIT flags) for every bar, its mode / sha256 / path bound in rules_identity, run.json and the result, and
+              every packet labelled non_promotable_rules=prospective; its onboardDate is the only listing source the
+              listing-aware coverage_report() accepts. Every input file checked against an expected sha256;
+              --max-rss-mb mandatory; a dirty tree refused (no override flag). Without --authorization it runs
+              preflight / identity / metadata-coverage checks only, opens no archive, writes nothing and exits. --authorization is checked
+              by load_authorization(), the committed verifier (nothing is imported by name): a canonical
+              zb-eval-authorization/1 artifact under research_evidence/authorizations/, byte-identical to HEAD,
+              hash-pinned by --expect-authorization-sha256 and bound to the signed contract and the code commit.
 
 Disclosures (Codex 6478332951; also emitted in every result dict and in run.json as `disclosures`):
   1. B0 is not path-identical to E: E (and the book) permanently stop re-arming a symbol after an INCOMPLETE episode,
@@ -54,6 +60,7 @@ import json
 import math
 import os
 import random
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -145,6 +152,10 @@ class BaselineIncomplete(RunnerError):
 
 class WriteRefused(RunnerError):
     pass
+
+
+class AuthorizationRefused(WriteRefused):
+    """load_authorization(): the artifact is not a committed, hash-pinned Integration authorization for this run."""
 
 
 class SourceUncovered(RunnerError):
@@ -332,23 +343,39 @@ def preflight(repo: str = REPO, *, git=None, manifest_check=None, allow_dirty_te
 class Windows:
     dev_start: int
     last_entry: int                      # no entry fill at or after this
-    sealed: int                          # nothing at or after this is read
+    sealed: int                          # holdout boundary (unchanged by any amendment); never read at or after
     slices: tuple                        # ((start, end), ...) by entry fill
     warmup_bars: int = 240
+    dev_end: int | None = None           # signed amendment only: development (= read) end, exclusive; None -> sealed
+    amendment: 'Amendment | None' = None
+
+    @property
+    def end(self) -> int:
+        """The read end: nothing at or after it is read (the amendment dev_end, else the sealed cutoff)."""
+        return self.sealed if self.dev_end is None else self.dev_end
 
     @staticmethod
-    def of(p: dict) -> 'Windows':
+    def of(p: dict, amendment: 'Amendment | None' = None) -> 'Windows':
         w = p['windows']
         sealed = iso_ms(w['sealed_cutoff'])
         lec = w['last_entry_cutoff']
-        last = sealed - lec['bars'] * lec['bar_hours'] * HOUR
+        buf = lec['bars'] * lec['bar_hours'] * HOUR
+        last = sealed - buf
         if last != iso_ms(lec['at']) or iso_ms(w['development']['end']) != sealed:
             raise PreregInvalid('last-entry cutoff / development end inconsistent with the sealed cutoff')
         sl = tuple((iso_ms(s['start']), iso_ms(s['end'])) for s in w['slices'])
         if sl[0][0] != iso_ms(w['development']['start']) or sl[-1][1] != sealed or \
                 any(a[1] != b[0] for a, b in zip(sl, sl[1:])):
             raise PreregInvalid('slices are not contiguous over the development window')
-        return Windows(sl[0][0], last, sealed, sl, 240)
+        if amendment is None:
+            return Windows(sl[0][0], last, sealed, sl, 240)
+        if not isinstance(amendment, Amendment):
+            raise RunnerError('a shortened development end comes only from a loaded, signed Amendment')
+        de, le = amendment.dev_end, amendment.last_entry
+        if amendment.sealed != sealed or de > sealed or not sl[-1][0] < le < de or le != de - buf:
+            raise PreregInvalid('amendment dev_end / last_entry inconsistent with the frozen windows '
+                                '(dev_end <= sealed, last_entry == dev_end - the frozen 180x4h buffer)')
+        return Windows(sl[0][0], le, sealed, sl[:-1] + ((sl[-1][0], de),), 240, de, amendment)
 
     def slice_of(self, t: int):
         for k, (a, b) in enumerate(self.slices, 1):
@@ -414,8 +441,8 @@ def prepare_symbol(sym: str, bars, windows: Windows, funding=(), fund_runs=None)
     (no forward fill across a gap); a bar at or after the sealed cutoff is refused, never read."""
     import pandas as pd
     bars = sorted(bars)
-    if any(b[0] >= windows.sealed for b in bars) or any(e[0] >= windows.sealed for e in funding):
-        raise HoldoutRefused(f'{sym}: input reaches the sealed cutoff')
+    if any(b[0] >= windows.end for b in bars) or any(e[0] >= windows.end for e in funding):
+        raise HoldoutRefused(f'{sym}: input reaches the sealed cutoff / amended development end')
     if any(b[0] % TF for b in bars) or len({b[0] for b in bars}) != len(bars):
         raise RunnerError(f'{sym}: bars are not unique 4h opens')
     t = [int(b[0]) for b in bars]
@@ -1245,7 +1272,7 @@ def book_metrics(bk: dict, windows: Windows) -> dict:
         crdd = max(crdd, peak - cum)
     uw = underwater_days(bk['equity_seq'])                    # same sequence as max equity DD (ruling 4 amended)
     end = bk['end_equity_closed']
-    years = (windows.sealed - windows.dev_start) / (365.25 * DAY_MS)
+    years = (windows.end - windows.dev_start) / (365.25 * DAY_MS)
     ann = (end / START_EQUITY) ** (1 / years) - 1 if end > 0 and years > 0 else -1.0
     dd = bk['max_equity_dd']
     tot = math.fsum(rs)
@@ -1292,7 +1319,7 @@ def book_causality(bk: dict, windows: Windows) -> dict:
               'equity_sequence_causal': all(a <= b for a, b in zip(st, st[1:])),
               'events_causal': all(a <= b for a, b in zip(et, et[1:])),
               'entries_inside_window': all(windows.entry_ok(x['t_entry']) for x in bk['trades']),
-              'exits_before_seal': all(x['t_entry'] <= x['t_exit'] < windows.sealed for x in bk['trades'])}
+              'exits_before_seal': all(x['t_entry'] <= x['t_exit'] < windows.end for x in bk['trades'])}
     return {'checks': checks, 'pass': all(checks.values())}
 
 
@@ -1384,15 +1411,16 @@ def load_symbol(src, sym: str, windows: Windows, *, warmup_start: int, check=Non
     Funding: nominal grid (t_nom), proven runs (funding_runs), funding-mark-proxy-v1 = close of the 1h mark bar
     ending at T (nan when absent -> the episode charged there is INCOMPLETE)."""
     import edge05_runner as E5
-    g = E5.Guard(src, windows.sealed)
-    g.scope(warmup_start, windows.sealed)
+    hi = windows.end                                # the amendment dev_end when one is bound: the guard refuses past it
+    g = E5.Guard(src, hi)
+    g.scope(warmup_start, hi)
     try:
         bars = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume)
-                for b in g.bars(sym, '4h', warmup_start, windows.sealed)]
+                for b in g.bars(sym, '4h', warmup_start, hi)]
         if check:
             check()
-        raw_f = g.funding(sym, warmup_start, windows.sealed)
-        raw_m = g.mark(sym, warmup_start, windows.sealed)
+        raw_f = g.funding(sym, warmup_start, hi)
+        raw_m = g.mark(sym, warmup_start, hi)
     except E5.Incomplete as e:                     # e.g. the never-opened straddle month without a covering artifact
         raise SourceUncovered(f'{sym}: source rows {e.reason} from {_iso(e.at_ms)}; refusing (fail closed)') from None
     digest = rows_digest(sym, bars, [(r.time_ms, r.rate, r.interval_hours) for r in raw_f],
@@ -1441,11 +1469,239 @@ def rules_identity(rules) -> dict:
     h = ident.get('sha256') if isinstance(ident, dict) else None
     if not (isinstance(h, str) and len(h) == 64 and all(ch in '0123456789abcdef' for ch in h)):
         raise RunnerError('the point-in-time rules have no immutable identity (sha256); refusing')
+    if ident.get('mode', None) == PROSPECTIVE:      # BPYR-INPUTS-01: the bound committed snapshot, labelled
+        rel = ident.get('snapshot_path')
+        if ident.get('non_promotable_rules') != PROSPECTIVE or not (isinstance(rel, str) and rel) \
+                or not isinstance(ident.get('skipped_symbols'), dict) \
+                or ident.get('rules_source') != {'kind': PROSPECTIVE_KIND, 'path': rel, 'sha256': h}:
+            raise RunnerError('the prospective rules identity is incomplete (label / path / sha256 / skips); refusing')
+        return json.loads(canon(ident))
     for k in RULES_ZERO_KEYS:                       # N7: present and exactly 0; absence is not a clean state
         v = ident.get(k, None)
         if type(v) is not int or v != 0:
             raise RunnerError(f'the point-in-time rules identity needs {k} == 0 (got {v!r})')
     return json.loads(canon(ident))
+
+
+# ------------------------------------------------------------------ prospective rules (Codex ruling 6497964865)
+PROSPECTIVE = 'prospective'
+PROSPECTIVE_RULING = '6497964865'
+PROSPECTIVE_KIND = 'committed-exchangeinfo-snapshot'
+
+
+class ProspectiveRules:
+    """Development-only current-rule feasibility (Codex ruling 6497964865 item 1; the reviewed EDGE05 mechanism of
+    6495672591 ported, not imported): ONE committed raw exchangeInfo snapshot supplies the tuple for every 4h bar of
+    every symbol. Only the PIT causality requirement (snapshot as_of <= interval start) is bypassed; fields are parsed
+    exactly as edge05 `snapshot_rule_tuple`. A symbol absent from the snapshot, a missing / non-numeric field or an
+    invalid value is a counted skip (lookup -> None -> rules_uncovered), never a default. The same authenticated bytes
+    supply `symbols[].onboardDate` (listing_ms), the only listing source coverage_report() accepts; a missing or
+    invalid onboardDate is a counted listing skip. Every packet built on it is labelled non-promotable."""
+
+    mode = PROSPECTIVE
+
+    def __init__(self, raw: bytes, rel: str, symbols):
+        import edge05_runner as E5
+        self.sha256, self.rel = sha(raw), rel
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            raise RunnerError('prospective rules snapshot is not JSON') from None
+        want = set(symbols)
+        tuples = E5.snapshot_tuples(doc, want)          # refuses a non-exchangeInfo doc or a duplicated symbol
+        onboard = {e['symbol']: e.get('onboardDate') for e in doc['symbols']
+                   if isinstance(e, dict) and e.get('symbol') in want}
+        self._rule, self.skips, self.listing, self.listing_skips = {}, {}, {}, {}
+        for s in sorted(want):
+            t = tuples.get(s, False)
+            if t is False:
+                self.skips[s] = self.listing_skips[s] = 'absent_from_snapshot'
+                continue
+            if t is None:
+                self.skips[s] = 'missing_or_non_numeric_field'
+            else:
+                r = dict(zip(E5.RULE_KEYS, t))
+                if not all(math.isfinite(v) for v in t) or r['tick'] <= 0 or r['step'] <= 0 or r['min_qty'] < 0 \
+                        or r['min_notional'] < 0 or r['max_qty'] <= 0 or r['max_notional'] <= 0:
+                    self.skips[s] = 'invalid_value'
+                else:
+                    self._rule[s] = dict(r, snapshot=rel)
+            ob = onboard.get(s)
+            if type(ob) is int and 0 < ob < 2 ** 53:
+                self.listing[s] = ob
+            else:
+                self.listing_skips[s] = 'onboard_date_missing_or_invalid'
+        self.digest = sha(canon({s: [r[k] for k in E5.RULE_KEYS] for s, r in sorted(self._rule.items())}))
+        self.source = {'kind': PROSPECTIVE_KIND, 'path': rel, 'sha256': self.sha256}
+
+    @classmethod
+    def load(cls, path: str, expect_sha256: str | None, symbols, repo: str = REPO,
+             max_mb: float | None = None) -> 'ProspectiveRules':
+        """Fail-closed: the 64-hex expected sha256 is mandatory and must equal the file bytes; the file sits inside
+        the repo, is tracked, and its raw bytes equal `git show HEAD:<path>` (bytes mode, never text-decoded)."""
+        import edge05_runner as E5
+        if not isinstance(expect_sha256, str) or not E5.HEX64.match(expect_sha256):
+            raise RunnerError('--prospective-rules needs --expect-prospective-rules-sha256 (64 lowercase hex)')
+        ap = os.path.realpath(path)
+        rel = os.path.relpath(ap, os.path.realpath(repo)).replace(os.sep, '/')
+        if rel == '..' or rel.startswith('../') or os.path.isabs(rel):
+            raise RunnerError('prospective rules snapshot must be a file inside the repo')
+        try:
+            size = os.path.getsize(ap)
+        except OSError:
+            raise RunnerError('prospective rules snapshot: file missing') from None
+        if size > E5.SNAPSHOT_MAX_BYTES:
+            raise RunnerError(f'prospective rules snapshot: {size} bytes exceeds the {E5.SNAPSHOT_MAX_BYTES} bound')
+        if max_mb is not None and size * E5.SNAPSHOT_EXPAND > (max_mb - E5.rss_mb()) * 2 ** 20:
+            raise MemoryLimit('prospective rules snapshot: parsing would exceed --max-rss-mb; refused before reading')
+        with open(ap, 'rb') as fh:
+            raw = fh.read()
+        if sha(raw) != expect_sha256:
+            raise RunnerError('prospective rules snapshot sha256 differs from --expect-prospective-rules-sha256')
+        try:
+            subprocess.run(['git', '-C', repo, 'ls-files', '--error-unmatch', '--', rel], capture_output=True,
+                           check=True)
+            head = subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel}'], capture_output=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            raise RunnerError(f'prospective rules snapshot {rel} is not committed (untracked or absent at HEAD)') \
+                from None
+        if head != raw:
+            raise RunnerError(f'prospective rules snapshot {rel}: working bytes differ from HEAD (modified)')
+        return cls(raw, rel, symbols)
+
+    def identity(self) -> dict:
+        return {'mode': PROSPECTIVE, 'ruling': PROSPECTIVE_RULING, 'non_promotable_rules': PROSPECTIVE,
+                'snapshot_path': self.rel, 'sha256': self.sha256, 'rules_source': dict(self.source),
+                'causality': 'bypassed (current-rule feasibility; snapshot as_of not <= interval start)',
+                'symbols_with_rules': len(self._rule), 'skipped_symbols': dict(sorted(self.skips.items())),
+                'skipped_by_reason': {r: sum(1 for v in self.skips.values() if v == r)
+                                      for r in sorted(set(self.skips.values()))},
+                'snapshot_tuple_digest': self.digest,
+                'onboard_dates': {s: _iso(v) for s, v in sorted(self.listing.items())},
+                'listing_skips': dict(sorted(self.listing_skips.items()))}
+
+    def lookup(self, sym: str, t: int):
+        """The snapshot rule for every t; None (-> rules_uncovered, counted) for a skipped symbol."""
+        r = self._rule.get(sym)
+        return dict(r) if r is not None else None
+
+    def listing_ms(self, sym: str):
+        """onboardDate (ms) from the bound snapshot, or None (never guessed)."""
+        return self.listing.get(sym)
+
+
+AMENDMENT_FORMAT = 'zb-bpyr-amendment/1'
+AMENDMENT_RULING = '6498348689'
+AMENDMENT_REF = f'codex: MoeAZack/ZackBot2 issuecomment-{AMENDMENT_RULING}'
+AMENDMENT_DEV_END = '2026-09-01T00:00:00Z'          # exclusive (ruling 6498348689, GO A)
+AMENDMENT_LAST_ENTRY = '2026-08-02T00:00:00Z'       # exclusive; dev_end - the frozen 180x4h buffer
+AMENDMENT_SEALED = '2026-09-28T00:00:00Z'           # unchanged holdout boundary
+AMENDMENT_KEYS = frozenset({'format', 'candidate_id', 'prereg_sha256', 'dev_end', 'last_entry', 'sealed_cutoff',
+                            'signed', 'signed_by', 'status', 'reason'})
+AMENDMENT_MAX_BYTES = 65536
+
+
+@dataclass(frozen=True)
+class Amendment:
+    """`zb-bpyr-amendment/1` (Codex ruling 6498348689, GO A): the ONLY route to a shortened BPYR development end. Built
+    only by Amendment.load() from a committed, raw-byte-pinned record. Development (and every read) ends at dev_end
+    2026-09-01 exclusive; the last new entry is before 2026-08-02 (the frozen 180x4h close buffer preserved); the sealed
+    holdout boundary 2026-09-28 is unchanged. An episode unresolved at dev_end stays INCOMPLETE (boundary) and is
+    charged to the 2% per-slice data gate as before: nothing is waived or relabelled."""
+    sha256: str
+    rel: str
+    prereg_sha256: str
+    dev_end: int
+    last_entry: int
+    sealed: int
+    signed_by: str
+
+    def identity(self) -> dict:
+        return {'format': AMENDMENT_FORMAT, 'ruling': AMENDMENT_RULING, 'path': self.rel, 'sha256': self.sha256,
+                'prereg_sha256': self.prereg_sha256, 'dev_end': _iso(self.dev_end),
+                'last_entry': _iso(self.last_entry), 'sealed_cutoff': _iso(self.sealed), 'signed_by': self.signed_by}
+
+    @classmethod
+    def load(cls, path: str, expect_sha256: str | None, pf: 'Preflight', repo: str = REPO) -> 'Amendment':
+        """Fail-closed (RunnerError) unless ALL hold: --expect-amendment-sha256 is 64 lowercase hex and equals the file
+        bytes; the real path sits directly under <repo>/research_evidence/prereg/; the path is tracked and its raw
+        bytes equal `git show HEAD:<path>` (bytes mode); the bytes are ASCII JSON without duplicate keys, keys exactly
+        AMENDMENT_KEYS, format zb-bpyr-amendment/1, this candidate, prereg_sha256 == the signed contract (pf), signed
+        true, status FROZEN..., signed_by citing issuecomment-6498348689, a reason, and dev_end / last_entry /
+        sealed_cutoff exactly the ruling's values (dev_end <= sealed, last_entry == dev_end - 180x4h)."""
+        def refuse(why):
+            raise RunnerError(f'amendment refused ({path}): {why}')
+        if not isinstance(expect_sha256, str) or len(expect_sha256) != 64 or not _HEX.fullmatch(expect_sha256):
+            refuse('--expect-amendment-sha256 (64 lowercase hex) is required')
+        if not isinstance(pf, Preflight):
+            refuse('needs a passed Preflight (the signed contract hash)')
+        root = os.path.realpath(_p(repo, PREREG_REL[:-1]))
+        real = os.path.realpath(path)
+        if os.path.dirname(real) != root or not os.path.isfile(real):
+            refuse(f'the record must be a file directly under {"/".join(PREREG_REL[:-1])}/')
+        if os.path.getsize(real) > AMENDMENT_MAX_BYTES:
+            refuse('record too large')
+        with open(real, 'rb') as fh:
+            raw = fh.read()
+        if sha(raw) != expect_sha256:
+            refuse(f'file sha256 {sha(raw)} != expected {expect_sha256}')
+        rel = '/'.join(PREREG_REL[:-1] + (os.path.basename(real),))
+        try:
+            subprocess.run(['git', '-C', repo, 'ls-files', '--error-unmatch', '--', rel], capture_output=True,
+                           check=True)
+            head = subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel}'], capture_output=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            refuse('not committed (untracked or absent at HEAD)')
+        if head != raw:
+            refuse('working bytes differ from HEAD (modified)')
+
+        def no_dupes(pairs):
+            keys = [k for k, _ in pairs]
+            if len(set(keys)) != len(keys):
+                refuse('duplicate key')
+            return dict(pairs)
+        try:
+            d = json.loads(raw.decode('ascii'), object_pairs_hook=no_dupes)
+        except (UnicodeDecodeError, ValueError):
+            refuse('not ASCII JSON')
+        if not isinstance(d, dict) or set(d) != AMENDMENT_KEYS:
+            refuse(f'keys must be exactly {sorted(AMENDMENT_KEYS)}')
+        if d['format'] != AMENDMENT_FORMAT or d['candidate_id'] != CANDIDATE:
+            refuse('wrong format / candidate_id')
+        if d['prereg_sha256'] != pf.prereg_sha256:
+            refuse('prereg_sha256 is not the signed contract hash')
+        sb, st, why = d['signed_by'], d['status'], d['reason']
+        if d['signed'] is not True or not isinstance(st, str) or not st.startswith('FROZEN'):
+            refuse('not frozen and signed (signed true, status FROZEN...)')
+        if not isinstance(sb, str) or not sb.startswith(AMENDMENT_REF) or \
+                (len(sb) > len(AMENDMENT_REF) and sb[len(AMENDMENT_REF)].isdigit()):
+            refuse(f'signed_by must cite {AMENDMENT_REF}')
+        if not isinstance(why, str) or not why.strip():
+            refuse('reason is required')
+        if (d['dev_end'], d['last_entry'], d['sealed_cutoff']) != (AMENDMENT_DEV_END, AMENDMENT_LAST_ENTRY,
+                                                                   AMENDMENT_SEALED):
+            refuse(f'dev_end / last_entry / sealed_cutoff must be exactly {AMENDMENT_DEV_END} / '
+                   f'{AMENDMENT_LAST_ENTRY} / {AMENDMENT_SEALED} (ruling {AMENDMENT_RULING})')
+        w = pf.prereg['windows']
+        lec = w['last_entry_cutoff']
+        de, le, se = iso_ms(d['dev_end']), iso_ms(d['last_entry']), iso_ms(d['sealed_cutoff'])
+        if se != iso_ms(w['sealed_cutoff']) or de > se or le != de - lec['bars'] * lec['bar_hours'] * HOUR:
+            refuse('dev_end / last_entry inconsistent with the frozen sealed cutoff and 180x4h buffer')
+        return cls(expect_sha256, rel, d['prereg_sha256'], de, le, se, sb)
+
+
+def _amendment_check(amd, prereg_sha256: str) -> None:
+    if not isinstance(amd, Amendment) or amd.prereg_sha256 != prereg_sha256:
+        raise RunnerError('the amendment is not a loaded Amendment for this signed contract')
+
+
+def is_prospective(rules) -> bool:
+    """True for ProspectiveRules or a rules_of() callable over one (its identity carries mode=prospective)."""
+    if isinstance(rules, ProspectiveRules):
+        return True
+    fn = getattr(rules, 'identity', None)
+    ident = fn() if callable(fn) else None
+    return isinstance(ident, dict) and ident.get('mode') == PROSPECTIVE
 
 
 # ------------------------------------------------------------------ run (in memory only)
@@ -1499,8 +1755,8 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
         if getattr(sd, 'sym', None) != key:
             raise IdentityMismatch(f'data[{key!r}] holds SymbolData for {getattr(sd, "sym", None)!r}')
     for sd in data.values():
-        if sd.t and sd.t[-1] >= w.sealed:
-            raise HoldoutRefused(f'{sd.sym}: bar at or after the sealed cutoff')
+        if sd.t and sd.t[-1] >= w.end:
+            raise HoldoutRefused(f'{sd.sym}: bar at or after the sealed cutoff / amended development end')
     s1 = stage_mgmt(p, 'S1')
     E = entry_set(data, w, s1, check)
     stages = {s: unit_replays(data, E, p, s, check=check) for s in STAGE_IDS}
@@ -1513,6 +1769,9 @@ def run(data: dict, pf: Preflight, *, windows: Windows | None = None, rules=None
            'stages': {s: summarize(stages[s], w) for s in STAGE_IDS},
            'S1-T': stage_quality(stages['S1-T'], p, w, resamples=resamples, check=check)['rows'],
            'folds': {s: folds_report(p, stages[s]) for s in STAGE_IDS}}
+    if w.amendment is not None:                     # bound into every result built on an amended window
+        _amendment_check(w.amendment, pf.prereg_sha256)
+        out['amendment'] = w.amendment.identity()
     means = None
     if b0_replicates:
         b0 = next(b for b in p['baselines'] if b['id'] == 'B0')
@@ -1642,9 +1901,7 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
     The symbol plan must equal the frozen universe exactly; the source must expose a non-null immutable identity
     (a 64-hex `manifest_file_sha256`), bound into run.json and re-checked before and after pass 2; every pass-2 reload
     must reproduce the per-symbol source digest recorded in its verified pass-1 chain line."""
-    if not isinstance(authorization, EvalAuthorization) or authorization.issuer != 'codex' or \
-            authorization.prereg_sha256 != pf.prereg_sha256 or not str(authorization.comment_id).isdigit():
-        raise WriteRefused('execute() needs an Integration EvalAuthorization for this signed contract')
+    _require_authorization(authorization, pf.prereg_sha256, 'execute()')
     if pf.code.get('dirty'):
         raise DirtyTree('the code tree is dirty; commit first')
     if max_rss_mb is None or not (isinstance(max_rss_mb, (int, float)) and math.isfinite(max_rss_mb) and max_rss_mb > 0):
@@ -1679,9 +1936,17 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
              'sources': pf.sources, 'symbols': plan, 'windows': [w.dev_start, w.last_entry, w.sealed, list(w.slices)],
              'warmup_start': ws, 'slip': {'c': SLIP_C_CRYPTO, 'floor_bps': SLIP_FLOOR_BPS}, 'rows': list(ROWS),
              'b0_replicates': b0_replicates, 'resamples': resamples, 'disclosures': list(DISCLOSURES),
-             'parity_declared': list(PARITY_DECLARED), 'authorization': [authorization.issuer, authorization.comment_id],
+             'parity_declared': list(PARITY_DECLARED), 'authorization': authorization_identity(authorization),
              'source_identity': src_id, 'rules_identity': rules_id, 'universe': universe,
              'boundaries': {'holdout_read': False, 'ledger_written': False, 'verdict_written': False, 'mainnet': False}}
+    pro = rules_id.get('mode') == PROSPECTIVE
+    if pro:                                         # BPYR-INPUTS-01: non-promotable, bound mode / sha256 / path
+        ident.update(_prospective_label(rules_id))
+    amd = w.amendment
+    if amd is not None:                             # ruling 6498348689: the signed amendment is part of the identity
+        _amendment_check(amd, pf.prereg_sha256)
+        ident['amendment'] = amd.identity()
+        ident['dev_end'] = w.end
     os.makedirs(outdir, exist_ok=True)
     idp = os.path.join(outdir, 'run.json')
     ib = json.dumps(ident, sort_keys=True, indent=1).encode('ascii') + b'\n'
@@ -1714,6 +1979,10 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
                                   'incomplete': [x['reason'] for x in r_['incomplete']]} for s, r_ in reps.items()}}
             del sd, E, reps
             check()
+            if pro:
+                rec['non_promotable_rules'] = PROSPECTIVE
+            if amd is not None:
+                rec['amendment_sha256'] = amd.sha256
             prev = rec['hash'] = sha(canon(rec))
             _fsync_append(fh, canon(rec) + b'\n')
             if stop_after is not None and n + 1 - done >= stop_after:
@@ -1736,8 +2005,18 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
     res['identity_sha256'] = run_digest
     res['source_identity'] = src_id
     res['rules_identity'] = rules_id
+    if pro:
+        res.update(_prospective_label(rules_id), promotable=False)
+    if amd is not None:
+        res['amendment'] = amd.identity()
     res['evaluated'], res['decided'] = True, False     # authorized market-data statistics; no decision / verdict
     return res
+
+
+def _prospective_label(rules_id: dict) -> dict:
+    """The non-promotable label every prospective-rules packet carries (run.json, each chain line, the result)."""
+    return {'rules_mode': PROSPECTIVE, 'non_promotable_rules': PROSPECTIVE,
+            'rules_snapshot': {'path': rules_id['snapshot_path'], 'sha256': rules_id['sha256']}}
 
 
 def source_identity(src) -> dict:
@@ -1756,20 +2035,43 @@ class MemoryLimit(RunnerError):
 # ------------------------------------------------------------------ guarded write
 @dataclass(frozen=True)
 class EvalAuthorization:
-    """Issued only by Integration (codex) for an authorized evaluation; nothing in this module constructs one."""
+    """Issued only by Integration (codex) for an authorized evaluation; only load_authorization()
+    constructs one, from a committed, hash-pinned artifact it has verified."""
     issuer: str
     comment_id: str
     prereg_sha256: str
+    artifact_sha256: str | None = None       # set by load_authorization(); bound into run.json with the rest
+    code_commit: str | None = None
+    scope: tuple = ()
+
+
+def _require_authorization(tok, prereg_sha256, where: str) -> None:
+    """Fail-closed check of a COMPLETE verified token: issuer codex, ASCII-digit comment_id, this signed contract,
+    a 64-hex artifact_sha256, a 40-hex code_commit and scope exactly ('development',). A token missing any field
+    (or forged with another scope) is refused before anything is read or written."""
+    if not isinstance(tok, EvalAuthorization):
+        raise WriteRefused(f'{where}: no Integration evaluation authorization: results stay in memory')
+    cid, a, cc = tok.comment_id, tok.artifact_sha256, tok.code_commit
+    if tok.issuer != 'codex' or not isinstance(cid, str) or not cid.isascii() or not cid.isdigit() or \
+            tok.prereg_sha256 != prereg_sha256:
+        raise WriteRefused(f'{where}: authorization is not an Integration token for this signed contract')
+    if not isinstance(a, str) or len(a) != 64 or not _HEX.fullmatch(a) or \
+            not isinstance(cc, str) or len(cc) != 40 or not _HEX.fullmatch(cc) or \
+            not isinstance(tok.scope, tuple) or tok.scope not in AUTH_SCOPES:
+        raise WriteRefused(f'{where}: incomplete authorization (artifact_sha256 / code_commit / scope '
+                           f'{[list(x) for x in AUTH_SCOPES]} are all required)')
+
+
+def authorization_identity(tok: EvalAuthorization) -> dict:
+    """The complete verified authorization as bound into run.json (a resume under another one fails identity)."""
+    return {'issuer': tok.issuer, 'comment_id': tok.comment_id, 'prereg_sha256': tok.prereg_sha256,
+            'artifact_sha256': tok.artifact_sha256, 'code_commit': tok.code_commit, 'scope': list(tok.scope)}
 
 
 def write_result(result: dict, path: str, *, authorization: EvalAuthorization | None = None) -> str:
     """The only write path. Refuses without an Integration EvalAuthorization bound to this signed contract, and
     never writes a verdict, a ledger row or a registry line."""
-    if not isinstance(authorization, EvalAuthorization):
-        raise WriteRefused('no Integration evaluation authorization: results stay in memory')
-    if authorization.issuer != 'codex' or not str(authorization.comment_id).isdigit() or \
-            authorization.prereg_sha256 != result.get('prereg_sha256'):
-        raise WriteRefused('authorization is not an Integration token for this signed contract')
+    _require_authorization(authorization, result.get('prereg_sha256'), 'write_result()')
     ap = os.path.abspath(path)
     ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
     if os.path.commonpath([ap, ledger_dir]) == ledger_dir or 'verdict' in os.path.basename(ap).lower() \
@@ -1826,6 +2128,15 @@ def build_sources(a, manifest_path: str, symbols, cutoff_ms: int):
                                        'binance-vision-archive') if a.straddle_daily_manifest else None
         src.attach_straddle(E5.StraddleArtifact.load(a.straddle_artifact, cutoff_ms), daily)
     pit = None
+    pit_args = (a.rules_artifact, a.expect_rules_sha256, a.rules_source_manifest, a.expect_rules_source_sha256,
+                a.rules_snapshot_root)
+    if a.prospective_rules and any(x is not None for x in pit_args):
+        raise RunnerError('--prospective-rules is mutually exclusive with the PIT rules arguments')
+    if a.expect_prospective_rules_sha256 is not None and not a.prospective_rules:
+        raise RunnerError('--expect-prospective-rules-sha256 without --prospective-rules')
+    if a.prospective_rules:
+        return src, ProspectiveRules.load(a.prospective_rules, a.expect_prospective_rules_sha256, symbols,
+                                          max_mb=a.max_rss_mb)
     if a.rules_artifact:
         _expect(a.rules_artifact, a.expect_rules_sha256, 'rules')
         if not a.rules_source_manifest:
@@ -1838,14 +2149,31 @@ def build_sources(a, manifest_path: str, symbols, cutoff_ms: int):
 
 def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
     """Metadata-only readiness (no archive opened, no row read): per symbol and series the manifest's monthly files
-    must tile [lo, sealed) up to the never-opened straddle month, whose pre-cutoff part needs GOOD (re-counted and
-    authenticated) straddle-artifact coverage; the rules artifact must carry no bad / unauthenticated / unsupported
-    entry and resolve every symbol at the first and the last possible entry time."""
-    hi, gaps = windows.sealed, []
+    must tile [start, sealed) up to the never-opened straddle month, whose pre-cutoff part needs GOOD (re-counted and
+    authenticated) straddle-artifact coverage; the rules must carry no bad / unauthenticated / unsupported entry
+    (PIT) and resolve every symbol at its first and the last possible entry time.
+
+    start = lo (the warm-up start), except the signed prereg rule "symbols listed later simply start later" (Codex
+    ruling 6497964865): a series starts at the symbol's listing L instead ONLY when L comes from the bound,
+    authenticated prospective snapshot (onboardDate), L > lo, and the first archived month of that series contains L.
+    L moves only the initial boundary: a series of an already-listed symbol missing its early months (first month
+    after L's month), an onboardDate later than the first archived month, and every post-start hole still refuse.
+    Without a bound snapshot (PIT rules) nothing changes. rules_gaps checks a late symbol at max(dev_start, L)."""
+    hi, gaps, listing = windows.end, [], {}
+    listing_of = pit.listing_ms if isinstance(pit, ProspectiveRules) else (lambda s: None)
     for sym in sorted(symbols):
+        L = listing_of(sym)
         for kind in SERIES_KINDS:
+            ents = src.index.get((sym, kind), ())
             cur = lo
-            for m_lo, m_hi, *_ in src.index.get((sym, kind), ()):
+            if L is not None and L > lo:
+                ok = bool(ents) and ents[0][0] <= L < ents[0][1]
+                listing.setdefault(sym, {'onboard_date': _iso(L), 'source': PROSPECTIVE_KIND, 'series': {}})
+                listing[sym]['series'][kind] = {'start': _iso(L) if ok else _iso(lo),
+                                                'first_month': _iso(ents[0][0]) if ents else None, 'admitted': ok}
+                if ok:
+                    cur = L
+            for m_lo, m_hi, *_ in ents:
                 if m_hi <= cur:
                     continue
                 if m_lo > cur:
@@ -1862,21 +2190,129 @@ def coverage_report(src, pit, symbols, lo: int, windows: Windows) -> dict:
     else:
         rid = pit.identity()
         at = rules_of(pit)
+        first = {s: max(windows.dev_start, listing_of(s) or windows.dev_start) for s in symbols}
         rules_gaps = [s for s in sorted(symbols)
-                      if at(s, windows.dev_start) is None or at(s, windows.last_entry - TF) is None]
-        rules_ok = not rules_gaps and not any(rid[k] for k in ('bad_coverage_entries', 'unauthenticated_entries',
-                                                               'causally_unsupported_intervals', 'unsourced_intervals'))
-    return {'series_gaps': gaps, 'rules_present': pit is not None, 'rules_gaps': rules_gaps, 'rules_ok': rules_ok,
-            'straddle_files_never_opened': src.straddle_skipped, 'ready': not gaps and rules_ok}
+                      if at(s, first[s]) is None or at(s, windows.last_entry - TF) is None]
+        rules_ok = not rules_gaps and (isinstance(pit, ProspectiveRules) or not any(
+            rid[k] for k in ('bad_coverage_entries', 'unauthenticated_entries', 'causally_unsupported_intervals',
+                             'unsourced_intervals')))
+    out = {'series_gaps': gaps, 'rules_present': pit is not None, 'rules_gaps': rules_gaps, 'rules_ok': rules_ok,
+           'straddle_files_never_opened': src.straddle_skipped, 'listing_boundaries': listing,
+           'ready': not gaps and rules_ok}
+    if isinstance(pit, ProspectiveRules):
+        out['rules_mode'] = out['non_promotable_rules'] = PROSPECTIVE
+    if windows.amendment is not None:
+        out['coverage_end'] = _iso(hi)
+        out['amendment_sha256'] = windows.amendment.sha256
+    return out
 
 
-def load_authorization(path: str, pf: Preflight) -> EvalAuthorization:
-    """Fail-closed. No module is imported by name (PYTHONPATH / site-packages sit outside the dirty-tree check and
-    the frozen code identity, so any such loader would be forgeable). A real evaluation needs a committed,
-    identity-pinned verifier for a hash/signature-bound Integration authorization artifact; until Integration
-    defines one, every --authorization request is refused here."""
-    raise WriteRefused(f'no committed, identity-pinned authorization verifier exists ({path}); evaluation refused '
-                       '(preflight-only is available without --authorization)')
+AUTH_FORMAT = 'zb-eval-authorization/1'
+AUTH_DIR_REL = ('research_evidence', 'authorizations')
+AUTH_KEYS = frozenset({'format', 'candidate_id', 'prereg_sha256', 'issuer', 'comment_id', 'code_commit', 'scope'})
+AUTH_SCOPES = (('development',),)        # execute() runs the whole development window; nothing narrower exists
+_HEX = re.compile(r'[0-9a-f]+')
+
+
+def authorization_bytes(fields: dict) -> bytes:
+    """The canonical artifact bytes (canon(fields) + LF) Integration commits; no EvalAuthorization is made here."""
+    return canon(fields) + b'\n'
+
+
+def load_authorization(path: str, pf: Preflight, *, expect_sha256: str | None = None, repo: str = REPO,
+                       git=None) -> EvalAuthorization:
+    """The committed, identity-pinned verifier. Fail-closed (AuthorizationRefused) unless ALL hold:
+      * pin     expect_sha256 (CLI --expect-authorization-sha256) is 64 lowercase hex and equals sha256(file bytes);
+      * place   the real path sits directly under <repo>/research_evidence/authorizations/ (no symlink escape);
+      * commit  the path is tracked, holds no CR byte, and its raw bytes equal `git show HEAD:<path>`; HEAD is the
+                preflight commit; artifact.code_commit is a STRICT ancestor of HEAD and
+                `git diff --no-renames --name-only code_commit HEAD` is
+                exactly this artifact (the artifact cannot name the commit that contains it, so Integration commits
+                it on top of the code commit it authorizes, and nothing else may change in between);
+      * form    the bytes are canonical (authorization_bytes), keys exactly AUTH_KEYS, format zb-eval-authorization/1,
+                candidate_id this candidate, prereg_sha256 == the signed contract hash, issuer 'codex', comment_id
+                ASCII digits (the issuing GitHub comment), code_commit 40 lowercase hex, scope ['development'].
+    No module is imported by name (PYTHONPATH / site-packages sit outside the dirty-tree check and the frozen code
+    identity, so any such loader would be forgeable). `git(*args) -> stdout` is injectable for tests; the returned
+    token carries artifact_sha256 / code_commit / scope, all bound into run.json by execute()."""
+    def refuse(why):
+        raise AuthorizationRefused(f'authorization refused ({path}): {why}')
+
+    def real_git(*a):
+        try:
+            return subprocess.run(['git', '-C', repo, *a], capture_output=True, text=True, encoding='utf-8',
+                                  check=True).stdout
+        except (OSError, subprocess.CalledProcessError, UnicodeError) as e:      # A2: undecodable git output
+            refuse(f'git {a[0]} failed ({e})')
+    def real_show(rel_):                                     # A1: bytes mode; text mode would fold CRLF / lone CR
+        try:
+            return subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel_}'], capture_output=True,
+                                  check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as e:
+            refuse(f'git show failed ({e})')
+    g = git or real_git
+    if not isinstance(expect_sha256, str) or len(expect_sha256) != 64 or not _HEX.fullmatch(expect_sha256):
+        refuse('--expect-authorization-sha256 (64 lowercase hex) is required')
+    root = os.path.realpath(_p(repo, AUTH_DIR_REL))
+    real = os.path.realpath(path)
+    if os.path.dirname(real) != root or not os.path.isfile(real):
+        refuse(f'the artifact must be a file directly under {"/".join(AUTH_DIR_REL)}/')
+    with open(real, 'rb') as f:
+        raw = f.read()
+    if sha(raw) != expect_sha256:
+        refuse(f'file sha256 {sha(raw)} != expected {expect_sha256}')
+    rel = '/'.join(AUTH_DIR_REL + (os.path.basename(real),))
+    if g('ls-files', '--', rel).strip() != rel:
+        refuse('the artifact is not tracked (commit it)')
+    if b'\r' in raw:                                         # A1: canonical bytes are raw ASCII with LF only
+        refuse('CR byte in the artifact (canonical bytes are LF-only)')
+    body = raw
+    try:                                                     # injected test git returns str; the real path is raw bytes
+        committed = g('show', f'HEAD:{rel}').encode('utf-8') if git else real_show(rel)
+    except UnicodeError as e:
+        refuse(f'HEAD:{rel} is not decodable ({e})')
+    if committed != body:
+        refuse('the working-tree artifact differs from HEAD (modified or uncommitted)')
+    head = g('rev-parse', 'HEAD').strip()
+    if head != pf.code.get('commit'):
+        refuse(f'HEAD {head} is not the preflight commit {pf.code.get("commit")}')
+
+    def no_dupes(pairs):
+        keys = [k for k, _ in pairs]
+        if len(set(keys)) != len(keys):
+            refuse('duplicate key')
+        return dict(pairs)
+    try:
+        d = json.loads(body.decode('ascii'), object_pairs_hook=no_dupes)
+    except (UnicodeDecodeError, ValueError):
+        refuse('not ASCII JSON')
+    if not isinstance(d, dict) or set(d) != AUTH_KEYS:
+        refuse(f'keys must be exactly {sorted(AUTH_KEYS)}')
+    if authorization_bytes(d) != body:
+        refuse('not canonical (sorted keys, compact separators, ASCII, one trailing LF)')
+    if d['format'] != AUTH_FORMAT or d['candidate_id'] != CANDIDATE:
+        refuse('wrong format / candidate_id')
+    if d['prereg_sha256'] != pf.prereg_sha256:
+        refuse('prereg_sha256 is not the signed contract hash')
+    if d['issuer'] != 'codex':
+        refuse('issuer is not codex (Integration)')
+    cid, cc, scope = d['comment_id'], d['code_commit'], d['scope']
+    if not isinstance(cid, str) or not cid.isascii() or not cid.isdigit():
+        refuse('comment_id must be an ASCII-digit string')
+    if not isinstance(cc, str) or len(cc) != 40 or not _HEX.fullmatch(cc):
+        refuse('code_commit must be 40 lowercase hex')
+    if not isinstance(scope, list) or tuple(scope) not in AUTH_SCOPES:
+        refuse(f'scope must be one of {[list(x) for x in AUTH_SCOPES]}')
+    if cc == head:
+        refuse(f'code_commit {cc} is HEAD; it must be a strict ancestor (the artifact is committed on top of it)')
+    try:
+        g('merge-base', '--is-ancestor', cc, head)
+    except AuthorizationRefused:
+        refuse(f'code_commit {cc} is not an ancestor of HEAD')
+    if sorted(x for x in g('diff', '--no-renames', '--name-only', cc, head).split('\n') if x.strip()) != [rel]:   # A3
+        refuse(f'code_commit {cc} differs from HEAD in more than this artifact')
+    return EvalAuthorization('codex', cid, d['prereg_sha256'], artifact_sha256=expect_sha256, code_commit=cc,
+                             scope=tuple(scope))
 
 
 def _runlock(out: str, universe: str, argv):
@@ -1900,24 +2336,35 @@ def main(argv=None, *, _inject=None) -> int:
     ap.add_argument('--rules-source-manifest', help='exchangeInfo snapshot list (zb-upstream-source-manifest)')
     ap.add_argument('--expect-rules-source-sha256')
     ap.add_argument('--rules-snapshot-root')
+    ap.add_argument('--prospective-rules', help='DEVELOPMENT ONLY (ruling 6497964865): one committed raw exchangeInfo '
+                                                'snapshot used for every bar; non-promotable')
+    ap.add_argument('--expect-prospective-rules-sha256', help='sha256 of the committed prospective rules snapshot')
     ap.add_argument('--straddle-artifact', help='hash-bound pre-cutoff rows of the straddle month')
     ap.add_argument('--expect-straddle-sha256')
     ap.add_argument('--straddle-daily-manifest')
     ap.add_argument('--expect-straddle-daily-sha256')
     ap.add_argument('--cache-months', type=int, default=512)
     ap.add_argument('--authorization', help='Integration evaluation authorization; without it only preflight runs')
+    ap.add_argument('--expect-authorization-sha256', help='sha256 of the committed authorization artifact')
     ap.add_argument('--out', help='run directory (authorized runs only)')
+    ap.add_argument('--amendment-record', help=f'signed BPYR amendment ({AMENDMENT_FORMAT}, ruling {AMENDMENT_RULING}): '
+                                               'the only shortened development end')
+    ap.add_argument('--expect-amendment-sha256', help='sha256 of the committed amendment record (raw bytes)')
     a = ap.parse_args(argv)
     try:
         if not (math.isfinite(a.max_rss_mb) and a.max_rss_mb > 0):
             raise RunnerError('a finite, positive --max-rss-mb is mandatory')
         pf = preflight(git=inj.get('git'), manifest_check=inj.get('manifest_check'))     # dirty tree: DirtyTree
         p = pf.prereg
-        w = Windows.of(p)
+        if a.expect_amendment_sha256 is not None and not a.amendment_record:
+            raise RunnerError('--expect-amendment-sha256 without --amendment-record')
+        amd = Amendment.load(a.amendment_record, a.expect_amendment_sha256, pf, repo=inj.get('amendment_repo', REPO)) \
+            if a.amendment_record else None
+        w = Windows.of(p, amd)
         ws = iso_ms(p['windows']['calibration']['start'])
         symbols = universe_symbols(p, a.universe)
         man = inj.get('manifest_path') or _p(REPO, tuple(p['source']['manifest'].split('/')))
-        src, pit = build_sources(a, man, symbols, w.sealed)
+        src, pit = build_sources(a, man, symbols, w.end)     # amended: the archive cutoff is dev_end (09 never opened)
         cov = coverage_report(src, pit, symbols, ws, w)
         report = {'format': PREFLIGHT_FORMAT, 'mode': 'authorized' if a.authorization else 'preflight-only',
                   'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code,
@@ -1925,20 +2372,24 @@ def main(argv=None, *, _inject=None) -> int:
                   'warmup_start': _iso(ws), 'source_identity': source_identity(src),
                   'rules_identity': pit.identity() if pit is not None else None, 'coverage': cov,
                   'evaluated': False, 'written': None}
+        if isinstance(pit, ProspectiveRules):
+            report.update(_prospective_label(pit.identity()))
+        if amd is not None:
+            report.update(amendment=amd.identity(), dev_end=_iso(w.end), last_entry=_iso(w.last_entry),
+                          slices=[[_iso(x), _iso(y)] for x, y in w.slices])
         if not a.authorization:
             print(json.dumps(report, sort_keys=True, indent=1))
             return 0
-        tok = (inj.get('authorize') or load_authorization)(a.authorization, pf)
-        if not isinstance(tok, EvalAuthorization) or tok.issuer != 'codex' or \
-                tok.prereg_sha256 != pf.prereg_sha256 or not str(tok.comment_id).isdigit():
-            raise WriteRefused('no Integration token for this signed contract')
+        tok = inj['authorize'](a.authorization, pf) if inj.get('authorize') else \
+            load_authorization(a.authorization, pf, expect_sha256=a.expect_authorization_sha256)
+        _require_authorization(tok, pf.prereg_sha256, 'authorized run')
         if not cov['ready']:
             raise RunnerError('inputs are not ready (series gaps / straddle / rules); see the preflight report')
         if not a.out:
             raise RunnerError('--out is required for an authorized run')
         with (inj.get('lock') or _runlock)(a.out, a.universe, argv):
             res = execute(a.out, src, pf, symbols=sorted(symbols), rules=rules_of(pit), authorization=tok,
-                          max_rss_mb=a.max_rss_mb, rss=inj.get('rss'), universe=a.universe)
+                          max_rss_mb=a.max_rss_mb, rss=inj.get('rss'), universe=a.universe, windows=w)
             path = write_result(res, os.path.join(a.out, 'result.json'), authorization=tok)
         print(json.dumps({'written': path, 'identity_sha256': res.get('identity_sha256')}, sort_keys=True))
         return 0

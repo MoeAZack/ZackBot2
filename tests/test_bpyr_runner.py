@@ -394,14 +394,15 @@ def test_run_is_in_memory_without_verdict_and_writes_are_refused(pf, tmp_path):
         R.write_result(res, str(out), authorization='yes')
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(out), authorization=R.EvalAuthorization('codex', '1', '0' * 64))
-    ok = R.EvalAuthorization('codex', '1', pf.prereg_sha256)
+    ok = AUTH(pf)
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(ROOT.joinpath(*R.LEDGER_REL[:-1], 'x.json')), authorization=ok)
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(tmp_path / 'verdict.json'), authorization=ok)
     assert not out.exists()
     src = (ROOT / 'tools' / 'research' / 'bpyr_runner.py').read_text(encoding='utf-8')
-    assert 'EvalAuthorization(' not in src                                  # nothing in the runner issues a token
+    body = src[src.index('def load_authorization('):src.index('def _runlock(')]
+    assert src.count('EvalAuthorization(') == body.count('EvalAuthorization(') == 1   # only the verifier issues one
 
 
 # ================================================================== slice 2
@@ -588,7 +589,7 @@ def test_rules_of_maps_uncovered_to_refusal():
 
 # ------------------------------------------------------------------ authorized, resumable, chained execution
 def AUTH(pf):                                                                # test-only Integration token
-    return R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256)
+    return R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256, 'a' * 64, 'b' * 40, ('development',))
 
 
 FIXED = sorted(json.loads((ROOT / 'research_evidence' / 'prereg' / 'breakout_pyramid_falsify.v1.json').read_text())['universe']['symbols'])
@@ -1273,8 +1274,17 @@ def cli_inputs(tmp_path_factory):
     return SimpleNamespace(d=d, man=man, files=files, rules=rp, rsrc=sp, straddle=st)
 
 
+CLI_HEADROOM_MB = 512
+
+
+def _cli_cap():
+    """The CLI's --max-rss-mb, relative to this process's measured baseline: the admission check compares against the
+    whole pytest process, which grows across a single-process full suite (install gate 20261030-095145: 10 failures)."""
+    return float(math.ceil(E5.rss_mb()) + CLI_HEADROOM_MB)
+
+
 def _cli(ci, *extra, manifest=None, git=CLEAN, rules=True, straddle=True, **inj):
-    args = ['--store', str(ci.d / 'no-store'), '--max-rss-mb', '512']
+    args = ['--store', str(ci.d / 'no-store'), '--max-rss-mb', '%g' % _cli_cap()]
     if rules:
         args += ['--rules-artifact', str(ci.rules), '--expect-rules-sha256', R.file_sha(str(ci.rules)),
                  '--rules-source-manifest', str(ci.rsrc), '--expect-rules-source-sha256', R.file_sha(str(ci.rsrc))]
@@ -1333,7 +1343,10 @@ def test_cli_never_evaluates_without_an_integration_loader(cli_inputs, capsys, t
     auth = tmp_path / 'auth.json'
     auth.write_text('{}')
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3
-    assert 'identity-pinned authorization verifier' in capsys.readouterr().err and not out.exists()
+    assert 'expect-authorization-sha256' in capsys.readouterr().err and not out.exists()
+    assert _cli(cli_inputs, '--authorization', str(auth), '--expect-authorization-sha256', R.file_sha(str(auth)),
+                '--out', str(out)) == 3                                 # the real verifier: outside the committed dir
+    assert 'research_evidence/authorizations/' in capsys.readouterr().err and not out.exists()
     for name in ('bpyr_eval_authorization', 'bpyr_auth'):                # a module planted on sys.path is never used
         monkeypatch.setitem(sys.modules, name, SimpleNamespace(load=lambda p, h: AUTH(pf)))
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out)) == 3 and not out.exists()
@@ -1354,7 +1367,7 @@ def test_cli_never_evaluates_without_an_integration_loader(cli_inputs, capsys, t
     assert _cli(cli_inputs, '--authorization', str(auth), lock=lock, authorize=tok) == 3 and not calls   # no --out
     out.mkdir()
     assert _cli(cli_inputs, '--authorization', str(auth), '--out', str(out), lock=lock, authorize=tok) == 0
-    assert calls[0]['authorization'] == AUTH(pf) and calls[0]['max_rss_mb'] == 512.0 and calls[0]['universe'] == 'FIXED-17'
+    assert calls[0]['authorization'] == AUTH(pf) and calls[0]['max_rss_mb'] >= CLI_HEADROOM_MB and calls[0]['universe'] == 'FIXED-17'
     assert calls[0]['symbols'] == FIXED and calls[0]['rules']('BTCUSDT', T0)['tick'] == 0.0001
     written = json.loads(capsys.readouterr().out)['written']
     assert Path(written) == out / 'result.json' and 'verdict' not in (out / 'result.json').read_text()
@@ -1455,3 +1468,716 @@ def test_run_assembles_gate_inputs_and_never_decides(pf, tmp_path):
         R.write_result(dict(res, verdict='x'), str(tmp_path / 'r2.json'), authorization=ok)
     with pytest.raises(R.WriteRefused):
         R.write_result(res, str(tmp_path / 'r3.json'), authorization=R.EvalAuthorization('cowork', '1', pf.prereg_sha256))
+
+
+# ---- 4. load_authorization: the committed, identity-pinned verifier (temp git repo; no real artifact is committed)
+import subprocess                                                                           # noqa: E402
+
+
+def _git(repo, *a):
+    return subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t', '-c',
+                           'core.autocrlf=false', '-c', 'commit.gpgsign=false', *a],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def _git_bytes(repo, *a):
+    return subprocess.run(['git', '-C', str(repo), *a], capture_output=True, check=True).stdout
+
+
+def _auth_repo(tmp_path, pf, name='a.json', drop=(), between=False, raw=None, **over):
+    """code commit c0, then (optionally an unrelated change, then) the artifact committed on top -> HEAD."""
+    repo = tmp_path / 'repo'
+    d = repo / 'research_evidence' / 'authorizations'
+    d.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    (repo / 'code.py').write_text('x = 1\n')
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'code')
+    c0 = _git(repo, 'rev-parse', 'HEAD').strip()
+    if between:
+        (repo / 'code.py').write_text('x = 2\n')
+    fields = {'format': R.AUTH_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256,
+              'issuer': 'codex', 'comment_id': '6478332951', 'code_commit': c0, 'scope': ['development']}
+    fields.update(over)
+    for k in drop:
+        del fields[k]
+    f = d / name
+    f.write_bytes(raw if raw is not None else R.authorization_bytes(fields))
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'auth')
+    head = _git(repo, 'rev-parse', 'HEAD').strip()
+    return repo, f, R.Preflight(pf.prereg, pf.prereg_sha256, dict(pf.code, commit=head), pf.sources), c0
+
+
+def _load(repo, f, pf_, sha=None):
+    return R.load_authorization(str(f), pf_, expect_sha256=sha or R.file_sha(str(f)), repo=str(repo))
+
+
+def test_load_authorization_accepts_a_committed_pinned_artifact(tmp_path, pf):
+    repo, f, pf_, c0 = _auth_repo(tmp_path, pf)
+    tok = _load(repo, f, pf_)
+    assert isinstance(tok, R.EvalAuthorization)
+    assert (tok.issuer, tok.comment_id, tok.prereg_sha256) == ('codex', '6478332951', pf.prereg_sha256)
+    assert tok.artifact_sha256 == R.file_sha(str(f)) and tok.code_commit == c0 and tok.scope == ('development',)
+    assert tok == R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256, R.file_sha(str(f)), c0, ('development',))
+
+
+@pytest.mark.parametrize('over, drop, why', [
+    ({'prereg_sha256': '0' * 64}, (), 'signed contract hash'),
+    ({'issuer': 'cowork'}, (), 'issuer'),
+    ({'comment_id': '64x1'}, (), 'comment_id'),
+    ({'comment_id': 6478332951}, (), 'comment_id'),
+    ({'code_commit': 'f' * 40}, (), 'not an ancestor'),
+    ({'code_commit': 'F' * 40}, (), 'code_commit'),
+    ({'scope': ['S1']}, (), 'scope'),
+    ({'candidate_id': 'other.v1'}, (), 'candidate_id'),
+    ({'format': 'zb-eval-authorization/2'}, (), 'format'),
+    ({'extra': 1}, (), 'keys must be exactly'),
+    ({}, ('scope',), 'keys must be exactly'),
+])
+def test_load_authorization_refuses_bad_fields(tmp_path, pf, over, drop, why):
+    repo, f, pf_, _ = _auth_repo(tmp_path, pf, drop=drop, **over)
+    with pytest.raises(R.AuthorizationRefused, match=why):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_refuses_unpinned_uncommitted_or_misplaced_files(tmp_path, pf):
+    repo, f, pf_, c0 = _auth_repo(tmp_path, pf)
+    with pytest.raises(R.AuthorizationRefused, match='sha256'):                     # hash mismatch
+        _load(repo, f, pf_, sha='0' * 64)
+    for bad in (None, 'A' * 64, 'abc'):
+        with pytest.raises(R.AuthorizationRefused, match='expect-authorization-sha256'):
+            R.load_authorization(str(f), pf_, expect_sha256=bad, repo=str(repo))
+    u = f.with_name('b.json')                                                       # untracked
+    u.write_bytes(f.read_bytes())
+    with pytest.raises(R.AuthorizationRefused, match='not tracked'):
+        _load(repo, u, pf_)
+    out = repo / 'a.json'                                                           # outside the directory
+    out.write_bytes(f.read_bytes())
+    with pytest.raises(R.AuthorizationRefused, match='directly under'):
+        _load(repo, out, pf_)
+    with pytest.raises(R.AuthorizationRefused, match='directly under'):            # missing file
+        _load(repo, f.with_name('nope.json'), pf_, sha='0' * 64)
+    other = R.Preflight(pf_.prereg, pf_.prereg_sha256, dict(pf_.code, commit=c0), pf_.sources)
+    with pytest.raises(R.AuthorizationRefused, match='preflight commit'):          # HEAD is not the preflight commit
+        _load(repo, f, other)
+    f.write_bytes(f.read_bytes().replace(b'6478332951', b'6478332952'))             # modified after commit
+    with pytest.raises(R.AuthorizationRefused, match='differs from HEAD'):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_refuses_code_drift_and_non_canonical_bytes(tmp_path, pf):
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'drift', pf, between=True)              # code changed after code_commit
+    with pytest.raises(R.AuthorizationRefused, match='more than this artifact'):
+        _load(repo, f, pf_)
+    fields = {'format': R.AUTH_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256,
+              'issuer': 'codex', 'comment_id': '1', 'code_commit': '0' * 40, 'scope': ['development']}
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'pretty', pf, raw=json.dumps(fields, indent=1).encode())
+    with pytest.raises(R.AuthorizationRefused, match='canonical'):
+        _load(repo, f, pf_)
+    dup = R.authorization_bytes(fields)[:-2] + b',"issuer":"codex"}\n'
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'dup', pf, raw=dup)
+    with pytest.raises(R.AuthorizationRefused, match='duplicate'):
+        _load(repo, f, pf_)
+
+
+# ---- 4b. Codex 6496429137 (Cowork A1-A3): CR bytes, undecodable git output, renames
+def test_load_authorization_refuses_any_cr_byte(tmp_path, pf):
+    _, f, _, _ = _auth_repo(tmp_path, pf)
+    crlf = f.read_bytes()[:-1] + b'\r\n'                                            # committed with CRLF
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'crlf', pf, raw=crlf)
+    with pytest.raises(R.AuthorizationRefused, match='CR byte'):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_compares_raw_head_bytes_not_text(tmp_path, pf):
+    """Codex 6496652384: HEAD holds CRLF bytes, the working tree is rewritten to canonical LF and pinned. A text-mode
+    `git show` would fold the CRLF and compare equal; the raw-byte comparison refuses."""
+    _, f0, _, _ = _auth_repo(tmp_path / 'lf', pf)
+    lf = f0.read_bytes()
+    repo, f, pf_, _ = _auth_repo(tmp_path / 'crlf', pf, raw=lf[:-1] + b'\r\n')
+    assert _git_bytes(repo, 'show', 'HEAD:research_evidence/authorizations/a.json').endswith(b'\r\n')
+    f.write_bytes(lf)
+    with pytest.raises(R.AuthorizationRefused, match='differs from HEAD'):
+        R.load_authorization(str(f), pf_, expect_sha256=R.file_sha(str(f)), repo=str(repo))
+
+
+def test_load_authorization_types_undecodable_git_output(tmp_path, pf):
+    repo, f, pf_, _ = _auth_repo(tmp_path, pf)
+    real = lambda *a: _git(repo, *a)                                                     # noqa: E731
+
+    def bad_show(*a):                                       # HEAD:<path> output that cannot be re-encoded
+        return '\udcff' if a[0] == 'show' else real(*a)
+    with pytest.raises(R.AuthorizationRefused, match='not decodable'):
+        R.load_authorization(str(f), pf_, expect_sha256=R.file_sha(str(f)), repo=str(repo), git=bad_show)
+
+
+def test_load_authorization_types_a_decode_error_in_the_real_git_wrapper(tmp_path, pf, monkeypatch):
+    repo, f, pf_, _ = _auth_repo(tmp_path, pf)
+
+    def undecodable(*a, **k):                               # subprocess text decoding fails inside real_git
+        raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'invalid start byte')
+    monkeypatch.setattr(R.subprocess, 'run', undecodable)
+    with pytest.raises(R.AuthorizationRefused, match='git ls-files failed'):
+        _load(repo, f, pf_)
+
+
+def test_load_authorization_refuses_a_rename_into_the_artifact(tmp_path, pf):
+    """A3: code_commit holds a file that HEAD renames into the artifact. With rename detection `--name-only` would list
+    only the artifact path; --no-renames lists the deleted source too, so the delta is refused."""
+    repo = tmp_path / 'repo'
+    d = repo / 'research_evidence' / 'authorizations'
+    d.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    _git(repo, 'commit', '-q', '--allow-empty', '-m', 'root')
+    fields = {'format': R.AUTH_FORMAT, 'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256,
+              'issuer': 'codex', 'comment_id': '6478332951', 'code_commit': '0' * 40, 'scope': ['development']}
+    (repo / 'old.json').write_bytes(R.authorization_bytes(fields))
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'code')
+    c0 = _git(repo, 'rev-parse', 'HEAD').strip()
+    _git(repo, 'mv', 'old.json', 'research_evidence/authorizations/a.json')
+    f = d / 'a.json'
+    f.write_bytes(R.authorization_bytes(dict(fields, code_commit=c0)))
+    _git(repo, 'add', '-A')
+    _git(repo, 'commit', '-qm', 'auth')
+    assert _git(repo, 'diff', '-M', '--name-only', c0, 'HEAD').split() == ['research_evidence/authorizations/a.json']
+    head = _git(repo, 'rev-parse', 'HEAD').strip()
+    pf_ = R.Preflight(pf.prereg, pf.prereg_sha256, dict(pf.code, commit=head), pf.sources)
+    with pytest.raises(R.AuthorizationRefused, match='more than this artifact'):
+        _load(repo, f, pf_)
+
+
+# ---- 5. Codex review #239: strict ancestor, complete token, full run-identity binding
+def test_load_authorization_refuses_code_commit_equal_to_head(tmp_path, pf):
+    repo, f, pf_, c0 = _auth_repo(tmp_path, pf)
+    real = lambda *a: _git(repo, *a)                                                     # noqa: E731
+
+    def head_is_c0(*a):                                     # a HEAD that equals the authorized code_commit
+        return c0 + '\n' if a == ('rev-parse', 'HEAD') else real(*a)
+    pinned = R.Preflight(pf_.prereg, pf_.prereg_sha256, dict(pf_.code, commit=c0), pf_.sources)
+    with pytest.raises(R.AuthorizationRefused, match='strict ancestor'):
+        R.load_authorization(str(f), pinned, expect_sha256=R.file_sha(str(f)), repo=str(repo), git=head_is_c0)
+
+
+def _forged(pf):
+    import dataclasses
+    ok = AUTH(pf)
+    return [dataclasses.replace(ok, artifact_sha256=None), dataclasses.replace(ok, artifact_sha256='A' * 64),
+            dataclasses.replace(ok, artifact_sha256='a' * 63), dataclasses.replace(ok, code_commit=None),
+            dataclasses.replace(ok, code_commit='b' * 39), dataclasses.replace(ok, scope=()),
+            dataclasses.replace(ok, scope=('S1',)), dataclasses.replace(ok, scope=['development']),
+            dataclasses.replace(ok, scope=('development', 'holdout')),
+            R.EvalAuthorization('codex', '6478332951', pf.prereg_sha256)]
+
+
+def test_execute_and_write_result_refuse_incomplete_or_forged_tokens(pf, tmp_path):
+    for i, tok in enumerate(_forged(pf)):
+        out = tmp_path / f'e{i}'
+        with pytest.raises(R.WriteRefused, match='incomplete authorization'):
+            _execute(pf, out, authorization=tok)
+        assert not out.exists()                                          # refused before anything is written
+        res = {'candidate_id': R.CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'decided': False}
+        with pytest.raises(R.WriteRefused, match='incomplete authorization'):
+            R.write_result(res, str(tmp_path / f'r{i}.json'), authorization=tok)
+        assert not (tmp_path / f'r{i}.json').exists()
+
+
+def test_run_json_binds_the_complete_authorization_and_resume_under_another_fails(pf, tmp_path):
+    import dataclasses
+    out = tmp_path / 'r'
+    _execute(pf, out, stop_after=1)
+    got = json.loads((out / 'run.json').read_text())['authorization']
+    assert got == {'issuer': 'codex', 'comment_id': '6478332951', 'prereg_sha256': pf.prereg_sha256,
+                   'artifact_sha256': 'a' * 64, 'code_commit': 'b' * 40, 'scope': ['development']}
+    for k, v in (('artifact_sha256', 'c' * 64), ('code_commit', 'd' * 40), ('comment_id', '6478332952')):
+        with pytest.raises(R.RunnerError, match='identity'):
+            _execute(pf, out, authorization=dataclasses.replace(AUTH(pf), **{k: v}))
+    assert _execute(pf, out, stop_after=1)['symbols_done'] == 2           # the same authorization resumes
+
+
+# ---- BPYR-INPUTS-01 (Codex ruling 6497964865 item 1): prospective rules + listing-aware coverage
+RAW_SNAP_REL = 'research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json'
+RAW_SNAP_SHA = 'b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83'
+WARM = R.iso_ms('2020-02-03T00:00:00Z')
+SEP1 = R.iso_ms('2026-09-01T00:00:00Z')
+LATE = 'AVAXUSDT'                                                   # synthetic listing 2020-09-23, like the real one
+LATE_L = R.iso_ms('2020-09-23T07:00:00Z')
+EARLY_L = R.iso_ms('2020-01-31T08:00:00Z')
+
+
+def _next_ym(ym):
+    y, m = map(int, ym.split('-'))
+    return f'{y + m // 12:04d}-{m % 12 + 1:02d}'
+
+
+def _snap_entry(sym, onboard=None, drop_field=False):
+    by = {}
+    for k, (ft, key) in FILTER_OF.items():
+        by.setdefault(ft, {'filterType': ft})[key] = repr(float(FULL_RULE[k]))
+    if drop_field:
+        del by['MARKET_LOT_SIZE']['maxQty']
+    e = {'symbol': sym, 'status': 'TRADING', 'filters': [by[ft] for ft in sorted(by)]}
+    if onboard is not None:
+        e['onboardDate'] = onboard
+    return e
+
+
+def _pro_repo(tmp_path, onboard, drop=(), strip=(), commit=True):
+    """A throwaway git repo holding one synthetic raw exchangeInfo snapshot: (repo, path, sha256)."""
+    repo = tmp_path / 'repo'
+    repo.mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    ents = [_snap_entry(s, onboard.get(s, EARLY_L), s in strip) for s in FIXED if s not in drop]
+    raw = E5.canon({'timezone': 'UTC', 'symbols': ents})
+    p = repo / 'snap.json'
+    p.write_bytes(raw)
+    if commit:
+        _git(repo, 'add', 'snap.json')
+        _git(repo, 'commit', '-qm', 's')
+    return repo, p, R.sha(raw)
+
+
+def _pro(tmp_path, onboard=None, **kw):
+    repo, p, h = _pro_repo(tmp_path, {LATE: LATE_L} if onboard is None else onboard, **kw)
+    return R.ProspectiveRules.load(str(p), h, FIXED, repo=str(repo))
+
+
+def test_prospective_rules_accept_a_committed_snapshot_and_count_skips(tmp_path):
+    pr = _pro(tmp_path, onboard={LATE: LATE_L, 'BNBUSDT': 'x', 'ADAUSDT': True}, drop=('ETHUSDT',),
+              strip=('SOLUSDT',))
+    ident = pr.identity()
+    assert ident['mode'] == ident['non_promotable_rules'] == 'prospective' and ident['ruling'] == '6497964865'
+    assert ident['snapshot_path'] == 'snap.json' and ident['rules_source']['sha256'] == ident['sha256']
+    assert ident['skipped_symbols'] == {'ETHUSDT': 'absent_from_snapshot', 'SOLUSDT': 'missing_or_non_numeric_field'}
+    assert ident['symbols_with_rules'] == 15
+    assert ident['listing_skips'] == {'ADAUSDT': 'onboard_date_missing_or_invalid', 'BNBUSDT':
+                                      'onboard_date_missing_or_invalid', 'ETHUSDT': 'absent_from_snapshot'}
+    assert ident['onboard_dates'][LATE] == '2020-09-23T07:00:00Z' and pr.listing_ms('ADAUSDT') is None
+    at = R.rules_of(pr)
+    assert at('BTCUSDT', 0) == at('BTCUSDT', SEALED) and at('BTCUSDT', 0)['max_qty'] == 1e9   # causality bypassed
+    assert at('ETHUSDT', T0) is None and at('SOLUSDT', T0) is None                         # never defaulted
+    assert R.rules_identity(at)['sha256'] == ident['sha256'] and R.is_prospective(at)
+
+
+def test_prospective_rules_refuse_uncommitted_modified_swapped_or_unbound_snapshots(tmp_path):
+    repo, p, h = _pro_repo(tmp_path / 'a', {}, commit=False)
+    with pytest.raises(R.RunnerError, match='not committed'):
+        R.ProspectiveRules.load(str(p), h, FIXED, repo=str(repo))
+    repo, p, h = _pro_repo(tmp_path / 'b', {})
+    for bad in (None, '', 'xyz', h.upper()):
+        with pytest.raises(R.RunnerError, match='expect-prospective-rules-sha256'):
+            R.ProspectiveRules.load(str(p), bad, FIXED, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='differs from --expect-prospective'):          # hash swap
+        R.ProspectiveRules.load(str(p), RAW_SNAP_SHA, FIXED, repo=str(repo))
+    p.write_bytes(p.read_bytes().replace(b'"1000000000.0"', b'"9000000000.0"', 1))
+    with pytest.raises(R.RunnerError, match='differs from --expect-prospective'):          # modified, old hash
+        R.ProspectiveRules.load(str(p), h, FIXED, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):                           # modified and re-bound
+        R.ProspectiveRules.load(str(p), R.sha(p.read_bytes()), FIXED, repo=str(repo))
+    _git(repo, 'checkout', '--', 'snap.json')
+    p.write_bytes(p.read_bytes() + b'\r\n')
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):                           # raw bytes, no text folding
+        R.ProspectiveRules.load(str(p), R.sha(p.read_bytes()), FIXED, repo=str(repo))
+    out = tmp_path / 'outside.json'
+    out.write_bytes(b'{}')
+    with pytest.raises(R.RunnerError, match='inside the repo'):
+        R.ProspectiveRules.load(str(out), R.sha(b'{}'), FIXED, repo=str(repo))
+
+
+def test_committed_raw_snapshot_is_bound_and_covers_fixed_17():
+    raw = (ROOT / RAW_SNAP_REL).read_bytes()
+    assert R.sha(raw) == RAW_SNAP_SHA
+    attr = _git(ROOT, 'check-attr', 'text', '--', RAW_SNAP_REL)
+    assert attr.strip().endswith('text: unset')                                           # -text: never EOL-converted
+    pr = R.ProspectiveRules.load(str(ROOT / RAW_SNAP_REL), RAW_SNAP_SHA, FIXED)
+    ident = pr.identity()
+    assert ident['symbols_with_rules'] == 17 and ident['skipped_symbols'] == {} and ident['listing_skips'] == {}
+    assert ident['onboard_dates']['ENAUSDT'] == '2024-04-02T12:30:00Z'
+
+
+@pytest.mark.parametrize('extra', [['--rules-artifact', 'r.json'], ['--rules-source-manifest', 'm.json'],
+                                   ['--expect-rules-sha256', 'ab' * 32], ['--expect-rules-source-sha256', 'ab' * 32],
+                                   ['--rules-snapshot-root', '.']])
+def test_prospective_rules_cli_is_exclusive_with_the_pit_arguments(cli_inputs, extra, capsys):
+    assert _cli(cli_inputs, '--prospective-rules', RAW_SNAP_REL, '--expect-prospective-rules-sha256', RAW_SNAP_SHA,
+                *extra, rules=False) == 3
+    assert 'mutually exclusive' in capsys.readouterr().err
+    assert _cli(cli_inputs, '--expect-prospective-rules-sha256', RAW_SNAP_SHA, rules=False) == 3
+    assert 'without --prospective-rules' in capsys.readouterr().err
+    assert _cli(cli_inputs, '--prospective-rules', str(ROOT / RAW_SNAP_REL), '--expect-prospective-rules-sha256',
+                '0' * 64, rules=False) == 3                                          # hash swap at the CLI
+    assert 'differs from --expect-prospective' in capsys.readouterr().err
+
+
+class _CovSrc:
+    """Metadata-only source for coverage_report: monthly index entries per (sym, kind); Sep 2026 straddle covered."""
+    def __init__(self, first, drop=(), straddle=True):
+        self.index, self.straddle_month, self.straddle_skipped = {}, {}, 0
+        cov = SimpleNamespace(covered=lambda s, k, lo, hi: straddle)
+        self.straddle = SimpleNamespace(provenance=cov)
+        for s in FIXED:
+            for kind in R.SERIES_KINDS:
+                ym, ents = _month(first.get(s, R.iso_ms('2020-02-01T00:00:00Z'))), []
+                while ym <= '2026-08':
+                    if (s, kind, ym) not in drop and (s, ym) not in drop:
+                        ents.append((*_month_bounds(ym), 'p', 'h', 1))
+                    ym = _next_ym(ym)
+                self.index[(s, kind)] = ents
+                self.straddle_month[(s, kind)] = SEP1
+
+
+def _cov(P, src, pit):
+    return R.coverage_report(src, pit, FIXED, WARM, R.Windows.of(P))
+
+
+def _gaps(cov, sym):
+    return sorted({(g['series'], g['uncovered_from']) for g in cov['series_gaps'] if g['symbol'] == sym})
+
+
+def test_late_listed_symbol_starts_at_its_authenticated_listing(P, tmp_path):
+    src = _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')})
+    cov = _cov(P, src, _pro(tmp_path))
+    assert cov['ready'] is True and cov['series_gaps'] == [] and cov['rules_ok'] is True
+    assert cov['non_promotable_rules'] == 'prospective'
+    lb = cov['listing_boundaries']
+    assert set(lb) == {LATE} and lb[LATE]['onboard_date'] == '2020-09-23T07:00:00Z'
+    assert set(lb[LATE]['series']) == set(R.SERIES_KINDS)
+    assert all(v == {'start': '2020-09-23T07:00:00Z', 'first_month': '2020-09-01T00:00:00Z', 'admitted': True}
+               for v in lb[LATE]['series'].values())
+    pit = _cov(P, src, None)                                                     # no bound snapshot: unchanged
+    assert not pit['ready'] and _gaps(pit, LATE) == [(k, '2020-02-03T00:00:00Z') for k in sorted(R.SERIES_KINDS)]
+    assert pit['listing_boundaries'] == {}
+
+
+@pytest.mark.parametrize('first, onboard, drop, want', [
+    # already listed before warm-up, early month missing: still a gap from warm-up
+    ({LATE: R.iso_ms('2020-03-01T00:00:00Z')}, {LATE: EARLY_L}, (), '2020-02-03T00:00:00Z'),
+    # late listing but its listing month is missing (first archived month after listing): refused
+    ({LATE: R.iso_ms('2020-10-01T00:00:00Z')}, {LATE: LATE_L}, (), '2020-02-03T00:00:00Z'),
+    # forged onboardDate LATER than the first archived month: refused
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: R.iso_ms('2020-11-05T00:00:00Z')}, (), '2020-02-03T00:00:00Z'),
+    # forged onboardDate EARLIER than the first archived month: refused
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: R.iso_ms('2020-07-10T09:00:00Z')}, (), '2020-02-03T00:00:00Z'),
+    # onboardDate not an int: no listing, refused
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: str(LATE_L)}, (), '2020-02-03T00:00:00Z'),
+    # admitted late start, then a mid-series hole: refused at the hole
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: LATE_L}, ((LATE, '2023-05'),), '2023-05-01T00:00:00Z'),
+    # the listing month missing in one series only (mark): that series refused, the others admitted
+    ({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, {LATE: LATE_L}, ((LATE, 'mark', '2020-09'),), None),
+])
+def test_listing_moves_only_the_initial_boundary_and_never_admits_a_hole(P, tmp_path, first, onboard, drop, want):
+    cov = _cov(P, _CovSrc(first, drop=drop), _pro(tmp_path, onboard=onboard))
+    assert cov['ready'] is False
+    g = _gaps(cov, LATE)
+    if want is None:
+        assert g == [('mark', '2020-02-03T00:00:00Z')]
+        assert cov['listing_boundaries'][LATE]['series']['mark']['admitted'] is False
+        assert cov['listing_boundaries'][LATE]['series']['4h']['admitted'] is True
+    else:
+        assert g == [(k, want) for k in sorted(R.SERIES_KINDS)]
+    assert all(g_['symbol'] == LATE for g_ in cov['series_gaps'])
+
+
+def test_symbol_absent_from_snapshot_is_refused_in_series_and_rules(P, tmp_path):
+    cov = _cov(P, _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}), _pro(tmp_path, drop=(LATE,)))
+    assert not cov['ready'] and cov['rules_gaps'] == [LATE] and cov['rules_ok'] is False
+    assert _gaps(cov, LATE) == [(k, '2020-02-03T00:00:00Z') for k in sorted(R.SERIES_KINDS)]
+
+
+def test_straddle_still_required_after_a_late_start(P, tmp_path):
+    cov = _cov(P, _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, straddle=False), _pro(tmp_path))
+    assert not cov['ready'] and {g['uncovered_from'] for g in cov['series_gaps']} == {'2026-09-01T00:00:00Z'}
+    assert len(cov['series_gaps']) == 17 * 3
+
+
+def test_rules_gaps_resolve_a_late_symbol_at_its_listing(P, tmp_path):
+    late, L = 'ENAUSDT', R.iso_ms('2024-04-02T12:30:00Z')
+    pr = _pro(tmp_path, onboard={late: L})
+    seen = {}
+
+    class Spy(R.ProspectiveRules):
+        def lookup(self, sym, t):
+            seen.setdefault(sym, []).append(t)
+            return None if sym == late and t < L else super().lookup(sym, t)
+    spy = Spy.__new__(Spy)
+    spy.__dict__.update(pr.__dict__)
+    cov = _cov(P, _CovSrc({late: R.iso_ms('2024-04-01T00:00:00Z')}), spy)
+    assert cov['rules_gaps'] == [] and cov['ready'] is True
+    assert seen[late][0] == L and seen['BTCUSDT'][0] == R.Windows.of(P).dev_start      # max(dev_start, listing)
+
+
+def test_prospective_execute_binds_identity_and_labels_every_packet(pf, tmp_path):
+    pr = _pro(tmp_path / 's')
+    out = tmp_path / 'r'
+    res = _execute(pf, out, rules=R.rules_of(pr))
+    run = json.loads((out / 'run.json').read_text())
+    ident = pr.identity()
+    assert run['rules_identity'] == json.loads(R.canon(ident)) and run['rules_identity']['mode'] == 'prospective'
+    assert run['rules_mode'] == run['non_promotable_rules'] == 'prospective'
+    assert run['rules_snapshot'] == {'path': 'snap.json', 'sha256': ident['sha256']}
+    lines = (out / 'symbols.jsonl').read_bytes().splitlines()
+    assert len(lines) == 17 and all(json.loads(x)['non_promotable_rules'] == 'prospective' for x in lines)
+    assert res['non_promotable_rules'] == res['rules_mode'] == 'prospective' and res['promotable'] is False
+    assert res['rules_identity']['sha256'] == ident['sha256'] and res['rules_snapshot'] == run['rules_snapshot']
+    other = _pro(tmp_path / 't', onboard={LATE: LATE_L + 1})                 # another snapshot: another run identity
+    with pytest.raises(R.RunnerError, match='identity differs'):
+        _execute(pf, out, rules=R.rules_of(other))
+    bad = R.rules_of(pr)
+    bad.identity = lambda: dict(ident, non_promotable_rules=None)            # an unlabelled prospective identity
+    with pytest.raises(R.RunnerError, match='prospective rules identity'):
+        _execute(pf, tmp_path / 'x', rules=bad)
+    bad.identity = lambda: dict(ident, rules_source=dict(ident['rules_source'], sha256='e' * 64))
+    with pytest.raises(R.RunnerError, match='prospective rules identity'):
+        _execute(pf, tmp_path / 'x', rules=bad)
+    assert not (tmp_path / 'x').exists()
+
+
+def test_pit_default_path_carries_no_prospective_label(pf, tmp_path, cli_inputs, capsys):
+    _execute(pf, tmp_path / 'p', stop_after=1)
+    run = json.loads((tmp_path / 'p' / 'run.json').read_text())
+    assert not {'rules_mode', 'non_promotable_rules', 'rules_snapshot'} & set(run)
+    assert all('non_promotable_rules' not in json.loads(x)
+               for x in (tmp_path / 'p' / 'symbols.jsonl').read_bytes().splitlines())
+    assert _cli(cli_inputs) == 0
+    rep = json.loads(capsys.readouterr().out)
+    assert 'non_promotable_rules' not in rep and 'rules_mode' not in rep['coverage']
+    assert rep['coverage']['listing_boundaries'] == {} and rep['coverage']['ready'] is True
+
+
+def test_cli_preflight_with_the_committed_snapshot_admits_real_listings(tmp_path, capsys):
+    snap = json.loads((ROOT / RAW_SNAP_REL).read_bytes())
+    onboard = {e['symbol']: e['onboardDate'] for e in snap['symbols'] if e['symbol'] in FIXED}
+    drop = set()
+    for s, ob in onboard.items():
+        ym = '2020-02'
+        while ym < _month(ob):
+            drop |= {(s, k, ym) for k in SER}
+            ym = _next_ym(ym)
+    man, _ = _meta_manifest(tmp_path / 'm.json.gz', FIXED, drop=drop)
+    pro = ('--prospective-rules', str(ROOT / RAW_SNAP_REL), '--expect-prospective-rules-sha256', RAW_SNAP_SHA)
+    assert _cli(SimpleNamespace(d=tmp_path, man=man), *pro, rules=False, straddle=False) == 0
+    rep = json.loads(capsys.readouterr().out)
+    cov = rep['coverage']
+    assert rep['non_promotable_rules'] == rep['rules_mode'] == 'prospective'
+    assert rep['rules_identity']['sha256'] == RAW_SNAP_SHA and rep['rules_identity']['snapshot_path'] == RAW_SNAP_REL
+    assert rep['rules_snapshot'] == {'path': RAW_SNAP_REL, 'sha256': RAW_SNAP_SHA}
+    assert cov['rules_ok'] is True and cov['rules_gaps'] == []
+    assert {g['uncovered_from'] for g in cov['series_gaps']} == {'2026-09-01T00:00:00Z'}     # only the straddle
+    late = {s for s, ob in onboard.items() if ob > WARM}
+    assert set(cov['listing_boundaries']) == late and len(late) == 12
+    assert all(v['admitted'] for s in late for v in cov['listing_boundaries'][s]['series'].values())
+    man2, _ = _meta_manifest(tmp_path / 'm2.json.gz', FIXED, drop=drop | {('SOLUSDT', k, '2020-09') for k in SER})
+    assert _cli(SimpleNamespace(d=tmp_path, man=man2), *pro, rules=False, straddle=False) == 0
+    gaps = json.loads(capsys.readouterr().out)['coverage']['series_gaps']
+    assert {(g['series'], g['uncovered_from']) for g in gaps if g['symbol'] == 'SOLUSDT'} == \
+        {(k, '2020-02-03T00:00:00Z') for k in SER}                         # listing month missing: refused
+
+
+# ---- BPYR amendment (Codex ruling 6498348689, GO A): dev_end 2026-09-01, last entry 2026-08-02, seal unchanged
+AMD_REL = 'research_evidence/prereg/breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json'
+AMD_SHA = R.sha((ROOT / AMD_REL).read_bytes())
+AUG2 = R.iso_ms('2026-08-02T00:00:00Z')
+JUL1 = R.iso_ms('2026-07-01T00:00:00Z')
+OCT1 = R.iso_ms('2026-10-01T00:00:00Z')
+AMD_ARGS = ('--amendment-record', str(ROOT / AMD_REL), '--expect-amendment-sha256', AMD_SHA)
+
+
+def _amd(pf):
+    return R.Amendment.load(str(ROOT / AMD_REL), AMD_SHA, pf)
+
+
+def test_committed_amendment_is_signed_and_sets_the_exact_boundaries(pf, P):
+    amd = _amd(pf)
+    assert _git_bytes(ROOT, 'show', f'HEAD:{AMD_REL}') == (ROOT / AMD_REL).read_bytes()     # raw-byte exact at HEAD
+    ident = amd.identity()
+    assert ident == {'format': 'zb-bpyr-amendment/1', 'ruling': '6498348689', 'path': AMD_REL, 'sha256': AMD_SHA,
+                     'prereg_sha256': pf.prereg_sha256, 'dev_end': '2026-09-01T00:00:00Z',
+                     'last_entry': '2026-08-02T00:00:00Z', 'sealed_cutoff': '2026-09-28T00:00:00Z',
+                     'signed_by': json.loads((ROOT / AMD_REL).read_bytes())['signed_by']}
+    base, w = R.Windows.of(P), R.Windows.of(P, amd)
+    assert base.end == base.sealed == SEALED and base.dev_end is None and base.amendment is None   # unchanged default
+    assert (w.dev_start, w.end, w.last_entry, w.sealed) == (base.dev_start, SEP1, AUG2, SEALED)
+    assert w.last_entry == w.end - 180 * TF and w.end <= w.sealed
+    assert w.slices[:-1] == base.slices[:-1] and w.slices[-1] == (base.slices[-1][0], SEP1)    # slice 3 ends at dev_end
+    assert not w.entry_ok(AUG2) and w.entry_ok(AUG2 - TF) and w.slice_of(SEP1) is None
+    assert R.slice_spans(P, w)[-1] == (AUG2 - base.slices[-1][0]) / R.DAY_MS
+    with pytest.raises(R.RunnerError, match='signed Amendment'):
+        R.Windows.of(P, ident)                                                   # a dict is not a loaded amendment
+    for de, le in ((SEP1, AUG2 + TF), (SEALED + R.DAY_MS, SEALED + R.DAY_MS - 180 * TF), (SEP1, SEP1)):
+        forged = R.Amendment(AMD_SHA, AMD_REL, pf.prereg_sha256, de, le, SEALED, ident['signed_by'])
+        with pytest.raises(R.PreregInvalid):
+            R.Windows.of(P, forged)
+
+
+def _amd_doc(pf, **over):
+    d = json.loads((ROOT / AMD_REL).read_bytes())
+    d.update(over)
+    return {k: v for k, v in d.items() if v is not ...}
+
+
+def _amd_repo(tmp_path, pf, raw=None, commit=True, sub='research_evidence/prereg', name='a.json', **over):
+    repo = tmp_path / 'repo'
+    (repo / sub).mkdir(parents=True)
+    _git(repo, 'init', '-q')
+    if raw is None:
+        raw = (json.dumps(_amd_doc(pf, **over), sort_keys=True, indent=1) + '\n').encode('ascii')
+    f = repo / sub / name
+    f.write_bytes(raw)
+    if commit:
+        _git(repo, 'add', '-A')
+        _git(repo, 'commit', '-qm', 'a')
+    return repo, f, R.sha(raw)
+
+
+@pytest.mark.parametrize('over, why', [
+    ({'prereg_sha256': 'e' * 64}, 'signed contract'),                                  # wrong prereg base
+    ({'signed_by': 'codex: MoeAZack/ZackBot2 issuecomment-6495672591'}, 'must cite'),   # wrong ruling
+    ({'signed_by': 'codex: MoeAZack/ZackBot2 issuecomment-64983486890'}, 'must cite'),  # a longer id is another one
+    ({'signed_by': 'claude-code: issuecomment-6498348689'}, 'must cite'),
+    ({'signed': False}, 'frozen and signed'), ({'signed': 'true'}, 'frozen and signed'),
+    ({'status': 'DRAFT'}, 'frozen and signed'), ({'reason': ' '}, 'reason'),
+    ({'format': 'zb-edge05-amendment/1'}, 'format'), ({'candidate_id': 'funding_carry_xsec.v1'}, 'candidate'),
+    ({'dev_end': '2026-09-28T00:00:00Z'}, 'exactly'), ({'dev_end': '2026-08-31T00:00:00Z'}, 'exactly'),
+    ({'last_entry': '2026-08-29T00:00:00Z'}, 'exactly'), ({'sealed_cutoff': '2026-10-28T00:00:00Z'}, 'exactly'),
+    ({'extra': 1}, 'keys must be exactly'), ({'reason': ...}, 'keys must be exactly'),
+])
+def test_amendment_loader_refuses_mutated_records(tmp_path, pf, over, why):
+    repo, f, h = _amd_repo(tmp_path, pf, **over)
+    with pytest.raises(R.RunnerError, match=why):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+
+
+def test_amendment_loader_refuses_missing_unpinned_uncommitted_modified_or_misplaced(tmp_path, pf):
+    repo, f, h = _amd_repo(tmp_path / 'ok', pf)
+    assert R.Amendment.load(str(f), h, pf, repo=str(repo)).sha256 == h                  # the control loads
+    for bad in (None, '', h.upper(), h[:-1], 'e' * 64):
+        with pytest.raises(R.RunnerError, match='sha256'):
+            R.Amendment.load(str(f), bad, pf, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='directly under'):
+        R.Amendment.load(str(f.parent / 'missing.json'), h, pf, repo=str(repo))
+    f.write_bytes(f.read_bytes().replace(b'\n', b'\r\n'))                            # modified after the commit
+    with pytest.raises(R.RunnerError, match='differ from HEAD'):
+        R.Amendment.load(str(f), R.sha(f.read_bytes()), pf, repo=str(repo))
+    repo, f, h = _amd_repo(tmp_path / 'u', pf, commit=False)
+    with pytest.raises(R.RunnerError, match='not committed'):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+    repo, f, h = _amd_repo(tmp_path / 'm', pf, sub='research_evidence/authorizations')
+    with pytest.raises(R.RunnerError, match='directly under'):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+    dup = (ROOT / AMD_REL).read_bytes().replace(b'{\n', b'{\n "signed": true,\n', 1)
+    repo, f, h = _amd_repo(tmp_path / 'd', pf, raw=dup)
+    with pytest.raises(R.RunnerError, match='duplicate key'):
+        R.Amendment.load(str(f), h, pf, repo=str(repo))
+    with pytest.raises(R.RunnerError, match='Preflight'):
+        R.Amendment.load(str(ROOT / AMD_REL), AMD_SHA, pf.prereg_sha256)
+
+
+def test_amended_read_never_reaches_dev_end(tmp_path, pf, P, monkeypatch):
+    w = R.Windows.of(P, _amd(pf))
+    man, store, raws, _ = _archive(tmp_path, ['BTCUSDT'], JUL1, OCT1)             # September exists in the store
+    opened = []
+    real = E5.ArchiveSource._month
+
+    def spy(self, path, *a):
+        opened.append(str(path))
+        return real(self, path, *a)
+    monkeypatch.setattr(E5.ArchiveSource, '_month', spy)
+    src = E5.ArchiveSource(str(man), str(store), ['BTCUSDT'], w.end)
+    assert src.straddle_skipped == 3 and src.straddle_month == {}      # September never opened, no straddle month
+    sd = R.load_symbol(src, 'BTCUSDT', w, warmup_start=JUL1)
+    assert opened and not any('2026-09' in x for x in opened)
+    assert sd.t[-1] == SEP1 - TF and all(t < SEP1 for t, *_ in sd.funding)
+    with pytest.raises(E5.HoldoutRefused):                                 # a request past dev_end, before the read
+        E5.Guard(src, w.end).bars('BTCUSDT', '4h', JUL1, SEP1 + TF)
+    with pytest.raises(E5.HoldoutRefused):
+        E5.Guard(src, w.end).scope(JUL1, SEP1 + 1)
+    leaky = _mem_src(raws, OCT1)                                           # a source that ignores the range
+    leaky.bars = lambda sym, iv, lo, hi: leaky.b[sym]
+    with pytest.raises(E5.HoldoutRefused):                                 # September rows refused after the read
+        R.load_symbol(leaky, 'BTCUSDT', w, warmup_start=JUL1)
+    bars = [(t, 1.0, 1.0, 1.0, 1.0, 1.0) for t in range(SEP1 - 2 * TF, SEP1 + TF, TF)]
+    with pytest.raises(R.HoldoutRefused, match='amended development end'):
+        R.prepare_symbol('BTCUSDT', bars, w)
+
+
+def test_episode_open_at_dev_end_is_incomplete_and_charged_to_the_data_gate(P):
+    de = T0 + 360 * TF
+    wd = R.Windows(T0, de - 40 * TF, T0 + 400 * TF, ((T0, T0 + 100 * TF), (T0 + 100 * TF, T0 + 200 * TF),
+                                                       (T0 + 200 * TF, de)), 1, de, None)
+    s1 = R.stage_mgmt(P, 'S1')
+    sd = mk('BTCUSDT', flat(360), le={250, 318})               # 251 closes on time; 319 is still open at dev_end
+    E = R.entry_set({'BTCUSDT': sd}, wd, s1)
+    assert [e['f'] for e in E['episodes']] == [251]
+    assert [(x['f'], x['reason'], x['slice']) for x in E['incomplete']] == [(319, 'incomplete.boundary', 3)]
+    g = R.data_gate({'episodes': E['episodes'], 'incomplete': E['incomplete']}, wd)
+    assert g == {'incomplete_frac': [0.0, 0.0, 0.5], 'pass': False}          # charged, never waived or relabelled
+    with pytest.raises(R.HoldoutRefused):                                    # a bar at dev_end is never accepted
+        R.prepare_symbol('BTCUSDT', [(T0 + k * TF, 1.0, 1.0, 1.0, 1.0, 1.0) for k in range(361)], wd)
+
+
+def test_coverage_needs_no_straddle_with_the_amendment(pf, P, tmp_path):
+    src = _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, straddle=False)
+    pro = _pro(tmp_path)
+    base = R.coverage_report(src, pro, FIXED, WARM, R.Windows.of(P))
+    assert not base['ready'] and {g['uncovered_from'] for g in base['series_gaps']} == {'2026-09-01T00:00:00Z'}
+    cov = R.coverage_report(src, pro, FIXED, WARM, R.Windows.of(P, _amd(pf)))
+    assert cov['ready'] is True and cov['series_gaps'] == [] and cov['rules_ok'] is True
+    assert cov['coverage_end'] == '2026-09-01T00:00:00Z' and cov['amendment_sha256'] == AMD_SHA
+    hole = _CovSrc({LATE: R.iso_ms('2020-09-01T00:00:00Z')}, drop={('BTCUSDT', '2026-08')}, straddle=False)
+    cov = R.coverage_report(hole, pro, FIXED, WARM, R.Windows.of(P, _amd(pf)))
+    assert not cov['ready'] and _gaps(cov, 'BTCUSDT') == [(k, '2026-08-01T00:00:00Z') for k in sorted(R.SERIES_KINDS)]
+
+
+def test_cli_preflight_with_the_amendment_is_ready_without_a_straddle(tmp_path, capsys, pf):
+    snap = json.loads((ROOT / RAW_SNAP_REL).read_bytes())
+    onboard = {e['symbol']: e['onboardDate'] for e in snap['symbols'] if e['symbol'] in FIXED}
+    drop = set()
+    for s, ob in onboard.items():
+        ym = '2020-02'
+        while ym < _month(ob):
+            drop |= {(s, k, ym) for k in SER}
+            ym = _next_ym(ym)
+    man, _ = _meta_manifest(tmp_path / 'm.json.gz', FIXED, drop=drop)
+    ci = SimpleNamespace(d=tmp_path, man=man)
+    pro = ('--prospective-rules', str(ROOT / RAW_SNAP_REL), '--expect-prospective-rules-sha256', RAW_SNAP_SHA)
+    assert _cli(ci, *pro, *AMD_ARGS, rules=False, straddle=False) == 0
+    rep = json.loads(capsys.readouterr().out)
+    cov = rep['coverage']
+    assert cov['ready'] is True and cov['series_gaps'] == [] and cov['rules_ok'] is True
+    assert cov['straddle_files_never_opened'] == 17 * 3 and cov['coverage_end'] == '2026-09-01T00:00:00Z'
+    assert rep['amendment'] == _amd(pf).identity() and rep['amendment']['sha256'] == AMD_SHA
+    assert (rep['dev_end'], rep['last_entry'], rep['sealed_cutoff']) == \
+        ('2026-09-01T00:00:00Z', '2026-08-02T00:00:00Z', '2026-09-28T00:00:00Z')
+    assert rep['slices'][-1][1] == '2026-09-01T00:00:00Z' and rep['evaluated'] is False
+    assert not (tmp_path / 'no-store').exists()
+    assert _cli(ci, *pro, rules=False, straddle=False) == 0                  # without it: unchanged (straddle gap)
+    rep = json.loads(capsys.readouterr().out)
+    assert 'amendment' not in rep and not rep['coverage']['ready']
+    assert _cli(ci, *pro, '--expect-amendment-sha256', AMD_SHA, rules=False, straddle=False) == 3
+    assert _cli(ci, *pro, AMD_ARGS[0], AMD_ARGS[1], AMD_ARGS[2], 'e' * 64, rules=False, straddle=False) == 3
+    assert _cli(ci, *pro, AMD_ARGS[0], AMD_ARGS[1], rules=False, straddle=False) == 3
+    assert 'amendment refused' in capsys.readouterr().err
+
+
+def test_amended_execute_binds_the_amendment_into_run_json_lines_and_result(pf, tmp_path):
+    amd = _amd(pf)
+    de = T0 + 360 * TF
+    wd = R.Windows(T0, de - 40 * TF, T0 + 400 * TF, ((T0, T0 + 100 * TF), (T0 + 100 * TF, T0 + 200 * TF),
+                                                       (T0 + 200 * TF, de)), 240, de, amd)
+    out = tmp_path / 'r'
+    res = _execute(pf, out, windows=wd)
+    run = json.loads((out / 'run.json').read_text())
+    assert run['amendment'] == amd.identity() and run['dev_end'] == de and run['windows'][2] == T0 + 400 * TF
+    lines = (out / 'symbols.jsonl').read_bytes().splitlines()
+    assert len(lines) == 17 and all(json.loads(x)['amendment_sha256'] == AMD_SHA for x in lines)
+    assert res['amendment'] == amd.identity()
+    with pytest.raises(R.RunnerError, match='identity differs'):            # resuming without the amendment fails
+        _execute(pf, out)
+
+
+def test_cli_cap_follows_a_grown_process_baseline(cli_inputs, capsys, monkeypatch):
+    """Install-gate regression (20261030-095145): a large pytest process must not starve the CLI admission check."""
+    monkeypatch.setattr(E5, 'rss_mb', lambda: 6000.0)                 # a full single-process suite, far past 512 MB
+    assert _cli_cap() == 6000.0 + CLI_HEADROOM_MB
+    assert _cli(cli_inputs) == 0

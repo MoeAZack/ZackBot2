@@ -544,6 +544,10 @@ function Invoke-BuildSteps {
         # COHORT-SHA-01: the RUN-PACK-01 cohort code identity hashes these sources next to engine.py; a onefile exe has no
         # .py files, so without them the exe records code_sha=None and a source-run boundary looks like code drift.
         '--add-data', ([IO.Path]::Combine($src, 'engine.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'strategies.py') + ';.'),
+        # FACTORY-F01-ACT-01 #254: C9 hashes all five runtime sources, and preflight takes its authoritative function pins
+        # only from the bundled cohort manifest. Preserve their source-tree paths inside the one-file extraction root.
+        '--add-data', ([IO.Path]::Combine($src, 'feasibility.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'f01_canary.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json') + ';contracts/factory_f01_impl_01'),
         '--add-data', ([IO.Path]::Combine($src, 'paper_books.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'book_ledger.py') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'backtest.py') + ';.'),
         # ML-PAIR-01 (Codex 6459654266): the pair code_id hashes engine.py + actual_costs.py + every ml_shadow/*.py as

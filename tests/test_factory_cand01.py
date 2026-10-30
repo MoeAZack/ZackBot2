@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_safety import mk_engine                       # noqa: E402  (FakeX engine, PAPER)
 import candidates as CD                                  # noqa: E402
 import engine as E                                       # noqa: E402
+import f01_canary as FC                                  # noqa: E402
 
 FIXED18 = {'BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT', 'QNTUSDT',
            'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT'}
@@ -48,7 +49,17 @@ def rot(tmp_path):
 def on(rot):
     e, tmp = rot
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    canary(e, tmp)
     return e, tmp
+
+
+def canary(e, tmp):
+    """FACTORY-F01-IMPL-01 (Codex 6514109966 #2): an enabled C-F01 trades only inside the bounded testnet canary."""
+    from datetime import datetime, timedelta, timezone
+    e.trade.base = E.TESTNET
+    e.S['F01_CANARY'] = dict(on=True, start_utc=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec='seconds'),
+                             authorization_comment_id='6514109966', cohort_dir=os.path.join(os.path.abspath(tmp), 'f01_cohort'),
+                             source_commit='c' * 40, source_manifest={n: 'd' * 64 for n in FC.MANIFEST_FILES})
 
 
 # ------------------------------------------------------------------ the frozen cards
@@ -141,8 +152,8 @@ def test_a_lost_exchange_stop_switches_the_candidate_off_and_its_lot_stays_prote
     l.update(stop_miss=True, stop_miss_why='checking')                         # a re-check alone does not disable
     assert e.candidate_guard() == [] and slot(e, F01)['enabled']
     l['stop_miss_why'] = 'restoring'
-    assert e.candidate_guard() == [F01]
-    assert slot(e, F01)['enabled'] is False and slot(e, F02)['enabled'] is True
+    assert e.candidate_guard() == [F01, F02]                                   # FACTORY-CAND-02: the family fails closed
+    assert slot(e, F01)['enabled'] is False and slot(e, F02)['enabled'] is False
     assert e.state['candidate_disabled'][F01]['why'] == 'protection: BTCUSDT stop restoring'
     assert lots(e, F01, 'BTCUSDT') == [l] and l['stop']                         # never closed or unprotected by the guard
     assert e.candidate_guard() == []                                           # once
@@ -156,9 +167,9 @@ def test_unmeasured_costs_switch_the_candidate_off_only_after_the_grace(on, monk
     e.history.append(dict(sleeve=F02, symbol='ETHUSDT', closed=closed, _st='pending'))
     e.history.append(dict(sleeve='ema_mom', symbol='BTCUSDT', closed='2020-01-01T00:00:00+00:00', _st='pending'))
     assert e.candidate_guard(now=t0 + E.CANDIDATE_COST_PENDING_S - 1) == []
-    assert e.candidate_guard(now=t0 + E.CANDIDATE_COST_PENDING_S) == [F02]
+    assert e.candidate_guard(now=t0 + E.CANDIDATE_COST_PENDING_S) == [F01, F02]   # FACTORY-CAND-02: F01 by family
     assert e.state['candidate_disabled'][F02]['why'].startswith('accounting: ETHUSDT trade costs unmeasured 6.0 h')
-    assert slot(e, F01)['enabled'] is True                                     # a non-candidate row never disables one
+    assert e.state['candidate_disabled'][F01]['why'].startswith(f'family trend_long fail-closed by {F02}: accounting')
 
 
 @pytest.mark.parametrize('field,value', [('risk', 0.05), ('max_pos', 8), ('sides', 'both'), ('mgmt', {'tp_r': 9}),
@@ -167,15 +178,17 @@ def test_a_slot_that_drifted_from_its_frozen_card_is_switched_off(on, field, val
     e, _ = on
     slot(e, F02)[field] = value
     assert e.candidate_drift(slot(e, F02)) == [field]
-    assert e.candidate_guard() == [F02] and slot(e, F02)['enabled'] is False
+    assert e.candidate_guard() == [F01, F02] and slot(e, F02)['enabled'] is False   # FACTORY-CAND-02: family fail-closed
     assert e.state['candidate_disabled'][F02]['why'] == f'drift: {field} differ from the frozen card'
 
 
-def test_reordered_symbols_or_a_missing_mgmt_are_not_drift(on):
+def test_a_missing_mgmt_is_not_drift_but_reordered_symbols_are(on):
     e, _ = on
     sl = slot(e, F01)
-    sl['symbols'] = list(reversed(sl['symbols'])); sl['mgmt'] = None
+    sl['mgmt'] = None
     assert e.candidate_drift(sl) == [] and e.candidate_guard() == []
+    sl['symbols'] = list(reversed(sl['symbols']))                             # FACTORY-CAND-02 (OQ3): order is pinned
+    assert e.candidate_drift(sl) == ['symbols']
 
 
 def test_the_guard_ignores_disabled_and_non_candidate_slots_and_survives_a_restart(on):
@@ -312,6 +325,7 @@ def _book_engine(true_books):
     e.S['TRUE_BOOKS'] = true_books
     e.S['SLEEVES'] = [T_SL] + E.candidate_sleeves()
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    canary(e, tmp)
     return e, T_SL
 
 

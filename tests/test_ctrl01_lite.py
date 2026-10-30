@@ -213,8 +213,9 @@ def test_existing_positions_pending_and_partial_are_byte_identical():
 
 
 def test_controls_are_read_only_inside_open_lot():
-    """Structural: the control is consulted ONLY by open_lot (new entries) and the status/preview - never by adds, DCA
-    safety orders, maker re-prices / fallbacks, exits or stop management."""
+    """Structural: the control is consulted ONLY by open_lot (new entries) and the status/preview readers - never by adds,
+    DCA safety orders, maker re-prices / fallbacks, exits or stop management. f01_canary_preflight (FACTORY-F01-IMPL-01
+    C7) is a read-only status reader: it records ctrl_now()['long_factor'] for the canary preflight and changes nothing."""
     tree = ast.parse(open(os.path.join(ROOT, 'engine.py'), encoding='utf-8').read())
     users = set()
     for fn in ast.walk(tree):
@@ -222,7 +223,7 @@ def test_controls_are_read_only_inside_open_lot():
             for n in ast.walk(fn):
                 if isinstance(n, ast.Attribute) and n.attr in ('ctrl_now',) or isinstance(n, ast.Constant) and n.value in ('CTRL_BIAS', 'CTRL_RISK'):
                     users.add(fn.name)
-    assert users <= {'open_lot', 'ctrl_now', 'ctrl_status', 'load_settings', 'ctrl_norm'}, users
+    assert users <= {'open_lot', 'ctrl_now', 'ctrl_status', 'load_settings', 'ctrl_norm', 'f01_canary_preflight'}, users
 
 
 # ---------------------------------------------------------------- 6) manual / Take now: not covered
