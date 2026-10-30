@@ -47,7 +47,7 @@
    "close or resize any lot"
   ],
   "code": "f01_canary.py; engine.py Engine.f01_canary_block (called from Engine._rules_block, automatic entries only), Engine.f01_canary_preflight, Engine._f01_extract / _f01_decision (observe-only hooks in miss, _audit_opened, _measured_close, _measured_followup); observe-only raw sizing capture in open_lot / _create_lot (pin_amendment.v1.json); frame capture hook in Engine.candles (not pinned) -> 'frame' extracts",
-  "pinned_functions_untouched": "32 of the 34 pinned functions are unchanged; open_lot and _create_lot carry the observe-only capture recorded in pin_amendment.v1.json (re-hash test in tests/test_factory_f01_impl01.py)"
+  "pinned_functions_untouched": "31 of the 34 pinned functions are unchanged; open_lot and _create_lot carry the observe-only capture recorded in pin_amendment.v1.json, and candidate_guard takes self.lock per contracts/cand_evict_ack_01/pin_amendment.v1.json (ruling 6518282215) (re-hash tests in tests/test_factory_f01_impl01.py and tests/test_cand_evict_ack_01.py)"
  },
  "bounds": {
   "ruling": "OQ1 6512712537",

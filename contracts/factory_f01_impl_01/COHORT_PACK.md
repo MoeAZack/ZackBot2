@@ -35,7 +35,7 @@ comment.
 - **Raw sizing capture** (review #1). `open_lot` passes the exact pre-quantization qty in the entry plan. For a candidate
   lot, `_create_lot` stores `lot['sizing_raw'] = {qty_raw, stop_raw, stop_dist}`. The capture is observe-only: no trading,
   sizing, stop or exit path reads it. The values sent are unchanged.
-- **Pins:** 32 of the 34 pinned functions are unchanged. `open_lot` and `_create_lot` carry the capture.
+- **Pins:** 31 of the 34 pinned functions are unchanged. `open_lot` and `_create_lot` carry the capture; `candidate_guard` takes `self.lock` (ruling 6518282215).
   - #248 is not merged, so the pin change is proposed in a separate file, `pin_amendment.v1.json`. The #248 files are not
     edited.
   - A test re-hashes all 34 functions against `pins_expected`, which is the contract pins with the amendment applied.
