@@ -347,3 +347,38 @@ def test_a_failed_save_rolls_back(api, monkeypatch, act):
     with pytest.raises(OSError):
         A.handle(f'/api/f01_canary/{act}', body() if act == 'stage' else {})
     assert snap(e) == before and slot(e, F01)['enabled'] is False
+
+
+# ------------------------------------------------------------------ no profile (preset) change while staged
+@pytest.mark.parametrize('name', ['calm', E.ROTATION_PRESET])
+@pytest.mark.parametrize('enabled', [False, True])
+def test_preset_apply_is_refused_while_staged(api, name, enabled):
+    A, e = api
+    if enabled: _enabled(A)
+    else: A.handle('/api/f01_canary/stage', body())
+    before = snap(e)
+    with pytest.raises(ValueError, match='refused while the F01 canary is staged'):
+        A.handle('/api/preset', dict(name=name))
+    assert snap(e) == before and slot(e, F01)['enabled'] is enabled
+    with pytest.raises(ValueError, match='refused while the F01 canary is staged'):
+        e.apply_preset(name)                                                       # the engine itself fails closed too
+    assert snap(e) == before
+
+
+def test_preset_apply_still_works_before_staging(api):
+    A, e = api
+    A.handle('/api/preset', dict(name='calm'))
+    assert e.S['PRESET'] == 'calm' and FA._slot(e.S) is None
+
+
+def test_the_governor_never_switches_the_profile_while_staged(api, monkeypatch):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    e.S['GOVERNOR'] = {'mode': 'auto', 'rules': [{'if': 'dd_gte', 'value': 10, 'then': {'profile': 'calm'}, 'until': None}]}
+    e.equity(); e.state['peak_equity'] = (e.guard_eq or 500.0) * 2
+    errs = []
+    monkeypatch.setattr(e, 'err', lambda msg, key=None: errs.append(msg))
+    sleeves, preset = copy.deepcopy(e.S['SLEEVES']), e.S['PRESET']
+    e.governor_tick(); e.governor_tick()
+    assert e.S['SLEEVES'] == sleeves and e.S['PRESET'] == preset
+    assert len(errs) == 1 and 'refused while the F01 canary is staged' in errs[0]
