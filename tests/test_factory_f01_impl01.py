@@ -28,12 +28,11 @@ EVICT_AMEND = os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendmen
 
 
 def _manifest_pins():
-    """cohort_manifest pins_expected with the CAND-EVICT-ACK-01 one-function amendment overlaid (the manifest file itself
-    is unchanged; Integration re-issues it before C-F01 staging). Each 'from' must equal the manifest pin."""
+    """cohort_manifest pins_expected - the source of truth. It already carries the CAND-EVICT-ACK-01 one-function amendment
+    (Codex 6518282215; manifest-only correction 6518560081), so nothing is overlaid: each amended pin must equal 'to'."""
     pins = dict(json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'])
     for k, ch in json.load(open(EVICT_AMEND, encoding='utf-8'))['amended'].items():
-        assert pins[k] == ch['from'], k
-        pins[k] = ch['to']
+        assert pins[k] == ch['to'] != ch['from'], k
     return pins
 
 

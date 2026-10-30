@@ -409,3 +409,27 @@ def test_the_pin_amendment_is_the_only_engine_pin_change():
     assert set(am['amended']) == {'engine.py:Engine.candidate_guard'}
     got = FC.function_pins(['engine.py:Engine.candidate_guard'])
     assert got['engine.py:Engine.candidate_guard'] == am['amended']['engine.py:Engine.candidate_guard']['to']
+
+
+# ------------------------------------------------------------------ Codex 6518560081: the cohort manifest correction
+def test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_preflight_accepts_it():
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    rel = 'contracts/factory_f01_impl_01/cohort_manifest.v1.json'
+    cur = json.load(open(os.path.join(root, rel), encoding='utf-8'))['pins_expected']
+    try:
+        old = json.loads(subprocess.run(['git', '-C', root, 'show', f'e7e6550:{rel}'], capture_output=True, check=True,
+                                        timeout=30).stdout.decode('utf-8'))['pins_expected']
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pytest.skip('git history of the manifest (master e7e6550) not available')
+    am = json.load(open(os.path.join(root, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8'))
+    (gk, ch), = am['amended'].items()
+    real = lambda d: {k: v for k, v in d.items() if not k.startswith('_')}
+    assert gk == 'engine.py:Engine.candidate_guard' and old[gk] == ch['from'] and cur[gk] == ch['to']
+    assert set(real(cur)) == set(real(old)) and len(real(cur)) == 34
+    assert {k for k in real(cur) if cur[k] != old[k]} == {gk}                  # (a) every other pin byte-identical
+    assert '6518282215' in cur['_amended_cand_evict_ack_01'] and cur['_source'] == old['_source']
+    got = FC.function_pins(cur)                                                  # (b) the bundled preflight's pin rule
+    assert {k: got[k] for k in real(cur)} == real(cur)
+    pins_bad = sorted(k for k, v in cur.items() if not k.startswith('_') and got.get(k) != v)   # C9's pin part
+    assert pins_bad == []
