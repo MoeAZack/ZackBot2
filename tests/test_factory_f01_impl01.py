@@ -662,3 +662,43 @@ def test_hex_identities_reject_a_trailing_newline():
     assert any('source_commit' in p for p in FC.cfg_problems(cfg(commit=SC + '\n')))
     bad = dict(MAN); bad[next(iter(bad))] += '\n'
     assert any('manifest' in p for p in FC.cfg_problems(cfg(manifest=bad)))
+
+
+# ------------------------------------------------------------------ Cowork 6515296301 surviving mutants 1-4 (test-only)
+@pytest.mark.parametrize('live', [None, 0, '', 'false', 1, True])
+def test_only_live_exactly_false_is_paper(f01, monkeypatch, live):
+    """Survivor 1: env_refusal must not treat None / falsy non-bools as PAPER."""
+    e, _ = f01
+    now_at(monkeypatch, NOW)
+    e.S[FC.CANARY_KEY] = cfg()
+    e.live = live
+    assert e.f01_canary_block(slot(e, F01)) == 'F01 canary is PAPER/testnet only - refused in live mode'
+    assert FC.env_refusal(live, E.TESTNET, E.TESTNET) is not None and FC.env_refusal(False, E.TESTNET, E.TESTNET) is None
+
+
+def test_a_relative_cohort_dir_is_refused_from_any_cwd(monkeypatch, tmp_path):
+    """Survivor 2: a relative cohort_dir fails even when the cwd is outside the repository (not only via the repo check)."""
+    monkeypatch.chdir(tmp_path)
+    assert not FC.cohort_dir_ok('rel/dir') and any('cohort_dir' in p for p in FC.cfg_problems(cfg(cohort_dir='rel/dir')))
+    assert FC.cohort_dir_ok(str(tmp_path / 'abs'))
+
+
+def test_the_engine_passes_the_durable_pending_index_to_the_bounds(f01, monkeypatch, measured):
+    """Survivor 3: a C-F01 close known only to the durable pending-cost index (evicted from history) blocks new entries."""
+    e, _ = f01
+    now_at(monkeypatch, NOW)
+    e.S[FC.CANARY_KEY] = cfg()
+    assert e.f01_canary_block(slot(e, F01)) is None
+    e.state[E.CANDIDATE_PENDING_KEY] = {'gone': dict(sleeve=F01, symbol='BTCUSDT', closed=iso(NOW - timedelta(hours=1)))}
+    assert 'costs pending' in e.f01_canary_block(slot(e, F01))
+
+
+def test_the_engine_passes_the_cohort_rows_to_the_bounds(f01, monkeypatch, measured):
+    """Survivor 4: closes present only in the cohort store (evicted from history) still count toward the 8-close bound."""
+    e, _ = f01
+    now_at(monkeypatch, NOW)
+    e.S[FC.CANARY_KEY] = cfg()
+    e.history += [row(i, 0.1) for i in range(7)]
+    assert e.f01_canary_block(slot(e, F01)) is None
+    e.cohort_rows = [row(7, 0.1)]
+    assert e.f01_canary_block(slot(e, F01))
