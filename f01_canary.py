@@ -23,7 +23,6 @@ import json
 import math
 import os
 import re
-import subprocess
 from datetime import datetime, timedelta, timezone
 
 import actual_costs as AC
@@ -40,7 +39,7 @@ FORBIDDEN_KEYS = frozenset(k.lower() for k in (
     'orderId', 'clientOrderId', 'tradeId', 'exchange_order_id', 'exchange_trade_id', 'stop_id', 'cid', 'API_KEY', 'API_SECRET',
     'id', 'order_id', 'trade_id', 'client_id', 'client_order_id', 'tp_id', 'cost_ref', 'cost_refs', 'fill_refs', 'algoId',
     'newClientOrderId', 'origClientOrderId', 'secret', 'signature'))
-EXTRACT_KINDS = ('decision', 'trade', 'preflight')
+EXTRACT_KINDS = ('decision', 'trade', 'preflight', 'frame')
 DECISION_COLUMNS = ('symbol', 'decision_bar', 'scored', 'rt_le', 'rp_le', 'rt_lx', 'rp_lx', 'rt_atr', 'rp_atr', 'rt_outcome',
                     'rt_reason', 'rt_reason_logged_at', 'rp_outcome', 'causal_window_id', 'field_ids', 'result')
 TRADE_COLUMNS = ('row_key_sha256', 'symbol', 'entry_bar', 'exit_bar', 'rt_why', 'rp_why', 'rt_entry', 'rp_entry', 'rt_exit',
@@ -51,6 +50,11 @@ TRADE_COLUMNS = ('row_key_sha256', 'symbol', 'entry_bar', 'exit_bar', 'rt_why', 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 TF_S = 4 * 3600                                                     # C-F01 decides on closed 4h bars
 HEX40 = re.compile(r'^[0-9a-f]{40}$')
+HEX64 = re.compile(r'^[0-9a-f]{64}$')
+BUILD_RE = re.compile(r'^[A-Za-z0-9._-]{1,40}$')                     # ml_shadow.pairs.BUILD_RE
+# Codex 6514438491 #2: the frozen source manifest - sha256 of each file's bytes with CRLF normalized to LF (git autocrlf
+# may convert the installed copy); compared with the running bundle at preflight C9.
+MANIFEST_FILES = ('engine.py', 'strategies.py', 'feasibility.py', 'actual_costs.py', 'f01_canary.py')
 # the frozen C-F01 card (parity contract binding; Codex 6514109966 #6: share is checked too)
 FROZEN_CARD = dict(key='ema_mom', sides='long', risk=0.01, max_pos=4, tf='4h', share=1 / 6, mgmt={},
                    symbols=['BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT',
@@ -73,7 +77,8 @@ def config(S):
     c = (S or {}).get(CANARY_KEY)
     if not isinstance(c, dict) or c.get('on') is not True: return None
     return dict(on=True, start_utc=c.get('start_utc'), authorization_comment_id=c.get('authorization_comment_id'),
-                cohort_dir=c.get('cohort_dir') or None, impl_head=c.get('impl_head'), impl_tree=c.get('impl_tree'))
+                cohort_dir=c.get('cohort_dir') or None, source_commit=c.get('source_commit'),
+                source_manifest=c.get('source_manifest'))
 
 
 def auth_id_ok(v):
@@ -93,21 +98,56 @@ def cfg_problems(cfg, repo_root=None):
     if _ts(c.get('start_utc')) is None: out.append('no frozen tz-aware start timestamp')
     if not auth_id_ok(c.get('authorization_comment_id')): out.append('authorization id is not a positive numeric GitHub comment id')
     if not cohort_dir_ok(c.get('cohort_dir'), repo_root): out.append('cohort_dir is not an absolute path outside the repository')
-    if not (isinstance(c.get('impl_head'), str) and HEX40.match(c['impl_head'])): out.append('impl_head is not a full 40-hex commit SHA')
-    if not (isinstance(c.get('impl_tree'), str) and HEX40.match(c['impl_tree'])): out.append('impl_tree is not a full 40-hex tree SHA')
+    if not (isinstance(c.get('source_commit'), str) and HEX40.match(c['source_commit'])):
+        out.append('source_commit is not the full 40-hex accepted merged commit')
+    m = c.get('source_manifest')
+    if not (isinstance(m, dict) and set(m) == set(MANIFEST_FILES) and all(isinstance(v, str) and HEX64.match(v) for v in m.values())):
+        out.append('source_manifest is not the sha256 map of ' + ', '.join(MANIFEST_FILES))
     return out
 
 
-def running_build(root=None):
-    """(head, tree, clean) of the running source checkout via read-only git; (None, None, False) when it cannot be read."""
-    root = root or REPO_ROOT
+def source_manifest(root=None):
+    """{file: sha256 of its LF-normalized bytes} for MANIFEST_FILES under root (the running bundle); None for a file that
+    cannot be read. Integration computes the frozen map with the same function on a checkout of the accepted commit."""
+    out = {}
+    for n in MANIFEST_FILES:
+        try:
+            with open(os.path.join(root or REPO_ROOT, n), 'rb') as f: out[n] = sha256(f.read().replace(b'\r\n', b'\n'))
+        except OSError:
+            out[n] = None
+    return out
+
+
+def running_identity(data_dir, root=None):
+    """The installed-build provenance (no git: the installer strips .git): build_info.BUILD_ID ('dev' when not packaged)
+    and build.json source_commit, taken only when that installer record names this BUILD_ID (ml_shadow.pairs.code_identity
+    rule), plus the running source manifest. Never raises."""
     try:
-        run = lambda *a: subprocess.run(['git', '-C', root, *a], capture_output=True, text=True, timeout=20, check=True).stdout.strip()
-        head, tree = run('rev-parse', 'HEAD'), run('rev-parse', 'HEAD^{tree}')
-        clean = run('status', '--porcelain', '--untracked-files=no') == ''
-        return head, tree, clean
+        from build_info import BUILD_ID as bid
     except Exception:
-        return None, None, False
+        bid = 'dev'
+    sc = None
+    try:
+        with open(os.path.join(str(data_dir), 'build.json'), encoding='utf-8-sig') as fh: rec = json.load(fh)
+        if isinstance(rec, dict) and rec.get('build_id') == bid and bid != 'dev': sc = rec.get('source_commit')
+    except Exception:
+        sc = None
+    if not (isinstance(sc, str) and HEX40.match(sc)): sc = None
+    return dict(build_id=str(bid), source_commit=sc, manifest=source_manifest(root))
+
+
+def identity_gap(ident, cfg):
+    """None when the running build is the accepted one: a packaged (non-dev) build id, its build.json source_commit equal
+    to the frozen source_commit, and every manifest file equal to the frozen manifest - else the first failing part."""
+    i, c = ident or {}, cfg or {}
+    b = i.get('build_id')
+    if not (isinstance(b, str) and BUILD_RE.match(b)) or b == 'dev': return 'dev_build'
+    if not (isinstance(i.get('source_commit'), str) and HEX40.match(i['source_commit'])): return 'source_commit_missing'
+    if i['source_commit'] != c.get('source_commit'): return 'source_commit_mismatch'
+    m, want = i.get('manifest') or {}, c.get('source_manifest')
+    if not isinstance(want, dict) or set(want) != set(MANIFEST_FILES): return 'source_manifest_missing'
+    bad = sorted(n for n in MANIFEST_FILES if not m.get(n) or m.get(n) != want.get(n))
+    return f"source_manifest_mismatch: {', '.join(bad)}" if bad else None
 
 
 def card_mismatch(sl):
@@ -217,7 +257,7 @@ def _owner(x, key=None):
 
 
 def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governor_mult=None, kelly_mult=None,
-              ctrl_long_factor=None, running=(None, None, False), pins_expected=None, pins_actual=None, now=None,
+              ctrl_long_factor=None, identity=None, pins_expected=None, pins_actual=None, now=None,
               repo_root=None):
     """The contract's candidate-flat start checks over plain values (no engine method is called here, nothing is written).
     -> dict(pass, checks={C*: {ok, ...}}, recorded={...}). Recorded values (AI_FILTER, FEE_EDGE_GATE, other open slots)
@@ -239,13 +279,15 @@ def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governo
     cfg = (S.get(CANARY_KEY) if isinstance(S.get(CANARY_KEY), dict) else {}) or {}
     env = env_refusal(live, base, testnet)
     pins_bad = sorted(k for k, v in (pins_expected or {}).items() if not k.startswith('_') and (pins_actual or {}).get(k) != v)
-    head, tree, clean = running
-    head_ok = isinstance(cfg.get('impl_head'), str) and bool(HEX40.match(cfg['impl_head'])) and head == cfg['impl_head']
-    tree_ok = isinstance(cfg.get('impl_tree'), str) and bool(HEX40.match(cfg['impl_tree'])) and tree == cfg['impl_tree']
+    gap = identity_gap(identity, cfg)
+    at = _ts(now) or datetime.now(timezone.utc)
+    start = _ts(cfg.get('start_utc'))
     card = card_mismatch(f01) if f01 else list(FROZEN_CARD)
     bad_cfg = cfg_problems(cfg, repo_root)
     c = {
         'ENV': dict(ok=env is None, why=env, live=live is not False, testnet=base == testnet and bool(base)),
+        'STAGE': dict(ok=f01 is not None and f01.get('enabled') is False, c_f01_enabled=None if f01 is None else f01.get('enabled'),
+                      rule='two-stage start: preflight runs with C-F01 disabled; Integration enables it only after PASS'),
         'C1': dict(ok=not fam_lots and not fam_work, family_lots=fam_lots, family_working=fam_work),
         'C1b': dict(ok=True, other_open=[dict(symbol=a, slot=b, side=s) for a, b, s in others]),
         'C2': dict(ok=f02 is None or f02.get('enabled') is False, c_f02_enabled=None if f02 is None else f02.get('enabled')),
@@ -257,11 +299,12 @@ def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governo
         'C8': dict(ok=S.get('ENTRY_ORDER') == ENTRY_ORDER and S.get('MAX_LEVERAGE') == MAX_LEVERAGE,
                    ENTRY_ORDER=S.get('ENTRY_ORDER'), MAX_LEVERAGE=S.get('MAX_LEVERAGE'),
                    AI_FILTER=S.get('AI_FILTER'), FEE_EDGE_GATE=S.get('FEE_EDGE_GATE')),
-        'C9': dict(ok=head_ok and tree_ok and clean is True and bool(pins_expected) and not pins_bad,
-                   impl_head=cfg.get('impl_head'), impl_tree=cfg.get('impl_tree'), running_head=head, running_tree=tree,
-                   running_clean=clean, pins_mismatch=pins_bad,
+        'C9': dict(ok=gap is None and bool(pins_expected) and not pins_bad, identity_gap=gap,
+                   build_id=(identity or {}).get('build_id'), running_source_commit=(identity or {}).get('source_commit'),
+                   frozen_source_commit=cfg.get('source_commit'), pins_mismatch=pins_bad,
                    pins_checked=len([k for k in pins_expected or {} if not k.startswith('_')])),
-        'C10': dict(ok=cfg.get('on') is True and not bad_cfg, problems=bad_cfg,
+        'C10': dict(ok=cfg.get('on') is True and not bad_cfg and start is not None and start > at, problems=bad_cfg,
+                    start_in_future=start is not None and start > at,
                     authorization_comment_id=cfg.get('authorization_comment_id'), start_utc=cfg.get('start_utc'),
                     cohort_dir=cfg.get('cohort_dir')),
     }
@@ -269,7 +312,7 @@ def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governo
                              **{k: f01.get(k) for k in ('sides', 'risk', 'max_pos', 'symbols', 'mgmt', 'tf', 'share', 'enabled')})
                if f01 else None, c_f02_enabled=None if f02 is None else f02.get('enabled'),
                pending_index_size=len(pend) if isinstance(pend, dict) else 0,
-               at_utc=(_ts(now) or datetime.now(timezone.utc)).isoformat(timespec='seconds'))
+               at_utc=at.isoformat(timespec='seconds'))
     return {'pass': all(v['ok'] for v in c.values()), 'checks': c, 'recorded': rec}
 
 
@@ -332,7 +375,7 @@ def _num(v):
     except (TypeError, ValueError): return None
 
 
-def decision_record(sym, sg, outcome, reason, logged_at, raw=None, family_open=None, held=None, start_cfg=None):
+def decision_record(sym, sg, outcome, reason, logged_at, raw=None, family_open=None, held=None, start_cfg=None, frame=None):
     """One C-F01 decision (P01-P07 runtime side). Whitelisted fields only; the refusal text is kept exactly."""
     sg, raw = sg or {}, raw or {}
     return dict(kind='decision', slot=SLOT, symbol=sym, decision_bar=str(sg.get('time')),
@@ -340,7 +383,8 @@ def decision_record(sym, sg, outcome, reason, logged_at, raw=None, family_open=N
                 le=bool(sg.get('le')), lx=bool(sg.get('lx')), atr=_num(sg.get('atr')), close=_num(sg.get('close')),
                 raw_le=raw.get('le') if raw.get('time') == sg.get('time') else None,
                 outcome=outcome, reason=None if reason is None else str(reason), reason_logged_at=logged_at,
-                cap=dict(family_open=family_open, family_cap=FAMILY_CAP, slot_held=held))
+                cap=dict(family_open=family_open, family_cap=FAMILY_CAP, slot_held=held),
+                frame_sha256=(frame or {}).get('frame_sha256'))
 
 
 def entry_record(lot, rules=None, sg=None):
@@ -373,6 +417,18 @@ def trade_record(row):
                 fees_measured=_num(m.get('fees')), funding_measured=_num(m.get('funding')), net_measured=_num(m.get('net')),
                 r_measured=(_num(v['pnl']) / _num(row.get('risk_usd'))) if v['status'] in MEASURED and v['pnl'] is not None
                 and _num(row.get('risk_usd')) else None, cost_status=v['status'], cost_pending_why=list(v.get('why') or ()))
+
+
+def frame_record(sym, tf, df):
+    """Codex 6514438491 #1: the exact closed frame the runtime decided on (engine.candles output). sha256 = canonical JSON of
+    its rows [open time ms, o, h, l, c, v] (the replay's inputs; quote volume excluded). Pure; raises on a malformed frame."""
+    t = [int(x.value // 10 ** 6) if hasattr(x, 'value') else int(x) for x in df['t']]   # Timestamp.value is ns at any unit
+    cols = [[float(x) for x in df[k]] for k in ('o', 'h', 'l', 'c', 'v')]
+    rows = [[t[i]] + [c[i] for c in cols] for i in range(len(t))]
+    first = datetime.fromtimestamp(t[0] / 1000, timezone.utc).isoformat(timespec='seconds') if t else None
+    last = datetime.fromtimestamp(t[-1] / 1000, timezone.utc).isoformat(timespec='seconds') if t else None
+    return dict(kind='frame', slot=SLOT, symbol=sym, tf=tf, first_bar_open=first, last_bar_open=last, rows=len(rows),
+                frame_sha256=sha256(canonical(rows)))
 
 
 def _inside(path, root):
@@ -413,7 +469,7 @@ class ExtractWriter:
         return out
 
     def finalize(self, out_dir=None):
-        """Build preflight.json, decisions.csv, trades.csv and MANIFEST.sha256 (runtime columns only; rp_* / causal window /
+        """Build preflight.json, frames_manifest.json, decisions.csv, trades.csv and MANIFEST.sha256 (runtime columns only; rp_* / causal window /
         result stay empty for Cowork). Every file is written once (exclusive create). Returns {file: sha256}."""
         out = os.path.abspath(out_dir or self.dir)
         if _inside(out, REPO_ROOT): raise ValueError('evidence output must be outside the repository')
@@ -442,6 +498,11 @@ class ExtractWriter:
                            fees_measured=r['fees_measured'], fees_model=r['fees_model'], funding_measured=r['funding_measured'],
                            rt_r=r['r_measured'], cost_status=r['cost_status']))
         files['trades.csv'] = _csv(TRADE_COLUMNS, tr)
+        fr = {}
+        for r in self.records('frame'):
+            fr.setdefault(r['symbol'], []).append({k: r[k] for k in ('tf', 'first_bar_open', 'last_bar_open', 'rows', 'frame_sha256')})
+        files['frames_manifest.json'] = json.dumps({k: sorted(v, key=lambda x: (str(x['last_bar_open']), x['frame_sha256']))
+                                                    for k, v in sorted(fr.items())}, sort_keys=True, indent=1).encode('ascii')
         hashes = {}
         for n, b in files.items():
             with open(os.path.join(out, n), 'xb') as f: f.write(b)

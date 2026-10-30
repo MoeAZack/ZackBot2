@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_safety import mk_engine                       # noqa: E402  (FakeX engine, PAPER)
 import candidates as CD                                  # noqa: E402
 import engine as E                                       # noqa: E402
+import f01_canary as FC                                  # noqa: E402
 
 FIXED18 = {'BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT', 'QNTUSDT',
            'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT'}
@@ -58,7 +59,7 @@ def canary(e, tmp):
     e.trade.base = E.TESTNET
     e.S['F01_CANARY'] = dict(on=True, start_utc=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec='seconds'),
                              authorization_comment_id='6514109966', cohort_dir=os.path.join(os.path.abspath(tmp), 'f01_cohort'),
-                             impl_head='a' * 40, impl_tree='b' * 40)
+                             source_commit='c' * 40, source_manifest={n: 'd' * 64 for n in FC.MANIFEST_FILES})
 
 
 # ------------------------------------------------------------------ the frozen cards

@@ -13,7 +13,11 @@ comment.
 - **C-F01 trades only inside the canary** (review 6514109966 #2). With the flag missing, malformed or OFF, an enabled
   C-F01 is refused every new entry. Other slots are unaffected.
 - Shape: `{"on": true, "start_utc": "<tz-aware ISO UTC>", "authorization_comment_id": "<positive numeric comment id>",
-  "cohort_dir": "<absolute path outside the repo>", "impl_head": "<40-hex commit>", "impl_tree": "<40-hex tree>"}`.
+  "cohort_dir": "<absolute path outside the repo>", "source_commit": "<40-hex accepted merged commit>",
+  "source_manifest": {"engine.py": "<sha256>", ...}}`.
+  - `source_manifest` covers `engine.py`, `strategies.py`, `feasibility.py`, `actual_costs.py` and `f01_canary.py`.
+  - Each value is the sha256 of the file's bytes with CRLF normalized to LF.
+  - Compute it with `f01_canary.source_manifest(<checkout of the accepted commit>)`.
   - Only the JSON boolean `true` turns the flag on.
   - Every other field is required. A malformed value refuses new C-F01 entries and fails preflight C10.
 - **Testnet guard.** The flag is honoured only when `Engine.live is False` **and** the trading client's base URL is exactly
@@ -56,23 +60,38 @@ comment.
   - open lots keep confirmed protection and normal management;
   - nothing is force-closed.
 
-## Frozen start and scoring start (OQ2)
+## Two-stage start (review 6514438491 #3)
 
-- **Start time:** Integration writes `start_utc`, the authorization id, `cohort_dir`, `impl_head` and `impl_tree` once, only after `preflight.pass` is true, in the same settings change
-  that sets `on: true`. It is never moved.
-- **Before the start:** the gate refuses new C-F01 entries.
-- **Scored decisions** (review #3): a decision is scored only when both of these hold:
+This order removes the preflight / config circularity:
+
+1. **(a) Write the config.** With C-F01 still **disabled**, Integration writes the immutable authorized `F01_CANARY`
+   config with a **future** `start_utc`. The config holds `on`, the authorization id, `cohort_dir`, `source_commit` and
+   `source_manifest`.
+2. **(b) Run preflight.** Integration runs `Engine.f01_canary_preflight(pins_expected, write=True)`.
+   - It checks ENV, STAGE (C-F01 disabled) and C1-C10. C10 requires `start_utc` to be strictly in the future.
+   - It returns `record_sha256` and writes the record as an immutable `preflight` extract (`extract_sha256`).
+3. **(c) Enable after PASS.** Only after PASS, Integration enables C-F01 (slot `enabled = true`) **before** `start_utc`.
+   Until `start_utc` the gate refuses every new C-F01 entry.
+4. **(d) On failure.** C-F01 stays disabled. Fix the cause and re-run (b), with a new future start if the old one has
+   passed.
+
+`start_utc` never moves after (a).
+
+## Scoring start (OQ2)
+
+- **Scored decisions:** a decision is scored only when both of these hold:
   - its 4h bar opened at or after `start_utc`;
   - the engine confirmed the bar fully closed (bar open + 4h <= the decision time).
 
-  So the bar spanning the start is excluded, and the next fully closed bar is the first scored bar. Warm-up bars (at least
-  250 older closed bars) are never scored.
+  So the bar spanning the start never scores, and the next fully closed bar is the first scored bar. Warm-up bars (at
+  least 250 older closed bars) are never scored.
 
 ## Preflight (read-only)
 
-- **Call:** `Engine.f01_canary_preflight(head_sha, pins_expected)`.
-- **Returns:** `{pass, checks, recorded}` with these checks:
+- **Call:** `Engine.f01_canary_preflight(pins_expected, write=True)`.
+- **Returns:** `{pass, checks, recorded, record_sha256, extract_sha256}` with these checks:
   - ENV: PAPER plus the testnet URL;
+  - STAGE: C-F01 is disabled (two-stage start);
   - C1: candidate-flat. No C-F01 / C-F02 lot, and no pending, resting, unconfirmed or deferred entry;
   - C1b: other open slots are recorded as symbol / slot / side;
   - C2: C-F02 OFF;
@@ -83,11 +102,16 @@ comment.
   - C6: governor and Kelly multipliers = 1.0;
   - C7: ctrl `long_factor` = 1.0;
   - C8: market entry and the 10x cap. AI_FILTER / FEE_EDGE_GATE are recorded and left unchanged;
-  - C9: the running checkout's head and tree (read-only git) equal `impl_head` / `impl_tree`, the checkout is clean,
-    and every pin matches. An arbitrary or short SHA fails;
-  - C10: flag on, tz-aware start, a positive numeric authorization id, an absolute `cohort_dir` outside the repo, and
-    40-hex head / tree.
-- **Side effects:** none. It writes, switches and sends nothing. Record its output as a `preflight` extract.
+  - C9: installed-build provenance, with no git read (the installer strips `.git`). All of these must hold:
+    - `build_info.BUILD_ID` is not `dev`;
+    - `build.json` names that build id, and its `source_commit` equals the frozen `source_commit`;
+    - the running source manifest equals the frozen `source_manifest`;
+    - every pin matches.
+
+    A dev build, a mismatch or a missing identity fails;
+  - C10: flag on; a well-formed config (positive numeric authorization id, absolute `cohort_dir` outside the repo,
+    40-hex `source_commit`, a complete `source_manifest`); `start_utc` in the future at preflight time.
+- **Side effects:** settings and engine state are never changed. `write=True` only adds the immutable preflight extract.
 
 ## Clean cohort / reset record
 
@@ -132,20 +156,29 @@ S1-S7 as in the parity contract. The runtime gate enforces S5, S6 and S7 itself.
 ## Evidence outputs and hashing
 
 - **Extracts:**
-  - Path: `<cohort_dir>/extracts/{decision,trade,preflight}/<sha256>.json`.
+  - Path: `<cohort_dir>/extracts/{decision,trade,preflight,frame}/<sha256>.json`.
+  - **Frames** (review 6514438491 #1):
+    - Captured by an observe-only hook in `Engine.candles`, which is not pinned and builds the exact closed 4h frame
+      `compute_signals` decides on. `compute_signals` and `cycle` keep their pins.
+    - Capture runs per C-F01 symbol, only while the canary is ON in PAPER / testnet with a `cohort_dir`.
+    - Each frame record holds the symbol, the first / last bar open time, the row count, and `frame_sha256` (the sha256
+      of the canonical JSON rows `[open ms, o, h, l, c, v]`).
+    - Each decision extract carries the `frame_sha256` of its bar.
+    - The capture never feeds back into signals and never raises.
   - Format: canonical JSON (sorted keys, ASCII, non-finite floats as `{"float": "nan"}`).
   - Each file is created once (exclusive create). The same bytes again is a no-op; different bytes is an error.
   - Fields are whitelisted. A record carrying any id-like key is refused. The cohort dir must be outside the repo.
-- **Finalize:** `ExtractWriter(cohort_dir).finalize()` writes `preflight.json`, `decisions.csv`, `trades.csv` and
+- **Finalize:** `ExtractWriter(cohort_dir).finalize()` writes `preflight.json`, `frames_manifest.json` (per symbol, sorted),
+  `decisions.csv`, `trades.csv` and
   `MANIFEST.sha256` (`<sha256>  <name>` per line). Each file is written once.
 - **Left for Cowork:** the `rp_*`, `causal_window_id` and `result` columns stay empty. `verdict.json` is Cowork's (OQ7).
 
-## Review 6514109966 (points 1-7) and remaining open item
+## Reviews
 
-- Points 1-7 are resolved as described above. The amended pins are in `pin_amendment.v1.json`.
-- **Open:** `frames_manifest.json` (the closed 4h frame sha256 per symbol) still needs a hook inside the pinned
-  `compute_signals` / `cycle`. It is not built here. Integration to rule whether a further observe-only pin amendment is
-  wanted, or whether Cowork hashes the frames from its own fetch.
+- **6514109966:** points 1-7 are resolved. The amended pins (`open_lot`, `_create_lot`) are in `pin_amendment.v1.json`.
+- **6514438491:** points 1-3 are resolved: frames manifest, installed-build C9, two-stage start. They need no further
+  pin change.
+- No open questions.
 
 ROADMAP FIT: Strategy Factory -> rapid candidate-to-PAPER pipeline.
 DEFERRED: activation (#248 Cowork PASS + Integration authorization); mainnet; tuning from canary outcomes.

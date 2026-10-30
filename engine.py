@@ -2394,18 +2394,38 @@ class Engine:
             log.warning(f'FACTORY-F01 canary: {why}')
         return why
 
-    def f01_canary_preflight(self, pins_expected=None):
-        """The contract's C1-C10 start record (read-only: nothing is switched, saved or sent). pins_expected: the contract's
-        pinned_function_sha256 map, re-hashed against this build's source; C9 also compares the running checkout's head /
-        tree (read-only git) with the impl_head / impl_tree frozen in F01_CANARY."""
+    def f01_canary_preflight(self, pins_expected=None, write=False):
+        """The contract's C1-C10 start record (nothing is switched, saved or sent). pins_expected: the contract's
+        pinned_function_sha256 map, re-hashed against this build's source; C9 also compares the installed-build provenance
+        (build_info.BUILD_ID + matching build.json source_commit) and the running source manifest with the source_commit /
+        source_manifest frozen in F01_CANARY. Two-stage start: run with C-F01 disabled and a future start_utc. The record's
+        sha256 is returned in 'record_sha256'; write=True also stores it as an immutable 'preflight' extract."""
         sl = next((x for x in self.S.get('SLEEVES') or [] if x.get('id') == FC.SLOT), None)
         try: ctrl = (self.ctrl_now() or {}).get('long_factor')
         except Exception: ctrl = None
-        return FC.preflight(self.S, self.state, live=getattr(self, 'live', True), base=getattr(getattr(self, 'trade', None), 'base', None),
+        pf = FC.preflight(self.S, self.state, live=getattr(self, 'live', True), base=getattr(getattr(self, 'trade', None), 'base', None),
                             testnet=TESTNET, deferred=getattr(self, '_deferred', None) or (),
                             drift=self.candidate_drift(sl) if sl else None, governor_mult=self.governor_mult(),
-                            kelly_mult=self.kelly_mult(sl) if sl else None, ctrl_long_factor=ctrl, running=FC.running_build(),
+                            kelly_mult=self.kelly_mult(sl) if sl else None, ctrl_long_factor=ctrl, now=now_utc(),
+                            identity=FC.running_identity(os.path.dirname(self.F['install'])),
                             pins_expected=pins_expected, pins_actual=FC.function_pins(pins_expected or {}))
+        pf['record_sha256'] = FC.sha256(FC.canonical(pf))
+        if write:
+            rec = dict(pf, kind='preflight'); rec.pop('record_sha256')
+            pf['extract_sha256'] = self._f01_extract('preflight', lambda: rec)
+        return pf
+
+    def _f01_frame(self, sym, tf, df):
+        """The closed 4h frame engine.candles hands to compute_signals, hashed (FC.frame_record) and kept per symbol for the
+        decision extracts; written as a 'frame' extract only while the canary is ON in PAPER/testnet with a cohort_dir.
+        Observe only: nothing reads it back into signals, and it never raises into trading."""
+        try:
+            if FC.config(getattr(self, 'S', None)) is None: return
+            rec = FC.frame_record(sym, tf, df)
+            self.__dict__.setdefault('_f01_fh', {})[sym] = rec
+            self._f01_extract('frame', lambda: rec)
+        except Exception as e:
+            log.warning(f'FACTORY-F01 frame record {sym} not written: {type(e).__name__}')
 
     def _f01_extract(self, kind, make):
         """Write one immutable C-F01 extract when the canary is ON in PAPER/testnet and settings name a cohort_dir.
@@ -2424,8 +2444,10 @@ class Engine:
             claims = self._claims()
             fam = sum(1 for o, _s in claims if CANDIDATE_FAMILY.get(o) == CANDIDATE_FAMILY[FC.SLOT])
             held = sum(1 for l in self.state['lots'].values() if l['sleeve'] == FC.SLOT)
+            fr = (getattr(self, '_f01_fh', None) or {}).get(sym)
+            if fr and FC._ts(FC._iso(sg.get('time'))) != FC._ts(fr.get('last_bar_open')): fr = None   # another bar's frame
             return FC.decision_record(sym, sg, outcome, reason, logged_at, self._sig_raw.get(f'{FC.SLOT}|{sym}'), fam, held,
-                                      FC.config(self.S))
+                                      FC.config(self.S), fr)
         return self._f01_extract('decision', make)
 
     def is_tradfi(self, sym):
@@ -2681,6 +2703,7 @@ class Engine:
         df['t'] = pd.to_datetime(df.t, unit='ms')
         df = S.indicators(df[['t', 'o', 'h', 'l', 'c', 'v', 'qv']])
         self._kc[(sym, tf)] = (df, last_open)
+        if tf == '4h' and sym in CAND_FIXED18: Engine._f01_frame(self, sym, tf, df)     # FACTORY-F01-IMPL-01 (observe only)
         return df
 
     def _orphan_sleeves(self, tf):

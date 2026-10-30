@@ -24,5 +24,6 @@
   "engine.py:Engine.open_lot": "the entry plan carries qty_raw (the risk-sized qty before the exchange step floor / leverage cap, i.e. feasibility.risk_qty()['qty']); no other line changes",
   "engine.py:Engine._create_lot": "for a CANDIDATE_SLOTS lot only: lot['sizing_raw'] = {qty_raw, stop_raw = fill - sd * stop_dist (the value _rd quantizes to the sent stop), stop_dist}; observe-only, never read by trading, sizing, stops or exits"
  },
- "unchanged": "the other 32 pins equal the contract; qty sent and stop sent are computed exactly as before"
+ "unchanged": "the other 32 pins equal the contract; qty sent and stop sent are computed exactly as before; compute_signals / cycle unchanged",
+ "frames_capture": "Codex 6514438491 #1: the frames_manifest capture hooks Engine.candles (not pinned) - the function that builds the exact closed 4h frame compute_signals decides on - so no further pin changes. compute_signals and cycle keep their contract pins"
 }

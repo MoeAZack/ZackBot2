@@ -24,11 +24,20 @@
   "default": "absent (OFF). With the flag missing, malformed or OFF, an enabled C-F01 is refused every new entry (Codex 6514109966 #2); other slots are unaffected",
   "shape": {
    "on": "true (exactly the JSON boolean) = ON; anything else = OFF",
-   "start_utc": "tz-aware ISO-8601 UTC timestamp, frozen by Integration at authorization, before any scored bar is read",
+   "start_utc": "tz-aware ISO-8601 UTC timestamp, written while C-F01 is disabled and IN THE FUTURE at preflight time; never moved",
    "authorization_comment_id": "the Integration (Codex) authorization comment id: a positive numeric GitHub comment id",
    "cohort_dir": "REQUIRED: an absolute evidence directory outside the repo",
-   "impl_head": "the accepted implementation head (full 40-hex commit SHA)",
-   "impl_tree": "the accepted implementation tree (full 40-hex tree SHA, git rev-parse <head>^{tree})"
+   "source_commit": "the accepted MERGED source commit (full 40-hex) the installed build must come from (build.json source_commit)",
+   "source_manifest": {
+    "files": [
+     "engine.py",
+     "strategies.py",
+     "feasibility.py",
+     "actual_costs.py",
+     "f01_canary.py"
+    ],
+    "value": "{file: sha256 of its bytes with CRLF normalized to LF} computed by f01_canary.source_manifest(<checkout of the accepted commit>)"
+   }
   },
   "testnet_guard": "honoured only when Engine.live is False AND the trading client base URL is exactly binance_client.TESTNET; otherwise every new C-F01 entry is refused and logged (S7, fail closed)",
   "does_not": [
@@ -37,7 +46,7 @@
    "change any global PAPER setting",
    "close or resize any lot"
   ],
-  "code": "f01_canary.py; engine.py Engine.f01_canary_block (called from Engine._rules_block, automatic entries only), Engine.f01_canary_preflight, Engine._f01_extract / _f01_decision (observe-only hooks in miss, _audit_opened, _measured_close, _measured_followup); observe-only raw sizing capture in open_lot / _create_lot (pin_amendment.v1.json)",
+  "code": "f01_canary.py; engine.py Engine.f01_canary_block (called from Engine._rules_block, automatic entries only), Engine.f01_canary_preflight, Engine._f01_extract / _f01_decision (observe-only hooks in miss, _audit_opened, _measured_close, _measured_followup); observe-only raw sizing capture in open_lot / _create_lot (pin_amendment.v1.json); frame capture hook in Engine.candles (not pinned) -> 'frame' extracts",
   "pinned_functions_untouched": "32 of the 34 pinned functions are unchanged; open_lot and _create_lot carry the observe-only capture recorded in pin_amendment.v1.json (re-hash test in tests/test_factory_f01_impl01.py)"
  },
  "bounds": {
@@ -52,13 +61,13 @@
   "pending_rule": "any counted C-F01 close with pending costs (row view, or the durable candidate_cost_pending index) blocks new C-F01 entries until measured (fail closed)",
   "on_reach": "new C-F01 entries refused with the bound text; open lots keep confirmed protection and normal management; nothing is force-closed (OQ8)"
  },
- "frozen_start_rule": "Integration writes start_utc, authorization_comment_id, cohort_dir, impl_head and impl_tree once, in the same settings change that sets on=true, only after preflight.pass is true; none is ever moved. Before start_utc the gate refuses new C-F01 entries",
+ "frozen_start_rule": "see two_stage_start",
  "scoring_start_rule": "OQ2 (Codex 6514109966 #3): >= 250 older closed 4h bars are warm-up only. A decision is scored only when its 4h bar opened at / after start_utc AND the engine confirmed it fully closed (bar open + 4h <= the decision time). The bar spanning start_utc is excluded; the next fully closed bar is the first scored bar",
  "preflight": {
-  "call": "Engine.f01_canary_preflight(pins_expected=<pins_expected below>) -> {pass, checks{ENV, C1, C1b, C2..C10}, recorded}",
-  "read_only": true,
+  "call": "Engine.f01_canary_preflight(pins_expected=<pins_expected below>, write=True) -> {pass, checks{ENV, STAGE, C1, C1b, C2..C10}, recorded, record_sha256, extract_sha256}",
+  "read_only": "engine state and settings are never changed; write=True only adds the immutable preflight extract under cohort_dir",
   "record_as": "extract kind 'preflight' (ExtractWriter.write) -> preflight.json at finalize",
-  "pass_rule": "every check ok. C5: no drift and the slot equals the frozen card incl. share == 1/6, risk 0.01, max_pos 4, key ema_mom, sides long, tf 4h, the ordered fixed-18 symbols, mgmt {}. C9: running head and tree (read-only git) equal impl_head / impl_tree, the checkout is clean and every pin matches. C10: flag on, tz-aware start, positive numeric authorization id, absolute cohort_dir outside the repo, 40-hex head / tree"
+  "pass_rule": "every check ok. STAGE: C-F01 disabled. C5: no drift and the frozen card incl. share == 1/6. C9: installed-build provenance - build_info.BUILD_ID not 'dev', the matching build.json source_commit equals the frozen source_commit, the running source manifest equals the frozen source_manifest, every pin matches (no git read: the installer strips .git). C10: flag on, well-formed config, start_utc in the future at preflight time"
  },
  "clean_cohort_record_template": {
   "cohort_id": "<Integration-chosen run id>",
@@ -77,9 +86,11 @@
   "max_leverage": 10,
   "reset": "candidate-flat (C1): no C-F01 / C-F02 lot or pending / resting / unconfirmed / deferred entry; no pre-canary lot imported",
   "notes": "no order, trade, stop or client ids",
-  "impl_head": null,
-  "impl_tree": null,
-  "cohort_dir": null
+  "cohort_dir": null,
+  "build_id": null,
+  "source_commit": null,
+  "source_manifest": null,
+  "preflight_record_sha256": null
  },
  "rollback": {
   "owner": "Integration only (Build and Evidence never edit settings)",
@@ -111,9 +122,9 @@
  "evidence_outputs": {
   "dir": "<cohort_dir> (outside the repo)",
   "runtime_extracts": "extracts/{decision,trade,preflight}/<sha256>.json - canonical JSON (sorted keys, ASCII, non-finite floats as {\"float\": \"nan\"}), written once (exclusive create); the same bytes again = no-op, different bytes = error",
-  "finalize": "ExtractWriter(cohort_dir).finalize() -> preflight.json, decisions.csv, trades.csv, MANIFEST.sha256 (\"<sha256>  <name>\" per line); each file written once; trades.csv qty_raw / stop_raw are the exact captured pre-quantization values",
+  "finalize": "ExtractWriter(cohort_dir).finalize() -> preflight.json, frames_manifest.json, decisions.csv, trades.csv, MANIFEST.sha256 (\"<sha256>  <name>\" per line); each file written once; trades.csv qty_raw / stop_raw are the exact captured pre-quantization values",
   "not_by_build": "verdict.json (Cowork, OQ7); the rp_* / causal_window_id / result columns stay empty in Build's CSVs",
-  "deferred": "frames_manifest.json (closed 4h frame sha256 per symbol) needs a hook inside the pinned compute_signals / cycle - open question Q1",
+  "deferred": null,
   "forbidden_fields": [
    "API_KEY",
    "API_SECRET",
@@ -124,7 +135,8 @@
    "orderId",
    "stop_id",
    "tradeId"
-  ]
+  ],
+  "frames": "extracts/frame/<sha256>.json per closed 4h frame engine.candles built for a C-F01 symbol while the canary is ON (symbol, tf, first / last bar open, rows, frame_sha256 = sha256 of canonical JSON rows [open ms, o, h, l, c, v]); each decision extract carries the frame_sha256 of its bar; finalize writes frames_manifest.json (per symbol, sorted)"
  },
  "pins_expected": {
   "_source": "parity contract code.pinned_function_sha256 at d255b3f (= signed 9fd904a) with pin_amendment.v1.json applied (open_lot, _create_lot)",
@@ -163,9 +175,7 @@
   "feasibility.py:size_check": "d1df693e6592f62fe5d812b2c8e51e334b119935c0e7532d74099229dc946429",
   "feasibility.py:round_step": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f"
  },
- "open_questions": [
-  "frames_manifest.json needs a hook inside the pinned compute_signals / cycle; not built. Integration: a further observe-only pin amendment, or Cowork hashes frames from its own fetch"
- ],
+ "open_questions": [],
  "roadmap_fit": "Strategy Factory -> rapid candidate-to-PAPER pipeline",
  "deferred": [
   "activation (needs Cowork PASS on #248 exact head + Integration authorization)",
@@ -177,10 +187,26 @@
    "#1 exact raw qty / stop captured observe-only; pins amended in pin_amendment.v1.json",
    "#2 missing / malformed / OFF flag refuses an enabled C-F01",
    "#3 scored = engine-confirmed fully closed 4h bar opened at / after start_utc",
-   "#4 C9 compares the running head / tree with impl_head / impl_tree plus the pins",
+   "#4 C9 compares the running build with the frozen identity plus the pins (superseded by 6514438491 #2: installed-build provenance, no git)",
    "#5 C10 positive numeric authorization id + absolute cohort_dir outside the repo",
    "#6 preflight C5 requires the frozen card incl. share 1/6",
    "#7 counting needs opened and closed >= start and a usable unique id"
+  ],
+  "6514438491": [
+   "#1 frames_manifest.json via an observe-only hook in Engine.candles (no pin change)",
+   "#2 C9 uses build_info.BUILD_ID + build.json source_commit + a frozen source manifest; no git",
+   "#3 two-stage start: preflight with C-F01 disabled and a future start_utc; enable only after PASS"
+  ]
+ },
+ "two_stage_start": {
+  "ruling": "Codex 6514438491 #3 (removes the preflight / config circularity)",
+  "a": "with C-F01 still DISABLED, Integration writes the immutable authorized F01_CANARY config (on, authorization id, cohort_dir, source_commit, source_manifest) with a FUTURE start_utc",
+  "b": "run Engine.f01_canary_preflight(pins_expected, write=True): checks ENV, STAGE (C-F01 disabled), C1-C10 (C10: start_utc strictly in the future); record record_sha256 / extract_sha256",
+  "c": "only after PASS, Integration enables C-F01 (SLEEVES enabled = true) BEFORE start_utc; the gate refuses entries until start_utc",
+  "d": "on FAIL, C-F01 stays disabled; fix the cause and re-run (b) - with a new future start if the old one has passed",
+  "invariants": [
+   "start_utc never moves after (a)",
+   "no bar spanning start_utc is scored (scored = bar open >= start_utc and engine-confirmed closed)"
   ]
  }
 }

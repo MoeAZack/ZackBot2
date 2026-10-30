@@ -24,7 +24,9 @@ import f01_canary as FC                                                # noqa: E
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 AMEND = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json')
-HEAD, TREE = 'a' * 40, 'b' * 40
+SC = 'c' * 40                                                          # the accepted merged source commit
+MAN = {n: 'd' * 64 for n in FC.MANIFEST_FILES}                          # its frozen source manifest
+BUILD = '20261030-120000'
 CD = [os.path.join(tempfile.gettempdir(), 'zb_f01_unused')]          # per-test cohort dir (autouse fixture below)
 OFF = 'F01 canary flag missing, malformed or OFF - C-F01 trades only inside the bounded canary (fail closed)'
 NOW = datetime(2026, 11, 1, tzinfo=timezone.utc)
@@ -33,9 +35,10 @@ NOW = datetime(2026, 11, 1, tzinfo=timezone.utc)
 def iso(dt): return dt.isoformat(timespec='seconds')
 
 
-def cfg(start=NOW - timedelta(days=1), auth='6599999999', cohort_dir=..., head=HEAD, tree=TREE):
+def cfg(start=NOW - timedelta(days=1), auth='6599999999', cohort_dir=..., commit=SC, manifest=...):
     return dict(on=True, start_utc=iso(start) if isinstance(start, datetime) else start, authorization_comment_id=auth,
-                cohort_dir=CD[0] if cohort_dir is ... else cohort_dir, impl_head=head, impl_tree=tree)
+                cohort_dir=CD[0] if cohort_dir is ... else cohort_dir, source_commit=commit,
+                source_manifest=dict(MAN) if manifest is ... else manifest)
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +123,9 @@ def test_on_without_a_confirmed_testnet_is_refused(f01, monkeypatch, base):
     (dict(auth='12 3'), 'positive numeric'), (dict(auth=6.5e9), 'positive numeric'),
     (dict(cohort_dir=None), 'cohort_dir'), (dict(cohort_dir='rel/dir'), 'cohort_dir'),
     (dict(cohort_dir=os.path.join(ROOT, 'evidence')), 'cohort_dir'),
-    (dict(head='abc1234'), 'impl_head'), (dict(head=None), 'impl_head'), (dict(tree='B' * 40), 'impl_tree'),
+    (dict(commit='abc1234'), 'source_commit'), (dict(commit=None), 'source_commit'), (dict(commit='C' * 40), 'source_commit'),
+    (dict(manifest=None), 'source_manifest'), (dict(manifest={'engine.py': 'd' * 64}), 'source_manifest'),
+    (dict(manifest=dict(MAN, **{'engine.py': 'xyz'})), 'source_manifest'),
     (dict(start=NOW + timedelta(hours=1)), 'before the frozen start')])
 def test_on_with_a_malformed_or_future_config_fails_closed(f01, monkeypatch, kw, part):
     e, _ = f01
@@ -267,15 +272,18 @@ def test_the_bar_spanning_the_start_is_excluded_and_the_next_closed_bar_is_first
 # ------------------------------------------------------------------ preflight (C1-C10)
 @pytest.fixture
 def build(monkeypatch):
-    """The running checkout as read-only git would report it (head, tree, clean)."""
-    cur = [(HEAD, TREE, True)]
-    monkeypatch.setattr(FC, 'running_build', lambda root=None: cur[0])
+    """The installed build as build_info / build.json / the running source manifest report it."""
+    cur = [dict(build_id=BUILD, source_commit=SC, manifest=dict(MAN))]
+    monkeypatch.setattr(FC, 'running_identity', lambda data_dir, root=None: copy.deepcopy(cur[0]))
+    now_at(monkeypatch, NOW)
     return cur
 
 
 def _ready(e):
+    """Stage (a) of the two-stage start: C-F01 disabled, the authorized config written with a FUTURE start."""
     e.S.update(ENTRY_ORDER='market', MAX_LEVERAGE=10)
-    e.S[FC.CANARY_KEY] = cfg()
+    slot(e, F01)['enabled'] = False
+    e.S[FC.CANARY_KEY] = cfg(start=NOW + timedelta(hours=2))
     pins = {k: v for k, v in json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'].items()}
     return pins
 
@@ -321,6 +329,9 @@ def test_preflight_passes_on_a_candidate_flat_testnet_book_and_is_read_only(f01,
     ('C10', lambda e: e.S[FC.CANARY_KEY].update(on=False)),
     ('ENV', lambda e: setattr(e, 'live', True)),
     ('ENV', lambda e: setattr(e.trade, 'base', E.MAINNET)),
+    ('STAGE', lambda e: slot(e, F01).update(enabled=True)),                  # preflight runs with C-F01 disabled
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(start_utc=iso(NOW))),         # start must be in the FUTURE at preflight
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(start_utc=iso(NOW - timedelta(hours=1)))),
 ])
 def test_preflight_fails_each_check(f01, build, check, mutate):
     e, _ = f01
@@ -330,7 +341,7 @@ def test_preflight_fails_each_check(f01, build, check, mutate):
     assert not pf['pass'] and not pf['checks'][check]['ok']
 
 
-def test_preflight_c9_compares_the_running_build_with_the_frozen_head_tree_and_pins(f01, build):
+def test_preflight_c9_compares_the_pins(f01, build):
     e, _ = f01
     pins = _ready(e)
     assert e.f01_canary_preflight(pins_expected=pins)['checks']['C9']['ok']
@@ -338,19 +349,170 @@ def test_preflight_c9_compares_the_running_build_with_the_frozen_head_tree_and_p
     bad = dict(pins, **{'engine.py:Engine.cycle': '0' * 64})
     c9 = e.f01_canary_preflight(pins_expected=bad)['checks']['C9']
     assert not c9['ok'] and c9['pins_mismatch'] == ['engine.py:Engine.cycle']
-    for cur in [('c' * 40, TREE, True), (HEAD, 'c' * 40, True), (HEAD, TREE, False), (None, None, False)]:
-        build[0] = cur
-        assert not e.f01_canary_preflight(pins_expected=pins)['checks']['C9']['ok']
-    build[0] = ('abc1234', TREE, True)                                                      # an arbitrary short head
-    e.S[FC.CANARY_KEY]['impl_head'] = 'abc1234'
+
+
+@pytest.mark.parametrize('ident,gap', [
+    (dict(build_id='dev', source_commit=SC, manifest=MAN), 'dev_build'),
+    (dict(build_id='', source_commit=SC, manifest=MAN), 'dev_build'),
+    (dict(build_id=BUILD, source_commit=None, manifest=MAN), 'source_commit_missing'),
+    (dict(build_id=BUILD, source_commit='e' * 40, manifest=MAN), 'source_commit_mismatch'),
+    (dict(build_id=BUILD, source_commit='abc1234', manifest=MAN), 'source_commit_missing'),
+    (dict(build_id=BUILD, source_commit=SC, manifest=dict(MAN, **{'engine.py': 'e' * 64})), 'source_manifest_mismatch: engine.py'),
+    (dict(build_id=BUILD, source_commit=SC, manifest=dict(MAN, **{'f01_canary.py': None})), 'source_manifest_mismatch: f01_canary.py'),
+    (dict(build_id=BUILD, source_commit=SC, manifest={}), 'source_manifest_mismatch'),
+    (None, 'dev_build')])
+def test_preflight_c9_fails_closed_on_a_dev_build_a_mismatch_or_missing_identity(f01, build, ident, gap):
+    e, _ = f01
+    pins = _ready(e)
+    build[0] = ident
+    c9 = e.f01_canary_preflight(pins_expected=pins)['checks']['C9']
+    assert not c9['ok'] and c9['identity_gap'].startswith(gap)
+
+
+def test_preflight_c9_needs_the_frozen_commit_and_manifest(f01, build):
+    e, _ = f01
+    pins = _ready(e)
+    e.S[FC.CANARY_KEY]['source_manifest'] = None
     pf = e.f01_canary_preflight(pins_expected=pins)
-    assert not pf['checks']['C9']['ok'] and not pf['checks']['C10']['ok'] and not pf['pass']
+    assert pf['checks']['C9']['identity_gap'] == 'source_manifest_missing' and not pf['checks']['C10']['ok']
+    e.S[FC.CANARY_KEY].update(source_manifest=dict(MAN), source_commit='abc1234')            # an arbitrary short commit
+    pf = e.f01_canary_preflight(pins_expected=pins)
+    assert pf['checks']['C9']['identity_gap'] == 'source_commit_mismatch' and not pf['checks']['C10']['ok'] and not pf['pass']
 
 
-def test_running_build_reads_this_checkout_read_only():
-    head, tree, clean = FC.running_build(ROOT)
-    assert head is None or (FC.HEX40.match(head) and FC.HEX40.match(tree) and clean in (True, False))
-    assert FC.running_build(os.path.join(tempfile.gettempdir(), 'zb_not_a_repo_dir_xyz')) == (None, None, False)
+def test_running_identity_reads_the_installed_build_provenance_without_git(tmp_path, monkeypatch):
+    monkeypatch.delitem(sys.modules, 'build_info', raising=False)
+    monkeypatch.setattr(sys, 'path', [p for p in sys.path if not os.path.exists(os.path.join(p or '.', 'build_info.py'))])
+    i = FC.running_identity(str(tmp_path))
+    assert i['build_id'] == 'dev' and i['source_commit'] is None                                # a dev build
+    mod = type(sys)('build_info'); mod.BUILD_ID = BUILD
+    monkeypatch.setitem(sys.modules, 'build_info', mod)
+    (tmp_path / 'build.json').write_text(json.dumps(dict(build_id=BUILD, source_commit=SC)))
+    i = FC.running_identity(str(tmp_path))
+    assert i['build_id'] == BUILD and i['source_commit'] == SC and set(i['manifest']) == set(FC.MANIFEST_FILES)
+    assert all(FC.HEX64.match(v) for v in i['manifest'].values()) and i['manifest'] == FC.source_manifest(ROOT)
+    (tmp_path / 'build.json').write_text(json.dumps(dict(build_id='20261029-000000', source_commit=SC)))
+    assert FC.running_identity(str(tmp_path))['source_commit'] is None                        # another build's record
+    (tmp_path / 'build.json').write_text('{broken')
+    assert FC.running_identity(str(tmp_path))['source_commit'] is None
+
+
+def test_source_manifest_is_lf_normalized_and_marks_missing_files(tmp_path):
+    a, b = tmp_path / 'a', tmp_path / 'b'
+    for d, nl in ((a, b'\n'), (b, b'\r\n')):
+        d.mkdir()
+        for n in FC.MANIFEST_FILES: (d / n).write_bytes(nl.join([b'x = 1', b'y = 2', b'']))
+    assert FC.source_manifest(str(a)) == FC.source_manifest(str(b))
+    (b / 'engine.py').unlink()
+    assert FC.source_manifest(str(b))['engine.py'] is None
+
+
+# ------------------------------------------------------------------ two-stage start (Codex 6514438491 #3)
+def test_two_stage_start_preflight_while_disabled_then_enable_before_the_future_start(f01, build, monkeypatch):
+    e, _ = f01
+    pins = _ready(e)                                                   # (a) C-F01 disabled, config frozen, start 02:00
+    start = e.S[FC.CANARY_KEY]['start_utc']
+    pf = e.f01_canary_preflight(pins_expected=pins, write=True)        # (b) preflight C1-C10, hashed and recorded
+    assert pf['pass'], {k: v for k, v in pf['checks'].items() if not v['ok']}
+    assert pf['record_sha256'] == e.f01_canary_preflight(pins_expected=pins)['record_sha256']   # stable hash
+    (rec,) = FC.ExtractWriter(CD[0]).records('preflight')
+    assert pf['extract_sha256'] == FC.sha256(FC.canonical(rec)) and rec['pass'] is True
+    slot(e, F01)['enabled'] = True                                     # (c) Integration enables it only after PASS
+    now_at(monkeypatch, NOW + timedelta(hours=1))                      # still before the frozen start: no entry
+    cycle4(e, {f'{F01}|BTCUSDT': dict(SG, time='2026-10-31 20:00:00')})
+    assert not lots(e, F01) and e.missed[-1]['reason'] == 'F01 canary: before the frozen start - no new C-F01 entry'
+    now_at(monkeypatch, NOW + timedelta(hours=8, minutes=5))           # after the start; the 00:00 bar spans 02:00
+    e.S['SYMBOLS_ON']['ETHUSDT'] = False
+    cycle4(e, {f'{F01}|ETHUSDT': dict(SG, close=50.0, time='2026-11-01 00:00:00'),
+               f'{F01}|BTCUSDT': dict(SG, time='2026-11-01 04:00:00')})
+    assert lots(e, F01, 'BTCUSDT') and e.S[FC.CANARY_KEY]['start_utc'] == start   # the start never moved
+    dec = {(d['symbol'], d['decision_bar']): d['scored'] for d in FC.ExtractWriter(CD[0]).records('decision')}
+    assert dec[('ETHUSDT', '2026-11-01 00:00:00')] is False            # the spanning bar never scores
+    assert dec[('BTCUSDT', '2026-11-01 04:00:00')] is True             # the next fully closed bar is the first scored
+
+
+@pytest.mark.parametrize('mutate', [lambda e: e.S[FC.CANARY_KEY].update(start_utc=iso(NOW - timedelta(minutes=1))),
+                                    lambda e: e.state['lots'].update(x=dict(symbol='BTCUSDT', sleeve=F01, side='LONG')),
+                                    lambda e: e.S.update(ENTRY_ORDER='maker')])
+def test_two_stage_start_a_failed_preflight_leaves_c_f01_disabled(f01, build, mutate):
+    e, _ = f01
+    pins = _ready(e)
+    mutate(e)
+    S0 = copy.deepcopy(e.S)
+    pf = e.f01_canary_preflight(pins_expected=pins, write=True)        # (d) failure: nothing is switched on
+    assert not pf['pass'] and slot(e, F01)['enabled'] is False and e.S == S0
+    assert 'F01 canary flag' not in (e.f01_canary_block(slot(e, F01)) or 'x')   # the gate still bounds it if enabled
+
+
+# ------------------------------------------------------------------ frames_manifest (Codex 6514438491 #1)
+def _frame(n=260, t0=1_790_000_000_000, bump=0.0):
+    import pandas as pd
+    t = [t0 + i * 4 * 3600 * 1000 for i in range(n)]
+    df = pd.DataFrame(dict(t=t, o=[100.0 + i for i in range(n)], h=[101.0 + i for i in range(n)], l=[99.0 + i for i in range(n)],
+                           c=[100.5 + i + bump for i in range(n)], v=[10.0] * n, qv=[float('nan')] * n))
+    return df
+
+
+def test_frame_record_hashes_the_exact_rows():
+    import pandas as pd
+    a = FC.frame_record('BTCUSDT', '4h', _frame())
+    df = _frame(); df['t'] = pd.to_datetime(df.t, unit='ms')
+    assert FC.frame_record('BTCUSDT', '4h', df) == a                       # datetime or ms open times: one hash
+    assert a['rows'] == 260 and a['first_bar_open'] < a['last_bar_open'] and FC.HEX64.match(a['frame_sha256'])
+    assert FC.frame_record('BTCUSDT', '4h', _frame(bump=1e-9))['frame_sha256'] != a['frame_sha256']
+    assert FC.frame_record('BTCUSDT', '4h', _frame(n=259))['frame_sha256'] != a['frame_sha256']
+    assert FC.id_fields(a) == []
+
+
+def test_candles_captures_the_closed_4h_frame_only_when_the_canary_is_on(f01, monkeypatch):
+    e, _ = f01
+    import time as _t
+    step = 4 * 3600 * 1000
+    last = (int(_t.time() * 1000) // step - 1) * step
+    raw = [[last - (259 - i) * step, 100.0 + i, 101.0 + i, 99.0 + i, 100.5 + i, 10.0, last - (259 - i) * step + step - 1, 5.0]
+           for i in range(260)]
+    monkeypatch.setattr(e.data, 'klines', lambda sym, tf, n: [list(r) for r in raw], raising=False)
+    df = e.candles('BTCUSDT', '4h')                                         # flag OFF: nothing captured or written
+    assert not getattr(e, '_f01_fh', None) and not os.path.exists(CD[0])
+    e._kc.clear()
+    e.S[FC.CANARY_KEY] = cfg()
+    df2 = e.candles('BTCUSDT', '4h')
+    assert df2.equals(df)                                                   # the frame handed to signals is unchanged
+    fr = e._f01_fh['BTCUSDT']
+    assert fr == FC.frame_record('BTCUSDT', '4h', df2) and fr['rows'] == 260
+    (w,) = FC.ExtractWriter(CD[0]).records('frame')
+    assert w == fr
+    e._kc.clear(); e.candles('BTCUSDT', '1h'); e._kc.clear(); e.candles('ZZZUSDT', '4h')   # other tf / non-F01 symbol
+    assert len(FC.ExtractWriter(CD[0]).records('frame')) == 1
+    e.live = True; e._kc.clear(); e._f01_fh.clear()
+    raw[-1][4] += 1.0                                                       # a different frame, but live mode: not written
+    e.candles('BTCUSDT', '4h')
+    assert len(FC.ExtractWriter(CD[0]).records('frame')) == 1
+
+
+def test_a_frame_capture_error_never_raises_into_candles(f01, monkeypatch):
+    e, _ = f01
+    e.S[FC.CANARY_KEY] = cfg()
+    monkeypatch.setattr(FC, 'frame_record', lambda *a: 1 / 0)
+    e._f01_frame('BTCUSDT', '4h', None)                                     # logged, swallowed
+    assert not os.path.exists(CD[0])
+
+
+def test_decisions_carry_the_frame_hash_of_their_bar_and_finalize_writes_frames_manifest(f01, monkeypatch, tmp_path, measured):
+    e, _ = f01
+    e.S[FC.CANARY_KEY] = cfg()
+    df = _frame()
+    e._f01_frame('BTCUSDT', '4h', df)
+    fr = e._f01_fh['BTCUSDT']
+    bar = fr['last_bar_open'].replace('T', ' ').replace('+00:00', '')
+    e._f01_decision('BTCUSDT', dict(SG, time=bar), 'not_taken', 'x', iso(NOW))
+    e._f01_decision('BTCUSDT', dict(SG, time='2020-01-01 00:00:00'), 'not_taken', 'y', iso(NOW))     # another bar
+    d = {r['reason']: r for r in FC.ExtractWriter(CD[0]).records('decision')}
+    assert d['x']['frame_sha256'] == fr['frame_sha256'] and d['y']['frame_sha256'] is None
+    hs = FC.ExtractWriter(CD[0]).finalize(str(tmp_path / 'out'))
+    fm = json.loads((tmp_path / 'out' / 'frames_manifest.json').read_text())
+    assert fm == {'BTCUSDT': [{k: fr[k] for k in ('tf', 'first_bar_open', 'last_bar_open', 'rows', 'frame_sha256')}]}
+    assert 'frames_manifest.json' in hs and FC.sha256((tmp_path / 'out' / 'frames_manifest.json').read_bytes()) == hs['frames_manifest.json']
 
 
 def test_pinned_functions_equal_the_contract_plus_the_amendment_only():
@@ -458,7 +620,7 @@ def test_finalize_builds_the_contract_files_and_manifest_once(tmp_path, measured
     w.write('trade', FC.trade_record(r))
     w.write('preflight', dict(kind='preflight', recorded=dict(at_utc='2026-10-31T00:00:00+00:00'), checks={}))
     hs = w.finalize(str(tmp_path / 'out'))
-    assert set(hs) == {'preflight.json', 'decisions.csv', 'trades.csv'}
+    assert set(hs) == {'preflight.json', 'frames_manifest.json', 'decisions.csv', 'trades.csv'}
     man = (tmp_path / 'out' / 'MANIFEST.sha256').read_text().splitlines()
     for line in man:
         h, n = line.split('  ')
@@ -479,7 +641,7 @@ def test_c_f02_is_never_enabled_by_any_canary_path(f01, monkeypatch, tmp_path, m
     e.history += [row(i, -2.0) for i in range(3)]
     e.f01_canary_block(slot(e, F01))
     assert e.S['SLEEVES'] == sleeves0 and slot(e, F02)['enabled'] is False and not lots(e, F02)
-    assert e.f01_canary_block(slot(e, F02)) is None and set(FC.config(e.S)) == {'on', 'start_utc', 'authorization_comment_id', 'cohort_dir', 'impl_head', 'impl_tree'}
+    assert e.f01_canary_block(slot(e, F02)) is None and set(FC.config(e.S)) == {'on', 'start_utc', 'authorization_comment_id', 'cohort_dir', 'source_commit', 'source_manifest'}
 
 
 def test_cohort_pack_is_not_activated():
