@@ -2372,19 +2372,21 @@ class Engine:
 
     # ------------------------------------------------------------ FACTORY-F01-IMPL-01: bounded C-F01 PAPER canary
     def f01_canary_block(self, sl):
-        """Refusal text for a NEW automatic C-F01 entry while the canary flag (settings F01_CANARY, default OFF) is ON, else
-        None. OFF or any other slot -> None (behaviour unchanged). ON outside PAPER / testnet, without a frozen start or an
-        authorization id, before the start, at a bound (30 days / 8 closed trades / 4.0 R measured drawdown) or with a
-        pending-cost C-F01 close -> refused (fail closed, logged once per reason). Never closes or touches an open lot (OQ8)."""
+        """Refusal text for a NEW automatic C-F01 entry, else None. Other slots -> None (unchanged). C-F01 trades only inside
+        the bounded canary (Codex 6514109966 #2): the flag (settings F01_CANARY) missing, malformed or OFF, ON outside
+        PAPER / testnet, a malformed config, before the frozen start, at a bound (30 days / 8 closed trades / 4.0 R measured
+        drawdown), a pending-cost or uncountable C-F01 close -> refused (fail closed, logged once per reason). Never closes
+        or touches an open lot (OQ8)."""
         if (sl or {}).get('id') != FC.SLOT: return None
         try:
             cfg = FC.config(self.S)
-            if cfg is None: return None
-            why = FC.env_refusal(getattr(self, 'live', True), getattr(getattr(self, 'trade', None), 'base', None), TESTNET)
+            if cfg is None:
+                why = 'F01 canary flag missing, malformed or OFF - C-F01 trades only inside the bounded canary (fail closed)'
+            else:
+                why = FC.env_refusal(getattr(self, 'live', True), getattr(getattr(self, 'trade', None), 'base', None), TESTNET)
             if why is None:
-                ids = {h.get('id') for h in self.history}
-                rows = list(self.history) + [r for r in (getattr(self, 'cohort_rows', None) or ()) if r.get('id') not in ids]
-                why = FC.bound_status(cfg, rows, self.state.get(CANDIDATE_PENDING_KEY), now_utc())['block']
+                why = FC.bound_status(cfg, self.history, self.state.get(CANDIDATE_PENDING_KEY), now_utc(),
+                                      extra=getattr(self, 'cohort_rows', None) or ())['block']
         except Exception as e:
             why = f'F01 canary: bound check failed ({type(e).__name__}) - no new C-F01 entry (fail closed)'
         if why and why != getattr(self, '_f01_last', None):
@@ -2392,16 +2394,17 @@ class Engine:
             log.warning(f'FACTORY-F01 canary: {why}')
         return why
 
-    def f01_canary_preflight(self, head_sha=None, pins_expected=None):
+    def f01_canary_preflight(self, pins_expected=None):
         """The contract's C1-C10 start record (read-only: nothing is switched, saved or sent). pins_expected: the contract's
-        pinned_function_sha256 map, re-hashed against this build's source."""
+        pinned_function_sha256 map, re-hashed against this build's source; C9 also compares the running checkout's head /
+        tree (read-only git) with the impl_head / impl_tree frozen in F01_CANARY."""
         sl = next((x for x in self.S.get('SLEEVES') or [] if x.get('id') == FC.SLOT), None)
         try: ctrl = (self.ctrl_now() or {}).get('long_factor')
         except Exception: ctrl = None
         return FC.preflight(self.S, self.state, live=getattr(self, 'live', True), base=getattr(getattr(self, 'trade', None), 'base', None),
                             testnet=TESTNET, deferred=getattr(self, '_deferred', None) or (),
                             drift=self.candidate_drift(sl) if sl else None, governor_mult=self.governor_mult(),
-                            kelly_mult=self.kelly_mult(sl) if sl else None, ctrl_long_factor=ctrl, head_sha=head_sha,
+                            kelly_mult=self.kelly_mult(sl) if sl else None, ctrl_long_factor=ctrl, running=FC.running_build(),
                             pins_expected=pins_expected, pins_actual=FC.function_pins(pins_expected or {}))
 
     def _f01_extract(self, kind, make):
@@ -6943,7 +6946,7 @@ class Engine:
             log.warning(f'RISK WARNING {sym} {side}: {w_}')
             if sl and not manual: self.miss(sl, sym, side, sg, 'WARNING: ' + w_, kind='warning')
         plan = dict(sl=None if manual else {k: sl[k] for k in ('id', 'key', 'tf', 'name', 'share') if k in sl}, sym=sym, side=side, qty=qty,
-                    stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
+                    qty_raw=qty_raw, stop_dist=abs(px - stop), atr=atr, g=g, risk_usd=risk_usd, eq=eq, manual=manual, reason=reason, px=px,
                     sg=dict(time=sg.get('time'), close=sg.get('close')), book=book,
                     book_eq=sleeve_eq if book_mode else None)
         if how == 'exposure': plan['lev_exception'] = True     # T03c r1: no adds / market remainder until leverage is within the cap
@@ -7574,6 +7577,8 @@ class Engine:
         if plan.get('book') and self._cohort_ok(): lot['cohort_id'] = self.state['cohort']['id']   # RUN-PACK-01 stamp (once)
         if sl and not manual and sl.get('share') is not None: lot['share'] = float(sl['share'])            # cap basis for later adds (survives slot edits)
         if maker_qty > 0: lot['maker_qty'] = maker_qty
+        if (plan.get('sl') or {}).get('id') in CANDIDATE_SLOTS:   # FACTORY-F01-IMPL-01: observe-only evidence, never read by trading
+            lot['sizing_raw'] = dict(qty_raw=plan.get('qty_raw'), stop_raw=fill - sd * plan['stop_dist'], stop_dist=plan['stop_dist'])
         if plan.get('lev_exception'): lot['lev_exception'] = True    # T03c r1: entered while Binance leverage stayed above the cap
         if 'pyramid' in g: lot['next_add'] = fill + sd * g['pyramid']['step_r'] * lot['R']
         if 'dca' in g:

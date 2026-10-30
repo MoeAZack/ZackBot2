@@ -1,14 +1,17 @@
 """FACTORY-F01-IMPL-01 (Codex ruling 6513808658): the default-OFF, testnet-only C-F01 canary runtime.
 
-Pins: the flag is OFF by default and then changes nothing; ON is refused outside PAPER / testnet; each OQ1 bound (30 days,
+Pins: the flag is OFF by default and an enabled C-F01 is then refused (review 6514109966 #2), other slots unchanged; ON is
+refused outside PAPER / testnet or with a malformed config; each OQ1 bound (30 days,
 8 closed trades, 4.0 R measured drawdown) and a pending-cost close stop NEW C-F01 entries while open lots stay protected and
 managed (OQ8); the preflight is read-only and fails each C-check; extracts are immutable, sha256-addressed and carry no
-ids; C-F02 is never enabled; none of the 34 functions pinned by the parity contract is edited.
+ids; raw qty / stop are the exact captured pre-quantization values; scoring starts at the first engine-confirmed fully
+closed bar after the start; C-F02 is never enabled; the pinned functions equal the contract plus pin_amendment.v1.json.
 Synthetic data only (tests/test_safety.FakeX)."""
 import copy
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -20,15 +23,25 @@ import f01_canary as FC                                                # noqa: E
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
+AMEND = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json')
+HEAD, TREE = 'a' * 40, 'b' * 40
+CD = [os.path.join(tempfile.gettempdir(), 'zb_f01_unused')]          # per-test cohort dir (autouse fixture below)
+OFF = 'F01 canary flag missing, malformed or OFF - C-F01 trades only inside the bounded canary (fail closed)'
 NOW = datetime(2026, 11, 1, tzinfo=timezone.utc)
 
 
 def iso(dt): return dt.isoformat(timespec='seconds')
 
 
-def cfg(start=NOW - timedelta(days=1), auth='6599999999', cohort_dir=None):
+def cfg(start=NOW - timedelta(days=1), auth='6599999999', cohort_dir=..., head=HEAD, tree=TREE):
     return dict(on=True, start_utc=iso(start) if isinstance(start, datetime) else start, authorization_comment_id=auth,
-                cohort_dir=cohort_dir)
+                cohort_dir=CD[0] if cohort_dir is ... else cohort_dir, impl_head=head, impl_tree=tree)
+
+
+@pytest.fixture(autouse=True)
+def _cohort_dir(tmp_path):
+    CD[0] = str(tmp_path / 'cohort')
+    yield
 
 
 @pytest.fixture
@@ -58,13 +71,15 @@ def now_at(monkeypatch, dt):
 
 # ------------------------------------------------------------------ default OFF
 @pytest.mark.parametrize('flag', [None, {}, {'on': False}, {'on': 'true'}, {'on': 1}, 'on'])
-def test_default_off_changes_nothing(f01, flag, tmp_path):
+def test_flag_off_or_malformed_refuses_an_enabled_c_f01_only(f01, flag):
     e, _ = f01
     assert FC.CANARY_KEY not in E.GLOBAL_DEFAULTS and FC.CANARY_KEY not in e.S      # absent by default
     if flag is not None: e.S[FC.CANARY_KEY] = flag
-    assert FC.config(e.S) is None and e.f01_canary_block(slot(e, F01)) is None
+    assert FC.config(e.S) is None and e.f01_canary_block(slot(e, F01)) == OFF
     cycle4(e, {f'{F01}|BTCUSDT': SG})
-    assert lots(e, F01, 'BTCUSDT') and slot(e, F02)['enabled'] is False
+    assert not lots(e, F01) and e.missed[-1]['reason'] == OFF and slot(e, F02)['enabled'] is False
+    for sl in e.S['SLEEVES']:                                                      # every other slot: unchanged
+        if sl['id'] != F01: assert e.f01_canary_block(sl) is None and e._rules_block(sl, 'BTCUSDT', 'LONG') is None
 
 
 def test_the_gate_never_concerns_other_slots(f01):
@@ -98,15 +113,25 @@ def test_on_without_a_confirmed_testnet_is_refused(f01, monkeypatch, base):
     assert not lots(e, F01) and e.missed[-1]['reason'] == want
 
 
-@pytest.mark.parametrize('c,part', [(cfg(start='2026-10-31T00:00:00'), 'no frozen tz-aware start'),
-                                     (cfg(start='garbage'), 'no frozen tz-aware start'),
-                                     (cfg(auth=None), 'no Integration authorization'),
-                                     (cfg(start=NOW + timedelta(hours=1)), 'before the frozen start')])
-def test_on_without_a_frozen_authorized_start_fails_closed(f01, monkeypatch, c, part):
+@pytest.mark.parametrize('kw,part', [
+    (dict(start='2026-10-31T00:00:00'), 'no frozen tz-aware start'), (dict(start='garbage'), 'no frozen tz-aware start'),
+    (dict(auth=None), 'positive numeric'), (dict(auth='abc'), 'positive numeric'), (dict(auth=0), 'positive numeric'),
+    (dict(auth=-5), 'positive numeric'), (dict(auth=True), 'positive numeric'), (dict(auth='0123'), 'positive numeric'),
+    (dict(auth='12 3'), 'positive numeric'), (dict(auth=6.5e9), 'positive numeric'),
+    (dict(cohort_dir=None), 'cohort_dir'), (dict(cohort_dir='rel/dir'), 'cohort_dir'),
+    (dict(cohort_dir=os.path.join(ROOT, 'evidence')), 'cohort_dir'),
+    (dict(head='abc1234'), 'impl_head'), (dict(head=None), 'impl_head'), (dict(tree='B' * 40), 'impl_tree'),
+    (dict(start=NOW + timedelta(hours=1)), 'before the frozen start')])
+def test_on_with_a_malformed_or_future_config_fails_closed(f01, monkeypatch, kw, part):
     e, _ = f01
     now_at(monkeypatch, NOW)
-    e.S[FC.CANARY_KEY] = c
+    e.S[FC.CANARY_KEY] = cfg(**kw)
     assert part in e.f01_canary_block(slot(e, F01))
+
+
+@pytest.mark.parametrize('auth', ['6514109966', 6514109966])
+def test_a_well_formed_config_has_no_problems(auth):
+    assert FC.cfg_problems(cfg(auth=auth)) == [] and FC.auth_id_ok(auth)
 
 
 def test_a_bound_check_error_fails_closed(f01, monkeypatch):
@@ -199,6 +224,23 @@ def test_pending_costs_fail_closed_from_the_row_and_the_durable_index(measured):
     assert 'costs pending' in FC.bound_status(cfg(), [], idx, now=NOW)['block']
 
 
+def test_counting_needs_usable_unique_ids_and_both_times_after_start(measured):
+    rows = [row(i, 0.1) for i in range(7)]
+    cohort = [copy.deepcopy(r) for r in rows] + [row(7, 0.1)]          # the store repeats history + one evicted row
+    st = FC.bound_status(cfg(), rows, now=NOW, extra=cohort)
+    assert st['closed'] == 8 and st['stop']['id'] == 'S6'             # duplicates join by id; the evicted row counts
+    for bad_id in (None, '', '  ', 7):
+        st = FC.bound_status(cfg(), rows, now=NOW, extra=[dict(row(8, 0.1), id=bad_id)])
+        assert 'without a usable id' in st['block'] and st['stop'] is None       # never skipped, never collides
+        st = FC.bound_status(cfg(), [dict(row(8, 0.1), id=bad_id)] + rows, now=NOW)
+        assert 'without a usable id' in st['block']
+    assert 'without a usable id' in FC.bound_status(cfg(), [dict(row(1, 0.1), closed='??')], now=NOW)['block']
+    early = dict(row(1, -9.0), closed=iso(NOW - timedelta(days=2)), opened=iso(NOW - timedelta(days=1)))   # closed < start
+    st = FC.bound_status(cfg(), [early], now=NOW)
+    assert st['closed'] == 0 and st['block'] is None
+    assert FC.bound_status(cfg(), [dict(row(1, 0.1), sleeve='ema_mom', id=None)], now=NOW)['block'] is None   # other slots
+
+
 def test_manual_entries_never_consult_the_canary(f01, monkeypatch):
     e, _ = f01
     e.S[FC.CANARY_KEY] = cfg(start=NOW + timedelta(days=9))
@@ -206,7 +248,31 @@ def test_manual_entries_never_consult_the_canary(f01, monkeypatch):
     assert 'before the frozen start' in e._rules_block(slot(e, F01), 'BTCUSDT', 'LONG')
 
 
+# ------------------------------------------------------------------ scoring start (OQ2 / review #3)
+def test_the_bar_spanning_the_start_is_excluded_and_the_next_closed_bar_is_first_scored():
+    c = cfg(start=datetime(2026, 11, 1, 1, 30, tzinfo=timezone.utc))
+    bar = lambda h: f'2026-11-01 {h:02d}:00:00'
+    assert not FC.is_scored(bar(0), c, '2026-11-01T04:00:05+00:00')               # 00:00-04:00 spans 01:30
+    assert not FC.is_scored('2026-10-31 20:00:00', c, '2026-11-01T00:00:05+00:00')  # warm-up
+    assert not FC.is_scored(bar(4), c, '2026-11-01T07:59:59+00:00')               # not confirmed closed yet
+    assert FC.is_scored(bar(4), c, '2026-11-01T08:00:05+00:00')                   # first scored bar
+    assert FC.is_scored(bar(8), c, '2026-11-01T12:00:05+00:00')
+    c0 = cfg(start=datetime(2026, 11, 1, 4, 0, tzinfo=timezone.utc))
+    assert FC.is_scored(bar(4), c0, '2026-11-01T08:00:00+00:00') and not FC.is_scored(bar(0), c0, '2026-11-01T08:00:00+00:00')
+    assert not FC.is_scored(bar(4), c, None) and not FC.is_scored(None, c, '2026-11-01T08:00:05+00:00')
+    rec = FC.decision_record('BTCUSDT', dict(SG, time=bar(0)), 'taken', None, '2026-11-01T04:00:05+00:00', start_cfg=c)
+    assert rec['scored'] is False
+
+
 # ------------------------------------------------------------------ preflight (C1-C10)
+@pytest.fixture
+def build(monkeypatch):
+    """The running checkout as read-only git would report it (head, tree, clean)."""
+    cur = [(HEAD, TREE, True)]
+    monkeypatch.setattr(FC, 'running_build', lambda root=None: cur[0])
+    return cur
+
+
 def _ready(e):
     e.S.update(ENTRY_ORDER='market', MAX_LEVERAGE=10)
     e.S[FC.CANARY_KEY] = cfg()
@@ -214,12 +280,12 @@ def _ready(e):
     return pins
 
 
-def test_preflight_passes_on_a_candidate_flat_testnet_book_and_is_read_only(f01):
+def test_preflight_passes_on_a_candidate_flat_testnet_book_and_is_read_only(f01, build):
     e, _ = f01
     pins = _ready(e)
     e.state['lots']['x'] = dict(symbol='ETHUSDT', sleeve='ema_mom', side='LONG', stop_id='S123')   # another slot (C1b)
     S0, st0 = copy.deepcopy(e.S), copy.deepcopy(e.state)
-    pf = e.f01_canary_preflight(head_sha='abc1234', pins_expected=pins)
+    pf = e.f01_canary_preflight(pins_expected=pins)
     assert pf['pass'], {k: v for k, v in pf['checks'].items() if not v['ok']}
     assert e.S == S0 and e.state == st0                                             # nothing switched or written
     assert pf['checks']['C1b']['other_open'] == [dict(symbol='ETHUSDT', slot='ema_mom', side='LONG')]
@@ -239,37 +305,73 @@ def test_preflight_passes_on_a_candidate_flat_testnet_book_and_is_read_only(f01)
     ('C3', lambda e: e.state.setdefault('candidate_disabled', {}).update({F01: dict(why='drift')})),
     ('C4', lambda e: e.state.update(candidate_cost_pending={'r': dict(sleeve=F01, symbol='BTCUSDT', closed='x')})),
     ('C5', lambda e: slot(e, F01).update(risk=0.02)),
+    ('C5', lambda e: slot(e, F01).update(share=0.2)),                        # share is not in candidate_drift: the card is
+    ('C5', lambda e: slot(e, F01).update(share=None)),
     ('C6', lambda e: slot(e, F01).update(kelly=dict(min_trades=0)) or e.state.setdefault('hist', {}).update({F01: [1.0, -1.0]})),
     ('C7', lambda e: e.S.update(CTRL_BIAS='bearish')),
     ('C8', lambda e: e.S.update(ENTRY_ORDER='maker')),
     ('C8', lambda e: e.S.update(MAX_LEVERAGE=5)),
     ('C10', lambda e: e.S[FC.CANARY_KEY].update(authorization_comment_id=None)),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(authorization_comment_id='abc')),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(authorization_comment_id=0)),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(cohort_dir=None)),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(cohort_dir='relative/dir')),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(cohort_dir=os.path.join(ROOT, 'x'))),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(start_utc='2026-10-31T00:00:00')),
+    ('C10', lambda e: e.S[FC.CANARY_KEY].update(on=False)),
     ('ENV', lambda e: setattr(e, 'live', True)),
     ('ENV', lambda e: setattr(e.trade, 'base', E.MAINNET)),
 ])
-def test_preflight_fails_each_check(f01, check, mutate):
+def test_preflight_fails_each_check(f01, build, check, mutate):
     e, _ = f01
     pins = _ready(e)
     mutate(e)
-    pf = e.f01_canary_preflight(head_sha='abc1234', pins_expected=pins)
+    pf = e.f01_canary_preflight(pins_expected=pins)
     assert not pf['pass'] and not pf['checks'][check]['ok']
 
 
-def test_preflight_c9_needs_a_head_and_every_pin(f01):
+def test_preflight_c9_compares_the_running_build_with_the_frozen_head_tree_and_pins(f01, build):
     e, _ = f01
     pins = _ready(e)
-    assert not e.f01_canary_preflight(pins_expected=pins)['checks']['C9']['ok']
-    assert not e.f01_canary_preflight(head_sha='abc')['checks']['C9']['ok']
+    assert e.f01_canary_preflight(pins_expected=pins)['checks']['C9']['ok']
+    assert not e.f01_canary_preflight()['checks']['C9']['ok']                               # no pins
     bad = dict(pins, **{'engine.py:Engine.cycle': '0' * 64})
-    c9 = e.f01_canary_preflight(head_sha='abc', pins_expected=bad)['checks']['C9']
+    c9 = e.f01_canary_preflight(pins_expected=bad)['checks']['C9']
     assert not c9['ok'] and c9['pins_mismatch'] == ['engine.py:Engine.cycle']
+    for cur in [('c' * 40, TREE, True), (HEAD, 'c' * 40, True), (HEAD, TREE, False), (None, None, False)]:
+        build[0] = cur
+        assert not e.f01_canary_preflight(pins_expected=pins)['checks']['C9']['ok']
+    build[0] = ('abc1234', TREE, True)                                                      # an arbitrary short head
+    e.S[FC.CANARY_KEY]['impl_head'] = 'abc1234'
+    pf = e.f01_canary_preflight(pins_expected=pins)
+    assert not pf['checks']['C9']['ok'] and not pf['checks']['C10']['ok'] and not pf['pass']
 
 
-def test_no_function_pinned_by_the_parity_contract_was_edited():
+def test_running_build_reads_this_checkout_read_only():
+    head, tree, clean = FC.running_build(ROOT)
+    assert head is None or (FC.HEX40.match(head) and FC.HEX40.match(tree) and clean in (True, False))
+    assert FC.running_build(os.path.join(tempfile.gettempdir(), 'zb_not_a_repo_dir_xyz')) == (None, None, False)
+
+
+def test_pinned_functions_equal_the_contract_plus_the_amendment_only():
     pins = {k: v for k, v in json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'].items() if not k.startswith('_')}
-    assert len(pins) == 34
+    am = json.load(open(AMEND, encoding='utf-8'))
+    assert len(pins) == 34 and set(am['amended']) == {'engine.py:Engine.open_lot', 'engine.py:Engine._create_lot'}
     got = FC.function_pins(pins)
-    assert {k for k in pins if got[k] != pins[k]} == set()
+    assert {k for k in pins if got[k] != pins[k]} == set()                       # the running build == the amended pins
+    for k, ch in am['amended'].items(): assert pins[k] == ch['to'] != ch['from']
+
+
+def test_the_raw_sizing_capture_is_observe_only():
+    src = open(os.path.join(ROOT, 'engine.py'), encoding='utf-8').read()
+    assert src.count("sizing_raw") == 1                                         # written once in _create_lot, never read
+    assert src.count("qty_raw=qty_raw") == 1 and src.count("plan.get('qty_raw')") == 1
+
+
+def test_frozen_card_matches_the_engine_card():
+    (card,) = [c for c in E.candidate_sleeves() if c['id'] == F01]
+    assert FC.card_mismatch(card) == [] and FC.FROZEN_CARD['symbols'] == list(E.CAND_FIXED18)
+    assert FC.card_mismatch(dict(card, mgmt=None)) == [] and FC.card_mismatch(dict(card, share=0.17)) == ['share']
 
 
 # ------------------------------------------------------------------ extracts
@@ -299,8 +401,10 @@ def test_runtime_extracts_are_hashed_immutable_and_carry_no_ids(f01, monkeypatch
     assert dec[1]['reason'] == 'coin switched off'                  # exact refusal text
     assert dec[0]['scored'] is True and dec[0]['cap'] == dict(family_open=1, family_cap=4, slot_held=1)
     (ent,) = [r for r in tr if r['kind'] == 'entry']
-    assert ent['stop_sent'] == l['stop'] and ent['qty_sent'] == l['q0'] and ent['stop_atr'] == 2.5
-    assert abs(ent['stop_raw_derived'] - (l['e0'] - 2.5 * l['atr0'])) < 1e-12
+    raw = l['sizing_raw']
+    assert ent['stop_sent'] == l['stop'] and ent['qty_sent'] == l['q0'] and ent['stop_atr'] == 2.5   # exact values sent
+    assert ent['qty_raw'] == raw['qty_raw'] and ent['stop_raw'] == raw['stop_raw'] == l['e0'] - raw['stop_dist']
+    assert ent['qty_raw'] >= ent['qty_sent'] and E.Engine._rd(ent['stop_raw'], e.rules['BTCUSDT']['tick']) == l['stop']
     (trd,) = [r for r in tr if r['kind'] == 'trade']
     assert trd['row_key_sha256'] == FC.row_key_sha256(e.history[-1]['id']) and trd['exit_why'] == 'exit_signal'
     blob = b''.join(b for _n, b in _all_extracts(cd))
@@ -336,7 +440,7 @@ def test_extract_refuses_a_cohort_dir_inside_the_repo_and_none():
 
 def test_extracts_are_disabled_without_a_cohort_dir_or_off_testnet(f01, monkeypatch, tmp_path):
     e, _ = f01
-    e.S[FC.CANARY_KEY] = cfg()
+    e.S[FC.CANARY_KEY] = cfg(cohort_dir=None)
     assert e._f01_extract('decision', lambda: dict(kind='decision')) is None                    # cohort_dir None
     e.S[FC.CANARY_KEY]['cohort_dir'] = str(tmp_path / 'c')
     e.live = True
@@ -370,12 +474,12 @@ def test_c_f02_is_never_enabled_by_any_canary_path(f01, monkeypatch, tmp_path, m
     e, _ = f01
     e.S[FC.CANARY_KEY] = cfg(cohort_dir=str(tmp_path / 'c'))
     sleeves0 = copy.deepcopy(e.S['SLEEVES'])
-    e.f01_canary_block(slot(e, F01)); e.f01_canary_preflight(head_sha='x')
+    e.f01_canary_block(slot(e, F01)); e.f01_canary_preflight()
     cycle4(e, {f'{F01}|BTCUSDT': SG, f'{F02}|ETHUSDT': SG})
     e.history += [row(i, -2.0) for i in range(3)]
     e.f01_canary_block(slot(e, F01))
     assert e.S['SLEEVES'] == sleeves0 and slot(e, F02)['enabled'] is False and not lots(e, F02)
-    assert e.f01_canary_block(slot(e, F02)) is None and set(FC.config(e.S)) == {'on', 'start_utc', 'authorization_comment_id', 'cohort_dir'}
+    assert e.f01_canary_block(slot(e, F02)) is None and set(FC.config(e.S)) == {'on', 'start_utc', 'authorization_comment_id', 'cohort_dir', 'impl_head', 'impl_tree'}
 
 
 def test_cohort_pack_is_not_activated():

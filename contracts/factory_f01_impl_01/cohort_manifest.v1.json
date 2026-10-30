@@ -8,8 +8,8 @@
  "parity_contract": {
   "pr": 248,
   "branch": "claude/factory-f01-parity-01",
-  "head": "d255b3fbd91bff689f699869256b2f8e96f6d98a",
-  "status_at_pack": "DRAFT - Cowork exact-head re-mutation pending",
+  "head": "9fd904a1cbb696d8d3adbeba076376568f18c5af",
+  "status_at_pack": "SIGNED (ruling 6513888459), not merged; pin amendment proposed in pin_amendment.v1.json",
   "rulings": [
    "6512712537 (OQ1-OQ8)",
    "6512978555 (N1)",
@@ -21,12 +21,14 @@
  "environment": "PAPER / Binance Futures testnet only. Never mainnet, never MODE / LIVE_CONFIRM, never credentials",
  "flag": {
   "settings_key": "F01_CANARY",
-  "default": "absent (OFF)",
+  "default": "absent (OFF). With the flag missing, malformed or OFF, an enabled C-F01 is refused every new entry (Codex 6514109966 #2); other slots are unaffected",
   "shape": {
    "on": "true (exactly the JSON boolean) = ON; anything else = OFF",
    "start_utc": "tz-aware ISO-8601 UTC timestamp, frozen by Integration at authorization, before any scored bar is read",
-   "authorization_comment_id": "the Integration (Codex) authorization comment id",
-   "cohort_dir": "absolute evidence directory OUTSIDE the repo, or null (extracts disabled)"
+   "authorization_comment_id": "the Integration (Codex) authorization comment id: a positive numeric GitHub comment id",
+   "cohort_dir": "REQUIRED: an absolute evidence directory outside the repo",
+   "impl_head": "the accepted implementation head (full 40-hex commit SHA)",
+   "impl_tree": "the accepted implementation tree (full 40-hex tree SHA, git rev-parse <head>^{tree})"
   },
   "testnet_guard": "honoured only when Engine.live is False AND the trading client base URL is exactly binance_client.TESTNET; otherwise every new C-F01 entry is refused and logged (S7, fail closed)",
   "does_not": [
@@ -35,8 +37,8 @@
    "change any global PAPER setting",
    "close or resize any lot"
   ],
-  "code": "f01_canary.py; engine.py Engine.f01_canary_block (called from Engine._rules_block, automatic entries only), Engine.f01_canary_preflight, Engine._f01_extract / _f01_decision (observe-only hooks in miss, _audit_opened, _measured_close, _measured_followup)",
-  "pinned_functions_untouched": "none of the 34 functions pinned by the parity contract is edited (re-hash test in tests/test_factory_f01_impl01.py)"
+  "code": "f01_canary.py; engine.py Engine.f01_canary_block (called from Engine._rules_block, automatic entries only), Engine.f01_canary_preflight, Engine._f01_extract / _f01_decision (observe-only hooks in miss, _audit_opened, _measured_close, _measured_followup); observe-only raw sizing capture in open_lot / _create_lot (pin_amendment.v1.json)",
+  "pinned_functions_untouched": "32 of the 34 pinned functions are unchanged; open_lot and _create_lot carry the observe-only capture recorded in pin_amendment.v1.json (re-hash test in tests/test_factory_f01_impl01.py)"
  },
  "bounds": {
   "ruling": "OQ1 6512712537",
@@ -45,18 +47,18 @@
   "drawdown_stop_r": 4.0,
   "max_concurrent": 4,
   "risk_per_trade": "frozen 1 % of the 1/6 sleeve (card unchanged)",
-  "counting": "C-F01 rows opened AND closed at / after start_utc (a pre-canary lot is never counted)",
+  "counting": "C-F01 rows opened AND closed at / after start_utc with a usable unique string id; history first, then the cohort store by id (a row without a usable id or close time fails closed); a pre-canary lot is never counted",
   "drawdown_basis": "cumulative measured net R (row_view measured / acknowledged pnl / risk_usd) from a 0 R start; the peak includes 0; drawdown = max(peak - cum)",
   "pending_rule": "any counted C-F01 close with pending costs (row view, or the durable candidate_cost_pending index) blocks new C-F01 entries until measured (fail closed)",
   "on_reach": "new C-F01 entries refused with the bound text; open lots keep confirmed protection and normal management; nothing is force-closed (OQ8)"
  },
- "frozen_start_rule": "Integration writes start_utc once, in the same settings change that sets on=true, only after preflight.pass is true; it is never moved. Before start_utc the gate refuses new C-F01 entries",
- "scoring_start_rule": "OQ2: >= 250 older closed 4h bars are warm-up only. Scoring starts at the first fully closed 4h decision bar after BOTH the authorization and a successful preflight; a runtime decision is marked scored when its bar open time >= start_utc (the whole bar lies after the frozen start)",
+ "frozen_start_rule": "Integration writes start_utc, authorization_comment_id, cohort_dir, impl_head and impl_tree once, in the same settings change that sets on=true, only after preflight.pass is true; none is ever moved. Before start_utc the gate refuses new C-F01 entries",
+ "scoring_start_rule": "OQ2 (Codex 6514109966 #3): >= 250 older closed 4h bars are warm-up only. A decision is scored only when its 4h bar opened at / after start_utc AND the engine confirmed it fully closed (bar open + 4h <= the decision time). The bar spanning start_utc is excluded; the next fully closed bar is the first scored bar",
  "preflight": {
-  "call": "Engine.f01_canary_preflight(head_sha=<running head>, pins_expected=<pins_expected below>) -> {pass, checks{ENV, C1, C1b, C2..C10}, recorded}",
+  "call": "Engine.f01_canary_preflight(pins_expected=<pins_expected below>) -> {pass, checks{ENV, C1, C1b, C2..C10}, recorded}",
   "read_only": true,
   "record_as": "extract kind 'preflight' (ExtractWriter.write) -> preflight.json at finalize",
-  "pass_rule": "every check ok; C9 needs the head SHA and every pin to match; C10 needs authorization_comment_id and start_utc"
+  "pass_rule": "every check ok. C5: no drift and the slot equals the frozen card incl. share == 1/6, risk 0.01, max_pos 4, key ema_mom, sides long, tf 4h, the ordered fixed-18 symbols, mgmt {}. C9: running head and tree (read-only git) equal impl_head / impl_tree, the checkout is clean and every pin matches. C10: flag on, tz-aware start, positive numeric authorization id, absolute cohort_dir outside the repo, 40-hex head / tree"
  },
  "clean_cohort_record_template": {
   "cohort_id": "<Integration-chosen run id>",
@@ -74,11 +76,14 @@
   "entry_order": "market",
   "max_leverage": 10,
   "reset": "candidate-flat (C1): no C-F01 / C-F02 lot or pending / resting / unconfirmed / deferred entry; no pre-canary lot imported",
-  "notes": "no order, trade, stop or client ids"
+  "notes": "no order, trade, stop or client ids",
+  "impl_head": null,
+  "impl_tree": null,
+  "cohort_dir": null
  },
  "rollback": {
   "owner": "Integration only (Build and Evidence never edit settings)",
-  "command": "On the PAPER bot only, through its own settings path with the bot running: SLEEVES[id == 'C-F01'].enabled = false (one field). No installer, no restart, no MODE / LIVE_CONFIRM change. Turning F01_CANARY.on off is NOT a rollback (it removes the bounds)",
+  "command": "On the PAPER bot only, through its own settings path with the bot running: SLEEVES[id == 'C-F01'].enabled = false (one field). No installer, no restart, no MODE / LIVE_CONFIRM change. (F01_CANARY.on = false also refuses new C-F01 entries, but the slot flag is the recorded rollback.)",
   "steps": [
    "R1 Integration sets the C-F01 slot enabled = false",
    "R2 open C-F01 lots are not closed: they keep confirmed exchange protection and normal signal / stop management (OQ8)",
@@ -106,7 +111,7 @@
  "evidence_outputs": {
   "dir": "<cohort_dir> (outside the repo)",
   "runtime_extracts": "extracts/{decision,trade,preflight}/<sha256>.json - canonical JSON (sorted keys, ASCII, non-finite floats as {\"float\": \"nan\"}), written once (exclusive create); the same bytes again = no-op, different bytes = error",
-  "finalize": "ExtractWriter(cohort_dir).finalize() -> preflight.json, decisions.csv, trades.csv, MANIFEST.sha256 (\"<sha256>  <name>\" per line); each file written once",
+  "finalize": "ExtractWriter(cohort_dir).finalize() -> preflight.json, decisions.csv, trades.csv, MANIFEST.sha256 (\"<sha256>  <name>\" per line); each file written once; trades.csv qty_raw / stop_raw are the exact captured pre-quantization values",
   "not_by_build": "verdict.json (Cowork, OQ7); the rp_* / causal_window_id / result columns stay empty in Build's CSVs",
   "deferred": "frames_manifest.json (closed 4h frame sha256 per symbol) needs a hook inside the pinned compute_signals / cycle - open question Q1",
   "forbidden_fields": [
@@ -122,7 +127,7 @@
   ]
  },
  "pins_expected": {
-  "_source": "parity contract code.pinned_function_sha256 at d255b3f",
+  "_source": "parity contract code.pinned_function_sha256 at d255b3f (= signed 9fd904a) with pin_amendment.v1.json applied (open_lot, _create_lot)",
   "engine.py:Engine._claims": "fdfe3d70290c7508a563ae471e85ca16d42cf1a5d9150a07337dea82e86e77cc",
   "engine.py:Engine.candidate_block": "1cfba70db9cc97fc5e68423b33a9f4663cdf2607754fca9ec86820042b35f1ff",
   "engine.py:Engine.candidate_drift": "f4b4c90f56e0e4c9513bd3e0208e76a75edcf04e54c694762bb7fd64d7e8d2c8",
@@ -133,9 +138,9 @@
   "engine.py:Engine.cycle": "80dca26537094f5e98f8ec471706bd29accae10a638c9a6c04cf912aab637ff4",
   "engine.py:Engine.compute_signals": "d5df45ebd4d3c21691a5d7f67ff5012d6a4b4f5da52e342fd6be8c67feeb94cc",
   "engine.py:Engine.entry_block": "2f43a3ef138e5f6f884ab64f1bbe0e981745b04738de4b8f72c0318e20b28a1b",
-  "engine.py:Engine.open_lot": "3c53176b58188852ff8be5ef637558eb6f5dcd1a29ce7024a2422b77de17b789",
+  "engine.py:Engine.open_lot": "7217d03a0a862a0edf40588946a6884017d8356b4b4ad486e6e83c6a161c3db0",
   "engine.py:Engine._market_entry": "e612630777dfd25fed883e77b73df95e503cdac89ced9fd4dd2b4b1eadca5bf2",
-  "engine.py:Engine._create_lot": "20a2e3cc0eee7584a08673bc027e36486712b3f6710b85dea88732767b2a7e09",
+  "engine.py:Engine._create_lot": "eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5",
   "engine.py:Engine._finish": "8fc9ffc1c4dbe5f05781f6a99d2ccfbe844caeb2d29f67eef82fb1aab0ebfb60",
   "engine.py:Engine._cost_final": "fe43877088d0d86db2acc14f1fbf6896a03047a6661262bfbf5da0dc8dd45e2a",
   "engine.py:Engine.scalp_block": "fddafa504e5c5c96ae853d17e787c14dbc7dc9fa706edb41c613de130826e95c",
@@ -159,14 +164,23 @@
   "feasibility.py:round_step": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f"
  },
  "open_questions": [
-  "Q1 frames_manifest.json and the true raw qty / raw stop (P17 / P19 raw side) are computed inside pinned functions (compute_signals, open_lot, _create_lot). The extracts record the quantized values sent plus raw values re-derived from the lot inputs. Integration: accept derived raw values, or amend the contract pins for a minimal observe-only hook",
-  "Q2 the runtime gate is independent of the slot's enabled flag: with F01_CANARY absent, an Integration-enabled C-F01 trades without canary bounds (pre-existing behaviour). Should enabling C-F01 require the canary flag?",
-  "Q3 scored = decision bar open >= start_utc (the whole bar after the start); confirm this reading of OQ2"
+  "frames_manifest.json needs a hook inside the pinned compute_signals / cycle; not built. Integration: a further observe-only pin amendment, or Cowork hashes frames from its own fetch"
  ],
  "roadmap_fit": "Strategy Factory -> rapid candidate-to-PAPER pipeline",
  "deferred": [
   "activation (needs Cowork PASS on #248 exact head + Integration authorization)",
   "mainnet",
   "tuning from canary outcomes"
- ]
+ ],
+ "resolved_by_review": {
+  "6514109966": [
+   "#1 exact raw qty / stop captured observe-only; pins amended in pin_amendment.v1.json",
+   "#2 missing / malformed / OFF flag refuses an enabled C-F01",
+   "#3 scored = engine-confirmed fully closed 4h bar opened at / after start_utc",
+   "#4 C9 compares the running head / tree with impl_head / impl_tree plus the pins",
+   "#5 C10 positive numeric authorization id + absolute cohort_dir outside the repo",
+   "#6 preflight C5 requires the frozen card incl. share 1/6",
+   "#7 counting needs opened and closed >= start and a usable unique id"
+  ]
+ }
 }

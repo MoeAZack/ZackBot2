@@ -48,7 +48,17 @@ def rot(tmp_path):
 def on(rot):
     e, tmp = rot
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    canary(e, tmp)
     return e, tmp
+
+
+def canary(e, tmp):
+    """FACTORY-F01-IMPL-01 (Codex 6514109966 #2): an enabled C-F01 trades only inside the bounded testnet canary."""
+    from datetime import datetime, timedelta, timezone
+    e.trade.base = E.TESTNET
+    e.S['F01_CANARY'] = dict(on=True, start_utc=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec='seconds'),
+                             authorization_comment_id='6514109966', cohort_dir=os.path.join(os.path.abspath(tmp), 'f01_cohort'),
+                             impl_head='a' * 40, impl_tree='b' * 40)
 
 
 # ------------------------------------------------------------------ the frozen cards
@@ -314,6 +324,7 @@ def _book_engine(true_books):
     e.S['TRUE_BOOKS'] = true_books
     e.S['SLEEVES'] = [T_SL] + E.candidate_sleeves()
     for sid in E.CANDIDATE_SLOTS: slot(e, sid)['enabled'] = True
+    canary(e, tmp)
     return e, T_SL
 
 

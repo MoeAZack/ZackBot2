@@ -1,0 +1,28 @@
+{
+ "amendment": "FACTORY-F01-IMPL-01 pin amendment to FACTORY-F01-PARITY-01 code.pinned_function_sha256",
+ "version": 1,
+ "status": "PROPOSED - pending Integration acceptance",
+ "why_separate_file": "PR #248 (the parity contract) is not merged into master (OPEN, signed head 9fd904a, ruling 6513888459). Per Codex review 6514109966 #1 the pin amendment lives in this #249 pack; #248 files are not edited. Integration folds it into the contract when it accepts #249",
+ "base_contract": {
+  "pr": 248,
+  "head": "9fd904a1cbb696d8d3adbeba076376568f18c5af",
+  "pins_unchanged_since": "d255b3f"
+ },
+ "ruling": "Codex review 6514109966 #1: P17 / P19 need the exact pre-quantization qty / stop; add the smallest observe-only capture at the calculation boundary and amend only the affected pins",
+ "rule": "sha256 of ast.get_source_segment (LF), as the contract's pin rule",
+ "amended": {
+  "engine.py:Engine.open_lot": {
+   "from": "3c53176b58188852ff8be5ef637558eb6f5dcd1a29ce7024a2422b77de17b789",
+   "to": "7217d03a0a862a0edf40588946a6884017d8356b4b4ad486e6e83c6a161c3db0"
+  },
+  "engine.py:Engine._create_lot": {
+   "from": "20a2e3cc0eee7584a08673bc027e36486712b3f6710b85dea88732767b2a7e09",
+   "to": "eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5"
+  }
+ },
+ "change": {
+  "engine.py:Engine.open_lot": "the entry plan carries qty_raw (the risk-sized qty before the exchange step floor / leverage cap, i.e. feasibility.risk_qty()['qty']); no other line changes",
+  "engine.py:Engine._create_lot": "for a CANDIDATE_SLOTS lot only: lot['sizing_raw'] = {qty_raw, stop_raw = fill - sd * stop_dist (the value _rd quantizes to the sent stop), stop_dist}; observe-only, never read by trading, sizing, stops or exits"
+ },
+ "unchanged": "the other 32 pins equal the contract; qty sent and stop sent are computed exactly as before"
+}

@@ -22,6 +22,8 @@ import io
 import json
 import math
 import os
+import re
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 import actual_costs as AC
@@ -47,6 +49,12 @@ TRADE_COLUMNS = ('row_key_sha256', 'symbol', 'entry_bar', 'exit_bar', 'rt_why', 
                  'tick', 'fees_measured', 'fees_model', 'funding_measured', 'funding_model', 'slip_entry_bps', 'slip_exit_bps',
                  'rt_r', 'rp_r', 'cost_status')
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+TF_S = 4 * 3600                                                     # C-F01 decides on closed 4h bars
+HEX40 = re.compile(r'^[0-9a-f]{40}$')
+# the frozen C-F01 card (parity contract binding; Codex 6514109966 #6: share is checked too)
+FROZEN_CARD = dict(key='ema_mom', sides='long', risk=0.01, max_pos=4, tf='4h', share=1 / 6, mgmt={},
+                   symbols=['BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'DOGEUSDT', 'UNIUSDT', 'SUIUSDT',
+                            'QNTUSDT', 'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT'])
 
 
 # ------------------------------------------------------------------ flag + environment
@@ -60,11 +68,55 @@ def _ts(v):
 
 
 def config(S):
-    """The canary config when the flag is ON, else None (OFF = absent, not a dict, or "on" not exactly True)."""
+    """The canary config when the flag is ON, else None (OFF = absent, not a dict, or "on" not exactly True). An enabled
+    C-F01 with no ON flag is refused new entries by the engine gate (Codex 6514109966 #2)."""
     c = (S or {}).get(CANARY_KEY)
     if not isinstance(c, dict) or c.get('on') is not True: return None
     return dict(on=True, start_utc=c.get('start_utc'), authorization_comment_id=c.get('authorization_comment_id'),
-                cohort_dir=c.get('cohort_dir') or None)
+                cohort_dir=c.get('cohort_dir') or None, impl_head=c.get('impl_head'), impl_tree=c.get('impl_tree'))
+
+
+def auth_id_ok(v):
+    """A positive numeric GitHub comment id (int, or a string of digits without a leading zero); never a bool."""
+    if isinstance(v, bool): return False
+    if isinstance(v, int): return v > 0
+    return isinstance(v, str) and v.isdigit() and v.isascii() and not v.startswith('0')
+
+
+def cohort_dir_ok(v, repo_root=None):
+    return isinstance(v, str) and bool(v) and os.path.isabs(v) and not _inside(v, repo_root or REPO_ROOT)
+
+
+def cfg_problems(cfg, repo_root=None):
+    """Every malformed or missing field of an ON config (empty = well-formed). Each one fails closed."""
+    c, out = cfg or {}, []
+    if _ts(c.get('start_utc')) is None: out.append('no frozen tz-aware start timestamp')
+    if not auth_id_ok(c.get('authorization_comment_id')): out.append('authorization id is not a positive numeric GitHub comment id')
+    if not cohort_dir_ok(c.get('cohort_dir'), repo_root): out.append('cohort_dir is not an absolute path outside the repository')
+    if not (isinstance(c.get('impl_head'), str) and HEX40.match(c['impl_head'])): out.append('impl_head is not a full 40-hex commit SHA')
+    if not (isinstance(c.get('impl_tree'), str) and HEX40.match(c['impl_tree'])): out.append('impl_tree is not a full 40-hex tree SHA')
+    return out
+
+
+def running_build(root=None):
+    """(head, tree, clean) of the running source checkout via read-only git; (None, None, False) when it cannot be read."""
+    root = root or REPO_ROOT
+    try:
+        run = lambda *a: subprocess.run(['git', '-C', root, *a], capture_output=True, text=True, timeout=20, check=True).stdout.strip()
+        head, tree = run('rev-parse', 'HEAD'), run('rev-parse', 'HEAD^{tree}')
+        clean = run('status', '--porcelain', '--untracked-files=no') == ''
+        return head, tree, clean
+    except Exception:
+        return None, None, False
+
+
+def card_mismatch(sl):
+    """Fields where a slot differs from FROZEN_CARD (share included). mgmt None == {}; symbols compare as the ordered list."""
+    sl = sl or {}
+    def norm(f, v):
+        if f == 'symbols' and isinstance(v, (list, tuple)): return list(v)
+        return (v or {}) if f == 'mgmt' else v
+    return [f for f in FROZEN_CARD if norm(f, sl.get(f)) != FROZEN_CARD[f]]
 
 
 def env_refusal(live, base, testnet):
@@ -75,32 +127,46 @@ def env_refusal(live, base, testnet):
 
 
 # ------------------------------------------------------------------ bounds (OQ1) + rollback semantics (OQ8)
-def canary_rows(rows, start):
-    """C-F01 closed rows opened AND closed at / after the frozen start (a pre-canary lot is never scored, OQ3), by close."""
-    out = []
-    for r in rows or ():
-        if not isinstance(r, dict) or r.get('sleeve') != SLOT: continue
-        o, c = _ts(r.get('opened')), _ts(r.get('closed'))
-        if o is None or c is None or o < start: continue
-        out.append((c, r))
-    return [r for _c, r in sorted(out, key=lambda x: x[0])]
+def _rid_ok(r):
+    return isinstance(r.get('id'), str) and r['id'].strip() != ''
 
 
-def bound_status(cfg, rows, pending_index=None, now=None):
+def canary_rows(rows, start, extra=()):
+    """(C-F01 closed rows opened AND closed at / after the frozen start, by close; bad) over the trading history then the
+    cohort evidence store (extra). A row joins by its own non-empty string id: history wins a duplicate id, the cohort copy
+    of a row never replaces or hides another row (Codex 6514109966 #7). A C-F01 row whose id or times are unusable cannot
+    be classified - it is returned in bad (the caller fails closed); a pre-canary lot is never counted (OQ3)."""
+    out, bad, seen = [], [], set()
+    for src in (rows or (), extra or ()):
+        for r in src:
+            if not isinstance(r, dict) or r.get('sleeve') != SLOT: continue
+            if not _rid_ok(r): bad.append(r.get('symbol')); continue
+            if r['id'] in seen: continue
+            seen.add(r['id'])
+            o, c = _ts(r.get('opened')), _ts(r.get('closed'))
+            if o is None or c is None: bad.append(r.get('symbol')); continue
+            if o < start or c < start: continue
+            out.append((c, r))
+    return [r for _c, r in sorted(out, key=lambda x: x[0])], bad
+
+
+def bound_status(cfg, rows, pending_index=None, now=None, extra=(), repo_root=None):
     """-> dict(block, stop, closed, net_r, peak_r, drawdown_r, pending, days). block = the refusal text for a NEW C-F01 entry
     (None = entries allowed); stop = {'id', 'why'} once a terminal bound (S5 / S6) is reached. Pure."""
     now = _ts(now) or datetime.now(timezone.utc)
     start = _ts((cfg or {}).get('start_utc'))
     out = dict(block=None, stop=None, closed=0, net_r=0.0, peak_r=0.0, drawdown_r=0.0, pending=[], days=None)
-    if start is None:
-        out['block'] = 'F01 canary: no frozen tz-aware start timestamp - no new C-F01 entry (fail closed)'; return out
-    if not (cfg or {}).get('authorization_comment_id'):
-        out['block'] = 'F01 canary: no Integration authorization comment id recorded - no new C-F01 entry (fail closed)'; return out
+    bad_cfg = cfg_problems(cfg, repo_root)
+    if bad_cfg:
+        out['block'] = f"F01 canary: malformed config ({'; '.join(bad_cfg)}) - no new C-F01 entry (fail closed)"; return out
     if now < start:
         out['block'] = 'F01 canary: before the frozen start - no new C-F01 entry'; return out
     out['days'] = (now - start).total_seconds() / 86400
-    got = canary_rows(rows, start)
+    got, bad = canary_rows(rows, start, extra)
     out['closed'] = len(got)
+    if bad:
+        out['block'] = (f'F01 canary: {len(bad)} C-F01 row(s) without a usable id or close time - trades not countable, '
+                        'no new C-F01 entry (fail closed)'); return out
     ids = {r.get('id') for r in got}
     cum = peak = dd = 0.0
     for r in got:
@@ -129,10 +195,11 @@ def bound_status(cfg, rows, pending_index=None, now=None):
     return out
 
 
-def is_scored(decision_bar, cfg):
-    """OQ2: a decision is scored only when its whole closed 4h bar lies after the frozen start (bar open >= start)."""
-    b, s = _ts(_iso(decision_bar)), _ts((cfg or {}).get('start_utc'))
-    return bool(b and s and b >= s)
+def is_scored(decision_bar, cfg, logged_at):
+    """OQ2 (Codex 6514109966 #3): scored only for a fully closed 4h decision bar that opened at / after the frozen start -
+    the bar spanning the start is excluded - and that the engine confirmed closed (bar open + 4h <= the decision time)."""
+    b, s, t = _ts(_iso(decision_bar)), _ts((cfg or {}).get('start_utc')), _ts(logged_at)
+    return bool(b and s and t and b >= s and b + timedelta(seconds=TF_S) <= t)
 
 
 def _iso(v):
@@ -150,7 +217,8 @@ def _owner(x, key=None):
 
 
 def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governor_mult=None, kelly_mult=None,
-              ctrl_long_factor=None, head_sha=None, pins_expected=None, pins_actual=None, now=None):
+              ctrl_long_factor=None, running=(None, None, False), pins_expected=None, pins_actual=None, now=None,
+              repo_root=None):
     """The contract's candidate-flat start checks over plain values (no engine method is called here, nothing is written).
     -> dict(pass, checks={C*: {ok, ...}}, recorded={...}). Recorded values (AI_FILTER, FEE_EDGE_GATE, other open slots)
     are captured, never changed."""
@@ -171,6 +239,11 @@ def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governo
     cfg = (S.get(CANARY_KEY) if isinstance(S.get(CANARY_KEY), dict) else {}) or {}
     env = env_refusal(live, base, testnet)
     pins_bad = sorted(k for k, v in (pins_expected or {}).items() if not k.startswith('_') and (pins_actual or {}).get(k) != v)
+    head, tree, clean = running
+    head_ok = isinstance(cfg.get('impl_head'), str) and bool(HEX40.match(cfg['impl_head'])) and head == cfg['impl_head']
+    tree_ok = isinstance(cfg.get('impl_tree'), str) and bool(HEX40.match(cfg['impl_tree'])) and tree == cfg['impl_tree']
+    card = card_mismatch(f01) if f01 else list(FROZEN_CARD)
+    bad_cfg = cfg_problems(cfg, repo_root)
     c = {
         'ENV': dict(ok=env is None, why=env, live=live is not False, testnet=base == testnet and bool(base)),
         'C1': dict(ok=not fam_lots and not fam_work, family_lots=fam_lots, family_working=fam_work),
@@ -178,16 +251,19 @@ def preflight(S, state, *, live, base, testnet, deferred=(), drift=None, governo
         'C2': dict(ok=f02 is None or f02.get('enabled') is False, c_f02_enabled=None if f02 is None else f02.get('enabled')),
         'C3': dict(ok=f01 is not None and not disabled and not stop_fail, candidate_disabled=disabled, stop_fail=stop_fail),
         'C4': dict(ok=pend is None or (isinstance(pend, dict) and not pend), size=len(pend) if isinstance(pend, dict) else None),
-        'C5': dict(ok=f01 is not None and drift == [], drift=drift),
+        'C5': dict(ok=f01 is not None and drift == [] and not card, drift=drift, card_mismatch=card),
         'C6': dict(ok=governor_mult == 1.0 and kelly_mult == 1.0, governor_mult=governor_mult, kelly_mult=kelly_mult),
         'C7': dict(ok=ctrl_long_factor == 1.0, ctrl_long_factor=ctrl_long_factor),
         'C8': dict(ok=S.get('ENTRY_ORDER') == ENTRY_ORDER and S.get('MAX_LEVERAGE') == MAX_LEVERAGE,
                    ENTRY_ORDER=S.get('ENTRY_ORDER'), MAX_LEVERAGE=S.get('MAX_LEVERAGE'),
                    AI_FILTER=S.get('AI_FILTER'), FEE_EDGE_GATE=S.get('FEE_EDGE_GATE')),
-        'C9': dict(ok=bool(head_sha) and bool(pins_expected) and not pins_bad, head_sha=head_sha, pins_mismatch=pins_bad,
+        'C9': dict(ok=head_ok and tree_ok and clean is True and bool(pins_expected) and not pins_bad,
+                   impl_head=cfg.get('impl_head'), impl_tree=cfg.get('impl_tree'), running_head=head, running_tree=tree,
+                   running_clean=clean, pins_mismatch=pins_bad,
                    pins_checked=len([k for k in pins_expected or {} if not k.startswith('_')])),
-        'C10': dict(ok=bool(cfg.get('authorization_comment_id')) and _ts(cfg.get('start_utc')) is not None,
-                    authorization_comment_id=cfg.get('authorization_comment_id'), start_utc=cfg.get('start_utc')),
+        'C10': dict(ok=cfg.get('on') is True and not bad_cfg, problems=bad_cfg,
+                    authorization_comment_id=cfg.get('authorization_comment_id'), start_utc=cfg.get('start_utc'),
+                    cohort_dir=cfg.get('cohort_dir')),
     }
     rec = dict(slot_f01=dict(slot=f01.get('id'), strategy_key=f01.get('key'),
                              **{k: f01.get(k) for k in ('sides', 'risk', 'max_pos', 'symbols', 'mgmt', 'tf', 'share', 'enabled')})
@@ -259,7 +335,8 @@ def _num(v):
 def decision_record(sym, sg, outcome, reason, logged_at, raw=None, family_open=None, held=None, start_cfg=None):
     """One C-F01 decision (P01-P07 runtime side). Whitelisted fields only; the refusal text is kept exactly."""
     sg, raw = sg or {}, raw or {}
-    return dict(kind='decision', slot=SLOT, symbol=sym, decision_bar=str(sg.get('time')), scored=is_scored(sg.get('time'), start_cfg),
+    return dict(kind='decision', slot=SLOT, symbol=sym, decision_bar=str(sg.get('time')),
+                scored=is_scored(sg.get('time'), start_cfg, logged_at),
                 le=bool(sg.get('le')), lx=bool(sg.get('lx')), atr=_num(sg.get('atr')), close=_num(sg.get('close')),
                 raw_le=raw.get('le') if raw.get('time') == sg.get('time') else None,
                 outcome=outcome, reason=None if reason is None else str(reason), reason_logged_at=logged_at,
@@ -267,18 +344,18 @@ def decision_record(sym, sg, outcome, reason, logged_at, raw=None, family_open=N
 
 
 def entry_record(lot, rules=None, sg=None):
-    """A C-F01 entry as sized and protected (P14-P19 runtime side). qty / stop are the exchange-quantized values the bot
-    sent; the *_derived values are recomputed from the lot's own inputs (stop_atr x ATR at entry), not the raw values
-    inside open_lot (see the open question in the cohort pack)."""
+    """A C-F01 entry as sized and protected (P14-P19 runtime side). qty_raw / stop_raw are the exact pre-quantization
+    values the bot computed (lot['sizing_raw'], captured observe-only in open_lot / _create_lot - Codex 6514109966 #1);
+    qty_sent / stop_sent are the exchange-quantized values it sent. A lot without the capture records None (never a
+    re-derived value)."""
     lot, r, sg = lot or {}, rules or {}, sg or {}
-    e0, atr, k = _num(lot.get('e0')), _num(lot.get('atr0')), _num(((lot.get('mgmt') or {}).get('stop_atr')))
-    dist = atr * k if atr is not None and k is not None else None
+    raw = lot.get('sizing_raw') if isinstance(lot.get('sizing_raw'), dict) else {}
     risk, eq = _num(lot.get('risk_usd')), _num(lot.get('eq_at_entry'))
     return dict(kind='entry', slot=SLOT, symbol=lot.get('symbol'), side=lot.get('side'), decision_bar=str(sg.get('time')),
-                opened=lot.get('opened'), entry_fill=e0, atr_at_entry=atr, stop_atr=k, stop_dist_derived=dist,
-                stop_raw_derived=(e0 - dist) if e0 is not None and dist is not None else None, stop_sent=_num(lot.get('stop')),
-                tick=_num(r.get('tick')), step=_num(r.get('step')), qty_sent=_num(lot.get('q0')),
-                qty_raw_derived=(risk / dist) if risk and dist else None, risk_usd=risk, sleeve_eq=eq,
+                opened=lot.get('opened'), entry_fill=_num(lot.get('e0')), atr_at_entry=_num(lot.get('atr0')),
+                stop_atr=_num((lot.get('mgmt') or {}).get('stop_atr')), stop_dist=_num(raw.get('stop_dist')),
+                stop_raw=_num(raw.get('stop_raw')), stop_sent=_num(lot.get('stop')), qty_raw=_num(raw.get('qty_raw')),
+                qty_sent=_num(lot.get('q0')), tick=_num(r.get('tick')), step=_num(r.get('step')), risk_usd=risk, sleeve_eq=eq,
                 risk_fraction=(risk / eq) if risk and eq else None, mgmt=lot.get('mgmt') or {})
 
 
@@ -359,9 +436,9 @@ class ExtractWriter:
             e = ent.get((r['symbol'], r['opened'])) or {}
             tr.append(dict(row_key_sha256=r['row_key_sha256'], symbol=r['symbol'], entry_bar=e.get('decision_bar'),
                            exit_bar=r['closed'], rt_why=r['exit_why'], rt_entry=r['entry'], rt_exit=r['exit'], rt_stop=e.get('stop_sent'),
-                           stop_dist=e.get('stop_dist_derived'), risk_usd=r['risk_usd'], sleeve_eq=e.get('sleeve_eq'),
-                           risk_fraction=e.get('risk_fraction'), qty_raw=e.get('qty_raw_derived'), qty_sent=e.get('qty_sent'),
-                           step=e.get('step'), stop_raw=e.get('stop_raw_derived'), tick=e.get('tick'),
+                           stop_dist=e.get('stop_dist'), risk_usd=r['risk_usd'], sleeve_eq=e.get('sleeve_eq'),
+                           risk_fraction=e.get('risk_fraction'), qty_raw=e.get('qty_raw'), qty_sent=e.get('qty_sent'),
+                           step=e.get('step'), stop_raw=e.get('stop_raw'), tick=e.get('tick'),
                            fees_measured=r['fees_measured'], fees_model=r['fees_model'], funding_measured=r['funding_measured'],
                            rt_r=r['r_measured'], cost_status=r['cost_status']))
         files['trades.csv'] = _csv(TRADE_COLUMNS, tr)
