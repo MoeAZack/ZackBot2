@@ -16,6 +16,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_safety import mk_engine                       # noqa: E402  (FakeX engine, PAPER)
 import engine as E                                       # noqa: E402
+import feasibility as F                                  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CDIR = os.path.join(ROOT, 'contracts', 'factory_f01_parity_01')
@@ -24,6 +25,7 @@ MD = os.path.join(CDIR, 'FACTORY_F01_PARITY_01_CONTRACT.md')
 REPRO = os.path.join(ROOT, 'contracts', 'factory_f01f02_repro', 'factory_f01f02_repro_contract.v1.json')
 F01, F02 = 'C-F01', 'C-F02'
 SG = dict(close=100.0, atr=2.0, time='2026-10-04 00:00:00', le=True, se=False, lx=False, sx=False)
+RULING = '6512712537'
 CLASSES = {'MUST-MATCH', 'MEASURED-DIFF', 'NOT-COMPARABLE'}
 
 
@@ -119,7 +121,7 @@ def test_signed_contract_files_match_their_pins(c):
 
 def test_every_pinned_function_source_matches(c):
     pins = {k: v for k, v in c['code']['pinned_function_sha256'].items() if not k.startswith('_')}
-    assert len(pins) == 33
+    assert len(pins) == 34
     for cite, sha in pins.items():
         path, name = cite.split(':')
         src = _src(path)
@@ -146,7 +148,7 @@ def test_every_parity_field_is_complete(c, repro):
         for k in ('definition', 'runtime_source', 'replay_source', 'comparison_rule'): assert p[k].strip(), (p['id'], k)
         t = p['tolerance']
         assert t['kind'] in kinds, p['id']
-        if p['class'] == 'MUST-MATCH': assert t['kind'] in ('exact', 'abs', 'rel'), p['id']
+        if p['class'] == 'MUST-MATCH': assert t['kind'] in ('exact', 'abs', 'rel', 'rel+exact'), p['id']
         else:
             assert t['kind'] in ('report', 'none'), p['id']
             assert p.get('legitimate_difference'), p['id']               # every non-matched field says why
@@ -200,8 +202,7 @@ def test_canary_is_unauthorized_and_bounded(c):
     assert k['status'] == 'SPECIFIED, NOT AUTHORIZED' and k['authorization'] is None and k['authorization_comment_id'] is None
     assert [s['id'] for s in k['stop_conditions']] == [f'S{i}' for i in range(1, 8)]
     assert all(s['rule'].strip() for s in k['stop_conditions'])
-    assert [p['id'] for p in k['preconditions']] == [f'C{i}' for i in range(1, 11)]
-    assert k['bounds_proposed']['_status'].startswith('PROPOSALS ONLY') and k['bounds_proposed']['max_concurrent'] == 4
+    assert [p['id'] for p in k['preconditions']] == ['C1', 'C1b'] + [f'C{i}' for i in range(2, 11)]
     assert any('Integration (only)' in r for r in k['rollback']) and any('NOT closed' in r for r in k['rollback'])
     ev = k['evidence_outputs']
     assert set(ev['files']) == {'preflight.json', 'frames_manifest.json', 'decisions.csv', 'trades.csv', 'verdict.json', 'MANIFEST.sha256'}
@@ -218,10 +219,10 @@ def repro_forbidden():
         return json.load(fh)['verdict_schema']['forbidden_output_fields']
 
 
-def test_open_questions_numbered(c):
-    oq = c['open_questions']
-    assert [q['id'] for q in oq] == [f'OQ{i}' for i in range(1, len(oq) + 1)] and len(oq) >= 6
-    assert all(q['question'].strip() for q in oq)
+def test_open_questions_all_resolved(c):
+    assert c['open_questions'] == []
+    assert [q['id'] for q in c['resolved_questions']] == [f'OQ{i}' for i in range(1, 9)]
+    assert all(q['ruling'] == RULING and q['resolution'].strip() and q['encoded_in'].strip() for q in c['resolved_questions'])
 
 
 # ------------------------------------------------------------------ runtime anchors for MUST-MATCH sizing / stop fields
@@ -234,11 +235,10 @@ def test_p14_p16_p19_p20_runtime_sizing_and_stop(f01):
     assert l['risk_usd'] == pytest.approx(eq * E.CANDIDATE_SHARE * E.CANDIDATE_RISK, abs=0.005)        # P14
     assert l['mgmt'] == {'stop_atr': 2.5}                                                             # P20
     r_dist = 2.5 * SG['atr']                                                                          # P16
-    assert l['stop'] == pytest.approx(l['avg'] - r_dist, abs=e.rules['BTCUSDT']['tick'])              # P19
-    assert l['avg'] - l['stop'] == pytest.approx(r_dist, rel=1e-9, abs=e.rules['BTCUSDT']['tick'])
-    step = e.rules['BTCUSDT']['step']
-    qty_raw = (eq * E.CANDIDATE_SHARE * E.CANDIDATE_RISK) / r_dist                                    # P17
-    assert qty_raw - step - 1e-12 <= l['qty'] <= qty_raw + 1e-12
+    tick, step = e.rules['BTCUSDT']['tick'], e.rules['BTCUSDT']['step']
+    assert quant_ok(l['avg'] - r_dist, l['avg'] - r_dist, l['stop'], tick)                          # P19: exact on the tick
+    qty_raw = (eq * E.CANDIDATE_SHARE * E.CANDIDATE_RISK) / r_dist                                    # P17: exact on the step
+    assert l['qty'] == F.round_step(qty_raw, step) and l['stop'] == F.round_step(l['avg'] - r_dist, tick)
     assert not lots(e, F02)                                                                           # P13
 
 
@@ -300,3 +300,123 @@ def test_fi4_lost_protection_disables_c_f01_and_the_lot_is_still_managed(f01, wh
     assert not lots(e, F01, 'ETHUSDT') and e.missed[-1]['reason'] == 'strategy slot switched off'
     cycle4(e, {f'{F01}|BTCUSDT': dict(SG, le=False, lx=True)})                         # the open lot is still managed
     assert not lots(e, F01) and e.history[-1]['exit_reason'] == 'exit_signal'
+
+
+# ------------------------------------------------------------------ amendment 1: rulings 6512712537 (OQ1-OQ8)
+def test_every_ruling_is_encoded_with_its_values(c):
+    assert RULING in c['amended_at'] and RULING in c['assignment'] and RULING in c['resolved_questions_source']
+    assert c['status'] == 'DRAFT' and c['signed_by'] is None
+    k = c['canary']
+    b = k['bounds']                                                                                   # OQ1
+    assert b['ruling'] == RULING
+    assert (b['duration_days'], b['max_closed_trades'], b['max_concurrent'], b['drawdown_stop_r']) == (30, 8, 4, 4.0)
+    assert 'first of 30 calendar days or 8 closed' in b['end_rule'] and 'canary peak' in b['drawdown_basis']
+    assert 'not a profitability verdict' in k['purpose'] and 'bounds_proposed' not in k
+    sc = c['replay_definition']['scoring_start']                                                       # OQ2
+    for w in ('250', 'WARM-UP ONLY', 'frozen', 'BOTH the authorization and a successful preflight', 'never to retune'):
+        assert w in sc, w
+    assert k['scoring'] == sc
+    pre = {p['id']: p['rule'] for p in k['preconditions']}                                            # OQ3
+    assert 'candidate-flat' in pre['C1'] and 'never imported into scoring' in pre['C1']
+    assert 'captured in preflight.json' in pre['C1b'] and 'P08 / P09 / P10' in pre['C1b']
+    tsr = c['replay_definition']['trade_set_rule']                                                    # OQ4
+    assert 'explicitly listed causal window' in tsr and 'No open-ended same-symbol exemption' in tsr and 'post-hoc' in tsr
+    assert 'MUST-MATCH throughout' in tsr
+    assert 'never switched off' in pre['C8'] and 'MAX_LEVERAGE 10' in pre['C8'] and 'ENTRY_ORDER market' in pre['C8']   # OQ5
+    assert '1.0' in pre['C6'] and '1.0' in pre['C7'] and 'without changing any global PAPER setting' in pre['C6']
+    ps = {p['id']: p for p in c['parity_fields']}
+    assert 'LISTED' in ps['P10']['comparison_rule'] and 'ACTUAL cap effect' in ps['P18']['comparison_rule']
+    assert 'frozen neutral multipliers' in ps['P14']['legitimate_difference']
+    assert ps['P04']['tolerance'] == {'kind': 'rel', 'value': 1e-9} == ps['P16']['tolerance']          # OQ6
+    assert ps['P14']['tolerance']['value'] == 0.005
+    for pid in ('P17', 'P19'):
+        t = ps[pid]['tolerance']
+        assert t['kind'] == 'rel+exact' and t['raw_rel'] == 1e-9 and t['quantized'] == 'exact'
+        assert 'feasibility.py:round_step' in t['quantizer']
+    own = k['evidence_outputs']['ownership']                                                          # OQ7
+    assert own['cowork'] == ['verdict.json'] and 'verdict.json' not in own['build_runtime_extracts']
+    assert 'never self-verdicts' in c['replay_definition']['executor']
+    assert any('NOT closed' in r and 'confirmed exchange protection' in r for r in k['rollback'])     # OQ8
+    assert k['force_close_only_for'] == ['unknown account state', 'lost or unrestorable protection', 'environment uncertainty',
+                                         'a separately recorded safety decision']
+    md = open(MD, encoding='utf-8').read()
+    assert RULING in md and 'DRAFT' in md
+    for i in range(1, 9): assert f'OQ{i}' in md
+
+
+def test_canary_execution_and_market_data_stay_forbidden(c):
+    k = c['canary']
+    assert k['authorization'] is None and k['authorization_comment_id'] is None and 'NOT AUTHORIZED' in k['status']
+    f = ' | '.join(c['forbidden'])
+    assert 'executing the canary' in f and 'any market-data read under this ticket' in f and 'global PAPER settings' in f
+
+
+# ------------------------------------------------------------------ OQ4: bounded causal window (reference helper, test only)
+def causal_verdict(steps, prefixes):
+    """Reference implementation of causal_window.algorithm - test-module only, never runtime code."""
+    window, windows, excluded = None, [], []
+    for st in steps:
+        for ev in st['events']:
+            t = ev['type']
+            if t in ('pre_gate_mismatch', 'rt_only_entry'):
+                return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
+            if t == 'rt_refused_rp_entered':
+                if not (ev.get('logged_at_decision') is True and any(ev['reason'].startswith(p) for p in prefixes)):
+                    return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
+                if window is None:
+                    window = [st['bar'], None]; windows.append(window)
+            elif t == 'rp_only_entry':
+                if window is None: return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
+                excluded.append([st['bar'], ev['symbol']])
+            elif t != 'match':
+                raise ValueError(t)
+        if window is not None and st['rt_flat_after'] and st['rp_flat_after']:
+            window[1] = st['bar']; window = None
+    return dict(verdict='PASS', windows=windows, excluded=excluded)
+
+
+def test_causal_window_test_vectors(c):
+    cw = c['causal_window']
+    assert cw['ruling'] == RULING and 'never in engine/runtime code' in cw['status']
+    vs = cw['test_vectors']
+    assert len(vs) >= 8 and {v['expect']['verdict'] for v in vs} == {'PASS', 'PARITY-FAIL'}
+    for v in vs:
+        got = causal_verdict(v['steps'], cw['registered_refusal_prefixes'])
+        assert {k_: got.get(k_) for k_ in v['expect']} == v['expect'], v['id']
+
+
+def test_causal_window_is_bounded_and_has_no_same_symbol_exemption(c):
+    pre = c['causal_window']['registered_refusal_prefixes']
+    ref = dict(type='rt_refused_rp_entered', symbol='SOLUSDT', reason='daily loss halt', logged_at_decision=True)
+    rp = dict(type='rp_only_entry', symbol='SOLUSDT')
+    inside = [dict(bar='b1', events=[ref], rt_flat_after=True, rp_flat_after=False),
+              dict(bar='b2', events=[rp], rt_flat_after=True, rp_flat_after=False)]
+    got = causal_verdict(inside, pre)
+    assert got['verdict'] == 'PASS' and got['excluded'] == [['b2', 'SOLUSDT']] and got['windows'] == [['b1', None]]
+    after = inside + [dict(bar='b3', events=[], rt_flat_after=True, rp_flat_after=True),
+                      dict(bar='b9', events=[rp], rt_flat_after=True, rp_flat_after=False)]
+    assert causal_verdict(after, pre) == dict(verdict='PARITY-FAIL', fail_at='b9')      # same symbol after the reset fails
+    assert causal_verdict([dict(bar='b1', events=[rp], rt_flat_after=True, rp_flat_after=False)], pre)['verdict'] == 'PARITY-FAIL'
+
+
+def test_registered_refusal_prefixes_are_literal_engine_text(c):
+    src = _src('engine.py')
+    for p in c['causal_window']['registered_refusal_prefixes']:
+        assert p in src, p
+
+
+# ------------------------------------------------------------------ OQ6: exact post-quantization equality
+def quant_ok(raw_rt, raw_rule, q_rt, step, raw_rel=1e-9):
+    """P17 / P19: raw within rel AND the exchange-quantized value (floor to step / tick) equal EXACTLY."""
+    return abs(raw_rt - raw_rule) <= raw_rel * abs(raw_rule) and q_rt == F.round_step(raw_rule, step)
+
+
+def test_quantization_vectors_raw_rel_passes_but_one_step_fails(c):
+    q = c['quantization_rule']
+    assert q['ruling'] == RULING and q['fields'] == ['P17', 'P19']
+    for v in q['test_vectors']:
+        assert quant_ok(v['raw_rt'], v['raw_rule'], v['q_rt'], v['step']) == (v['expect'] == 'PASS'), v['id']
+    q2 = next(v for v in q['test_vectors'] if v['id'] == 'Q2')
+    assert abs(q2['raw_rt'] - q2['raw_rule']) <= 1e-9 * q2['raw_rule']                               # raw passes ...
+    assert not quant_ok(q2['raw_rt'], q2['raw_rule'], q2['q_rt'], q2['step'])                        # ... one step fails
+    assert not quant_ok(0.5, 0.5, 0.499, 0.001) and not quant_ok(95.0, 95.0, 95.01, 0.01)

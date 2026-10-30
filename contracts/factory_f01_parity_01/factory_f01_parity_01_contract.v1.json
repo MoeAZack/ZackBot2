@@ -6,7 +6,7 @@
  "drafted_at": "2026-10-30T03:14+02:00 (Cairo; 01:14 UTC)",
  "doc": "FACTORY_F01_PARITY_01_CONTRACT.md",
  "authority": "JSON is authoritative; the md is a short human summary and the JSON wins any conflict.",
- "assignment": "Codex ruling issuecomment 6512403017 (ROADMAP NEXT, contract/preflight only): bind C-F01 to the signed family contract on master 2204e35, define runtime-vs-replay parity fields, failure injections, a bounded PAPER canary/rollback procedure left UNAUTHORIZED, and freeze hashes / inputs / tolerances / stop conditions / evidence outputs.",
+ "assignment": "Codex ruling issuecomment 6512403017 (ROADMAP NEXT, contract/preflight only): bind C-F01 to the signed family contract on master 2204e35, define runtime-vs-replay parity fields, failure injections, a bounded PAPER canary/rollback procedure left UNAUTHORIZED, and freeze hashes / inputs / tolerances / stop conditions / evidence outputs. Amendment 1 encodes the OQ1-OQ8 rulings of Codex issuecomment 6512712537.",
  "build_role": "Build drafted this contract and its offline tests only. No install, no enabling C-F01 or C-F02, no settings / state mutation, no PAPER runtime action, no market-data read, no new result, no tuning.",
  "evidence_class": "contract + offline synthetic tests (tests/test_safety.FakeX). Non-promotable. Execution-grade EDGE04 H1-H4 remains the acceptance authority.",
  "code": {
@@ -46,7 +46,8 @@
    "strategies.py:ema": "acdcf2fb28b35240c0b91c9590ac2d8a80591213daa046128ea0f55feb275107",
    "strategies.py:merge_mgmt": "5f7757b22e868ea04c305b5f5567e217cd29282f7b0cfed96396753fb58c121e",
    "feasibility.py:risk_qty": "915774c71722bcaf0f62773c13732b521b9de3381c501664d580ab760cb27821",
-   "feasibility.py:size_check": "d1df693e6592f62fe5d812b2c8e51e334b119935c0e7532d74099229dc946429"
+   "feasibility.py:size_check": "d1df693e6592f62fe5d812b2c8e51e334b119935c0e7532d74099229dc946429",
+   "feasibility.py:round_step": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f"
   },
   "file_sha256_at_citation_base": {
    "_rule": "informational: whole-file sha256 at 2204e35 (master moves; the function pins above are the binding check)",
@@ -121,8 +122,9 @@
   "semantics": "the SIGNED repro contract semantics block, keys cited per field (frame_and_warmup, indicators, entry_signal, signal_exit, pending_and_fill, sizing, per_bar_management_order, intrabar_path, time_exit, exit_accounting, stats), F01 cell only",
   "input_frames": "the exact closed 4h candles the runtime computed its signals from, per symbol (recorded with sha256 in the evidence frames_manifest), never a separately downloaded series",
   "account": "the replay keeps its own single-cell account ($500, share 1.0, 1 %, 10x, 8 % halt) so its trade list is self-contained; absolute size fields are NOT-COMPARABLE (P15)",
-  "executor": "Evidence lane (Cowork) independent harness, no import of Build runtime modules (the repro forbidden list applies); Build does not compute verdicts (OQ7)",
-  "trade_set_rule": "the runtime and replay trade sets on (symbol, entry bar, side) must match, EXCEPT entries the runtime refused for a logged NOT-COMPARABLE / MEASURED-DIFF reason (P08-P11) and the replay trades that follow from that divergence on the same symbol; every exception is listed. An unexplained missing or extra trade is a MUST-MATCH failure (OQ4)."
+  "executor": "OQ7 (6512712537): the Evidence lane (Cowork) independently runs the replay and OWNS verdict.json; Build supplies immutable, sha256-hashed runtime extracts only and never self-verdicts. No import of Build runtime modules (the repro forbidden list applies)",
+  "trade_set_rule": "OQ4 (6512712537), narrowed: the runtime and replay trade sets on (symbol, entry bar, side) must match. A runtime refusal whose reason is in causal_window.registered_refusal_prefixes and was LOGGED AT THAT DECISION explains that exact decision only. Downstream replay-only entries are excluded only inside the explicitly listed causal window it opens, which closes when runtime and replay are both flat for the candidate. No open-ended same-symbol exemption and no post-hoc reason. Raw signals, decision bars and pre-gate counts (P01-P05) stay MUST-MATCH throughout, inside a window too. Any other divergence is PARITY-FAIL. Algorithm and test vectors: causal_window.",
+  "scoring_start": "OQ2 (6512712537): >= 250 older closed 4h bars may seed the indicators but are WARM-UP ONLY and never scored. The authorization / start timestamp is frozen (preflight.json) before any scored bar is read. Scoring starts at the first fully closed 4h decision bar after BOTH the authorization and a successful preflight. Post-2026-09-28 bars may be read for this forward PAPER run only; never to retune or retroactively select the candidate."
  },
  "parity_fields": [
   {
@@ -256,7 +258,7 @@
    "definition": "refusals that exist only at runtime: exchange rules (step / minQty / minNotional / max qty), leverage cap, outage, persist_block, stop_missing_block, untracked / unconfirmed claims, control factor, fee-edge gate, AI filter, order failure, ORDER-SYM-01 cost_pending deferral",
    "runtime_source": "engine.py:Engine.entry_block, engine.py:Engine.open_lot, feasibility.py:size_check, engine.py:Engine._market_entry, engine.py:Engine.cycle (_defer)",
    "replay_source": "semantics.sizing (legacy floor only) - the replay has none of these",
-   "comparison_rule": "count by reason and list (symbol, decision bar, reason)",
+   "comparison_rule": "count by reason and list (symbol, decision bar, reason). OQ5 (6512712537): the exact refusals of the existing global AI filter and fee-edge gate (values recorded at preflight, never switched off) are LISTED here; pre-gate signal parity (P01-P05) stays mandatory",
    "tolerance": {
     "kind": "none",
     "note": "not compared; counted and listed with its reason"
@@ -319,7 +321,7 @@
     "unit": "USD on risk_usd"
    },
    "class": "MUST-MATCH",
-   "legitimate_difference": "requires kelly_mult = governor_mult = ctrl long_factor = 1.0 (canary preconditions C6-C7)"
+   "legitimate_difference": "OQ5 (6512712537): uses the frozen neutral multipliers kelly_mult = governor_mult = ctrl long_factor = 1.0 (preconditions C6-C7), required for C-F01 without changing any global PAPER setting"
   },
   {
    "id": "P15",
@@ -355,13 +357,14 @@
    "group": "sizing",
    "field": "qty_formula",
    "definition": "risk-sized qty before the leverage cap and step floor = risk_usd / R_dist",
-   "runtime_source": "feasibility.py:risk_qty, feasibility.py:size_check",
+   "runtime_source": "feasibility.py:risk_qty, feasibility.py:size_check, feasibility.py:round_step",
    "replay_source": "semantics.sizing (qty = risk_usd / R_dist)",
-   "comparison_rule": "recompute from the runtime's own risk_usd and R_dist; the sent qty is that value floored to the exchange step (never rounded up)",
+   "comparison_rule": "OQ6 (6512712537): record the raw qty and compare it with the rule value risk_usd / R_dist (runtime's own risk_usd, replay ATR) at rel 1e-9; THEN the exchange-quantized qty sent must EXACTLY equal feasibility.round_step(min(rule raw qty, leverage room), step) - no step tolerance",
    "tolerance": {
-    "kind": "abs",
-    "value": 1,
-    "unit": "exchange step of the symbol (floor only)"
+    "kind": "rel+exact",
+    "raw_rel": 1e-09,
+    "quantized": "exact",
+    "quantizer": "feasibility.py:round_step (floor to the exchange step)"
    },
    "class": "MUST-MATCH"
   },
@@ -372,7 +375,7 @@
    "definition": "qty capped so the slot notional <= MAX_LEVERAGE (10) x sleeve equity",
    "runtime_source": "engine.py:Engine.open_lot (lev_room over the slot's lots at avg, / mark px), feasibility.py:size_check",
    "replay_source": "semantics.sizing ((10 x sl_eq - sum(open qty x close[fill-1])) / fill price)",
-   "comparison_rule": "list every entry where either side binds; report the qty delta",
+   "comparison_rule": "OQ5: report the ACTUAL cap effect - list every entry where either side binds and the qty delta",
    "tolerance": {
     "kind": "report",
     "note": "no pass/fail bound; the measured delta is reported per trade and in aggregate"
@@ -387,11 +390,12 @@
    "definition": "initial exchange stop = measured entry fill - R_dist, rounded to the tick",
    "runtime_source": "engine.py:Engine._create_lot (stop = _rd(fill - sd * stop_dist, tick))",
    "replay_source": "semantics.sizing (initial stop = fill_price - R_dist)",
-   "comparison_rule": "runtime stop vs round_tick(runtime measured fill - 2.5 x replay ATR[i]): the replay rule applied to the runtime fill",
+   "comparison_rule": "OQ6 (6512712537): record the raw stop (runtime measured fill - stop_dist) and compare it with runtime fill - 2.5 x replay ATR[i] at rel 1e-9; THEN the tick-quantized stop must EXACTLY equal feasibility.round_step(rule raw stop, tick) - no tick tolerance",
    "tolerance": {
-    "kind": "abs",
-    "value": 1,
-    "unit": "tick"
+    "kind": "rel+exact",
+    "raw_rel": 1e-09,
+    "quantized": "exact",
+    "quantizer": "feasibility.py:round_step (engine.py:Engine._rd, floor to the tick)"
    },
    "class": "MUST-MATCH",
    "legitimate_difference": "the absolute stop vs the replay stop differs by the fill-price difference (P21)"
@@ -554,7 +558,7 @@
   }
  ],
  "parity_class_rules": {
-  "MUST-MATCH": "outside tolerance = PARITY-FAIL and canary stop condition S2",
+  "MUST-MATCH": "outside tolerance = PARITY-FAIL and canary stop condition S2; rel+exact = the raw value within rel AND the exchange-quantized value equal exactly (OQ6)",
   "MEASURED-DIFF": "reported with per-trade and aggregate deltas; never pass/fail; Integration reads them",
   "NOT-COMPARABLE": "counted and listed with the reason; never silently dropped",
   "tolerance_kinds": [
@@ -562,7 +566,8 @@
    "abs",
    "rel",
    "report",
-   "none"
+   "none",
+   "rel+exact"
   ]
  },
  "failure_injections": [
@@ -653,12 +658,16 @@
   "status": "SPECIFIED, NOT AUTHORIZED",
   "authorization": null,
   "authorization_comment_id": null,
-  "authorization_rule": "execution needs a separate Integration (Codex) comment id recorded here by Integration; this contract alone authorizes nothing",
+  "authorization_rule": "execution needs a separate Integration (Codex) comment id recorded here by Integration; this contract alone authorizes nothing. The authorization / start timestamp is frozen in preflight.json before any scored bar is read (OQ2)",
   "environment": "PAPER / Binance Futures testnet only; never mainnet, never MODE / LIVE_CONFIRM changes",
   "preconditions": [
    {
     "id": "C1",
-    "rule": "flat start: no C-F01 or C-F02 lot, pending, resting, unconfirmed or deferred entry; OR an explicitly reconciled start whose open C-F01 lots are listed (symbol, opened, stop) in preflight.json and accepted by Integration (OQ3)"
+    "rule": "OQ3 candidate-flat start: C-F01 and C-F02 have no lot and no pending, resting, unconfirmed or deferred entry. A pre-canary C-F01 lot is never imported into scoring"
+   },
+   {
+    "id": "C1b",
+    "rule": "OQ3: other PAPER slots may stay open only if captured in preflight.json (symbol, slot, side); their isolation / halt effects are listed under P08 / P09 / P10"
    },
    {
     "id": "C2",
@@ -678,15 +687,15 @@
    },
    {
     "id": "C6",
-    "rule": "GOVERNOR mode off (governor_mult == 1.0) and C-F01 has no kelly block (kelly_mult == 1.0)"
+    "rule": "OQ5: C-F01 governor and Kelly sizing multipliers == 1.0 (governor_mult, kelly_mult) without changing any global PAPER setting"
    },
    {
     "id": "C7",
-    "rule": "ctrl long_factor == 1.0 (CTRL_BIAS neutral or bearish, CTRL_RISK max_test)"
+    "rule": "OQ5: C-F01 control sizing multiplier (ctrl long_factor) == 1.0 without changing any global PAPER setting"
    },
    {
     "id": "C8",
-    "rule": "ENTRY_ORDER market, AI_FILTER false, FEE_EDGE_GATE false, MAX_LEVERAGE 10 (or Integration records other values, OQ5)"
+    "rule": "OQ5: ENTRY_ORDER market and MAX_LEVERAGE 10 required; the existing AI_FILTER and FEE_EDGE_GATE values are RECORDED in preflight.json and never switched off under this contract (their refusals are P10 LISTED)"
    },
    {
     "id": "C9",
@@ -694,18 +703,9 @@
    },
    {
     "id": "C10",
-    "rule": "the Integration authorization comment id is recorded in canary.authorization_comment_id"
+    "rule": "the Integration authorization comment id is recorded in canary.authorization_comment_id, and the authorization / start timestamp is frozen before any scored bar is read"
    }
   ],
-  "bounds_proposed": {
-   "_status": "PROPOSALS ONLY - Integration decides (OQ1)",
-   "duration_days": 30,
-   "max_closed_trades": 8,
-   "max_concurrent": 4,
-   "risk_per_trade": "1 % of the 1/6 share (frozen card; not changed for the canary)",
-   "drawdown_bound_r": 4.0,
-   "drawdown_bound_note": "cumulative measured C-F01 net R from the canary peak; the packet max DD is 7.55 R over about 23.5 months"
-  },
   "stop_conditions": [
    {
     "id": "S1",
@@ -725,11 +725,11 @@
    },
    {
     "id": "S5",
-    "rule": "cumulative measured C-F01 drawdown reaches the Integration-set bound (proposed 4 R)"
+    "rule": "cumulative measured C-F01 net R drawdown from the canary peak reaches 4.0 R (OQ1)"
    },
    {
     "id": "S6",
-    "rule": "the duration or closed-trade bound is reached (normal end)"
+    "rule": "the first of 30 calendar days or 8 closed C-F01 trades is reached (normal end, OQ1)"
    },
    {
     "id": "S7",
@@ -737,19 +737,20 @@
    }
   ],
   "rollback": [
-   "R1 Integration (only) sets the C-F01 slot enabled = false through settings; Build and Evidence never edit settings",
-   "R2 open C-F01 lots are NOT closed by the rollback: they keep their exchange stop and management (signal exit) until they exit on their own, unless Integration separately orders a close (OQ8)",
+   "R1 Integration (only) disables new C-F01 entries (slot enabled = false through settings); Build and Evidence never edit settings",
+   "R2 OQ8 (6512712537): already-open C-F01 PAPER lots are NOT closed by the rollback: they keep confirmed exchange protection and normal signal / stop management until they exit",
+   "R2b Integration force-closes only for: unknown account state, lost / unrestorable protection, environment uncertainty, or a separately recorded safety decision",
    "R3 confirm after the next cycle: no new C-F01 entry, every open C-F01 lot has a confirmed stop (no stop_miss), C-F02 still OFF",
-   "R4 publish the evidence bundle with the stop condition id and the final verdict; record the candidate_disabled reason if the guard fired"
+   "R4 publish the runtime extracts with the stop condition id; Cowork publishes verdict.json; record the candidate_disabled reason if the guard fired"
   ],
   "evidence_outputs": {
    "dir": "<Integration-chosen evidence dir>/factory_f01_parity_01/<run id>/",
    "files": {
     "preflight.json": "head SHA, pinned function sha256 re-check, C1-C10 results, the C-F01 slot dict, the C-F02 enabled flag, pending-index size, authorization comment id",
     "frames_manifest.json": "per symbol: first / last closed bar open time, row count, sha256 of the closed 4h frame the runtime used",
-    "decisions.csv": "symbol, decision_bar, rt_le, rp_le, rt_lx, rp_lx, rt_atr, rp_atr, rt_outcome, rt_reason, rp_outcome, field_ids, result",
-    "trades.csv": "row_key_sha256, symbol, entry_bar, exit_bar, rt_why, rp_why, rt_entry, rp_entry, rt_exit, rp_exit, rt_stop, rule_stop, stop_dist, risk_usd, sleeve_eq, risk_fraction, qty_raw, qty_sent, step, fees_measured, fees_model, funding_measured, funding_model, slip_entry_bps, slip_exit_bps, rt_r, rp_r, cost_status",
-    "verdict.json": "per parity field: class, result (PASS / FAIL / REPORT / LISTED), delta; the stop condition fired; overall PARITY-PASS / PARITY-FAIL / INCONCLUSIVE",
+    "decisions.csv": "symbol, decision_bar, scored (false for warm-up), rt_le, rp_le, rt_lx, rp_lx, rt_atr, rp_atr, rt_outcome, rt_reason, rt_reason_logged_at, rp_outcome, causal_window_id, field_ids, result",
+    "trades.csv": "row_key_sha256, symbol, entry_bar, exit_bar, rt_why, rp_why, rt_entry, rp_entry, rt_exit, rp_exit, rt_stop, rule_stop, stop_dist, risk_usd, sleeve_eq, risk_fraction, qty_raw, qty_rule_raw, qty_sent, qty_rule_quantized, step, stop_raw, stop_rule_raw, stop_rule_quantized, tick, fees_measured, fees_model, funding_measured, funding_model, slip_entry_bps, slip_exit_bps, rt_r, rp_r, cost_status",
+    "verdict.json": "written by Cowork only: per parity field class, result, delta; causal windows (open / close bar, excluded trades); the stop condition fired; overall PARITY-PASS / PARITY-FAIL / INCONCLUSIVE",
     "MANIFEST.sha256": "sha256 of every file above"
    },
    "overall_rule": "PARITY-PASS only if every MUST-MATCH field passes and no stop condition S1-S5 fired; PARITY-FAIL if any MUST-MATCH field fails; INCONCLUSIVE if an input hash, pin or precondition cannot be verified",
@@ -763,8 +764,39 @@
     "cid",
     "API_KEY",
     "API_SECRET"
-   ]
-  }
+   ],
+   "ownership": {
+    "build_runtime_extracts": [
+     "preflight.json",
+     "frames_manifest.json",
+     "decisions.csv",
+     "trades.csv",
+     "MANIFEST.sha256"
+    ],
+    "cowork": [
+     "verdict.json"
+    ],
+    "rule": "OQ7: Build extracts are immutable once hashed; Build never writes verdict.json"
+   }
+  },
+  "purpose": "OQ1 (6512712537): a bounded PARITY SAMPLE, not a profitability verdict",
+  "bounds": {
+   "ruling": "6512712537",
+   "end_rule": "first of 30 calendar days or 8 closed C-F01 trades",
+   "duration_days": 30,
+   "max_closed_trades": 8,
+   "max_concurrent": 4,
+   "risk_per_trade": "frozen 1 % of the 1/6 sleeve",
+   "drawdown_stop_r": 4.0,
+   "drawdown_basis": "measured net R drawdown from the canary peak (C-F01 closed rows)"
+  },
+  "scoring": "OQ2 (6512712537): >= 250 older closed 4h bars may seed the indicators but are WARM-UP ONLY and never scored. The authorization / start timestamp is frozen (preflight.json) before any scored bar is read. Scoring starts at the first fully closed 4h decision bar after BOTH the authorization and a successful preflight. Post-2026-09-28 bars may be read for this forward PAPER run only; never to retune or retroactively select the candidate.",
+  "force_close_only_for": [
+   "unknown account state",
+   "lost or unrestorable protection",
+   "environment uncertainty",
+   "a separately recorded safety decision"
+  ]
  },
  "frozen": {
   "function_pins": "code.pinned_function_sha256",
@@ -772,60 +804,24 @@
   "inputs": "replay_definition.input_frames + the evidence frames_manifest (recorded per run; this ticket reads no market data)",
   "tolerances": "parity_fields[*].tolerance",
   "stop_conditions": "canary.stop_conditions",
-  "evidence_output_schema": "canary.evidence_outputs"
+  "evidence_output_schema": "canary.evidence_outputs",
+  "causal_window": "causal_window (algorithm, registered prefixes, test vectors)",
+  "quantization": "quantization_rule"
  },
  "forbidden": [
   "install, restart or any PAPER runtime action under this ticket",
-  "enabling C-F01 or C-F02, or any settings / state mutation",
-  "running the canary before Integration records an authorization comment id",
-  "any read of market data under this ticket; any read at or after 2026-09-28T00:00:00Z outside an Integration-authorized canary (OQ2)",
+  "enabling C-F01 or C-F02, or any settings / state mutation (including global PAPER settings for neutrality, OQ5)",
+  "executing the canary: no authorization is recorded and this contract grants none",
+  "any market-data read under this ticket; post-2026-09-28 bars only for an authorized forward PAPER run, never for retuning or selection (OQ2)",
+  "importing a pre-canary C-F01 lot into scoring (OQ3)",
+  "a post-hoc or unregistered refusal reason, or an open-ended same-symbol exemption (OQ4)",
+  "Build writing verdict.json or self-verdicting (OQ7)",
   "a new market evaluation, backtest or result",
   "tuning parameters or management",
   "writing exchange order ids or trade ids",
   "credentials, API keys, mainnet, live funds, MODE / LIVE_CONFIRM"
  ],
- "open_questions": [
-  {
-   "id": "OQ1",
-   "topic": "canary bounds",
-   "question": "Accept or set the duration (proposed 30 days), the closed-trade bound (proposed 8; the packet rate is about 6.8 trades / month), the drawdown bound (proposed 4 R from the canary peak); max concurrent stays 4 (frozen)."
-  },
-  {
-   "id": "OQ2",
-   "topic": "sealed holdout vs forward data",
-   "question": "The runtime needs >= 250 closed 4h candles (about 42 days) before it signals, so its frames and the parity replay necessarily include bars at or after the 2026-09-28 cutoff. Rule whether canary-window frames are a permitted forward read (not the holdout), and from which bar the parity comparison starts."
-  },
-  {
-   "id": "OQ3",
-   "topic": "reconciled start",
-   "question": "Flat start only, or allow an explicitly reconciled start with open C-F01 lots (and how their pre-canary bars are compared)?"
-  },
-  {
-   "id": "OQ4",
-   "topic": "trade-set exceptions",
-   "question": "Confirm replay_definition.trade_set_rule: a logged runtime refusal for a NOT-COMPARABLE / MEASURED-DIFF reason (exchange rules, account halt, isolation by another slot) explains the divergence and the replay trades that follow on that symbol; anything else is PARITY-FAIL."
-  },
-  {
-   "id": "OQ5",
-   "topic": "neutral sizing settings",
-   "question": "Confirm preconditions C6-C8 (governor off, no kelly, ctrl factor 1.0, ENTRY_ORDER market, AI_FILTER off, FEE_EDGE_GATE off, MAX_LEVERAGE 10), or name the values the PAPER bot must keep and how P14 / P18 then read."
-  },
-  {
-   "id": "OQ6",
-   "topic": "tolerances",
-   "question": "Accept P04 / P16 rel 1e-9, P14 abs 0.005 USD (cents rounding), P17 one exchange step, P19 one tick; or tighten / loosen them."
-  },
-  {
-   "id": "OQ7",
-   "topic": "replay executor",
-   "question": "Confirm the Evidence lane (Cowork) runs the independent replay and the verdict, and Build only supplies the runtime extracts (decisions / trades / frames manifest) with no verdict."
-  },
-  {
-   "id": "OQ8",
-   "topic": "open lots on rollback",
-   "question": "On a stop condition, keep open C-F01 lots managed to their own exit (the default here) or have Integration close them?"
-  }
- ],
+ "open_questions": [],
  "roadmap_fit": "Native-Binance strategy candidate parity before early trustworthy PAPER opt-in (Codex 6512403017).",
  "deferred": [
   "the actual parity evaluation / PAPER canary (separate Integration authorization)",
@@ -833,5 +829,465 @@
   "tuning",
   "UI work",
   "mainnet / live"
+ ],
+ "amended_at": "2026-10-30T03:45+02:00 (Cairo; 01:45 UTC) - amendment 1 encodes Integration ruling 6512712537 (OQ1-OQ8 resolved) on reviewed head 0bcb6c4",
+ "causal_window": {
+  "ruling": "6512712537",
+  "status": "specified algorithm (offline); implemented only as a reference helper in tests/test_factory_f01_parity_01_contract.py, never in engine/runtime code",
+  "input": "steps ordered by decision bar: {bar, events: [...], rt_flat_after, rp_flat_after}; rt_flat_after / rp_flat_after = the candidate (C-F01) has no lot, pending, resting, unconfirmed or deferred entry on that side after the step",
+  "event_types": {
+   "match": "runtime and replay agree on this decision",
+   "pre_gate_mismatch": "raw signal, decision bar or pre-gate count differs (P01-P05)",
+   "rt_refused_rp_entered": "runtime refused (reason, logged_at_decision), the replay entered at the same decision",
+   "rp_only_entry": "a replay entry with no runtime decision counterpart refused for a registered reason at that decision",
+   "rt_only_entry": "a runtime entry the replay does not have"
+  },
+  "algorithm": [
+   "1 window = None; windows = []; excluded = []",
+   "2 for each step in bar order, for each event:",
+   "  pre_gate_mismatch -> PARITY-FAIL (also inside a window)",
+   "  rt_refused_rp_entered -> PASS only if reason starts with a registered prefix AND logged_at_decision is true (else PARITY-FAIL: unregistered or post-hoc); it opens a window at this bar if none is open; the decision is listed as explained",
+   "  rp_only_entry -> excluded (listed) only while a window is open; otherwise PARITY-FAIL",
+   "  rt_only_entry -> PARITY-FAIL (the ruling excludes replay-only trades only; see notes_for_integration N1)",
+   "  match -> nothing",
+   "3 after the step: if a window is open and rt_flat_after and rp_flat_after -> close it at this bar",
+   "4 end: verdict PASS with windows (a window still open at the canary end is listed with close null), else the first failure"
+  ],
+  "registered_refusal_prefixes": [
+   "candidate isolation: slot ",
+   "daily loss halt",
+   "size below Binance minimum",
+   "size above Binance maximum",
+   "leverage cap reached for this slot",
+   "Binance outage",
+   "not connected to Binance",
+   "order failed",
+   "entry order not filled",
+   "entry order unconfirmed",
+   "Claude review vetoed",
+   "fee_edge: ",
+   "control: ",
+   "is not tradable",
+   "an earlier entry on this coin/side is not confirmed yet",
+   "Binance holds an untracked position",
+   "could not set leverage/margin on Binance",
+   "entry not sent: its write-ahead record",
+   "an open trade on this coin is waiting for its stop"
+  ],
+  "registered_prefix_rule": "every prefix is literal engine.py refusal text (P08 / P09 / P10); a reason outside this list never explains a divergence",
+  "test_vectors": [
+   {
+    "id": "V1",
+    "note": "refusal opens a window, a downstream replay-only entry is excluded, both flat closes it",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rp_only_entry",
+        "symbol": "XRPUSDT"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PASS",
+     "windows": [
+      [
+       "b1",
+       "b3"
+      ]
+     ],
+     "excluded": [
+      [
+       "b2",
+       "XRPUSDT"
+      ]
+     ]
+    }
+   },
+   {
+    "id": "V2",
+    "note": "same symbol AFTER the window closed: no open-ended same-symbol exemption",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "daily loss halt",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rp_only_entry",
+        "symbol": "SOLUSDT"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    }
+   },
+   {
+    "id": "V3",
+    "note": "unregistered reason",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "volatility filter",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b1"
+    }
+   },
+   {
+    "id": "V4",
+    "note": "post-hoc reason (not logged at the decision)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "order failed: timeout",
+        "logged_at_decision": false
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b1"
+    }
+   },
+   {
+    "id": "V5",
+    "note": "pre-gate mismatch inside an open window still fails",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "candidate isolation: slot ema_mom holds this coin",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "pre_gate_mismatch",
+        "symbol": "ETHUSDT"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    }
+   },
+   {
+    "id": "V6",
+    "note": "runtime-only entry inside a window fails (literal ruling; N1)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "daily loss halt",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT"
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    }
+   },
+   {
+    "id": "V7",
+    "note": "replay-only entry with no window open",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rp_only_entry",
+        "symbol": "BNBUSDT"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b1"
+    }
+   },
+   {
+    "id": "V8",
+    "note": "a window stays open until BOTH sides are flat (runtime flat alone does not close it); two sequential windows",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "Binance outage - no new entries until it answers again",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "rp_only_entry",
+        "symbol": "LINKUSDT"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     },
+     {
+      "bar": "b4",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "ETHUSDT",
+        "reason": "leverage cap reached for this slot",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PASS",
+     "windows": [
+      [
+       "b1",
+       "b3"
+      ],
+      [
+       "b4",
+       null
+      ]
+     ],
+     "excluded": [
+      [
+       "b3",
+       "LINKUSDT"
+      ]
+     ]
+    }
+   }
+  ],
+  "notes_for_integration": [
+   "N1: under the literal OQ4 ruling only replay-only downstream trades are excludable. A runtime-only entry inside a window (e.g. the replay is at the cap of 4 because it holds the explained trade, while the runtime has a free slot) is PARITY-FAIL here. Integration may extend the window to cover that mirror case before signature."
+  ]
+ },
+ "quantization_rule": {
+  "ruling": "6512712537",
+  "fields": [
+   "P17",
+   "P19"
+  ],
+  "rule": "raw value vs rule raw value at rel 1e-9 AND the exchange-quantized value (feasibility.py:round_step to step / tick) equal EXACTLY; one whole step or tick off is PARITY-FAIL",
+  "test_vectors": [
+   {
+    "id": "Q1",
+    "raw_rt": 0.5,
+    "raw_rule": 0.5,
+    "step": 0.001,
+    "q_rt": 0.5,
+    "expect": "PASS"
+   },
+   {
+    "id": "Q2",
+    "raw_rt": 0.5000000000001,
+    "raw_rule": 0.5,
+    "step": 0.001,
+    "q_rt": 0.499,
+    "expect": "FAIL",
+    "note": "raw passes rel 1e-9, quantized one step off"
+   },
+   {
+    "id": "Q3",
+    "raw_rt": 95.0,
+    "raw_rule": 95.0,
+    "step": 0.01,
+    "q_rt": 95.01,
+    "expect": "FAIL",
+    "note": "stop one tick off"
+   },
+   {
+    "id": "Q4",
+    "raw_rt": 0.5001,
+    "raw_rule": 0.5,
+    "step": 0.001,
+    "q_rt": 0.5,
+    "expect": "FAIL",
+    "note": "raw outside rel 1e-9 even though quantized equal"
+   },
+   {
+    "id": "Q5",
+    "raw_rt": 0.12345,
+    "raw_rule": 0.12345,
+    "step": 0.001,
+    "q_rt": 0.123,
+    "expect": "PASS",
+    "note": "floor, never round up"
+   }
+  ]
+ },
+ "resolved_questions_source": "Codex issuecomment 6512712537 (reviewed head 0bcb6c4)",
+ "resolved_questions": [
+  {
+   "id": "OQ1",
+   "ruling": "6512712537",
+   "topic": "canary bounds",
+   "resolution": "end at the first of 30 calendar days or 8 closed C-F01 trades; max concurrent 4; risk the frozen 1 % of the 1/6 sleeve; stop at 4.0 measured net R drawdown from the canary peak; a parity sample, not a profitability verdict",
+   "encoded_in": "canary.bounds, canary.stop_conditions S5/S6, canary.purpose"
+  },
+  {
+   "id": "OQ2",
+   "ruling": "6512712537",
+   "topic": "forward read",
+   "resolution": ">= 250 older closed 4h bars are unscored warm-up only; the authorization / start timestamp is frozen before scored bars are read; scoring starts at the first fully closed 4h decision bar after both authorization and a successful preflight; post-2026-09-28 bars only for this forward PAPER run, never for retuning or selection",
+   "encoded_in": "replay_definition.scoring_start, canary.scoring, forbidden"
+  },
+  {
+   "id": "OQ3",
+   "ruling": "6512712537",
+   "topic": "start state",
+   "resolution": "candidate-flat start (no C-F01 / C-F02 lot or pending / resting / unconfirmed / deferred entry); other PAPER slots open only if captured in preflight with their isolation / halt effects listed; never import a pre-canary C-F01 lot into scoring",
+   "encoded_in": "canary.preconditions C1 / C1b"
+  },
+  {
+   "id": "OQ4",
+   "ruling": "6512712537",
+   "topic": "trade-set exceptions",
+   "resolution": "a logged registered refusal explains that exact decision only; downstream replay-only trades excluded only inside an explicitly listed causal window ending when both sides are flat for the candidate; no open-ended same-symbol exemption, no post-hoc reason; raw signals, decision bars and pre-gate counts stay MUST-MATCH; unexplained divergence is PARITY-FAIL",
+   "encoded_in": "replay_definition.trade_set_rule, causal_window"
+  },
+  {
+   "id": "OQ5",
+   "ruling": "6512712537",
+   "topic": "neutral sizing",
+   "resolution": "no global PAPER setting changes; C-F01 governor / Kelly / control multipliers = 1.0, market entry, 10x cap; existing AI and fee-gate values recorded at preflight and never switched off, their refusals P10 LISTED; pre-gate signal parity mandatory; P14 uses the frozen neutral multipliers; P18 reports actual cap effects",
+   "encoded_in": "canary.preconditions C6-C8, P10, P14, P18"
+  },
+  {
+   "id": "OQ6",
+   "ruling": "6512712537",
+   "topic": "tolerances",
+   "resolution": "P04 / P16 rel 1e-9; P14 USD 0.005; P17 / P19 raw at rel 1e-9 AND the exchange-quantized qty and stop equal exactly (no step / tick tolerance)",
+   "encoded_in": "P04, P14, P16, P17, P19, quantization_rule"
+  },
+  {
+   "id": "OQ7",
+   "ruling": "6512712537",
+   "topic": "executor",
+   "resolution": "Cowork independently runs the replay and owns verdict.json; Build supplies immutable hashed runtime extracts only and never self-verdicts",
+   "encoded_in": "replay_definition.executor, canary.evidence_outputs.ownership"
+  },
+  {
+   "id": "OQ8",
+   "ruling": "6512712537",
+   "topic": "rollback",
+   "resolution": "rollback disables new C-F01 entries; open C-F01 PAPER lots keep confirmed exchange protection and normal signal / stop management; Integration force-closes only for unknown account state, lost / unrestorable protection, environment uncertainty or a separately recorded safety decision",
+   "encoded_in": "canary.rollback, canary.force_close_only_for"
+  }
  ]
 }
