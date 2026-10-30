@@ -213,6 +213,25 @@ def test_15m_run_uses_15m_cache_and_4h_regime(env, tmp_path):
     assert q['trades'] != p['trades']
 
 
+def test_edge02_research_key_exact_when_and_runtime_isolation(env, tmp_path):
+    c15 = write15(str(tmp_path / 'e15'), {s: tape15(i + 41, 100.0 * (i + 1))
+                                         for i, s in enumerate(['BTCUSDT'] + VT.SYMS)})
+    assert 'structure_cf.v1' not in B.ST.STRATEGIES
+    p = go(env, out='edge.json', key='structure_cf.v1', cache=c15, regime_cache=env['cache'])
+    assert p['strategy']['research_only'] is True and p['strategy']['when'] == 'bull'
+    assert p['sleeve']['when'] == 'bull' and p['sleeve']['reentry_lock'] is True
+    assert p['strategy']['params']['cost_x'] == 4.0
+    assert 'structure_cf.v1' not in B.ST.STRATEGIES
+    with pytest.raises(B.RunnerError, match='frozen when=bull'):
+        go(env, out='wrong.json', key='structure_cf.v1', cache=c15, regime_cache=env['cache'], when='bear')
+
+
+def test_pullback_short_bear_control_binds_exact_sleeve(env):
+    p = go(env, out='control.json', key='pullback_rsi', side='short', when='bear')
+    assert p['side'] == 'short' and p['strategy']['when'] == 'bear' and p['sleeve']['when'] == 'bear'
+    assert p['strategy']['mgmt'] == B.ST.STRATEGIES['pullback_rsi']['mgmt']
+
+
 def test_regime_matches_book_e200_on_4h(env):
     p = go(env)
     raw = {s: VT.R.slice_frame(VT.R.read_cache(env['cache'], s)[0], VT.WARM_LO, VT.HI) for s in ['BTCUSDT'] + VT.SYMS}
