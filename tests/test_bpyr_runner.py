@@ -2174,3 +2174,10 @@ def test_amended_execute_binds_the_amendment_into_run_json_lines_and_result(pf, 
     assert res['amendment'] == amd.identity()
     with pytest.raises(R.RunnerError, match='identity differs'):            # resuming without the amendment fails
         _execute(pf, out)
+
+
+def test_cli_cap_follows_a_grown_process_baseline(cli_inputs, capsys, monkeypatch):
+    """Install-gate regression (20261030-095145): a large pytest process must not starve the CLI admission check."""
+    monkeypatch.setattr(E5, 'rss_mb', lambda: 6000.0)                 # a full single-process suite, far past 512 MB
+    assert _cli_cap() == 6000.0 + CLI_HEADROOM_MB
+    assert _cli(cli_inputs) == 0
