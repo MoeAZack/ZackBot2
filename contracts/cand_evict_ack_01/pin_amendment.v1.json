@@ -1,0 +1,23 @@
+{
+ "amendment": "CAND-EVICT-ACK-01 one-function pin amendment to FACTORY-F01F02-FAMILY and FACTORY-F01-PARITY-01 code.pinned_function_sha256",
+ "version": 1,
+ "status": "AUTHORIZED - Codex 6518282215 (one-function pin amendment)",
+ "contract": "contracts/cand_evict_ack_01 (SIGNED, Codex 6517958103)",
+ "why_separate_file": "The signed family and parity contract JSONs stay byte-identical; their pin tests overlay this amendment (each 'from' must equal the signed pin)",
+ "rule": "sha256 of ast.get_source_segment (LF), as the contracts' pin rule",
+ "amended": {
+  "engine.py:Engine.candidate_guard": {
+   "from": "90125553420ccb52ca7cc9ecfcbcfd53d14b214bdc21c8417476bc020307215a",
+   "to": "5c70e0d9ae7a8efec736c4035795e51b051aeebfae42cd6c6cc6181877530748"
+  }
+ },
+ "applies_to": [
+  "contracts/factory_f01f02_family/factory_f01f02_family_contract.v1.json",
+  "contracts/factory_f01_parity_01/factory_f01_parity_01_contract.v1.json"
+ ],
+ "change": {
+  "engine.py:Engine.candidate_guard": "the body after the docstring is wrapped in 'with self.lock:' (an RLock, so the call from cycle(), which already holds it, stays valid); no other line changes"
+ },
+ "unchanged": "every other pinned function of both contracts; the docstring of candidate_guard",
+ "not_covered": "contracts/factory_f01_impl_01/cohort_manifest.v1.json pins_expected still holds the 'from' sha for candidate_guard; f01_canary preflight C9 against that file fails closed until Integration re-issues it (sequenced with the install before C-F01 staging). f01_canary.source_manifest changes because engine.py and f01_canary.py change - expected"
+}

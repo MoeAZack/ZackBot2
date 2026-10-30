@@ -25,6 +25,8 @@ JS = os.path.join(CDIR, 'factory_f01f02_family_contract.v1.json')
 MD = os.path.join(CDIR, 'FACTORY_F01F02_FAMILY_CONTRACT.md')
 REPRO = os.path.join(ROOT, 'contracts', 'factory_f01f02_repro', 'factory_f01f02_repro_contract.v1.json')
 CAND02 = os.path.join(ROOT, 'tests', 'test_factory_cand02_family_safety.py')
+with open(os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8') as _fh:
+    EVICT_AMEND = json.load(_fh)                          # CAND-EVICT-ACK-01 one-function pin amendment (Codex 6518282215)
 RULINGS = ('6507748888', '6508164005', '6508707059')
 F01, F02 = 'C-F01', 'C-F02'
 SG = dict(close=100.0, atr=2.0, time='2026-10-04 00:00:00', le=True, se=False, lx=False, sx=False)
@@ -104,6 +106,10 @@ def test_candidate_function_sources_match_their_pins(c, engine_src):
     assert len(pins) == 7 and {p.split('.')[-1] for p in pins} == {
         '_claims', 'candidate_block', 'candidate_drift', 'candidate_guard',
         '_candidate_pending_why', '_candidate_pending_note', '_candidate_pending_clear'}
+    assert set(EVICT_AMEND['amended']) == {'engine.py:Engine.candidate_guard'}
+    for cite, ch in EVICT_AMEND['amended'].items():       # signed JSON stays byte-identical; 'from' == the signed pin
+        assert pins[cite] == ch['from'], cite
+        pins[cite] = ch['to']
     for cite, sha in pins.items():
         name = cite.split('.')[-1]
         assert hashlib.sha256(ast.get_source_segment(src, fns[name]).encode('utf-8')).hexdigest() == sha, cite

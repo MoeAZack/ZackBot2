@@ -24,6 +24,18 @@ import f01_canary as FC                                                # noqa: E
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 AMEND = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json')
+EVICT_AMEND = os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json')   # Codex 6518282215
+
+
+def _manifest_pins():
+    """cohort_manifest pins_expected - the source of truth. It already carries the CAND-EVICT-ACK-01 one-function amendment
+    (Codex 6518282215; manifest-only correction 6518560081), so nothing is overlaid: each amended pin must equal 'to'."""
+    pins = dict(json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'])
+    for k, ch in json.load(open(EVICT_AMEND, encoding='utf-8'))['amended'].items():
+        assert pins[k] == ch['to'] != ch['from'], k
+    return pins
+
+
 SC = 'c' * 40                                                          # the accepted merged source commit
 MAN = {n: 'd' * 64 for n in FC.MANIFEST_FILES}                          # its frozen source manifest
 BUILD = '20261030-120000'
@@ -287,8 +299,7 @@ def _ready(e):
     e.S.update(ENTRY_ORDER='market', MAX_LEVERAGE=10)
     slot(e, F01)['enabled'] = False
     e.S[FC.CANARY_KEY] = cfg(start=NOW + timedelta(hours=2))
-    pins = {k: v for k, v in json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'].items()}
-    return pins
+    return _manifest_pins()
 
 
 def test_preflight_passes_on_a_candidate_flat_testnet_book_and_is_read_only(f01, build):
@@ -519,7 +530,7 @@ def test_decisions_carry_the_frame_hash_of_their_bar_and_finalize_writes_frames_
 
 
 def test_pinned_functions_equal_the_contract_plus_the_amendment_only():
-    pins = {k: v for k, v in json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'].items() if not k.startswith('_')}
+    pins = {k: v for k, v in _manifest_pins().items() if not k.startswith('_')}
     am = json.load(open(AMEND, encoding='utf-8'))
     assert len(pins) == 34 and set(am['amended']) == {'engine.py:Engine.open_lot', 'engine.py:Engine._create_lot'}
     got = FC.function_pins(pins)
