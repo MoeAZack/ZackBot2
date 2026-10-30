@@ -171,9 +171,93 @@ def test_sleeves_may_still_switch_c_f01_off(api):
     A.handle('/api/f01_canary/stage', body())
     assert A.handle('/api/f01_canary/preflight', {})['pass']
     A.handle('/api/f01_canary/enable', {})
+    card = copy.deepcopy(slot(e, F01))
     sl = [dict(x, enabled=False) if x['id'] == F01 else dict(x) for x in e.S['SLEEVES']]
     A.handle('/api/sleeves', dict(sleeves=sl))                                     # the documented rollback
-    assert slot(e, F01)['enabled'] is False
+    assert slot(e, F01) == dict(card, enabled=False)                               # every other field byte-identical
+    assert FA._slot(json.load(open(e.F['settings'], encoding='utf-8'))) == dict(card, enabled=False)
+
+
+# ------------------------------------------------------------------ the C-F01 card is frozen once staged (6518282236 #3)
+def _post_card(e, **kw):
+    return [dict(x, **kw) if x['id'] == F01 else dict(x) for x in e.S['SLEEVES']]
+
+
+def _enabled(A):
+    A.handle('/api/f01_canary/stage', body())
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    A.handle('/api/f01_canary/enable', {})
+
+
+@pytest.mark.parametrize('edit', [dict(risk=0.02), dict(max_pos=3), dict(share=0.1), dict(symbols=['BTCUSDT']),
+                                  dict(mgmt={'stop_atr': 2.0}), dict(sides='both')])
+def test_a_card_edit_while_staged_and_disabled_is_refused(api, edit):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    refused(A, e, '/api/sleeves', dict(sleeves=_post_card(e, **edit)), 'frozen|only by /api/f01_canary/enable')
+
+
+@pytest.mark.parametrize('edit', [dict(risk=0.02), dict(max_pos=3), dict(symbols=['BTCUSDT'])])
+def test_a_card_edit_while_enabled_is_refused(api, edit):
+    A, e = api
+    _enabled(A)
+    before = snap(e)
+    with pytest.raises(ValueError, match='frozen'):
+        A.handle('/api/sleeves', dict(sleeves=_post_card(e, **edit)))
+    assert snap(e) == before and slot(e, F01)['enabled'] is True
+
+
+def test_a_rollback_that_also_changes_another_field_is_refused(api):
+    A, e = api
+    _enabled(A)
+    before = snap(e)
+    with pytest.raises(ValueError, match='frozen'):
+        A.handle('/api/sleeves', dict(sleeves=_post_card(e, enabled=False, risk=0.02)))
+    assert snap(e) == before and slot(e, F01)['enabled'] is True
+
+
+def test_an_unchanged_c_f01_and_other_slot_edits_pass_while_staged(api):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    card = copy.deepcopy(slot(e, F01))
+    other = next(x for x in e.S['SLEEVES'] if x['id'] not in (F01, F02) and x.get('enabled'))
+    sl = [dict(x, risk=round(x['risk'] / 2, 6)) if x['id'] == other['id'] else dict(x) for x in e.S['SLEEVES']]
+    A.handle('/api/sleeves', dict(sleeves=sl))
+    assert slot(e, F01) == card and slot(e, other['id'])['risk'] == round(other['risk'] / 2, 6)
+
+
+def test_before_staging_card_edits_stay_allowed_but_not_switching_on(api):
+    A, e = api
+    A.handle('/api/sleeves', dict(sleeves=_post_card(e, risk=0.02)))
+    assert slot(e, F01)['risk'] == 0.02 and slot(e, F01)['enabled'] is False
+    refused(A, e, '/api/sleeves', dict(sleeves=_post_card(e, enabled=True)), 'only by /api/f01_canary/enable')
+
+
+# ------------------------------------------------------------------ enable re-runs the preflight (6518282236 #1)
+def _f02_on(e, cur): slot(e, F02)['enabled'] = True
+def _maker(e, cur): e.S['ENTRY_ORDER'] = 'maker'
+def _cost_pending(e, cur): e.state['candidate_cost_pending'] = {'C-F01|BTCUSDT|LONG|1': {}}
+def _guard_off(e, cur): e.state.setdefault('candidate_disabled', {})[F01] = 'stop failure'
+def _provenance(e, cur): cur[0]['source_commit'] = 'e' * 40
+def _family_lot(e, cur): e.state['lots']['f'] = dict(symbol='BTCUSDT', sleeve=F02, side='LONG')
+
+
+@pytest.mark.parametrize('change', [_f02_on, _maker, _cost_pending, _guard_off, _provenance, _family_lot])
+def test_enable_reruns_the_preflight_and_refuses_a_changed_dynamic_condition(api, build, change):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    pf = A.handle('/api/f01_canary/preflight', {})
+    assert pf['pass']
+    change(e, build)                                                               # after the stored PASS
+    refused(A, e, '/api/f01_canary/enable', {}, 'fresh preflight fails')
+    assert len(FC.ExtractWriter(CD[0]).records('preflight')) == 1                  # the re-check writes no second extract
+    assert e.S[FA.PREFLIGHT_KEY]['extract_sha256'] == pf['extract_sha256']
+
+
+def test_a_successful_enable_writes_no_second_extract(api):
+    A, e = api
+    _enabled(A)
+    assert slot(e, F01)['enabled'] is True and len(FC.ExtractWriter(CD[0]).records('preflight')) == 1
 
 
 # ------------------------------------------------------------------ preflight / enable refusals

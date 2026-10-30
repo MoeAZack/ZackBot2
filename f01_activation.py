@@ -8,11 +8,20 @@ Engine.commit_settings (durable save first, memory only after it - a failed save
                 value exists: the config is immutable and the start never moves.
   preflight (b) Engine.f01_canary_preflight(pins_expected, write=True) with the contract pins bundled in this build; the
                 outcome (pass, record / extract sha256, config + C-F01 slot sha256) is stored as F01_CANARY_PREFLIGHT.
-  enable    (c) C-F01 enabled = true only when the stored preflight PASSED for this exact config and C-F01 card, its
-                immutable extract verifies, and start_utc is still strictly in the future. Otherwise nothing changes.
+  enable    (c) C-F01 enabled = true only when the stored preflight PASSED for this exact config, C-F01 card and pins, its
+                immutable extract verifies, a FRESH preflight (write=False, same lock, immediately before the commit)
+                passes too, and start_utc is still strictly in the future. Otherwise nothing changes. The stored extract
+                stays the activation evidence; the fresh re-check writes no second extract (Codex 6518282236 #1).
 
-Generic /api/settings rejects both keys and /api/sleeves cannot switch C-F01 on (app.py), so this module is the only
-writer. Nothing here starts a second Engine, patches a live file by hand, or touches strategy logic or a pinned function.
+Generic /api/settings rejects both keys. Once F01_CANARY is staged the whole C-F01 card is frozen: /api/sleeves may only
+perform the rollback enabled -> disabled with every other C-F01 field unchanged (sleeves_guard, Codex 6518282236 #3);
+before staging it may not switch C-F01 on. So this module is the only writer that can switch C-F01 on.
+
+A stored F01_CANARY that is malformed, OFF or otherwise not what stage writes can only come from corruption or a manual
+edit: it is never replaced here and every step stays refused (fail closed) until Integration recovers it out of band
+(Codex 6518282236 Q2).
+
+Nothing here starts a second Engine, patches a live file by hand, or touches strategy logic or a pinned function.
 """
 import copy
 import json
@@ -149,11 +158,39 @@ def enable(e, b=None):
             raise ValueError('the PASS preflight extract is missing or altered - C-F01 stays disabled')
         if not FC._ts(cfg['start_utc']) > ENG.now_utc():
             raise ValueError('the frozen start_utc has passed - enabling now is refused (the start never moves)')
+        pins = bundled_pins()
+        if rec.get('pins_sha256') != _sha(pins):
+            raise ValueError('the bundled pins changed since the PASS preflight - C-F01 stays disabled')
+        fresh = e.f01_canary_preflight(pins_expected=pins, write=False)      # dynamic facts may have moved since the PASS
+        if fresh.get('pass') is not True:
+            bad = ', '.join(k for k, v in (fresh.get('checks') or {}).items() if not v.get('ok'))
+            raise ValueError(f'the fresh preflight fails ({bad or "unknown"}) - C-F01 stays disabled')
         ns = copy.deepcopy(e.S)
         _slot(ns)['enabled'] = True
         e.commit_settings(ns)
     ENG.log.info(f"FACTORY-F01 canary: C-F01 enabled after PASS preflight {rec['record_sha256']} (start {cfg['start_utc']})")
     return dict(enabled=True, start_utc=cfg['start_utc'], record_sha256=rec['record_sha256'])
+
+
+def sleeves_guard(S, new_sleeves, normalize):
+    """For /api/sleeves (called under e.lock with the validated list). Not staged: C-F01 may not be switched on. Staged:
+    the whole C-F01 card is frozen - the posted C-F01 must equal normalize(stored card) on every field but `enabled`, and
+    `enabled` may only stay as it is or go True -> False (the rollback). Returns the list to store, with C-F01 replaced
+    by an exact copy of the stored card (enabled as posted) so a permitted rollback never rewrites another field."""
+    cur, new = _slot(S), _slot({'SLEEVES': new_sleeves})
+    if FC.CANARY_KEY not in (S or {}):
+        if new is not None and new.get('enabled') and (cur or {}).get('enabled') is not True: raise ValueError(ENABLE_HINT)
+        return new_sleeves
+    if cur is None: return new_sleeves                  # nothing to freeze (stage requires the slot; preflight refuses)
+    if new is None: raise ValueError('the C-F01 card is frozen while the F01 canary is staged - it cannot be removed')
+    was, now = cur.get('enabled') is True, new.get('enabled') is True
+    if now and not was: raise ValueError(ENABLE_HINT)
+    try: ref = normalize(cur)
+    except Exception: ref = None
+    if ref is None or {k: v for k, v in ref.items() if k != 'enabled'} != {k: v for k, v in new.items() if k != 'enabled'}:
+        raise ValueError('the C-F01 card is frozen while the F01 canary is staged - only the rollback enabled -> disabled is allowed')
+    keep = dict(copy.deepcopy(cur), enabled=now)
+    return [keep if isinstance(x, dict) and x.get('id') == FC.SLOT else x for x in new_sleeves]
 
 
 ACTIONS = dict(stage=stage, preflight=preflight, enable=enable)

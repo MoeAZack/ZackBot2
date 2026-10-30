@@ -1728,9 +1728,8 @@ def handle(path, b):
         sl = [validate_sleeve(x, i) for i, x in enumerate(b['sleeves'])]
         if len({x['id'] for x in sl}) != len(sl): raise ValueError('each strategy slot needs a unique name')
         with e.lock:
-            was = {x.get('id'): x.get('enabled') for x in e.S.get('SLEEVES') or []}
-            if any(x['id'] == F01ACT.FC.SLOT and x['enabled'] and was.get(F01ACT.FC.SLOT) is not True for x in sl):
-                raise ValueError(F01ACT.ENABLE_HINT)       # FACTORY-F01-ACT-01: switching C-F01 OFF stays allowed (rollback)
+            sl = F01ACT.sleeves_guard(e.S, sl, lambda x: validate_sleeve(x, 0))   # FACTORY-F01-ACT-01: C-F01 never switched on here;
+            #   staged -> card frozen, only the rollback enabled -> disabled
             rot = e.S.get('PRESET') == ENG.ROTATION_PRESET
             if rot: check_rotation_sleeves(e, sl)          # UI-SLEEVE-CAP-01: the rotation (PAPER) stays the rotation
             else:
