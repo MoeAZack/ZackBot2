@@ -945,21 +945,38 @@ def test_q6_scope_does_not_relax_other_checks():
 
 
 # ------------------------------------------------------------------ rebind to merged master 93642d8 (rulings 6493041460, 6494813780)
-def _blob_at(commit, rel):
-    """Content-addressed read of a committed blob via git (a subprocess, never an import), so a later change on
-    master cannot invalidate the pin."""
-    return subprocess.run(['git', '-C', ROOT, 'show', f'{commit}:{rel}'], stdin=subprocess.DEVNULL,
-                          capture_output=True, check=True).stdout.replace(b'\r\n', b'\n')
+def _sha_checked_out(rel):
+    """Content identity of the checked-out file (CRLF-normalised), so a shallow CI clone that lacks the cited master
+    commit still proves the pinned bytes; master_reference stays the citation, the pin is the content."""
+    with open(os.path.join(ROOT, rel), 'rb') as f:
+        return hashlib.sha256(f.read().replace(b'\r\n', b'\n')).hexdigest()
 
 
-def test_code_pins_match_master_blobs():
+def _pin_mismatches(pins, sha_of):
+    return sorted(path for path, want in pins.items() if sha_of(path) != want)
+
+
+def _code_pins():
     ci = C['code_identity']
-    pins = {k: v for k, v in ci['pinned_files'].items() if not k.startswith('_')}
+    return ci, {k: v for k, v in ci['pinned_files'].items() if not k.startswith('_')}
+
+
+def test_code_pins_match_checked_out_content():
+    ci, pins = _code_pins()
     assert set(pins) == set(ci['files'])
     assert {'tools/research/oi_metrics_fetch.py', 'tools/research/oi_metrics_probe.py'} <= set(pins)
-    for path, want in pins.items():
-        assert re.fullmatch(r'[0-9a-f]{64}', want), path
-        assert hashlib.sha256(_blob_at(ci['master_reference'], path)).hexdigest() == want, path
+    assert all(re.fullmatch(r'[0-9a-f]{64}', want) for want in pins.values())
+    assert _pin_mismatches(pins, _sha_checked_out) == []
+
+
+def test_code_pin_check_rejects_any_byte_change():
+    _, pins = _code_pins()
+    for path in pins:
+        with open(os.path.join(ROOT, path), 'rb') as f:
+            raw = f.read().replace(b'\r\n', b'\n')
+        for mutated in (raw + b' ', raw[:-1], bytes([raw[0] ^ 1]) + raw[1:]):
+            got = hashlib.sha256(mutated).hexdigest()
+            assert _pin_mismatches({path: pins[path]}, lambda _p: got) == [path], path
 
 
 def test_every_citation_is_rebound_to_93642d8():
