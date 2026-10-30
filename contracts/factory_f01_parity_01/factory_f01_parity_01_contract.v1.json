@@ -123,7 +123,7 @@
   "input_frames": "the exact closed 4h candles the runtime computed its signals from, per symbol (recorded with sha256 in the evidence frames_manifest), never a separately downloaded series",
   "account": "the replay keeps its own single-cell account ($500, share 1.0, 1 %, 10x, 8 % halt) so its trade list is self-contained; absolute size fields are NOT-COMPARABLE (P15)",
   "executor": "OQ7 (6512712537): the Evidence lane (Cowork) independently runs the replay and OWNS verdict.json; Build supplies immutable, sha256-hashed runtime extracts only and never self-verdicts. No import of Build runtime modules (the repro forbidden list applies)",
-  "trade_set_rule": "OQ4 (6512712537), narrowed: the runtime and replay trade sets on (symbol, entry bar, side) must match. A runtime refusal whose reason is in causal_window.registered_refusal_prefixes and was LOGGED AT THAT DECISION explains that exact decision only. Downstream replay-only entries are excluded only inside the explicitly listed causal window it opens, which closes when runtime and replay are both flat for the candidate. No open-ended same-symbol exemption and no post-hoc reason. Raw signals, decision bars and pre-gate counts (P01-P05) stay MUST-MATCH throughout, inside a window too. Any other divergence is PARITY-FAIL. Algorithm and test vectors: causal_window.",
+  "trade_set_rule": "OQ4 (6512712537), narrowed: the runtime and replay trade sets on (symbol, entry bar, side) must match. A runtime refusal whose reason is in causal_window.registered_refusal_prefixes and was LOGGED AT THAT DECISION explains that exact decision only. Downstream replay-only entries are excluded only inside the explicitly listed causal window it opens, which closes when runtime and replay are both flat for the candidate. No open-ended same-symbol exemption and no post-hoc reason. Raw signals, decision bars and pre-gate counts (P01-P05) stay MUST-MATCH throughout, inside a window too. Any other divergence is PARITY-FAIL. Algorithm and test vectors: causal_window. N1 (6512978555): inside an ALREADY-open window a runtime-only entry is LISTED only with a same-decision replay candidate / family-cap refusal, matching raw signal + decision bar and a replay slot directly traceable to the window's explained refusal (predecessor / window id recorded); every other runtime-only entry is PARITY-FAIL. A window still open at canary end makes the verdict INCONCLUSIVE (never PARITY-PASS); never extend risk / duration or force-close to manufacture closure.",
   "scoring_start": "OQ2 (6512712537): >= 250 older closed 4h bars may seed the indicators but are WARM-UP ONLY and never scored. The authorization / start timestamp is frozen (preflight.json) before any scored bar is read. Scoring starts at the first fully closed 4h decision bar after BOTH the authorization and a successful preflight. Post-2026-09-28 bars may be read for this forward PAPER run only; never to retune or retroactively select the candidate."
  },
  "parity_fields": [
@@ -753,7 +753,7 @@
     "verdict.json": "written by Cowork only: per parity field class, result, delta; causal windows (open / close bar, excluded trades); the stop condition fired; overall PARITY-PASS / PARITY-FAIL / INCONCLUSIVE",
     "MANIFEST.sha256": "sha256 of every file above"
    },
-   "overall_rule": "PARITY-PASS only if every MUST-MATCH field passes and no stop condition S1-S5 fired; PARITY-FAIL if any MUST-MATCH field fails; INCONCLUSIVE if an input hash, pin or precondition cannot be verified",
+   "overall_rule": "PARITY-PASS only if every MUST-MATCH field passes, no stop condition S1-S5 fired and no causal window is open at canary end; PARITY-FAIL if any MUST-MATCH field fails; INCONCLUSIVE if an input hash, pin or precondition cannot be verified, or if a causal window is still open at canary end (ruling 6512978555: listed; never extend risk / duration or force-close to manufacture closure)",
    "forbidden_output_fields": [
     "orderId",
     "clientOrderId",
@@ -830,7 +830,7 @@
   "UI work",
   "mainnet / live"
  ],
- "amended_at": "2026-10-30T03:45+02:00 (Cairo; 01:45 UTC) - amendment 1 encodes Integration ruling 6512712537 (OQ1-OQ8 resolved) on reviewed head 0bcb6c4",
+ "amended_at": "2026-10-30T03:45+02:00 (Cairo; 01:45 UTC) - amendment 1 encodes Integration ruling 6512712537 (OQ1-OQ8 resolved) on reviewed head 0bcb6c4; amendment 2 2026-10-30T04:00+02:00 (Cairo) encodes delta review 6512978555 (N1 mirror capacity, open window at canary end = INCONCLUSIVE) on reviewed head daa8197",
  "causal_window": {
   "ruling": "6512712537",
   "status": "specified algorithm (offline); implemented only as a reference helper in tests/test_factory_f01_parity_01_contract.py, never in engine/runtime code",
@@ -840,18 +840,20 @@
    "pre_gate_mismatch": "raw signal, decision bar or pre-gate count differs (P01-P05)",
    "rt_refused_rp_entered": "runtime refused (reason, logged_at_decision), the replay entered at the same decision",
    "rp_only_entry": "a replay entry with no runtime decision counterpart refused for a registered reason at that decision",
-   "rt_only_entry": "a runtime entry the replay does not have"
+   "rt_only_entry": "a runtime entry the replay does not have; fields rp_cap_refusal_logged (the replay logged a same-decision candidate / family-cap refusal), pre_gate_match (raw signal + decision bar match), rp_slot_trace ([bar, symbol] of the explained refusal whose replay entry occupies the replay slot, or null)"
   },
+  "n1_ruling": "6512978555",
   "algorithm": [
    "1 window = None; windows = []; excluded = []",
    "2 for each step in bar order, for each event:",
    "  pre_gate_mismatch -> PARITY-FAIL (also inside a window)",
    "  rt_refused_rp_entered -> PASS only if reason starts with a registered prefix AND logged_at_decision is true (else PARITY-FAIL: unregistered or post-hoc); it opens a window at this bar if none is open; the decision is listed as explained",
    "  rp_only_entry -> excluded (listed) only while a window is open; otherwise PARITY-FAIL",
-   "  rt_only_entry -> PARITY-FAIL (the ruling excludes replay-only trades only; see notes_for_integration N1)",
+   "  rt_only_entry -> N1 mirror capacity (ruling 6512978555): LISTED / excluded ONLY when a window is ALREADY open AND rp_cap_refusal_logged AND pre_gate_match AND rp_slot_trace is an explained refusal of THAT window; listed as [bar, symbol, \"mirror_cap\", window open bar, predecessor bar, predecessor symbol]. Every other runtime-only entry -> PARITY-FAIL",
    "  match -> nothing",
    "3 after the step: if a window is open and rt_flat_after and rp_flat_after -> close it at this bar",
-   "4 end: verdict PASS with windows (a window still open at the canary end is listed with close null), else the first failure"
+   "4 end (ruling 6512978555): a window still open (runtime / replay not resynchronized to candidate-flat) -> INCONCLUSIVE with the open window(s) listed (close null): never PARITY-PASS and not a defect PARITY-FAIL; otherwise PASS with the windows and exclusions",
+   "5 never extend canary risk or duration, and never force-close, to manufacture a window closure"
   ],
   "registered_refusal_prefixes": [
    "candidate isolation: slot ",
@@ -1047,7 +1049,7 @@
    },
    {
     "id": "V6",
-    "note": "runtime-only entry inside a window fails (literal ruling; N1)",
+    "note": "unrelated runtime-only entry inside a window: no same-decision replay cap refusal -> fails (N1)",
     "steps": [
      {
       "bar": "b1",
@@ -1067,7 +1069,13 @@
       "events": [
        {
         "type": "rt_only_entry",
-        "symbol": "ADAUSDT"
+        "symbol": "ADAUSDT",
+        "rp_cap_refusal_logged": false,
+        "pre_gate_match": true,
+        "rp_slot_trace": [
+         "b1",
+         "SOLUSDT"
+        ]
        }
       ],
       "rt_flat_after": false,
@@ -1150,6 +1158,16 @@
       ],
       "rt_flat_after": true,
       "rp_flat_after": false
+     },
+     {
+      "bar": "b5",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
      }
     ],
     "expect": {
@@ -1161,7 +1179,7 @@
       ],
       [
        "b4",
-       null
+       "b5"
       ]
      ],
      "excluded": [
@@ -1171,10 +1189,178 @@
       ]
      ]
     }
+   },
+   {
+    "id": "V9",
+    "note": "N1 mirror capacity PASSES: window already open, the replay logged a same-decision family-cap refusal, pre-gate matches, the occupied replay slot traces to the window refusal",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "size below Binance minimum (raise capital or risk)",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "rp_cap_refusal_logged": true,
+        "pre_gate_match": true,
+        "rp_slot_trace": [
+         "b1",
+         "SOLUSDT"
+        ]
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b3",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PASS",
+     "windows": [
+      [
+       "b1",
+       "b3"
+      ]
+     ],
+     "excluded": [
+      [
+       "b2",
+       "ADAUSDT",
+       "mirror_cap",
+       "b1",
+       "b1",
+       "SOLUSDT"
+      ]
+     ]
+    }
+   },
+   {
+    "id": "V10",
+    "note": "mirror candidate whose occupied replay slot is NOT traceable to the window refusal -> fails",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "daily loss halt",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "rp_cap_refusal_logged": true,
+        "pre_gate_match": true,
+        "rp_slot_trace": [
+         "b0",
+         "BTCUSDT"
+        ]
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b2"
+    }
+   },
+   {
+    "id": "V11",
+    "note": "runtime-only entry with a replay cap refusal but OUTSIDE any window -> fails",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_only_entry",
+        "symbol": "ADAUSDT",
+        "rp_cap_refusal_logged": true,
+        "pre_gate_match": true,
+        "rp_slot_trace": null
+       }
+      ],
+      "rt_flat_after": false,
+      "rp_flat_after": true
+     }
+    ],
+    "expect": {
+     "verdict": "PARITY-FAIL",
+     "fail_at": "b1"
+    }
+   },
+   {
+    "id": "V12",
+    "note": "window still open at canary end -> INCONCLUSIVE with the open window listed (never PASS, not a defect FAIL)",
+    "steps": [
+     {
+      "bar": "b1",
+      "events": [
+       {
+        "type": "rt_refused_rp_entered",
+        "symbol": "SOLUSDT",
+        "reason": "daily loss halt",
+        "logged_at_decision": true
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     },
+     {
+      "bar": "b2",
+      "events": [
+       {
+        "type": "match"
+       }
+      ],
+      "rt_flat_after": true,
+      "rp_flat_after": false
+     }
+    ],
+    "expect": {
+     "verdict": "INCONCLUSIVE",
+     "open_windows": [
+      [
+       "b1",
+       null
+      ]
+     ]
+    }
    }
   ],
+  "end_of_canary_rule": "ruling 6512978555: an open causal window at canary end -> INCONCLUSIVE with the open window(s) listed; never PARITY-PASS, not a defect PARITY-FAIL. Do NOT extend risk or duration, and do NOT force-close, to manufacture closure.",
   "notes_for_integration": [
-   "N1: under the literal OQ4 ruling only replay-only downstream trades are excludable. A runtime-only entry inside a window (e.g. the replay is at the cap of 4 because it holds the explained trade, while the runtime has a free slot) is PARITY-FAIL here. Integration may extend the window to cover that mirror case before signature."
+   "N1 RULED (6512978555): mirror capacity is allowed only inside an already-open window with a same-decision replay candidate / family-cap refusal, matching raw signal + decision bar, and a replay slot traceable to the window refusal (predecessor / window id recorded); every other runtime-only entry is PARITY-FAIL."
   ]
  },
  "quantization_rule": {

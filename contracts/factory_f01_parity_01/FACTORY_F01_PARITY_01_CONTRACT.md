@@ -42,21 +42,37 @@ This ticket installs nothing, enables nothing, changes no settings or state, rea
 - **What the window excludes:** the refusal opens a listed causal window. Only replay-only entries inside that window are
   excluded.
 - **When the window closes:** when runtime and replay are both flat for the candidate.
+- **N1, mirror capacity (delta review 6512978555):** inside an **already-open** window, a runtime-only entry is listed
+  and excluded only when all three conditions hold:
+  - (a) the replay logged a candidate / family-cap refusal at the same decision;
+  - (b) the raw signal and decision bar still match;
+  - (c) the occupied replay slot traces directly to the window's explained refusal.
+
+  The excluded entry records its predecessor refusal and window id.
 - **What always fails:**
   - an open-ended same-symbol exemption;
   - a post-hoc reason;
   - a pre-gate mismatch (raw signal, decision bar or count), even inside a window;
-  - a runtime-only entry;
+  - any other runtime-only entry;
   - any other divergence.
 
   Each of these is PARITY-FAIL.
+- **Open window at canary end (6512978555):** if runtime and replay have not both returned to candidate-flat, the
+  verdict is **INCONCLUSIVE**, with the open window(s) listed. It is never PARITY-PASS and it is not a defect
+  PARITY-FAIL. **Do not extend risk or duration, and do not force-close, to manufacture a closure.**
 
-The algorithm and 8 test vectors (V1-V8) are in `causal_window`. The tests implement it as a reference helper inside
-the test module only, never in the engine.
+The algorithm and 12 test vectors are in `causal_window`:
 
-**N1 (note for Integration):** under the literal ruling, a runtime-only entry inside a window is PARITY-FAIL. Example:
-the replay sits at the cap of 4 because it holds the explained trade, while the runtime has a free slot and enters.
-Integration may extend the window to cover this mirror case.
+| vectors | case | verdict |
+|---|---|---|
+| V1, V8 | standard windows | PASS |
+| V9 | mirror capacity | PASS |
+| V2-V7 | rule violations | PARITY-FAIL |
+| V10 | slot not traceable to the window's refusal | PARITY-FAIL |
+| V11 | runtime-only entry outside a window | PARITY-FAIL |
+| V12 | window still open at the end | INCONCLUSIVE |
+
+The tests implement the algorithm as a reference helper inside the test module only, never in the engine.
 
 ## Parity fields (30)
 
@@ -137,4 +153,5 @@ Integration may extend the window to cover this mirror case.
 
 OQ1 bounds · OQ2 forward read · OQ3 candidate-flat start · OQ4 narrowed causal window · OQ5 no global setting changes ·
 OQ6 exact post-quantization · OQ7 Cowork owns the verdict · OQ8 manage open lots by default. Full text:
-`resolved_questions`. There are no open questions; N1 is a note for Integration.
+`resolved_questions`. There are no open questions. N1 (mirror capacity) and the open-window-at-end rule were ruled by
+delta review 6512978555 (amendment 2).

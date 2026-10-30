@@ -354,24 +354,33 @@ def test_canary_execution_and_market_data_stay_forbidden(c):
 # ------------------------------------------------------------------ OQ4: bounded causal window (reference helper, test only)
 def causal_verdict(steps, prefixes):
     """Reference implementation of causal_window.algorithm - test-module only, never runtime code."""
-    window, windows, excluded = None, [], []
+    window, windows, excluded, explained = None, [], [], []
     for st in steps:
         for ev in st['events']:
             t = ev['type']
-            if t in ('pre_gate_mismatch', 'rt_only_entry'):
+            if t == 'pre_gate_mismatch':
                 return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
-            if t == 'rt_refused_rp_entered':
+            if t == 'rt_only_entry':                   # N1 (6512978555): mirror capacity, bounded to the open window
+                trace = ev.get('rp_slot_trace')
+                if not (window is not None and ev.get('rp_cap_refusal_logged') is True and ev.get('pre_gate_match') is True
+                        and trace is not None and list(trace) in explained):
+                    return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
+                excluded.append([st['bar'], ev['symbol'], 'mirror_cap', window[0], trace[0], trace[1]])
+            elif t == 'rt_refused_rp_entered':
                 if not (ev.get('logged_at_decision') is True and any(ev['reason'].startswith(p) for p in prefixes)):
                     return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
                 if window is None:
-                    window = [st['bar'], None]; windows.append(window)
+                    window = [st['bar'], None]; windows.append(window); explained = []
+                explained.append([st['bar'], ev['symbol']])
             elif t == 'rp_only_entry':
                 if window is None: return dict(verdict='PARITY-FAIL', fail_at=st['bar'])
                 excluded.append([st['bar'], ev['symbol']])
             elif t != 'match':
                 raise ValueError(t)
         if window is not None and st['rt_flat_after'] and st['rp_flat_after']:
-            window[1] = st['bar']; window = None
+            window[1] = st['bar']; window = None; explained = []
+    if window is not None:                             # 6512978555: not resynchronized at canary end -> never PASS
+        return dict(verdict='INCONCLUSIVE', open_windows=[w for w in windows if w[1] is None], windows=windows, excluded=excluded)
     return dict(verdict='PASS', windows=windows, excluded=excluded)
 
 
@@ -379,7 +388,7 @@ def test_causal_window_test_vectors(c):
     cw = c['causal_window']
     assert cw['ruling'] == RULING and 'never in engine/runtime code' in cw['status']
     vs = cw['test_vectors']
-    assert len(vs) >= 8 and {v['expect']['verdict'] for v in vs} == {'PASS', 'PARITY-FAIL'}
+    assert len(vs) >= 12 and {v['expect']['verdict'] for v in vs} == {'PASS', 'PARITY-FAIL', 'INCONCLUSIVE'}
     for v in vs:
         got = causal_verdict(v['steps'], cw['registered_refusal_prefixes'])
         assert {k_: got.get(k_) for k_ in v['expect']} == v['expect'], v['id']
@@ -391,12 +400,35 @@ def test_causal_window_is_bounded_and_has_no_same_symbol_exemption(c):
     rp = dict(type='rp_only_entry', symbol='SOLUSDT')
     inside = [dict(bar='b1', events=[ref], rt_flat_after=True, rp_flat_after=False),
               dict(bar='b2', events=[rp], rt_flat_after=True, rp_flat_after=False)]
-    got = causal_verdict(inside, pre)
-    assert got['verdict'] == 'PASS' and got['excluded'] == [['b2', 'SOLUSDT']] and got['windows'] == [['b1', None]]
+    got = causal_verdict(inside, pre)                                              # still open at the end: INCONCLUSIVE
+    assert got['verdict'] == 'INCONCLUSIVE' and got['excluded'] == [['b2', 'SOLUSDT']] and got['open_windows'] == [['b1', None]]
+    assert causal_verdict(inside + [dict(bar='b3', events=[], rt_flat_after=True, rp_flat_after=True)], pre)['verdict'] == 'PASS'
     after = inside + [dict(bar='b3', events=[], rt_flat_after=True, rp_flat_after=True),
                       dict(bar='b9', events=[rp], rt_flat_after=True, rp_flat_after=False)]
     assert causal_verdict(after, pre) == dict(verdict='PARITY-FAIL', fail_at='b9')      # same symbol after the reset fails
     assert causal_verdict([dict(bar='b1', events=[rp], rt_flat_after=True, rp_flat_after=False)], pre)['verdict'] == 'PARITY-FAIL'
+
+
+def test_n1_mirror_capacity_and_open_window_at_end_rulings(c):
+    cw = c['causal_window']
+    assert cw['n1_ruling'] == '6512978555' and '6512978555' in cw['end_of_canary_rule']
+    assert 'INCONCLUSIVE' in cw['end_of_canary_rule'] and 'never PARITY-PASS' in cw['end_of_canary_rule']
+    assert 'force-close' in cw['end_of_canary_rule'] and 'extend risk or duration' in cw['end_of_canary_rule']
+    assert '6512978555' in c['canary']['evidence_outputs']['overall_rule'] and 'still open at canary end' in c['canary']['evidence_outputs']['overall_rule']
+    assert '6512978555' in c['replay_definition']['trade_set_rule'] and '6512978555' in c['amended_at']
+    vs = {v['id']: v for v in cw['test_vectors']}
+    assert vs['V9']['expect']['verdict'] == 'PASS' and vs['V9']['expect']['excluded'][0][2] == 'mirror_cap'
+    assert all(vs[i]['expect']['verdict'] == 'PARITY-FAIL' for i in ('V6', 'V10', 'V11'))
+    assert vs['V12']['expect'] == {'verdict': 'INCONCLUSIVE', 'open_windows': [['b1', None]]}
+    md = open(MD, encoding='utf-8').read()
+    assert '6512978555' in md and 'INCONCLUSIVE' in md and 'mirror' in md
+    pre = cw['registered_refusal_prefixes']                         # each N1 condition is necessary
+    base = dict(type='rt_only_entry', symbol='ADAUSDT', rp_cap_refusal_logged=True, pre_gate_match=True, rp_slot_trace=['b1', 'SOLUSDT'])
+    ref = dict(type='rt_refused_rp_entered', symbol='SOLUSDT', reason='daily loss halt', logged_at_decision=True)
+    for drop in ({}, dict(rp_cap_refusal_logged=False), dict(pre_gate_match=False), dict(rp_slot_trace=None), dict(rp_slot_trace=['b1', 'ETHUSDT'])):
+        steps = [dict(bar='b1', events=[ref], rt_flat_after=True, rp_flat_after=False),
+                 dict(bar='b2', events=[dict(base, **drop)], rt_flat_after=True, rp_flat_after=True)]
+        assert causal_verdict(steps, pre)['verdict'] == ('PASS' if not drop else 'PARITY-FAIL'), drop
 
 
 def test_registered_refusal_prefixes_are_literal_engine_text(c):
