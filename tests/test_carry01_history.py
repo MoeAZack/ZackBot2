@@ -249,6 +249,36 @@ def test_funding_mark_bar_is_strictly_earlier():
     assert H.required_mark_open_time(hour + 2) == hour - H.HOUR_MS
 
 
+def test_daily_recovery_is_gap_derived_and_overlap_identical():
+    start = 1_735_689_600_000
+    lines = "".join(kline(start + hour * H.HOUR_MS) for hour in range(31 * 24)).splitlines(True)
+    lines.pop(5)
+    lines[6] = f"{start + 7 * H.HOUR_MS},100,110,90,105,1,{start + 7 * H.HOUR_MS + 1},1,1,1,1,0\n"
+    primary_spec = spec("2025-01", frequency="monthly")
+    primary = H.parse_kline_archive(zipped("monthly.csv", "".join(lines)), primary_spec)
+    recoveries = H.daily_recovery_specs(primary_spec, primary.incomplete)
+    assert [item.period for item in recoveries] == ["2025-01-01"]
+    daily = H.parse_kline_archive(zipped("daily.csv", day_klines(start)), spec())
+    merged = H.merge_daily_recovery(primary, [daily], start, start + 31 * 24 * H.HOUR_MS)
+    assert merged.incomplete == []
+    assert merged.valid_hours == merged.expected_hours == 31 * 24
+
+    different = day_klines(start).replace("100,110,90,105", "101,110,90,105", 1)
+    conflicting = H.parse_kline_archive(zipped("daily.csv", different), spec())
+    with pytest.raises(H.HistoryDataError, match="disagrees"):
+        H.merge_daily_recovery(primary, [conflicting], start, start + 31 * 24 * H.HOUR_MS)
+
+
+def test_daily_recovery_cannot_add_unledgered_duplicate_or_out_of_period_hour():
+    start = 1_735_689_600_000
+    primary = H.parse_kline_archive(zipped("x.csv", day_klines(start)), spec())
+    outside = H.KlineArchive([{"open_time": start + 24 * H.HOUR_MS}], [], 1)
+    with pytest.raises(H.HistoryDataError, match="outside"):
+        H.merge_daily_recovery(primary, [outside], start, start + 24 * H.HOUR_MS)
+    with pytest.raises(H.HistoryDataError, match="monthly"):
+        H.daily_recovery_specs(spec(), [])
+
+
 def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():
     header = "calc_time,funding_interval_hours,last_funding_rate\n"
     good = header + "1700000000002,8,0.0001\n1700028800000,8,-0.0002\n"

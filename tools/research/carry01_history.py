@@ -371,6 +371,49 @@ def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
     return archive.rows
 
 
+def daily_recovery_specs(primary: ArchiveSpec,
+                         incomplete: Iterable[dict[str, Any]]) -> list[ArchiveSpec]:
+    """Plan only official daily archives needed by a monthly kline gap ledger."""
+    if primary.frequency != "monthly" or primary.series not in {"klines", "markPriceKlines"}:
+        raise HistoryDataError("daily recovery requires a monthly kline primary archive")
+    periods = sorted({datetime.fromtimestamp(int(item["open_time"]) / 1000, timezone.utc)
+                      .date().isoformat() for item in incomplete})
+    return [_archive(primary.symbol, primary.market, primary.series, "daily", period)
+            for period in periods]
+
+
+def merge_daily_recovery(primary: KlineArchive, recoveries: Iterable[KlineArchive],
+                         start_ms: int, end_ms: int) -> KlineArchive:
+    """Fill only primary-ledger hours; overlapping official rows must be identical."""
+    if start_ms % HOUR_MS or end_ms % HOUR_MS or end_ms <= start_ms:
+        raise HistoryDataError("recovery bounds must be an aligned positive hourly period")
+    primary_rows = {int(row["open_time"]): row for row in primary.rows}
+    if len(primary_rows) != len(primary.rows):
+        raise HistoryDataError("primary recovery rows contain duplicate timestamps")
+    missing = {int(item["open_time"]): item for item in primary.incomplete}
+    if len(missing) != len(primary.incomplete):
+        raise HistoryDataError("primary incomplete ledger contains duplicate timestamps")
+    recovered: set[int] = set()
+    for archive in recoveries:
+        for row in archive.rows:
+            opened = int(row["open_time"])
+            if opened < start_ms or opened >= end_ms:
+                raise HistoryDataError("daily recovery row falls outside the primary period")
+            if opened in primary_rows:
+                if primary_rows[opened] != row:
+                    raise HistoryDataError("daily recovery disagrees with an overlapping primary row")
+                continue
+            if opened not in missing:
+                raise HistoryDataError("daily recovery attempts to add an unledgered primary hour")
+            if opened in recovered:
+                raise HistoryDataError("daily recovery supplies the same missing hour twice")
+            primary_rows[opened] = row
+            recovered.add(opened)
+    rows = [primary_rows[t] for t in sorted(primary_rows)]
+    incomplete = [missing[t] for t in sorted(missing) if t not in recovered]
+    return KlineArchive(rows, incomplete, (end_ms - start_ms) // HOUR_MS)
+
+
 def validate_common_hour_coverage(spot_rows: Iterable[dict[str, Any]],
                                   mark_rows: Iterable[dict[str, Any]],
                                   start_ms: int, end_ms: int) -> dict[str, Any]:

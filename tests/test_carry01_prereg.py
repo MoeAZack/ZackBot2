@@ -116,3 +116,5 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "longer than 24 hours refuses evaluation" in p["data"]["coverage_gate"]
     assert "no older mark is substituted" in p["data"]["funding_missing_mark"]
     assert "does not count toward the minimum-funding-events gate" in p["data"]["funding_missing_mark"]
+    assert "only exact monthly-ledger timestamps may be added" in p["data"]["daily_recovery"]
+    assert "before any return, PnL, signal, score or selection metric" in p["data"]["daily_recovery"]
