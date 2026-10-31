@@ -80,6 +80,24 @@ def test_scan_refuses_future_mark_and_duplicate_funding():
         C.scan_symbol("BTCUSDT", now_ms=now, session=session)
 
 
+def test_scan_refuses_future_funding_and_zero_current_rate():
+    now = 2_000_000_000_000
+    session = FakeSession(now)
+    original = session.get
+    def future_event(url, params, timeout):
+        response = original(url, params, timeout)
+        if "fundingRate" in url:
+            response.payload.append({"fundingTime": now + 1, "fundingRate": "0.0001"})
+        return response
+    session.get = future_event
+    with pytest.raises(C.CarryDataError, match="future event"):
+        C.scan_symbol("BTCUSDT", now_ms=now, session=session)
+
+    zero = C.scan_symbol("BTCUSDT", now_ms=now, session=FakeSession(now, rate=0.0))
+    assert zero["checks"]["current_funding_positive"] is False
+    assert zero["eligible_shadow"] is False
+
+
 def test_replay_flat_prices_collects_funding_after_four_fill_costs():
     start = 2_000_000_000_000
     rows = [{"timestamp_ms": start + i * 8 * 3_600_000, "spot_price": 100, "perp_price": 100,
@@ -151,6 +169,24 @@ def test_replay_liquidation_and_short_windows_never_claim_performance():
     ])
     assert short["annualized_return"] is None
     assert short["beats_cash_hurdle"] is False
+
+
+def test_replay_maintenance_margin_liquidates_before_collateral_is_zero():
+    start = 2_000_000_000_000
+    result = C.replay([
+        {"timestamp_ms": start, "spot_price": 100, "perp_price": 100},
+        {"timestamp_ms": start + 3_600_000, "spot_price": 100, "perp_price": 133},
+    ])
+    assert result["status"] == "LIQUIDATED"
+    assert result["last_marked_equity"] > 0
+
+
+def test_replay_rejects_boolean_numeric_fields():
+    with pytest.raises(C.CarryDataError, match="boolean"):
+        C.replay([
+            {"timestamp_ms": 1, "spot_price": True, "perp_price": 1},
+            {"timestamp_ms": 2, "spot_price": 1, "perp_price": 1},
+        ])
 
 
 @pytest.mark.parametrize("bad", [True, 1.5, "5", None])
