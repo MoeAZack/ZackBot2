@@ -16,7 +16,12 @@ def test_signed_contract_digest_is_required():
     p = contract()
     assert p["contract_digest_sha256"] == H.canonical_digest(p)
     p["signed"] = False
-    with pytest.raises(H.HistoryDataError, match="changed after signing"):
+    with pytest.raises(H.HistoryDataError, match="not signed"):
+        H.build_manifest(p)
+    p = contract()
+    p["data"]["sealed_development_end_exclusive"] = "2026-09-29T00:00:00Z"
+    p["contract_digest_sha256"] = H.canonical_digest(p)
+    with pytest.raises(H.HistoryDataError, match="unexpected.*seal"):
         H.build_manifest(p)
 
 
@@ -54,7 +59,7 @@ def test_checksum_parser_and_verifier_fail_closed():
 
 def test_manifest_document_binds_contract_and_has_no_results():
     doc = H.manifest_document(contract())
-    assert doc["contract_digest_sha256"].startswith("bf3daee2")
+    assert doc["contract_digest_sha256"] == H.canonical_digest(contract())
     assert doc["archive_count"] == len(doc["archives"]) == 996
     assert doc["result_fields_pending_fetch"] == ["sha256", "bytes"]
     json.dumps(doc, sort_keys=True)
@@ -83,7 +88,8 @@ class Session:
 def test_fetch_verified_is_exact_host_no_redirect_and_atomic(tmp_path):
     spec = H.build_manifest(contract())[0]
     payload = b"zip bytes"
-    checksum = hashlib.sha256(payload).hexdigest().encode() + b"  x.zip\n"
+    filename = spec.url.rsplit("/", 1)[-1]
+    checksum = hashlib.sha256(payload).hexdigest().encode() + b"  " + filename.encode() + b"\n"
     session = Session([Response(checksum), Response(payload)])
     result = H.fetch_verified(spec, tmp_path, session)
     kept = tmp_path / H.archive_relative_path(spec.url)
@@ -91,7 +97,13 @@ def test_fetch_verified_is_exact_host_no_redirect_and_atomic(tmp_path):
     assert kept.with_name(kept.name + ".CHECKSUM").read_bytes() == checksum
     assert result["sha256"] == hashlib.sha256(payload).hexdigest()
     assert all(call[1]["allow_redirects"] is False for call in session.calls)
+    assert all(call[1]["stream"] is True for call in session.calls)
     assert not kept.with_name(kept.name + ".part").exists()
+    assert H.fetch_verified(spec, tmp_path, Session([Response(checksum), Response(payload)]))["reused"] is True
+    other = b"different zip bytes"
+    other_sum = hashlib.sha256(other).hexdigest().encode() + b"  " + filename.encode() + b"\n"
+    with pytest.raises(H.HistoryDataError, match="overwrite"):
+        H.fetch_verified(spec, tmp_path, Session([Response(other_sum), Response(other)]))
 
 
 def test_fetch_verified_refuses_redirect_and_offsite(tmp_path):
@@ -100,6 +112,7 @@ def test_fetch_verified_refuses_redirect_and_offsite(tmp_path):
         H.fetch_verified(spec, tmp_path, Session([Response(b"", redirect=True)]))
     with pytest.raises(H.HistoryDataError, match="outside"):
         H.archive_relative_path("https://example.com/data/x.zip")
+    assert H.safe_archive_url("https://data.binance.vision:abc/data/x.zip") is False
 
 
 def zipped(name, text):
@@ -122,13 +135,31 @@ def test_kline_parser_pins_schema_grid_ohlc_and_seal():
         H.parse_kline_zip(zipped("x.csv", kline(start, high="99")))
     with pytest.raises(H.HistoryDataError, match="signed seal"):
         H.parse_kline_zip(zipped("x.csv", kline(H.SEAL_MS)))
+    with pytest.raises(H.HistoryDataError, match="ASCII unsigned"):
+        H.parse_kline_zip(zipped("x.csv", " " + kline(start)))
+
+
+def test_kline_parser_normalizes_official_microsecond_transition():
+    start = 1_735_689_600_000
+    raw = (f"{start * 1000},100,110,90,105,1,{(start + 3_599_999) * 1000 + 999},1,1,1,1,0\n")
+    row = H.parse_kline_zip(zipped("BTCUSDT.csv", raw))[0]
+    assert row["open_time"] == start
+    assert row["close_time"] == start + 3_599_999
+
+
+def test_period_coverage_is_pinned_when_spec_is_provided():
+    start = 1_735_689_600_000
+    text = "".join(kline(start + hour * 3_600_000) for hour in range(24))
+    spec = H.ArchiveSpec("BTCUSDT", "spot", "klines", "daily", "2025-01-01", "x", "y")
+    assert len(H.parse_kline_zip(zipped("x.csv", text), spec)) == 24
+    with pytest.raises(H.HistoryDataError, match="exactly cover"):
+        H.parse_kline_zip(zipped("x.csv", text.splitlines(True)[1:][0]), spec)
 
 
 def test_hourly_gap_is_refused():
     start = 1_700_000_000_000 // 3_600_000 * 3_600_000
-    rows = H.parse_kline_zip(zipped("x.csv", kline(start) + kline(start + 7_200_000)))
     with pytest.raises(H.HistoryDataError, match="gap or overlap"):
-        H.validate_hourly_contiguous(rows)
+        H.parse_kline_zip(zipped("x.csv", kline(start) + kline(start + 7_200_000)))
 
 
 def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():
@@ -144,6 +175,8 @@ def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():
     sealed = header + f"{H.SEAL_MS},8,0.1\n"
     with pytest.raises(H.HistoryDataError, match="signed seal"):
         H.parse_funding_zip(zipped("x.csv", sealed))
+    with pytest.raises(H.HistoryDataError, match="ASCII unsigned"):
+        H.parse_funding_zip(zipped("x.csv", header + "+1700000000002,8,0.1\n"))
 
 
 def test_zip_reader_refuses_multiple_members_and_traversal():

@@ -25,6 +25,9 @@ SEAL = datetime(2026, 9, 28, tzinfo=timezone.utc)
 SEAL_MS = int(SEAL.timestamp() * 1000)
 PREREG = Path("research_evidence/prereg/carry01_cash_and_carry.v1.json")
 MAX_ARCHIVE_MEMBER_BYTES = 50_000_000
+MAX_DOWNLOAD_BYTES = 100_000_000
+KLINE_HEADER = ["open_time", "open", "high", "low", "close", "volume", "close_time",
+                "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
 
 
 class HistoryDataError(ValueError):
@@ -52,6 +55,11 @@ def canonical_digest(contract: dict[str, Any]) -> str:
 
 def load_signed_contract(path: Path = PREREG) -> dict[str, Any]:
     contract = json.loads(path.read_text(encoding="utf-8"))
+    validate_contract(contract)
+    return contract
+
+
+def validate_contract(contract: dict[str, Any]) -> None:
     if contract.get("signed") is not True or not str(contract.get("status", "")).startswith("SIGNED"):
         raise HistoryDataError("CARRY-01 contract is not signed")
     if contract.get("contract_digest_sha256") != canonical_digest(contract):
@@ -59,7 +67,6 @@ def load_signed_contract(path: Path = PREREG) -> dict[str, Any]:
     end = datetime.fromisoformat(contract["data"]["sealed_development_end_exclusive"].replace("Z", "+00:00"))
     if end != SEAL:
         raise HistoryDataError("unexpected CARRY-01 data seal")
-    return contract
 
 
 def _months(start: date, end_exclusive: date) -> Iterable[str]:
@@ -94,8 +101,7 @@ def _archive(symbol: str, market: str, series: str, frequency: str, period: str)
 
 def build_manifest(contract: dict[str, Any]) -> list[ArchiveSpec]:
     """Plan only archives that cannot contain a row at or beyond the signed seal."""
-    if contract.get("contract_digest_sha256") != canonical_digest(contract):
-        raise HistoryDataError("contract changed after signing")
+    validate_contract(contract)
     specs: list[ArchiveSpec] = []
     monthly_end = date(2026, 9, 1)
     daily_start, daily_end = monthly_end, SEAL.date()
@@ -114,18 +120,22 @@ def build_manifest(contract: dict[str, Any]) -> list[ArchiveSpec]:
     return specs
 
 
-def parse_checksum(raw: bytes) -> str:
+def parse_checksum(raw: bytes, expected_filename: str | None = None) -> str:
     try:
-        token = raw.decode("ascii").strip().split()[0].lower()
+        fields = raw.decode("ascii").strip().split()
+        token = fields[0].lower()
     except (UnicodeDecodeError, IndexError) as exc:
         raise HistoryDataError("unreadable archive checksum") from exc
     if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
         raise HistoryDataError("invalid archive checksum")
+    if expected_filename is not None:
+        if len(fields) != 2 or fields[1].lstrip("*") != expected_filename:
+            raise HistoryDataError("archive checksum names a different file")
     return token
 
 
-def verify_bytes(payload: bytes, checksum: bytes) -> str:
-    expected = parse_checksum(checksum)
+def verify_bytes(payload: bytes, checksum: bytes, expected_filename: str | None = None) -> str:
+    expected = parse_checksum(checksum, expected_filename)
     actual = hashlib.sha256(payload).hexdigest()
     if actual != expected:
         raise HistoryDataError("archive checksum mismatch")
@@ -133,10 +143,15 @@ def verify_bytes(payload: bytes, checksum: bytes) -> str:
 
 
 def safe_archive_url(url: str) -> bool:
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return False
     return (parsed.scheme == "https" and parsed.hostname == "data.binance.vision"
-            and parsed.port in (None, 443) and parsed.username is None and parsed.password is None
-            and parsed.path.startswith("/data/") and not parsed.query and not parsed.fragment)
+            and port in (None, 443) and parsed.username is None and parsed.password is None
+            and parsed.path.startswith("/data/") and "//" not in parsed.path
+            and not parsed.query and not parsed.fragment)
 
 
 def archive_relative_path(url: str) -> Path:
@@ -152,11 +167,20 @@ def archive_relative_path(url: str) -> Path:
 def _get_bytes(session: requests.Session, url: str) -> bytes:
     if not safe_archive_url(url):
         raise HistoryDataError("refusing non-official archive URL")
-    response = session.get(url, timeout=30, allow_redirects=False)
+    response = session.get(url, timeout=30, allow_redirects=False, stream=True)
     if response.is_redirect or response.is_permanent_redirect:
         raise HistoryDataError("archive redirect refused")
     response.raise_for_status()
-    return response.content
+    chunks, size = [], 0
+    iterator = response.iter_content(chunk_size=1 << 20) if hasattr(response, "iter_content") else (response.content,)
+    for chunk in iterator:
+        if not chunk:
+            continue
+        size += len(chunk)
+        if size > MAX_DOWNLOAD_BYTES:
+            raise HistoryDataError("archive download exceeds the size cap")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def fetch_verified(spec: ArchiveSpec, root: Path,
@@ -165,18 +189,32 @@ def fetch_verified(spec: ArchiveSpec, root: Path,
     session = session or requests.Session()
     checksum = _get_bytes(session, spec.checksum_url)
     payload = _get_bytes(session, spec.url)
-    digest = verify_bytes(payload, checksum)
+    filename = Path(urlparse(spec.url).path).name
+    digest = verify_bytes(payload, checksum, filename)
     destination = root / archive_relative_path(spec.url)
     resolved_root = root.resolve()
     resolved_destination = destination.resolve()
     if resolved_root != resolved_destination and resolved_root not in resolved_destination.parents:
         raise HistoryDataError("archive destination escapes its root")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    partial = destination.with_name(destination.name + ".part")
-    partial.write_bytes(payload)
-    partial.replace(destination)
-    destination.with_name(destination.name + ".CHECKSUM").write_bytes(checksum)
-    return {"path": destination.as_posix(), "sha256": digest, "bytes": len(payload)}
+    checksum_path = destination.with_name(destination.name + ".CHECKSUM")
+    if destination.exists():
+        if not checksum_path.exists():
+            raise HistoryDataError("stored archive has no checksum sibling")
+        existing = verify_bytes(destination.read_bytes(), checksum_path.read_bytes(), filename)
+        if existing != digest:
+            raise HistoryDataError("refusing to overwrite frozen archive bytes")
+        return {"path": destination.as_posix(), "sha256": existing,
+                "bytes": destination.stat().st_size, "reused": True}
+    if checksum_path.exists() and parse_checksum(checksum_path.read_bytes(), filename) != digest:
+        raise HistoryDataError("orphan checksum disagrees with frozen archive")
+    checksum_partial = checksum_path.with_name(checksum_path.name + ".part")
+    payload_partial = destination.with_name(destination.name + ".part")
+    checksum_partial.write_bytes(checksum)
+    payload_partial.write_bytes(payload)
+    checksum_partial.replace(checksum_path)  # sibling exists before archive becomes visible
+    payload_partial.replace(destination)     # archive is the commit marker for the pair
+    return {"path": destination.as_posix(), "sha256": digest, "bytes": len(payload), "reused": False}
 
 
 def _csv_rows(payload: bytes) -> list[list[str]]:
@@ -217,18 +255,43 @@ def _number(value: str, name: str, *, positive: bool = False) -> float:
     return result
 
 
-def parse_kline_zip(payload: bytes) -> list[dict[str, Any]]:
+def _ascii_uint(value: str, name: str) -> int:
+    if not value or any(char not in "0123456789" for char in value):
+        raise HistoryDataError(f"{name} must be an ASCII unsigned integer")
+    return int(value)
+
+
+def _timestamp_ms(value: str, name: str) -> int:
+    raw = _ascii_uint(value, name)
+    digits = len(value)
+    if digits == 13:
+        return raw
+    if digits == 16:
+        return raw // 1000
+    raise HistoryDataError(f"{name} must use 13-digit ms or 16-digit us")
+
+
+def _period_bounds(spec: ArchiveSpec) -> tuple[int, int]:
+    if spec.frequency == "daily":
+        start = datetime.strptime(spec.period, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        end = start + timedelta(days=1)
+    elif spec.frequency == "monthly":
+        start = datetime.strptime(spec.period, "%Y-%m").replace(tzinfo=timezone.utc)
+        end = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    else:
+        raise HistoryDataError("unsupported archive frequency")
+    return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
+
+
+def parse_kline_zip(payload: bytes, spec: ArchiveSpec | None = None) -> list[dict[str, Any]]:
     rows = _csv_rows(payload)
-    if rows[0] and not rows[0][0].lstrip("-").isdigit():
+    if rows[0] == KLINE_HEADER:
         rows = rows[1:]
     parsed, previous = [], -1
     for row in rows:
         if len(row) != 12:
             raise HistoryDataError("kline row must have 12 columns")
-        try:
-            opened, closed = int(row[0]), int(row[6])
-        except ValueError as exc:
-            raise HistoryDataError("kline timestamps must be integers") from exc
+        opened, closed = _timestamp_ms(row[0], "kline open"), _timestamp_ms(row[6], "kline close")
         if opened <= previous or opened % 3_600_000 != 0:
             raise HistoryDataError("kline opens must be unique, increasing and hourly")
         if closed - opened != 3_599_999 or closed >= SEAL_MS:
@@ -244,10 +307,15 @@ def parse_kline_zip(payload: bytes) -> list[dict[str, Any]]:
         previous = opened
     if not parsed:
         raise HistoryDataError("kline archive contains no data rows")
+    validate_hourly_contiguous(parsed)
+    if spec is not None:
+        start, end = _period_bounds(spec)
+        if parsed[0]["open_time"] != start or parsed[-1]["close_time"] != end - 1:
+            raise HistoryDataError("kline archive does not exactly cover its declared period")
     return parsed
 
 
-def parse_funding_zip(payload: bytes) -> list[dict[str, Any]]:
+def parse_funding_zip(payload: bytes, spec: ArchiveSpec | None = None) -> list[dict[str, Any]]:
     rows = _csv_rows(payload)
     expected = ["calc_time", "funding_interval_hours", "last_funding_rate"]
     if rows[0] != expected:
@@ -256,11 +324,8 @@ def parse_funding_zip(payload: bytes) -> list[dict[str, Any]]:
     for row in rows[1:]:
         if len(row) != 3:
             raise HistoryDataError("funding row must have 3 columns")
-        try:
-            timestamp = int(row[0])
-            interval = int(row[1])
-        except ValueError as exc:
-            raise HistoryDataError("funding time and interval must be integers") from exc
+        timestamp = _timestamp_ms(row[0], "funding time")
+        interval = _ascii_uint(row[1], "funding interval")
         if timestamp <= previous or timestamp >= SEAL_MS or interval <= 0:
             raise HistoryDataError("funding event violates ordering, interval or signed seal")
         parsed.append({"funding_time": timestamp, "interval_hours": interval,
@@ -268,6 +333,10 @@ def parse_funding_zip(payload: bytes) -> list[dict[str, Any]]:
         previous = timestamp
     if not parsed:
         raise HistoryDataError("funding archive contains no events")
+    if spec is not None:
+        start, end = _period_bounds(spec)
+        if any(not start <= row["funding_time"] < end for row in parsed):
+            raise HistoryDataError("funding event falls outside its declared period")
     return parsed
 
 

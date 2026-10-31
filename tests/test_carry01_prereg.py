@@ -107,4 +107,6 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "strictly earlier" in p["costs"]["funding"]
     assert "rebalance the whole portfolio" in p["portfolio"]["weight_rule"]
     assert "funding timestamps are not forced to an 8h grid" in p["data"]["timestamps"]
+    assert "13 digits (milliseconds) or 16 digits (microseconds)" in p["data"]["timestamps"]
+    assert "integer floor division by 1000" in p["data"]["timestamps"]
     assert "no archive containing a row on or after the seal" in p["data"]["read_definition"]
