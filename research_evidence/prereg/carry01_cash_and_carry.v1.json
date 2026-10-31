@@ -1,10 +1,13 @@
 {
   "format": "zb-carry01-prereg/1",
   "candidate_id": "carry01_cash_and_carry.v1",
-  "contract_digest_sha256": "e22e4e8580be3258f99c9e35406d1b3bd367cecf9b01b79b734109b64a50b447",
+  "contract_digest_sha256": "bf3daee296a530d9c8540c9e488d5222f7caa54d600b85e2384ecbf46266e5e8",
   "family": "delta_neutral_spot_perp_carry",
-  "status": "DRAFT - NOT SIGNED - NO HISTORICAL EVALUATION PERMITTED",
-  "signed": false,
+  "status": "SIGNED - HISTORICAL EVALUATION AUTHORIZED - PAPER AND MAINNET FORBIDDEN",
+  "signed": true,
+  "signed_at": "2026-10-31T08:20:00+02:00",
+  "signed_by": "Codex integration authority after Cowork exact-head PASS on 4a1cfd9",
+  "historical_evaluation": "authorized only for this digest and the sealed pre-2026-09-28 inputs; any contract change invalidates the signature and requires a new independent review",
   "drafted": "2026-10-31 Cairo by Codex after PR #257 merged",
   "hypothesis": "An equal-weight BTC/ETH long-spot, matched-short-perpetual portfolio earns a positive return above cash after all four-fill costs because positive settled funding outweighs hedge drift, rebalancing and execution drag.",
   "trial_budget": {
@@ -96,7 +99,7 @@
     "activity": "at least 300 settled funding events per primary asset and at least 30 days per reported fold",
     "fold_stability": "positive cash-excess return in at least 4 of 5 USDT walk-forward folds",
     "combined": "USDT primary annualized return exceeds the 6% hurdle and 95% moving-block-bootstrap LCB of daily cash-excess return is above zero",
-    "cost_stress": "cost_x1.5 cash-excess return above zero; cost_x2 above zero required for PAPER promotion",
+    "cost_stress": "cost_x1.5 and cost_x2 cash-excess returns must both be above zero for the historical PASS verdict and for any later PAPER promotion",
     "risk": "no liquidation, base maximum drawdown <= 15%, stress maximum drawdown <= 25%, and recovery <= 365 days",
     "concentration": "neither BTC nor ETH contributes more than 75% of absolute net PnL",
     "promotion": "all gates plus independent reproduction; a USDC diagnostic cannot rescue a failed USDT primary"
@@ -108,8 +111,8 @@
     "minimum_days_per_fold": 30,
     "annualized_hurdle": 0.06,
     "bootstrap": {
-      "input": "chronologically concatenated daily arithmetic cash-excess returns from the five fresh-start walk-forward folds",
-      "combined_annualization": "compound the concatenated daily portfolio returns in chronological order and annualize with 365.25 divided by the number of included calendar days",
+      "input": "the hurdle uses chronologically concatenated daily portfolio returns; the bootstrap LCB uses chronologically concatenated daily arithmetic cash-excess returns on the same dates from the five fresh-start walk-forward folds",
+      "combined_annualization": "compound only the included daily portfolio returns in chronological order and annualize with 365.25 divided by their included calendar-day span; cross-boundary intervals are excluded entirely and add no return or day",
       "method": "circular moving-block bootstrap",
       "block_days": 7,
       "resamples": 10000,

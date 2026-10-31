@@ -22,11 +22,12 @@ def digest(p):
     return hashlib.sha256(canonical).hexdigest()
 
 
-def test_prereg_is_draft_and_forbids_evaluation_activation_and_mainnet():
+def test_prereg_is_signed_for_history_but_forbids_activation_and_mainnet():
     p = load()
     assert p["format"] == "zb-carry01-prereg/1"
-    assert p["signed"] is False
-    assert p["status"].startswith("DRAFT")
+    assert p["signed"] is True
+    assert p["status"].startswith("SIGNED")
+    assert "authorized only for this digest" in p["historical_evaluation"]
     assert "forbidden" in p["paper"]["status"]
     assert p["mainnet"].startswith("forbidden")
     assert p["contract_digest_sha256"] == digest(p)
@@ -90,8 +91,8 @@ def test_prereg_pins_numeric_gates_and_bootstrap_degrees_of_freedom():
     assert v["required_cost_stresses_positive"] == ["cost_x1.5", "cost_x2"]
     assert "mark-kline high" in v["liquidation"]
     assert v["bootstrap"] == {
-        "input": "chronologically concatenated daily arithmetic cash-excess returns from the five fresh-start walk-forward folds",
-        "combined_annualization": "compound the concatenated daily portfolio returns in chronological order and annualize with 365.25 divided by the number of included calendar days",
+        "input": "the hurdle uses chronologically concatenated daily portfolio returns; the bootstrap LCB uses chronologically concatenated daily arithmetic cash-excess returns on the same dates from the five fresh-start walk-forward folds",
+        "combined_annualization": "compound only the included daily portfolio returns in chronological order and annualize with 365.25 divided by their included calendar-day span; cross-boundary intervals are excluded entirely and add no return or day",
         "method": "circular moving-block bootstrap",
         "block_days": 7,
         "resamples": 10000,
