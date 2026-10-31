@@ -208,6 +208,16 @@ def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():
         H.parse_funding_zip(zipped("x.csv", header + "1700000000002,8,99\n"), funding_spec)
 
 
+def test_funding_events_must_stay_inside_declared_period():
+    header = "calc_time,funding_interval_hours,last_funding_rate\n"
+    funding_spec = spec("2023-11", series="fundingRate", frequency="monthly")
+    start, end = H._period_bounds(funding_spec)
+    with pytest.raises(H.HistoryDataError, match="outside its declared period"):
+        H.parse_funding_zip(zipped("x.csv", header + f"{start - 1},8,0.0001\n"), funding_spec)
+    with pytest.raises(H.HistoryDataError, match="outside its declared period"):
+        H.parse_funding_zip(zipped("x.csv", header + f"{end},8,0.0001\n"), funding_spec)
+
+
 def test_zip_reader_refuses_multiple_members_and_traversal():
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as archive:
