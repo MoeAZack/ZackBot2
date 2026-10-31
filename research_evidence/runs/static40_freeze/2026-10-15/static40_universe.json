@@ -1,0 +1,261 @@
+{
+ "format": "zb-static40-freeze/1",
+ "universe_id": "static-top40-minhist365-contract-20261011",
+ "universe_file": "research_evidence/universe/static-top40-minhist365-contract-20261011.json",
+ "universe_file_sha256": "d3460e6db3dca9cc4a629693b63d0b476f6ceaebf618283aed302da7f095b031",
+ "universe_git_blob": "bfba8ad39b13a88f9370242aa9d4e854acef1839",
+ "universe_digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+ "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+ "owner_approval": {
+  "approved_at_sha": "487c2c855572321b9c53119e6936f3ba5c6843ce",
+  "by": "owner",
+  "date_cairo": "2026-10-11",
+  "list_digest": "d95ba63c126029e23196e253c74cd95918cb5c9102079792194c972d20884bc5",
+  "pending_digest": "5353adbcf054184f39c98a7b898e9c7495588ee34126b34c9ecb741232c92f27",
+  "status": "APPROVED"
+ },
+ "label": "CURRENT-UNIVERSE / SURVIVOR-BIASED",
+ "note": "Static-40 = the committed symbols[] of this frozen universe file, in its rank order, unchanged (CORE-10 + CORE-20 + EXTENDED-40). Not re-ranked.",
+ "symbols": [
+  {
+   "rank": 1,
+   "symbol": "BTCUSDT",
+   "tier": "CORE-10",
+   "history_days": 2475
+  },
+  {
+   "rank": 2,
+   "symbol": "ETHUSDT",
+   "tier": "CORE-10",
+   "history_days": 2475
+  },
+  {
+   "rank": 3,
+   "symbol": "ZECUSDT",
+   "tier": "CORE-10",
+   "history_days": 1652
+  },
+  {
+   "rank": 4,
+   "symbol": "SOLUSDT",
+   "tier": "CORE-10",
+   "history_days": 1652
+  },
+  {
+   "rank": 5,
+   "symbol": "XRPUSDT",
+   "tier": "CORE-10",
+   "history_days": 1652
+  },
+  {
+   "rank": 6,
+   "symbol": "NEARUSDT",
+   "tier": "CORE-10",
+   "history_days": 1652
+  },
+  {
+   "rank": 7,
+   "symbol": "HYPEUSDT",
+   "tier": "CORE-10",
+   "history_days": 498
+  },
+  {
+   "rank": 8,
+   "symbol": "DOGEUSDT",
+   "tier": "CORE-10",
+   "history_days": 2283
+  },
+  {
+   "rank": 9,
+   "symbol": "UNIUSDT",
+   "tier": "CORE-10",
+   "history_days": 2213
+  },
+  {
+   "rank": 10,
+   "symbol": "SUIUSDT",
+   "tier": "CORE-10",
+   "history_days": 1257
+  },
+  {
+   "rank": 11,
+   "symbol": "QNTUSDT",
+   "tier": "CORE-20",
+   "history_days": 1452
+  },
+  {
+   "rank": 12,
+   "symbol": "BNBUSDT",
+   "tier": "CORE-20",
+   "history_days": 2434
+  },
+  {
+   "rank": 13,
+   "symbol": "LSKUSDT",
+   "tier": "CORE-20",
+   "history_days": 989
+  },
+  {
+   "rank": 14,
+   "symbol": "ENAUSDT",
+   "tier": "CORE-20",
+   "history_days": 921
+  },
+  {
+   "rank": 15,
+   "symbol": "1000PEPEUSDT",
+   "tier": "CORE-20",
+   "history_days": 1255
+  },
+  {
+   "rank": 16,
+   "symbol": "WLDUSDT",
+   "tier": "CORE-20",
+   "history_days": 1174
+  },
+  {
+   "rank": 17,
+   "symbol": "PUMPUSDT",
+   "tier": "CORE-20",
+   "history_days": 457
+  },
+  {
+   "rank": 18,
+   "symbol": "ADAUSDT",
+   "tier": "CORE-20",
+   "history_days": 2444
+  },
+  {
+   "rank": 19,
+   "symbol": "AVAXUSDT",
+   "tier": "CORE-20",
+   "history_days": 2208
+  },
+  {
+   "rank": 20,
+   "symbol": "LINKUSDT",
+   "tier": "CORE-20",
+   "history_days": 2458
+  },
+  {
+   "rank": 21,
+   "symbol": "TAOUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 912
+  },
+  {
+   "rank": 22,
+   "symbol": "ONDOUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 994
+  },
+  {
+   "rank": 23,
+   "symbol": "AKEUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 379
+  },
+  {
+   "rank": 24,
+   "symbol": "ARBUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1297
+  },
+  {
+   "rank": 25,
+   "symbol": "BCHUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 2475
+  },
+  {
+   "rank": 26,
+   "symbol": "BRUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 568
+  },
+  {
+   "rank": 27,
+   "symbol": "FILUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 28,
+   "symbol": "AAVEUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 2185
+  },
+  {
+   "rank": 29,
+   "symbol": "LTCUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 30,
+   "symbol": "ONEUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 31,
+   "symbol": "SANDUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 32,
+   "symbol": "TRUMPUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 630
+  },
+  {
+   "rank": 33,
+   "symbol": "MOVRUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1019
+  },
+  {
+   "rank": 34,
+   "symbol": "RLCUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 35,
+   "symbol": "XLMUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 36,
+   "symbol": "HBARUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 1652
+  },
+  {
+   "rank": 37,
+   "symbol": "PENGUUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 662
+  },
+  {
+   "rank": 38,
+   "symbol": "STRKUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 963
+  },
+  {
+   "rank": 39,
+   "symbol": "MUBARAKUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 572
+  },
+  {
+   "rank": 40,
+   "symbol": "DASHUSDT",
+   "tier": "EXTENDED-40",
+   "history_days": 2440
+  }
+ ]
+}
