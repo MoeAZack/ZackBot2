@@ -10,6 +10,7 @@ import csv
 import io
 import json
 import math
+import re
 import zipfile
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -129,7 +130,8 @@ def parse_checksum(raw: bytes, expected_filename: str | None = None) -> str:
     if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
         raise HistoryDataError("invalid archive checksum")
     if expected_filename is not None:
-        if len(fields) != 2 or fields[1].lstrip("*") != expected_filename:
+        filename = fields[1][1:] if len(fields) == 2 and fields[1].startswith("*") else (fields[1] if len(fields) == 2 else "")
+        if len(fields) != 2 or "*" in filename or filename != expected_filename:
             raise HistoryDataError("archive checksum names a different file")
     return token
 
@@ -168,19 +170,24 @@ def _get_bytes(session: requests.Session, url: str) -> bytes:
     if not safe_archive_url(url):
         raise HistoryDataError("refusing non-official archive URL")
     response = session.get(url, timeout=30, allow_redirects=False, stream=True)
-    if response.is_redirect or response.is_permanent_redirect:
-        raise HistoryDataError("archive redirect refused")
-    response.raise_for_status()
-    chunks, size = [], 0
-    iterator = response.iter_content(chunk_size=1 << 20) if hasattr(response, "iter_content") else (response.content,)
-    for chunk in iterator:
-        if not chunk:
-            continue
-        size += len(chunk)
-        if size > MAX_DOWNLOAD_BYTES:
-            raise HistoryDataError("archive download exceeds the size cap")
-        chunks.append(chunk)
-    return b"".join(chunks)
+    try:
+        if response.is_redirect or response.is_permanent_redirect:
+            raise HistoryDataError("archive redirect refused")
+        response.raise_for_status()
+        chunks, size = [], 0
+        iterator = response.iter_content(chunk_size=1 << 20) if hasattr(response, "iter_content") else (response.content,)
+        for chunk in iterator:
+            if not chunk:
+                continue
+            size += len(chunk)
+            if size > MAX_DOWNLOAD_BYTES:
+                raise HistoryDataError("archive download exceeds the size cap")
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        close = getattr(response, "close", None)
+        if close is not None:
+            close()
 
 
 def fetch_verified(spec: ArchiveSpec, root: Path,
@@ -246,6 +253,9 @@ def _csv_rows(payload: bytes) -> list[list[str]]:
 
 
 def _number(value: str, name: str, *, positive: bool = False) -> float:
+    if not isinstance(value, str) or re.fullmatch(
+            r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value) is None:
+        raise HistoryDataError(f"{name} is not a strict ASCII number")
     try:
         result = float(value)
     except (TypeError, ValueError) as exc:
@@ -256,7 +266,8 @@ def _number(value: str, name: str, *, positive: bool = False) -> float:
 
 
 def _ascii_uint(value: str, name: str) -> int:
-    if not value or any(char not in "0123456789" for char in value):
+    if (not value or any(char not in "0123456789" for char in value)
+            or (len(value) > 1 and value.startswith("0"))):
         raise HistoryDataError(f"{name} must be an ASCII unsigned integer")
     return int(value)
 
@@ -283,14 +294,22 @@ def _period_bounds(spec: ArchiveSpec) -> tuple[int, int]:
     return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
 
 
-def parse_kline_zip(payload: bytes, spec: ArchiveSpec | None = None) -> list[dict[str, Any]]:
+def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
     rows = _csv_rows(payload)
     if rows[0] == KLINE_HEADER:
         rows = rows[1:]
-    parsed, previous = [], -1
+    parsed, previous, archive_width = [], -1, None
     for row in rows:
         if len(row) != 12:
             raise HistoryDataError("kline row must have 12 columns")
+        _ascii_uint(row[0], "kline open")
+        _ascii_uint(row[6], "kline close")
+        widths = {len(row[0]), len(row[6])}
+        if len(widths) != 1 or (archive_width is not None and archive_width not in widths):
+            raise HistoryDataError("kline archive mixes timestamp units")
+        archive_width = next(iter(widths))
+        if archive_width == 16 and (int(row[0]) % 1000 != 0 or int(row[6]) % 1000 != 999):
+            raise HistoryDataError("microsecond kline residue is not canonical")
         opened, closed = _timestamp_ms(row[0], "kline open"), _timestamp_ms(row[6], "kline close")
         if opened <= previous or opened % 3_600_000 != 0:
             raise HistoryDataError("kline opens must be unique, increasing and hourly")
@@ -308,14 +327,13 @@ def parse_kline_zip(payload: bytes, spec: ArchiveSpec | None = None) -> list[dic
     if not parsed:
         raise HistoryDataError("kline archive contains no data rows")
     validate_hourly_contiguous(parsed)
-    if spec is not None:
-        start, end = _period_bounds(spec)
-        if parsed[0]["open_time"] != start or parsed[-1]["close_time"] != end - 1:
-            raise HistoryDataError("kline archive does not exactly cover its declared period")
+    start, end = _period_bounds(spec)
+    if parsed[0]["open_time"] != start or parsed[-1]["close_time"] != end - 1:
+        raise HistoryDataError("kline archive does not exactly cover its declared period")
     return parsed
 
 
-def parse_funding_zip(payload: bytes, spec: ArchiveSpec | None = None) -> list[dict[str, Any]]:
+def parse_funding_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
     rows = _csv_rows(payload)
     expected = ["calc_time", "funding_interval_hours", "last_funding_rate"]
     if rows[0] != expected:
@@ -328,15 +346,16 @@ def parse_funding_zip(payload: bytes, spec: ArchiveSpec | None = None) -> list[d
         interval = _ascii_uint(row[1], "funding interval")
         if timestamp <= previous or timestamp >= SEAL_MS or interval <= 0:
             raise HistoryDataError("funding event violates ordering, interval or signed seal")
-        parsed.append({"funding_time": timestamp, "interval_hours": interval,
-                       "funding_rate": _number(row[2], "funding rate")})
+        rate = _number(row[2], "funding rate")
+        if abs(rate) > 1:
+            raise HistoryDataError("funding rate magnitude exceeds the schema bound")
+        parsed.append({"funding_time": timestamp, "interval_hours": interval, "funding_rate": rate})
         previous = timestamp
     if not parsed:
         raise HistoryDataError("funding archive contains no events")
-    if spec is not None:
-        start, end = _period_bounds(spec)
-        if any(not start <= row["funding_time"] < end for row in parsed):
-            raise HistoryDataError("funding event falls outside its declared period")
+    start, end = _period_bounds(spec)
+    if any(not start <= row["funding_time"] < end for row in parsed):
+        raise HistoryDataError("funding event falls outside its declared period")
     return parsed
 
 
