@@ -171,19 +171,82 @@ def test_kline_parser_normalizes_official_microsecond_transition():
     assert row["close_time"] == start + 3_599_999
 
 
-def test_period_coverage_is_pinned_when_spec_is_provided():
+def test_period_gaps_are_ledgered_without_synthetic_repair():
     start = 1_735_689_600_000
     text = "".join(kline(start + hour * 3_600_000) for hour in range(24))
     archive_spec = spec()
-    assert len(H.parse_kline_zip(zipped("x.csv", text), archive_spec)) == 24
-    with pytest.raises(H.HistoryDataError, match="exactly cover"):
-        H.parse_kline_zip(zipped("x.csv", text.splitlines(True)[1]), archive_spec)
+    complete = H.parse_kline_archive(zipped("x.csv", text), archive_spec)
+    assert len(complete.rows) == complete.expected_hours == 24
+    assert complete.incomplete == [] and complete.coverage == 1
+    incomplete = H.parse_kline_archive(zipped("x.csv", "".join(text.splitlines(True)[1:])),
+                                       archive_spec)
+    assert len(incomplete.rows) == 23
+    assert incomplete.incomplete == [{"open_time": start, "reason": "missing_source_hour"}]
+    assert incomplete.coverage == 23 / 24
+    with pytest.raises(H.HistoryDataError, match="incomplete"):
+        H.parse_kline_zip(zipped("x.csv", "".join(text.splitlines(True)[1:])), archive_spec)
 
 
-def test_hourly_gap_is_refused():
+def test_hourly_gap_and_partial_close_are_quarantined():
     start = 1_735_689_600_000
-    with pytest.raises(H.HistoryDataError, match="gap or overlap"):
-        H.parse_kline_zip(zipped("x.csv", kline(start) + kline(start + 7_200_000)), spec())
+    partial = f"{start},100,110,90,105,1,{start + 1000},1,1,1,1,0\n"
+    text = partial + "".join(kline(start + hour * 3_600_000) for hour in range(2, 24))
+    archive = H.parse_kline_archive(zipped("x.csv", text), spec())
+    assert len(archive.rows) == 22
+    assert archive.incomplete == [
+        {"open_time": start, "close_time": start + 1000, "reason": "noncanonical_close"},
+        {"open_time": start + 3_600_000, "reason": "missing_source_hour"},
+    ]
+    assert archive.rows[0]["open_time"] == start + 2 * 3_600_000
+
+
+def test_kline_period_seal_and_ledger_order_boundaries():
+    start = 1_735_689_600_000
+    full = day_klines(start)
+    with pytest.raises(H.HistoryDataError, match="outside its declared period"):
+        H.parse_kline_archive(zipped("x.csv", kline(start - H.HOUR_MS) + full), spec())
+    with pytest.raises(H.HistoryDataError, match="outside its declared period"):
+        H.parse_kline_archive(zipped("x.csv", full + kline(start + 24 * H.HOUR_MS)), spec())
+    seal_day = H.SEAL_MS - 24 * H.HOUR_MS
+    rows = day_klines(seal_day).splitlines(True)
+    rows[-1] = f"{H.SEAL_MS - H.HOUR_MS},100,110,90,105,1,{H.SEAL_MS},1,1,1,1,0\n"
+    with pytest.raises(H.HistoryDataError, match="signed seal"):
+        H.parse_kline_archive(zipped("x.csv", "".join(rows)), spec("2026-09-27"))
+
+    partial_hour_two = f"{start + 2 * H.HOUR_MS},100,110,90,105,1,{start + 2 * H.HOUR_MS + 1},1,1,1,1,0\n"
+    text = kline(start) + partial_hour_two + "".join(
+        kline(start + hour * H.HOUR_MS) for hour in range(3, 24)
+    )
+    archive = H.parse_kline_archive(zipped("x.csv", text), spec())
+    assert [item["open_time"] for item in archive.incomplete] == [
+        start + H.HOUR_MS, start + 2 * H.HOUR_MS
+    ]
+
+
+def test_common_hour_coverage_and_longest_gap_gates():
+    start = 1_700_000_000_000 // H.HOUR_MS * H.HOUR_MS
+
+    def rows(hours, missing=()):
+        return [{"open_time": start + i * H.HOUR_MS} for i in range(hours) if i not in missing]
+
+    exactly = H.validate_common_hour_coverage(rows(201), rows(201, {100}),
+                                               start, start + 201 * H.HOUR_MS)
+    assert exactly["coverage"] == 0.99
+    with pytest.raises(H.HistoryDataError, match="99.0%"):
+        H.validate_common_hour_coverage(rows(201), rows(201, {50, 150}),
+                                        start, start + 201 * H.HOUR_MS)
+    accepted = H.validate_common_hour_coverage(rows(10_000), rows(10_000, set(range(100, 124))),
+                                                start, start + 10_000 * H.HOUR_MS)
+    assert accepted["longest_incomplete_run_hours"] == 24
+    with pytest.raises(H.HistoryDataError, match="24-hour"):
+        H.validate_common_hour_coverage(rows(10_000), rows(10_000, set(range(100, 125))),
+                                        start, start + 10_000 * H.HOUR_MS)
+
+
+def test_funding_mark_bar_is_strictly_earlier():
+    hour = 1_700_000_000_000 // H.HOUR_MS * H.HOUR_MS
+    assert H.required_mark_open_time(hour) == hour - H.HOUR_MS
+    assert H.required_mark_open_time(hour + 2) == hour - H.HOUR_MS
 
 
 def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():

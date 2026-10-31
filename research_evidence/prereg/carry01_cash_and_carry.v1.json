@@ -1,7 +1,7 @@
 {
   "format": "zb-carry01-prereg/1",
   "candidate_id": "carry01_cash_and_carry.v1",
-  "contract_digest_sha256": "5b6ab5a583f512388174d604f7c8d22c9564a286a5f237c8ca8ccfdf8adb0be7",
+  "contract_digest_sha256": "10ca39c7e0f5d2f273177ebe549a3433c3ad14447b2c7f5caf0879c1d6228e82",
   "family": "delta_neutral_spot_perp_carry",
   "status": "SIGNED - HISTORICAL EVALUATION AUTHORIZED - PAPER AND MAINNET FORBIDDEN",
   "signed": true,
@@ -48,8 +48,10 @@
       "funding": "nominal fundingTime plus 300 seconds; no event is credited earlier"
     },
     "read_definition": "read means deserialize a market-data row into the replay process; no archive containing a row on or after the seal is used, and no such row may be deserialized, logged or summarized",
-    "missing": "no forward fill across a missing hourly spot/mark observation or funding event; affected interval is INCOMPLETE",
-    "timestamps": "archive timestamps must be ASCII unsigned integers of exactly 13 digits (milliseconds) or 16 digits (microseconds); 16-digit values are normalized to milliseconds by integer floor division by 1000 before every grid, order, period and seal check; normalized timestamps are unique and strictly increasing; hourly close must equal open plus 3599999 ms; funding timestamps are not forced to an 8h grid because Binance intervals can vary; every other width, unit, duplicate, non-increasing, future or schema-invalid event refuses the run",
+    "missing": "no forward fill or synthetic repair across a missing hourly spot/mark observation, a source row whose close is not open plus 3599999 ms, or a missing funding event; each affected hour is recorded in the checksum-bound data-quality ledger as INCOMPLETE and is excluded; an hourly return requires consecutive valid common spot and mark observations at t-1 and t, so returns never bridge an incomplete hour",
+    "timestamps": "archive timestamps must be ASCII unsigned integers of exactly 13 digits (milliseconds) or 16 digits (microseconds); 16-digit values are normalized to milliseconds by integer floor division by 1000 before every grid, order, period and seal check; normalized timestamps are unique, strictly increasing and inside the declared archive period; a source hourly row whose close is not open plus 3599999 ms is quarantined as INCOMPLETE rather than used; funding timestamps are not forced to an 8h grid because Binance intervals can vary; every other width, unit, duplicate, non-increasing, future, out-of-period or schema-invalid event refuses the run",
+    "coverage_gate": "before any return is calculated, each symbol-calendar-year uses every expected hour after the first as the denominator and counts an eligible return hour t only when both spot and mark exist at t-1 and t; eligible divided by expected must be at least 99.0%; a continuous run counts expected open times absent from either leg and any run longer than 24 hours refuses evaluation pending a signed amendment; exact missing and quarantined timestamps, reasons and archive checksums are published",
+    "funding_missing_mark": "a funding event requires the latest 1h mark bar whose close is strictly earlier than fundingTime; if that exact bar is missing or quarantined, the funding event is INCOMPLETE and excluded, no older mark is substituted, and it does not count toward the minimum-funding-events gate",
     "sealed_development_end_exclusive": "2026-09-28T00:00:00Z",
     "holdout_access": "nothing on or after the sealed development end is read until a separate signed holdout authorization"
   },

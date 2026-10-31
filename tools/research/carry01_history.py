@@ -27,6 +27,9 @@ SEAL_MS = int(SEAL.timestamp() * 1000)
 PREREG = Path("research_evidence/prereg/carry01_cash_and_carry.v1.json")
 MAX_ARCHIVE_MEMBER_BYTES = 50_000_000
 MAX_DOWNLOAD_BYTES = 100_000_000
+HOUR_MS = 3_600_000
+MIN_COMMON_COVERAGE = 0.99
+MAX_INCOMPLETE_RUN_HOURS = 24
 KLINE_HEADER = ["open_time", "open", "high", "low", "close", "volume", "close_time",
                 "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
 
@@ -44,6 +47,23 @@ class ArchiveSpec:
     period: str
     url: str
     checksum_url: str
+
+
+@dataclass(frozen=True)
+class KlineArchive:
+    """Validated usable rows plus a deterministic ledger of unusable source hours."""
+
+    rows: list[dict[str, Any]]
+    incomplete: list[dict[str, Any]]
+    expected_hours: int
+
+    @property
+    def valid_hours(self) -> int:
+        return len(self.rows)
+
+    @property
+    def coverage(self) -> float:
+        return self.valid_hours / self.expected_hours
 
 
 def canonical_digest(contract: dict[str, Any]) -> str:
@@ -294,11 +314,14 @@ def _period_bounds(spec: ArchiveSpec) -> tuple[int, int]:
     return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
 
 
-def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
+def parse_kline_archive(payload: bytes, spec: ArchiveSpec) -> KlineArchive:
+    """Parse one archive without inventing bars across documented source outages."""
     rows = _csv_rows(payload)
     if rows[0] == KLINE_HEADER:
         rows = rows[1:]
-    parsed, previous, archive_width = [], -1, None
+    parsed, quarantined, observed = [], [], set()
+    previous, archive_width = -1, None
+    start, end = _period_bounds(spec)
     for row in rows:
         if len(row) != 12:
             raise HistoryDataError("kline row must have 12 columns")
@@ -313,24 +336,79 @@ def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
         opened, closed = _timestamp_ms(row[0], "kline open"), _timestamp_ms(row[6], "kline close")
         if opened <= previous or opened % 3_600_000 != 0:
             raise HistoryDataError("kline opens must be unique, increasing and hourly")
-        if closed - opened != 3_599_999 or closed >= SEAL_MS:
-            raise HistoryDataError("kline close violates the hourly grid or signed seal")
+        if opened < start or opened >= end:
+            raise HistoryDataError("kline row falls outside its declared period")
+        if closed >= SEAL_MS:
+            raise HistoryDataError("kline close violates the signed seal")
         open_price = _number(row[1], "open", positive=True)
         high = _number(row[2], "high", positive=True)
         low = _number(row[3], "low", positive=True)
         close = _number(row[4], "close", positive=True)
         if high < max(open_price, low, close) or low > min(open_price, high, close):
             raise HistoryDataError("kline OHLC ordering is invalid")
-        parsed.append({"open_time": opened, "close_time": closed, "open": open_price,
-                       "high": high, "low": low, "close": close})
+        observed.add(opened)
+        if closed - opened != 3_599_999:
+            quarantined.append({"open_time": opened, "close_time": closed,
+                                "reason": "noncanonical_close"})
+        else:
+            parsed.append({"open_time": opened, "close_time": closed, "open": open_price,
+                           "high": high, "low": low, "close": close})
         previous = opened
     if not parsed:
         raise HistoryDataError("kline archive contains no data rows")
-    validate_hourly_contiguous(parsed)
-    start, end = _period_bounds(spec)
-    if parsed[0]["open_time"] != start or parsed[-1]["close_time"] != end - 1:
-        raise HistoryDataError("kline archive does not exactly cover its declared period")
-    return parsed
+    expected = range(start, end, 3_600_000)
+    missing = [{"open_time": opened, "reason": "missing_source_hour"}
+               for opened in expected if opened not in observed]
+    return KlineArchive(parsed, sorted(quarantined + missing, key=lambda item: item["open_time"]),
+                        (end - start) // 3_600_000)
+
+
+def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
+    """Fail-closed compatibility view that cannot discard a data-quality ledger."""
+    archive = parse_kline_archive(payload, spec)
+    if archive.incomplete:
+        raise HistoryDataError("kline archive is incomplete; use parse_kline_archive with its ledger")
+    return archive.rows
+
+
+def validate_common_hour_coverage(spot_rows: Iterable[dict[str, Any]],
+                                  mark_rows: Iterable[dict[str, Any]],
+                                  start_ms: int, end_ms: int) -> dict[str, Any]:
+    """Enforce the signed annual common-grid and continuous-gap gates."""
+    if start_ms % HOUR_MS or end_ms % HOUR_MS or end_ms <= start_ms + HOUR_MS:
+        raise HistoryDataError("common-hour coverage bounds must span aligned hourly timestamps")
+
+    def times(rows: Iterable[dict[str, Any]], leg: str) -> set[int]:
+        values = [int(row["open_time"]) for row in rows]
+        if len(values) != len(set(values)) or any(t < start_ms or t >= end_ms or t % HOUR_MS
+                                                  for t in values):
+            raise HistoryDataError(f"{leg} rows violate unique in-range hourly coverage")
+        return set(values)
+
+    spot, mark = times(spot_rows, "spot"), times(mark_rows, "mark")
+    expected = list(range(start_ms, end_ms, HOUR_MS))
+    common = spot & mark
+    eligible = sum(t in common and t - HOUR_MS in common for t in expected[1:])
+    denominator = len(expected) - 1
+    coverage = eligible / denominator
+    longest = current = 0
+    for t in expected:
+        if t not in common:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    if coverage < MIN_COMMON_COVERAGE:
+        raise HistoryDataError("consecutive common-hour coverage is below the signed 99.0% gate")
+    if longest > MAX_INCOMPLETE_RUN_HOURS:
+        raise HistoryDataError("continuous incomplete run exceeds the signed 24-hour gate")
+    return {"expected_return_hours": denominator, "eligible_return_hours": eligible,
+            "coverage": coverage, "longest_incomplete_run_hours": longest}
+
+
+def required_mark_open_time(funding_time_ms: int) -> int:
+    """Open time of the latest 1h mark bar closed strictly before a funding event."""
+    return ((funding_time_ms - HOUR_MS) // HOUR_MS) * HOUR_MS
 
 
 def parse_funding_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
