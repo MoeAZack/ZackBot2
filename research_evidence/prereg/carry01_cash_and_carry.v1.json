@@ -1,7 +1,7 @@
 {
   "format": "zb-carry01-prereg/1",
   "candidate_id": "carry01_cash_and_carry.v1",
-  "contract_digest_sha256": "2f2cb1496aada4301963bd47615dcfb3da238feb9d5e2a7f178a67473d590df1",
+  "contract_digest_sha256": "3522d605c10efb216d94303f76c936be13b17883a8337c711e5125f2cd7dc796",
   "family": "delta_neutral_spot_perp_carry",
   "status": "SIGNED - HISTORICAL EVALUATION AUTHORIZED - PAPER AND MAINNET FORBIDDEN",
   "signed": true,
@@ -30,7 +30,7 @@
     "maintenance_margin_rate_proxy": 0.005
   },
   "data": {
-    "source": "official Binance public archive at data.binance.vision; every zip verified against its sibling CHECKSUM",
+    "source": "official Binance public archive at data.binance.vision with every zip verified against its sibling CHECKSUM; because Binance publishes no daily funding ZIPs, the sealed 2026-09 funding tail uses the official unauthenticated USD-M Futures GET /fapi/v1/fundingRate endpoint under the exact signed request and local-freeze rule",
     "pairs": {
       "BTCUSDT": "2020-01-01T00:00:00Z",
       "ETHUSDT": "2020-01-01T00:00:00Z",
@@ -40,7 +40,7 @@
     "series": {
       "spot": "spot/monthly/klines/<symbol>/1h through 2026-08, with the signed daily-recovery rule for ledgered monthly gaps, then spot/daily/klines/<symbol>/1h for 2026-09-01 through 2026-09-27",
       "perpetual_mark": "futures/um/monthly/markPriceKlines/<symbol>/1h through 2026-08, with the signed daily-recovery rule for ledgered monthly gaps, then futures/um/daily/markPriceKlines/<symbol>/1h for 2026-09-01 through 2026-09-27",
-      "funding": "futures/um/monthly/fundingRate/<symbol> through 2026-08, then futures/um/daily/fundingRate/<symbol> for 2026-09-01 through 2026-09-27"
+      "funding": "futures/um/monthly/fundingRate/<symbol> through 2026-08; daily for each UTC day 2026-09-01 through 2026-09-27 via exact official GET https://fapi.binance.com/fapi/v1/fundingRate with symbol, inclusive day startTime, inclusive day endTime, and limit=1000"
     },
     "availability": {
       "spot_1h": "bar is available only after close_time; replay uses it from the next millisecond",
@@ -53,6 +53,7 @@
     "coverage_gate": "before any return is calculated, each symbol-calendar-year uses every expected hour after the first as the denominator and counts an eligible return hour t only when both spot and mark exist at t-1 and t; eligible divided by expected must be at least 99.0%; a continuous run counts expected open times absent from either leg and any run longer than 24 hours refuses evaluation pending a signed amendment; exact missing and quarantined timestamps, reasons and archive checksums are published",
     "funding_missing_mark": "a funding event requires the latest 1h mark bar whose close is strictly earlier than fundingTime; if that exact bar is missing or quarantined, the funding event is INCOMPLETE and excluded, no older mark is substituted, and it does not count toward the minimum-funding-events gate",
     "daily_recovery": "after a checksum-verified monthly spot or mark archive is parsed, each UTC calendar date containing a ledgered missing or quarantined hour deterministically authorizes exactly the matching official Binance daily archive and sibling CHECKSUM; the daily archive is fully schema/grid/period/seal validated; every daily row overlapping a valid monthly row must be identical or the run refuses; only exact monthly-ledger timestamps may be added; duplicate recovery or any unledgered addition refuses; a daily row may replace a shortened monthly row only at the same open_time; unresolved hours remain INCOMPLETE and all coverage gates still apply; recovery is source repair only and is completed before any return, PnL, signal, score or selection metric",
+    "funding_rest_freeze": "the 2026-09 daily funding request is an exact-host HTTPS GET with no redirect, authentication or mutable default window; symbol/startTime/endTime/limit=1000 are mandatory and endTime is before the signed seal; the first valid nonempty UTF-8 JSON response is schema/order/period/seal/rate/mark-price validated, including an optional rateType that must be Regular, frozen write-once with a local SHA-256 sibling, and reused byte-for-byte thereafter; a missing, changed-schema, non-Regular, duplicate, out-of-period, post-seal or locally digest-mismatched response refuses evaluation; this source amendment was fixed after the nonexistent daily funding ZIP returned 404 and before any return, PnL, signal, score or selection metric",
     "sealed_development_end_exclusive": "2026-09-28T00:00:00Z",
     "holdout_access": "nothing on or after the sealed development end is read until a separate signed holdout authorization"
   },

@@ -16,12 +16,13 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
 
 
 BASE = "https://data.binance.vision/data"
+FUNDING_API = "https://fapi.binance.com/fapi/v1/fundingRate"
 SEAL = datetime(2026, 9, 28, tzinfo=timezone.utc)
 SEAL_MS = int(SEAL.timestamp() * 1000)
 PREREG = Path("research_evidence/prereg/carry01_cash_and_carry.v1.json")
@@ -111,6 +112,14 @@ def _archive(symbol: str, market: str, series: str, frequency: str, period: str)
     elif series == "markPriceKlines":
         directory = f"futures/um/{frequency}/markPriceKlines/{symbol}/1h"
         name = f"{symbol}-1h-{period}.zip"
+    elif series == "fundingRate" and frequency == "daily":
+        start = datetime.strptime(period, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int((start + timedelta(days=1)).timestamp() * 1000) - 1
+        query = urlencode((("symbol", symbol), ("startTime", start_ms),
+                           ("endTime", end_ms), ("limit", 1000)))
+        return ArchiveSpec(symbol, market, series, frequency, period,
+                           f"{FUNDING_API}?{query}", "")
     elif series == "fundingRate":
         directory = f"futures/um/{frequency}/fundingRate/{symbol}"
         name = f"{symbol}-fundingRate-{period}.zip"
@@ -176,6 +185,25 @@ def safe_archive_url(url: str) -> bool:
             and not parsed.query and not parsed.fragment)
 
 
+def safe_funding_rest_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+        query = parse_qs(parsed.query, strict_parsing=True)
+    except (ValueError, KeyError):
+        return False
+    if not (parsed.scheme == "https" and parsed.hostname == "fapi.binance.com"
+            and port in (None, 443) and parsed.path == "/fapi/v1/fundingRate"
+            and parsed.username is None and parsed.password is None and not parsed.fragment):
+        return False
+    return (set(query) == {"symbol", "startTime", "endTime", "limit"}
+            and len(query["symbol"]) == len(query["startTime"]) == len(query["endTime"])
+            == len(query["limit"]) == 1 and query["limit"] == ["1000"]
+            and query["symbol"][0].isalnum() and query["startTime"][0].isdigit()
+            and query["endTime"][0].isdigit()
+            and int(query["startTime"][0]) <= int(query["endTime"][0]) < SEAL_MS)
+
+
 def archive_relative_path(url: str) -> Path:
     if not safe_archive_url(url):
         raise HistoryDataError("archive URL is outside the frozen official source")
@@ -210,9 +238,29 @@ def _get_bytes(session: requests.Session, url: str) -> bytes:
             close()
 
 
+def _get_funding_rest_bytes(session: requests.Session, url: str) -> bytes:
+    if not safe_funding_rest_url(url):
+        raise HistoryDataError("refusing noncanonical funding history request")
+    response = session.get(url, timeout=30, allow_redirects=False, stream=True)
+    try:
+        if response.is_redirect or response.is_permanent_redirect:
+            raise HistoryDataError("funding history redirect refused")
+        response.raise_for_status()
+        payload = response.content
+        if len(payload) > MAX_DOWNLOAD_BYTES:
+            raise HistoryDataError("funding history response exceeds the size cap")
+        return payload
+    finally:
+        close = getattr(response, "close", None)
+        if close is not None:
+            close()
+
+
 def fetch_verified(spec: ArchiveSpec, root: Path,
                    session: requests.Session | None = None) -> dict[str, Any]:
     """Fetch one archive and sibling checksum, then atomically keep verified bytes."""
+    if spec.frequency == "daily" and spec.series == "fundingRate":
+        raise HistoryDataError("daily funding history must use fetch_funding_rest")
     session = session or requests.Session()
     checksum = _get_bytes(session, spec.checksum_url)
     payload = _get_bytes(session, spec.url)
@@ -242,6 +290,41 @@ def fetch_verified(spec: ArchiveSpec, root: Path,
     checksum_partial.replace(checksum_path)  # sibling exists before archive becomes visible
     payload_partial.replace(destination)     # archive is the commit marker for the pair
     return {"path": destination.as_posix(), "sha256": digest, "bytes": len(payload), "reused": False}
+
+
+def funding_rest_relative_path(spec: ArchiveSpec) -> Path:
+    if spec.frequency != "daily" or spec.series != "fundingRate" or not safe_funding_rest_url(spec.url):
+        raise HistoryDataError("not a canonical daily funding history input")
+    return Path("futures/um/rest/fundingRate") / spec.symbol / f"{spec.symbol}-fundingRate-{spec.period}.json"
+
+
+def fetch_funding_rest(spec: ArchiveSpec, root: Path,
+                       session: requests.Session | None = None) -> dict[str, Any]:
+    """Freeze one exact pre-seal official REST response with a local SHA-256 sibling."""
+    destination = root / funding_rest_relative_path(spec)
+    digest_path = destination.with_name(destination.name + ".sha256")
+    if destination.exists():
+        if not digest_path.exists():
+            raise HistoryDataError("stored funding response has no digest sibling")
+        payload = destination.read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        if digest_path.read_text(encoding="ascii").strip() != digest:
+            raise HistoryDataError("stored funding response digest mismatch")
+        parse_funding_rest(payload, spec)
+        return {"path": destination.as_posix(), "sha256": digest,
+                "bytes": len(payload), "reused": True}
+    payload = _get_funding_rest_bytes(session or requests.Session(), spec.url)
+    parse_funding_rest(payload, spec)
+    digest = hashlib.sha256(payload).hexdigest()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    digest_partial = digest_path.with_name(digest_path.name + ".part")
+    payload_partial = destination.with_name(destination.name + ".part")
+    digest_partial.write_text(digest + "\n", encoding="ascii")
+    payload_partial.write_bytes(payload)
+    digest_partial.replace(digest_path)
+    payload_partial.replace(destination)
+    return {"path": destination.as_posix(), "sha256": digest,
+            "bytes": len(payload), "reused": False}
 
 
 def _csv_rows(payload: bytes) -> list[list[str]]:
@@ -477,6 +560,37 @@ def parse_funding_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]
     start, end = _period_bounds(spec)
     if any(not start <= row["funding_time"] < end for row in parsed):
         raise HistoryDataError("funding event falls outside its declared period")
+    return parsed
+
+
+def parse_funding_rest(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
+    """Validate the exact official funding-history JSON response for one signed day."""
+    try:
+        raw = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HistoryDataError("funding history response is not valid UTF-8 JSON") from exc
+    if not isinstance(raw, list) or not raw:
+        raise HistoryDataError("funding history response contains no events")
+    start, end = _period_bounds(spec)
+    parsed, previous = [], -1
+    expected_keys = {"symbol", "fundingTime", "fundingRate", "markPrice"}
+    for item in raw:
+        if (not isinstance(item, dict)
+                or set(item) not in (expected_keys, expected_keys | {"rateType"})):
+            raise HistoryDataError("funding history response schema changed")
+        if "rateType" in item and item["rateType"] != "Regular":
+            raise HistoryDataError("funding history rate type is not Regular")
+        if item["symbol"] != spec.symbol or not isinstance(item["fundingTime"], int):
+            raise HistoryDataError("funding history symbol or timestamp type changed")
+        timestamp = _timestamp_ms(str(item["fundingTime"]), "funding time")
+        if timestamp <= previous or timestamp < start or timestamp >= end or timestamp >= SEAL_MS:
+            raise HistoryDataError("funding history event violates order, period or signed seal")
+        rate = _number(item["fundingRate"], "funding rate")
+        mark = _number(item["markPrice"], "funding mark price", positive=True)
+        if abs(rate) > 1:
+            raise HistoryDataError("funding rate exceeds the signed magnitude bound")
+        parsed.append({"funding_time": timestamp, "funding_rate": rate, "mark_price": mark})
+        previous = timestamp
     return parsed
 
 

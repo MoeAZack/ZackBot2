@@ -29,7 +29,11 @@ def test_manifest_uses_months_then_only_preseal_days():
     specs = H.build_manifest(contract())
     assert len(specs) == 996
     assert len({s.url for s in specs}) == len(specs)
-    assert all(H.safe_archive_url(s.url) and H.safe_archive_url(s.checksum_url) for s in specs)
+    archives = [s for s in specs if not (s.frequency == "daily" and s.series == "fundingRate")]
+    funding_rest = [s for s in specs if s.frequency == "daily" and s.series == "fundingRate"]
+    assert all(H.safe_archive_url(s.url) and H.safe_archive_url(s.checksum_url) for s in archives)
+    assert len(funding_rest) == 4 * 27
+    assert all(H.safe_funding_rest_url(s.url) and s.checksum_url == "" for s in funding_rest)
     assert not any("-2026-09.zip" in s.url for s in specs)
     assert any("-2026-09-27.zip" in s.url for s in specs)
     assert not any("-2026-09-28.zip" in s.url for s in specs)
@@ -122,6 +126,51 @@ def test_fetch_verified_refuses_redirect_and_offsite(tmp_path):
     with pytest.raises(H.HistoryDataError, match="outside"):
         H.archive_relative_path("https://example.com/data/x.zip")
     assert H.safe_archive_url("https://data.binance.vision:abc/data/x.zip") is False
+
+
+def test_daily_funding_rest_is_exact_preseal_frozen_and_reused(tmp_path):
+    spec = next(s for s in H.build_manifest(contract())
+                if s.frequency == "daily" and s.series == "fundingRate")
+    payload = json.dumps([
+        {"symbol": spec.symbol, "fundingTime": 1_788_249_600_000,
+         "fundingRate": "0.0001", "markPrice": "100.5", "rateType": "Regular"},
+        {"symbol": spec.symbol, "fundingTime": 1_788_278_400_000,
+         "fundingRate": "-0.0002", "markPrice": "101.5"},
+    ], separators=(",", ":")).encode()
+    response = Response(payload)
+    result = H.fetch_funding_rest(spec, tmp_path, Session([response]))
+    kept = tmp_path / H.funding_rest_relative_path(spec)
+    assert kept.read_bytes() == payload
+    assert kept.with_name(kept.name + ".sha256").read_text().strip() == result["sha256"]
+    assert H.parse_funding_rest(payload, spec)[1]["funding_rate"] < 0
+    assert response.closed is True
+    assert H.fetch_funding_rest(spec, tmp_path, Session([]))["reused"] is True
+    with pytest.raises(H.HistoryDataError, match="fetch_funding_rest"):
+        H.fetch_verified(spec, tmp_path, Session([]))
+
+
+def test_funding_rest_refuses_url_schema_period_and_local_tamper(tmp_path):
+    spec = next(s for s in H.build_manifest(contract())
+                if s.frequency == "daily" and s.series == "fundingRate")
+    assert H.safe_funding_rest_url(spec.url + "&limit=999") is False
+    start, end = H._period_bounds(spec)
+    good = [{"symbol": spec.symbol, "fundingTime": start + 1,
+             "fundingRate": "0.0001", "markPrice": "100"}]
+    bad_schema = json.dumps([{**good[0], "extra": "x"}]).encode()
+    with pytest.raises(H.HistoryDataError, match="schema"):
+        H.parse_funding_rest(bad_schema, spec)
+    bad_type = json.dumps([{**good[0], "rateType": "Adjusted"}]).encode()
+    with pytest.raises(H.HistoryDataError, match="not Regular"):
+        H.parse_funding_rest(bad_type, spec)
+    out_of_period = json.dumps([{**good[0], "fundingTime": end}]).encode()
+    with pytest.raises(H.HistoryDataError, match="period"):
+        H.parse_funding_rest(out_of_period, spec)
+    payload = json.dumps(good).encode()
+    H.fetch_funding_rest(spec, tmp_path, Session([Response(payload)]))
+    kept = tmp_path / H.funding_rest_relative_path(spec)
+    kept.write_bytes(payload + b" ")
+    with pytest.raises(H.HistoryDataError, match="digest mismatch"):
+        H.fetch_funding_rest(spec, tmp_path, Session([]))
 
 
 def zipped(name, text):
