@@ -527,6 +527,7 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
     raw_names = ['binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json',                   # #242 raw-byte snapshot
                  'breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json']                 # #242 signed amendment
     assert names == raw_names + ['breakout_pyramid_falsify.v1.json',                           # breakout_pyramid falsification (DRAFT)
+                     'carry01_cash_and_carry.v1.json',                                         # #258 CARRY-01 prereg (DRAFT)
                      'core10_fundgap_g3_report.v1.json',                                       # #171 FUND-GAP-01 G3
                      'core10_fundgap_g4_report.v1.json',                                       # #171 FUND-GAP-01 G4
                      'core10_fundgap_report.v1.json',                                          # #170 FUND-GAP-01 FG-1

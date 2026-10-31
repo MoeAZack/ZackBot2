@@ -1,0 +1,135 @@
+{
+  "format": "zb-carry01-prereg/1",
+  "candidate_id": "carry01_cash_and_carry.v1",
+  "contract_digest_sha256": "bf3daee296a530d9c8540c9e488d5222f7caa54d600b85e2384ecbf46266e5e8",
+  "family": "delta_neutral_spot_perp_carry",
+  "status": "SIGNED - HISTORICAL EVALUATION AUTHORIZED - PAPER AND MAINNET FORBIDDEN",
+  "signed": true,
+  "signed_at": "2026-10-31T08:20:00+02:00",
+  "signed_by": "Codex integration authority after Cowork exact-head PASS on 4a1cfd9",
+  "historical_evaluation": "authorized only for this digest and the sealed pre-2026-09-28 inputs; any contract change invalidates the signature and requires a new independent review",
+  "drafted": "2026-10-31 Cairo by Codex after PR #257 merged",
+  "hypothesis": "An equal-weight BTC/ETH long-spot, matched-short-perpetual portfolio earns a positive return above cash after all four-fill costs because positive settled funding outweighs hedge drift, rebalancing and execution drag.",
+  "trial_budget": {
+    "primary": 1,
+    "diagnostics": 4,
+    "multiplicity": "the equal-weight USDT basket is the only promotable primary; asset and USDC rows are diagnostics and cannot rescue it"
+  },
+  "portfolio": {
+    "primary": "equal-weight BTCUSDT and ETHUSDT",
+    "diagnostics": ["BTCUSDT", "ETHUSDT", "equal-weight BTCUSDC and ETHUSDC", "cash benchmark"],
+    "start_equity": 10000.0,
+    "asset_weights": {"BTC": 0.5, "ETH": 0.5},
+    "weight_rule": "each asset is a separate sleeve; if either sleeve leaves its leverage band, rebalance the whole portfolio at the next causal observation to 50/50 sleeve equity and 3x futures leverage per sleeve, charging every close and reopen fill; weights otherwise drift",
+    "spot_fraction": 0.75,
+    "futures_collateral_fraction": 0.25,
+    "hedge": "long spot and short the same base-asset quantity",
+    "target_futures_leverage": 3.0,
+    "rebalance_band": [2.0, 5.0],
+    "rebalance": "when observed futures leverage leaves the closed 2x..5x band, close and reopen both legs at the same causal observation; charge every fill",
+    "maintenance_margin_rate_proxy": 0.005
+  },
+  "data": {
+    "source": "official Binance public archive at data.binance.vision; every zip verified against its sibling CHECKSUM",
+    "pairs": {
+      "BTCUSDT": "2020-01-01T00:00:00Z",
+      "ETHUSDT": "2020-01-01T00:00:00Z",
+      "BTCUSDC": "2024-01-01T00:00:00Z",
+      "ETHUSDC": "2024-01-01T00:00:00Z"
+    },
+    "series": {
+      "spot": "spot/monthly/klines/<symbol>/1h through 2026-08, then spot/daily/klines/<symbol>/1h for 2026-09-01 through 2026-09-27",
+      "perpetual_mark": "futures/um/monthly/markPriceKlines/<symbol>/1h through 2026-08, then futures/um/daily/markPriceKlines/<symbol>/1h for 2026-09-01 through 2026-09-27",
+      "funding": "futures/um/monthly/fundingRate/<symbol> through 2026-08, then futures/um/daily/fundingRate/<symbol> for 2026-09-01 through 2026-09-27"
+    },
+    "availability": {
+      "spot_1h": "bar is available only after close_time; replay uses it from the next millisecond",
+      "mark_1h": "bar is available only after close_time; replay uses it from the next millisecond",
+      "funding": "nominal fundingTime plus 300 seconds; no event is credited earlier"
+    },
+    "read_definition": "read means deserialize a market-data row into the replay process; no archive containing a row on or after the seal is used, and no such row may be deserialized, logged or summarized",
+    "missing": "no forward fill across a missing hourly spot/mark observation or funding event; affected interval is INCOMPLETE",
+    "timestamps": "all timestamps are unique strictly increasing integer milliseconds; hourly bar close times must be within 1000 ms of their expected boundary; funding timestamps are not forced to an 8h grid because Binance intervals can vary, but duplicate, non-increasing, future or schema-invalid events refuse the run",
+    "sealed_development_end_exclusive": "2026-09-28T00:00:00Z",
+    "holdout_access": "nothing on or after the sealed development end is read until a separate signed holdout authorization"
+  },
+  "costs": {
+    "spot_taker_bps_per_fill": 10.0,
+    "perpetual_taker_bps_per_fill": 5.0,
+    "spot_slippage_bps_per_fill": 5.0,
+    "perpetual_slippage_bps_per_fill": 5.0,
+    "funding": "actual signed settled rate times held short quantity and the close price of the latest fully closed 1h mark bar whose close_time is strictly earlier than the nominal fundingTime; positive funding is received by the short",
+    "cash_benchmark_apr": 0.04,
+    "safety_margin_apr": 0.02,
+    "hurdle_apr": 0.06,
+    "stress": {
+      "base_x1": "frozen costs and actual funding",
+      "cost_x1.5": "fees and slippage x1.5; received funding divided by 1.5; paid funding x1.5",
+      "cost_x2": "fees and slippage x2; received funding divided by 2; paid funding x2",
+      "funding_zero": "all funding set to zero",
+      "funding_sign_reversal": "funding sign reversed, report-only tail stress",
+      "rebalance_latency_1h": "rebalance at the following causal hourly observation"
+    }
+  },
+  "windows": {
+    "warmup_observation_only": ["2020-01-01T00:00:00Z", "2021-01-04T00:00:00Z"],
+    "pre_walk_forward_observation_only": ["2021-01-04T00:00:00Z", "2021-12-20T00:00:00Z"],
+    "walk_forward": [
+      ["2021-12-20T00:00:00Z", "2022-12-19T00:00:00Z"],
+      ["2022-12-19T00:00:00Z", "2023-12-18T00:00:00Z"],
+      ["2023-12-18T00:00:00Z", "2024-12-16T00:00:00Z"],
+      ["2024-12-16T00:00:00Z", "2025-12-15T00:00:00Z"],
+      ["2025-12-15T00:00:00Z", "2026-09-28T00:00:00Z"]
+    ],
+    "rule": "the two pre-walk-forward windows fit no parameter and cannot tune the frozen rules; every walk-forward split starts a fresh portfolio and no position, rebalance, funding event or lookback crosses a boundary",
+    "usdc_comparison": "report only on the common complete overlap; it cannot be extrapolated into earlier folds"
+  },
+  "metrics": [
+    "total and annualized return",
+    "cash-excess return",
+    "Sharpe and Sortino",
+    "maximum drawdown and longest recovery",
+    "funding, price-leg and trading-cost attribution",
+    "rebalance count and turnover",
+    "liquidation count and minimum margin headroom",
+    "BTC/ETH and USDT/USDC concentration"
+  ],
+  "gates": {
+    "data": "zero unresolved accounting rows and zero silently filled gaps; a fold with an incomplete required series is INCOMPLETE",
+    "activity": "at least 300 settled funding events per primary asset and at least 30 days per reported fold",
+    "fold_stability": "positive cash-excess return in at least 4 of 5 USDT walk-forward folds",
+    "combined": "USDT primary annualized return exceeds the 6% hurdle and 95% moving-block-bootstrap LCB of daily cash-excess return is above zero",
+    "cost_stress": "cost_x1.5 and cost_x2 cash-excess returns must both be above zero for the historical PASS verdict and for any later PAPER promotion",
+    "risk": "no liquidation, base maximum drawdown <= 15%, stress maximum drawdown <= 25%, and recovery <= 365 days",
+    "concentration": "neither BTC nor ETH contributes more than 75% of absolute net PnL",
+    "promotion": "all gates plus independent reproduction; a USDC diagnostic cannot rescue a failed USDT primary"
+  },
+  "gate_values": {
+    "walk_forward_fold_count": 5,
+    "minimum_positive_cash_excess_folds": 4,
+    "minimum_funding_events_per_primary_asset_per_fold": 300,
+    "minimum_days_per_fold": 30,
+    "annualized_hurdle": 0.06,
+    "bootstrap": {
+      "input": "the hurdle uses chronologically concatenated daily portfolio returns; the bootstrap LCB uses chronologically concatenated daily arithmetic cash-excess returns on the same dates from the five fresh-start walk-forward folds",
+      "combined_annualization": "compound only the included daily portfolio returns in chronological order and annualize with 365.25 divided by their included calendar-day span; cross-boundary intervals are excluded entirely and add no return or day",
+      "method": "circular moving-block bootstrap",
+      "block_days": 7,
+      "resamples": 10000,
+      "seed": 25701,
+      "lower_percentile": 2.5,
+      "required_lcb": 0.0
+    },
+    "base_max_drawdown": 0.15,
+    "stress_max_drawdown": 0.25,
+    "maximum_recovery_days": 365,
+    "maximum_single_asset_absolute_pnl_share": 0.75,
+    "required_cost_stresses_positive": ["cost_x1.5", "cost_x2"],
+    "liquidation": "for each hourly interval, test the mark-kline high against the short sleeve liquidation proxy before using the close; equality or a breach is liquidation and fails the run; this conservative hourly-high proxy cannot resolve sub-hour path ordering"
+  },
+  "paper": {
+    "status": "forbidden by this preregistration",
+    "future_canary": "isolated default-OFF book, no more than 10% of PAPER capital, only after signed historical evidence and independent review"
+  },
+  "mainnet": "forbidden; this candidate cannot authorize real funds"
+}
