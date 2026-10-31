@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 
 from tools.research import carry01 as C
@@ -12,6 +13,15 @@ def load():
     return json.loads(PATH.read_text(encoding="utf-8"))
 
 
+def digest(p):
+    material = dict(p)
+    material.pop("contract_digest_sha256")
+    canonical = json.dumps(
+        material, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def test_prereg_is_draft_and_forbids_evaluation_activation_and_mainnet():
     p = load()
     assert p["format"] == "zb-carry01-prereg/1"
@@ -19,6 +29,7 @@ def test_prereg_is_draft_and_forbids_evaluation_activation_and_mainnet():
     assert p["status"].startswith("DRAFT")
     assert "forbidden" in p["paper"]["status"]
     assert p["mainnet"].startswith("forbidden")
+    assert p["contract_digest_sha256"] == digest(p)
 
 
 def test_prereg_matches_the_merged_replay_defaults():
@@ -44,6 +55,16 @@ def test_prereg_has_point_in_time_data_and_walk_forward_boundaries():
     assert p["windows"]["walk_forward"][-1][1] == p["data"]["sealed_development_end_exclusive"]
     assert p["trial_budget"]["primary"] == 1
     assert "cannot rescue" in p["trial_budget"]["multiplicity"]
+    assert "daily" in p["data"]["series"]["spot"]
+    assert "daily" in p["data"]["series"]["perpetual_mark"]
+    assert "daily" in p["data"]["series"]["funding"]
+
+    windows = [
+        p["windows"]["warmup_observation_only"],
+        p["windows"]["pre_walk_forward_observation_only"],
+        *p["windows"]["walk_forward"],
+    ]
+    assert all(left[1] == right[0] for left, right in zip(windows, windows[1:]))
 
 
 def test_prereg_requires_cost_stress_cash_hurdle_and_independent_reproduction():
@@ -53,3 +74,36 @@ def test_prereg_requires_cost_stress_cash_hurdle_and_independent_reproduction():
     assert "cost_x1.5" in gates["cost_stress"] and "cost_x2" in gates["cost_stress"]
     assert "independent reproduction" in gates["promotion"]
     assert {"funding_zero", "funding_sign_reversal", "rebalance_latency_1h"} <= set(p["costs"]["stress"])
+
+
+def test_prereg_pins_numeric_gates_and_bootstrap_degrees_of_freedom():
+    v = load()["gate_values"]
+    assert v["walk_forward_fold_count"] == 5
+    assert v["minimum_positive_cash_excess_folds"] == 4
+    assert v["minimum_funding_events_per_primary_asset_per_fold"] == 300
+    assert v["minimum_days_per_fold"] == 30
+    assert v["annualized_hurdle"] == 0.06
+    assert v["base_max_drawdown"] == 0.15
+    assert v["stress_max_drawdown"] == 0.25
+    assert v["maximum_recovery_days"] == 365
+    assert v["maximum_single_asset_absolute_pnl_share"] == 0.75
+    assert v["required_cost_stresses_positive"] == ["cost_x1.5", "cost_x2"]
+    assert "mark-kline high" in v["liquidation"]
+    assert v["bootstrap"] == {
+        "input": "chronologically concatenated daily arithmetic cash-excess returns from the five fresh-start walk-forward folds",
+        "combined_annualization": "compound the concatenated daily portfolio returns in chronological order and annualize with 365.25 divided by the number of included calendar days",
+        "method": "circular moving-block bootstrap",
+        "block_days": 7,
+        "resamples": 10000,
+        "seed": 25701,
+        "lower_percentile": 2.5,
+        "required_lcb": 0.0,
+    }
+
+
+def test_prereg_pins_funding_price_weights_and_timestamp_rules():
+    p = load()
+    assert "strictly earlier" in p["costs"]["funding"]
+    assert "rebalance the whole portfolio" in p["portfolio"]["weight_rule"]
+    assert "funding timestamps are not forced to an 8h grid" in p["data"]["timestamps"]
+    assert "no archive containing a row on or after the seal" in p["data"]["read_definition"]
