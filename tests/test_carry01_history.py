@@ -171,19 +171,30 @@ def test_kline_parser_normalizes_official_microsecond_transition():
     assert row["close_time"] == start + 3_599_999
 
 
-def test_period_coverage_is_pinned_when_spec_is_provided():
+def test_period_gaps_are_ledgered_without_synthetic_repair():
     start = 1_735_689_600_000
     text = "".join(kline(start + hour * 3_600_000) for hour in range(24))
     archive_spec = spec()
-    assert len(H.parse_kline_zip(zipped("x.csv", text), archive_spec)) == 24
-    with pytest.raises(H.HistoryDataError, match="exactly cover"):
-        H.parse_kline_zip(zipped("x.csv", text.splitlines(True)[1]), archive_spec)
+    complete = H.parse_kline_archive(zipped("x.csv", text), archive_spec)
+    assert len(complete.rows) == complete.expected_hours == 24
+    assert complete.incomplete == [] and complete.coverage == 1
+    incomplete = H.parse_kline_archive(zipped("x.csv", "".join(text.splitlines(True)[1:])),
+                                       archive_spec)
+    assert len(incomplete.rows) == 23
+    assert incomplete.incomplete == [{"open_time": start, "reason": "missing_source_hour"}]
 
 
-def test_hourly_gap_is_refused():
+def test_hourly_gap_and_partial_close_are_quarantined():
     start = 1_735_689_600_000
-    with pytest.raises(H.HistoryDataError, match="gap or overlap"):
-        H.parse_kline_zip(zipped("x.csv", kline(start) + kline(start + 7_200_000)), spec())
+    partial = f"{start},100,110,90,105,1,{start + 1000},1,1,1,1,0\n"
+    text = partial + "".join(kline(start + hour * 3_600_000) for hour in range(2, 24))
+    archive = H.parse_kline_archive(zipped("x.csv", text), spec())
+    assert len(archive.rows) == 22
+    assert archive.incomplete == [
+        {"open_time": start, "close_time": start + 1000, "reason": "noncanonical_close"},
+        {"open_time": start + 3_600_000, "reason": "missing_source_hour"},
+    ]
+    assert archive.rows[0]["open_time"] == start + 2 * 3_600_000
 
 
 def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():

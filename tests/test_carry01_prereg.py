@@ -110,3 +110,7 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "13 digits (milliseconds) or 16 digits (microseconds)" in p["data"]["timestamps"]
     assert "integer floor division by 1000" in p["data"]["timestamps"]
     assert "no archive containing a row on or after the seal" in p["data"]["read_definition"]
+    assert "no forward fill or synthetic repair" in p["data"]["missing"]
+    assert "returns never bridge an incomplete hour" in p["data"]["missing"]
+    assert "at least 99.0%" in p["data"]["coverage_gate"]
+    assert "longer than 24 hours refuses evaluation" in p["data"]["coverage_gate"]
