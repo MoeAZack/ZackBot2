@@ -1,0 +1,2072 @@
+{
+ "conclusion": "NOT justified as a hard entry filter. Development-window signal only, EXPLORATORY: the within-strategy stratified mean-R difference with-structure minus counter-structure is +0.256 R (CORE-10) / +0.233 R (CORE-20), computed per hypothesis and weighted by 1/(1/n_with + 1/n_counter) over hypotheses with >= 5 trades on each side (no t-statistic computed for it). The t of 4.00 / 3.56 is the POOLED Welch t across hypotheses, inflated by composition and by trades sharing bars. It may justify a future ML/explainability evaluation, not a production rule. CORE-20 contains every CORE-10 symbol, so it is not independent of CORE-10.",
+ "format": "zb-structure-inputs/1",
+ "note": "Inputs of the REVIEW-ONLY structure comparison (#118). Packets are NOT copied: each lives on its review branch at the exact commit. CORE-20 contains every CORE-10 symbol, so the CORE-20 result is not independent of CORE-10.",
+ "packets": [
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "breakout_pyramid.long",
+   "packet_sha256": "742dee5f608d173db49c786fe5d9962708c5d5016b07392b98e68cdcd06a39ac",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/breakout_pyramid_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "donchian_ens.long",
+   "packet_sha256": "0addbeb7e3dc75ea600d6ad2f0622eebc668678c12fdd11729fc4274a0bd44c8",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/donchian_ens_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "ema_mom.long",
+   "packet_sha256": "40d31d9e1e0ee6391490d9c3dfd5555ca9f9c478f8fb4769ec2833b5de0eb7b7",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/ema_mom_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "ema_st.long",
+   "packet_sha256": "9446118746babb841d52a8979e3c5c676a89fd48323f602b65c7830639c0c370",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/ema_st_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch1",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "9086e74891d5fd5ade46a1b7d4b63aac9f949edf",
+   "hypothesis": "exp_breakout.long",
+   "packet_sha256": "a9524925ce65fffb88b44b15a0a60dd5399bccf331abcb704d719f4156dd9a6b",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch1/exp_breakout_long_defaults.json",
+   "pr": 105,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "exp_trend.long",
+   "packet_sha256": "9db3f82628ebe41b64a61c2beffc7fcdd13bc4f41a3a155ea744085b4972df52",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/exp_trend_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "hot_coin.long",
+   "packet_sha256": "dfa8b6125e542fab4da314d33e4432278de8585a1f7446559100ffa18a32bc14",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/hot_coin_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "pullback_rsi.long",
+   "packet_sha256": "68d09ae6a70a5e5b2f812c38596698c0c0e7f698dbd136ed71db6e2b77a6f605",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/pullback_rsi_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "rotation.long",
+   "packet_sha256": "7337fa3f2a6f4e00e82273d2bb0c5b7b2f7b286a9cf6bfd8e4d156464ea42637",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/rotation_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "squeeze_tp.long",
+   "packet_sha256": "4b2041169525fca040aaa1835423a0a06a2e228fc35bfa5346e6ed2e04193766",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/squeeze_tp_long_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "donchian_ens.short",
+   "packet_sha256": "af1593befb8b28863c0ca51dae42ce78eb44efa005ae1b126d96f3de3be65aaa",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/donchian_ens_short_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch2",
+   "cache_files": {
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "4f12e271d4f126e6e938ce14f1d2da318d239506",
+   "hypothesis": "squeeze_tp.short",
+   "packet_sha256": "596c53fdea7a48356f1673e79c4a68294fb20e6ed05c0a15010431f3ea183c9c",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core10_7690426_batch2/squeeze_tp_short_defaults.json",
+   "pr": 106,
+   "universe": "CORE-10"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "breakout_pyramid.long",
+   "packet_sha256": "6bb70f98d82ad53189f7dffd4890b06e007b6ff98eec8c183738fe8f292e9d5c",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/breakout_pyramid_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "donchian_ens.long",
+   "packet_sha256": "f6f8ad25ac80b44c34680d172b48051bef0d7559354da6579f8ddcbe9fdcad27",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/donchian_ens_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "ema_mom.long",
+   "packet_sha256": "7dfeeaa380124733bcdcd6c6949995f61dc557abc0c4658409c9d5c9cbd06043",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/ema_mom_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "ema_st.long",
+   "packet_sha256": "91fa8f7ea4e6734e32e7845b71e021a223212083e9cccdb3680b6d4fad85be7e",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/ema_st_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "exp_breakout.long",
+   "packet_sha256": "ed6253623efe359209171b12dc860a89376d21df60034a8b7376acec71128439",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_breakout_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "exp_trend.long",
+   "packet_sha256": "58be231f8912c3a47ae0b54e57f3107a397d4ffe1828386f35c652af7b0af6fb",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/exp_trend_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "hot_coin.long",
+   "packet_sha256": "5250398513d8cedc7adf1764f4ac7590eed52c1db5ad4a7bfb4899aeb36aa9c7",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/hot_coin_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "pullback_rsi.long",
+   "packet_sha256": "003f82f9418b687a80c15554efc2253fe05b1ffefeaf4b14dde2cf0c53c1c029",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/pullback_rsi_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "rotation.long",
+   "packet_sha256": "cda6ae750dcbf23ee7c0a601b40fe591b5a4434f761780b4e71fb355b32f744f",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/rotation_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "squeeze_tp.long",
+   "packet_sha256": "128e7d1565683ef6ef28cb86627fa5cd23dcfb47336e660376df6f84f9461fd0",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/squeeze_tp_long_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "donchian_ens.short",
+   "packet_sha256": "3ed6728073a31bcdb76a56a0d593d251a7c94ad1987cc0409febb436f277d81f",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/donchian_ens_short_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  },
+  {
+   "branch": "review-breadth-batch6",
+   "cache_files": {
+    "1000PEPEUSDT": {
+     "dir": "cache_extra",
+     "file": "1000PEPEUSDT_4h.csv",
+     "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5"
+    },
+    "ADAUSDT": {
+     "dir": "cache",
+     "file": "ADAUSDT_4h.csv",
+     "sha256": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2"
+    },
+    "AVAXUSDT": {
+     "dir": "cache",
+     "file": "AVAXUSDT_4h.csv",
+     "sha256": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb"
+    },
+    "BNBUSDT": {
+     "dir": "cache",
+     "file": "BNBUSDT_4h.csv",
+     "sha256": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0"
+    },
+    "BTCUSDT": {
+     "dir": "cache",
+     "file": "BTCUSDT_4h.csv",
+     "sha256": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc"
+    },
+    "DOGEUSDT": {
+     "dir": "cache",
+     "file": "DOGEUSDT_4h.csv",
+     "sha256": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229"
+    },
+    "ENAUSDT": {
+     "dir": "cache_extra",
+     "file": "ENAUSDT_4h.csv",
+     "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9"
+    },
+    "ETHUSDT": {
+     "dir": "cache",
+     "file": "ETHUSDT_4h.csv",
+     "sha256": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5"
+    },
+    "HYPEUSDT": {
+     "dir": "cache",
+     "file": "HYPEUSDT_4h.csv",
+     "sha256": "95217dbd8028ac20fd0251f491f374f44df79d67b26ffb780111baea0d277420"
+    },
+    "LINKUSDT": {
+     "dir": "cache",
+     "file": "LINKUSDT_4h.csv",
+     "sha256": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9"
+    },
+    "LSKUSDT": {
+     "dir": "cache_extra",
+     "file": "LSKUSDT_4h.csv",
+     "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd"
+    },
+    "NEARUSDT": {
+     "dir": "cache",
+     "file": "NEARUSDT_4h.csv",
+     "sha256": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0"
+    },
+    "PUMPUSDT": {
+     "dir": "cache_extra",
+     "file": "PUMPUSDT_4h.csv",
+     "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09"
+    },
+    "QNTUSDT": {
+     "dir": "cache_extra",
+     "file": "QNTUSDT_4h.csv",
+     "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651"
+    },
+    "SOLUSDT": {
+     "dir": "cache",
+     "file": "SOLUSDT_4h.csv",
+     "sha256": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a"
+    },
+    "SUIUSDT": {
+     "dir": "cache",
+     "file": "SUIUSDT_4h.csv",
+     "sha256": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd"
+    },
+    "UNIUSDT": {
+     "dir": "cache",
+     "file": "UNIUSDT_4h.csv",
+     "sha256": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde"
+    },
+    "WLDUSDT": {
+     "dir": "cache_extra",
+     "file": "WLDUSDT_4h.csv",
+     "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0"
+    },
+    "XRPUSDT": {
+     "dir": "cache",
+     "file": "XRPUSDT_4h.csv",
+     "sha256": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de"
+    },
+    "ZECUSDT": {
+     "dir": "cache",
+     "file": "ZECUSDT_4h.csv",
+     "sha256": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+    }
+   },
+   "commit": "c808794abede82f4432ef53bf31f71f6201ef3fc",
+   "hypothesis": "squeeze_tp.short",
+   "packet_sha256": "acd8ae51f60e7e0069817c9645cd086db6ad9fd8c4b8bf591eaa38486aa4223e",
+   "path": "research_evidence/runs/breadth_candidate/2026-10-15_core20_c8c7b92_batch6/squeeze_tp_short_defaults.json",
+   "pr": 110,
+   "universe": "CORE-20"
+  }
+ ],
+ "rerun": "py -3.14 tools/research/structure_compare.py --inputs research_evidence/runs/structure_features/2026-10-16_core10_core20/inputs.json --universe CORE-10|CORE-20 --cache <app 4h cache> [--cache <4h research cache>] --out <file>.json"
+}
