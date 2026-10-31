@@ -57,6 +57,7 @@ class KlineArchive:
     rows: list[dict[str, Any]]
     incomplete: list[dict[str, Any]]
     expected_hours: int
+    duplicate_rows: int = 0
 
     @property
     def valid_hours(self) -> int:
@@ -403,6 +404,8 @@ def parse_kline_archive(payload: bytes, spec: ArchiveSpec) -> KlineArchive:
     if rows[0] == KLINE_HEADER:
         rows = rows[1:]
     parsed, quarantined, observed = [], [], set()
+    seen_source_rows: dict[int, tuple[str, ...]] = {}
+    duplicate_rows = 0
     previous, archive_width = -1, None
     start, end = _period_bounds(spec)
     for row in rows:
@@ -417,6 +420,12 @@ def parse_kline_archive(payload: bytes, spec: ArchiveSpec) -> KlineArchive:
         if archive_width == 16 and (int(row[0]) % 1000 != 0 or int(row[6]) % 1000 != 999):
             raise HistoryDataError("microsecond kline residue is not canonical")
         opened, closed = _timestamp_ms(row[0], "kline open"), _timestamp_ms(row[6], "kline close")
+        frozen_row = tuple(row)
+        if opened in seen_source_rows:
+            if seen_source_rows[opened] != frozen_row:
+                raise HistoryDataError("duplicate kline timestamp has different source values")
+            duplicate_rows += 1
+            continue
         if opened <= previous or opened % 3_600_000 != 0:
             raise HistoryDataError("kline opens must be unique, increasing and hourly")
         if opened < start or opened >= end:
@@ -430,6 +439,7 @@ def parse_kline_archive(payload: bytes, spec: ArchiveSpec) -> KlineArchive:
         if high < max(open_price, low, close) or low > min(open_price, high, close):
             raise HistoryDataError("kline OHLC ordering is invalid")
         observed.add(opened)
+        seen_source_rows[opened] = frozen_row
         if closed - opened != 3_599_999:
             quarantined.append({"open_time": opened, "close_time": closed,
                                 "reason": "noncanonical_close"})
@@ -443,7 +453,7 @@ def parse_kline_archive(payload: bytes, spec: ArchiveSpec) -> KlineArchive:
     missing = [{"open_time": opened, "reason": "missing_source_hour"}
                for opened in expected if opened not in observed]
     return KlineArchive(parsed, sorted(quarantined + missing, key=lambda item: item["open_time"]),
-                        (end - start) // 3_600_000)
+                        (end - start) // 3_600_000, duplicate_rows)
 
 
 def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
@@ -477,7 +487,9 @@ def merge_daily_recovery(primary: KlineArchive, recoveries: Iterable[KlineArchiv
     if len(missing) != len(primary.incomplete):
         raise HistoryDataError("primary incomplete ledger contains duplicate timestamps")
     recovered: set[int] = set()
+    duplicate_rows = primary.duplicate_rows
     for archive in recoveries:
+        duplicate_rows += archive.duplicate_rows
         for row in archive.rows:
             opened = int(row["open_time"])
             if opened < start_ms or opened >= end_ms:
@@ -494,7 +506,7 @@ def merge_daily_recovery(primary: KlineArchive, recoveries: Iterable[KlineArchiv
             recovered.add(opened)
     rows = [primary_rows[t] for t in sorted(primary_rows)]
     incomplete = [missing[t] for t in sorted(missing) if t not in recovered]
-    return KlineArchive(rows, incomplete, (end_ms - start_ms) // HOUR_MS)
+    return KlineArchive(rows, incomplete, (end_ms - start_ms) // HOUR_MS, duplicate_rows)
 
 
 def validate_common_hour_coverage(spot_rows: Iterable[dict[str, Any]],
