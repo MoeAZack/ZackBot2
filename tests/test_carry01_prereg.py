@@ -118,3 +118,6 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "does not count toward the minimum-funding-events gate" in p["data"]["funding_missing_mark"]
     assert "only exact monthly-ledger timestamps may be added" in p["data"]["daily_recovery"]
     assert "before any return, PnL, signal, score or selection metric" in p["data"]["daily_recovery"]
+    assert "GET /fapi/v1/fundingRate" in p["data"]["source"]
+    assert "limit=1000" in p["data"]["funding_rest_freeze"]
+    assert "local SHA-256 sibling" in p["data"]["funding_rest_freeze"]
