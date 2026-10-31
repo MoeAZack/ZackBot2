@@ -1,5 +1,7 @@
 import hashlib
+import io
 import json
+import zipfile
 
 import pytest
 
@@ -98,3 +100,58 @@ def test_fetch_verified_refuses_redirect_and_offsite(tmp_path):
         H.fetch_verified(spec, tmp_path, Session([Response(b"", redirect=True)]))
     with pytest.raises(H.HistoryDataError, match="outside"):
         H.archive_relative_path("https://example.com/data/x.zip")
+
+
+def zipped(name, text):
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(name, text)
+    return out.getvalue()
+
+
+def kline(opened, open_price="100", high="110", low="90", close="105"):
+    return f"{opened},{open_price},{high},{low},{close},1,{opened + 3599999},1,1,1,1,0\n"
+
+
+def test_kline_parser_pins_schema_grid_ohlc_and_seal():
+    start = 1_700_000_000_000 // 3_600_000 * 3_600_000
+    rows = H.parse_kline_zip(zipped("BTCUSDT.csv", kline(start) + kline(start + 3_600_000)))
+    assert rows[0]["high"] == 110 and rows[-1]["close"] == 105
+    H.validate_hourly_contiguous(rows)
+    with pytest.raises(H.HistoryDataError, match="OHLC"):
+        H.parse_kline_zip(zipped("x.csv", kline(start, high="99")))
+    with pytest.raises(H.HistoryDataError, match="signed seal"):
+        H.parse_kline_zip(zipped("x.csv", kline(H.SEAL_MS)))
+
+
+def test_hourly_gap_is_refused():
+    start = 1_700_000_000_000 // 3_600_000 * 3_600_000
+    rows = H.parse_kline_zip(zipped("x.csv", kline(start) + kline(start + 7_200_000)))
+    with pytest.raises(H.HistoryDataError, match="gap or overlap"):
+        H.validate_hourly_contiguous(rows)
+
+
+def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():
+    header = "calc_time,funding_interval_hours,last_funding_rate\n"
+    good = header + "1700000000002,8,0.0001\n1700028800000,8,-0.0002\n"
+    rows = H.parse_funding_zip(zipped("funding.csv", good))
+    assert rows[0]["funding_time"] % 1000 == 2 and rows[1]["funding_rate"] < 0
+    with pytest.raises(H.HistoryDataError, match="frozen schema"):
+        H.parse_funding_zip(zipped("x.csv", "time,rate\n1,0.1\n"))
+    bad_order = header + "1700000000002,8,0.1\n1700000000001,8,0.1\n"
+    with pytest.raises(H.HistoryDataError, match="ordering"):
+        H.parse_funding_zip(zipped("x.csv", bad_order))
+    sealed = header + f"{H.SEAL_MS},8,0.1\n"
+    with pytest.raises(H.HistoryDataError, match="signed seal"):
+        H.parse_funding_zip(zipped("x.csv", sealed))
+
+
+def test_zip_reader_refuses_multiple_members_and_traversal():
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        archive.writestr("a.csv", "x")
+        archive.writestr("b.csv", "x")
+    with pytest.raises(H.HistoryDataError, match="exactly one"):
+        H.parse_kline_zip(out.getvalue())
+    with pytest.raises(H.HistoryDataError, match="unsafe archive member"):
+        H.parse_kline_zip(zipped("../x.csv", "x"))

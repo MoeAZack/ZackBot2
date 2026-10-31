@@ -6,7 +6,11 @@ returns; result generation belongs to the separately tested historical runner.
 from __future__ import annotations
 
 import hashlib
+import csv
+import io
 import json
+import math
+import zipfile
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -18,7 +22,9 @@ import requests
 
 BASE = "https://data.binance.vision/data"
 SEAL = datetime(2026, 9, 28, tzinfo=timezone.utc)
+SEAL_MS = int(SEAL.timestamp() * 1000)
 PREREG = Path("research_evidence/prereg/carry01_cash_and_carry.v1.json")
+MAX_ARCHIVE_MEMBER_BYTES = 50_000_000
 
 
 class HistoryDataError(ValueError):
@@ -171,6 +177,111 @@ def fetch_verified(spec: ArchiveSpec, root: Path,
     partial.replace(destination)
     destination.with_name(destination.name + ".CHECKSUM").write_bytes(checksum)
     return {"path": destination.as_posix(), "sha256": digest, "bytes": len(payload)}
+
+
+def _csv_rows(payload: bytes) -> list[list[str]]:
+    """Read exactly one bounded, plain CSV member from a verified zip."""
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(payload))
+    except zipfile.BadZipFile as exc:
+        raise HistoryDataError("archive is not a valid zip") from exc
+    members = [item for item in archive.infolist() if not item.is_dir()]
+    if len(members) != 1:
+        raise HistoryDataError("archive must contain exactly one CSV member")
+    member = members[0]
+    member_path = Path(member.filename)
+    if (member_path.is_absolute() or ".." in member_path.parts
+            or member_path.suffix.lower() != ".csv" or member.flag_bits & 0x1):
+        raise HistoryDataError("unsafe archive member")
+    if member.file_size > MAX_ARCHIVE_MEMBER_BYTES:
+        raise HistoryDataError("archive member is too large")
+    if member.compress_size and member.file_size / member.compress_size > 1000:
+        raise HistoryDataError("archive compression ratio is unsafe")
+    try:
+        raw = archive.read(member).decode("utf-8-sig")
+    except (RuntimeError, UnicodeDecodeError, zipfile.BadZipFile) as exc:
+        raise HistoryDataError("archive CSV cannot be read") from exc
+    rows = list(csv.reader(io.StringIO(raw, newline="")))
+    if not rows or any(not row for row in rows):
+        raise HistoryDataError("archive CSV is empty or malformed")
+    return rows
+
+
+def _number(value: str, name: str, *, positive: bool = False) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HistoryDataError(f"{name} is not numeric") from exc
+    if not math.isfinite(result) or (positive and result <= 0):
+        raise HistoryDataError(f"{name} is invalid")
+    return result
+
+
+def parse_kline_zip(payload: bytes) -> list[dict[str, Any]]:
+    rows = _csv_rows(payload)
+    if rows[0] and not rows[0][0].lstrip("-").isdigit():
+        rows = rows[1:]
+    parsed, previous = [], -1
+    for row in rows:
+        if len(row) != 12:
+            raise HistoryDataError("kline row must have 12 columns")
+        try:
+            opened, closed = int(row[0]), int(row[6])
+        except ValueError as exc:
+            raise HistoryDataError("kline timestamps must be integers") from exc
+        if opened <= previous or opened % 3_600_000 != 0:
+            raise HistoryDataError("kline opens must be unique, increasing and hourly")
+        if closed - opened != 3_599_999 or closed >= SEAL_MS:
+            raise HistoryDataError("kline close violates the hourly grid or signed seal")
+        open_price = _number(row[1], "open", positive=True)
+        high = _number(row[2], "high", positive=True)
+        low = _number(row[3], "low", positive=True)
+        close = _number(row[4], "close", positive=True)
+        if high < max(open_price, low, close) or low > min(open_price, high, close):
+            raise HistoryDataError("kline OHLC ordering is invalid")
+        parsed.append({"open_time": opened, "close_time": closed, "open": open_price,
+                       "high": high, "low": low, "close": close})
+        previous = opened
+    if not parsed:
+        raise HistoryDataError("kline archive contains no data rows")
+    return parsed
+
+
+def parse_funding_zip(payload: bytes) -> list[dict[str, Any]]:
+    rows = _csv_rows(payload)
+    expected = ["calc_time", "funding_interval_hours", "last_funding_rate"]
+    if rows[0] != expected:
+        raise HistoryDataError("funding CSV header is not the frozen schema")
+    parsed, previous = [], -1
+    for row in rows[1:]:
+        if len(row) != 3:
+            raise HistoryDataError("funding row must have 3 columns")
+        try:
+            timestamp = int(row[0])
+            interval = int(row[1])
+        except ValueError as exc:
+            raise HistoryDataError("funding time and interval must be integers") from exc
+        if timestamp <= previous or timestamp >= SEAL_MS or interval <= 0:
+            raise HistoryDataError("funding event violates ordering, interval or signed seal")
+        parsed.append({"funding_time": timestamp, "interval_hours": interval,
+                       "funding_rate": _number(row[2], "funding rate")})
+        previous = timestamp
+    if not parsed:
+        raise HistoryDataError("funding archive contains no events")
+    return parsed
+
+
+def validate_hourly_contiguous(rows: Iterable[dict[str, Any]]) -> None:
+    previous = None
+    count = 0
+    for row in rows:
+        opened = int(row["open_time"])
+        if previous is not None and opened != previous + 3_600_000:
+            raise HistoryDataError("hourly series contains a gap or overlap")
+        previous = opened
+        count += 1
+    if not count:
+        raise HistoryDataError("hourly series is empty")
 
 
 def manifest_document(contract: dict[str, Any]) -> dict[str, Any]:
