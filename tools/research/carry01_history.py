@@ -27,6 +27,9 @@ SEAL_MS = int(SEAL.timestamp() * 1000)
 PREREG = Path("research_evidence/prereg/carry01_cash_and_carry.v1.json")
 MAX_ARCHIVE_MEMBER_BYTES = 50_000_000
 MAX_DOWNLOAD_BYTES = 100_000_000
+HOUR_MS = 3_600_000
+MIN_COMMON_COVERAGE = 0.99
+MAX_INCOMPLETE_RUN_HOURS = 24
 KLINE_HEADER = ["open_time", "open", "high", "low", "close", "volume", "close_time",
                 "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
 
@@ -361,8 +364,51 @@ def parse_kline_archive(payload: bytes, spec: ArchiveSpec) -> KlineArchive:
 
 
 def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
-    """Compatibility view; evaluation code must use parse_kline_archive for its gap ledger."""
-    return parse_kline_archive(payload, spec).rows
+    """Fail-closed compatibility view that cannot discard a data-quality ledger."""
+    archive = parse_kline_archive(payload, spec)
+    if archive.incomplete:
+        raise HistoryDataError("kline archive is incomplete; use parse_kline_archive with its ledger")
+    return archive.rows
+
+
+def validate_common_hour_coverage(spot_rows: Iterable[dict[str, Any]],
+                                  mark_rows: Iterable[dict[str, Any]],
+                                  start_ms: int, end_ms: int) -> dict[str, Any]:
+    """Enforce the signed annual common-grid and continuous-gap gates."""
+    if start_ms % HOUR_MS or end_ms % HOUR_MS or end_ms <= start_ms + HOUR_MS:
+        raise HistoryDataError("common-hour coverage bounds must span aligned hourly timestamps")
+
+    def times(rows: Iterable[dict[str, Any]], leg: str) -> set[int]:
+        values = [int(row["open_time"]) for row in rows]
+        if len(values) != len(set(values)) or any(t < start_ms or t >= end_ms or t % HOUR_MS
+                                                  for t in values):
+            raise HistoryDataError(f"{leg} rows violate unique in-range hourly coverage")
+        return set(values)
+
+    spot, mark = times(spot_rows, "spot"), times(mark_rows, "mark")
+    expected = list(range(start_ms, end_ms, HOUR_MS))
+    common = spot & mark
+    eligible = sum(t in common and t - HOUR_MS in common for t in expected[1:])
+    denominator = len(expected) - 1
+    coverage = eligible / denominator
+    longest = current = 0
+    for t in expected:
+        if t not in common:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    if coverage < MIN_COMMON_COVERAGE:
+        raise HistoryDataError("consecutive common-hour coverage is below the signed 99.0% gate")
+    if longest > MAX_INCOMPLETE_RUN_HOURS:
+        raise HistoryDataError("continuous incomplete run exceeds the signed 24-hour gate")
+    return {"expected_return_hours": denominator, "eligible_return_hours": eligible,
+            "coverage": coverage, "longest_incomplete_run_hours": longest}
+
+
+def required_mark_open_time(funding_time_ms: int) -> int:
+    """Open time of the latest 1h mark bar closed strictly before a funding event."""
+    return ((funding_time_ms - HOUR_MS) // HOUR_MS) * HOUR_MS
 
 
 def parse_funding_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:

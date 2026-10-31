@@ -114,3 +114,5 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "returns never bridge an incomplete hour" in p["data"]["missing"]
     assert "at least 99.0%" in p["data"]["coverage_gate"]
     assert "longer than 24 hours refuses evaluation" in p["data"]["coverage_gate"]
+    assert "no older mark is substituted" in p["data"]["funding_missing_mark"]
+    assert "does not count toward the minimum-funding-events gate" in p["data"]["funding_missing_mark"]
