@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
+import requests
+
 
 BASE = "https://data.binance.vision/data"
 SEAL = datetime(2026, 9, 28, tzinfo=timezone.utc)
@@ -129,6 +131,46 @@ def safe_archive_url(url: str) -> bool:
     return (parsed.scheme == "https" and parsed.hostname == "data.binance.vision"
             and parsed.port in (None, 443) and parsed.username is None and parsed.password is None
             and parsed.path.startswith("/data/") and not parsed.query and not parsed.fragment)
+
+
+def archive_relative_path(url: str) -> Path:
+    if not safe_archive_url(url):
+        raise HistoryDataError("archive URL is outside the frozen official source")
+    parsed = urlparse(url)
+    rel = Path(parsed.path.removeprefix("/data/"))
+    if rel.is_absolute() or ".." in rel.parts:
+        raise HistoryDataError("unsafe archive path")
+    return rel
+
+
+def _get_bytes(session: requests.Session, url: str) -> bytes:
+    if not safe_archive_url(url):
+        raise HistoryDataError("refusing non-official archive URL")
+    response = session.get(url, timeout=30, allow_redirects=False)
+    if response.is_redirect or response.is_permanent_redirect:
+        raise HistoryDataError("archive redirect refused")
+    response.raise_for_status()
+    return response.content
+
+
+def fetch_verified(spec: ArchiveSpec, root: Path,
+                   session: requests.Session | None = None) -> dict[str, Any]:
+    """Fetch one archive and sibling checksum, then atomically keep verified bytes."""
+    session = session or requests.Session()
+    checksum = _get_bytes(session, spec.checksum_url)
+    payload = _get_bytes(session, spec.url)
+    digest = verify_bytes(payload, checksum)
+    destination = root / archive_relative_path(spec.url)
+    resolved_root = root.resolve()
+    resolved_destination = destination.resolve()
+    if resolved_root != resolved_destination and resolved_root not in resolved_destination.parents:
+        raise HistoryDataError("archive destination escapes its root")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_name(destination.name + ".part")
+    partial.write_bytes(payload)
+    partial.replace(destination)
+    destination.with_name(destination.name + ".CHECKSUM").write_bytes(checksum)
+    return {"path": destination.as_posix(), "sha256": digest, "bytes": len(payload)}
 
 
 def manifest_document(contract: dict[str, Any]) -> dict[str, Any]:
