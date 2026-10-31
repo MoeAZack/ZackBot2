@@ -26,7 +26,8 @@ admitted: the source itself reports that turnover and fees destroyed that varian
 
 All checks must pass independently for each pair:
 
-1. mark age <= 120 seconds and at least 240 events in the trailing 90 days;
+1. mark age is -10–120 seconds (bounded exchange/local clock skew) and at least 240 unique, strictly ordered events
+   exist in the trailing 90 days;
 2. current funding and trailing 7d, 30d and 90d settled funding APR are positive;
 3. absolute spot/perpetual basis <= 50 bp;
 4. the 90d funding APR, scaled to the 75% matched notional, minus a four-fill round-trip cost amortised over 90 days,
@@ -38,7 +39,8 @@ evidence by itself.
 ## Historical evidence contract
 
 Input is immutable JSONL with strictly increasing, unique `timestamp_ms`, `spot_price`, `perp_price`, and optional
-`funding_rate`. Mark rows must be frequent enough to observe the leverage band; funding rows must be the point-in-time
+`funding_rate`. Mark rows must be frequent enough to observe the leverage band; a sparse series cannot establish gap or
+liquidation safety. Funding rows must be the point-in-time
 settled series. The run records the exact input SHA-256.
 
 Before promotion, the dataset and report must add:
@@ -50,6 +52,9 @@ Before promotion, the dataset and report must add:
   maximum drawdown, recovery time, capacity and concentration;
 - fee/slippage stresses at 1.5x and 2x, plus funding zero and funding sign-reversal rows;
 - a complete candidate ledger including failures to control selection and multiple-testing bias.
+
+Liquidated paths have no return or benchmark verdict, and windows under 30 days are not annualised. The replay uses a
+0.5% maintenance-margin proxy; venue-tier liquidation and intrabar gaps remain required pre-promotion stresses.
 
 No holdout is opened or tuned in this slice. No result can enable PAPER without independent evidence, and PAPER cannot
 enable mainnet.

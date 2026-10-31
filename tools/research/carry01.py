@@ -43,6 +43,9 @@ class CarryConfig:
     amortization_days: int = 90
     max_basis_bps: float = 50.0
     max_age_s: int = 120
+    max_future_skew_s: int = 10
+    maintenance_margin_rate: float = 0.005
+    min_annualize_days: int = 30
 
     def validate(self) -> None:
         if not self.capital > 0:
@@ -54,11 +57,15 @@ class CarryConfig:
         for name in ("spot_fee_bps", "perp_fee_bps", "spot_slippage_bps", "perp_slippage_bps"):
             if getattr(self, name) < 0:
                 raise CarryDataError(f"{name} cannot be negative")
-        if self.amortization_days < 1 or self.max_age_s < 1:
-            raise CarryDataError("amortization_days and max_age_s must be positive")
+        if self.amortization_days < 1 or self.max_age_s < 1 or self.max_future_skew_s < 0:
+            raise CarryDataError("amortization_days and mark-age limits are invalid")
+        if not 0 <= self.maintenance_margin_rate < 1 or self.min_annualize_days < 1:
+            raise CarryDataError("maintenance margin and minimum annualization window are invalid")
 
 
 def _finite(value: Any, name: str, *, positive: bool = False) -> float:
+    if isinstance(value, bool):
+        raise CarryDataError(f"{name} cannot be boolean")
     try:
         out = float(value)
     except (TypeError, ValueError) as exc:
@@ -83,6 +90,23 @@ def _window_apr(rows: list[dict[str, Any]], now_ms: int, days: int) -> tuple[flo
     return math.fsum(rates) * YEAR_DAYS / days, len(rates)
 
 
+def _validate_funding_history(rows: Any, now_ms: int) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        raise CarryDataError("funding history is not a list")
+    previous = -1
+    for row in rows:
+        ts = row.get("fundingTime") if isinstance(row, dict) else None
+        if isinstance(ts, bool) or not isinstance(ts, int):
+            raise CarryDataError("fundingTime must be an integer")
+        if ts <= previous:
+            raise CarryDataError("funding history must be unique and strictly increasing")
+        if ts > now_ms:
+            raise CarryDataError("funding history contains a future event")
+        _finite(row.get("fundingRate"), "fundingRate")
+        previous = ts
+    return rows
+
+
 def _round_trip_cost_rate(config: CarryConfig) -> float:
     # Both legs are opened and closed.  Rates are expressed against total portfolio equity.
     per_open_close = (config.spot_fee_bps + config.spot_slippage_bps
@@ -101,9 +125,9 @@ def scan_symbol(symbol: str, *, now_ms: int | None = None, config: CarryConfig |
 
     spot = _public_get(session, SPOT_API, "/api/v3/ticker/bookTicker", {"symbol": symbol})
     perp = _public_get(session, FUTURES_API, "/fapi/v1/premiumIndex", {"symbol": symbol})
-    history = _public_get(session, FUTURES_API, "/fapi/v1/fundingRate", {
+    history = _validate_funding_history(_public_get(session, FUTURES_API, "/fapi/v1/fundingRate", {
         "symbol": symbol, "startTime": now_ms - 91 * DAY_MS, "endTime": now_ms, "limit": 1000,
-    })
+    }), now_ms)
 
     bid = _finite(spot.get("bidPrice"), "spot bid", positive=True)
     ask = _finite(spot.get("askPrice"), "spot ask", positive=True)
@@ -111,8 +135,8 @@ def scan_symbol(symbol: str, *, now_ms: int | None = None, config: CarryConfig |
     mark_time = int(perp.get("time", 0))
     if bid > ask:
         raise CarryDataError("spot bid exceeds ask")
-    age_s = max(0.0, (now_ms - mark_time) / 1000)
-    if mark_time <= 0 or age_s > config.max_age_s:
+    age_s = (now_ms - mark_time) / 1000
+    if mark_time <= 0 or age_s < -config.max_future_skew_s or age_s > config.max_age_s:
         raise CarryDataError(f"perpetual mark is stale ({age_s:.1f}s)")
 
     spot_mid = (bid + ask) / 2
@@ -128,7 +152,7 @@ def scan_symbol(symbol: str, *, now_ms: int | None = None, config: CarryConfig |
     current_rate = _finite(perp.get("lastFundingRate"), "lastFundingRate")
 
     checks = {
-        "current_funding_non_negative": current_rate >= 0,
+        "current_funding_positive": current_rate > 0,
         "funding_7d_positive": apr_7d > 0,
         "funding_30d_positive": apr_30d > 0,
         "funding_90d_positive": apr_90d > 0,
@@ -196,7 +220,9 @@ def replay(rows: Iterable[dict[str, Any]], config: CarryConfig | None = None) ->
     parsed = []
     previous = -1
     for row in data:
-        ts = int(row.get("timestamp_ms", -1))
+        ts = row.get("timestamp_ms")
+        if isinstance(ts, bool) or not isinstance(ts, int):
+            raise CarryDataError("timestamp_ms must be an integer")
         if ts <= previous:
             raise CarryDataError("timestamps must be unique and strictly increasing")
         previous = ts
@@ -233,9 +259,11 @@ def replay(rows: Iterable[dict[str, Any]], config: CarryConfig | None = None) ->
         equity = segment_equity + price_pnl + segment_funding
         futures_collateral = (segment_equity * (1 - config.spot_fraction)
                               + qty * (entry_perp - perp) + segment_funding)
-        leverage = math.inf if futures_collateral <= 0 else abs(qty * perp) / futures_collateral
+        short_notional = abs(qty * perp)
+        maintenance = short_notional * config.maintenance_margin_rate
+        leverage = math.inf if futures_collateral <= 0 else short_notional / futures_collateral
         curve.append((ts, equity))
-        if futures_collateral <= 0 or equity <= 0:
+        if futures_collateral <= maintenance or equity <= 0:
             liquidated = True
             break
         if ts != parsed[-1][0] and not config.min_leverage <= leverage <= config.max_leverage:
@@ -256,16 +284,21 @@ def replay(rows: Iterable[dict[str, Any]], config: CarryConfig | None = None) ->
     gross_end = segment_equity + final_price_pnl + segment_funding
     exit_cost = 0.0 if liquidated else both_leg_cost(qty, last_spot, last_perp)
     total_cost += exit_cost
-    ending_equity = max(0.0, gross_end - exit_cost)
-    curve.append((last_ts, ending_equity))
+    marked_ending_equity = max(0.0, gross_end - exit_cost)
+    curve.append((last_ts, marked_ending_equity))
     peak, max_dd = 0.0, 0.0
     for _, equity in curve:
         peak = max(peak, equity)
         if peak > 0:
             max_dd = min(max_dd, equity / peak - 1)
     elapsed_days = max((last_ts - first_ts) / DAY_MS, 1 / 24)
-    total_return = ending_equity / config.capital - 1
-    annualized = (ending_equity / config.capital) ** (YEAR_DAYS / elapsed_days) - 1 if ending_equity > 0 else -1.0
+    complete = not liquidated
+    total_return = marked_ending_equity / config.capital - 1 if complete else None
+    annualized = None
+    if complete and elapsed_days >= config.min_annualize_days:
+        annualized = ((marked_ending_equity / config.capital) ** (YEAR_DAYS / elapsed_days) - 1
+                      if marked_ending_equity > 0 else -1.0)
+    hurdle = config.cash_benchmark_apr + config.safety_margin_apr
     return {
         "format": "zb-carry01-replay/1",
         "status": "LIQUIDATED" if liquidated else "COMPLETE",
@@ -274,14 +307,16 @@ def replay(rows: Iterable[dict[str, Any]], config: CarryConfig | None = None) ->
         "rebalances": rebalances,
         "elapsed_days": elapsed_days,
         "starting_equity": config.capital,
-        "ending_equity": ending_equity,
+        "ending_equity": marked_ending_equity if complete else None,
+        "last_marked_equity": marked_ending_equity,
         "total_return": total_return,
         "annualized_return": annualized,
         "max_drawdown": max_dd,
         "funding_pnl": funding_total,
         "price_leg_pnl": price_pnl_total,
         "trading_cost": total_cost,
-        "beats_cash_benchmark": annualized > config.cash_benchmark_apr,
+        "cash_hurdle_apr": hurdle,
+        "beats_cash_hurdle": annualized is not None and annualized > hurdle,
         "config": asdict(config),
     }
 

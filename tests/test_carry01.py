@@ -36,7 +36,7 @@ class FakeSession:
             return FakeResponse({"markPrice": "100.2", "time": self.now_ms,
                                  "lastFundingRate": str(self.rate)})
         rows = [{"fundingTime": self.now_ms - i * 8 * 3_600_000, "fundingRate": str(self.rate)}
-                for i in range(1, 271)]
+                for i in range(270, 0, -1)]
         return FakeResponse(rows)
 
 
@@ -53,7 +53,7 @@ def test_scan_rejects_negative_funding_even_when_data_is_complete():
     now = 2_000_000_000_000
     result = C.scan_symbol("ETHUSDC", now_ms=now, session=FakeSession(now, rate=-0.0001))
     assert result["eligible_shadow"] is False
-    assert result["checks"]["current_funding_non_negative"] is False
+    assert result["checks"]["current_funding_positive"] is False
     assert result["checks"]["funding_90d_positive"] is False
 
 
@@ -61,6 +61,22 @@ def test_scan_fails_closed_on_stale_mark():
     now = 2_000_000_000_000
     session = FakeSession(now - 10_000_000)
     with pytest.raises(C.CarryDataError, match="stale"):
+        C.scan_symbol("BTCUSDT", now_ms=now, session=session)
+
+
+def test_scan_refuses_future_mark_and_duplicate_funding():
+    now = 2_000_000_000_000
+    with pytest.raises(C.CarryDataError, match="stale"):
+        C.scan_symbol("BTCUSDT", now_ms=now, session=FakeSession(now + 500_000))
+    session = FakeSession(now)
+    original = session.get
+    def duplicate(url, params, timeout):
+        response = original(url, params, timeout)
+        if "fundingRate" in url:
+            response.payload.insert(1, dict(response.payload[0]))
+        return response
+    session.get = duplicate
+    with pytest.raises(C.CarryDataError, match="strictly increasing"):
         C.scan_symbol("BTCUSDT", now_ms=now, session=session)
 
 
@@ -115,3 +131,32 @@ def test_replay_rebalances_outside_frozen_band():
     ])
     assert result["rebalances"] == 1
     assert math.isfinite(result["ending_equity"])
+
+
+def test_replay_liquidation_and_short_windows_never_claim_performance():
+    start = 2_000_000_000_000
+    liquidated = C.replay([
+        {"timestamp_ms": start, "spot_price": 100, "perp_price": 100},
+        {"timestamp_ms": start + 3_600_000, "spot_price": 100, "perp_price": 145},
+    ])
+    assert liquidated["status"] == "LIQUIDATED"
+    assert liquidated["ending_equity"] is None
+    assert liquidated["total_return"] is None
+    assert liquidated["annualized_return"] is None
+    assert liquidated["beats_cash_hurdle"] is False
+
+    short = C.replay([
+        {"timestamp_ms": start, "spot_price": 100, "perp_price": 100},
+        {"timestamp_ms": start + C.DAY_MS, "spot_price": 100, "perp_price": 100},
+    ])
+    assert short["annualized_return"] is None
+    assert short["beats_cash_hurdle"] is False
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "5", None])
+def test_replay_requires_integer_timestamp(bad):
+    with pytest.raises(C.CarryDataError, match="timestamp_ms"):
+        C.replay([
+            {"timestamp_ms": bad, "spot_price": 1, "perp_price": 1},
+            {"timestamp_ms": 10, "spot_price": 1, "perp_price": 1},
+        ])
