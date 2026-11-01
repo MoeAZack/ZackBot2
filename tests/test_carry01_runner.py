@@ -12,6 +12,16 @@ def bar(opened, close=100.0, high=101.0):
     return R.HourlyBar(opened, opened + R.HOUR_MS - 1, close, high)
 
 
+def observation(opened, btc=100.0, eth=50.0, btc_high=None, eth_high=None):
+    return R.BasketObservation(
+        opened,
+        {"BTC": btc, "ETH": eth},
+        {"BTC": btc, "ETH": eth},
+        {"BTC": btc if btc_high is None else btc_high,
+         "ETH": eth if eth_high is None else eth_high},
+    )
+
+
 def test_compound_and_calendar_span_annualization_are_deterministic():
     data = rows(0.01, -0.005, 0.002)
     assert R.compound(item.portfolio for item in data) == pytest.approx(
@@ -183,3 +193,38 @@ def test_causal_ledger_refuses_mismatched_symbols_and_noncanonical_bars():
     bad = R.HourlyBar(1, R.HOUR_MS, 100, 101)
     with pytest.raises(R.CarryRunnerError, match="canonical"):
         R.causal_event_order({"BTC": [bad]}, {"BTC": [bad]}, [])
+
+
+def test_fold_replay_is_fresh_start_cost_and_funding_aware():
+    obs = [observation(0), observation(R.HOUR_MS), observation(2 * R.HOUR_MS)]
+    event = R.FundingEvent("BTC", R.HOUR_MS, 0.001)
+    result = R.replay_fold(obs, [R.FundingCredit(event, 100)])
+    assert result.status == "COMPLETE"
+    assert result.funding_events == 1
+    assert result.funding_pnl > 0
+    assert result.trading_cost > result.funding_pnl
+    assert result.ending_equity < result.starting_equity
+
+
+def test_fold_replay_supports_one_observation_rebalance_latency():
+    obs = [observation(0), observation(R.HOUR_MS, btc=130),
+           observation(2 * R.HOUR_MS, btc=130)]
+    immediate = R.replay_fold(obs, rebalance_latency_hours=0, funding=[])
+    delayed = R.replay_fold(obs, rebalance_latency_hours=1, funding=[])
+    assert immediate.rebalances == delayed.rebalances == 1
+    assert immediate.equity_curve[1][1] != delayed.equity_curve[1][1]
+
+
+def test_fold_replay_fails_on_hourly_high_liquidation_before_close():
+    obs = [observation(0), observation(R.HOUR_MS, btc_high=140)]
+    result = R.replay_fold(obs, [])
+    assert result.status == "LIQUIDATED"
+    assert result.ending_equity is None
+    assert result.liquidated_symbols == ("BTC",)
+
+
+def test_fold_replay_refuses_boundary_and_order_errors():
+    with pytest.raises(R.CarryRunnerError, match="at least two"):
+        R.replay_fold([observation(0)], [])
+    with pytest.raises(R.CarryRunnerError, match="chronological"):
+        R.replay_fold([observation(R.HOUR_MS), observation(0)], [])

@@ -88,6 +88,62 @@ class CausalEvent:
     value: float
 
 
+@dataclass(frozen=True)
+class BasketObservation:
+    """Synchronous BTC/ETH close used to mark and, if needed, rebalance."""
+
+    open_time: int
+    spot_close: Mapping[str, float]
+    mark_close: Mapping[str, float]
+    mark_high: Mapping[str, float]
+
+    @property
+    def available_time(self) -> int:
+        return self.open_time + HOUR_MS
+
+    def validate(self) -> None:
+        if isinstance(self.open_time, bool) or not isinstance(self.open_time, int):
+            raise CarryRunnerError("observation time must be an integer")
+        if self.open_time % HOUR_MS:
+            raise CarryRunnerError("observation must be hourly aligned")
+        symbols = set(self.spot_close)
+        if not symbols or set(self.mark_close) != symbols or set(self.mark_high) != symbols:
+            raise CarryRunnerError("observation legs must cover identical symbols")
+        for symbol in symbols:
+            spot = _finite(self.spot_close[symbol], "spot close")
+            mark = _finite(self.mark_close[symbol], "mark close")
+            high = _finite(self.mark_high[symbol], "mark high")
+            if spot <= 0 or mark <= 0 or high < mark:
+                raise CarryRunnerError("observation prices violate positive OHLC ordering")
+
+
+@dataclass(frozen=True)
+class FundingCredit:
+    """A validated funding event paired to its exact strict-prior mark close."""
+
+    event: FundingEvent
+    settlement_mark: float
+
+    def validate(self) -> None:
+        self.event.validate()
+        if _finite(self.settlement_mark, "funding mark") <= 0:
+            raise CarryRunnerError("funding mark must be positive")
+
+
+@dataclass(frozen=True)
+class FoldReplay:
+    status: str
+    starting_equity: float
+    ending_equity: float | None
+    equity_curve: tuple[tuple[int, float], ...]
+    funding_pnl: float
+    price_pnl: float
+    trading_cost: float
+    funding_events: int
+    rebalances: int
+    liquidated_symbols: tuple[str, ...] = ()
+
+
 def required_funding_mark_open(funding_time: int) -> int:
     """Return the exact hour whose close is strictly before nominal settlement."""
     if isinstance(funding_time, bool) or not isinstance(funding_time, int):
@@ -277,6 +333,7 @@ class BasketState:
     archived_funding_pnl: float = 0.0
     archived_price_pnl: float = 0.0
     archived_trading_cost: float = 0.0
+    archived_funding_events: int = 0
     rebalances: int = 0
 
     @classmethod
@@ -338,6 +395,7 @@ class BasketState:
             self.archived_funding_pnl += sleeve.funding_pnl
             self.archived_price_pnl += sleeve.price_pnl_realized
             self.archived_trading_cost += sleeve.trading_cost
+            self.archived_funding_events += sleeve.funding_events
         equity = math.fsum(closed_equity.values())
         if equity <= 0:
             raise CarryRunnerError("rebalance consumes the basket")
@@ -361,7 +419,13 @@ class BasketState:
 
     @property
     def funding_events(self) -> int:
-        return sum(sleeve.funding_events for sleeve in self.sleeves.values())
+        return self.archived_funding_events + sum(
+            sleeve.funding_events for sleeve in self.sleeves.values())
+
+    @property
+    def price_pnl(self) -> float:
+        return self.archived_price_pnl + math.fsum(
+            sleeve.price_pnl_realized for sleeve in self.sleeves.values())
 
     def close(self, prices: dict[str, tuple[float, float]]) -> float:
         self._require_prices(prices)
@@ -369,6 +433,88 @@ class BasketState:
         for symbol, sleeve in self.sleeves.items():
             total += sleeve.close(*prices[symbol], self.costs)
         return total
+
+
+def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[FundingCredit],
+                *, starting_equity: float = 10_000.0, costs: CostModel | None = None,
+                minimum_leverage: float = 2.0, maximum_leverage: float = 5.0,
+                maintenance_rate: float = 0.005, rebalance_latency_hours: int = 0,
+                received_funding_divisor: float = 1.0,
+                paid_funding_multiplier: float = 1.0) -> FoldReplay:
+    """Replay one fresh-start fold without crossing a boundary or inventing data."""
+    if len(observations) < 2:
+        raise CarryRunnerError("fold needs at least two common observations")
+    if rebalance_latency_hours not in (0, 1):
+        raise CarryRunnerError("rebalance latency must be zero or one hour")
+    previous = -1
+    expected_symbols: set[str] | None = None
+    for observation in observations:
+        observation.validate()
+        if observation.open_time <= previous:
+            raise CarryRunnerError("observations must be unique and chronological")
+        symbols = set(observation.spot_close)
+        if expected_symbols is None:
+            expected_symbols = symbols
+        elif symbols != expected_symbols:
+            raise CarryRunnerError("observation symbol set changed inside a fold")
+        previous = observation.open_time
+    credits = list(funding)
+    previous_available = -1
+    for credit in credits:
+        credit.validate()
+        if credit.event.available_time <= previous_available:
+            raise CarryRunnerError("funding credits must be unique and chronological")
+        if credit.event.symbol not in (expected_symbols or set()):
+            raise CarryRunnerError("funding credit names an unknown sleeve")
+        previous_available = credit.event.available_time
+
+    costs = costs or CostModel()
+    first = observations[0]
+    opening_prices = {symbol: (first.spot_close[symbol], first.mark_close[symbol])
+                      for symbol in sorted(expected_symbols or ())}
+    basket = BasketState.open(starting_equity, opening_prices, costs)
+    curve: list[tuple[int, float]] = [(first.available_time, basket.equity(opening_prices))]
+    funding_index = 0
+    pending_rebalance = False
+
+    for observation in observations[1:]:
+        while (funding_index < len(credits)
+               and credits[funding_index].event.available_time <= observation.available_time):
+            credit = credits[funding_index]
+            if credit.event.available_time > first.available_time:
+                basket.credit_funding(
+                    credit.event.symbol, credit.event.rate, credit.settlement_mark,
+                    received_divisor=received_funding_divisor,
+                    paid_multiplier=paid_funding_multiplier)
+            funding_index += 1
+        liquidated = basket.liquidated_symbols(dict(observation.mark_high),
+                                               maintenance_rate=maintenance_rate)
+        prices = {symbol: (observation.spot_close[symbol], observation.mark_close[symbol])
+                  for symbol in sorted(expected_symbols or ())}
+        marked_equity = basket.equity(prices)
+        curve.append((observation.available_time, max(0.0, marked_equity)))
+        if liquidated or marked_equity <= 0:
+            return FoldReplay("LIQUIDATED", starting_equity, None, tuple(curve),
+                              basket.funding_pnl, basket.price_pnl, basket.trading_cost,
+                              basket.funding_events, basket.rebalances,
+                              tuple(sorted(liquidated)))
+        required = basket.rebalances_required(prices, minimum=minimum_leverage,
+                                              maximum=maximum_leverage)
+        if pending_rebalance or (required and rebalance_latency_hours == 0):
+            rebalanced_equity = basket.rebalance(prices)
+            curve[-1] = (observation.available_time, rebalanced_equity)
+            pending_rebalance = False
+        elif required:
+            pending_rebalance = True
+
+    last = observations[-1]
+    final_prices = {symbol: (last.spot_close[symbol], last.mark_close[symbol])
+                    for symbol in sorted(expected_symbols or ())}
+    ending = basket.close(final_prices)
+    curve.append((last.available_time, ending))
+    return FoldReplay("COMPLETE", starting_equity, ending, tuple(curve),
+                      basket.funding_pnl, basket.price_pnl, basket.trading_cost,
+                      basket.funding_events, basket.rebalances)
 
 
 def _finite(value: float, name: str) -> float:
