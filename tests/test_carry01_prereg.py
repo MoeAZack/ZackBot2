@@ -109,6 +109,8 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "funding timestamps are not forced to an 8h grid" in p["data"]["timestamps"]
     assert "13 digits (milliseconds) or 16 digits (microseconds)" in p["data"]["timestamps"]
     assert "integer floor division by 1000" in p["data"]["timestamps"]
+    assert "byte-identical repeated kline rows" in p["data"]["timestamps"]
+    assert "any duplicate timestamp with different source values refuses" in p["data"]["timestamps"]
     assert "no archive containing a row on or after the seal" in p["data"]["read_definition"]
     assert "no forward fill or synthetic repair" in p["data"]["missing"]
     assert "returns never bridge an incomplete hour" in p["data"]["missing"]

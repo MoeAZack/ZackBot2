@@ -220,6 +220,18 @@ def test_kline_parser_normalizes_official_microsecond_transition():
     assert row["close_time"] == start + 3_599_999
 
 
+def test_kline_parser_collapses_only_byte_identical_duplicate_source_rows():
+    start = 1_735_689_600_000
+    lines = day_klines(start).splitlines(True)
+    payload = "".join(lines[:2] + lines[:2] + lines[2:])
+    archive = H.parse_kline_archive(zipped("x.csv", payload), spec())
+    assert archive.valid_hours == archive.expected_hours == 24
+    assert archive.duplicate_rows == 2
+    changed = lines[0].replace(",100,", ",101,", 1)
+    with pytest.raises(H.HistoryDataError, match="different source values"):
+        H.parse_kline_archive(zipped("x.csv", lines[0] + changed + "".join(lines[1:])), spec())
+
+
 def test_period_gaps_are_ledgered_without_synthetic_repair():
     start = 1_735_689_600_000
     text = "".join(kline(start + hour * 3_600_000) for hour in range(24))
