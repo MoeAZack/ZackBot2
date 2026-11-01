@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from tools.research import carry01_runner as R
@@ -276,3 +278,43 @@ def test_stress_suite_is_complete_fresh_start_and_directionally_conservative():
     assert suite["funding_zero"].funding_pnl == 0
     assert suite["funding_sign_reversal"].funding_pnl < 0
     assert all(result.starting_equity == 10_000 for result in suite.values())
+
+
+def test_fold_inputs_are_synchronous_and_do_not_cross_boundaries_or_gaps():
+    def history(spot_missing=()):
+        spot = [{"open_time": t, "close": 100.0, "high": 101.0}
+                for t in range(0, 6 * R.HOUR_MS, R.HOUR_MS) if t not in spot_missing]
+        mark = [{"open_time": t, "close": 100.0, "high": 101.0}
+                for t in range(0, 6 * R.HOUR_MS, R.HOUR_MS)]
+        funding = [
+            {"funding_time": 0, "funding_rate": 0.001},
+            {"funding_time": 2 * R.HOUR_MS, "funding_rate": 0.001},
+            {"funding_time": 6 * R.HOUR_MS, "funding_rate": 0.001},
+        ]
+        return SimpleNamespace(start_ms=0, end_ms=6 * R.HOUR_MS,
+                               spot=SimpleNamespace(rows=spot),
+                               mark=SimpleNamespace(rows=mark), funding=funding)
+    inputs = R.build_fold_inputs({"BTC": history(),
+                                  "ETH": history((2 * R.HOUR_MS,))},
+                                 0, 6 * R.HOUR_MS)
+    assert [item.open_time for item in inputs.observations] == [
+        0, R.HOUR_MS, 3 * R.HOUR_MS, 4 * R.HOUR_MS,
+    ]
+    assert [(item.event.available_time, item.event.symbol) for item in inputs.funding] == [
+        (2 * R.HOUR_MS + R.FUNDING_DELAY_MS, "BTC"),
+        (2 * R.HOUR_MS + R.FUNDING_DELAY_MS, "ETH"),
+    ]
+    assert inputs.incomplete_funding_events == 0
+
+
+def test_fold_inputs_count_missing_exact_funding_mark():
+    rows = [{"open_time": t, "close": 100.0, "high": 101.0}
+            for t in range(0, 5 * R.HOUR_MS, R.HOUR_MS) if t != R.HOUR_MS]
+    history = SimpleNamespace(
+        start_ms=0, end_ms=5 * R.HOUR_MS,
+        spot=SimpleNamespace(rows=rows), mark=SimpleNamespace(rows=rows),
+        funding=[{"funding_time": 2 * R.HOUR_MS, "funding_rate": 0.001}],
+    )
+    inputs = R.build_fold_inputs({"BTC": history}, 0, 5 * R.HOUR_MS)
+    assert inputs.funding == ()
+    assert inputs.incomplete_funding_events == 1

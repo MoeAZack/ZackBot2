@@ -144,6 +144,78 @@ class FoldReplay:
     liquidated_symbols: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class FoldInputs:
+    observations: tuple[BasketObservation, ...]
+    funding: tuple[FundingCredit, ...]
+    incomplete_funding_events: int
+
+
+def build_fold_inputs(histories: Mapping[str, object], start_ms: int,
+                      end_ms: int) -> FoldInputs:
+    """Build a fresh-start synchronous fold from validated symbol histories."""
+    if (isinstance(start_ms, bool) or isinstance(end_ms, bool)
+            or not isinstance(start_ms, int) or not isinstance(end_ms, int)
+            or start_ms % HOUR_MS or end_ms % HOUR_MS or end_ms <= start_ms):
+        raise CarryRunnerError("fold bounds must be an aligned positive period")
+    if not histories:
+        raise CarryRunnerError("fold has no symbol histories")
+    spot_maps: dict[str, dict[int, dict]] = {}
+    mark_maps: dict[str, dict[int, dict]] = {}
+    for sleeve, history in histories.items():
+        if not isinstance(sleeve, str) or not sleeve:
+            raise CarryRunnerError("fold sleeve name is invalid")
+        try:
+            history_start = int(history.start_ms)
+            history_end = int(history.end_ms)
+            spot_rows = history.spot.rows
+            mark_rows = history.mark.rows
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise CarryRunnerError("fold history has an invalid schema") from exc
+        if start_ms < history_start or end_ms > history_end:
+            raise CarryRunnerError("fold falls outside a signed symbol history")
+        spot_maps[sleeve] = {int(row["open_time"]): row for row in spot_rows
+                             if start_ms <= int(row["open_time"]) < end_ms}
+        mark_maps[sleeve] = {int(row["open_time"]): row for row in mark_rows
+                             if start_ms <= int(row["open_time"]) < end_ms}
+        if len(spot_maps[sleeve]) != sum(start_ms <= int(row["open_time"]) < end_ms
+                                           for row in spot_rows):
+            raise CarryRunnerError("spot history contains duplicate timestamps")
+        if len(mark_maps[sleeve]) != sum(start_ms <= int(row["open_time"]) < end_ms
+                                           for row in mark_rows):
+            raise CarryRunnerError("mark history contains duplicate timestamps")
+    common = set(range(start_ms, end_ms - HOUR_MS, HOUR_MS))
+    for sleeve in histories:
+        common &= set(spot_maps[sleeve]) & set(mark_maps[sleeve])
+    observations = [BasketObservation(
+        opened,
+        {sleeve: float(spot_maps[sleeve][opened]["close"]) for sleeve in histories},
+        {sleeve: float(mark_maps[sleeve][opened]["close"]) for sleeve in histories},
+        {sleeve: float(mark_maps[sleeve][opened]["high"]) for sleeve in histories},
+    ) for opened in sorted(common)]
+    if len(observations) < 2:
+        raise CarryRunnerError("fold has fewer than two synchronous observations")
+
+    credits: list[FundingCredit] = []
+    incomplete = 0
+    for sleeve, history in histories.items():
+        for row in history.funding:
+            nominal = int(row["funding_time"])
+            available = nominal + FUNDING_DELAY_MS
+            required = required_funding_mark_open(nominal)
+            if not (start_ms < nominal and available < end_ms):
+                continue
+            mark = mark_maps[sleeve].get(required) if required >= start_ms else None
+            if mark is None:
+                incomplete += 1
+                continue
+            credits.append(FundingCredit(
+                FundingEvent(sleeve, nominal, float(row["funding_rate"])),
+                float(mark["close"])))
+    credits.sort(key=lambda credit: (credit.event.available_time, credit.event.symbol))
+    return FoldInputs(tuple(observations), tuple(credits), incomplete)
+
+
 def required_funding_mark_open(funding_time: int) -> int:
     """Return the exact hour whose close is strictly before nominal settlement."""
     if isinstance(funding_time, bool) or not isinstance(funding_time, int):
@@ -459,14 +531,15 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
             raise CarryRunnerError("observation symbol set changed inside a fold")
         previous = observation.open_time
     credits = list(funding)
-    previous_available = -1
+    previous_credit: tuple[int, str] | None = None
     for credit in credits:
         credit.validate()
-        if credit.event.available_time <= previous_available:
+        key = (credit.event.available_time, credit.event.symbol)
+        if previous_credit is not None and key <= previous_credit:
             raise CarryRunnerError("funding credits must be unique and chronological")
         if credit.event.symbol not in (expected_symbols or set()):
             raise CarryRunnerError("funding credit names an unknown sleeve")
-        previous_available = credit.event.available_time
+        previous_credit = key
 
     costs = costs or CostModel()
     first = observations[0]
