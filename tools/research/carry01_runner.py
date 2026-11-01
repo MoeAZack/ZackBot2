@@ -517,6 +517,37 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
                       basket.funding_events, basket.rebalances)
 
 
+def replay_stress_suite(observations: Sequence[BasketObservation],
+                        funding: Sequence[FundingCredit], *,
+                        starting_equity: float = 10_000.0) -> dict[str, FoldReplay]:
+    """Run every preregistered stress from the same fresh-start observations."""
+    def scaled_credits(rate_multiplier: float) -> list[FundingCredit]:
+        return [FundingCredit(FundingEvent(credit.event.symbol,
+                                           credit.event.funding_time,
+                                           credit.event.rate * rate_multiplier),
+                              credit.settlement_mark)
+                for credit in funding]
+
+    scenarios = {
+        "base_x1": (1.0, 1.0, 1.0, 0, 1.0),
+        "cost_x1.5": (1.5, 1.5, 1.5, 0, 1.0),
+        "cost_x2": (2.0, 2.0, 2.0, 0, 1.0),
+        "funding_zero": (1.0, 1.0, 1.0, 0, 0.0),
+        "funding_sign_reversal": (1.0, 1.0, 1.0, 0, -1.0),
+        "rebalance_latency_1h": (1.0, 1.0, 1.0, 1, 1.0),
+    }
+    output: dict[str, FoldReplay] = {}
+    for name, (cost_multiplier, received_divisor, paid_multiplier,
+               latency, rate_multiplier) in scenarios.items():
+        output[name] = replay_fold(
+            observations, scaled_credits(rate_multiplier),
+            starting_equity=starting_equity, costs=CostModel(multiplier=cost_multiplier),
+            received_funding_divisor=received_divisor,
+            paid_funding_multiplier=paid_multiplier,
+            rebalance_latency_hours=latency)
+    return output
+
+
 def daily_returns_from_replay(replay: FoldReplay, *, cash_apr: float = 0.04) -> list[DailyReturn]:
     """Compound only causal hourly intervals; never bridge a missing observation."""
     if replay.status != "COMPLETE" or replay.ending_equity is None:

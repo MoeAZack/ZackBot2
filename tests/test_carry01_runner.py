@@ -261,3 +261,18 @@ def test_daily_returns_refuse_liquidated_or_duplicate_curve():
                               (R.HOUR_MS, 100)), 0, 0, 0, 0, 0)
     with pytest.raises(R.CarryRunnerError, match="chronological"):
         R.daily_returns_from_replay(duplicate)
+
+
+def test_stress_suite_is_complete_fresh_start_and_directionally_conservative():
+    obs = [observation(0), observation(R.HOUR_MS), observation(2 * R.HOUR_MS)]
+    funding = [R.FundingCredit(R.FundingEvent("BTC", R.HOUR_MS, 0.01), 100)]
+    suite = R.replay_stress_suite(obs, funding)
+    assert set(suite) == {
+        "base_x1", "cost_x1.5", "cost_x2", "funding_zero",
+        "funding_sign_reversal", "rebalance_latency_1h",
+    }
+    assert suite["cost_x2"].trading_cost > suite["cost_x1.5"].trading_cost > suite["base_x1"].trading_cost
+    assert suite["cost_x2"].funding_pnl < suite["cost_x1.5"].funding_pnl < suite["base_x1"].funding_pnl
+    assert suite["funding_zero"].funding_pnl == 0
+    assert suite["funding_sign_reversal"].funding_pnl < 0
+    assert all(result.starting_equity == 10_000 for result in suite.values())
