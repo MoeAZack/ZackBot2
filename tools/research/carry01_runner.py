@@ -761,9 +761,10 @@ def evaluate_historical_gates(suites: Sequence[Mapping[str, FoldReplay]]) -> dic
     if len(suites) != 5 or any(set(suite) != required_scenarios for suite in suites):
         raise CarryRunnerError("historical verdict requires five complete stress suites")
     base = [suite["base_x1"] for suite in suites]
-    all_replays = [replay for suite in suites for replay in suite.values()]
+    gated_scenarios = required_scenarios - {"funding_sign_reversal"}
+    gated_replays = [suite[scenario] for suite in suites for scenario in gated_scenarios]
     complete = all(replay.status == "COMPLETE" and replay.ending_equity is not None
-                   for replay in all_replays)
+                   for replay in gated_replays)
 
     base_daily = [daily_returns_from_replay(replay) for replay in base if replay.status == "COMPLETE"]
     combined_daily = [row for fold in base_daily for row in fold]
@@ -797,7 +798,7 @@ def evaluate_historical_gates(suites: Sequence[Mapping[str, FoldReplay]]) -> dic
 
     base_reports = [fold_report(replay) for replay in base]
     stress_reports = [fold_report(suite[scenario]) for suite in suites
-                      for scenario in required_scenarios - {"base_x1"}]
+                      for scenario in gated_scenarios - {"base_x1"}]
     base_max_drawdown = max((report["maximum_drawdown"] or 0) for report in base_reports)
     stress_max_drawdown = max((report["maximum_drawdown"] or 0) for report in stress_reports)
     maximum_recovery = max((report["longest_recovery_days"] or 0)

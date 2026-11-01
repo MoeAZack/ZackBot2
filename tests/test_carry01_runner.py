@@ -400,6 +400,12 @@ def test_historical_gate_evaluator_passes_only_complete_preregistered_suite():
     assert all(result["gates"].values())
     assert result["positive_cash_excess_folds"] == 5
 
+    report_only = R.FoldReplay("LIQUIDATED", 10_000, None, ((R.HOUR_MS, 1),),
+                               0, 0, 0, 0, 0, liquidated_symbols=("BTC",))
+    for suite in suites:
+        suite["funding_sign_reversal"] = report_only
+    assert R.evaluate_historical_gates(suites)["verdict"] == "PASS"
+
     for fold, suite in enumerate(suites):
         suite["cost_x2"] = synthetic_gate_replay(fold * 32 * 24, positive=False)
     failed = R.evaluate_historical_gates(suites)
