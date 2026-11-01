@@ -173,6 +173,69 @@ def test_funding_rest_refuses_url_schema_period_and_local_tamper(tmp_path):
         H.fetch_funding_rest(spec, tmp_path, Session([]))
 
 
+def test_read_frozen_reverifies_archive_and_funding_without_network(tmp_path):
+    archive_spec = H._archive("BTCUSDT", "spot", "klines", "daily", "2026-09-01")
+    payload = zipped("BTCUSDT.csv", day_klines(H._period_bounds(archive_spec)[0]))
+    archive_path = tmp_path / H.archive_relative_path(archive_spec.url)
+    archive_path.parent.mkdir(parents=True)
+    archive_path.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    archive_path.with_name(archive_path.name + ".CHECKSUM").write_text(
+        f"{digest}  *{archive_path.name}\n", encoding="ascii")
+    assert H.read_frozen(archive_spec, tmp_path) == payload
+    archive_path.write_bytes(payload + b"tamper")
+    with pytest.raises(H.HistoryDataError, match="mismatch"):
+        H.read_frozen(archive_spec, tmp_path)
+
+    funding_spec = next(item for item in H.build_manifest(contract())
+                        if item.frequency == "daily" and item.series == "fundingRate")
+    start, _ = H._period_bounds(funding_spec)
+    funding_payload = json.dumps([{"symbol": funding_spec.symbol,
+                                   "fundingTime": start + 1,
+                                   "fundingRate": "0.0001",
+                                   "markPrice": "100"}]).encode()
+    funding_path = tmp_path / H.funding_rest_relative_path(funding_spec)
+    funding_path.parent.mkdir(parents=True)
+    funding_path.write_bytes(funding_payload)
+    funding_path.with_name(funding_path.name + ".sha256").write_text(
+        hashlib.sha256(funding_payload).hexdigest(), encoding="ascii")
+    assert H.read_frozen(funding_spec, tmp_path) == funding_payload
+    funding_path.with_name(funding_path.name + ".sha256").write_text("bad", encoding="ascii")
+    with pytest.raises(H.HistoryDataError, match="invalid"):
+        H.read_frozen(funding_spec, tmp_path)
+
+
+def test_load_symbol_history_reconstructs_only_signed_frozen_inputs(tmp_path, monkeypatch):
+    period = "2026-09-27"
+    start = int(H.datetime.fromisoformat(period + "T00:00:00+00:00").timestamp() * 1000)
+    specs = [
+        H._archive("BTCUSDT", "spot", "klines", "daily", period),
+        H._archive("BTCUSDT", "futures", "markPriceKlines", "daily", period),
+        H._archive("BTCUSDT", "futures", "fundingRate", "daily", period),
+    ]
+    for item in specs[:2]:
+        payload = zipped("BTCUSDT.csv", day_klines(start))
+        path = tmp_path / H.archive_relative_path(item.url)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        path.with_name(path.name + ".CHECKSUM").write_text(
+            f"{hashlib.sha256(payload).hexdigest()}  *{path.name}\n", encoding="ascii")
+    funding_payload = json.dumps([{"symbol": "BTCUSDT", "fundingTime": start + 8 * H.HOUR_MS,
+                                   "fundingRate": "0.0001", "markPrice": "100"}]).encode()
+    funding_path = tmp_path / H.funding_rest_relative_path(specs[2])
+    funding_path.parent.mkdir(parents=True, exist_ok=True)
+    funding_path.write_bytes(funding_payload)
+    funding_path.with_name(funding_path.name + ".sha256").write_text(
+        hashlib.sha256(funding_payload).hexdigest(), encoding="ascii")
+    monkeypatch.setattr(H, "validate_contract", lambda contract: None)
+    monkeypatch.setattr(H, "build_manifest", lambda contract: specs)
+    contract = {"data": {"pairs": {"BTCUSDT": period + "T00:00:00Z"}}}
+    history = H.load_symbol_history(contract, tmp_path, "BTCUSDT")
+    assert len(history.spot.rows) == len(history.mark.rows) == 24
+    assert history.spot.incomplete == history.mark.incomplete == []
+    assert len(history.funding) == 1
+
+
 def zipped(name, text):
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:

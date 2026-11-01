@@ -68,6 +68,16 @@ class KlineArchive:
         return self.valid_hours / self.expected_hours
 
 
+@dataclass(frozen=True)
+class SymbolHistory:
+    symbol: str
+    start_ms: int
+    end_ms: int
+    spot: KlineArchive
+    mark: KlineArchive
+    funding: list[dict[str, Any]]
+
+
 def canonical_digest(contract: dict[str, Any]) -> str:
     material = dict(contract)
     material.pop("contract_digest_sha256", None)
@@ -326,6 +336,98 @@ def fetch_funding_rest(spec: ArchiveSpec, root: Path,
     payload_partial.replace(destination)
     return {"path": destination.as_posix(), "sha256": digest,
             "bytes": len(payload), "reused": False}
+
+
+def read_frozen(spec: ArchiveSpec, root: Path) -> bytes:
+    """Read and re-verify one already-frozen input without any network fallback."""
+    if spec.frequency == "daily" and spec.series == "fundingRate":
+        destination = root / funding_rest_relative_path(spec)
+        digest_path = destination.with_name(destination.name + ".sha256")
+        if not destination.is_file() or not digest_path.is_file():
+            raise HistoryDataError("frozen funding response or digest is missing")
+        payload = destination.read_bytes()
+        try:
+            expected = digest_path.read_text(encoding="ascii").strip().lower()
+        except UnicodeDecodeError as exc:
+            raise HistoryDataError("funding response digest is not ASCII") from exc
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise HistoryDataError("funding response digest is invalid")
+        if hashlib.sha256(payload).hexdigest() != expected:
+            raise HistoryDataError("frozen funding response digest mismatch")
+        parse_funding_rest(payload, spec)
+        return payload
+    destination = root / archive_relative_path(spec.url)
+    checksum_path = destination.with_name(destination.name + ".CHECKSUM")
+    if not destination.is_file() or not checksum_path.is_file():
+        raise HistoryDataError("frozen archive or checksum is missing")
+    payload = destination.read_bytes()
+    verify_bytes(payload, checksum_path.read_bytes(), destination.name)
+    return payload
+
+
+def load_symbol_history(contract: dict[str, Any], root: Path, symbol: str) -> SymbolHistory:
+    """Reconstruct one signed symbol solely from reverified frozen inputs."""
+    validate_contract(contract)
+    try:
+        raw_start = contract["data"]["pairs"][symbol]
+    except KeyError as exc:
+        raise HistoryDataError(f"symbol is outside the signed study: {symbol}") from exc
+    start_ms = int(datetime.fromisoformat(raw_start.replace("Z", "+00:00")).timestamp() * 1000)
+    end_ms = SEAL_MS
+    specs = [item for item in build_manifest(contract) if item.symbol == symbol]
+
+    def load_klines(series: str) -> KlineArchive:
+        parts: list[KlineArchive] = []
+        duplicate_rows = 0
+        for item in specs:
+            if item.series != series:
+                continue
+            primary = parse_kline_archive(read_frozen(item, root), item)
+            if item.frequency == "monthly" and primary.incomplete:
+                recoveries: list[KlineArchive] = []
+                for recovery in daily_recovery_specs(item, primary.incomplete, start_ms):
+                    path = root / archive_relative_path(recovery.url)
+                    checksum = path.with_name(path.name + ".CHECKSUM")
+                    if not path.exists() and not checksum.exists():
+                        continue
+                    recoveries.append(parse_kline_archive(read_frozen(recovery, root), recovery))
+                period_start, period_end = _period_bounds(item)
+                primary = merge_daily_recovery(primary, recoveries, period_start, period_end)
+            parts.append(primary)
+            duplicate_rows += primary.duplicate_rows
+        rows = [row for part in parts for row in part.rows
+                if start_ms <= int(row["open_time"]) < end_ms]
+        rows.sort(key=lambda row: int(row["open_time"]))
+        times = [int(row["open_time"]) for row in rows]
+        if len(times) != len(set(times)) or times != sorted(times):
+            raise HistoryDataError(f"{series} parts overlap or are unordered")
+        incomplete = [item for part in parts for item in part.incomplete
+                      if start_ms <= int(item["open_time"]) < end_ms]
+        missing = {int(item["open_time"]): item for item in incomplete}
+        if len(missing) != len(incomplete):
+            raise HistoryDataError(f"{series} incomplete ledgers overlap")
+        observed = set(times)
+        for opened in range(start_ms, end_ms, HOUR_MS):
+            if opened not in observed and opened not in missing:
+                missing[opened] = {"open_time": opened, "reason": "missing_frozen_period"}
+        return KlineArchive(rows, [missing[t] for t in sorted(missing)],
+                            (end_ms - start_ms) // HOUR_MS, duplicate_rows)
+
+    funding: list[dict[str, Any]] = []
+    for item in specs:
+        if item.series != "fundingRate":
+            continue
+        payload = read_frozen(item, root)
+        parsed = (parse_funding_rest(payload, item) if item.frequency == "daily"
+                  else parse_funding_zip(payload, item))
+        funding.extend(row for row in parsed
+                       if start_ms <= int(row["funding_time"]) < end_ms)
+    funding.sort(key=lambda row: int(row["funding_time"]))
+    funding_times = [int(row["funding_time"]) for row in funding]
+    if not funding or len(funding_times) != len(set(funding_times)):
+        raise HistoryDataError("funding history is empty or contains duplicate timestamps")
+    return SymbolHistory(symbol, start_ms, end_ms, load_klines("klines"),
+                         load_klines("markPriceKlines"), funding)
 
 
 def _csv_rows(payload: bytes) -> list[list[str]]:

@@ -1,0 +1,998 @@
+"""Deterministic reporting primitives for the signed CARRY-01 history study.
+
+The archive reader and the portfolio simulator are deliberately separate.  This
+module contains only result math whose inputs are already-causal observations.
+It never downloads data, reads an exchange account, or places an order.
+"""
+from __future__ import annotations
+
+import math
+import random
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Mapping, Sequence
+
+YEAR_DAYS = 365.25
+HOUR_MS = 3_600_000
+FUNDING_DELAY_MS = 300_000
+
+
+class CarryRunnerError(ValueError):
+    """The supplied observations cannot support a signed CARRY-01 result."""
+
+
+@dataclass(frozen=True)
+class DailyReturn:
+    """One included UTC-day arithmetic return and its matching cash return."""
+
+    day_ordinal: int
+    portfolio: float
+    cash: float
+
+    @property
+    def cash_excess(self) -> float:
+        return self.portfolio - self.cash
+
+
+@dataclass(frozen=True)
+class HourlyBar:
+    """One already-validated hourly bar, usable only after its close."""
+
+    open_time: int
+    close_time: int
+    close: float
+    high: float
+
+    def validate(self) -> None:
+        if isinstance(self.open_time, bool) or isinstance(self.close_time, bool):
+            raise CarryRunnerError("bar timestamps must be integers")
+        if not isinstance(self.open_time, int) or not isinstance(self.close_time, int):
+            raise CarryRunnerError("bar timestamps must be integers")
+        if self.open_time % HOUR_MS or self.close_time != self.open_time + HOUR_MS - 1:
+            raise CarryRunnerError("bar must occupy one canonical aligned hour")
+        close = _finite(self.close, "bar close")
+        high = _finite(self.high, "bar high")
+        if close <= 0 or high < close:
+            raise CarryRunnerError("bar prices violate positive OHLC ordering")
+
+    @property
+    def available_time(self) -> int:
+        self.validate()
+        return self.close_time + 1
+
+
+@dataclass(frozen=True)
+class FundingEvent:
+    symbol: str
+    funding_time: int
+    rate: float
+
+    def validate(self) -> None:
+        if not self.symbol:
+            raise CarryRunnerError("funding symbol is empty")
+        if isinstance(self.funding_time, bool) or not isinstance(self.funding_time, int):
+            raise CarryRunnerError("funding time must be an integer")
+        _finite(self.rate, "funding rate")
+
+    @property
+    def available_time(self) -> int:
+        self.validate()
+        return self.funding_time + FUNDING_DELAY_MS
+
+
+@dataclass(frozen=True)
+class CausalEvent:
+    available_time: int
+    kind: str
+    symbol: str
+    source_time: int
+    value: float
+
+
+@dataclass(frozen=True)
+class BasketObservation:
+    """Synchronous BTC/ETH close used to mark and, if needed, rebalance."""
+
+    open_time: int
+    spot_close: Mapping[str, float]
+    mark_close: Mapping[str, float]
+    mark_high: Mapping[str, float]
+
+    @property
+    def available_time(self) -> int:
+        return self.open_time + HOUR_MS
+
+    def validate(self) -> None:
+        if isinstance(self.open_time, bool) or not isinstance(self.open_time, int):
+            raise CarryRunnerError("observation time must be an integer")
+        if self.open_time % HOUR_MS:
+            raise CarryRunnerError("observation must be hourly aligned")
+        symbols = set(self.spot_close)
+        if not symbols or set(self.mark_close) != symbols or set(self.mark_high) != symbols:
+            raise CarryRunnerError("observation legs must cover identical symbols")
+        for symbol in symbols:
+            spot = _finite(self.spot_close[symbol], "spot close")
+            mark = _finite(self.mark_close[symbol], "mark close")
+            high = _finite(self.mark_high[symbol], "mark high")
+            if spot <= 0 or mark <= 0 or high < mark:
+                raise CarryRunnerError("observation prices violate positive OHLC ordering")
+
+
+@dataclass(frozen=True)
+class FundingCredit:
+    """A validated funding event paired to its exact strict-prior mark close."""
+
+    event: FundingEvent
+    settlement_mark: float
+
+    def validate(self) -> None:
+        self.event.validate()
+        if _finite(self.settlement_mark, "funding mark") <= 0:
+            raise CarryRunnerError("funding mark must be positive")
+
+
+@dataclass(frozen=True)
+class FoldReplay:
+    status: str
+    starting_equity: float
+    ending_equity: float | None
+    equity_curve: tuple[tuple[int, float], ...]
+    funding_pnl: float
+    price_pnl: float
+    trading_cost: float
+    funding_events: int
+    rebalances: int
+    liquidated_symbols: tuple[str, ...] = ()
+    asset_net_pnl: tuple[tuple[str, float], ...] = ()
+    turnover: float = 0.0
+    minimum_margin_headroom: float | None = None
+    funding_events_by_asset: tuple[tuple[str, int], ...] = ()
+
+
+@dataclass(frozen=True)
+class FoldInputs:
+    observations: tuple[BasketObservation, ...]
+    funding: tuple[FundingCredit, ...]
+    incomplete_funding_events: int
+
+
+def build_fold_inputs(histories: Mapping[str, object], start_ms: int,
+                      end_ms: int) -> FoldInputs:
+    """Build a fresh-start synchronous fold from validated symbol histories."""
+    if (isinstance(start_ms, bool) or isinstance(end_ms, bool)
+            or not isinstance(start_ms, int) or not isinstance(end_ms, int)
+            or start_ms % HOUR_MS or end_ms % HOUR_MS or end_ms <= start_ms):
+        raise CarryRunnerError("fold bounds must be an aligned positive period")
+    if not histories:
+        raise CarryRunnerError("fold has no symbol histories")
+    spot_maps: dict[str, dict[int, dict]] = {}
+    mark_maps: dict[str, dict[int, dict]] = {}
+    for sleeve, history in histories.items():
+        if not isinstance(sleeve, str) or not sleeve:
+            raise CarryRunnerError("fold sleeve name is invalid")
+        try:
+            history_start = int(history.start_ms)
+            history_end = int(history.end_ms)
+            spot_rows = history.spot.rows
+            mark_rows = history.mark.rows
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise CarryRunnerError("fold history has an invalid schema") from exc
+        if start_ms < history_start or end_ms > history_end:
+            raise CarryRunnerError("fold falls outside a signed symbol history")
+        spot_maps[sleeve] = {int(row["open_time"]): row for row in spot_rows
+                             if start_ms <= int(row["open_time"]) < end_ms}
+        mark_maps[sleeve] = {int(row["open_time"]): row for row in mark_rows
+                             if start_ms <= int(row["open_time"]) < end_ms}
+        if len(spot_maps[sleeve]) != sum(start_ms <= int(row["open_time"]) < end_ms
+                                           for row in spot_rows):
+            raise CarryRunnerError("spot history contains duplicate timestamps")
+        if len(mark_maps[sleeve]) != sum(start_ms <= int(row["open_time"]) < end_ms
+                                           for row in mark_rows):
+            raise CarryRunnerError("mark history contains duplicate timestamps")
+    common = set(range(start_ms, end_ms - HOUR_MS, HOUR_MS))
+    for sleeve in histories:
+        common &= set(spot_maps[sleeve]) & set(mark_maps[sleeve])
+    observations = [BasketObservation(
+        opened,
+        {sleeve: float(spot_maps[sleeve][opened]["close"]) for sleeve in histories},
+        {sleeve: float(mark_maps[sleeve][opened]["close"]) for sleeve in histories},
+        {sleeve: float(mark_maps[sleeve][opened]["high"]) for sleeve in histories},
+    ) for opened in sorted(common)]
+    if len(observations) < 2:
+        raise CarryRunnerError("fold has fewer than two synchronous observations")
+
+    credits: list[FundingCredit] = []
+    incomplete = 0
+    for sleeve, history in histories.items():
+        for row in history.funding:
+            nominal = int(row["funding_time"])
+            available = nominal + FUNDING_DELAY_MS
+            required = required_funding_mark_open(nominal)
+            if not (start_ms < nominal and available < end_ms):
+                continue
+            mark = mark_maps[sleeve].get(required) if required >= start_ms else None
+            if mark is None:
+                incomplete += 1
+                continue
+            credits.append(FundingCredit(
+                FundingEvent(sleeve, nominal, float(row["funding_rate"])),
+                float(mark["close"])))
+    credits.sort(key=lambda credit: (credit.event.available_time, credit.event.symbol))
+    return FoldInputs(tuple(observations), tuple(credits), incomplete)
+
+
+def required_funding_mark_open(funding_time: int) -> int:
+    """Return the exact hour whose close is strictly before nominal settlement."""
+    if isinstance(funding_time, bool) or not isinstance(funding_time, int):
+        raise CarryRunnerError("funding time must be an integer")
+    return ((funding_time - HOUR_MS) // HOUR_MS) * HOUR_MS
+
+
+def funding_settlement_mark(event: FundingEvent,
+                            mark_bars: Mapping[int, HourlyBar]) -> float:
+    """Resolve only the signed exact prior mark bar; never substitute an older bar."""
+    event.validate()
+    required = required_funding_mark_open(event.funding_time)
+    try:
+        bar = mark_bars[required]
+    except KeyError as exc:
+        raise CarryRunnerError("funding event is missing its exact prior mark bar") from exc
+    bar.validate()
+    if bar.open_time != required or bar.close_time >= event.funding_time:
+        raise CarryRunnerError("funding mark is not strictly earlier than settlement")
+    return bar.close
+
+
+def causal_event_order(spot_bars: Mapping[str, Sequence[HourlyBar]],
+                       mark_bars: Mapping[str, Sequence[HourlyBar]],
+                       funding: Sequence[FundingEvent]) -> list[CausalEvent]:
+    """Build an availability-time ledger without reading or calculating a return."""
+    if set(spot_bars) != set(mark_bars):
+        raise CarryRunnerError("spot and mark symbol sets differ")
+    events: list[CausalEvent] = []
+    for kind, series_by_symbol in (("spot", spot_bars), ("mark", mark_bars)):
+        for symbol, series in sorted(series_by_symbol.items()):
+            previous = -1
+            for bar in series:
+                bar.validate()
+                if bar.open_time <= previous:
+                    raise CarryRunnerError(f"{kind} bars must be unique and chronological")
+                previous = bar.open_time
+                events.append(CausalEvent(bar.available_time, kind, symbol,
+                                          bar.open_time, bar.close))
+    for event in funding:
+        event.validate()
+        if event.symbol not in spot_bars:
+            raise CarryRunnerError("funding event names an unknown symbol")
+        events.append(CausalEvent(event.available_time, "funding", event.symbol,
+                                  event.funding_time, event.rate))
+    priority = {"spot": 0, "mark": 1, "funding": 2}
+    events.sort(key=lambda item: (item.available_time, priority[item.kind],
+                                  item.symbol, item.source_time))
+    return events
+
+
+@dataclass(frozen=True)
+class CostModel:
+    """Per-fill costs expressed in basis points of each leg's notional."""
+
+    spot_fee_bps: float = 10.0
+    perpetual_fee_bps: float = 5.0
+    spot_slippage_bps: float = 5.0
+    perpetual_slippage_bps: float = 5.0
+    multiplier: float = 1.0
+
+    def validate(self) -> None:
+        for name in ("spot_fee_bps", "perpetual_fee_bps", "spot_slippage_bps",
+                     "perpetual_slippage_bps"):
+            if _finite(getattr(self, name), name) < 0:
+                raise CarryRunnerError(f"{name} cannot be negative")
+        if _finite(self.multiplier, "cost multiplier") <= 0:
+            raise CarryRunnerError("cost multiplier must be positive")
+
+    def fill_cost(self, quantity: float, spot: float, mark: float) -> float:
+        self.validate()
+        quantity = abs(_finite(quantity, "quantity"))
+        spot = _finite(spot, "spot price")
+        mark = _finite(mark, "mark price")
+        if spot <= 0 or mark <= 0:
+            raise CarryRunnerError("fill prices must be positive")
+        spot_rate = (self.spot_fee_bps + self.spot_slippage_bps) / 10_000
+        perp_rate = (self.perpetual_fee_bps + self.perpetual_slippage_bps) / 10_000
+        return quantity * (spot * spot_rate + mark * perp_rate) * self.multiplier
+
+
+@dataclass
+class SleeveState:
+    """One matched long-spot/short-perpetual sleeve between rebalances."""
+
+    quantity: float
+    entry_spot: float
+    entry_mark: float
+    segment_equity: float
+    futures_collateral: float
+    funding_pnl: float = 0.0
+    price_pnl_realized: float = 0.0
+    trading_cost: float = 0.0
+    funding_events: int = 0
+    turnover: float = 0.0
+
+    @classmethod
+    def open(cls, equity: float, spot: float, mark: float, costs: CostModel,
+             *, spot_fraction: float = 0.75) -> "SleeveState":
+        equity = _finite(equity, "sleeve equity")
+        spot = _finite(spot, "spot price")
+        mark = _finite(mark, "mark price")
+        if equity <= 0 or spot <= 0 or mark <= 0:
+            raise CarryRunnerError("opening equity and prices must be positive")
+        if not 0 < spot_fraction < 1:
+            raise CarryRunnerError("spot fraction must be between zero and one")
+        quantity = equity * spot_fraction / spot
+        opening_cost = costs.fill_cost(quantity, spot, mark)
+        if opening_cost >= equity:
+            raise CarryRunnerError("opening cost consumes the sleeve")
+        return cls(quantity=quantity, entry_spot=spot, entry_mark=mark,
+                   segment_equity=equity - opening_cost,
+                   futures_collateral=equity * (1 - spot_fraction) - opening_cost,
+                   trading_cost=opening_cost,
+                   turnover=quantity * (spot + mark))
+
+    def _prices(self, spot: float, mark: float) -> tuple[float, float]:
+        spot = _finite(spot, "spot price")
+        mark = _finite(mark, "mark price")
+        if spot <= 0 or mark <= 0:
+            raise CarryRunnerError("marking prices must be positive")
+        return spot, mark
+
+    def spot_pnl(self, spot: float) -> float:
+        spot = _finite(spot, "spot price")
+        return self.quantity * (spot - self.entry_spot)
+
+    def short_pnl(self, mark: float) -> float:
+        mark = _finite(mark, "mark price")
+        return self.quantity * (self.entry_mark - mark)
+
+    def equity(self, spot: float, mark: float) -> float:
+        spot, mark = self._prices(spot, mark)
+        return self.segment_equity + self.spot_pnl(spot) + self.short_pnl(mark) + self.funding_pnl
+
+    def margin_balance(self, mark: float) -> float:
+        mark = _finite(mark, "mark price")
+        if mark <= 0:
+            raise CarryRunnerError("mark price must be positive")
+        return self.futures_collateral + self.short_pnl(mark) + self.funding_pnl
+
+    def leverage(self, mark: float) -> float:
+        balance = self.margin_balance(mark)
+        return math.inf if balance <= 0 else self.quantity * mark / balance
+
+    def margin_headroom(self, mark: float, *, maintenance_rate: float = 0.005) -> float:
+        maintenance_rate = _finite(maintenance_rate, "maintenance rate")
+        if not 0 <= maintenance_rate < 1:
+            raise CarryRunnerError("maintenance rate must be in [0, 1)")
+        return self.margin_balance(mark) - self.quantity * mark * maintenance_rate
+
+    def liquidates_at_high(self, high: float, *, maintenance_rate: float = 0.005) -> bool:
+        high = _finite(high, "mark high")
+        if high <= 0:
+            raise CarryRunnerError("mark high must be positive")
+        return self.margin_headroom(high, maintenance_rate=maintenance_rate) <= 0
+
+    def credit_funding(self, rate: float, settlement_mark: float, *, received_divisor: float = 1.0,
+                       paid_multiplier: float = 1.0) -> float:
+        rate = _finite(rate, "funding rate")
+        settlement_mark = _finite(settlement_mark, "funding mark")
+        received_divisor = _finite(received_divisor, "received funding divisor")
+        paid_multiplier = _finite(paid_multiplier, "paid funding multiplier")
+        if settlement_mark <= 0 or received_divisor <= 0 or paid_multiplier <= 0:
+            raise CarryRunnerError("funding controls and mark must be positive")
+        raw = self.quantity * settlement_mark * rate
+        amount = raw / received_divisor if raw >= 0 else raw * paid_multiplier
+        self.funding_pnl += amount
+        self.funding_events += 1
+        return amount
+
+    def close(self, spot: float, mark: float, costs: CostModel) -> float:
+        """Return equity after closing both legs and accumulate attribution."""
+        spot, mark = self._prices(spot, mark)
+        price_pnl = self.spot_pnl(spot) + self.short_pnl(mark)
+        closing_cost = costs.fill_cost(self.quantity, spot, mark)
+        self.price_pnl_realized += price_pnl
+        self.trading_cost += closing_cost
+        self.turnover += self.quantity * (spot + mark)
+        return self.segment_equity + price_pnl + self.funding_pnl - closing_cost
+
+
+@dataclass
+class BasketState:
+    """Equal-weight sleeves with atomic whole-portfolio rebalancing."""
+
+    sleeves: dict[str, SleeveState]
+    costs: CostModel
+    starting_equity: float
+    archived_funding_pnl: float = 0.0
+    archived_price_pnl: float = 0.0
+    archived_trading_cost: float = 0.0
+    archived_funding_events: int = 0
+    archived_turnover: float = 0.0
+    archived_net_pnl_by_symbol: dict[str, float] = field(default_factory=dict)
+    archived_funding_events_by_symbol: dict[str, int] = field(default_factory=dict)
+    rebalances: int = 0
+
+    @classmethod
+    def open(cls, equity: float, prices: dict[str, tuple[float, float]],
+             costs: CostModel) -> "BasketState":
+        equity = _finite(equity, "basket equity")
+        if equity <= 0:
+            raise CarryRunnerError("basket equity must be positive")
+        if len(prices) < 1 or any(not isinstance(symbol, str) or not symbol for symbol in prices):
+            raise CarryRunnerError("basket needs named price sleeves")
+        sleeve_equity = equity / len(prices)
+        sleeves = {symbol: SleeveState.open(sleeve_equity, spot, mark, costs)
+                   for symbol, (spot, mark) in sorted(prices.items())}
+        return cls(sleeves=sleeves, costs=costs, starting_equity=equity)
+
+    def equity(self, prices: dict[str, tuple[float, float]]) -> float:
+        self._require_prices(prices)
+        return math.fsum(self.sleeves[symbol].equity(*prices[symbol])
+                         for symbol in self.sleeves)
+
+    def _require_prices(self, prices: dict[str, tuple[float, float]]) -> None:
+        if set(prices) != set(self.sleeves):
+            raise CarryRunnerError("basket prices must cover every sleeve exactly")
+
+    def rebalances_required(self, prices: dict[str, tuple[float, float]], *,
+                            minimum: float = 2.0, maximum: float = 5.0) -> bool:
+        self._require_prices(prices)
+        minimum = _finite(minimum, "minimum leverage")
+        maximum = _finite(maximum, "maximum leverage")
+        if not 0 < minimum < maximum:
+            raise CarryRunnerError("leverage band is invalid")
+        return any(not minimum <= sleeve.leverage(prices[symbol][1]) <= maximum
+                   for symbol, sleeve in self.sleeves.items())
+
+    def liquidated_symbols(self, mark_highs: dict[str, float], *,
+                           maintenance_rate: float = 0.005) -> list[str]:
+        if set(mark_highs) != set(self.sleeves):
+            raise CarryRunnerError("mark highs must cover every sleeve exactly")
+        return [symbol for symbol, sleeve in self.sleeves.items()
+                if sleeve.liquidates_at_high(mark_highs[symbol],
+                                             maintenance_rate=maintenance_rate)]
+
+    def credit_funding(self, symbol: str, rate: float, settlement_mark: float, *,
+                       received_divisor: float = 1.0, paid_multiplier: float = 1.0) -> float:
+        try:
+            sleeve = self.sleeves[symbol]
+        except KeyError as exc:
+            raise CarryRunnerError(f"unknown funding sleeve: {symbol}") from exc
+        return sleeve.credit_funding(rate, settlement_mark,
+                                     received_divisor=received_divisor,
+                                     paid_multiplier=paid_multiplier)
+
+    def rebalance(self, prices: dict[str, tuple[float, float]]) -> float:
+        """Close every sleeve, split net equity equally, and reopen all sleeves."""
+        self._require_prices(prices)
+        closed_equity: dict[str, float] = {}
+        for symbol, sleeve in self.sleeves.items():
+            closed_equity[symbol] = sleeve.close(*prices[symbol], self.costs)
+            self.archived_funding_pnl += sleeve.funding_pnl
+            self.archived_price_pnl += sleeve.price_pnl_realized
+            self.archived_trading_cost += sleeve.trading_cost
+            self.archived_funding_events += sleeve.funding_events
+            self.archived_funding_events_by_symbol[symbol] = (
+                self.archived_funding_events_by_symbol.get(symbol, 0) + sleeve.funding_events)
+            self.archived_turnover += sleeve.turnover
+            net = sleeve.price_pnl_realized + sleeve.funding_pnl - sleeve.trading_cost
+            self.archived_net_pnl_by_symbol[symbol] = (
+                self.archived_net_pnl_by_symbol.get(symbol, 0.0) + net)
+        equity = math.fsum(closed_equity.values())
+        if equity <= 0:
+            raise CarryRunnerError("rebalance consumes the basket")
+        sleeve_equity = equity / len(self.sleeves)
+        self.sleeves = {
+            symbol: SleeveState.open(sleeve_equity, *prices[symbol], self.costs)
+            for symbol in sorted(self.sleeves)
+        }
+        self.rebalances += 1
+        return self.equity(prices)
+
+    @property
+    def funding_pnl(self) -> float:
+        return self.archived_funding_pnl + math.fsum(
+            sleeve.funding_pnl for sleeve in self.sleeves.values())
+
+    @property
+    def trading_cost(self) -> float:
+        return self.archived_trading_cost + math.fsum(
+            sleeve.trading_cost for sleeve in self.sleeves.values())
+
+    @property
+    def funding_events(self) -> int:
+        return self.archived_funding_events + sum(
+            sleeve.funding_events for sleeve in self.sleeves.values())
+
+    @property
+    def funding_events_by_asset(self) -> dict[str, int]:
+        result = dict(self.archived_funding_events_by_symbol)
+        for symbol, sleeve in self.sleeves.items():
+            result[symbol] = result.get(symbol, 0) + sleeve.funding_events
+        return result
+
+    @property
+    def price_pnl(self) -> float:
+        return self.archived_price_pnl + math.fsum(
+            sleeve.price_pnl_realized for sleeve in self.sleeves.values())
+
+    @property
+    def turnover(self) -> float:
+        return self.archived_turnover + math.fsum(
+            sleeve.turnover for sleeve in self.sleeves.values())
+
+    def asset_net_pnl(self, prices: Mapping[str, tuple[float, float]]) -> dict[str, float]:
+        self._require_prices(dict(prices))
+        result = dict(self.archived_net_pnl_by_symbol)
+        for symbol, sleeve in self.sleeves.items():
+            spot, mark = prices[symbol]
+            price = (sleeve.price_pnl_realized if sleeve.price_pnl_realized
+                     else sleeve.spot_pnl(spot) + sleeve.short_pnl(mark))
+            result[symbol] = result.get(symbol, 0.0) + price + sleeve.funding_pnl - sleeve.trading_cost
+        return result
+
+    def close(self, prices: dict[str, tuple[float, float]]) -> float:
+        self._require_prices(prices)
+        total = 0.0
+        for symbol, sleeve in self.sleeves.items():
+            total += sleeve.close(*prices[symbol], self.costs)
+        return total
+
+
+def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[FundingCredit],
+                *, starting_equity: float = 10_000.0, costs: CostModel | None = None,
+                minimum_leverage: float = 2.0, maximum_leverage: float = 5.0,
+                maintenance_rate: float = 0.005, rebalance_latency_hours: int = 0,
+                received_funding_divisor: float = 1.0,
+                paid_funding_multiplier: float = 1.0) -> FoldReplay:
+    """Replay one fresh-start fold without crossing a boundary or inventing data."""
+    if len(observations) < 2:
+        raise CarryRunnerError("fold needs at least two common observations")
+    if rebalance_latency_hours not in (0, 1):
+        raise CarryRunnerError("rebalance latency must be zero or one hour")
+    previous = -1
+    expected_symbols: set[str] | None = None
+    for observation in observations:
+        observation.validate()
+        if observation.open_time <= previous:
+            raise CarryRunnerError("observations must be unique and chronological")
+        symbols = set(observation.spot_close)
+        if expected_symbols is None:
+            expected_symbols = symbols
+        elif symbols != expected_symbols:
+            raise CarryRunnerError("observation symbol set changed inside a fold")
+        previous = observation.open_time
+    credits = list(funding)
+    previous_credit: tuple[int, str] | None = None
+    for credit in credits:
+        credit.validate()
+        key = (credit.event.available_time, credit.event.symbol)
+        if previous_credit is not None and key <= previous_credit:
+            raise CarryRunnerError("funding credits must be unique and chronological")
+        if credit.event.symbol not in (expected_symbols or set()):
+            raise CarryRunnerError("funding credit names an unknown sleeve")
+        previous_credit = key
+
+    costs = costs or CostModel()
+    first = observations[0]
+    opening_prices = {symbol: (first.spot_close[symbol], first.mark_close[symbol])
+                      for symbol in sorted(expected_symbols or ())}
+    basket = BasketState.open(starting_equity, opening_prices, costs)
+    curve: list[tuple[int, float]] = [(first.available_time, basket.equity(opening_prices))]
+    minimum_headroom = min(sleeve.margin_headroom(opening_prices[symbol][1],
+                                                  maintenance_rate=maintenance_rate)
+                           for symbol, sleeve in basket.sleeves.items())
+    funding_index = 0
+    pending_rebalance = False
+
+    for observation in observations[1:]:
+        while (funding_index < len(credits)
+               and credits[funding_index].event.available_time <= observation.available_time):
+            credit = credits[funding_index]
+            if credit.event.available_time > first.available_time:
+                basket.credit_funding(
+                    credit.event.symbol, credit.event.rate, credit.settlement_mark,
+                    received_divisor=received_funding_divisor,
+                    paid_multiplier=paid_funding_multiplier)
+            funding_index += 1
+        liquidated = basket.liquidated_symbols(dict(observation.mark_high),
+                                               maintenance_rate=maintenance_rate)
+        minimum_headroom = min(
+            minimum_headroom,
+            *(sleeve.margin_headroom(observation.mark_high[symbol],
+                                     maintenance_rate=maintenance_rate)
+              for symbol, sleeve in basket.sleeves.items()))
+        prices = {symbol: (observation.spot_close[symbol], observation.mark_close[symbol])
+                  for symbol in sorted(expected_symbols or ())}
+        marked_equity = basket.equity(prices)
+        curve.append((observation.available_time, max(0.0, marked_equity)))
+        if liquidated or marked_equity <= 0:
+            return FoldReplay("LIQUIDATED", starting_equity, None, tuple(curve),
+                              basket.funding_pnl, basket.price_pnl, basket.trading_cost,
+                              basket.funding_events, basket.rebalances,
+                              tuple(sorted(liquidated)),
+                              tuple(sorted(basket.asset_net_pnl(prices).items())),
+                              basket.turnover, minimum_headroom,
+                              tuple(sorted(basket.funding_events_by_asset.items())))
+        required = basket.rebalances_required(prices, minimum=minimum_leverage,
+                                              maximum=maximum_leverage)
+        if pending_rebalance or (required and rebalance_latency_hours == 0):
+            rebalanced_equity = basket.rebalance(prices)
+            curve[-1] = (observation.available_time, rebalanced_equity)
+            minimum_headroom = min(
+                minimum_headroom,
+                *(sleeve.margin_headroom(prices[symbol][1],
+                                         maintenance_rate=maintenance_rate)
+                  for symbol, sleeve in basket.sleeves.items()))
+            pending_rebalance = False
+        elif required:
+            pending_rebalance = True
+
+    last = observations[-1]
+    final_prices = {symbol: (last.spot_close[symbol], last.mark_close[symbol])
+                    for symbol in sorted(expected_symbols or ())}
+    ending = basket.close(final_prices)
+    curve[-1] = (last.available_time, ending)
+    return FoldReplay("COMPLETE", starting_equity, ending, tuple(curve),
+                      basket.funding_pnl, basket.price_pnl, basket.trading_cost,
+                      basket.funding_events, basket.rebalances, (),
+                      tuple(sorted(basket.asset_net_pnl(final_prices).items())),
+                      basket.turnover, minimum_headroom,
+                      tuple(sorted(basket.funding_events_by_asset.items())))
+
+
+def replay_stress_suite(observations: Sequence[BasketObservation],
+                        funding: Sequence[FundingCredit], *,
+                        starting_equity: float = 10_000.0) -> dict[str, FoldReplay]:
+    """Run every preregistered stress from the same fresh-start observations."""
+    def scaled_credits(rate_multiplier: float) -> list[FundingCredit]:
+        return [FundingCredit(FundingEvent(credit.event.symbol,
+                                           credit.event.funding_time,
+                                           credit.event.rate * rate_multiplier),
+                              credit.settlement_mark)
+                for credit in funding]
+
+    scenarios = {
+        "base_x1": (1.0, 1.0, 1.0, 0, 1.0),
+        "cost_x1.5": (1.5, 1.5, 1.5, 0, 1.0),
+        "cost_x2": (2.0, 2.0, 2.0, 0, 1.0),
+        "funding_zero": (1.0, 1.0, 1.0, 0, 0.0),
+        "funding_sign_reversal": (1.0, 1.0, 1.0, 0, -1.0),
+        "rebalance_latency_1h": (1.0, 1.0, 1.0, 1, 1.0),
+    }
+    output: dict[str, FoldReplay] = {}
+    for name, (cost_multiplier, received_divisor, paid_multiplier,
+               latency, rate_multiplier) in scenarios.items():
+        output[name] = replay_fold(
+            observations, scaled_credits(rate_multiplier),
+            starting_equity=starting_equity, costs=CostModel(multiplier=cost_multiplier),
+            received_funding_divisor=received_divisor,
+            paid_funding_multiplier=paid_multiplier,
+            rebalance_latency_hours=latency)
+    return output
+
+
+def daily_returns_from_replay(replay: FoldReplay, *, cash_apr: float = 0.04) -> list[DailyReturn]:
+    """Compound only causal hourly intervals; never bridge a missing observation."""
+    if replay.status != "COMPLETE" or replay.ending_equity is None:
+        raise CarryRunnerError("daily returns require a complete fold")
+    cash_apr = _finite(cash_apr, "cash APR")
+    if cash_apr <= -1:
+        raise CarryRunnerError("cash APR must exceed -100%")
+    if not replay.equity_curve:
+        raise CarryRunnerError("replay equity curve is empty")
+    hourly_cash = (1 + cash_apr) ** (1 / (YEAR_DAYS * 24)) - 1
+    by_day: dict[int, tuple[list[float], list[float]]] = {}
+    previous_time: int | None = None
+    previous_equity = replay.starting_equity
+    for timestamp, raw_equity in replay.equity_curve:
+        if isinstance(timestamp, bool) or not isinstance(timestamp, int):
+            raise CarryRunnerError("equity timestamp must be an integer")
+        equity = _finite(raw_equity, "equity")
+        if equity <= 0 or previous_equity <= 0:
+            raise CarryRunnerError("complete replay equity must remain positive")
+        if previous_time is not None and timestamp <= previous_time:
+            raise CarryRunnerError("equity curve must be unique and chronological")
+        is_opening = previous_time is None
+        eligible = is_opening or timestamp - previous_time == HOUR_MS
+        if eligible:
+            day = (timestamp - 1) // (24 * HOUR_MS)
+            portfolio, cash = by_day.setdefault(day, ([], []))
+            portfolio.append(equity / previous_equity - 1)
+            cash.append(0.0 if is_opening else hourly_cash)
+        previous_time, previous_equity = timestamp, equity
+    return [DailyReturn(day, compound(portfolio), compound(cash))
+            for day, (portfolio, cash) in sorted(by_day.items())]
+
+
+def fold_report(replay: FoldReplay, *, cash_apr: float = 0.04) -> dict[str, Any]:
+    """Produce the preregistered per-fold metrics without making a verdict."""
+    base: dict[str, Any] = {
+        "status": replay.status,
+        "starting_equity": replay.starting_equity,
+        "ending_equity": replay.ending_equity,
+        "funding_pnl": replay.funding_pnl,
+        "price_pnl": replay.price_pnl,
+        "trading_cost": replay.trading_cost,
+        "funding_events": replay.funding_events,
+        "funding_events_by_asset": dict(replay.funding_events_by_asset),
+        "rebalances": replay.rebalances,
+        "turnover": replay.turnover,
+        "minimum_margin_headroom": replay.minimum_margin_headroom,
+        "liquidated_symbols": list(replay.liquidated_symbols),
+        "asset_net_pnl": dict(replay.asset_net_pnl),
+    }
+    if replay.status != "COMPLETE" or replay.ending_equity is None:
+        return {**base, "total_return": None, "annualized_return": None,
+                "cash_excess_return": None, "sharpe": None, "sortino": None,
+                "maximum_drawdown": None, "longest_recovery_days": None,
+                "maximum_asset_absolute_pnl_share": None}
+    daily = daily_returns_from_replay(replay, cash_apr=cash_apr)
+    risk = risk_adjusted_metrics(daily)
+    daily_equity: dict[int, float] = {}
+    for timestamp, equity in replay.equity_curve:
+        daily_equity[(timestamp - 1) // (24 * HOUR_MS)] = equity
+    asset_pnl = dict(replay.asset_net_pnl)
+    return {
+        **base,
+        "total_return": replay.ending_equity / replay.starting_equity - 1,
+        "annualized_return": annualized_return(daily),
+        "cash_excess_return": cash_excess_return(daily),
+        **risk,
+        "maximum_drawdown": maximum_drawdown(
+            [replay.starting_equity, *[value for _, value in replay.equity_curve]]),
+        "longest_recovery_days": longest_recovery_days(list(daily_equity.items())),
+        "maximum_asset_absolute_pnl_share": maximum_asset_absolute_pnl_share(asset_pnl),
+    }
+
+
+def evaluate_historical_gates(suites: Sequence[Mapping[str, FoldReplay]]) -> dict[str, Any]:
+    """Apply the signed historical gates to five fresh-start stress suites."""
+    required_scenarios = {
+        "base_x1", "cost_x1.5", "cost_x2", "funding_zero",
+        "funding_sign_reversal", "rebalance_latency_1h",
+    }
+    if len(suites) != 5 or any(set(suite) != required_scenarios for suite in suites):
+        raise CarryRunnerError("historical verdict requires five complete stress suites")
+    base = [suite["base_x1"] for suite in suites]
+    gated_scenarios = required_scenarios - {"funding_sign_reversal"}
+    gated_replays = [suite[scenario] for suite in suites for scenario in gated_scenarios]
+    complete = all(replay.status == "COMPLETE" and replay.ending_equity is not None
+                   for replay in gated_replays)
+
+    base_daily = [daily_returns_from_replay(replay) for replay in base if replay.status == "COMPLETE"]
+    combined_daily = [row for fold in base_daily for row in fold]
+    activity = complete and all(
+        replay.equity_curve[-1][0] - replay.equity_curve[0][0] >= 30 * 24 * HOUR_MS
+        and replay.funding_events_by_asset
+        and all(count >= 300 for _, count in replay.funding_events_by_asset)
+        for replay in base)
+    positive_folds = (sum(cash_excess_return(rows) > 0 for rows in base_daily)
+                      if len(base_daily) == 5 else 0)
+    fold_stability = positive_folds >= 4
+    included_span = sum(rows[-1].day_ordinal - rows[0].day_ordinal + 1
+                        for rows in base_daily if rows)
+    combined_annualized = (
+        (1 + compound(row.portfolio for row in combined_daily)) ** (YEAR_DAYS / included_span) - 1
+        if combined_daily and included_span > 0 else None)
+    bootstrap_lcb = (circular_block_bootstrap_lcb(
+        combined_daily, block_days=7, resamples=10_000, seed=25701,
+        lower_percentile=2.5) if combined_daily else None)
+    combined = (combined_annualized is not None and combined_annualized > 0.06
+                and bootstrap_lcb is not None and bootstrap_lcb > 0)
+
+    stress_excess: dict[str, float | None] = {}
+    for scenario in ("cost_x1.5", "cost_x2"):
+        replays = [suite[scenario] for suite in suites]
+        completed = [replay for replay in replays if replay.status == "COMPLETE"]
+        rows = [row for replay in completed
+                for row in daily_returns_from_replay(replay)]
+        stress_excess[scenario] = cash_excess_return(rows) if len(completed) == 5 and rows else None
+    cost_stress = all(value is not None and value > 0 for value in stress_excess.values())
+
+    base_reports = [fold_report(replay) for replay in base]
+    stress_reports = [fold_report(suite[scenario]) for suite in suites
+                      for scenario in gated_scenarios - {"base_x1"}]
+    base_max_drawdown = max((report["maximum_drawdown"] or 0) for report in base_reports)
+    stress_max_drawdown = max((report["maximum_drawdown"] or 0) for report in stress_reports)
+    maximum_recovery = max((report["longest_recovery_days"] or 0)
+                           for report in base_reports + stress_reports)
+    risk = (complete and base_max_drawdown <= 0.15 and stress_max_drawdown <= 0.25
+            and maximum_recovery <= 365)
+
+    asset_pnl: dict[str, float] = {}
+    for replay in base:
+        for symbol, value in replay.asset_net_pnl:
+            asset_pnl[symbol] = asset_pnl.get(symbol, 0.0) + value
+    concentration_share = maximum_asset_absolute_pnl_share(asset_pnl) if asset_pnl else None
+    concentration = concentration_share is not None and concentration_share <= 0.75
+    gates = {
+        "data_and_completion": complete,
+        "activity": activity,
+        "fold_stability": fold_stability,
+        "combined": combined,
+        "cost_stress": cost_stress,
+        "risk": risk,
+        "concentration": concentration,
+    }
+    return {
+        "verdict": "PASS" if all(gates.values()) else "FAIL",
+        "gates": gates,
+        "positive_cash_excess_folds": positive_folds,
+        "combined_annualized_return": combined_annualized,
+        "bootstrap_daily_cash_excess_lcb": bootstrap_lcb,
+        "cost_stress_cash_excess_return": stress_excess,
+        "base_maximum_drawdown": base_max_drawdown,
+        "stress_maximum_drawdown": stress_max_drawdown,
+        "maximum_recovery_days": maximum_recovery,
+        "maximum_asset_absolute_pnl_share": concentration_share,
+    }
+
+
+def _finite(value: float, name: str) -> float:
+    if isinstance(value, bool):
+        raise CarryRunnerError(f"{name} cannot be boolean")
+    out = float(value)
+    if not math.isfinite(out):
+        raise CarryRunnerError(f"{name} must be finite")
+    return out
+
+
+def validate_daily_returns(rows: Iterable[DailyReturn]) -> list[DailyReturn]:
+    """Require unique chronological days and valid, non-bankrupt return factors."""
+    result = list(rows)
+    if not result:
+        raise CarryRunnerError("daily return series is empty")
+    previous: int | None = None
+    for row in result:
+        if isinstance(row.day_ordinal, bool) or not isinstance(row.day_ordinal, int):
+            raise CarryRunnerError("day_ordinal must be an integer")
+        if previous is not None and row.day_ordinal <= previous:
+            raise CarryRunnerError("daily returns must be unique and chronological")
+        portfolio = _finite(row.portfolio, "portfolio return")
+        cash = _finite(row.cash, "cash return")
+        if portfolio <= -1 or cash <= -1:
+            raise CarryRunnerError("daily return cannot lose more than all capital")
+        previous = row.day_ordinal
+    return result
+
+
+def compound(returns: Iterable[float]) -> float:
+    """Compound arithmetic returns without silently accepting invalid factors."""
+    wealth = 1.0
+    seen = False
+    for value in returns:
+        rate = _finite(value, "return")
+        if rate <= -1:
+            raise CarryRunnerError("return cannot lose more than all capital")
+        wealth *= 1 + rate
+        seen = True
+    if not seen:
+        raise CarryRunnerError("cannot compound an empty series")
+    return wealth - 1
+
+
+def annualized_return(rows: Iterable[DailyReturn]) -> float:
+    """Apply the signed calendar-span annualization to included portfolio days."""
+    data = validate_daily_returns(rows)
+    span_days = data[-1].day_ordinal - data[0].day_ordinal + 1
+    if span_days < 1:
+        raise CarryRunnerError("annualization span must be positive")
+    wealth = 1 + compound(row.portfolio for row in data)
+    return wealth ** (YEAR_DAYS / span_days) - 1
+
+
+def cash_excess_return(rows: Iterable[DailyReturn]) -> float:
+    """Return the portfolio growth minus matching cash growth on included dates."""
+    data = validate_daily_returns(rows)
+    return compound(row.portfolio for row in data) - compound(row.cash for row in data)
+
+
+def risk_adjusted_metrics(rows: Iterable[DailyReturn]) -> dict[str, float | None]:
+    """Report annualized daily excess-return Sharpe and downside Sortino."""
+    data = validate_daily_returns(rows)
+    if len(data) < 2:
+        return {"sharpe": None, "sortino": None}
+    excess = [row.cash_excess for row in data]
+    mean = math.fsum(excess) / len(excess)
+    variance = math.fsum((value - mean) ** 2 for value in excess) / (len(excess) - 1)
+    deviation = math.sqrt(variance)
+    downside = math.sqrt(math.fsum(min(value, 0.0) ** 2 for value in excess) / len(excess))
+    scale = math.sqrt(YEAR_DAYS)
+    return {
+        "sharpe": None if deviation == 0 else mean / deviation * scale,
+        "sortino": None if downside == 0 else mean / downside * scale,
+    }
+
+
+def maximum_asset_absolute_pnl_share(asset_pnl: Mapping[str, float]) -> float:
+    """Measure concentration against total absolute asset contribution."""
+    if not asset_pnl:
+        raise CarryRunnerError("asset PnL is empty")
+    absolute = {symbol: abs(_finite(value, "asset PnL"))
+                for symbol, value in asset_pnl.items()}
+    denominator = math.fsum(absolute.values())
+    return 0.0 if denominator == 0 else max(absolute.values()) / denominator
+
+
+def maximum_drawdown(equity: Sequence[float]) -> float:
+    """Return a non-negative peak-to-trough drawdown fraction."""
+    if not equity:
+        raise CarryRunnerError("equity series is empty")
+    peak = 0.0
+    worst = 0.0
+    for value in equity:
+        current = _finite(value, "equity")
+        if current < 0:
+            raise CarryRunnerError("equity cannot be negative")
+        peak = max(peak, current)
+        if peak > 0:
+            worst = max(worst, 1 - current / peak)
+    return worst
+
+
+def longest_recovery_days(equity_by_day: Sequence[tuple[int, float]]) -> int:
+    """Measure the longest completed or still-open underwater calendar interval."""
+    if not equity_by_day:
+        raise CarryRunnerError("equity series is empty")
+    peak = -math.inf
+    underwater_since: int | None = None
+    longest = 0
+    previous: int | None = None
+    for day, raw_equity in equity_by_day:
+        if isinstance(day, bool) or not isinstance(day, int):
+            raise CarryRunnerError("equity day must be an integer")
+        if previous is not None and day <= previous:
+            raise CarryRunnerError("equity days must be unique and chronological")
+        equity = _finite(raw_equity, "equity")
+        if equity < 0:
+            raise CarryRunnerError("equity cannot be negative")
+        if equity >= peak:
+            if underwater_since is not None:
+                longest = max(longest, day - underwater_since)
+                underwater_since = None
+            peak = equity
+        elif underwater_since is None:
+            underwater_since = previous if previous is not None else day
+        previous = day
+    if underwater_since is not None and previous is not None:
+        longest = max(longest, previous - underwater_since)
+    return longest
+
+
+def circular_block_bootstrap_lcb(rows: Iterable[DailyReturn], *, block_days: int,
+                                 resamples: int, seed: int,
+                                 lower_percentile: float) -> float:
+    """Bootstrap the arithmetic mean daily cash excess with circular blocks."""
+    data = validate_daily_returns(rows)
+    if block_days < 1 or resamples < 1:
+        raise CarryRunnerError("bootstrap block and resample counts must be positive")
+    if not 0 <= lower_percentile <= 100:
+        raise CarryRunnerError("bootstrap percentile must be between zero and 100")
+    excess = [row.cash_excess for row in data]
+    count = len(excess)
+    generator = random.Random(seed)
+    samples: list[float] = []
+    blocks = math.ceil(count / block_days)
+    for _ in range(resamples):
+        draw: list[float] = []
+        for _ in range(blocks):
+            start = generator.randrange(count)
+            draw.extend(excess[(start + offset) % count] for offset in range(block_days))
+        samples.append(math.fsum(draw[:count]) / count)
+    samples.sort()
+    if len(samples) == 1:
+        return samples[0]
+    position = (len(samples) - 1) * lower_percentile / 100
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return samples[lower]
+    weight = position - lower
+    return samples[lower] * (1 - weight) + samples[upper] * weight
