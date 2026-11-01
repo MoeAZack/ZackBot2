@@ -363,3 +363,43 @@ def test_fold_inputs_count_missing_exact_funding_mark():
     inputs = R.build_fold_inputs({"BTC": history}, 0, 5 * R.HOUR_MS)
     assert inputs.funding == ()
     assert inputs.incomplete_funding_events == 1
+
+
+def synthetic_gate_replay(start_hour, *, positive=True):
+    hours = 31 * 24 + 1
+    hourly = (1.10 if positive else 0.80) ** (1 / (R.YEAR_DAYS * 24)) - 1
+    curve = tuple(((start_hour + index + 1) * R.HOUR_MS,
+                   10_000 * (1 + hourly) ** (index + 1))
+                  for index in range(hours))
+    ending = curve[-1][1]
+    pnl = ending - 10_000
+    return R.FoldReplay(
+        "COMPLETE", 10_000, ending, curve, 100, pnl, 0, 600, 0,
+        asset_net_pnl=(("BTC", pnl / 2), ("ETH", pnl / 2)),
+        turnover=15_000, minimum_margin_headroom=1_000,
+        funding_events_by_asset=(("BTC", 300), ("ETH", 300)),
+    )
+
+
+def test_historical_gate_evaluator_passes_only_complete_preregistered_suite():
+    suites = []
+    for fold in range(5):
+        replay = synthetic_gate_replay(fold * 32 * 24)
+        suites.append({name: replay for name in (
+            "base_x1", "cost_x1.5", "cost_x2", "funding_zero",
+            "funding_sign_reversal", "rebalance_latency_1h")})
+    result = R.evaluate_historical_gates(suites)
+    assert result["verdict"] == "PASS"
+    assert all(result["gates"].values())
+    assert result["positive_cash_excess_folds"] == 5
+
+    for fold, suite in enumerate(suites):
+        suite["cost_x2"] = synthetic_gate_replay(fold * 32 * 24, positive=False)
+    failed = R.evaluate_historical_gates(suites)
+    assert failed["verdict"] == "FAIL"
+    assert failed["gates"]["cost_stress"] is False
+
+
+def test_historical_gate_evaluator_refuses_wrong_fold_or_scenario_count():
+    with pytest.raises(R.CarryRunnerError, match="five complete"):
+        R.evaluate_historical_gates([])

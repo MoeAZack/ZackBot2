@@ -751,6 +751,88 @@ def fold_report(replay: FoldReplay, *, cash_apr: float = 0.04) -> dict[str, Any]
     }
 
 
+def evaluate_historical_gates(suites: Sequence[Mapping[str, FoldReplay]]) -> dict[str, Any]:
+    """Apply the signed historical gates to five fresh-start stress suites."""
+    required_scenarios = {
+        "base_x1", "cost_x1.5", "cost_x2", "funding_zero",
+        "funding_sign_reversal", "rebalance_latency_1h",
+    }
+    if len(suites) != 5 or any(set(suite) != required_scenarios for suite in suites):
+        raise CarryRunnerError("historical verdict requires five complete stress suites")
+    base = [suite["base_x1"] for suite in suites]
+    all_replays = [replay for suite in suites for replay in suite.values()]
+    complete = all(replay.status == "COMPLETE" and replay.ending_equity is not None
+                   for replay in all_replays)
+
+    base_daily = [daily_returns_from_replay(replay) for replay in base if replay.status == "COMPLETE"]
+    combined_daily = [row for fold in base_daily for row in fold]
+    activity = complete and all(
+        replay.equity_curve[-1][0] - replay.equity_curve[0][0] >= 30 * 24 * HOUR_MS
+        and replay.funding_events_by_asset
+        and all(count >= 300 for _, count in replay.funding_events_by_asset)
+        for replay in base)
+    positive_folds = (sum(cash_excess_return(rows) > 0 for rows in base_daily)
+                      if len(base_daily) == 5 else 0)
+    fold_stability = positive_folds >= 4
+    included_span = sum(rows[-1].day_ordinal - rows[0].day_ordinal + 1
+                        for rows in base_daily if rows)
+    combined_annualized = (
+        (1 + compound(row.portfolio for row in combined_daily)) ** (YEAR_DAYS / included_span) - 1
+        if combined_daily and included_span > 0 else None)
+    bootstrap_lcb = (circular_block_bootstrap_lcb(
+        combined_daily, block_days=7, resamples=10_000, seed=25701,
+        lower_percentile=2.5) if combined_daily else None)
+    combined = (combined_annualized is not None and combined_annualized > 0.06
+                and bootstrap_lcb is not None and bootstrap_lcb > 0)
+
+    stress_excess: dict[str, float | None] = {}
+    for scenario in ("cost_x1.5", "cost_x2"):
+        replays = [suite[scenario] for suite in suites]
+        completed = [replay for replay in replays if replay.status == "COMPLETE"]
+        rows = [row for replay in completed
+                for row in daily_returns_from_replay(replay)]
+        stress_excess[scenario] = cash_excess_return(rows) if len(completed) == 5 and rows else None
+    cost_stress = all(value is not None and value > 0 for value in stress_excess.values())
+
+    base_reports = [fold_report(replay) for replay in base]
+    stress_reports = [fold_report(suite[scenario]) for suite in suites
+                      for scenario in required_scenarios - {"base_x1"}]
+    base_max_drawdown = max((report["maximum_drawdown"] or 0) for report in base_reports)
+    stress_max_drawdown = max((report["maximum_drawdown"] or 0) for report in stress_reports)
+    maximum_recovery = max((report["longest_recovery_days"] or 0)
+                           for report in base_reports + stress_reports)
+    risk = (complete and base_max_drawdown <= 0.15 and stress_max_drawdown <= 0.25
+            and maximum_recovery <= 365)
+
+    asset_pnl: dict[str, float] = {}
+    for replay in base:
+        for symbol, value in replay.asset_net_pnl:
+            asset_pnl[symbol] = asset_pnl.get(symbol, 0.0) + value
+    concentration_share = maximum_asset_absolute_pnl_share(asset_pnl) if asset_pnl else None
+    concentration = concentration_share is not None and concentration_share <= 0.75
+    gates = {
+        "data_and_completion": complete,
+        "activity": activity,
+        "fold_stability": fold_stability,
+        "combined": combined,
+        "cost_stress": cost_stress,
+        "risk": risk,
+        "concentration": concentration,
+    }
+    return {
+        "verdict": "PASS" if all(gates.values()) else "FAIL",
+        "gates": gates,
+        "positive_cash_excess_folds": positive_folds,
+        "combined_annualized_return": combined_annualized,
+        "bootstrap_daily_cash_excess_lcb": bootstrap_lcb,
+        "cost_stress_cash_excess_return": stress_excess,
+        "base_maximum_drawdown": base_max_drawdown,
+        "stress_maximum_drawdown": stress_max_drawdown,
+        "maximum_recovery_days": maximum_recovery,
+        "maximum_asset_absolute_pnl_share": concentration_share,
+    }
+
+
 def _finite(value: float, name: str) -> float:
     if isinstance(value, bool):
         raise CarryRunnerError(f"{name} cannot be boolean")
