@@ -757,6 +757,33 @@ def cash_excess_return(rows: Iterable[DailyReturn]) -> float:
     return compound(row.portfolio for row in data) - compound(row.cash for row in data)
 
 
+def risk_adjusted_metrics(rows: Iterable[DailyReturn]) -> dict[str, float | None]:
+    """Report annualized daily excess-return Sharpe and downside Sortino."""
+    data = validate_daily_returns(rows)
+    if len(data) < 2:
+        return {"sharpe": None, "sortino": None}
+    excess = [row.cash_excess for row in data]
+    mean = math.fsum(excess) / len(excess)
+    variance = math.fsum((value - mean) ** 2 for value in excess) / (len(excess) - 1)
+    deviation = math.sqrt(variance)
+    downside = math.sqrt(math.fsum(min(value, 0.0) ** 2 for value in excess) / len(excess))
+    scale = math.sqrt(YEAR_DAYS)
+    return {
+        "sharpe": None if deviation == 0 else mean / deviation * scale,
+        "sortino": None if downside == 0 else mean / downside * scale,
+    }
+
+
+def maximum_asset_absolute_pnl_share(asset_pnl: Mapping[str, float]) -> float:
+    """Measure concentration against total absolute asset contribution."""
+    if not asset_pnl:
+        raise CarryRunnerError("asset PnL is empty")
+    absolute = {symbol: abs(_finite(value, "asset PnL"))
+                for symbol, value in asset_pnl.items()}
+    denominator = math.fsum(absolute.values())
+    return 0.0 if denominator == 0 else max(absolute.values()) / denominator
+
+
 def maximum_drawdown(equity: Sequence[float]) -> float:
     """Return a non-negative peak-to-trough drawdown fraction."""
     if not equity:

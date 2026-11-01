@@ -42,6 +42,26 @@ def test_cash_excess_compares_compounded_wealth_not_summed_rates():
     assert R.cash_excess_return(data) == pytest.approx(1.02 * 0.99 - 1.01**2)
 
 
+def test_risk_adjusted_metrics_use_daily_cash_excess_and_sample_volatility():
+    data = [R.DailyReturn(1, 0.02, 0.01), R.DailyReturn(2, 0.00, 0.01),
+            R.DailyReturn(3, 0.03, 0.01)]
+    metrics = R.risk_adjusted_metrics(data)
+    excess = [0.01, -0.01, 0.02]
+    mean = sum(excess) / 3
+    sample_std = (sum((value - mean) ** 2 for value in excess) / 2) ** 0.5
+    downside = ((0.01 ** 2) / 3) ** 0.5
+    assert metrics["sharpe"] == pytest.approx(mean / sample_std * R.YEAR_DAYS**0.5)
+    assert metrics["sortino"] == pytest.approx(mean / downside * R.YEAR_DAYS**0.5)
+    assert R.risk_adjusted_metrics([data[0]]) == {"sharpe": None, "sortino": None}
+
+
+def test_asset_concentration_uses_absolute_contribution_and_handles_flat():
+    assert R.maximum_asset_absolute_pnl_share({"BTC": 75, "ETH": -25}) == pytest.approx(0.75)
+    assert R.maximum_asset_absolute_pnl_share({"BTC": 0, "ETH": 0}) == 0
+    with pytest.raises(R.CarryRunnerError, match="empty"):
+        R.maximum_asset_absolute_pnl_share({})
+
+
 def test_drawdown_and_recovery_include_open_underwater_period():
     curve = [(1, 100.0), (2, 110.0), (4, 88.0), (7, 111.0), (8, 90.0), (12, 95.0)]
     assert R.maximum_drawdown([value for _, value in curve]) == pytest.approx(0.20)
