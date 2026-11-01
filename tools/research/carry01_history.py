@@ -328,6 +328,33 @@ def fetch_funding_rest(spec: ArchiveSpec, root: Path,
             "bytes": len(payload), "reused": False}
 
 
+def read_frozen(spec: ArchiveSpec, root: Path) -> bytes:
+    """Read and re-verify one already-frozen input without any network fallback."""
+    if spec.frequency == "daily" and spec.series == "fundingRate":
+        destination = root / funding_rest_relative_path(spec)
+        digest_path = destination.with_name(destination.name + ".sha256")
+        if not destination.is_file() or not digest_path.is_file():
+            raise HistoryDataError("frozen funding response or digest is missing")
+        payload = destination.read_bytes()
+        try:
+            expected = digest_path.read_text(encoding="ascii").strip().lower()
+        except UnicodeDecodeError as exc:
+            raise HistoryDataError("funding response digest is not ASCII") from exc
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise HistoryDataError("funding response digest is invalid")
+        if hashlib.sha256(payload).hexdigest() != expected:
+            raise HistoryDataError("frozen funding response digest mismatch")
+        parse_funding_rest(payload, spec)
+        return payload
+    destination = root / archive_relative_path(spec.url)
+    checksum_path = destination.with_name(destination.name + ".CHECKSUM")
+    if not destination.is_file() or not checksum_path.is_file():
+        raise HistoryDataError("frozen archive or checksum is missing")
+    payload = destination.read_bytes()
+    verify_bytes(payload, checksum_path.read_bytes(), destination.name)
+    return payload
+
+
 def _csv_rows(payload: bytes) -> list[list[str]]:
     """Read exactly one bounded, plain CSV member from a verified zip."""
     try:
