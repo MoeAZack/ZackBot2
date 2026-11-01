@@ -159,6 +159,110 @@ class SleeveState:
         return self.segment_equity + price_pnl + self.funding_pnl - closing_cost
 
 
+@dataclass
+class BasketState:
+    """Equal-weight sleeves with atomic whole-portfolio rebalancing."""
+
+    sleeves: dict[str, SleeveState]
+    costs: CostModel
+    starting_equity: float
+    archived_funding_pnl: float = 0.0
+    archived_price_pnl: float = 0.0
+    archived_trading_cost: float = 0.0
+    rebalances: int = 0
+
+    @classmethod
+    def open(cls, equity: float, prices: dict[str, tuple[float, float]],
+             costs: CostModel) -> "BasketState":
+        equity = _finite(equity, "basket equity")
+        if equity <= 0:
+            raise CarryRunnerError("basket equity must be positive")
+        if len(prices) < 1 or any(not isinstance(symbol, str) or not symbol for symbol in prices):
+            raise CarryRunnerError("basket needs named price sleeves")
+        sleeve_equity = equity / len(prices)
+        sleeves = {symbol: SleeveState.open(sleeve_equity, spot, mark, costs)
+                   for symbol, (spot, mark) in sorted(prices.items())}
+        return cls(sleeves=sleeves, costs=costs, starting_equity=equity)
+
+    def equity(self, prices: dict[str, tuple[float, float]]) -> float:
+        self._require_prices(prices)
+        return math.fsum(self.sleeves[symbol].equity(*prices[symbol])
+                         for symbol in self.sleeves)
+
+    def _require_prices(self, prices: dict[str, tuple[float, float]]) -> None:
+        if set(prices) != set(self.sleeves):
+            raise CarryRunnerError("basket prices must cover every sleeve exactly")
+
+    def rebalances_required(self, prices: dict[str, tuple[float, float]], *,
+                            minimum: float = 2.0, maximum: float = 5.0) -> bool:
+        self._require_prices(prices)
+        minimum = _finite(minimum, "minimum leverage")
+        maximum = _finite(maximum, "maximum leverage")
+        if not 0 < minimum < maximum:
+            raise CarryRunnerError("leverage band is invalid")
+        return any(not minimum <= sleeve.leverage(prices[symbol][1]) <= maximum
+                   for symbol, sleeve in self.sleeves.items())
+
+    def liquidated_symbols(self, mark_highs: dict[str, float], *,
+                           maintenance_rate: float = 0.005) -> list[str]:
+        if set(mark_highs) != set(self.sleeves):
+            raise CarryRunnerError("mark highs must cover every sleeve exactly")
+        return [symbol for symbol, sleeve in self.sleeves.items()
+                if sleeve.liquidates_at_high(mark_highs[symbol],
+                                             maintenance_rate=maintenance_rate)]
+
+    def credit_funding(self, symbol: str, rate: float, settlement_mark: float, *,
+                       received_divisor: float = 1.0, paid_multiplier: float = 1.0) -> float:
+        try:
+            sleeve = self.sleeves[symbol]
+        except KeyError as exc:
+            raise CarryRunnerError(f"unknown funding sleeve: {symbol}") from exc
+        return sleeve.credit_funding(rate, settlement_mark,
+                                     received_divisor=received_divisor,
+                                     paid_multiplier=paid_multiplier)
+
+    def rebalance(self, prices: dict[str, tuple[float, float]]) -> float:
+        """Close every sleeve, split net equity equally, and reopen all sleeves."""
+        self._require_prices(prices)
+        closed_equity: dict[str, float] = {}
+        for symbol, sleeve in self.sleeves.items():
+            closed_equity[symbol] = sleeve.close(*prices[symbol], self.costs)
+            self.archived_funding_pnl += sleeve.funding_pnl
+            self.archived_price_pnl += sleeve.price_pnl_realized
+            self.archived_trading_cost += sleeve.trading_cost
+        equity = math.fsum(closed_equity.values())
+        if equity <= 0:
+            raise CarryRunnerError("rebalance consumes the basket")
+        sleeve_equity = equity / len(self.sleeves)
+        self.sleeves = {
+            symbol: SleeveState.open(sleeve_equity, *prices[symbol], self.costs)
+            for symbol in sorted(self.sleeves)
+        }
+        self.rebalances += 1
+        return self.equity(prices)
+
+    @property
+    def funding_pnl(self) -> float:
+        return self.archived_funding_pnl + math.fsum(
+            sleeve.funding_pnl for sleeve in self.sleeves.values())
+
+    @property
+    def trading_cost(self) -> float:
+        return self.archived_trading_cost + math.fsum(
+            sleeve.trading_cost for sleeve in self.sleeves.values())
+
+    @property
+    def funding_events(self) -> int:
+        return sum(sleeve.funding_events for sleeve in self.sleeves.values())
+
+    def close(self, prices: dict[str, tuple[float, float]]) -> float:
+        self._require_prices(prices)
+        total = 0.0
+        for symbol, sleeve in self.sleeves.items():
+            total += sleeve.close(*prices[symbol], self.costs)
+        return total
+
+
 def _finite(value: float, name: str) -> float:
     if isinstance(value, bool):
         raise CarryRunnerError(f"{name} cannot be boolean")

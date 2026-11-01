@@ -106,3 +106,46 @@ def test_cost_model_and_sleeve_refuse_invalid_numbers():
         R.CostModel(spot_fee_bps=-1).validate()
     with pytest.raises(R.CarryRunnerError, match="positive"):
         R.SleeveState.open(1_000, 0, 100, R.CostModel())
+
+
+def test_basket_is_equal_weight_and_one_sleeve_triggers_atomic_rebalance():
+    zero = R.CostModel(spot_fee_bps=0, perpetual_fee_bps=0,
+                       spot_slippage_bps=0, perpetual_slippage_bps=0)
+    start = {"BTC": (100.0, 100.0), "ETH": (50.0, 50.0)}
+    basket = R.BasketState.open(10_000, start, zero)
+    assert basket.equity(start) == pytest.approx(10_000)
+    moved = {"BTC": (130.0, 130.0), "ETH": (50.0, 50.0)}
+    assert basket.rebalances_required(moved) is True
+    before = basket.equity(moved)
+    after = basket.rebalance(moved)
+    assert after == pytest.approx(before)
+    assert basket.rebalances == 1
+    assert all(sleeve.leverage(moved[symbol][1]) == pytest.approx(3)
+               for symbol, sleeve in basket.sleeves.items())
+
+
+def test_basket_rebalance_charges_four_fills_per_sleeve():
+    costs = R.CostModel()
+    prices = {"BTC": (100.0, 100.0), "ETH": (50.0, 50.0)}
+    basket = R.BasketState.open(10_000, prices, costs)
+    opening_cost = basket.trading_cost
+    before = basket.equity(prices)
+    after = basket.rebalance(prices)
+    assert basket.trading_cost > opening_cost * 2.9
+    assert after < before
+    assert basket.rebalances == 1
+
+
+def test_basket_funding_and_liquidation_are_symbol_specific():
+    zero = R.CostModel(spot_fee_bps=0, perpetual_fee_bps=0,
+                       spot_slippage_bps=0, perpetual_slippage_bps=0)
+    prices = {"BTC": (100.0, 100.0), "ETH": (50.0, 50.0)}
+    basket = R.BasketState.open(10_000, prices, zero)
+    amount = basket.credit_funding("BTC", 0.001, 100)
+    assert amount > 0
+    assert basket.funding_events == 1
+    assert basket.funding_pnl == pytest.approx(amount)
+    highs = {"BTC": 140.0, "ETH": 50.0}
+    assert basket.liquidated_symbols(highs) == ["BTC"]
+    with pytest.raises(R.CarryRunnerError, match="unknown"):
+        basket.credit_funding("SOL", 0.001, 1)
