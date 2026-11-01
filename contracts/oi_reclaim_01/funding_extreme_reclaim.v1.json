@@ -42,13 +42,21 @@
     "minimum_daily_breadth": 20,
     "silent_shrink_forbidden": true
   },
+  "inputs": {
+    "oi": "OI-LOADER-01-admitted Binance UM daily metrics archives; exact manifest digest required before evaluation",
+    "funding": "Binance UM historical funding events with event timestamp, rate and symbol; immutable source manifest and hashes required",
+    "price": "Binance UM 15m and 1h klines; immutable source manifest and hashes required",
+    "common_window": "every required OI, funding and price observation must exist for every eligible decision; no source may be substituted",
+    "fail_closed": "a missing manifest digest, hash mismatch, duplicate timestamp, off-grid row, incomplete lookback or source disagreement refuses the affected decision; if daily breadth falls below 20 the whole decision timestamp is INCOMPLETE"
+  },
   "causality": {
-    "decision_grid": "hourly at HH:00:00Z",
+    "decision_grid": "hourly at HH:05:00Z",
     "oi_period": "5m",
     "oi_period_end_normalization": "loader-normalized period_end",
     "oi_available_at": "period_end + 5 minutes",
     "funding_available_at": "funding event timestamp + 5 minutes",
-    "price_signal_source": "the last fully closed 15m Binance UM kline",
+    "price_available_at": "kline close timestamp + 1 minute",
+    "price_signal_source": "the latest fully available closed 15m Binance UM kline",
     "execution": "next 15m bar open after the decision; if unavailable, skip",
     "same_bar_fill": false,
     "forward_fill": false,
@@ -73,7 +81,7 @@
     "risk_per_trade_equity_fraction": 0.005,
     "gross_leverage_cap": 2.0,
     "ranking_when_capacity_bound": "descending absolute distance of funding from its trailing median; symbol ascending as deterministic tie-break",
-    "stop": "2.0 x causal 14-period 1h ATR from entry",
+    "stop": "2.0 x Wilder ATR(14) from fully available closed 1h bars at the decision, measured from entry",
     "exit": "first of protective stop, opposite-side signal, or 24h after entry",
     "intrabar_collision": "stop wins",
     "overnight_and_funding": "positions remain open; every causally due funding cashflow is booked"

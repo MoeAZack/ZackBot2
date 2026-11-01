@@ -50,10 +50,21 @@ def test_windows_are_contiguous_and_holdout_ends_at_cutoff():
 
 def test_causal_timing_forbids_same_bar_and_missing_data_repairs():
     c = prereg()["causality"]
+    assert c["decision_grid"] == "hourly at HH:05:00Z"
     assert c["oi_available_at"] == "period_end + 5 minutes"
     assert c["funding_available_at"] == "funding event timestamp + 5 minutes"
+    assert c["price_available_at"] == "kline close timestamp + 1 minute"
     assert c["execution"].startswith("next 15m bar open")
     assert c["same_bar_fill"] is c["forward_fill"] is c["interpolation"] is False
+
+
+def test_all_three_input_families_require_immutable_fail_closed_evidence():
+    inputs = prereg()["inputs"]
+    assert set(inputs) == {"oi", "funding", "price", "common_window", "fail_closed"}
+    assert "manifest digest" in inputs["oi"]
+    assert "immutable source manifest" in inputs["funding"]
+    assert "immutable source manifest" in inputs["price"]
+    assert "breadth falls below 20" in inputs["fail_closed"]
 
 
 def test_finite_signal_costs_and_capacity_are_fixed():
