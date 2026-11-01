@@ -1,0 +1,129 @@
+{
+  "format": "zb-falsify-prereg/1",
+  "candidate_id": "funding_extreme_reclaim.v1",
+  "status": "DRAFT - RESULT BLIND - NO EVALUATION AUTHORITY",
+  "hypothesis": "After an extreme funding imbalance, a direction-confirming price move accompanied by open-interest rebuilding predicts a cost-positive continuation over the next 24 hours.",
+  "authority": {
+    "research_only": true,
+    "paper": false,
+    "mainnet": false,
+    "holdout_open": false,
+    "requires_codex_signature": true,
+    "requires_independent_review": true
+  },
+  "identity": {
+    "loader_contract": "OI-LOADER-01",
+    "loader_module": "tools/research/oi_metrics_loader.py",
+    "manifest_digest": null,
+    "accepted_commit": null,
+    "signed_by": null
+  },
+  "window": {
+    "start": "2023-09-28T00:00:00Z",
+    "development_end": "2025-03-28T00:00:00Z",
+    "validation_folds": [
+      ["2025-03-28T00:00:00Z", "2025-06-28T00:00:00Z"],
+      ["2025-06-28T00:00:00Z", "2025-09-28T00:00:00Z"],
+      ["2025-09-28T00:00:00Z", "2025-12-28T00:00:00Z"],
+      ["2025-12-28T00:00:00Z", "2026-03-28T00:00:00Z"],
+      ["2026-03-28T00:00:00Z", "2026-06-28T00:00:00Z"]
+    ],
+    "sealed_holdout": ["2026-06-28T00:00:00Z", "2026-09-28T00:00:00Z"],
+    "hard_cutoff_exclusive": "2026-09-28T00:00:00Z"
+  },
+  "universe": {
+    "rule": "exact frozen strict-complete 20 from the 2026-10-28 list-only probe; every symbol must pass OI-LOADER-01 for the full requested interval or the evaluation refuses",
+    "symbols": [
+      "1000PEPEUSDT", "AAVEUSDT", "ADAUSDT", "ARBUSDT", "AVAXUSDT",
+      "BCHUSDT", "BNBUSDT", "BTCUSDT", "DASHUSDT", "DOGEUSDT",
+      "ETHUSDT", "FILUSDT", "HBARUSDT", "LINKUSDT", "LTCUSDT",
+      "QNTUSDT", "RLCUSDT", "SOLUSDT", "UNIUSDT", "XRPUSDT"
+    ],
+    "minimum_daily_breadth": 20,
+    "silent_shrink_forbidden": true
+  },
+  "causality": {
+    "decision_grid": "hourly at HH:00:00Z",
+    "oi_period": "5m",
+    "oi_period_end_normalization": "loader-normalized period_end",
+    "oi_available_at": "period_end + 5 minutes",
+    "funding_available_at": "funding event timestamp + 5 minutes",
+    "price_signal_source": "the last fully closed 15m Binance UM kline",
+    "execution": "next 15m bar open after the decision; if unavailable, skip",
+    "same_bar_fill": false,
+    "forward_fill": false,
+    "interpolation": false
+  },
+  "signal": {
+    "funding_lookback_events": 270,
+    "funding_extreme_quantile": 0.10,
+    "oi_flush_window_minutes": 360,
+    "oi_reclaim_from_window_minimum": 0.005,
+    "price_confirmation_minutes": 15,
+    "long": "latest available funding <= its trailing 270-event 10th percentile; current available OI is at least 0.5% above the minimum available OI in the prior 360 minutes; last closed 15m return > 0",
+    "short": "latest available funding >= its trailing 270-event 90th percentile; current available OI is at least 0.5% above the minimum available OI in the prior 360 minutes; last closed 15m return < 0",
+    "ties": "quantile equality qualifies; zero price return does not",
+    "warmup": "no decision until all fixed lookbacks are complete and observed",
+    "repeat_entry": "at most one entry per symbol and funding-event identity; no pyramiding"
+  },
+  "portfolio": {
+    "sides_reported_separately": true,
+    "max_concurrent_positions": 8,
+    "max_positions_per_symbol": 1,
+    "risk_per_trade_equity_fraction": 0.005,
+    "gross_leverage_cap": 2.0,
+    "ranking_when_capacity_bound": "descending absolute distance of funding from its trailing median; symbol ascending as deterministic tie-break",
+    "stop": "2.0 x causal 14-period 1h ATR from entry",
+    "exit": "first of protective stop, opposite-side signal, or 24h after entry",
+    "intrabar_collision": "stop wins",
+    "overnight_and_funding": "positions remain open; every causally due funding cashflow is booked"
+  },
+  "costs": {
+    "fees_per_fill_bps": 5.0,
+    "base_slippage_per_fill_bps": 5.0,
+    "funding": "actual causally available Binance funding cashflows with the exchange sign convention",
+    "stress_multipliers": [1.5, 2.0],
+    "all_entries_and_exits_are_taker": true
+  },
+  "claims": {
+    "families": ["combined", "long", "short"],
+    "primary": "combined cost-complete net daily return",
+    "multiplicity": "Holm-Bonferroni family-wise alpha 0.05 across combined, long and short claims",
+    "bootstrap": "stationary bootstrap of UTC daily net returns, 10000 resamples, deterministic seed 20261101, mean block length 7 days"
+  },
+  "validation_gates": {
+    "minimum_completed_trades_combined": 150,
+    "minimum_completed_trades_each_side": 40,
+    "positive_validation_folds_combined": 4,
+    "combined_bootstrap_mean_lcb_gt": 0.0,
+    "combined_profit_factor_gte": 1.10,
+    "combined_sharpe_gte": 0.60,
+    "combined_calmar_gte": 0.50,
+    "combined_max_drawdown_lte": 0.35,
+    "cost_stress_1_5x_net_return_gt": 0.0,
+    "top_symbol_profit_share_lte": 0.30,
+    "remove_best_symbol_net_return_gt": 0.0,
+    "directional_promotion": "a side is eligible only if its Holm-adjusted claim passes, it has >=40 completed trades, positive net return and profit factor >=1.05; a failing side stays disabled even when combined passes"
+  },
+  "holdout_gate": {
+    "open_only_if_all_validation_gates_pass": true,
+    "one_open_only": true,
+    "minimum_completed_trades_combined": 30,
+    "net_return_gt": 0.0,
+    "profit_factor_gte": 1.05,
+    "max_drawdown_lte": 0.35,
+    "cost_stress_1_5x_net_return_gt": 0.0,
+    "no_parameter_change_after_open": true
+  },
+  "hard_stop": {
+    "before_holdout": "any admission, causal-parity, validation, multiplicity, concentration, activity or 1.5x-cost gate failure => FAIL; do not open holdout",
+    "after_holdout": "any holdout gate failure => FAIL / NO PAPER",
+    "after_failure": "record rejection; no tuning on development, validation or holdout results; any changed design requires a new candidate id and trial-budget entry"
+  },
+  "required_outputs": [
+    "immutable input manifest and hashes", "code and prereg hashes", "all attempted claims",
+    "trade ledger with decision/availability/execution timestamps", "fees, slippage and funding by trade",
+    "fold and side metrics", "bootstrap and Holm calculations", "concentration and cost stresses",
+    "explicit PASS or FAIL with unopened-holdout proof when validation fails"
+  ]
+}
