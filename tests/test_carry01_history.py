@@ -340,6 +340,17 @@ def test_daily_recovery_cannot_add_unledgered_duplicate_or_out_of_period_hour():
         H.daily_recovery_specs(spec(), [])
 
 
+def test_daily_recovery_excludes_hours_before_the_signed_pair_start():
+    start = 1_735_689_600_000
+    primary = spec("2025-01", frequency="monthly")
+    incomplete = [
+        {"open_time": start, "reason": "missing_source_hour"},
+        {"open_time": start + 2 * H.HOUR_MS, "reason": "missing_source_hour"},
+    ]
+    assert H.daily_recovery_specs(primary, incomplete, start + H.HOUR_MS)[0].period == "2025-01-01"
+    assert H.daily_recovery_specs(primary, incomplete, start + 3 * H.HOUR_MS) == []
+
+
 def test_funding_parser_accepts_jitter_but_refuses_schema_order_and_seal():
     header = "calc_time,funding_interval_hours,last_funding_rate\n"
     good = header + "1700000000002,8,0.0001\n1700028800000,8,-0.0002\n"
