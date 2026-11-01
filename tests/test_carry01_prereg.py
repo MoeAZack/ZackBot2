@@ -119,6 +119,9 @@ def test_prereg_pins_funding_price_weights_and_timestamp_rules():
     assert "no older mark is substituted" in p["data"]["funding_missing_mark"]
     assert "does not count toward the minimum-funding-events gate" in p["data"]["funding_missing_mark"]
     assert "only exact monthly-ledger timestamps may be added" in p["data"]["daily_recovery"]
+    assert p["data"]["pairs"]["BTCUSDC"] == "2024-01-03T00:00:00Z"
+    assert p["data"]["pairs"]["ETHUSDC"] == "2024-01-03T00:00:00Z"
+    assert "first common spot/mark hour" in p["data"]["daily_recovery"]
     assert "before any return, PnL, signal, score or selection metric" in p["data"]["daily_recovery"]
     assert "GET /fapi/v1/fundingRate" in p["data"]["source"]
     assert "limit=1000" in p["data"]["funding_rest_freeze"]

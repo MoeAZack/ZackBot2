@@ -465,12 +465,14 @@ def parse_kline_zip(payload: bytes, spec: ArchiveSpec) -> list[dict[str, Any]]:
 
 
 def daily_recovery_specs(primary: ArchiveSpec,
-                         incomplete: Iterable[dict[str, Any]]) -> list[ArchiveSpec]:
+                         incomplete: Iterable[dict[str, Any]],
+                         eligible_start_ms: int | None = None) -> list[ArchiveSpec]:
     """Plan only official daily archives needed by a monthly kline gap ledger."""
     if primary.frequency != "monthly" or primary.series not in {"klines", "markPriceKlines"}:
         raise HistoryDataError("daily recovery requires a monthly kline primary archive")
     periods = sorted({datetime.fromtimestamp(int(item["open_time"]) / 1000, timezone.utc)
-                      .date().isoformat() for item in incomplete})
+                      .date().isoformat() for item in incomplete
+                      if eligible_start_ms is None or int(item["open_time"]) >= eligible_start_ms})
     return [_archive(primary.symbol, primary.market, primary.series, "daily", period)
             for period in periods]
 
