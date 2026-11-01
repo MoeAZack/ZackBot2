@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import io
 import json
 import os
@@ -151,6 +152,33 @@ def iter_archive(path, symbol: str, archive_day: dt.date):
         raise LoaderError(f'ZIP:unreadable:{type(exc).__name__}') from exc
 
 
+def iter_verified_archive(store, entry):
+    """Yield rows from the same open file handle whose manifest identity was verified.
+
+    Admission verifies the whole requested batch before any zip is opened.  This
+    second check deliberately hashes each file handle immediately before parsing
+    it and then seeks that *same handle* back to zero.  A concurrent path replace
+    therefore cannot swap unmanifested bytes between checksum and CSV parsing.
+    """
+    try:
+        path = ADMIT.confined_path(store, entry['path'])
+        with path.open('rb') as fh:
+            size = os.fstat(fh.fileno()).st_size
+            if size != entry['bytes']:
+                raise LoaderError('DISK:size')
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: fh.read(ADMIT.CHUNK), b''):
+                digest.update(chunk)
+            if digest.hexdigest() != entry['sha256']:
+                raise LoaderError('DISK:sha256')
+            fh.seek(0)
+            yield from iter_archive(fh, entry['symbol'], dt.date.fromisoformat(entry['date']))
+    except FileNotFoundError as exc:
+        raise LoaderError('DISK:missing') from exc
+    except OSError as exc:
+        raise LoaderError('DISK:unreadable') from exc
+
+
 def _selected_entries(manifest, symbols, start: dt.date, end_exclusive: dt.date):
     wanted = set(symbols)
     return sorted(
@@ -174,13 +202,11 @@ def load_rows(manifest, symbols, request_start: str, request_end_exclusive: str,
     end_exclusive = dt.date.fromisoformat(request_end_exclusive)
     entries = _selected_entries(manifest, symbols, start, end_exclusive)
     for entry in entries:
-        path = ADMIT.confined_path(store, entry['path'])
-        for _ in iter_archive(path, entry['symbol'], dt.date.fromisoformat(entry['date'])):
+        for _ in iter_verified_archive(store, entry):
             pass
     output = []
     for entry in entries:
-        path = ADMIT.confined_path(store, entry['path'])
-        output.extend(iter_archive(path, entry['symbol'], dt.date.fromisoformat(entry['date'])))
+        output.extend(iter_verified_archive(store, entry))
     return output
 
 

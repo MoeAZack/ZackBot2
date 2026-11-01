@@ -106,3 +106,46 @@ def test_archive_bytes_are_hashable_for_manifest_fixture(tmp_path):
     _zip(path, day)
     raw = path.read_bytes()
     assert len(raw) > 0 and len(hashlib.sha256(raw).hexdigest()) == 64
+
+
+def test_verified_archive_parses_the_same_handle_that_was_hashed(tmp_path, monkeypatch):
+    day = dt.date(2026, 6, 25)
+    rel = f'daily/metrics/BTCUSDT/BTCUSDT-metrics-{day}.zip'
+    path = tmp_path.joinpath(*rel.split('/'))
+    path.parent.mkdir(parents=True)
+    _zip(path, day)
+    raw = path.read_bytes()
+    entry = {
+        'path': rel, 'symbol': 'BTCUSDT', 'date': day.isoformat(),
+        'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+    }
+    seen = []
+
+    def fake_iter(source, symbol, archive_day):
+        assert hasattr(source, 'read') and not isinstance(source, (str, os.PathLike))
+        seen.append((source.read(), symbol, archive_day))
+        return iter(())
+
+    monkeypatch.setattr(L, 'iter_archive', fake_iter)
+    assert list(L.iter_verified_archive(tmp_path, entry)) == []
+    assert seen == [(raw, 'BTCUSDT', day)]
+
+
+@pytest.mark.parametrize('change,code', [
+    (lambda raw: raw + b'x', 'DISK:size'),
+    (lambda raw: raw[:-1] + bytes([raw[-1] ^ 1]), 'DISK:sha256'),
+])
+def test_verified_archive_refuses_bytes_not_bound_by_manifest(tmp_path, change, code):
+    day = dt.date(2026, 6, 25)
+    rel = f'daily/metrics/BTCUSDT/BTCUSDT-metrics-{day}.zip'
+    path = tmp_path.joinpath(*rel.split('/'))
+    path.parent.mkdir(parents=True)
+    _zip(path, day)
+    raw = path.read_bytes()
+    entry = {
+        'path': rel, 'symbol': 'BTCUSDT', 'date': day.isoformat(),
+        'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+    }
+    path.write_bytes(change(raw))
+    with pytest.raises(L.LoaderError, match=code):
+        list(L.iter_verified_archive(tmp_path, entry))
