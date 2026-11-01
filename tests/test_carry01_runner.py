@@ -228,3 +228,36 @@ def test_fold_replay_refuses_boundary_and_order_errors():
         R.replay_fold([observation(0)], [])
     with pytest.raises(R.CarryRunnerError, match="chronological"):
         R.replay_fold([observation(R.HOUR_MS), observation(0)], [])
+
+
+def test_daily_returns_include_open_and_exit_costs_without_duplicate_endpoint():
+    obs = [observation(0), observation(R.HOUR_MS), observation(2 * R.HOUR_MS)]
+    replay = R.replay_fold(obs, [])
+    assert len(replay.equity_curve) == len(obs)
+    assert len({timestamp for timestamp, _ in replay.equity_curve}) == len(obs)
+    daily = R.daily_returns_from_replay(replay)
+    assert len(daily) == 1
+    assert 1 + daily[0].portfolio == pytest.approx(
+        replay.ending_equity / replay.starting_equity)
+    assert daily[0].cash > 0
+
+
+def test_daily_returns_never_bridge_missing_hour():
+    replay = R.FoldReplay(
+        "COMPLETE", 100.0, 99.0,
+        ((R.HOUR_MS, 100.0), (2 * R.HOUR_MS, 101.0), (4 * R.HOUR_MS, 99.0)),
+        0, 0, 1, 0, 0,
+    )
+    daily = R.daily_returns_from_replay(replay, cash_apr=0)
+    assert len(daily) == 1
+    assert daily[0].portfolio == pytest.approx(0.01)
+
+
+def test_daily_returns_refuse_liquidated_or_duplicate_curve():
+    liquidated = R.FoldReplay("LIQUIDATED", 100, None, ((1, 50),), 0, 0, 0, 0, 0)
+    with pytest.raises(R.CarryRunnerError, match="complete"):
+        R.daily_returns_from_replay(liquidated)
+    duplicate = R.FoldReplay("COMPLETE", 100, 100, ((R.HOUR_MS, 100),
+                              (R.HOUR_MS, 100)), 0, 0, 0, 0, 0)
+    with pytest.raises(R.CarryRunnerError, match="chronological"):
+        R.daily_returns_from_replay(duplicate)

@@ -511,10 +511,43 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
     final_prices = {symbol: (last.spot_close[symbol], last.mark_close[symbol])
                     for symbol in sorted(expected_symbols or ())}
     ending = basket.close(final_prices)
-    curve.append((last.available_time, ending))
+    curve[-1] = (last.available_time, ending)
     return FoldReplay("COMPLETE", starting_equity, ending, tuple(curve),
                       basket.funding_pnl, basket.price_pnl, basket.trading_cost,
                       basket.funding_events, basket.rebalances)
+
+
+def daily_returns_from_replay(replay: FoldReplay, *, cash_apr: float = 0.04) -> list[DailyReturn]:
+    """Compound only causal hourly intervals; never bridge a missing observation."""
+    if replay.status != "COMPLETE" or replay.ending_equity is None:
+        raise CarryRunnerError("daily returns require a complete fold")
+    cash_apr = _finite(cash_apr, "cash APR")
+    if cash_apr <= -1:
+        raise CarryRunnerError("cash APR must exceed -100%")
+    if not replay.equity_curve:
+        raise CarryRunnerError("replay equity curve is empty")
+    hourly_cash = (1 + cash_apr) ** (1 / (YEAR_DAYS * 24)) - 1
+    by_day: dict[int, tuple[list[float], list[float]]] = {}
+    previous_time: int | None = None
+    previous_equity = replay.starting_equity
+    for timestamp, raw_equity in replay.equity_curve:
+        if isinstance(timestamp, bool) or not isinstance(timestamp, int):
+            raise CarryRunnerError("equity timestamp must be an integer")
+        equity = _finite(raw_equity, "equity")
+        if equity <= 0 or previous_equity <= 0:
+            raise CarryRunnerError("complete replay equity must remain positive")
+        if previous_time is not None and timestamp <= previous_time:
+            raise CarryRunnerError("equity curve must be unique and chronological")
+        is_opening = previous_time is None
+        eligible = is_opening or timestamp - previous_time == HOUR_MS
+        if eligible:
+            day = (timestamp - 1) // (24 * HOUR_MS)
+            portfolio, cash = by_day.setdefault(day, ([], []))
+            portfolio.append(equity / previous_equity - 1)
+            cash.append(0.0 if is_opening else hourly_cash)
+        previous_time, previous_equity = timestamp, equity
+    return [DailyReturn(day, compound(portfolio), compound(cash))
+            for day, (portfolio, cash) in sorted(by_day.items())]
 
 
 def _finite(value: float, name: str) -> float:
