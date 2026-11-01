@@ -290,6 +290,26 @@ def test_daily_returns_refuse_liquidated_or_duplicate_curve():
         R.daily_returns_from_replay(duplicate)
 
 
+def test_fold_report_contains_attribution_risk_and_activity_without_verdict():
+    obs = [observation(0), observation(R.HOUR_MS), observation(2 * R.HOUR_MS)]
+    event = R.FundingCredit(R.FundingEvent("BTC", R.HOUR_MS, 0.001), 100)
+    report = R.fold_report(R.replay_fold(obs, [event]))
+    assert report["status"] == "COMPLETE"
+    assert report["total_return"] < 0
+    assert report["maximum_drawdown"] > 0
+    assert report["funding_events_by_asset"] == {"BTC": 1, "ETH": 0}
+    assert report["asset_net_pnl"]
+    assert "verdict" not in report
+
+
+def test_fold_report_never_claims_metrics_for_liquidation():
+    replay = R.replay_fold([observation(0), observation(R.HOUR_MS, btc_high=140)], [])
+    report = R.fold_report(replay)
+    assert report["status"] == "LIQUIDATED"
+    assert report["total_return"] is None
+    assert report["maximum_drawdown"] is None
+
+
 def test_stress_suite_is_complete_fresh_start_and_directionally_conservative():
     obs = [observation(0), observation(R.HOUR_MS), observation(2 * R.HOUR_MS)]
     funding = [R.FundingCredit(R.FundingEvent("BTC", R.HOUR_MS, 0.01), 100)]

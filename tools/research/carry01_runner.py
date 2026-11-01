@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 YEAR_DAYS = 365.25
 HOUR_MS = 3_600_000
@@ -145,6 +145,7 @@ class FoldReplay:
     asset_net_pnl: tuple[tuple[str, float], ...] = ()
     turnover: float = 0.0
     minimum_margin_headroom: float | None = None
+    funding_events_by_asset: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -414,6 +415,7 @@ class BasketState:
     archived_funding_events: int = 0
     archived_turnover: float = 0.0
     archived_net_pnl_by_symbol: dict[str, float] = field(default_factory=dict)
+    archived_funding_events_by_symbol: dict[str, int] = field(default_factory=dict)
     rebalances: int = 0
 
     @classmethod
@@ -476,6 +478,8 @@ class BasketState:
             self.archived_price_pnl += sleeve.price_pnl_realized
             self.archived_trading_cost += sleeve.trading_cost
             self.archived_funding_events += sleeve.funding_events
+            self.archived_funding_events_by_symbol[symbol] = (
+                self.archived_funding_events_by_symbol.get(symbol, 0) + sleeve.funding_events)
             self.archived_turnover += sleeve.turnover
             net = sleeve.price_pnl_realized + sleeve.funding_pnl - sleeve.trading_cost
             self.archived_net_pnl_by_symbol[symbol] = (
@@ -505,6 +509,13 @@ class BasketState:
     def funding_events(self) -> int:
         return self.archived_funding_events + sum(
             sleeve.funding_events for sleeve in self.sleeves.values())
+
+    @property
+    def funding_events_by_asset(self) -> dict[str, int]:
+        result = dict(self.archived_funding_events_by_symbol)
+        for symbol, sleeve in self.sleeves.items():
+            result[symbol] = result.get(symbol, 0) + sleeve.funding_events
+        return result
 
     @property
     def price_pnl(self) -> float:
@@ -607,7 +618,8 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
                               basket.funding_events, basket.rebalances,
                               tuple(sorted(liquidated)),
                               tuple(sorted(basket.asset_net_pnl(prices).items())),
-                              basket.turnover, minimum_headroom)
+                              basket.turnover, minimum_headroom,
+                              tuple(sorted(basket.funding_events_by_asset.items())))
         required = basket.rebalances_required(prices, minimum=minimum_leverage,
                                               maximum=maximum_leverage)
         if pending_rebalance or (required and rebalance_latency_hours == 0):
@@ -631,7 +643,8 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
                       basket.funding_pnl, basket.price_pnl, basket.trading_cost,
                       basket.funding_events, basket.rebalances, (),
                       tuple(sorted(basket.asset_net_pnl(final_prices).items())),
-                      basket.turnover, minimum_headroom)
+                      basket.turnover, minimum_headroom,
+                      tuple(sorted(basket.funding_events_by_asset.items())))
 
 
 def replay_stress_suite(observations: Sequence[BasketObservation],
@@ -696,6 +709,46 @@ def daily_returns_from_replay(replay: FoldReplay, *, cash_apr: float = 0.04) -> 
         previous_time, previous_equity = timestamp, equity
     return [DailyReturn(day, compound(portfolio), compound(cash))
             for day, (portfolio, cash) in sorted(by_day.items())]
+
+
+def fold_report(replay: FoldReplay, *, cash_apr: float = 0.04) -> dict[str, Any]:
+    """Produce the preregistered per-fold metrics without making a verdict."""
+    base: dict[str, Any] = {
+        "status": replay.status,
+        "starting_equity": replay.starting_equity,
+        "ending_equity": replay.ending_equity,
+        "funding_pnl": replay.funding_pnl,
+        "price_pnl": replay.price_pnl,
+        "trading_cost": replay.trading_cost,
+        "funding_events": replay.funding_events,
+        "funding_events_by_asset": dict(replay.funding_events_by_asset),
+        "rebalances": replay.rebalances,
+        "turnover": replay.turnover,
+        "minimum_margin_headroom": replay.minimum_margin_headroom,
+        "liquidated_symbols": list(replay.liquidated_symbols),
+        "asset_net_pnl": dict(replay.asset_net_pnl),
+    }
+    if replay.status != "COMPLETE" or replay.ending_equity is None:
+        return {**base, "total_return": None, "annualized_return": None,
+                "cash_excess_return": None, "sharpe": None, "sortino": None,
+                "maximum_drawdown": None, "longest_recovery_days": None,
+                "maximum_asset_absolute_pnl_share": None}
+    daily = daily_returns_from_replay(replay, cash_apr=cash_apr)
+    risk = risk_adjusted_metrics(daily)
+    daily_equity: dict[int, float] = {}
+    for timestamp, equity in replay.equity_curve:
+        daily_equity[(timestamp - 1) // (24 * HOUR_MS)] = equity
+    asset_pnl = dict(replay.asset_net_pnl)
+    return {
+        **base,
+        "total_return": replay.ending_equity / replay.starting_equity - 1,
+        "annualized_return": annualized_return(daily),
+        "cash_excess_return": cash_excess_return(daily),
+        **risk,
+        "maximum_drawdown": maximum_drawdown([value for _, value in replay.equity_curve]),
+        "longest_recovery_days": longest_recovery_days(list(daily_equity.items())),
+        "maximum_asset_absolute_pnl_share": maximum_asset_absolute_pnl_share(asset_pnl),
+    }
 
 
 def _finite(value: float, name: str) -> float:
