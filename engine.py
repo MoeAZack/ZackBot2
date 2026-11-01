@@ -5160,8 +5160,8 @@ class Engine:
         if getattr(self, 'live', True) is not False or self.S.get('STRATEGY_SHADOW') is not True:
             return dict(available=False, reason='strategy shadow is off or the engine is not PAPER')
         try:
-            ladder = self._capital_shadow_ladder()
-            return ladder.compute() if ladder is not None else dict(available=False, reason='no active cohort')
+            ladder = getattr(self, '_capital_shadow', None)           # HTTP/read paths must never create a writer
+            return ladder.compute() if ladder is not None else dict(available=False, reason='waiting for engine-thread input')
         except Exception as ex:                              # an observer view can never affect trading
             self._capital_shadow_err()
             return dict(available=False, reason=('capital shadow unavailable: ' + str(ex))[:160])
@@ -5178,6 +5178,7 @@ class Engine:
         income, never mainnet. A row without a usable rate / mark makes the exposed episodes INCOMPLETE in the ledger."""
         import shadow_funding as SF
         tag = getattr(shadow, 'observer_id', 'strategy_shadow')
+        on_error = self._capital_shadow_err if tag == 'capital_shadow_ladder' else self._shadow_err
         cur = self.__dict__.setdefault('_shadow_fcur', {}).setdefault(tag, {})
         seen = self.__dict__.setdefault('_shadow_fmtime', {}).setdefault(tag, {})
         syms = (shadow.symbols_with_positions() if hasattr(shadow, 'symbols_with_positions') else
@@ -5186,7 +5187,7 @@ class Engine:
             cad = SF.cadence_s(self.dir, sym)
             if cad is not None:
                 try: shadow.on_cadence(symbol=sym, interval_s=cad, source='testnet fundingInfo')
-                except Exception: self._shadow_err()        # noqa: BLE001 - schedule unknown -> funding_cadence_unknown
+                except Exception: on_error()                # noqa: BLE001 - each observer owns its own failure state
             try: mt = os.path.getmtime(SF.series_file(self.dir, sym))
             except OSError: continue                        # nothing collected yet: exposure stays funding_unread
             if seen.get(sym) == mt: continue                # unchanged since the last complete feed
@@ -5195,12 +5196,13 @@ class Engine:
                 try:
                     shadow.on_funding(symbol=sym, at=datetime.fromtimestamp(t / 1000, timezone.utc).isoformat(), rate=rate, mark=mk)
                 except Exception:                           # noqa: BLE001 - not advanced: retried on the next bar
-                    self._shadow_err(); ok = False; break
+                    on_error(); ok = False; break
                 cur[sym] = t
             if ok: seen[sym] = mt                           # Cowork F2: only a COMPLETE feed marks the file as read
 
     def _shadow_bar(self, tf, frames, sigs):
         """Feed the just-closed candle of every symbol of this timeframe (+ the exit signals per instance) to the observer."""
+        self.__dict__.pop('_capital_shadow_failed', None)   # new cycle: an earlier aborted primary path cannot poison it
         try:
             shadow = self._shadow_book()
             if shadow is None: return

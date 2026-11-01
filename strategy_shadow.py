@@ -240,6 +240,10 @@ class ShadowBook:
     def mark_incomplete(self, instance_id, reason):
         return self._record('incomplete', instance_id=instance_id, reason=str(reason))
 
+    def mark_gap(self, reason):
+        """Durable observer-wide coverage gap (used when an input cannot be applied to this book)."""
+        return self._record('gap', reason=str(reason)[:160])
+
     # ------------------------------------------------------------------ reducer
     def _register(self, rec):
         iid, cfg = rec['instance_id'], rec['config']
@@ -562,6 +566,11 @@ class ShadowBook:
         elif rec['reason'] not in inst['incomplete']: inst['incomplete'].append(rec['reason'])
         return dict(seq=self.seq)
 
+    def _a_gap(self, rec):
+        reason = str(rec.get('reason') or 'unknown_gap')[:160]
+        if reason not in self.gaps: self.gaps.append(reason)
+        return dict(seq=self.seq)
+
     # ------------------------------------------------------------------ read side
     def _unreal(self, ep):
         return ep['sd'] * (ep['last'] - ep['avg']) * ep['qty'] if ep['status'] == 'open' else 0.0
@@ -746,13 +755,27 @@ class CapitalShadowLadder:
     def __init__(self, directory, cohort_id, model, capitals=CAPITAL_LADDER, min_n=MIN_N):
         self.directory, self.cohort_id, self.model = str(directory), str(cohort_id), dict(model)
         self.capitals, self.min_n = _capital_values(capitals), int(min_n)
+        self._lock, self._cache = threading.RLock(), None
         os.makedirs(self.directory, exist_ok=True)
         self.books = {capital: ShadowBook(os.path.join(self.directory, f'capital-{int(capital)}.jsonl'),
                                          self.cohort_id, dict(self.model), start=capital, min_n=self.min_n)
                       for capital in self.capitals}
 
     def _all(self, method, *args, **kwargs):
-        return {capital: getattr(book, method)(*args, **kwargs) for capital, book in self.books.items()}
+        out, failed = {}, []
+        with self._lock:
+            for capital, book in self.books.items():
+                try:
+                    out[capital] = getattr(book, method)(*args, **kwargs)
+                except Exception as ex:                              # every later book must still receive the input
+                    reason = f'capital_fanout:{method}:{type(ex).__name__}'
+                    try: book.mark_gap(reason)                        # fail closed in the affected durable ledger
+                    except Exception: pass                           # a dead disk is still surfaced by the raised aggregate
+                    failed.append((capital, reason))
+            self._cache = None
+        if failed:
+            raise RuntimeError('capital shadow fanout failed: ' + ','.join(str(int(c)) for c, _ in failed))
+        return out
 
     def on_signal(self, *args, **kwargs): return self._all('on_signal', *args, **kwargs)
     def on_candidate(self, *args, **kwargs): return self._all('on_candidate', *args, **kwargs)
@@ -766,6 +789,11 @@ class CapitalShadowLadder:
                        if ep.get('qty_hist')})
 
     def compute(self):
-        return _capital_doc(self.cohort_id, self.capitals,
-                            [_capital_view(self.books[capital], capital) for capital in self.capitals],
-                            os.path.basename(self.directory), prospective=True)
+        with self._lock:
+            revision = tuple((capital, self.books[capital].seq) for capital in self.capitals)
+            if self._cache is not None and self._cache[0] == revision: return self._cache[1]
+            doc = _capital_doc(self.cohort_id, self.capitals,
+                               [_capital_view(self.books[capital], capital) for capital in self.capitals],
+                               os.path.basename(self.directory), prospective=True)
+            self._cache = (revision, doc)
+            return doc

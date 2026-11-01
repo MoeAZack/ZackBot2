@@ -93,6 +93,26 @@ def test_prospective_capital_ladder_is_durable_and_keeps_books_isolated(tmp_path
     assert again.compute() == first
 
 
+def test_capital_fanout_failure_marks_only_that_book_and_still_feeds_later_books(tmp_path, monkeypatch):
+    ladder = SSH.CapitalShadowLadder(tmp_path / 'capital', 'C1', dict(SSH.MODEL_V1))
+    sl = slot()
+    ladder.on_signal(slot=sl, symbol='BTCUSDT', side='LONG',
+                     signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+                     mark=dict(time=iso(), price=100, source='premiumIndex'),
+                     live_decision=dict(status='taken', reason=''), rule=None)
+    bad = ladder.books[3000.0]
+    monkeypatch.setattr(bad, 'on_bar', lambda *a, **k: (_ for _ in ()).throw(OSError('one book failed')))
+    with pytest.raises(RuntimeError, match='3000'):
+        ladder.on_bar(tf='4h', bars={'BTCUSDT': dict(time=iso(10), o=100, h=101, l=99.5, c=100.5, atr=2)},
+                      signals={SSH.identity(sl)[0]: {'BTCUSDT': dict(lx=True, sx=False)}})
+
+    assert ladder.books[4000.0].compute()['strategies'][0]['closed'] == 1       # later book was still fed
+    damaged = ladder.books[3000.0].snapshot()['coverage']
+    assert not damaged['complete'] and 'capital_fanout:on_bar:OSError' in damaged['gaps']
+    assert ladder.books[1000.0].snapshot()['coverage']['complete']
+    assert ladder.books[2000.0].snapshot()['coverage']['complete']
+
+
 @pytest.mark.parametrize('values', [[], [1000, 1000], [2000, 1000], [True], [99], [float('nan')]])
 def test_capital_ladder_rejects_ambiguous_values(tmp_path, values):
     b = book(tmp_path)
@@ -334,6 +354,21 @@ def test_observer_is_paper_only_and_off_by_default(tmp_path):
     assert e._shadow_book() is None
 
 
+def test_capital_status_is_read_only_does_not_construct_writers_and_is_cached(tmp_path):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-READ')
+    assert not e.capital_shadow_status()['available']
+    assert not hasattr(e, '_capital_shadow') and not os.path.exists(tmp_path / e.CAPITAL_SHADOW_DIR)
+
+    ladder = e._capital_shadow_ladder()                         # engine-thread construction in production
+    first = e.capital_shadow_status()
+    assert first['available'] and e.capital_shadow_status() is first
+    e._capital_shadow_failed = True
+    e._shadow_bar('4h', {}, {})
+    assert not hasattr(e, '_capital_shadow_failed')              # stale failure cannot poison the next cycle
+
+
 # ------------------------------------------------------------------ review round 1 regressions (one per finding)
 def test_r1_same_instance_same_symbol_while_open_is_held_not_stacked(tmp_path):
     b = book(tmp_path); a = enter(b, slot(), t=0); c = enter(b, slot(), t=5)
@@ -546,6 +581,24 @@ def test_r1_app_flushes_queued_candidates_while_flat():
 # ------------------------------------------------------------------ testnet funding timeline (shadow_funding.py) + engine feed
 import market_data as MD                                   # noqa: E402
 import shadow_funding as SF                                # noqa: E402
+
+
+def test_capital_funding_failure_never_marks_the_primary_observer_failed(tmp_path, monkeypatch):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-CAP-FUND')
+    ladder = e._capital_shadow_ladder()
+    ladder.on_signal(slot=slot(), symbol='BTCUSDT', side='LONG',
+                     signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+                     mark=dict(time=iso(), price=100, source='premiumIndex'),
+                     live_decision=dict(status='taken', reason=''), rule=None)
+    monkeypatch.setattr(SF, 'cadence_s', lambda *a: 8 * 3600)
+    monkeypatch.setattr(ladder, 'on_cadence', lambda *a, **k: (_ for _ in ()).throw(OSError('capital only')))
+
+    e._shadow_funding_feed(ladder)
+
+    assert e.health['strategy_shadow']['capital_errors'] == 1
+    assert not hasattr(e, '_shadow_failed')
 
 
 class FakeTestnet:
