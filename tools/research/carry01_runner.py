@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
 
 YEAR_DAYS = 365.25
@@ -142,6 +142,9 @@ class FoldReplay:
     funding_events: int
     rebalances: int
     liquidated_symbols: tuple[str, ...] = ()
+    asset_net_pnl: tuple[tuple[str, float], ...] = ()
+    turnover: float = 0.0
+    minimum_margin_headroom: float | None = None
 
 
 @dataclass(frozen=True)
@@ -310,6 +313,7 @@ class SleeveState:
     price_pnl_realized: float = 0.0
     trading_cost: float = 0.0
     funding_events: int = 0
+    turnover: float = 0.0
 
     @classmethod
     def open(cls, equity: float, spot: float, mark: float, costs: CostModel,
@@ -328,7 +332,8 @@ class SleeveState:
         return cls(quantity=quantity, entry_spot=spot, entry_mark=mark,
                    segment_equity=equity - opening_cost,
                    futures_collateral=equity * (1 - spot_fraction) - opening_cost,
-                   trading_cost=opening_cost)
+                   trading_cost=opening_cost,
+                   turnover=quantity * (spot + mark))
 
     def _prices(self, spot: float, mark: float) -> tuple[float, float]:
         spot = _finite(spot, "spot price")
@@ -392,6 +397,7 @@ class SleeveState:
         closing_cost = costs.fill_cost(self.quantity, spot, mark)
         self.price_pnl_realized += price_pnl
         self.trading_cost += closing_cost
+        self.turnover += self.quantity * (spot + mark)
         return self.segment_equity + price_pnl + self.funding_pnl - closing_cost
 
 
@@ -406,6 +412,8 @@ class BasketState:
     archived_price_pnl: float = 0.0
     archived_trading_cost: float = 0.0
     archived_funding_events: int = 0
+    archived_turnover: float = 0.0
+    archived_net_pnl_by_symbol: dict[str, float] = field(default_factory=dict)
     rebalances: int = 0
 
     @classmethod
@@ -468,6 +476,10 @@ class BasketState:
             self.archived_price_pnl += sleeve.price_pnl_realized
             self.archived_trading_cost += sleeve.trading_cost
             self.archived_funding_events += sleeve.funding_events
+            self.archived_turnover += sleeve.turnover
+            net = sleeve.price_pnl_realized + sleeve.funding_pnl - sleeve.trading_cost
+            self.archived_net_pnl_by_symbol[symbol] = (
+                self.archived_net_pnl_by_symbol.get(symbol, 0.0) + net)
         equity = math.fsum(closed_equity.values())
         if equity <= 0:
             raise CarryRunnerError("rebalance consumes the basket")
@@ -498,6 +510,21 @@ class BasketState:
     def price_pnl(self) -> float:
         return self.archived_price_pnl + math.fsum(
             sleeve.price_pnl_realized for sleeve in self.sleeves.values())
+
+    @property
+    def turnover(self) -> float:
+        return self.archived_turnover + math.fsum(
+            sleeve.turnover for sleeve in self.sleeves.values())
+
+    def asset_net_pnl(self, prices: Mapping[str, tuple[float, float]]) -> dict[str, float]:
+        self._require_prices(dict(prices))
+        result = dict(self.archived_net_pnl_by_symbol)
+        for symbol, sleeve in self.sleeves.items():
+            spot, mark = prices[symbol]
+            price = (sleeve.price_pnl_realized if sleeve.price_pnl_realized
+                     else sleeve.spot_pnl(spot) + sleeve.short_pnl(mark))
+            result[symbol] = result.get(symbol, 0.0) + price + sleeve.funding_pnl - sleeve.trading_cost
+        return result
 
     def close(self, prices: dict[str, tuple[float, float]]) -> float:
         self._require_prices(prices)
@@ -547,6 +574,9 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
                       for symbol in sorted(expected_symbols or ())}
     basket = BasketState.open(starting_equity, opening_prices, costs)
     curve: list[tuple[int, float]] = [(first.available_time, basket.equity(opening_prices))]
+    minimum_headroom = min(sleeve.margin_headroom(opening_prices[symbol][1],
+                                                  maintenance_rate=maintenance_rate)
+                           for symbol, sleeve in basket.sleeves.items())
     funding_index = 0
     pending_rebalance = False
 
@@ -562,6 +592,11 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
             funding_index += 1
         liquidated = basket.liquidated_symbols(dict(observation.mark_high),
                                                maintenance_rate=maintenance_rate)
+        minimum_headroom = min(
+            minimum_headroom,
+            *(sleeve.margin_headroom(observation.mark_high[symbol],
+                                     maintenance_rate=maintenance_rate)
+              for symbol, sleeve in basket.sleeves.items()))
         prices = {symbol: (observation.spot_close[symbol], observation.mark_close[symbol])
                   for symbol in sorted(expected_symbols or ())}
         marked_equity = basket.equity(prices)
@@ -570,12 +605,19 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
             return FoldReplay("LIQUIDATED", starting_equity, None, tuple(curve),
                               basket.funding_pnl, basket.price_pnl, basket.trading_cost,
                               basket.funding_events, basket.rebalances,
-                              tuple(sorted(liquidated)))
+                              tuple(sorted(liquidated)),
+                              tuple(sorted(basket.asset_net_pnl(prices).items())),
+                              basket.turnover, minimum_headroom)
         required = basket.rebalances_required(prices, minimum=minimum_leverage,
                                               maximum=maximum_leverage)
         if pending_rebalance or (required and rebalance_latency_hours == 0):
             rebalanced_equity = basket.rebalance(prices)
             curve[-1] = (observation.available_time, rebalanced_equity)
+            minimum_headroom = min(
+                minimum_headroom,
+                *(sleeve.margin_headroom(prices[symbol][1],
+                                         maintenance_rate=maintenance_rate)
+                  for symbol, sleeve in basket.sleeves.items()))
             pending_rebalance = False
         elif required:
             pending_rebalance = True
@@ -587,7 +629,9 @@ def replay_fold(observations: Sequence[BasketObservation], funding: Sequence[Fun
     curve[-1] = (last.available_time, ending)
     return FoldReplay("COMPLETE", starting_equity, ending, tuple(curve),
                       basket.funding_pnl, basket.price_pnl, basket.trading_cost,
-                      basket.funding_events, basket.rebalances)
+                      basket.funding_events, basket.rebalances, (),
+                      tuple(sorted(basket.asset_net_pnl(final_prices).items())),
+                      basket.turnover, minimum_headroom)
 
 
 def replay_stress_suite(observations: Sequence[BasketObservation],

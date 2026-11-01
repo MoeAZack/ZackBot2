@@ -148,6 +148,7 @@ def test_basket_rebalance_charges_four_fills_per_sleeve():
     before = basket.equity(prices)
     after = basket.rebalance(prices)
     assert basket.trading_cost > opening_cost * 2.9
+    assert basket.turnover > 0
     assert after < before
     assert basket.rebalances == 1
 
@@ -206,6 +207,10 @@ def test_fold_replay_is_fresh_start_cost_and_funding_aware():
     assert result.funding_pnl > 0
     assert result.trading_cost > result.funding_pnl
     assert result.ending_equity < result.starting_equity
+    assert sum(value for _, value in result.asset_net_pnl) == pytest.approx(
+        result.ending_equity - result.starting_equity)
+    assert result.turnover > 0
+    assert result.minimum_margin_headroom > 0
 
 
 def test_fold_replay_supports_one_observation_rebalance_latency():
