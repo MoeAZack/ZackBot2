@@ -745,7 +745,8 @@ def fold_report(replay: FoldReplay, *, cash_apr: float = 0.04) -> dict[str, Any]
         "annualized_return": annualized_return(daily),
         "cash_excess_return": cash_excess_return(daily),
         **risk,
-        "maximum_drawdown": maximum_drawdown([value for _, value in replay.equity_curve]),
+        "maximum_drawdown": maximum_drawdown(
+            [replay.starting_equity, *[value for _, value in replay.equity_curve]]),
         "longest_recovery_days": longest_recovery_days(list(daily_equity.items())),
         "maximum_asset_absolute_pnl_share": maximum_asset_absolute_pnl_share(asset_pnl),
     }

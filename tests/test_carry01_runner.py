@@ -302,6 +302,13 @@ def test_fold_report_contains_attribution_risk_and_activity_without_verdict():
     assert "verdict" not in report
 
 
+def test_fold_report_drawdown_includes_opening_cost_from_starting_equity():
+    replay = R.replay_fold([observation(0), observation(R.HOUR_MS)], [])
+    report = R.fold_report(replay)
+    assert report["maximum_drawdown"] == pytest.approx(
+        1 - replay.ending_equity / replay.starting_equity)
+
+
 def test_fold_report_never_claims_metrics_for_liquidation():
     replay = R.replay_fold([observation(0), observation(R.HOUR_MS, btc_high=140)], [])
     report = R.fold_report(replay)
