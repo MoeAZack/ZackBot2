@@ -205,6 +205,37 @@ def test_read_frozen_reverifies_archive_and_funding_without_network(tmp_path):
         H.read_frozen(funding_spec, tmp_path)
 
 
+def test_load_symbol_history_reconstructs_only_signed_frozen_inputs(tmp_path, monkeypatch):
+    period = "2026-09-27"
+    start = int(H.datetime.fromisoformat(period + "T00:00:00+00:00").timestamp() * 1000)
+    specs = [
+        H._archive("BTCUSDT", "spot", "klines", "daily", period),
+        H._archive("BTCUSDT", "futures", "markPriceKlines", "daily", period),
+        H._archive("BTCUSDT", "futures", "fundingRate", "daily", period),
+    ]
+    for item in specs[:2]:
+        payload = zipped("BTCUSDT.csv", day_klines(start))
+        path = tmp_path / H.archive_relative_path(item.url)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        path.with_name(path.name + ".CHECKSUM").write_text(
+            f"{hashlib.sha256(payload).hexdigest()}  *{path.name}\n", encoding="ascii")
+    funding_payload = json.dumps([{"symbol": "BTCUSDT", "fundingTime": start + 8 * H.HOUR_MS,
+                                   "fundingRate": "0.0001", "markPrice": "100"}]).encode()
+    funding_path = tmp_path / H.funding_rest_relative_path(specs[2])
+    funding_path.parent.mkdir(parents=True, exist_ok=True)
+    funding_path.write_bytes(funding_payload)
+    funding_path.with_name(funding_path.name + ".sha256").write_text(
+        hashlib.sha256(funding_payload).hexdigest(), encoding="ascii")
+    monkeypatch.setattr(H, "validate_contract", lambda contract: None)
+    monkeypatch.setattr(H, "build_manifest", lambda contract: specs)
+    contract = {"data": {"pairs": {"BTCUSDT": period + "T00:00:00Z"}}}
+    history = H.load_symbol_history(contract, tmp_path, "BTCUSDT")
+    assert len(history.spot.rows) == len(history.mark.rows) == 24
+    assert history.spot.incomplete == history.mark.incomplete == []
+    assert len(history.funding) == 1
+
+
 def zipped(name, text):
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
