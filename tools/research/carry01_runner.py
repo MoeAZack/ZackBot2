@@ -9,9 +9,11 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 YEAR_DAYS = 365.25
+HOUR_MS = 3_600_000
+FUNDING_DELAY_MS = 300_000
 
 
 class CarryRunnerError(ValueError):
@@ -29,6 +31,112 @@ class DailyReturn:
     @property
     def cash_excess(self) -> float:
         return self.portfolio - self.cash
+
+
+@dataclass(frozen=True)
+class HourlyBar:
+    """One already-validated hourly bar, usable only after its close."""
+
+    open_time: int
+    close_time: int
+    close: float
+    high: float
+
+    def validate(self) -> None:
+        if isinstance(self.open_time, bool) or isinstance(self.close_time, bool):
+            raise CarryRunnerError("bar timestamps must be integers")
+        if not isinstance(self.open_time, int) or not isinstance(self.close_time, int):
+            raise CarryRunnerError("bar timestamps must be integers")
+        if self.open_time % HOUR_MS or self.close_time != self.open_time + HOUR_MS - 1:
+            raise CarryRunnerError("bar must occupy one canonical aligned hour")
+        close = _finite(self.close, "bar close")
+        high = _finite(self.high, "bar high")
+        if close <= 0 or high < close:
+            raise CarryRunnerError("bar prices violate positive OHLC ordering")
+
+    @property
+    def available_time(self) -> int:
+        self.validate()
+        return self.close_time + 1
+
+
+@dataclass(frozen=True)
+class FundingEvent:
+    symbol: str
+    funding_time: int
+    rate: float
+
+    def validate(self) -> None:
+        if not self.symbol:
+            raise CarryRunnerError("funding symbol is empty")
+        if isinstance(self.funding_time, bool) or not isinstance(self.funding_time, int):
+            raise CarryRunnerError("funding time must be an integer")
+        _finite(self.rate, "funding rate")
+
+    @property
+    def available_time(self) -> int:
+        self.validate()
+        return self.funding_time + FUNDING_DELAY_MS
+
+
+@dataclass(frozen=True)
+class CausalEvent:
+    available_time: int
+    kind: str
+    symbol: str
+    source_time: int
+    value: float
+
+
+def required_funding_mark_open(funding_time: int) -> int:
+    """Return the exact hour whose close is strictly before nominal settlement."""
+    if isinstance(funding_time, bool) or not isinstance(funding_time, int):
+        raise CarryRunnerError("funding time must be an integer")
+    return ((funding_time - HOUR_MS) // HOUR_MS) * HOUR_MS
+
+
+def funding_settlement_mark(event: FundingEvent,
+                            mark_bars: Mapping[int, HourlyBar]) -> float:
+    """Resolve only the signed exact prior mark bar; never substitute an older bar."""
+    event.validate()
+    required = required_funding_mark_open(event.funding_time)
+    try:
+        bar = mark_bars[required]
+    except KeyError as exc:
+        raise CarryRunnerError("funding event is missing its exact prior mark bar") from exc
+    bar.validate()
+    if bar.open_time != required or bar.close_time >= event.funding_time:
+        raise CarryRunnerError("funding mark is not strictly earlier than settlement")
+    return bar.close
+
+
+def causal_event_order(spot_bars: Mapping[str, Sequence[HourlyBar]],
+                       mark_bars: Mapping[str, Sequence[HourlyBar]],
+                       funding: Sequence[FundingEvent]) -> list[CausalEvent]:
+    """Build an availability-time ledger without reading or calculating a return."""
+    if set(spot_bars) != set(mark_bars):
+        raise CarryRunnerError("spot and mark symbol sets differ")
+    events: list[CausalEvent] = []
+    for kind, series_by_symbol in (("spot", spot_bars), ("mark", mark_bars)):
+        for symbol, series in sorted(series_by_symbol.items()):
+            previous = -1
+            for bar in series:
+                bar.validate()
+                if bar.open_time <= previous:
+                    raise CarryRunnerError(f"{kind} bars must be unique and chronological")
+                previous = bar.open_time
+                events.append(CausalEvent(bar.available_time, kind, symbol,
+                                          bar.open_time, bar.close))
+    for event in funding:
+        event.validate()
+        if event.symbol not in spot_bars:
+            raise CarryRunnerError("funding event names an unknown symbol")
+        events.append(CausalEvent(event.available_time, "funding", event.symbol,
+                                  event.funding_time, event.rate))
+    priority = {"spot": 0, "mark": 1, "funding": 2}
+    events.sort(key=lambda item: (item.available_time, priority[item.kind],
+                                  item.symbol, item.source_time))
+    return events
 
 
 @dataclass(frozen=True)

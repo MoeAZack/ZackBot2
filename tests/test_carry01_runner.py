@@ -8,6 +8,10 @@ def rows(*returns):
             for index, value in enumerate(returns)]
 
 
+def bar(opened, close=100.0, high=101.0):
+    return R.HourlyBar(opened, opened + R.HOUR_MS - 1, close, high)
+
+
 def test_compound_and_calendar_span_annualization_are_deterministic():
     data = rows(0.01, -0.005, 0.002)
     assert R.compound(item.portfolio for item in data) == pytest.approx(
@@ -149,3 +153,33 @@ def test_basket_funding_and_liquidation_are_symbol_specific():
     assert basket.liquidated_symbols(highs) == ["BTC"]
     with pytest.raises(R.CarryRunnerError, match="unknown"):
         basket.credit_funding("SOL", 0.001, 1)
+
+
+def test_funding_uses_exact_strictly_earlier_mark_and_never_older_substitute():
+    nominal = 10 * R.HOUR_MS
+    required = 9 * R.HOUR_MS
+    event = R.FundingEvent("BTC", nominal, 0.001)
+    assert R.required_funding_mark_open(nominal) == required
+    assert R.funding_settlement_mark(event, {required: bar(required, close=123, high=124)}) == 123
+    with pytest.raises(R.CarryRunnerError, match="exact prior"):
+        R.funding_settlement_mark(event, {required - R.HOUR_MS: bar(required - R.HOUR_MS)})
+
+
+def test_causal_ledger_delays_bars_until_close_and_funding_by_five_minutes():
+    opened = 8 * R.HOUR_MS
+    funding = R.FundingEvent("BTC", 9 * R.HOUR_MS, 0.001)
+    ledger = R.causal_event_order(
+        {"BTC": [bar(opened)]}, {"BTC": [bar(opened)]}, [funding])
+    assert [(item.kind, item.available_time) for item in ledger] == [
+        ("spot", 9 * R.HOUR_MS),
+        ("mark", 9 * R.HOUR_MS),
+        ("funding", 9 * R.HOUR_MS + R.FUNDING_DELAY_MS),
+    ]
+
+
+def test_causal_ledger_refuses_mismatched_symbols_and_noncanonical_bars():
+    with pytest.raises(R.CarryRunnerError, match="symbol sets"):
+        R.causal_event_order({"BTC": [bar(0)]}, {"ETH": [bar(0)]}, [])
+    bad = R.HourlyBar(1, R.HOUR_MS, 100, 101)
+    with pytest.raises(R.CarryRunnerError, match="canonical"):
+        R.causal_event_order({"BTC": [bad]}, {"BTC": [bad]}, [])
