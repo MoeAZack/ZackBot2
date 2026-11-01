@@ -58,3 +58,51 @@ def test_bootstrap_refuses_invalid_controls():
     with pytest.raises(R.CarryRunnerError, match="between"):
         R.circular_block_bootstrap_lcb(rows(0.01), block_days=1, resamples=1,
                                        seed=1, lower_percentile=101)
+
+
+def test_sleeve_opens_at_three_x_and_equal_moves_are_delta_hedged():
+    costs = R.CostModel(spot_fee_bps=0, perpetual_fee_bps=0,
+                        spot_slippage_bps=0, perpetual_slippage_bps=0)
+    sleeve = R.SleeveState.open(5_000, 100, 100, costs)
+    assert sleeve.quantity == pytest.approx(37.5)
+    assert sleeve.leverage(100) == pytest.approx(3.0)
+    assert sleeve.equity(120, 120) == pytest.approx(5_000)
+
+
+def test_sleeve_charges_each_leg_and_funding_uses_held_short_quantity():
+    costs = R.CostModel()
+    sleeve = R.SleeveState.open(5_000, 100, 100, costs)
+    assert sleeve.trading_cost == pytest.approx(37.5 * (100 * 0.0015 + 100 * 0.001))
+    credited = sleeve.credit_funding(0.001, 102)
+    assert credited == pytest.approx(37.5 * 102 * 0.001)
+    ending = sleeve.close(102, 102, costs)
+    assert sleeve.funding_events == 1
+    assert sleeve.price_pnl_realized == pytest.approx(0)
+    assert ending == pytest.approx(5_000 + credited - sleeve.trading_cost)
+
+
+def test_funding_stress_weakens_receipts_and_amplifies_payments():
+    zero = R.CostModel(spot_fee_bps=0, perpetual_fee_bps=0,
+                       spot_slippage_bps=0, perpetual_slippage_bps=0)
+    sleeve = R.SleeveState.open(1_000, 100, 100, zero)
+    assert sleeve.credit_funding(0.001, 100, received_divisor=2,
+                                 paid_multiplier=2) == pytest.approx(0.375)
+    assert sleeve.credit_funding(-0.001, 100, received_divisor=2,
+                                 paid_multiplier=2) == pytest.approx(-1.5)
+
+
+def test_hourly_high_liquidation_proxy_is_conservative_and_inclusive():
+    zero = R.CostModel(spot_fee_bps=0, perpetual_fee_bps=0,
+                       spot_slippage_bps=0, perpetual_slippage_bps=0)
+    sleeve = R.SleeveState.open(1_000, 100, 100, zero)
+    boundary = (sleeve.futures_collateral + sleeve.quantity * sleeve.entry_mark) / (
+        sleeve.quantity * 1.005)
+    assert sleeve.liquidates_at_high(boundary - 0.001) is False
+    assert sleeve.liquidates_at_high(boundary) is True
+
+
+def test_cost_model_and_sleeve_refuse_invalid_numbers():
+    with pytest.raises(R.CarryRunnerError, match="negative"):
+        R.CostModel(spot_fee_bps=-1).validate()
+    with pytest.raises(R.CarryRunnerError, match="positive"):
+        R.SleeveState.open(1_000, 0, 100, R.CostModel())

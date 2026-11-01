@@ -31,6 +31,134 @@ class DailyReturn:
         return self.portfolio - self.cash
 
 
+@dataclass(frozen=True)
+class CostModel:
+    """Per-fill costs expressed in basis points of each leg's notional."""
+
+    spot_fee_bps: float = 10.0
+    perpetual_fee_bps: float = 5.0
+    spot_slippage_bps: float = 5.0
+    perpetual_slippage_bps: float = 5.0
+    multiplier: float = 1.0
+
+    def validate(self) -> None:
+        for name in ("spot_fee_bps", "perpetual_fee_bps", "spot_slippage_bps",
+                     "perpetual_slippage_bps"):
+            if _finite(getattr(self, name), name) < 0:
+                raise CarryRunnerError(f"{name} cannot be negative")
+        if _finite(self.multiplier, "cost multiplier") <= 0:
+            raise CarryRunnerError("cost multiplier must be positive")
+
+    def fill_cost(self, quantity: float, spot: float, mark: float) -> float:
+        self.validate()
+        quantity = abs(_finite(quantity, "quantity"))
+        spot = _finite(spot, "spot price")
+        mark = _finite(mark, "mark price")
+        if spot <= 0 or mark <= 0:
+            raise CarryRunnerError("fill prices must be positive")
+        spot_rate = (self.spot_fee_bps + self.spot_slippage_bps) / 10_000
+        perp_rate = (self.perpetual_fee_bps + self.perpetual_slippage_bps) / 10_000
+        return quantity * (spot * spot_rate + mark * perp_rate) * self.multiplier
+
+
+@dataclass
+class SleeveState:
+    """One matched long-spot/short-perpetual sleeve between rebalances."""
+
+    quantity: float
+    entry_spot: float
+    entry_mark: float
+    segment_equity: float
+    futures_collateral: float
+    funding_pnl: float = 0.0
+    price_pnl_realized: float = 0.0
+    trading_cost: float = 0.0
+    funding_events: int = 0
+
+    @classmethod
+    def open(cls, equity: float, spot: float, mark: float, costs: CostModel,
+             *, spot_fraction: float = 0.75) -> "SleeveState":
+        equity = _finite(equity, "sleeve equity")
+        spot = _finite(spot, "spot price")
+        mark = _finite(mark, "mark price")
+        if equity <= 0 or spot <= 0 or mark <= 0:
+            raise CarryRunnerError("opening equity and prices must be positive")
+        if not 0 < spot_fraction < 1:
+            raise CarryRunnerError("spot fraction must be between zero and one")
+        quantity = equity * spot_fraction / spot
+        opening_cost = costs.fill_cost(quantity, spot, mark)
+        if opening_cost >= equity:
+            raise CarryRunnerError("opening cost consumes the sleeve")
+        return cls(quantity=quantity, entry_spot=spot, entry_mark=mark,
+                   segment_equity=equity - opening_cost,
+                   futures_collateral=equity * (1 - spot_fraction) - opening_cost,
+                   trading_cost=opening_cost)
+
+    def _prices(self, spot: float, mark: float) -> tuple[float, float]:
+        spot = _finite(spot, "spot price")
+        mark = _finite(mark, "mark price")
+        if spot <= 0 or mark <= 0:
+            raise CarryRunnerError("marking prices must be positive")
+        return spot, mark
+
+    def spot_pnl(self, spot: float) -> float:
+        spot = _finite(spot, "spot price")
+        return self.quantity * (spot - self.entry_spot)
+
+    def short_pnl(self, mark: float) -> float:
+        mark = _finite(mark, "mark price")
+        return self.quantity * (self.entry_mark - mark)
+
+    def equity(self, spot: float, mark: float) -> float:
+        spot, mark = self._prices(spot, mark)
+        return self.segment_equity + self.spot_pnl(spot) + self.short_pnl(mark) + self.funding_pnl
+
+    def margin_balance(self, mark: float) -> float:
+        mark = _finite(mark, "mark price")
+        if mark <= 0:
+            raise CarryRunnerError("mark price must be positive")
+        return self.futures_collateral + self.short_pnl(mark) + self.funding_pnl
+
+    def leverage(self, mark: float) -> float:
+        balance = self.margin_balance(mark)
+        return math.inf if balance <= 0 else self.quantity * mark / balance
+
+    def margin_headroom(self, mark: float, *, maintenance_rate: float = 0.005) -> float:
+        maintenance_rate = _finite(maintenance_rate, "maintenance rate")
+        if not 0 <= maintenance_rate < 1:
+            raise CarryRunnerError("maintenance rate must be in [0, 1)")
+        return self.margin_balance(mark) - self.quantity * mark * maintenance_rate
+
+    def liquidates_at_high(self, high: float, *, maintenance_rate: float = 0.005) -> bool:
+        high = _finite(high, "mark high")
+        if high <= 0:
+            raise CarryRunnerError("mark high must be positive")
+        return self.margin_headroom(high, maintenance_rate=maintenance_rate) <= 0
+
+    def credit_funding(self, rate: float, settlement_mark: float, *, received_divisor: float = 1.0,
+                       paid_multiplier: float = 1.0) -> float:
+        rate = _finite(rate, "funding rate")
+        settlement_mark = _finite(settlement_mark, "funding mark")
+        received_divisor = _finite(received_divisor, "received funding divisor")
+        paid_multiplier = _finite(paid_multiplier, "paid funding multiplier")
+        if settlement_mark <= 0 or received_divisor <= 0 or paid_multiplier <= 0:
+            raise CarryRunnerError("funding controls and mark must be positive")
+        raw = self.quantity * settlement_mark * rate
+        amount = raw / received_divisor if raw >= 0 else raw * paid_multiplier
+        self.funding_pnl += amount
+        self.funding_events += 1
+        return amount
+
+    def close(self, spot: float, mark: float, costs: CostModel) -> float:
+        """Return equity after closing both legs and accumulate attribution."""
+        spot, mark = self._prices(spot, mark)
+        price_pnl = self.spot_pnl(spot) + self.short_pnl(mark)
+        closing_cost = costs.fill_cost(self.quantity, spot, mark)
+        self.price_pnl_realized += price_pnl
+        self.trading_cost += closing_cost
+        return self.segment_equity + price_pnl + self.funding_pnl - closing_cost
+
+
 def _finite(value: float, name: str) -> float:
     if isinstance(value, bool):
         raise CarryRunnerError(f"{name} cannot be boolean")
