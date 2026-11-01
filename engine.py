@@ -5087,6 +5087,7 @@ class Engine:
 
     # ------------------------------------------------------------ TRUE-BOOK-02: strategy shadow observer (observe only)
     STRAT_SHADOW_DIR = 'strategy_shadow'
+    CAPITAL_SHADOW_DIR = 'capital_shadow'
     SHADOW_Q_MAX = 5000
 
     def _shadow_health(self):
@@ -5118,6 +5119,13 @@ class Engine:
             self._shadow_failed = True
         except Exception: pass
 
+    def _capital_shadow_err(self):
+        """Capital-shadow failure is visible but never invalidates the primary strategy observer or trading."""
+        try:
+            self._shadow_health()['capital_errors'] = self._shadow_health().get('capital_errors', 0) + 1
+            self._capital_shadow_failed = True
+        except Exception: pass
+
     def _shadow_book(self):
         """The cohort's strategy_shadow.ShadowBook under <data>/strategy_shadow, or None. PAPER only and off unless
         S['STRATEGY_SHADOW'] is True. It receives plain values; nothing in the trading code reads what it returns or
@@ -5133,6 +5141,31 @@ class Engine:
                                                 dict(SSH.MODEL_V1, fee_rate=FEE_EST, adverse_slippage_bps=TA.EXEC_SLIP_BPS))
         return sb
 
+    def _capital_shadow_ladder(self):
+        """Prospective $1k-$4k observer books. PAPER-only and fed after the primary strategy observer."""
+        if getattr(self, 'live', True) is not False or self.S.get('STRATEGY_SHADOW') is not True: return None
+        cid = (self.state.get('cohort') or {}).get('id')
+        if not cid: return None
+        ladder = getattr(self, '_capital_shadow', None)
+        if ladder is None or ladder.cohort_id != str(cid):
+            import strategy_shadow as SSH
+            name = re.sub(r'[^A-Za-z0-9_.-]', '_', str(cid))
+            ladder = self._capital_shadow = SSH.CapitalShadowLadder(
+                os.path.join(self.dir, self.CAPITAL_SHADOW_DIR, name), str(cid),
+                dict(SSH.MODEL_V1, fee_rate=FEE_EST, adverse_slippage_bps=TA.EXEC_SLIP_BPS))
+        return ladder
+
+    def capital_shadow_status(self):
+        """Read-only prospective $1k-$4k views; never consulted by trading code."""
+        if getattr(self, 'live', True) is not False or self.S.get('STRATEGY_SHADOW') is not True:
+            return dict(available=False, reason='strategy shadow is off or the engine is not PAPER')
+        try:
+            ladder = self._capital_shadow_ladder()
+            return ladder.compute() if ladder is not None else dict(available=False, reason='no active cohort')
+        except Exception as ex:                              # an observer view can never affect trading
+            self._capital_shadow_err()
+            return dict(available=False, reason=('capital shadow unavailable: ' + str(ex))[:160])
+
     @staticmethod
     def _shadow_close_t(t, tf):
         x = pd.Timestamp(t)
@@ -5144,9 +5177,11 @@ class Engine:
         the shadow has held, handed to the observer here on the engine thread - the ledger keeps one writer. Never account
         income, never mainnet. A row without a usable rate / mark makes the exposed episodes INCOMPLETE in the ledger."""
         import shadow_funding as SF
-        cur = self.__dict__.setdefault('_shadow_fcur', {})
-        seen = self.__dict__.setdefault('_shadow_fmtime', {})
-        syms = sorted({x['symbol'] for x in shadow.snapshot()['episodes'].values() if x.get('qty_hist')})
+        tag = getattr(shadow, 'observer_id', 'strategy_shadow')
+        cur = self.__dict__.setdefault('_shadow_fcur', {}).setdefault(tag, {})
+        seen = self.__dict__.setdefault('_shadow_fmtime', {}).setdefault(tag, {})
+        syms = (shadow.symbols_with_positions() if hasattr(shadow, 'symbols_with_positions') else
+                sorted({x['symbol'] for x in shadow.snapshot()['episodes'].values() if x.get('qty_hist')}))
         for sym in syms:
             cad = SF.cadence_s(self.dir, sym)
             if cad is not None:
@@ -5191,6 +5226,12 @@ class Engine:
                     x = (sigs or {}).get(f"{sl['id']}|{s}")
                     if x and (x.get('lx') or x.get('sx')): exits.setdefault(iid, {})[s] = dict(lx=bool(x['lx']), sx=bool(x['sx']))
             shadow.on_bar(tf=tf, bars=bars, signals=exits)
+            try:
+                capital = self._capital_shadow_ladder()
+                if capital is not None:
+                    self._shadow_funding_feed(capital)
+                    capital.on_bar(tf=tf, bars=bars, signals=exits)
+            except Exception: self._capital_shadow_err()   # noqa: BLE001 - derived observer never alters primary evidence
             self._shadow_health()['bars'] += 1
         except Exception:                                   # noqa: BLE001 - an observer never alters trading
             self._shadow_err()
@@ -5214,6 +5255,12 @@ class Engine:
                       rule=dict((self.rules.get(sym) or {}).items()) or None)
             shadow.on_candidate(slot=it['slot'], symbol=sym, side=side, signal=it['signal'], live_decision=it['live_decision'],
                                 rule=it['rule'])
+            try:
+                capital = self._capital_shadow_ladder()
+                if capital is not None:
+                    capital.on_candidate(slot=it['slot'], symbol=sym, side=side, signal=it['signal'],
+                                         live_decision=it['live_decision'], rule=it['rule'])
+            except Exception: self._capital_shadow_err()   # noqa: BLE001
             if len(q) >= self.SHADOW_Q_MAX:
                 self._shadow_health()['dropped'] += 1; return
             q.append(it)
@@ -5248,6 +5295,12 @@ class Engine:
                     if it['fails'] >= 3:
                         q.remove(it); self._shadow_health()['dropped'] += 1        # stays unresolved in the ledger
                     continue
+                try:
+                    capital = self._capital_shadow_ladder()
+                    if capital is not None:
+                        capital.on_signal(slot=it['slot'], symbol=it['symbol'], side=it['side'], signal=it['signal'], mark=mark,
+                                          live_decision=it['live_decision'], rule=it['rule'])
+                except Exception: self._capital_shadow_err()  # noqa: BLE001
                 q.remove(it)
                 self._shadow_health()['signals'] += 1
         except Exception:                                   # noqa: BLE001
@@ -5266,6 +5319,11 @@ class Engine:
             ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
             if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
             shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
+            try:
+                capital = self._capital_shadow_ladder()
+                if capital is not None and not self.__dict__.pop('_capital_shadow_failed', False):
+                    capital.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
+            except Exception: self._capital_shadow_err()   # noqa: BLE001
             self._shadow_health()['cycles'] += 1
         except Exception:                                   # noqa: BLE001
             self._shadow_err()

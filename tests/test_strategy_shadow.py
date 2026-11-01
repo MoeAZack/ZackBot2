@@ -49,6 +49,57 @@ def ep(b, rec):
 E0 = 100.0 * (1 + SLIP)                                    # long entry at the observed mark + 2 bps
 
 
+# ------------------------------------------------------------------ capital-parity ladder (read-only derived views)
+def test_capital_ladder_replays_exact_inputs_and_exchange_filters_without_writing(tmp_path):
+    b = book(tmp_path)
+    sl = dict(slot(), risk=0.0005)
+    b.on_signal(slot=sl, symbol='BTCUSDT', side='LONG',
+                signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+                mark=dict(time=iso(), price=100, source='premiumIndex'),
+                live_decision=dict(status='taken', reason=''),
+                rule=dict(step=0.01, min_qty=0.01, min_notional=40.0))
+    bar(b, 10, o=100, h=101, l=99.5, c=100.5, sig=dict(lx=True, sx=False))
+    before = open(b.path, 'rb').read()
+
+    out = SSH.capital_ladder(b.path, 'C1', dict(SSH.MODEL_V1), (1000, 2000, 3000, 4000))
+
+    assert out['capitals'] == [1000.0, 2000.0, 3000.0, 4000.0]
+    assert out['order_authority'] is False and out['portfolio_pnl'] is False
+    assert out['views'][0]['executable'] == 0 and out['views'][0]['exchange_rejected'] == 1
+    assert [x['executable'] for x in out['views'][1:]] == [1, 1, 1]
+    assert [x['exchange_rejected'] for x in out['views'][1:]] == [0, 0, 0]
+    assert open(b.path, 'rb').read() == before
+
+
+def test_prospective_capital_ladder_is_durable_and_keeps_books_isolated(tmp_path):
+    d = tmp_path / 'capital'
+    ladder = SSH.CapitalShadowLadder(d, 'C1', dict(SSH.MODEL_V1), (1000, 2000, 3000, 4000))
+    sl = dict(slot(), risk=0.0005)
+    kw = dict(slot=sl, symbol='BTCUSDT', side='LONG',
+              signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+              mark=dict(time=iso(), price=100, source='premiumIndex'),
+              live_decision=dict(status='taken', reason=''),
+              rule=dict(step=0.01, min_qty=0.01, min_notional=40.0))
+    ladder.on_signal(**kw)
+    ladder.on_bar(tf='4h', bars={'BTCUSDT': dict(time=iso(10), o=100, h=101, l=99.5, c=100.5, atr=2)},
+                  signals={SSH.identity(sl)[0]: {'BTCUSDT': dict(lx=True, sx=False)}})
+    first = ladder.compute()
+    assert first['prospective'] and first['views'][0]['exchange_rejected'] == 1
+    assert [v['executable'] for v in first['views'][1:]] == [1, 1, 1]
+    assert sorted(p.name for p in d.glob('*.jsonl')) == ['capital-1000.jsonl', 'capital-2000.jsonl',
+                                                         'capital-3000.jsonl', 'capital-4000.jsonl']
+
+    again = SSH.CapitalShadowLadder(d, 'C1', dict(SSH.MODEL_V1), (1000, 2000, 3000, 4000))
+    assert again.compute() == first
+
+
+@pytest.mark.parametrize('values', [[], [1000, 1000], [2000, 1000], [True], [99], [float('nan')]])
+def test_capital_ladder_rejects_ambiguous_values(tmp_path, values):
+    b = book(tmp_path)
+    with pytest.raises(ValueError):
+        SSH.capital_ladder(b.path, 'C1', dict(SSH.MODEL_V1), values)
+
+
 # ------------------------------------------------------------------ exit parity (backtest.walk_path semantics)
 def test_stop_first_when_the_opens_stop_is_inside_the_candle(tmp_path):
     b = book(tmp_path); r = enter(b, slot(tp_r=1.0))
@@ -261,6 +312,9 @@ def test_observer_on_off_identical_trading_and_records_every_candidate(tmp_path,
     assert {(x['symbol'], x['live_decision']['status']) for x in eps} >= {('BTCUSDT', 'taken'), ('ETHUSDT', 'skipped')}
     assert all(x['entry_ref_time'] == FIXED.isoformat() for x in eps if x['status'] != 'incomplete')
     assert b.snapshot()['coverage']['records'] >= 3
+    cap = e1.capital_shadow_status()
+    assert cap['available'] and cap['prospective'] and cap['capitals'] == [1000.0, 2000.0, 3000.0, 4000.0]
+    assert len(list((tmp_path / 'on' / e1.CAPITAL_SHADOW_DIR / 'CH-AB').glob('*.jsonl'))) == 4
 
 
 @pytest.mark.parametrize('mode', ['boom', 'disk'])
