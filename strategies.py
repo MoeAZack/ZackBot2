@@ -808,3 +808,77 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# TLP-15 Stage A (research-only): a two-bar countertrend pullback followed by
+# strength/liquidity-confirmed continuation.  This is deliberately separate from
+# RSI exhaustion and EMA9-touch candidates.
+TLP15 = dict(adx_min=25.0, adx_rise_bars=4, di_ratio=1.20,
+             trend_slope_bars=8, liquidity_bars=20, liquidity_x=1.25,
+             close_location=0.75, body_atr=0.30, stop_atr=1.25, cost_x=5.0)
+
+
+def tlp15_directional_strength(d):
+    """Return causal Wilder +DI/-DI rebuilt from closed OHLC candles."""
+    up, dn = d.h.diff(), -d.l.diff()
+    pdm = pd.Series(np.where((up > dn) & (up > 0), up, 0.0), index=d.index)
+    ndm = pd.Series(np.where((dn > up) & (dn > 0), dn, 0.0), index=d.index)
+    pdi = 100.0 * pdm.ewm(alpha=1 / 14, adjust=False).mean() / d.atr.replace(0, np.nan)
+    ndi = 100.0 * ndm.ewm(alpha=1 / 14, adjust=False).mean() / d.atr.replace(0, np.nan)
+    return pdi, ndi
+
+
+def sig_trend_liquidity_pullback_15m(d, p, ctx):
+    """TLP-15: symmetric trend-strength pullback continuation on closed bars.
+
+    The two candles before the decision must pull countertrend while remaining on
+    the safe side of EMA50 and touching EMA20.  The decision then breaks the prior
+    extreme with rising ADX, directional DMI, strong body, high close location and
+    quote-notional proxy confirmation.  Backtests fill at the next open.
+    """
+    q = dict(TLP15); q.update(p or {})
+    slope_n, liq_n = int(q['trend_slope_bars']), int(q['liquidity_bars'])
+    rise_n = int(q['adx_rise_bars'])
+    if min(slope_n, liq_n, rise_n) < 1:
+        raise ValueError('trend_liquidity_pullback_15m: invalid frozen lookback')
+    a, c = d.atr.astype(float), d.c.astype(float)
+    pdi, ndi = tlp15_directional_strength(d)
+    span = (d.h - d.l).replace(0, np.nan)
+    clv_l, clv_s = (c - d.l) / span, (d.h - c) / span
+    notional = c * d.v.astype(float)
+    prior_liq = notional.rolling(liq_n, min_periods=liq_n).median().shift()
+    liquid = notional >= float(q['liquidity_x']) * prior_liq
+    cost = float(q['stop_atr']) * a >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * c
+    up = ((d.e20 > d.e50) & (d.e50 > d.e200) & (d.e50 > d.e50.shift(slope_n)) &
+          (d.adx >= float(q['adx_min'])) & (d.adx > d.adx.shift(rise_n)) &
+          (pdi >= float(q['di_ratio']) * ndi))
+    dn = ((d.e20 < d.e50) & (d.e50 < d.e200) & (d.e50 < d.e50.shift(slope_n)) &
+          (d.adx >= float(q['adx_min'])) & (d.adx > d.adx.shift(rise_n)) &
+          (ndi >= float(q['di_ratio']) * pdi))
+    pull_l = ((c.shift(2) > c.shift()) & (d.l.shift() <= d.e20.shift()) &
+              (d.l.shift() > d.e50.shift()) & (d.l.shift(2) > d.e50.shift(2)))
+    pull_s = ((c.shift(2) < c.shift()) & (d.h.shift() >= d.e20.shift()) &
+              (d.h.shift() < d.e50.shift()) & (d.h.shift(2) < d.e50.shift(2)))
+    confirm_l = ((c > d.h.shift()) & (c > d.o) &
+                 (c - d.o >= float(q['body_atr']) * a) & (clv_l >= float(q['close_location'])))
+    confirm_s = ((c < d.l.shift()) & (c < d.o) &
+                 (d.o - c >= float(q['body_atr']) * a) & (clv_s >= float(q['close_location'])))
+    ready = a.gt(0) & prior_liq.gt(0)
+    le = ready & up & pull_l & confirm_l & liquid & cost
+    se = ready & dn & pull_s & confirm_s & liquid & cost
+    out = _one_side(dict(le=le, se=se,
+                         lx=(d.e20 < d.e50) | (d.adx < float(q['adx_min'])),
+                         sx=(d.e20 > d.e50) | (d.adx < float(q['adx_min']))))
+    out['atr'] = a
+    return out
+
+
+STRATEGIES['trend_liquidity_pullback_15m'] = dict(
+    name='[RESEARCH] Trend-strength liquidity pullback L/S 15m', style='aggressive',
+    fn=sig_trend_liquidity_pullback_15m, sides='both', tf='15m', research_only=True,
+    params=dict(TLP15), when_by_side={'long': 'bull', 'short': 'bear'}, reentry_lock=8,
+    desc='RESEARCH-ONLY (TLP-15): two-bar countertrend reset, then ADX/DMI-aligned continuation with candle-location, '
+         'notional-volume and explicit cost confirmation. Excluded from PAPER.',
+    mgmt=dict(stop_atr=TLP15['stop_atr'], tp1_r=1.0, tp1_frac=0.5,
+              be_r=1.0, tp_r=2.0, max_bars=16),
+)
