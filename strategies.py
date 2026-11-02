@@ -547,6 +547,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
     r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
     r7 = r42.rank(axis=1, ascending=False)
     r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
+    breadth7 = (r42 > 0).sum(axis=1) / r7n.replace(0, np.nan)
     out = {}
     for s, d in dfs.items():
         t = d.t
@@ -554,6 +555,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
+                      breadth7=pd.Series(breadth7.reindex(t).values, index=d.index),
                       n_symbols=len(dfs))
     return out
 
@@ -644,6 +646,41 @@ def signals(key, d, ctx, params=None, mask_sides=True):
     if mask_sides and st['sides'] == 'long': out['se'][:] = False
     if mask_sides and st['sides'] == 'short': out['le'][:] = False
     return out
+
+
+# RBR-4H is the reversal counterpart to the existing rotation/relative-strength
+# trend sleeve: it buys washed-out bottom ranks only during broad weakness and
+# shorts crowded top ranks only during broad strength.
+RBR4H = dict(rank_frac=0.20, breadth_low=0.35, breadth_high=0.65,
+             rsi_low=30.0, rsi_high=70.0, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_rank_breadth_reversal_4h(d, p, ctx):
+    rank = pd.Series(ctx['rank7'], index=d.index, dtype=float)
+    n = pd.Series(ctx['rank7_n'], index=d.index, dtype=float)
+    breadth = pd.Series(ctx['breadth7'], index=d.index, dtype=float)
+    k = np.ceil(float(p['rank_frac']) * n)
+    top, bottom = rank <= k, rank > (n - k)
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(42, min_periods=42).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    rlo, rhi = float(p['rsi_low']), float(p['rsi_high'])
+    recover_l = (d.rsi2 > rlo) & (d.rsi2.shift() <= rlo) & (d.c > d.o)
+    recover_s = (d.rsi2 < rhi) & (d.rsi2.shift() >= rhi) & (d.c < d.o)
+    valid = n >= 8
+    le = valid & bottom & (breadth <= float(p['breadth_low'])) & recover_l & vol_ok & cost_ok
+    se = valid & top & (breadth >= float(p['breadth_high'])) & recover_s & vol_ok & cost_ok
+    middle = np.ceil(0.5 * n)
+    return dict(le=le, se=se, lx=(rank <= middle) | (breadth > 0.55),
+                sx=(rank >= middle) | (breadth < 0.45))
+
+
+STRATEGIES['rank_breadth_reversal_4h'] = dict(
+    name='[RESEARCH] Rank-breadth reversal 4h', style='mean_reversion',
+    fn=sig_rank_breadth_reversal_4h, sides='both', tf='4h', research_only=True,
+    reentry_lock=True, params=RBR4H,
+    desc='Fade 7-day cross-sectional extremes only during broad same-direction crowding.',
+    mgmt=dict(stop_atr=1.5, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=18))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
