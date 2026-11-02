@@ -335,6 +335,34 @@ def _quarantine_pending(e, path):
     else: os.replace(path, dst)
 
 
+def _pending_is_provably_precommit(e):
+    """A damaged named payload is disposable only when durable state still equals the last immutable anchor.
+
+    The slot and preflight may legitimately move after an anchor (rollback, then a new PASS), so the proof uses the
+    staged config plus the fully validated activation/rearm summaries bound by the external leaf.  A committed enable
+    changes the activation head; a committed rearm changes the staged/rearm head.  With no leaf, only the pristine
+    initial state (disabled and no activation/rearm history at all) can be proven pre-commit.
+    """
+    cfg = e.S.get(FC.CANARY_KEY); sl = _slot(e.S)
+    if (not isinstance(cfg, dict) or cfg.get('on') is not True or FC.cfg_problems(cfg)
+            or not sl or sl.get('enabled') is not False):
+        return False
+    prior, leaf = _external_anchors(e)
+    if leaf is None:
+        return not any(k in e.S for k in (ACTIVATION_KEY, ACTIVATION_CHAIN_KEY, REARM_KEY, REARM_CHAIN_KEY))
+    cfg_hash = _sha(cfg)
+    try:
+        if REARM_KEY in e.S or REARM_CHAIN_KEY in e.S:
+            _rearm_rows, rearm_chain = _validated_rearms(e.S, cfg_hash)
+        else:
+            rearm_chain = None
+        _activation_rows, activation_chain = _validated_activations(e.S, cfg_hash, allow_uninitialized=False)
+        _validate_external_anchor(e, cfg_hash, activation_chain, rearm_chain)
+    except ValueError:
+        return False
+    return bool(prior)
+
+
 def _reconcile_external_pending(e):
     d = os.path.join(_anchor_dir(e), 'pending')
     names = sorted(os.listdir(d)) if os.path.isdir(d) else []
@@ -350,8 +378,10 @@ def _reconcile_external_pending(e):
         raise ValueError('the pending F01 activation anchor is malformed - refused (fail closed)')
     with open(path, 'rb') as f: raw = f.read()
     if FC.sha256(raw) != name[:-5]:
-        _quarantine_pending(e, path)               # impossible after atomic prepare: provably torn pre-commit legacy file
-        return dict(committed=False, discarded=True)
+        if _pending_is_provably_precommit(e):
+            _quarantine_pending(e, path)           # independent durable state proves settings never advanced
+            return dict(committed=False, discarded=True)
+        raise ValueError('the pending F01 activation anchor is corrupt and not provably pre-commit - refused (fail closed)')
     try: rec = json.loads(raw)
     except (ValueError, TypeError): raise ValueError('the pending F01 activation anchor is malformed - refused')
     _validate_external_record(rec)

@@ -918,6 +918,29 @@ def test_crash_after_settings_commit_reconciles_pending_anchor_on_retry(api, mon
     assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
 
 
+def test_corrupt_named_pending_after_committed_enable_fails_closed_without_discarding_evidence(api, monkeypatch):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']
+    promote = FA._promote_external_anchor
+    monkeypatch.setattr(FA, '_promote_external_anchor',
+                        lambda *a, **k: (_ for _ in ()).throw(OSError('crash before promote')))
+    with pytest.raises(OSError, match='crash before promote'):
+        A.handle('/api/f01_canary/enable', {})
+    pending = os.path.join(FA._anchor_dir(e), 'pending')
+    (name,) = os.listdir(pending)
+    with open(os.path.join(pending, name), 'wb') as f: f.write(b'{"corrupt-after-commit"')
+    committed = snap(e)
+    monkeypatch.setattr(FA, '_promote_external_anchor', promote)
+
+    with pytest.raises(ValueError, match='corrupt and not provably pre-commit'):
+        A.handle('/api/f01_canary/enable', {})
+
+    assert snap(e) == committed and slot(e, F01)['enabled'] is True
+    assert os.path.exists(os.path.join(pending, name))
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'quarantine'))
+    assert not [x for x in os.listdir(FA._anchor_dir(e)) if x.endswith('.json')]
+
+
 @pytest.mark.parametrize('act', ['enable', 'rearm'])
 @pytest.mark.parametrize('artifact', ['named', 'temp'])
 def test_torn_precommit_prepare_is_quarantined_and_valid_retry_proceeds(api, monkeypatch, act, artifact):
