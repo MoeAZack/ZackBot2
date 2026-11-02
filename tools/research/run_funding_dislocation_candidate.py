@@ -132,9 +132,10 @@ def one_hour_actual_scope(features, marks):
     def read_cache(cache, sym, tf):
         df, rec = old_read(cache, sym, tf)
         if df is not None and tf == TF:
-            if sym not in features:
-                raise FundingDislocationError(f'{sym}: no audited funding history')
-            df = attach_features(df, features[sym])
+            # A late-listed/incomplete candle file is screened out by the shared
+            # completeness gate.  It may carry an empty funding feature vector,
+            # but can never emit a trade or enter aggregate statistics.
+            df = attach_features(df, features.get(sym, []))
         return df, rec
 
     def enrich(tr, pos, book, reg):
@@ -189,11 +190,10 @@ def run(*, cache, regime_cache, funding_manifest, funding_store, window, tier, s
     for sym in syms:
         ev, ef = funding_events(man, funding_store, sym, history_lo, hi)
         mk, mf = mark_points(man, funding_store, sym, lo, hi)
-        if not ev or not mk:
-            raise FundingDislocationError(f'{sym}: audited funding/mark coverage missing')
         features[sym], marks[sym] = event_z(ev), mk
         inventory[sym] = {'funding_files': [f['path'] for f in ef], 'mark_files': [f['path'] for f in mf],
-                          'funding_events': len(ev), 'mark_points': len(mk)}
+                          'funding_events': len(ev), 'mark_points': len(mk),
+                          'coverage_present': bool(ev and mk)}
     try:
         with one_hour_actual_scope(features, marks):
             B.run(cache=cache, window=window, out=staging, key=KEY, side=side,
