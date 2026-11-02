@@ -24,14 +24,32 @@
     "remove_absolute_timestamps": true,
     "remove_event_and_calendar_labels": true,
     "retain_preregistered_numeric_geometry": true,
-    "deterministic_seeded_order": true
+    "deterministic_seeded_order": true,
+    "alias_key_bytes": 32,
+    "alias_key_public_value": false,
+    "public_alias_key_sha256_only": true,
+    "alias_derivation": "HMAC-SHA256(alias_key,canonical_candidate_id)",
+    "alias_format": "C_[0-9A-F]{12}",
+    "alias_hex_prefix_length": 12,
+    "stable_within_run": true,
+    "different_across_runs": true,
+    "allowed_relative_time_fields": [
+      "window_index",
+      "observation_age_bars",
+      "bars_to_cutoff",
+      "horizon_bars"
+    ],
+    "relative_time_values": "non_negative_integer"
   },
   "point_in_time": {
     "availability_manifest_required": true,
     "cutoff_required": true,
     "append_after_cutoff_request_bytes_unchanged": true,
     "pre_cutoff_mutation_changes_digest": true,
-    "ambiguous_availability_fails_closed": true
+    "ambiguous_availability_fails_closed": true,
+    "timestamp_zone": "UTC_aware",
+    "admission_rule": "event_at<=available_at<=cutoff",
+    "cutoff_interval_end": "inclusive"
   },
   "control_arms": [
     "original_blinded",
@@ -49,7 +67,36 @@
     "profitability_is_acceptance_gate": false,
     "ranking_outcome_is_acceptance_gate": false,
     "future_tainted_control_must_be_detected": true,
-    "fixed_seed_stability_reported": true
+    "fixed_seed_stability_reported": true,
+    "fixed_request_repeats": 5,
+    "stability_statistic": "pairwise_kendall_tau_b_min_and_median",
+    "stability_promotion_threshold": null,
+    "valid_alias_only_repeats_required": 5,
+    "future_taint_detection_fraction_required": "1.0",
+    "forbidden_identity_matches_allowed": 0,
+    "unknown_alias_responses_allowed": 0
+  },
+  "control_transforms": {
+    "null_remove_fields": [
+      "outcome",
+      "return",
+      "pnl",
+      "hit_rate",
+      "drawdown",
+      "rank_target"
+    ],
+    "permutation_algorithm": "fisher_yates",
+    "label_seed": "HMAC-SHA256(seed,labels)",
+    "candidate_seed": "HMAC-SHA256(seed,candidates)",
+    "preserve_counts_and_marginals": true,
+    "deterministic_baseline": "ascending_HMAC-SHA256(seed,alias)",
+    "deterministic_baseline_reads_candidate_metrics": false
+  },
+  "model_request": {
+    "model": "claude-sonnet-5-5",
+    "temperature": "0",
+    "max_output_tokens": 1200,
+    "identical_across_control_arms": true
   },
   "required_bindings": [
     "availability_manifest_sha256",
