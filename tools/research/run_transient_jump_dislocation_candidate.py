@@ -67,8 +67,10 @@ def minute_context_scope(events, marks, features):
             mqv = np.array([float(feat.get(int(t), {}).get('median_qv', np.nan)) for t in opens])
             hour_ret = d.c.to_numpy(float) / d.o.to_numpy(float) - 1.0
             ctx[sym]['minute_jump'] = jumps
-            ctx[sym]['jump_retention'] = np.abs(hour_ret) / np.abs(jumps)
-            ctx[sym]['jump_participation'] = jqv / mqv
+            ctx[sym]['jump_retention'] = np.divide(
+                np.abs(hour_ret), np.abs(jumps), out=np.full(len(jumps), np.nan), where=np.abs(jumps) > 0)
+            ctx[sym]['jump_participation'] = np.divide(
+                jqv, mqv, out=np.full(len(jumps), np.nan), where=mqv > 0)
         return ctx
 
     with ACTUAL_FUNDING_SCOPE(events, marks):
