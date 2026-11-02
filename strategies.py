@@ -808,3 +808,61 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# ORH-15 Stage A (research-only): the first break of the four-candle UTC
+# opening range must survive a separate hold candle before entry.
+ORH15 = dict(opening_bars=4, volume_bars=20, breakout_volume_x=1.20,
+             hold_volume_x=0.75, hold_buffer_atr=0.15,
+             stop_atr=1.0, cost_x=5.0)
+
+
+def orh15_opening_range(d, opening_bars=4):
+    """Causal UTC-session opening high/low, exposed only after it is complete."""
+    n = int(opening_bars)
+    if n < 2:
+        raise ValueError('utc_opening_range_hold_15m: opening_bars must be >= 2')
+    t = pd.to_datetime(d.t, utc=True)
+    session = pd.Series(t.dt.floor('D').to_numpy(), index=d.index)
+    pos = session.groupby(session).cumcount()
+    opening_h = d.h.astype(float).where(pos < n)
+    opening_l = d.l.astype(float).where(pos < n)
+    hi = opening_h.groupby(session).cummax().groupby(session).ffill()
+    lo = opening_l.groupby(session).cummin().groupby(session).ffill()
+    complete = pos >= n
+    return hi.where(complete), lo.where(complete), pos
+
+
+def sig_utc_opening_range_hold_15m(d, p, ctx):
+    """ORH-15: symmetric, regime-neutral session opening-range break-and-hold."""
+    q = dict(ORH15); q.update(p or {})
+    vn = int(q['volume_bars'])
+    if vn < 1:
+        raise ValueError('utc_opening_range_hold_15m: volume_bars must be positive')
+    hi, lo, pos = orh15_opening_range(d, q['opening_bars'])
+    a, c, v = d.atr.astype(float), d.c.astype(float), d.v.astype(float)
+    prior_v = v.rolling(vn, min_periods=vn).median().shift(2)
+    breakout_vol = v.shift() >= float(q['breakout_volume_x']) * prior_v
+    hold_vol = v >= float(q['hold_volume_x']) * v.rolling(vn, min_periods=vn).median().shift()
+    break_l = (c.shift() > hi.shift()) & (c.shift(2) <= hi.shift(2))
+    break_s = (c.shift() < lo.shift()) & (c.shift(2) >= lo.shift(2))
+    hold_l = (c > hi) & (d.l >= hi - float(q['hold_buffer_atr']) * a)
+    hold_s = (c < lo) & (d.h <= lo + float(q['hold_buffer_atr']) * a)
+    cost = float(q['stop_atr']) * a >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * c
+    ready = hi.notna() & lo.notna() & (pos >= int(q['opening_bars']) + 1) & a.gt(0) & prior_v.gt(0)
+    le = ready & break_l & hold_l & breakout_vol & hold_vol & cost
+    se = ready & break_s & hold_s & breakout_vol & hold_vol & cost
+    out = _one_side(dict(le=le, se=se, lx=(c < hi), sx=(c > lo)))
+    out['atr'] = a
+    return out
+
+
+STRATEGIES['utc_opening_range_hold_15m'] = dict(
+    name='[RESEARCH] UTC opening-range break-and-hold L/S 15m', style='aggressive',
+    fn=sig_utc_opening_range_hold_15m, sides='both', tf='15m', research_only=True,
+    params=dict(ORH15), reentry_lock=8,
+    desc='RESEARCH-ONLY (ORH-15): first break of the four-candle UTC opening range, confirmed by a separate hold '
+         'candle, participation and explicit cost floor. Regime-neutral and excluded from PAPER.',
+    mgmt=dict(stop_atr=ORH15['stop_atr'], tp1_r=0.8, tp1_frac=0.5,
+              be_r=0.8, tp_r=1.8, max_bars=12),
+)
