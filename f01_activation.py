@@ -377,6 +377,13 @@ def _reconcile_external_pending(e):
     if not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]) or not os.path.isfile(path):
         raise ValueError('the pending F01 activation anchor is malformed - refused (fail closed)')
     with open(path, 'rb') as f: raw = f.read()
+    promoted_path = os.path.join(_anchor_dir(e), name)
+    if os.path.exists(promoted_path):
+        if not os.path.isfile(promoted_path):
+            raise ValueError('the pending F01 activation anchor replay is ambiguous - refused (fail closed)')
+        with open(promoted_path, 'rb') as f: promoted_raw = f.read()
+        if promoted_raw != raw:
+            raise ValueError('the pending F01 activation anchor replay is ambiguous - refused (fail closed)')
     if FC.sha256(raw) != name[:-5]:
         if _pending_is_provably_precommit(e):
             _quarantine_pending(e, path)           # independent durable state proves settings never advanced
@@ -386,6 +393,10 @@ def _reconcile_external_pending(e):
     except (ValueError, TypeError): raise ValueError('the pending F01 activation anchor is malformed - refused')
     _validate_external_record(rec)
     prior, _leaf = _external_anchors(e)
+    promoted = next((h for h, _row in prior if h == name[:-5]), None)
+    if promoted is not None:
+        _quarantine_pending(e, path)               # immutable promoted copy is the durable evidence; this is byte-identical
+        return dict(event=rec.get('event'), committed=False, duplicate=True)
     _validate_pending_transition(rec, prior)
     cur = _anchor_state_sha(e.S)
     if cur == rec.get('pre_state_sha256'):

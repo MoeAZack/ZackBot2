@@ -942,6 +942,46 @@ def test_corrupt_named_pending_after_committed_enable_fails_closed_without_disca
 
 
 @pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_exact_promoted_anchor_replay_is_discarded_before_valid_retry(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        _enabled(A)
+        A.handle('/api/sleeves', dict(sleeves=_post_card(e, enabled=False)))
+        req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    root = FA._anchor_dir(e)
+    (name,) = [x for x in os.listdir(root) if x.endswith('.json')]
+    with open(os.path.join(root, name), 'rb') as f: raw = f.read()
+    pending = os.path.join(root, 'pending'); os.makedirs(pending, exist_ok=True)
+    with open(os.path.join(pending, name), 'wb') as f: f.write(raw)
+
+    out = A.handle(f'/api/f01_canary/{act}', req)
+
+    assert out['rearmed' if act == 'rearm' else 'enabled'] is True
+    assert slot(e, F01)['enabled'] is (act == 'enable')
+    assert not os.path.exists(os.path.join(pending, name))
+    assert os.path.exists(os.path.join(root, 'quarantine', name + '.precommit'))
+    assert len([x for x in os.listdir(root) if x.endswith('.json')]) == 2
+
+
+def test_nonidentical_promoted_anchor_replay_fails_closed_and_is_preserved(api):
+    A, e = api
+    _enabled(A); A.handle('/api/sleeves', dict(sleeves=_post_card(e, enabled=False)))
+    root = FA._anchor_dir(e); (name,) = [x for x in os.listdir(root) if x.endswith('.json')]
+    pending = os.path.join(root, 'pending'); os.makedirs(pending, exist_ok=True)
+    with open(os.path.join(pending, name), 'wb') as f: f.write(b'{"not-the-promoted-record"')
+    before = snap(e)
+
+    with pytest.raises(ValueError, match='replay is ambiguous'):
+        A.handle('/api/f01_canary/enable', {})
+
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    assert os.path.exists(os.path.join(pending, name))
+    assert not os.path.exists(os.path.join(root, 'quarantine'))
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
 @pytest.mark.parametrize('artifact', ['named', 'temp'])
 def test_torn_precommit_prepare_is_quarantined_and_valid_retry_proceeds(api, monkeypatch, act, artifact):
     A, e = api
