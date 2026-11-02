@@ -711,6 +711,32 @@ STRATEGIES['atr_shock_snapback_4h'] = dict(
     mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=12))
 
 
+# SIU-1H tests a clock-based inventory-unwind hypothesis at two fixed UTC
+# liquidity handoffs, not another continuously-scanned price pattern.
+SIU1H = dict(hours=(8, 16), displacement_atr=1.5, volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_session_inventory_unwind_1h(d, p, ctx):
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    handoff = hour.isin(tuple(p['hours']))
+    displacement = d.c.shift(1) - d.c.shift(9)  # eight fully closed hours before the decision candle
+    scale = float(p['displacement_atr']) * d.atr.shift(1)
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(24, min_periods=24).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = handoff & (displacement <= -scale) & (d.c > d.o) & (d.c > d.c.shift()) & vol_ok & cost_ok
+    se = handoff & (displacement >= scale) & (d.c < d.o) & (d.c < d.c.shift()) & vol_ok & cost_ok
+    return dict(le=le, se=se, lx=d.c >= d.e9, sx=d.c <= d.e9)
+
+
+STRATEGIES['session_inventory_unwind_1h'] = dict(
+    name='[RESEARCH] Session inventory unwind 1h', style='mean_reversion',
+    fn=sig_session_inventory_unwind_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=SIU1H,
+    desc='Fade an eight-hour displacement only after reversal at 08:00/16:00 UTC handoff candles.',
+    mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=6))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
