@@ -18,14 +18,17 @@ perform the rollback enabled -> disabled with every other C-F01 field unchanged 
 before staging it may not switch C-F01 on. So this module is the only writer that can switch C-F01 on.
 
 A stored F01_CANARY that is malformed, OFF or otherwise not what stage writes can only come from corruption or a manual
-edit: it is never replaced here and every step stays refused (fail closed). The sole replacement is recover_stage below,
-bounded to the confirmed packaged-pins failure and a well-formed, disabled, never-enabled stage (#254).
+edit: it is never replaced here and every step stays refused (fail closed). There are two bounded replacements below:
+recover_stage covers the confirmed packaged-pins failure on a never-enabled stage (#254), while rearm creates a new,
+disabled stage after an expired PASS stage was rolled back. Rearm needs a new authorization, start and cohort directory,
+preserves the old evidence, and still requires the normal fresh preflight + enable sequence.
 
 Nothing here starts a second Engine, patches a live file by hand, or touches strategy logic or a pinned function.
 """
 import copy
 import json
 import os
+import tempfile
 from datetime import timezone
 
 import engine as ENG
@@ -33,11 +36,33 @@ import f01_canary as FC
 
 PREFLIGHT_KEY = 'F01_CANARY_PREFLIGHT'
 RECOVERY_KEY = 'F01_CANARY_RECOVERY'
-OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY)
+REARM_KEY = 'F01_CANARY_REARMS'
+REARM_CHAIN_KEY = 'F01_CANARY_REARM_CHAIN'
+ACTIVATION_KEY = 'F01_CANARY_ACTIVATIONS'
+ACTIVATION_CHAIN_KEY = 'F01_CANARY_ACTIVATION_CHAIN'
+OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY, REARM_KEY, REARM_CHAIN_KEY,
+              ACTIVATION_KEY, ACTIVATION_CHAIN_KEY)
 CFG_FIELDS = ('start_utc', 'authorization_comment_id', 'cohort_dir', 'source_commit', 'source_manifest')
 PINS_FILE = os.path.join('contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 ROUTE = '/api/f01_canary/'
 ENABLE_HINT = 'C-F01 is switched on only by /api/f01_canary/enable after a PASS preflight'
+HEX0 = '0' * 64
+ACTIVATION_FIELDS = {'version', 'sequence', 'prev_event_sha256', 'config_sha256', 'preflight_record_sha256',
+                     'preflight_extract_sha256', 'slot_sha256', 'enabled_at_utc', 'event_sha256'}
+REARM_FIELDS = {'version', 'sequence', 'prev_audit_sha256', 'old_config_sha256', 'new_config_sha256',
+                'old_authorization_comment_id', 'new_authorization_comment_id', 'old_cohort_dir', 'new_cohort_dir',
+                'old_start_utc', 'new_start_utc', 'activation_proof_sha256', 'activation_genesis_config_sha256',
+                'activation_count', 'activation_head_sha256', 'activation_migration_proof_sha256',
+                'at_utc', 'reason', 'audit_sha256'}
+CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'current_config_sha256', 'count', 'head_sha256',
+                'activation_genesis_config_sha256', 'activation_count', 'activation_head_sha256',
+                'activation_migration_proof_sha256'}
+ACTIVATION_CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'staged_config_sha256', 'count', 'head_sha256',
+                           'migration_proof_sha256'}
+EXTERNAL_ANCHOR_FIELDS = {'version', 'sequence', 'prev_anchor_sha256', 'event', 'staged_config_sha256',
+                          'activation_genesis_config_sha256', 'activation_count', 'activation_head_sha256',
+                          'activation_migration_proof_sha256', 'rearm_head_sha256', 'pre_state_sha256',
+                          'post_state_sha256', 'at_utc'}
 
 
 def _env(e):
@@ -56,6 +81,439 @@ def _sha(obj):
 def _slot_sha(sl):
     """The C-F01 card as preflight saw it (enabled excluded: preflight requires it off, enable turns it on)."""
     return _sha({k: v for k, v in (sl or {}).items() if k != 'enabled'})
+
+
+def _signed(rec, hash_field):
+    return _sha({k: v for k, v in rec.items() if k != hash_field})
+
+
+def _activation_record(cfg_hash, rec, sl, prior):
+    out = dict(version=1, sequence=len(prior) + 1,
+               prev_event_sha256=prior[-1]['event_sha256'] if prior else HEX0,
+               config_sha256=cfg_hash, preflight_record_sha256=rec['record_sha256'],
+               preflight_extract_sha256=rec['extract_sha256'], slot_sha256=_slot_sha(sl),
+               enabled_at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'))
+    out['event_sha256'] = _signed(out, 'event_sha256')
+    return out
+
+
+def _validated_activations(S, staged_hash, allow_uninitialized=False):
+    rows = S.get(ACTIVATION_KEY, [])
+    if not isinstance(rows, list): raise ValueError('the F01 activation audit is malformed - refused (fail closed)')
+    prev = HEX0
+    for i, row in enumerate(rows, 1):
+        if (not isinstance(row, dict) or set(row) != ACTIVATION_FIELDS or row.get('version') != 1
+                or row.get('sequence') != i):
+            raise ValueError('the F01 activation audit is malformed - refused (fail closed)')
+        hashes = ('prev_event_sha256', 'config_sha256', 'preflight_record_sha256', 'preflight_extract_sha256',
+                  'slot_sha256', 'event_sha256')
+        if (any(not isinstance(row.get(k), str) or not FC.HEX64.fullmatch(row[k]) for k in hashes)
+                or row['prev_event_sha256'] != prev or FC._ts(row.get('enabled_at_utc')) is None
+                or _signed(row, 'event_sha256') != row['event_sha256']):
+            raise ValueError('the F01 activation audit is malformed - refused (fail closed)')
+        prev = row['event_sha256']
+    summary = S.get(ACTIVATION_CHAIN_KEY)
+    absent = ACTIVATION_KEY not in S and summary is None
+    rearm_anchor = S.get(REARM_CHAIN_KEY)
+    if absent and allow_uninitialized and rearm_anchor is None:
+        return rows, None
+    if summary is None:
+        raise ValueError('the F01 activation audit summary is missing - refused (fail closed)')
+    if (not isinstance(summary, dict) or set(summary) != ACTIVATION_CHAIN_FIELDS or summary.get('version') != 1
+            or not isinstance(summary.get('count'), int) or isinstance(summary.get('count'), bool)
+            or summary['count'] != len(rows)
+            or any(not isinstance(summary.get(k), str) or not FC.HEX64.fullmatch(summary[k]) for k in
+                   ('genesis_config_sha256', 'staged_config_sha256', 'head_sha256', 'migration_proof_sha256'))
+            or summary['staged_config_sha256'] != staged_hash or summary['head_sha256'] != prev):
+        raise ValueError('the F01 activation audit summary is invalid - refused (fail closed)')
+    if rows and summary['genesis_config_sha256'] != rows[0]['config_sha256']:
+        raise ValueError('the F01 activation audit genesis is invalid - refused (fail closed)')
+    if not rows and summary['head_sha256'] != HEX0:
+        raise ValueError('the F01 activation audit summary is invalid - refused (fail closed)')
+    if rearm_anchor is not None:
+        if (not isinstance(rearm_anchor, dict)
+                or summary['genesis_config_sha256'] != rearm_anchor.get('activation_genesis_config_sha256')
+                or summary['count'] != rearm_anchor.get('activation_count')
+                or summary['head_sha256'] != rearm_anchor.get('activation_head_sha256')
+                or summary['migration_proof_sha256'] != rearm_anchor.get('activation_migration_proof_sha256')):
+            raise ValueError('the F01 activation audit disagrees with the rearm anchor - refused (fail closed)')
+    elif summary['migration_proof_sha256'] != HEX0:
+        raise ValueError('the F01 activation migration proof has no validated rearm anchor - refused (fail closed)')
+    return rows, summary
+
+
+def _canonical_cfg(cfg):
+    out = copy.deepcopy(cfg)
+    out['authorization_comment_id'] = str(out['authorization_comment_id'])
+    return out
+
+
+def _anchor_dir(e):
+    """Fixed runtime-data location: settings cannot redirect or hide the external write-once anchor chain."""
+    return os.path.join(os.path.dirname(os.path.abspath(e.F['settings'])), 'f01_activation_anchors')
+
+
+def _anchor_state_sha(S):
+    sl = _slot(S)
+    view = {k: copy.deepcopy((S or {}).get(k)) for k in
+            (FC.CANARY_KEY, PREFLIGHT_KEY, REARM_KEY, REARM_CHAIN_KEY, ACTIVATION_KEY, ACTIVATION_CHAIN_KEY)}
+    view['C-F01'] = copy.deepcopy(sl)
+    return _sha(view)
+
+
+def _external_anchors(e):
+    d = _anchor_dir(e)
+    rows = {}
+    for name in sorted(os.listdir(d)) if os.path.isdir(d) else ():
+        if name in ('pending', 'quarantine') and os.path.isdir(os.path.join(d, name)): continue
+        if not isinstance(name, str) or not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]):
+            raise ValueError('the external F01 activation anchor store is malformed - refused (fail closed)')
+        with open(os.path.join(d, name), 'rb') as f: raw = f.read()
+        if FC.sha256(raw) != name[:-5]:
+            raise ValueError('the external F01 activation anchor hash is invalid - refused (fail closed)')
+        try: row = json.loads(raw)
+        except (ValueError, TypeError):
+            raise ValueError('the external F01 activation anchor record is malformed - refused (fail closed)')
+        if (not isinstance(row, dict) or set(row) != EXTERNAL_ANCHOR_FIELDS or row.get('version') != 1
+                or not isinstance(row.get('sequence'), int) or isinstance(row.get('sequence'), bool)
+                or row['sequence'] <= 0 or row.get('event') not in ('enable', 'rearm')
+                or FC._ts(row.get('at_utc')) is None
+                or not isinstance(row.get('activation_count'), int) or isinstance(row.get('activation_count'), bool)
+                or row['activation_count'] < 0
+                or any(not isinstance(row.get(k), str) or not FC.HEX64.fullmatch(row[k]) for k in
+                       ('prev_anchor_sha256', 'staged_config_sha256', 'activation_genesis_config_sha256',
+                        'activation_head_sha256', 'activation_migration_proof_sha256', 'rearm_head_sha256',
+                        'pre_state_sha256', 'post_state_sha256'))):
+            raise ValueError('the external F01 activation anchor record is malformed - refused (fail closed)')
+        rows[name[:-5]] = row
+    if not rows: return [], None
+    roots = [h for h, r in rows.items() if r['prev_anchor_sha256'] == HEX0]
+    children = {}
+    for h, r in rows.items():
+        if r['prev_anchor_sha256'] != HEX0: children.setdefault(r['prev_anchor_sha256'], []).append(h)
+    if len(roots) != 1 or any(len(v) != 1 for v in children.values()):
+        raise ValueError('the external F01 activation anchor chain is forked or rootless - refused (fail closed)')
+    ordered, seen, cur = [], set(), roots[0]
+    while cur:
+        if cur in seen or cur not in rows: raise ValueError('the external F01 activation anchor chain is invalid - refused')
+        seen.add(cur); ordered.append((cur, rows[cur]))
+        nxt = children.get(cur, [])
+        cur = nxt[0] if nxt else None
+    if len(seen) != len(rows) or any(r['sequence'] != i for i, (_h, r) in enumerate(ordered, 1)):
+        raise ValueError('the external F01 activation anchor chain is incomplete or reordered - refused (fail closed)')
+    return ordered, ordered[-1]
+
+
+def _anchor_state(staged_hash, activation_chain, rearm_chain):
+    return dict(staged_config_sha256=staged_hash,
+                activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
+                activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
+                activation_migration_proof_sha256=activation_chain['migration_proof_sha256'],
+                rearm_head_sha256=rearm_chain['head_sha256'] if rearm_chain else HEX0)
+
+
+def _validate_external_anchor(e, staged_hash, activation_chain, rearm_chain, allow_absent=False):
+    ordered, leaf = _external_anchors(e)
+    if leaf is None:
+        if allow_absent: return ordered
+        raise ValueError('the external F01 activation anchor is missing - refused (fail closed)')
+    _h, rec = leaf
+    expected = _anchor_state(staged_hash, activation_chain, rearm_chain)
+    if any(rec.get(k) != v for k, v in expected.items()):
+        raise ValueError('the external F01 activation anchor disagrees with settings - refused (fail closed)')
+    return ordered
+
+
+def _prepare_external_anchor(e, event, staged_hash, activation_chain, rearm_chain, prior, pre_settings, post_settings):
+    state = _anchor_state(staged_hash, activation_chain, rearm_chain)
+    rec = dict(version=1, sequence=len(prior) + 1, prev_anchor_sha256=prior[-1][0] if prior else HEX0,
+               event=event, pre_state_sha256=_anchor_state_sha(pre_settings),
+               post_state_sha256=_anchor_state_sha(post_settings),
+               at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'), **state)
+    raw = FC.canonical(rec); h = FC.sha256(raw); d = os.path.join(_anchor_dir(e), 'pending'); os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, h + '.json')
+    fd, tmp = tempfile.mkstemp(prefix='.prepare-', suffix='.tmp', dir=d)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(raw); f.flush(); os.fsync(f.fileno())
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                if f.read() != raw: raise ValueError('the external F01 activation anchor is not immutable')
+            os.remove(tmp)
+        else:
+            os.replace(tmp, path)                 # only a complete, fsynced record ever gets the transaction name
+    except Exception:
+        try: os.remove(tmp)
+        except OSError: pass
+        raise
+    return dict(hash=h, path=path, record=rec)
+
+
+def _promote_external_anchor(e, tx):
+    dst = os.path.join(_anchor_dir(e), tx['hash'] + '.json')
+    os.replace(tx['path'], dst)
+    try: os.rmdir(os.path.dirname(tx['path']))
+    except OSError: pass
+
+
+def _commit_with_anchor(e, ns, tx):
+    try:
+        e.commit_settings(ns)
+    except Exception:
+        try: os.remove(tx['path'])
+        except OSError: pass
+        try: os.rmdir(os.path.dirname(tx['path']))
+        except OSError: pass
+        raise
+    _promote_external_anchor(e, tx)
+
+
+def _validate_external_record(rec):
+    if (not isinstance(rec, dict) or set(rec) != EXTERNAL_ANCHOR_FIELDS or rec.get('version') != 1
+            or not isinstance(rec.get('sequence'), int) or isinstance(rec.get('sequence'), bool)
+            or rec['sequence'] <= 0 or rec.get('event') not in ('enable', 'rearm')
+            or FC._ts(rec.get('at_utc')) is None
+            or not isinstance(rec.get('activation_count'), int) or isinstance(rec.get('activation_count'), bool)
+            or rec['activation_count'] < 0
+            or any(not isinstance(rec.get(k), str) or not FC.HEX64.fullmatch(rec[k]) for k in
+                   ('prev_anchor_sha256', 'staged_config_sha256', 'activation_genesis_config_sha256',
+                    'activation_head_sha256', 'activation_migration_proof_sha256', 'rearm_head_sha256',
+                    'pre_state_sha256', 'post_state_sha256'))):
+        raise ValueError('the pending F01 activation anchor schema is invalid - refused (fail closed)')
+
+
+def _validate_pending_transition(rec, prior):
+    prev_hash, prev = prior[-1] if prior else (HEX0, None)
+    if rec['sequence'] != len(prior) + 1 or rec['prev_anchor_sha256'] != prev_hash:
+        raise ValueError('the pending F01 activation anchor predecessor/sequence is invalid - refused (fail closed)')
+    if prev is None:
+        if rec['event'] == 'enable':
+            ok = (rec['activation_count'] == 1 and rec['activation_migration_proof_sha256'] == HEX0
+                  and rec['rearm_head_sha256'] == HEX0)
+        else:
+            ok = (rec['activation_count'] == 0 and rec['activation_head_sha256'] == HEX0
+                  and rec['activation_migration_proof_sha256'] != HEX0)
+    elif rec['event'] == 'enable':
+        ok = (rec['staged_config_sha256'] == prev['staged_config_sha256']
+              and rec['activation_genesis_config_sha256'] == prev['activation_genesis_config_sha256']
+              and rec['activation_migration_proof_sha256'] == prev['activation_migration_proof_sha256']
+              and rec['activation_count'] == prev['activation_count'] + 1
+              and rec['activation_head_sha256'] != prev['activation_head_sha256']
+              and rec['rearm_head_sha256'] == prev['rearm_head_sha256'])
+    else:
+        ok = (rec['staged_config_sha256'] != prev['staged_config_sha256']
+              and rec['activation_genesis_config_sha256'] == prev['activation_genesis_config_sha256']
+              and rec['activation_migration_proof_sha256'] == prev['activation_migration_proof_sha256']
+              and rec['activation_count'] == prev['activation_count']
+              and rec['activation_head_sha256'] == prev['activation_head_sha256']
+              and rec['rearm_head_sha256'] != prev['rearm_head_sha256'])
+    if not ok: raise ValueError('the pending F01 activation anchor transition is invalid - refused (fail closed)')
+
+
+def _validate_pending_current_state(rec, S):
+    sl = _slot(S); cfg = S.get(FC.CANARY_KEY) if isinstance(S.get(FC.CANARY_KEY), dict) else {}
+    cfg_hash = _sha(cfg)
+    if REARM_KEY in S or REARM_CHAIN_KEY in S:
+        _rearm_rows, rc = _validated_rearms(S, cfg_hash)
+    else:
+        rc = None
+    _activation_rows, ac = _validated_activations(S, cfg_hash, allow_uninitialized=False)
+    if (not sl or (rec['event'] == 'enable' and sl.get('enabled') is not True)
+            or (rec['event'] == 'rearm' and sl.get('enabled') is not False)
+            or cfg_hash != rec['staged_config_sha256'] or not isinstance(ac, dict)
+            or ac.get('genesis_config_sha256') != rec['activation_genesis_config_sha256']
+            or ac.get('count') != rec['activation_count'] or ac.get('head_sha256') != rec['activation_head_sha256']
+            or ac.get('migration_proof_sha256') != rec['activation_migration_proof_sha256']
+            or ((rc or {}).get('head_sha256') if isinstance(rc, dict) else HEX0) != rec['rearm_head_sha256']):
+        raise ValueError('the pending F01 activation anchor post-state semantics are invalid - refused (fail closed)')
+
+
+def _quarantine_pending(e, path):
+    q = os.path.join(_anchor_dir(e), 'quarantine'); os.makedirs(q, exist_ok=True)
+    dst = os.path.join(q, os.path.basename(path) + '.precommit')
+    if os.path.exists(dst): os.remove(path)
+    else: os.replace(path, dst)
+
+
+def _pending_is_provably_precommit(e):
+    """A damaged named payload is disposable only when durable state still equals the last immutable anchor.
+
+    The slot and preflight may legitimately move after an anchor (rollback, then a new PASS), so the proof uses the
+    staged config plus the fully validated activation/rearm summaries bound by the external leaf.  A committed enable
+    changes the activation head; a committed rearm changes the staged/rearm head.  With no leaf, only the pristine
+    initial state (disabled and no activation/rearm history at all) can be proven pre-commit.
+    """
+    cfg = e.S.get(FC.CANARY_KEY); sl = _slot(e.S)
+    if (not isinstance(cfg, dict) or cfg.get('on') is not True or FC.cfg_problems(cfg)
+            or not sl or sl.get('enabled') is not False):
+        return False
+    prior, leaf = _external_anchors(e)
+    if leaf is None:
+        return not any(k in e.S for k in (ACTIVATION_KEY, ACTIVATION_CHAIN_KEY, REARM_KEY, REARM_CHAIN_KEY))
+    cfg_hash = _sha(cfg)
+    try:
+        if REARM_KEY in e.S or REARM_CHAIN_KEY in e.S:
+            _rearm_rows, rearm_chain = _validated_rearms(e.S, cfg_hash)
+        else:
+            rearm_chain = None
+        _activation_rows, activation_chain = _validated_activations(e.S, cfg_hash, allow_uninitialized=False)
+        _validate_external_anchor(e, cfg_hash, activation_chain, rearm_chain)
+    except ValueError:
+        return False
+    return bool(prior)
+
+
+def _reconcile_external_pending(e):
+    d = os.path.join(_anchor_dir(e), 'pending')
+    names = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    torn = [n for n in names if n.startswith('.prepare-') and n.endswith('.tmp')]
+    if len(torn) > 4: raise ValueError('too many torn F01 anchor prepares - refused (fail closed)')
+    for n in torn: _quarantine_pending(e, os.path.join(d, n))
+    names = [n for n in names if n not in torn]
+    if not names: return None
+    if len(names) != 1:
+        raise ValueError('multiple pending F01 activation anchor transactions - refused (fail closed)')
+    name = names[0]; path = os.path.join(d, name)
+    if not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]) or not os.path.isfile(path):
+        raise ValueError('the pending F01 activation anchor is malformed - refused (fail closed)')
+    with open(path, 'rb') as f: raw = f.read()
+    promoted_path = os.path.join(_anchor_dir(e), name)
+    if os.path.exists(promoted_path):
+        if not os.path.isfile(promoted_path):
+            raise ValueError('the pending F01 activation anchor replay is ambiguous - refused (fail closed)')
+        with open(promoted_path, 'rb') as f: promoted_raw = f.read()
+        if promoted_raw != raw:
+            raise ValueError('the pending F01 activation anchor replay is ambiguous - refused (fail closed)')
+    if FC.sha256(raw) != name[:-5]:
+        if _pending_is_provably_precommit(e):
+            _quarantine_pending(e, path)           # independent durable state proves settings never advanced
+            return dict(committed=False, discarded=True)
+        raise ValueError('the pending F01 activation anchor is corrupt and not provably pre-commit - refused (fail closed)')
+    try: rec = json.loads(raw)
+    except (ValueError, TypeError): raise ValueError('the pending F01 activation anchor is malformed - refused')
+    _validate_external_record(rec)
+    prior, _leaf = _external_anchors(e)
+    promoted = next((h for h, _row in prior if h == name[:-5]), None)
+    if promoted is not None:
+        _quarantine_pending(e, path)               # immutable promoted copy is the durable evidence; this is byte-identical
+        return dict(event=rec.get('event'), committed=False, duplicate=True)
+    _validate_pending_transition(rec, prior)
+    cur = _anchor_state_sha(e.S)
+    if cur == rec.get('pre_state_sha256'):
+        os.remove(path)
+        try: os.rmdir(d)
+        except OSError: pass
+        return dict(event=rec.get('event'), committed=False)
+    if cur == rec.get('post_state_sha256'):
+        _validate_pending_current_state(rec, e.S)
+        _promote_external_anchor(e, dict(hash=name[:-5], path=path, record=rec))
+        return dict(event=rec.get('event'), committed=True)
+    raise ValueError('pending F01 activation anchor matches neither durable settings state - refused (fail closed)')
+
+
+def _activation_proof(e, cfg, cfg_hash, pf, sl):
+    """Return a durable proof hash for an actual enable, or None. Current C-F01 must already be OFF.
+
+    New builds persist an exact signed activation event in settings. The pre-existing first canary predates that event;
+    its atomic settings backup is accepted only when it contains this exact config/PASS/card with enabled=true while the
+    current exact card is disabled. No log line or mere expired PASS is sufficient.
+    """
+    rows, _summary = _validated_activations(e.S, cfg_hash, allow_uninitialized=True)
+    for row in rows:
+        if (row['config_sha256'] == cfg_hash and row['preflight_record_sha256'] == pf.get('record_sha256')
+                and row['preflight_extract_sha256'] == pf.get('extract_sha256') and row['slot_sha256'] == _slot_sha(sl)):
+            return row['event_sha256']
+    try:
+        with open(e.F['settings'] + '.bak', 'rb') as f: raw = f.read()
+        old = json.loads(raw)
+        old_sl = _slot(old)
+        old_pf = old.get(PREFLIGHT_KEY)
+        if (_sha(old.get(FC.CANARY_KEY)) == cfg_hash and old_sl and old_sl.get('enabled') is True
+                and _slot_sha(old_sl) == _slot_sha(sl) and isinstance(old_pf, dict) and old_pf == pf
+                and old_pf.get('passed') is True):
+            return FC.sha256(raw)
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
+def _validated_rearms(S, current_hash):
+    """Validate the exact versioned audit schema, hash chain, summary head and current-config linkage."""
+    rows, chain = S.get(REARM_KEY, []), S.get(REARM_CHAIN_KEY)
+    if not isinstance(rows, list): raise ValueError('the F01 rearm audit is malformed - refused (fail closed)')
+    prev, genesis, prior_new = HEX0, current_hash, None
+    seen_auth, seen_dirs, prior_auth, prior_dir = set(), set(), None, None
+    activation_genesis = activation_migration = None
+    for i, row in enumerate(rows, 1):
+        if not isinstance(row, dict) or set(row) != REARM_FIELDS or row.get('version') != 1 or row.get('sequence') != i:
+            raise ValueError('the F01 rearm audit schema is invalid - refused (fail closed)')
+        hashes = ('prev_audit_sha256', 'old_config_sha256', 'new_config_sha256', 'activation_proof_sha256',
+                  'activation_genesis_config_sha256', 'activation_head_sha256',
+                  'activation_migration_proof_sha256', 'audit_sha256')
+        if any(not isinstance(row.get(k), str) or not FC.HEX64.fullmatch(row[k]) for k in hashes):
+            raise ValueError('the F01 rearm audit schema is invalid - refused (fail closed)')
+        if (row['prev_audit_sha256'] != prev or (prior_new is not None and row['old_config_sha256'] != prior_new)
+                or _signed(row, 'audit_sha256') != row['audit_sha256']):
+            raise ValueError('the F01 rearm audit hash chain is invalid - refused (fail closed)')
+        auths = (row.get('old_authorization_comment_id'), row.get('new_authorization_comment_id'))
+        dirs = (row.get('old_cohort_dir'), row.get('new_cohort_dir'))
+        norm_dirs = tuple(os.path.normcase(os.path.realpath(x)) if isinstance(x, str) else None for x in dirs)
+        times = (row.get('old_start_utc'), row.get('new_start_utc'), row.get('at_utc'))
+        if (any(not isinstance(x, str) or not x.isdigit() or int(x) <= 0 for x in auths)
+                or auths[0] == auths[1] or any(not isinstance(x, str) or not os.path.isabs(x) for x in dirs)
+                or norm_dirs[0] == norm_dirs[1]
+                or any(FC._ts(x) is None for x in times) or row.get('reason') != 'owner_authorized_rearm_after_disable'
+                or row['old_config_sha256'] == row['new_config_sha256']
+                or not isinstance(row.get('activation_count'), int) or isinstance(row.get('activation_count'), bool)
+                or row['activation_count'] < 0
+                or (row['activation_count'] == 0 and row['activation_head_sha256'] != HEX0)):
+            raise ValueError('the F01 rearm audit schema is invalid - refused (fail closed)')
+        if i == 1:
+            activation_genesis = row['activation_genesis_config_sha256']
+            activation_migration = row['activation_migration_proof_sha256']
+            if row['activation_count'] == 0 and activation_migration != row['activation_proof_sha256']:
+                raise ValueError('the F01 rearm audit legacy migration proof is invalid - refused (fail closed)')
+        elif (row['activation_genesis_config_sha256'] != activation_genesis
+              or row['activation_migration_proof_sha256'] != activation_migration):
+            raise ValueError('the F01 rearm audit activation anchor changed - refused (fail closed)')
+        if i == 1:
+            seen_auth.add(auths[0]); seen_dirs.add(norm_dirs[0])
+        elif auths[0] != prior_auth or norm_dirs[0] != prior_dir:
+            raise ValueError('the F01 rearm audit history linkage is invalid - refused (fail closed)')
+        if auths[1] in seen_auth:
+            raise ValueError('the F01 rearm audit reuses a historical authorization id - refused (fail closed)')
+        if norm_dirs[1] in seen_dirs:
+            raise ValueError('the F01 rearm audit reuses a historical cohort directory - refused (fail closed)')
+        seen_auth.add(auths[1]); seen_dirs.add(norm_dirs[1])
+        prior_auth, prior_dir = auths[1], norm_dirs[1]
+        if i == 1: genesis = row['old_config_sha256']
+        prev, prior_new = row['audit_sha256'], row['new_config_sha256']
+    if rows and prior_new != current_hash:
+        raise ValueError('the F01 rearm audit does not link to the current staged config - refused (fail closed)')
+    current_cfg = S.get(FC.CANARY_KEY) if isinstance(S.get(FC.CANARY_KEY), dict) else {}
+    if rows and (str(current_cfg.get('authorization_comment_id')) != prior_auth
+                 or os.path.normcase(os.path.realpath(current_cfg.get('cohort_dir', ''))) != prior_dir):
+        raise ValueError('the F01 rearm audit history does not match the current authorization/cohort - refused (fail closed)')
+    expected = dict(version=1, genesis_config_sha256=genesis, current_config_sha256=current_hash,
+                    count=len(rows), head_sha256=prev)
+    if rows:
+        if (not isinstance(chain, dict) or set(chain) != CHAIN_FIELDS
+                or any(chain.get(k) != v for k, v in expected.items())
+                or not isinstance(chain.get('activation_count'), int) or isinstance(chain.get('activation_count'), bool)
+                or chain['activation_count'] < 0
+                or any(not isinstance(chain.get(k), str) or not FC.HEX64.fullmatch(chain[k]) for k in
+                       ('activation_genesis_config_sha256', 'activation_head_sha256',
+                        'activation_migration_proof_sha256'))):
+            raise ValueError('the F01 rearm audit summary is missing or invalid - refused (fail closed)')
+        last = rows[-1]
+        if (chain['activation_genesis_config_sha256'] != activation_genesis
+                or chain['activation_migration_proof_sha256'] != activation_migration
+                or chain['activation_count'] != last['activation_count']
+                or chain['activation_head_sha256'] != last['activation_head_sha256']):
+            raise ValueError('the F01 rearm activation anchor is invalid - refused (fail closed)')
+    elif chain is not None:
+        raise ValueError('the F01 rearm audit summary exists without its history - refused (fail closed)')
+    return rows, chain if rows else expected
 
 
 def _staged(e):
@@ -92,6 +550,7 @@ def stage(e, b):
     cfg = dict(on=True, **{k: copy.deepcopy(b[k]) for k in CFG_FIELDS})
     bad = FC.cfg_problems(cfg)
     if bad: raise ValueError('F01 canary config refused: ' + '; '.join(bad))
+    cfg = _canonical_cfg(cfg)
     with e.lock:
         _env(e)
         if any(k in e.S for k in OWNED_KEYS):
@@ -169,6 +628,7 @@ def recover_stage(e, b):
     new_cfg = dict(on=True, **{k: copy.deepcopy(b[k]) for k in CFG_FIELDS})
     bad = FC.cfg_problems(new_cfg)
     if bad: raise ValueError('F01 canary recovery config refused: ' + '; '.join(bad))
+    new_cfg = _canonical_cfg(new_cfg)
     with e.lock:
         _env(e)
         old_cfg = _staged(e)
@@ -195,7 +655,7 @@ def recover_stage(e, b):
         new_hash = _sha(new_cfg)
         if new_hash == old_hash: raise ValueError('the replacement config must be new, not a start-only retry')
         audit = dict(old_config_sha256=old_hash, new_config_sha256=new_hash,
-                     old_authorization_comment_id=old_cfg['authorization_comment_id'],
+                     old_authorization_comment_id=str(old_cfg['authorization_comment_id']),
                      new_authorization_comment_id=new_cfg['authorization_comment_id'],
                      at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'),
                      reason='packaged_pins_missing')
@@ -206,6 +666,116 @@ def recover_stage(e, b):
         e.commit_settings(ns)                       # one durable atomic replacement; memory changes only after success
     ENG.log.info(f"FACTORY-F01 stage recovered: {old_hash} -> {new_hash}, authorization {new_cfg['authorization_comment_id']}")
     return dict(recovered=True, config=copy.deepcopy(new_cfg), config_sha256=new_hash, audit=copy.deepcopy(audit))
+
+
+def rearm(e, b):
+    """Replace an expired, previously preflighted stage after C-F01 was rolled back or otherwise switched OFF.
+
+    This is deliberately a *stage-only* operation.  It never enables the slot.  A new authorization, cohort directory,
+    future start, installed-build identity and the normal preflight + enable steps are still required.  The old cohort is
+    left untouched and an append-only settings audit links the old and new config hashes.
+    """
+    if not isinstance(b, dict): raise ValueError('bad request')
+    fields = {'config_sha256', *CFG_FIELDS}
+    extra = sorted(set(b) - fields)
+    if extra: raise ValueError('unknown F01 rearm field(s): ' + ', '.join(str(k)[:30] for k in extra)[:120])
+    missing = [k for k in ('config_sha256', *CFG_FIELDS) if k not in b]
+    if missing: raise ValueError('missing F01 rearm field(s): ' + ', '.join(missing))
+    old_hash = b['config_sha256']
+    if not isinstance(old_hash, str) or not FC.HEX64.fullmatch(old_hash):
+        raise ValueError('config_sha256 must be the exact 64-hex old config hash')
+    if not isinstance(b['start_utc'], str): raise ValueError('start_utc must be a tz-aware ISO UTC string')
+    new_cfg = dict(on=True, **{k: copy.deepcopy(b[k]) for k in CFG_FIELDS})
+    bad = FC.cfg_problems(new_cfg)
+    if bad: raise ValueError('F01 canary rearm config refused: ' + '; '.join(bad))
+    new_cfg = _canonical_cfg(new_cfg)
+    with e.lock:
+        _env(e)
+        recovered_tx = _reconcile_external_pending(e)
+        if recovered_tx and recovered_tx.get('committed') and recovered_tx.get('event') == 'rearm':
+            cfg = _staged(e)
+            return dict(rearmed=True, recovered=True, config=copy.deepcopy(cfg), config_sha256=_sha(cfg))
+        old_cfg = _staged(e)
+        if old_hash != _sha(old_cfg): raise ValueError('config_sha256 does not match the exact staged config')
+        sl = _slot(e.S)
+        if sl is None: raise ValueError('C-F01 slot not present - nothing to rearm')
+        if sl.get('enabled') is not False: raise ValueError('C-F01 is enabled - rearm refused')
+        old_pf = e.S.get(PREFLIGHT_KEY)
+        if not isinstance(old_pf, dict) or old_pf.get('passed') is not True:
+            raise ValueError('the old stage has no PASS preflight - rearm refused')
+        if old_pf.get('config_sha256') != old_hash or old_pf.get('slot_sha256') != _slot_sha(sl):
+            raise ValueError('the old PASS preflight does not match the exact config and C-F01 card - rearm refused')
+        if not _extract_ok(old_cfg, old_pf.get('extract_sha256')):
+            raise ValueError('the old PASS preflight extract is missing or altered - rearm refused')
+        enabled_proof = _activation_proof(e, old_cfg, old_hash, old_pf, sl)
+        if enabled_proof is None:
+            raise ValueError('no durable proof that the old staged canary was actually enabled then disabled - rearm refused')
+        if FC._ts(old_cfg['start_utc']) > ENG.now_utc():
+            raise ValueError('the old frozen start is still in the future - use the normal enable path')
+        prior, chain = _validated_rearms(e.S, old_hash)
+        used_auth = {str(old_cfg.get('authorization_comment_id'))}
+        used_dirs = {os.path.normcase(os.path.realpath(old_cfg.get('cohort_dir', '')))}
+        for row in prior:
+            used_auth.update((row['old_authorization_comment_id'], row['new_authorization_comment_id']))
+            used_dirs.update(os.path.normcase(os.path.realpath(row[k])) for k in ('old_cohort_dir', 'new_cohort_dir'))
+        if new_cfg['authorization_comment_id'] in used_auth:
+            raise ValueError('a never-before-used Codex authorization comment id is required across the full rearm history')
+        if os.path.normcase(os.path.realpath(new_cfg['cohort_dir'])) in used_dirs:
+            raise ValueError('a never-before-used cohort directory is required across the full rearm history')
+        if not FC._ts(new_cfg['start_utc']) > ENG.now_utc():
+            raise ValueError('start_utc must be strictly in the future')
+
+        # The replacement is allowed only at a clean family boundary.  Other PAPER lots may remain open and are captured
+        # by the subsequent full preflight, but neither candidate may have risk, working orders or unresolved accounting.
+        check = FC.preflight(e.S, e.state, live=getattr(e, 'live', True),
+                             base=getattr(getattr(e, 'trade', None), 'base', None), testnet=ENG.TESTNET,
+                             deferred=getattr(e, '_deferred', None) or (), drift=[], now=ENG.now_utc())['checks']
+        failed = [k for k in ('C1', 'C2', 'C3', 'C4') if not check[k]['ok']]
+        if failed: raise ValueError('C-F01 rearm requires a clean candidate boundary (' + ', '.join(failed) + ')')
+
+        new_hash = _sha(new_cfg)
+        activation_rows, activation_chain = _validated_activations(e.S, old_hash, allow_uninitialized=True)
+        if activation_chain is None:
+            external_prior, external_leaf = _external_anchors(e)
+            if external_leaf is not None:
+                raise ValueError('external activation history exists without its settings chain - rearm refused')
+            activation_chain = dict(version=1, genesis_config_sha256=old_hash, staged_config_sha256=new_hash,
+                                    count=0, head_sha256=HEX0, migration_proof_sha256=enabled_proof)
+        else:
+            external_prior = _validate_external_anchor(e, old_hash, activation_chain, chain if prior else None)
+            activation_chain = dict(copy.deepcopy(activation_chain), staged_config_sha256=new_hash)
+            if not activation_rows:
+                activation_chain['migration_proof_sha256'] = enabled_proof
+        audit = dict(version=1, sequence=len(prior) + 1, prev_audit_sha256=chain['head_sha256'],
+                     old_config_sha256=old_hash, new_config_sha256=new_hash,
+                     old_authorization_comment_id=str(old_cfg['authorization_comment_id']),
+                     new_authorization_comment_id=new_cfg['authorization_comment_id'],
+                     old_cohort_dir=old_cfg['cohort_dir'], new_cohort_dir=new_cfg['cohort_dir'],
+                     old_start_utc=old_cfg['start_utc'], new_start_utc=new_cfg['start_utc'],
+                     activation_proof_sha256=enabled_proof,
+                     activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
+                     activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
+                     activation_migration_proof_sha256=activation_chain['migration_proof_sha256'],
+                     at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'),
+                     reason='owner_authorized_rearm_after_disable')
+        audit['audit_sha256'] = _signed(audit, 'audit_sha256')
+        new_chain = dict(version=1, genesis_config_sha256=chain['genesis_config_sha256'],
+                         current_config_sha256=new_hash, count=len(prior) + 1, head_sha256=audit['audit_sha256'],
+                         activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
+                         activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
+                         activation_migration_proof_sha256=activation_chain['migration_proof_sha256'])
+        ns = copy.deepcopy(e.S)
+        ns[FC.CANARY_KEY] = new_cfg
+        ns.pop(PREFLIGHT_KEY, None)
+        ns[REARM_KEY] = copy.deepcopy(prior) + [audit]
+        ns[REARM_CHAIN_KEY] = new_chain
+        ns[ACTIVATION_CHAIN_KEY] = activation_chain
+        tx = _prepare_external_anchor(e, 'rearm', new_hash, activation_chain, new_chain, external_prior, e.S, ns)
+        _commit_with_anchor(e, ns, tx)
+    ENG.log.info(f"FACTORY-F01 rearmed as a disabled stage: {old_hash} -> {new_hash}, "
+                 f"authorization {new_cfg['authorization_comment_id']}")
+    return dict(rearmed=True, config=copy.deepcopy(new_cfg), config_sha256=new_hash, audit=copy.deepcopy(audit),
+                audit_chain=copy.deepcopy(new_chain))
 
 
 def preflight(e, b=None):
@@ -246,6 +816,10 @@ def enable(e, b=None):
     frozen start. Any refusal leaves C-F01 disabled and settings unchanged."""
     with e.lock:
         _env(e)
+        recovered_tx = _reconcile_external_pending(e)
+        if recovered_tx and recovered_tx.get('committed') and recovered_tx.get('event') == 'enable':
+            cfg = _staged(e)
+            return dict(enabled=True, recovered=True, start_utc=cfg['start_utc'])
         cfg = _staged(e)
         rec = e.S.get(PREFLIGHT_KEY)
         if not isinstance(rec, dict) or rec.get('passed') is not True:
@@ -267,9 +841,39 @@ def enable(e, b=None):
         if fresh.get('pass') is not True:
             bad = ', '.join(k for k, v in (fresh.get('checks') or {}).items() if not v.get('ok'))
             raise ValueError(f'the fresh preflight fails ({bad or "unknown"}) - C-F01 stays disabled')
+        rearm_chain = None
+        if REARM_KEY in e.S or REARM_CHAIN_KEY in e.S:
+            _rows, rearm_chain = _validated_rearms(e.S, _sha(cfg))
         ns = copy.deepcopy(e.S)
         _slot(ns)['enabled'] = True
-        e.commit_settings(ns)
+        activations, activation_chain = _validated_activations(e.S, _sha(cfg), allow_uninitialized=True)
+        if activation_chain is None:
+            external_prior, external_leaf = _external_anchors(e)
+            if external_leaf is not None:
+                raise ValueError('external activation history exists without its settings chain - C-F01 stays disabled')
+        else:
+            external_prior = _validate_external_anchor(e, _sha(cfg), activation_chain, rearm_chain)
+        event = _activation_record(_sha(cfg), rec, sl, activations)
+        ns[ACTIVATION_KEY] = copy.deepcopy(activations) + [event]
+        ns[ACTIVATION_CHAIN_KEY] = dict(
+            version=1,
+            genesis_config_sha256=(activation_chain['genesis_config_sha256'] if activation_chain else _sha(cfg)),
+            staged_config_sha256=_sha(cfg), count=len(activations) + 1, head_sha256=event['event_sha256'],
+            migration_proof_sha256=(activation_chain['migration_proof_sha256'] if activation_chain else HEX0))
+        if rearm_chain is not None:
+            rearm_rows = copy.deepcopy(ns[REARM_KEY])
+            rearm_rows[-1]['activation_count'] = ns[ACTIVATION_CHAIN_KEY]['count']
+            rearm_rows[-1]['activation_head_sha256'] = ns[ACTIVATION_CHAIN_KEY]['head_sha256']
+            rearm_rows[-1]['audit_sha256'] = _signed(rearm_rows[-1], 'audit_sha256')
+            ns[REARM_KEY] = rearm_rows
+            ns[REARM_CHAIN_KEY] = dict(copy.deepcopy(rearm_chain), head_sha256=rearm_rows[-1]['audit_sha256'],
+                activation_genesis_config_sha256=ns[ACTIVATION_CHAIN_KEY]['genesis_config_sha256'],
+                activation_count=ns[ACTIVATION_CHAIN_KEY]['count'],
+                activation_head_sha256=ns[ACTIVATION_CHAIN_KEY]['head_sha256'],
+                activation_migration_proof_sha256=ns[ACTIVATION_CHAIN_KEY]['migration_proof_sha256'])
+        tx = _prepare_external_anchor(e, 'enable', _sha(cfg), ns[ACTIVATION_CHAIN_KEY], ns.get(REARM_CHAIN_KEY),
+                                      external_prior, e.S, ns)
+        _commit_with_anchor(e, ns, tx)
     ENG.log.info(f"FACTORY-F01 canary: C-F01 enabled after PASS preflight {rec['record_sha256']} (start {cfg['start_utc']})")
     return dict(enabled=True, start_utc=cfg['start_utc'], record_sha256=rec['record_sha256'])
 
@@ -297,7 +901,7 @@ def sleeves_guard(S, new_sleeves, normalize):
     return [keep if isinstance(x, dict) and x.get('id') == FC.SLOT else x for x in new_sleeves]
 
 
-ACTIONS = dict(stage=stage, recover_stage=recover_stage, preflight=preflight, enable=enable)
+ACTIONS = dict(stage=stage, recover_stage=recover_stage, rearm=rearm, preflight=preflight, enable=enable)
 
 
 def handle(e, path, b):

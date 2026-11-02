@@ -33,7 +33,17 @@ def body(**kw):
 
 
 def recovery_body(old_hash, **kw):
-    c = cfg(start=START + timedelta(hours=1), auth='6525193522', cohort_dir=CD[0] + '_recovered', **kw)
+    auth = kw.pop('auth', '6525193522')
+    c = cfg(start=START + timedelta(hours=1), auth=auth, cohort_dir=CD[0] + '_recovered', **kw)
+    c.pop('on')
+    return dict(config_sha256=old_hash, **c)
+
+
+def rearm_body(old_hash, **kw):
+    start = kw.pop('start', START + timedelta(hours=4))
+    auth = kw.pop('auth', '6599999001')
+    cohort_dir = kw.pop('cohort_dir', CD[0] + '_rearmed')
+    c = cfg(start=start, auth=auth, cohort_dir=cohort_dir, **kw)
     c.pop('on')
     return dict(config_sha256=old_hash, **c)
 
@@ -72,6 +82,14 @@ def test_stage_preflight_enable_happy_path_and_it_persists(api, monkeypatch):
     assert pf['extract_sha256'] == FC.sha256(FC.canonical(rec)) and rec['pass'] is True
     assert e.S[FA.PREFLIGHT_KEY]['passed'] is True and slot(e, F01)['enabled'] is False   # still off until enable
     assert A.handle('/api/f01_canary/enable', {})['enabled'] and slot(e, F01)['enabled'] is True
+    assert len(e.S[FA.ACTIVATION_KEY]) == 1
+    activation = e.S[FA.ACTIVATION_KEY][0]
+    assert set(activation) == FA.ACTIVATION_FIELDS
+    assert activation['event_sha256'] == FA._signed(activation, 'event_sha256')
+    assert activation['config_sha256'] == out['config_sha256']
+    assert e.S[FA.ACTIVATION_CHAIN_KEY] == dict(
+        version=1, genesis_config_sha256=out['config_sha256'], staged_config_sha256=out['config_sha256'],
+        count=1, head_sha256=activation['event_sha256'], migration_proof_sha256=FA.HEX0)
     assert slot(e, F02)['enabled'] is False and e.S[FC.CANARY_KEY]['start_utc'] == iso(START)
     disk = json.load(open(e.F['settings'], encoding='utf-8'))
     assert disk[FC.CANARY_KEY] == cfg(start=START) and FA._slot(disk)['enabled'] is True   # committed durably
@@ -96,7 +114,7 @@ def _post(A, path, b, token):
 def test_routes_need_the_panel_token(api, token):
     A, e = api
     before = snap(e)
-    for act in ('stage', 'recover_stage', 'preflight', 'enable'):
+    for act in ('stage', 'recover_stage', 'rearm', 'preflight', 'enable'):
         code, obj = _post(A, f'/api/f01_canary/{act}', body(), token)
         assert code == 401 and obj['ok'] is False
     assert snap(e) == before and FC.CANARY_KEY not in e.S
@@ -106,6 +124,13 @@ def test_authenticated_post_stages(api):
     A, e = api
     code, obj = _post(A, '/api/f01_canary/stage', body(), A.TOKEN)
     assert code == 200 and obj['ok'] and e.S[FC.CANARY_KEY]['start_utc'] == iso(START)
+
+
+def test_stage_canonicalizes_an_integer_authorization_id_before_writing(api):
+    A, e = api
+    out = A.handle('/api/f01_canary/stage', body(auth=6599999444))
+    assert out['config']['authorization_comment_id'] == '6599999444'
+    assert e.S[FC.CANARY_KEY]['authorization_comment_id'] == '6599999444'
 
 
 # ------------------------------------------------------------------ one-time packaged-pins recovery (#254)
@@ -139,6 +164,14 @@ def test_recover_stage_replaces_failed_stage_atomically_and_preserves_everything
     disk = json.load(open(e.F['settings'], encoding='utf-8'))
     assert disk[FC.CANARY_KEY] == out['config'] and disk[FA.RECOVERY_KEY] == [audit]
     refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'does not match')
+
+
+def test_recover_stage_canonicalizes_an_integer_authorization_id(api):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    out = A.handle('/api/f01_canary/recover_stage', recovery_body(old_hash, auth=6525193555))
+    assert out['config']['authorization_comment_id'] == '6525193555'
+    assert out['audit']['new_authorization_comment_id'] == '6525193555'
 
 
 @pytest.mark.parametrize('env', ['live', E.MAINNET, None, 'https://example.invalid'])
@@ -238,6 +271,300 @@ def test_recover_stage_save_failure_restores_all_three_settings_subtrees(api, mo
     with pytest.raises(OSError, match='disk full'):
         A.handle('/api/f01_canary/recover_stage', recovery_body(old_hash))
     assert (snap(e), (e.S[FC.CANARY_KEY], e.S[FA.PREFLIGHT_KEY], e.S[FA.RECOVERY_KEY])) == before
+
+
+# ------------------------------------------------------------------ bounded rearm after an activated stage was later switched OFF
+def _expired_pass_stage(A, e, monkeypatch):
+    old = A.handle('/api/f01_canary/stage', body())
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert A.handle('/api/f01_canary/enable', {})['enabled']
+    ns = copy.deepcopy(e.S); FA._slot(ns)['enabled'] = False; e.commit_settings(ns)
+    now_at(monkeypatch, START + timedelta(hours=1))
+    return old['config_sha256']
+
+
+def test_rearm_replaces_an_expired_pass_stage_but_never_enables(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    old_cfg = copy.deepcopy(e.S[FC.CANARY_KEY])
+    old_extract = os.path.join(old_cfg['cohort_dir'], 'extracts', 'preflight',
+                               f"{e.S[FA.PREFLIGHT_KEY]['extract_sha256']}.json")
+
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash))
+
+    assert out['rearmed'] and out['config_sha256'] != old_hash
+    assert FA.PREFLIGHT_KEY not in e.S and slot(e, F01)['enabled'] is False
+    assert os.path.isfile(old_extract)                                      # old cohort is preserved
+    assert e.S[FA.REARM_KEY] == [out['audit']]
+    assert e.S[FA.REARM_CHAIN_KEY] == out['audit_chain']
+    assert out['audit']['audit_sha256'] == FA._signed(out['audit'], 'audit_sha256')
+    assert out['audit_chain']['head_sha256'] == out['audit']['audit_sha256']
+    assert out['audit']['old_config_sha256'] == old_hash
+    assert out['audit']['new_config_sha256'] == out['config_sha256']
+    assert out['audit']['reason'] == 'owner_authorized_rearm_after_disable'
+    assert json.load(open(e.F['settings'], encoding='utf-8'))[FA.REARM_KEY] == [out['audit']]
+    with pytest.raises(ValueError, match='no PASS preflight'):
+        A.handle('/api/f01_canary/rearm', rearm_body(out['config_sha256'],
+                 auth='6599999002', cohort_dir=CD[0] + '_twice', start=START + timedelta(hours=6)))
+
+
+def test_rearm_canonicalizes_an_integer_authorization_in_config_and_audit(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, auth=6599999445))
+    assert out['config']['authorization_comment_id'] == '6599999445'
+    assert out['audit']['new_authorization_comment_id'] == '6599999445'
+
+
+@pytest.mark.parametrize('failure', ['enabled', 'no_pass', 'missing_extract', 'family_lot', 'f02_on', 'pending_cost'])
+def test_rearm_fails_closed_unless_old_stage_and_candidate_boundary_are_clean(api, monkeypatch, failure):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    if failure == 'enabled':
+        ns = copy.deepcopy(e.S); FA._slot(ns)['enabled'] = True; e.commit_settings(ns)
+    elif failure == 'no_pass':
+        ns = copy.deepcopy(e.S); ns[FA.PREFLIGHT_KEY]['passed'] = False; e.commit_settings(ns)
+    elif failure == 'missing_extract':
+        os.remove(os.path.join(e.S[FC.CANARY_KEY]['cohort_dir'], 'extracts', 'preflight',
+                               f"{e.S[FA.PREFLIGHT_KEY]['extract_sha256']}.json"))
+    elif failure == 'family_lot':
+        e.state['lots'] = {'x': {'sleeve': F01, 'symbol': 'BTCUSDT'}}
+    elif failure == 'f02_on':
+        slot(e, F02)['enabled'] = True
+    else:
+        e.state[E.CANDIDATE_PENDING_KEY] = {'x': {'sleeve': F01, 'symbol': 'BTCUSDT'}}
+    before = snap(e)
+    with pytest.raises(ValueError, match='enabled|PASS preflight|extract|clean candidate boundary'):
+        A.handle('/api/f01_canary/rearm', rearm_body(old_hash))
+    assert snap(e) == before
+
+
+def test_rearm_requires_new_authorization_directory_and_future_start(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    cases = [
+        (dict(auth=e.S[FC.CANARY_KEY]['authorization_comment_id']), 'never-before-used Codex authorization'),
+        (dict(cohort_dir=e.S[FC.CANARY_KEY]['cohort_dir']), 'never-before-used cohort directory'),
+        (dict(start=START), 'strictly in the future'),
+    ]
+    for change, match in cases:
+        refused(A, e, '/api/f01_canary/rearm', rearm_body(old_hash, **change), match)
+
+
+def test_rearm_refuses_a_malformed_audit_and_save_failure_is_atomic(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    ns = copy.deepcopy(e.S); ns[FA.REARM_KEY] = {'not': 'append-only'}; e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(old_hash), 'audit is malformed')
+
+    ns = copy.deepcopy(e.S); ns.pop(FA.REARM_KEY); e.commit_settings(ns)
+    before = snap(e), copy.deepcopy(e.S)
+    monkeypatch.setattr(e, '_save_safe', lambda *_, **__: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'):
+        A.handle('/api/f01_canary/rearm', rearm_body(old_hash))
+    assert (snap(e), e.S) == before
+
+
+def test_an_expired_pass_that_was_never_enabled_cannot_rearm(api, monkeypatch):
+    A, e = api
+    old = A.handle('/api/f01_canary/stage', body())
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    now_at(monkeypatch, START + timedelta(hours=1))
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(old['config_sha256']),
+            'no durable proof.*actually enabled then disabled')
+
+
+def _next_rearm(A, e, monkeypatch, old_hash, n):
+    start = START + timedelta(hours=4 * n)
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=start, auth=f'65999990{n:02d}',
+                                                       cohort_dir=CD[0] + f'_rearmed_{n}'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert A.handle('/api/f01_canary/enable', {})['enabled']
+    ns = copy.deepcopy(e.S); FA._slot(ns)['enabled'] = False; e.commit_settings(ns)
+    now_at(monkeypatch, start + timedelta(hours=1))
+    return out
+
+
+def test_rearm_never_reuses_any_historical_authorization_or_cohort_directory(api, monkeypatch):
+    A, e = api
+    original_cfg = None
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    original_cfg = copy.deepcopy(e.S[FC.CANARY_KEY])
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(first['config_sha256'], start=START + timedelta(hours=8),
+            auth=original_cfg['authorization_comment_id'], cohort_dir=CD[0] + '_never_used'),
+            'never-before-used Codex authorization')
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(first['config_sha256'], start=START + timedelta(hours=8),
+            auth='6599999099', cohort_dir=original_cfg['cohort_dir']), 'never-before-used cohort directory')
+
+
+@pytest.mark.parametrize('field,match', [
+    ('new_authorization_comment_id', 'reuses a historical authorization'),
+    ('new_cohort_dir', 'reuses a historical cohort'),
+])
+def test_full_chain_validation_rejects_historical_reuse_even_with_rehashed_rows(api, monkeypatch, field, match):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    second = _next_rearm(A, e, monkeypatch, first['config_sha256'], 2)
+    ns = copy.deepcopy(e.S)
+    row = ns[FA.REARM_KEY][1]
+    if field.endswith('authorization_comment_id'):
+        row[field] = ns[FA.REARM_KEY][0]['old_authorization_comment_id']
+    else:
+        used = ns[FA.REARM_KEY][0]['old_cohort_dir']
+        row[field] = os.path.join(os.path.dirname(used), 'alias_component', '..', os.path.basename(used))
+    row['audit_sha256'] = FA._signed(row, 'audit_sha256')
+    ns[FA.REARM_CHAIN_KEY]['head_sha256'] = row['audit_sha256']
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(second['config_sha256'], start=START + timedelta(hours=12),
+            auth='6599999097', cohort_dir=CD[0] + '_rearmed_4'), match)
+
+
+def test_enable_validates_the_whole_activation_chain_before_appending(api):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    ns = copy.deepcopy(e.S); ns[FA.ACTIVATION_KEY] = [None]; e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit is malformed')
+    assert slot(e, F01)['enabled'] is False
+
+
+def _third_stage_ready(A, e, monkeypatch):
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    second = _next_rearm(A, e, monkeypatch, first['config_sha256'], 2)
+    third = A.handle('/api/f01_canary/rearm', rearm_body(second['config_sha256'], start=START + timedelta(hours=12),
+                     auth='6599999096', cohort_dir=CD[0] + '_rearmed_5'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert slot(e, F01)['enabled'] is False and len(e.S[FA.ACTIVATION_KEY]) == 3
+    return third
+
+
+@pytest.mark.parametrize('damage', ['delete_key', 'truncate', 'reorder', 'rewrite', 'extra_field', 'summary'])
+def test_enable_rejects_activation_history_deletion_reorder_rewrite_or_summary_corruption(api, monkeypatch, damage):
+    A, e = api
+    _third_stage_ready(A, e, monkeypatch)
+    ns = copy.deepcopy(e.S)
+    if damage == 'delete_key':
+        ns.pop(FA.ACTIVATION_KEY)
+    elif damage == 'truncate':
+        ns[FA.ACTIVATION_KEY].pop()
+    elif damage == 'reorder':
+        ns[FA.ACTIVATION_KEY].reverse()
+    elif damage == 'rewrite':
+        ns[FA.ACTIVATION_KEY][0]['enabled_at_utc'] = iso(START - timedelta(minutes=1))
+    elif damage == 'extra_field':
+        ns[FA.ACTIVATION_KEY][0]['unexpected'] = True
+    else:
+        ns[FA.ACTIVATION_CHAIN_KEY]['count'] = 1
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit.*malformed|activation audit.*invalid')
+    assert slot(e, F01)['enabled'] is False
+
+
+def test_old_enable_disable_rearm_pass_then_deleted_activation_ledger_cannot_enable(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+                     auth='6599999050', cohort_dir=CD[0] + '_deleted_ledger'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert first['config_sha256'] == e.S[FA.ACTIVATION_CHAIN_KEY]['staged_config_sha256']
+    ns = copy.deepcopy(e.S); ns[FA.ACTIVATION_KEY] = []; e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit summary is invalid')
+
+
+def test_preexisting_canary_enabled_backup_migrates_to_a_nonresettable_summary(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    legacy_enabled = json.load(open(e.F['settings'] + '.bak', encoding='utf-8'))
+    legacy_enabled.pop(FA.ACTIVATION_KEY, None); legacy_enabled.pop(FA.ACTIVATION_CHAIN_KEY, None)
+    ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
+    with open(e.F['settings'] + '.bak', 'w', encoding='utf-8') as f: json.dump(legacy_enabled, f)
+    shutil.rmtree(FA._anchor_dir(e))                         # the deployed first-canary build predated external anchors
+
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+                   auth='6599999051', cohort_dir=CD[0] + '_legacy_migration'))
+    summary = e.S[FA.ACTIVATION_CHAIN_KEY]
+    assert summary['count'] == 0 and summary['head_sha256'] == FA.HEX0
+    assert summary['migration_proof_sha256'] != FA.HEX0
+    assert summary['staged_config_sha256'] == out['config_sha256']
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert A.handle('/api/f01_canary/enable', {})['enabled']
+    assert e.S[FA.ACTIVATION_CHAIN_KEY]['count'] == 1
+
+
+def test_forged_activation_summary_and_truncated_ledger_disagree_with_rearm_anchor(api, monkeypatch):
+    A, e = api
+    _third_stage_ready(A, e, monkeypatch)
+    ns = copy.deepcopy(e.S)
+    ns[FA.ACTIVATION_KEY].pop()
+    ns[FA.ACTIVATION_CHAIN_KEY]['count'] = len(ns[FA.ACTIVATION_KEY])
+    ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256'] = ns[FA.ACTIVATION_KEY][-1]['event_sha256']
+    ns[FA.REARM_CHAIN_KEY]['activation_count'] = ns[FA.ACTIVATION_CHAIN_KEY]['count']
+    ns[FA.REARM_CHAIN_KEY]['activation_head_sha256'] = ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256']
+    ns[FA.REARM_KEY][-1]['activation_count'] = ns[FA.ACTIVATION_CHAIN_KEY]['count']
+    ns[FA.REARM_KEY][-1]['activation_head_sha256'] = ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256']
+    ns[FA.REARM_KEY][-1]['audit_sha256'] = FA._signed(ns[FA.REARM_KEY][-1], 'audit_sha256')
+    ns[FA.REARM_CHAIN_KEY]['head_sha256'] = ns[FA.REARM_KEY][-1]['audit_sha256']
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'external F01 activation anchor disagrees')
+
+
+def test_deleting_both_activation_keys_after_rearm_still_fails_closed(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+             auth='6599999052', cohort_dir=CD[0] + '_delete_both'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit summary is missing')
+
+
+def test_arbitrary_legacy_migration_hash_is_rejected_even_if_both_activation_summaries_agree(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    legacy_enabled = json.load(open(e.F['settings'] + '.bak', encoding='utf-8'))
+    legacy_enabled.pop(FA.ACTIVATION_KEY, None); legacy_enabled.pop(FA.ACTIVATION_CHAIN_KEY, None)
+    ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
+    with open(e.F['settings'] + '.bak', 'w', encoding='utf-8') as f: json.dump(legacy_enabled, f)
+    shutil.rmtree(FA._anchor_dir(e))
+    A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+             auth='6599999053', cohort_dir=CD[0] + '_bad_migration'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    ns = copy.deepcopy(e.S)
+    ns[FA.ACTIVATION_CHAIN_KEY]['migration_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_CHAIN_KEY]['activation_migration_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_KEY][0]['activation_migration_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_KEY][0]['activation_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_KEY][0]['audit_sha256'] = FA._signed(ns[FA.REARM_KEY][0], 'audit_sha256')
+    ns[FA.REARM_CHAIN_KEY]['head_sha256'] = ns[FA.REARM_KEY][0]['audit_sha256']
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'external F01 activation anchor disagrees')
+
+
+@pytest.mark.parametrize('damage', ['deleted', 'reordered', 'rewritten', 'extra_field', 'summary', 'current_link'])
+def test_rearm_refuses_deleted_reordered_rewritten_or_unlinked_audit_history(api, monkeypatch, damage):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    second = _next_rearm(A, e, monkeypatch, first['config_sha256'], 2)
+    ns = copy.deepcopy(e.S)
+    if damage == 'deleted':
+        ns[FA.REARM_KEY].pop(0)
+    elif damage == 'reordered':
+        ns[FA.REARM_KEY].reverse()
+    elif damage == 'rewritten':
+        ns[FA.REARM_KEY][0]['new_authorization_comment_id'] = '6599999191'
+    elif damage == 'extra_field':
+        ns[FA.REARM_KEY][0]['unexpected'] = True
+    elif damage == 'summary':
+        ns[FA.REARM_CHAIN_KEY]['count'] = 1
+    else:
+        ns[FA.REARM_CHAIN_KEY]['current_config_sha256'] = 'f' * 64
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(second['config_sha256'], start=START + timedelta(hours=12),
+            auth='6599999098', cohort_dir=CD[0] + '_rearmed_3'), 'audit.*invalid|audit.*link')
 
 
 def test_installer_recipe_builds_the_exact_f01_frozen_layout_and_every_input_fails_closed_if_changed(tmp_path):
@@ -533,6 +860,195 @@ def test_a_failed_save_rolls_back(api, monkeypatch, act):
     with pytest.raises(OSError):
         A.handle(f'/api/f01_canary/{act}', body() if act == 'stage' else {})
     assert snap(e) == before and slot(e, F01)['enabled'] is False
+
+
+def test_enable_settings_failure_removes_prepare_and_retry_succeeds(api, monkeypatch):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']
+    before, save = snap(e), e._save_safe
+    monkeypatch.setattr(e, '_save_safe', lambda *a, **k: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'): A.handle('/api/f01_canary/enable', {})
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
+    monkeypatch.setattr(e, '_save_safe', save)
+    assert A.handle('/api/f01_canary/enable', {})['enabled'] and slot(e, F01)['enabled'] is True
+
+
+def test_rearm_settings_failure_removes_prepare_and_retry_succeeds(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    before, save = snap(e), e._save_safe
+    monkeypatch.setattr(e, '_save_safe', lambda *a, **k: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'): A.handle('/api/f01_canary/rearm', req)
+    assert snap(e) == before
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
+    monkeypatch.setattr(e, '_save_safe', save)
+    assert A.handle('/api/f01_canary/rearm', req)['rearmed']
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_external_prepare_failure_never_changes_settings_and_retry_succeeds(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    before, prepare = snap(e), FA._prepare_external_anchor
+    monkeypatch.setattr(FA, '_prepare_external_anchor', lambda *a, **k: (_ for _ in ()).throw(OSError('anchor disk full')))
+    with pytest.raises(OSError, match='anchor disk full'): A.handle(f'/api/f01_canary/{act}', req)
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    monkeypatch.setattr(FA, '_prepare_external_anchor', prepare)
+    assert A.handle(f'/api/f01_canary/{act}', req)['rearmed' if act == 'rearm' else 'enabled']
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_crash_after_settings_commit_reconciles_pending_anchor_on_retry(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    promote = FA._promote_external_anchor
+    monkeypatch.setattr(FA, '_promote_external_anchor', lambda *a, **k: (_ for _ in ()).throw(OSError('crash before promote')))
+    with pytest.raises(OSError, match='crash before promote'): A.handle(f'/api/f01_canary/{act}', req)
+    assert os.path.isdir(os.path.join(FA._anchor_dir(e), 'pending'))
+    monkeypatch.setattr(FA, '_promote_external_anchor', promote)
+    out = A.handle(f'/api/f01_canary/{act}', req)
+    assert out.get('recovered') is True and out['rearmed' if act == 'rearm' else 'enabled'] is True
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
+
+
+def test_corrupt_named_pending_after_committed_enable_fails_closed_without_discarding_evidence(api, monkeypatch):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']
+    promote = FA._promote_external_anchor
+    monkeypatch.setattr(FA, '_promote_external_anchor',
+                        lambda *a, **k: (_ for _ in ()).throw(OSError('crash before promote')))
+    with pytest.raises(OSError, match='crash before promote'):
+        A.handle('/api/f01_canary/enable', {})
+    pending = os.path.join(FA._anchor_dir(e), 'pending')
+    (name,) = os.listdir(pending)
+    with open(os.path.join(pending, name), 'wb') as f: f.write(b'{"corrupt-after-commit"')
+    committed = snap(e)
+    monkeypatch.setattr(FA, '_promote_external_anchor', promote)
+
+    with pytest.raises(ValueError, match='corrupt and not provably pre-commit'):
+        A.handle('/api/f01_canary/enable', {})
+
+    assert snap(e) == committed and slot(e, F01)['enabled'] is True
+    assert os.path.exists(os.path.join(pending, name))
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'quarantine'))
+    assert not [x for x in os.listdir(FA._anchor_dir(e)) if x.endswith('.json')]
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_exact_promoted_anchor_replay_is_discarded_before_valid_retry(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        _enabled(A)
+        A.handle('/api/sleeves', dict(sleeves=_post_card(e, enabled=False)))
+        req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    root = FA._anchor_dir(e)
+    (name,) = [x for x in os.listdir(root) if x.endswith('.json')]
+    with open(os.path.join(root, name), 'rb') as f: raw = f.read()
+    pending = os.path.join(root, 'pending'); os.makedirs(pending, exist_ok=True)
+    with open(os.path.join(pending, name), 'wb') as f: f.write(raw)
+
+    out = A.handle(f'/api/f01_canary/{act}', req)
+
+    assert out['rearmed' if act == 'rearm' else 'enabled'] is True
+    assert slot(e, F01)['enabled'] is (act == 'enable')
+    assert not os.path.exists(os.path.join(pending, name))
+    assert os.path.exists(os.path.join(root, 'quarantine', name + '.precommit'))
+    assert len([x for x in os.listdir(root) if x.endswith('.json')]) == 2
+
+
+def test_nonidentical_promoted_anchor_replay_fails_closed_and_is_preserved(api):
+    A, e = api
+    _enabled(A); A.handle('/api/sleeves', dict(sleeves=_post_card(e, enabled=False)))
+    root = FA._anchor_dir(e); (name,) = [x for x in os.listdir(root) if x.endswith('.json')]
+    pending = os.path.join(root, 'pending'); os.makedirs(pending, exist_ok=True)
+    with open(os.path.join(pending, name), 'wb') as f: f.write(b'{"not-the-promoted-record"')
+    before = snap(e)
+
+    with pytest.raises(ValueError, match='replay is ambiguous'):
+        A.handle('/api/f01_canary/enable', {})
+
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    assert os.path.exists(os.path.join(pending, name))
+    assert not os.path.exists(os.path.join(root, 'quarantine'))
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+@pytest.mark.parametrize('artifact', ['named', 'temp'])
+def test_torn_precommit_prepare_is_quarantined_and_valid_retry_proceeds(api, monkeypatch, act, artifact):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    pending = os.path.join(FA._anchor_dir(e), 'pending'); os.makedirs(pending, exist_ok=True)
+    name = ('a' * 64 + '.json') if artifact == 'named' else '.prepare-interrupted.tmp'
+    with open(os.path.join(pending, name), 'wb') as f: f.write(b'{"truncated"')
+
+    out = A.handle(f'/api/f01_canary/{act}', req)
+
+    assert out['rearmed' if act == 'rearm' else 'enabled'] is True
+    assert slot(e, F01)['enabled'] is (act == 'enable')
+    quarantine = os.path.join(FA._anchor_dir(e), 'quarantine')
+    assert any(x.startswith(name) for x in os.listdir(quarantine))
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_atomic_prepare_replace_failure_leaves_no_transaction_and_retry_succeeds(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    before, replace, failed = snap(e), os.replace, [False]
+
+    def fail_prepare_once(src, dst):
+        if not failed[0] and os.path.basename(src).startswith('.prepare-') and dst.endswith('.json'):
+            failed[0] = True
+            raise OSError('crash during atomic prepare')
+        return replace(src, dst)
+
+    monkeypatch.setattr(os, 'replace', fail_prepare_once)
+    with pytest.raises(OSError, match='crash during atomic prepare'):
+        A.handle(f'/api/f01_canary/{act}', req)
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    pending = os.path.join(FA._anchor_dir(e), 'pending')
+    assert not os.path.isdir(pending) or not os.listdir(pending)
+    out = A.handle(f'/api/f01_canary/{act}', req)
+    assert out['rearmed' if act == 'rearm' else 'enabled'] is True
+
+
+@pytest.mark.parametrize('attack', ['sequence', 'predecessor', 'disabled_post_state'])
+def test_self_hashed_hostile_pending_transaction_is_never_promoted_or_recovered(api, attack):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']
+    before = snap(e); cfg_hash = FA._sha(e.S[FC.CANARY_KEY])
+    rec = dict(version=1, sequence=1, prev_anchor_sha256=FA.HEX0, event='enable',
+               staged_config_sha256=cfg_hash, activation_genesis_config_sha256=cfg_hash,
+               activation_count=1, activation_head_sha256='b' * 64,
+               activation_migration_proof_sha256=FA.HEX0, rearm_head_sha256=FA.HEX0,
+               pre_state_sha256='c' * 64, post_state_sha256=FA._anchor_state_sha(e.S),
+               at_utc=iso(NOW))
+    if attack == 'sequence': rec['sequence'] = 999
+    if attack == 'predecessor': rec['prev_anchor_sha256'] = 'd' * 64
+    raw = FC.canonical(rec); pending = os.path.join(FA._anchor_dir(e), 'pending'); os.makedirs(pending, exist_ok=True)
+    name = FC.sha256(raw) + '.json'
+    with open(os.path.join(pending, name), 'wb') as f: f.write(raw)
+
+    with pytest.raises(ValueError, match='refused|invalid'):
+        A.handle('/api/f01_canary/enable', {})
+
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    assert os.path.exists(os.path.join(pending, name))
+    assert not [x for x in os.listdir(FA._anchor_dir(e)) if x.endswith('.json')]
 
 
 # ------------------------------------------------------------------ no profile (preset) change while staged
