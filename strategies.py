@@ -683,6 +683,34 @@ STRATEGIES['rank_breadth_reversal_4h'] = dict(
     mgmt=dict(stop_atr=1.5, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=18))
 
 
+# ASS-4H complements slow trend rather than chasing it: enter only after a
+# completed opposite-direction ATR shock is reclaimed on the following bar.
+ASS4H = dict(shock_atr=1.5, volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_atr_shock_snapback_4h(d, p, ctx):
+    body = d.c - d.o
+    shock = float(p['shock_atr'])
+    down_shock = body.shift() <= -shock * d.atr.shift()
+    up_shock = body.shift() >= shock * d.atr.shift()
+    midpoint = (d.o.shift() + d.c.shift()) / 2
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(42, min_periods=42).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    uptrend, downtrend = d.e50 > d.e200, d.e50 < d.e200
+    le = uptrend & uptrend.shift(fill_value=False) & down_shock & (d.c > midpoint) & (d.c > d.o) & vol_ok & cost_ok
+    se = downtrend & downtrend.shift(fill_value=False) & up_shock & (d.c < midpoint) & (d.c < d.o) & vol_ok & cost_ok
+    return dict(le=le, se=se, lx=(d.c >= d.e20) | ~uptrend, sx=(d.c <= d.e20) | ~downtrend)
+
+
+STRATEGIES['atr_shock_snapback_4h'] = dict(
+    name='[RESEARCH] ATR shock snapback 4h', style='mean_reversion',
+    fn=sig_atr_shock_snapback_4h, sides='both', tf='4h', research_only=True,
+    reentry_lock=True, params=ASS4H,
+    desc='One-bar 1.5 ATR counter-trend shock followed by a midpoint reclaim inside EMA50/200 trend.',
+    mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
