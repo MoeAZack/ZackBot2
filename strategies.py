@@ -926,6 +926,32 @@ STRATEGIES['btc_orderflow_leadlag_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+# LTI-1H uses archived trade counts to distinguish large-ticket participation
+# from ordinary volume. It follows only a large price impulse with a large
+# average quote notional per trade relative to its prior seven-day baseline.
+LTI1H = dict(notional_multiple=2.0, move_threshold=0.006, baseline_hours=168, cost_multiple=5.0)
+
+
+def sig_large_trade_impulse_1h(d, p, ctx):
+    avg_trade = pd.Series(ctx['avg_trade_notional'], index=d.index, dtype=float)
+    baseline = avg_trade.rolling(int(p['baseline_hours']), min_periods=int(p['baseline_hours'])).median().shift()
+    large = avg_trade >= float(p['notional_multiple']) * baseline
+    move = d.c / d.o - 1.0
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['move_threshold']); never = pd.Series(False, index=d.index)
+    return dict(le=large & cost_ok & (move >= threshold),
+                se=large & cost_ok & (move <= -threshold), lx=never, sx=never)
+
+
+STRATEGIES['large_trade_impulse_1h'] = dict(
+    name='[RESEARCH] Large-trade impulse 1h', style='informed_flow_continuation',
+    fn=sig_large_trade_impulse_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=LTI1H,
+    desc='Follow a large directional hour only when average archived trade notional is anomalous.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
