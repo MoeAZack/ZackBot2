@@ -547,6 +547,24 @@ def build_context(dfs, btc_key='BTCUSDT'):
     r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
     r7 = r42.rank(axis=1, ascending=False)
     r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
+    # DSR-1H research context: causal 30-day beta to BTC, six-hour residual
+    # displacement, then cross-sectional robust z and dispersion state.  This is
+    # intentionally not EDGE-02's per-symbol 15m time-series residual z-score.
+    px = pd.DataFrame({s: pd.Series(d.c.values, index=d.t) for s, d in dfs.items()})
+    lr = np.log(px.where(px > 0)).diff()
+    br = lr[btc_key]
+    bvar = br.rolling(720, min_periods=576).var().shift()
+    residual = {}
+    for s in lr:
+        beta = lr[s].rolling(720, min_periods=576).cov(br).shift() / bvar.replace(0, np.nan)
+        residual[s] = lr[s] - beta * br
+    residual[btc_key] = pd.Series(np.nan, index=lr.index)  # benchmark, never a target
+    q6 = pd.DataFrame(residual).rolling(6, min_periods=6).sum()
+    med = q6.median(axis=1, skipna=True)
+    mad = q6.sub(med, axis=0).abs().median(axis=1, skipna=True)
+    dz = q6.sub(med, axis=0).div((1.4826 * mad).replace(0, np.nan), axis=0)
+    dn = q6.notna().sum(axis=1)
+    high_disp = (mad > mad.rolling(168, min_periods=120).quantile(.75).shift()) & (dn >= 8)
     out = {}
     for s, d in dfs.items():
         t = d.t
@@ -554,6 +572,9 @@ def build_context(dfs, btc_key='BTCUSDT'):
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
+                      dsr_z=pd.Series(dz[s].reindex(t).values, index=d.index),
+                      dsr_high=pd.Series(high_disp.reindex(t).values, index=d.index).fillna(False).astype(bool),
+                      dsr_n=pd.Series(dn.reindex(t).values, index=d.index).fillna(0),
                       n_symbols=len(dfs))
     return out
 
@@ -807,4 +828,43 @@ STRATEGIES['fib_pullback_02'] = dict(
          'a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a '
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)
+
+
+# DSR-1H Stage A (research-only): cross-sectional BTC-neutral residual
+# dispersion shock and recovery, with liquidity and explicit cost admission.
+DSR1H = dict(entry_z=2.50, recovery_floor_z=0.50, adverse_z=3.50,
+             liquidity_bars=24, liquidity_x=0.80,
+             stop_atr=1.50, cost_x=5.0)
+
+
+def sig_dispersion_reversion_1h(d, p, ctx):
+    """DSR-1H: enter recovery from a robust cross-sectional residual extreme."""
+    q = dict(DSR1H); q.update(p or {})
+    z = ctx['dsr_z'].astype(float)
+    enough = ctx['dsr_n'] >= 8
+    event = ctx['dsr_high'].shift(fill_value=False)
+    long_recovery = (z.shift() <= -float(q['entry_z'])) & (z > -float(q['entry_z'])) & (z <= -float(q['recovery_floor_z']))
+    short_recovery = (z.shift() >= float(q['entry_z'])) & (z < float(q['entry_z'])) & (z >= float(q['recovery_floor_z']))
+    notional = d.c.astype(float) * d.v.astype(float)
+    prior = notional.rolling(int(q['liquidity_bars']), min_periods=int(q['liquidity_bars'])).median().shift()
+    liquid = (notional > 0) & prior.gt(0) & (notional >= float(q['liquidity_x']) * prior)
+    cost = float(q['stop_atr']) * d.atr >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * d.c
+    le = enough & event & long_recovery & (d.c > d.o) & liquid & cost
+    se = enough & event & short_recovery & (d.c < d.o) & liquid & cost
+    out = _one_side(dict(le=le, se=se,
+                         lx=(z >= 0) | (z <= -float(q['adverse_z'])),
+                         sx=(z <= 0) | (z >= float(q['adverse_z']))))
+    out['atr'] = d.atr.astype(float)
+    return out
+
+
+STRATEGIES['dispersion_reversion_1h'] = dict(
+    name='[RESEARCH] BTC-neutral dispersion reversion L/S 1h', style='balanced',
+    fn=sig_dispersion_reversion_1h, sides='both', tf='1h', research_only=True,
+    params=dict(DSR1H), reentry_lock=True,
+    desc='RESEARCH-ONLY (DSR-1H): cross-sectional robust extreme in a six-hour BTC-neutral residual, entered only '
+         'on recovery during elevated dispersion with liquidity and cost gates. Excluded from PAPER.',
+    mgmt=dict(stop_atr=DSR1H['stop_atr'], tp1_r=0.8, tp1_frac=0.5,
+              be_r=0.8, tp_r=1.5, max_bars=12),
 )
