@@ -808,3 +808,67 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# MBP-1H Stage A (research-only): a completed 4h symbol breakout arms a
+# bounded window for a separate 1h pullback-hold and continuation candle.
+MBP1H = dict(breakout_bars_4h=20, arm_hours=16, pullback_atr=0.50,
+             volume_bars=20, volume_x=1.25, body_atr=0.25,
+             stop_atr=1.50, cost_x=5.0)
+
+
+def mbp1h_armed_levels(d, p):
+    """Return causal long/short 4h breakout levels aligned to 1h rows."""
+    n, arm = int(p['breakout_bars_4h']), int(p['arm_hours'])
+    if n < 2 or arm < 1:
+        raise ValueError('mtf_breakout_pullback_1h: invalid 4h lookback/arm')
+    t = pd.to_datetime(d.t, utc=True)
+    block = pd.Series(t.dt.floor('4h').to_numpy(), index=d.index)
+    frame = pd.DataFrame({'block': block, 'pos': np.arange(len(d)),
+                          'o': d.o.values, 'h': d.h.values, 'l': d.l.values, 'c': d.c.values})
+    g = frame.groupby('block', sort=True)
+    b4 = g.agg(pos=('pos', 'last'), count=('pos', 'size'), o=('o', 'first'),
+               h=('h', 'max'), l=('l', 'min'), c=('c', 'last'))
+    b4 = b4[b4['count'] == 4].copy()
+    prior_hi = b4.h.rolling(n, min_periods=n).max().shift()
+    prior_lo = b4.l.rolling(n, min_periods=n).min().shift()
+    e20, e50 = ema(b4.c, 20), ema(b4.c, 50)
+    ev_l = (b4.c > prior_hi) & (b4.c.shift() <= prior_hi.shift()) & (e20 > e50)
+    ev_s = (b4.c < prior_lo) & (b4.c.shift() >= prior_lo.shift()) & (e20 < e50)
+    ll, ss = np.full(len(d), np.nan), np.full(len(d), np.nan)
+    for row, level in zip(b4.loc[ev_l, 'pos'].astype(int), prior_hi[ev_l]):
+        ll[row:min(len(d), row + arm + 1)] = float(level)
+    for row, level in zip(b4.loc[ev_s, 'pos'].astype(int), prior_lo[ev_s]):
+        ss[row:min(len(d), row + arm + 1)] = float(level)
+    return pd.Series(ll, index=d.index), pd.Series(ss, index=d.index)
+
+
+def sig_mtf_breakout_pullback_1h(d, p, ctx):
+    """MBP-1H: 4h breakout -> 1h retracement hold -> 1h continuation."""
+    q = dict(MBP1H); q.update(p or {})
+    level_l, level_s = mbp1h_armed_levels(d, q)
+    a, c, v = d.atr.astype(float), d.c.astype(float), d.v.astype(float)
+    prior_v = v.rolling(int(q['volume_bars']), min_periods=int(q['volume_bars'])).median().shift()
+    volume = (v > 0) & prior_v.gt(0) & (v >= float(q['volume_x']) * prior_v)
+    pull_l = (d.l.shift() <= level_l.shift() + float(q['pullback_atr']) * a.shift()) & (c.shift() >= level_l.shift())
+    pull_s = (d.h.shift() >= level_s.shift() - float(q['pullback_atr']) * a.shift()) & (c.shift() <= level_s.shift())
+    confirm_l = (c > d.h.shift()) & (c > d.o) & (c - d.o >= float(q['body_atr']) * a)
+    confirm_s = (c < d.l.shift()) & (c < d.o) & (d.o - c >= float(q['body_atr']) * a)
+    local_l, local_s = (d.e20 > d.e50) & (c > d.e50), (d.e20 < d.e50) & (c < d.e50)
+    cost = float(q['stop_atr']) * a >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * c
+    le = level_l.notna() & pull_l & confirm_l & local_l & volume & cost
+    se = level_s.notna() & pull_s & confirm_s & local_s & volume & cost
+    out = _one_side(dict(le=le, se=se, lx=(c < level_l) | ~local_l, sx=(c > level_s) | ~local_s))
+    out['atr'] = a
+    return out
+
+
+STRATEGIES['mtf_breakout_pullback_1h'] = dict(
+    name='[RESEARCH] 4h breakout + 1h pullback continuation L/S', style='balanced',
+    fn=sig_mtf_breakout_pullback_1h, sides='both', tf='1h', research_only=True,
+    params=dict(MBP1H), reentry_lock=True,
+    desc='RESEARCH-ONLY (MBP-1H): completed 4h symbol breakout arms a limited window; a separate 1h retracement must '
+         'hold the level and a later volume-confirmed candle resumes trend. Excluded from PAPER.',
+    mgmt=dict(stop_atr=MBP1H['stop_atr'], tp1_r=1.0, tp1_frac=0.5,
+              be_r=1.0, tp_r=2.5, max_bars=16),
+)
