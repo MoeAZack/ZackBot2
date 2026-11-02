@@ -899,6 +899,33 @@ STRATEGIES['aggressor_flow_absorption_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
 
 
+# BOL-1H tests delayed cross-asset information diffusion from verified BTC
+# aggressor flow into an alt that remained locally flat during the BTC impulse.
+BOL1H = dict(btc_imbalance=0.15, btc_move=0.006, target_lag_band=0.002, cost_multiple=5.0)
+
+
+def sig_btc_orderflow_leadlag_1h(d, p, ctx):
+    flow = pd.Series(ctx['btc_taker_imbalance'], index=d.index, dtype=float)
+    btc_move = pd.Series(ctx['btc_hour_move'], index=d.index, dtype=float)
+    target_move = d.c / d.o - 1.0
+    lagged = target_move.abs() <= float(p['target_lag_band'])
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    im, mv = float(p['btc_imbalance']), float(p['btc_move'])
+    never = pd.Series(False, index=d.index)
+    return dict(le=lagged & cost_ok & (flow >= im) & (btc_move >= mv),
+                se=lagged & cost_ok & (flow <= -im) & (btc_move <= -mv),
+                lx=never, sx=never)
+
+
+STRATEGIES['btc_orderflow_leadlag_1h'] = dict(
+    name='[RESEARCH] BTC order-flow lead-lag 1h', style='cross_asset_diffusion',
+    fn=sig_btc_orderflow_leadlag_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=BOL1H,
+    desc='Follow verified BTC aggressor-flow impulses only in locally lagging targets.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
