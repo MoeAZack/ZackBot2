@@ -808,3 +808,73 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# VRC-15 Stage A (research-only): intraday continuation after a shallow reset to the
+# UTC-session VWAP.  The benchmark on candle i contains only candles before i, so
+# neither the decision candle nor any later candle can move its own entry threshold.
+VRC15 = dict(session_min_bars=8, vol_median_bars=20, body_atr=0.20,
+             max_deviation_atr=1.0, stop_atr=1.25, cost_x=4.0)
+
+
+def vrc15_session_vwap_before(d):
+    """Return (VWAP-before-this-candle, prior-session-bar count), both causal.
+
+    The session is the UTC calendar day.  Quote volume is reconstructed as
+    typical-price x base volume because the shared strategy frame does not require
+    exchange quote volume.  A non-positive or non-finite volume never contributes.
+    """
+    t = pd.to_datetime(d.t, utc=True)
+    session = pd.Series(t.dt.floor('D').to_numpy(), index=d.index)
+    v = d.v.astype(float).where(np.isfinite(d.v) & (d.v > 0), 0.0)
+    typical = (d.h.astype(float) + d.l.astype(float) + d.c.astype(float)) / 3.0
+    prior_v = v.groupby(session).cumsum() - v
+    prior_pv = (typical * v).groupby(session).cumsum() - typical * v
+    count = v.gt(0).astype(int).groupby(session).cumsum() - v.gt(0).astype(int)
+    return (prior_pv / prior_v.where(prior_v > 0)).replace([np.inf, -np.inf], np.nan), count
+
+
+def sig_vwap_reclaim_15m(d, p, ctx):
+    """VRC-15: symmetric 15m UTC-session VWAP reclaim continuation (research-only).
+
+    Long: EMA20 > EMA50, the prior close is at/below today's VWAP but no more than
+    one ATR below it, then a bullish closed candle reclaims VWAP, closes above the
+    prior high, has a >=0.20 ATR body and >= the prior-20-candle median volume.
+    Short is the exact mirror.  The stop is 1.25 ATR and must be at least four times
+    the modelled round-trip taker fee + slippage.  Exit on a close back through the
+    session VWAP or an EMA20/50 trend flip.  Entries fill next candle in backtests.
+    """
+    q = dict(VRC15); q.update(p or {})
+    n = int(q['vol_median_bars']); min_bars = int(q['session_min_bars'])
+    if n < 1 or min_bars < 1:
+        raise ValueError('vwap_reclaim_15m: session_min_bars and vol_median_bars must be positive')
+    vw, session_count = vrc15_session_vwap_before(d)
+    a, c = d.atr.astype(float), d.c.astype(float)
+    vmed = d.v.astype(float).shift().rolling(n, min_periods=n).median()
+    ready = (session_count >= min_bars) & vw.notna() & a.gt(0) & vmed.gt(0)
+    vol = d.v.astype(float) >= vmed
+    body_l = d.c.astype(float) - d.o.astype(float) >= float(q['body_atr']) * a
+    body_s = d.o.astype(float) - d.c.astype(float) >= float(q['body_atr']) * a
+    rt_cost = 2.0 * (0.0005 + 0.0002)
+    cost = float(q['stop_atr']) * a >= float(q['cost_x']) * rt_cost * c
+    shallow_l = c.shift() >= vw - float(q['max_deviation_atr']) * a
+    shallow_s = c.shift() <= vw + float(q['max_deviation_atr']) * a
+    up, dn = d.e20 > d.e50, d.e20 < d.e50
+    le = (ready & up & (c > d.e50) & (c.shift() <= vw) & (c > vw) &
+          shallow_l & (c > d.h.shift()) & body_l & vol & cost)
+    se = (ready & dn & (c < d.e50) & (c.shift() >= vw) & (c < vw) &
+          shallow_s & (c < d.l.shift()) & body_s & vol & cost)
+    out = _one_side(dict(le=le, se=se, lx=(c < vw) | dn, sx=(c > vw) | up))
+    out['atr'] = a
+    return out
+
+
+STRATEGIES['vwap_reclaim_15m'] = dict(
+    name='[RESEARCH] Session VWAP reclaim continuation L/S 15m', style='aggressive',
+    fn=sig_vwap_reclaim_15m, sides='both', tf='15m', research_only=True,
+    params=dict(VRC15), reentry_lock=8,
+    desc='RESEARCH-ONLY (VRC-15): first measured intraday continuation family. UTC-session VWAP uses prior candles only; '
+         'a shallow trend-aligned reclaim needs prior-high/low, body, volume and explicit cost confirmation. Excluded from PAPER.',
+    mgmt=dict(stop_atr=VRC15['stop_atr'], tp1_r=1.0, tp1_frac=0.5,
+              be_r=1.0, tp_r=1.8, max_bars=16),
+)
