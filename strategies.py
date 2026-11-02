@@ -547,6 +547,28 @@ def build_context(dfs, btc_key='BTCUSDT'):
     r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
     r7 = r42.rank(axis=1, ascending=False)
     r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
+    # XAV-1H research context: 12-bar log-return acceleration versus the preceding
+    # 12 bars, normalised by prior 24-bar volatility.  This ranks a change in
+    # momentum, not EDGE-03's momentum level.  Every term ends on the closed bar.
+    xa = {}
+    for s, d in dfs.items():
+        lc = np.log(d.c.where(d.c > 0))
+        r12 = lc - lc.shift(12)
+        scale = lc.diff().rolling(24, min_periods=24).std().shift()
+        xa[s] = pd.Series(((r12 - r12.shift(12)) / scale.replace(0, np.nan)).values, index=d.t)
+    xa = pd.DataFrame(xa)
+    xa_rank = xa.rank(axis=1, ascending=False)
+    xa_n = xa.notna().sum(axis=1)
+
+    # Causal completed-4h BTC trend built from the supplied lower-timeframe BTC
+    # candles.  A block becomes available only on its fourth closed hourly bar.
+    bt = pd.to_datetime(btc.index, utc=True)
+    block = pd.Series(bt.floor('4h').to_numpy(), index=btc.index)
+    pos = block.groupby(block).cumcount()
+    completed = btc.c.where(pos == 3).dropna()
+    b4e50, b4e200 = ema(completed, 50), ema(completed, 200)
+    b4_bull = ((completed > b4e50) & (b4e50 > b4e200)).reindex(btc.index).ffill().fillna(False)
+    b4_bear = ((completed < b4e50) & (b4e50 < b4e200)).reindex(btc.index).ffill().fillna(False)
     out = {}
     for s, d in dfs.items():
         t = d.t
@@ -554,6 +576,11 @@ def build_context(dfs, btc_key='BTCUSDT'):
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
+                      accel_rank=pd.Series(xa_rank[s].reindex(t).values, index=d.index).fillna(999),
+                      accel_value=pd.Series(xa[s].reindex(t).values, index=d.index),
+                      accel_n=pd.Series(xa_n.reindex(t).values, index=d.index).fillna(0),
+                      btc4_bull=pd.Series(b4_bull.reindex(t).values, index=d.index).fillna(False).astype(bool),
+                      btc4_bear=pd.Series(b4_bear.reindex(t).values, index=d.index).fillna(False).astype(bool),
                       n_symbols=len(dfs))
     return out
 
@@ -807,4 +834,45 @@ STRATEGIES['fib_pullback_02'] = dict(
          'a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a '
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)
+
+
+# XAV-1H Stage A (research-only): rank acceleration (change in momentum),
+# not momentum level, then require absolute trend and relative participation.
+XAV1H = dict(accel_bars=12, vol_norm_bars=24, top_k=2,
+             volume_bars=24, volume_x=1.50, stop_atr=1.50, cost_x=5.0)
+
+
+def sig_xaccel_volume_1h(d, p, ctx):
+    """Cross-sectional trend acceleration with causal 4h BTC regime."""
+    q = dict(XAV1H); q.update(p or {})
+    k, vn = int(q['top_k']), int(q['volume_bars'])
+    rank = ctx['accel_rank']; n = ctx['accel_n']
+    accel = ctx['accel_value']
+    top = (rank <= k) & (accel > 0)
+    bottom = (rank > n - k) & (accel < 0) & (n >= 2 * k)
+    new_top = top & ~top.shift(fill_value=False)
+    new_bottom = bottom & ~bottom.shift(fill_value=False)
+    prior_v = d.v.astype(float).rolling(vn, min_periods=vn).median().shift()
+    participation = (d.v > 0) & prior_v.gt(0) & (d.v >= float(q['volume_x']) * prior_v)
+    trend_l = (d.c > d.e50) & (d.e50 > d.e200) & (d.ret42 > 0)
+    trend_s = (d.c < d.e50) & (d.e50 < d.e200) & (d.ret42 < 0)
+    cost = float(q['stop_atr']) * d.atr >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * d.c
+    le = new_top & trend_l & ctx['btc4_bull'] & participation & cost
+    se = new_bottom & trend_s & ctx['btc4_bear'] & participation & cost
+    out = _one_side(dict(le=le, se=se,
+                         lx=(rank > k + 2) | ~trend_l | ~ctx['btc4_bull'],
+                         sx=(rank <= n - k - 2) | ~trend_s | ~ctx['btc4_bear']))
+    out['atr'] = d.atr.astype(float)
+    return out
+
+
+STRATEGIES['xaccel_volume_1h'] = dict(
+    name='[RESEARCH] Cross-sectional acceleration + volume L/S 1h', style='balanced',
+    fn=sig_xaccel_volume_1h, sides='both', tf='1h', research_only=True,
+    params=dict(XAV1H), reentry_lock=True,
+    desc='RESEARCH-ONLY (XAV-1H): ranks 12h momentum acceleration rather than momentum level, then requires absolute '
+         'trend, relative volume, causal completed-4h BTC regime and explicit cost floor. Excluded from PAPER.',
+    mgmt=dict(stop_atr=XAV1H['stop_atr'], tp1_r=1.0, tp1_frac=0.5,
+              be_r=1.0, tp_r=2.0, max_bars=12),
 )
