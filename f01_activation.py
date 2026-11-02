@@ -18,8 +18,10 @@ perform the rollback enabled -> disabled with every other C-F01 field unchanged 
 before staging it may not switch C-F01 on. So this module is the only writer that can switch C-F01 on.
 
 A stored F01_CANARY that is malformed, OFF or otherwise not what stage writes can only come from corruption or a manual
-edit: it is never replaced here and every step stays refused (fail closed). The sole replacement is recover_stage below,
-bounded to the confirmed packaged-pins failure and a well-formed, disabled, never-enabled stage (#254).
+edit: it is never replaced here and every step stays refused (fail closed). There are two bounded replacements below:
+recover_stage covers the confirmed packaged-pins failure on a never-enabled stage (#254), while rearm creates a new,
+disabled stage after an expired PASS stage was rolled back. Rearm needs a new authorization, start and cohort directory,
+preserves the old evidence, and still requires the normal fresh preflight + enable sequence.
 
 Nothing here starts a second Engine, patches a live file by hand, or touches strategy logic or a pinned function.
 """
@@ -33,7 +35,8 @@ import f01_canary as FC
 
 PREFLIGHT_KEY = 'F01_CANARY_PREFLIGHT'
 RECOVERY_KEY = 'F01_CANARY_RECOVERY'
-OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY)
+REARM_KEY = 'F01_CANARY_REARMS'
+OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY, REARM_KEY)
 CFG_FIELDS = ('start_utc', 'authorization_comment_id', 'cohort_dir', 'source_commit', 'source_manifest')
 PINS_FILE = os.path.join('contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 ROUTE = '/api/f01_canary/'
@@ -208,6 +211,76 @@ def recover_stage(e, b):
     return dict(recovered=True, config=copy.deepcopy(new_cfg), config_sha256=new_hash, audit=copy.deepcopy(audit))
 
 
+def rearm(e, b):
+    """Replace an expired, previously preflighted stage after C-F01 was rolled back or otherwise switched OFF.
+
+    This is deliberately a *stage-only* operation.  It never enables the slot.  A new authorization, cohort directory,
+    future start, installed-build identity and the normal preflight + enable steps are still required.  The old cohort is
+    left untouched and an append-only settings audit links the old and new config hashes.
+    """
+    if not isinstance(b, dict): raise ValueError('bad request')
+    fields = {'config_sha256', *CFG_FIELDS}
+    extra = sorted(set(b) - fields)
+    if extra: raise ValueError('unknown F01 rearm field(s): ' + ', '.join(str(k)[:30] for k in extra)[:120])
+    missing = [k for k in ('config_sha256', *CFG_FIELDS) if k not in b]
+    if missing: raise ValueError('missing F01 rearm field(s): ' + ', '.join(missing))
+    old_hash = b['config_sha256']
+    if not isinstance(old_hash, str) or not FC.HEX64.fullmatch(old_hash):
+        raise ValueError('config_sha256 must be the exact 64-hex old config hash')
+    if not isinstance(b['start_utc'], str): raise ValueError('start_utc must be a tz-aware ISO UTC string')
+    new_cfg = dict(on=True, **{k: copy.deepcopy(b[k]) for k in CFG_FIELDS})
+    bad = FC.cfg_problems(new_cfg)
+    if bad: raise ValueError('F01 canary rearm config refused: ' + '; '.join(bad))
+    with e.lock:
+        _env(e)
+        old_cfg = _staged(e)
+        if old_hash != _sha(old_cfg): raise ValueError('config_sha256 does not match the exact staged config')
+        sl = _slot(e.S)
+        if sl is None: raise ValueError('C-F01 slot not present - nothing to rearm')
+        if sl.get('enabled') is not False: raise ValueError('C-F01 is enabled - rearm refused')
+        old_pf = e.S.get(PREFLIGHT_KEY)
+        if not isinstance(old_pf, dict) or old_pf.get('passed') is not True:
+            raise ValueError('the old stage has no PASS preflight - rearm refused')
+        if old_pf.get('config_sha256') != old_hash or old_pf.get('slot_sha256') != _slot_sha(sl):
+            raise ValueError('the old PASS preflight does not match the exact config and C-F01 card - rearm refused')
+        if not _extract_ok(old_cfg, old_pf.get('extract_sha256')):
+            raise ValueError('the old PASS preflight extract is missing or altered - rearm refused')
+        if FC._ts(old_cfg['start_utc']) > ENG.now_utc():
+            raise ValueError('the old frozen start is still in the future - use the normal enable path')
+        if new_cfg['authorization_comment_id'] == old_cfg.get('authorization_comment_id'):
+            raise ValueError('a new Codex authorization comment id is required')
+        if os.path.realpath(new_cfg['cohort_dir']) == os.path.realpath(old_cfg.get('cohort_dir', '')):
+            raise ValueError('a new cohort directory is required')
+        if not FC._ts(new_cfg['start_utc']) > ENG.now_utc():
+            raise ValueError('start_utc must be strictly in the future')
+
+        # The replacement is allowed only at a clean family boundary.  Other PAPER lots may remain open and are captured
+        # by the subsequent full preflight, but neither candidate may have risk, working orders or unresolved accounting.
+        check = FC.preflight(e.S, e.state, live=getattr(e, 'live', True),
+                             base=getattr(getattr(e, 'trade', None), 'base', None), testnet=ENG.TESTNET,
+                             deferred=getattr(e, '_deferred', None) or (), drift=[], now=ENG.now_utc())['checks']
+        failed = [k for k in ('C1', 'C2', 'C3', 'C4') if not check[k]['ok']]
+        if failed: raise ValueError('C-F01 rearm requires a clean candidate boundary (' + ', '.join(failed) + ')')
+
+        prior = e.S.get(REARM_KEY, [])
+        if not isinstance(prior, list): raise ValueError('the F01 rearm audit is malformed - refused (fail closed)')
+        new_hash = _sha(new_cfg)
+        audit = dict(old_config_sha256=old_hash, new_config_sha256=new_hash,
+                     old_authorization_comment_id=old_cfg['authorization_comment_id'],
+                     new_authorization_comment_id=new_cfg['authorization_comment_id'],
+                     old_start_utc=old_cfg['start_utc'], new_start_utc=new_cfg['start_utc'],
+                     at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'),
+                     reason='owner_authorized_rearm_after_disable')
+        ns = copy.deepcopy(e.S)
+        ns[FC.CANARY_KEY] = new_cfg
+        ns.pop(PREFLIGHT_KEY, None)
+        ns[REARM_KEY] = copy.deepcopy(prior) + [audit]
+        e.commit_settings(ns)
+    ENG.log.info(f"FACTORY-F01 rearmed as a disabled stage: {old_hash} -> {new_hash}, "
+                 f"authorization {new_cfg['authorization_comment_id']}")
+    return dict(rearmed=True, config=copy.deepcopy(new_cfg), config_sha256=new_hash, audit=copy.deepcopy(audit))
+
+
 def preflight(e, b=None):
     """(b) Run the contract preflight with write=True and store its outcome. A FAIL is stored too (it replaces any earlier
     record, so enable needs the latest preflight to have passed). Returns pass, both sha256 and the full record."""
@@ -297,7 +370,7 @@ def sleeves_guard(S, new_sleeves, normalize):
     return [keep if isinstance(x, dict) and x.get('id') == FC.SLOT else x for x in new_sleeves]
 
 
-ACTIONS = dict(stage=stage, recover_stage=recover_stage, preflight=preflight, enable=enable)
+ACTIONS = dict(stage=stage, recover_stage=recover_stage, rearm=rearm, preflight=preflight, enable=enable)
 
 
 def handle(e, path, b):
