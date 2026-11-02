@@ -808,3 +808,65 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# VER-15 Stage A (research-only): enter the causal retest after a volatility
+# expansion, rather than chasing the first compression breakout candle.
+VER15 = dict(compression_pct=0.15, range_bars=32, volume_bars=20,
+             breakout_body_atr=0.50, breakout_volume_x=1.50,
+             retest_buffer_atr=0.15, reclaim_atr=0.20,
+             trend_slope_bars=8, stop_atr=1.25, cost_x=5.0)
+
+
+def sig_vol_expansion_retest_15m(d, p, ctx):
+    """VER-15: symmetric compression -> expansion -> next-bar retest.
+
+    All breakout terms are read from the previous completed candle.  The current
+    decision candle must retest the frozen pre-breakout range edge and close back
+    through it with a small ATR buffer.  Backtests fill no earlier than the next
+    open, so neither the breakout nor the retest receives its closing price.
+    """
+    q = dict(VER15); q.update(p or {})
+    n, vn = int(q['range_bars']), int(q['volume_bars'])
+    if n < 2 or vn < 1 or int(q['trend_slope_bars']) < 1:
+        raise ValueError('vol_expansion_retest_15m: invalid frozen lookback')
+    a, c = d.atr.astype(float), d.c.astype(float)
+    hi = d.h.astype(float).rolling(n, min_periods=n).max().shift()
+    lo = d.l.astype(float).rolling(n, min_periods=n).min().shift()
+    level_l, level_s = hi.shift(), lo.shift()  # levels known at breakout t-1
+    prior_vol = d.v.astype(float).rolling(vn, min_periods=vn).mean().shift(2)
+    breakout_vol = d.v.shift() >= float(q['breakout_volume_x']) * prior_vol
+    breakout_body_l = d.c.shift() - d.o.shift() >= float(q['breakout_body_atr']) * a.shift()
+    breakout_body_s = d.o.shift() - d.c.shift() >= float(q['breakout_body_atr']) * a.shift()
+    compressed = d.bbw_pct.shift(2) <= float(q['compression_pct'])
+    breakout_l = (d.c.shift() > level_l) & (d.c.shift(2) <= hi.shift(2)) & breakout_body_l
+    breakout_s = (d.c.shift() < level_s) & (d.c.shift(2) >= lo.shift(2)) & breakout_body_s
+    slope_n = int(q['trend_slope_bars'])
+    up = ((d.e20 > d.e50) & (d.e50 > d.e200) & (d.e50 > d.e50.shift(slope_n)) &
+          (d.e20.shift() > d.e50.shift()) & (d.e50.shift() > d.e200.shift()))
+    dn = ((d.e20 < d.e50) & (d.e50 < d.e200) & (d.e50 < d.e50.shift(slope_n)) &
+          (d.e20.shift() < d.e50.shift()) & (d.e50.shift() < d.e200.shift()))
+    ready = a.gt(0) & level_l.notna() & level_s.notna() & prior_vol.gt(0)
+    cost = float(q['stop_atr']) * a >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * c
+    le = (ready & compressed & breakout_vol & breakout_l & up &
+          (d.l <= level_l + float(q['retest_buffer_atr']) * a) &
+          (c >= level_l + float(q['reclaim_atr']) * a) & cost)
+    se = (ready & compressed & breakout_vol & breakout_s & dn &
+          (d.h >= level_s - float(q['retest_buffer_atr']) * a) &
+          (c <= level_s - float(q['reclaim_atr']) * a) & cost)
+    out = _one_side(dict(le=le, se=se,
+                         lx=(c < level_l) | (d.e20 < d.e50),
+                         sx=(c > level_s) | (d.e20 > d.e50)))
+    out['atr'] = a
+    return out
+
+
+STRATEGIES['vol_expansion_retest_15m'] = dict(
+    name='[RESEARCH] Volatility expansion retest L/S 15m', style='aggressive',
+    fn=sig_vol_expansion_retest_15m, sides='both', tf='15m', research_only=True,
+    params=dict(VER15), when_by_side={'long': 'bull', 'short': 'bear'}, reentry_lock=8,
+    desc='RESEARCH-ONLY (VER-15): a prior closed-bar compression breakout must return to its frozen range edge and '
+         'reclaim it under strict EMA trend, participation and cost gates. Excluded from PAPER.',
+    mgmt=dict(stop_atr=VER15['stop_atr'], tp1_r=1.0, tp1_frac=0.5,
+              be_r=1.0, tp_r=2.0, max_bars=16),
+)
