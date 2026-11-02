@@ -81,6 +81,11 @@ def test_stage_preflight_enable_happy_path_and_it_persists(api, monkeypatch):
     assert pf['extract_sha256'] == FC.sha256(FC.canonical(rec)) and rec['pass'] is True
     assert e.S[FA.PREFLIGHT_KEY]['passed'] is True and slot(e, F01)['enabled'] is False   # still off until enable
     assert A.handle('/api/f01_canary/enable', {})['enabled'] and slot(e, F01)['enabled'] is True
+    assert len(e.S[FA.ACTIVATION_KEY]) == 1
+    activation = e.S[FA.ACTIVATION_KEY][0]
+    assert set(activation) == FA.ACTIVATION_FIELDS
+    assert activation['event_sha256'] == FA._signed(activation, 'event_sha256')
+    assert activation['config_sha256'] == out['config_sha256']
     assert slot(e, F02)['enabled'] is False and e.S[FC.CANARY_KEY]['start_utc'] == iso(START)
     disk = json.load(open(e.F['settings'], encoding='utf-8'))
     assert disk[FC.CANARY_KEY] == cfg(start=START) and FA._slot(disk)['enabled'] is True   # committed durably
@@ -272,6 +277,9 @@ def test_rearm_replaces_an_expired_pass_stage_but_never_enables(api, monkeypatch
     assert FA.PREFLIGHT_KEY not in e.S and slot(e, F01)['enabled'] is False
     assert os.path.isfile(old_extract)                                      # old cohort is preserved
     assert e.S[FA.REARM_KEY] == [out['audit']]
+    assert e.S[FA.REARM_CHAIN_KEY] == out['audit_chain']
+    assert out['audit']['audit_sha256'] == FA._signed(out['audit'], 'audit_sha256')
+    assert out['audit_chain']['head_sha256'] == out['audit']['audit_sha256']
     assert out['audit']['old_config_sha256'] == old_hash
     assert out['audit']['new_config_sha256'] == out['config_sha256']
     assert out['audit']['reason'] == 'owner_authorized_rearm_after_disable'
@@ -308,8 +316,8 @@ def test_rearm_requires_new_authorization_directory_and_future_start(api, monkey
     A, e = api
     old_hash = _expired_pass_stage(A, e, monkeypatch)
     cases = [
-        (dict(auth=e.S[FC.CANARY_KEY]['authorization_comment_id']), 'new Codex authorization'),
-        (dict(cohort_dir=e.S[FC.CANARY_KEY]['cohort_dir']), 'new cohort directory'),
+        (dict(auth=e.S[FC.CANARY_KEY]['authorization_comment_id']), 'never-before-used Codex authorization'),
+        (dict(cohort_dir=e.S[FC.CANARY_KEY]['cohort_dir']), 'never-before-used cohort directory'),
         (dict(start=START), 'strictly in the future'),
     ]
     for change, match in cases:
@@ -328,6 +336,63 @@ def test_rearm_refuses_a_malformed_audit_and_save_failure_is_atomic(api, monkeyp
     with pytest.raises(OSError, match='disk full'):
         A.handle('/api/f01_canary/rearm', rearm_body(old_hash))
     assert (snap(e), e.S) == before
+
+
+def test_an_expired_pass_that_was_never_enabled_cannot_rearm(api, monkeypatch):
+    A, e = api
+    old = A.handle('/api/f01_canary/stage', body())
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    now_at(monkeypatch, START + timedelta(hours=1))
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(old['config_sha256']),
+            'no durable proof.*actually enabled then disabled')
+
+
+def _next_rearm(A, e, monkeypatch, old_hash, n):
+    start = START + timedelta(hours=4 * n)
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=start, auth=f'65999990{n:02d}',
+                                                       cohort_dir=CD[0] + f'_rearmed_{n}'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert A.handle('/api/f01_canary/enable', {})['enabled']
+    ns = copy.deepcopy(e.S); FA._slot(ns)['enabled'] = False; e.commit_settings(ns)
+    now_at(monkeypatch, start + timedelta(hours=1))
+    return out
+
+
+def test_rearm_never_reuses_any_historical_authorization_or_cohort_directory(api, monkeypatch):
+    A, e = api
+    original_cfg = None
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    original_cfg = copy.deepcopy(e.S[FC.CANARY_KEY])
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(first['config_sha256'], start=START + timedelta(hours=8),
+            auth=original_cfg['authorization_comment_id'], cohort_dir=CD[0] + '_never_used'),
+            'never-before-used Codex authorization')
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(first['config_sha256'], start=START + timedelta(hours=8),
+            auth='6599999099', cohort_dir=original_cfg['cohort_dir']), 'never-before-used cohort directory')
+
+
+@pytest.mark.parametrize('damage', ['deleted', 'reordered', 'rewritten', 'extra_field', 'summary', 'current_link'])
+def test_rearm_refuses_deleted_reordered_rewritten_or_unlinked_audit_history(api, monkeypatch, damage):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    second = _next_rearm(A, e, monkeypatch, first['config_sha256'], 2)
+    ns = copy.deepcopy(e.S)
+    if damage == 'deleted':
+        ns[FA.REARM_KEY].pop(0)
+    elif damage == 'reordered':
+        ns[FA.REARM_KEY].reverse()
+    elif damage == 'rewritten':
+        ns[FA.REARM_KEY][0]['new_authorization_comment_id'] = '6599999191'
+    elif damage == 'extra_field':
+        ns[FA.REARM_KEY][0]['unexpected'] = True
+    elif damage == 'summary':
+        ns[FA.REARM_CHAIN_KEY]['count'] = 1
+    else:
+        ns[FA.REARM_CHAIN_KEY]['current_config_sha256'] = 'f' * 64
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(second['config_sha256'], start=START + timedelta(hours=12),
+            auth='6599999098', cohort_dir=CD[0] + '_rearmed_3'), 'audit.*invalid|audit.*link')
 
 
 def test_installer_recipe_builds_the_exact_f01_frozen_layout_and_every_input_fails_closed_if_changed(tmp_path):
