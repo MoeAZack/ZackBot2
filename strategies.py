@@ -808,3 +808,78 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# RAS-1H Stage A (research-only): completed 4h efficiency/volatility
+# chooses one of two frozen 1h mechanisms before the entry is evaluated.
+RAS1H = dict(efficiency_bars_4h=12, volatility_rank_bars_4h=120,
+             trend_efficiency_min=0.40, trend_volatility_pct_min=0.35,
+             mean_efficiency_max=0.25, mean_volatility_pct_max=0.65,
+             trend_breakout_bars=6, mean_stretch_atr=1.50,
+             volume_bars=20, volume_x=1.0, stop_atr=1.50, cost_x=5.0)
+
+
+def ras1h_regime(d, p):
+    """Causal completed-4h trend/mean state aligned to 1h rows."""
+    eb, vb = int(p['efficiency_bars_4h']), int(p['volatility_rank_bars_4h'])
+    if eb < 2 or vb < 10:
+        raise ValueError('regime_adaptive_switch_1h: invalid 4h lookback')
+    t = pd.to_datetime(d.t, utc=True)
+    block = pd.Series(t.dt.floor('4h').to_numpy(), index=d.index)
+    frame = pd.DataFrame({'block': block, 'pos': np.arange(len(d)),
+                          'o': d.o.values, 'h': d.h.values, 'l': d.l.values,
+                          'c': d.c.values, 'v': d.v.values})
+    g = frame.groupby('block', sort=True)
+    b4 = g.agg(pos=('pos', 'last'), count=('pos', 'size'), o=('o', 'first'), h=('h', 'max'),
+               l=('l', 'min'), c=('c', 'last'), v=('v', 'sum'))
+    b4 = b4[b4['count'] == 4].copy()
+    tr = pd.concat([b4.h-b4.l, (b4.h-b4.c.shift()).abs(), (b4.l-b4.c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1/14, adjust=False).mean()
+    path = b4.c.diff().abs().rolling(eb, min_periods=eb).sum()
+    efficiency = (b4.c-b4.c.shift(eb)).abs() / path.replace(0, np.nan)
+    natr = atr / b4.c.replace(0, np.nan)
+    vol_pct = natr.rolling(vb, min_periods=vb).rank(pct=True)
+    trend4 = ((efficiency >= float(p['trend_efficiency_min'])) &
+              (vol_pct >= float(p['trend_volatility_pct_min'])))
+    mean4 = ((efficiency <= float(p['mean_efficiency_max'])) &
+             (vol_pct <= float(p['mean_volatility_pct_max'])))
+    trend, mean = pd.Series(np.nan, index=d.index), pd.Series(np.nan, index=d.index)
+    trend.iloc[b4.pos.astype(int).values] = trend4.astype(float).values
+    mean.iloc[b4.pos.astype(int).values] = mean4.astype(float).values
+    return trend.ffill().fillna(0).astype(bool), mean.ffill().fillna(0).astype(bool)
+
+
+def sig_regime_adaptive_switch_1h(d, p, ctx):
+    """RAS-1H: trend breakout in efficient 4h state, fade/reclaim in quiet state."""
+    q = dict(RAS1H); q.update(p or {})
+    trend, mean = ras1h_regime(d, q)
+    a, c, v = d.atr.astype(float), d.c.astype(float), d.v.astype(float)
+    n = int(q['trend_breakout_bars'])
+    hi, lo = d.h.rolling(n, min_periods=n).max().shift(), d.l.rolling(n, min_periods=n).min().shift()
+    prior_v = v.rolling(int(q['volume_bars']), min_periods=int(q['volume_bars'])).median().shift()
+    participation = (v > 0) & prior_v.gt(0) & (v >= float(q['volume_x']) * prior_v)
+    trend_l = trend & (d.e20 > d.e50) & (c > hi) & (c.shift() <= hi.shift())
+    trend_s = trend & (d.e20 < d.e50) & (c < lo) & (c.shift() >= lo.shift())
+    mean_l = (mean & (c.shift() <= d.e20.shift() - float(q['mean_stretch_atr']) * a.shift()) &
+              (c > d.h.shift()) & (c > d.o) & (c <= d.e20 + .25*a))
+    mean_s = (mean & (c.shift() >= d.e20.shift() + float(q['mean_stretch_atr']) * a.shift()) &
+              (c < d.l.shift()) & (c < d.o) & (c >= d.e20 - .25*a))
+    cost = float(q['stop_atr']) * a >= float(q['cost_x']) * 2.0 * (0.0005 + 0.0002) * c
+    le = (trend_l | mean_l) & participation & cost
+    se = (trend_s | mean_s) & participation & cost
+    out = _one_side(dict(le=le, se=se,
+                         lx=(trend & (c < d.e50)) | (mean & (c >= d.e20)) | (~trend & ~mean),
+                         sx=(trend & (c > d.e50)) | (mean & (c <= d.e20)) | (~trend & ~mean)))
+    out['atr'] = a
+    return out
+
+
+STRATEGIES['regime_adaptive_switch_1h'] = dict(
+    name='[RESEARCH] 4h-state adaptive trend/mean switch L/S 1h', style='balanced',
+    fn=sig_regime_adaptive_switch_1h, sides='both', tf='1h', research_only=True,
+    params=dict(RAS1H), reentry_lock=True,
+    desc='RESEARCH-ONLY (RAS-1H): completed-4h efficiency and volatility select a fixed 1h trend-breakout or '
+         'stretch-reclaim mechanism before entry; includes participation and cost gates. Excluded from PAPER.',
+    mgmt=dict(stop_atr=RAS1H['stop_atr'], tp1_r=1.0, tp1_frac=0.5,
+              be_r=1.0, tp_r=2.0, max_bars=16),
+)
