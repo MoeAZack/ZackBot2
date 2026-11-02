@@ -862,6 +862,62 @@ def test_a_failed_save_rolls_back(api, monkeypatch, act):
     assert snap(e) == before and slot(e, F01)['enabled'] is False
 
 
+def test_enable_settings_failure_removes_prepare_and_retry_succeeds(api, monkeypatch):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']
+    before, save = snap(e), e._save_safe
+    monkeypatch.setattr(e, '_save_safe', lambda *a, **k: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'): A.handle('/api/f01_canary/enable', {})
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
+    monkeypatch.setattr(e, '_save_safe', save)
+    assert A.handle('/api/f01_canary/enable', {})['enabled'] and slot(e, F01)['enabled'] is True
+
+
+def test_rearm_settings_failure_removes_prepare_and_retry_succeeds(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    before, save = snap(e), e._save_safe
+    monkeypatch.setattr(e, '_save_safe', lambda *a, **k: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'): A.handle('/api/f01_canary/rearm', req)
+    assert snap(e) == before
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
+    monkeypatch.setattr(e, '_save_safe', save)
+    assert A.handle('/api/f01_canary/rearm', req)['rearmed']
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_external_prepare_failure_never_changes_settings_and_retry_succeeds(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    before, prepare = snap(e), FA._prepare_external_anchor
+    monkeypatch.setattr(FA, '_prepare_external_anchor', lambda *a, **k: (_ for _ in ()).throw(OSError('anchor disk full')))
+    with pytest.raises(OSError, match='anchor disk full'): A.handle(f'/api/f01_canary/{act}', req)
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    monkeypatch.setattr(FA, '_prepare_external_anchor', prepare)
+    assert A.handle(f'/api/f01_canary/{act}', req)['rearmed' if act == 'rearm' else 'enabled']
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_crash_after_settings_commit_reconciles_pending_anchor_on_retry(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    promote = FA._promote_external_anchor
+    monkeypatch.setattr(FA, '_promote_external_anchor', lambda *a, **k: (_ for _ in ()).throw(OSError('crash before promote')))
+    with pytest.raises(OSError, match='crash before promote'): A.handle(f'/api/f01_canary/{act}', req)
+    assert os.path.isdir(os.path.join(FA._anchor_dir(e), 'pending'))
+    monkeypatch.setattr(FA, '_promote_external_anchor', promote)
+    out = A.handle(f'/api/f01_canary/{act}', req)
+    assert out.get('recovered') is True and out['rearmed' if act == 'rearm' else 'enabled'] is True
+    assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
+
+
 # ------------------------------------------------------------------ no profile (preset) change while staged
 @pytest.mark.parametrize('name', ['calm', E.ROTATION_PRESET])
 @pytest.mark.parametrize('enabled', [False, True])

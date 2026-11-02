@@ -60,7 +60,8 @@ ACTIVATION_CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'staged_config_sh
                            'migration_proof_sha256'}
 EXTERNAL_ANCHOR_FIELDS = {'version', 'sequence', 'prev_anchor_sha256', 'event', 'staged_config_sha256',
                           'activation_genesis_config_sha256', 'activation_count', 'activation_head_sha256',
-                          'activation_migration_proof_sha256', 'rearm_head_sha256', 'at_utc'}
+                          'activation_migration_proof_sha256', 'rearm_head_sha256', 'pre_state_sha256',
+                          'post_state_sha256', 'at_utc'}
 
 
 def _env(e):
@@ -151,10 +152,19 @@ def _anchor_dir(e):
     return os.path.join(os.path.dirname(os.path.abspath(e.F['settings'])), 'f01_activation_anchors')
 
 
+def _anchor_state_sha(S):
+    sl = _slot(S)
+    view = {k: copy.deepcopy((S or {}).get(k)) for k in
+            (FC.CANARY_KEY, PREFLIGHT_KEY, REARM_KEY, REARM_CHAIN_KEY, ACTIVATION_KEY, ACTIVATION_CHAIN_KEY)}
+    view['C-F01'] = copy.deepcopy(sl)
+    return _sha(view)
+
+
 def _external_anchors(e):
     d = _anchor_dir(e)
     rows = {}
     for name in sorted(os.listdir(d)) if os.path.isdir(d) else ():
+        if name == 'pending' and os.path.isdir(os.path.join(d, name)): continue
         if not isinstance(name, str) or not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]):
             raise ValueError('the external F01 activation anchor store is malformed - refused (fail closed)')
         with open(os.path.join(d, name), 'rb') as f: raw = f.read()
@@ -171,7 +181,8 @@ def _external_anchors(e):
                 or row['activation_count'] < 0
                 or any(not isinstance(row.get(k), str) or not FC.HEX64.fullmatch(row[k]) for k in
                        ('prev_anchor_sha256', 'staged_config_sha256', 'activation_genesis_config_sha256',
-                        'activation_head_sha256', 'activation_migration_proof_sha256', 'rearm_head_sha256'))):
+                        'activation_head_sha256', 'activation_migration_proof_sha256', 'rearm_head_sha256',
+                        'pre_state_sha256', 'post_state_sha256'))):
             raise ValueError('the external F01 activation anchor record is malformed - refused (fail closed)')
         rows[name[:-5]] = row
     if not rows: return [], None
@@ -212,18 +223,66 @@ def _validate_external_anchor(e, staged_hash, activation_chain, rearm_chain, all
     return ordered
 
 
-def _append_external_anchor(e, event, staged_hash, activation_chain, rearm_chain, prior):
+def _prepare_external_anchor(e, event, staged_hash, activation_chain, rearm_chain, prior, pre_settings, post_settings):
     state = _anchor_state(staged_hash, activation_chain, rearm_chain)
     rec = dict(version=1, sequence=len(prior) + 1, prev_anchor_sha256=prior[-1][0] if prior else HEX0,
-               event=event, at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'), **state)
-    raw = FC.canonical(rec); h = FC.sha256(raw); d = _anchor_dir(e); os.makedirs(d, exist_ok=True)
+               event=event, pre_state_sha256=_anchor_state_sha(pre_settings),
+               post_state_sha256=_anchor_state_sha(post_settings),
+               at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'), **state)
+    raw = FC.canonical(rec); h = FC.sha256(raw); d = os.path.join(_anchor_dir(e), 'pending'); os.makedirs(d, exist_ok=True)
     path = os.path.join(d, h + '.json')
     try:
         with open(path, 'xb') as f: f.write(raw)
     except FileExistsError:
         with open(path, 'rb') as f:
             if f.read() != raw: raise ValueError('the external F01 activation anchor is not immutable')
-    return h
+    return dict(hash=h, path=path, record=rec)
+
+
+def _promote_external_anchor(e, tx):
+    dst = os.path.join(_anchor_dir(e), tx['hash'] + '.json')
+    os.replace(tx['path'], dst)
+    try: os.rmdir(os.path.dirname(tx['path']))
+    except OSError: pass
+
+
+def _commit_with_anchor(e, ns, tx):
+    try:
+        e.commit_settings(ns)
+    except Exception:
+        try: os.remove(tx['path'])
+        except OSError: pass
+        try: os.rmdir(os.path.dirname(tx['path']))
+        except OSError: pass
+        raise
+    _promote_external_anchor(e, tx)
+
+
+def _reconcile_external_pending(e):
+    d = os.path.join(_anchor_dir(e), 'pending')
+    names = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    if not names: return None
+    if len(names) != 1:
+        raise ValueError('multiple pending F01 activation anchor transactions - refused (fail closed)')
+    name = names[0]; path = os.path.join(d, name)
+    if not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]) or not os.path.isfile(path):
+        raise ValueError('the pending F01 activation anchor is malformed - refused (fail closed)')
+    with open(path, 'rb') as f: raw = f.read()
+    if FC.sha256(raw) != name[:-5]: raise ValueError('the pending F01 activation anchor hash is invalid - refused')
+    try: rec = json.loads(raw)
+    except (ValueError, TypeError): raise ValueError('the pending F01 activation anchor is malformed - refused')
+    if not isinstance(rec, dict) or set(rec) != EXTERNAL_ANCHOR_FIELDS:
+        raise ValueError('the pending F01 activation anchor is malformed - refused')
+    cur = _anchor_state_sha(e.S)
+    if cur == rec.get('pre_state_sha256'):
+        os.remove(path)
+        try: os.rmdir(d)
+        except OSError: pass
+        return dict(event=rec.get('event'), committed=False)
+    if cur == rec.get('post_state_sha256'):
+        _promote_external_anchor(e, dict(hash=name[:-5], path=path, record=rec))
+        return dict(event=rec.get('event'), committed=True)
+    raise ValueError('pending F01 activation anchor matches neither durable settings state - refused (fail closed)')
 
 
 def _activation_proof(e, cfg, cfg_hash, pf, sl):
@@ -506,6 +565,10 @@ def rearm(e, b):
     new_cfg = _canonical_cfg(new_cfg)
     with e.lock:
         _env(e)
+        recovered_tx = _reconcile_external_pending(e)
+        if recovered_tx and recovered_tx.get('committed') and recovered_tx.get('event') == 'rearm':
+            cfg = _staged(e)
+            return dict(rearmed=True, recovered=True, config=copy.deepcopy(cfg), config_sha256=_sha(cfg))
         old_cfg = _staged(e)
         if old_hash != _sha(old_cfg): raise ValueError('config_sha256 does not match the exact staged config')
         sl = _slot(e.S)
@@ -575,14 +638,14 @@ def rearm(e, b):
                          activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
                          activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
                          activation_migration_proof_sha256=activation_chain['migration_proof_sha256'])
-        _append_external_anchor(e, 'rearm', new_hash, activation_chain, new_chain, external_prior)
         ns = copy.deepcopy(e.S)
         ns[FC.CANARY_KEY] = new_cfg
         ns.pop(PREFLIGHT_KEY, None)
         ns[REARM_KEY] = copy.deepcopy(prior) + [audit]
         ns[REARM_CHAIN_KEY] = new_chain
         ns[ACTIVATION_CHAIN_KEY] = activation_chain
-        e.commit_settings(ns)
+        tx = _prepare_external_anchor(e, 'rearm', new_hash, activation_chain, new_chain, external_prior, e.S, ns)
+        _commit_with_anchor(e, ns, tx)
     ENG.log.info(f"FACTORY-F01 rearmed as a disabled stage: {old_hash} -> {new_hash}, "
                  f"authorization {new_cfg['authorization_comment_id']}")
     return dict(rearmed=True, config=copy.deepcopy(new_cfg), config_sha256=new_hash, audit=copy.deepcopy(audit),
@@ -627,6 +690,10 @@ def enable(e, b=None):
     frozen start. Any refusal leaves C-F01 disabled and settings unchanged."""
     with e.lock:
         _env(e)
+        recovered_tx = _reconcile_external_pending(e)
+        if recovered_tx and recovered_tx.get('committed') and recovered_tx.get('event') == 'enable':
+            cfg = _staged(e)
+            return dict(enabled=True, recovered=True, start_utc=cfg['start_utc'])
         cfg = _staged(e)
         rec = e.S.get(PREFLIGHT_KEY)
         if not isinstance(rec, dict) or rec.get('passed') is not True:
@@ -678,8 +745,9 @@ def enable(e, b=None):
                 activation_count=ns[ACTIVATION_CHAIN_KEY]['count'],
                 activation_head_sha256=ns[ACTIVATION_CHAIN_KEY]['head_sha256'],
                 activation_migration_proof_sha256=ns[ACTIVATION_CHAIN_KEY]['migration_proof_sha256'])
-        _append_external_anchor(e, 'enable', _sha(cfg), ns[ACTIVATION_CHAIN_KEY], ns.get(REARM_CHAIN_KEY), external_prior)
-        e.commit_settings(ns)
+        tx = _prepare_external_anchor(e, 'enable', _sha(cfg), ns[ACTIVATION_CHAIN_KEY], ns.get(REARM_CHAIN_KEY),
+                                      external_prior, e.S, ns)
+        _commit_with_anchor(e, ns, tx)
     ENG.log.info(f"FACTORY-F01 canary: C-F01 enabled after PASS preflight {rec['record_sha256']} (start {cfg['start_utc']})")
     return dict(enabled=True, start_utc=cfg['start_utc'], record_sha256=rec['record_sha256'])
 
