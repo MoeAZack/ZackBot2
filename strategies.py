@@ -808,3 +808,72 @@ STRATEGIES['fib_pullback_02'] = dict(
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
 )
+
+
+# LSR-15 Stage A (research-only): a one-candle stop/liquidity sweep through a
+# prior rolling edge that closes back inside on anomalous volume.
+LSR15 = dict(range_bars=24, volume_bars=20, sweep_atr=0.25,
+             wick_atr=0.75, wick_body_x=1.50, volume_x=2.0,
+             close_location=0.65, stop_buffer_atr=0.10,
+             min_stop_atr=0.75, cost_x=5.0, cooldown_bars=16)
+
+
+def sig_liquidity_sweep_rejection_15m(d, p, ctx):
+    """LSR-15: symmetric same-candle wick sweep and rejection.
+
+    Unlike SC-FAILBRK, no prior candle may close outside and no multi-bar failure
+    window is used.  The decision candle itself trades beyond the old edge but
+    closes back inside with a large directional wick and anomalous volume.
+    """
+    q = dict(LSR15); q.update(p or {})
+    n, vn = int(q['range_bars']), int(q['volume_bars'])
+    if n < 2 or vn < 1:
+        raise ValueError('liquidity_sweep_rejection_15m: invalid frozen lookback')
+    hi = d.h.astype(float).rolling(n, min_periods=n).max().shift()
+    lo = d.l.astype(float).rolling(n, min_periods=n).min().shift()
+    mid = (hi + lo) / 2.0
+    a, c, o, v = d.atr.astype(float), d.c.astype(float), d.o.astype(float), d.v.astype(float)
+    body = (c - o).abs()
+    lower_wick = np.minimum(o, c) - d.l.astype(float)
+    upper_wick = d.h.astype(float) - np.maximum(o, c)
+    span = (d.h - d.l).replace(0, np.nan)
+    clv_l, clv_s = (c - d.l) / span, (d.h - c) / span
+    prior_v = v.rolling(vn, min_periods=vn).median().shift()
+    volume_anomaly = (v > 0) & prior_v.gt(0) & (v >= float(q['volume_x']) * prior_v)
+    sweep_l = (d.l <= lo - float(q['sweep_atr']) * a) & (c > lo) & (c < mid)
+    sweep_s = (d.h >= hi + float(q['sweep_atr']) * a) & (c < hi) & (c > mid)
+    wick_l = ((lower_wick >= float(q['wick_atr']) * a) &
+              (lower_wick >= float(q['wick_body_x']) * body) &
+              (clv_l >= float(q['close_location'])))
+    wick_s = ((upper_wick >= float(q['wick_atr']) * a) &
+              (upper_wick >= float(q['wick_body_x']) * body) &
+              (clv_s >= float(q['close_location'])))
+    floor = float(q['min_stop_atr']) * a
+    stop_l = np.maximum(c - d.l + float(q['stop_buffer_atr']) * a, floor)
+    stop_s = np.maximum(d.h - c + float(q['stop_buffer_atr']) * a, floor)
+    rt_cost = 2.0 * (0.0005 + 0.0002) * c
+    cost_l = stop_l >= float(q['cost_x']) * rt_cost
+    cost_s = stop_s >= float(q['cost_x']) * rt_cost
+    raw_l = X(sweep_l & wick_l & volume_anomaly & cost_l)
+    raw_s = X(sweep_s & wick_s & volume_anomaly & cost_s)
+    cooldown = int(q['cooldown_bars'])
+    if cooldown < 1:
+        raise ValueError('liquidity_sweep_rejection_15m: cooldown_bars must be positive')
+    recent_l = raw_l.shift().rolling(cooldown, min_periods=1).max().fillna(0).astype(bool)
+    recent_s = raw_s.shift().rolling(cooldown, min_periods=1).max().fillna(0).astype(bool)
+    le, se = raw_l & ~recent_l, raw_s & ~recent_s
+    out = _one_side(dict(le=le, se=se, lx=(c >= mid) | (c < lo), sx=(c <= mid) | (c > hi)))
+    dist = np.where(out['le'], stop_l, np.where(out['se'], stop_s, a)).astype(float)
+    out['atr'] = np.where(np.isfinite(dist) & (dist > 0), dist, np.nan)
+    return out
+
+
+STRATEGIES['liquidity_sweep_rejection_15m'] = dict(
+    name='[RESEARCH] Liquidity-sweep rejection L/S 15m', style='aggressive',
+    fn=sig_liquidity_sweep_rejection_15m, sides='both', tf='15m', research_only=True,
+    params=dict(LSR15), reentry_lock=True,
+    desc='RESEARCH-ONLY (LSR-15): one-candle wick sweep through a prior range edge, close back inside, anomalous '
+         'volume, dynamic sweep stop and explicit cost floor. Excluded from PAPER.',
+    mgmt=dict(stop_atr=1.0, tp1_r=0.8, tp1_frac=0.5,
+              be_r=0.8, tp_r=1.5, max_bars=12),
+)
