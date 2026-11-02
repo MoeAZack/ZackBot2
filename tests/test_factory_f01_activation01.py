@@ -918,6 +918,76 @@ def test_crash_after_settings_commit_reconciles_pending_anchor_on_retry(api, mon
     assert not os.path.exists(os.path.join(FA._anchor_dir(e), 'pending'))
 
 
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+@pytest.mark.parametrize('artifact', ['named', 'temp'])
+def test_torn_precommit_prepare_is_quarantined_and_valid_retry_proceeds(api, monkeypatch, act, artifact):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    pending = os.path.join(FA._anchor_dir(e), 'pending'); os.makedirs(pending, exist_ok=True)
+    name = ('a' * 64 + '.json') if artifact == 'named' else '.prepare-interrupted.tmp'
+    with open(os.path.join(pending, name), 'wb') as f: f.write(b'{"truncated"')
+
+    out = A.handle(f'/api/f01_canary/{act}', req)
+
+    assert out['rearmed' if act == 'rearm' else 'enabled'] is True
+    assert slot(e, F01)['enabled'] is (act == 'enable')
+    quarantine = os.path.join(FA._anchor_dir(e), 'quarantine')
+    assert any(x.startswith(name) for x in os.listdir(quarantine))
+
+
+@pytest.mark.parametrize('act', ['enable', 'rearm'])
+def test_atomic_prepare_replace_failure_leaves_no_transaction_and_retry_succeeds(api, monkeypatch, act):
+    A, e = api
+    if act == 'enable':
+        A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']; req = {}
+    else:
+        old_hash = _expired_pass_stage(A, e, monkeypatch); req = rearm_body(old_hash)
+    before, replace, failed = snap(e), os.replace, [False]
+
+    def fail_prepare_once(src, dst):
+        if not failed[0] and os.path.basename(src).startswith('.prepare-') and dst.endswith('.json'):
+            failed[0] = True
+            raise OSError('crash during atomic prepare')
+        return replace(src, dst)
+
+    monkeypatch.setattr(os, 'replace', fail_prepare_once)
+    with pytest.raises(OSError, match='crash during atomic prepare'):
+        A.handle(f'/api/f01_canary/{act}', req)
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    pending = os.path.join(FA._anchor_dir(e), 'pending')
+    assert not os.path.isdir(pending) or not os.listdir(pending)
+    out = A.handle(f'/api/f01_canary/{act}', req)
+    assert out['rearmed' if act == 'rearm' else 'enabled'] is True
+
+
+@pytest.mark.parametrize('attack', ['sequence', 'predecessor', 'disabled_post_state'])
+def test_self_hashed_hostile_pending_transaction_is_never_promoted_or_recovered(api, attack):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body()); assert A.handle('/api/f01_canary/preflight', {})['pass']
+    before = snap(e); cfg_hash = FA._sha(e.S[FC.CANARY_KEY])
+    rec = dict(version=1, sequence=1, prev_anchor_sha256=FA.HEX0, event='enable',
+               staged_config_sha256=cfg_hash, activation_genesis_config_sha256=cfg_hash,
+               activation_count=1, activation_head_sha256='b' * 64,
+               activation_migration_proof_sha256=FA.HEX0, rearm_head_sha256=FA.HEX0,
+               pre_state_sha256='c' * 64, post_state_sha256=FA._anchor_state_sha(e.S),
+               at_utc=iso(NOW))
+    if attack == 'sequence': rec['sequence'] = 999
+    if attack == 'predecessor': rec['prev_anchor_sha256'] = 'd' * 64
+    raw = FC.canonical(rec); pending = os.path.join(FA._anchor_dir(e), 'pending'); os.makedirs(pending, exist_ok=True)
+    name = FC.sha256(raw) + '.json'
+    with open(os.path.join(pending, name), 'wb') as f: f.write(raw)
+
+    with pytest.raises(ValueError, match='refused|invalid'):
+        A.handle('/api/f01_canary/enable', {})
+
+    assert snap(e) == before and slot(e, F01)['enabled'] is False
+    assert os.path.exists(os.path.join(pending, name))
+    assert not [x for x in os.listdir(FA._anchor_dir(e)) if x.endswith('.json')]
+
+
 # ------------------------------------------------------------------ no profile (preset) change while staged
 @pytest.mark.parametrize('name', ['calm', E.ROTATION_PRESET])
 @pytest.mark.parametrize('enabled', [False, True])

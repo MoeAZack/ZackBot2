@@ -28,6 +28,7 @@ Nothing here starts a second Engine, patches a live file by hand, or touches str
 import copy
 import json
 import os
+import tempfile
 from datetime import timezone
 
 import engine as ENG
@@ -164,7 +165,7 @@ def _external_anchors(e):
     d = _anchor_dir(e)
     rows = {}
     for name in sorted(os.listdir(d)) if os.path.isdir(d) else ():
-        if name == 'pending' and os.path.isdir(os.path.join(d, name)): continue
+        if name in ('pending', 'quarantine') and os.path.isdir(os.path.join(d, name)): continue
         if not isinstance(name, str) or not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]):
             raise ValueError('the external F01 activation anchor store is malformed - refused (fail closed)')
         with open(os.path.join(d, name), 'rb') as f: raw = f.read()
@@ -231,11 +232,20 @@ def _prepare_external_anchor(e, event, staged_hash, activation_chain, rearm_chai
                at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'), **state)
     raw = FC.canonical(rec); h = FC.sha256(raw); d = os.path.join(_anchor_dir(e), 'pending'); os.makedirs(d, exist_ok=True)
     path = os.path.join(d, h + '.json')
+    fd, tmp = tempfile.mkstemp(prefix='.prepare-', suffix='.tmp', dir=d)
     try:
-        with open(path, 'xb') as f: f.write(raw)
-    except FileExistsError:
-        with open(path, 'rb') as f:
-            if f.read() != raw: raise ValueError('the external F01 activation anchor is not immutable')
+        with os.fdopen(fd, 'wb') as f:
+            f.write(raw); f.flush(); os.fsync(f.fileno())
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                if f.read() != raw: raise ValueError('the external F01 activation anchor is not immutable')
+            os.remove(tmp)
+        else:
+            os.replace(tmp, path)                 # only a complete, fsynced record ever gets the transaction name
+    except Exception:
+        try: os.remove(tmp)
+        except OSError: pass
+        raise
     return dict(hash=h, path=path, record=rec)
 
 
@@ -258,9 +268,80 @@ def _commit_with_anchor(e, ns, tx):
     _promote_external_anchor(e, tx)
 
 
+def _validate_external_record(rec):
+    if (not isinstance(rec, dict) or set(rec) != EXTERNAL_ANCHOR_FIELDS or rec.get('version') != 1
+            or not isinstance(rec.get('sequence'), int) or isinstance(rec.get('sequence'), bool)
+            or rec['sequence'] <= 0 or rec.get('event') not in ('enable', 'rearm')
+            or FC._ts(rec.get('at_utc')) is None
+            or not isinstance(rec.get('activation_count'), int) or isinstance(rec.get('activation_count'), bool)
+            or rec['activation_count'] < 0
+            or any(not isinstance(rec.get(k), str) or not FC.HEX64.fullmatch(rec[k]) for k in
+                   ('prev_anchor_sha256', 'staged_config_sha256', 'activation_genesis_config_sha256',
+                    'activation_head_sha256', 'activation_migration_proof_sha256', 'rearm_head_sha256',
+                    'pre_state_sha256', 'post_state_sha256'))):
+        raise ValueError('the pending F01 activation anchor schema is invalid - refused (fail closed)')
+
+
+def _validate_pending_transition(rec, prior):
+    prev_hash, prev = prior[-1] if prior else (HEX0, None)
+    if rec['sequence'] != len(prior) + 1 or rec['prev_anchor_sha256'] != prev_hash:
+        raise ValueError('the pending F01 activation anchor predecessor/sequence is invalid - refused (fail closed)')
+    if prev is None:
+        if rec['event'] == 'enable':
+            ok = (rec['activation_count'] == 1 and rec['activation_migration_proof_sha256'] == HEX0
+                  and rec['rearm_head_sha256'] == HEX0)
+        else:
+            ok = (rec['activation_count'] == 0 and rec['activation_head_sha256'] == HEX0
+                  and rec['activation_migration_proof_sha256'] != HEX0)
+    elif rec['event'] == 'enable':
+        ok = (rec['staged_config_sha256'] == prev['staged_config_sha256']
+              and rec['activation_genesis_config_sha256'] == prev['activation_genesis_config_sha256']
+              and rec['activation_migration_proof_sha256'] == prev['activation_migration_proof_sha256']
+              and rec['activation_count'] == prev['activation_count'] + 1
+              and rec['activation_head_sha256'] != prev['activation_head_sha256']
+              and rec['rearm_head_sha256'] == prev['rearm_head_sha256'])
+    else:
+        ok = (rec['staged_config_sha256'] != prev['staged_config_sha256']
+              and rec['activation_genesis_config_sha256'] == prev['activation_genesis_config_sha256']
+              and rec['activation_migration_proof_sha256'] == prev['activation_migration_proof_sha256']
+              and rec['activation_count'] == prev['activation_count']
+              and rec['activation_head_sha256'] == prev['activation_head_sha256']
+              and rec['rearm_head_sha256'] != prev['rearm_head_sha256'])
+    if not ok: raise ValueError('the pending F01 activation anchor transition is invalid - refused (fail closed)')
+
+
+def _validate_pending_current_state(rec, S):
+    sl = _slot(S); cfg = S.get(FC.CANARY_KEY) if isinstance(S.get(FC.CANARY_KEY), dict) else {}
+    cfg_hash = _sha(cfg)
+    if REARM_KEY in S or REARM_CHAIN_KEY in S:
+        _rearm_rows, rc = _validated_rearms(S, cfg_hash)
+    else:
+        rc = None
+    _activation_rows, ac = _validated_activations(S, cfg_hash, allow_uninitialized=False)
+    if (not sl or (rec['event'] == 'enable' and sl.get('enabled') is not True)
+            or (rec['event'] == 'rearm' and sl.get('enabled') is not False)
+            or cfg_hash != rec['staged_config_sha256'] or not isinstance(ac, dict)
+            or ac.get('genesis_config_sha256') != rec['activation_genesis_config_sha256']
+            or ac.get('count') != rec['activation_count'] or ac.get('head_sha256') != rec['activation_head_sha256']
+            or ac.get('migration_proof_sha256') != rec['activation_migration_proof_sha256']
+            or ((rc or {}).get('head_sha256') if isinstance(rc, dict) else HEX0) != rec['rearm_head_sha256']):
+        raise ValueError('the pending F01 activation anchor post-state semantics are invalid - refused (fail closed)')
+
+
+def _quarantine_pending(e, path):
+    q = os.path.join(_anchor_dir(e), 'quarantine'); os.makedirs(q, exist_ok=True)
+    dst = os.path.join(q, os.path.basename(path) + '.precommit')
+    if os.path.exists(dst): os.remove(path)
+    else: os.replace(path, dst)
+
+
 def _reconcile_external_pending(e):
     d = os.path.join(_anchor_dir(e), 'pending')
     names = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    torn = [n for n in names if n.startswith('.prepare-') and n.endswith('.tmp')]
+    if len(torn) > 4: raise ValueError('too many torn F01 anchor prepares - refused (fail closed)')
+    for n in torn: _quarantine_pending(e, os.path.join(d, n))
+    names = [n for n in names if n not in torn]
     if not names: return None
     if len(names) != 1:
         raise ValueError('multiple pending F01 activation anchor transactions - refused (fail closed)')
@@ -268,11 +349,14 @@ def _reconcile_external_pending(e):
     if not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]) or not os.path.isfile(path):
         raise ValueError('the pending F01 activation anchor is malformed - refused (fail closed)')
     with open(path, 'rb') as f: raw = f.read()
-    if FC.sha256(raw) != name[:-5]: raise ValueError('the pending F01 activation anchor hash is invalid - refused')
+    if FC.sha256(raw) != name[:-5]:
+        _quarantine_pending(e, path)               # impossible after atomic prepare: provably torn pre-commit legacy file
+        return dict(committed=False, discarded=True)
     try: rec = json.loads(raw)
     except (ValueError, TypeError): raise ValueError('the pending F01 activation anchor is malformed - refused')
-    if not isinstance(rec, dict) or set(rec) != EXTERNAL_ANCHOR_FIELDS:
-        raise ValueError('the pending F01 activation anchor is malformed - refused')
+    _validate_external_record(rec)
+    prior, _leaf = _external_anchors(e)
+    _validate_pending_transition(rec, prior)
     cur = _anchor_state_sha(e.S)
     if cur == rec.get('pre_state_sha256'):
         os.remove(path)
@@ -280,6 +364,7 @@ def _reconcile_external_pending(e):
         except OSError: pass
         return dict(event=rec.get('event'), committed=False)
     if cur == rec.get('post_state_sha256'):
+        _validate_pending_current_state(rec, e.S)
         _promote_external_anchor(e, dict(hash=name[:-5], path=path, record=rec))
         return dict(event=rec.get('event'), committed=True)
     raise ValueError('pending F01 activation anchor matches neither durable settings state - refused (fail closed)')
