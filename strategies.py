@@ -737,6 +737,41 @@ STRATEGIES['session_inventory_unwind_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=6))
 
 
+# VPI-1H tests whether signed volume pressure leads price after a two-day
+# absorption window.  It is sampled once daily to keep turnover and costs low.
+VPI1H = dict(decision_hour=0, window=48, imbalance=0.10, max_displacement_atr=1.0,
+             volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_volume_pressure_inventory_1h(d, p, ctx):
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    decision = hour == int(p['decision_hour'])
+    w = int(p['window'])
+    direction = np.sign(d.c.diff()).fillna(0.0)
+    signed = (direction * d.v).rolling(w, min_periods=w).sum()
+    total = d.v.rolling(w, min_periods=w).sum()
+    pressure = signed / total.replace(0.0, np.nan)
+    displacement = d.c - d.c.shift(w)
+    absorbed = displacement.abs() <= float(p['max_displacement_atr']) * d.atr
+    vol_ok = d.v.rolling(w, min_periods=w).mean() >= (
+        float(p['volume_floor']) * d.v.rolling(7 * 24, min_periods=7 * 24).median())
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['imbalance'])
+    valid = decision & absorbed & vol_ok & cost_ok
+    return dict(le=valid & (pressure >= threshold),
+                se=valid & (pressure <= -threshold),
+                lx=pressure <= 0.0, sx=pressure >= 0.0)
+
+
+STRATEGIES['volume_pressure_inventory_1h'] = dict(
+    name='[RESEARCH] Volume-pressure inventory 1h', style='anticipatory',
+    fn=sig_volume_pressure_inventory_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=VPI1H,
+    desc='Daily signed-volume pressure after a 48h price-absorption window.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
