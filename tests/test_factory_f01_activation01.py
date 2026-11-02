@@ -481,6 +481,7 @@ def test_preexisting_canary_enabled_backup_migrates_to_a_nonresettable_summary(a
     legacy_enabled.pop(FA.ACTIVATION_KEY, None); legacy_enabled.pop(FA.ACTIVATION_CHAIN_KEY, None)
     ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
     with open(e.F['settings'] + '.bak', 'w', encoding='utf-8') as f: json.dump(legacy_enabled, f)
+    shutil.rmtree(FA._anchor_dir(e))                         # the deployed first-canary build predated external anchors
 
     out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
                    auth='6599999051', cohort_dir=CD[0] + '_legacy_migration'))
@@ -502,8 +503,12 @@ def test_forged_activation_summary_and_truncated_ledger_disagree_with_rearm_anch
     ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256'] = ns[FA.ACTIVATION_KEY][-1]['event_sha256']
     ns[FA.REARM_CHAIN_KEY]['activation_count'] = ns[FA.ACTIVATION_CHAIN_KEY]['count']
     ns[FA.REARM_CHAIN_KEY]['activation_head_sha256'] = ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256']
+    ns[FA.REARM_KEY][-1]['activation_count'] = ns[FA.ACTIVATION_CHAIN_KEY]['count']
+    ns[FA.REARM_KEY][-1]['activation_head_sha256'] = ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256']
+    ns[FA.REARM_KEY][-1]['audit_sha256'] = FA._signed(ns[FA.REARM_KEY][-1], 'audit_sha256')
+    ns[FA.REARM_CHAIN_KEY]['head_sha256'] = ns[FA.REARM_KEY][-1]['audit_sha256']
     e.commit_settings(ns)
-    refused(A, e, '/api/f01_canary/enable', {}, 'rearm activation anchor is invalid')
+    refused(A, e, '/api/f01_canary/enable', {}, 'external F01 activation anchor disagrees')
 
 
 def test_deleting_both_activation_keys_after_rearm_still_fails_closed(api, monkeypatch):
@@ -523,14 +528,19 @@ def test_arbitrary_legacy_migration_hash_is_rejected_even_if_both_activation_sum
     legacy_enabled.pop(FA.ACTIVATION_KEY, None); legacy_enabled.pop(FA.ACTIVATION_CHAIN_KEY, None)
     ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
     with open(e.F['settings'] + '.bak', 'w', encoding='utf-8') as f: json.dump(legacy_enabled, f)
+    shutil.rmtree(FA._anchor_dir(e))
     A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
              auth='6599999053', cohort_dir=CD[0] + '_bad_migration'))
     assert A.handle('/api/f01_canary/preflight', {})['pass']
     ns = copy.deepcopy(e.S)
     ns[FA.ACTIVATION_CHAIN_KEY]['migration_proof_sha256'] = 'a' * 64
     ns[FA.REARM_CHAIN_KEY]['activation_migration_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_KEY][0]['activation_migration_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_KEY][0]['activation_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_KEY][0]['audit_sha256'] = FA._signed(ns[FA.REARM_KEY][0], 'audit_sha256')
+    ns[FA.REARM_CHAIN_KEY]['head_sha256'] = ns[FA.REARM_KEY][0]['audit_sha256']
     e.commit_settings(ns)
-    refused(A, e, '/api/f01_canary/enable', {}, 'activation anchor is invalid|legacy migration proof is invalid')
+    refused(A, e, '/api/f01_canary/enable', {}, 'external F01 activation anchor disagrees')
 
 
 @pytest.mark.parametrize('damage', ['deleted', 'reordered', 'rewritten', 'extra_field', 'summary', 'current_link'])

@@ -58,6 +58,9 @@ CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'current_config_sha256', 'co
                 'activation_migration_proof_sha256'}
 ACTIVATION_CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'staged_config_sha256', 'count', 'head_sha256',
                            'migration_proof_sha256'}
+EXTERNAL_ANCHOR_FIELDS = {'version', 'sequence', 'prev_anchor_sha256', 'event', 'staged_config_sha256',
+                          'activation_genesis_config_sha256', 'activation_count', 'activation_head_sha256',
+                          'activation_migration_proof_sha256', 'rearm_head_sha256', 'at_utc'}
 
 
 def _env(e):
@@ -141,6 +144,86 @@ def _canonical_cfg(cfg):
     out = copy.deepcopy(cfg)
     out['authorization_comment_id'] = str(out['authorization_comment_id'])
     return out
+
+
+def _anchor_dir(e):
+    """Fixed runtime-data location: settings cannot redirect or hide the external write-once anchor chain."""
+    return os.path.join(os.path.dirname(os.path.abspath(e.F['settings'])), 'f01_activation_anchors')
+
+
+def _external_anchors(e):
+    d = _anchor_dir(e)
+    rows = {}
+    for name in sorted(os.listdir(d)) if os.path.isdir(d) else ():
+        if not isinstance(name, str) or not name.endswith('.json') or not FC.HEX64.fullmatch(name[:-5]):
+            raise ValueError('the external F01 activation anchor store is malformed - refused (fail closed)')
+        with open(os.path.join(d, name), 'rb') as f: raw = f.read()
+        if FC.sha256(raw) != name[:-5]:
+            raise ValueError('the external F01 activation anchor hash is invalid - refused (fail closed)')
+        try: row = json.loads(raw)
+        except (ValueError, TypeError):
+            raise ValueError('the external F01 activation anchor record is malformed - refused (fail closed)')
+        if (not isinstance(row, dict) or set(row) != EXTERNAL_ANCHOR_FIELDS or row.get('version') != 1
+                or not isinstance(row.get('sequence'), int) or isinstance(row.get('sequence'), bool)
+                or row['sequence'] <= 0 or row.get('event') not in ('enable', 'rearm')
+                or FC._ts(row.get('at_utc')) is None
+                or not isinstance(row.get('activation_count'), int) or isinstance(row.get('activation_count'), bool)
+                or row['activation_count'] < 0
+                or any(not isinstance(row.get(k), str) or not FC.HEX64.fullmatch(row[k]) for k in
+                       ('prev_anchor_sha256', 'staged_config_sha256', 'activation_genesis_config_sha256',
+                        'activation_head_sha256', 'activation_migration_proof_sha256', 'rearm_head_sha256'))):
+            raise ValueError('the external F01 activation anchor record is malformed - refused (fail closed)')
+        rows[name[:-5]] = row
+    if not rows: return [], None
+    roots = [h for h, r in rows.items() if r['prev_anchor_sha256'] == HEX0]
+    children = {}
+    for h, r in rows.items():
+        if r['prev_anchor_sha256'] != HEX0: children.setdefault(r['prev_anchor_sha256'], []).append(h)
+    if len(roots) != 1 or any(len(v) != 1 for v in children.values()):
+        raise ValueError('the external F01 activation anchor chain is forked or rootless - refused (fail closed)')
+    ordered, seen, cur = [], set(), roots[0]
+    while cur:
+        if cur in seen or cur not in rows: raise ValueError('the external F01 activation anchor chain is invalid - refused')
+        seen.add(cur); ordered.append((cur, rows[cur]))
+        nxt = children.get(cur, [])
+        cur = nxt[0] if nxt else None
+    if len(seen) != len(rows) or any(r['sequence'] != i for i, (_h, r) in enumerate(ordered, 1)):
+        raise ValueError('the external F01 activation anchor chain is incomplete or reordered - refused (fail closed)')
+    return ordered, ordered[-1]
+
+
+def _anchor_state(staged_hash, activation_chain, rearm_chain):
+    return dict(staged_config_sha256=staged_hash,
+                activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
+                activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
+                activation_migration_proof_sha256=activation_chain['migration_proof_sha256'],
+                rearm_head_sha256=rearm_chain['head_sha256'] if rearm_chain else HEX0)
+
+
+def _validate_external_anchor(e, staged_hash, activation_chain, rearm_chain, allow_absent=False):
+    ordered, leaf = _external_anchors(e)
+    if leaf is None:
+        if allow_absent: return ordered
+        raise ValueError('the external F01 activation anchor is missing - refused (fail closed)')
+    _h, rec = leaf
+    expected = _anchor_state(staged_hash, activation_chain, rearm_chain)
+    if any(rec.get(k) != v for k, v in expected.items()):
+        raise ValueError('the external F01 activation anchor disagrees with settings - refused (fail closed)')
+    return ordered
+
+
+def _append_external_anchor(e, event, staged_hash, activation_chain, rearm_chain, prior):
+    state = _anchor_state(staged_hash, activation_chain, rearm_chain)
+    rec = dict(version=1, sequence=len(prior) + 1, prev_anchor_sha256=prior[-1][0] if prior else HEX0,
+               event=event, at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'), **state)
+    raw = FC.canonical(rec); h = FC.sha256(raw); d = _anchor_dir(e); os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, h + '.json')
+    try:
+        with open(path, 'xb') as f: f.write(raw)
+    except FileExistsError:
+        with open(path, 'rb') as f:
+            if f.read() != raw: raise ValueError('the external F01 activation anchor is not immutable')
+    return h
 
 
 def _activation_proof(e, cfg, cfg_hash, pf, sl):
@@ -464,9 +547,13 @@ def rearm(e, b):
         new_hash = _sha(new_cfg)
         activation_rows, activation_chain = _validated_activations(e.S, old_hash, allow_uninitialized=True)
         if activation_chain is None:
+            external_prior, external_leaf = _external_anchors(e)
+            if external_leaf is not None:
+                raise ValueError('external activation history exists without its settings chain - rearm refused')
             activation_chain = dict(version=1, genesis_config_sha256=old_hash, staged_config_sha256=new_hash,
                                     count=0, head_sha256=HEX0, migration_proof_sha256=enabled_proof)
         else:
+            external_prior = _validate_external_anchor(e, old_hash, activation_chain, chain if prior else None)
             activation_chain = dict(copy.deepcopy(activation_chain), staged_config_sha256=new_hash)
             if not activation_rows:
                 activation_chain['migration_proof_sha256'] = enabled_proof
@@ -488,6 +575,7 @@ def rearm(e, b):
                          activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
                          activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
                          activation_migration_proof_sha256=activation_chain['migration_proof_sha256'])
+        _append_external_anchor(e, 'rearm', new_hash, activation_chain, new_chain, external_prior)
         ns = copy.deepcopy(e.S)
         ns[FC.CANARY_KEY] = new_cfg
         ns.pop(PREFLIGHT_KEY, None)
@@ -566,6 +654,12 @@ def enable(e, b=None):
         ns = copy.deepcopy(e.S)
         _slot(ns)['enabled'] = True
         activations, activation_chain = _validated_activations(e.S, _sha(cfg), allow_uninitialized=True)
+        if activation_chain is None:
+            external_prior, external_leaf = _external_anchors(e)
+            if external_leaf is not None:
+                raise ValueError('external activation history exists without its settings chain - C-F01 stays disabled')
+        else:
+            external_prior = _validate_external_anchor(e, _sha(cfg), activation_chain, rearm_chain)
         event = _activation_record(_sha(cfg), rec, sl, activations)
         ns[ACTIVATION_KEY] = copy.deepcopy(activations) + [event]
         ns[ACTIVATION_CHAIN_KEY] = dict(
@@ -584,6 +678,7 @@ def enable(e, b=None):
                 activation_count=ns[ACTIVATION_CHAIN_KEY]['count'],
                 activation_head_sha256=ns[ACTIVATION_CHAIN_KEY]['head_sha256'],
                 activation_migration_proof_sha256=ns[ACTIVATION_CHAIN_KEY]['migration_proof_sha256'])
+        _append_external_anchor(e, 'enable', _sha(cfg), ns[ACTIVATION_CHAIN_KEY], ns.get(REARM_CHAIN_KEY), external_prior)
         e.commit_settings(ns)
     ENG.log.info(f"FACTORY-F01 canary: C-F01 enabled after PASS preflight {rec['record_sha256']} (start {cfg['start_utc']})")
     return dict(enabled=True, start_utc=cfg['start_utc'], record_sha256=rec['record_sha256'])
