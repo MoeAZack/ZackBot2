@@ -873,6 +873,32 @@ STRATEGIES['transient_jump_dislocation_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
 
 
+# AOF-1H uses archived taker-buy quote volume, an information field absent from
+# the coarse runtime cache. Extreme aggressive flow with little price progress
+# is treated as passive-side absorption and subsequent exhaustion.
+AOF1H = dict(imbalance_threshold=0.20, max_hour_move=0.004, cost_multiple=5.0)
+
+
+def sig_aggressor_flow_absorption_1h(d, p, ctx):
+    imbalance = pd.Series(ctx['taker_imbalance'], index=d.index, dtype=float)
+    hour_move = d.c / d.o - 1.0
+    absorbed = hour_move.abs() <= float(p['max_hour_move'])
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['imbalance_threshold'])
+    return dict(le=absorbed & cost_ok & (imbalance <= -threshold),
+                se=absorbed & cost_ok & (imbalance >= threshold),
+                lx=d.c >= d.e9, sx=d.c <= d.e9)
+
+
+STRATEGIES['aggressor_flow_absorption_1h'] = dict(
+    name='[RESEARCH] Aggressor-flow absorption 1h', style='orderflow_reversion',
+    fn=sig_aggressor_flow_absorption_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=AOF1H,
+    desc='Fade extreme verified hourly taker imbalance when price progress is muted.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
