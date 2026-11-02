@@ -241,8 +241,16 @@ class ShadowBook:
         return self._record('incomplete', instance_id=instance_id, reason=str(reason))
 
     def mark_gap(self, reason):
-        """Durable observer-wide coverage gap (used when an input cannot be applied to this book)."""
-        return self._record('gap', reason=str(reason)[:160])
+        """Fail-closed observer-wide gap.
+
+        Unlike ordinary records, the in-memory taint is set *before* the durable append.  If the
+        ledger itself is the failing component, the current process must not continue reporting
+        complete coverage merely because the gap record could not be written.
+        """
+        reason = str(reason)[:160]
+        with self._lock:
+            if reason not in self.gaps: self.gaps.append(reason)
+            return self._record('gap', reason=reason)
 
     # ------------------------------------------------------------------ reducer
     def _register(self, rec):
@@ -760,18 +768,45 @@ class CapitalShadowLadder:
         self.books = {capital: ShadowBook(os.path.join(self.directory, f'capital-{int(capital)}.jsonl'),
                                          self.cohort_id, dict(self.model), start=capital, min_n=self.min_n)
                       for capital in self.capitals}
+        self._pending = os.path.join(self.directory, '.fanout-pending.json')
+        if os.path.exists(self._pending):
+            try:
+                with open(self._pending, 'r', encoding='utf-8') as fh: pending = json.load(fh)
+                targets = set(float(x) for x in pending.get('capitals', self.capitals))
+                method = str(pending.get('method') or 'unknown')
+            except Exception:
+                targets, method = set(self.capitals), 'unknown'
+            for capital, book in self.books.items():
+                if capital in targets:
+                    try: book.mark_gap(f'capital_fanout_interrupted:{method}')
+                    except Exception: pass
+
+    def _pending_write(self, method, capitals):
+        """Write-ahead intent makes an interrupted/failed fan-out detectable after restart."""
+        tmp = self._pending + '.tmp'
+        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(_cj(dict(method=str(method), capitals=list(capitals))) + '\n')
+            fh.flush(); os.fsync(fh.fileno())
+        os.replace(tmp, self._pending)
 
     def _all(self, method, *args, **kwargs):
         out, failed = {}, []
         with self._lock:
+            self._pending_write(method, self.capitals)
             for capital, book in self.books.items():
                 try:
                     out[capital] = getattr(book, method)(*args, **kwargs)
                 except Exception as ex:                              # every later book must still receive the input
                     reason = f'capital_fanout:{method}:{type(ex).__name__}'
                     try: book.mark_gap(reason)                        # fail closed in the affected durable ledger
-                    except Exception: pass                           # a dead disk is still surfaced by the raised aggregate
+                    except Exception: pass                           # mark_gap still taints memory before its append
                     failed.append((capital, reason))
+            if failed:
+                try: self._pending_write(method, [c for c, _ in failed])
+                except Exception: pass                               # the original all-target intent remains conservative
+            else:
+                try: os.remove(self._pending)
+                except FileNotFoundError: pass
             self._cache = None
         if failed:
             raise RuntimeError('capital shadow fanout failed: ' + ','.join(str(int(c)) for c, _ in failed))

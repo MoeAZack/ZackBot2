@@ -5202,7 +5202,6 @@ class Engine:
 
     def _shadow_bar(self, tf, frames, sigs):
         """Feed the just-closed candle of every symbol of this timeframe (+ the exit signals per instance) to the observer."""
-        self.__dict__.pop('_capital_shadow_failed', None)   # new cycle: an earlier aborted primary path cannot poison it
         try:
             shadow = self._shadow_book()
             if shadow is None: return
@@ -5321,9 +5320,10 @@ class Engine:
             ids = sorted({SSH.identity(sl)[0] for sl in self.S['SLEEVES'] if sl.get('tf') == tf and sl.get('key') in S.STRATEGIES})
             if self.__dict__.pop('_shadow_failed', False): return     # an observer failure this cycle: no watermark
             shadow.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
+            capital_failed = self.__dict__.pop('_capital_shadow_failed', False)
             try:
                 capital = self._capital_shadow_ladder()
-                if capital is not None and not self.__dict__.pop('_capital_shadow_failed', False):
+                if capital is not None and not capital_failed:
                     capital.complete_cycle(cycle_id=f'{tf}|{tc.isoformat()}', tf=tf, decision_time=tc.isoformat(), instance_ids=ids)
             except Exception: self._capital_shadow_err()   # noqa: BLE001
             self._shadow_health()['cycles'] += 1

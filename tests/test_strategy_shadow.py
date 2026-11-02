@@ -366,7 +366,26 @@ def test_capital_status_is_read_only_does_not_construct_writers_and_is_cached(tm
     assert first['available'] and e.capital_shadow_status() is first
     e._capital_shadow_failed = True
     e._shadow_bar('4h', {}, {})
-    assert not hasattr(e, '_capital_shadow_failed')              # stale failure cannot poison the next cycle
+    assert e._capital_shadow_failed                              # bar cannot erase a failure from the same cycle
+    e._shadow_cycle('4h', {'BTCUSDT': frame(100.0)})
+    assert not hasattr(e, '_capital_shadow_failed')              # cycle consumes/clears the fail-closed state
+
+
+def test_capital_dead_book_is_tainted_in_memory_and_restart_detects_pending_fanout(tmp_path, monkeypatch):
+    root = tmp_path / 'capital'
+    ladder = SSH.CapitalShadowLadder(root, 'CH-DEAD', dict(SSH.MODEL_V1))
+    dead = ladder.books[3000.0]
+    original = dead._append
+    monkeypatch.setattr(dead, '_append', lambda rec: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(RuntimeError, match='3000'):
+        ladder.on_bar(tf='4h', bars={'BTCUSDT': dict(time=iso(), o=100, h=101, l=99, c=100, atr=2)}, signals={})
+    assert not dead.snapshot()['coverage']['complete']
+    assert any('capital_fanout:on_bar:OSError' in x for x in dead.snapshot()['coverage']['gaps'])
+    monkeypatch.setattr(dead, '_append', original)
+    restarted = SSH.CapitalShadowLadder(root, 'CH-DEAD', dict(SSH.MODEL_V1))
+    assert not restarted.books[3000.0].snapshot()['coverage']['complete']
+    assert any('capital_fanout_interrupted:on_bar' in x
+               for x in restarted.books[3000.0].snapshot()['coverage']['gaps'])
 
 
 # ------------------------------------------------------------------ review round 1 regressions (one per finding)
