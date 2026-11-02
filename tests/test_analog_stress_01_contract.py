@@ -51,3 +51,28 @@ def test_analog_stress_refuses_incomplete_paths_and_reports_bounds():
         "target_first",
         "gap_open",
     ]
+
+
+def test_analog_stress_contract_freezes_sessions_blocks_and_paths():
+    contract = _contract()
+    time = contract["time"]
+    estimator = contract["estimator"]
+    paths = contract["path_selection"]
+
+    assert time["session_boundaries_half_open"] == [
+        "[00:00,06:00)",
+        "[06:00,12:00)",
+        "[12:00,18:00)",
+        "[18:00,24:00)",
+    ]
+    assert time["cell_assignment_timestamp"] == "decision_timestamp"
+    assert time["spanning_trade_reassignment"] is False
+    assert estimator["block_length_cairo_days"] == 3
+    assert estimator["edge_policy"] == "circular_moving_blocks"
+    assert estimator["resamples"] == 2000
+    assert estimator["seed"] == 20261102
+    assert estimator["percentiles"] == ["0.025", "0.500", "0.975"]
+    assert estimator["minimum_distinct_cairo_days"] == 30
+    assert estimator["minimum_session_observations"] == 20
+    assert estimator["minimum_session_distinct_days"] == 10
+    assert paths["missing_or_impossible_fallback"] is False

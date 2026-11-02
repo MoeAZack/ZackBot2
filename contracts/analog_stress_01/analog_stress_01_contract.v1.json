@@ -17,7 +17,15 @@
     "report_zone": "Africa/Cairo",
     "hardcoded_offset_allowed": false,
     "dst_boundary_tests_required": true,
-    "block_unit": "cairo_day"
+    "block_unit": "cairo_day",
+    "session_boundaries_half_open": [
+      "[00:00,06:00)",
+      "[06:00,12:00)",
+      "[12:00,18:00)",
+      "[18:00,24:00)"
+    ],
+    "cell_assignment_timestamp": "decision_timestamp",
+    "spanning_trade_reassignment": false
   },
   "paths": [
     "observed",
@@ -38,7 +46,25 @@
     ],
     "recompute_costs_per_path": true,
     "report_observed_separately": true,
-    "report_optimistic_pessimistic_bounds": true
+    "report_optimistic_pessimistic_bounds": true,
+    "block_length_cairo_days": 3,
+    "edge_policy": "circular_moving_blocks",
+    "resamples": 2000,
+    "seed": 20261102,
+    "percentiles": [
+      "0.025",
+      "0.500",
+      "0.975"
+    ],
+    "minimum_distinct_cairo_days": 30,
+    "minimum_session_observations": 20,
+    "minimum_session_distinct_days": 10
+  },
+  "path_selection": {
+    "observed": "causal_minute_order_only",
+    "pessimistic": "gap_open_if_stop_crossed_at_open_else_stop_first_if_admissible",
+    "optimistic": "gap_open_if_applicable_else_target_first_if_admissible",
+    "missing_or_impossible_fallback": false
   },
   "required_bindings": [
     "source_rows_sha256",
