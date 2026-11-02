@@ -646,6 +646,38 @@ def signals(key, d, ctx, params=None, mask_sides=True):
     return out
 
 
+# FDMR-1H is a research-only funding-dislocation screen.  Its two extra
+# columns are supplied only by the sealed research runner from audited,
+# point-in-time Binance funding archives; the runtime candle path never
+# manufactures or fetches them.
+FDMR1H = dict(z=1.5, volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_funding_dislocation_mr_1h(d, p, ctx):
+    """Fade a fresh extreme funding event only after price starts recovering."""
+    z = d['funding_z'] if 'funding_z' in d else pd.Series(np.nan, index=d.index)
+    fresh = d['funding_fresh'] if 'funding_fresh' in d else pd.Series(False, index=d.index)
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(24, min_periods=24).median().shift()
+    move6 = d.c / d.c.shift(6) - 1
+    # Five times the full taker+adverse-slippage round trip, expressed as
+    # stop distance.  Fee/slippage constants are frozen in the preregistration.
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    level = float(p['z'])
+    le = fresh & (z <= -level) & (move6 < 0) & (d.c > d.o) & (d.c > d.c.shift()) & vol_ok & cost_ok
+    se = fresh & (z >= level) & (move6 > 0) & (d.c < d.o) & (d.c < d.c.shift()) & vol_ok & cost_ok
+    return dict(le=le, se=se, lx=(z >= -0.25), sx=(z <= 0.25))
+
+
+STRATEGIES['funding_dislocation_mr_1h'] = dict(
+    name='[RESEARCH] Funding dislocation mean reversion 1h',
+    style='mean_reversion', fn=sig_funding_dislocation_mr_1h,
+    sides='both', tf='1h', research_only=True, reentry_lock=True,
+    params=FDMR1H,
+    desc='Fresh audited funding-rate z-score extreme plus opposite price recovery; next-open entry.',
+    mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=18))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
