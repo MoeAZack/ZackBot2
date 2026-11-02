@@ -87,6 +87,9 @@ def test_stage_preflight_enable_happy_path_and_it_persists(api, monkeypatch):
     assert set(activation) == FA.ACTIVATION_FIELDS
     assert activation['event_sha256'] == FA._signed(activation, 'event_sha256')
     assert activation['config_sha256'] == out['config_sha256']
+    assert e.S[FA.ACTIVATION_CHAIN_KEY] == dict(
+        version=1, genesis_config_sha256=out['config_sha256'], staged_config_sha256=out['config_sha256'],
+        count=1, head_sha256=activation['event_sha256'], migration_proof_sha256=FA.HEX0)
     assert slot(e, F02)['enabled'] is False and e.S[FC.CANARY_KEY]['start_utc'] == iso(START)
     disk = json.load(open(e.F['settings'], encoding='utf-8'))
     assert disk[FC.CANARY_KEY] == cfg(start=START) and FA._slot(disk)['enabled'] is True   # committed durably
@@ -425,6 +428,69 @@ def test_enable_validates_the_whole_activation_chain_before_appending(api):
     ns = copy.deepcopy(e.S); ns[FA.ACTIVATION_KEY] = [None]; e.commit_settings(ns)
     refused(A, e, '/api/f01_canary/enable', {}, 'activation audit is malformed')
     assert slot(e, F01)['enabled'] is False
+
+
+def _third_stage_ready(A, e, monkeypatch):
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    second = _next_rearm(A, e, monkeypatch, first['config_sha256'], 2)
+    third = A.handle('/api/f01_canary/rearm', rearm_body(second['config_sha256'], start=START + timedelta(hours=12),
+                     auth='6599999096', cohort_dir=CD[0] + '_rearmed_5'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert slot(e, F01)['enabled'] is False and len(e.S[FA.ACTIVATION_KEY]) == 3
+    return third
+
+
+@pytest.mark.parametrize('damage', ['delete_key', 'truncate', 'reorder', 'rewrite', 'extra_field', 'summary'])
+def test_enable_rejects_activation_history_deletion_reorder_rewrite_or_summary_corruption(api, monkeypatch, damage):
+    A, e = api
+    _third_stage_ready(A, e, monkeypatch)
+    ns = copy.deepcopy(e.S)
+    if damage == 'delete_key':
+        ns.pop(FA.ACTIVATION_KEY)
+    elif damage == 'truncate':
+        ns[FA.ACTIVATION_KEY].pop()
+    elif damage == 'reorder':
+        ns[FA.ACTIVATION_KEY].reverse()
+    elif damage == 'rewrite':
+        ns[FA.ACTIVATION_KEY][0]['enabled_at_utc'] = iso(START - timedelta(minutes=1))
+    elif damage == 'extra_field':
+        ns[FA.ACTIVATION_KEY][0]['unexpected'] = True
+    else:
+        ns[FA.ACTIVATION_CHAIN_KEY]['count'] = 1
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit.*malformed|activation audit.*invalid')
+    assert slot(e, F01)['enabled'] is False
+
+
+def test_old_enable_disable_rearm_pass_then_deleted_activation_ledger_cannot_enable(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+                     auth='6599999050', cohort_dir=CD[0] + '_deleted_ledger'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert first['config_sha256'] == e.S[FA.ACTIVATION_CHAIN_KEY]['staged_config_sha256']
+    ns = copy.deepcopy(e.S); ns[FA.ACTIVATION_KEY] = []; e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit summary is invalid')
+
+
+def test_preexisting_canary_enabled_backup_migrates_to_a_nonresettable_summary(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    legacy_enabled = json.load(open(e.F['settings'] + '.bak', encoding='utf-8'))
+    legacy_enabled.pop(FA.ACTIVATION_KEY, None); legacy_enabled.pop(FA.ACTIVATION_CHAIN_KEY, None)
+    ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
+    with open(e.F['settings'] + '.bak', 'w', encoding='utf-8') as f: json.dump(legacy_enabled, f)
+
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+                   auth='6599999051', cohort_dir=CD[0] + '_legacy_migration'))
+    summary = e.S[FA.ACTIVATION_CHAIN_KEY]
+    assert summary['count'] == 0 and summary['head_sha256'] == FA.HEX0
+    assert summary['migration_proof_sha256'] != FA.HEX0
+    assert summary['staged_config_sha256'] == out['config_sha256']
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    assert A.handle('/api/f01_canary/enable', {})['enabled']
+    assert e.S[FA.ACTIVATION_CHAIN_KEY]['count'] == 1
 
 
 @pytest.mark.parametrize('damage', ['deleted', 'reordered', 'rewritten', 'extra_field', 'summary', 'current_link'])

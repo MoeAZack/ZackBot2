@@ -38,7 +38,9 @@ RECOVERY_KEY = 'F01_CANARY_RECOVERY'
 REARM_KEY = 'F01_CANARY_REARMS'
 REARM_CHAIN_KEY = 'F01_CANARY_REARM_CHAIN'
 ACTIVATION_KEY = 'F01_CANARY_ACTIVATIONS'
-OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY, REARM_KEY, REARM_CHAIN_KEY, ACTIVATION_KEY)
+ACTIVATION_CHAIN_KEY = 'F01_CANARY_ACTIVATION_CHAIN'
+OWNED_KEYS = (FC.CANARY_KEY, PREFLIGHT_KEY, RECOVERY_KEY, REARM_KEY, REARM_CHAIN_KEY,
+              ACTIVATION_KEY, ACTIVATION_CHAIN_KEY)
 CFG_FIELDS = ('start_utc', 'authorization_comment_id', 'cohort_dir', 'source_commit', 'source_manifest')
 PINS_FILE = os.path.join('contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 ROUTE = '/api/f01_canary/'
@@ -50,6 +52,8 @@ REARM_FIELDS = {'version', 'sequence', 'prev_audit_sha256', 'old_config_sha256',
                 'old_authorization_comment_id', 'new_authorization_comment_id', 'old_cohort_dir', 'new_cohort_dir',
                 'old_start_utc', 'new_start_utc', 'activation_proof_sha256', 'at_utc', 'reason', 'audit_sha256'}
 CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'current_config_sha256', 'count', 'head_sha256'}
+ACTIVATION_CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'staged_config_sha256', 'count', 'head_sha256',
+                           'migration_proof_sha256'}
 
 
 def _env(e):
@@ -84,7 +88,7 @@ def _activation_record(cfg_hash, rec, sl, prior):
     return out
 
 
-def _validated_activations(S):
+def _validated_activations(S, staged_hash, allow_uninitialized=False):
     rows = S.get(ACTIVATION_KEY, [])
     if not isinstance(rows, list): raise ValueError('the F01 activation audit is malformed - refused (fail closed)')
     prev = HEX0
@@ -99,7 +103,24 @@ def _validated_activations(S):
                 or _signed(row, 'event_sha256') != row['event_sha256']):
             raise ValueError('the F01 activation audit is malformed - refused (fail closed)')
         prev = row['event_sha256']
-    return rows
+    summary = S.get(ACTIVATION_CHAIN_KEY)
+    absent = ACTIVATION_KEY not in S and summary is None
+    if absent and allow_uninitialized:
+        return rows, None
+    if summary is None:
+        raise ValueError('the F01 activation audit summary is missing - refused (fail closed)')
+    if (not isinstance(summary, dict) or set(summary) != ACTIVATION_CHAIN_FIELDS or summary.get('version') != 1
+            or not isinstance(summary.get('count'), int) or isinstance(summary.get('count'), bool)
+            or summary['count'] != len(rows)
+            or any(not isinstance(summary.get(k), str) or not FC.HEX64.fullmatch(summary[k]) for k in
+                   ('genesis_config_sha256', 'staged_config_sha256', 'head_sha256', 'migration_proof_sha256'))
+            or summary['staged_config_sha256'] != staged_hash or summary['head_sha256'] != prev):
+        raise ValueError('the F01 activation audit summary is invalid - refused (fail closed)')
+    if rows and summary['genesis_config_sha256'] != rows[0]['config_sha256']:
+        raise ValueError('the F01 activation audit genesis is invalid - refused (fail closed)')
+    if not rows and summary['head_sha256'] != HEX0:
+        raise ValueError('the F01 activation audit summary is invalid - refused (fail closed)')
+    return rows, summary
 
 
 def _canonical_cfg(cfg):
@@ -115,7 +136,7 @@ def _activation_proof(e, cfg, cfg_hash, pf, sl):
     its atomic settings backup is accepted only when it contains this exact config/PASS/card with enabled=true while the
     current exact card is disabled. No log line or mere expired PASS is sufficient.
     """
-    rows = _validated_activations(e.S)
+    rows, _summary = _validated_activations(e.S, cfg_hash, allow_uninitialized=True)
     for row in rows:
         if (row['config_sha256'] == cfg_hash and row['preflight_record_sha256'] == pf.get('record_sha256')
                 and row['preflight_extract_sha256'] == pf.get('extract_sha256') and row['slot_sha256'] == _slot_sha(sl)):
@@ -413,11 +434,18 @@ def rearm(e, b):
         audit['audit_sha256'] = _signed(audit, 'audit_sha256')
         new_chain = dict(version=1, genesis_config_sha256=chain['genesis_config_sha256'],
                          current_config_sha256=new_hash, count=len(prior) + 1, head_sha256=audit['audit_sha256'])
+        activation_rows, activation_chain = _validated_activations(e.S, old_hash, allow_uninitialized=True)
+        if activation_chain is None:
+            activation_chain = dict(version=1, genesis_config_sha256=old_hash, staged_config_sha256=new_hash,
+                                    count=0, head_sha256=HEX0, migration_proof_sha256=enabled_proof)
+        else:
+            activation_chain = dict(copy.deepcopy(activation_chain), staged_config_sha256=new_hash)
         ns = copy.deepcopy(e.S)
         ns[FC.CANARY_KEY] = new_cfg
         ns.pop(PREFLIGHT_KEY, None)
         ns[REARM_KEY] = copy.deepcopy(prior) + [audit]
         ns[REARM_CHAIN_KEY] = new_chain
+        ns[ACTIVATION_CHAIN_KEY] = activation_chain
         e.commit_settings(ns)
     ENG.log.info(f"FACTORY-F01 rearmed as a disabled stage: {old_hash} -> {new_hash}, "
                  f"authorization {new_cfg['authorization_comment_id']}")
@@ -486,9 +514,14 @@ def enable(e, b=None):
             raise ValueError(f'the fresh preflight fails ({bad or "unknown"}) - C-F01 stays disabled')
         ns = copy.deepcopy(e.S)
         _slot(ns)['enabled'] = True
-        activations = _validated_activations(e.S)
+        activations, activation_chain = _validated_activations(e.S, _sha(cfg), allow_uninitialized=True)
         event = _activation_record(_sha(cfg), rec, sl, activations)
         ns[ACTIVATION_KEY] = copy.deepcopy(activations) + [event]
+        ns[ACTIVATION_CHAIN_KEY] = dict(
+            version=1,
+            genesis_config_sha256=(activation_chain['genesis_config_sha256'] if activation_chain else _sha(cfg)),
+            staged_config_sha256=_sha(cfg), count=len(activations) + 1, head_sha256=event['event_sha256'],
+            migration_proof_sha256=(activation_chain['migration_proof_sha256'] if activation_chain else HEX0))
         e.commit_settings(ns)
     ENG.log.info(f"FACTORY-F01 canary: C-F01 enabled after PASS preflight {rec['record_sha256']} (start {cfg['start_utc']})")
     return dict(enabled=True, start_utc=cfg['start_utc'], record_sha256=rec['record_sha256'])
