@@ -29,6 +29,14 @@ Existing adapters and runtime modules are not edited by this slice.
 5. A changed dataset, strategy file, version pin, or cost manifest must fail closed.
 6. Base and 1.5x-cost runs must use identical trades; only declared cost outputs may differ.
 
+## Frozen diagnostic constants
+
+- Recursive warm-ups are **128, 256, and 512 closed candles**. The scored interval is `[512, pack_end)`; warm-up rows are never scored.
+- Prefix-invariance cutoffs are the scored interval's 25%, 50%, 75%, and 100% endpoints, using floor-index selection and recording the resulting UTC candle times in the pack manifest.
+- Canonical timestamps are UTC ISO-8601 strings. Prices and quantities are decimal strings quantized to the frozen exchange tick/step. Fees, funding, gross/net P&L, and R values are decimal strings at exactly eight decimal places. Binary floats are forbidden in the neutral event file.
+- Canonical fields compare byte-for-byte after canonical JSON serialization; the unexplained tolerance is **zero**. Any engine-native higher precision must be quantized before export, never during comparison.
+- A declared divergence row has exactly: `event_key`, `field`, `zackbot_value`, `foreign_value`, `reason_code`, `semantic_reason`, `source_engine`, and `evidence_hash`. `reason_code` is one of `ROUNDING_BEFORE_EXPORT`, `UNSUPPORTED_ORDER_TYPE`, or `DECLARED_ENGINE_SEMANTIC`; wildcards and field-group suppressions are forbidden.
+
 ## Acceptance
 
 - Zero unexplained signal, fill, exit, or cost divergence.

@@ -54,3 +54,27 @@ def test_harness_compare_contract_defers_external_execution():
         "zackbot_golden",
         "freqtrade_isolated_later",
     ]
+
+
+def test_harness_compare_contract_freezes_numeric_and_divergence_semantics():
+    contract = _contract()
+    frozen = contract["frozen_diagnostics"]
+    divergence = contract["declared_divergence"]
+
+    assert frozen["warmup_closed_candles"] == [128, 256, 512]
+    assert frozen["scored_interval"] == "[512,pack_end)"
+    assert frozen["binary_float_allowed"] is False
+    assert frozen["canonical_json_compare"] == "byte_exact"
+    assert frozen["unexplained_numeric_tolerance"] == "0"
+    assert divergence["wildcards_allowed"] is False
+    assert divergence["field_group_suppression_allowed"] is False
+    assert set(divergence["required_fields"]) == {
+        "event_key",
+        "field",
+        "zackbot_value",
+        "foreign_value",
+        "reason_code",
+        "semantic_reason",
+        "source_engine",
+        "evidence_hash",
+    }

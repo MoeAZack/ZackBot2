@@ -46,6 +46,46 @@
     "tamper_refusal": true,
     "long_short_and_same_bar_cases": true
   },
+  "frozen_diagnostics": {
+    "warmup_closed_candles": [
+      128,
+      256,
+      512
+    ],
+    "scored_interval": "[512,pack_end)",
+    "prefix_endpoint_fractions": [
+      "0.25",
+      "0.50",
+      "0.75",
+      "1.00"
+    ],
+    "prefix_index_rule": "floor_fraction_of_scored_rows_and_record_utc_candle",
+    "timestamp_format": "UTC_ISO8601",
+    "price_quantity_format": "decimal_string_exchange_tick_step_quantized",
+    "money_r_format": "decimal_string_fixed_8dp",
+    "binary_float_allowed": false,
+    "canonical_json_compare": "byte_exact",
+    "unexplained_numeric_tolerance": "0"
+  },
+  "declared_divergence": {
+    "required_fields": [
+      "event_key",
+      "field",
+      "zackbot_value",
+      "foreign_value",
+      "reason_code",
+      "semantic_reason",
+      "source_engine",
+      "evidence_hash"
+    ],
+    "reason_codes": [
+      "ROUNDING_BEFORE_EXPORT",
+      "UNSUPPORTED_ORDER_TYPE",
+      "DECLARED_ENGINE_SEMANTIC"
+    ],
+    "wildcards_allowed": false,
+    "field_group_suppression_allowed": false
+  },
   "acceptance": {
     "unexplained_signal_divergences": 0,
     "unexplained_fill_divergences": 0,
