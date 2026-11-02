@@ -772,6 +772,32 @@ STRATEGIES['volume_pressure_inventory_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+# RSV-1H tests the cross-asset lottery/forced-selling skew anomaly once daily.
+# The rolling return distribution is fully known at the decision close.
+RSV1H = dict(decision_hour=0, window=168, skew_threshold=0.75, cost_multiple=5.0)
+
+
+def sig_realized_skew_valuation_1h(d, p, ctx):
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    decision = hour == int(p['decision_hour'])
+    ret = d.c.pct_change()
+    skew = ret.rolling(int(p['window']), min_periods=int(p['window'])).skew()
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['skew_threshold'])
+    return dict(le=decision & cost_ok & (skew <= -threshold),
+                se=decision & cost_ok & (skew >= threshold),
+                lx=skew >= 0.0, sx=skew <= 0.0)
+
+
+STRATEGIES['realized_skew_valuation_1h'] = dict(
+    name='[RESEARCH] Realized-skew valuation 1h', style='factor_reversion',
+    fn=sig_realized_skew_valuation_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=RSV1H,
+    desc='Daily fade of extreme seven-day hourly-return skew.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
