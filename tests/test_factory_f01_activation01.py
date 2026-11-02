@@ -33,7 +33,8 @@ def body(**kw):
 
 
 def recovery_body(old_hash, **kw):
-    c = cfg(start=START + timedelta(hours=1), auth='6525193522', cohort_dir=CD[0] + '_recovered', **kw)
+    auth = kw.pop('auth', '6525193522')
+    c = cfg(start=START + timedelta(hours=1), auth=auth, cohort_dir=CD[0] + '_recovered', **kw)
     c.pop('on')
     return dict(config_sha256=old_hash, **c)
 
@@ -122,6 +123,13 @@ def test_authenticated_post_stages(api):
     assert code == 200 and obj['ok'] and e.S[FC.CANARY_KEY]['start_utc'] == iso(START)
 
 
+def test_stage_canonicalizes_an_integer_authorization_id_before_writing(api):
+    A, e = api
+    out = A.handle('/api/f01_canary/stage', body(auth=6599999444))
+    assert out['config']['authorization_comment_id'] == '6599999444'
+    assert e.S[FC.CANARY_KEY]['authorization_comment_id'] == '6599999444'
+
+
 # ------------------------------------------------------------------ one-time packaged-pins recovery (#254)
 def _stage_for_recovery(A):
     return A.handle('/api/f01_canary/stage', body())['config_sha256']
@@ -153,6 +161,14 @@ def test_recover_stage_replaces_failed_stage_atomically_and_preserves_everything
     disk = json.load(open(e.F['settings'], encoding='utf-8'))
     assert disk[FC.CANARY_KEY] == out['config'] and disk[FA.RECOVERY_KEY] == [audit]
     refused(A, e, '/api/f01_canary/recover_stage', recovery_body(old_hash), 'does not match')
+
+
+def test_recover_stage_canonicalizes_an_integer_authorization_id(api):
+    A, e = api
+    old_hash = _stage_for_recovery(A)
+    out = A.handle('/api/f01_canary/recover_stage', recovery_body(old_hash, auth=6525193555))
+    assert out['config']['authorization_comment_id'] == '6525193555'
+    assert out['audit']['new_authorization_comment_id'] == '6525193555'
 
 
 @pytest.mark.parametrize('env', ['live', E.MAINNET, None, 'https://example.invalid'])
@@ -289,6 +305,14 @@ def test_rearm_replaces_an_expired_pass_stage_but_never_enables(api, monkeypatch
                  auth='6599999002', cohort_dir=CD[0] + '_twice', start=START + timedelta(hours=6)))
 
 
+def test_rearm_canonicalizes_an_integer_authorization_in_config_and_audit(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    out = A.handle('/api/f01_canary/rearm', rearm_body(old_hash, auth=6599999445))
+    assert out['config']['authorization_comment_id'] == '6599999445'
+    assert out['audit']['new_authorization_comment_id'] == '6599999445'
+
+
 @pytest.mark.parametrize('failure', ['enabled', 'no_pass', 'missing_extract', 'family_lot', 'f02_on', 'pending_cost'])
 def test_rearm_fails_closed_unless_old_stage_and_candidate_boundary_are_clean(api, monkeypatch, failure):
     A, e = api
@@ -369,6 +393,38 @@ def test_rearm_never_reuses_any_historical_authorization_or_cohort_directory(api
             'never-before-used Codex authorization')
     refused(A, e, '/api/f01_canary/rearm', rearm_body(first['config_sha256'], start=START + timedelta(hours=8),
             auth='6599999099', cohort_dir=original_cfg['cohort_dir']), 'never-before-used cohort directory')
+
+
+@pytest.mark.parametrize('field,match', [
+    ('new_authorization_comment_id', 'reuses a historical authorization'),
+    ('new_cohort_dir', 'reuses a historical cohort'),
+])
+def test_full_chain_validation_rejects_historical_reuse_even_with_rehashed_rows(api, monkeypatch, field, match):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    first = _next_rearm(A, e, monkeypatch, old_hash, 1)
+    second = _next_rearm(A, e, monkeypatch, first['config_sha256'], 2)
+    ns = copy.deepcopy(e.S)
+    row = ns[FA.REARM_KEY][1]
+    if field.endswith('authorization_comment_id'):
+        row[field] = ns[FA.REARM_KEY][0]['old_authorization_comment_id']
+    else:
+        used = ns[FA.REARM_KEY][0]['old_cohort_dir']
+        row[field] = os.path.join(os.path.dirname(used), 'alias_component', '..', os.path.basename(used))
+    row['audit_sha256'] = FA._signed(row, 'audit_sha256')
+    ns[FA.REARM_CHAIN_KEY]['head_sha256'] = row['audit_sha256']
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/rearm', rearm_body(second['config_sha256'], start=START + timedelta(hours=12),
+            auth='6599999097', cohort_dir=CD[0] + '_rearmed_4'), match)
+
+
+def test_enable_validates_the_whole_activation_chain_before_appending(api):
+    A, e = api
+    A.handle('/api/f01_canary/stage', body())
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    ns = copy.deepcopy(e.S); ns[FA.ACTIVATION_KEY] = [None]; e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit is malformed')
+    assert slot(e, F01)['enabled'] is False
 
 
 @pytest.mark.parametrize('damage', ['deleted', 'reordered', 'rewritten', 'extra_field', 'summary', 'current_link'])
