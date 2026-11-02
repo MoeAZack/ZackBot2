@@ -798,6 +798,31 @@ STRATEGIES['realized_skew_valuation_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+# MPD-1H uses independently archived Binance mark prices.  The runner injects
+# the causal mark-vs-contract close basis into context; production has no key.
+MPD1H = dict(hours=(0, 4, 8, 12, 16, 20), basis_threshold=0.0008, cost_multiple=5.0)
+
+
+def sig_mark_price_dislocation_1h(d, p, ctx):
+    basis = pd.Series(ctx['mark_basis'], index=d.index, dtype=float)
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    decision = hour.isin(tuple(p['hours']))
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['basis_threshold'])
+    return dict(le=decision & cost_ok & (basis <= -threshold),
+                se=decision & cost_ok & (basis >= threshold),
+                lx=basis >= 0.0, sx=basis <= 0.0)
+
+
+STRATEGIES['mark_price_dislocation_1h'] = dict(
+    name='[RESEARCH] Mark-price dislocation 1h', style='microstructure_reversion',
+    fn=sig_mark_price_dislocation_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=MPD1H,
+    desc='Fade fixed-time contract-close deviations from independently archived Binance mark price.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
