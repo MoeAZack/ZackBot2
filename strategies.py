@@ -823,6 +823,31 @@ STRATEGIES['mark_price_dislocation_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
 
 
+# WLP-1H tests the fixed weekend open/close liquidity-risk premium.  Both
+# directions are separate cells; there is no return-conditioned selection.
+WLP1H = dict(boundaries=((4, 23), (6, 23)), cost_multiple=5.0)
+
+
+def sig_weekend_liquidity_premium_1h(d, p, ctx):
+    t = pd.to_datetime(d.t, utc=True)
+    boundary = pd.Series(False, index=d.index)
+    for weekday, hour in tuple(p['boundaries']):
+        boundary |= (t.dt.weekday == int(weekday)) & (t.dt.hour == int(hour))
+    stop_frac = 2.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    entry = boundary & cost_ok
+    never = pd.Series(False, index=d.index)
+    return dict(le=entry, se=entry, lx=never, sx=never)
+
+
+STRATEGIES['weekend_liquidity_premium_1h'] = dict(
+    name='[RESEARCH] Weekend liquidity premium 1h', style='calendar_risk_premium',
+    fn=sig_weekend_liquidity_premium_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=WLP1H,
+    desc='Separate long/short cells at fixed UTC weekend open and close transitions.',
+    mgmt=dict(stop_atr=2.5, tp_r=2.5, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
