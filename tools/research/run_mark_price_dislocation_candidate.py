@@ -21,6 +21,7 @@ import run_volume_pressure_inventory_candidate as V  # noqa: E402
 KEY = 'mark_price_dislocation_1h'
 FORMAT = 'zb-mark-price-dislocation-1h-envelope/1'
 B, TF_MS = V.B, V.TF_MS
+ACTUAL_FUNDING_SCOPE = V.one_hour_actual_scope
 
 
 class MarkDislocationError(RuntimeError): pass
@@ -42,7 +43,7 @@ def mark_basis_scope(events, marks):
             ctx[sym]['mark_basis'] = (d.c.to_numpy(float) - mark) / mark
         return ctx
 
-    with V.one_hour_actual_scope(events, marks):
+    with ACTUAL_FUNDING_SCOPE(events, marks):
         B.ST.build_context = build_context
         try: yield
         finally: B.ST.build_context = old_build
