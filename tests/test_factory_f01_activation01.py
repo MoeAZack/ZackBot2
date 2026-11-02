@@ -493,6 +493,46 @@ def test_preexisting_canary_enabled_backup_migrates_to_a_nonresettable_summary(a
     assert e.S[FA.ACTIVATION_CHAIN_KEY]['count'] == 1
 
 
+def test_forged_activation_summary_and_truncated_ledger_disagree_with_rearm_anchor(api, monkeypatch):
+    A, e = api
+    _third_stage_ready(A, e, monkeypatch)
+    ns = copy.deepcopy(e.S)
+    ns[FA.ACTIVATION_KEY].pop()
+    ns[FA.ACTIVATION_CHAIN_KEY]['count'] = len(ns[FA.ACTIVATION_KEY])
+    ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256'] = ns[FA.ACTIVATION_KEY][-1]['event_sha256']
+    ns[FA.REARM_CHAIN_KEY]['activation_count'] = ns[FA.ACTIVATION_CHAIN_KEY]['count']
+    ns[FA.REARM_CHAIN_KEY]['activation_head_sha256'] = ns[FA.ACTIVATION_CHAIN_KEY]['head_sha256']
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'rearm activation anchor is invalid')
+
+
+def test_deleting_both_activation_keys_after_rearm_still_fails_closed(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+             auth='6599999052', cohort_dir=CD[0] + '_delete_both'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation audit summary is missing')
+
+
+def test_arbitrary_legacy_migration_hash_is_rejected_even_if_both_activation_summaries_agree(api, monkeypatch):
+    A, e = api
+    old_hash = _expired_pass_stage(A, e, monkeypatch)
+    legacy_enabled = json.load(open(e.F['settings'] + '.bak', encoding='utf-8'))
+    legacy_enabled.pop(FA.ACTIVATION_KEY, None); legacy_enabled.pop(FA.ACTIVATION_CHAIN_KEY, None)
+    ns = copy.deepcopy(e.S); ns.pop(FA.ACTIVATION_KEY, None); ns.pop(FA.ACTIVATION_CHAIN_KEY, None); e.commit_settings(ns)
+    with open(e.F['settings'] + '.bak', 'w', encoding='utf-8') as f: json.dump(legacy_enabled, f)
+    A.handle('/api/f01_canary/rearm', rearm_body(old_hash, start=START + timedelta(hours=4),
+             auth='6599999053', cohort_dir=CD[0] + '_bad_migration'))
+    assert A.handle('/api/f01_canary/preflight', {})['pass']
+    ns = copy.deepcopy(e.S)
+    ns[FA.ACTIVATION_CHAIN_KEY]['migration_proof_sha256'] = 'a' * 64
+    ns[FA.REARM_CHAIN_KEY]['activation_migration_proof_sha256'] = 'a' * 64
+    e.commit_settings(ns)
+    refused(A, e, '/api/f01_canary/enable', {}, 'activation anchor is invalid|legacy migration proof is invalid')
+
+
 @pytest.mark.parametrize('damage', ['deleted', 'reordered', 'rewritten', 'extra_field', 'summary', 'current_link'])
 def test_rearm_refuses_deleted_reordered_rewritten_or_unlinked_audit_history(api, monkeypatch, damage):
     A, e = api

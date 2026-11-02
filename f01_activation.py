@@ -50,8 +50,12 @@ ACTIVATION_FIELDS = {'version', 'sequence', 'prev_event_sha256', 'config_sha256'
                      'preflight_extract_sha256', 'slot_sha256', 'enabled_at_utc', 'event_sha256'}
 REARM_FIELDS = {'version', 'sequence', 'prev_audit_sha256', 'old_config_sha256', 'new_config_sha256',
                 'old_authorization_comment_id', 'new_authorization_comment_id', 'old_cohort_dir', 'new_cohort_dir',
-                'old_start_utc', 'new_start_utc', 'activation_proof_sha256', 'at_utc', 'reason', 'audit_sha256'}
-CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'current_config_sha256', 'count', 'head_sha256'}
+                'old_start_utc', 'new_start_utc', 'activation_proof_sha256', 'activation_genesis_config_sha256',
+                'activation_count', 'activation_head_sha256', 'activation_migration_proof_sha256',
+                'at_utc', 'reason', 'audit_sha256'}
+CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'current_config_sha256', 'count', 'head_sha256',
+                'activation_genesis_config_sha256', 'activation_count', 'activation_head_sha256',
+                'activation_migration_proof_sha256'}
 ACTIVATION_CHAIN_FIELDS = {'version', 'genesis_config_sha256', 'staged_config_sha256', 'count', 'head_sha256',
                            'migration_proof_sha256'}
 
@@ -105,7 +109,8 @@ def _validated_activations(S, staged_hash, allow_uninitialized=False):
         prev = row['event_sha256']
     summary = S.get(ACTIVATION_CHAIN_KEY)
     absent = ACTIVATION_KEY not in S and summary is None
-    if absent and allow_uninitialized:
+    rearm_anchor = S.get(REARM_CHAIN_KEY)
+    if absent and allow_uninitialized and rearm_anchor is None:
         return rows, None
     if summary is None:
         raise ValueError('the F01 activation audit summary is missing - refused (fail closed)')
@@ -120,6 +125,15 @@ def _validated_activations(S, staged_hash, allow_uninitialized=False):
         raise ValueError('the F01 activation audit genesis is invalid - refused (fail closed)')
     if not rows and summary['head_sha256'] != HEX0:
         raise ValueError('the F01 activation audit summary is invalid - refused (fail closed)')
+    if rearm_anchor is not None:
+        if (not isinstance(rearm_anchor, dict)
+                or summary['genesis_config_sha256'] != rearm_anchor.get('activation_genesis_config_sha256')
+                or summary['count'] != rearm_anchor.get('activation_count')
+                or summary['head_sha256'] != rearm_anchor.get('activation_head_sha256')
+                or summary['migration_proof_sha256'] != rearm_anchor.get('activation_migration_proof_sha256')):
+            raise ValueError('the F01 activation audit disagrees with the rearm anchor - refused (fail closed)')
+    elif summary['migration_proof_sha256'] != HEX0:
+        raise ValueError('the F01 activation migration proof has no validated rearm anchor - refused (fail closed)')
     return rows, summary
 
 
@@ -161,10 +175,13 @@ def _validated_rearms(S, current_hash):
     if not isinstance(rows, list): raise ValueError('the F01 rearm audit is malformed - refused (fail closed)')
     prev, genesis, prior_new = HEX0, current_hash, None
     seen_auth, seen_dirs, prior_auth, prior_dir = set(), set(), None, None
+    activation_genesis = activation_migration = None
     for i, row in enumerate(rows, 1):
         if not isinstance(row, dict) or set(row) != REARM_FIELDS or row.get('version') != 1 or row.get('sequence') != i:
             raise ValueError('the F01 rearm audit schema is invalid - refused (fail closed)')
-        hashes = ('prev_audit_sha256', 'old_config_sha256', 'new_config_sha256', 'activation_proof_sha256', 'audit_sha256')
+        hashes = ('prev_audit_sha256', 'old_config_sha256', 'new_config_sha256', 'activation_proof_sha256',
+                  'activation_genesis_config_sha256', 'activation_head_sha256',
+                  'activation_migration_proof_sha256', 'audit_sha256')
         if any(not isinstance(row.get(k), str) or not FC.HEX64.fullmatch(row[k]) for k in hashes):
             raise ValueError('the F01 rearm audit schema is invalid - refused (fail closed)')
         if (row['prev_audit_sha256'] != prev or (prior_new is not None and row['old_config_sha256'] != prior_new)
@@ -178,8 +195,19 @@ def _validated_rearms(S, current_hash):
                 or auths[0] == auths[1] or any(not isinstance(x, str) or not os.path.isabs(x) for x in dirs)
                 or norm_dirs[0] == norm_dirs[1]
                 or any(FC._ts(x) is None for x in times) or row.get('reason') != 'owner_authorized_rearm_after_disable'
-                or row['old_config_sha256'] == row['new_config_sha256']):
+                or row['old_config_sha256'] == row['new_config_sha256']
+                or not isinstance(row.get('activation_count'), int) or isinstance(row.get('activation_count'), bool)
+                or row['activation_count'] < 0
+                or (row['activation_count'] == 0 and row['activation_head_sha256'] != HEX0)):
             raise ValueError('the F01 rearm audit schema is invalid - refused (fail closed)')
+        if i == 1:
+            activation_genesis = row['activation_genesis_config_sha256']
+            activation_migration = row['activation_migration_proof_sha256']
+            if row['activation_count'] == 0 and activation_migration != row['activation_proof_sha256']:
+                raise ValueError('the F01 rearm audit legacy migration proof is invalid - refused (fail closed)')
+        elif (row['activation_genesis_config_sha256'] != activation_genesis
+              or row['activation_migration_proof_sha256'] != activation_migration):
+            raise ValueError('the F01 rearm audit activation anchor changed - refused (fail closed)')
         if i == 1:
             seen_auth.add(auths[0]); seen_dirs.add(norm_dirs[0])
         elif auths[0] != prior_auth or norm_dirs[0] != prior_dir:
@@ -201,11 +229,23 @@ def _validated_rearms(S, current_hash):
     expected = dict(version=1, genesis_config_sha256=genesis, current_config_sha256=current_hash,
                     count=len(rows), head_sha256=prev)
     if rows:
-        if not isinstance(chain, dict) or set(chain) != CHAIN_FIELDS or chain != expected:
+        if (not isinstance(chain, dict) or set(chain) != CHAIN_FIELDS
+                or any(chain.get(k) != v for k, v in expected.items())
+                or not isinstance(chain.get('activation_count'), int) or isinstance(chain.get('activation_count'), bool)
+                or chain['activation_count'] < 0
+                or any(not isinstance(chain.get(k), str) or not FC.HEX64.fullmatch(chain[k]) for k in
+                       ('activation_genesis_config_sha256', 'activation_head_sha256',
+                        'activation_migration_proof_sha256'))):
             raise ValueError('the F01 rearm audit summary is missing or invalid - refused (fail closed)')
+        last = rows[-1]
+        if (chain['activation_genesis_config_sha256'] != activation_genesis
+                or chain['activation_migration_proof_sha256'] != activation_migration
+                or chain['activation_count'] != last['activation_count']
+                or chain['activation_head_sha256'] != last['activation_head_sha256']):
+            raise ValueError('the F01 rearm activation anchor is invalid - refused (fail closed)')
     elif chain is not None:
         raise ValueError('the F01 rearm audit summary exists without its history - refused (fail closed)')
-    return rows, expected
+    return rows, chain if rows else expected
 
 
 def _staged(e):
@@ -422,6 +462,14 @@ def rearm(e, b):
         if failed: raise ValueError('C-F01 rearm requires a clean candidate boundary (' + ', '.join(failed) + ')')
 
         new_hash = _sha(new_cfg)
+        activation_rows, activation_chain = _validated_activations(e.S, old_hash, allow_uninitialized=True)
+        if activation_chain is None:
+            activation_chain = dict(version=1, genesis_config_sha256=old_hash, staged_config_sha256=new_hash,
+                                    count=0, head_sha256=HEX0, migration_proof_sha256=enabled_proof)
+        else:
+            activation_chain = dict(copy.deepcopy(activation_chain), staged_config_sha256=new_hash)
+            if not activation_rows:
+                activation_chain['migration_proof_sha256'] = enabled_proof
         audit = dict(version=1, sequence=len(prior) + 1, prev_audit_sha256=chain['head_sha256'],
                      old_config_sha256=old_hash, new_config_sha256=new_hash,
                      old_authorization_comment_id=str(old_cfg['authorization_comment_id']),
@@ -429,17 +477,17 @@ def rearm(e, b):
                      old_cohort_dir=old_cfg['cohort_dir'], new_cohort_dir=new_cfg['cohort_dir'],
                      old_start_utc=old_cfg['start_utc'], new_start_utc=new_cfg['start_utc'],
                      activation_proof_sha256=enabled_proof,
+                     activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
+                     activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
+                     activation_migration_proof_sha256=activation_chain['migration_proof_sha256'],
                      at_utc=ENG.now_utc().astimezone(timezone.utc).isoformat(timespec='seconds'),
                      reason='owner_authorized_rearm_after_disable')
         audit['audit_sha256'] = _signed(audit, 'audit_sha256')
         new_chain = dict(version=1, genesis_config_sha256=chain['genesis_config_sha256'],
-                         current_config_sha256=new_hash, count=len(prior) + 1, head_sha256=audit['audit_sha256'])
-        activation_rows, activation_chain = _validated_activations(e.S, old_hash, allow_uninitialized=True)
-        if activation_chain is None:
-            activation_chain = dict(version=1, genesis_config_sha256=old_hash, staged_config_sha256=new_hash,
-                                    count=0, head_sha256=HEX0, migration_proof_sha256=enabled_proof)
-        else:
-            activation_chain = dict(copy.deepcopy(activation_chain), staged_config_sha256=new_hash)
+                         current_config_sha256=new_hash, count=len(prior) + 1, head_sha256=audit['audit_sha256'],
+                         activation_genesis_config_sha256=activation_chain['genesis_config_sha256'],
+                         activation_count=activation_chain['count'], activation_head_sha256=activation_chain['head_sha256'],
+                         activation_migration_proof_sha256=activation_chain['migration_proof_sha256'])
         ns = copy.deepcopy(e.S)
         ns[FC.CANARY_KEY] = new_cfg
         ns.pop(PREFLIGHT_KEY, None)
@@ -512,6 +560,9 @@ def enable(e, b=None):
         if fresh.get('pass') is not True:
             bad = ', '.join(k for k, v in (fresh.get('checks') or {}).items() if not v.get('ok'))
             raise ValueError(f'the fresh preflight fails ({bad or "unknown"}) - C-F01 stays disabled')
+        rearm_chain = None
+        if REARM_KEY in e.S or REARM_CHAIN_KEY in e.S:
+            _rows, rearm_chain = _validated_rearms(e.S, _sha(cfg))
         ns = copy.deepcopy(e.S)
         _slot(ns)['enabled'] = True
         activations, activation_chain = _validated_activations(e.S, _sha(cfg), allow_uninitialized=True)
@@ -522,6 +573,17 @@ def enable(e, b=None):
             genesis_config_sha256=(activation_chain['genesis_config_sha256'] if activation_chain else _sha(cfg)),
             staged_config_sha256=_sha(cfg), count=len(activations) + 1, head_sha256=event['event_sha256'],
             migration_proof_sha256=(activation_chain['migration_proof_sha256'] if activation_chain else HEX0))
+        if rearm_chain is not None:
+            rearm_rows = copy.deepcopy(ns[REARM_KEY])
+            rearm_rows[-1]['activation_count'] = ns[ACTIVATION_CHAIN_KEY]['count']
+            rearm_rows[-1]['activation_head_sha256'] = ns[ACTIVATION_CHAIN_KEY]['head_sha256']
+            rearm_rows[-1]['audit_sha256'] = _signed(rearm_rows[-1], 'audit_sha256')
+            ns[REARM_KEY] = rearm_rows
+            ns[REARM_CHAIN_KEY] = dict(copy.deepcopy(rearm_chain), head_sha256=rearm_rows[-1]['audit_sha256'],
+                activation_genesis_config_sha256=ns[ACTIVATION_CHAIN_KEY]['genesis_config_sha256'],
+                activation_count=ns[ACTIVATION_CHAIN_KEY]['count'],
+                activation_head_sha256=ns[ACTIVATION_CHAIN_KEY]['head_sha256'],
+                activation_migration_proof_sha256=ns[ACTIVATION_CHAIN_KEY]['migration_proof_sha256'])
         e.commit_settings(ns)
     ENG.log.info(f"FACTORY-F01 canary: C-F01 enabled after PASS preflight {rec['record_sha256']} (start {cfg['start_utc']})")
     return dict(enabled=True, start_utc=cfg['start_utc'], record_sha256=rec['record_sha256'])
