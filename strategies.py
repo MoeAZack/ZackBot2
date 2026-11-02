@@ -848,6 +848,31 @@ STRATEGIES['weekend_liquidity_premium_1h'] = dict(
     mgmt=dict(stop_atr=2.5, tp_r=2.5, max_bars=24))
 
 
+# TJD-1H consumes runner-injected, checksum-verified 1m path features.  A large
+# minute jump that is not retained by the hourly close is treated as transient.
+TJD1H = dict(jump_threshold=0.006, max_retention=0.50, participation=2.0, cost_multiple=5.0)
+
+
+def sig_transient_jump_dislocation_1h(d, p, ctx):
+    jump = pd.Series(ctx['minute_jump'], index=d.index, dtype=float)
+    retention = pd.Series(ctx['jump_retention'], index=d.index, dtype=float)
+    participation = pd.Series(ctx['jump_participation'], index=d.index, dtype=float)
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    event = (jump.abs() >= float(p['jump_threshold'])) & (retention <= float(p['max_retention'])) & (
+        participation >= float(p['participation'])) & cost_ok
+    return dict(le=event & (jump < 0.0), se=event & (jump > 0.0),
+                lx=d.c >= d.e9, sx=d.c <= d.e9)
+
+
+STRATEGIES['transient_jump_dislocation_1h'] = dict(
+    name='[RESEARCH] Transient jump dislocation 1h', style='microstructure_reversion',
+    fn=sig_transient_jump_dislocation_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=TJD1H,
+    desc='Fade a high-participation 1m jump not retained by its completed hour.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
