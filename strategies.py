@@ -973,6 +973,16 @@ STRATEGIES['rotation_long_h2'] = dict(
     mgmt=dict(stop_atr=3.0))
 
 
+# Candidate 25 is the queued H3 exact re-evaluation of exp_trend long under a
+# research-only/default-off identity. Runtime exp_trend remains unchanged.
+STRATEGIES['exp_trend_long_h3'] = dict(
+    name='[RESEARCH] Experimental trend long H3', style='balanced',
+    fn=sig_exp_trend, sides='long', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Queued H3: EMA20/50 bullish cross above EMA200 with positive 7d and 30d momentum.',
+    mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
