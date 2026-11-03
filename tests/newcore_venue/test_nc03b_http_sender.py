@@ -55,6 +55,41 @@ class FakeSocket:
         self.closed += 1
 
 
+class StallingStream:
+    def __init__(self, data, released):
+        self.data = io.BytesIO(data)
+        self.released = released
+
+    def readline(self, limit=-1):
+        return self.data.readline(limit)
+
+    def read1(self, size=-1):
+        chunk = self.data.read1(size)
+        if chunk:
+            return chunk
+        self.released.wait(1)
+        return b''
+
+    def close(self):
+        self.data.close()
+
+
+class StallingSocket(FakeSocket):
+    def __init__(self, reply):
+        super().__init__(reply)
+        self.released = threading.Event()
+
+    def makefile(self, _mode):
+        return StallingStream(self.reply, self.released)
+
+    def shutdown(self, _how):
+        self.released.set()
+
+    def close(self):
+        self.released.set()
+        super().close()
+
+
 class FakeContext:
     def __init__(self):
         self.check_hostname = False
@@ -143,6 +178,25 @@ def test_response_is_bounded_before_body_read_and_socket_closes(monkeypatch):
     with pytest.raises(OSError, match='^testnet HTTP request failed$'):
         TestnetHttpSender()(request())
     assert sock.closed >= 1
+
+
+@pytest.mark.parametrize('body', [b'', b'{"x":1}'])
+def test_declared_content_length_rejects_premature_eof_even_for_valid_json(monkeypatch, body):
+    reply = b'HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n' + body
+    sock = FakeSocket(reply)
+    install_local_stack(monkeypatch, sock)
+    with pytest.raises(OSError, match='^testnet HTTP request failed$'):
+        TestnetHttpSender()(request())
+    assert sock.closed >= 1
+
+
+def test_deadline_abort_cannot_turn_close_delimited_valid_prefix_into_success(monkeypatch):
+    reply = b'HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n[]'
+    sock = StallingSocket(reply)
+    install_local_stack(monkeypatch, sock)
+    with pytest.raises(TimeoutError, match='^testnet HTTP deadline exceeded$'):
+        TestnetHttpSender()(request(timeout_s=0.03))
+    assert sock.released.is_set() and sock.closed >= 1
 
 
 @pytest.mark.parametrize('changes', [

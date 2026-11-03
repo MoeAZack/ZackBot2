@@ -129,8 +129,10 @@ class TestnetHttpSender:
 
         raw = tls_sock = response = None
         holder = [None]
+        deadline_aborted = threading.Event()
 
         def abort_at_deadline():
+            deadline_aborted.set()
             sock = holder[0]
             if sock is not None:
                 try:
@@ -175,8 +177,8 @@ class TestnetHttpSender:
             tls_sock.settimeout(_remaining(deadline))
             response = http.client.HTTPResponse(tls_sock, method=request.method)
             response.begin()
-            length = response.length
-            if length is not None and length > _MAX_RESPONSE_BYTES:
+            declared_length = response.length
+            if declared_length is not None and declared_length > _MAX_RESPONSE_BYTES:
                 raise OSError('testnet HTTP response too large')
             chunks, size = [], 0
             while True:
@@ -188,6 +190,15 @@ class TestnetHttpSender:
                 if size > _MAX_RESPONSE_BYTES:
                     raise OSError('testnet HTTP response too large')
                 chunks.append(chunk)
+            if declared_length is not None and size != declared_length:
+                raise OSError('testnet HTTP response incomplete')
+            # Disarm the watchdog before the final absolute-time check.  This
+            # closes the race where the timer could fire between a successful
+            # check and returning an otherwise authoritative response.
+            timer.cancel()
+            if deadline_aborted.is_set():
+                raise TimeoutError('testnet HTTP deadline exceeded')
+            _remaining(deadline)
             return HttpResponse(status=response.status, body=b''.join(chunks))
         except TimeoutError:
             raise TimeoutError('testnet HTTP deadline exceeded') from None
