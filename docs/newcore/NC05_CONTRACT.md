@@ -33,8 +33,11 @@ queued or in-flight hook. Accounts never share an executor, so a blocked hook
 for one account cannot block another account.
 
 `Scheduler.submit` routes `VenueWork` only to the matching NC-04 worker. A
-protection or flatten submission wakes that account runner immediately. The
-runner checks these actions before any hook whenever it selects new work.
+protection or flatten submission wakes that account runner immediately. Submit,
+snapshot, `run_next`, and stop are all invoked only by that dedicated runner;
+the scheduler thread exchanges sanitized immutable events with it and never
+calls the worker. The runner checks protection/flatten before any hook whenever
+it selects new work.
 
 ## Startup, readiness, and stale state
 
@@ -65,7 +68,7 @@ Stop rejects all new scheduler submissions and clears pending hooks. Each
 account runner drains already-queued protection/flatten work only until the
 deadline, then calls `AccountContext.stop(deadline_ms)` to cancel the remaining
 queue and record NC-04 shutdown state. No new hook is selected after stop begins. A hook or account operation that
-finishes at or after the stop deadline marks the account
+finishes at or after the stop deadline—including `run_next` and stop itself—marks the account
 `reconcile_before_restart`; an exception or uncertain worker snapshot does the
 same. Such a stop is never represented as clean. Restart remains fail-closed
 until NC-04 restore/reconciliation is proven and new first guards/manage passes

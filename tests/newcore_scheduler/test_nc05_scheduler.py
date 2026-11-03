@@ -89,16 +89,39 @@ class Worker:
         self.reconcile = False
         self.stop_calls = []
         self.snapshot_raises = False
+        self.submit_raises = False
         self.work_started = threading.Event()
+        self.submit_started = threading.Event()
+        self.snapshot_started = threading.Event()
+        self.stop_started = threading.Event()
+        self.submit_release = threading.Event()
+        self.snapshot_release = threading.Event()
+        self.work_release = threading.Event()
+        self.stop_release = threading.Event()
+        self.block_submit = False
+        self.block_snapshot = False
+        self.block_work = False
+        self.block_stop = False
+        self.thread_calls = []
         self.lock = threading.Lock()
 
+    def _called(self, name):
+        self.thread_calls.append((name, threading.get_ident()))
+
     def submit(self, work):
+        self._called('submit')
+        self.submit_started.set()
+        if self.block_submit:
+            self.submit_release.wait(2)
+        if self.submit_raises:
+            raise RuntimeError('SECRET admission text')
         with self.lock:
             if self.stopping:
                 raise RuntimeError('stopping')
             self.work.append(work)
 
     def run_next(self):
+        self._called('run_next')
         with self.lock:
             if not self.work:
                 return None
@@ -108,6 +131,8 @@ class Worker:
             item = self.work.pop(index)
             self.in_flight = item.work_id
             self.work_started.set()
+        if self.block_work:
+            self.work_release.wait(2)
         if self.shared is not None:
             self.shared.append((self.account_id, item.work_id))
         result = WorkResult(work_id=item.work_id, state=WorkState.COMPLETED,
@@ -118,6 +143,10 @@ class Worker:
         return result
 
     def stop(self, deadline_ms):
+        self._called('stop')
+        self.stop_started.set()
+        if self.block_stop:
+            self.stop_release.wait(2)
         if self.shared is not None:
             self.shared.append((self.account_id, 'stop'))
         with self.lock:
@@ -128,6 +157,10 @@ class Worker:
         return self.snapshot()
 
     def snapshot(self):
+        self._called('snapshot')
+        self.snapshot_started.set()
+        if self.block_snapshot:
+            self.snapshot_release.wait(2)
         if self.snapshot_raises:
             raise RuntimeError('SECRET snapshot error')
         with self.lock:
@@ -274,6 +307,53 @@ def test_blocked_account_does_not_block_other_account():
     ha.release.set()
 
 
+def test_every_worker_operation_has_one_dedicated_non_owner_thread():
+    row, worker, hooks = binding()
+    owner_thread = threading.get_ident()
+    sched, clock = scheduler(row)
+    sched.submit(row.account_id, venue_work('affinity', Action.PROTECT))
+    first_pass(sched, hooks)
+    eventually(lambda: any(result.work_id == 'affinity' for result in worker.results))
+    sched.stop(clock() + 1_000)
+    eventually(lambda: bool(worker.stop_calls))
+    names = {name for name, _thread_id in worker.thread_calls}
+    thread_ids = {thread_id for _name, thread_id in worker.thread_calls}
+    assert {'submit', 'snapshot', 'run_next', 'stop'} <= names
+    assert len(thread_ids) == 1
+    assert owner_thread not in thread_ids
+
+
+def test_blocking_submit_is_account_local_and_publication_remains_bounded():
+    a, wa, _ha = binding('a')
+    b, wb, hb = binding('b')
+    wa.block_submit = True
+    sched, _clock = scheduler(a, b)
+    sched.submit(a.account_id, venue_work('blocked-submit', Action.PROTECT))
+    assert wa.submit_started.wait(1)
+    started = time.perf_counter()
+    snap = sched.step()
+    assert (time.perf_counter() - started) * 1_000 < 50
+    assert 'blocked-submit' in snap.accounts[0].queue.queued
+    sched.submit(b.account_id, venue_work('independent-protect', Action.PROTECT))
+    assert wb.work_started.wait(0.1)
+    eventually(lambda: len(hb.calls) >= 2)
+    wa.submit_release.set()
+
+
+def test_blocking_worker_snapshot_never_blocks_scheduler_or_other_account():
+    a, wa, _ha = binding('a')
+    b, _wb, hb = binding('b')
+    wa.block_snapshot = True
+    sched, _clock = scheduler(a, b)
+    assert wa.snapshot_started.wait(1)
+    started = time.perf_counter()
+    snap = sched.step()
+    assert (time.perf_counter() - started) * 1_000 < 50
+    assert snap.generation == 1
+    eventually(lambda: len(hb.calls) >= 2)
+    wa.snapshot_release.set()
+
+
 @pytest.mark.parametrize('invalid, expected', [
     (False, FailureCode.HOOK_EXCEPTION),
     (True, FailureCode.INVALID_HOOK_OUTCOME),
@@ -382,11 +462,42 @@ def test_late_completion_marks_reconcile_before_restart():
     assert not snap.ready
 
 
+def test_work_completion_at_stop_deadline_can_never_publish_clean_stopped():
+    row, worker, _hooks = binding()
+    worker.block_work = True
+    sched, clock = scheduler(row)
+    sched.submit(row.account_id, venue_work('late-work', Action.PROTECT))
+    assert worker.work_started.wait(1)
+    sched.stop(clock() + 100)
+    clock.advance(100)
+    worker.work_release.set()
+    eventually(lambda: sched.step().accounts[0].reconcile_before_restart)
+    eventually(lambda: sched.step().state is SchedulerState.STOPPED)
+    snap = sched.snapshot()
+    assert snap.accounts[0].reconcile_before_restart
+    assert snap.failure is FailureCode.ACCOUNT_UNKNOWN
+
+
+def test_worker_stop_completion_at_deadline_forces_reconcile():
+    row, worker, _hooks = binding()
+    worker.block_stop = True
+    sched, clock = scheduler(row)
+    sched.stop(clock() + 100)
+    assert worker.stop_started.wait(1)
+    clock.advance(100)
+    worker.stop_release.set()
+    eventually(lambda: sched.step().state is SchedulerState.STOPPED)
+    snap = sched.snapshot()
+    assert snap.accounts[0].reconcile_before_restart
+    assert snap.failure is FailureCode.ACCOUNT_UNKNOWN
+
+
 def test_uncertain_worker_snapshot_is_fail_closed_and_sanitized():
     row, worker, _hooks = binding()
     worker.snapshot_raises = True
     sched, _clock = scheduler(row)
-    snap = sched.step()
+    eventually(lambda: sched.step().accounts[0].reconcile_before_restart)
+    snap = sched.snapshot()
     assert snap.accounts[0].reconcile_before_restart
     assert lane(snap, Lane.GUARDS).failure is FailureCode.SNAPSHOT_EXCEPTION
     assert 'SECRET' not in repr(snap)
@@ -457,6 +568,22 @@ def test_duplicate_accounts_and_arbitrary_hooks_are_refused():
         scheduler(row, row)
     with pytest.raises(ValueError, match='scheduler_hooks_invalid'):
         AccountBinding(account_id=row.account_id, worker=worker, hooks=lambda: None)
+
+
+def test_admission_failures_have_no_raw_cause_or_context():
+    row, worker, _hooks = binding()
+    sched, _clock = scheduler(row)
+    with pytest.raises(SchedulerAdmissionRefused) as caught:
+        sched.submit(aid('z'), venue_work('unknown', Action.PROTECT))
+    assert caught.value.code == 'unknown_account'
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+    worker.submit_raises = True
+    sched.submit(row.account_id, venue_work('async-refusal', Action.PROTECT))
+    assert worker.submit_started.wait(1)
+    eventually(lambda: sched.step().accounts[0].reconcile_before_restart)
+    assert 'SECRET' not in repr(sched.snapshot())
 
 
 def test_hook_outcome_cannot_carry_inconsistent_status():

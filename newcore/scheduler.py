@@ -218,6 +218,8 @@ class _RunnerEvent:
     outcome: HookOutcome | None = None
     work_id: str | None = None
     reconcile: bool = False
+    failure: FailureCode | None = None
+    view: QueueSummary | None = None
 
 
 class _AccountRunner:
@@ -233,7 +235,10 @@ class _AccountRunner:
         self._wake = threading.Event()
         self._hooks_pending: dict[Lane, _HookTask] = {}
         self._hook_active: Lane | None = None
-        self._work: dict[str, bool] = {}  # value: protection/flatten priority
+        self._pending_work: dict[str, tuple[VenueWork, bool]] = {}
+        self._work: dict[str, bool] = {}  # accepted by NC-04; value is protection/flatten priority
+        self._submission_active: tuple[VenueWork, bool] | None = None
+        self._snapshot_requested = True
         self._stopping = False
         self._deadline: int | None = None
         self._stop_called = False
@@ -263,12 +268,20 @@ class _AccountRunner:
         with self._lock:
             if self._stopping or self._terminal:
                 raise SchedulerAdmissionRefused('scheduler_stopping')
-            try:
-                self._worker.submit(work)
-            except Exception as ex:
-                raise SchedulerAdmissionRefused('account_admission_refused') from ex
-            self._work[work.work_id] = work.action in (Action.PROTECT, Action.FLATTEN)
+            active_id = None if self._submission_active is None else self._submission_active[0].work_id
+            if work.work_id in self._pending_work or work.work_id in self._work or work.work_id == active_id:
+                raise SchedulerAdmissionRefused('duplicate_work_id')
+            urgent = work.action in (Action.PROTECT, Action.FLATTEN)
+            self._pending_work[work.work_id] = (work, urgent)
+            self._events.put(_RunnerEvent(
+                self.account_id, 'queued', self._now(), work_id=work.work_id))
             self._wake.set()
+
+    def request_snapshot(self) -> None:
+        with self._lock:
+            if not self._terminal:
+                self._snapshot_requested = True
+                self._wake.set()
 
     def begin_stop(self, deadline_ms: int) -> None:
         with self._lock:
@@ -277,14 +290,18 @@ class _AccountRunner:
             self._stopping = True
             self._deadline = deadline_ms if self._deadline is None else min(self._deadline, deadline_ms)
             self._hooks_pending.clear()
+            dropped = tuple(work_id for work_id, (_work, urgent) in self._pending_work.items()
+                            if not urgent)
+            self._pending_work = {
+                work_id: item for work_id, item in self._pending_work.items() if item[1]
+            }
+            for work_id in dropped:
+                self._events.put(_RunnerEvent(
+                    self.account_id, 'dropped', self._now(), work_id=work_id))
             self._wake.set()
 
     def wake(self) -> None:
         self._wake.set()
-
-    def is_terminal(self) -> bool:
-        with self._lock:
-            return self._terminal
 
     def _choose(self) -> tuple[str, object] | None:
         with self._lock:
@@ -295,7 +312,13 @@ class _AccountRunner:
                         self._stop_called = True
                         return 'stop', self._deadline
                     self._terminal = True
-                    return 'terminal', bool(self._work)
+                    return 'terminal', bool(self._pending_work or self._work or self._submission_active)
+                pending = next((work_id for work_id, (_work, urgent) in self._pending_work.items()
+                                if urgent), None)
+                if pending is not None:
+                    item = self._pending_work.pop(pending)
+                    self._submission_active = item
+                    return 'submit', item
                 if any(self._work.values()):
                     return 'work', None
                 if not self._stop_called:
@@ -305,13 +328,27 @@ class _AccountRunner:
                 return 'terminal', False
             if any(self._work.values()):
                 return 'work', None
+            pending = next((work_id for work_id, (_work, urgent) in self._pending_work.items()
+                            if urgent), None)
+            if pending is not None:
+                item = self._pending_work.pop(pending)
+                self._submission_active = item
+                return 'submit', item
             for lane in LANE_ORDER:
                 task = self._hooks_pending.pop(lane, None)
                 if task is not None:
                     self._hook_active = lane
                     return 'hook', task
+            if self._pending_work:
+                work_id = next(iter(self._pending_work))
+                item = self._pending_work.pop(work_id)
+                self._submission_active = item
+                return 'submit', item
             if self._work:
                 return 'work', None
+            if self._snapshot_requested:
+                self._snapshot_requested = False
+                return 'snapshot', None
             self._wake.clear()
             return None
 
@@ -338,7 +375,31 @@ class _AccountRunner:
         self._events.put(_RunnerEvent(self.account_id, 'hook', completed, lane=task.lane,
                                       outcome=outcome, reconcile=late))
 
+    def _run_submit(self, item: tuple[VenueWork, bool]) -> None:
+        work, urgent = item
+        failure = None
+        try:
+            self._worker.submit(work)
+            completed = self._now()
+            accepted = True
+        except Exception:
+            completed = self._now()
+            accepted = False
+            failure = FailureCode.ACCOUNT_EXCEPTION
+        with self._lock:
+            self._submission_active = None
+            late = self._stopping and self._deadline is not None and completed >= self._deadline
+            if accepted:
+                self._work[work.work_id] = urgent
+            self._snapshot_requested = True
+        if late:
+            failure = FailureCode.STOP_DEADLINE
+        self._events.put(_RunnerEvent(
+            self.account_id, 'submit', completed, work_id=work.work_id,
+            reconcile=not accepted or late, failure=failure))
+
     def _run_work(self) -> None:
+        failure = None
         try:
             result = self._worker.run_next()
             completed = self._now()
@@ -348,30 +409,67 @@ class _AccountRunner:
             reconcile = False if result is None else result.state is WorkState.UNKNOWN
         except Exception:
             completed, work_id, reconcile = self._now(), None, True
+            failure = FailureCode.ACCOUNT_EXCEPTION
         with self._lock:
+            late = self._stopping and self._deadline is not None and completed >= self._deadline
             if work_id is not None:
                 self._work.pop(work_id, None)
             elif self._work:
                 # A conforming NC-04 worker returns a result for each tracked item.
                 # Refuse to spin forever if a substitute violates that contract.
                 self._work.clear()
+            self._snapshot_requested = True
+        if late:
+            reconcile = True
+            failure = FailureCode.STOP_DEADLINE
         self._events.put(_RunnerEvent(self.account_id, 'work', completed,
-                                      work_id=work_id, reconcile=reconcile))
+                                      work_id=work_id, reconcile=reconcile, failure=failure))
+
+    def _sanitize_view(self, view: object) -> tuple[QueueSummary, bool]:
+        if (getattr(view, 'account_id', None) != self.account_id
+                or type(getattr(view, 'queued', None)) is not tuple
+                or any(type(work_id) is not str for work_id in view.queued)
+                or getattr(view, 'in_flight', None) is not None
+                and type(view.in_flight) is not str
+                or type(getattr(view, 'results', None)) is not tuple
+                or type(getattr(view, 'reconcile_before_restart', None)) is not bool):
+            raise ValueError('account_snapshot_invalid')
+        return (QueueSummary(queued=tuple(view.queued), in_flight=view.in_flight,
+                             result_count=len(view.results)),
+                view.reconcile_before_restart)
+
+    def _run_snapshot(self) -> None:
+        try:
+            summary, reconcile = self._sanitize_view(self._worker.snapshot())
+            completed = self._now()
+            failure = None
+        except Exception:
+            completed, summary, reconcile = self._now(), None, True
+            failure = FailureCode.SNAPSHOT_EXCEPTION
+        self._events.put(_RunnerEvent(
+            self.account_id, 'snapshot', completed, reconcile=reconcile,
+            failure=failure, view=summary))
 
     def _call_stop(self, deadline: int) -> None:
-        reconcile = False
+        failure = None
         try:
-            view = self._worker.stop(deadline)
-            reconcile = bool(view.reconcile_before_restart)
+            view, reconcile = self._sanitize_view(self._worker.stop(deadline))
+            completed = self._now()
             queued = set(view.queued)
             with self._lock:
                 self._work = {work_id: urgent for work_id, urgent in self._work.items()
                               if urgent and work_id in queued}
         except Exception:
-            reconcile = True
+            completed, view, reconcile = self._now(), None, True
+            failure = FailureCode.ACCOUNT_EXCEPTION
             with self._lock:
                 self._work.clear()
-        self._events.put(_RunnerEvent(self.account_id, 'stop', self._now(), reconcile=reconcile))
+        if completed >= deadline:
+            reconcile = True
+            failure = FailureCode.STOP_DEADLINE
+        self._events.put(_RunnerEvent(
+            self.account_id, 'stop', completed, reconcile=reconcile,
+            failure=failure, view=view))
 
     def _run(self) -> None:
         while True:
@@ -382,8 +480,12 @@ class _AccountRunner:
             kind, item = selected
             if kind == 'hook':
                 self._run_hook(item)
+            elif kind == 'submit':
+                self._run_submit(item)
             elif kind == 'work':
                 self._run_work()
+            elif kind == 'snapshot':
+                self._run_snapshot()
             elif kind == 'stop':
                 self._call_stop(item)
             else:
@@ -397,6 +499,7 @@ class _AccountState:
     restore_proven: bool
     last_success: dict[Lane, int | None]
     failure: dict[Lane, FailureCode]
+    pending_work: set[str]
     reconcile: bool = False
     terminal: bool = False
 
@@ -422,7 +525,8 @@ class Scheduler:
             binding.account_id: _AccountState(
                 restore_proven=binding.restore_proven,
                 last_success={lane: None for lane in LANE_ORDER},
-                failure={lane: FailureCode.NONE for lane in LANE_ORDER})
+                failure={lane: FailureCode.NONE for lane in LANE_ORDER},
+                pending_work=set())
             for binding in accounts
         }
         self._runners = {
@@ -440,7 +544,11 @@ class Scheduler:
         self._generation = 0
         self._stopping = False
         self._stop_deadline: int | None = None
-        self._published = self._build_snapshot(now, {})
+        self._views = {
+            account_id: QueueSummary(queued=(), in_flight=None, result_count=0)
+            for account_id in self._bindings
+        }
+        self._published = self._build_snapshot(now)
 
     def _now(self) -> int:
         return _exact_ms(self._clock(), 'monotonic_clock')
@@ -455,17 +563,15 @@ class Scheduler:
 
     def mark_restore_proven(self, account_id: str) -> None:
         self._assert_owner()
-        try:
-            state = self._states[account_id]
-        except KeyError as ex:
-            raise SchedulerAdmissionRefused('unknown_account') from ex
+        state = self._states.get(account_id)
+        if state is None:
+            raise SchedulerAdmissionRefused('unknown_account')
         state.restore_proven = True
 
     def submit(self, account_id: str, work: VenueWork) -> None:
-        try:
-            runner = self._runners[account_id]
-        except KeyError as ex:
-            raise SchedulerAdmissionRefused('unknown_account') from ex
+        runner = self._runners.get(account_id)
+        if runner is None:
+            raise SchedulerAdmissionRefused('unknown_account')
         if self._stopping:
             raise SchedulerAdmissionRefused('scheduler_stopping')
         runner.submit(work)
@@ -478,6 +584,21 @@ class Scheduler:
                 return
             state = self._states[event.account_id]
             state.reconcile = state.reconcile or event.reconcile
+            if event.view is not None:
+                self._views[event.account_id] = event.view
+            if event.failure is FailureCode.SNAPSHOT_EXCEPTION:
+                for lane in LANE_ORDER:
+                    state.failure[lane] = FailureCode.SNAPSHOT_EXCEPTION
+            if event.kind == 'queued' and event.work_id is not None:
+                state.pending_work.add(event.work_id)
+            elif event.kind == 'dropped' and event.work_id is not None:
+                state.pending_work.discard(event.work_id)
+            elif event.kind == 'submit' and event.failure is not None and event.work_id is not None:
+                state.pending_work.discard(event.work_id)
+            elif event.kind == 'work' and event.work_id is not None:
+                state.pending_work.discard(event.work_id)
+            elif event.kind == 'stop' and event.view is not None:
+                state.pending_work.intersection_update(event.view.queued)
             if event.kind == 'hook' and event.lane is not None and event.outcome is not None:
                 state.failure[event.lane] = event.outcome.failure
                 if event.outcome.status is HookStatus.SUCCESS:
@@ -516,10 +637,11 @@ class Scheduler:
         else:
             for runner in self._runners.values():
                 runner.wake()
+        for runner in self._runners.values():
+            runner.request_snapshot()
         self._drain_events()
-        views = self._worker_views()
         self._generation += 1
-        self._published = self._build_snapshot(now, views)
+        self._published = self._build_snapshot(now)
         return self._published
 
     def stop(self, deadline_ms: int) -> SchedulerSnapshot:
@@ -540,32 +662,7 @@ class Scheduler:
                 runner.begin_stop(deadline)
         return self.step()
 
-    def _worker_views(self) -> dict[str, QueueSummary]:
-        views: dict[str, QueueSummary] = {}
-        for account_id, binding in self._bindings.items():
-            try:
-                view = binding.worker.snapshot()
-                if view.account_id != account_id:
-                    raise ValueError('account_snapshot_mismatch')
-                if (type(view.queued) is not tuple
-                        or any(type(work_id) is not str for work_id in view.queued)
-                        or view.in_flight is not None and type(view.in_flight) is not str
-                        or type(view.results) is not tuple
-                        or type(view.reconcile_before_restart) is not bool):
-                    raise ValueError('account_snapshot_invalid')
-                views[account_id] = QueueSummary(
-                    queued=tuple(view.queued), in_flight=view.in_flight,
-                    result_count=len(view.results))
-                self._states[account_id].reconcile |= bool(view.reconcile_before_restart)
-            except Exception:
-                state = self._states[account_id]
-                state.reconcile = True
-                for lane in LANE_ORDER:
-                    state.failure[lane] = FailureCode.SNAPSHOT_EXCEPTION
-                views[account_id] = QueueSummary(queued=(), in_flight=None, result_count=0)
-        return views
-
-    def _build_snapshot(self, now: int, views: dict[str, QueueSummary]) -> SchedulerSnapshot:
+    def _build_snapshot(self, now: int) -> SchedulerSnapshot:
         accounts: list[AccountScheduleSnapshot] = []
         for account_id in self._bindings:
             state = self._states[account_id]
@@ -578,17 +675,22 @@ class Scheduler:
                     stale=last is None or now - last >= STALE_MS[lane],
                     pending=pending, in_flight=active, failure=state.failure[lane]))
             ready = self._account_ready(state)
+            view = self._views[account_id]
+            queued = tuple(dict.fromkeys(view.queued + tuple(sorted(state.pending_work))))
             accounts.append(AccountScheduleSnapshot(
                 account_id=account_id, ready=ready, not_ready=not ready,
                 stale=any(row.stale for row in lane_rows),
                 restore_proven=state.restore_proven,
                 reconcile_before_restart=state.reconcile,
                 lanes=tuple(lane_rows),
-                queue=views.get(account_id, QueueSummary(queued=(), in_flight=None, result_count=0))))
+                queue=QueueSummary(queued=queued, in_flight=view.in_flight,
+                                   result_count=view.result_count)))
         all_ready = all(account.ready for account in accounts)
+        # STOPPED is published only after the owner consumes each runner's
+        # ordered terminal event.  Looking at runner state directly could race
+        # ahead of a preceding late-stop/reconcile event in the same queue.
         all_terminal = self._stopping and all(
-            self._states[account_id].terminal or self._runners[account_id].is_terminal()
-            for account_id in self._bindings)
+            self._states[account_id].terminal for account_id in self._bindings)
         if all_terminal:
             scheduler_state = SchedulerState.STOPPED
         elif self._stopping:
