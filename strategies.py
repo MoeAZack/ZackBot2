@@ -1912,6 +1912,29 @@ STRATEGIES['cross_sectional_low_vol_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+VCD1H = dict(window=168, min_corr=0.20, cost_multiple=5.0)
+
+
+def sig_volatility_clustering_downside_short_1h(d, p, ctx):
+    """C60: follow downside pressure only when squared returns show persistent volatility clustering."""
+    ret = d.c.pct_change()
+    squared = ret.pow(2)
+    cluster = squared.rolling(int(p['window']), min_periods=int(p['window'])).corr(squared.shift())
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    se = (cluster >= float(p['min_corr'])) & (ret24 < 0.0) & (ret < 0.0) & cost_ok
+    never = d.c < -1
+    return dict(le=never, se=se, lx=never, sx=(cluster <= 0.0) | (ret24 >= 0.0))
+
+
+STRATEGIES['volatility_clustering_downside_short_1h'] = dict(
+    name='[RESEARCH] Volatility-clustering downside short 1h', style='conditional_variance_continuation',
+    fn=sig_volatility_clustering_downside_short_1h, sides='short', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VCD1H),
+    desc='Candidate 60: short negative hours in a negative 24h path when 168h squared-return lag-1 correlation >=0.20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
