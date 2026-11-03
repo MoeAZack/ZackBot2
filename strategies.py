@@ -2998,6 +2998,45 @@ STRATEGIES['sample_entropy_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CS_SPREAD1H = dict(window=24, max_entry=0.003, exit_level=0.006, cost_multiple=5.0)
+
+
+def _corwin_schultz_spread(high, low, window):
+    """Rolling median two-bar Corwin-Schultz OHLC implied-spread estimate."""
+    high, low = high.astype(float), low.astype(float)
+    hl2 = np.log(high / low).pow(2)
+    beta = hl2 + hl2.shift()
+    two_high = pd.concat([high, high.shift()], axis=1).max(axis=1)
+    two_low = pd.concat([low, low.shift()], axis=1).min(axis=1)
+    gamma = np.log(two_high / two_low).pow(2)
+    denom = 3.0 - 2.0 * np.sqrt(2.0)
+    alpha = ((np.sqrt(2.0 * beta) - np.sqrt(beta)) / denom -
+             np.sqrt(gamma / denom)).clip(lower=0.0, upper=50.0)
+    spread = 2.0 * (np.exp(alpha) - 1.0) / (1.0 + np.exp(alpha))
+    return spread.rolling(int(window), min_periods=int(window)).median()
+
+
+def sig_corwin_schultz_spread_long_1h(d, p, ctx):
+    """C91: follow positive drift only in a tight OHLC-implied spread regime."""
+    spread = _corwin_schultz_spread(d.h, d.l, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((spread <= float(p['max_entry'])) & (ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(spread >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['corwin_schultz_spread_long_1h'] = dict(
+    name='[RESEARCH] Corwin-Schultz tight-spread long 1h', style='ohlc_implied_liquidity',
+    fn=sig_corwin_schultz_spread_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CS_SPREAD1H),
+    desc='Candidate 91: follow positive drift when the 24h median OHLC-implied spread is at most 30bp.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
