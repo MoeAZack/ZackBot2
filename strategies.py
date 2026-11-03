@@ -549,6 +549,10 @@ def build_context(dfs, btc_key='BTCUSDT'):
     r7 = r42.rank(axis=1, ascending=False)
     r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
     breadth7 = (r42 > 0).sum(axis=1) / r7n.replace(0, np.nan)
+    rv7 = pd.DataFrame({s: pd.Series(d.c.pct_change().rolling(168, min_periods=168).std().values, index=d.t)
+                        for s, d in dfs.items()})
+    vol_rank7 = rv7.rank(axis=1, ascending=True)
+    vol_rank7_n = rv7.notna().sum(axis=1)
     out = {}
     for s, d in dfs.items():
         t = d.t
@@ -558,6 +562,8 @@ def build_context(dfs, btc_key='BTCUSDT'):
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
                       breadth7=pd.Series(breadth7.reindex(t).values, index=d.index),
+                      vol_rank7=pd.Series(vol_rank7[s].reindex(t).values, index=d.index).fillna(999),
+                      vol_rank7_n=pd.Series(vol_rank7_n.reindex(t).values, index=d.index).fillna(0),
                       n_symbols=len(dfs))
     return out
 
@@ -1882,6 +1888,27 @@ STRATEGIES['drawdown_duration_recovery_long_1h'] = dict(
     fn=sig_drawdown_duration_recovery_long_1h, sides='long', tf='1h', research_only=True,
     reentry_lock=True, params=dict(DDRH1H),
     desc='Candidate 58: EMA20 reclaim after >=48h underwater and a prior >=10% drawdown from the seven-day high.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
+LVF1H = dict(window=168, select_k=5, exit_rank=8, cost_multiple=5.0)
+
+
+def sig_cross_sectional_low_vol_long_1h(d, p, ctx):
+    """C59: hold the lowest realized-volatility members of the contemporaneous research pack."""
+    rank = ctx['vol_rank7']
+    eligible = ctx['vol_rank7_n'] >= 8
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = eligible & (rank <= int(p['select_k'])) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(rank > int(p['exit_rank'])) | ~eligible, sx=never)
+
+
+STRATEGIES['cross_sectional_low_vol_long_1h'] = dict(
+    name='[RESEARCH] Cross-sectional low-volatility long 1h', style='defensive_factor',
+    fn=sig_cross_sectional_low_vol_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(LVF1H),
+    desc='Candidate 59: hold the five lowest trailing-seven-day realized-volatility members of the research pack.',
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
