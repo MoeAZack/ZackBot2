@@ -2153,6 +2153,38 @@ STRATEGIES['lower_tail_dependence_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+RNB1H = dict(cost_multiple=5.0)
+
+
+def _prior_round_number_levels(close):
+    """Nearest decimal-grid barriers around the prior completed close."""
+    prior = close.astype(float).shift()
+    valid = prior.where(prior > 0.0)
+    step = pd.Series(10.0 ** (np.floor(np.log10(valid)) - 1.0), index=close.index)
+    upper = np.ceil(valid / step) * step
+    lower = np.floor(valid / step) * step
+    return upper, lower, step
+
+
+def sig_round_number_breakout_long_1h(d, p, ctx):
+    """C68: follow an upside breach of an exogenous decimal price barrier."""
+    upper, lower, _ = _prior_round_number_levels(d.c)
+    prior = d.c.shift()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (prior < upper) & (d.c >= upper) & (d.c > prior) & (ret24 > 0.0) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(d.c < lower) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['round_number_breakout_long_1h'] = dict(
+    name='[RESEARCH] Round-number breakout long 1h', style='decimal_price_barrier',
+    fn=sig_round_number_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RNB1H),
+    desc='Candidate 68: buy a positive-24h upside breach of the next one-tenth-decade decimal price barrier.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
