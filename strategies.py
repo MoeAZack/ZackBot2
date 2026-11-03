@@ -1388,6 +1388,46 @@ STRATEGIES['directional_sign_entropy_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+ROAB1H = dict(overlap_window=12, overlap_min=0.55, breakout_window=24,
+              acceptance_atr=0.10, volume_window=48, volume_multiple=1.0,
+              cost_multiple=5.0)
+
+
+def sig_range_overlap_acceptance_long_1h(d, p, ctx):
+    """C43: dense adjacent-range overlap, then two closes accepted above balance."""
+    pair_hi = pd.concat([d.h, d.h.shift()], axis=1).max(axis=1)
+    pair_lo = pd.concat([d.l, d.l.shift()], axis=1).min(axis=1)
+    intersection = (pd.concat([d.h, d.h.shift()], axis=1).min(axis=1) -
+                    pd.concat([d.l, d.l.shift()], axis=1).max(axis=1)).clip(lower=0)
+    pair_union = (pair_hi - pair_lo).replace(0, np.nan)
+    pair_overlap = intersection / pair_union
+    # At decision t the balance statistic and edge stop at t-2.  t-1 is the
+    # breakout close and t is the independent price-acceptance close.
+    overlap = pair_overlap.rolling(int(p['overlap_window']) - 1,
+                                   min_periods=int(p['overlap_window']) - 1).mean().shift(2)
+    edge = d.h.rolling(int(p['breakout_window']),
+                       min_periods=int(p['breakout_window'])).max().shift(2)
+    broke = (d.c.shift() > edge) & (d.c.shift(2) <= edge)
+    accepted = d.c >= edge + float(p['acceptance_atr']) * d.atr
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']),
+                         min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (broke & accepted & (overlap >= float(p['overlap_min'])) &
+          (d.c > d.e50) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['range_overlap_acceptance_long_1h'] = dict(
+    name='[RESEARCH] Range-overlap acceptance long 1h', style='breakout',
+    fn=sig_range_overlap_acceptance_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ROAB1H),
+    desc='Candidate 43: dense 12h candle-range overlap followed by two closes accepted above a prior 24h edge.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
