@@ -3195,6 +3195,64 @@ STRATEGIES['return_rank_shift_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+PSAR1H = dict(af_step=0.02, af_max=0.20, cost_multiple=5.0)
+
+
+def _parabolic_sar(high, low, close, af_step=0.02, af_max=0.20):
+    """Causal Wilder Parabolic SAR and trend state on completed bars."""
+    h, l, c = (np.asarray(x, dtype=float) for x in (high, low, close))
+    n = len(c)
+    sar = np.full(n, np.nan, dtype=float)
+    bull_state = np.zeros(n, dtype=bool)
+    if n < 2:
+        return pd.Series(sar, index=close.index), pd.Series(bull_state, index=close.index)
+    step, cap = float(af_step), float(af_max)
+    bull = bool(c[1] >= c[0])
+    ep = max(h[0], h[1]) if bull else min(l[0], l[1])
+    af = step
+    sar[0] = l[0] if bull else h[0]
+    sar[1] = sar[0]
+    bull_state[:2] = bull
+    for i in range(2, n):
+        candidate = sar[i - 1] + af * (ep - sar[i - 1])
+        if bull:
+            candidate = min(candidate, l[i - 1], l[i - 2])
+            if l[i] < candidate:
+                bull, sar[i], ep, af = False, ep, l[i], step
+            else:
+                sar[i] = candidate
+                if h[i] > ep:
+                    ep, af = h[i], min(cap, af + step)
+        else:
+            candidate = max(candidate, h[i - 1], h[i - 2])
+            if h[i] > candidate:
+                bull, sar[i], ep, af = True, ep, h[i], step
+            else:
+                sar[i] = candidate
+                if l[i] < ep:
+                    ep, af = l[i], min(cap, af + step)
+        bull_state[i] = bull
+    return pd.Series(sar, index=close.index), pd.Series(bull_state, index=close.index)
+
+
+def sig_parabolic_sar_flip_long_1h(d, p, ctx):
+    """C96: enter on a Wilder Parabolic SAR bearish-to-bullish state flip."""
+    _, bull = _parabolic_sar(d.h, d.l, d.c, p['af_step'], p['af_max'])
+    flip_up = bull & ~bull.shift(fill_value=False)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = flip_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=~bull, sx=never)
+
+
+STRATEGIES['parabolic_sar_flip_long_1h'] = dict(
+    name='[RESEARCH] Parabolic SAR bullish flip long 1h', style='accelerating_extreme_point_trend',
+    fn=sig_parabolic_sar_flip_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(PSAR1H),
+    desc='Candidate 96: follow a causal Wilder Parabolic SAR bearish-to-bullish flip above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
