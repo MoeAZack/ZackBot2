@@ -228,7 +228,10 @@ def test_replay_without_qv_has_no_vwaprev_trades():
 
 
 # ------------------------------------------------------------------ other families: byte-identical with or without qv
-OTHER = sorted(k for k in S.STRATEGIES if k != KEY)
+# This is a runtime-family regression. Research-only/default-OFF candidates may
+# require frozen external context that the generic Book fixture intentionally
+# does not synthesize; their dedicated causal tests own that coverage.
+OTHER = sorted(k for k, st in S.STRATEGIES.items() if k != KEY and not st.get('research_only'))
 
 
 @pytest.mark.parametrize('key', OTHER)
