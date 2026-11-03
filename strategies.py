@@ -547,6 +547,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
     r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
     r7 = r42.rank(axis=1, ascending=False)
     r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
+    breadth7 = (r42 > 0).sum(axis=1) / r7n.replace(0, np.nan)
     out = {}
     for s, d in dfs.items():
         t = d.t
@@ -554,6 +555,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
+                      breadth7=pd.Series(breadth7.reindex(t).values, index=d.index),
                       n_symbols=len(dfs))
     return out
 
@@ -644,6 +646,827 @@ def signals(key, d, ctx, params=None, mask_sides=True):
     if mask_sides and st['sides'] == 'long': out['se'][:] = False
     if mask_sides and st['sides'] == 'short': out['le'][:] = False
     return out
+
+
+# RBR-4H is the reversal counterpart to the existing rotation/relative-strength
+# trend sleeve: it buys washed-out bottom ranks only during broad weakness and
+# shorts crowded top ranks only during broad strength.
+RBR4H = dict(rank_frac=0.20, breadth_low=0.35, breadth_high=0.65,
+             rsi_low=30.0, rsi_high=70.0, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_rank_breadth_reversal_4h(d, p, ctx):
+    rank = pd.Series(ctx['rank7'], index=d.index, dtype=float)
+    n = pd.Series(ctx['rank7_n'], index=d.index, dtype=float)
+    breadth = pd.Series(ctx['breadth7'], index=d.index, dtype=float)
+    k = np.ceil(float(p['rank_frac']) * n)
+    top, bottom = rank <= k, rank > (n - k)
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(42, min_periods=42).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    rlo, rhi = float(p['rsi_low']), float(p['rsi_high'])
+    recover_l = (d.rsi2 > rlo) & (d.rsi2.shift() <= rlo) & (d.c > d.o)
+    recover_s = (d.rsi2 < rhi) & (d.rsi2.shift() >= rhi) & (d.c < d.o)
+    valid = n >= 8
+    le = valid & bottom & (breadth <= float(p['breadth_low'])) & recover_l & vol_ok & cost_ok
+    se = valid & top & (breadth >= float(p['breadth_high'])) & recover_s & vol_ok & cost_ok
+    middle = np.ceil(0.5 * n)
+    return dict(le=le, se=se, lx=(rank <= middle) | (breadth > 0.55),
+                sx=(rank >= middle) | (breadth < 0.45))
+
+
+STRATEGIES['rank_breadth_reversal_4h'] = dict(
+    name='[RESEARCH] Rank-breadth reversal 4h', style='mean_reversion',
+    fn=sig_rank_breadth_reversal_4h, sides='both', tf='4h', research_only=True,
+    reentry_lock=True, params=RBR4H,
+    desc='Fade 7-day cross-sectional extremes only during broad same-direction crowding.',
+    mgmt=dict(stop_atr=1.5, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=18))
+
+
+# ASS-4H complements slow trend rather than chasing it: enter only after a
+# completed opposite-direction ATR shock is reclaimed on the following bar.
+ASS4H = dict(shock_atr=1.5, volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_atr_shock_snapback_4h(d, p, ctx):
+    body = d.c - d.o
+    shock = float(p['shock_atr'])
+    down_shock = body.shift() <= -shock * d.atr.shift()
+    up_shock = body.shift() >= shock * d.atr.shift()
+    midpoint = (d.o.shift() + d.c.shift()) / 2
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(42, min_periods=42).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    uptrend, downtrend = d.e50 > d.e200, d.e50 < d.e200
+    le = uptrend & uptrend.shift(fill_value=False) & down_shock & (d.c > midpoint) & (d.c > d.o) & vol_ok & cost_ok
+    se = downtrend & downtrend.shift(fill_value=False) & up_shock & (d.c < midpoint) & (d.c < d.o) & vol_ok & cost_ok
+    return dict(le=le, se=se, lx=(d.c >= d.e20) | ~uptrend, sx=(d.c <= d.e20) | ~downtrend)
+
+
+STRATEGIES['atr_shock_snapback_4h'] = dict(
+    name='[RESEARCH] ATR shock snapback 4h', style='mean_reversion',
+    fn=sig_atr_shock_snapback_4h, sides='both', tf='4h', research_only=True,
+    reentry_lock=True, params=ASS4H,
+    desc='One-bar 1.5 ATR counter-trend shock followed by a midpoint reclaim inside EMA50/200 trend.',
+    mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=12))
+
+
+# SIU-1H tests a clock-based inventory-unwind hypothesis at two fixed UTC
+# liquidity handoffs, not another continuously-scanned price pattern.
+SIU1H = dict(hours=(8, 16), displacement_atr=1.5, volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_session_inventory_unwind_1h(d, p, ctx):
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    handoff = hour.isin(tuple(p['hours']))
+    displacement = d.c.shift(1) - d.c.shift(9)  # eight fully closed hours before the decision candle
+    scale = float(p['displacement_atr']) * d.atr.shift(1)
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(24, min_periods=24).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = handoff & (displacement <= -scale) & (d.c > d.o) & (d.c > d.c.shift()) & vol_ok & cost_ok
+    se = handoff & (displacement >= scale) & (d.c < d.o) & (d.c < d.c.shift()) & vol_ok & cost_ok
+    return dict(le=le, se=se, lx=d.c >= d.e9, sx=d.c <= d.e9)
+
+
+STRATEGIES['session_inventory_unwind_1h'] = dict(
+    name='[RESEARCH] Session inventory unwind 1h', style='mean_reversion',
+    fn=sig_session_inventory_unwind_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=SIU1H,
+    desc='Fade an eight-hour displacement only after reversal at 08:00/16:00 UTC handoff candles.',
+    mgmt=dict(stop_atr=1.5, tp1_r=0.8, tp1_frac=0.5, be_r=0.8, tp_r=1.5, max_bars=6))
+
+
+# VPI-1H tests whether signed volume pressure leads price after a two-day
+# absorption window.  It is sampled once daily to keep turnover and costs low.
+VPI1H = dict(decision_hour=0, window=48, imbalance=0.10, max_displacement_atr=1.0,
+             volume_floor=0.8, cost_multiple=5.0)
+
+
+def sig_volume_pressure_inventory_1h(d, p, ctx):
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    decision = hour == int(p['decision_hour'])
+    w = int(p['window'])
+    direction = np.sign(d.c.diff()).fillna(0.0)
+    signed = (direction * d.v).rolling(w, min_periods=w).sum()
+    total = d.v.rolling(w, min_periods=w).sum()
+    pressure = signed / total.replace(0.0, np.nan)
+    displacement = d.c - d.c.shift(w)
+    absorbed = displacement.abs() <= float(p['max_displacement_atr']) * d.atr
+    vol_ok = d.v.rolling(w, min_periods=w).mean() >= (
+        float(p['volume_floor']) * d.v.rolling(7 * 24, min_periods=7 * 24).median())
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['imbalance'])
+    valid = decision & absorbed & vol_ok & cost_ok
+    return dict(le=valid & (pressure >= threshold),
+                se=valid & (pressure <= -threshold),
+                lx=pressure <= 0.0, sx=pressure >= 0.0)
+
+
+STRATEGIES['volume_pressure_inventory_1h'] = dict(
+    name='[RESEARCH] Volume-pressure inventory 1h', style='anticipatory',
+    fn=sig_volume_pressure_inventory_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=VPI1H,
+    desc='Daily signed-volume pressure after a 48h price-absorption window.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
+# RSV-1H tests the cross-asset lottery/forced-selling skew anomaly once daily.
+# The rolling return distribution is fully known at the decision close.
+RSV1H = dict(decision_hour=0, window=168, skew_threshold=0.75, cost_multiple=5.0)
+
+
+def sig_realized_skew_valuation_1h(d, p, ctx):
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    decision = hour == int(p['decision_hour'])
+    ret = d.c.pct_change()
+    skew = ret.rolling(int(p['window']), min_periods=int(p['window'])).skew()
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['skew_threshold'])
+    return dict(le=decision & cost_ok & (skew <= -threshold),
+                se=decision & cost_ok & (skew >= threshold),
+                lx=skew >= 0.0, sx=skew <= 0.0)
+
+
+STRATEGIES['realized_skew_valuation_1h'] = dict(
+    name='[RESEARCH] Realized-skew valuation 1h', style='factor_reversion',
+    fn=sig_realized_skew_valuation_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=RSV1H,
+    desc='Daily fade of extreme seven-day hourly-return skew.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
+# MPD-1H uses independently archived Binance mark prices.  The runner injects
+# the causal mark-vs-contract close basis into context; production has no key.
+MPD1H = dict(hours=(0, 4, 8, 12, 16, 20), basis_threshold=0.0008, cost_multiple=5.0)
+
+
+def sig_mark_price_dislocation_1h(d, p, ctx):
+    basis = pd.Series(ctx['mark_basis'], index=d.index, dtype=float)
+    hour = pd.to_datetime(d.t, utc=True).dt.hour
+    decision = hour.isin(tuple(p['hours']))
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['basis_threshold'])
+    return dict(le=decision & cost_ok & (basis <= -threshold),
+                se=decision & cost_ok & (basis >= threshold),
+                lx=basis >= 0.0, sx=basis <= 0.0)
+
+
+STRATEGIES['mark_price_dislocation_1h'] = dict(
+    name='[RESEARCH] Mark-price dislocation 1h', style='microstructure_reversion',
+    fn=sig_mark_price_dislocation_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=MPD1H,
+    desc='Fade fixed-time contract-close deviations from independently archived Binance mark price.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
+# WLP-1H tests the fixed weekend open/close liquidity-risk premium.  Both
+# directions are separate cells; there is no return-conditioned selection.
+WLP1H = dict(boundaries=((4, 23), (6, 23)), cost_multiple=5.0)
+
+
+def sig_weekend_liquidity_premium_1h(d, p, ctx):
+    t = pd.to_datetime(d.t, utc=True)
+    boundary = pd.Series(False, index=d.index)
+    for weekday, hour in tuple(p['boundaries']):
+        boundary |= (t.dt.weekday == int(weekday)) & (t.dt.hour == int(hour))
+    stop_frac = 2.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    entry = boundary & cost_ok
+    never = pd.Series(False, index=d.index)
+    return dict(le=entry, se=entry, lx=never, sx=never)
+
+
+STRATEGIES['weekend_liquidity_premium_1h'] = dict(
+    name='[RESEARCH] Weekend liquidity premium 1h', style='calendar_risk_premium',
+    fn=sig_weekend_liquidity_premium_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=WLP1H,
+    desc='Separate long/short cells at fixed UTC weekend open and close transitions.',
+    mgmt=dict(stop_atr=2.5, tp_r=2.5, max_bars=24))
+
+
+# TJD-1H consumes runner-injected, checksum-verified 1m path features.  A large
+# minute jump that is not retained by the hourly close is treated as transient.
+TJD1H = dict(jump_threshold=0.006, max_retention=0.50, participation=2.0, cost_multiple=5.0)
+
+
+def sig_transient_jump_dislocation_1h(d, p, ctx):
+    jump = pd.Series(ctx['minute_jump'], index=d.index, dtype=float)
+    retention = pd.Series(ctx['jump_retention'], index=d.index, dtype=float)
+    participation = pd.Series(ctx['jump_participation'], index=d.index, dtype=float)
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    event = (jump.abs() >= float(p['jump_threshold'])) & (retention <= float(p['max_retention'])) & (
+        participation >= float(p['participation'])) & cost_ok
+    return dict(le=event & (jump < 0.0), se=event & (jump > 0.0),
+                lx=d.c >= d.e9, sx=d.c <= d.e9)
+
+
+STRATEGIES['transient_jump_dislocation_1h'] = dict(
+    name='[RESEARCH] Transient jump dislocation 1h', style='microstructure_reversion',
+    fn=sig_transient_jump_dislocation_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=TJD1H,
+    desc='Fade a high-participation 1m jump not retained by its completed hour.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
+# AOF-1H uses archived taker-buy quote volume, an information field absent from
+# the coarse runtime cache. Extreme aggressive flow with little price progress
+# is treated as passive-side absorption and subsequent exhaustion.
+AOF1H = dict(imbalance_threshold=0.20, max_hour_move=0.004, cost_multiple=5.0)
+
+
+def sig_aggressor_flow_absorption_1h(d, p, ctx):
+    imbalance = pd.Series(ctx['taker_imbalance'], index=d.index, dtype=float)
+    hour_move = d.c / d.o - 1.0
+    absorbed = hour_move.abs() <= float(p['max_hour_move'])
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['imbalance_threshold'])
+    return dict(le=absorbed & cost_ok & (imbalance <= -threshold),
+                se=absorbed & cost_ok & (imbalance >= threshold),
+                lx=d.c >= d.e9, sx=d.c <= d.e9)
+
+
+STRATEGIES['aggressor_flow_absorption_1h'] = dict(
+    name='[RESEARCH] Aggressor-flow absorption 1h', style='orderflow_reversion',
+    fn=sig_aggressor_flow_absorption_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=AOF1H,
+    desc='Fade extreme verified hourly taker imbalance when price progress is muted.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
+# BOL-1H tests delayed cross-asset information diffusion from verified BTC
+# aggressor flow into an alt that remained locally flat during the BTC impulse.
+BOL1H = dict(btc_imbalance=0.15, btc_move=0.006, target_lag_band=0.002, cost_multiple=5.0)
+
+
+def sig_btc_orderflow_leadlag_1h(d, p, ctx):
+    flow = pd.Series(ctx['btc_taker_imbalance'], index=d.index, dtype=float)
+    btc_move = pd.Series(ctx['btc_hour_move'], index=d.index, dtype=float)
+    target_move = d.c / d.o - 1.0
+    lagged = target_move.abs() <= float(p['target_lag_band'])
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    im, mv = float(p['btc_imbalance']), float(p['btc_move'])
+    never = pd.Series(False, index=d.index)
+    return dict(le=lagged & cost_ok & (flow >= im) & (btc_move >= mv),
+                se=lagged & cost_ok & (flow <= -im) & (btc_move <= -mv),
+                lx=never, sx=never)
+
+
+STRATEGIES['btc_orderflow_leadlag_1h'] = dict(
+    name='[RESEARCH] BTC order-flow lead-lag 1h', style='cross_asset_diffusion',
+    fn=sig_btc_orderflow_leadlag_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=BOL1H,
+    desc='Follow verified BTC aggressor-flow impulses only in locally lagging targets.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
+# LTI-1H uses archived trade counts to distinguish large-ticket participation
+# from ordinary volume. It follows only a large price impulse with a large
+# average quote notional per trade relative to its prior seven-day baseline.
+LTI1H = dict(notional_multiple=2.0, move_threshold=0.006, baseline_hours=168, cost_multiple=5.0)
+
+
+def sig_large_trade_impulse_1h(d, p, ctx):
+    avg_trade = pd.Series(ctx['avg_trade_notional'], index=d.index, dtype=float)
+    baseline = avg_trade.rolling(int(p['baseline_hours']), min_periods=int(p['baseline_hours'])).median().shift()
+    large = avg_trade >= float(p['notional_multiple']) * baseline
+    move = d.c / d.o - 1.0
+    stop_frac = 2.0 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    threshold = float(p['move_threshold']); never = pd.Series(False, index=d.index)
+    return dict(le=large & cost_ok & (move >= threshold),
+                se=large & cost_ok & (move <= -threshold), lx=never, sx=never)
+
+
+STRATEGIES['large_trade_impulse_1h'] = dict(
+    name='[RESEARCH] Large-trade impulse 1h', style='informed_flow_continuation',
+    fn=sig_large_trade_impulse_1h, sides='both', tf='1h', research_only=True,
+    reentry_lock=True, params=LTI1H,
+    desc='Follow a large directional hour only when average archived trade notional is anomalous.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
+# Candidate 23 is the queued H1 re-evaluation of the existing pullback RSI
+# short cell.  It intentionally reuses the exact signal and management rules
+# under a research-only/default-off identity rather than altering runtime.
+STRATEGIES['pullback_rsi_short_h1'] = dict(
+    name='[RESEARCH] Pullback RSI short H1', style='balanced',
+    fn=sig_trend_pullback_rsi, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Queued H1: RSI recovery from overbought inside a completed 4h downtrend.',
+    mgmt=dict(stop_atr=2.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=3.0, max_bars=60))
+
+
+# Candidate 24 is the queued H2 exact re-evaluation of rotation long under a
+# research-only/default-off identity. Runtime rotation remains unchanged.
+STRATEGIES['rotation_long_h2'] = dict(
+    name='[RESEARCH] Rotation long H2', style='balanced',
+    fn=sig_rotation, sides='long', tf='4h', research_only=True,
+    reentry_lock=False, params=dict(k=5),
+    desc='Queued H2: top-five 30-day risk-adjusted momentum above EMA50.',
+    mgmt=dict(stop_atr=3.0))
+
+
+# Candidate 25 is the queued H3 exact re-evaluation of exp_trend long under a
+# research-only/default-off identity. Runtime exp_trend remains unchanged.
+STRATEGIES['exp_trend_long_h3'] = dict(
+    name='[RESEARCH] Experimental trend long H3', style='balanced',
+    fn=sig_exp_trend, sides='long', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Queued H3: EMA20/50 bullish cross above EMA200 with positive 7d and 30d momentum.',
+    mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180))
+
+
+# Candidate 26 is the queued H4 exact re-evaluation of ema_mom long under a
+# research-only/default-off identity. Its entry is shared with H3, but it keeps
+# the original signal-exit + stop-only management rather than H3 management.
+STRATEGIES['ema_mom_long_h4'] = dict(
+    name='[RESEARCH] EMA momentum long H4', style='calm',
+    fn=sig_ema_mom, sides='long', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Queued H4: EMA20/50 bullish cross above EMA200 with positive 7d and 30d momentum; original stop-only management.',
+    mgmt=dict(stop_atr=2.5))
+
+
+# Candidate 27 is the next unused existing board cell: exact exp_mom_short,
+# isolated under a research-only/default-off identity. Runtime is unchanged.
+STRATEGIES['exp_mom_short_c27'] = dict(
+    name='[RESEARCH] Cold-coin momentum short C27', style='aggressive',
+    fn=sig_exp_mom_short, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Candidate 27: bottom-three 7d mover breaks the prior 20-bar low below EMA50 on >1.5x volume.',
+    mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5))
+
+
+# Candidate 28: exact unused exp_rip_sell_dca cell under a research-only,
+# default-off identity. Runtime remains unchanged.
+STRATEGIES['rip_sell_dca_c28'] = dict(
+    name='[RESEARCH] Rip-sell DCA short C28', style='aggressive',
+    fn=sig_exp_rip_sell_dca, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Candidate 28: downtrend rip >1.5 ATR above EMA20 with frozen short DCA basket management.',
+    mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60))
+
+
+# Candidate 29: the already-emitted but previously off-registry short side of
+# ema_st, isolated as research-only/default-off. Runtime remains unchanged.
+STRATEGIES['ema_st_short_c29'] = dict(
+    name='[RESEARCH] EMA-supertrend short C29', style='balanced',
+    fn=sig_ema_st, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Candidate 29: EMA20/50 bearish cross below EMA200 with Supertrend bearish confirmation.',
+    mgmt=dict(stop_atr=2.5))
+
+
+DRP1H = dict(channel=24, volume_window=48, volume_multiple=1.5, close_location=0.75)
+
+
+def sig_daily_range_participation_long_1h(d, p, ctx):
+    """C30: prior-day breakout with trend, close-location and causal volume participation gates."""
+    channel, vw = int(p['channel']), int(p['volume_window'])
+    prior_high = d.h.rolling(channel, min_periods=channel).max().shift()
+    vol_base = d.v.rolling(vw, min_periods=vw).median().shift()
+    rng = d.h - d.l
+    location = (d.c - d.l) / rng.where(rng > 0)
+    le = ((d.c > prior_high) & (d.e50 > d.e200) &
+          (d.v >= float(p['volume_multiple']) * vol_base) &
+          (location >= float(p['close_location'])))
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(d.c < d.e20) | (d.e50 <= d.e200), sx=never)
+
+
+STRATEGIES['daily_range_participation_long_1h'] = dict(
+    name='[RESEARCH] Daily-range participation long 1h', style='balanced',
+    fn=sig_daily_range_participation_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DRP1H),
+    desc='Candidate 30: completed 1h close above prior 24h high, EMA50>EMA200, top-quartile close and >=1.5x median volume.',
+    mgmt=dict(stop_atr=2.0, trail_atr=3.0, max_bars=24))
+
+
+IIR1H = dict(window=168, impact_multiple=3.0, shock_atr=1.5, volume_floor_quantile=0.50, cost_multiple=5.0)
+
+
+def sig_illiquidity_impact_reversion_long_1h(d, p, ctx):
+    """C31: fade a downside return whose return-per-quote-volume impact is anomalous."""
+    n = int(p['window'])
+    ret = d.c / d.c.shift() - 1.0
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    impact = ret.abs() / qv.where(qv > 0)
+    impact_base = impact.rolling(n, min_periods=n).median().shift()
+    qv_floor = qv.rolling(n, min_periods=n).quantile(float(p['volume_floor_quantile'])).shift()
+    shock = ret <= -float(p['shock_atr']) * d.atr / d.c
+    anomalous = impact >= float(p['impact_multiple']) * impact_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = shock & anomalous & (qv >= qv_floor) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['illiquidity_impact_reversion_long_1h'] = dict(
+    name='[RESEARCH] Illiquidity-impact reversion long 1h', style='balanced',
+    fn=sig_illiquidity_impact_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(IIR1H),
+    desc='Candidate 31: fade downside 1h shocks when absolute return per quote-volume is >=3x its trailing median.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=8))
+
+
+IBB1H = dict(mother_atr=1.25, inside_ratio=0.70, volume_window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_inside_bar_breakout_long_1h(d, p, ctx):
+    """C32: trend-follow a confirmed breakout from a one-bar contraction."""
+    mother_hi, mother_lo = d.h.shift(2), d.l.shift(2)
+    mother_range = mother_hi - mother_lo
+    inside_range = d.h.shift() - d.l.shift()
+    mother_expanded = mother_range >= float(p['mother_atr']) * d.atr.shift(2)
+    inside = ((d.h.shift() <= mother_hi) & (d.l.shift() >= mother_lo) &
+              (inside_range <= float(p['inside_ratio']) * mother_range))
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    volume_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    participated = qv >= float(p['volume_multiple']) * volume_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = mother_expanded & inside & (d.c > mother_hi) & (d.c > d.e50) & participated & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['inside_bar_breakout_long_1h'] = dict(
+    name='[RESEARCH] Inside-bar breakout long 1h', style='trend',
+    fn=sig_inside_bar_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(IBB1H),
+    desc='Candidate 32: confirm a breakout after one inside-bar contraction within an expanded mother bar.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
+RDL1H = dict(window=48, separation=4, divergence_points=8.0, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_rsi_lower_low_divergence_long_1h(d, p, ctx):
+    """C33: fade a fresh price low when RSI does not confirm the lower low."""
+    n, gap = int(p['window']), int(p['separation'])
+    prior_price_low = d.c.shift(gap).rolling(n - gap, min_periods=n - gap).min()
+    prior_rsi_low = d.rsi14.shift(gap).rolling(n - gap, min_periods=n - gap).min()
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(n, min_periods=n).median().shift()
+    diverged = (d.c < prior_price_low) & (d.rsi14 >= prior_rsi_low + float(p['divergence_points']))
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = diverged & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['rsi_lower_low_divergence_long_1h'] = dict(
+    name='[RESEARCH] RSI lower-low divergence long 1h', style='mean_reversion',
+    fn=sig_rsi_lower_low_divergence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RDL1H),
+    desc='Candidate 33: price makes a fresh 48h low while RSI stays at least eight points above its prior-window low.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
+TBER1H = dict(streak=3, drop_atr=1.5, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_three_bar_exhaustion_reversal_long_1h(d, p, ctx):
+    """C34: fade distributed downside exhaustion after a confirmed bullish reversal."""
+    n = int(p['streak'])
+    red_streak = pd.Series(True, index=d.index)
+    descending = pd.Series(True, index=d.index)
+    for k in range(1, n + 1):
+        red_streak &= d.c.shift(k) < d.o.shift(k)
+        if k < n:
+            descending &= d.c.shift(k) < d.c.shift(k + 1)
+    drop = d.o.shift(n) - d.c.shift()
+    exhausted = drop >= float(p['drop_atr']) * d.atr.shift()
+    reversal = (d.c > d.o) & (d.c > d.h.shift())
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = red_streak & descending & exhausted & reversal & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['three_bar_exhaustion_reversal_long_1h'] = dict(
+    name='[RESEARCH] Three-bar exhaustion reversal long 1h', style='mean_reversion',
+    fn=sig_three_bar_exhaustion_reversal_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TBER1H),
+    desc='Candidate 34: three descending red bars lose >=1.5 ATR before a bullish close above the prior high.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
+OBVL1H = dict(window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_obv_lead_breakout_long_1h(d, p, ctx):
+    """C35: follow a cumulative signed-volume breakout that leads price."""
+    n = int(p['window'])
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    signed = pd.Series(np.sign(d.c.diff()), index=d.index).fillna(0.0) * qv
+    obv = signed.cumsum()
+    obv_high = obv.rolling(n, min_periods=n).max().shift()
+    price_high = d.c.rolling(n, min_periods=n).max().shift()
+    qv_base = qv.rolling(n, min_periods=n).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (obv > obv_high) & (d.c < price_high) & (d.c > d.e50) & (d.c > d.o) & volume_ok & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['obv_lead_breakout_long_1h'] = dict(
+    name='[RESEARCH] OBV lead breakout long 1h', style='trend',
+    fn=sig_obv_lead_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(OBVL1H),
+    desc='Candidate 35: cumulative signed quote-volume makes a 48h high before price does, above EMA50.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
+MFIR1H = dict(window=14, oversold=20.0, exit_level=60.0, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_mfi_oversold_recovery_long_1h(d, p, ctx):
+    """C36: buy a causal volume-weighted money-flow recovery from oversold."""
+    n = int(p['window'])
+    typical = (d.h + d.l + d.c) / 3.0
+    raw_flow = typical * d.v
+    direction = typical.diff()
+    positive = raw_flow.where(direction > 0, 0.0).rolling(n, min_periods=n).sum()
+    negative = raw_flow.where(direction < 0, 0.0).rolling(n, min_periods=n).sum()
+    ratio = positive / negative.replace(0, np.nan)
+    mfi = 100.0 - 100.0 / (1.0 + ratio)
+    level = float(p['oversold'])
+    recovered = (mfi > level) & (mfi.shift() <= level)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = recovered & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(mfi >= float(p['exit_level'])) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['mfi_oversold_recovery_long_1h'] = dict(
+    name='[RESEARCH] MFI oversold recovery long 1h', style='mean_reversion',
+    fn=sig_mfi_oversold_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(MFIR1H),
+    desc='Candidate 36: 14-bar Money Flow Index crosses above 20 with liquidity and cost admission.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
+KCR1H = dict(ema_window=20, band_atr=2.0, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_keltner_lower_reclaim_long_1h(d, p, ctx):
+    """C37: buy a close back inside the lower EMA/ATR channel."""
+    lower = d.e20 - float(p['band_atr']) * d.atr
+    reclaimed = (d.c > lower) & (d.c.shift() <= lower.shift())
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = reclaimed & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['keltner_lower_reclaim_long_1h'] = dict(
+    name='[RESEARCH] Keltner lower reclaim long 1h', style='mean_reversion',
+    fn=sig_keltner_lower_reclaim_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KCR1H),
+    desc='Candidate 37: bullish close reclaims the EMA20 minus 2 ATR lower channel.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
+WRR1H = dict(window=14, oversold=-80.0, exit_level=-20.0, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_williams_r_recovery_long_1h(d, p, ctx):
+    """C38: buy a Williams %R recovery from the bottom of its rolling range."""
+    n = int(p['window'])
+    high = d.h.rolling(n, min_periods=n).max()
+    low = d.l.rolling(n, min_periods=n).min()
+    width = (high - low).replace(0, np.nan)
+    wr = -100.0 * (high - d.c) / width
+    level = float(p['oversold'])
+    recovered = (wr > level) & (wr.shift() <= level)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = recovered & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(wr >= float(p['exit_level'])) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['williams_r_recovery_long_1h'] = dict(
+    name='[RESEARCH] Williams %R recovery long 1h', style='mean_reversion',
+    fn=sig_williams_r_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(WRR1H),
+    desc='Candidate 38: Williams %R(14) crosses above -80 with liquidity and cost admission.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
+ESEL1H = dict(compression_window=12, compression_atr=0.25, expansion_atr=0.50,
+              volume_window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_ema_spread_expansion_long_1h(d, p, ctx):
+    """C39: follow directional EMA spread expansion after recent convergence."""
+    spread = (d.e20 - d.e50) / d.atr.replace(0, np.nan)
+    recent_min = spread.abs().shift().rolling(int(p['compression_window']),
+                                              min_periods=int(p['compression_window'])).min()
+    compressed = recent_min <= float(p['compression_atr'])
+    expanded = (spread > float(p['expansion_atr'])) & (spread.shift() <= float(p['expansion_atr']))
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = compressed & expanded & (d.e50 > d.e50.shift(8)) & (d.c > d.e20) & volume_ok & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=spread <= 0.0, sx=never)
+
+
+STRATEGIES['ema_spread_expansion_long_1h'] = dict(
+    name='[RESEARCH] EMA spread expansion long 1h', style='trend',
+    fn=sig_ema_spread_expansion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ESEL1H),
+    desc='Candidate 39: EMA20/EMA50 spread expands above 0.5 ATR after recent <=0.25 ATR convergence.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
+RAPL1H = dict(autocorr_window=24, autocorr_min=0.15, impulse_atr=0.35,
+              volume_window=48, volume_multiple=1.0, trend_lag=8, cost_multiple=5.0)
+
+
+def sig_return_autocorr_persistence_long_1h(d, p, ctx):
+    """C40: follow an upside impulse only in a positive serial-dependence state."""
+    ret = d.c.pct_change()
+    n = int(p['autocorr_window'])
+    autocorr = ret.rolling(n, min_periods=n).corr(ret.shift())
+    impulse = d.c.diff() / d.atr.replace(0, np.nan) >= float(p['impulse_atr'])
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((autocorr >= float(p['autocorr_min'])) & impulse & (d.c > d.e20) &
+          (d.e50 > d.e50.shift(int(p['trend_lag']))) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=autocorr <= 0.0, sx=never)
+
+
+STRATEGIES['return_autocorr_persistence_long_1h'] = dict(
+    name='[RESEARCH] Return-autocorrelation persistence long 1h', style='trend',
+    fn=sig_return_autocorr_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RAPL1H),
+    desc='Candidate 40: follow an upside impulse only while lag-1 return autocorrelation is positive.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
+VACL1H = dict(fast_tr=6, slow_tr=48, ratio_min=1.20, body_fraction=0.25,
+              volume_window=48, volume_multiple=1.0, trend_lag=8, cost_multiple=5.0)
+
+
+def sig_volatility_acceleration_long_1h(d, p, ctx):
+    """C41: follow bullish participation while short-horizon range accelerates."""
+    tr = pd.concat([d.h-d.l, (d.h-d.c.shift()).abs(), (d.l-d.c.shift()).abs()], axis=1).max(axis=1)
+    fast = tr.rolling(int(p['fast_tr']), min_periods=int(p['fast_tr'])).mean()
+    slow = tr.rolling(int(p['slow_tr']), min_periods=int(p['slow_tr'])).mean().shift()
+    ratio = fast / slow.replace(0, np.nan)
+    body = (d.c-d.o) / (d.h-d.l).replace(0, np.nan)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((ratio >= float(p['ratio_min'])) & (body >= float(p['body_fraction'])) &
+          (d.c > d.e20) & (d.e50 > d.e50.shift(int(p['trend_lag']))) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=ratio < 1.0, sx=never)
+
+
+STRATEGIES['volatility_acceleration_long_1h'] = dict(
+    name='[RESEARCH] Volatility acceleration long 1h', style='trend',
+    fn=sig_volatility_acceleration_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VACL1H),
+    desc='Candidate 41: follow bullish participation when 6h true range exceeds 1.2x the prior 48h baseline.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
+DSEL1H = dict(window=24, entropy_max=0.90, positive_share_min=0.625, impulse_atr=0.20,
+              volume_window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_directional_sign_entropy_long_1h(d, p, ctx):
+    """C42: follow bullish dominance only when return signs are unusually ordered."""
+    up = (d.c.diff() > 0).astype(float)
+    n = int(p['window']); share = up.rolling(n, min_periods=n).mean()
+    q = share.clip(1e-12, 1 - 1e-12)
+    entropy = -(q * np.log2(q) + (1-q) * np.log2(1-q))
+    impulse = d.c.diff() / d.atr.replace(0, np.nan) >= float(p['impulse_atr'])
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((entropy <= float(p['entropy_max'])) & (share >= float(p['positive_share_min'])) &
+          impulse & (d.c > d.e20) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(share <= 0.5) | (entropy > 0.98), sx=never)
+
+
+STRATEGIES['directional_sign_entropy_long_1h'] = dict(
+    name='[RESEARCH] Directional sign entropy long 1h', style='trend',
+    fn=sig_directional_sign_entropy_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DSEL1H),
+    desc='Candidate 42: follow bullish dominance when 24h binary return-sign entropy is <=0.90.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
+ROAB1H = dict(overlap_window=12, overlap_min=0.55, breakout_window=24,
+              acceptance_atr=0.10, volume_window=48, volume_multiple=1.0,
+              cost_multiple=5.0)
+
+
+def sig_range_overlap_acceptance_long_1h(d, p, ctx):
+    """C43: dense adjacent-range overlap, then two closes accepted above balance."""
+    pair_hi = pd.concat([d.h, d.h.shift()], axis=1).max(axis=1)
+    pair_lo = pd.concat([d.l, d.l.shift()], axis=1).min(axis=1)
+    intersection = (pd.concat([d.h, d.h.shift()], axis=1).min(axis=1) -
+                    pd.concat([d.l, d.l.shift()], axis=1).max(axis=1)).clip(lower=0)
+    pair_union = (pair_hi - pair_lo).replace(0, np.nan)
+    pair_overlap = intersection / pair_union
+    # At decision t the balance statistic and edge stop at t-2.  t-1 is the
+    # breakout close and t is the independent price-acceptance close.
+    overlap = pair_overlap.rolling(int(p['overlap_window']) - 1,
+                                   min_periods=int(p['overlap_window']) - 1).mean().shift(2)
+    edge = d.h.rolling(int(p['breakout_window']),
+                       min_periods=int(p['breakout_window'])).max().shift(2)
+    broke = (d.c.shift() > edge) & (d.c.shift(2) <= edge)
+    accepted = d.c >= edge + float(p['acceptance_atr']) * d.atr
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']),
+                         min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (broke & accepted & (overlap >= float(p['overlap_min'])) &
+          (d.c > d.e50) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['range_overlap_acceptance_long_1h'] = dict(
+    name='[RESEARCH] Range-overlap acceptance long 1h', style='breakout',
+    fn=sig_range_overlap_acceptance_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ROAB1H),
+    desc='Candidate 43: dense 12h candle-range overlap followed by two closes accepted above a prior 24h edge.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
+STPER1H = dict(state_bars=6, state_atr=1.0, transition_window=120,
+               min_bull_origins=20, persistence_min=0.60,
+               persistence_exit=0.50, volume_window=48,
+               volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_state_persistence_long_1h(d, p, ctx):
+    """C44: enter a bullish normalized-return state only when it historically persists."""
+    move = (d.c - d.c.shift(int(p['state_bars']))) / d.atr.replace(0, np.nan)
+    state = pd.Series(0, index=d.index, dtype=int)
+    state.loc[move >= float(p['state_atr'])] = 1
+    state.loc[move <= -float(p['state_atr'])] = -1
+    bull_origin = (state.shift() == 1).astype(float)
+    bull_to_bull = ((state.shift() == 1) & (state == 1)).astype(float)
+    w = int(p['transition_window'])
+    # Shift excludes the transition into the decision bar.  The conditional
+    # frequency is learned only from the preceding w completed transitions.
+    origins = bull_origin.rolling(w, min_periods=w).sum().shift()
+    repeats = bull_to_bull.rolling(w, min_periods=w).sum().shift()
+    persistence = repeats / origins.replace(0, np.nan)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']),
+                         min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    enough = origins >= int(p['min_bull_origins'])
+    le = ((state == 1) & enough & (persistence >= float(p['persistence_min'])) &
+          (d.c > d.e50) & volume_ok & cost_ok)
+    never = d.c < -1
+    lx = (state != 1) | (persistence < float(p['persistence_exit']))
+    return dict(le=le, se=never, lx=lx, sx=never)
+
+
+STRATEGIES['state_persistence_long_1h'] = dict(
+    name='[RESEARCH] Empirical bull-state persistence long 1h', style='trend',
+    fn=sig_state_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(STPER1H),
+    desc='Candidate 44: enter a normalized bullish six-hour state when prior bull-to-bull persistence is >=60%.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
