@@ -1162,6 +1162,33 @@ STRATEGIES['three_bar_exhaustion_reversal_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
 
 
+OBVL1H = dict(window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_obv_lead_breakout_long_1h(d, p, ctx):
+    """C35: follow a cumulative signed-volume breakout that leads price."""
+    n = int(p['window'])
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    signed = pd.Series(np.sign(d.c.diff()), index=d.index).fillna(0.0) * qv
+    obv = signed.cumsum()
+    obv_high = obv.rolling(n, min_periods=n).max().shift()
+    price_high = d.c.rolling(n, min_periods=n).max().shift()
+    qv_base = qv.rolling(n, min_periods=n).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (obv > obv_high) & (d.c < price_high) & (d.c > d.e50) & (d.c > d.o) & volume_ok & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['obv_lead_breakout_long_1h'] = dict(
+    name='[RESEARCH] OBV lead breakout long 1h', style='trend',
+    fn=sig_obv_lead_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(OBVL1H),
+    desc='Candidate 35: cumulative signed quote-volume makes a 48h high before price does, above EMA50.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
