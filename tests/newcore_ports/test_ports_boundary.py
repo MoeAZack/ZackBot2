@@ -23,7 +23,7 @@ def tree(name):
 
 
 def test_the_package_has_the_expected_modules():
-    assert FILES == ['__init__.py', 'bars.py', 'journal.py', 'keys.py', 'values.py', 'venue.py']
+    assert FILES == ['__init__.py', 'bars.py', 'journal.py', 'keys.py', 'rate_blocks.py', 'values.py', 'venue.py']
 
 
 @pytest.mark.parametrize('name', FILES)
@@ -53,7 +53,7 @@ def test_no_io_clock_randomness_or_environment(name):
 
 def test_runtime_import_pulls_in_no_forbidden_module():
     mod = importlib.import_module('newcore.ports')
-    for sub in ('bars', 'journal', 'keys', 'values', 'venue'):
+    for sub in ('bars', 'journal', 'keys', 'rate_blocks', 'values', 'venue'):
         m = importlib.import_module(f'newcore.ports.{sub}')
         names = {getattr(v, '__name__', '') for v in vars(m).values() if type(v).__name__ == 'module'}
         assert all(n.split('.')[0] in ALLOWED or n.startswith(('newcore.ports', NC01)) for n in names), (sub, names)

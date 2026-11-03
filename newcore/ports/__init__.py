@@ -12,6 +12,7 @@ from .journal import (Admission, EventHeader, EventKind, Grammar, GrammarError, 
                       JournalPort, JournalUnavailable, ResultOutcome, SignalClaim, StagedEvent, claim_signal, header_of)
 from .keys import (check_decision_key, client_id_for, decision_key, derive_child_intent_id, derive_decision_id,
                    derive_intent_id, derive_lot_id, is_newcore_client_id, route_of, strategy_instance)
+from .rate_blocks import RateBlockJournalPort, RateBlockRecord, RateBlockState
 from .values import PortValueError
 from .venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, ReadOutcome, StopOrder, VenueFill,
                     VenueOrder, VenuePort, VenuePosition)
