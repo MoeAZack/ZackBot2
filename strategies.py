@@ -3584,6 +3584,33 @@ STRATEGIES['fisher_zero_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+COPPOCK1H = dict(roc_slow=14, roc_fast=11, wma=10, cost_multiple=5.0)
+
+
+def _coppock_curve(close, roc_slow=14, roc_fast=11, wma=10):
+    """Causal conventional Coppock curve: WMA of the 14- and 11-bar ROC sum."""
+    raw = 100.0 * (close.astype(float).pct_change(roc_slow) + close.astype(float).pct_change(roc_fast))
+    weights = np.arange(1.0, float(wma) + 1.0)
+    return raw.rolling(wma).apply(lambda x: float(np.dot(x, weights) / weights.sum()), raw=True)
+
+
+def sig_coppock_zero_cross_long_1h(d, p, ctx):
+    """C107: follow a positive recovery in smoothed dual-horizon rate of change."""
+    curve = _coppock_curve(d.c, int(p['roc_slow']), int(p['roc_fast']), int(p['wma']))
+    cross_up = (curve > 0.0) & (curve.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=curve <= 0.0, sx=never)
+
+
+STRATEGIES['coppock_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] Coppock zero-cross long 1h', style='dual_horizon_roc_recovery',
+    fn=sig_coppock_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(COPPOCK1H),
+    desc='Candidate 107: conventional Coppock 14/11 ROC sum smoothed by WMA10 crosses above zero above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
