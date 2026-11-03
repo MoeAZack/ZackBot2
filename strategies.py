@@ -2502,6 +2502,35 @@ STRATEGIES['vortex_movement_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+OMG1H = dict(window=48, min_omega=1.50, exit_omega=1.0, cost_multiple=5.0)
+
+
+def _rolling_omega_ratio(close, window):
+    """Zero-threshold Omega ratio from completed positive and negative log returns."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    w = int(window)
+    gains = ret.clip(lower=0.0).rolling(w, min_periods=w).sum()
+    losses = (-ret.clip(upper=0.0)).rolling(w, min_periods=w).sum().replace(0.0, np.nan)
+    return gains / losses, ret
+
+
+def sig_omega_payoff_persistence_long_1h(d, p, ctx):
+    """C78: follow drift when rolling realized gains dominate realized losses."""
+    omega, ret = _rolling_omega_ratio(d.c, int(p['window']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (omega >= float(p['min_omega'])) & (ret > 0.0) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(omega <= float(p['exit_omega'])) | (d.c <= d.e20), sx=never)
+
+
+STRATEGIES['omega_payoff_persistence_long_1h'] = dict(
+    name='[RESEARCH] Omega payoff-persistence long 1h', style='payoff_distribution_persistence',
+    fn=sig_omega_payoff_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(OMG1H),
+    desc='Candidate 78: follow positive drift when 48h zero-threshold Omega ratio is at least 1.50.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
