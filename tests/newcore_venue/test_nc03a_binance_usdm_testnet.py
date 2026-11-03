@@ -140,6 +140,23 @@ def test_error_normalization(code, kind, detail):
         assert out.error_code == code
 
 
+def test_hostile_valid_json_integer_limit_is_unknown_malformed():
+    body = b'{"code":-' + b'9' * 5000 + b',"msg":"hostile"}'
+    sender = Sender(HttpResponse(400, body))
+    out = venue(sender).query(REF)
+    assert out.kind is OutcomeKind.UNKNOWN and out.detail == 'malformed'
+    assert out.error_code is None and out.executed_qty is None
+    assert len(sender.requests) == 1
+
+
+@pytest.mark.parametrize('code', [0, 1, True, False, '-2013', '0'])
+@pytest.mark.parametrize('status', [200, 400])
+def test_nonnegative_or_noninteger_venue_code_is_unknown_malformed(code, status):
+    out = venue(Sender(response({'code': code, 'msg': 'not a typed venue error'}, status))).query(REF)
+    assert out.kind is OutcomeKind.UNKNOWN and out.detail == 'malformed'
+    assert out.error_code is None and out.executed_qty is None
+
+
 def test_same_instance_duplicate_cid_fails_closed_without_second_send():
     sender = Sender(response(record()))
     v = venue(sender)

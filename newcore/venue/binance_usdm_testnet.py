@@ -155,24 +155,19 @@ class BinanceUsdMTestnetVenue:
             raise _Unknown('http_5xx')
         try:
             data = json.loads(response.body.decode('utf-8'), object_pairs_hook=_json_object)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             raise _Unknown('malformed') from None
-        if isinstance(data, dict) and type(data.get('code')) is int and data['code'] < 0:
+        if isinstance(data, dict) and 'code' in data:
             code = data['code']
+            if type(code) is not int or code >= 0:
+                raise _Unknown('malformed')
             if code == _DUPLICATE:
                 raise _Unknown('duplicate_cid', code)
             if code in _AMBIGUOUS:
                 raise _Unknown('ambiguous_code', code)
             return _VenueError(code)
         if 400 <= response.status < 500:
-            code = data.get('code') if isinstance(data, dict) else None
-            if type(code) is not int:
-                raise _Unknown('unreadable_error')
-            if code == _DUPLICATE:
-                raise _Unknown('duplicate_cid', code)
-            if code in _AMBIGUOUS:
-                raise _Unknown('ambiguous_code', code)
-            return _VenueError(code)
+            raise _Unknown('malformed')
         if not 200 <= response.status < 300:
             raise _Unknown('unexpected_status')
         if not isinstance(data, (dict, list)):
