@@ -1959,6 +1959,38 @@ STRATEGIES['intrabar_churn_reversion_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CSD1H = dict(vol_window=48, threshold=4.0, reference=0.10, cost_multiple=5.0)
+
+
+def sig_cusum_downshift_short_1h(d, p, ctx):
+    """C62: one-sided sequential CUSUM alarm for a persistent negative standardized-return shift."""
+    ret = d.c.pct_change()
+    sigma = ret.rolling(int(p['vol_window']), min_periods=int(p['vol_window'])).std().shift()
+    z = ret / sigma.replace(0.0, np.nan)
+    alarm = np.zeros(len(d), dtype=bool)
+    g = 0.0
+    for i, x in enumerate(z.to_numpy(float)):
+        if not np.isfinite(x):
+            g = 0.0
+            continue
+        g = min(0.0, g + x + float(p['reference']))
+        if g <= -float(p['threshold']):
+            alarm[i] = True
+            g = 0.0
+    alarm = pd.Series(alarm, index=d.index)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=never, se=alarm & cost_ok, lx=never, sx=d.c >= d.e20)
+
+
+STRATEGIES['cusum_downshift_short_1h'] = dict(
+    name='[RESEARCH] CUSUM downshift short 1h', style='sequential_change_detection',
+    fn=sig_cusum_downshift_short_1h, sides='short', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CSD1H),
+    desc='Candidate 62: short a one-sided CUSUM alarm after standardized negative returns cross -4.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
