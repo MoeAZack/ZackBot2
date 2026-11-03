@@ -2433,6 +2433,42 @@ STRATEGIES['turning_point_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+AROON1H = dict(window=25, min_oscillator=70.0, exit_oscillator=0.0, cost_multiple=5.0)
+
+
+def _rolling_aroon_oscillator(high, low, window):
+    """Extreme-recency oscillator using only completed rolling highs and lows."""
+    w = int(window)
+
+    def recency(raw, find_high):
+        if len(raw) != w or not np.isfinite(raw).all() or w < 2:
+            return np.nan
+        idx = int(np.argmax(raw) if find_high else np.argmin(raw))
+        return 100.0 * idx / (w - 1)
+
+    up = high.astype(float).rolling(w, min_periods=w).apply(lambda x: recency(x, True), raw=True)
+    down = low.astype(float).rolling(w, min_periods=w).apply(lambda x: recency(x, False), raw=True)
+    return up - down
+
+
+def sig_aroon_recency_long_1h(d, p, ctx):
+    """C76: follow a recent-high/stale-low renewal state."""
+    osc = _rolling_aroon_oscillator(d.h, d.l, int(p['window']))
+    ret = d.c.pct_change()
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (osc >= float(p['min_oscillator'])) & (ret > 0.0) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(osc <= float(p['exit_oscillator'])) | (d.c <= d.e20), sx=never)
+
+
+STRATEGIES['aroon_recency_long_1h'] = dict(
+    name='[RESEARCH] Aroon extreme-recency long 1h', style='extreme_recency_persistence',
+    fn=sig_aroon_recency_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(AROON1H),
+    desc='Candidate 76: follow positive drift when 25h Aroon-up minus Aroon-down is at least 70.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
