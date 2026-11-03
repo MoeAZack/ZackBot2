@@ -2224,6 +2224,41 @@ STRATEGIES['price_recurrence_discovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+LFP1H = dict(window=168, low_bins=7, min_share=0.15, exit_share=0.10, cost_multiple=5.0)
+
+
+def _rolling_low_frequency_power_share(close, window, low_bins):
+    """Share of demeaned log-return FFT power in the first non-DC frequency bins."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    w, bins = int(window), int(low_bins)
+    def share(raw):
+        if len(raw) != w or not np.isfinite(raw).all():
+            return np.nan
+        x = raw - raw.mean()
+        power = np.abs(np.fft.rfft(x)) ** 2
+        total = power[1:].sum()
+        return float(power[1:1 + bins].sum() / total) if total > 0.0 else np.nan
+    return ret.rolling(w, min_periods=w).apply(share, raw=True), ret
+
+
+def sig_low_frequency_power_long_1h(d, p, ctx):
+    """C70: follow positive drift when return variance concentrates at low frequencies."""
+    share, ret = _rolling_low_frequency_power_share(d.c, int(p['window']), int(p['low_bins']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (share >= float(p['min_share'])) & (ret > 0.0) & (ret24 > 0.0) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(share <= float(p['exit_share'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['low_frequency_power_long_1h'] = dict(
+    name='[RESEARCH] Low-frequency return-power long 1h', style='frequency_domain_persistence',
+    fn=sig_low_frequency_power_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(LFP1H),
+    desc='Candidate 70: buy positive drift when the first seven FFT bins contain at least 15% of 168h return power.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
