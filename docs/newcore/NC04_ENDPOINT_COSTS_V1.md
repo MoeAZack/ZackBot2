@@ -29,6 +29,11 @@ conservative Codex policy rather than a Binance fact, cancellation reserves one
 local token in each order-count window.  Dynamic request-weight limits come from
 `/fapi/v1/exchangeInfo`; account order limits come from signed
 `GET /fapi/v1/rateLimit/order` (weight 1).  Examples are never defaults.
+NC-04 accepts these values only through the typed raw-response loader pinned to
+the official Market Data and Account documentation. It requires exactly one
+`REQUEST_WEIGHT`/`MINUTE`/`1` row plus exactly one `ORDERS` row for each of
+`SECOND`/`10` and `MINUTE`/`1`; missing, duplicate or non-integer limits refuse
+worker construction as `limits_unknown`.
 
 `Retry-After` is optional evidence, not a current USD-M documentation guarantee.
 Missing or malformed required limits/evidence remain unknown, never zero.

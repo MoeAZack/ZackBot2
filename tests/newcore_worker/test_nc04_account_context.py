@@ -5,9 +5,12 @@ from decimal import Decimal
 import pytest
 
 from newcore.account_context import (
+    ACCOUNT_ORDER_LIMIT_PATH,
     ACCOUNT_SOURCE,
     ENDPOINT_COSTS_V1,
     ENDPOINT_TABLE_VERSION,
+    EXCHANGE_INFO_PATH,
+    MARKET_DATA_SOURCE,
     SOURCE_RETRIEVED_ON,
     TRADE_SOURCE,
     AccountBudget,
@@ -23,8 +26,10 @@ from newcore.account_context import (
     Operation,
     Pool,
     PositionsRequest,
+    RawLimitPayload,
     VenueWork,
     WorkState,
+    load_verified_limits,
     reservation_for,
     validate_distinct_egress,
 )
@@ -88,14 +93,20 @@ class FakeVenue:
 
 
 def limits(req=100, o10=20, o1m=100):
-    return (
-        ConfiguredLimit(limiter=Limiter.REQUEST_WEIGHT_1M, limit=req,
-                        authority=LimitAuthority.EXCHANGE_INFO),
-        ConfiguredLimit(limiter=Limiter.ORDERS_10S, limit=o10,
-                        authority=LimitAuthority.USER_RATE_LIMIT),
-        ConfiguredLimit(limiter=Limiter.ORDERS_1M, limit=o1m,
-                        authority=LimitAuthority.USER_RATE_LIMIT),
-    )
+    exchange = RawLimitPayload(
+        authority=LimitAuthority.EXCHANGE_INFO, method='GET', path=EXCHANGE_INFO_PATH,
+        source_url=MARKET_DATA_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
+        payload={'rateLimits': [
+            {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': req},
+        ]})
+    account = RawLimitPayload(
+        authority=LimitAuthority.USER_RATE_LIMIT, method='GET', path=ACCOUNT_ORDER_LIMIT_PATH,
+        source_url=ACCOUNT_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
+        payload=[
+            {'rateLimitType': 'ORDERS', 'interval': 'SECOND', 'intervalNum': 10, 'limit': o10},
+            {'rateLimitType': 'ORDERS', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': o1m},
+        ])
+    return load_verified_limits(exchange_info=exchange, account_order_limits=account)
 
 
 def budget(mono=None, wall=None, journal=None, **values):
@@ -152,8 +163,45 @@ def test_missing_duplicate_or_wrong_authority_limits_refuse_before_worker_exists
     with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
         AccountBudget(account_id=ACCT, egress_id=EGRESS, limits=limits() + (limits()[0],),
                       monotonic_clock=Clock(), wall_clock=Clock())
-    with pytest.raises(Exception, match='requires'):
-        ConfiguredLimit(limiter=Limiter.ORDERS_10S, limit=20, authority=LimitAuthority.EXCHANGE_INFO)
+    with pytest.raises(TypeError):
+        ConfiguredLimit(limiter=Limiter.ORDERS_10S, limit=20,
+                        authority=LimitAuthority.USER_RATE_LIMIT)
+
+
+@pytest.mark.parametrize('mutate', ('missing_weight', 'string_weight', 'missing_10s', 'missing_1m', 'duplicate'))
+def test_raw_limit_loader_rejects_missing_malformed_or_ambiguous_values(mutate):
+    exchange_payload = {'rateLimits': [
+        {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 100},
+    ]}
+    order_payload = [
+        {'rateLimitType': 'ORDERS', 'interval': 'SECOND', 'intervalNum': 10, 'limit': 20},
+        {'rateLimitType': 'ORDERS', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 100},
+    ]
+    if mutate == 'missing_weight': exchange_payload['rateLimits'] = []
+    if mutate == 'string_weight': exchange_payload['rateLimits'][0]['limit'] = '100'
+    if mutate == 'missing_10s': order_payload.pop(0)
+    if mutate == 'missing_1m': order_payload.pop(1)
+    if mutate == 'duplicate': order_payload.append(dict(order_payload[0]))
+    exchange = RawLimitPayload(authority=LimitAuthority.EXCHANGE_INFO, method='GET', path=EXCHANGE_INFO_PATH,
+        source_url=MARKET_DATA_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON, payload=exchange_payload)
+    account = RawLimitPayload(authority=LimitAuthority.USER_RATE_LIMIT, method='GET',
+        path=ACCOUNT_ORDER_LIMIT_PATH, source_url=ACCOUNT_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
+        payload=order_payload)
+    with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
+        load_verified_limits(exchange_info=exchange, account_order_limits=account)
+
+
+@pytest.mark.parametrize('field,value', (
+    ('method', 'POST'), ('path', '/fapi/v1/exchangeInfo-typo'),
+    ('source_url', ACCOUNT_SOURCE), ('retrieved_on', '2026-11-02'),
+))
+def test_raw_limit_payload_rejects_unverified_source_provenance(field, value):
+    values = dict(authority=LimitAuthority.EXCHANGE_INFO, method='GET', path=EXCHANGE_INFO_PATH,
+                  source_url=MARKET_DATA_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
+                  payload={'rateLimits': []})
+    values[field] = value
+    with pytest.raises(BudgetConfigurationError, match='limit_source_unverified'):
+        RawLimitPayload(**values)
 
 
 def test_20_order_10s_burst_preserves_two_token_protection_reserve():
@@ -386,7 +434,45 @@ def test_stop_cancels_general_queue_but_leaves_protection_until_bounded_drain():
     snap = ctx.stop(mono.value + 100)
     assert ctx.result('entry').state is WorkState.CANCELLED
     assert snap.queued == ('protect',)
+    assert journal.records == []  # not terminal: protection still has a bounded drain opportunity
     assert ctx.run_next().state is WorkState.COMPLETED
+    assert len(journal.records) == 1 and journal.records[-1].clean_shutdown
+
+
+def test_late_queued_protection_persists_unclean_before_return_and_restart_fails_closed():
+    mono, wall, journal = Clock(), Clock(WALL), MemoryRateJournal()
+
+    def late_completion(_name, *_args):
+        mono.advance(101)
+
+    ctx = AccountContext(account_id=ACCT, egress_id=EGRESS, venue=FakeVenue(callback=late_completion),
+        budget=budget(mono=mono, wall=wall, journal=journal), monotonic_clock=mono)
+    ctx.submit(work('protect', Action.PROTECT, Operation.SUBMIT_STOP, stop('late'), deadline=mono.value + 1_000))
+    ctx.stop(mono.value + 100)
+    assert journal.records == []
+
+    result = ctx.run_next()
+    assert result.state is WorkState.UNKNOWN and result.detail == 'shutdown_in_flight'
+    assert len(journal.records) == 1 and journal.records[-1].clean_shutdown is False
+
+    restored = AccountBudget.restore(account_id=ACCT, egress_id=EGRESS, limits=limits(),
+        monotonic_clock=Clock(50), wall_clock=wall, journal=journal)
+    snapshot = restored.snapshot()
+    assert snapshot.state is RateBlockState.BLOCKED_UNKNOWN_DURATION
+    assert snapshot.cause == 'unclean_restart'
+
+
+def test_queued_protection_cancelled_at_stop_deadline_records_clean_terminal_drain():
+    mono, journal = Clock(), MemoryRateJournal()
+    ctx = AccountContext(account_id=ACCT, egress_id=EGRESS, venue=FakeVenue(),
+        budget=budget(mono=mono, journal=journal), monotonic_clock=mono)
+    ctx.submit(work('protect', Action.PROTECT, Operation.SUBMIT_STOP, stop('bounded'),
+                    deadline=mono.value + 1_000))
+    ctx.stop(mono.value + 100)
+    mono.advance(100)
+    result = ctx.run_next()
+    assert result.state is WorkState.CANCELLED and result.detail == 'shutdown_deadline'
+    assert len(journal.records) == 1 and journal.records[-1].clean_shutdown
 
 
 def test_distinct_egress_isolation_and_shared_egress_mainnet_refusal():

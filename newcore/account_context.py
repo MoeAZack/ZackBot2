@@ -11,7 +11,7 @@ import heapq
 import math
 import threading
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
 from newcore.domain import Action
@@ -27,8 +27,12 @@ TRADE_SOURCE = ('https://developers.binance.com/en/docs/catalog/core-trading-der
 ACCOUNT_SOURCE = ('https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-'
                   'usd-s-m-futures/api/rest-api/account')
 GENERAL_SOURCE = 'https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info'
+MARKET_DATA_SOURCE = ('https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-'
+                      'usd-s-m-futures/api/rest-api/market-data')
 SOURCE_RETRIEVED_ON = '2026-11-03'
 ENDPOINT_TABLE_VERSION = 'binance-usdm-v1-2026-11-03'
+EXCHANGE_INFO_PATH = '/fapi/v1/exchangeInfo'
+ACCOUNT_ORDER_LIMIT_PATH = '/fapi/v1/rateLimit/order'
 
 
 class Operation(enum.StrEnum):
@@ -52,6 +56,20 @@ class Limiter(enum.StrEnum):
     ORDERS_1M = 'orders_1m'
 
 
+class AdmissionRefused(Exception):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
+class BudgetConfigurationError(AdmissionRefused):
+    pass
+
+
+class BudgetRefused(AdmissionRefused):
+    pass
+
+
 WINDOW_MS = {
     Limiter.REQUEST_WEIGHT_1M: 60_000,
     Limiter.ORDERS_10S: 10_000,
@@ -64,11 +82,39 @@ class LimitAuthority(enum.StrEnum):
     USER_RATE_LIMIT = 'user_rate_limit'
 
 
+_LIMIT_PROOF = object()
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RawLimitPayload:
+    """Raw response plus the exact Binance route and primary-document provenance."""
+
+    authority: LimitAuthority
+    method: str
+    path: str
+    source_url: str
+    retrieved_on: str
+    payload: object
+
+    def __post_init__(self):
+        object.__setattr__(self, 'authority', LimitAuthority(plain(self.authority)))
+        expected = {
+            LimitAuthority.EXCHANGE_INFO: ('GET', EXCHANGE_INFO_PATH, MARKET_DATA_SOURCE),
+            LimitAuthority.USER_RATE_LIMIT: ('GET', ACCOUNT_ORDER_LIMIT_PATH, ACCOUNT_SOURCE),
+        }[self.authority]
+        if (self.method, self.path, self.source_url) != expected or self.retrieved_on != SOURCE_RETRIEVED_ON:
+            raise BudgetConfigurationError('limit_source_unverified')
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ConfiguredLimit:
     limiter: Limiter
     limit: int
     authority: LimitAuthority
+    source_path: str
+    source_url: str
+    retrieved_on: str
+    _proof: object = field(repr=False, compare=False)
 
     def __post_init__(self):
         object.__setattr__(self, 'limiter', Limiter(plain(self.limiter)))
@@ -77,6 +123,50 @@ class ConfiguredLimit:
         expected = (LimitAuthority.EXCHANGE_INFO if self.limiter is Limiter.REQUEST_WEIGHT_1M
                     else LimitAuthority.USER_RATE_LIMIT)
         req(self.authority is expected, 'ConfiguredLimit.authority', f'{self.limiter} requires {expected}')
+        expected_path = EXCHANGE_INFO_PATH if expected is LimitAuthority.EXCHANGE_INFO else ACCOUNT_ORDER_LIMIT_PATH
+        expected_url = MARKET_DATA_SOURCE if expected is LimitAuthority.EXCHANGE_INFO else ACCOUNT_SOURCE
+        if (self.source_path, self.source_url, self.retrieved_on) != (expected_path, expected_url, SOURCE_RETRIEVED_ON):
+            raise BudgetConfigurationError('limit_source_unverified')
+        if self._proof is not _LIMIT_PROOF:
+            raise BudgetConfigurationError('limits_unverified')
+
+
+def _verified_limit(limiter: Limiter, limit: int, raw: RawLimitPayload) -> ConfiguredLimit:
+    return ConfiguredLimit(limiter=limiter, limit=limit, authority=raw.authority,
+                           source_path=raw.path, source_url=raw.source_url, retrieved_on=raw.retrieved_on,
+                           _proof=_LIMIT_PROOF)
+
+
+def _one_limit(rows: object, *, kind: str, interval: str, interval_num: int) -> int:
+    if type(rows) is not list or not all(type(row) is dict for row in rows):
+        raise BudgetConfigurationError('limits_unknown')
+    matches = [row for row in rows if (row.get('rateLimitType'), row.get('interval'), row.get('intervalNum'))
+               == (kind, interval, interval_num)]
+    if len(matches) != 1:
+        raise BudgetConfigurationError('limits_unknown')
+    value = matches[0].get('limit')
+    if type(value) is not int or value <= 0:
+        raise BudgetConfigurationError('limits_unknown')
+    return value
+
+
+def load_verified_limits(*, exchange_info: RawLimitPayload,
+                         account_order_limits: RawLimitPayload) -> tuple[ConfiguredLimit, ...]:
+    """Parse the two authoritative raw Binance payloads; examples/defaults are forbidden."""
+    if (not isinstance(exchange_info, RawLimitPayload)
+            or exchange_info.authority is not LimitAuthority.EXCHANGE_INFO
+            or not isinstance(account_order_limits, RawLimitPayload)
+            or account_order_limits.authority is not LimitAuthority.USER_RATE_LIMIT):
+        raise BudgetConfigurationError('limit_source_unverified')
+    if type(exchange_info.payload) is not dict:
+        raise BudgetConfigurationError('limits_unknown')
+    request = _one_limit(exchange_info.payload.get('rateLimits'), kind='REQUEST_WEIGHT',
+                         interval='MINUTE', interval_num=1)
+    orders_10s = _one_limit(account_order_limits.payload, kind='ORDERS', interval='SECOND', interval_num=10)
+    orders_1m = _one_limit(account_order_limits.payload, kind='ORDERS', interval='MINUTE', interval_num=1)
+    return (_verified_limit(Limiter.REQUEST_WEIGHT_1M, request, exchange_info),
+            _verified_limit(Limiter.ORDERS_10S, orders_10s, account_order_limits),
+            _verified_limit(Limiter.ORDERS_1M, orders_1m, account_order_limits))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -161,20 +251,6 @@ class FillsRequest:
         check_text(self.exchange_order_id, 'FillsRequest.exchange_order_id', 64)
         req(self.exchange_order_id.isascii() and self.exchange_order_id.isdigit()
             and int(self.exchange_order_id) > 0, 'FillsRequest.exchange_order_id', 'a positive ASCII integer')
-
-
-class AdmissionRefused(Exception):
-    def __init__(self, code: str):
-        self.code = code
-        super().__init__(code)
-
-
-class BudgetConfigurationError(AdmissionRefused):
-    pass
-
-
-class BudgetRefused(AdmissionRefused):
-    pass
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -529,6 +605,7 @@ class AccountContext:
         self._stopping = False
         self._stop_deadline: int | None = None
         self._reconcile = False
+        self._shutdown_recorded = False
         self._lock = threading.RLock()
 
     def _now(self):
@@ -564,6 +641,12 @@ class AccountContext:
         self._work.pop(result.work_id, None)
         self._cancelled.pop(result.work_id, None)
 
+    def _record_terminal_shutdown(self) -> None:
+        if (self._stopping and self._inflight is None and not self._work
+                and not self._shutdown_recorded):
+            self._budget.record_shutdown(clean=not self._reconcile)
+            self._shutdown_recorded = True
+
     def _dispatch(self, work: VenueWork):
         op, payload = work.operation, work.payload
         if op is Operation.SUBMIT_MARKET:
@@ -594,23 +677,22 @@ class AccountContext:
                 cancelled_at = self._cancelled.get(work_id)
                 if cancelled_at is not None and cancelled_at <= now:  # same-time cancellation wins
                     out = WorkResult(work_id=work_id, state=WorkState.CANCELLED, detail='cancelled_before_dequeue')
-                    self._finish(out); return out
+                    self._finish(out); self._record_terminal_shutdown(); return out
                 if now >= work.deadline_ms:
                     out = WorkResult(work_id=work_id, state=WorkState.EXPIRED, detail='deadline_before_dequeue')
-                    self._finish(out); return out
+                    self._finish(out); self._record_terminal_shutdown(); return out
                 if self._stopping and self._stop_deadline is not None and now >= self._stop_deadline:
                     out = WorkResult(work_id=work_id, state=WorkState.CANCELLED, detail='shutdown_deadline')
-                    self._finish(out); return out
+                    self._finish(out); self._record_terminal_shutdown(); return out
                 try:
                     self._budget.reserve(reservation, now)
                 except BudgetRefused as ex:
                     out = WorkResult(work_id=work_id, state=WorkState.REFUSED, detail=ex.code)
-                    self._finish(out); return out
+                    self._finish(out); self._record_terminal_shutdown(); return out
                 self._inflight = item
                 break
             else:
-                if self._stopping and self._inflight is None:
-                    self._budget.record_shutdown(clean=not self._reconcile)
+                self._record_terminal_shutdown()
                 return None
 
         try:
@@ -621,11 +703,16 @@ class AccountContext:
         with self._lock:
             finished_at = self._now()
             self._inflight = None
-            if finished_at >= work.deadline_ms:
+            shutdown_late = (self._stopping and self._stop_deadline is not None
+                             and finished_at >= self._stop_deadline)
+            if finished_at >= work.deadline_ms or shutdown_late:
                 self._reconcile = True
                 detail = 'shutdown_in_flight' if self._stopping else 'deadline_in_flight'
                 result = WorkResult(work_id=work.work_id, state=WorkState.UNKNOWN, detail=detail)
+            elif result.state is WorkState.UNKNOWN:
+                self._reconcile = True
             self._finish(result)
+            self._record_terminal_shutdown()
             return result
 
     def stop(self, deadline_ms: int) -> AccountSnapshot:
@@ -640,8 +727,7 @@ class AccountContext:
                     self._finish(WorkResult(work_id=work_id, state=WorkState.CANCELLED, detail='shutdown_queued'))
             if self._inflight is not None and (now >= deadline_ms or now >= self._inflight[0].deadline_ms):
                 self._reconcile = True
-            if self._inflight is None:
-                self._budget.record_shutdown(clean=not self._reconcile)
+            self._record_terminal_shutdown()
             return self.snapshot()
 
     def result(self, work_id: str) -> WorkResult | None:
@@ -666,9 +752,10 @@ def validate_distinct_egress(bindings: Iterable[tuple[str, str]], *, environment
 
 
 __all__ = [
-    'ACCOUNT_SOURCE', 'ENDPOINT_COSTS_V1', 'ENDPOINT_TABLE_VERSION', 'GENERAL_SOURCE', 'SOURCE_RETRIEVED_ON',
-    'TRADE_SOURCE', 'AccountBudget', 'AccountContext', 'AccountSnapshot', 'AdmissionRefused', 'BudgetConfigurationError',
+    'ACCOUNT_ORDER_LIMIT_PATH', 'ACCOUNT_SOURCE', 'ENDPOINT_COSTS_V1', 'ENDPOINT_TABLE_VERSION', 'EXCHANGE_INFO_PATH',
+    'GENERAL_SOURCE', 'MARKET_DATA_SOURCE', 'SOURCE_RETRIEVED_ON', 'TRADE_SOURCE', 'AccountBudget', 'AccountContext',
+    'AccountSnapshot', 'AdmissionRefused', 'BudgetConfigurationError',
     'BudgetRefused', 'BudgetSnapshot', 'ConfiguredLimit', 'EndpointCost', 'FillsRequest', 'LimitAuthority', 'Limiter',
-    'OpenOrdersRequest', 'Operation', 'Pool', 'PositionsRequest', 'Reservation', 'VenueWork', 'WorkResult', 'WorkState',
-    'reservation_for', 'validate_distinct_egress',
+    'OpenOrdersRequest', 'Operation', 'Pool', 'PositionsRequest', 'RawLimitPayload', 'Reservation', 'VenueWork',
+    'WorkResult', 'WorkState', 'load_verified_limits', 'reservation_for', 'validate_distinct_egress',
 ]
