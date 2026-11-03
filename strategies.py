@@ -3456,6 +3456,35 @@ STRATEGIES['elder_ray_pullback_long_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=12))
 
 
+NVI1H = dict(ema_span=255, cost_multiple=5.0)
+
+
+def _negative_volume_index(close, quote_volume):
+    """Causal NVI: compound returns only when completed quote volume declines."""
+    log_ret = np.log(close.astype(float) / close.astype(float).shift())
+    selected = log_ret.where(quote_volume.astype(float) < quote_volume.astype(float).shift(), 0.0).fillna(0.0)
+    return 1000.0 * np.exp(selected.cumsum())
+
+
+def sig_negative_volume_index_long_1h(d, p, ctx):
+    """C103: follow selective low-volume price accumulation crossing its slow mean."""
+    nvi = _negative_volume_index(d.c, d.qv)
+    signal = nvi.ewm(span=int(p['ema_span']), adjust=False, min_periods=int(p['ema_span'])).mean()
+    cross_up = (nvi > signal) & (nvi.shift() <= signal.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=nvi < signal, sx=never)
+
+
+STRATEGIES['negative_volume_index_long_1h'] = dict(
+    name='[RESEARCH] Negative Volume Index crossover long 1h', style='selective_low_volume_accumulation',
+    fn=sig_negative_volume_index_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(NVI1H),
+    desc='Candidate 103: low-volume-only price accumulation crosses above its 255h EMA with price above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
