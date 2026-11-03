@@ -994,6 +994,16 @@ STRATEGIES['ema_mom_long_h4'] = dict(
     mgmt=dict(stop_atr=2.5))
 
 
+# Candidate 27 is the next unused existing board cell: exact exp_mom_short,
+# isolated under a research-only/default-off identity. Runtime is unchanged.
+STRATEGIES['exp_mom_short_c27'] = dict(
+    name='[RESEARCH] Cold-coin momentum short C27', style='aggressive',
+    fn=sig_exp_mom_short, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Candidate 27: bottom-three 7d mover breaks the prior 20-bar low below EMA50 on >1.5x volume.',
+    mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
