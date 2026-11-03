@@ -983,6 +983,17 @@ STRATEGIES['exp_trend_long_h3'] = dict(
     mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180))
 
 
+# Candidate 26 is the queued H4 exact re-evaluation of ema_mom long under a
+# research-only/default-off identity. Its entry is shared with H3, but it keeps
+# the original signal-exit + stop-only management rather than H3 management.
+STRATEGIES['ema_mom_long_h4'] = dict(
+    name='[RESEARCH] EMA momentum long H4', style='calm',
+    fn=sig_ema_mom, sides='long', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Queued H4: EMA20/50 bullish cross above EMA200 with positive 7d and 30d momentum; original stop-only management.',
+    mgmt=dict(stop_atr=2.5))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
