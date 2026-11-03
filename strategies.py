@@ -1049,6 +1049,33 @@ STRATEGIES['daily_range_participation_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, trail_atr=3.0, max_bars=24))
 
 
+IIR1H = dict(window=168, impact_multiple=3.0, shock_atr=1.5, volume_floor_quantile=0.50, cost_multiple=5.0)
+
+
+def sig_illiquidity_impact_reversion_long_1h(d, p, ctx):
+    """C31: fade a downside return whose return-per-quote-volume impact is anomalous."""
+    n = int(p['window'])
+    ret = d.c / d.c.shift() - 1.0
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    impact = ret.abs() / qv.where(qv > 0)
+    impact_base = impact.rolling(n, min_periods=n).median().shift()
+    qv_floor = qv.rolling(n, min_periods=n).quantile(float(p['volume_floor_quantile'])).shift()
+    shock = ret <= -float(p['shock_atr']) * d.atr / d.c
+    anomalous = impact >= float(p['impact_multiple']) * impact_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = shock & anomalous & (qv >= qv_floor) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['illiquidity_impact_reversion_long_1h'] = dict(
+    name='[RESEARCH] Illiquidity-impact reversion long 1h', style='balanced',
+    fn=sig_illiquidity_impact_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(IIR1H),
+    desc='Candidate 31: fade downside 1h shocks when absolute return per quote-volume is >=3x its trailing median.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
