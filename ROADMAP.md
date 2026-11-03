@@ -251,7 +251,10 @@ A high score **never** changes settings automatically.
 - **Data:** backups for state, SQLite and settings, plus a restore drill.
 - **Local panel:** stays available over an SSH tunnel or an outbound agent. **The loopback port is never exposed.**
 - **Exit gate:**
-  - 14 days on the VPS against testnet with zero missed management loops;
+  - an evidence-based VPS testnet operations gate, with no fixed calendar soak: supervised restart, process crash,
+    host reboot/power-loss recovery, stale-data/dead-man alerting and exchange-reconnect drills must complete without an
+    unprotected position, duplicate order or missed management action; the resulting timestamps and reconciliation
+    records are retained with the release evidence;
   - the restore drill and the rollback drill pass.
 
 ### Phase 5 — Multiple accounts and internal copy
