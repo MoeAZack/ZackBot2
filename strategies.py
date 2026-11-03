@@ -1330,6 +1330,35 @@ STRATEGIES['return_autocorr_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+VACL1H = dict(fast_tr=6, slow_tr=48, ratio_min=1.20, body_fraction=0.25,
+              volume_window=48, volume_multiple=1.0, trend_lag=8, cost_multiple=5.0)
+
+
+def sig_volatility_acceleration_long_1h(d, p, ctx):
+    """C41: follow bullish participation while short-horizon range accelerates."""
+    tr = pd.concat([d.h-d.l, (d.h-d.c.shift()).abs(), (d.l-d.c.shift()).abs()], axis=1).max(axis=1)
+    fast = tr.rolling(int(p['fast_tr']), min_periods=int(p['fast_tr'])).mean()
+    slow = tr.rolling(int(p['slow_tr']), min_periods=int(p['slow_tr'])).mean().shift()
+    ratio = fast / slow.replace(0, np.nan)
+    body = (d.c-d.o) / (d.h-d.l).replace(0, np.nan)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((ratio >= float(p['ratio_min'])) & (body >= float(p['body_fraction'])) &
+          (d.c > d.e20) & (d.e50 > d.e50.shift(int(p['trend_lag']))) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=ratio < 1.0, sx=never)
+
+
+STRATEGIES['volatility_acceleration_long_1h'] = dict(
+    name='[RESEARCH] Volatility acceleration long 1h', style='trend',
+    fn=sig_volatility_acceleration_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VACL1H),
+    desc='Candidate 41: follow bullish participation when 6h true range exceeds 1.2x the prior 48h baseline.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
