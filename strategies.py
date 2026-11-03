@@ -2396,6 +2396,43 @@ STRATEGIES['mass_index_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+TPR1H = dict(window=48, max_entry_rate=0.50, exit_rate=2.0/3.0, cost_multiple=5.0)
+
+
+def _rolling_turning_point_rate(close, window):
+    """Fraction of interior completed closes that are strict local extrema."""
+    w = int(window)
+
+    def rate(raw):
+        if len(raw) != w or not np.isfinite(raw).all() or w < 3:
+            return np.nan
+        middle = raw[1:-1]
+        turns = ((middle > raw[:-2]) & (middle > raw[2:])) | ((middle < raw[:-2]) & (middle < raw[2:]))
+        return float(turns.mean())
+
+    return close.astype(float).rolling(w, min_periods=w).apply(rate, raw=True)
+
+
+def sig_turning_point_persistence_long_1h(d, p, ctx):
+    """C75: follow positive drift when the ordinal price path has unusually few reversals."""
+    turn_rate = _rolling_turning_point_rate(d.c, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((turn_rate <= float(p['max_entry_rate'])) & (ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(turn_rate >= float(p['exit_rate'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['turning_point_persistence_long_1h'] = dict(
+    name='[RESEARCH] Turning-point persistence long 1h', style='ordinal_path_persistence',
+    fn=sig_turning_point_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TPR1H),
+    desc='Candidate 75: follow positive drift when at most half of 46 interior points in 48 closes are local extrema.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
