@@ -3151,6 +3151,50 @@ STRATEGIES['record_high_intensity_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+RSHIFT1H = dict(recent=24, baseline=72, min_entry=0.60,
+                exit_level=0.50, cost_multiple=5.0)
+
+
+def _rank_shift_dominance(values, recent=24, baseline=72):
+    """Mann-Whitney probability that a recent return exceeds a baseline return."""
+    x = np.asarray(values, dtype=float)
+    nr, nb = int(recent), int(baseline)
+    if len(x) != nr + nb or not np.isfinite(x).all():
+        return np.nan
+    old, new = x[:nb], x[nb:]
+    diff = new[:, None] - old[None, :]
+    return float((np.sum(diff > 0.0) + 0.5 * np.sum(diff == 0.0)) / diff.size)
+
+
+def _rolling_rank_shift(close, recent, baseline):
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    total = int(recent) + int(baseline)
+    dominance = ret.rolling(total, min_periods=total).apply(
+        lambda x: _rank_shift_dominance(x, recent, baseline), raw=True)
+    return dominance, ret
+
+
+def sig_return_rank_shift_long_1h(d, p, ctx):
+    """C95: follow a nonparametric upward shift in the return distribution."""
+    dominance, log_ret = _rolling_rank_shift(
+        d.c, int(p['recent']), int(p['baseline']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((dominance >= float(p['min_entry'])) & (log_ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(dominance <= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['return_rank_shift_long_1h'] = dict(
+    name='[RESEARCH] Return rank-shift long 1h', style='mann_whitney_distribution_shift',
+    fn=sig_return_rank_shift_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RSHIFT1H),
+    desc='Candidate 95: follow positive drift when recent 24h returns dominate the prior 72h sample at 60%.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
