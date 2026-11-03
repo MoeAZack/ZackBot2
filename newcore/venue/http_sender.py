@@ -117,10 +117,16 @@ def _unsigned_header(headers, name: str, maximum: int) -> int | None:
     if len(values) != 1:
         return None
     value = values[0]
-    if type(value) is not str or not value or not value.isascii() or not value.isdigit() or len(value) > 19:
+    if type(value) is not str:
         return None
-    parsed = int(value)
-    return parsed if parsed <= maximum else None
+    value = value.strip(' \t')                 # HTTP optional whitespace, and nothing broader
+    if not value or not value.isascii() or not value.isdigit():
+        return None
+    canonical = value.lstrip('0') or '0'
+    limit = str(maximum)
+    if len(canonical) > len(limit) or (len(canonical) == len(limit) and canonical > limit):
+        return None
+    return int(canonical)
 
 
 class TestnetHttpSender:

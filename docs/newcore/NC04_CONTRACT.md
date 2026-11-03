@@ -33,7 +33,9 @@ HttpResponse(
 The concrete HTTPS sender reads `Retry-After` and
 `X-MBX-USED-WEIGHT-1M` case-insensitively.  A field is evidence only when it
 occurs exactly once and its semantic value is a non-empty unsigned ASCII
-decimal integer within signed 64-bit range.  `Retry-After` is accepted only in
+decimal integer within signed 64-bit range.  Legal SP/HTAB optional whitespace
+is removed and leading zeroes are canonicalized before the numeric bound is
+checked.  `Retry-After` is accepted only in
 delta-seconds form and converted exactly to milliseconds; dates, signs,
 fractions, non-ASCII digits, duplicates and overflow are ignored.  HTTP parser
 normalization of legal optional whitespace is not a second value.  No raw or

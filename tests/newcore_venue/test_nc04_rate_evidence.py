@@ -24,6 +24,14 @@ REF = OrderRef(symbol='BTCUSDT', client_id=CID)
 QUERY = 'symbol=BTCUSDT&recvWindow=5000&timestamp=1799000000000&signature=' + 'a' * 64
 
 
+class HeaderValues:
+    def __init__(self, *values):
+        self.values = values
+
+    def get_all(self, _name, _default):
+        return self.values
+
+
 class Credentials:
     def api_key(self):
         return 'test-key'
@@ -98,6 +106,24 @@ def test_sender_exposes_only_sanitized_numeric_rate_fields(monkeypatch):
     response = local_response(monkeypatch, b'rEtRy-AfTeR: 7\r\nX-MbX-UsEd-WeIgHt-1m: 123\r\nX-Secret: leak\r\n')
     assert response == HttpResponse(200, b'{}', retry_after_ms=7000, used_weight_1m=123)
     assert not hasattr(response, 'headers') and 'leak' not in repr(response)
+
+
+@pytest.mark.parametrize('value,expected', [
+    ('7 ', 7),
+    ('\t 7 \t', 7),
+    ('00000000000000000001', 1),
+    ('00000000009223372036854775807', 2 ** 63 - 1),
+])
+def test_unsigned_header_normalizes_only_ows_and_leading_zeroes(value, expected):
+    assert transport._unsigned_header(HeaderValues(value), 'Retry-After', 2 ** 63 - 1) == expected
+
+
+@pytest.mark.parametrize('values', [
+    (' 7 8 ',), ('\v7',), ('+7',), ('-7',), ('7.0',), ('Wed, 21 Oct 2015 07:28:00 GMT',),
+    ('１２',), ('9223372036854775808',), ('7', '7'),
+])
+def test_unsigned_header_still_rejects_non_ows_or_non_decimal_and_duplicates(values):
+    assert transport._unsigned_header(HeaderValues(*values), 'Retry-After', 2 ** 63 - 1) is None
 
 
 @pytest.mark.parametrize('headers,expected_retry,expected_weight', [
