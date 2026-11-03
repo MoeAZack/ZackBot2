@@ -1469,6 +1469,43 @@ STRATEGIES['state_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+EHBR1H = dict(resistance_window=24, tolerance_atr=0.25, min_touches=2,
+              min_separation=3, breakout_atr=0.10, volume_window=48,
+              volume_multiple=1.25, cost_multiple=5.0)
+
+
+def sig_equal_high_breakout_long_1h(d, p, ctx):
+    """C45: break a causally observed cluster of separated near-equal highs."""
+    n = int(p['resistance_window'])
+    lagged = pd.concat({lag: d.h.shift(lag) for lag in range(1, n + 1)}, axis=1)
+    edge = lagged.max(axis=1)
+    near = lagged.ge(edge - float(p['tolerance_atr']) * d.atr, axis=0)
+    lag_no = pd.DataFrame(np.tile(np.arange(1, n + 1), (len(d), 1)),
+                          index=d.index, columns=lagged.columns)
+    closest = lag_no.where(near).min(axis=1)
+    furthest = lag_no.where(near).max(axis=1)
+    cluster = ((near.sum(axis=1) >= int(p['min_touches'])) &
+               ((furthest - closest) >= int(p['min_separation'])))
+    breakout = ((d.c >= edge + float(p['breakout_atr']) * d.atr) &
+                (d.c.shift() <= edge.shift()))
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']),
+                         min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cluster & breakout & (d.c > d.e50) & volume_ok & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['equal_high_breakout_long_1h'] = dict(
+    name='[RESEARCH] Equal-high cluster breakout long 1h', style='breakout',
+    fn=sig_equal_high_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(EHBR1H),
+    desc='Candidate 45: buffered breakout above two separated near-equal highs in the prior 24 completed bars.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
