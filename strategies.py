@@ -2865,6 +2865,48 @@ STRATEGIES['boundary_crossing_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+KMON1H = dict(window=24, min_entry=0.70, exit_level=0.30, cost_multiple=5.0)
+
+
+def _kendall_time_tau(values):
+    """Kendall tau-a between a finite value sequence and its strict time order."""
+    x = np.asarray(values, dtype=float)
+    n = len(x)
+    pairs = n * (n - 1) // 2
+    if pairs <= 0 or not np.isfinite(x).all():
+        return np.nan
+    score = 0.0
+    for pos in range(n - 1):
+        score += np.sign(x[pos + 1:] - x[pos]).sum()
+    return score / float(pairs)
+
+
+def _rolling_kendall_monotonicity(close, window):
+    log_price = np.log(close.astype(float))
+    return log_price.rolling(int(window), min_periods=int(window)).apply(
+        _kendall_time_tau, raw=True)
+
+
+def sig_kendall_monotonicity_long_1h(d, p, ctx):
+    """C88: follow positive drift when the recent price path is ordinally monotone."""
+    tau = _rolling_kendall_monotonicity(d.c, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((tau >= float(p['min_entry'])) & (ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(tau <= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['kendall_monotonicity_long_1h'] = dict(
+    name='[RESEARCH] Kendall-monotonicity long 1h', style='ordinal_trend_monotonicity',
+    fn=sig_kendall_monotonicity_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KMON1H),
+    desc='Candidate 88: follow positive drift when 24h log-price Kendall tau-a is at least 0.70.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
