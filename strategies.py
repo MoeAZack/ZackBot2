@@ -3485,6 +3485,36 @@ STRATEGIES['negative_volume_index_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+TRIX1H = dict(span=15, cost_multiple=5.0)
+
+
+def _trix(close, span=15):
+    """Causal triple-exponential one-bar rate of change."""
+    n = int(span)
+    e1 = close.astype(float).ewm(span=n, adjust=False, min_periods=n).mean()
+    e2 = e1.ewm(span=n, adjust=False, min_periods=n).mean()
+    e3 = e2.ewm(span=n, adjust=False, min_periods=n).mean()
+    return 100.0 * e3.pct_change()
+
+
+def sig_trix_zero_cross_long_1h(d, p, ctx):
+    """C104: follow a positive transition in triple-smoothed price momentum."""
+    trix = _trix(d.c, p['span'])
+    cross_up = (trix > 0.0) & (trix.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=trix <= 0.0, sx=never)
+
+
+STRATEGIES['trix_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] TRIX zero-cross long 1h', style='triple_smoothed_momentum',
+    fn=sig_trix_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TRIX1H),
+    desc='Candidate 104: conventional TRIX(15) crosses above zero with price above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
