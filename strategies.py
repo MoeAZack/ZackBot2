@@ -3353,6 +3353,38 @@ STRATEGIES['ultimate_oscillator_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+DEM1H = dict(window=14, entry=0.30, exit=0.70, cost_multiple=5.0)
+
+
+def _demarker(high, low, window=14):
+    """Causal DeMarker oscillator from incremental completed-bar extrema."""
+    de_max = (high.astype(float) - high.astype(float).shift()).clip(lower=0.0)
+    de_min = (low.astype(float).shift() - low.astype(float)).clip(lower=0.0)
+    n = int(window)
+    up = de_max.rolling(n, min_periods=n).sum()
+    down = de_min.rolling(n, min_periods=n).sum()
+    return up / (up + down).replace(0.0, np.nan)
+
+
+def sig_demarker_recovery_long_1h(d, p, ctx):
+    """C100: enter when incremental-extrema pressure recovers from oversold."""
+    dem = _demarker(d.h, d.l, p['window'])
+    entry, exit_ = float(p['entry']), float(p['exit'])
+    cross_up = (dem > entry) & (dem.shift() <= entry)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(dem >= exit_) | (dem < entry), sx=never)
+
+
+STRATEGIES['demarker_recovery_long_1h'] = dict(
+    name='[RESEARCH] DeMarker oversold recovery long 1h', style='incremental_extrema_pressure',
+    fn=sig_demarker_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DEM1H),
+    desc='Candidate 100: classic DeMarker(14) recovery above 0.30 with 0.70 exit and EMA20 filter.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
