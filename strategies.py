@@ -2699,6 +2699,55 @@ STRATEGIES['ulcer_resilience_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+DCOS1H = dict(threshold_atr=1.0, cost_multiple=5.0)
+
+
+def _directional_change_events(close, atr, threshold_atr):
+    """Causal event-time reversals from maintained extrema using a dynamic ATR threshold."""
+    c = close.astype(float)
+    a = atr.astype(float)
+    up = pd.Series(False, index=c.index)
+    down = pd.Series(False, index=c.index)
+    mode, peak, trough = 0, np.nan, np.nan
+    for pos in range(len(c)):
+        price, av = float(c.iloc[pos]), float(a.iloc[pos])
+        if not np.isfinite(price) or not np.isfinite(av) or price <= 0.0 or av <= 0.0:
+            continue
+        if not np.isfinite(peak):
+            peak = trough = price
+            continue
+        if mode >= 0:
+            peak = max(peak, price)
+        if mode <= 0:
+            trough = min(trough, price)
+        threshold = float(threshold_atr) * av / price
+        if mode <= 0 and np.log(price / trough) >= threshold:
+            up.iloc[pos] = True
+            mode, peak = 1, price
+        elif mode >= 0 and np.log(peak / price) >= threshold:
+            down.iloc[pos] = True
+            mode, trough = -1, price
+    return up, down
+
+
+def sig_directional_change_overshoot_long_1h(d, p, ctx):
+    """C84: follow the overshoot after an ATR-confirmed upward directional change."""
+    up, down = _directional_change_events(d.c, d.atr, float(p['threshold_atr']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = up & (ret24 > 0.0) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=down | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['directional_change_overshoot_long_1h'] = dict(
+    name='[RESEARCH] Directional-change overshoot long 1h', style='event_time_overshoot',
+    fn=sig_directional_change_overshoot_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DCOS1H),
+    desc='Candidate 84: follow the overshoot after an upward one-ATR directional-change event.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
