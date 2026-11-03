@@ -208,6 +208,15 @@ def test_lookahead_real_slice_clean():
     assert set(r['strategies']) == runtime_keys and r['regime']
 
 
+def test_lookahead_empty_and_request_defaults_stay_runtime_only():
+    runtime_keys = {k for k, st in S.STRATEGIES.items() if not st.get('research_only')}
+    raw = {s: d.iloc[:600] for s, d in toy_raw().items()}
+    assert set(lab.lookahead_check(raw, keys=[], n_points=3, seed=1)['strategies']) == runtime_keys
+    assert set(lab.validate_lab_request('lookahead', {})['keys']) == runtime_keys
+    assert set(lab.validate_lab_request('lookahead', {'keys': []})['keys']) == runtime_keys
+    assert lab.validate_lab_request('lookahead', {'keys': ['ema_st']})['keys'] == ['ema_st']
+
+
 # ------------------------------------------------------------------ validation + job
 SL = [dict(key='ema_st', share=1, risk=0.01, max_pos=3, symbols='all')]
 

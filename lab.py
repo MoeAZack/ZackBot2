@@ -558,8 +558,7 @@ def lookahead_check(book_or_raw, keys=None, n_points=40, seed=0, symbols=None, m
     # that need external causal series (mark basis, order flow, etc.) own dedicated
     # lookahead tests which install that context explicitly; running them here would
     # either crash or silently validate fabricated inputs.
-    keys = list(keys if keys is not None else
-                (k for k, st in S.STRATEGIES.items() if not st.get('research_only')))
+    keys = list(keys or (k for k, st in S.STRATEGIES.items() if not st.get('research_only')))
     for k in keys:
         if k not in S.STRATEGIES: raise ValueError(f'unknown strategy {k}')
     raw = _raw_from(book_or_raw)
@@ -799,7 +798,10 @@ def validate_lab_request(kind, req):
         if out['method'] not in ('shuffle', 'bootstrap'): raise ValueError('method must be shuffle or bootstrap')
         if req.get('risk_per_trade') is not None: out['risk_per_trade'] = _num(req['risk_per_trade'], 0.0001, 0.5, 'risk per trade')
     if kind == 'lookahead':
-        keys = req.get('keys') or list(S.STRATEGIES)
+        # Match lookahead_check's runtime-only default. Research candidates that
+        # require external causal context must be requested explicitly and are
+        # validated by their context-aware harnesses.
+        keys = req.get('keys') or [k for k, st in S.STRATEGIES.items() if not st.get('research_only')]
         if not isinstance(keys, list) or any(k not in S.STRATEGIES for k in keys): raise ValueError('unknown strategy in keys')
         out['keys'] = keys
         out['n_points'] = _num(req.get('n_points', 40), 3, 200, 'check points', int)
