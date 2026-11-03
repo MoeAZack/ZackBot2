@@ -1630,6 +1630,33 @@ STRATEGIES['inside_bar_breakdown_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
 
 
+HVS1H = dict(season_days=14, volume_multiple=2.0, impulse_atr=0.75,
+             cost_multiple=5.0)
+
+
+def sig_hourly_volume_surprise_long_1h(d, p, ctx):
+    """C50: momentum after quote-volume surprise versus the same UTC hour."""
+    days = int(p['season_days'])
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    same_hour = pd.concat({day: qv.shift(24 * day)
+                           for day in range(1, days + 1)}, axis=1)
+    baseline = same_hour.median(axis=1, skipna=False)
+    volume_surprise = qv >= float(p['volume_multiple']) * baseline
+    impulse = (d.c - d.c.shift()) >= float(p['impulse_atr']) * d.atr
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = volume_surprise & impulse & (d.c > d.e50) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['hourly_volume_surprise_long_1h'] = dict(
+    name='[RESEARCH] Same-hour volume surprise long 1h', style='momentum',
+    fn=sig_hourly_volume_surprise_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(HVS1H),
+    desc='Candidate 50: follow a 0.75 ATR upside impulse only when quote volume is >=2x the prior 14 same-UTC-hour median.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
