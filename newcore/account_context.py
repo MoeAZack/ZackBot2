@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import enum
 import heapq
+import hmac
 import math
 import threading
 from collections import deque
@@ -82,7 +83,14 @@ class LimitAuthority(enum.StrEnum):
     USER_RATE_LIMIT = 'user_rate_limit'
 
 
-_LIMIT_PROOF = object()
+_LIMIT_PROOF_KEY = b'zackbot.nc04.binance-limit-proof.v1'
+
+
+def _limit_proof(*, limiter: Limiter, limit: int, authority: LimitAuthority,
+                 source_path: str, source_url: str, retrieved_on: str) -> bytes:
+    material = '\x1f'.join((plain(limiter), str(limit), plain(authority), source_path,
+                            source_url, retrieved_on)).encode('utf-8')
+    return hmac.digest(_LIMIT_PROOF_KEY, material, 'sha256')
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -114,7 +122,7 @@ class ConfiguredLimit:
     source_path: str
     source_url: str
     retrieved_on: str
-    _proof: object = field(repr=False, compare=False)
+    _proof: bytes = field(repr=False, compare=False)
 
     def __post_init__(self):
         object.__setattr__(self, 'limiter', Limiter(plain(self.limiter)))
@@ -127,19 +135,31 @@ class ConfiguredLimit:
         expected_url = MARKET_DATA_SOURCE if expected is LimitAuthority.EXCHANGE_INFO else ACCOUNT_SOURCE
         if (self.source_path, self.source_url, self.retrieved_on) != (expected_path, expected_url, SOURCE_RETRIEVED_ON):
             raise BudgetConfigurationError('limit_source_unverified')
-        if self._proof is not _LIMIT_PROOF:
+        self.assert_verified()
+
+    def assert_verified(self) -> None:
+        expected = _limit_proof(limiter=self.limiter, limit=self.limit, authority=self.authority,
+                                source_path=self.source_path, source_url=self.source_url,
+                                retrieved_on=self.retrieved_on)
+        if type(self._proof) is not bytes or not hmac.compare_digest(self._proof, expected):
             raise BudgetConfigurationError('limits_unverified')
 
 
 def _verified_limit(limiter: Limiter, limit: int, raw: RawLimitPayload) -> ConfiguredLimit:
+    proof = _limit_proof(limiter=limiter, limit=limit, authority=raw.authority,
+                         source_path=raw.path, source_url=raw.source_url, retrieved_on=raw.retrieved_on)
     return ConfiguredLimit(limiter=limiter, limit=limit, authority=raw.authority,
                            source_path=raw.path, source_url=raw.source_url, retrieved_on=raw.retrieved_on,
-                           _proof=_LIMIT_PROOF)
+                           _proof=proof)
 
 
 def _one_limit(rows: object, *, kind: str, interval: str, interval_num: int) -> int:
     if type(rows) is not list or not all(type(row) is dict for row in rows):
         raise BudgetConfigurationError('limits_unknown')
+    for row in rows:
+        if (type(row.get('rateLimitType')) is not str or type(row.get('interval')) is not str
+                or type(row.get('intervalNum')) is not int or type(row.get('limit')) is not int):
+            raise BudgetConfigurationError('limits_unknown')
     matches = [row for row in rows if (row.get('rateLimitType'), row.get('interval'), row.get('intervalNum'))
                == (kind, interval, interval_num)]
     if len(matches) != 1:
@@ -356,6 +376,8 @@ class AccountBudget:
         req(callable(monotonic_clock) and callable(wall_clock), 'AccountBudget.clock', 'two callables')
         rows = tuple(limits)
         req(all(isinstance(x, ConfiguredLimit) for x in rows), 'AccountBudget.limits', 'ConfiguredLimit rows')
+        for row in rows:
+            row.assert_verified()
         by = {x.limiter: x for x in rows}
         if len(by) != len(rows) or set(by) != set(Limiter):
             raise BudgetConfigurationError('limits_unknown')

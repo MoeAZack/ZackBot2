@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+import dataclasses
 from decimal import Decimal
 
 import pytest
@@ -189,6 +191,44 @@ def test_raw_limit_loader_rejects_missing_malformed_or_ambiguous_values(mutate):
         payload=order_payload)
     with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
         load_verified_limits(exchange_info=exchange, account_order_limits=account)
+
+
+@pytest.mark.parametrize('target,field,value', (
+    ('exchange', 'intervalNum', True), ('exchange', 'limit', False),
+    ('exchange', 'interval', 1), ('account', 'intervalNum', True),
+    ('account', 'limit', False), ('account', 'rateLimitType', ['ORDERS']),
+))
+def test_raw_limit_loader_requires_exact_json_field_types(target, field, value):
+    exchange_payload = {'rateLimits': [
+        {'rateLimitType': 'REQUEST_WEIGHT', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 100},
+    ]}
+    order_payload = [
+        {'rateLimitType': 'ORDERS', 'interval': 'SECOND', 'intervalNum': 10, 'limit': 20},
+        {'rateLimitType': 'ORDERS', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': 100},
+    ]
+    row = exchange_payload['rateLimits'][0] if target == 'exchange' else order_payload[0]
+    row[field] = value
+    exchange = RawLimitPayload(authority=LimitAuthority.EXCHANGE_INFO, method='GET', path=EXCHANGE_INFO_PATH,
+        source_url=MARKET_DATA_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON, payload=exchange_payload)
+    account = RawLimitPayload(authority=LimitAuthority.USER_RATE_LIMIT, method='GET',
+        path=ACCOUNT_ORDER_LIMIT_PATH, source_url=ACCOUNT_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
+        payload=order_payload)
+    with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
+        load_verified_limits(exchange_info=exchange, account_order_limits=account)
+
+
+def test_value_bound_limit_proof_rejects_dataclass_replace_and_copied_mutation():
+    original = limits()
+    with pytest.raises(BudgetConfigurationError, match='limits_unverified'):
+        dataclasses.replace(original[0], limit=original[0].limit + 1)
+
+    for copier in (copy.copy, copy.deepcopy):
+        rows = limits()
+        forged = copier(rows[1])
+        object.__setattr__(forged, 'limit', forged.limit + 1)
+        with pytest.raises(BudgetConfigurationError, match='limits_unverified'):
+            AccountBudget(account_id=ACCT, egress_id=EGRESS,
+                limits=(rows[0], forged, rows[2]), monotonic_clock=Clock(), wall_clock=Clock(WALL))
 
 
 @pytest.mark.parametrize('field,value', (

@@ -33,7 +33,10 @@ NC-04 accepts these values only through the typed raw-response loader pinned to
 the official Market Data and Account documentation. It requires exactly one
 `REQUEST_WEIGHT`/`MINUTE`/`1` row plus exactly one `ORDERS` row for each of
 `SECOND`/`10` and `MINUTE`/`1`; missing, duplicate or non-integer limits refuse
-worker construction as `limits_unknown`.
+worker construction as `limits_unknown`. Raw row fields use exact JSON types;
+in particular, booleans never satisfy integer `intervalNum` or `limit` fields.
+Each parsed limit carries a value-bound seal that is revalidated when an
+`AccountBudget` is constructed, so a replaced or mutated clone is refused.
 
 `Retry-After` is optional evidence, not a current USD-M documentation guarantee.
 Missing or malformed required limits/evidence remain unknown, never zero.
