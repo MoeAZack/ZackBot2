@@ -96,7 +96,7 @@ jobs:
         with:
           name: verify-full-${{ matrix.part }}-${{ github.event.pull_request.head.sha }}
           path: verify_out/
-          retention-days: 30
+          retention-days: 7
 
   full:
     name: ${{ github.event.label.name == 'full-ready' && 'verify full' || 'full gate not requested' }}
@@ -147,4 +147,4 @@ jobs:
         with:
           name: verify-full-${{ github.event.pull_request.head.sha }}
           path: verify_out/
-          retention-days: 30
+          retention-days: 7

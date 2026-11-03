@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WF = open(os.path.join(ROOT, '.github', 'workflows', 'verify.yml'), encoding='utf-8').read()
 WP = open(os.path.join(ROOT, '.github', 'workflows', 'verify-push.yml'), encoding='utf-8').read()
 WQ = open(os.path.join(ROOT, '.github', 'workflows', 'verify-fast.yml'), encoding='utf-8').read()
+WC = open(os.path.join(ROOT, '.github', 'workflows', 'prune-actions-cache.yml'), encoding='utf-8').read()
 WORKFLOWS = {'verify.yml': WF, 'verify-fast.yml': WQ, 'verify-push.yml': WP}
 
 
@@ -298,6 +299,14 @@ def test_push_workflow_permissions_and_wiring():
     assert "if: steps.plan.outputs.reuse == 'true'" in WP and "if: steps.plan.outputs.reuse != 'true'" in WP
     assert 'python verify.py fast --out verify_out' in WP and 'fetch-depth: 0' in WP
     assert C.PUSH_WORKFLOW == '.github/workflows/verify-push.yml'
+
+
+def test_cache_pruner_is_isolated_from_test_jobs():
+    assert 'workflow_run:\n    workflows: [verify-push]\n    types: [completed]\n    branches: [master]' in WC
+    assert 'permissions: {}' in WC
+    assert re.search(r'^    permissions:\n      actions: write$', WC, re.M)
+    assert 'actions/checkout' not in WC and 'setup-python' not in WC and 'pip install' not in WC
+    assert 'actions/caches/$cache_id' in WC and "date -u -d '2 days ago'" in WC
 
 
 # ---------------------------------------------------------------- push-only docs reuse (fail-closed)

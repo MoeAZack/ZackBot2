@@ -47,10 +47,6 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
       - name: Install pinned dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: verify fast
@@ -61,4 +57,4 @@ jobs:
         with:
           name: verify-fast-${{ github.sha }}
           path: verify_out/
-          retention-days: 30
+          retention-days: 1
