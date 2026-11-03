@@ -1794,6 +1794,45 @@ STRATEGIES['wick_imbalance_pressure_long_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
 
 
+RTT1H = dict(window=48, slope_t=3.0, cost_multiple=5.0)
+
+
+def _rolling_log_slope_t(close, window):
+    """OLS slope t-stat for each trailing fixed-length log-price window."""
+    n = int(window)
+    x = np.arange(n, dtype=float)
+    xc = x - x.mean()
+    ssx = float(np.dot(xc, xc))
+    def score(raw):
+        if len(raw) != n or not np.isfinite(raw).all():
+            return np.nan
+        y = np.log(raw)
+        slope = float(np.dot(xc, y) / ssx)
+        residual = y - (y.mean() + slope * xc)
+        mse = float(np.dot(residual, residual) / (n - 2))
+        if mse <= 0.0:
+            return np.inf if slope > 0.0 else (-np.inf if slope < 0.0 else 0.0)
+        return slope / np.sqrt(mse / ssx)
+    return close.rolling(n, min_periods=n).apply(score, raw=True)
+
+
+def sig_regression_trend_quality_long_1h(d, p, ctx):
+    """C56: follow only statistically coherent positive log-price trends."""
+    slope_t = _rolling_log_slope_t(d.c.astype(float), int(p['window']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (slope_t >= float(p['slope_t'])) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=slope_t <= 0.0, sx=never)
+
+
+STRATEGIES['regression_trend_quality_long_1h'] = dict(
+    name='[RESEARCH] Regression trend-quality long 1h', style='statistical_trend',
+    fn=sig_regression_trend_quality_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RTT1H),
+    desc='Candidate 56: follow a positive 48h log-price OLS slope only when its t-statistic is at least 3.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
