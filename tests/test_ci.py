@@ -411,6 +411,9 @@ def test_nothing_executed_reads_docs():
             if p in allowed or not fn.lower().endswith(exts): continue
             scanned.add(os.path.relpath(p, ROOT).replace(os.sep, '/'))
             txt = open(p, encoding='utf-8', errors='ignore').read()
+            # External documentation URLs are provenance, not runtime reads from
+            # the repository's local docs/ tree.
+            txt = re.sub(r'https?://[^\s\'\"]+', '', txt)
             if re.search(r"""['"/\\]docs['"/\\]""", txt): hits.append(os.path.relpath(p, ROOT))
     assert {'.github/workflows/verify.yml', '.github/workflows/verify-push.yml', '.github/workflows/verify-fast.yml'} <= scanned
     assert hits == []
