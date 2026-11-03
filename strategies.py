@@ -2601,6 +2601,39 @@ STRATEGIES['positive_jump_excitation_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+RCON1H = dict(window=24, max_entry=0.08, exit_level=0.15, cost_multiple=5.0)
+
+
+def _absolute_return_concentration(close, window):
+    """Rolling Herfindahl concentration of completed-bar absolute log returns."""
+    w = int(window)
+    absolute = np.log(close.astype(float) / close.astype(float).shift()).abs()
+    total = absolute.rolling(w, min_periods=w).sum()
+    squared = absolute.pow(2).rolling(w, min_periods=w).sum()
+    return squared / total.pow(2).replace(0.0, np.nan)
+
+
+def sig_return_concentration_persistence_long_1h(d, p, ctx):
+    """C81: follow positive drift distributed broadly through the recent path."""
+    concentration = _absolute_return_concentration(d.c, int(p['window']))
+    ret = np.log(d.c.astype(float) / d.c.astype(float).shift())
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((concentration <= float(p['max_entry'])) & (ret > 0.0) &
+          (ret24 > 0.0) & (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(concentration >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['return_concentration_persistence_long_1h'] = dict(
+    name='[RESEARCH] Diffuse-return persistence long 1h', style='temporal_return_concentration',
+    fn=sig_return_concentration_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RCON1H),
+    desc='Candidate 81: follow positive drift when absolute returns are broadly distributed through 24h.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
