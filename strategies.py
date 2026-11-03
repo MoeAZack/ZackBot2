@@ -2907,6 +2907,39 @@ STRATEGIES['kendall_monotonicity_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+TRA1H = dict(window=48, min_entry=0.10, exit_level=0.0, cost_multiple=5.0)
+
+
+def _time_reversal_asymmetry(close, window):
+    """Standardized third-order return-ordering moment using completed bars only."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    lag = ret.shift()
+    moment = (ret.pow(2) * lag - ret * lag.pow(2)).rolling(
+        int(window), min_periods=int(window)).mean()
+    scale = ret.rolling(int(window), min_periods=int(window)).std(ddof=0).pow(3)
+    return moment / scale.replace(0.0, np.nan), ret
+
+
+def sig_time_reversal_asymmetry_long_1h(d, p, ctx):
+    """C89: follow positive drift with positive nonlinear temporal asymmetry."""
+    asym, log_ret = _time_reversal_asymmetry(d.c, int(p['window']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((asym >= float(p['min_entry'])) & (log_ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(asym <= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['time_reversal_asymmetry_long_1h'] = dict(
+    name='[RESEARCH] Time-reversal asymmetry long 1h', style='nonlinear_time_irreversibility',
+    fn=sig_time_reversal_asymmetry_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TRA1H),
+    desc='Candidate 89: follow positive drift with positive standardized third-order return asymmetry.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
