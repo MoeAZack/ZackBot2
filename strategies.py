@@ -2366,6 +2366,36 @@ STRATEGIES['trimmed_return_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+MIR1H = dict(ema_span=9, sum_window=25, min_mass=27.0, exit_mass=25.0, cost_multiple=5.0)
+
+
+def _mass_index(high, low, ema_span, sum_window):
+    """Mass Index: summed ratio of single- to double-smoothed completed ranges."""
+    span = (high.astype(float) - low.astype(float)).where(high.astype(float) > low.astype(float))
+    e1 = span.ewm(span=int(ema_span), adjust=False, min_periods=int(ema_span)).mean()
+    e2 = e1.ewm(span=int(ema_span), adjust=False, min_periods=int(ema_span)).mean()
+    ratio = e1 / e2.replace(0.0, np.nan)
+    return ratio.rolling(int(sum_window), min_periods=int(sum_window)).sum()
+
+
+def sig_mass_index_recovery_long_1h(d, p, ctx):
+    """C74: buy a recovery bar during a persistent high-low range bulge."""
+    mass = _mass_index(d.h, d.l, int(p['ema_span']), int(p['sum_window']))
+    ret = d.c.pct_change()
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (mass >= float(p['min_mass'])) & (ret > 0.0) & (d.c < d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(mass <= float(p['exit_mass'])) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['mass_index_recovery_long_1h'] = dict(
+    name='[RESEARCH] Mass-index range-bulge recovery long 1h', style='range_cycle_recovery',
+    fn=sig_mass_index_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(MIR1H),
+    desc='Candidate 74: buy a positive recovery below EMA20 while the 9/9/25 Mass Index is at least 27.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
