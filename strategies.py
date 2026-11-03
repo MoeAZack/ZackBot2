@@ -1428,6 +1428,47 @@ STRATEGIES['range_overlap_acceptance_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
 
 
+STPER1H = dict(state_bars=6, state_atr=1.0, transition_window=120,
+               min_bull_origins=20, persistence_min=0.60,
+               persistence_exit=0.50, volume_window=48,
+               volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_state_persistence_long_1h(d, p, ctx):
+    """C44: enter a bullish normalized-return state only when it historically persists."""
+    move = (d.c - d.c.shift(int(p['state_bars']))) / d.atr.replace(0, np.nan)
+    state = pd.Series(0, index=d.index, dtype=int)
+    state.loc[move >= float(p['state_atr'])] = 1
+    state.loc[move <= -float(p['state_atr'])] = -1
+    bull_origin = (state.shift() == 1).astype(float)
+    bull_to_bull = ((state.shift() == 1) & (state == 1)).astype(float)
+    w = int(p['transition_window'])
+    # Shift excludes the transition into the decision bar.  The conditional
+    # frequency is learned only from the preceding w completed transitions.
+    origins = bull_origin.rolling(w, min_periods=w).sum().shift()
+    repeats = bull_to_bull.rolling(w, min_periods=w).sum().shift()
+    persistence = repeats / origins.replace(0, np.nan)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']),
+                         min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    enough = origins >= int(p['min_bull_origins'])
+    le = ((state == 1) & enough & (persistence >= float(p['persistence_min'])) &
+          (d.c > d.e50) & volume_ok & cost_ok)
+    never = d.c < -1
+    lx = (state != 1) | (persistence < float(p['persistence_exit']))
+    return dict(le=le, se=never, lx=lx, sx=never)
+
+
+STRATEGIES['state_persistence_long_1h'] = dict(
+    name='[RESEARCH] Empirical bull-state persistence long 1h', style='trend',
+    fn=sig_state_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(STPER1H),
+    desc='Candidate 44: enter a normalized bullish six-hour state when prior bull-to-bull persistence is >=60%.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
