@@ -2667,6 +2667,38 @@ STRATEGIES['iqr_compression_breakout_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+ULCR1H = dict(window=48, max_entry=0.03, exit_level=0.05, cost_multiple=5.0)
+
+
+def _rolling_ulcer_index(close, window):
+    """RMS percentage drawdown from the causal rolling high."""
+    c = close.astype(float)
+    w = int(window)
+    peak = c.rolling(w, min_periods=w).max()
+    drawdown = c / peak - 1.0
+    return drawdown.pow(2).rolling(w, min_periods=w).mean().pow(0.5)
+
+
+def sig_ulcer_resilience_long_1h(d, p, ctx):
+    """C83: follow positive drift while rolling drawdown severity stays shallow."""
+    ulcer = _rolling_ulcer_index(d.c, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((ulcer <= float(p['max_entry'])) & (ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(ulcer >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['ulcer_resilience_long_1h'] = dict(
+    name='[RESEARCH] Ulcer-resilience long 1h', style='drawdown_severity_persistence',
+    fn=sig_ulcer_resilience_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ULCR1H),
+    desc='Candidate 83: follow positive drift while 48h RMS drawdown severity remains shallow.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
