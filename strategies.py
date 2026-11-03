@@ -1768,6 +1768,32 @@ STRATEGIES['btc_beta_residual_reversion_long_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=4))
 
 
+WIP1H = dict(window=12, pressure=0.20, cost_multiple=5.0)
+
+
+def sig_wick_imbalance_pressure_long_1h(d, p, ctx):
+    """C55: follow persistent failed downward auctions measured by wick asymmetry."""
+    body_high = pd.concat([d.o, d.c], axis=1).max(axis=1)
+    body_low = pd.concat([d.o, d.c], axis=1).min(axis=1)
+    upper_wick = d.h - body_high
+    lower_wick = body_low - d.l
+    candle_range = (d.h - d.l).replace(0.0, np.nan)
+    wick_imbalance = (lower_wick - upper_wick) / candle_range
+    pressure = wick_imbalance.rolling(int(p['window']), min_periods=int(p['window'])).mean()
+    cost_ok = 1.5 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (pressure >= float(p['pressure'])) & (d.c > d.o) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=pressure <= 0.0, sx=never)
+
+
+STRATEGIES['wick_imbalance_pressure_long_1h'] = dict(
+    name='[RESEARCH] Wick-imbalance pressure long 1h', style='auction_pressure',
+    fn=sig_wick_imbalance_pressure_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(WIP1H),
+    desc='Candidate 55: buy a bullish close after 12h average normalized lower-minus-upper wick pressure >=0.20.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
