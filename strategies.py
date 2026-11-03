@@ -1833,6 +1833,30 @@ STRATEGIES['regression_trend_quality_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+DSR1H = dict(window=168, downside_ratio=2.0, cost_multiple=5.0)
+
+
+def sig_downside_semivariance_rebound_long_1h(d, p, ctx):
+    """C57: rebound after downside realized variance dominates upside variance."""
+    ret = d.c.pct_change()
+    w = int(p['window'])
+    downside = ret.clip(upper=0.0).pow(2).rolling(w, min_periods=w).mean()
+    upside = ret.clip(lower=0.0).pow(2).rolling(w, min_periods=w).mean().replace(0.0, np.nan)
+    ratio = downside / upside
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (ratio >= float(p['downside_ratio'])) & (ret > 0.0) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=ratio <= 1.0, sx=never)
+
+
+STRATEGIES['downside_semivariance_rebound_long_1h'] = dict(
+    name='[RESEARCH] Downside-semivariance rebound long 1h', style='tail_risk_rebound',
+    fn=sig_downside_semivariance_rebound_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DSR1H),
+    desc='Candidate 57: buy a positive hour when seven-day downside semivariance is at least 2x upside semivariance.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
