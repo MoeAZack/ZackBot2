@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 
 from newcore.ports import keys as K
 from newcore.ports import venue as P
-from newcore.ports.values import PortValueError, check_symbol, req
+from newcore.ports.values import PortValueError, check_int, check_ms, check_symbol, req
 
 TESTNET_BASE_URL = 'https://testnet.binancefuture.com'
 _PREFIX = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
@@ -30,6 +30,7 @@ _NOT_FOUND = frozenset({-2011, -2013})
 _AMBIGUOUS = frozenset({-1000, -1001, -1006, -1007})
 _DUPLICATE = -4116
 _ALGO_ROUTE = -4120
+_MAX_RATE_VALUE = 2 ** 63 - 1
 
 
 class VenueBindingError(ValueError):
@@ -54,6 +55,30 @@ class HttpRequest:
 class HttpResponse:
     status: int
     body: bytes
+    retry_after_ms: int | None = None
+    used_weight_1m: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RateEvidence:
+    """Sanitized HTTP rate evidence; never contains headers, URLs or credentials."""
+
+    http_status: int
+    retry_after_ms: int | None
+    used_weight_1m: int | None
+    observed_at_ms: int
+
+    def __post_init__(self):
+        check_int(self.http_status, 'RateEvidence.http_status', 100, 599)
+        if self.retry_after_ms is not None:
+            check_int(self.retry_after_ms, 'RateEvidence.retry_after_ms', 0, _MAX_RATE_VALUE)
+        if self.used_weight_1m is not None:
+            check_int(self.used_weight_1m, 'RateEvidence.used_weight_1m', 0, _MAX_RATE_VALUE)
+        check_ms(self.observed_at_ms, 'RateEvidence.observed_at_ms')
+
+
+class RateObserver(Protocol):
+    def __call__(self, evidence: RateEvidence) -> None: ...
 
 
 class _Unknown(Exception):
@@ -98,7 +123,7 @@ class BinanceUsdMTestnetVenue:
 
     def __init__(self, *, environment: str, base_url: str, sender: Callable[[HttpRequest], HttpResponse],
                  credentials: CredentialSource, clock: Callable[[], int], timeout_s: float = 10.0,
-                 recv_window_ms: int = 5000):
+                 recv_window_ms: int = 5000, rate_observer: RateObserver | None = None):
         if type(environment) is not str or environment != 'testnet':
             raise VenueBindingError('environment must be the exact string testnet')
         if type(base_url) is not str or base_url != TESTNET_BASE_URL:
@@ -111,8 +136,11 @@ class BinanceUsdMTestnetVenue:
             raise PortValueError('timeout_s', 'a number in (0, 60]')
         if type(recv_window_ms) is not int or not 1 <= recv_window_ms <= 10_000:
             raise PortValueError('recv_window_ms', 'an int in 1..10000')
+        if rate_observer is not None and not callable(rate_observer):
+            raise PortValueError('rate_observer', 'a callable or None')
         self._base_url = base_url
         self._sender, self._credentials, self._clock = sender, credentials, clock
+        self._rate_observer = rate_observer
         self._timeout_s, self._recv_window_ms = float(timeout_s), recv_window_ms
         self._submitted: set[str] = set()
 
@@ -149,8 +177,21 @@ class BinanceUsdMTestnetVenue:
             raise _Unknown('timeout') from None
         except Exception:
             raise _Unknown('transport_error') from None
-        if not isinstance(response, HttpResponse) or type(response.status) is not int or type(response.body) is not bytes:
+        if (not isinstance(response, HttpResponse) or type(response.status) is not int
+                or not 100 <= response.status <= 599 or type(response.body) is not bytes
+                or (response.retry_after_ms is not None
+                    and (type(response.retry_after_ms) is not int
+                         or not 0 <= response.retry_after_ms <= _MAX_RATE_VALUE))
+                or (response.used_weight_1m is not None
+                    and (type(response.used_weight_1m) is not int
+                         or not 0 <= response.used_weight_1m <= _MAX_RATE_VALUE))):
             raise _Unknown('bad_http_response')
+        if self._rate_observer is not None:
+            try:
+                self._rate_observer(RateEvidence(response.status, response.retry_after_ms,
+                                                 response.used_weight_1m, self._now()))
+            except Exception:
+                raise _Unknown('rate_observer') from None
         if response.status >= 500:
             raise _Unknown('http_5xx')
         try:
@@ -359,4 +400,4 @@ class _VenueError:
 
 
 __all__ = ['TESTNET_BASE_URL', 'BinanceUsdMTestnetVenue', 'CredentialSource', 'HttpRequest', 'HttpResponse',
-           'VenueBindingError']
+           'RateEvidence', 'RateObserver', 'VenueBindingError']

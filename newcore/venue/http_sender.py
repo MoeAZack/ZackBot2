@@ -33,6 +33,7 @@ _PATHS = frozenset({
 _QUERY_KEY = re.compile(r'^[A-Za-z][A-Za-z0-9]*$')
 _QUERY_VALUE = re.compile(r'^[A-Za-z0-9._~+%\-]*$')
 _API_KEY = re.compile(r'^[A-Za-z0-9_-]{1,256}$')
+_MAX_RATE_VALUE = 2 ** 63 - 1
 
 # getaddrinfo has no portable cancellation API.  A small shared pool bounds
 # resolver threads; after a caller times out, only the resolver may finish in
@@ -110,6 +111,24 @@ def _first_address(records):
     raise OSError('testnet HTTP request failed')
 
 
+def _unsigned_header(headers, name: str, maximum: int) -> int | None:
+    """Return one bounded ASCII-decimal header value; malformed/duplicate is no evidence."""
+    values = headers.get_all(name, ())
+    if len(values) != 1:
+        return None
+    value = values[0]
+    if type(value) is not str:
+        return None
+    value = value.strip(' \t')                 # HTTP optional whitespace, and nothing broader
+    if not value or not value.isascii() or not value.isdigit():
+        return None
+    canonical = value.lstrip('0') or '0'
+    limit = str(maximum)
+    if len(canonical) > len(limit) or (len(canonical) == len(limit) and canonical > limit):
+        return None
+    return int(canonical)
+
+
 class TestnetHttpSender:
     """Callable one-attempt HTTPS sender consumed by ``BinanceUsdMTestnetVenue``."""
 
@@ -178,6 +197,8 @@ class TestnetHttpSender:
             tls_sock.settimeout(_remaining(deadline))
             response = http.client.HTTPResponse(tls_sock, method=request.method)
             response.begin()
+            retry_after_s = _unsigned_header(response.headers, 'Retry-After', _MAX_RATE_VALUE // 1000)
+            used_weight = _unsigned_header(response.headers, 'X-MBX-USED-WEIGHT-1M', _MAX_RATE_VALUE)
             declared_length = response.length
             if declared_length is not None and declared_length > _MAX_RESPONSE_BYTES:
                 raise OSError('testnet HTTP response too large')
@@ -200,7 +221,9 @@ class TestnetHttpSender:
             if deadline_aborted.is_set():
                 raise TimeoutError('testnet HTTP deadline exceeded')
             _remaining(deadline)
-            return HttpResponse(status=response.status, body=b''.join(chunks))
+            return HttpResponse(status=response.status, body=b''.join(chunks),
+                                retry_after_ms=None if retry_after_s is None else retry_after_s * 1000,
+                                used_weight_1m=used_weight)
         except TimeoutError:
             raise TimeoutError('testnet HTTP deadline exceeded') from None
         except (OSError, ssl.SSLError, http.client.HTTPException):
