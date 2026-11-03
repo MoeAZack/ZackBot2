@@ -2022,6 +2022,29 @@ STRATEGIES['multiscale_roughness_reversion_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+LEV1H = dict(window=168, max_corr=-0.25, cost_multiple=5.0)
+
+
+def sig_leverage_effect_downside_short_1h(d, p, ctx):
+    """C64: downside continuation when returns covary negatively with changes in realized variance."""
+    ret = d.c.pct_change()
+    variance_change = ret.pow(2).diff()
+    leverage_corr = ret.rolling(int(p['window']), min_periods=int(p['window'])).corr(variance_change)
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    se = ((leverage_corr <= float(p['max_corr'])) & (ret24 < 0.0) & (ret < 0.0) & cost_ok)
+    never = d.c < -1
+    return dict(le=never, se=se, lx=never, sx=(leverage_corr >= 0.0) | (ret24 >= 0.0))
+
+
+STRATEGIES['leverage_effect_downside_short_1h'] = dict(
+    name='[RESEARCH] Leverage-effect downside short 1h', style='return_variance_cross_moment',
+    fn=sig_leverage_effect_downside_short_1h, sides='short', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(LEV1H),
+    desc='Candidate 64: short a negative hour in a negative 24h path when return/variance-change correlation <=-0.25.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
