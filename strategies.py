@@ -2831,6 +2831,40 @@ STRATEGIES['volatility_stability_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+BCR1H = dict(window=48, max_entry=0.10, exit_level=0.25, cost_multiple=5.0)
+
+
+def _ema_boundary_crossing_rate(close, ema, window):
+    """Fraction of completed transitions that flip side relative to a causal EMA."""
+    valid = close.notna() & ema.notna()
+    above = close.astype(float) > ema.astype(float)
+    prior_valid = valid.shift(fill_value=False)
+    crossing = (above != above.shift()) & valid & prior_valid
+    return crossing.astype(float).where(valid & prior_valid).rolling(
+        int(window), min_periods=int(window)).mean()
+
+
+def sig_boundary_crossing_persistence_long_1h(d, p, ctx):
+    """C87: follow positive drift when EMA boundary flips remain rare."""
+    crossing_rate = _ema_boundary_crossing_rate(d.c, d.e20, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((crossing_rate <= float(p['max_entry'])) & (ret > 0.0) &
+          (ret24 > 0.0) & (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(crossing_rate >= float(p['exit_level'])) | (d.c <= d.e20), sx=never)
+
+
+STRATEGIES['boundary_crossing_persistence_long_1h'] = dict(
+    name='[RESEARCH] EMA boundary-crossing persistence long 1h', style='boundary_crossing_intensity',
+    fn=sig_boundary_crossing_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(BCR1H),
+    desc='Candidate 87: follow positive drift when 48h EMA20 boundary-crossing intensity is low.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
