@@ -541,6 +541,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
     """Cross-sectional data for rotation / regime strategies, aligned by candle time (coins may have different history)."""
     btc = dfs[btc_key].set_index('t')
     btc_down = (btc.c < btc.e200)
+    btc_return = btc.c.pct_change()
     ra = pd.DataFrame({s: pd.Series((d.ret180 / (d.c.pct_change().rolling(180).std() * np.sqrt(180))).values, index=d.t)
                        for s, d in dfs.items()})
     rank = ra.rank(axis=1, ascending=False)
@@ -552,6 +553,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
     for s, d in dfs.items():
         t = d.t
         out[s] = dict(btc_down=btc_down.reindex(t).fillna(False).astype(bool).values,
+                      btc_return=pd.Series(btc_return.reindex(t).values, index=d.index),
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
@@ -1732,6 +1734,38 @@ STRATEGIES['hour_of_day_drift_long_1h'] = dict(
     reentry_lock=True, params=dict(HODD1H),
     desc='Candidate 53: hold the next hour when its prior 28 same-UTC-hour returns average at least +20 bp.',
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=1))
+
+
+BBR1H = dict(beta_window=336, residual_window=168, residual_z=-2.5,
+             cost_multiple=5.0)
+
+
+def sig_btc_beta_residual_reversion_long_1h(d, p, ctx):
+    """C54: fade an idiosyncratic hourly underperformance shock versus BTC."""
+    target_return = d.c.pct_change()
+    btc_return = pd.Series(ctx['btc_return'], index=d.index, dtype=float)
+    bw, rw = int(p['beta_window']), int(p['residual_window'])
+    # Beta is estimated only through t-1; the current completed return is then
+    # compared with that frozen exposure estimate.  The z-score baseline also
+    # ends at t-1, so the entry at t+1 cannot leak its own shock into the fit.
+    beta = target_return.rolling(bw, min_periods=bw).cov(btc_return).shift() / (
+        btc_return.rolling(bw, min_periods=bw).var().shift().replace(0.0, np.nan))
+    residual = target_return - beta * btc_return
+    mean = residual.rolling(rw, min_periods=rw).mean().shift()
+    std = residual.rolling(rw, min_periods=rw).std().shift().replace(0.0, np.nan)
+    z = (residual - mean) / std
+    cost_ok = 1.5 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (z <= float(p['residual_z'])) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=z >= 0.0, sx=never)
+
+
+STRATEGIES['btc_beta_residual_reversion_long_1h'] = dict(
+    name='[RESEARCH] BTC-beta residual reversion long 1h', style='cross_asset_stat_arb',
+    fn=sig_btc_beta_residual_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(BBR1H),
+    desc='Candidate 54: fade a <=-2.5 sigma hourly residual after a prior-only 14-day BTC-beta fit.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=4))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
