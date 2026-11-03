@@ -1221,6 +1221,30 @@ STRATEGIES['mfi_oversold_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
 
 
+KCR1H = dict(ema_window=20, band_atr=2.0, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_keltner_lower_reclaim_long_1h(d, p, ctx):
+    """C37: buy a close back inside the lower EMA/ATR channel."""
+    lower = d.e20 - float(p['band_atr']) * d.atr
+    reclaimed = (d.c > lower) & (d.c.shift() <= lower.shift())
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = reclaimed & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['keltner_lower_reclaim_long_1h'] = dict(
+    name='[RESEARCH] Keltner lower reclaim long 1h', style='mean_reversion',
+    fn=sig_keltner_lower_reclaim_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KCR1H),
+    desc='Candidate 37: bullish close reclaims the EMA20 minus 2 ATR lower channel.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
