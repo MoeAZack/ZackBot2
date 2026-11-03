@@ -3385,6 +3385,49 @@ STRATEGIES['demarker_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+KAL1H = dict(process_var=0.000025, observation_var=0.0004,
+             shock=-2.0, recovery=-1.0, cost_multiple=5.0)
+
+
+def _kalman_local_level_score(close, process_var=0.000025, observation_var=0.0004):
+    """Causal scalar local-level Kalman innovations on log price."""
+    z = np.log(np.asarray(close, dtype=float))
+    score = np.full(len(z), np.nan, dtype=float)
+    if not len(z):
+        return pd.Series(score, index=close.index)
+    q, r = float(process_var), float(observation_var)
+    state, variance = z[0], r
+    for i in range(1, len(z)):
+        prior_var = variance + q
+        innovation_var = prior_var + r
+        innovation = z[i] - state
+        score[i] = innovation / np.sqrt(innovation_var)
+        gain = prior_var / innovation_var
+        state += gain * innovation
+        variance = (1.0 - gain) * prior_var
+    return pd.Series(score, index=close.index)
+
+
+def sig_kalman_innovation_recovery_long_1h(d, p, ctx):
+    """C101: recover from a standardized downside innovation to a causal latent level."""
+    score = _kalman_local_level_score(d.c, p['process_var'], p['observation_var'])
+    ret = d.c.pct_change()
+    recovering = ((score.shift() <= float(p['shock'])) &
+                  (score > float(p['recovery'])) & (ret > 0.0))
+    cost_ok = 1.5 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = recovering & (d.c < d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=score >= 0.0, sx=never)
+
+
+STRATEGIES['kalman_innovation_recovery_long_1h'] = dict(
+    name='[RESEARCH] Kalman innovation recovery long 1h', style='state_space_dislocation',
+    fn=sig_kalman_innovation_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KAL1H),
+    desc='Candidate 101: recover from a <=-2 sigma local-level innovation to >-1 while below EMA20.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
