@@ -2799,6 +2799,38 @@ STRATEGIES['lz_sign_complexity_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+VSTB1H = dict(window=48, max_entry=0.50, exit_level=0.80, cost_multiple=5.0)
+
+
+def _volatility_of_volatility_cv(close, window):
+    """Coefficient of variation of the causal six-return realized-volatility series."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    realized = ret.rolling(6, min_periods=6).std(ddof=0)
+    w = int(window)
+    mean = realized.rolling(w, min_periods=w).mean()
+    variation = realized.rolling(w, min_periods=w).std(ddof=0)
+    return variation / mean.replace(0.0, np.nan), ret
+
+
+def sig_volatility_stability_long_1h(d, p, ctx):
+    """C86: follow positive drift while short-horizon realized volatility is stable."""
+    vol_cv, ret = _volatility_of_volatility_cv(d.c, int(p['window']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((vol_cv <= float(p['max_entry'])) & (ret > 0.0) &
+          (ret24 > 0.0) & (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(vol_cv >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['volatility_stability_long_1h'] = dict(
+    name='[RESEARCH] Volatility-stability long 1h', style='volatility_of_volatility',
+    fn=sig_volatility_stability_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VSTB1H),
+    desc='Candidate 86: follow positive drift when six-hour realized volatility has low 48h variation.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
