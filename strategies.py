@@ -2469,6 +2469,39 @@ STRATEGIES['aroon_recency_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+VTX1H = dict(window=14, min_oscillator=0.20, exit_oscillator=0.0, cost_multiple=5.0)
+
+
+def _rolling_vortex_oscillator(high, low, close, window):
+    """Rolling VI+ minus VI- from completed cross-bar range movement."""
+    w = int(window)
+    vm_plus = (high.astype(float) - low.astype(float).shift()).abs()
+    vm_minus = (low.astype(float) - high.astype(float).shift()).abs()
+    prev_close = close.astype(float).shift()
+    tr = pd.concat([(high-low).abs(), (high-prev_close).abs(), (low-prev_close).abs()], axis=1).max(axis=1)
+    denom = tr.rolling(w, min_periods=w).sum().replace(0.0, np.nan)
+    return (vm_plus.rolling(w, min_periods=w).sum() -
+            vm_minus.rolling(w, min_periods=w).sum()) / denom
+
+
+def sig_vortex_movement_long_1h(d, p, ctx):
+    """C77: follow dominant positive cross-range travel."""
+    osc = _rolling_vortex_oscillator(d.h, d.l, d.c, int(p['window']))
+    ret = d.c.pct_change()
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (osc >= float(p['min_oscillator'])) & (ret > 0.0) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(osc <= float(p['exit_oscillator'])) | (d.c <= d.e20), sx=never)
+
+
+STRATEGIES['vortex_movement_long_1h'] = dict(
+    name='[RESEARCH] Vortex cross-range movement long 1h', style='directional_range_movement',
+    fn=sig_vortex_movement_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VTX1H),
+    desc='Candidate 77: follow positive drift when 14h VI+ minus VI- is at least 0.20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
