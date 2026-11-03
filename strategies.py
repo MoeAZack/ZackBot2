@@ -1681,6 +1681,32 @@ STRATEGIES['realized_kurtosis_risk_short_1h'] = dict(
     mgmt=dict(stop_atr=2.5, tp_r=2.5, max_bars=24))
 
 
+VRL1H = dict(window=72, correlation=0.25, volume_jump=1.50,
+             cost_multiple=5.0)
+
+
+def sig_volume_return_leadlag_long_1h(d, p, ctx):
+    """C52: use a validated own-symbol volume-change lead to forecast return."""
+    qv = pd.Series(d.qv, index=d.index, dtype=float).replace(0.0, np.nan)
+    volume_change = np.log(qv).diff()
+    ret = d.c.pct_change()
+    w = int(p['window'])
+    predictive_corr = volume_change.shift().rolling(w, min_periods=w).corr(ret)
+    shock = volume_change >= np.log(float(p['volume_jump']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (predictive_corr >= float(p['correlation'])) & shock & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=predictive_corr <= 0.0, sx=never)
+
+
+STRATEGIES['volume_return_leadlag_long_1h'] = dict(
+    name='[RESEARCH] Volume-return lead-lag long 1h', style='anticipatory',
+    fn=sig_volume_return_leadlag_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VRL1H),
+    desc='Candidate 52: follow a 1.5x quote-volume jump only when lagged volume changes predicted next-hour returns over 72h.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=8))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
