@@ -1543,6 +1543,37 @@ STRATEGIES['equal_low_breakdown_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
 
 
+OBE1H = dict(range_atr=1.25, close_location=0.75, volume_window=48,
+             volume_multiple=1.25, cost_multiple=5.0)
+
+
+def sig_outside_bar_expansion_long_1h(d, p, ctx):
+    """C47: continuation after a bullish range-engulfing outside bar."""
+    rng = d.h - d.l
+    location = (d.c - d.l) / rng.where(rng > 0)
+    outside = (d.h > d.h.shift()) & (d.l < d.l.shift())
+    accepted = d.c > d.h.shift()
+    expanded = rng >= float(p['range_atr']) * d.atr
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']),
+                         min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (outside & accepted & expanded &
+          (location >= float(p['close_location'])) &
+          (d.e50 > d.e200) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(d.c < d.e20) | (d.e50 <= d.e200), sx=never)
+
+
+STRATEGIES['outside_bar_expansion_long_1h'] = dict(
+    name='[RESEARCH] Outside-bar expansion long 1h', style='breakout',
+    fn=sig_outside_bar_expansion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(OBE1H),
+    desc='Candidate 47: ATR-expanded outside bar engulfs the prior range and accepts above its high in an EMA50/200 uptrend.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
