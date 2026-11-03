@@ -2259,6 +2259,36 @@ STRATEGIES['low_frequency_power_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+VHC1H = dict(window=24, min_hhi=2.0, exit_hhi=1.25, cost_multiple=5.0)
+
+
+def _rolling_volume_hhi(qv, window):
+    """Normalized temporal HHI of quote-volume shares; one is uniform participation."""
+    w = int(window)
+    q = qv.astype(float).where(qv.astype(float) > 0.0)
+    total = q.rolling(w, min_periods=w).sum()
+    return w * q.pow(2).rolling(w, min_periods=w).sum() / total.pow(2).replace(0.0, np.nan)
+
+
+def sig_volume_concentration_continuation_long_1h(d, p, ctx):
+    """C71: follow positive drift when recent participation is concentrated in event hours."""
+    hhi = _rolling_volume_hhi(d.qv, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (hhi >= float(p['min_hhi'])) & (ret > 0.0) & (ret24 > 0.0) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(hhi <= float(p['exit_hhi'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['volume_concentration_continuation_long_1h'] = dict(
+    name='[RESEARCH] Volume-concentration continuation long 1h', style='participation_concentration',
+    fn=sig_volume_concentration_continuation_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VHC1H),
+    desc='Candidate 71: buy positive drift when normalized 24h quote-volume HHI is at least 2.0.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
