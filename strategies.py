@@ -3253,6 +3253,37 @@ STRATEGIES['parabolic_sar_flip_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+ICHI1H = dict(conversion=9, base=26, span=52, cost_multiple=5.0)
+
+
+def _rolling_midrange(high, low, window):
+    n = int(window)
+    return (high.rolling(n, min_periods=n).max() + low.rolling(n, min_periods=n).min()) / 2.0
+
+
+def sig_ichimoku_cloud_cross_long_1h(d, p, ctx):
+    """C97: causal bullish conversion/base cross above a positive range-equilibrium cloud."""
+    conversion = _rolling_midrange(d.h, d.l, p['conversion'])
+    base = _rolling_midrange(d.h, d.l, p['base'])
+    span_a = (conversion + base) / 2.0
+    span_b = _rolling_midrange(d.h, d.l, p['span'])
+    cloud_upper = pd.concat([span_a, span_b], axis=1).max(axis=1)
+    cloud_lower = pd.concat([span_a, span_b], axis=1).min(axis=1)
+    cross_up = (conversion > base) & (conversion.shift() <= base.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (span_a > span_b) & (d.c > cloud_upper) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(conversion < base) | (d.c < cloud_lower), sx=never)
+
+
+STRATEGIES['ichimoku_cloud_cross_long_1h'] = dict(
+    name='[RESEARCH] Causal Ichimoku cloud cross long 1h', style='dual_midrange_equilibrium',
+    fn=sig_ichimoku_cloud_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ICHI1H),
+    desc='Candidate 97: bullish 9/26 range-midpoint cross above a positive causal 26/52 cloud.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
