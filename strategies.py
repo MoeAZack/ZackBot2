@@ -1935,6 +1935,30 @@ STRATEGIES['volatility_clustering_downside_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+ICR1H = dict(window=168, ratio=2.0, cost_multiple=5.0)
+
+
+def sig_intrabar_churn_reversion_long_1h(d, p, ctx):
+    """C61: fade a negative hour when range-based variance persistently dominates close variance."""
+    w = int(p['window'])
+    parkinson = np.log(d.h / d.l).pow(2) / (4.0 * np.log(2.0))
+    close_var = np.log(d.c / d.c.shift()).pow(2)
+    ratio = parkinson.rolling(w, min_periods=w).mean() / close_var.rolling(w, min_periods=w).mean().replace(0.0, np.nan)
+    ret = d.c.pct_change()
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (ratio >= float(p['ratio'])) & (ret < 0.0) & (d.c < d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(ratio <= 1.0) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['intrabar_churn_reversion_long_1h'] = dict(
+    name='[RESEARCH] Intrabar-churn reversion long 1h', style='range_variance_reversion',
+    fn=sig_intrabar_churn_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ICR1H),
+    desc='Candidate 61: fade a negative hour below EMA20 when 168h Parkinson variance is >=2x close variance.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
