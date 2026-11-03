@@ -3547,6 +3547,43 @@ STRATEGIES['heikin_ashi_flip_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+FISHER1H = dict(lookback=10, cost_multiple=5.0)
+
+
+def _fisher_transform(high, low, lookback=10):
+    """Causal conventional Ehlers Fisher transform of rolling median-price location."""
+    price = (high.astype(float) + low.astype(float)) / 2.0
+    lo, hi = price.rolling(lookback).min(), price.rolling(lookback).max()
+    loc = 2.0 * ((price - lo) / (hi - lo).replace(0.0, np.nan) - 0.5)
+    value = pd.Series(np.nan, index=price.index, dtype=float)
+    fisher = pd.Series(np.nan, index=price.index, dtype=float)
+    prior_value = prior_fisher = 0.0
+    for i, raw in enumerate(loc.to_numpy(float)):
+        if not np.isfinite(raw):
+            continue
+        prior_value = float(np.clip(0.33 * raw + 0.67 * prior_value, -0.999, 0.999))
+        prior_fisher = 0.5 * np.log((1.0 + prior_value) / (1.0 - prior_value)) + 0.5 * prior_fisher
+        value.iloc[i], fisher.iloc[i] = prior_value, prior_fisher
+    return fisher
+
+
+def sig_fisher_zero_cross_long_1h(d, p, ctx):
+    """C106: follow a positive transition in recursively Gaussianized price location."""
+    fisher = _fisher_transform(d.h, d.l, int(p['lookback']))
+    cross_up = (fisher > 0.0) & (fisher.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=fisher <= 0.0, sx=never)
+
+
+STRATEGIES['fisher_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] Fisher transform zero-cross long 1h', style='gaussianized_price_location',
+    fn=sig_fisher_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(FISHER1H),
+    desc='Candidate 106: conventional Ehlers Fisher(10) crosses above zero with price above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
