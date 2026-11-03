@@ -1104,6 +1104,32 @@ STRATEGIES['inside_bar_breakout_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
 
 
+RDL1H = dict(window=48, separation=4, divergence_points=8.0, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_rsi_lower_low_divergence_long_1h(d, p, ctx):
+    """C33: fade a fresh price low when RSI does not confirm the lower low."""
+    n, gap = int(p['window']), int(p['separation'])
+    prior_price_low = d.c.shift(gap).rolling(n - gap, min_periods=n - gap).min()
+    prior_rsi_low = d.rsi14.shift(gap).rolling(n - gap, min_periods=n - gap).min()
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(n, min_periods=n).median().shift()
+    diverged = (d.c < prior_price_low) & (d.rsi14 >= prior_rsi_low + float(p['divergence_points']))
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = diverged & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['rsi_lower_low_divergence_long_1h'] = dict(
+    name='[RESEARCH] RSI lower-low divergence long 1h', style='mean_reversion',
+    fn=sig_rsi_lower_low_divergence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RDL1H),
+    desc='Candidate 33: price makes a fresh 48h low while RSI stays at least eight points above its prior-window low.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
