@@ -7,7 +7,9 @@ from .binance_usdm_testnet import (
     HttpResponse,
     VenueBindingError,
 )
+from .http_sender import TestnetHttpSender
 
 __all__ = [
-    'TESTNET_BASE_URL', 'BinanceUsdMTestnetVenue', 'HttpRequest', 'HttpResponse', 'VenueBindingError',
+    'TESTNET_BASE_URL', 'BinanceUsdMTestnetVenue', 'HttpRequest', 'HttpResponse', 'TestnetHttpSender',
+    'VenueBindingError',
 ]
