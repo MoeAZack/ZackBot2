@@ -2634,6 +2634,39 @@ STRATEGIES['return_concentration_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+IQRC1H = dict(window=24, baseline=96, max_ratio=0.60, impulse_atr=0.50, cost_multiple=5.0)
+
+
+def _return_iqr_compression(close, window, baseline):
+    """Current return IQR relative to the lagged median of prior rolling IQRs."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    w = int(window)
+    iqr = (ret.rolling(w, min_periods=w).quantile(0.75) -
+           ret.rolling(w, min_periods=w).quantile(0.25))
+    prior_median = iqr.shift().rolling(int(baseline), min_periods=int(baseline)).median()
+    return iqr / prior_median.replace(0.0, np.nan), ret
+
+
+def sig_iqr_compression_breakout_long_1h(d, p, ctx):
+    """C82: follow an upside impulse released from robust return compression."""
+    ratio, ret = _return_iqr_compression(d.c, int(p['window']), int(p['baseline']))
+    ret24 = d.c.pct_change(24)
+    impulse = ret >= float(p['impulse_atr']) * d.atr / d.c
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((ratio <= float(p['max_ratio'])) & impulse & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(ratio >= 1.0) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['iqr_compression_breakout_long_1h'] = dict(
+    name='[RESEARCH] Return-IQR compression breakout long 1h', style='robust_compression_release',
+    fn=sig_iqr_compression_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(IQRC1H),
+    desc='Candidate 82: follow an upside impulse released from a compressed 24h return IQR.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
