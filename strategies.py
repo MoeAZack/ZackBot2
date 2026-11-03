@@ -1707,6 +1707,33 @@ STRATEGIES['volume_return_leadlag_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=8))
 
 
+HODD1H = dict(season_days=28, expected_return=0.0020,
+              cost_multiple=5.0)
+
+
+def sig_hour_of_day_drift_long_1h(d, p, ctx):
+    """C53: trade learned next-hour UTC seasonality, never the current hour."""
+    ret = d.c.pct_change()
+    days = int(p['season_days'])
+    # At t, ret[t + 1 - 24*d] is a historical realization of the hour
+    # entered at t+1.  The nearest sample is therefore shifted 23 bars.
+    same_next_hour = pd.concat({day: ret.shift(24 * day - 1)
+                                for day in range(1, days + 1)}, axis=1)
+    expected = same_next_hour.mean(axis=1, skipna=False)
+    cost_ok = 1.5 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (expected >= float(p['expected_return'])) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=expected <= 0.0, sx=never)
+
+
+STRATEGIES['hour_of_day_drift_long_1h'] = dict(
+    name='[RESEARCH] Learned hour-of-day drift long 1h', style='calendar_risk_premium',
+    fn=sig_hour_of_day_drift_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(HODD1H),
+    desc='Candidate 53: hold the next hour when its prior 28 same-UTC-hour returns average at least +20 bp.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=1))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
