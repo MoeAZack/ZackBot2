@@ -1359,6 +1359,35 @@ STRATEGIES['volatility_acceleration_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+DSEL1H = dict(window=24, entropy_max=0.90, positive_share_min=0.625, impulse_atr=0.20,
+              volume_window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_directional_sign_entropy_long_1h(d, p, ctx):
+    """C42: follow bullish dominance only when return signs are unusually ordered."""
+    up = (d.c.diff() > 0).astype(float)
+    n = int(p['window']); share = up.rolling(n, min_periods=n).mean()
+    q = share.clip(1e-12, 1 - 1e-12)
+    entropy = -(q * np.log2(q) + (1-q) * np.log2(1-q))
+    impulse = d.c.diff() / d.atr.replace(0, np.nan) >= float(p['impulse_atr'])
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    volume_ok = qv >= float(p['volume_multiple']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((entropy <= float(p['entropy_max'])) & (share >= float(p['positive_share_min'])) &
+          impulse & (d.c > d.e20) & volume_ok & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(share <= 0.5) | (entropy > 0.98), sx=never)
+
+
+STRATEGIES['directional_sign_entropy_long_1h'] = dict(
+    name='[RESEARCH] Directional sign entropy long 1h', style='trend',
+    fn=sig_directional_sign_entropy_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DSEL1H),
+    desc='Candidate 42: follow bullish dominance when 24h binary return-sign entropy is <=0.90.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
