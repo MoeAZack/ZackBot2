@@ -5,6 +5,7 @@ import dataclasses
 from decimal import Decimal
 
 import pytest
+import newcore.account_context as account_context_module
 
 from newcore.account_context import (
     ACCOUNT_ORDER_LIMIT_PATH,
@@ -94,7 +95,7 @@ class FakeVenue:
     def fills(self, symbol, exchange_order_id): return self._call('fills', symbol, exchange_order_id)
 
 
-def limits(req=100, o10=20, o1m=100):
+def limit_evidence(req=100, o10=20, o1m=100):
     exchange = RawLimitPayload(
         authority=LimitAuthority.EXCHANGE_INFO, method='GET', path=EXCHANGE_INFO_PATH,
         source_url=MARKET_DATA_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
@@ -108,13 +109,21 @@ def limits(req=100, o10=20, o1m=100):
             {'rateLimitType': 'ORDERS', 'interval': 'SECOND', 'intervalNum': 10, 'limit': o10},
             {'rateLimitType': 'ORDERS', 'interval': 'MINUTE', 'intervalNum': 1, 'limit': o1m},
         ])
-    return load_verified_limits(exchange_info=exchange, account_order_limits=account)
+    return exchange, account
 
 
 def budget(mono=None, wall=None, journal=None, **values):
     mono, wall = mono or Clock(), wall or Clock(WALL)
-    return AccountBudget(account_id=ACCT, egress_id=EGRESS, limits=limits(**values),
+    exchange, account = limit_evidence(**values)
+    return AccountBudget(account_id=ACCT, egress_id=EGRESS, exchange_info=exchange,
+                         account_order_limits=account,
                          monotonic_clock=mono, wall_clock=wall, journal=journal)
+
+
+def restore_budget(*, mono, wall, journal, **values):
+    exchange, account = limit_evidence(**values)
+    return AccountBudget.restore(account_id=ACCT, egress_id=EGRESS, exchange_info=exchange,
+        account_order_limits=account, monotonic_clock=mono, wall_clock=wall, journal=journal)
 
 
 def ref(route='classic', suffix='1'):
@@ -158,16 +167,23 @@ def test_versioned_endpoint_table_is_exact_and_source_pinned():
     assert keyed[Operation.FILLS, None].request_weight_1m == 5
 
 
-def test_missing_duplicate_or_wrong_authority_limits_refuse_before_worker_exists():
-    with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
-        AccountBudget(account_id=ACCT, egress_id=EGRESS, limits=limits()[:-1],
-                      monotonic_clock=Clock(), wall_clock=Clock())
-    with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
-        AccountBudget(account_id=ACCT, egress_id=EGRESS, limits=limits() + (limits()[0],),
-                      monotonic_clock=Clock(), wall_clock=Clock())
-    with pytest.raises(TypeError):
+def test_derived_limit_compatibility_paths_are_fail_closed():
+    exchange, account = limit_evidence()
+    with pytest.raises(BudgetConfigurationError, match='limits_unverified'):
+        AccountBudget(account_id=ACCT, egress_id=EGRESS, limits=(1, 2, 3),
+                      monotonic_clock=Clock(), wall_clock=Clock(WALL))
+    with pytest.raises(BudgetConfigurationError, match='limit_source_unverified'):
+        AccountBudget(account_id=ACCT, egress_id=EGRESS,
+                      monotonic_clock=Clock(), wall_clock=Clock(WALL))
+    with pytest.raises(BudgetConfigurationError, match='limits_unverified'):
         ConfiguredLimit(limiter=Limiter.ORDERS_10S, limit=20,
                         authority=LimitAuthority.USER_RATE_LIMIT)
+    with pytest.raises(BudgetConfigurationError, match='derived_limits_private'):
+        load_verified_limits(exchange_info=exchange, account_order_limits=account)
+    with pytest.raises(TypeError, match='closed'):
+        class EvilConfiguredLimit(ConfiguredLimit):
+            def assert_verified(self):
+                return None
 
 
 @pytest.mark.parametrize('mutate', ('missing_weight', 'string_weight', 'missing_10s', 'missing_1m', 'duplicate'))
@@ -190,7 +206,8 @@ def test_raw_limit_loader_rejects_missing_malformed_or_ambiguous_values(mutate):
         path=ACCOUNT_ORDER_LIMIT_PATH, source_url=ACCOUNT_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
         payload=order_payload)
     with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
-        load_verified_limits(exchange_info=exchange, account_order_limits=account)
+        AccountBudget(account_id=ACCT, egress_id=EGRESS, exchange_info=exchange,
+            account_order_limits=account, monotonic_clock=Clock(), wall_clock=Clock(WALL))
 
 
 @pytest.mark.parametrize('target,field,value', (
@@ -214,21 +231,40 @@ def test_raw_limit_loader_requires_exact_json_field_types(target, field, value):
         path=ACCOUNT_ORDER_LIMIT_PATH, source_url=ACCOUNT_SOURCE, retrieved_on=SOURCE_RETRIEVED_ON,
         payload=order_payload)
     with pytest.raises(BudgetConfigurationError, match='limits_unknown'):
-        load_verified_limits(exchange_info=exchange, account_order_limits=account)
+        AccountBudget(account_id=ACCT, egress_id=EGRESS, exchange_info=exchange,
+            account_order_limits=account, monotonic_clock=Clock(), wall_clock=Clock(WALL))
 
 
-def test_value_bound_limit_proof_rejects_dataclass_replace_and_copied_mutation():
-    original = limits()
-    with pytest.raises(BudgetConfigurationError, match='limits_unverified'):
-        dataclasses.replace(original[0], limit=original[0].limit + 1)
-
+def test_private_limit_rows_are_final_and_cannot_reenter_budget_by_replace_or_copy():
+    exchange, account = limit_evidence()
+    rows = account_context_module._parse_verified_limits(
+        exchange_info=exchange, account_order_limits=account)
+    with pytest.raises((TypeError, ValueError), match='takes no arguments|init=False'):
+        dataclasses.replace(rows[0], limit=rows[0].limit + 1)
     for copier in (copy.copy, copy.deepcopy):
-        rows = limits()
         forged = copier(rows[1])
         object.__setattr__(forged, 'limit', forged.limit + 1)
         with pytest.raises(BudgetConfigurationError, match='limits_unverified'):
             AccountBudget(account_id=ACCT, egress_id=EGRESS,
+                exchange_info=exchange, account_order_limits=account,
                 limits=(rows[0], forged, rows[2]), monotonic_clock=Clock(), wall_clock=Clock(WALL))
+
+    with pytest.raises(TypeError, match='final'):
+        class EvilParsedLimit(account_context_module._VerifiedLimit):
+            pass
+
+
+def test_raw_payload_subclass_cannot_override_provenance_validation():
+    class EvilRawLimitPayload(RawLimitPayload):
+        def __post_init__(self):
+            pass
+
+    _, account = limit_evidence()
+    evil = EvilRawLimitPayload(authority=LimitAuthority.EXCHANGE_INFO, method='POST', path='/forged',
+        source_url='https://attacker.invalid', retrieved_on='never', payload={'rateLimits': []})
+    with pytest.raises(BudgetConfigurationError, match='limit_source_unverified'):
+        AccountBudget(account_id=ACCT, egress_id=EGRESS, exchange_info=evil,
+            account_order_limits=account, monotonic_clock=Clock(), wall_clock=Clock(WALL))
 
 
 @pytest.mark.parametrize('field,value', (
@@ -366,8 +402,7 @@ def test_clean_restart_restores_deadline_against_wall_clock():
     b.observe(RateEvidence(429, 5_000, None, WALL))
     b.record_shutdown(clean=True)
     wall.advance(2_000)
-    restored = AccountBudget.restore(account_id=ACCT, egress_id=EGRESS, limits=limits(),
-                                     monotonic_clock=Clock(50), wall_clock=wall, journal=journal)
+    restored = restore_budget(mono=Clock(50), wall=wall, journal=journal)
     snap = restored.snapshot()
     assert snap.state is RateBlockState.BLOCKED_UNTIL
     assert snap.blocked_until_monotonic_ms == 3_050
@@ -383,16 +418,14 @@ def test_unclean_backward_clock_and_missing_records_restore_unknown():
             journal.records.append(RateBlockRecord(schema_version=1, account_id=ACCT, egress_id=EGRESS,
                 state=RateBlockState.OPEN, wall_deadline_ms=None, observed_wall_ms=WALL,
                 observed_monotonic_ms=100, cause='open', clean_shutdown=(expected == 'backward_wall_clock')))
-        restored = AccountBudget.restore(account_id=ACCT, egress_id=EGRESS, limits=limits(),
-            monotonic_clock=Clock(50), wall_clock=wall, journal=journal)
+        restored = restore_budget(mono=Clock(50), wall=wall, journal=journal)
         assert restored.snapshot().state is RateBlockState.BLOCKED_UNKNOWN_DURATION
         assert restored.snapshot().cause == expected
 
 
 def test_unreadable_record_restores_unknown_not_open():
     journal = MemoryRateJournal(); journal.load_error = OSError('bad record')
-    restored = AccountBudget.restore(account_id=ACCT, egress_id=EGRESS, limits=limits(),
-        monotonic_clock=Clock(), wall_clock=Clock(WALL), journal=journal)
+    restored = restore_budget(mono=Clock(), wall=Clock(WALL), journal=journal)
     assert restored.snapshot().cause == 'record_unreadable'
 
 
@@ -495,8 +528,7 @@ def test_late_queued_protection_persists_unclean_before_return_and_restart_fails
     assert result.state is WorkState.UNKNOWN and result.detail == 'shutdown_in_flight'
     assert len(journal.records) == 1 and journal.records[-1].clean_shutdown is False
 
-    restored = AccountBudget.restore(account_id=ACCT, egress_id=EGRESS, limits=limits(),
-        monotonic_clock=Clock(50), wall_clock=wall, journal=journal)
+    restored = restore_budget(mono=Clock(50), wall=wall, journal=journal)
     snapshot = restored.snapshot()
     assert snapshot.state is RateBlockState.BLOCKED_UNKNOWN_DURATION
     assert snapshot.cause == 'unclean_restart'

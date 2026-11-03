@@ -35,8 +35,9 @@ the official Market Data and Account documentation. It requires exactly one
 `SECOND`/`10` and `MINUTE`/`1`; missing, duplicate or non-integer limits refuse
 worker construction as `limits_unknown`. Raw row fields use exact JSON types;
 in particular, booleans never satisfy integer `intervalNum` or `limit` fields.
-Each parsed limit carries a value-bound seal that is revalidated when an
-`AccountBudget` is constructed, so a replaced or mutated clone is refused.
+`AccountBudget` accepts and reparses only these two raw, source-pinned payloads.
+Derived ceilings remain private module values; legacy supplied-ceiling and
+public-helper paths refuse rather than treating a caller value as authentic.
 
 `Retry-After` is optional evidence, not a current USD-M documentation guarantee.
 Missing or malformed required limits/evidence remain unknown, never zero.

@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import enum
 import heapq
-import hmac
 import math
 import threading
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Iterable
 
 from newcore.domain import Action
@@ -83,16 +82,6 @@ class LimitAuthority(enum.StrEnum):
     USER_RATE_LIMIT = 'user_rate_limit'
 
 
-_LIMIT_PROOF_KEY = b'zackbot.nc04.binance-limit-proof.v1'
-
-
-def _limit_proof(*, limiter: Limiter, limit: int, authority: LimitAuthority,
-                 source_path: str, source_url: str, retrieved_on: str) -> bytes:
-    material = '\x1f'.join((plain(limiter), str(limit), plain(authority), source_path,
-                            source_url, retrieved_on)).encode('utf-8')
-    return hmac.digest(_LIMIT_PROOF_KEY, material, 'sha256')
-
-
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RawLimitPayload:
     """Raw response plus the exact Binance route and primary-document provenance."""
@@ -114,43 +103,38 @@ class RawLimitPayload:
             raise BudgetConfigurationError('limit_source_unverified')
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
 class ConfiguredLimit:
+    """Fail-closed compatibility name: derived ceilings are private to AccountBudget."""
+
+    def __init_subclass__(cls, **kwargs):
+        raise TypeError('ConfiguredLimit is closed')
+
+    def __init__(self, *args, **kwargs):
+        raise BudgetConfigurationError('limits_unverified')
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class _VerifiedLimit:
     limiter: Limiter
     limit: int
     authority: LimitAuthority
     source_path: str
     source_url: str
     retrieved_on: str
-    _proof: bytes = field(repr=False, compare=False)
 
-    def __post_init__(self):
-        object.__setattr__(self, 'limiter', Limiter(plain(self.limiter)))
-        object.__setattr__(self, 'authority', LimitAuthority(plain(self.authority)))
-        check_int(self.limit, 'ConfiguredLimit.limit', 1, 2 ** 63 - 1)
-        expected = (LimitAuthority.EXCHANGE_INFO if self.limiter is Limiter.REQUEST_WEIGHT_1M
-                    else LimitAuthority.USER_RATE_LIMIT)
-        req(self.authority is expected, 'ConfiguredLimit.authority', f'{self.limiter} requires {expected}')
-        expected_path = EXCHANGE_INFO_PATH if expected is LimitAuthority.EXCHANGE_INFO else ACCOUNT_ORDER_LIMIT_PATH
-        expected_url = MARKET_DATA_SOURCE if expected is LimitAuthority.EXCHANGE_INFO else ACCOUNT_SOURCE
-        if (self.source_path, self.source_url, self.retrieved_on) != (expected_path, expected_url, SOURCE_RETRIEVED_ON):
-            raise BudgetConfigurationError('limit_source_unverified')
-        self.assert_verified()
-
-    def assert_verified(self) -> None:
-        expected = _limit_proof(limiter=self.limiter, limit=self.limit, authority=self.authority,
-                                source_path=self.source_path, source_url=self.source_url,
-                                retrieved_on=self.retrieved_on)
-        if type(self._proof) is not bytes or not hmac.compare_digest(self._proof, expected):
-            raise BudgetConfigurationError('limits_unverified')
+    def __init_subclass__(cls, **kwargs):
+        raise TypeError('_VerifiedLimit is final')
 
 
-def _verified_limit(limiter: Limiter, limit: int, raw: RawLimitPayload) -> ConfiguredLimit:
-    proof = _limit_proof(limiter=limiter, limit=limit, authority=raw.authority,
-                         source_path=raw.path, source_url=raw.source_url, retrieved_on=raw.retrieved_on)
-    return ConfiguredLimit(limiter=limiter, limit=limit, authority=raw.authority,
-                           source_path=raw.path, source_url=raw.source_url, retrieved_on=raw.retrieved_on,
-                           _proof=proof)
+def _verified_limit(limiter: Limiter, limit: int, raw: RawLimitPayload) -> _VerifiedLimit:
+    row = object.__new__(_VerifiedLimit)
+    object.__setattr__(row, 'limiter', limiter)
+    object.__setattr__(row, 'limit', limit)
+    object.__setattr__(row, 'authority', raw.authority)
+    object.__setattr__(row, 'source_path', raw.path)
+    object.__setattr__(row, 'source_url', raw.source_url)
+    object.__setattr__(row, 'retrieved_on', raw.retrieved_on)
+    return row
 
 
 def _one_limit(rows: object, *, kind: str, interval: str, interval_num: int) -> int:
@@ -170,12 +154,12 @@ def _one_limit(rows: object, *, kind: str, interval: str, interval_num: int) -> 
     return value
 
 
-def load_verified_limits(*, exchange_info: RawLimitPayload,
-                         account_order_limits: RawLimitPayload) -> tuple[ConfiguredLimit, ...]:
+def _parse_verified_limits(*, exchange_info: RawLimitPayload,
+                           account_order_limits: RawLimitPayload) -> tuple[_VerifiedLimit, ...]:
     """Parse the two authoritative raw Binance payloads; examples/defaults are forbidden."""
-    if (not isinstance(exchange_info, RawLimitPayload)
+    if (type(exchange_info) is not RawLimitPayload
             or exchange_info.authority is not LimitAuthority.EXCHANGE_INFO
-            or not isinstance(account_order_limits, RawLimitPayload)
+            or type(account_order_limits) is not RawLimitPayload
             or account_order_limits.authority is not LimitAuthority.USER_RATE_LIMIT):
         raise BudgetConfigurationError('limit_source_unverified')
     if type(exchange_info.payload) is not dict:
@@ -187,6 +171,30 @@ def load_verified_limits(*, exchange_info: RawLimitPayload,
     return (_verified_limit(Limiter.REQUEST_WEIGHT_1M, request, exchange_info),
             _verified_limit(Limiter.ORDERS_10S, orders_10s, account_order_limits),
             _verified_limit(Limiter.ORDERS_1M, orders_1m, account_order_limits))
+
+
+def _verify_parsed_limits(rows: object) -> tuple[_VerifiedLimit, ...]:
+    if type(rows) is not tuple or len(rows) != 3 or any(type(row) is not _VerifiedLimit for row in rows):
+        raise BudgetConfigurationError('limits_unverified')
+    by = {row.limiter: row for row in rows}
+    if set(by) != set(Limiter):
+        raise BudgetConfigurationError('limits_unknown')
+    for limiter, row in by.items():
+        expected = (LimitAuthority.EXCHANGE_INFO, EXCHANGE_INFO_PATH, MARKET_DATA_SOURCE)
+        if limiter is not Limiter.REQUEST_WEIGHT_1M:
+            expected = (LimitAuthority.USER_RATE_LIMIT, ACCOUNT_ORDER_LIMIT_PATH, ACCOUNT_SOURCE)
+        if (type(row.limiter) is not Limiter or type(row.authority) is not LimitAuthority
+                or type(row.limit) is not int or row.limit <= 0
+                or (row.authority, row.source_path, row.source_url) != expected
+                or row.retrieved_on != SOURCE_RETRIEVED_ON):
+            raise BudgetConfigurationError('limits_unverified')
+    return rows
+
+
+def load_verified_limits(*, exchange_info: RawLimitPayload,
+                         account_order_limits: RawLimitPayload) -> tuple[ConfiguredLimit, ...]:
+    """Compatibility wrapper; callers may no longer obtain derived admission ceilings."""
+    raise BudgetConfigurationError('derived_limits_private')
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -368,19 +376,20 @@ class BudgetSnapshot:
 class AccountBudget:
     """Injected-clock sliding-window budget.  It never sleeps or refunds."""
 
-    def __init__(self, *, account_id: str, egress_id: str, limits: Iterable[ConfiguredLimit],
+    def __init__(self, *, account_id: str, egress_id: str,
+                 exchange_info: RawLimitPayload | None = None,
+                 account_order_limits: RawLimitPayload | None = None,
+                 limits: Iterable[object] | None = None,
                  monotonic_clock: Callable[[], int], wall_clock: Callable[[], int],
                  journal: RateBlockJournalPort | None = None):
         check_id(account_id, 'AccountBudget.account_id', 'acct')
         check_text(egress_id, 'AccountBudget.egress_id', 64)
         req(callable(monotonic_clock) and callable(wall_clock), 'AccountBudget.clock', 'two callables')
-        rows = tuple(limits)
-        req(all(isinstance(x, ConfiguredLimit) for x in rows), 'AccountBudget.limits', 'ConfiguredLimit rows')
-        for row in rows:
-            row.assert_verified()
+        if limits is not None:
+            raise BudgetConfigurationError('limits_unverified')
+        rows = _verify_parsed_limits(_parse_verified_limits(
+            exchange_info=exchange_info, account_order_limits=account_order_limits))
         by = {x.limiter: x for x in rows}
-        if len(by) != len(rows) or set(by) != set(Limiter):
-            raise BudgetConfigurationError('limits_unknown')
         if journal is not None and not isinstance(journal, RateBlockJournalPort):
             raise BudgetConfigurationError('journal_invalid')
         self.account_id, self.egress_id = account_id, egress_id
@@ -401,10 +410,12 @@ class AccountBudget:
         }
 
     @classmethod
-    def restore(cls, *, account_id: str, egress_id: str, limits: Iterable[ConfiguredLimit],
+    def restore(cls, *, account_id: str, egress_id: str,
+                exchange_info: RawLimitPayload, account_order_limits: RawLimitPayload,
                 monotonic_clock: Callable[[], int], wall_clock: Callable[[], int],
                 journal: RateBlockJournalPort):
-        budget = cls(account_id=account_id, egress_id=egress_id, limits=limits,
+        budget = cls(account_id=account_id, egress_id=egress_id, exchange_info=exchange_info,
+                     account_order_limits=account_order_limits,
                      monotonic_clock=monotonic_clock, wall_clock=wall_clock, journal=journal)
         mono, wall = budget._now_mono(), budget._now_wall()
         try:
