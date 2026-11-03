@@ -3117,6 +3117,40 @@ STRATEGIES['ar2_forecast_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+RECHI1H = dict(record_lookback=24, window=48, min_entry=0.10,
+               exit_level=0.02, cost_multiple=5.0)
+
+
+def _record_high_intensity(close, record_lookback, window):
+    """Fraction of recent completed bars that set a strict trailing close record."""
+    prior_high = close.astype(float).shift().rolling(
+        int(record_lookback), min_periods=int(record_lookback)).max()
+    records = (close.astype(float) > prior_high).astype(float).where(prior_high.notna())
+    return records.rolling(int(window), min_periods=int(window)).mean()
+
+
+def sig_record_high_intensity_long_1h(d, p, ctx):
+    """C94: follow positive drift when new closing highs arrive persistently."""
+    intensity = _record_high_intensity(
+        d.c, int(p['record_lookback']), int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((intensity >= float(p['min_entry'])) & (ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(intensity <= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['record_high_intensity_long_1h'] = dict(
+    name='[RESEARCH] Closing-record intensity long 1h', style='record_statistics_persistence',
+    fn=sig_record_high_intensity_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RECHI1H),
+    desc='Candidate 94: follow positive drift when at least 10% of 48h bars set a strict 24h closing record.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
