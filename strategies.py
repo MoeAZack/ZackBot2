@@ -3070,6 +3070,53 @@ STRATEGIES['robust_location_reversion_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+AR2F1H = dict(window=168, min_entry=0.25, exit_level=0.0, cost_multiple=5.0)
+
+
+def _ar2_forecast_z(values):
+    """OLS AR(2) next-return forecast standardized by in-window return scale."""
+    x = np.asarray(values, dtype=float)
+    if len(x) < 6 or not np.isfinite(x).all():
+        return np.nan
+    y = x[2:]
+    design = np.column_stack([np.ones(len(y)), x[1:-1], x[:-2]])
+    try:
+        coef = np.linalg.lstsq(design, y, rcond=None)[0]
+    except np.linalg.LinAlgError:
+        return np.nan
+    scale = np.std(y, ddof=0)
+    if not np.isfinite(scale) or scale <= 0.0:
+        return np.nan
+    return float(np.dot(np.array([1.0, x[-1], x[-2]]), coef) / scale)
+
+
+def _rolling_ar2_forecast(close, window):
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    forecast = ret.rolling(int(window), min_periods=int(window)).apply(
+        _ar2_forecast_z, raw=True)
+    return forecast, ret
+
+
+def sig_ar2_forecast_long_1h(d, p, ctx):
+    """C93: follow positive drift when a causal AR(2) forecasts continuation."""
+    forecast, log_ret = _rolling_ar2_forecast(d.c, int(p['window']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((forecast >= float(p['min_entry'])) & (log_ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(forecast <= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['ar2_forecast_long_1h'] = dict(
+    name='[RESEARCH] AR(2) forecast long 1h', style='two_lag_autoregressive_forecast',
+    fn=sig_ar2_forecast_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(AR2F1H),
+    desc='Candidate 93: follow positive drift when a 168h causal AR(2) forecasts at least 0.25 sigma.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
