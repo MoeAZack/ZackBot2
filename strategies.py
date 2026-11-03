@@ -963,6 +963,16 @@ STRATEGIES['pullback_rsi_short_h1'] = dict(
     mgmt=dict(stop_atr=2.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=3.0, max_bars=60))
 
 
+# Candidate 24 is the queued H2 exact re-evaluation of rotation long under a
+# research-only/default-off identity. Runtime rotation remains unchanged.
+STRATEGIES['rotation_long_h2'] = dict(
+    name='[RESEARCH] Rotation long H2', style='balanced',
+    fn=sig_rotation, sides='long', tf='4h', research_only=True,
+    reentry_lock=False, params=dict(k=5),
+    desc='Queued H2: top-five 30-day risk-adjusted momentum above EMA50.',
+    mgmt=dict(stop_atr=3.0))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
