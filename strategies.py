@@ -952,6 +952,17 @@ STRATEGIES['large_trade_impulse_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
 
 
+# Candidate 23 is the queued H1 re-evaluation of the existing pullback RSI
+# short cell.  It intentionally reuses the exact signal and management rules
+# under a research-only/default-off identity rather than altering runtime.
+STRATEGIES['pullback_rsi_short_h1'] = dict(
+    name='[RESEARCH] Pullback RSI short H1', style='balanced',
+    fn=sig_trend_pullback_rsi, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Queued H1: RSI recovery from overbought inside a completed 4h downtrend.',
+    mgmt=dict(stop_atr=2.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=3.0, max_bars=60))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
