@@ -3428,6 +3428,34 @@ STRATEGIES['kalman_innovation_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=8))
 
 
+ERAY1H = dict(ema_span=13, cost_multiple=5.0)
+
+
+def _elder_ray(high, low, close, span=13):
+    """Causal Elder Ray bull and bear power around EMA."""
+    ema = close.astype(float).ewm(span=int(span), adjust=False, min_periods=int(span)).mean()
+    return ema, high.astype(float) - ema, low.astype(float) - ema
+
+
+def sig_elder_ray_pullback_long_1h(d, p, ctx):
+    """C102: buy improving but still-negative bear power inside a rising bull trend."""
+    ema, bull_power, bear_power = _elder_ray(d.h, d.l, d.c, p['ema_span'])
+    bear_improving = (bear_power > bear_power.shift()) & (bear_power.shift() > bear_power.shift(2))
+    trend = (ema > ema.shift()) & (bull_power > 0.0) & (bear_power < 0.0) & (d.c > ema)
+    cost_ok = 1.5 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = bear_improving & trend & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(bear_power >= 0.0) | (ema <= ema.shift()), sx=never)
+
+
+STRATEGIES['elder_ray_pullback_long_1h'] = dict(
+    name='[RESEARCH] Elder Ray improving-bear-power long 1h', style='extrema_power_pullback',
+    fn=sig_elder_ray_pullback_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(ERAY1H),
+    desc='Candidate 102: rising EMA13, positive bull power, and two increases in still-negative bear power.',
+    mgmt=dict(stop_atr=1.5, tp_r=1.5, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
