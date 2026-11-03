@@ -3284,6 +3284,40 @@ STRATEGIES['ichimoku_cloud_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+RVI1H = dict(window=10, cost_multiple=5.0)
+
+
+def _weighted_four(series):
+    return (series + 2.0 * series.shift(1) + 2.0 * series.shift(2) + series.shift(3)) / 6.0
+
+
+def _relative_vigor(open_, high, low, close, window=10):
+    """Classic causal Relative Vigor Index and four-bar signal line."""
+    numerator = _weighted_four(close.astype(float) - open_.astype(float))
+    denominator = _weighted_four((high.astype(float) - low.astype(float)).replace(0.0, np.nan))
+    raw = numerator / denominator
+    rvi = raw.rolling(int(window), min_periods=int(window)).mean()
+    return rvi, _weighted_four(rvi)
+
+
+def sig_relative_vigor_cross_long_1h(d, p, ctx):
+    """C98: enter when normalized candle-body pressure crosses bullish."""
+    rvi, signal = _relative_vigor(d.o, d.h, d.l, d.c, p['window'])
+    cross_up = (rvi > signal) & (rvi.shift() <= signal.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (rvi > 0.0) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(rvi < signal) | (rvi <= 0.0), sx=never)
+
+
+STRATEGIES['relative_vigor_cross_long_1h'] = dict(
+    name='[RESEARCH] Relative Vigor bullish cross long 1h', style='normalized_body_pressure',
+    fn=sig_relative_vigor_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RVI1H),
+    desc='Candidate 98: classic 10h Relative Vigor Index bullish signal cross above zero and EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
