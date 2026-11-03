@@ -2328,6 +2328,44 @@ STRATEGIES['hill_tail_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+TMR1H = dict(window=24, trim_each_tail=4, max_raw_sum=-0.03, min_trimmed_mean=0.0001,
+             cost_multiple=5.0)
+
+
+def _rolling_trimmed_return_location(close, window, trim_each_tail):
+    """Completed log-return sum and symmetric trimmed central mean."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    w, trim = int(window), int(trim_each_tail)
+
+    def center(raw):
+        if len(raw) != w or not np.isfinite(raw).all() or 2 * trim >= w:
+            return np.nan
+        ordered = np.sort(raw)
+        return float(ordered[trim:w-trim].mean())
+
+    return ret.rolling(w, min_periods=w).sum(), ret.rolling(w, min_periods=w).apply(center, raw=True), ret
+
+
+def sig_trimmed_return_recovery_long_1h(d, p, ctx):
+    """C73: fade a tail-driven selloff whose robust central return remains positive."""
+    raw_sum, trimmed_mean, ret = _rolling_trimmed_return_location(
+        d.c, int(p['window']), int(p['trim_each_tail']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((raw_sum <= float(p['max_raw_sum'])) &
+          (trimmed_mean >= float(p['min_trimmed_mean'])) &
+          (ret > 0.0) & (d.c < d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(raw_sum >= 0.0) | (trimmed_mean <= 0.0), sx=never)
+
+
+STRATEGIES['trimmed_return_recovery_long_1h'] = dict(
+    name='[RESEARCH] Trimmed-return dislocation recovery long 1h', style='robust_location_recovery',
+    fn=sig_trimmed_return_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TMR1H),
+    desc='Candidate 73: buy recovery when the 24h log return is <=-3% but its four-per-tail trimmed mean stays positive.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
