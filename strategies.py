@@ -2114,6 +2114,45 @@ STRATEGIES['jump_variation_downside_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+LTD1H = dict(window=336, quantile=0.10, min_tail_dependence=0.40,
+             exit_tail_dependence=0.20, min_btc_exceedances=20, cost_multiple=5.0)
+
+
+def _rolling_lower_tail_dependence(target_return, btc_return, window, quantile):
+    """Prior-only empirical P(target lower-tail | BTC lower-tail) with causal rolling quantiles."""
+    w, q = int(window), float(quantile)
+    target_q = target_return.rolling(w, min_periods=w).quantile(q).shift()
+    btc_q = btc_return.rolling(w, min_periods=w).quantile(q).shift()
+    target_hit = target_return <= target_q
+    btc_hit = btc_return <= btc_q
+    joint = (target_hit & btc_hit).astype(float).rolling(w, min_periods=w).sum().shift()
+    btc_count = btc_hit.astype(float).rolling(w, min_periods=w).sum().shift()
+    return joint / btc_count.replace(0.0, np.nan), btc_count, btc_q
+
+
+def sig_lower_tail_dependence_short_1h(d, p, ctx):
+    """C67: follow BTC deleveraging when the asset has persistent nonlinear lower-tail dependence."""
+    target_return = d.c.pct_change()
+    btc_return = pd.Series(ctx['btc_return'], index=d.index, dtype=float)
+    dependence, btc_count, btc_q = _rolling_lower_tail_dependence(
+        target_return, btc_return, int(p['window']), float(p['quantile']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    se = ((dependence >= float(p['min_tail_dependence'])) &
+          (btc_count >= int(p['min_btc_exceedances'])) &
+          (btc_return <= btc_q) & (target_return < 0.0) & cost_ok)
+    never = d.c < -1
+    return dict(le=never, se=se, lx=never,
+                sx=(dependence <= float(p['exit_tail_dependence'])) | (btc_return >= 0.0))
+
+
+STRATEGIES['lower_tail_dependence_short_1h'] = dict(
+    name='[RESEARCH] Lower-tail dependence short 1h', style='nonlinear_cross_asset_tail_dependence',
+    fn=sig_lower_tail_dependence_short_1h, sides='short', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(LTD1H),
+    desc='Candidate 67: short BTC tail shocks when prior empirical lower-tail dependence is at least 40%.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
