@@ -1004,6 +1004,16 @@ STRATEGIES['exp_mom_short_c27'] = dict(
     mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5))
 
 
+# Candidate 28: exact unused exp_rip_sell_dca cell under a research-only,
+# default-off identity. Runtime remains unchanged.
+STRATEGIES['rip_sell_dca_c28'] = dict(
+    name='[RESEARCH] Rip-sell DCA short C28', style='aggressive',
+    fn=sig_exp_rip_sell_dca, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Candidate 28: downtrend rip >1.5 ATR above EMA20 with frozen short DCA basket management.',
+    mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
