@@ -1130,6 +1130,38 @@ STRATEGIES['rsi_lower_low_divergence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
 
 
+TBER1H = dict(streak=3, drop_atr=1.5, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_three_bar_exhaustion_reversal_long_1h(d, p, ctx):
+    """C34: fade distributed downside exhaustion after a confirmed bullish reversal."""
+    n = int(p['streak'])
+    red_streak = pd.Series(True, index=d.index)
+    descending = pd.Series(True, index=d.index)
+    for k in range(1, n + 1):
+        red_streak &= d.c.shift(k) < d.o.shift(k)
+        if k < n:
+            descending &= d.c.shift(k) < d.c.shift(k + 1)
+    drop = d.o.shift(n) - d.c.shift()
+    exhausted = drop >= float(p['drop_atr']) * d.atr.shift()
+    reversal = (d.c > d.o) & (d.c > d.h.shift())
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = red_streak & descending & exhausted & reversal & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c >= d.e20, sx=never)
+
+
+STRATEGIES['three_bar_exhaustion_reversal_long_1h'] = dict(
+    name='[RESEARCH] Three-bar exhaustion reversal long 1h', style='mean_reversion',
+    fn=sig_three_bar_exhaustion_reversal_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TBER1H),
+    desc='Candidate 34: three descending red bars lose >=1.5 ATR before a bullish close above the prior high.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
