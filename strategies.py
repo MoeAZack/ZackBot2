@@ -2748,6 +2748,57 @@ STRATEGIES['directional_change_overshoot_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+LZC1H = dict(window=32, max_entry=1.40, exit_level=1.65, cost_multiple=5.0)
+
+
+def _lz78_binary_complexity(values):
+    """Normalized LZ78 phrase count for one finite binary sequence."""
+    bits = tuple(int(x > 0.5) for x in values)
+    n = len(bits)
+    if n < 2:
+        return np.nan
+    dictionary, phrases, pos = set(), 0, 0
+    while pos < n:
+        end = pos + 1
+        while end <= n and bits[pos:end] in dictionary:
+            end += 1
+        if end <= n:
+            dictionary.add(bits[pos:end])
+            pos = end
+        else:
+            pos = n
+        phrases += 1
+    return phrases * np.log2(float(n)) / float(n)
+
+
+def _rolling_sign_lz_complexity(close, window):
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    sign = (ret > 0.0).astype(float).where(ret.notna())
+    complexity = sign.rolling(int(window), min_periods=int(window)).apply(
+        _lz78_binary_complexity, raw=True)
+    return complexity, ret
+
+
+def sig_lz_sign_complexity_long_1h(d, p, ctx):
+    """C85: follow positive drift when ordered return signs remain compressible."""
+    complexity, ret = _rolling_sign_lz_complexity(d.c, int(p['window']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((complexity <= float(p['max_entry'])) & (ret > 0.0) &
+          (ret24 > 0.0) & (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(complexity >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['lz_sign_complexity_long_1h'] = dict(
+    name='[RESEARCH] LZ sign-complexity long 1h', style='ordered_sequence_complexity',
+    fn=sig_lz_sign_complexity_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(LZC1H),
+    desc='Candidate 85: follow positive drift when 32h return-sign ordering has low LZ78 complexity.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
