@@ -97,7 +97,7 @@ LEGACY_RESEARCH_BREADTH_KEYS = {'fib_pullback', 'fib_pullback_02'}
 BREADTH_KEYS = RUNTIME_KEYS | LEGACY_RESEARCH_BREADTH_KEYS
 RESEARCH_ONLY_KEYS = set(S.STRATEGIES) - RUNTIME_KEYS
 NEW_RESEARCH_ONLY_KEYS = RESEARCH_ONLY_KEYS - LEGACY_RESEARCH_BREADTH_KEYS
-CASES = [(k, sd) for k in BREADTH_KEYS for sd in EMITS.get(k, ())]
+CASES = [(k, sd) for k in sorted(BREADTH_KEYS) for sd in EMITS.get(k, ())]
 IDS = [f'{k}-{sd}' for k, sd in CASES]
 EXIT_REASONS = {'stop', 'tp', 'signal', 'time'}
 
@@ -138,7 +138,7 @@ def test_research_only_candidates_stay_out_of_runtime_breadth_harness():
     assert RESEARCH_ONLY_KEYS
     assert NEW_RESEARCH_ONLY_KEYS.isdisjoint(EMITS)
     assert NEW_RESEARCH_ONLY_KEYS.isdisjoint(FAMILY)
-    assert RESEARCH_ONLY_KEYS <= E.RESEARCH_ONLY_KEYS
+    assert RESEARCH_ONLY_KEYS == set(E.RESEARCH_ONLY_KEYS)
 
 
 def test_family_coverage_long_and_short():
