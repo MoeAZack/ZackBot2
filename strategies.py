@@ -2531,6 +2531,40 @@ STRATEGIES['omega_payoff_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CHOP1H = dict(window=14, max_entry=38.2, exit_level=61.8, cost_multiple=5.0)
+
+
+def _rolling_choppiness_index(high, low, close, window):
+    """Log-normalized traversed true range relative to the enclosing price range."""
+    w = int(window)
+    prev_close = close.astype(float).shift()
+    tr = pd.concat([(high-low).abs(), (high-prev_close).abs(), (low-prev_close).abs()], axis=1).max(axis=1)
+    path = tr.rolling(w, min_periods=w).sum()
+    enclosure = (high.astype(float).rolling(w, min_periods=w).max() -
+                 low.astype(float).rolling(w, min_periods=w).min()).replace(0.0, np.nan)
+    return 100.0 * np.log10(path / enclosure) / np.log10(float(w))
+
+
+def sig_choppiness_persistence_long_1h(d, p, ctx):
+    """C79: follow positive drift when true-range travel is efficiently directional."""
+    chop = _rolling_choppiness_index(d.h, d.l, d.c, int(p['window']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((chop <= float(p['max_entry'])) & (ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(chop >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['choppiness_persistence_long_1h'] = dict(
+    name='[RESEARCH] Choppiness-index persistence long 1h', style='range_efficiency_persistence',
+    fn=sig_choppiness_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CHOP1H),
+    desc='Candidate 79: follow positive drift when the 14h Choppiness Index is at most 38.2.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
