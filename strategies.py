@@ -2045,6 +2045,41 @@ STRATEGIES['leverage_effect_downside_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+OUH1H = dict(window=168, entry_z=-2.0, cost_multiple=5.0)
+
+
+def _rolling_ou_state(close, window):
+    """Rolling error-correction coefficient, implied half-life and price z-score from completed closes."""
+    log_close = np.log(close.astype(float))
+    lag = log_close.shift()
+    delta = log_close.diff()
+    w = int(window)
+    beta = delta.rolling(w, min_periods=w).cov(lag) / lag.rolling(w, min_periods=w).var().replace(0.0, np.nan)
+    half_life = pd.Series(np.where(beta < 0.0, -np.log(2.0) / beta, np.nan), index=close.index)
+    mean = log_close.rolling(w, min_periods=w).mean()
+    std = log_close.rolling(w, min_periods=w).std().replace(0.0, np.nan)
+    return beta, half_life, (log_close - mean) / std
+
+
+def sig_ou_half_life_reversion_long_1h(d, p, ctx):
+    """C65: buy a recovering negative displacement only when estimated error correction is tradeably fast."""
+    beta, half_life, z = _rolling_ou_state(d.c, int(p['window']))
+    ret = d.c.pct_change()
+    valid_speed = (half_life >= 2.0) & (half_life <= 24.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = valid_speed & (z <= float(p['entry_z'])) & (ret > 0.0) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(z >= 0.0) | (beta >= 0.0) | ~valid_speed, sx=never)
+
+
+STRATEGIES['ou_half_life_reversion_long_1h'] = dict(
+    name='[RESEARCH] OU half-life reversion long 1h', style='error_correction_reversion',
+    fn=sig_ou_half_life_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(OUH1H),
+    desc='Candidate 65: buy a recovering <=-2z log-price displacement when estimated OU half-life is 2-24 hours.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
