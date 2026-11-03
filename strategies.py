@@ -1991,6 +1991,37 @@ STRATEGIES['cusum_downshift_short_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+MSR1H = dict(window=168, horizon=24, max_h=0.40, cost_multiple=5.0)
+
+
+def _rolling_variance_scaling_exponent(close, window, horizon):
+    """Causal two-scale Hurst proxy: Var(q-step return) / Var(one-step return) = q^(2H)."""
+    log_close = np.log(close.astype(float))
+    r1 = log_close.diff()
+    rq = log_close.diff(int(horizon))
+    v1 = r1.rolling(int(window), min_periods=int(window)).var().replace(0.0, np.nan)
+    vq = rq.rolling(int(window), min_periods=int(window)).var()
+    return 0.5 * np.log(vq / v1) / np.log(float(horizon))
+
+
+def sig_multiscale_roughness_reversion_long_1h(d, p, ctx):
+    """C63: fade a negative hour only when multi-horizon variance scaling is anti-persistent."""
+    exponent = _rolling_variance_scaling_exponent(d.c, int(p['window']), int(p['horizon']))
+    ret = d.c.pct_change()
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (exponent <= float(p['max_h'])) & (ret < 0.0) & (d.c < d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(exponent >= 0.50) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['multiscale_roughness_reversion_long_1h'] = dict(
+    name='[RESEARCH] Multiscale-roughness reversion long 1h', style='fractal_scaling_reversion',
+    fn=sig_multiscale_roughness_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(MSR1H),
+    desc='Candidate 63: fade a negative hour below EMA20 when the 1h-to-24h variance-scaling exponent is <=0.40.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
