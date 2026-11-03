@@ -1076,6 +1076,34 @@ STRATEGIES['illiquidity_impact_reversion_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=8))
 
 
+IBB1H = dict(mother_atr=1.25, inside_ratio=0.70, volume_window=48, volume_multiple=1.0, cost_multiple=5.0)
+
+
+def sig_inside_bar_breakout_long_1h(d, p, ctx):
+    """C32: trend-follow a confirmed breakout from a one-bar contraction."""
+    mother_hi, mother_lo = d.h.shift(2), d.l.shift(2)
+    mother_range = mother_hi - mother_lo
+    inside_range = d.h.shift() - d.l.shift()
+    mother_expanded = mother_range >= float(p['mother_atr']) * d.atr.shift(2)
+    inside = ((d.h.shift() <= mother_hi) & (d.l.shift() >= mother_lo) &
+              (inside_range <= float(p['inside_ratio']) * mother_range))
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    volume_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    participated = qv >= float(p['volume_multiple']) * volume_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = mother_expanded & inside & (d.c > mother_hi) & (d.c > d.e50) & participated & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c < d.e20, sx=never)
+
+
+STRATEGIES['inside_bar_breakout_long_1h'] = dict(
+    name='[RESEARCH] Inside-bar breakout long 1h', style='trend',
+    fn=sig_inside_bar_breakout_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(IBB1H),
+    desc='Candidate 32: confirm a breakout after one inside-bar contraction within an expanded mother bar.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
