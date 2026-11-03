@@ -2080,6 +2080,40 @@ STRATEGIES['ou_half_life_reversion_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+JVS1H = dict(window=168, min_jump_share=0.25, exit_jump_share=0.10, cost_multiple=5.0)
+
+
+def _rolling_jump_share(close, window):
+    """Causal RV-minus-bipower jump share and completed close-to-close log return."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    w = int(window)
+    rv = ret.pow(2).rolling(w, min_periods=w).sum()
+    cross = ret.abs() * ret.abs().shift()
+    bv = (np.pi / 2.0) * cross.rolling(w, min_periods=w).sum()
+    share = (rv - bv).clip(lower=0.0) / rv.replace(0.0, np.nan)
+    return share, ret
+
+
+def sig_jump_variation_downside_short_1h(d, p, ctx):
+    """C66: follow downside only when discontinuous variation dominates the trailing path."""
+    share, ret = _rolling_jump_share(d.c, int(p['window']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    se = ((share >= float(p['min_jump_share'])) & (ret24 < 0.0) &
+          (ret < 0.0) & cost_ok)
+    never = d.c < -1
+    return dict(le=never, se=se, lx=never,
+                sx=(share <= float(p['exit_jump_share'])) | (ret24 >= 0.0))
+
+
+STRATEGIES['jump_variation_downside_short_1h'] = dict(
+    name='[RESEARCH] Jump-variation downside short 1h', style='nonparametric_jump_decomposition',
+    fn=sig_jump_variation_downside_short_1h, sides='short', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(JVS1H),
+    desc='Candidate 66: short downside when trailing seven-day RV-minus-bipower jump share is at least 25%.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
