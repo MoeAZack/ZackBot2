@@ -1857,6 +1857,34 @@ STRATEGIES['downside_semivariance_rebound_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+DDRH1H = dict(high_window=168, min_age=48, drawdown=-0.10,
+              cost_multiple=5.0)
+
+
+def sig_drawdown_duration_recovery_long_1h(d, p, ctx):
+    """C58: first EMA20 recovery after a deep, prolonged underwater spell."""
+    w = int(p['high_window'])
+    rolling_high = d.c.rolling(w, min_periods=w).max()
+    underwater = d.c < rolling_high
+    spell = (~underwater).cumsum()
+    age = underwater.astype(int).groupby(spell).cumsum()
+    drawdown = d.c / rolling_high - 1.0
+    reclaim = (d.c > d.e20) & (d.c.shift() <= d.e20.shift())
+    prior_state = (age.shift() >= int(p['min_age'])) & (drawdown.shift() <= float(p['drawdown']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = prior_state & reclaim & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(d.c < d.e20) | ~underwater, sx=never)
+
+
+STRATEGIES['drawdown_duration_recovery_long_1h'] = dict(
+    name='[RESEARCH] Drawdown-duration recovery long 1h', style='path_dependent_recovery',
+    fn=sig_drawdown_duration_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DDRH1H),
+    desc='Candidate 58: EMA20 reclaim after >=48h underwater and a prior >=10% drawdown from the seven-day high.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
