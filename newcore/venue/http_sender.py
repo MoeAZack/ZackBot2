@@ -158,6 +158,7 @@ class TestnetHttpSender:
             # Fail closed even if process-wide SSL defaults have been modified.
             context.check_hostname = True
             context.verify_mode = ssl.CERT_REQUIRED
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             raw.settimeout(_remaining(deadline))
             tls_sock = context.wrap_socket(raw, server_hostname=_HOST)
             holder[0] = tls_sock

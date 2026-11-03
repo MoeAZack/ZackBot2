@@ -122,6 +122,7 @@ def test_one_local_hit_uses_exact_host_tls_and_closes(monkeypatch):
     assert sock.connected == [('127.0.0.1', 443)]
     assert context.server_names == ['testnet.binancefuture.com']
     assert context.check_hostname is True and context.verify_mode == ssl.CERT_REQUIRED
+    assert context.minimum_version == ssl.TLSVersion.TLSv1_2
     assert len(sock.sent) == 1 and b'Host: testnet.binancefuture.com\r\n' in sock.sent[0]
     assert b'X-MBX-APIKEY: test-api-key\r\n' in sock.sent[0]
     assert sock.closed >= 1
