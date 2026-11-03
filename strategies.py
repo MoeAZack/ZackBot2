@@ -1189,6 +1189,38 @@ STRATEGIES['obv_lead_breakout_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=16))
 
 
+MFIR1H = dict(window=14, oversold=20.0, exit_level=60.0, volume_window=48, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_mfi_oversold_recovery_long_1h(d, p, ctx):
+    """C36: buy a causal volume-weighted money-flow recovery from oversold."""
+    n = int(p['window'])
+    typical = (d.h + d.l + d.c) / 3.0
+    raw_flow = typical * d.v
+    direction = typical.diff()
+    positive = raw_flow.where(direction > 0, 0.0).rolling(n, min_periods=n).sum()
+    negative = raw_flow.where(direction < 0, 0.0).rolling(n, min_periods=n).sum()
+    ratio = positive / negative.replace(0, np.nan)
+    mfi = 100.0 - 100.0 / (1.0 + ratio)
+    level = float(p['oversold'])
+    recovered = (mfi > level) & (mfi.shift() <= level)
+    qv = pd.Series(d.qv, index=d.index, dtype=float)
+    qv_base = qv.rolling(int(p['volume_window']), min_periods=int(p['volume_window'])).median().shift()
+    liquid = qv >= float(p['volume_floor']) * qv_base
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = recovered & (d.c > d.o) & liquid & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(mfi >= float(p['exit_level'])) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['mfi_oversold_recovery_long_1h'] = dict(
+    name='[RESEARCH] MFI oversold recovery long 1h', style='mean_reversion',
+    fn=sig_mfi_oversold_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(MFIR1H),
+    desc='Candidate 36: 14-bar Money Flow Index crosses above 20 with liquidity and cost admission.',
+    mgmt=dict(stop_atr=2.0, tp_r=1.5, max_bars=12))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
