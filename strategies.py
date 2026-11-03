@@ -3318,6 +3318,41 @@ STRATEGIES['relative_vigor_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+UO1H = dict(fast=7, medium=14, slow=28, level=50.0, cost_multiple=5.0)
+
+
+def _ultimate_oscillator(high, low, close, fast=7, medium=14, slow=28):
+    """Causal Larry Williams Ultimate Oscillator on completed bars."""
+    prev_close = close.astype(float).shift()
+    true_low = pd.concat([low.astype(float), prev_close], axis=1).min(axis=1)
+    true_high = pd.concat([high.astype(float), prev_close], axis=1).max(axis=1)
+    buying_pressure = close.astype(float) - true_low
+    true_range = (true_high - true_low).replace(0.0, np.nan)
+    def ratio(n):
+        return (buying_pressure.rolling(int(n), min_periods=int(n)).sum() /
+                true_range.rolling(int(n), min_periods=int(n)).sum())
+    return 100.0 * (4.0 * ratio(fast) + 2.0 * ratio(medium) + ratio(slow)) / 7.0
+
+
+def sig_ultimate_oscillator_cross_long_1h(d, p, ctx):
+    """C99: enter when gap-aware multi-horizon buying pressure crosses bullish."""
+    uo = _ultimate_oscillator(d.h, d.l, d.c, p['fast'], p['medium'], p['slow'])
+    level = float(p['level'])
+    cross_up = (uo > level) & (uo.shift() <= level)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=uo < level, sx=never)
+
+
+STRATEGIES['ultimate_oscillator_cross_long_1h'] = dict(
+    name='[RESEARCH] Ultimate Oscillator bullish cross long 1h', style='multihorizon_buying_pressure',
+    fn=sig_ultimate_oscillator_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(UO1H),
+    desc='Candidate 99: classic gap-aware 7/14/28 Ultimate Oscillator cross above 50 and EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
