@@ -2940,6 +2940,64 @@ STRATEGIES['time_reversal_asymmetry_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+SAMPEN1H = dict(window=48, template_length=2, tolerance=0.20,
+                max_entry=0.80, exit_level=1.20, cost_multiple=5.0)
+
+
+def _sample_entropy_value(values, template_length=2, tolerance=0.20):
+    """Magnitude-aware Sample Entropy with Chebyshev template matching."""
+    x = np.asarray(values, dtype=float)
+    m = int(template_length)
+    if len(x) <= m + 1 or not np.isfinite(x).all():
+        return np.nan
+    scale = np.std(x, ddof=0)
+    if not np.isfinite(scale) or scale <= 0.0:
+        return np.nan
+    radius = float(tolerance) * scale
+
+    def matches(length):
+        templates = np.lib.stride_tricks.sliding_window_view(x, length)
+        count = 0
+        for pos in range(len(templates) - 1):
+            count += np.all(
+                np.abs(templates[pos + 1:] - templates[pos]) <= radius,
+                axis=1).sum()
+        return count
+
+    base, extended = matches(m), matches(m + 1)
+    if base <= 0 or extended <= 0:
+        return np.inf
+    return -np.log(float(extended) / float(base))
+
+
+def _rolling_sample_entropy(close, window, template_length, tolerance):
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    entropy = ret.rolling(int(window), min_periods=int(window)).apply(
+        lambda x: _sample_entropy_value(x, template_length, tolerance), raw=True)
+    return entropy, ret
+
+
+def sig_sample_entropy_long_1h(d, p, ctx):
+    """C90: follow positive drift when return magnitudes repeat predictably."""
+    entropy, log_ret = _rolling_sample_entropy(
+        d.c, int(p['window']), int(p['template_length']), float(p['tolerance']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((entropy <= float(p['max_entry'])) & (log_ret > 0.0) & (ret24 > 0.0) &
+          (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(entropy >= float(p['exit_level'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['sample_entropy_long_1h'] = dict(
+    name='[RESEARCH] Sample-entropy long 1h', style='magnitude_sequence_complexity',
+    fn=sig_sample_entropy_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(SAMPEN1H),
+    desc='Candidate 90: follow positive drift when 48h magnitude-aware Sample Entropy is at most 0.80.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
