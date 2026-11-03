@@ -2185,6 +2185,45 @@ STRATEGIES['round_number_breakout_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+PRD1H = dict(window=168, radius_atr=0.5, max_density=0.05,
+             exit_density=0.20, cost_multiple=5.0)
+
+
+def _rolling_price_recurrence_density(close, atr, window, radius_atr):
+    """Fraction of prior closes within a current-ATR neighbourhood of each completed close."""
+    c, a = close.to_numpy(float), atr.to_numpy(float)
+    w, radius_x = int(window), float(radius_atr)
+    out = np.full(len(close), np.nan)
+    for i in range(w, len(close)):
+        if not (np.isfinite(c[i]) and np.isfinite(a[i]) and a[i] > 0.0):
+            continue
+        hist = c[i - w:i]
+        valid = np.isfinite(hist)
+        if valid.sum() == w:
+            out[i] = np.mean(np.abs(hist - c[i]) <= radius_x * a[i])
+    return pd.Series(out, index=close.index)
+
+
+def sig_price_recurrence_discovery_long_1h(d, p, ctx):
+    """C69: follow positive price discovery into a sparsely revisited local price zone."""
+    density = _rolling_price_recurrence_density(d.c, d.atr, int(p['window']), float(p['radius_atr']))
+    ret = d.c.pct_change()
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((density <= float(p['max_density'])) & (ret > 0.0) & (ret24 > 0.0) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(density >= float(p['exit_density'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['price_recurrence_discovery_long_1h'] = dict(
+    name='[RESEARCH] Price-recurrence discovery long 1h', style='price_occupation_density',
+    fn=sig_price_recurrence_discovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(PRD1H),
+    desc='Candidate 69: buy positive price discovery when <=5% of prior 168 closes lie within 0.5 current ATR.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
