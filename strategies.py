@@ -3037,6 +3037,39 @@ STRATEGIES['corwin_schultz_spread_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+MADZ1H = dict(window=48, max_entry=-2.5, exit_level=-0.5, cost_multiple=5.0)
+
+
+def _rolling_mad_zscore(close, window):
+    """Causal robust z-score of log price using rolling median and scaled MAD."""
+    log_price = np.log(close.astype(float))
+    median = log_price.rolling(int(window), min_periods=int(window)).median()
+    mad = log_price.rolling(int(window), min_periods=int(window)).apply(
+        lambda x: np.median(np.abs(x - np.median(x))), raw=True)
+    scale = 1.4826 * mad
+    return (log_price - median) / scale.replace(0.0, np.nan)
+
+
+def sig_robust_location_reversion_long_1h(d, p, ctx):
+    """C92: buy a positive reversal from an extreme median/MAD price displacement."""
+    zscore = _rolling_mad_zscore(d.c, int(p['window']))
+    ret = d.c.pct_change()
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((zscore <= float(p['max_entry'])) & (ret > 0.0) &
+          (d.c < d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(zscore >= float(p['exit_level'])) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['robust_location_reversion_long_1h'] = dict(
+    name='[RESEARCH] Robust-location reversion long 1h', style='median_mad_dislocation',
+    fn=sig_robust_location_reversion_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(MADZ1H),
+    desc='Candidate 92: reverse from a 48h log-price median/MAD z-score at or below -2.5.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
