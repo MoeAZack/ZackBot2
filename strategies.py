@@ -1014,6 +1014,16 @@ STRATEGIES['rip_sell_dca_c28'] = dict(
     mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60))
 
 
+# Candidate 29: the already-emitted but previously off-registry short side of
+# ema_st, isolated as research-only/default-off. Runtime remains unchanged.
+STRATEGIES['ema_st_short_c29'] = dict(
+    name='[RESEARCH] EMA-supertrend short C29', style='balanced',
+    fn=sig_ema_st, sides='short', tf='4h', research_only=True,
+    reentry_lock=False, params={},
+    desc='Candidate 29: EMA20/50 bearish cross below EMA200 with Supertrend bearish confirmation.',
+    mgmt=dict(stop_atr=2.5))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
