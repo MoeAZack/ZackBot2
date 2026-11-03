@@ -1024,6 +1024,31 @@ STRATEGIES['ema_st_short_c29'] = dict(
     mgmt=dict(stop_atr=2.5))
 
 
+DRP1H = dict(channel=24, volume_window=48, volume_multiple=1.5, close_location=0.75)
+
+
+def sig_daily_range_participation_long_1h(d, p, ctx):
+    """C30: prior-day breakout with trend, close-location and causal volume participation gates."""
+    channel, vw = int(p['channel']), int(p['volume_window'])
+    prior_high = d.h.rolling(channel, min_periods=channel).max().shift()
+    vol_base = d.v.rolling(vw, min_periods=vw).median().shift()
+    rng = d.h - d.l
+    location = (d.c - d.l) / rng.where(rng > 0)
+    le = ((d.c > prior_high) & (d.e50 > d.e200) &
+          (d.v >= float(p['volume_multiple']) * vol_base) &
+          (location >= float(p['close_location'])))
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(d.c < d.e20) | (d.e50 <= d.e200), sx=never)
+
+
+STRATEGIES['daily_range_participation_long_1h'] = dict(
+    name='[RESEARCH] Daily-range participation long 1h', style='balanced',
+    fn=sig_daily_range_participation_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DRP1H),
+    desc='Candidate 30: completed 1h close above prior 24h high, EMA50>EMA200, top-quartile close and >=1.5x median volume.',
+    mgmt=dict(stop_atr=2.0, trail_atr=3.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
