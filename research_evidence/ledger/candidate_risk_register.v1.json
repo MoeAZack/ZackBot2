@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "owner_ruling_cairo": "2026-11-03",
+  "policy": "docs/research/PROFIT_AND_DRAWDOWN_PROMOTION_POLICY.md",
+  "risk_target_dd_r": 15.0,
+  "candidates": [
+    {"key":"rotation_long_h2","candidate":24,"tier":"extended_validation","risk_label":"elevated","trades":174,"symbols":9,"net_r":30.85,"mean_r":0.177,"profit_factor":1.464,"max_dd_r":18.60,"risk_multiplier_cap":0.806,"reason":"passed economics/sample/breadth/regimes; old DD-only rejection"},
+    {"key":"volatility_acceleration_long_1h","candidate":41,"tier":"extended_validation","risk_label":"high","trades":736,"symbols":18,"net_r":24.915752,"mean_r":0.033853,"profit_factor":1.052772,"max_dd_r":43.682092,"win_rate_pct":43.8859,"risk_multiplier_cap":0.343,"reason":"passed economics/sample/breadth/regimes; old DD-only rejection"},
+    {"key":"pullback_rsi_short_h1","candidate":23,"tier":"evidence_building","risk_label":"standard","trades":51,"symbols":9,"net_r":11.10,"mean_r":0.218,"profit_factor":1.448,"max_dd_r":9.20,"reason":"positive after costs; sample below frozen floor"},
+    {"key":"exp_mom_short","candidate":27,"tier":"evidence_building","risk_label":"standard","trades":65,"symbols":9,"net_r":5.13,"mean_r":0.079,"profit_factor":1.174,"max_dd_r":5.55,"reason":"positive after costs; sample below frozen floor"},
+    {"key":"ema_mom_long_h4","candidate":26,"tier":"evidence_building","risk_label":"standard","trades":20,"symbols":7,"net_r":6.13,"mean_r":0.306,"profit_factor":2.159,"max_dd_r":2.49,"reason":"positive after costs; sample/breadth/regime evidence thin"},
+    {"key":"exp_trend_long_h3","candidate":25,"tier":"evidence_building","risk_label":"standard","trades":20,"symbols":7,"net_r":4.25,"mean_r":0.212,"profit_factor":1.805,"max_dd_r":2.89,"reason":"positive after costs; sample/breadth/regime evidence thin"},
+    {"key":"rank_breadth_reversal_4h_short","tier":"evidence_building","risk_label":"standard","trades":76,"symbols":8,"net_r":7.33,"mean_r":0.096,"profit_factor":1.239,"max_dd_r":7.96,"reason":"positive after costs; BTC-below regime sample thin"},
+    {"key":"volume_pressure_inventory_1h_short","tier":"evidence_building","risk_label":"standard","trades":92,"symbols":18,"net_r":8.67,"mean_r":0.094,"profit_factor":1.236,"max_dd_r":6.80,"reason":"positive after costs; sample below frozen floor"},
+    {"key":"weekend_liquidity_premium_1h_short","tier":"evidence_building","risk_label":"standard","trades":190,"symbols":4,"net_r":25.05,"mean_r":0.132,"profit_factor":1.259,"max_dd_r":14.52,"reason":"positive after costs; breadth concentrated by four-slot portfolio"},
+    {"key":"atr_shock_snapback_4h_long","tier":"evidence_building","risk_label":"unknown","trades":11,"symbols":6,"net_r":1.54,"mean_r":0.140,"profit_factor":1.564,"max_dd_r":null,"reason":"positive point estimate; far below sample/breadth/regime floors"},
+    {"key":"atr_shock_snapback_4h_short","tier":"evidence_building","risk_label":"unknown","trades":5,"symbols":5,"net_r":2.34,"mean_r":0.468,"profit_factor":null,"max_dd_r":null,"reason":"no observed losses in five trades; far below evidence floors"}
+  ],
+  "excluded_from_risk": "All negative-after-cost, PF-below-floor, duplicate or void candidates remain integrated default-OFF for ledger completeness but receive no PAPER allocation."
+}

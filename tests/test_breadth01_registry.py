@@ -1,5 +1,6 @@
-"""BREADTH-01 slice B1: registry-wide quick-test harness over EVERY strategies.STRATEGIES entry and every side its signal
-function is designed to emit (EMITS below; `se=d.c < -1` / `le=d.c < -1` = never).
+"""BREADTH-01 slice B1: runtime-registry quick-test harness over every non-research
+strategies.STRATEGIES entry and every side its signal function is designed to emit (EMITS below;
+`se=d.c < -1` / `le=d.c < -1` = never).
 
 Per (strategy, side), on a deterministic synthetic tape (tests/breadth01_synth.py, qv included for exp_vwaprev):
   1. the signal fires on the intended side (never both sides on one candle where `_one_side` applies);
@@ -20,6 +21,10 @@ params shorts=True). Runtime-untested for shorts (no engine / replay test runs t
 ema_st, ema_mom, breakout_pyramid, pullback_rsi, rotation(shorts=True). donchian_ens and squeeze_tp run sides='both' in
 the test_causality / test_qty_tolerance replays, but no test asserts a SHORT there. This file covers signal -> engine
 mapping -> stop -> backtest only, not the live engine order path.
+
+Research-only/default-OFF candidates are deliberately excluded from this runtime-parity harness: the engine rejects
+them before sleeve/rotation execution and each has its own frozen causal signal tests.  Keeping that boundary explicit
+prevents a research implementation from being mistaken for a runtime-authorized strategy.
 
 Synthetic data only; no app, settings, credentials, network or real data; no optimisation. Quick (< ~60 s).
 """
@@ -86,7 +91,13 @@ def fixture_of(key, side):
     return ('trend', side == 'se')
 
 
-CASES = [(k, sd) for k in S.STRATEGIES for sd in EMITS.get(k, ())]
+RUNTIME_KEYS = {k for k, st in S.STRATEGIES.items() if not st.get('research_only')}
+# FIB-01/02 predate the general research-only boundary and have deliberate BREADTH-01 coverage.
+LEGACY_RESEARCH_BREADTH_KEYS = {'fib_pullback', 'fib_pullback_02'}
+BREADTH_KEYS = RUNTIME_KEYS | LEGACY_RESEARCH_BREADTH_KEYS
+RESEARCH_ONLY_KEYS = set(S.STRATEGIES) - RUNTIME_KEYS
+NEW_RESEARCH_ONLY_KEYS = RESEARCH_ONLY_KEYS - LEGACY_RESEARCH_BREADTH_KEYS
+CASES = [(k, sd) for k in sorted(BREADTH_KEYS) for sd in EMITS.get(k, ())]
 IDS = [f'{k}-{sd}' for k, sd in CASES]
 EXIT_REASONS = {'stop', 'tp', 'signal', 'time'}
 
@@ -118,9 +129,16 @@ def first_hit(key, side):
 
 # ------------------------------------------------------------------ registry contract
 def test_every_registry_key_has_a_side_table_and_family():
-    assert set(EMITS) == set(S.STRATEGIES), set(S.STRATEGIES) ^ set(EMITS)
-    assert set(FAMILY) == set(S.STRATEGIES), f'new strategy without a family: {set(S.STRATEGIES) - set(FAMILY)}'
+    assert set(EMITS) == BREADTH_KEYS, BREADTH_KEYS ^ set(EMITS)
+    assert set(FAMILY) == BREADTH_KEYS, f'new breadth strategy without a family: {BREADTH_KEYS - set(FAMILY)}'
     assert set(FAMILY.values()) <= set(FAMILIES)
+
+
+def test_research_only_candidates_stay_out_of_runtime_breadth_harness():
+    assert RESEARCH_ONLY_KEYS
+    assert NEW_RESEARCH_ONLY_KEYS.isdisjoint(EMITS)
+    assert NEW_RESEARCH_ONLY_KEYS.isdisjoint(FAMILY)
+    assert RESEARCH_ONLY_KEYS == set(E.RESEARCH_ONLY_KEYS)
 
 
 def test_family_coverage_long_and_short():
@@ -134,7 +152,7 @@ def test_family_coverage_long_and_short():
 
 def test_long_default_short_emitters_marked():
     """Long-default registry entries whose signal function emits shorts (runtime-untested shorts: RUNTIME_UNTESTED_SHORTS)."""
-    got = {k for k, st in S.STRATEGIES.items() if st['sides'] == 'long' and 'se' in EMITS[k]}
+    got = {k for k in BREADTH_KEYS if S.STRATEGIES[k]['sides'] == 'long' and 'se' in EMITS[k]}
     assert got == LONG_DEFAULT_SHORT_EMITTERS
     assert RUNTIME_UNTESTED_SHORTS <= LONG_DEFAULT_SHORT_EMITTERS
 
@@ -142,7 +160,7 @@ def test_long_default_short_emitters_marked():
 def test_designed_never_sides_never_fire():
     """A side outside EMITS (e.g. dca_dip / hot_coin shorts, bear_breakdown longs, rotation shorts without shorts=True)
     stays False on every fixture tape."""
-    for key in S.STRATEGIES:
+    for key in BREADTH_KEYS:
         for side in ('le', 'se'):
             if side in EMITS[key]: continue
             for fx in (('trend', False), ('trend', True), ('range', False), ('range', True)):
@@ -293,8 +311,11 @@ def test_restart_recompute_identical(key, side):
 
 
 def test_restart_reentry_lock_state_round_trips():
-    """The only strategy state the engine persists between cycles: the reentry_lock history (exp_vwaprev)."""
-    locked = [k for k, st in S.STRATEGIES.items() if st.get('reentry_lock')]
+    """The only runtime breadth strategy with persisted reentry state is exp_vwaprev.
+
+    Research-only candidates may declare the same backtest behavior, but cannot enter an engine sleeve.
+    """
+    locked = [k for k in BREADTH_KEYS if S.STRATEGIES[k].get('reentry_lock')]
     assert locked == ['exp_vwaprev']
     t0 = pd.Timestamp('2025-01-01 08:00')
     hist = [dict(sleeve='V', symbol=SYM, side=sd, closed=(t0 + pd.Timedelta(seconds=20)).tz_localize('UTC').isoformat(),
@@ -309,8 +330,8 @@ def test_restart_reentry_lock_state_round_trips():
             assert a == b and bool(a) == (k == 0)
 
 
-# ------------------------------------------------------------------ 5. prefix causality (every strategy)
-@pytest.mark.parametrize('key', list(S.STRATEGIES))
+# ------------------------------------------------------------------ 5. prefix causality (every runtime/legacy breadth strategy)
+@pytest.mark.parametrize('key', sorted(BREADTH_KEYS))
 def test_prefix_causality(key):
     for side in EMITS[key]:
         fx = fixture_of(key, side)
