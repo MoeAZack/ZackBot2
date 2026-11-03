@@ -2565,6 +2565,42 @@ STRATEGIES['choppiness_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+JEX1H = dict(event_atr=0.75, half_life=6.0, min_intensity=0.20,
+             exit_intensity=0.10, cost_multiple=5.0)
+
+
+def _positive_jump_excitation(close, atr, event_atr, half_life):
+    """Exponentially decayed rate of completed-bar positive ATR-sized jumps."""
+    c = close.astype(float)
+    ret = np.log(c / c.shift())
+    threshold = float(event_atr) * atr.astype(float) / c
+    valid = ret.notna() & threshold.notna() & (threshold > 0.0)
+    event = (ret >= threshold).astype(float).where(valid)
+    intensity = event.ewm(halflife=float(half_life), adjust=False, min_periods=1).mean()
+    return intensity, ret
+
+
+def sig_positive_jump_excitation_long_1h(d, p, ctx):
+    """C80: follow positive drift while recent positive jump arrivals cluster."""
+    intensity, ret = _positive_jump_excitation(
+        d.c, d.atr, float(p['event_atr']), float(p['half_life']))
+    ret24 = d.c.pct_change(24)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = ((intensity >= float(p['min_intensity'])) & (ret > 0.0) &
+          (ret24 > 0.0) & (d.c > d.e20) & cost_ok)
+    never = d.c < -1
+    return dict(le=le, se=never,
+                lx=(intensity <= float(p['exit_intensity'])) | (ret24 <= 0.0), sx=never)
+
+
+STRATEGIES['positive_jump_excitation_long_1h'] = dict(
+    name='[RESEARCH] Positive-jump excitation long 1h', style='event_excitation_persistence',
+    fn=sig_positive_jump_excitation_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(JEX1H),
+    desc='Candidate 80: follow positive drift when ATR-sized upside jump arrivals cluster.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
