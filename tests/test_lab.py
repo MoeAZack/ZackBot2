@@ -204,7 +204,8 @@ def test_lookahead_real_slice_clean():
     raw = {s: d.iloc[-700:] for s, d in raw.items()}
     r = lab.lookahead_check(raw, n_points=4, seed=1)
     assert r['ok'], (r['leaky_strategies'], r['leaky_indicators'])
-    assert set(r['strategies']) == set(S.STRATEGIES) and r['regime']
+    runtime_keys = {k for k, st in S.STRATEGIES.items() if not st.get('research_only')}
+    assert set(r['strategies']) == runtime_keys and r['regime']
 
 
 # ------------------------------------------------------------------ validation + job
