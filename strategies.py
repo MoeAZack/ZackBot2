@@ -2289,6 +2289,45 @@ STRATEGIES['volume_concentration_continuation_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+HTR1H = dict(window=168, tail_k=12, max_entry_alpha=3.0, exit_alpha=5.0, cost_multiple=5.0)
+
+
+def _rolling_downside_hill_alpha(close, window, tail_k):
+    """Causal Hill exponent from the largest completed downside log returns."""
+    ret = np.log(close.astype(float) / close.astype(float).shift())
+    w, k = int(window), int(tail_k)
+
+    def hill(raw):
+        losses = -raw[raw < 0.0]
+        if len(losses) < k + 1:
+            return np.nan
+        x = np.sort(losses)[::-1]
+        threshold = x[k]
+        if threshold <= 0.0:
+            return np.nan
+        denom = np.log(x[:k] / threshold).sum()
+        return float(k / denom) if denom > 0.0 else np.nan
+
+    return ret.rolling(w, min_periods=w).apply(hill, raw=True), ret
+
+
+def sig_hill_tail_recovery_long_1h(d, p, ctx):
+    """C72: buy a recovery bar after a statistically heavy downside tail."""
+    alpha, ret = _rolling_downside_hill_alpha(d.c, int(p['window']), int(p['tail_k']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = (alpha <= float(p['max_entry_alpha'])) & (ret > 0.0) & (d.c < d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=(alpha >= float(p['exit_alpha'])) | (d.c >= d.e20), sx=never)
+
+
+STRATEGIES['hill_tail_recovery_long_1h'] = dict(
+    name='[RESEARCH] Hill downside-tail recovery long 1h', style='extreme_value_recovery',
+    fn=sig_hill_tail_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(HTR1H),
+    desc='Candidate 72: buy a positive recovery below EMA20 when the 168h downside Hill exponent is at most 3.0.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
