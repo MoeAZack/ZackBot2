@@ -3806,6 +3806,36 @@ STRATEGIES['relative_volatility_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CFO1H = dict(lookback=14, cost_multiple=5.0)
+
+
+def _chande_forecast_oscillator(close, lookback=14):
+    """Current-price residual from a causal rolling OLS endpoint, normalized by price."""
+    x = np.arange(float(lookback)); xm = x.mean(); denom = float(np.sum((x - xm) ** 2))
+    def endpoint(y):
+        ym = float(np.mean(y)); slope = float(np.sum((x - xm) * (y - ym)) / denom)
+        return ym + slope * (float(lookback - 1) - xm)
+    forecast = close.astype(float).rolling(lookback).apply(endpoint, raw=True)
+    return 100.0 * (close.astype(float) - forecast) / close.astype(float).replace(0.0, np.nan)
+
+
+def sig_cfo_zero_cross_long_1h(d, p, ctx):
+    """C114: enter when price shifts above its rolling regression endpoint."""
+    cfo = _chande_forecast_oscillator(d.c, int(p['lookback']))
+    cross_up = (cfo > 0.0) & (cfo.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=cfo <= 0.0, sx=never)
+
+
+STRATEGIES['cfo_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] Chande Forecast Oscillator long 1h', style='regression_endpoint_residual',
+    fn=sig_cfo_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CFO1H),
+    desc='Candidate 114: CFO(14) normalized rolling-regression endpoint residual crosses above zero above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
