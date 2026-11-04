@@ -1,0 +1,10 @@
+# Candidate 233 / Upside Gap Two Crows preregistration
+
+Status **FROZEN / NOT EVALUATED / RESEARCH ONLY**, 4 November 2026 Cairo. The complete C1-C232 tree, refs, history, preregistrations, results and research tools were searched for Upside Gap Two Crows; no implementation was found. Earlier bearish engulfing, Dark Cloud Cover, Evening Star, Three Black Crows, bearish Breakaway and other reversal families are disclosed. This is a distinct fixed three-candle hypothesis: a bullish candle is followed by a bearish real body wholly above its close, then a second bearish candle opens higher and closes through the first crow's body while remaining above the initial bullish close. It was selected independently, not as a rescue or alteration of C232's sparse rejected result or any prior result. One cell only.
+
+On completed 1h bars, candle 1 is bullish. Candle 2 is bearish, opens at/above candle 1's close, and closes strictly above candle 1's close. Candle 3 is bearish, opens strictly above candle 2's open, closes strictly below candle 2's close, and remains strictly above candle 1's close. The first opening comparison is gap-relaxed for continuous crypto while the real-body ordering remains strict. Enter short next open when candle 3 closes below EMA200. Exit when close is at/above SMA10, after 24 bars, at 2ATR stop or 2R target. The protection stop must cover at least 5x modeled 0.14% round-trip cost. Costs are 5bp taker plus 2bp adverse slippage per fill and actual signed funding.
+
+CORE-20 development `2024-10-14T00:00:00Z..2025-04-01T00:00:00Z`. PASS requires gross>0, mean net R>0, PF>1.05, >=100 trades, >=8 symbols, >=20 trades in each BTC regime, and DD<=15R. Family 233; future family-wise alpha <=0.05/233. PAPER remains BLOCK. No tuning, rescue, folds, holdout, PAPER, runtime, mainnet or BASE-CLEAN work; holdout sealed. Undefined zero-trade statistics fail closed.
+
+ROADMAP FIT: next distinct default-OFF conventional three-candle bearish reversal family.
+DEFERRED: variants, trend/location/body-size/follow-through filters, folds, holdout, Stage B and activation.
