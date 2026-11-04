@@ -5399,6 +5399,14 @@ def sig_upside_tasuki_gap_long_1h(d,p,ctx):
  pattern=_upside_tasuki_gap(d.o,d.h,d.l,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['upside_tasuki_gap_long_1h']=dict(name='[RESEARCH] Upside Tasuki Gap long 1h',style='upside_tasuki_gap_candlestick',fn=sig_upside_tasuki_gap_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(UPTASUKI1H),desc='C250 strict true-gap Upside Tasuki continuation long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+DOWNTASUKI1H=dict(exit_length=10,cost_multiple=5.)
+def _downside_tasuki_gap(open_,high,low,close):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);o2=o.shift(2);c2=c.shift(2);l2=l.shift(2);o1=o.shift(1);c1=c.shift(1);h1=h.shift(1)
+ return (c2<o2)&(c1<o1)&(h1<l2)&(c>o)&(o>c1)&(o<o1)&(c>o1)&(c<l2)
+def sig_downside_tasuki_gap_short_1h(d,p,ctx):
+ pattern=_downside_tasuki_gap(d.o,d.h,d.l,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['downside_tasuki_gap_short_1h']=dict(name='[RESEARCH] Downside Tasuki Gap short 1h',style='downside_tasuki_gap_candlestick',fn=sig_downside_tasuki_gap_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(DOWNTASUKI1H),desc='C251 strict true-gap Downside Tasuki continuation short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
