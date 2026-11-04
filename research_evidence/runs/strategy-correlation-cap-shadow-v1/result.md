@@ -2,7 +2,7 @@
 
 Snapshot: 2026-11-04T13:58:27.217Z (Cairo: 2026-11-04T15:58:27.217000+02:00)
 Cohort: `CH-20261020T100344Z-6b4aba0e`; 188 closed and 8 open positions.
-Artifact body SHA-256: `f579c27a5622affadbb8a531a5a348d3265ff72e3a6e62a7db6a88d553ad726c`.
+Artifact body SHA-256: `9ff08670aa0445b31e6a9c6535afbefa740e884bbe0ade495922adde101f1674`.
 
 All values are descriptive shadow evidence. No variant is selected and no PAPER/runtime setting changed.
 The recent burst has 3 candidate entries and 1 pre-existing open exp_vwaprev position(s) at admission.

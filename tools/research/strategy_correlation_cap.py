@@ -308,16 +308,20 @@ def replay(positions: tuple[Position, ...], variant: tuple[str, int | None, Deci
                 if row.ref in candidate_refs:
                     closed_rows.append(row)
             continue
-        if row.ref in seed_refs:
-            accepted.add(row.ref)
-            open_rows[row.ref] = row
-            continue
-        if row.ref not in candidate_refs:
-            continue
         same = sum(item.strategy_key == row.strategy_key and item.direction == row.direction
                    for item in open_rows.values())
         open_risk = sum((item.initial_risk_r for item in open_rows.values()
                          if item.strategy_key == row.strategy_key), ZERO)
+        if row.ref in seed_refs:
+            accepted.add(row.ref)
+            open_rows[row.ref] = row
+            pkey = f"{row.strategy_key}|{row.direction}"
+            peaks_positions[pkey] = max(peaks_positions.get(pkey, 0), same + 1)
+            peaks_risk[row.strategy_key] = max(peaks_risk.get(row.strategy_key, ZERO),
+                                               open_risk + row.initial_risk_r)
+            continue
+        if row.ref not in candidate_refs:
+            continue
         position_hit = max_positions is not None and same >= max_positions
         risk_hit = max_risk is not None and open_risk + row.initial_risk_r > max_risk
         if position_hit or risk_hit:

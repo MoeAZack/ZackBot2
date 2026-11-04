@@ -108,6 +108,33 @@ def test_seed_exposure_counts_for_admission_but_not_cluster_metrics() -> None:
     assert result["net_r"] == "1.000000"
 
 
+def test_seed_alone_fills_cap_and_is_still_published_as_peak_exposure() -> None:
+    seed = position("seed", 0, 10, "100")
+    first = position("first", 1, 11, "1")
+    second = position("second", 2, 12, "1")
+    result = C.replay((seed, first, second), C.VARIANTS[1],
+                      candidate_refs={"first", "second"}, seed_refs={"seed"})
+    assert result["sample_counts"] == {
+        "candidate_entries": 2, "accepted_entries": 0, "blocked_entries": 2,
+        "terminal_closed_positions": 0, "accepted_open_at_end": 0,
+    }
+    assert result["blocked_by_reason"]["same_strategy_direction_position_cap"] == 2
+    assert result["peak_positions"] == {"s|LONG": 1}
+    assert result["peak_open_r"] == {"s": "1.000000"}
+    assert result["net_r"] == "0.000000" and result["turnover_by_quote"] == {}
+
+
+def test_multiple_seeds_publish_their_combined_current_exposure() -> None:
+    long = position("long", 0, 10, "1")
+    short = position("short", 1, 11, "1", direction="SHORT")
+    candidate = position("candidate", 2, 12, "1")
+    result = C.replay((long, short, candidate), C.VARIANTS[3],
+                      candidate_refs={"candidate"}, seed_refs={"long", "short"})
+    assert result["peak_positions"] == {"s|LONG": 1, "s|SHORT": 1}
+    assert result["peak_open_r"] == {"s": "2.000000"}
+    assert result["blocked_by_reason"]["strategy_open_risk_cap"] == 1
+
+
 def test_latest_cluster_uses_entry_timestamps_only() -> None:
     rows = (
         position("old1", 0, 1, "100", strategy="exp_vwaprev"),
