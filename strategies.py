@@ -5104,6 +5104,13 @@ def sig_evening_star_short_1h(d,p,ctx):
  pattern=_evening_star(d.o,d.c,p['star_body_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['evening_star_short_1h']=dict(name='[RESEARCH] Evening Star short 1h',style='evening_star_candlestick',fn=sig_evening_star_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(EVENINGSTAR1H),desc='C213 conventional gap-relaxed Evening Star reversal below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+TBC1H=dict(exit_length=10,cost_multiple=5.)
+def _three_black_crows(open_,close):
+ o=open_.astype(float);c=close.astype(float);bear=c<o;return bear&bear.shift()&bear.shift(2)&(c<c.shift())&(c.shift()<c.shift(2))&(o<=o.shift())&(o>=c.shift())&(o.shift()<=o.shift(2))&(o.shift()>=c.shift(2))
+def sig_three_black_crows_short_1h(d,p,ctx):
+ pattern=_three_black_crows(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['three_black_crows_short_1h']=dict(name='[RESEARCH] Three Black Crows short 1h',style='three_black_crows_candlestick',fn=sig_three_black_crows_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(TBC1H),desc='C214 conventional three declining bearish real bodies below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
