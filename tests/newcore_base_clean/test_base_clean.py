@@ -209,6 +209,17 @@ def test_current_expected_result_is_exactly_the_four_missing_proofs() -> None:
     )
 
 
+def test_digest_bound_current_host_artifact_removes_only_its_own_hold() -> None:
+    evidence = _evidence(proofs=(_proof(ProofKind.CURRENT_HOST_CODEC_BASELINE),))
+    report = evaluate_base_clean(_register(), evidence)
+    assert report.status is GateStatus.HOLD
+    assert report.holds == (
+        HoldCode.GOLDEN_ADAPTERS_MISSING,
+        HoldCode.REAL_TNET_MISSING,
+        HoldCode.TWO_ACCOUNT_ISOLATION_MISSING,
+    )
+
+
 def test_register_uses_only_four_classes_and_evidence_is_a_typed_role() -> None:
     register = _register()
     assert {rule.classification for rule in register.rules} <= set(PathClass)
@@ -346,6 +357,33 @@ def test_current_host_proof_cannot_be_reused_from_another_host() -> None:
     )
     result = evaluate_base_clean(_register(), _evidence(proofs=proofs))
     assert HoldCode.PROOF_HOST_MISMATCH in result.holds
+
+
+@pytest.mark.parametrize("record", ["proof", "latency", "memory"])
+def test_current_host_proof_latency_and_memory_require_one_artifact_digest(record: str) -> None:
+    evidence = _evidence()
+    altered = "f" * 64
+    if record == "proof":
+        proofs = tuple(
+            replace(row, evidence_sha256=altered)
+            if row.kind is ProofKind.CURRENT_HOST_CODEC_BASELINE else row
+            for row in evidence.proofs
+        )
+        evidence = replace(evidence, proofs=proofs)
+    elif record == "latency":
+        evidence = replace(evidence, latency=replace(evidence.latency, evidence_sha256=altered))
+    else:
+        evidence = replace(evidence, memory=replace(evidence.memory, evidence_sha256=altered))
+    result = evaluate_base_clean(_register(), evidence)
+    assert result.status is GateStatus.HOLD
+    assert result.holds == (HoldCode.HOST_CODEC_REBASELINE_MISSING,)
+
+
+@pytest.mark.parametrize("record", ["latency", "memory"])
+def test_current_host_proof_cannot_pass_without_all_digest_bound_records(record: str) -> None:
+    evidence = replace(_evidence(), **{record: None})
+    result = evaluate_base_clean(_register(), evidence)
+    assert HoldCode.HOST_CODEC_REBASELINE_MISSING in result.holds
 
 
 @pytest.mark.parametrize(

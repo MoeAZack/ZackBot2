@@ -580,12 +580,20 @@ def _proof_holds(evidence: GateEvidence) -> set[HoldCode]:
         row = by.get(kind)
         if row is None:
             holds.add(missing)
-        elif row.head_sha != evidence.head_sha:
+            continue
+        if row.head_sha != evidence.head_sha:
             holds.add(HoldCode.PROOF_HEAD_MISMATCH)
-        elif kind is ProofKind.CURRENT_HOST_CODEC_BASELINE and row.host_id != evidence.host_id:
-            holds.add(HoldCode.PROOF_HOST_MISMATCH)
-        elif not row.passed:
+        if not row.passed:
             holds.add(HoldCode.PROOF_FAILED)
+        if kind is ProofKind.CURRENT_HOST_CODEC_BASELINE:
+            if row.host_id != evidence.host_id:
+                holds.add(HoldCode.PROOF_HOST_MISMATCH)
+            latency = evidence.latency
+            memory = evidence.memory
+            if (latency is None or memory is None
+                    or row.evidence_sha256 != latency.evidence_sha256
+                    or row.evidence_sha256 != memory.evidence_sha256):
+                holds.add(HoldCode.HOST_CODEC_REBASELINE_MISSING)
     return holds
 
 
