@@ -58,6 +58,14 @@ returning one `GateProof(NEWCORE_GOLDEN_ADAPTERS, ...)` carrying the
 same artifact digest. Raw exception text is never retained across the
 collector boundary.
 
+Stored traces are schema-closed: every trade carries exactly the output fields
+of that case's expected trade (the comparator would otherwise ignore extra keys,
+so an arbitrary field such as a secret or URL could ride into the artifact) plus,
+optionally, `_res` limited to the keys `R`/`pnl` with plain int/float values
+inside the comparator's resolution bounds. Any other trade key, a malformed
+`_res`, a non-object trade, or an undeclared `final` key refuses the pair at
+seal, decode and conversion.
+
 ## Default-OFF command and acceptance matrix
 
 Nothing imports the collector from `verify.py`, the golden runner, runtime,

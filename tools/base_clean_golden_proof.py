@@ -30,6 +30,9 @@ EXPECTED_CASES = 30
 EXPECTED_PAIRS = EXPECTED_CASES * len(NEWCORE_ADAPTERS)
 HOST_ID = "golden_offline"
 HARD_STOP_S = tiers.HARD_STOP_S
+# Closed trade-output vocabulary: the golden expectation's output fields plus the adapter's stated resolution `_res`.
+TRADE_FIELDS = frozenset({"sym", "side", "i_in", "i_out", "exit", "R", "pnl"})
+RES_FIELDS = frozenset({"R", "pnl"})
 _SHA = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -210,6 +213,14 @@ def _trace_wire(value: Any) -> dict[str, Any]:
         _fail("validation.trace.keys")
     _exact(value["trades"], list, "validation.trace.trades")
     _exact(value["final"], dict, "validation.trace.final")
+    for trade in value["trades"]:
+        _exact(trade, dict, "validation.trace.trade")
+        if any(type(key) is not str for key in trade) or not set(trade) <= TRADE_FIELDS | {"_res"}:
+            _fail("validation.trace.trade_keys")
+        if "_res" in trade:
+            res = _exact(trade["_res"], dict, "validation.trace.res")
+            if not set(res) <= RES_FIELDS or any(type(v) not in (int, float) for v in res.values()):
+                _fail("validation.trace.res")
     try:
         wire = schema.strict_loads(schema.canonical(value))
     except Exception:
@@ -220,7 +231,15 @@ def _trace_wire(value: Any) -> dict[str, Any]:
 
 
 def _revalidate_pair(case: dict[str, Any], adapter: str, wire: dict[str, Any]) -> None:
-    """Re-run the authoritative strict comparison on a canonical trace; any mismatch refuses."""
+    """Re-run the authoritative strict comparison on a canonical trace; any mismatch refuses.
+
+    The stored trace is schema-closed first: every trade carries exactly the expected case's output fields
+    (the comparator would silently ignore any other key) plus, optionally, the bounded `_res`."""
+    expected_trades = case["expect"]["trades"]
+    if len(wire["trades"]) == len(expected_trades):
+        for expected, actual in zip(expected_trades, wire["trades"]):
+            if set(actual) - {"_res"} != set(expected) - {"tol"}:
+                _fail("golden_trace_schema")
     trace = Trace(trades=wire["trades"], final=wire["final"])
     try:
         mismatches = compare.compare(case, trace, adapter)

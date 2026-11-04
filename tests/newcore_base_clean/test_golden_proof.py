@@ -220,6 +220,91 @@ def test_stored_trace_is_revalidated_independently_of_collection(monkeypatch) ->
         G.gate_evidence(artifact)
 
 
+@pytest.mark.parametrize("key,value", [
+    ("secret_token", "sk-live-abc123"),
+    ("url", "https://example.invalid/exfil?k=1"),
+    ("note", "x"),
+    ("_res_extra", {"R": 0.0}),
+    ("tol", {"R": 0.001}),
+])
+def test_stored_trade_with_any_extra_key_refuses_everywhere(monkeypatch, key, value) -> None:
+    artifact, plan, cases, traces = _accepted(monkeypatch)
+    by_key = {(c, a): t for c, a, t in traces}
+    victim = next(row for row in plan if cases[row.case_id]["expect"]["trades"])
+    bad = json.loads(json.dumps(by_key[(victim.case_id, victim.adapter)]))
+    bad["trades"][0][key] = value
+    mutated = tuple((c, a, bad if (c, a) == (victim.case_id, victim.adapter) else t) for c, a, t in traces)
+    with pytest.raises(G.CollectorError, match=r"validation\.trace\.trade_keys|golden_trace_schema"):
+        G._seal_artifact(HEAD, plan, mutated, cases)
+    # self-consistent forged stored artifact (trace + trace digest + envelope digest all recomputed)
+    doc = json.loads(G.encode_artifact(artifact))
+    row = next(r for r in doc["body"]["pairs"] if (r["case_id"], r["adapter"]) == (victim.case_id, victim.adapter))
+    row["trace"]["trades"][0][key] = value
+    row["trace_sha256"] = hashlib.sha256(G.canonical_bytes(row["trace"])).hexdigest()
+    with pytest.raises(G.CollectorError, match=r"validation\.trace\.trade_keys"):
+        G.decode_artifact(_reseal(doc))
+
+
+def test_undeclared_final_key_refuses(monkeypatch) -> None:
+    _artifact, plan, cases, traces = _accepted(monkeypatch)
+    bad = {"trades": traces[0][2]["trades"], "final": {"secret_token": "sk-live"}}
+    mutated = ((traces[0][0], traces[0][1], bad),) + traces[1:]
+    with pytest.raises(G.CollectorError, match="golden_comparison_invalid"):
+        G._seal_artifact(HEAD, plan, mutated, cases)
+
+
+def test_trade_field_outside_that_cases_expectation_refuses(monkeypatch) -> None:
+    _artifact, plan, cases, traces = _accepted(monkeypatch)
+    victim = next(row for row in plan if any("pnl" not in t for t in cases[row.case_id]["expect"]["trades"]))
+    index = next(i for i, t in enumerate(cases[victim.case_id]["expect"]["trades"]) if "pnl" not in t)
+    base = {(c, a): t for c, a, t in traces}[(victim.case_id, victim.adapter)]
+    extra = json.loads(json.dumps(base))
+    extra["trades"][index]["pnl"] = 1.0       # in the global vocabulary, but not in this trade's expectation
+    mutated = tuple((c, a, extra if (c, a) == (victim.case_id, victim.adapter) else t) for c, a, t in traces)
+    with pytest.raises(G.CollectorError, match="golden_trace_schema"):
+        G._seal_artifact(HEAD, plan, mutated, cases)
+
+
+def test_case_exact_trade_fields_are_required_and_res_is_bounded(monkeypatch) -> None:
+    artifact, plan, cases, traces = _accepted(monkeypatch)
+    by_key = {(c, a): t for c, a, t in traces}
+    victim = next(row for row in plan if cases[row.case_id]["expect"]["trades"])
+    base = by_key[(victim.case_id, victim.adapter)]
+
+    def seal_with(trace):
+        mutated = tuple((c, a, trace if (c, a) == (victim.case_id, victim.adapter) else t) for c, a, t in traces)
+        return G._seal_artifact(HEAD, plan, mutated, cases)
+
+    # a field the expected trade does not carry (but which is in the global vocabulary) is refused per case
+    expected_keys = set(cases[victim.case_id]["expect"]["trades"][0]) - {"tol"}
+    spare = sorted(G.TRADE_FIELDS - expected_keys)
+    if spare:
+        extra = json.loads(json.dumps(base))
+        extra["trades"][0][spare[0]] = 1
+        with pytest.raises(G.CollectorError, match="golden_trace_schema"):
+            seal_with(extra)
+
+    # permitted `_res` with exact key/type bounds is accepted; anything else refused
+    ok = json.loads(json.dumps(base))
+    ok["trades"][0]["_res"] = {"R": 0.0001, "pnl": 0.0001}
+    assert seal_with(ok)
+    for bad_res in ({"R": 0.0, "url": 1.0}, {"R": "0.1"}, {"R": True}, [0.1], "x", {"pnl": None}):
+        bad = json.loads(json.dumps(base))
+        bad["trades"][0]["_res"] = bad_res
+        with pytest.raises(G.CollectorError, match=r"validation\.trace\.res"):
+            seal_with(bad)
+    huge = json.loads(json.dumps(base))
+    huge["trades"][0]["_res"] = {"R": 1.0}          # above RES_MAX: comparator refuses it
+    with pytest.raises(G.CollectorError, match="golden_comparison_invalid"):
+        seal_with(huge)
+
+    # non-dict trade rows refuse
+    nondict = json.loads(json.dumps(base))
+    nondict["trades"][0] = ["sym"]
+    with pytest.raises(G.CollectorError, match="validation.trace.trade"):
+        seal_with(nondict)
+
+
 def test_altered_digest_body_pack_or_matrix_refuse(monkeypatch) -> None:
     artifact, plan, cases, _traces = _accepted(monkeypatch)
     encoded = G.encode_artifact(artifact)
