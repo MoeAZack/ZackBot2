@@ -3869,6 +3869,46 @@ STRATEGIES['random_walk_index_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+LRSI1H = dict(gamma=0.5, cost_multiple=5.0)
+
+
+def _laguerre_rsi(close, gamma=0.5):
+    """Causal four-stage Ehlers Laguerre RSI."""
+    c = close.to_numpy(float); out = np.full(len(c), np.nan)
+    l0 = l1 = l2 = l3 = np.nan
+    for i, price in enumerate(c):
+        if not np.isfinite(l0):
+            l0 = l1 = l2 = l3 = price; out[i] = 0.5; continue
+        p0, p1, p2, p3 = l0, l1, l2, l3
+        l0 = (1.0 - gamma) * price + gamma * p0
+        l1 = -gamma * l0 + p0 + gamma * p1
+        l2 = -gamma * l1 + p1 + gamma * p2
+        l3 = -gamma * l2 + p2 + gamma * p3
+        cu = cd = 0.0
+        for a, b in ((l0, l1), (l1, l2), (l2, l3)):
+            if a >= b: cu += a - b
+            else: cd += b - a
+        out[i] = cu / (cu + cd) if cu + cd > 0.0 else 0.5
+    return pd.Series(out, index=close.index)
+
+
+def sig_laguerre_rsi_long_1h(d, p, ctx):
+    """C116: enter when recursive Laguerre directional energy turns positive."""
+    lrsi = _laguerre_rsi(d.c, float(p['gamma']))
+    cross_up = (lrsi > 0.5) & (lrsi.shift() <= 0.5)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=lrsi <= 0.5, sx=never)
+
+
+STRATEGIES['laguerre_rsi_long_1h'] = dict(
+    name='[RESEARCH] Laguerre RSI long 1h', style='recursive_laguerre_energy',
+    fn=sig_laguerre_rsi_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(LRSI1H),
+    desc='Candidate 116: four-stage Laguerre RSI(gamma=.5) crosses above .5 above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
