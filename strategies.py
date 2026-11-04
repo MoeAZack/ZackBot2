@@ -4291,6 +4291,42 @@ STRATEGIES['chaikin_money_flow_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+HMA1H = dict(window=20, cost_multiple=5.0)
+
+
+def _weighted_moving_average(series, window):
+    n = int(window)
+    weights = np.arange(1.0, n + 1.0)
+    scale = float(weights.sum())
+    return series.astype(float).rolling(n, min_periods=n).apply(
+        lambda x: float(np.dot(x, weights) / scale), raw=True)
+
+
+def _hull_moving_average(close, window=20):
+    """Causal conventional Hull Moving Average."""
+    n = int(window)
+    raw = 2.0 * _weighted_moving_average(close, max(1, n // 2)) - _weighted_moving_average(close, n)
+    return _weighted_moving_average(raw, max(1, int(np.sqrt(n))))
+
+
+def sig_hull_ma_cross_long_1h(d, p, ctx):
+    """C129: follow a close transition above a rising low-lag finite weighted baseline."""
+    hma = _hull_moving_average(d.c, p['window'])
+    cross_up = (d.c > hma) & (d.c.shift() <= hma.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (hma > hma.shift()) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=d.c <= hma, sx=never)
+
+
+STRATEGIES['hull_ma_cross_long_1h'] = dict(
+    name='[RESEARCH] Hull Moving Average crossover long 1h', style='finite_weighted_low_lag_trend',
+    fn=sig_hull_ma_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(HMA1H),
+    desc='Candidate 129: close crosses above a rising conventional HMA(20) while above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
