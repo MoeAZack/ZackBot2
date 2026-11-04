@@ -1,8 +1,8 @@
 # NC-08 Deterministic Simulator and Replay Contract
 
-Status: freeze-ready draft and contract-test skeleton only. Base: accepted NC-07
-exact `de0973d68bef35ae8b020a2d293d4b62245dde60`. Implementation, runtime,
-PAPER, UI, and network wiring are not part of this branch.
+Status: frozen pure-kernel contract and bounded implementation. Base: accepted
+NC-07 exact `de0973d68bef35ae8b020a2d293d4b62245dde60`.
+Runtime, PAPER, UI, and network wiring are not part of this branch.
 
 ## Boundary
 
@@ -110,29 +110,25 @@ object is retained.
 
 Acceptance cases: `REPLAY-01`, `RESULT-01`, `BOUNDARY-01`, `IMPORT-01`.
 
-## Contract-test skeleton and implementation handoff
+## Contract tests and bounded implementation
 
 `tests/newcore_simulator/test_nc08_contract.py` freezes the case IDs, required
-categories, and exact NC-01/NC-07 object families. Implementation cases are
-intentionally skipped on this contract-only branch and must be activated, not
-deleted or renamed, when `newcore/simulator.py` is authorized. Focused evidence
-for this branch proves the matrix itself is closed and complete; it does not
-claim a simulator exists.
+categories, exact NC-01/NC-07 object families, and activates every frozen case
+against `newcore/simulator.py`. The implementation is deliberately limited to
+the pure deterministic kernel described here.
 
 The smallest implementation slice is one pure module with immutable manifests,
 contexts, hooks/protocols, path/fill/result records, canonical serialization,
 and a deterministic replay function. Adapters, file readers, reports, runtime,
 PAPER and UI remain separate later tickets.
 
-## Codex confirmations before implementation
+## Frozen Codex rulings
 
-1. Confirm whether the shared NC-07-action to NC-01-intent identity/context
-   injector belongs in NC-08 or in a later integration module. Recommendation:
-   NC-08 defines and tests the pure seam; runtime ownership/wiring stays later.
-2. Confirm whether an unresolved path returns all deterministic branches or a
-   single conservative branch plus `AMBIGUOUS`. Recommendation: preserve all
-   branches and forbid a scalar acceptance metric until a preregistered resolver
-   selects one.
+1. NC-08 owns and tests the pure NC-07-action to NC-01-intent identity/context
+   seam. Runtime ownership and wiring remain deferred.
+2. An unresolved path preserves every deterministic branch and returns
+   `AMBIGUOUS`. It exposes no scalar acceptance metric until a separately
+   preregistered resolver selects exactly one branch.
 
 ## Explicit deferral
 
@@ -141,4 +137,3 @@ reports, strategy selection, distributed simulation, runtime, PAPER, UI,
 mainnet, credentials, and real-funds behavior are deferred. No later feature may
 weaken action-object parity, causal ordering, ambiguity, or explicit cost and
 funding completeness.
-
