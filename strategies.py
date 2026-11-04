@@ -4638,6 +4638,12 @@ def _vidya(close,length=14,momentum=9):
 def sig_vidya_crossover_long_1h(d,p,ctx):
  x=_vidya(d.c,p['length'],p['momentum']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['vidya_crossover_long_1h']=dict(name='[RESEARCH] VIDYA crossover long 1h',style='cmo_adaptive_average',fn=sig_vidya_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(VIDYA1H),desc='C149 conventional VIDYA(14,CMO9) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+ALMA1H=dict(window=9,offset=0.85,sigma=6.0,cost_multiple=5.0)
+def _alma(close,window=9,offset=0.85,sigma=6.0):
+ n=int(window);i=np.arange(n,dtype=float);m=float(offset)*(n-1);s=n/float(sigma);w=np.exp(-((i-m)**2)/(2.0*s*s));w/=w.sum();return close.astype(float).rolling(n,min_periods=n).apply(lambda x:float(np.dot(x,w)),raw=True)
+def sig_alma_crossover_long_1h(d,p,ctx):
+ x=_alma(d.c,p['window'],p['offset'],p['sigma']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['alma_crossover_long_1h']=dict(name='[RESEARCH] ALMA crossover long 1h',style='gaussian_weighted_average',fn=sig_alma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(ALMA1H),desc='C150 conventional ALMA(9,.85,6) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
