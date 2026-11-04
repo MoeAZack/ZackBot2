@@ -3680,6 +3680,46 @@ STRATEGIES['dpo_zero_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+FRAMA1H = dict(window=16, alpha_floor=0.01, cost_multiple=5.0)
+
+
+def _frama(high, low, close, window=16, alpha_floor=0.01):
+    """Causal Fractal Adaptive Moving Average using two half-window path ranges."""
+    if window < 4 or window % 2: raise ValueError('FRAMA window must be even and >= 4')
+    h, l, c = high.to_numpy(float), low.to_numpy(float), close.to_numpy(float)
+    out = np.full(len(c), np.nan); half = window // 2; prior = np.nan
+    for i in range(window - 1, len(c)):
+        start, mid = i - window + 1, i - half + 1
+        n1 = (np.max(h[start:mid]) - np.min(l[start:mid])) / half
+        n2 = (np.max(h[mid:i + 1]) - np.min(l[mid:i + 1])) / half
+        n3 = (np.max(h[start:i + 1]) - np.min(l[start:i + 1])) / window
+        if n1 + n2 > 0.0 and n3 > 0.0:
+            dimension = (np.log(n1 + n2) - np.log(n3)) / np.log(2.0)
+            alpha = float(np.clip(np.exp(-4.6 * (dimension - 1.0)), alpha_floor, 1.0))
+        else:
+            alpha = 1.0
+        prior = c[i] if not np.isfinite(prior) else alpha * c[i] + (1.0 - alpha) * prior
+        out[i] = prior
+    return pd.Series(out, index=close.index)
+
+
+def sig_frama_cross_long_1h(d, p, ctx):
+    """C110: enter a close transition above a path-dimension adaptive baseline."""
+    frama = _frama(d.h, d.l, d.c, int(p['window']), float(p['alpha_floor']))
+    cross_up = (d.c > frama) & (d.c.shift() <= frama.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=d.c <= frama, sx=never)
+
+
+STRATEGIES['frama_cross_long_1h'] = dict(
+    name='[RESEARCH] FRAMA crossover long 1h', style='fractal_adaptive_trend',
+    fn=sig_frama_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(FRAMA1H),
+    desc='Candidate 110: close crosses above a conventional FRAMA(16) path-dimension adaptive baseline above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
