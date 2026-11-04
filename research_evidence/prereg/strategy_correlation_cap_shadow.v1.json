@@ -1,0 +1,138 @@
+{
+  "schema": "zackbot-shadow-correlation-cap-prereg/1",
+  "study_id": "strategy-correlation-cap-shadow-v1",
+  "registered_at_cairo": "2026-11-04T15:53:24+02:00",
+  "registered_before_result_access": true,
+  "base_head": "e43b67aa68baf86ea8e5e29d6c826aea1b18bb50",
+  "purpose": "Shadow-only causal replay of fixed strategy-level correlation and open-risk admission caps on an already-produced ZackBot trade/event cohort. This is policy impact evidence, not strategy tuning or activation evidence.",
+  "hypothesis": "Concentrated same-strategy same-direction entry clusters may increase drawdown and turnover without proportional net-R benefit. Fixed causal caps may reduce that concentration; all variants will be reported without selecting or tuning a winner.",
+  "variants": [
+    {
+      "id": "baseline",
+      "max_same_strategy_direction_positions": null,
+      "max_total_strategy_open_r": null
+    },
+    {
+      "id": "cap_1_r2",
+      "max_same_strategy_direction_positions": 1,
+      "max_total_strategy_open_r": "2"
+    },
+    {
+      "id": "cap_2_r2",
+      "max_same_strategy_direction_positions": 2,
+      "max_total_strategy_open_r": "2"
+    },
+    {
+      "id": "cap_3_r2",
+      "max_same_strategy_direction_positions": 3,
+      "max_total_strategy_open_r": "2"
+    }
+  ],
+  "evaluation_order": [
+    "exp_vwaprev_only",
+    "whole_cohort"
+  ],
+  "grouping": {
+    "position_cap_key": [
+      "strategy_key",
+      "direction"
+    ],
+    "risk_cap_key": [
+      "strategy_key"
+    ],
+    "direction_values": [
+      "LONG",
+      "SHORT"
+    ],
+    "exp_vwaprev_filter": "strategy_key == 'exp_vwaprev'"
+  },
+  "causal_fold": {
+    "source_order": "Process the source's strictly increasing event_sequence. Timestamps are retained and may tie, but never decide a tie without the source sequence.",
+    "entry_decision": "At each original accepted entry event, evaluate only positions and accepted initial-risk reservations still open immediately before that event.",
+    "exit_decision": "Only an original terminal exit releases a position and its risk reservation. A causally recorded residual-risk update may lower the reservation; otherwise partial exits do not infer a release.",
+    "blocked_entry": "Emit zero PnL, zero costs, zero funding and zero turnover. Continue to evaluate every later original entry in its original sequence; never substitute, rank, or look ahead to a later trade.",
+    "accepted_entry": "Retain the original entry, all original partial/terminal exits, timestamps, quantities, initial risk, fees, slippage, funding and realized net result unchanged.",
+    "position_cap": "Block when the number of currently accepted open positions with the same strategy_key and direction is already at the variant maximum.",
+    "risk_cap": "Block when current accepted open initial/residual risk for the strategy_key plus the candidate's positive initial_risk_r would exceed 2R.",
+    "block_reason_priority": [
+      "same_strategy_direction_position_cap",
+      "strategy_open_risk_cap"
+    ]
+  },
+  "required_source_fields": {
+    "every_event": [
+      "event_sequence",
+      "event_timestamp_utc",
+      "event_kind",
+      "position_id",
+      "strategy_key",
+      "direction"
+    ],
+    "entry": [
+      "initial_risk_r",
+      "entry_notional"
+    ],
+    "exit_or_cost_evidence": [
+      "terminal flag or causally linked terminal event",
+      "exit_notional",
+      "fees",
+      "slippage",
+      "funding",
+      "realized_net_r"
+    ]
+  },
+  "source_sufficiency": {
+    "fail_closed_if_missing": [
+      "stable event ordering for timestamp ties",
+      "entry and terminal-exit identity",
+      "strategy_key or direction at entry",
+      "positive initial risk reservation",
+      "causal terminal close time",
+      "realized net R inclusive of preserved costs and funding",
+      "entry and exit notionals needed for turnover"
+    ],
+    "trade_summary_rows_only": "INSUFFICIENT when they do not prove the causal event ordering and exposure state above. No cap result may be presented as causal in that case. A clearly labelled descriptive overlap diagnostic may be emitted separately but cannot satisfy this study.",
+    "open_or_unreconciled_positions": "INSUFFICIENT for performance comparison unless the exact window ends before their entry; they are not assigned zero or synthetic exits."
+  },
+  "metrics": {
+    "window": "Minimum and maximum retained source event timestamps, reported in UTC and Africa/Cairo.",
+    "sample_counts": [
+      "candidate_entries",
+      "accepted_entries",
+      "blocked_entries",
+      "terminal_closed_positions"
+    ],
+    "net_r": "Sum of original realized_net_r for accepted terminally closed positions.",
+    "profit_factor": "Sum positive accepted realized_net_r divided by absolute sum negative accepted realized_net_r; null with an explicit zero-loss reason when the denominator is zero.",
+    "max_drawdown_r": "Maximum peak-to-trough drawdown of cumulative accepted realized_net_r in original terminal-exit event order, with the curve seeded at zero.",
+    "turnover": "Sum of absolute original entry_notional and all absolute original exit_notional for accepted positions. Report source currency/unit; do not estimate missing notionals.",
+    "blocked_by_reason": "Mutually exclusive primary counts using the frozen priority, plus a diagnostic count where both conditions were true.",
+    "concentration": "Peak simultaneous positions by strategy_key+direction and peak open risk R by strategy_key."
+  },
+  "reporting": {
+    "report_all_variants": true,
+    "no_winner_selection": true,
+    "no_parameter_tuning": true,
+    "multiple_comparisons": "Three fixed cap variants are descriptive sensitivity cells. No scalar acceptance threshold, p-value claim, promotion, or best-cell selection is permitted from this study alone.",
+    "costs_and_funding": "Use only the source-recorded amounts and source-recorded realized_net_r. Never recompute with a cheaper model.",
+    "limitations": [
+      "existing cohort selection and survivorship",
+      "small samples and clustered observations",
+      "policy counterfactual does not model market impact from removed orders",
+      "blocked positions cannot alter later price-only signals, but any strategy whose later signals depend on fills/account state makes the source insufficient unless replayed from raw causal inputs"
+    ]
+  },
+  "safety": {
+    "mode": "offline_shadow_only",
+    "default_off": true,
+    "forbidden": [
+      "PAPER mutation",
+      "runtime wiring",
+      "exchange/network calls",
+      "credential access",
+      "mainnet action"
+    ]
+  },
+  "roadmap_fit": "Evidence-only risk-policy diagnostic for the active Binance/PAPER strategy cohort; no queue reorder or activation decision.",
+  "deferred": "Runtime/PAPER enforcement, strategy changes, parameter selection, cohort promotion, and mainnet remain separate Codex decisions."
+}
