@@ -621,6 +621,10 @@ def _safe_before_mark(side: PositionSide, stop: Decimal, mark: Decimal) -> bool:
     return stop < mark if side is PositionSide.LONG else stop > mark
 
 
+def _mark_beyond_stop(side: PositionSide, mark: Decimal, stop: Decimal) -> bool:
+    return mark <= stop if side is PositionSide.LONG else mark >= stop
+
+
 def _repair_action(lot: LotState, policy: ManagementPolicy,
                    protection: ProtectionState) -> ProtectionRepair:
     raw_stop = (protection.confirmed_stop if protection.confirmed_stop is not None
@@ -733,6 +737,23 @@ def _evaluate(evaluation: object) -> ManagementPlan:
                          bindings=(Binding.PROTECTION,))
         return _plan(evaluation, PlanStatus.HOLD, PlanReason.LOT_FINISHED)
 
+    applicable_stop = (protection.confirmed_stop
+                       if protection.confirmed_stop is not None else lot.initial_stop)
+    if _mark_beyond_stop(lot.side, market.mark, applicable_stop):
+        if market.forced_exit_confirmed:
+            if pending.kind is PendingKind.CLOSE:
+                return _plan(evaluation, PlanStatus.HOLD, PlanReason.PENDING_INTENT,
+                             bindings=(Binding.PENDING_INTENT,))
+            bindings = [Binding.FORCED_EXIT]
+            if pending.kind is not PendingKind.NONE:
+                bindings.append(Binding.PENDING_INTENT)
+            return _plan(evaluation, PlanStatus.ACTIONS, PlanReason.FORCED_EXIT,
+                         bindings=tuple(bindings),
+                         actions=(_construct(CloseAction, quantity=lot.quantity),))
+        action = _construct(FlattenRequired, quantity=lot.quantity)
+        return _plan(evaluation, PlanStatus.RECONCILE, PlanReason.FLATTEN_REQUIRED,
+                     bindings=(Binding.PROTECTION,), actions=(action,))
+
     effectively_undersized = (protection.status is ProtectionStatus.UNDERSIZED
                                or (protection.status is ProtectionStatus.WORKING
                                    and protection.confirmed_quantity < lot.quantity))
@@ -742,16 +763,19 @@ def _evaluate(evaluation: object) -> ManagementPlan:
         if pending.kind is PendingKind.PROTECTION:
             return _plan(evaluation, PlanStatus.HOLD, PlanReason.PENDING_INTENT,
                          bindings=(Binding.PROTECTION, Binding.PENDING_INTENT))
+        action = _repair_action(lot, policy, protection)
+        if not _safe_before_mark(lot.side, action.stop_price, market.mark):
+            flatten = _construct(FlattenRequired, quantity=lot.quantity)
+            return _plan(evaluation, PlanStatus.RECONCILE, PlanReason.FLATTEN_REQUIRED,
+                         bindings=(Binding.PROTECTION,), actions=(flatten,))
         return _plan(evaluation, PlanStatus.ACTIONS, reason,
                      bindings=(Binding.PROTECTION,),
-                     actions=(_repair_action(lot, policy, protection),))
+                     actions=(action,))
 
     due_targets = _due_targets(evaluation)
     confirmed_stop = protection.confirmed_stop
     mark_beyond_confirmed = (confirmed_stop is not None
-                             and (market.mark <= confirmed_stop
-                                  if lot.side is PositionSide.LONG
-                                  else market.mark >= confirmed_stop))
+                             and _mark_beyond_stop(lot.side, market.mark, confirmed_stop))
     stop_touched = (confirmed_stop is not None
                     and (mark_beyond_confirmed
                          or (market.completed and _stop_touched(lot, market, confirmed_stop))))
@@ -779,9 +803,7 @@ def _evaluate(evaluation: object) -> ManagementPlan:
                      PlanReason.TARGET_CONFIRMATION_REQUIRED,
                      bindings=(Binding.TARGET,))
 
-    mark_beyond_initial = (market.mark <= lot.initial_stop
-                           if lot.side is PositionSide.LONG
-                           else market.mark >= lot.initial_stop)
+    mark_beyond_initial = _mark_beyond_stop(lot.side, market.mark, lot.initial_stop)
     beyond_initial_stop = (mark_beyond_initial
                            or (market.completed
                                and _stop_touched(lot, market, lot.initial_stop)))

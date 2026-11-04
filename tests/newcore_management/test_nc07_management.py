@@ -219,6 +219,10 @@ def test_repair_stop_quantizes_conservatively_for_both_sides(
     result = assert_reason(evaluation(l=subject, p=empty_policy, protect=missing),
                            PlanStatus.ACTIONS, PlanReason.PROTECTION_MISSING)
     assert result.actions[0].stop_price == D(expected)
+    if side is PositionSide.LONG:
+        assert result.actions[0].stop_price < market().mark
+    else:
+        assert result.actions[0].stop_price > market().mark
 
 
 def test_undersized_working_protection_is_repaired_and_pending_repair_is_not_duplicated():
@@ -234,7 +238,9 @@ def test_undersized_working_protection_is_repaired_and_pending_repair_is_not_dup
 
 def test_undersized_repair_preserves_an_already_improved_stop():
     improved = protection(confirmed_stop=D('100.1'), confirmed_quantity=D('9'))
-    result = assert_reason(evaluation(protect=improved), PlanStatus.ACTIONS,
+    result = assert_reason(evaluation(protect=improved,
+                                      m=market(low=D('100.2'), mark=D('101'))),
+                           PlanStatus.ACTIONS,
                            PlanReason.PROTECTION_UNDERSIZED)
     assert result.actions[0].stop_price == D('100.1')
     assert result.actions[0].stop_price >= improved.confirmed_stop
@@ -337,6 +343,66 @@ def test_explicit_target_first_path_can_reduce_without_favorable_order_guessing(
                                               path_order=PathOrder.TARGET_FIRST)),
                            PlanStatus.ACTIONS, PlanReason.TARGET_REDUCE)
     assert [action.level_id for action in result.actions] == ['tp1']
+
+
+@pytest.mark.parametrize(('subject', 'rules', 'guard', 'observation'), [
+    (lot(), policy(), protection(),
+     market(high=D('115'), low=D('94'), mark=D('94'),
+            path_order=PathOrder.TARGET_FIRST)),
+    (lot(side=PositionSide.SHORT, initial_stop=D('105')),
+     policy(targets=(target('tp1', '90', '.4'), target('tp2', '80', '.4')),
+            risk_increases=(increase('dca1', IncreaseKind.DCA, '103', '50'),
+                            increase('pyramid1', IncreaseKind.PYRAMID, '92', '30'))),
+     protection(confirmed_stop=D('105')),
+     market(high=D('106'), low=D('89'), mark=D('106'),
+            path_order=PathOrder.TARGET_FIRST)),
+])
+def test_target_first_later_gap_flattens_for_both_sides(
+        subject, rules, guard, observation):
+    result = assert_reason(evaluation(l=subject, p=rules, protect=guard, m=observation),
+                           PlanStatus.RECONCILE, PlanReason.FLATTEN_REQUIRED)
+    assert len(result.actions) == 1 and type(result.actions[0]) is FlattenRequired
+    assert not any(type(action) is ReduceAction for action in result.actions)
+
+
+@pytest.mark.parametrize(('subject', 'rules', 'guard', 'observation'), [
+    (lot(), policy(),
+     protection(status=ProtectionStatus.MISSING, confirmed_stop=None,
+                confirmed_quantity=D('0')),
+     market(low=D('94'), mark=D('94'))),
+    (lot(), policy(), protection(confirmed_quantity=D('9')),
+     market(low=D('94'), mark=D('94'))),
+    (lot(side=PositionSide.SHORT, initial_stop=D('105')),
+     policy(targets=(target('tp1', '90', '.4'), target('tp2', '80', '.4')),
+            risk_increases=(increase('dca1', IncreaseKind.DCA, '103', '50'),
+                            increase('pyramid1', IncreaseKind.PYRAMID, '92', '30'))),
+     protection(status=ProtectionStatus.MISSING, confirmed_stop=None,
+                confirmed_quantity=D('0')),
+     market(high=D('106'), mark=D('106'))),
+    (lot(side=PositionSide.SHORT, initial_stop=D('105')),
+     policy(targets=(target('tp1', '90', '.4'), target('tp2', '80', '.4')),
+            risk_increases=(increase('dca1', IncreaseKind.DCA, '103', '50'),
+                            increase('pyramid1', IncreaseKind.PYRAMID, '92', '30'))),
+     protection(confirmed_stop=D('105'), confirmed_quantity=D('9')),
+     market(high=D('106'), mark=D('106'))),
+])
+def test_missing_or_undersized_protection_gap_flattens_before_repair(
+        subject, rules, guard, observation):
+    result = assert_reason(evaluation(l=subject, p=rules, protect=guard, m=observation),
+                           PlanStatus.RECONCILE, PlanReason.FLATTEN_REQUIRED)
+    assert len(result.actions) == 1 and type(result.actions[0]) is FlattenRequired
+    assert not any(type(action) is ProtectionRepair for action in result.actions)
+
+
+def test_gap_suppresses_strategy_exit_but_confirmed_forced_exit_remains_explicit():
+    gap = market(low=D('94'), mark=D('94'))
+    unresolved = assert_reason(evaluation(m=gap, s=strategy(exit_requested=True)),
+                               PlanStatus.RECONCILE, PlanReason.FLATTEN_REQUIRED)
+    assert type(unresolved.actions[0]) is FlattenRequired
+    confirmed = assert_reason(evaluation(
+        m=dataclasses.replace(gap, forced_exit_confirmed=True)),
+        PlanStatus.ACTIONS, PlanReason.FORCED_EXIT)
+    assert type(confirmed.actions[0]) is CloseAction
 
 
 def test_stop_touch_is_never_inferred_as_fill_and_gap_requires_flatten():

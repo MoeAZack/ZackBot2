@@ -47,6 +47,14 @@ undersized protection is repaired before discretionary management. Unknown
 protection forbids additions; if price is already beyond the initial stop, the
 plan is RECONCILE/FLATTEN_REQUIRED rather than a synthetic stop fill.
 
+For every active lot, the final/current mark is checked against the applicable
+confirmed stop (or the initial stop when none is confirmed) before protection
+repair or any discretionary transition. A long mark at/below that stop or a
+short mark at/above it emits only RECONCILE/FLATTEN_REQUIRED while execution is
+unresolved. This safety override applies after TARGET_FIRST too and prevents a
+repair on the wrong side of the current mark. An explicit confirmed forced-exit
+fact remains a close fact rather than an inferred stop fill.
+
 Target, breakeven, trail, and risk-increase triggers use only an explicitly
 completed causal market observation. Each target level is identified and may
 execute once. Reductions are rounded down to the quantity step, never exceed
