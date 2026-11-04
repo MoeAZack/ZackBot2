@@ -4195,6 +4195,45 @@ STRATEGIES['cci_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+TSI1H = dict(long_span=25, short_span=13, signal_span=7, cost_multiple=5.0)
+
+
+def _true_strength_index(close, long_span=25, short_span=13, signal_span=7):
+    """Causal conventional TSI and signal line from double-smoothed momentum."""
+    momentum = close.astype(float).diff()
+    absolute = momentum.abs()
+    signed_smooth = momentum.ewm(span=int(long_span), adjust=False,
+                                 min_periods=int(long_span)).mean()
+    signed_smooth = signed_smooth.ewm(span=int(short_span), adjust=False,
+                                     min_periods=int(short_span)).mean()
+    absolute_smooth = absolute.ewm(span=int(long_span), adjust=False,
+                                   min_periods=int(long_span)).mean()
+    absolute_smooth = absolute_smooth.ewm(span=int(short_span), adjust=False,
+                                         min_periods=int(short_span)).mean()
+    tsi = 100.0 * signed_smooth / absolute_smooth.replace(0.0, np.nan)
+    signal = tsi.ewm(span=int(signal_span), adjust=False,
+                     min_periods=int(signal_span)).mean()
+    return tsi, signal
+
+
+def sig_tsi_cross_long_1h(d, p, ctx):
+    """C126: follow positive normalized double-smoothed momentum acceleration."""
+    tsi, signal = _true_strength_index(d.c, p['long_span'], p['short_span'], p['signal_span'])
+    cross_up = (tsi > signal) & (tsi.shift() <= signal.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (tsi > 0.0) & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=tsi <= signal, sx=never)
+
+
+STRATEGIES['tsi_cross_long_1h'] = dict(
+    name='[RESEARCH] True Strength Index crossover long 1h', style='normalized_smoothed_momentum',
+    fn=sig_tsi_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TSI1H),
+    desc='Candidate 126: conventional TSI(25,13) crosses above its 7h signal while positive and above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
