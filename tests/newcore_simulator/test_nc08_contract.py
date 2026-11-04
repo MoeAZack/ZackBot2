@@ -40,7 +40,9 @@ from newcore.simulator import (
     FundingEvent,
     FundingModel,
     Liquidity,
+    PathBranch,
     PathObservation,
+    PathResolution,
     ReplayEvent,
     ReplayReason,
     ReplayResult,
@@ -214,7 +216,9 @@ def _manifest(payload=PAYLOAD) -> DatasetManifest:
         ordering_version='sequence-v1',
         fill_model_version='fill-v1',
         path_model_version='path-v1',
+        cost_model_id='binance-usdm',
         cost_model_version='cost-v1',
+        funding_model_id='binance-usdm',
         funding_model_version='funding-v1',
         instrument_rules_version='rules-v1',
         translator_version='translator-v1',
@@ -507,6 +511,84 @@ def _import_01():
         'newcore.domain.codec', 'newcore.domain.orders', 'newcore.domain.reasons',
         'newcore.management'}
     assert all('runtime' not in name and 'legacy' not in name for name in internal)
+
+
+def test_later_unknown_fill_preserves_known_quantity_average_and_economics():
+    evidence = (
+        FillEvidence(sequence=1, at_ms=T0 + 1, known=True, quantity=D('4'),
+                     price=D('100'), liquidity=Liquidity.MAKER),
+        FillEvidence(sequence=2, at_ms=T0 + 2, known=False, quantity=D('0'),
+                     price=None, liquidity=None),
+    )
+    summary = summarize_fills(D('10'), evidence)
+    costs = calculate_costs(evidence, CostModel(
+        model_id='binance-usdm', version='cost-v1', settlement_asset='USDT',
+        maker_rate=D('0.001'), taker_rate=D('0.002'), slippage_bps=D('10')))
+    assert summary.status is ReplayStatus.INCOMPLETE
+    assert (summary.filled_quantity, summary.remaining_quantity, summary.average_price) == (
+        D('4'), D('6'), D('100'))
+    assert costs.coverage_status is ReplayStatus.INCOMPLETE
+    assert (costs.fee, costs.slippage) == (D('0.400'), D('0.400'))
+    result = build_result(manifest=_manifest(), action=_intent(), path=_single_path(),
+                          fills=summary, costs=costs, funding=_funding(),
+                          gross_pnl=D('4'))
+    assert result.status is ReplayStatus.INCOMPLETE and result.costs is costs
+    assert ReplayReason.FILL_INCOMPLETE in result.reasons
+    assert ReplayReason.COST_COVERAGE_MISSING in result.reasons
+
+
+@pytest.mark.parametrize('kind', ('cost', 'funding'))
+def test_result_refuses_model_identity_or_version_mismatch(kind):
+    costs, funding = _costs(), _funding()
+    if kind == 'cost':
+        costs = dataclasses.replace(costs, version='cost-v2')
+    else:
+        funding = dataclasses.replace(funding, model_id='other-venue')
+    result = build_result(manifest=_manifest(), action=_intent(), path=_single_path(),
+                          fills=summarize_fills(D('10'), _fills()), costs=costs,
+                          funding=funding, gross_pnl=D('10'))
+    assert result.status is ReplayStatus.INVALID
+    assert result.reasons == (ReplayReason.INPUT_INVALID,)
+
+
+def test_path_resolution_refuses_mutable_or_nonexact_branch_containers():
+    branch = PathBranch(PathOrder.STOP_FIRST, ('stop',))
+    with pytest.raises(SimulationInputError, match='path.resolution_type'):
+        PathResolution(ReplayStatus.COMPLETE, [branch])
+    with pytest.raises(SimulationInputError, match='path.branch_type'):
+        PathBranch(PathOrder.STOP_FIRST, ['stop'])
+
+    class DerivedBranch(PathBranch):
+        pass
+
+    derived = DerivedBranch(PathOrder.STOP_FIRST, ('stop',))
+    with pytest.raises(SimulationInputError, match='path.resolution_branches'):
+        PathResolution(ReplayStatus.COMPLETE, (derived,))
+
+
+def test_fill_cost_and_funding_reject_backward_causal_timestamps():
+    backward_fills = (
+        FillEvidence(sequence=1, at_ms=T0 + 2, known=True, quantity=D('4'),
+                     price=D('100'), liquidity=Liquidity.MAKER),
+        FillEvidence(sequence=2, at_ms=T0 + 1, known=True, quantity=D('6'),
+                     price=D('101'), liquidity=Liquidity.TAKER),
+    )
+    with pytest.raises(SimulationInputError, match='fills.chronology'):
+        summarize_fills(D('10'), backward_fills)
+    with pytest.raises(SimulationInputError, match='fills.chronology'):
+        calculate_costs(backward_fills, CostModel(
+            model_id='binance-usdm', version='cost-v1', settlement_asset='USDT',
+            maker_rate=D('0.001'), taker_rate=D('0.002'), slippage_bps=D('10')))
+
+    backward_funding = (
+        FundingEvent(sequence=1, at_ms=T0 + 2, rate=D('0.001'), mark_price=D('100')),
+        FundingEvent(sequence=2, at_ms=T0 + 1, rate=D('0.001'), mark_price=D('100')),
+    )
+    model = FundingModel(model_id='binance-usdm', version='funding-v1',
+                         settlement_asset='USDT', convention='long-pays-positive')
+    with pytest.raises(SimulationInputError, match='funding.chronology'):
+        calculate_funding(Side.LONG, D('10'), backward_funding, opened_at_ms=T0,
+                          closed_at_ms=T0 + 10, model=model)
 
 
 CASE_CHECKS = {

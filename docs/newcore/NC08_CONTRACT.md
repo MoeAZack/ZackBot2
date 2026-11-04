@@ -51,7 +51,9 @@ Every run requires a closed immutable manifest. At minimum it carries schema
 version, dataset ID/version, SHA-256 content digest, source class, symbol and
 timeframe, inclusive coverage bounds, record count, ordering policy version,
 and the exact fill, path, cost, funding, instrument-rule, and translator model
-versions/digests. A run result repeats these values.
+IDs and versions/digests. A run result repeats these values. A supplied cost or
+funding summary whose model identity/version differs from the manifest is
+invalid evidence and fails closed.
 
 Dataset bytes are verified before use. Missing, mutated, duplicated,
 out-of-order, gapped, mixed-symbol/timeframe, or forming-bar input is rejected
@@ -76,8 +78,12 @@ only by the versioned fill hook from causally available evidence. The hook
 models exact Decimal requested/filled/remaining quantity, partial fills,
 liquidity class, price, evidence sequence, and terminal/unknown state. A crossed
 price is not itself a fill. Unknown or missing fill evidence remains unresolved
-and cannot close ownership. NC-07 receives path/fill facts only after the replay
-has applied their ordered evidence.
+and cannot close ownership. Known fills before later unknown evidence retain
+their exact filled/remaining quantity, average, and accrued economics while the
+overall result stays `INCOMPLETE`. Fill, cost, and funding application sequences
+must be chronological; equal timestamps are ordered only by the explicit
+sequence, and backward evidence is refused. NC-07 receives path/fill facts only
+after the replay has applied their ordered evidence.
 
 Acceptance cases: `PATH-01`, `PATH-02`, `FILL-01`, `FILL-02`.
 

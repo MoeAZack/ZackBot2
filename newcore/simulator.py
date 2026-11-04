@@ -182,7 +182,9 @@ class DatasetManifest:
     ordering_version: str
     fill_model_version: str
     path_model_version: str
+    cost_model_id: str
     cost_model_version: str
+    funding_model_id: str
     funding_model_version: str
     instrument_rules_version: str
     translator_version: str
@@ -191,7 +193,8 @@ class DatasetManifest:
         _integer(self.schema_version, 'manifest.schema_version', minimum=1)
         for name in ('dataset_id', 'dataset_version', 'source_class', 'symbol',
                      'ordering_version', 'fill_model_version', 'path_model_version',
-                     'cost_model_version', 'funding_model_version',
+                     'cost_model_id', 'cost_model_version', 'funding_model_id',
+                     'funding_model_version',
                      'instrument_rules_version', 'translator_version'):
             _id(getattr(self, name), 'manifest.' + name)
         _digest(self.content_sha256, 'manifest.content_sha256')
@@ -397,11 +400,25 @@ class PathBranch:
     order: PathOrder
     events: tuple[str, ...]
 
+    def __post_init__(self):
+        if type(self.order) is not PathOrder or type(self.events) is not tuple:
+            _fail('path.branch_type')
+        if (not all(type(row) is str and row in ('stop', 'target')
+                    for row in self.events)
+                or len(self.events) != len(set(self.events))):
+            _fail('path.branch_events')
+
 
 @dataclass(frozen=True, slots=True)
 class PathResolution:
     status: ReplayStatus
     branches: tuple[PathBranch, ...]
+
+    def __post_init__(self):
+        if type(self.status) is not ReplayStatus or type(self.branches) is not tuple:
+            _fail('path.resolution_type')
+        if not self.branches or not all(type(row) is PathBranch for row in self.branches):
+            _fail('path.resolution_branches')
 
 
 def resolve_paths(observation: PathObservation) -> PathResolution:
@@ -465,29 +482,35 @@ class FillSummary:
     fills: tuple[FillEvidence, ...]
 
 
+def _validate_fill_order(fills: tuple[FillEvidence, ...]):
+    if tuple(row.sequence for row in fills) != tuple(range(1, len(fills) + 1)):
+        _fail('fills.sequence')
+    if any(right.at_ms < left.at_ms for left, right in zip(fills, fills[1:])):
+        _fail('fills.chronology')
+
+
 def summarize_fills(requested_quantity: object,
                     fills: object) -> FillSummary:
     _decimal(requested_quantity, 'fills.requested_quantity', positive=True)
     if type(fills) is not tuple or not all(type(row) is FillEvidence for row in fills):
         _fail('fills.type')
-    if tuple(row.sequence for row in fills) != tuple(range(1, len(fills) + 1)):
-        _fail('fills.sequence')
-    if any(not row.known for row in fills):
-        return FillSummary(ReplayStatus.INCOMPLETE, requested_quantity, Decimal(0),
-                           requested_quantity, None, fills)
+    _validate_fill_order(fills)
+    known_fills = tuple(row for row in fills if row.known)
     with localcontext(_ARITHMETIC_CONTEXT):
         try:
-            filled = sum((row.quantity for row in fills), Decimal(0))
+            filled = sum((row.quantity for row in known_fills), Decimal(0))
             if filled > requested_quantity:
                 _fail('fills.overfill')
             if filled == 0:
                 return FillSummary(ReplayStatus.INCOMPLETE, requested_quantity, Decimal(0),
                                    requested_quantity, None, fills)
-            average = sum((row.quantity * row.price for row in fills), Decimal(0)) / filled
+            average = sum((row.quantity * row.price for row in known_fills), Decimal(0)) / filled
             remaining = requested_quantity - filled
         except DecimalException:
             _fail('fills.arithmetic')
-    status = ReplayStatus.COMPLETE if remaining == 0 else ReplayStatus.INCOMPLETE
+    status = (ReplayStatus.COMPLETE
+              if remaining == 0 and len(known_fills) == len(fills)
+              else ReplayStatus.INCOMPLETE)
     return FillSummary(status, requested_quantity, filled, remaining, average, fills)
 
 
@@ -514,27 +537,32 @@ class CostBreakdown:
     model_id: str
     version: str
     settlement_asset: str
+    coverage_status: ReplayStatus
     fee: Decimal
     slippage: Decimal
 
 
 def calculate_costs(fills: object, model: object) -> CostBreakdown:
     if (type(fills) is not tuple or not all(type(row) is FillEvidence for row in fills)
-            or type(model) is not CostModel or any(not row.known for row in fills)):
+            or type(model) is not CostModel):
         _fail('cost.coverage')
+    _validate_fill_order(fills)
+    known_fills = tuple(row for row in fills if row.known)
     fee = Decimal(0)
     slippage = Decimal(0)
     with localcontext(_ARITHMETIC_CONTEXT):
         try:
-            for row in fills:
+            for row in known_fills:
                 notional = row.quantity * row.price
                 rate = model.maker_rate if row.liquidity is Liquidity.MAKER else model.taker_rate
                 fee += notional * rate
                 slippage += notional * model.slippage_bps / Decimal(10_000)
         except DecimalException:
             _fail('cost.arithmetic')
+    coverage = (ReplayStatus.COMPLETE if len(known_fills) == len(fills) and fills
+                else ReplayStatus.INCOMPLETE)
     return CostBreakdown(model.model_id, model.version, model.settlement_asset,
-                         fee, slippage)
+                         coverage, fee, slippage)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -589,6 +617,8 @@ def calculate_funding(side: object, quantity: object, events: object, *,
         _fail('funding.window')
     if tuple(row.sequence for row in events) != tuple(range(1, len(events) + 1)):
         _fail('funding.sequence')
+    if any(right.at_ms < left.at_ms for left, right in zip(events, events[1:])):
+        _fail('funding.chronology')
     sign = Decimal(-1) if side is Side.LONG else Decimal(1)
     with localcontext(_ARITHMETIC_CONTEXT):
         try:
@@ -657,12 +687,22 @@ def build_result(*, manifest: object, action: object, path: object,
             reasons.append(ReplayReason.COST_COVERAGE_MISSING)
         elif type(costs) is not CostBreakdown:
             _fail('result.costs')
+        elif (costs.model_id != manifest.cost_model_id
+              or costs.version != manifest.cost_model_version):
+            _fail('result.cost_model')
+        elif costs.coverage_status is not ReplayStatus.COMPLETE:
+            if status is ReplayStatus.COMPLETE:
+                status = ReplayStatus.INCOMPLETE
+            reasons.append(ReplayReason.COST_COVERAGE_MISSING)
         if funding is None:
             if status is ReplayStatus.COMPLETE:
                 status = ReplayStatus.INCOMPLETE
             reasons.append(ReplayReason.FUNDING_COVERAGE_MISSING)
         elif type(funding) is not FundingSummary:
             _fail('result.funding')
+        elif (funding.model_id != manifest.funding_model_id
+              or funding.model_version != manifest.funding_model_version):
+            _fail('result.funding_model')
         if status is ReplayStatus.COMPLETE:
             with localcontext(_ARITHMETIC_CONTEXT):
                 net = gross_pnl - costs.fee - costs.slippage + funding.total
