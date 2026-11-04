@@ -4038,6 +4038,35 @@ STRATEGIES['hurst_persistence_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+SMI1H = dict(range_window=14, smooth1=3, smooth2=3, cost_multiple=5.0)
+
+
+def _stochastic_momentum_index(high, low, close, range_window=14, smooth1=3, smooth2=3):
+    """Double-smoothed close displacement from rolling midpoint divided by half-range."""
+    hi, lo = high.rolling(range_window).max(), low.rolling(range_window).min()
+    displacement = close.astype(float) - (hi + lo) / 2.0; half_range = (hi - lo) / 2.0
+    num = displacement.ewm(span=smooth1, adjust=False).mean().ewm(span=smooth2, adjust=False).mean()
+    den = half_range.ewm(span=smooth1, adjust=False).mean().ewm(span=smooth2, adjust=False).mean()
+    return 100.0 * num / den.replace(0.0, np.nan)
+
+
+def sig_smi_zero_cross_long_1h(d, p, ctx):
+    """C121: enter when double-smoothed range-midpoint momentum turns positive."""
+    smi = _stochastic_momentum_index(d.h, d.l, d.c, int(p['range_window']), int(p['smooth1']), int(p['smooth2']))
+    cross_up = (smi > 0.0) & (smi.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=smi <= 0.0, sx=never)
+
+
+STRATEGIES['smi_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] Stochastic Momentum Index long 1h', style='smoothed_range_midpoint_momentum',
+    fn=sig_smi_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(SMI1H),
+    desc='Candidate 121: conventional SMI(14,3,3) crosses above zero while close is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
