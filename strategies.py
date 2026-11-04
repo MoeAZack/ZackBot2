@@ -4611,6 +4611,12 @@ def _positive_volume_index(close,quote_volume):
 def sig_positive_volume_index_long_1h(d,p,ctx):
  pvi=_positive_volume_index(d.c,d.qv);signal=pvi.ewm(span=int(p['ema_span']),adjust=False,min_periods=int(p['ema_span'])).mean();up=(pvi>signal)&(pvi.shift()<=signal.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=pvi<signal,sx=never)
 STRATEGIES['positive_volume_index_long_1h']=dict(name='[RESEARCH] Positive Volume Index long 1h',style='selective_high_volume_accumulation',fn=sig_positive_volume_index_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PVI1H),desc='C145 conventional PVI crosses above its 255h EMA with price above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+PVO1H=dict(fast=12,slow=26,signal=9,cost_multiple=5.0)
+def _percentage_volume_oscillator(volume,fast=12,slow=26,signal=9):
+ v=volume.astype(float);ef=v.ewm(span=int(fast),adjust=False,min_periods=int(fast)).mean();es=v.ewm(span=int(slow),adjust=False,min_periods=int(slow)).mean();pvo=100.0*(ef-es)/es.replace(0,np.nan);sig=pvo.ewm(span=int(signal),adjust=False,min_periods=int(signal)).mean();return pvo,sig
+def sig_percentage_volume_oscillator_long_1h(d,p,ctx):
+ x,s=_percentage_volume_oscillator(d.v,p['fast'],p['slow'],p['signal']);up=(x>s)&(x.shift()<=s.shift())&(x>0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=s,sx=never)
+STRATEGIES['percentage_volume_oscillator_long_1h']=dict(name='[RESEARCH] Percentage Volume Oscillator long 1h',style='volume_ema_spread',fn=sig_percentage_volume_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PVO1H),desc='C146 conventional PVO(12,26,9) bullish signal crossover above zero with price above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
