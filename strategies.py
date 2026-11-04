@@ -5151,6 +5151,14 @@ def sig_on_neck_short_1h(d,p,ctx):
  pattern=_on_neck(d.o,d.l,d.c,d.atr,p['close_tolerance_atr']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['on_neck_short_1h']=dict(name='[RESEARCH] On-Neck short 1h',style='on_neck_candlestick',fn=sig_on_neck_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(ONNECK1H),desc='C219 conventional gap-relaxed On-Neck bearish continuation below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+THRUSTING1H=dict(exit_length=10,cost_multiple=5.)
+def _thrusting_line(open_,close):
+ o=open_.astype(float);c=close.astype(float);po=o.shift(1);pc=c.shift(1);mid=(po+pc)/2
+ return (po>pc)&(c>o)&(c>pc)&(c<mid)
+def sig_thrusting_line_short_1h(d,p,ctx):
+ pattern=_thrusting_line(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['thrusting_line_short_1h']=dict(name='[RESEARCH] Thrusting Line short 1h',style='thrusting_line_candlestick',fn=sig_thrusting_line_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(THRUSTING1H),desc='C220 conventional gap-relaxed Thrusting Line bearish continuation below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
