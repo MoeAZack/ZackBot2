@@ -4797,6 +4797,12 @@ def _chandelier_exit(high,low,close,length=22,multiplier=3.0):
 def sig_chandelier_breakout_long_1h(d,p,ctx):
  long,short=_chandelier_exit(d.h,d.l,d.c,p['length'],p['multiplier']);up=(d.c>short)&(d.c.shift()<=short.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<long,sx=never)
 STRATEGIES['chandelier_breakout_long_1h']=dict(name='[RESEARCH] Chandelier Exit breakout long 1h',style='chandelier_atr_stop_flip',fn=sig_chandelier_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CHAND1H),desc='C174 canonical Chandelier Exit(22,3) short-stop upside crossing above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+INERTIA1H=dict(std_window=10,rvi_smooth=14,regression=20,cost_multiple=5.0)
+def _inertia_indicator(close,std_window=10,rvi_smooth=14,regression=20):
+ return _lsma(_relative_volatility_index(close,int(std_window),int(rvi_smooth)),int(regression))
+def sig_inertia_long_1h(d,p,ctx):
+ x=_inertia_indicator(d.c,p['std_window'],p['rvi_smooth'],p['regression']);up=(x>50.0)&(x.shift()<=50.0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=x<=50.0,sx=never)
+STRATEGIES['inertia_long_1h']=dict(name='[RESEARCH] Dorsey Inertia long 1h',style='rvi_linear_regression_inertia',fn=sig_inertia_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(INERTIA1H),desc='C175 conventional RVI(10,14) linear-regression(20) Inertia crossing 50 above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
