@@ -3943,6 +3943,34 @@ STRATEGIES['kama_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+TII1H = dict(mean_window=60, sum_window=30, cost_multiple=5.0)
+
+
+def _trend_intensity_index(close, mean_window=60, sum_window=30):
+    """Balance of accumulated positive and negative deviations from a trailing mean."""
+    c = close.astype(float); deviation = c - c.rolling(mean_window).mean()
+    positive = deviation.clip(lower=0.0).rolling(sum_window).sum()
+    negative = (-deviation.clip(upper=0.0)).rolling(sum_window).sum()
+    return 100.0 * positive / (positive + negative).replace(0.0, np.nan)
+
+
+def sig_trend_intensity_long_1h(d, p, ctx):
+    """C118: enter when accumulated deviations become positively dominated."""
+    tii = _trend_intensity_index(d.c, int(p['mean_window']), int(p['sum_window']))
+    cross_up = (tii > 50.0) & (tii.shift() <= 50.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=tii <= 50.0, sx=never)
+
+
+STRATEGIES['trend_intensity_long_1h'] = dict(
+    name='[RESEARCH] Trend Intensity Index long 1h', style='deviation_balance_trend',
+    fn=sig_trend_intensity_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(TII1H),
+    desc='Candidate 118: conventional TII(60,30) crosses above 50 while close is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
