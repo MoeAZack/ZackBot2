@@ -4746,6 +4746,12 @@ def _sine_wma(close,length=20):
 def sig_sine_wma_crossover_long_1h(d,p,ctx):
  x=_sine_wma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['sine_wma_crossover_long_1h']=dict(name='[RESEARCH] Sine WMA crossover long 1h',style='sine_weighted_moving_average',fn=sig_sine_wma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SINWMA1H),desc='C166 conventional sine-weighted MA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+MEDMA1H=dict(length=20,cost_multiple=5.0)
+def _median_ma(close,length=20):
+ return close.astype(float).rolling(int(length),min_periods=int(length)).median()
+def sig_median_ma_crossover_long_1h(d,p,ctx):
+ x=_median_ma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['median_ma_crossover_long_1h']=dict(name='[RESEARCH] Median MA crossover long 1h',style='rolling_median_moving_average',fn=sig_median_ma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(MEDMA1H),desc='C167 conventional rolling median(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
