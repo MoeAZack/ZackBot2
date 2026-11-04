@@ -4400,6 +4400,34 @@ STRATEGIES['klinger_volume_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+AO1H = dict(fast=5, slow=34, cost_multiple=5.0)
+
+
+def _awesome_oscillator(high, low, fast=5, slow=34):
+    """Causal conventional Awesome Oscillator on median price."""
+    median = (high.astype(float) + low.astype(float)) / 2.0
+    return median.rolling(int(fast), min_periods=int(fast)).mean() - \
+           median.rolling(int(slow), min_periods=int(slow)).mean()
+
+
+def sig_awesome_oscillator_long_1h(d, p, ctx):
+    """C132: follow a positive transition in short-vs-long median-price momentum."""
+    ao = _awesome_oscillator(d.h, d.l, p['fast'], p['slow'])
+    cross_up = (ao > 0.0) & (ao.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=ao <= 0.0, sx=never)
+
+
+STRATEGIES['awesome_oscillator_long_1h'] = dict(
+    name='[RESEARCH] Awesome Oscillator zero-cross long 1h', style='median_price_dual_sma_momentum',
+    fn=sig_awesome_oscillator_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(AO1H),
+    desc='Candidate 132: conventional AO SMA5-minus-SMA34 of median price crosses above zero while price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
