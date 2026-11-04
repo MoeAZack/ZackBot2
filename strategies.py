@@ -3971,6 +3971,35 @@ STRATEGIES['trend_intensity_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CTI1H = dict(lookback=20, enter=0.5, exit=0.0, cost_multiple=5.0)
+
+
+def _correlation_trend_indicator(close, lookback=20):
+    """Rolling Pearson correlation of completed closes with ascending time."""
+    x = np.arange(float(lookback)); xm = x.mean(); xnorm = np.sqrt(np.sum((x - xm) ** 2))
+    def corr(y):
+        dy = y - np.mean(y); denom = xnorm * np.sqrt(np.sum(dy ** 2))
+        return float(np.sum((x - xm) * dy) / denom) if denom > 0.0 else np.nan
+    return close.astype(float).rolling(lookback).apply(corr, raw=True)
+
+
+def sig_cti_trend_long_1h(d, p, ctx):
+    """C119: enter when price becomes strongly linearly aligned with time."""
+    cti = _correlation_trend_indicator(d.c, int(p['lookback']))
+    cross_up = (cti > float(p['enter'])) & (cti.shift() <= float(p['enter']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=cti <= float(p['exit']), sx=never)
+
+
+STRATEGIES['cti_trend_long_1h'] = dict(
+    name='[RESEARCH] Correlation Trend Indicator long 1h', style='price_time_alignment',
+    fn=sig_cti_trend_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CTI1H),
+    desc='Candidate 119: rolling price-time CTI(20) crosses above +0.5 above EMA20; exits at zero.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
