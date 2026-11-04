@@ -1,0 +1,10 @@
+# Candidate 231 / Bullish Breakaway preregistration
+
+Status **FROZEN / NOT EVALUATED / RESEARCH ONLY**, 4 November 2026 Cairo. The complete C1-C230 tree, refs, history, preregistrations, results and research tools were searched for bullish Breakaway; no implementation was found. Earlier engulfing, Morning Star, Rising Three Methods, Ladder Bottom, Concealing Baby Swallow and Mat Hold families are disclosed. This is a distinct fixed five-candle exhaustion hypothesis: four bearish candles descend, then a strong bullish candle reclaims the second candle's open and the later highs while remaining below the first candle's open. It differs from Ladder Bottom's fourth-candle upper-shadow trigger and from Mat Hold's bullish-continuation impulse. It was selected as the next conventional family, not as a rescue or alteration of C230 or any prior result. One cell only.
+
+On completed 1h bars, candles 1-4 are bearish; candle 2 opens at/below candle 1's close and candles 2-4 have strictly descending closes, with candles 3-4 also making strictly lower lows. Candle 5 is bullish, opens at/below candle 4's close, closes above candle 2's open and above the highs of candles 3-4, but below candle 1's open. Opening comparisons are gap-relaxed for continuous crypto. Enter long next open when candle 5 closes above EMA200. Exit when close is at/below SMA10, after 24 bars, at 2ATR stop or 2R target. The protection stop must cover at least 5x modeled 0.14% round-trip cost. Costs are 5bp taker plus 2bp adverse slippage per fill and actual signed funding.
+
+CORE-20 development `2024-10-14T00:00:00Z..2025-04-01T00:00:00Z`. PASS requires gross>0, mean net R>0, PF>1.05, >=100 trades, >=8 symbols, >=20 trades in each BTC regime, and DD<=15R. Family 231; future family-wise alpha <=0.05/231. PAPER remains BLOCK. No tuning, rescue, folds, holdout, PAPER, runtime, mainnet or BASE-CLEAN work; holdout sealed. Undefined zero-trade statistics fail closed.
+
+ROADMAP FIT: next distinct default-OFF conventional five-candle reversal family.
+DEFERRED: variants, folds, holdout, Stage B and activation.

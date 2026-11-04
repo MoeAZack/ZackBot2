@@ -5238,6 +5238,14 @@ def sig_mat_hold_long_1h(d,p,ctx):
  pattern=_mat_hold(d.o,d.h,d.l,d.c,p['retracement_body_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['mat_hold_long_1h']=dict(name='[RESEARCH] Mat Hold long 1h',style='mat_hold_candlestick',fn=sig_mat_hold_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(MATHOLD1H),desc='C230 gap-relaxed Mat Hold elevated-pullback continuation long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+BREAKAWAY1H=dict(exit_length=10,cost_multiple=5.)
+def _bullish_breakaway(open_,high,low,close):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);bear=o>c;bull=c>o
+ return bull&bear.shift(1)&bear.shift(2)&bear.shift(3)&bear.shift(4)&(o.shift(3)<=c.shift(4))&(c.shift(3)<c.shift(4))&(c.shift(2)<c.shift(3))&(c.shift(1)<c.shift(2))&(l.shift(2)<l.shift(3))&(l.shift(1)<l.shift(2))&(o<=c.shift(1))&(c>o.shift(3))&(c>h.shift(2))&(c>h.shift(1))&(c<o.shift(4))
+def sig_bullish_breakaway_long_1h(d,p,ctx):
+ pattern=_bullish_breakaway(d.o,d.h,d.l,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_breakaway_long_1h']=dict(name='[RESEARCH] Bullish Breakaway long 1h',style='bullish_breakaway_candlestick',fn=sig_bullish_breakaway_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BREAKAWAY1H),desc='C231 gap-relaxed bullish Breakaway exhaustion-reversal long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
