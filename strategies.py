@@ -4599,6 +4599,12 @@ def _chaikin_oscillator(high,low,close,volume,fast=3,slow=10):
 def sig_chaikin_oscillator_long_1h(d,p,ctx):
  x=_chaikin_oscillator(d.h,d.l,d.c,d.v,p['fast'],p['slow']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
 STRATEGIES['chaikin_oscillator_long_1h']=dict(name='[RESEARCH] Chaikin Oscillator long 1h',style='adl_momentum',fn=sig_chaikin_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CHAIKINOSC1H),desc='C143 conventional Chaikin Oscillator EMA3-minus-EMA10 of ADL crosses above zero over EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+VZO1H=dict(window=14,threshold=0.0,cost_multiple=5.0)
+def _volume_zone_oscillator(close,volume,window=14):
+ direction=np.sign(close.astype(float).diff()).fillna(0.0);signed=(volume.astype(float)*direction).ewm(span=int(window),adjust=False,min_periods=int(window)).mean();total=volume.astype(float).ewm(span=int(window),adjust=False,min_periods=int(window)).mean();return 100.0*signed/total.replace(0,np.nan)
+def sig_volume_zone_oscillator_long_1h(d,p,ctx):
+ x=_volume_zone_oscillator(d.c,d.v,p['window']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
+STRATEGIES['volume_zone_oscillator_long_1h']=dict(name='[RESEARCH] Volume Zone Oscillator long 1h',style='ema_signed_volume_ratio',fn=sig_volume_zone_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(VZO1H),desc='C144 conventional VZO14 crosses above zero while close is above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
