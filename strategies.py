@@ -4428,6 +4428,42 @@ STRATEGIES['awesome_oscillator_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CRSI1H = dict(price_rsi=3, streak_rsi=2, rank_window=100, entry=10.0, exit=70.0, cost_multiple=5.0)
+
+
+def _connors_rsi(close, price_rsi=3, streak_rsi=2, rank_window=100):
+    """Causal conventional Connors RSI: price RSI, streak RSI and return PercentRank."""
+    c = close.astype(float)
+    delta = np.sign(c.diff().fillna(0.0).to_numpy(float))
+    streak = np.zeros(len(c), dtype=float)
+    for i in range(1, len(c)):
+        streak[i] = streak[i - 1] + delta[i] if delta[i] != 0.0 and delta[i] == delta[i - 1] else delta[i]
+    streak = pd.Series(streak, index=c.index)
+    ret = c.pct_change()
+    n = int(rank_window)
+    pct_rank = ret.rolling(n, min_periods=n).apply(
+        lambda x: 100.0 * float(np.sum(x < x[-1])) / float(len(x)), raw=True)
+    return (rsi(c, int(price_rsi)) + rsi(streak, int(streak_rsi)) + pct_rank) / 3.0
+
+
+def sig_connors_rsi_recovery_long_1h(d, p, ctx):
+    """C133: buy recovery from a conventional composite short-term oversold state."""
+    crsi = _connors_rsi(d.c, p['price_rsi'], p['streak_rsi'], p['rank_window'])
+    recovery = (crsi > float(p['entry'])) & (crsi.shift() <= float(p['entry']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = recovery & (d.c > d.e200) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=crsi >= float(p['exit']), sx=never)
+
+
+STRATEGIES['connors_rsi_recovery_long_1h'] = dict(
+    name='[RESEARCH] Connors RSI oversold-recovery long 1h', style='composite_short_term_mean_reversion',
+    fn=sig_connors_rsi_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CRSI1H),
+    desc='Candidate 133: conventional CRSI(3,2,100) recovers above 10 while price is above EMA200; exit at 70.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
