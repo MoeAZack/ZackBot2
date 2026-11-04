@@ -4676,6 +4676,10 @@ def _smma(close,length=20):
 def sig_smma_crossover_long_1h(d,p,ctx):
  x=_smma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['smma_crossover_long_1h']=dict(name='[RESEARCH] SMMA crossover long 1h',style='wilder_smoothed_average',fn=sig_smma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SMMA1H),desc='C155 conventional Wilder SMMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+SMA1H=dict(length=20,cost_multiple=5.0)
+def sig_sma_crossover_long_1h(d,p,ctx):
+ x=d.c.astype(float).rolling(int(p['length']),min_periods=int(p['length'])).mean();up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['sma_crossover_long_1h']=dict(name='[RESEARCH] SMA crossover long 1h',style='simple_moving_average',fn=sig_sma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SMA1H),desc='C156 conventional SMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
