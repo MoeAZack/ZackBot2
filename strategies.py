@@ -4561,6 +4561,16 @@ def sig_ravi_trend_long_1h(d,p,ctx):
     ravi,f,s=_ravi(d.c,p['fast'],p['slow']); active=(ravi>float(p['threshold']))&(f>s); cost_ok=2.0*d.atr/d.c>=float(p['cost_multiple'])*2*(.0005+.0002); le=active&~active.shift(fill_value=False)&(d.c>d.e20)&cost_ok; never=d.c<-1; return dict(le=le,se=never,lx=(ravi<=float(p['threshold']))|(f<=s),sx=never)
 STRATEGIES['ravi_trend_long_1h']=dict(name='[RESEARCH] RAVI trend activation long 1h',style='normalized_dual_sma_separation',fn=sig_ravi_trend_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RAVI1H),desc='Candidate 137: conventional RAVI(7,65) first exceeds 3% with fast SMA above slow.',mgmt=dict(stop_atr=2.0,tp_r=2.0,max_bars=24))
 
+GANN_HILO1H=dict(window=3,cost_multiple=5.0)
+def _gann_hilo_state(high,low,close,window=3):
+    hi=high.astype(float).rolling(int(window),min_periods=int(window)).mean().shift();lo=low.astype(float).rolling(int(window),min_periods=int(window)).mean().shift();state=np.zeros(len(close),dtype=float)
+    for i in range(1,len(close)):
+        state[i]=1.0 if close.iloc[i]>hi.iloc[i] else (-1.0 if close.iloc[i]<lo.iloc[i] else state[i-1])
+    return pd.Series(state,index=close.index),hi,lo
+def sig_gann_hilo_long_1h(d,p,ctx):
+    state,hi,lo=_gann_hilo_state(d.h,d.l,d.c,p['window']);bull=(state>0)&(state.shift()<=0);cost_ok=2*d.atr/d.c>=float(p['cost_multiple'])*2*(.0005+.0002);never=d.c<-1;return dict(le=bull&(d.c>d.e20)&cost_ok,se=never,lx=state<0,sx=never)
+STRATEGIES['gann_hilo_long_1h']=dict(name='[RESEARCH] Gann HiLo Activator long 1h',style='high_low_average_state_switch',fn=sig_gann_hilo_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(GANN_HILO1H),desc='Candidate 138: causal standard three-bar Gann HiLo state switches bullish.',mgmt=dict(stop_atr=2.0,tp_r=2.0,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
