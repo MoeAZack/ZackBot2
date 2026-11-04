@@ -4907,6 +4907,12 @@ def _tweezer_top(open_,high,close,atr,tolerance):
 def sig_tweezer_top_short_1h(d,p,ctx):
  pattern=_tweezer_top(d.o,d.h,d.c,d.atr,p['high_tolerance_atr']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['tweezer_top_short_1h']=dict(name='[RESEARCH] Tweezer Top short 1h',style='tweezer_top_candlestick',fn=sig_tweezer_top_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(TWEEZERTOP1H),desc='C189 conventional adjacent equal-high Tweezer Top below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+SHOOTSTAR1H=dict(exit_length=10,cost_multiple=5.0)
+def _bearish_shooting_star(open_,high,low,close):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);body=o-c;upper=h-o;lower=c-l;return (body>0)&(upper>=2.0*body)&(lower<=body)
+def sig_shooting_star_short_1h(d,p,ctx):
+ pattern=_bearish_shooting_star(d.o,d.h,d.l,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['shooting_star_short_1h']=dict(name='[RESEARCH] Shooting Star short 1h',style='bearish_shooting_star_candlestick',fn=sig_shooting_star_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(SHOOTSTAR1H),desc='C190 classical bearish Shooting Star geometry below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
