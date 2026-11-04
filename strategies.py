@@ -4752,6 +4752,12 @@ def _median_ma(close,length=20):
 def sig_median_ma_crossover_long_1h(d,p,ctx):
  x=_median_ma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['median_ma_crossover_long_1h']=dict(name='[RESEARCH] Median MA crossover long 1h',style='rolling_median_moving_average',fn=sig_median_ma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(MEDMA1H),desc='C167 conventional rolling median(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+FCB1H=dict(left=2,right=2,cost_multiple=5.0)
+def _fractal_chaos_bands(high,low,left=2,right=2):
+ l=int(left);r=int(right);w=l+r+1;ph=high.astype(float).shift(r);pl=low.astype(float).shift(r);upper=ph.where(ph.eq(high.astype(float).rolling(w,min_periods=w).max())).ffill();lower=pl.where(pl.eq(low.astype(float).rolling(w,min_periods=w).min())).ffill();return upper,lower
+def sig_fractal_chaos_breakout_long_1h(d,p,ctx):
+ upper,lower=_fractal_chaos_bands(d.h,d.l,p['left'],p['right']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=lower,sx=never)
+STRATEGIES['fractal_chaos_breakout_long_1h']=dict(name='[RESEARCH] Fractal Chaos Bands breakout long 1h',style='confirmed_fractal_pivot_channel',fn=sig_fractal_chaos_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(FCB1H),desc='C168 conventional confirmed 2/2 Fractal Chaos upper-band breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
