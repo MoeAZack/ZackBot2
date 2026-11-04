@@ -4710,6 +4710,15 @@ def _ma_envelope(close,length=20,envelope=0.025):
 def sig_ma_envelope_breakout_long_1h(d,p,ctx):
  mid,upper,_=_ma_envelope(d.c,p['length'],p['envelope']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['ma_envelope_breakout_long_1h']=dict(name='[RESEARCH] MA envelope breakout long 1h',style='fixed_percent_price_envelope',fn=sig_ma_envelope_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(MAENV1H),desc='C161 conventional SMA20 +2.5% envelope breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+SEB1H=dict(length=20,multiplier=2.0,cost_multiple=5.0)
+def _standard_error_bands(close,length=20,multiplier=2.0):
+ n=int(length);i=np.arange(n,dtype=float);center=i-i.mean();den=float(np.dot(center,center));mid=_lsma(close,n)
+ def err(x):
+  slope=float(np.dot(center,x)/den);fit=float(x.mean())+slope*center;return float(np.sqrt(np.dot(x-fit,x-fit)/(n-2)))
+ se=close.astype(float).rolling(n,min_periods=n).apply(err,raw=True);k=float(multiplier);return mid,mid+k*se,mid-k*se
+def sig_standard_error_band_breakout_long_1h(d,p,ctx):
+ mid,upper,_=_standard_error_bands(d.c,p['length'],p['multiplier']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['standard_error_band_breakout_long_1h']=dict(name='[RESEARCH] Standard Error Band breakout long 1h',style='regression_standard_error_channel',fn=sig_standard_error_band_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SEB1H),desc='C162 LSMA20 +2 residual standard errors breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
