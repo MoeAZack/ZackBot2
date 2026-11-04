@@ -4719,6 +4719,15 @@ def _standard_error_bands(close,length=20,multiplier=2.0):
 def sig_standard_error_band_breakout_long_1h(d,p,ctx):
  mid,upper,_=_standard_error_bands(d.c,p['length'],p['multiplier']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['standard_error_band_breakout_long_1h']=dict(name='[RESEARCH] Standard Error Band breakout long 1h',style='regression_standard_error_channel',fn=sig_standard_error_band_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SEB1H),desc='C162 LSMA20 +2 residual standard errors breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+RAFF1H=dict(length=20,cost_multiple=5.0)
+def _raff_channel(close,high,low,length=20):
+ n=int(length);i=np.arange(n,dtype=float);center=i-i.mean();den=float(np.dot(center,center));c=close.astype(float).to_numpy();h=high.astype(float).to_numpy();l=low.astype(float).to_numpy();mid=np.full(len(c),np.nan);width=np.full(len(c),np.nan)
+ for j in range(n-1,len(c)):
+  cw=c[j-n+1:j+1];slope=float(np.dot(center,cw)/den);fit=float(cw.mean())+slope*center;mid[j]=fit[-1];width[j]=max(float(np.max(h[j-n+1:j+1]-fit)),float(np.max(fit-l[j-n+1:j+1])))
+ m=pd.Series(mid,index=close.index);w=pd.Series(width,index=close.index);return m,m+w,m-w
+def sig_raff_channel_breakout_long_1h(d,p,ctx):
+ mid,upper,_=_raff_channel(d.c,d.h,d.l,p['length']);prior=upper.shift();up=(d.c>prior)&(d.c.shift()<=upper.shift(2));cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid.shift(),sx=never)
+STRATEGIES['raff_channel_breakout_long_1h']=dict(name='[RESEARCH] Raff Regression Channel breakout long 1h',style='raff_regression_channel',fn=sig_raff_channel_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RAFF1H),desc='C163 breakout of prior 20-bar Raff regression channel above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
