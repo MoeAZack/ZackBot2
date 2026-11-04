@@ -13,7 +13,9 @@ adapter registry, strict comparator, and tier manifest remain authoritative.
 The collector adds no second comparison implementation.
 
 An accepted artifact requires the complete Cartesian matrix of the 30 loaded
-golden cases and exactly `newcore_sim` plus `newcore_live_sim` (60 pairs). Every
+golden cases and exactly `newcore_sim` plus `newcore_live_sim`: exactly 30 cases and exactly 60 ordered pairs, each case
+carrying both adapters and no extra, duplicate or missing case or pair. Any other
+cardinality fails closed at load, seal, decode and conversion. Every
 pair must be marked `required`; `pending_adapter`, `known_divergence`,
 `not_applicable`, a missing adapter/capability, a missing or duplicate result,
 an adapter failure, poison leakage, or any comparator mismatch refuses the
@@ -35,19 +37,34 @@ divergence ledger. The parent reconstructs each trace and calls the existing
 
 The accepted body binds:
 
-- schema `zackbot-base-clean-golden-proof/1`, exact Git head, and the fixed
+- schema `zackbot-base-clean-golden-proof/2`, exact Git head, and the fixed
   host-neutral identity `golden_offline`;
 - a pack SHA-256 over every sorted `(case id, adapter, case contract SHA-256,
   tier)` pair; and
-- every sorted pair plus the SHA-256 of its canonical trace.
+- every sorted pair, its SHA-256 of the canonical trace, **and the canonical
+  trace itself** (`trades` + `final`), so a later acceptance run can
+  re-derive the comparison without trusting the collector's verdict.
 
 The envelope digest is SHA-256 of canonical ASCII JSON for that body. Decode
-rejects duplicate fields, unknown fields, wrong types, noncanonical JSON,
+rejects a stored trace whose canonical SHA-256 differs from its pair's
+`trace_sha256`, a stored trace carrying the expectation poison, a matrix that is
+not exactly 30 cases x 2 adapters, duplicate fields, unknown fields, wrong types, noncanonical JSON,
 altered bodies/digests, and inconsistent pair ordering. Conversion to
-BASE-CLEAN reloads the authoritative pack and revalidates the entire matrix
-before returning one `GateProof(NEWCORE_GOLDEN_ADAPTERS, ...)` carrying the
+BASE-CLEAN reloads the authoritative pack, revalidates the entire matrix, and
+re-runs the existing strict `goldenlib.compare.compare` on every stored
+canonical trace against the real unblinded case (a self-consistent forged trace
+with recomputed digests is refused as `golden_comparison_mismatch`) before
+returning one `GateProof(NEWCORE_GOLDEN_ADAPTERS, ...)` carrying the
 same artifact digest. Raw exception text is never retained across the
 collector boundary.
+
+Stored traces are schema-closed: every trade carries exactly the output fields
+of that case's expected trade (the comparator would otherwise ignore extra keys,
+so an arbitrary field such as a secret or URL could ride into the artifact) plus,
+optionally, `_res` limited to the keys `R`/`pnl` with plain int/float values
+inside the comparator's resolution bounds. Any other trade key, a malformed
+`_res`, a non-object trade, or an undeclared `final` key refuses the pair at
+seal, decode and conversion.
 
 ## Default-OFF command and acceptance matrix
 

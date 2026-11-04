@@ -24,10 +24,15 @@ from goldenlib.adapters.base import Trace  # noqa: E402
 from newcore.base_clean import GateProof, ProofKind  # noqa: E402
 
 
-SCHEMA = "zackbot-base-clean-golden-proof/1"
+SCHEMA = "zackbot-base-clean-golden-proof/2"
 NEWCORE_ADAPTERS = ("newcore_live_sim", "newcore_sim")
+EXPECTED_CASES = 30
+EXPECTED_PAIRS = EXPECTED_CASES * len(NEWCORE_ADAPTERS)
 HOST_ID = "golden_offline"
 HARD_STOP_S = tiers.HARD_STOP_S
+# Closed trade-output vocabulary: the golden expectation's output fields plus the adapter's stated resolution `_res`.
+TRADE_FIELDS = frozenset({"sym", "side", "i_in", "i_out", "exit", "R", "pnl"})
+RES_FIELDS = frozenset({"R", "pnl"})
 _SHA = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -66,6 +71,17 @@ def _sha256(value: Any, code: str) -> str:
     return value
 
 
+def _cardinality(keys: list[tuple[str, str]], code: str) -> None:
+    """Exactly EXPECTED_CASES cases, each with exactly the two NEWCORE adapters (EXPECTED_PAIRS pairs)."""
+    if len(keys) != EXPECTED_PAIRS or len(set(keys)) != EXPECTED_PAIRS:
+        _fail(code)
+    by_case: dict[str, set[str]] = {}
+    for case_id, adapter in keys:
+        by_case.setdefault(case_id, set()).add(adapter)
+    if len(by_case) != EXPECTED_CASES or any(found != set(NEWCORE_ADAPTERS) for found in by_case.values()):
+        _fail(code)
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class PairSpec:
     case_id: str
@@ -89,10 +105,16 @@ class PairResult:
     contract_sha256: str
     tier: str
     trace_sha256: str
+    trace: dict
 
     def __post_init__(self) -> None:
         PairSpec(self.case_id, self.adapter, self.contract_sha256, self.tier)
         _sha256(self.trace_sha256, "validation.result.trace")
+        wire = _trace_wire(self.trace)
+        if hashlib.sha256(canonical_bytes(wire)).hexdigest() != self.trace_sha256:
+            _fail("validation.result.trace_digest")
+        if canonical_bytes(wire) != canonical_bytes(self.trace):
+            _fail("validation.result.trace_canonical")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -116,6 +138,7 @@ class GoldenArtifactBody:
         keys = [(row.case_id, row.adapter) for row in self.pairs]
         if keys != sorted(keys) or len(keys) != len(set(keys)):
             _fail("validation.artifact.matrix")
+        _cardinality(keys, "validation.artifact.cardinality")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -166,6 +189,8 @@ def _load_plan() -> tuple[tuple[PairSpec, ...], dict[str, dict[str, Any]]]:
         tier_of = tiers.load([case["id"] for case in cases])
     except Exception:
         _fail("golden_pack_invalid")
+    if len(cases) != EXPECTED_CASES or len({case["id"] for case in cases}) != EXPECTED_CASES:
+        _fail("golden_case_count")
     plan: list[PairSpec] = []
     by_id: dict[str, dict[str, Any]] = {}
     for case in cases:
@@ -177,7 +202,7 @@ def _load_plan() -> tuple[tuple[PairSpec, ...], dict[str, dict[str, Any]]]:
                 _fail("adapter_unavailable")
             plan.append(PairSpec(case["id"], adapter, schema.contract_sha(case), tier_of[case["id"]]))
     plan.sort(key=lambda row: (row.case_id, row.adapter))
-    if len(plan) != len(cases) * len(NEWCORE_ADAPTERS):
+    if len(plan) != EXPECTED_PAIRS:
         _fail("golden_matrix_incomplete")
     return tuple(plan), by_id
 
@@ -188,6 +213,14 @@ def _trace_wire(value: Any) -> dict[str, Any]:
         _fail("validation.trace.keys")
     _exact(value["trades"], list, "validation.trace.trades")
     _exact(value["final"], dict, "validation.trace.final")
+    for trade in value["trades"]:
+        _exact(trade, dict, "validation.trace.trade")
+        if any(type(key) is not str for key in trade) or not set(trade) <= TRADE_FIELDS | {"_res"}:
+            _fail("validation.trace.trade_keys")
+        if "_res" in trade:
+            res = _exact(trade["_res"], dict, "validation.trace.res")
+            if not set(res) <= RES_FIELDS or any(type(v) not in (int, float) for v in res.values()):
+                _fail("validation.trace.res")
     try:
         wire = schema.strict_loads(schema.canonical(value))
     except Exception:
@@ -197,12 +230,34 @@ def _trace_wire(value: Any) -> dict[str, Any]:
     return wire
 
 
+def _revalidate_pair(case: dict[str, Any], adapter: str, wire: dict[str, Any]) -> None:
+    """Re-run the authoritative strict comparison on a canonical trace; any mismatch refuses.
+
+    The stored trace is schema-closed first: every trade carries exactly the expected case's output fields
+    (the comparator would silently ignore any other key) plus, optionally, the bounded `_res`."""
+    expected_trades = case["expect"]["trades"]
+    if len(wire["trades"]) == len(expected_trades):
+        for expected, actual in zip(expected_trades, wire["trades"]):
+            if set(actual) - {"_res"} != set(expected) - {"tol"}:
+                _fail("golden_trace_schema")
+    trace = Trace(trades=wire["trades"], final=wire["final"])
+    try:
+        mismatches = compare.compare(case, trace, adapter)
+    except Exception:
+        _fail("golden_comparison_invalid")
+    if mismatches:
+        _fail("golden_comparison_mismatch")
+
+
 def _seal_artifact(head_sha: str, plan: tuple[PairSpec, ...],
                    traces: tuple[tuple[str, str, dict[str, Any]], ...],
                    cases: dict[str, dict[str, Any]]) -> GoldenArtifact:
     _sha(head_sha, "validation.artifact.head")
     _exact(plan, tuple, "validation.plan")
     _exact(traces, tuple, "validation.traces")
+    for spec in plan:
+        _exact(spec, PairSpec, "validation.plan.pair")
+    _cardinality([(spec.case_id, spec.adapter) for spec in plan], "golden_matrix_cardinality")
     expected = {(row.case_id, row.adapter): row for row in plan}
     supplied: dict[tuple[str, str], dict[str, Any]] = {}
     for row in traces:
@@ -221,16 +276,10 @@ def _seal_artifact(head_sha: str, plan: tuple[PairSpec, ...],
     for key in sorted(expected):
         spec = expected[key]
         wire = supplied[key]
-        trace = Trace(trades=wire["trades"], final=wire["final"])
-        try:
-            mismatches = compare.compare(cases[spec.case_id], trace, spec.adapter)
-        except Exception:
-            _fail("golden_comparison_invalid")
-        if mismatches:
-            _fail("golden_comparison_mismatch")
+        _revalidate_pair(cases[spec.case_id], spec.adapter, wire)
         results.append(PairResult(
             spec.case_id, spec.adapter, spec.contract_sha256, spec.tier,
-            hashlib.sha256(canonical_bytes(wire)).hexdigest(),
+            hashlib.sha256(canonical_bytes(wire)).hexdigest(), wire,
         ))
     body = GoldenArtifactBody(SCHEMA, head_sha, HOST_ID, _pack_sha(plan), tuple(results))
     return GoldenArtifact(body, hashlib.sha256(canonical_bytes(body)).hexdigest())
@@ -279,10 +328,10 @@ def decode_artifact(data: bytes) -> GoldenArtifact:
     rows = _exact(body["pairs"], list, "validation.artifact.pairs")
     rebuilt = []
     for item in rows:
-        row = _keys(item, {"case_id", "adapter", "contract_sha256", "tier", "trace_sha256"},
+        row = _keys(item, {"case_id", "adapter", "contract_sha256", "tier", "trace_sha256", "trace"},
                     "validation.result.keys")
         rebuilt.append(PairResult(row["case_id"], row["adapter"], row["contract_sha256"],
-                                  row["tier"], row["trace_sha256"]))
+                                  row["tier"], row["trace_sha256"], row["trace"]))
     artifact = GoldenArtifact(
         GoldenArtifactBody(body["schema"], body["head_sha"], body["host_id"],
                            body["pack_sha256"], tuple(rebuilt)),
@@ -293,19 +342,23 @@ def decode_artifact(data: bytes) -> GoldenArtifact:
     return artifact
 
 
-def _validate_artifact_plan(artifact: GoldenArtifact, plan: tuple[PairSpec, ...]) -> None:
+def _validate_artifact_plan(artifact: GoldenArtifact, plan: tuple[PairSpec, ...],
+                            cases: dict[str, dict[str, Any]]) -> None:
     if artifact.body.pack_sha256 != _pack_sha(plan):
         _fail("artifact_pack_mismatch")
     actual = tuple(PairSpec(row.case_id, row.adapter, row.contract_sha256, row.tier)
                    for row in artifact.body.pairs)
     if actual != plan:
         _fail("artifact_matrix_mismatch")
+    # independently revalidate every stored canonical trace against the real, unblinded case
+    for row in artifact.body.pairs:
+        _revalidate_pair(cases[row.case_id], row.adapter, _trace_wire(row.trace))
 
 
 def gate_evidence(value: GoldenArtifact) -> GateProof:
     artifact = decode_artifact(encode_artifact(value))
-    plan, _cases = _load_plan()
-    _validate_artifact_plan(artifact, plan)
+    plan, cases = _load_plan()
+    _validate_artifact_plan(artifact, plan, cases)
     return GateProof(ProofKind.NEWCORE_GOLDEN_ADAPTERS, artifact.body.head_sha,
                      artifact.body.host_id, True, artifact.artifact_sha256)
 
