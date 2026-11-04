@@ -3909,6 +3909,40 @@ STRATEGIES['laguerre_rsi_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+KAMA1H = dict(er_window=10, fast=2, slow=30, cost_multiple=5.0)
+
+
+def _kaufman_adaptive_average(close, er_window=10, fast=2, slow=30):
+    """Causal Kaufman Adaptive Moving Average with squared efficiency-mapped smoothing."""
+    c = close.astype(float); change = (c - c.shift(er_window)).abs()
+    path = c.diff().abs().rolling(er_window).sum(); er = change / path.replace(0.0, np.nan)
+    fast_sc, slow_sc = 2.0 / (fast + 1.0), 2.0 / (slow + 1.0)
+    sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+    out = pd.Series(np.nan, index=c.index, dtype=float); prior = np.nan
+    for i, (price, alpha) in enumerate(zip(c.to_numpy(float), sc.to_numpy(float))):
+        if not np.isfinite(alpha): continue
+        prior = price if not np.isfinite(prior) else prior + alpha * (price - prior)
+        out.iloc[i] = prior
+    return out
+
+
+def sig_kama_cross_long_1h(d, p, ctx):
+    """C117: enter a transition above an efficiency-adaptive price baseline."""
+    kama = _kaufman_adaptive_average(d.c, int(p['er_window']), int(p['fast']), int(p['slow']))
+    cross_up = (d.c > kama) & (d.c.shift() <= kama.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=d.c <= kama, sx=never)
+
+
+STRATEGIES['kama_cross_long_1h'] = dict(
+    name='[RESEARCH] Kaufman adaptive crossover long 1h', style='efficiency_adaptive_trend',
+    fn=sig_kama_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KAMA1H),
+    desc='Candidate 117: close crosses above conventional KAMA(10,2,30) while above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
