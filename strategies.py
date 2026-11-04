@@ -4261,6 +4261,36 @@ STRATEGIES['force_index_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CMF1H = dict(window=20, cost_multiple=5.0)
+
+
+def _chaikin_money_flow(high, low, close, quote_volume, window=20):
+    """Causal conventional Chaikin Money Flow using quote liquidity."""
+    spread = high.astype(float) - low.astype(float)
+    multiplier = (2.0 * close.astype(float) - high.astype(float) - low.astype(float)) / spread.replace(0.0, np.nan)
+    flow = multiplier * quote_volume.astype(float)
+    n = int(window)
+    return flow.rolling(n, min_periods=n).sum() / quote_volume.astype(float).rolling(n, min_periods=n).sum().replace(0.0, np.nan)
+
+
+def sig_chaikin_money_flow_long_1h(d, p, ctx):
+    """C128: follow a positive transition in range-location-weighted liquidity flow."""
+    cmf = _chaikin_money_flow(d.h, d.l, d.c, d.qv, p['window'])
+    cross_up = (cmf > 0.0) & (cmf.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=cmf <= 0.0, sx=never)
+
+
+STRATEGIES['chaikin_money_flow_long_1h'] = dict(
+    name='[RESEARCH] Chaikin Money Flow zero-cross long 1h', style='range_location_liquidity_flow',
+    fn=sig_chaikin_money_flow_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CMF1H),
+    desc='Candidate 128: conventional 20h Chaikin Money Flow crosses above zero while price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
