@@ -4593,6 +4593,12 @@ def _stochastic_rsi(close,rsi_window=14,stoch_window=14):
 def sig_stochastic_rsi_recovery_long_1h(d,p,ctx):
  x=_stochastic_rsi(d.c,p['rsi_window'],p['stoch_window']);up=(x>p['entry'])&(x.shift()<=p['entry']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=x>=p['exit'],sx=never)
 STRATEGIES['stochastic_rsi_recovery_long_1h']=dict(name='[RESEARCH] Stochastic RSI recovery long 1h',style='normalized_rsi_recovery',fn=sig_stochastic_rsi_recovery_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(STOCHRSI1H),desc='C142 conventional StochRSI(14,14) recovers above 20 over EMA200 and exits at 80.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+CHAIKINOSC1H=dict(fast=3,slow=10,threshold=0.0,cost_multiple=5.0)
+def _chaikin_oscillator(high,low,close,volume,fast=3,slow=10):
+ span=(high.astype(float)-low.astype(float)).replace(0,np.nan);mfm=((close.astype(float)-low.astype(float))-(high.astype(float)-close.astype(float)))/span;adl=(mfm.fillna(0)*volume.astype(float)).cumsum();return adl.ewm(span=int(fast),adjust=False,min_periods=int(fast)).mean()-adl.ewm(span=int(slow),adjust=False,min_periods=int(slow)).mean()
+def sig_chaikin_oscillator_long_1h(d,p,ctx):
+ x=_chaikin_oscillator(d.h,d.l,d.c,d.v,p['fast'],p['slow']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
+STRATEGIES['chaikin_oscillator_long_1h']=dict(name='[RESEARCH] Chaikin Oscillator long 1h',style='adl_momentum',fn=sig_chaikin_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CHAIKINOSC1H),desc='C143 conventional Chaikin Oscillator EMA3-minus-EMA10 of ADL crosses above zero over EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
