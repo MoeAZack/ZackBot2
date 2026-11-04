@@ -3777,6 +3777,35 @@ STRATEGIES['cog_zero_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+RVOL1H = dict(std_window=10, smooth=14, cost_multiple=5.0)
+
+
+def _relative_volatility_index(close, std_window=10, smooth=14):
+    """Directional volatility ratio using rolling close dispersion and Wilder smoothing."""
+    c = close.astype(float); sigma = c.rolling(std_window).std(ddof=0); delta = c.diff()
+    up = sigma.where(delta > 0.0, 0.0); down = sigma.where(delta < 0.0, 0.0)
+    up_avg = up.ewm(alpha=1.0 / smooth, adjust=False, min_periods=smooth).mean()
+    down_avg = down.ewm(alpha=1.0 / smooth, adjust=False, min_periods=smooth).mean()
+    return 100.0 * up_avg / (up_avg + down_avg).replace(0.0, np.nan)
+
+
+def sig_relative_volatility_long_1h(d, p, ctx):
+    """C113: enter when volatility becomes dominated by advancing closes."""
+    rvi = _relative_volatility_index(d.c, int(p['std_window']), int(p['smooth']))
+    cross_up = (rvi > 50.0) & (rvi.shift() <= 50.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=rvi <= 50.0, sx=never)
+
+
+STRATEGIES['relative_volatility_long_1h'] = dict(
+    name='[RESEARCH] Relative Volatility Index long 1h', style='directional_volatility_balance',
+    fn=sig_relative_volatility_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RVOL1H),
+    desc='Candidate 113: directional close-volatility RVI(10,14) crosses above 50 above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
