@@ -4605,6 +4605,12 @@ def _volume_zone_oscillator(close,volume,window=14):
 def sig_volume_zone_oscillator_long_1h(d,p,ctx):
  x=_volume_zone_oscillator(d.c,d.v,p['window']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
 STRATEGIES['volume_zone_oscillator_long_1h']=dict(name='[RESEARCH] Volume Zone Oscillator long 1h',style='ema_signed_volume_ratio',fn=sig_volume_zone_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(VZO1H),desc='C144 conventional VZO14 crosses above zero while close is above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+PVI1H=dict(ema_span=255,cost_multiple=5.0)
+def _positive_volume_index(close,quote_volume):
+ log_ret=np.log(close.astype(float)/close.astype(float).shift());selected=log_ret.where(quote_volume.astype(float)>quote_volume.astype(float).shift(),0.0).fillna(0.0);return 1000.0*np.exp(selected.cumsum())
+def sig_positive_volume_index_long_1h(d,p,ctx):
+ pvi=_positive_volume_index(d.c,d.qv);signal=pvi.ewm(span=int(p['ema_span']),adjust=False,min_periods=int(p['ema_span'])).mean();up=(pvi>signal)&(pvi.shift()<=signal.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=pvi<signal,sx=never)
+STRATEGIES['positive_volume_index_long_1h']=dict(name='[RESEARCH] Positive Volume Index long 1h',style='selective_high_volume_accumulation',fn=sig_positive_volume_index_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PVI1H),desc='C145 conventional PVI crosses above its 255h EMA with price above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
