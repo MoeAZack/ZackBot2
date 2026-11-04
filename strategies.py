@@ -5197,6 +5197,14 @@ def sig_advance_block_short_1h(d,p,ctx):
  pattern=_advance_block(d.o,d.h,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['advance_block_short_1h']=dict(name='[RESEARCH] Advance Block short 1h',style='advance_block_candlestick',fn=sig_advance_block_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(ADVANCEBLOCK1H),desc='C225 conventional Advance Block weakening-recovery short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+DELIBERATION1H=dict(third_body_ratio=.50,exit_length=10,cost_multiple=5.)
+def _deliberation(open_,close,third_body_ratio=.50):
+ o=open_.astype(float);c=close.astype(float);body=c-o;bull=body>0
+ return bull&bull.shift(1)&bull.shift(2)&(c>c.shift(1))&(c.shift(1)>c.shift(2))&(o>=c.shift(1))&(body<=third_body_ratio*body.shift(1))
+def sig_deliberation_short_1h(d,p,ctx):
+ pattern=_deliberation(d.o,d.c,p['third_body_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['deliberation_short_1h']=dict(name='[RESEARCH] Deliberation short 1h',style='deliberation_candlestick',fn=sig_deliberation_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(DELIBERATION1H),desc='C226 conventional gap-relaxed Deliberation weakening-recovery short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
