@@ -4164,6 +4164,37 @@ STRATEGIES['ease_of_movement_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CCI1H = dict(window=20, oversold=-100.0, target=100.0, cost_multiple=5.0)
+
+
+def _commodity_channel_index(high, low, close, window=20):
+    """Causal conventional CCI of typical price around its rolling mean deviation."""
+    n = int(window)
+    typical = (high.astype(float) + low.astype(float) + close.astype(float)) / 3.0
+    mean = typical.rolling(n, min_periods=n).mean()
+    deviation = typical.rolling(n, min_periods=n).apply(
+        lambda x: float(np.mean(np.abs(x - np.mean(x)))), raw=True)
+    return (typical - mean) / (0.015 * deviation.replace(0.0, np.nan))
+
+
+def sig_cci_recovery_long_1h(d, p, ctx):
+    """C125: buy a conventional CCI recovery from below -100."""
+    cci = _commodity_channel_index(d.h, d.l, d.c, p['window'])
+    cross_up = (cci > float(p['oversold'])) & (cci.shift() <= float(p['oversold']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c < d.e20) & (d.c > d.c.shift()) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=cci >= float(p['target']), sx=never)
+
+
+STRATEGIES['cci_recovery_long_1h'] = dict(
+    name='[RESEARCH] CCI oversold recovery long 1h', style='typical_price_deviation_recovery',
+    fn=sig_cci_recovery_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CCI1H),
+    desc='Candidate 125: conventional CCI(20) crosses above -100 from oversold below EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
