@@ -31,6 +31,8 @@ from newcore.testnet_harness import (
     FinalTruth,
     HarnessBinding,
     HarnessError,
+    RateLimitEvidence,
+    RateLimitKind,
     ScenarioCase,
     ScenarioContext,
     ScenarioEvidence,
@@ -146,7 +148,18 @@ class FakeAdapter:
         lost = kind is ScenarioKind.LOST_ANSWER_RECONCILE
         refusal = kind is ScenarioKind.MINIMUM_REFUSAL
         restart = kind is ScenarioKind.RESTART_OPEN_POSITION
+        rate_429 = kind is ScenarioKind.RATE_LIMIT_429
+        rate_418 = kind is ScenarioKind.IP_BAN_418
         started = context.case_started_budget_ms + 2
+        rate_limit = None
+        if rate_429:
+            rate_limit = RateLimitEvidence(
+                RateLimitKind.HTTP_429, started + 10, started + 110, True, True, False, started + 110
+            )
+        elif rate_418:
+            rate_limit = RateLimitEvidence(
+                RateLimitKind.HTTP_418, started + 10, started + 110, True, True, True, None
+            )
         evidence = ScenarioEvidence(
             context.case.case_id,
             self.override_kind or kind,
@@ -169,9 +182,10 @@ class FakeAdapter:
             refusal,
             started + 50 if lost else None,
             started + 50 if lost else None,
-            lost or restart,
+            True,
             restart,
             context.restart_boot_id if restart else None,
+            rate_limit,
             FinalTruth.FLAT,
         )
         return replace(evidence, **self.evidence_changes)
@@ -214,7 +228,7 @@ def test_complete_matrix_passes_and_writer_gets_only_canonical_redacted_json() -
     raw = written[0].decode("ascii")
     for forbidden in ("tnet-owner", "Dedicated TNET-01", "secret", "https://", "api_key"):
         assert forbidden not in raw
-    assert len(adapter.contexts) == 10
+    assert len(adapter.contexts) == 12
 
 
 def test_contexts_bind_deterministic_nc06_ids_lost_answer_and_restart_identity() -> None:
@@ -230,12 +244,54 @@ def test_contexts_bind_deterministic_nc06_ids_lost_answer_and_restart_identity()
     assert restart.restart_boot_id != restart.boot_id
 
 
+def test_rate_limit_scenarios_carry_closed_typed_429_and_418_evidence() -> None:
+    report, adapter, _ = _run()
+    assert report.status is SuiteStatus.PASSED
+    rate_contexts = [
+        context for context in adapter.contexts
+        if context.case.kind in (ScenarioKind.RATE_LIMIT_429, ScenarioKind.IP_BAN_418)
+    ]
+    assert [context.case.kind for context in rate_contexts] == [
+        ScenarioKind.RATE_LIMIT_429,
+        ScenarioKind.IP_BAN_418,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("case_kind", "wrong_evidence"),
+    [
+        (
+            ScenarioKind.RATE_LIMIT_429,
+            RateLimitEvidence(RateLimitKind.HTTP_418, T0 + 10, T0 + 20, True, True, True, None),
+        ),
+        (
+            ScenarioKind.IP_BAN_418,
+            RateLimitEvidence(RateLimitKind.HTTP_429, T0 + 10, T0 + 20, True, True, False, T0 + 20),
+        ),
+    ],
+)
+def test_rate_limit_scenarios_reject_the_other_typed_status(
+    case_kind: ScenarioKind, wrong_evidence: RateLimitEvidence
+) -> None:
+    adapter = FakeAdapter()
+    original = adapter.execute
+
+    def execute(context: ScenarioContext) -> ScenarioEvidence:
+        evidence = original(context)
+        return replace(evidence, rate_limit=wrong_evidence) if context.case.kind is case_kind else evidence
+
+    adapter.execute = execute  # type: ignore[method-assign]
+    report, _, _ = _run(adapter)
+    failed = next(case for case in report.cases if case.kind is case_kind)
+    assert failed.failure is FailureCode.ASSERTION
+
+
 def test_cleanup_is_repeated_with_one_idempotency_token_per_case() -> None:
     _, adapter, _ = _run()
-    assert len(adapter.cleanup_contexts) == 20
+    assert len(adapter.cleanup_contexts) == 24
     pairs = list(zip(adapter.cleanup_contexts[::2], adapter.cleanup_contexts[1::2], strict=True))
     assert all(left == right for left, right in pairs)
-    assert len({left.token for left, _ in pairs}) == 10
+    assert len({left.token for left, _ in pairs}) == 12
 
 
 @pytest.mark.parametrize(
@@ -251,6 +307,8 @@ def test_cleanup_is_repeated_with_one_idempotency_token_per_case() -> None:
         (ScenarioKind.LOST_ANSWER_RECONCILE, {"answer_lost_at_ms": T0 + 999}),
         (ScenarioKind.MINIMUM_REFUSAL, {"minimum_refused": False}),
         (ScenarioKind.RESTART_OPEN_POSITION, {"journal_reopened": False}),
+        (ScenarioKind.RATE_LIMIT_429, {"rate_limit": None}),
+        (ScenarioKind.IP_BAN_418, {"rate_limit": None}),
     ],
 )
 def test_each_frozen_scenario_has_a_closed_assertion(kind: ScenarioKind, changes: dict[str, object]) -> None:
@@ -403,6 +461,59 @@ def test_non_idempotent_cleanup_fails() -> None:
     adapter.mismatch_cleanup = True
     report, _, _ = _run(adapter)
     assert report.cases[0].failure is FailureCode.CLEANUP_NOT_IDEMPOTENT
+    assert report.cases[0].status is CaseStatus.HOLD
+
+
+def _forged_cleanup(context: CleanupContext, **changes: object) -> CleanupEvidence:
+    valid = CleanupEvidence(
+        context.token,
+        context.started_ms,
+        None,
+        context.started_ms + 1_000,
+        None,
+        FinalTruth.FLAT,
+        True,
+        1,
+    )
+    forged = object.__new__(CleanupEvidence)
+    for name in valid.__dataclass_fields__:
+        object.__setattr__(forged, name, changes.get(name, getattr(valid, name)))
+    return forged
+
+
+def test_contradictory_cleanup_terminal_evidence_fails_to_hold() -> None:
+    adapter = FakeAdapter()
+
+    def contradictory(context: CleanupContext) -> CleanupEvidence:
+        return _forged_cleanup(context, protected_at_ms=context.started_ms + 500)
+
+    adapter.cleanup = contradictory  # type: ignore[method-assign]
+    report, _, _ = _run(adapter)
+    assert report.status is SuiteStatus.HOLD
+    assert report.cases[0].status is CaseStatus.HOLD
+    assert report.cases[0].final_truth is FinalTruth.HOLD
+
+
+def test_unreconciled_flat_cleanup_evidence_fails_to_hold() -> None:
+    adapter = FakeAdapter()
+
+    def unreconciled(context: CleanupContext) -> CleanupEvidence:
+        return _forged_cleanup(context, reconciled=False)
+
+    adapter.cleanup = unreconciled  # type: ignore[method-assign]
+    report, _, _ = _run(adapter)
+    assert report.status is SuiteStatus.HOLD
+    assert report.cases[0].status is CaseStatus.HOLD
+    assert report.cases[0].final_truth is FinalTruth.HOLD
+
+
+def test_unreconciled_flat_scenario_evidence_fails_to_hold_even_if_cleanup_flattens() -> None:
+    adapter = FakeAdapter()
+    adapter.evidence_changes = {"reconciled": False}
+    report, _, _ = _run(adapter)
+    assert report.status is SuiteStatus.HOLD
+    assert report.cases[0].failure is FailureCode.EVIDENCE_HOLD
+    assert report.cases[0].final_truth is FinalTruth.HOLD
 
 
 @pytest.mark.parametrize("stage", ["binding", "setup", "execute", "cleanup"])
@@ -431,6 +542,14 @@ def test_raw_adapter_exceptions_are_sanitized_and_cleanup_is_attempted(stage: st
 def test_exact_binding_mismatch_stops_before_setup(changes: dict[str, object]) -> None:
     adapter = FakeAdapter()
     adapter.binding_changes = changes
+    report, adapter, _ = _run(adapter)
+    assert report.failure is FailureCode.BINDING
+    assert not adapter.contexts and not adapter.cleanup_contexts
+
+
+def test_binding_confirmation_from_before_suite_start_cannot_reach_setup() -> None:
+    adapter = FakeAdapter()
+    adapter.binding_changes = {"confirmed_at_ms": T0 - 1}
     report, adapter, _ = _run(adapter)
     assert report.failure is FailureCode.BINDING
     assert not adapter.contexts and not adapter.cleanup_contexts

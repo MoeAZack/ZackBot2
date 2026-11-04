@@ -40,12 +40,14 @@ The suite contains exactly these cases, once each and in this order:
 8. accepted order whose answer is lost immediately, then reconciled
 9. exchange-minimum refusal without an entry
 10. protected open position, durable journal reopen, and reconciliation under a newly derived boot identity
+11. typed HTTP 429 evidence that blocks non-protection sends, preserves the protection lane, obeys the retry boundary, and resumes no earlier than that boundary
+12. typed HTTP 418 evidence that blocks non-protection sends, preserves the protection lane, latches account HOLD, and never resumes inside the scenario
 
-Each case receives deterministic NC-06-style synthetic intent and authorization IDs derived only from the sealed manifest and case. Evidence must bind to those exact IDs and affirm the NC-06 authorization. The lost-answer case requires `answer_lost_at_ms == accepted_at_ms`. The restart case requires an exact newly derived boot ID, durable journal reopen evidence, and reconciliation; the original boot ID cannot be reused.
+Each case receives deterministic NC-06-style synthetic intent and authorization IDs derived only from the sealed manifest and case. Evidence must bind to those exact IDs and affirm the NC-06 authorization. The lost-answer case requires `answer_lost_at_ms == accepted_at_ms`. The restart case requires an exact newly derived boot ID, durable journal reopen evidence, and reconciliation; the original boot ID cannot be reused. HTTP 429 and 418 are separate closed evidence types; arbitrary status text or an early/self-asserted resume is never accepted.
 
 ## Setup, cleanup, and stop policy
 
-Each case starts only after a reconciled flat setup for the exact account binding. Cleanup is mandatory even when setup or execution fails. The kernel calls cleanup twice with the same deterministic token and accepts it only when both reconstructed results are equal.
+Each case starts only after the adapter has reconfirmed the exact binding at or after the suite start and a reconciled flat setup has succeeded. Stale pre-suite confirmation cannot authorize setup or an order. Cleanup is mandatory even when setup or execution fails. The kernel calls cleanup twice with the same deterministic token and accepts it only when both reconstructed results are equal.
 
 Cleanup escalation is frozen:
 
@@ -53,7 +55,7 @@ Cleanup escalation is frozen:
 - flatten by 60 seconds;
 - if neither is safely proven, stop new work in `HOLD` by 120 seconds.
 
-`HOLD` is never a passing result. Missing, late, inconsistent, over-budget, or non-idempotent cleanup fails closed. Cleanup orders count toward the scenario's 12-order ceiling.
+`HOLD` is never a passing result. Exactly one terminal timestamp must agree with cleanup final truth: protection, flatten, or HOLD-stop. A flat or protected terminal must be explicitly reconciled; HOLD must not claim reconciliation. Missing, contradictory, unreconciled, late, over-budget, or non-idempotent evidence fails closed, and contradictory/unreconciled terminal evidence is reported as failed `HOLD`. Cleanup orders count toward the scenario's 12-order ceiling.
 
 ## Report and privacy boundary
 

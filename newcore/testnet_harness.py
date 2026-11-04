@@ -108,6 +108,8 @@ class ScenarioKind(enum.StrEnum):
     LOST_ANSWER_RECONCILE = "lost_answer_reconcile"
     MINIMUM_REFUSAL = "minimum_refusal"
     RESTART_OPEN_POSITION = "restart_open_position"
+    RATE_LIMIT_429 = "rate_limit_429"
+    IP_BAN_418 = "ip_ban_418"
 
 
 REQUIRED_SCENARIOS = tuple(ScenarioKind)
@@ -142,6 +144,12 @@ class FailureCode(enum.StrEnum):
     CLEANUP_NOT_IDEMPOTENT = "cleanup_not_idempotent"
     CLEANUP_HOLD = "cleanup_hold"
     SUITE_DEADLINE = "suite_deadline"
+    EVIDENCE_HOLD = "evidence_hold"
+
+
+class RateLimitKind(enum.StrEnum):
+    HTTP_429 = "http_429"
+    HTTP_418 = "http_418"
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +328,34 @@ class SetupEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class RateLimitEvidence:
+    kind: RateLimitKind
+    observed_at_ms: int
+    retry_at_ms: int
+    non_protection_blocked: bool
+    protection_lane_preserved: bool
+    hold_latched: bool
+    resumed_at_ms: int | None
+
+    def __post_init__(self) -> None:
+        _exact(self.kind, RateLimitKind, "validation.rate_limit.kind")
+        _integer(self.observed_at_ms, "validation.rate_limit.observed_at_ms", minimum=1)
+        _integer(self.retry_at_ms, "validation.rate_limit.retry_at_ms", minimum=1)
+        if self.retry_at_ms <= self.observed_at_ms:
+            _fail("validation.rate_limit.retry_at_ms")
+        _boolean(self.non_protection_blocked, "validation.rate_limit.non_protection_blocked")
+        _boolean(self.protection_lane_preserved, "validation.rate_limit.protection_lane_preserved")
+        _boolean(self.hold_latched, "validation.rate_limit.hold_latched")
+        if self.resumed_at_ms is not None:
+            _integer(self.resumed_at_ms, "validation.rate_limit.resumed_at_ms", minimum=1)
+        if self.kind is RateLimitKind.HTTP_429:
+            if self.hold_latched or self.resumed_at_ms is None or self.resumed_at_ms < self.retry_at_ms:
+                _fail("validation.rate_limit.http_429")
+        elif not self.hold_latched or self.resumed_at_ms is not None:
+            _fail("validation.rate_limit.http_418")
+
+
+@dataclass(frozen=True, slots=True)
 class ScenarioEvidence:
     case_id: str
     kind: ScenarioKind
@@ -345,6 +381,7 @@ class ScenarioEvidence:
     reconciled: bool
     journal_reopened: bool
     restart_boot_id: str | None
+    rate_limit: RateLimitEvidence | None
     final_truth: FinalTruth
 
     def __post_init__(self) -> None:
@@ -372,6 +409,8 @@ class ScenarioEvidence:
                 _integer(value, f"validation.evidence.{name}", minimum=1)
         if self.restart_boot_id is not None:
             _local_id(self.restart_boot_id, "boot", "validation.evidence.restart_boot_id")
+        if self.rate_limit is not None:
+            _exact(self.rate_limit, RateLimitEvidence, "validation.evidence.rate_limit")
         _exact(self.final_truth, FinalTruth, "validation.evidence.final_truth")
 
 
@@ -398,6 +437,19 @@ class CleanupEvidence:
         _exact(self.final_truth, FinalTruth, "validation.cleanup.final_truth")
         _boolean(self.reconciled, "validation.cleanup.reconciled")
         _integer(self.cleanup_orders_total, "validation.cleanup.cleanup_orders_total")
+        terminals = (self.protected_at_ms is not None, self.flattened_at_ms is not None,
+                     self.hold_stopped_at_ms is not None)
+        expected = {
+            FinalTruth.PROTECTED_RECONCILED: (True, False, False),
+            FinalTruth.FLAT: (False, True, False),
+            FinalTruth.HOLD: (False, False, True),
+        }[self.final_truth]
+        if terminals != expected:
+            _fail("validation.cleanup.terminal_evidence")
+        if self.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED) and not self.reconciled:
+            _fail("validation.cleanup.reconciled")
+        if self.final_truth is FinalTruth.HOLD and self.reconciled:
+            _fail("validation.cleanup.hold_reconciled")
 
 
 @dataclass(frozen=True, slots=True)
@@ -565,7 +617,13 @@ def _seal_setup(value: SetupEvidence) -> SetupEvidence:
 
 def _seal_scenario(value: ScenarioEvidence) -> ScenarioEvidence:
     _exact(value, ScenarioEvidence, "validation.evidence")
-    return ScenarioEvidence(*(getattr(value, field.name) for field in fields(ScenarioEvidence)))
+    items = [getattr(value, field.name) for field in fields(ScenarioEvidence)]
+    rate_index = next(index for index, field in enumerate(fields(ScenarioEvidence)) if field.name == "rate_limit")
+    rate_limit = items[rate_index]
+    if rate_limit is not None:
+        _exact(rate_limit, RateLimitEvidence, "validation.evidence.rate_limit")
+        items[rate_index] = RateLimitEvidence(*(getattr(rate_limit, field.name) for field in fields(RateLimitEvidence)))
+    return ScenarioEvidence(*items)
 
 
 def _seal_cleanup(value: CleanupEvidence) -> CleanupEvidence:
@@ -585,7 +643,7 @@ def _case_context(manifest: SuiteManifest, suite_id: str, case: ScenarioCase, cu
                            case.kind is ScenarioKind.LOST_ANSWER_RECONCILE)
 
 
-def _binding_matches(binding: HarnessBinding, evidence: BindingEvidence) -> bool:
+def _binding_matches(binding: HarnessBinding, evidence: BindingEvidence, suite_started_ms: int) -> bool:
     expected = binding.account.binding
     return (evidence.account_id == binding.account.account_id
             and evidence.binding_digest == expected.key_digest
@@ -593,7 +651,8 @@ def _binding_matches(binding: HarnessBinding, evidence: BindingEvidence) -> bool
             and evidence.venue is expected.venue
             and evidence.environment is Environment.TESTNET
             and evidence.settlement_asset == expected.settlement_asset
-            and evidence.isolated)
+            and evidence.isolated
+            and evidence.confirmed_at_ms >= suite_started_ms)
 
 
 def _setup_failure(context: ScenarioContext, setup: SetupEvidence) -> FailureCode | None:
@@ -616,6 +675,11 @@ def _scenario_failure(context: ScenarioContext, setup: SetupEvidence, evidence: 
     if (evidence.orders_placed > case.max_orders or evidence.peak_notional > case.max_notional
             or evidence.aggregate_peak_notional > MAX_AGGREGATE_NOTIONAL or evidence.max_leverage > case.leverage):
         return FailureCode.BOUNDS
+    if case.kind not in (ScenarioKind.RATE_LIMIT_429, ScenarioKind.IP_BAN_418) and evidence.rate_limit is not None:
+        return FailureCode.ASSERTION
+    if (evidence.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED)
+            and not evidence.reconciled) or evidence.final_truth is FinalTruth.HOLD:
+        return FailureCode.EVIDENCE_HOLD
     safe = evidence.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED)
     kind = case.kind
     if kind in (ScenarioKind.LONG_TARGET, ScenarioKind.SHORT_TARGET):
@@ -633,21 +697,33 @@ def _scenario_failure(context: ScenarioContext, setup: SetupEvidence, evidence: 
               and evidence.reconciled and safe)
     elif kind is ScenarioKind.MINIMUM_REFUSAL:
         ok = evidence.minimum_refused and not evidence.entry_confirmed and evidence.final_truth is FinalTruth.FLAT
-    else:
+    elif kind is ScenarioKind.RESTART_OPEN_POSITION:
         ok = (evidence.entry_confirmed and evidence.protection_confirmed and evidence.journal_reopened
               and evidence.restart_boot_id == context.restart_boot_id
               and evidence.restart_boot_id != context.boot_id and evidence.reconciled and safe)
+    elif kind is ScenarioKind.RATE_LIMIT_429:
+        rate = evidence.rate_limit
+        ok = (type(rate) is RateLimitEvidence and rate.kind is RateLimitKind.HTTP_429
+              and evidence.started_ms <= rate.observed_at_ms < rate.retry_at_ms
+              and rate.resumed_at_ms is not None and rate.resumed_at_ms <= evidence.finished_ms
+              and rate.non_protection_blocked and rate.protection_lane_preserved and safe)
+    else:
+        rate = evidence.rate_limit
+        ok = (type(rate) is RateLimitEvidence and rate.kind is RateLimitKind.HTTP_418
+              and evidence.started_ms <= rate.observed_at_ms <= evidence.finished_ms
+              and rate.non_protection_blocked and rate.protection_lane_preserved and rate.hold_latched and safe)
     return None if ok else FailureCode.ASSERTION
 
 
 def _cleanup_failure(context: CleanupContext, evidence: CleanupEvidence, orders_before: int,
                      max_orders: int) -> FailureCode | None:
     if evidence.token != context.token or evidence.started_ms < context.started_ms:
-        return FailureCode.CLEANUP
+        return FailureCode.CLEANUP_HOLD
     if orders_before + evidence.cleanup_orders_total > max_orders:
         return FailureCode.BOUNDS
     if evidence.final_truth is FinalTruth.FLAT:
-        ok = evidence.flattened_at_ms is not None and evidence.flattened_at_ms <= context.flatten_deadline_ms
+        ok = (evidence.flattened_at_ms is not None and evidence.flattened_at_ms <= context.flatten_deadline_ms
+              and evidence.reconciled)
     elif evidence.final_truth is FinalTruth.PROTECTED_RECONCILED:
         ok = (evidence.protected_at_ms is not None and evidence.protected_at_ms <= context.protect_deadline_ms
               and evidence.reconciled)
@@ -663,7 +739,12 @@ def _case_report(context: ScenarioContext, setup: SetupEvidence | None, evidence
     started = setup.at_ms if setup is not None else context.case_started_budget_ms
     finished = (cleanup.flattened_at_ms or cleanup.protected_at_ms or cleanup.hold_stopped_at_ms or cleanup.started_ms
                 if cleanup is not None else (evidence.finished_ms if evidence is not None else started))
-    final_truth = cleanup.final_truth if cleanup is not None else FinalTruth.HOLD
+    untrusted_terminal = failure in (
+        FailureCode.CLEANUP_HOLD,
+        FailureCode.CLEANUP_NOT_IDEMPOTENT,
+        FailureCode.EVIDENCE_HOLD,
+    )
+    final_truth = cleanup.final_truth if cleanup is not None and not untrusted_terminal else FinalTruth.HOLD
     orders = (evidence.orders_placed if evidence is not None else 0) + (
         cleanup.cleanup_orders_total if cleanup is not None else 0)
     peak = evidence.peak_notional if evidence is not None else ZERO
@@ -720,7 +801,7 @@ def run_suite(manifest: SuiteManifest, adapter: HarnessAdapter, writer: ReportWr
         binding_evidence = _seal_binding_evidence(adapter.confirm_binding(spec.binding))
     except Exception:
         binding_evidence = None
-    if binding_evidence is None or not _binding_matches(spec.binding, binding_evidence):
+    if binding_evidence is None or not _binding_matches(spec.binding, binding_evidence, spec.suite_started_ms):
         suite_failure = FailureCode.BINDING
     else:
         cursor = max(cursor, binding_evidence.confirmed_at_ms)
@@ -788,7 +869,7 @@ __all__ = [
     "BindingEvidence", "CaseReport", "CaseStatus", "CleanupContext", "CleanupEvidence", "FailureCode",
     "FinalTruth", "HarnessAdapter", "HarnessBinding", "HarnessError", "MAX_AGGREGATE_NOTIONAL",
     "MAX_LEVERAGE", "MAX_ORDERS_PER_SCENARIO", "MAX_SCENARIO_MS", "MAX_SCENARIO_NOTIONAL",
-    "MAX_SUITE_MS", "REPORT_SCHEMA", "REQUIRED_SCENARIOS", "ScenarioCase",
+    "MAX_SUITE_MS", "REPORT_SCHEMA", "REQUIRED_SCENARIOS", "RateLimitEvidence", "RateLimitKind", "ScenarioCase",
     "ScenarioContext", "ScenarioEvidence", "ScenarioKind", "SetupEvidence", "SuiteManifest", "SuiteReport",
     "SuiteStatus", "canonical_report_bytes", "run_suite",
 ]
