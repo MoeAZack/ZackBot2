@@ -407,6 +407,13 @@ class PathBranch:
                     for row in self.events)
                 or len(self.events) != len(set(self.events))):
             _fail('path.branch_events')
+        expected = {
+            PathOrder.NONE: ((),),
+            PathOrder.STOP_FIRST: (('stop',), ('stop', 'target')),
+            PathOrder.TARGET_FIRST: (('target',), ('target', 'stop')),
+        }
+        if self.order not in expected or self.events not in expected[self.order]:
+            _fail('path.branch_consistency')
 
 
 @dataclass(frozen=True, slots=True)
@@ -419,6 +426,32 @@ class PathResolution:
             _fail('path.resolution_type')
         if not self.branches or not all(type(row) is PathBranch for row in self.branches):
             _fail('path.resolution_branches')
+        sealed = tuple(PathBranch(row.order, row.events) for row in self.branches)
+        object.__setattr__(self, 'branches', sealed)
+        if self.status is ReplayStatus.COMPLETE:
+            if len(self.branches) != 1:
+                _fail('path.resolution_consistency')
+        elif self.status is ReplayStatus.AMBIGUOUS:
+            expected = (
+                PathBranch(PathOrder.STOP_FIRST, ('stop', 'target')),
+                PathBranch(PathOrder.TARGET_FIRST, ('target', 'stop')),
+            )
+            if self.branches != expected:
+                _fail('path.resolution_consistency')
+        else:
+            _fail('path.resolution_status')
+
+
+def _seal_path(path: PathResolution) -> PathResolution:
+    """Revalidate and copy caller records before hashing or retaining them."""
+    if type(path) is not PathResolution or type(path.branches) is not tuple:
+        _fail('path.resolution_type')
+    sealed = []
+    for row in path.branches:
+        if type(row) is not PathBranch:
+            _fail('path.resolution_branches')
+        sealed.append(PathBranch(row.order, row.events))
+    return PathResolution(path.status, tuple(sealed))
 
 
 def resolve_paths(observation: PathObservation) -> PathResolution:
@@ -667,6 +700,7 @@ def build_result(*, manifest: object, action: object, path: object,
         if (type(manifest) is not DatasetManifest or type(path) is not PathResolution
                 or type(fills) is not FillSummary):
             _fail('result.input')
+        sealed_path = _seal_path(path)
         _decimal(gross_pnl, 'result.gross_pnl')
         manifest_sha = canonical_sha256(manifest)
         action_sha = canonical_sha256(action)
@@ -674,7 +708,7 @@ def build_result(*, manifest: object, action: object, path: object,
         status = ReplayStatus.COMPLETE
         net: Decimal | None = None
         gross: Decimal | None = gross_pnl
-        if path.status is ReplayStatus.AMBIGUOUS:
+        if sealed_path.status is ReplayStatus.AMBIGUOUS:
             status = ReplayStatus.AMBIGUOUS
             reasons.append(ReplayReason.PATH_AMBIGUOUS)
             gross = None
@@ -706,14 +740,14 @@ def build_result(*, manifest: object, action: object, path: object,
         if status is ReplayStatus.COMPLETE:
             with localcontext(_ARITHMETIC_CONTEXT):
                 net = gross_pnl - costs.fee - costs.slippage + funding.total
-        material = (manifest_sha, action_sha, status, tuple(reasons), path.branches,
+        material = (manifest_sha, action_sha, status, tuple(reasons), sealed_path.branches,
                     fills, costs, funding, gross, net)
         run_id = 'sim_' + canonical_sha256(material)[:32]
         return _construct(ReplayResult, run_id=run_id, status=status,
                           reasons=tuple(reasons) or (ReplayReason.OK,),
                           manifest=manifest, manifest_sha256=manifest_sha,
                           action_sha256=action_sha,
-                          branches=path.branches, fills=fills, costs=costs,
+                          branches=sealed_path.branches, fills=fills, costs=costs,
                           funding=funding, gross_pnl=gross, net_pnl=net)
     except Exception:
         empty = FillSummary(ReplayStatus.INCOMPLETE, Decimal(0), Decimal(0),

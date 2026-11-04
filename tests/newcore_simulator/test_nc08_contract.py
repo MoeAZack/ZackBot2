@@ -566,6 +566,43 @@ def test_path_resolution_refuses_mutable_or_nonexact_branch_containers():
         PathResolution(ReplayStatus.COMPLETE, (derived,))
 
 
+def test_build_result_revalidates_and_owns_exact_path_records():
+    forged_branch = object.__new__(PathBranch)
+    object.__setattr__(forged_branch, 'order', PathOrder.STOP_FIRST)
+    object.__setattr__(forged_branch, 'events', ['stop'])
+    forged_path = object.__new__(PathResolution)
+    object.__setattr__(forged_path, 'status', ReplayStatus.COMPLETE)
+    object.__setattr__(forged_path, 'branches', (forged_branch,))
+    refused = build_result(
+        manifest=_manifest(), action=_intent(), path=forged_path,
+        fills=summarize_fills(D('10'), _fills()), costs=_costs(), funding=_funding(),
+        gross_pnl=D('10'))
+    assert refused.status is ReplayStatus.INVALID
+
+    inconsistent_branch = object.__new__(PathBranch)
+    object.__setattr__(inconsistent_branch, 'order', PathOrder.STOP_FIRST)
+    object.__setattr__(inconsistent_branch, 'events', ('target',))
+    inconsistent_path = object.__new__(PathResolution)
+    object.__setattr__(inconsistent_path, 'status', ReplayStatus.COMPLETE)
+    object.__setattr__(inconsistent_path, 'branches', (inconsistent_branch,))
+    assert build_result(
+        manifest=_manifest(), action=_intent(), path=inconsistent_path,
+        fills=summarize_fills(D('10'), _fills()), costs=_costs(), funding=_funding(),
+        gross_pnl=D('10')).status is ReplayStatus.INVALID
+
+    caller_path = _single_path()
+    result = build_result(
+        manifest=_manifest(), action=_intent(), path=caller_path,
+        fills=summarize_fills(D('10'), _fills()), costs=_costs(), funding=_funding(),
+        gross_pnl=D('10'))
+    before = canonical_bytes(result)
+    assert result.branches[0] is not caller_path.branches[0]
+    object.__setattr__(caller_path.branches[0], 'events', ('target',))
+    assert canonical_bytes(result) == before
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        result.branches[0].events = ('target',)
+
+
 def test_fill_cost_and_funding_reject_backward_causal_timestamps():
     backward_fills = (
         FillEvidence(sequence=1, at_ms=T0 + 2, known=True, quantity=D('4'),
