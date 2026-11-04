@@ -4581,6 +4581,12 @@ def _psychological_line(close,window=12):
 def sig_psychological_line_long_1h(d,p,ctx):
  x=_psychological_line(d.c,p['window']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
 STRATEGIES['psychological_line_long_1h']=dict(name='[RESEARCH] Psychological Line long 1h',style='up_close_frequency',fn=sig_psychological_line_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PSY1H),desc='C140 PSY12 crosses above 50 while close is above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+RMI1H=dict(momentum=5,smooth=20,threshold=50.0,cost_multiple=5.0)
+def _relative_momentum_index(close,momentum=5,smooth=20):
+ delta=close.astype(float).diff(int(momentum));up=delta.clip(lower=0).ewm(alpha=1.0/int(smooth),adjust=False,min_periods=int(smooth)).mean();down=(-delta.clip(upper=0)).ewm(alpha=1.0/int(smooth),adjust=False,min_periods=int(smooth)).mean();den=up+down;return 100.0*up/den.replace(0,np.nan)
+def sig_relative_momentum_index_long_1h(d,p,ctx):
+ x=_relative_momentum_index(d.c,p['momentum'],p['smooth']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
+STRATEGIES['relative_momentum_index_long_1h']=dict(name='[RESEARCH] Relative Momentum Index long 1h',style='lagged_momentum_ratio',fn=sig_relative_momentum_index_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RMI1H),desc='C141 conventional RMI(5,20) crosses above 50 while close is above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
