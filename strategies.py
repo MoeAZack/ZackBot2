@@ -5221,6 +5221,15 @@ def sig_unique_three_river_long_1h(d,p,ctx):
  pattern=_unique_three_river(d.o,d.h,d.l,d.c,p['second_body_ratio'],p['third_body_ratio'],p['lower_shadow_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['unique_three_river_long_1h']=dict(name='[RESEARCH] Unique Three River long 1h',style='unique_three_river_candlestick',fn=sig_unique_three_river_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(UNIQUE3RIVER1H),desc='C228 gap-relaxed Unique Three River bottom-reversal long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+CONCEALBABY1H=dict(shadow_body_ratio=.25,exit_length=10,cost_multiple=5.)
+def _concealing_baby_swallow(open_,high,low,close,shadow_body_ratio=.25):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);body=o-c;bear=body>0;upper=h-o;lower=c-l
+ first_near=(upper.shift(3)<=shadow_body_ratio*body.shift(3))&(lower.shift(3)<=shadow_body_ratio*body.shift(3));second_near=(upper.shift(2)<=shadow_body_ratio*body.shift(2))&(lower.shift(2)<=shadow_body_ratio*body.shift(2))
+ return bear&bear.shift(1)&bear.shift(2)&bear.shift(3)&first_near&second_near&(o.shift(2)<=c.shift(3))&(c.shift(2)<c.shift(3))&(o.shift(1)<=c.shift(2))&(c.shift(1)<c.shift(2))&(h.shift(1)>c.shift(2))&(h.shift(1)<o.shift(2))&(o>=h.shift(1))&(c<=l.shift(1))
+def sig_concealing_baby_swallow_long_1h(d,p,ctx):
+ pattern=_concealing_baby_swallow(d.o,d.h,d.l,d.c,p['shadow_body_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['concealing_baby_swallow_long_1h']=dict(name='[RESEARCH] Concealing Baby Swallow long 1h',style='concealing_baby_swallow_candlestick',fn=sig_concealing_baby_swallow_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CONCEALBABY1H),desc='C229 gap-relaxed Concealing Baby Swallow exhaustion-reversal long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
