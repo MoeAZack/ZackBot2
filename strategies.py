@@ -4853,6 +4853,12 @@ def _three_white_soldiers(open_,close):
 def sig_three_white_soldiers_long_1h(d,p,ctx):
  pattern=_three_white_soldiers(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['three_white_soldiers_long_1h']=dict(name='[RESEARCH] Three White Soldiers long 1h',style='three_white_soldiers_candlestick',fn=sig_three_white_soldiers_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(TWS1H),desc='C180 conventional three advancing bullish real bodies above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+HAMMER1H=dict(exit_length=10,cost_multiple=5.0)
+def _bullish_hammer(open_,high,low,close):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);body=c-o;lower=o-l;upper=h-c;return (body>0)&(lower>=2.0*body)&(upper<=body)
+def sig_bullish_hammer_long_1h(d,p,ctx):
+ pattern=_bullish_hammer(d.o,d.h,d.l,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_hammer_long_1h']=dict(name='[RESEARCH] Bullish Hammer long 1h',style='bullish_hammer_candlestick',fn=sig_bullish_hammer_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(HAMMER1H),desc='C181 classical bullish hammer geometry above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
