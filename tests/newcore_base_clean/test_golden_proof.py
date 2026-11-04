@@ -220,13 +220,14 @@ def test_stored_trace_is_revalidated_independently_of_collection(monkeypatch) ->
         G.gate_evidence(artifact)
 
 
+# Hostile values stay in the parameter objects; the explicit ids keep them out of collected node IDs.
 @pytest.mark.parametrize("key,value", [
-    ("secret_token", "sk-live-abc123"),
-    ("url", "https://example.invalid/exfil?k=1"),
-    ("note", "x"),
-    ("_res_extra", {"R": 0.0}),
-    ("tol", {"R": 0.001}),
-])
+    pytest.param("secret_token", "sk-live-abc123", id="extra_key_secret"),
+    pytest.param("url", "https://example.invalid/exfil?k=1", id="extra_key_url"),
+    pytest.param("note", "x", id="extra_key_plain"),
+    pytest.param("_res_extra", {"R": 0.0}, id="extra_key_res_lookalike"),
+    pytest.param("tol", {"R": 0.001}, id="extra_key_tol"),
+], )
 def test_stored_trade_with_any_extra_key_refuses_everywhere(monkeypatch, key, value) -> None:
     artifact, plan, cases, traces = _accepted(monkeypatch)
     by_key = {(c, a): t for c, a, t in traces}
