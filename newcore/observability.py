@@ -20,7 +20,8 @@ from newcore.domain.events import IncidentRecorded
 from newcore.domain.incident import Incident
 from newcore.domain.orders import Purpose, Side
 from newcore.domain.reasons import ReasonCode
-from newcore.management import Binding, ManagementPlan, PlanReason
+from newcore.management import (Binding, CloseAction, FlattenRequired,
+                                ManagementPlan, PlanReason, ReduceAction)
 from newcore.simulator import FillSummary, ReplayStatus, summarize_fills
 
 
@@ -78,6 +79,23 @@ class WriteStatus(enum.StrEnum):
     INVALID = 'invalid'
 
 
+class BindingKind(enum.StrEnum):
+    RECORD_ID = 'record_id'
+    MANAGEMENT = 'management'
+    GENERATION = 'generation'
+
+
+class GapReason(enum.StrEnum):
+    SOURCE_DROPPED = 'source_dropped'
+    OUTAGE = 'outage'
+    UNAVAILABLE = 'unavailable'
+
+
+class SegmentTransitionKind(enum.StrEnum):
+    ADD = 'add'
+    PARTIAL = 'partial'
+
+
 def _fail(code: str):
     raise ObservationError(code)
 
@@ -99,6 +117,16 @@ def _family_id(value: object, code: str, prefix: str):
             or len(value) != len(stem) + 32
             or any(char not in '0123456789abcdef' for char in value[len(stem):])):
         _fail(code)
+
+
+def _stable_record_id(value: object, code: str):
+    if type(value) is not str or '_' not in value:
+        _fail(code)
+    prefix = value.split('_', 1)[0]
+    if prefix not in {'acct', 'pf', 'pos', 'lot', 'int', 'res', 'rec', 'dec',
+                      'evt', 'inc', 'mgt', 'obs'}:
+        _fail(code)
+    _family_id(value, code, prefix)
 
 
 def _digest(value: object, code: str):
@@ -162,16 +190,39 @@ def canonical_sha256(value: object) -> str:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class TypedBinding:
+    kind: BindingKind
+    record_id: str | None = None
+    management: Binding | None = None
+    generation: int | None = None
+
+    def __post_init__(self):
+        if type(self.kind) is not BindingKind:
+            _fail('binding.kind')
+        present = sum(value is not None for value in (
+            self.record_id, self.management, self.generation))
+        if present != 1:
+            _fail('binding.shape')
+        if self.kind is BindingKind.RECORD_ID:
+            _stable_record_id(self.record_id, 'binding.record_id')
+        elif self.kind is BindingKind.MANAGEMENT:
+            if type(self.management) is not Binding:
+                _fail('binding.management')
+        elif type(self.generation) is not int or self.generation <= 0:
+            _fail('binding.generation')
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ReasonAlternative:
     reason: ReasonCode | PlanReason
     source_sha256: str
-    bindings: tuple[str, ...]
+    bindings: tuple[TypedBinding, ...]
 
     def __post_init__(self):
         _reason(self.reason, 'alternative.reason')
         _digest(self.source_sha256, 'alternative.source_sha256')
         if (type(self.bindings) is not tuple
-                or not all(type(row) is str and row for row in self.bindings)):
+                or not all(type(row) is TypedBinding for row in self.bindings)):
             _fail('alternative.bindings')
 
 
@@ -188,13 +239,57 @@ class DecisionTrace:
     alternatives: tuple[ReasonAlternative, ...]
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SequenceGap:
+    stream_id: str
+    after_sequence: int
+    missing_from: int
+    missing_through: int
+    resume_sequence: int
+    observed_at_ms: int
+    reason: GapReason
+    source: TypedBinding
+
+    def __post_init__(self):
+        _stable_record_id(self.stream_id, 'gap.stream_id')
+        _integer(self.after_sequence, 'gap.after_sequence')
+        _integer(self.missing_from, 'gap.missing_from', minimum=1)
+        _integer(self.missing_through, 'gap.missing_through', minimum=1)
+        _integer(self.resume_sequence, 'gap.resume_sequence', minimum=1)
+        _integer(self.observed_at_ms, 'gap.observed_at_ms', minimum=1)
+        if type(self.reason) is not GapReason or type(self.source) is not TypedBinding:
+            _fail('gap.type')
+        if (self.missing_from != self.after_sequence + 1
+                or self.missing_through < self.missing_from
+                or self.resume_sequence != self.missing_through + 1):
+            _fail('gap.range')
+
+
+def _seal_gap(gap: object) -> SequenceGap:
+    if type(gap) is not SequenceGap:
+        _fail('gap.type')
+    source = TypedBinding(kind=gap.source.kind, record_id=gap.source.record_id,
+                          management=gap.source.management,
+                          generation=gap.source.generation)
+    return SequenceGap(
+        stream_id=gap.stream_id, after_sequence=gap.after_sequence,
+        missing_from=gap.missing_from, missing_through=gap.missing_through,
+        resume_sequence=gap.resume_sequence, observed_at_ms=gap.observed_at_ms,
+        reason=gap.reason, source=source)
+
+
 def _alternatives(values: object) -> tuple[ReasonAlternative, ...]:
     if (type(values) is not tuple
             or not all(type(row) is ReasonAlternative for row in values)):
         _fail('trace.alternatives')
     return tuple(ReasonAlternative(reason=row.reason,
                                    source_sha256=row.source_sha256,
-                                   bindings=tuple(row.bindings)) for row in values)
+                                   bindings=tuple(TypedBinding(
+                                       kind=item.kind, record_id=item.record_id,
+                                       management=item.management,
+                                       generation=item.generation)
+                                                  for item in row.bindings))
+                 for row in values)
 
 
 def trace_decision(decision: object, *, alternatives=()) -> DecisionTrace:
@@ -207,12 +302,26 @@ def trace_decision(decision: object, *, alternatives=()) -> DecisionTrace:
 
 
 def trace_plan(plan: object, kind: object, *, alternatives=()) -> DecisionTrace:
-    if type(plan) is not ManagementPlan or kind not in (
-            ObservationKind.WHY_HELD, ObservationKind.WHY_CLOSED):
+    if (type(plan) is not ManagementPlan or type(kind) is not ObservationKind
+            or kind not in (ObservationKind.WHY_HELD, ObservationKind.WHY_CLOSED)):
         _fail('trace.plan')
     if (type(plan.reason) is not PlanReason or type(plan.bindings) is not tuple
             or not all(type(row) is Binding for row in plan.bindings)):
         _fail('trace.plan_shape')
+    if type(plan.actions) is not tuple:
+        _fail('trace.plan_actions')
+    exit_actions = tuple(row for row in plan.actions
+                         if type(row) in (CloseAction, FlattenRequired, ReduceAction))
+    exit_reasons = frozenset({
+        PlanReason.FLATTEN_REQUIRED, PlanReason.FORCED_EXIT,
+        PlanReason.STRATEGY_EXIT, PlanReason.TARGET_REDUCE, PlanReason.TIME_EXIT,
+    })
+    if kind is ObservationKind.WHY_HELD:
+        if exit_actions or plan.reason in exit_reasons:
+            _fail('trace.held_semantics')
+    elif (not exit_actions or plan.reason not in exit_reasons
+          or plan.reason is PlanReason.NO_CHANGE):
+        _fail('trace.closed_semantics')
     generations = (plan.lot_generation, plan.policy_generation, plan.market_generation,
                    plan.protection_generation, plan.strategy_exit_generation,
                    plan.pending_generation)
@@ -347,6 +456,47 @@ def measure_fill(summary: object, *, reference_price: object, side: object,
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class SegmentTransition:
+    lot_id: str
+    kind: SegmentTransitionKind
+    from_segment_id: str
+    to_segment_id: str
+    from_generation: int
+    to_generation: int
+    sequence: int
+    source: TypedBinding
+
+    def __post_init__(self):
+        _family_id(self.lot_id, 'segment.lot_id', 'lot')
+        if type(self.kind) is not SegmentTransitionKind:
+            _fail('segment.kind')
+        _text(self.from_segment_id, 'segment.from_segment_id', maximum=64)
+        _text(self.to_segment_id, 'segment.to_segment_id', maximum=64)
+        if self.from_segment_id == self.to_segment_id:
+            _fail('segment.identity')
+        _integer(self.from_generation, 'segment.from_generation', minimum=1)
+        _integer(self.to_generation, 'segment.to_generation', minimum=1)
+        if self.to_generation < self.from_generation:
+            _fail('segment.generation')
+        _integer(self.sequence, 'segment.sequence', minimum=1)
+        if type(self.source) is not TypedBinding:
+            _fail('segment.source')
+
+
+def _seal_segment_transition(value: object) -> SegmentTransition:
+    if type(value) is not SegmentTransition:
+        _fail('segment.transition')
+    source = TypedBinding(kind=value.source.kind, record_id=value.source.record_id,
+                          management=value.source.management,
+                          generation=value.source.generation)
+    return SegmentTransition(
+        lot_id=value.lot_id, kind=value.kind,
+        from_segment_id=value.from_segment_id, to_segment_id=value.to_segment_id,
+        from_generation=value.from_generation, to_generation=value.to_generation,
+        sequence=value.sequence, source=source)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ExcursionSample:
     lot_id: str
     lot_generation: int
@@ -373,10 +523,9 @@ class ExcursionSample:
         _decimal(self.quantity, 'excursion.quantity', positive=True)
         _text(self.risk_basis_id, 'excursion.risk_basis_id', maximum=64)
         _decimal(self.accepted_risk, 'excursion.accepted_risk', positive=True)
-        if self.coverage is Coverage.COMPLETE:
-            _decimal(self.mark, 'excursion.mark', positive=True)
-        elif self.mark is not None:
-            _fail('excursion.gap_mark')
+        if self.coverage is not Coverage.COMPLETE:
+            _fail('excursion.explicit_gap_required')
+        _decimal(self.mark, 'excursion.mark', positive=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,6 +549,8 @@ class ExcursionSegment:
     accepted_risk: Decimal
     mfe: ExcursionPoint | None
     mae: ExcursionPoint | None
+    transition: SegmentTransition | None
+    gaps: tuple[SequenceGap, ...]
     last_sequence: int
     last_at_ms: int
     gap_count: int
@@ -424,12 +575,8 @@ def _point(distance: Decimal, sample: ExcursionSample) -> ExcursionPoint:
                           sample.sequence, sample.at_ms)
 
 
-def _new_segment(sample: ExcursionSample) -> ExcursionSegment:
-    if sample.coverage is Coverage.GAP:
-        return ExcursionSegment(sample.lot_generation, sample.segment_id, sample.side,
-                                sample.average_entry, sample.quantity,
-                                sample.risk_basis_id, sample.accepted_risk,
-                                None, None, sample.sequence, sample.at_ms, 1)
+def _new_segment(sample: ExcursionSample,
+                 transition: SegmentTransition | None = None) -> ExcursionSegment:
     direction = Decimal(1) if sample.side is Side.LONG else Decimal(-1)
     favorable = direction * (sample.mark - sample.average_entry)
     adverse = -favorable
@@ -437,52 +584,79 @@ def _new_segment(sample: ExcursionSample) -> ExcursionSegment:
                             sample.average_entry, sample.quantity,
                             sample.risk_basis_id, sample.accepted_risk,
                             _point(favorable, sample), _point(adverse, sample),
-                            sample.sequence, sample.at_ms, 0)
+                            transition, (), sample.sequence, sample.at_ms, 0)
 
 
-def observe_excursion(series: object, sample: object) -> ExcursionSeries:
+def observe_excursion(series: object, sample: object, *, transition=None) -> ExcursionSeries:
     if type(sample) is not ExcursionSample:
         _fail('excursion.sample')
     if series is None:
+        if sample.sequence != 1 or transition is not None:
+            _fail('excursion.initial_sequence')
         return ExcursionSeries(sample.lot_id, (_new_segment(sample),))
     if (type(series) is not ExcursionSeries or series.lot_id != sample.lot_id
             or type(series.segments) is not tuple or not series.segments):
         _fail('excursion.series')
     current = series.segments[-1]
-    if sample.sequence <= current.last_sequence or sample.at_ms < current.last_at_ms:
+    if sample.sequence != current.last_sequence + 1 or sample.at_ms < current.last_at_ms:
         _fail('excursion.order')
-    if sample.lot_generation != current.lot_generation:
-        if sample.lot_generation <= current.lot_generation:
-            _fail('excursion.generation')
-        if sample.segment_id == current.segment_id:
-            _fail('excursion.segment_id')
-        return ExcursionSeries(series.lot_id, series.segments + (_new_segment(sample),))
     frozen = (sample.segment_id, sample.side, sample.average_entry, sample.quantity,
               sample.risk_basis_id, sample.accepted_risk)
-    if frozen != (current.segment_id, current.side, current.average_entry,
-                  current.quantity, current.risk_basis_id, current.accepted_risk):
-        _fail('excursion.segment_basis')
-    if sample.coverage is Coverage.GAP:
-        updated = dataclasses.replace(current, last_sequence=sample.sequence,
-                                      last_at_ms=sample.at_ms,
-                                      gap_count=current.gap_count + 1)
-    else:
-        direction = Decimal(1) if sample.side is Side.LONG else Decimal(-1)
-        favorable = _point(direction * (sample.mark - sample.average_entry), sample)
-        adverse = _point(-direction * (sample.mark - sample.average_entry), sample)
-        updated = dataclasses.replace(
-            current,
-            mfe=(favorable if current.mfe is None or favorable.price > current.mfe.price
-                 else current.mfe),
-            mae=(adverse if current.mae is None or adverse.price > current.mae.price
-                 else current.mae),
-            last_sequence=sample.sequence,
-            last_at_ms=sample.at_ms)
+    current_basis = (current.segment_id, current.side, current.average_entry,
+                     current.quantity, current.risk_basis_id, current.accepted_risk)
+    if frozen != current_basis or sample.lot_generation != current.lot_generation:
+        transition = _seal_segment_transition(transition)
+        if (transition.lot_id != sample.lot_id
+                or transition.from_segment_id != current.segment_id
+                or transition.to_segment_id != sample.segment_id
+                or transition.from_generation != current.lot_generation
+                or transition.to_generation != sample.lot_generation
+                or transition.sequence != sample.sequence):
+            _fail('excursion.segment_transition')
+        if sample.side is not current.side:
+            _fail('excursion.side_transition')
+        if (transition.kind is SegmentTransitionKind.ADD
+                and sample.quantity <= current.quantity):
+            _fail('excursion.add_quantity')
+        if (transition.kind is SegmentTransitionKind.PARTIAL
+                and sample.quantity >= current.quantity):
+            _fail('excursion.partial_quantity')
+        return ExcursionSeries(
+            series.lot_id, series.segments + (_new_segment(sample, transition),))
+    if transition is not None:
+        _fail('excursion.unneeded_transition')
+    direction = Decimal(1) if sample.side is Side.LONG else Decimal(-1)
+    favorable = _point(direction * (sample.mark - sample.average_entry), sample)
+    adverse = _point(-direction * (sample.mark - sample.average_entry), sample)
+    updated = dataclasses.replace(
+        current,
+        mfe=(favorable if current.mfe is None or favorable.price > current.mfe.price
+             else current.mfe),
+        mae=(adverse if current.mae is None or adverse.price > current.mae.price
+             else current.mae),
+        last_sequence=sample.sequence,
+        last_at_ms=sample.at_ms)
+    return ExcursionSeries(series.lot_id, series.segments[:-1] + (updated,))
+
+
+def observe_excursion_gap(series: object, gap: object) -> ExcursionSeries:
+    if (type(series) is not ExcursionSeries or not series.segments
+            or type(series.segments) is not tuple):
+        _fail('excursion.series')
+    gap = _seal_gap(gap)
+    current = series.segments[-1]
+    if (gap.stream_id != series.lot_id or gap.after_sequence != current.last_sequence
+            or gap.observed_at_ms < current.last_at_ms):
+        _fail('excursion.gap_binding')
+    updated = dataclasses.replace(
+        current, gaps=current.gaps + (gap,), last_sequence=gap.missing_through,
+        last_at_ms=gap.observed_at_ms, gap_count=current.gap_count + 1)
     return ExcursionSeries(series.lot_id, series.segments[:-1] + (updated,))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LifecycleSample:
+    stream_id: str
     sequence: int
     at_ms: int
     realized_pnl: Decimal | None
@@ -494,24 +668,25 @@ class LifecycleSample:
     coverage: Coverage
 
     def __post_init__(self):
+        _stable_record_id(self.stream_id, 'lifecycle.stream_id')
         _integer(self.sequence, 'lifecycle.sequence', minimum=1)
         _integer(self.at_ms, 'lifecycle.at_ms', minimum=1)
         if type(self.coverage) is not Coverage:
             _fail('lifecycle.coverage')
         values = (self.realized_pnl, self.open_pnl, self.fees, self.slippage,
                   self.funding, self.modeled_exit_cost)
-        if self.coverage is Coverage.COMPLETE:
-            for value in values:
-                _decimal(value, 'lifecycle.value')
-            for value in (self.fees, self.slippage, self.modeled_exit_cost):
-                if value < 0:
-                    _fail('lifecycle.cost')
-        elif any(value is not None for value in values):
-            _fail('lifecycle.gap_values')
+        if self.coverage is not Coverage.COMPLETE:
+            _fail('lifecycle.explicit_gap_required')
+        for value in values:
+            _decimal(value, 'lifecycle.value')
+        for value in (self.fees, self.slippage, self.modeled_exit_cost):
+            if value < 0:
+                _fail('lifecycle.cost')
 
 
 @dataclass(frozen=True, slots=True)
 class LifecycleSeries:
+    stream_id: str
     peak_net: Decimal | None
     peak_sequence: int | None
     peak_at_ms: int | None
@@ -519,6 +694,7 @@ class LifecycleSeries:
     latest_sequence: int
     latest_at_ms: int
     gap_count: int
+    gaps: tuple[SequenceGap, ...]
     closed: bool
     giveback: Decimal | None
     giveback_percent: Decimal | None
@@ -528,18 +704,14 @@ def observe_lifecycle(series: object, sample: object, *, closed=False) -> Lifecy
     if type(sample) is not LifecycleSample or type(closed) is not bool:
         _fail('lifecycle.input')
     if series is not None:
-        if type(series) is not LifecycleSeries or series.closed:
+        if (type(series) is not LifecycleSeries or series.closed
+                or series.stream_id != sample.stream_id):
             _fail('lifecycle.series')
-        if sample.sequence <= series.latest_sequence or sample.at_ms < series.latest_at_ms:
+        if (sample.sequence != series.latest_sequence + 1
+                or sample.at_ms < series.latest_at_ms):
             _fail('lifecycle.order')
-    if sample.coverage is not Coverage.COMPLETE:
-        peak = None if series is None else series.peak_net
-        return LifecycleSeries(
-            peak, None if series is None else series.peak_sequence,
-            None if series is None else series.peak_at_ms,
-            None if series is None else series.latest_net, sample.sequence,
-            sample.at_ms, 1 if series is None else series.gap_count + 1,
-            closed, None, None)
+    elif sample.sequence != 1:
+        _fail('lifecycle.initial_sequence')
     with localcontext(_ARITHMETIC):
         try:
             net = (sample.realized_pnl + sample.open_pnl - sample.fees
@@ -558,9 +730,24 @@ def observe_lifecycle(series: object, sample: object, *, closed=False) -> Lifecy
             if peak > 0:
                 giveback_percent = giveback / peak * Decimal(100)
     return LifecycleSeries(
-        peak, peak_sequence, peak_at, net, sample.sequence, sample.at_ms,
-        0 if series is None else series.gap_count, closed, giveback,
+        sample.stream_id, peak, peak_sequence, peak_at, net, sample.sequence, sample.at_ms,
+        0 if series is None else series.gap_count,
+        () if series is None else series.gaps, closed, giveback,
         giveback_percent)
+
+
+def observe_lifecycle_gap(series: object, gap: object) -> LifecycleSeries:
+    if type(series) is not LifecycleSeries or series.closed:
+        _fail('lifecycle.series')
+    gap = _seal_gap(gap)
+    if (gap.stream_id != series.stream_id
+            or gap.after_sequence != series.latest_sequence
+            or gap.observed_at_ms < series.latest_at_ms):
+        _fail('lifecycle.gap_binding')
+    return dataclasses.replace(
+        series, latest_sequence=gap.missing_through,
+        latest_at_ms=gap.observed_at_ms, gap_count=series.gap_count + 1,
+        gaps=series.gaps + (gap,))
 
 
 _PAYLOAD_TYPES = (DecisionTrace, IncidentMirror, FillMetric, ExcursionSeries,
@@ -667,6 +854,7 @@ class QueueState:
     capacity: int
     closed: bool
     queued: tuple[ObservationRecord, ...]
+    gaps: tuple[SequenceGap, ...]
     last_sequence: int
     generation: int
     counters: QueueCounters
@@ -712,6 +900,8 @@ def _seal_queue(state: object) -> QueueState:
     _integer(state.capacity, 'queue.capacity', minimum=1, maximum=MAX_CAPACITY)
     if type(state.closed) is not bool or type(state.queued) is not tuple:
         _fail('queue.shape')
+    if type(state.gaps) is not tuple:
+        _fail('queue.gaps')
     _integer(state.last_sequence, 'queue.last_sequence')
     _integer(state.generation, 'queue.generation', minimum=1)
     if len(state.queued) > state.capacity:
@@ -731,6 +921,14 @@ def _seal_queue(state: object) -> QueueState:
         _fail('queue.record_order')
     if sealed_records and sealed_records[-1].sequence > state.last_sequence:
         _fail('queue.last_sequence')
+    sealed_gaps = tuple(_seal_gap(row) for row in state.gaps)
+    if any(row.stream_id != state.account_id for row in sealed_gaps):
+        _fail('queue.gap_account')
+    if any(right.missing_from <= left.missing_through
+           for left, right in zip(sealed_gaps, sealed_gaps[1:])):
+        _fail('queue.gap_order')
+    if sealed_gaps and sealed_gaps[-1].missing_through > state.last_sequence:
+        _fail('queue.gap_sequence')
     counters = state.counters
     if type(counters) is not QueueCounters or type(counters.drops) is not tuple:
         _fail('queue.counters')
@@ -764,7 +962,8 @@ def _seal_queue(state: object) -> QueueState:
     sealed_counters = QueueCounters(*numbers, tuple(sealed_drops))
     return _construct_queue(
         account_id=state.account_id, capacity=state.capacity, closed=state.closed,
-        queued=tuple(sealed_records), last_sequence=state.last_sequence,
+        queued=tuple(sealed_records), gaps=sealed_gaps,
+        last_sequence=state.last_sequence,
         generation=state.generation, counters=sealed_counters)
 
 
@@ -772,7 +971,7 @@ def new_queue(account_id: object, capacity: object = DEFAULT_CAPACITY) -> QueueS
     _family_id(account_id, 'queue.account_id', 'acct')
     _integer(capacity, 'queue.capacity', minimum=1, maximum=MAX_CAPACITY)
     return _construct_queue(account_id=account_id, capacity=capacity, closed=False,
-                            queued=(), last_sequence=0, generation=1,
+                            queued=(), gaps=(), last_sequence=0, generation=1,
                             counters=_zero_counters())
 
 
@@ -818,7 +1017,8 @@ def admit(state: object, record: object) -> tuple[QueueState, AdmissionOutcome]:
         return next_state, AdmissionOutcome(AdmissionStatus.INVALID, None,
                                             len(next_state.queued), next_state.generation)
     counters = _counter(counters, attempted=counters.attempted + 1)
-    if record.account_id != state.account_id or record.sequence <= state.last_sequence:
+    if (record.account_id != state.account_id
+            or record.sequence != state.last_sequence + 1):
         counters = _counter(counters, invalid=counters.invalid + 1)
         next_state = _next_state(state, counters=counters)
         return next_state, AdmissionOutcome(AdmissionStatus.INVALID,
@@ -828,7 +1028,14 @@ def admit(state: object, record: object) -> tuple[QueueState, AdmissionOutcome]:
         counters = _counter(
             counters, dropped_closed=counters.dropped_closed + 1,
             drops=_record_drop(counters, record, closed=True))
-        next_state = _next_state(state, counters=counters,
+        gap = SequenceGap(
+            stream_id=state.account_id, after_sequence=state.last_sequence,
+            missing_from=record.sequence, missing_through=record.sequence,
+            resume_sequence=record.sequence + 1, observed_at_ms=record.at_ms,
+            reason=GapReason.SOURCE_DROPPED,
+            source=TypedBinding(kind=BindingKind.RECORD_ID,
+                                record_id=record.observation_id))
+        next_state = _next_state(state, counters=counters, gaps=state.gaps + (gap,),
                                  last_sequence=record.sequence)
         return next_state, AdmissionOutcome(AdmissionStatus.DROPPED_CLOSED,
                                             record.observation_id,
@@ -837,7 +1044,14 @@ def admit(state: object, record: object) -> tuple[QueueState, AdmissionOutcome]:
         counters = _counter(
             counters, dropped_full=counters.dropped_full + 1,
             drops=_record_drop(counters, record, closed=False))
-        next_state = _next_state(state, counters=counters,
+        gap = SequenceGap(
+            stream_id=state.account_id, after_sequence=state.last_sequence,
+            missing_from=record.sequence, missing_through=record.sequence,
+            resume_sequence=record.sequence + 1, observed_at_ms=record.at_ms,
+            reason=GapReason.SOURCE_DROPPED,
+            source=TypedBinding(kind=BindingKind.RECORD_ID,
+                                record_id=record.observation_id))
+        next_state = _next_state(state, counters=counters, gaps=state.gaps + (gap,),
                                  last_sequence=record.sequence)
         return next_state, AdmissionOutcome(AdmissionStatus.DROPPED_FULL,
                                             record.observation_id,
@@ -854,6 +1068,16 @@ def admit(state: object, record: object) -> tuple[QueueState, AdmissionOutcome]:
 def close_queue(state: object) -> QueueState:
     state = _seal_queue(state)
     return state if state.closed else _next_state(state, closed=True)
+
+
+def declare_queue_gap(state: object, gap: object) -> QueueState:
+    state = _seal_queue(state)
+    gap = _seal_gap(gap)
+    if (gap.stream_id != state.account_id
+            or gap.after_sequence != state.last_sequence):
+        _fail('queue.gap_binding')
+    return _next_state(state, gaps=state.gaps + (gap,),
+                       last_sequence=gap.missing_through)
 
 
 def acknowledge(state: object, observation_id: object, *, persisted: object):
@@ -878,12 +1102,15 @@ def acknowledge(state: object, observation_id: object, *, persisted: object):
 
 __all__ = [
     'DEFAULT_CAPACITY', 'MAX_CAPACITY', 'MAX_PAYLOAD_BYTES', 'AdmissionOutcome', 'AdmissionStatus',
-    'Coverage', 'DecisionTrace', 'DropCount', 'ExecutionPhase', 'ExcursionPoint',
+    'BindingKind', 'Coverage', 'DecisionTrace', 'DropCount', 'ExecutionPhase', 'ExcursionPoint',
     'ExcursionSample', 'ExcursionSegment', 'ExcursionSeries', 'FillMetric',
-    'IncidentMirror', 'LifecycleSample', 'LifecycleSeries', 'ObservationError',
+    'GapReason', 'IncidentMirror', 'LifecycleSample', 'LifecycleSeries', 'ObservationError',
     'ObservationKind', 'ObservationRecord', 'QueueCounters', 'QueueState',
-    'ReasonAlternative', 'Severity', 'WriteStatus', 'WriterOutcome',
+    'ReasonAlternative', 'SegmentTransition', 'SegmentTransitionKind',
+    'SequenceGap', 'Severity', 'TypedBinding', 'WriteStatus', 'WriterOutcome',
     'acknowledge', 'admit', 'canonical_bytes', 'canonical_sha256', 'close_queue',
-    'make_observation', 'measure_fill', 'mirror_durable_incident', 'new_queue',
-    'observe_excursion', 'observe_lifecycle', 'trace_decision', 'trace_plan',
+    'declare_queue_gap', 'make_observation', 'measure_fill',
+    'mirror_durable_incident', 'new_queue', 'observe_excursion',
+    'observe_excursion_gap', 'observe_lifecycle', 'observe_lifecycle_gap',
+    'trace_decision', 'trace_plan',
 ]

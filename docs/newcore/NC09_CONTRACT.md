@@ -43,6 +43,12 @@ input generations. A HOLD/no-action observation remains distinct from a close;
 an absent close is never labelled as a successful hold. When facts are stale,
 ambiguous, incomplete, or generation-mismatched, the stable source reason is
 retained and numeric conclusions that depend on missing facts remain null.
+WHY_HELD rejects close, flatten, reduce, and exit-reason semantics. WHY_CLOSED
+requires a close/flatten/reduce action and its matching typed exit reason;
+`NO_CHANGE` or a no-action plan can never be reported as closed. Optional
+alternative reasons use only closed typed bindings (validated stable record
+IDs, NC-07 binding enums, or positive generations). URLs, secrets, payload
+text, and other arbitrary strings are not bindings.
 
 Acceptance cases: `WHY-01`, `WHY-02`, `PRIVACY-01`.
 
@@ -75,7 +81,9 @@ and coverage state. Price excursion and lifecycle economics are separate:
 - peak give-back is lifecycle peak net minus final net, with percent reported
   only when its frozen denominator is positive;
 - adds, partial exits, fee/funding events, and average-entry changes create new
-  explicit state snapshots and never rewrite an earlier peak's basis;
+  explicit state snapshots and never rewrite an earlier peak's basis. An add or
+  partial may start a new segment at the same lot generation, but only with an
+  explicit typed ADD/PARTIAL transition, source binding, and distinct segment;
 - a sampling/outage gap is explicit coverage loss. Candle extremes or future
   evidence cannot fill it, and incomplete economics cannot become an
   acceptance metric.
@@ -83,6 +91,12 @@ and coverage state. Price excursion and lifecycle economics are separate:
 All comparisons and arithmetic are deterministic finite `Decimal`; timestamps
 never break ties without the explicit sequence. Long and short behavior is
 symmetric under the stated side convention.
+
+Every queue, excursion, and lifecycle stream is contiguous by sequence. A
+silent jump such as 1 to 3 is invalid. Missing evidence is advanced only by an
+explicit typed GAP transition that binds the stream, exact missing inclusive
+range, resume sequence, coverage reason, observation time, and privacy-safe
+source. Later evidence must resume at exactly the declared sequence.
 
 Acceptance cases: `MFE-01`, `MAE-01`, `PEAK-01`, `GIVEBACK-01`, `COVERAGE-01`.
 

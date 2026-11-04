@@ -27,28 +27,37 @@ from newcore.observability import (
     DEFAULT_CAPACITY,
     MAX_CAPACITY,
     AdmissionStatus,
+    BindingKind,
     Coverage,
     ExecutionPhase,
     ExcursionSample,
     FillMetric,
+    GapReason,
     LifecycleSample,
     ObservationError,
     ObservationKind,
     QueueState,
     ReasonAlternative,
+    SegmentTransition,
+    SegmentTransitionKind,
+    SequenceGap,
     Severity,
+    TypedBinding,
     WriteStatus,
     acknowledge,
     admit,
     canonical_bytes,
     canonical_sha256,
     close_queue,
+    declare_queue_gap,
     make_observation,
     measure_fill,
     mirror_durable_incident,
     new_queue,
     observe_excursion,
+    observe_excursion_gap,
     observe_lifecycle,
+    observe_lifecycle_gap,
     trace_decision,
     trace_plan,
 )
@@ -280,9 +289,30 @@ def _sample(*, sequence, mark, side=Side.LONG, generation=1,
         coverage=coverage)
 
 
+def _source_binding():
+    return TypedBinding(kind=BindingKind.RECORD_ID,
+                        record_id='dec_' + 'd' * 32)
+
+
+def _gap(stream_id, *, after, through, at_ms=None):
+    return SequenceGap(
+        stream_id=stream_id, after_sequence=after, missing_from=after + 1,
+        missing_through=through, resume_sequence=through + 1,
+        observed_at_ms=T0 + through if at_ms is None else at_ms,
+        reason=GapReason.OUTAGE, source=_source_binding())
+
+
+def _transition(*, sequence, from_segment='seg-1', to_segment='seg-2',
+                from_generation=1, to_generation=1, kind=SegmentTransitionKind.ADD):
+    return SegmentTransition(
+        lot_id=LOT_ID, kind=kind, from_segment_id=from_segment,
+        to_segment_id=to_segment, from_generation=from_generation,
+        to_generation=to_generation, sequence=sequence, source=_source_binding())
+
+
 def _lifecycle(sequence, *, net, closed=False):
     sample = LifecycleSample(
-        sequence=sequence, at_ms=T0 + sequence,
+        stream_id=LOT_ID, sequence=sequence, at_ms=T0 + sequence,
         realized_pnl=net, open_pnl=D('0'), fees=D('0'), slippage=D('0'),
         funding=D('0'), modeled_exit_cost=D('0'), coverage=Coverage.COMPLETE)
     return sample, closed
@@ -337,7 +367,10 @@ def _why_02():
     close = _closed(CloseAction, quantity=D('2'))
     alternative = ReasonAlternative(
         reason=PlanReason.TRAIL, source_sha256='1' * 64,
-        bindings=('trail', 'market-generation-3'))
+        bindings=(
+            TypedBinding(kind=BindingKind.MANAGEMENT, management=Binding.TRAIL),
+            TypedBinding(kind=BindingKind.GENERATION, generation=3),
+        ))
     trace = trace_plan(
         _plan(reason=PlanReason.TIME_EXIT, actions=(close,)),
         ObservationKind.WHY_CLOSED, alternatives=(alternative,))
@@ -409,18 +442,17 @@ def _giveback_01():
 
 
 def _coverage_01():
-    series = observe_excursion(None, _sample(
-        sequence=1, mark=None, coverage=Coverage.GAP))
-    assert series.segments[0].gap_count == 1
-    assert series.segments[0].mfe is series.segments[0].mae is None
-    next_generation = observe_excursion(series, _sample(
-        sequence=2, mark=D('110'), generation=2, segment='seg-2',
-        quantity=D('3'), risk=D('12')))
+    series = observe_excursion(None, _sample(sequence=1, mark=D('100')))
+    with_gap = observe_excursion_gap(series, _gap(LOT_ID, after=1, through=2))
+    assert with_gap.segments[0].gap_count == 1
+    assert with_gap.segments[0].gaps[0].missing_from == 2
+    next_generation = observe_excursion(
+        with_gap,
+        _sample(sequence=3, mark=D('110'), generation=2, segment='seg-2',
+                quantity=D('3'), risk=D('12')),
+        transition=_transition(sequence=3, from_generation=1, to_generation=2))
     assert len(next_generation.segments) == 2
-    assert next_generation.segments[0] == series.segments[0]
-    with pytest.raises(ObservationError, match='excursion.segment_id'):
-        observe_excursion(series, _sample(
-            sequence=2, mark=D('110'), generation=2, segment='seg-1'))
+    assert next_generation.segments[0] == with_gap.segments[0]
 
 
 def _queue_01():
@@ -557,6 +589,72 @@ def _import_01():
         'newcore.domain.reasons', 'newcore.management', 'newcore.simulator'}
     assert all(not any(word in name for word in ('runtime', 'legacy', 'ui'))
                for name in internal)
+
+
+def test_sequence_jumps_require_exact_explicit_gap_transitions():
+    state, _ = admit(new_queue(ACCOUNT_ID), _decision_record(1))
+    state_after_refusal, refused = admit(state, _decision_record(3))
+    assert refused.status is AdmissionStatus.INVALID
+    assert state_after_refusal.last_sequence == 1
+    state = declare_queue_gap(state, _gap(ACCOUNT_ID, after=1, through=2))
+    state, accepted = admit(state, _decision_record(3))
+    assert accepted.status is AdmissionStatus.ACCEPTED
+    assert state.gaps[-1].missing_from == state.gaps[-1].missing_through == 2
+
+    excursion = observe_excursion(None, _sample(sequence=1, mark=D('100')))
+    with pytest.raises(ObservationError, match='excursion.order'):
+        observe_excursion(excursion, _sample(sequence=3, mark=D('101')))
+    excursion = observe_excursion_gap(excursion, _gap(LOT_ID, after=1, through=2))
+    assert observe_excursion(
+        excursion, _sample(sequence=3, mark=D('101'))).segments[-1].last_sequence == 3
+
+    first, _ = _lifecycle(1, net=D('1'))
+    lifecycle = observe_lifecycle(None, first)
+    third, _ = _lifecycle(3, net=D('2'))
+    with pytest.raises(ObservationError, match='lifecycle.order'):
+        observe_lifecycle(lifecycle, third)
+    lifecycle = observe_lifecycle_gap(lifecycle, _gap(LOT_ID, after=1, through=2))
+    assert observe_lifecycle(lifecycle, third).latest_sequence == 3
+
+
+def test_same_generation_add_or_partial_requires_explicit_segment_transition():
+    series = observe_excursion(None, _sample(sequence=1, mark=D('101')))
+    changed = _sample(sequence=2, mark=D('102'), segment='seg-2', quantity=D('3'))
+    with pytest.raises(ObservationError, match='segment.transition'):
+        observe_excursion(series, changed)
+    advanced = observe_excursion(
+        series, changed, transition=_transition(sequence=2,
+                                                kind=SegmentTransitionKind.ADD))
+    assert len(advanced.segments) == 2
+    assert advanced.segments[0] == series.segments[0]
+    assert advanced.segments[1].transition.kind is SegmentTransitionKind.ADD
+    partial_sample = _sample(
+        sequence=3, mark=D('103'), segment='seg-3', quantity=D('1'))
+    partial = observe_excursion(
+        advanced, partial_sample,
+        transition=_transition(
+            sequence=3, from_segment='seg-2', to_segment='seg-3',
+            kind=SegmentTransitionKind.PARTIAL))
+    assert partial.segments[-1].transition.kind is SegmentTransitionKind.PARTIAL
+    assert partial.segments[-2] == advanced.segments[-1]
+
+
+def test_why_held_and_closed_refuse_semantic_mismatch():
+    close = _closed(CloseAction, quantity=D('2'))
+    exiting = _plan(reason=PlanReason.TIME_EXIT, actions=(close,))
+    with pytest.raises(ObservationError, match='trace.held_semantics'):
+        trace_plan(exiting, ObservationKind.WHY_HELD)
+    with pytest.raises(ObservationError, match='trace.closed_semantics'):
+        trace_plan(_plan(), ObservationKind.WHY_CLOSED)
+
+
+def test_alternative_bindings_are_closed_typed_and_privacy_safe():
+    for raw in ('https://example.invalid/a', 'api-key-secret-value', 'free form payload'):
+        with pytest.raises(ObservationError, match='binding.record_id'):
+            TypedBinding(kind=BindingKind.RECORD_ID, record_id=raw)
+    with pytest.raises(ObservationError, match='alternative.bindings'):
+        ReasonAlternative(reason=PlanReason.TRAIL, source_sha256='1' * 64,
+                          bindings=('https://example.invalid/a',))
 
 
 CASE_CHECKS = {
