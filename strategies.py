@@ -4650,6 +4650,12 @@ def _dema(close,length=20):
 def sig_dema_crossover_long_1h(d,p,ctx):
  x=_dema(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['dema_crossover_long_1h']=dict(name='[RESEARCH] DEMA crossover long 1h',style='double_exponential_average',fn=sig_dema_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(DEMA1H),desc='C151 conventional DEMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+TEMA1H=dict(length=20,cost_multiple=5.0)
+def _tema(close,length=20):
+ n=int(length);e1=close.astype(float).ewm(span=n,adjust=False,min_periods=n).mean();e2=e1.ewm(span=n,adjust=False,min_periods=n).mean();e3=e2.ewm(span=n,adjust=False,min_periods=n).mean();return 3.0*e1-3.0*e2+e3
+def sig_tema_crossover_long_1h(d,p,ctx):
+ x=_tema(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['tema_crossover_long_1h']=dict(name='[RESEARCH] TEMA crossover long 1h',style='triple_exponential_average',fn=sig_tema_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(TEMA1H),desc='C152 conventional TEMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
