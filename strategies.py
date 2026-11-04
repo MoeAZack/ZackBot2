@@ -4686,6 +4686,12 @@ def _tma(close,length=20):
 def sig_tma_crossover_long_1h(d,p,ctx):
  x=_tma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['tma_crossover_long_1h']=dict(name='[RESEARCH] TMA crossover long 1h',style='triangular_moving_average',fn=sig_tma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(TMA1H),desc='C157 conventional TMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+LSMA1H=dict(length=20,cost_multiple=5.0)
+def _lsma(close,length=20):
+ n=int(length);i=np.arange(n,dtype=float);center=i-i.mean();den=float(np.dot(center,center));return close.astype(float).rolling(n,min_periods=n).apply(lambda x:float(x.mean()+(n-1-i.mean())*np.dot(center,x)/den),raw=True)
+def sig_lsma_crossover_long_1h(d,p,ctx):
+ x=_lsma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['lsma_crossover_long_1h']=dict(name='[RESEARCH] LSMA crossover long 1h',style='least_squares_moving_average',fn=sig_lsma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(LSMA1H),desc='C158 conventional LSMA(20) endpoint crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
