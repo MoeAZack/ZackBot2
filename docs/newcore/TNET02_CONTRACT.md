@@ -82,14 +82,32 @@ Plus a mutation check on the key guard lines and a CP1252-shim run, per `CLAUDE.
 ## 7. Commit plan
 
 1. This contract, ports, hostile fakes, adapter logic against fakes, writer, gate, CLI dry-run. **No network or order call exists in this commit**: nothing imports `newcore.venue.http_sender`, and the adapter only receives injected ports.
-2. `binance_market.py` and the CLI real-run wiring to the existing #291 venue and `http_sender` (no change to `http_sender._PATHS` is needed: mark price and leverage come from the already-allowed signed `positionRisk`, filters from the pinned rules snapshot).
-3. Real twelve-scenario run on the confirmed dedicated USD-M testnet account, only after hostile fakes pass and the binding is confirmed.
+2. Adapter, journal, faults, wiring, writer, gate and CLI `plan`/`proof`, all against hostile fakes. Still **no network or order call**: `wiring.build_adapter` takes an injected sender, and the CLI `run` command is refused. See §9 for how the build differs from this plan.
+3. Concrete `AccountPort`/`FiltersPort` over signed reads and the CLI `run` wiring to the #291 venue and `http_sender`. This needs the `http_sender._PATHS` additions requested on #219 (unsigned `exchangeInfo`, `/fapi/v1/rateLimit/order`, `/fapi/v2/balance`) and a credential arrangement; it waits for Codex.
+4. Real twelve-scenario run on the confirmed dedicated USD-M testnet account, only after hostile fakes pass and the binding is confirmed.
 
 ## 8. Open points for Codex
 
 * Credential source: master has no `CredentialSource` implementation or key store. The real run needs a testnet-only signer on the owner's PC; this slice will not load, print or store secrets. Proposed: CLI accepts an injected signer module path supplied by Codex/owner, and refuses to run without it.
 * Offsets for stop/target cases (proposed: max(5 ticks, 0.05 %) from the read mark) and whether one replace-closer step is allowed inside the 12-order ceiling.
 * Host ID for the proof: proposed `tnet_<sha256(hostname)[:12]>`, matching the `base_clean` identifier pattern.
+
+## 9. As built (commit 2): deviations and disclosures
+
+Files actually added: `ports.py`, `faults.py`, `journal.py`, `adapter.py`, `wiring.py`, `writer.py`, `gate.py`, `tools/tnet02_run.py`, and tests under `tests/newcore_tnet02/`. `binance_market.py` is not built yet (commit 3); the ports are `AccountPort` (hedge mode, settlement asset, equity, per-symbol mark and leverage) and `FiltersPort`. The CLI "dry run" became `plan`, which validates identity and prints the frozen manifest without building an adapter.
+
+* **Stops are algo-only.** The NC-04 cost table has no classic `SUBMIT_STOP`, so every protective stop goes on the algo route (`Action.PROTECT`). This departs from G6 (classic first, algo on `-4120`). Changing it means an NC-04 cost-table edit, which is a shared file and is Codex's call.
+* **Binding isolation read bypasses NC-04.** `confirm_binding` reads `venue.open_orders(None)` directly (all symbols, classic + algo) because NC-04 requires a symbol for open orders. It is one read, before any case, and sends nothing.
+* **418 "protection lane preserved"** means: under the latched ban nothing is sent, and the confirmed resting stop is unchanged (same client ID, quantity and trigger) when re-read from local truth. No order is attempted under the ban to prove it.
+* **Synthetic latches only are released.** Cleanup releases a rate block only when this case latched it through the fault injector. A real exchange 429/418 makes cleanup HOLD and stay blocked.
+* **Aggregate notional** is bounded per order as `(position + add) × mark × 1.02 ≤ min(case max_notional, $2,000)`. Cases run one at a time and each must end flat, so the account-wide exposure never exceeds one case's.
+* **The harness journal is not NC-02.** `journal.py` is a hash-chained, fsynced JSON-lines file per case, used for write-ahead order state and the restart scenario. Reopen verifies the chain, sequence, identity and torn tail, and HOLDs on any mismatch.
+* **Equity comes from `AccountPort`**, which in commit 3 needs `/fapi/v2/balance`.
+* **Cleanup order:** flatten with a reduce-only market close first while the stop still rests, then cancel the stop, then require REC-02 `FLAT_CONFIRMED`. The second cleanup call with the same token is read-only.
+* **§6 coverage differences.** Item 8 does not apply (no classic stop route; one algo rejection fails the case and cleanup flattens). Item 9: the second cleanup call sends no POST/DELETE but does re-read positions and open orders (GET) to confirm the state is unchanged. Item 16: there is no fake-backed dry run in the CLI; the whole suite runs against fakes in the tests instead. Item 1: account-ID, venue and confirmation-age mismatches are enforced by the kernel's `_binding_matches`, not separately by the adapter. Item 6: an early-resume probe before `Retry-After` is not separately tested (the 429 scenario never probes before it).
+* **Direct guard tests.** `test_tnet02_adapter_guards.py` calls the adapter's binding, setup and cleanup guards directly, because the kernel's own checks masked mutants of them in the end-to-end suite. All 15 mutated guard lines are now killed.
+* **Adversarial review fixes** (regressions in `test_tnet02_review_regressions.py`): cleanup HOLDs on any unsettled entry/close instead of sending a second close; journal reopen must match an in-process tail anchor (head digest and record count at close), and a restart whose rebuilt state differs from memory HOLDs before adopting it, leaving the stop resting; a stop that the exchange ends without a fill HOLDs (so a 418 case cannot pass with its stop gone); the gate re-checks every frozen bound, case time order and suite window instead of trusting the unkeyed digest, and `proof` refuses a report for another account or key digest; the writer and journal re-check their directory identity at write time (and pin it with a no-follow dir fd where the OS supports it); the venue clock check now advances.
+* **Report authenticity.** The report digest is unkeyed, so it proves integrity of the bytes, not who produced them. Authenticity comes from Codex running the exact head on a known host.
 
 ## Deferred
 
