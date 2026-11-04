@@ -4629,6 +4629,15 @@ def _chande_kroll_stops(high,low,close,atr_window=10,stop_window=9,multiplier=1.
 def sig_chande_kroll_breakout_long_1h(d,p,ctx):
  lower,upper=_chande_kroll_stops(d.h,d.l,d.c,p['atr_window'],p['stop_window'],p['multiplier']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=d.c<lower,sx=never)
 STRATEGIES['chande_kroll_breakout_long_1h']=dict(name='[RESEARCH] Chande Kroll Stop breakout long 1h',style='atr_stop_channel_breakout',fn=sig_chande_kroll_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CKS1H),desc='C148 conventional CKS(10,1,9) close crosses above upper stop over EMA20 and exits below lower stop.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+VIDYA1H=dict(length=14,momentum=9,cost_multiple=5.0)
+def _vidya(close,length=14,momentum=9):
+ c=close.astype(float);d=c.diff();up=d.clip(lower=0).rolling(int(momentum),min_periods=int(momentum)).sum();down=(-d.clip(upper=0)).rolling(int(momentum),min_periods=int(momentum)).sum();ratio=(up-down).abs()/(up+down).replace(0,np.nan);alpha=2.0/(int(length)+1.0);out=np.empty(len(c),dtype=float);out[0]=c.iloc[0]
+ for i in range(1,len(c)):
+  k=alpha*ratio.iloc[i] if np.isfinite(ratio.iloc[i]) else 0.0;out[i]=k*c.iloc[i]+(1.0-k)*out[i-1]
+ return pd.Series(out,index=c.index)
+def sig_vidya_crossover_long_1h(d,p,ctx):
+ x=_vidya(d.c,p['length'],p['momentum']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['vidya_crossover_long_1h']=dict(name='[RESEARCH] VIDYA crossover long 1h',style='cmo_adaptive_average',fn=sig_vidya_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(VIDYA1H),desc='C149 conventional VIDYA(14,CMO9) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
