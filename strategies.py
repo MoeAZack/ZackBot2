@@ -4758,6 +4758,12 @@ def _fractal_chaos_bands(high,low,left=2,right=2):
 def sig_fractal_chaos_breakout_long_1h(d,p,ctx):
  upper,lower=_fractal_chaos_bands(d.h,d.l,p['left'],p['right']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=lower,sx=never)
 STRATEGIES['fractal_chaos_breakout_long_1h']=dict(name='[RESEARCH] Fractal Chaos Bands breakout long 1h',style='confirmed_fractal_pivot_channel',fn=sig_fractal_chaos_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(FCB1H),desc='C168 conventional confirmed 2/2 Fractal Chaos upper-band breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+COG1H=dict(length=10,cost_multiple=5.0)
+def _center_of_gravity(close,length=10):
+ n=int(length);w=np.arange(n,0,-1,dtype=float);return close.astype(float).rolling(n,min_periods=n).apply(lambda x:float(-np.dot(x,w)/x.sum()) if x.sum()!=0 else np.nan,raw=True)
+def sig_cog_oscillator_long_1h(d,p,ctx):
+ x=_center_of_gravity(d.c,p['length']);trigger=x.shift();up=(x>trigger)&(x.shift()<=trigger.shift());down=(x<=trigger)&(x.shift()>trigger.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=down,sx=never)
+STRATEGIES['cog_oscillator_long_1h']=dict(name='[RESEARCH] Center of Gravity oscillator long 1h',style='ehlers_center_of_gravity',fn=sig_cog_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(COG1H),desc='C169 conventional Ehlers COG(10) crossing its one-bar trigger above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
