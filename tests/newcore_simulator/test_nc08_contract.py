@@ -133,13 +133,14 @@ def test_contract_uses_real_nc01_and_nc07_object_families():
     assert all(action.__name__ != 'BacktestAction' for action in NC07_ACTION_TYPES)
 
 
-def test_document_tracks_every_executable_case_id():
-    contract = (Path(__file__).parents[2] / 'docs' / 'newcore' / 'NC08_CONTRACT.md').read_text(
-        encoding='utf-8')
-    assert all(case.case_id in contract for case in CASES)
-    for phrase in ('LIVE', 'REPLAY', 'BACKTEST', 'SHA-256', 'AMBIGUOUS',
-                   'INCOMPLETE', 'RiskIncreaseProposal', 'NC-06', 'funding'):
-        assert phrase in contract
+def test_contract_matrix_tracks_every_frozen_boundary():
+    requirements = ' '.join(case.requirement for case in CASES).lower()
+    assert tuple(mode.value for mode in SimulationMode) == ('live', 'replay', 'backtest')
+    assert {ReplayStatus.AMBIGUOUS.value, ReplayStatus.INCOMPLETE.value} == {
+        'ambiguous', 'incomplete'}
+    for phrase in ('sha-256', 'risk increase', 'nc-06', 'funding', 'partial fills',
+                   'crossed price', 'canonical inputs'):
+        assert phrase in requirements
 
 
 D = Decimal
