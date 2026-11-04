@@ -3655,6 +3655,31 @@ STRATEGIES['schaff_cycle_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+DPO1H = dict(lookback=20, displacement=11, cost_multiple=5.0)
+
+
+def _detrended_price(close, lookback=20, displacement=11):
+    """Causal DPO: current close less a trailing SMA observed `displacement` bars earlier."""
+    return close.astype(float) - close.astype(float).rolling(lookback).mean().shift(displacement)
+
+
+def sig_dpo_zero_cross_long_1h(d, p, ctx):
+    """C109: follow recovery above a lag-displaced local price baseline."""
+    dpo = _detrended_price(d.c, int(p['lookback']), int(p['displacement']))
+    cross_up = (dpo > 0.0) & (dpo.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=dpo <= 0.0, sx=never)
+
+
+STRATEGIES['dpo_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] Detrended-price zero-cross long 1h', style='lag_displaced_price_residual',
+    fn=sig_dpo_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(DPO1H),
+    desc='Candidate 109: DPO(20) against the conventional 11-bar-displaced SMA crosses above zero above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
