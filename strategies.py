@@ -4847,6 +4847,12 @@ def _three_line_break_direction(close,reversal_lines=3):
 def sig_three_line_break_long_1h(d,p,ctx):
  state=_three_line_break_direction(d.c,p['reversal_lines']);up=(state>0)&(state.shift(fill_value=0)<=0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=state<0,sx=never)
 STRATEGIES['three_line_break_long_1h']=dict(name='[RESEARCH] Three-Line Break long 1h',style='three_line_break_event_chart',fn=sig_three_line_break_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(TLB1H),desc='C179 conventional close-only Three-Line Break bullish reversal above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+TWS1H=dict(exit_length=10,cost_multiple=5.0)
+def _three_white_soldiers(open_,close):
+ o=open_.astype(float);c=close.astype(float);bull=c>o;return bull&bull.shift()&bull.shift(2)&(c>c.shift())&(c.shift()>c.shift(2))&(o>=o.shift())&(o<=c.shift())&(o.shift()>=o.shift(2))&(o.shift()<=c.shift(2))
+def sig_three_white_soldiers_long_1h(d,p,ctx):
+ pattern=_three_white_soldiers(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['three_white_soldiers_long_1h']=dict(name='[RESEARCH] Three White Soldiers long 1h',style='three_white_soldiers_candlestick',fn=sig_three_white_soldiers_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(TWS1H),desc='C180 conventional three advancing bullish real bodies above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
