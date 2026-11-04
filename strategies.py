@@ -5327,6 +5327,14 @@ def sig_bearish_harami_cross_short_1h(d,p,ctx):
  pattern=_bearish_harami_cross(d.o,d.h,d.l,d.c,p['doji_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['bearish_harami_cross_short_1h']=dict(name='[RESEARCH] Bearish Harami Cross short 1h',style='bearish_harami_cross_candlestick',fn=sig_bearish_harami_cross_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(BEARHARAMICROSS1H),desc='C241 conventional bearish Harami Cross reversal short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+BULLSPINTOP1H=dict(body_fraction=.30,shadow_body_multiple=1.,exit_length=10,cost_multiple=5.)
+def _bullish_spinning_top(open_,high,low,close,body_fraction=.30,shadow_body_multiple=1.):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);body=c-o;rng=h-l;upper=h-pd.concat([o,c],axis=1).max(axis=1);lower=pd.concat([o,c],axis=1).min(axis=1)-l
+ return (rng>0)&(body>0)&(body<=body_fraction*rng)&(upper>=shadow_body_multiple*body)&(lower>=shadow_body_multiple*body)
+def sig_bullish_spinning_top_long_1h(d,p,ctx):
+ pattern=_bullish_spinning_top(d.o,d.h,d.l,d.c,p['body_fraction'],p['shadow_body_multiple']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_spinning_top_long_1h']=dict(name='[RESEARCH] Bullish Spinning Top long 1h',style='bullish_spinning_top_candlestick',fn=sig_bullish_spinning_top_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BULLSPINTOP1H),desc='C242 conventional bullish Spinning Top continuation long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
