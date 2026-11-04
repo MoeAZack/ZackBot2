@@ -5375,6 +5375,14 @@ def sig_bearish_tristar_short_1h(d,p,ctx):
  pattern=_bearish_tristar(d.o,d.h,d.l,d.c,p['doji_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['bearish_tristar_short_1h']=dict(name='[RESEARCH] Bearish Tri-Star short 1h',style='bearish_tristar_candlestick',fn=sig_bearish_tristar_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(BEARTRISTAR1H),desc='C247 gap-relaxed bearish Tri-Star reversal short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+BULLABANDONED1H=dict(doji_fraction=.10,exit_length=10,cost_multiple=5.)
+def _bullish_abandoned_baby(open_,high,low,close,doji_fraction=.10):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);o2=o.shift(2);c2=c.shift(2);h2=h.shift(2);l2=l.shift(2);o1=o.shift(1);c1=c.shift(1);h1=h.shift(1);l1=l.shift(1);rng1=h1-l1;mid=(o2+c2)/2
+ return (c2<o2)&(rng1>0)&((c1-o1).abs()<=doji_fraction*rng1)&(h1<l2)&(l>h1)&(c>o)&(c>mid)
+def sig_bullish_abandoned_baby_long_1h(d,p,ctx):
+ pattern=_bullish_abandoned_baby(d.o,d.h,d.l,d.c,p['doji_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_abandoned_baby_long_1h']=dict(name='[RESEARCH] Bullish Abandoned Baby long 1h',style='bullish_abandoned_baby_candlestick',fn=sig_bullish_abandoned_baby_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BULLABANDONED1H),desc='C248 strict true-gap Bullish Abandoned Baby reversal long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 

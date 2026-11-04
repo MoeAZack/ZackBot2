@@ -1,0 +1,10 @@
+# Candidate 248 / Bullish Abandoned Baby preregistration
+
+Status **FROZEN / NOT EVALUATED / RESEARCH ONLY**, 4 November 2026 Cairo. The complete C1-C247 tree, refs, history, preregistrations, results and research tools were searched for Bullish Abandoned Baby; no implementation was found. C212 Morning Star, C244 Morning Doji Star, C246/C247 Tri-Star and earlier gap-relaxed reversal families are disclosed. This is a distinct strict-gap hypothesis: the doji's entire high-low range must be below the first candle's range, and the third candle's entire range must begin above the doji high. These true range gaps are intentionally not relaxed for continuous crypto. The expected scarcity risk is accepted before evaluation and will not be rescued. One cell only.
+
+On completed 1h bars, require a bearish first candle; a middle candle with nonzero range and absolute real body no more than 0.10 of its own full range; the middle high strictly below the first low; then a bullish third candle whose low is strictly above the middle high and whose close is strictly above the midpoint of the first real body. Enter long next open when the third candle closes above EMA200. Exit when close is at/below SMA10, after 24 bars, at 2ATR stop or 2R target. The protection stop must cover at least 5x modeled 0.14% round-trip cost. Costs are 5bp taker plus 2bp adverse slippage per fill and actual signed funding.
+
+CORE-20 development `2024-10-14T00:00:00Z..2025-04-01T00:00:00Z`. PASS requires gross>0, mean net R>0, PF>1.05, >=100 trades, >=8 symbols, >=20 trades in each BTC regime, and DD<=15R. Family 248; future family-wise alpha <=0.05/248. Default-OFF; PAPER eligibility remains BLOCK. No tuning, rescue, folds, holdout, PAPER activation, runtime, mainnet or BASE-CLEAN work; holdout sealed. Undefined zero-trade statistics fail closed.
+
+ROADMAP FIT: next distinct default-OFF strict-gap three-candle bullish reversal family.
+DEFERRED: bearish counterpart, gap-relaxed variants, folds, holdout, Stage B and activation.
