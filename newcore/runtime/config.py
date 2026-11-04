@@ -6,6 +6,7 @@ accounts and directories only; it never carries credentials.
 from __future__ import annotations
 
 import enum
+import os
 import re
 from dataclasses import dataclass
 from typing import Mapping
@@ -89,14 +90,16 @@ class RuntimeConfig:
         for field in ('account_id', 'aggregate_id', 'account_dir'):
             values = [getattr(row, field) for row in self.accounts]
             if field == 'account_dir':
-                values = [v.replace('\\', '/').rstrip('/').casefold() for v in values]
+                values = [os.path.normpath(v.replace('\\', '/')).replace('\\', '/').rstrip('/').casefold()
+                          for v in values]
             if len(set(values)) != len(values):
                 _fail(f'duplicate_{field}')
         _int(self.max_snapshot_age_s, 'max_snapshot_age_s_invalid', minimum=1, maximum=60)
         _int(self.evidence_deadline_ms, 'evidence_deadline_ms_invalid', minimum=100, maximum=60_000)
         _int(self.refresh_period_ms, 'refresh_period_ms_invalid', minimum=1_000, maximum=60_000)
         _int(self.proof_max_age_ms, 'proof_max_age_ms_invalid', minimum=1_000, maximum=120_000)
-        _int(self.stop_grace_ms, 'stop_grace_ms_invalid', minimum=0, maximum=60_000)
+        # A zero grace would let NC-04 stop cancel queued protection at once.
+        _int(self.stop_grace_ms, 'stop_grace_ms_invalid', minimum=1_000, maximum=60_000)
         if self.proof_max_age_ms < self.refresh_period_ms + self.evidence_deadline_ms:
             # A proof must not expire before the next refresh can possibly finish.
             _fail('proof_max_age_ms_too_short')

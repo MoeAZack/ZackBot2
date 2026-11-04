@@ -17,6 +17,13 @@ EXIT_OK, EXIT_REFUSED, EXIT_USAGE = 0, 2, 64
 REFUSED_ENVIRONMENT = ('LIVE_CONFIRM', 'ZACKBOT_LIVE', 'ZACKBOT_MAINNET')
 
 
+def _local_dir_exists(path: str):
+    """None for a UNC/network path: probing it would leave this machine."""
+    if path.startswith(('\\\\', '//')):
+        return None
+    return os.path.isdir(path)
+
+
 def _plan(config) -> dict:
     return {
         'schema': 'zackbot.newcore.runtime.boot_plan.v1',
@@ -24,7 +31,7 @@ def _plan(config) -> dict:
         'entries_enabled': config.entries_enabled,
         'accounts': [{'account_id': row.account_id, 'aggregate_id': row.aggregate_id,
                       'account_dir': row.account_dir, 'egress_id': row.egress_id,
-                      'account_dir_exists': os.path.isdir(row.account_dir)} for row in config.accounts],
+                      'account_dir_exists': _local_dir_exists(row.account_dir)} for row in config.accounts],
         'boot_steps': ['nc02_recover_journal', 'durable_state_projection', 'nc04_read_only_evidence',
                        'rec02_plan_reconciliation', 'nc05_scheduler'],
         'order_route': 'none (RefusingActionSink)',
@@ -45,7 +52,8 @@ def main(argv=None, *, environ=None, out=None) -> int:
     if args.command != 'check':
         parser.print_usage(out)
         return EXIT_USAGE
-    present = sorted(name for name in REFUSED_ENVIRONMENT if environ.get(name))
+    refused = {name.casefold() for name in REFUSED_ENVIRONMENT}
+    present = sorted(name for name in environ if name.casefold() in refused)  # presence, any case, even empty
     if present:
         out.write(json.dumps({'status': 'refused', 'code': 'live_switch_present', 'variables': present}) + '\n')
         return EXIT_REFUSED
@@ -56,7 +64,7 @@ def main(argv=None, *, environ=None, out=None) -> int:
     except RuntimeConfigError as ex:
         out.write(json.dumps({'status': 'refused', 'code': ex.code}) + '\n')
         return EXIT_REFUSED
-    except (OSError, ValueError):
+    except Exception:  # unreadable, malformed or pathologically nested JSON
         out.write(json.dumps({'status': 'refused', 'code': 'config_unreadable'}) + '\n')
         return EXIT_REFUSED
     out.write(json.dumps({'status': 'ok', 'plan': _plan(config)}, sort_keys=True) + '\n')

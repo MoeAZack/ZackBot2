@@ -86,6 +86,8 @@ class HoldCode(enum.StrEnum):
     MANAGEMENT_UNRESOLVED = 'management_unresolved'
     MANAGEMENT_UNROUTED = 'management_unrouted'
     SINK_ERROR = 'action_sink_error'
+    BOOT_ERROR = 'boot_error'
+    HOOK_ERROR = 'hook_error'
 
 
 # A later confirmed REC-02 proof clears only these.  Every other hold lasts for the process and needs a restart.
@@ -98,7 +100,12 @@ JOURNAL_HOLD = {
     Verdict.ABORT_RO: HoldCode.JOURNAL_ABORT_RO,
     Verdict.DURABILITY_UNAVAILABLE: HoldCode.JOURNAL_DURABILITY_UNAVAILABLE,
 }
+# NC-07 HOLD plans: only these may pass as "nothing to do"; the unresolved ones hold the account; every other HOLD
+# reason (stale input, generation mismatch, confirmation pending, ambiguous touch, ...) refuses this manage pass so the
+# account is not ready until a later pass succeeds.
+PASS_REASONS = frozenset({nc07.PlanReason.NO_CHANGE, nc07.PlanReason.PENDING_INTENT, nc07.PlanReason.LOT_FINISHED})
 UNRESOLVED_REASONS = frozenset({nc07.PlanReason.INPUT_INVALID, nc07.PlanReason.PROTECTION_UNKNOWN})
+BOOT_ID_MAX = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +164,7 @@ class _Account:
         self.plan_id: str | None = None
         self.restore_proven = False
         self.restore_mark_due = False
+        self.used_work_ids: set[str] = set()
 
 
 class _EventLog:
@@ -196,14 +204,15 @@ class Runtime:
     # ---------------------------------------------------------------------------------------------- owner thread
     def step(self) -> RuntimeSnapshot:
         for row in self._accounts.values():
+            # Check and mark under the account lock so a hold added by the runner cannot interleave.
+            # mark_restore_proven never takes row.lock, so this cannot deadlock.
             with row.lock:
                 due = row.restore_mark_due and not row.holds
                 if due:
+                    self._scheduler.mark_restore_proven(row.spec.account_id)
                     row.restore_mark_due = False
-            if due:
-                self._scheduler.mark_restore_proven(row.spec.account_id)
-                with row.lock:
                     row.restore_proven = True
+            if due:
                 self._events.record(row.spec.account_id, 'restore', 'proven', self._mono())
         self._published = self._build(self._scheduler.step())
         return self._published
@@ -257,18 +266,34 @@ class Runtime:
     def _all_ready(self) -> bool:
         return self._scheduler.snapshot().ready
 
+    def _scheduler_reconcile(self, account_id: str) -> bool:
+        return any(row.account_id == account_id and row.reconcile_before_restart
+                   for row in self._scheduler.snapshot().accounts)
+
+    def _close_journals(self) -> None:
+        for row in self._accounts.values():
+            if row.journal is not None:
+                try:
+                    row.journal.close()
+                except Exception:
+                    pass
+
 
 # -------------------------------------------------------------------------------------------------- evidence
-def _validate_work(works: object, deadline_mono: int) -> tuple[VenueWork, ...]:
+def _validate_work(works: object, deadline_mono: int, row: _Account) -> tuple[VenueWork, ...]:
+    """Read-only reconcile work with ids never used before in this process (a reused id could fold old results)."""
     if type(works) is not tuple or not 1 <= len(works) <= MAX_EVIDENCE_WORK:
         raise ValueError('evidence_work_shape')
     ids = set()
     for work in works:
         if (type(work) is not VenueWork or work.action is not Action.RECONCILE
                 or work.operation not in READ_OPERATIONS or work.deadline_ms > deadline_mono
-                or work.work_id in ids):
+                or work.work_id in ids or work.work_id in row.used_work_ids
+                or row.ports.context.result(work.work_id) is not None):
             raise ValueError('evidence_work_forbidden')
         ids.add(work.work_id)
+    with row.lock:
+        row.used_work_ids |= ids
     return works
 
 
@@ -343,7 +368,7 @@ def _boot_account(config: RuntimeConfig, row: _Account, *, recover, monotonic_cl
     generation = row.generation
     deadline = now + config.evidence_deadline_ms
     try:
-        works = _validate_work(row.ports.evidence.read_work(account_id, generation, now, deadline), deadline)
+        works = _validate_work(row.ports.evidence.read_work(account_id, generation, now, deadline), deadline, row)
         for work in works:
             row.ports.context.submit(work)
     except Exception:
@@ -386,10 +411,28 @@ class _Hooks:
                 self._row.proof_mono = None
         self._rt._events.record(self._row.spec.account_id, lane, code, now)
 
-    def guards(self, account_id: str, now_ms: int) -> HookOutcome:
+    def _guarded(self, lane: str, body, account_id: str, now_ms: int) -> HookOutcome:
         self._check(account_id)
+        try:
+            return body(account_id, now_ms)
+        except Exception:
+            # An unexpected failure is never left to the scheduler alone: the runtime holds the account too.
+            self._hold(HoldCode.HOOK_ERROR, now_ms, lane)
+            return HookOutcome.failed()
+
+    def guards(self, account_id: str, now_ms: int) -> HookOutcome:
+        return self._guarded('guards', self._guards, account_id, now_ms)
+
+    def manage(self, account_id: str, now_ms: int) -> HookOutcome:
+        return self._guarded('manage', self._manage, account_id, now_ms)
+
+    def cycle(self, account_id: str, now_ms: int) -> HookOutcome:
+        return self._guarded('cycle', self._cycle, account_id, now_ms)
+
+    def _guards(self, account_id: str, now_ms: int) -> HookOutcome:
         row, cfg = self._row, self._rt.config
-        if row.ports.context.snapshot().reconcile_before_restart:
+        if (row.ports.context.snapshot().reconcile_before_restart
+                or self._rt._scheduler_reconcile(account_id)):
             self._hold(HoldCode.WORKER_RECONCILE, now_ms, 'guards')
         with row.lock:
             sticky = any(code not in CLEARABLE for code in row.holds)
@@ -436,7 +479,7 @@ class _Hooks:
         deadline = now_ms + cfg.evidence_deadline_ms
         try:
             works = _validate_work(row.ports.evidence.read_work(row.spec.account_id, generation, now_ms, deadline),
-                                   deadline)
+                                   deadline, row)
         except Exception:
             self._hold(HoldCode.EVIDENCE_WORK_INVALID, now_ms, 'guards')
             return
@@ -450,8 +493,7 @@ class _Hooks:
         with row.lock:
             row.pending = _Pending(generation, tuple(work.work_id for work in works), deadline)
 
-    def manage(self, account_id: str, now_ms: int) -> HookOutcome:
-        self._check(account_id)
+    def _manage(self, account_id: str, now_ms: int) -> HookOutcome:
         row = self._row
         try:
             evaluations = row.ports.management.evaluations(account_id, now_ms)
@@ -461,12 +503,18 @@ class _Hooks:
         if type(evaluations) is not tuple or any(type(e) is not nc07.ManagementEvaluation for e in evaluations):
             self._hold(HoldCode.MANAGEMENT_INPUT_INVALID, now_ms, 'manage')
             return HookOutcome.failed()
-        held = False
+        held = waiting = False
         for evaluation in evaluations:
             plan = nc07.evaluate(evaluation)
-            if plan.status in (nc07.PlanStatus.RECONCILE, nc07.PlanStatus.AMBIGUOUS) or plan.reason in UNRESOLVED_REASONS:
+            if (plan.status in (nc07.PlanStatus.RECONCILE, nc07.PlanStatus.AMBIGUOUS)
+                    or plan.reason in UNRESOLVED_REASONS
+                    or plan.status is nc07.PlanStatus.ACTIONS and not plan.actions):
                 self._hold(HoldCode.MANAGEMENT_UNRESOLVED, now_ms, 'manage')
                 held = True
+                continue
+            if not plan.actions and plan.reason not in PASS_REASONS:
+                waiting = True
+                self._rt._events.record(account_id, 'manage', f'not_ready:{plan.reason.value}', now_ms)
                 continue
             if plan.actions:
                 try:
@@ -484,10 +532,9 @@ class _Hooks:
                 self._rt._events.record(account_id, 'manage', f'why_held:{trace.reason}', now_ms)
             except Exception:
                 self._rt._events.record(account_id, 'manage', 'trace_failed', now_ms)
-        return HookOutcome.refused() if held else HookOutcome.success()
+        return HookOutcome.refused() if held or waiting else HookOutcome.success()
 
-    def cycle(self, account_id: str, now_ms: int) -> HookOutcome:
-        self._check(account_id)
+    def _cycle(self, account_id: str, now_ms: int) -> HookOutcome:
         row, cfg = self._row, self._rt.config
         if not cfg.entries_enabled:
             return HookOutcome.success()
@@ -500,8 +547,10 @@ class _Hooks:
         try:
             candidates = row.ports.entries.candidates(account_id, now_ms)
         except Exception:
+            self._rt._events.record(account_id, 'cycle', 'entry_source_error', now_ms)
             return HookOutcome.failed()
         if type(candidates) is not tuple or any(type(c) is not nc06.RiskEvaluation for c in candidates):
+            self._rt._events.record(account_id, 'cycle', 'entry_source_invalid', now_ms)
             return HookOutcome.failed()
         for evaluation in candidates:
             decision = nc06.evaluate(evaluation)
@@ -526,6 +575,8 @@ def boot(config: RuntimeConfig, ports: Mapping[str, AccountPorts], *, boot_id: s
         raise RuntimeBootError('config_invalid')
     if not callable(monotonic_clock) or not callable(wall_clock) or not callable(recover):
         raise RuntimeBootError('clock_invalid')
+    if type(boot_id) is not str or not 1 <= len(boot_id) <= BOOT_ID_MAX:
+        raise RuntimeBootError('boot_id_invalid')
     if not isinstance(ports, Mapping) or set(ports) != {row.account_id for row in config.accounts}:
         raise RuntimeBootError('ports_accounts_mismatch')
     rows = []
@@ -535,15 +586,36 @@ def boot(config: RuntimeConfig, ports: Mapping[str, AccountPorts], *, boot_id: s
             raise RuntimeBootError('ports_invalid')
         if (port.context.account_id, port.context.egress_id) != (spec.account_id, spec.egress_id):
             raise RuntimeBootError('context_account_mismatch')
+        view = port.context.snapshot()
+        if view.queued or view.in_flight is not None or view.results or view.stopping or view.reconcile_before_restart:
+            # Leftover work on an injected context would be sent before any exchange-truth proof exists.
+            raise RuntimeBootError('account_context_not_fresh')
         rows.append(_Account(spec, port))
-    validate_distinct_egress(((row.spec.account_id, row.spec.egress_id) for row in rows),
-                             environment=config.environment.value)
+    try:
+        validate_distinct_egress(((row.spec.account_id, row.spec.egress_id) for row in rows),
+                                 environment=config.environment.value)
+    except Exception:
+        raise RuntimeBootError('egress_invalid') from None
     events = _EventLog()
-    for row in rows:
-        _boot_account(config, row, recover=recover, monotonic_clock=monotonic_clock, wall_clock=wall_clock,
-                      events=events)
-    return Runtime(config, tuple(rows), boot_id=boot_id, monotonic_clock=monotonic_clock,
-                   wall_clock=wall_clock, events=events)
+    try:
+        for row in rows:
+            try:
+                _boot_account(config, row, recover=recover, monotonic_clock=monotonic_clock, wall_clock=wall_clock,
+                              events=events)
+            except Exception:
+                row.holds.add(HoldCode.BOOT_ERROR)
+                row.proof_mono, row.restore_proven = None, False
+                events.record(row.spec.account_id, 'boot', HoldCode.BOOT_ERROR, 0)
+        return Runtime(config, tuple(rows), boot_id=boot_id, monotonic_clock=monotonic_clock,
+                       wall_clock=wall_clock, events=events)
+    except BaseException:
+        for row in rows:  # never leave a journal writer lock behind a failed boot
+            if row.journal is not None:
+                try:
+                    row.journal.close()
+                except Exception:
+                    pass
+        raise
 
 
 __all__ = ['AccountPhase', 'AccountRuntimeSnapshot', 'CLEARABLE', 'HoldCode', 'READ_OPERATIONS', 'Runtime',

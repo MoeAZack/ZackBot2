@@ -111,13 +111,18 @@ def test_boot_holds_when_the_worker_latched_reconcile_before_restart(world):
     w = world()
     ports = w.ports()
     context = ports[acct(1)].context
-    real = context.snapshot
+    real, real_run = context.snapshot, context.run_next
+    ran = []
 
-    def latched():
+    def run_next():
+        ran.append(1)
+        return real_run()
+
+    def latched():  # fresh at wiring time; latched once the boot reads have run
         import dataclasses
-        return dataclasses.replace(real(), reconcile_before_restart=True)
+        return dataclasses.replace(real(), reconcile_before_restart=bool(ran))
 
-    context.snapshot = latched
+    context.snapshot, context.run_next = latched, run_next
     rt = rt_module.boot(w.config, ports, boot_id='b', monotonic_clock=w.mono, wall_clock=w.wall)
     w.runtime = rt
     view = account_view(rt.snapshot(), acct(1))
