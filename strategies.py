@@ -4662,6 +4662,10 @@ def _zlema(close,length=20):
 def sig_zlema_crossover_long_1h(d,p,ctx):
  x=_zlema(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['zlema_crossover_long_1h']=dict(name='[RESEARCH] ZLEMA crossover long 1h',style='zero_lag_exponential_average',fn=sig_zlema_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(ZLEMA1H),desc='C153 conventional ZLEMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+WMA1H=dict(window=20,cost_multiple=5.0)
+def sig_wma_crossover_long_1h(d,p,ctx):
+ x=_weighted_moving_average(d.c,p['window']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['wma_crossover_long_1h']=dict(name='[RESEARCH] WMA crossover long 1h',style='linear_weighted_average',fn=sig_wma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(WMA1H),desc='C154 conventional linear WMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
