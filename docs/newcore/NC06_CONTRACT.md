@@ -59,16 +59,21 @@ exact quantity, notional, risk, margin, leverage, controlled capital, binding
 ceilings, and a deterministic `dec_` authorization identity suitable for
 NC-01 `OrderIntent.authorized_by`. A refusal has no executable quantity fields.
 
-Decision construction is factory-only. `authorization_is_current` re-evaluates
-the complete immutable master input, compares every executable output, checks
-all generations, and refuses an identity listed as consumed. Copying or
-mutating a decision cannot preserve validity. An existing reservation with the
+Decision construction is factory-only. `authorization_is_current` requires the
+caller's explicit consumed-authorization tuple on every call, re-evaluates the
+complete immutable master input, compares the exact runtime type and value of
+every executable output, checks all generations, and refuses an identity listed
+as consumed. Exact copies intentionally share the same one-shot identity and are
+all invalid after that identity is consumed; mutating a copy cannot preserve
+validity. An existing reservation with the
 same request ID refuses as a duplicate, and every reservation participates in
-the post-action ceilings.
+the post-action ceilings. Reservation risk and margin are strictly positive;
+zero cannot understate in-flight capacity.
 
 Equivalent Decimal spellings and identical immutable inputs produce identical
 master decisions. Any master generation or executable input change changes or
-invalidates the authorization.
+invalidates the authorization. Finite Decimal extremes and any trapped Decimal
+arithmetic or tick operation produce only sanitized `input_invalid` refusal.
 
 ## Follower diagnostics
 
@@ -92,4 +97,3 @@ tighter caps, follower isolation, closed immutable decisions, one-shot
 revalidation, deterministic replay, sanitized failures, and import boundaries.
 The full NEWCORE suite runs once on the final exact head. Runtime, PAPER, UI,
 and mainnet activation remain deferred.
-

@@ -172,18 +172,39 @@ def test_deterministic_replay_and_decimal_spelling_are_identical():
 def test_authorization_is_closed_current_and_one_shot():
     ev = evaluation()
     result = approved(ev)
-    assert authorization_is_current(result, ev)
+    assert authorization_is_current(result, ev, ())
     assert not authorization_is_current(result, ev, (result.authorization_id,))
+    with pytest.raises(TypeError):
+        authorization_is_current(result, ev)
     with pytest.raises(TypeError):
         ApprovedDecision()
     with pytest.raises(TypeError):
         dataclasses.replace(result, quantity=D('999'))
-    assert copy.copy(result) == result
+    copied = copy.copy(result)
+    assert copied == result
+    assert copied.authorization_id == result.authorization_id
+    assert authorization_is_current(copied, ev, ())
+    assert not authorization_is_current(copied, ev, (result.authorization_id,))
     forged = object.__new__(ApprovedDecision)
     for field in dataclasses.fields(result):
         object.__setattr__(forged, field.name, getattr(result, field.name))
     object.__setattr__(forged, 'quantity', D('999'))
-    assert not authorization_is_current(forged, ev)
+    assert not authorization_is_current(forged, ev, ())
+
+
+@pytest.mark.parametrize('field', [
+    'quantity', 'notional', 'risk', 'margin', 'leverage', 'controlled_capital',
+])
+def test_authorization_rejects_equal_non_decimal_executable_fields(field):
+    ev = evaluation()
+    result = approved(ev)
+    forged = object.__new__(ApprovedDecision)
+    for item in dataclasses.fields(result):
+        object.__setattr__(forged, item.name, getattr(result, item.name))
+    value = getattr(result, field)
+    assert value == int(value)
+    object.__setattr__(forged, field, int(value))
+    assert not authorization_is_current(forged, ev, ())
 
 
 def test_changed_generation_invalidates_old_authorization():
@@ -194,14 +215,16 @@ def test_changed_generation_invalidates_old_authorization():
         request=dataclasses.replace(ev.request, portfolio_generation=12))
     new = approved(changed)
     assert new.authorization_id != old.authorization_id
-    assert not authorization_is_current(old, changed)
+    assert not authorization_is_current(old, changed, ())
     refused(dataclasses.replace(ev, portfolio=dataclasses.replace(ev.portfolio, generation=12)),
             RefusalCode.GENERATION_MISMATCH)
     refused(dataclasses.replace(ev, account=dataclasses.replace(ev.account, generation=4)),
             RefusalCode.GENERATION_MISMATCH)
 
 
-@pytest.mark.parametrize('value', [1, 1.0, D('NaN'), D('Infinity'), D('0'), D('-1')])
+@pytest.mark.parametrize('value', [
+    1, 1.0, D('NaN'), D('sNaN'), D('Infinity'), D('0'), D('-1'),
+])
 def test_non_decimal_non_finite_and_non_positive_requested_risk_refuse(value):
     ev = evaluation(r=request(requested_risk=value))
     refused(ev, RefusalCode.INPUT_INVALID)
@@ -349,6 +372,23 @@ def test_inflight_margin_is_reserved_before_new_authorization():
     result = approved(evaluation(p=portfolio(reservations=(held,))))
     assert result.quantity == D('5')
     assert Ceiling.AVAILABLE_MARGIN in result.bindings
+
+
+@pytest.mark.parametrize('field', ['risk', 'margin'])
+def test_inflight_reservation_risk_and_margin_must_be_strictly_positive(field):
+    held = dataclasses.replace(reservation(), **{field: D('0')})
+    refused(evaluation(p=portfolio(reservations=(held,))), RefusalCode.INPUT_INVALID)
+
+
+@pytest.mark.parametrize('ev', [
+    evaluation(r=request(entry_price=D('1E+999999'), stop_price=D('1'))),
+    evaluation(f=filters(tick_size=D('1E-999999'))),
+    evaluation(f=filters(step_size=D('1E-999999'))),
+])
+def test_decimal_extremes_and_trapped_arithmetic_refuse_without_leaking(ev):
+    result = evaluate(ev)
+    assert type(result) is RefusedDecision
+    assert result.reasons == (RefusalCode.INPUT_INVALID,)
 
 
 def test_duplicate_request_cannot_bypass_with_another_entry_source():

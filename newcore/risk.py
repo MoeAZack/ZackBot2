@@ -11,7 +11,7 @@ import dataclasses
 import enum
 import hashlib
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_EVEN, localcontext
+from decimal import Decimal, DecimalException, ROUND_FLOOR, ROUND_HALF_EVEN, localcontext
 
 
 class RiskAction(enum.StrEnum):
@@ -337,9 +337,18 @@ def _fraction(value: object) -> bool:
 
 
 def _canonical_decimal(value: Decimal) -> str:
+    sign, digits, exponent = value.as_tuple()
+    if not value.is_finite():
+        payload = ''.join(str(digit) for digit in digits)
+        return ('-' if sign else '') + str(exponent) + ':' + payload
     if value == 0:
         return '0'
-    return format(value.normalize(), 'f')
+    digits = list(digits)
+    while digits and digits[-1] == 0:
+        digits.pop()
+        exponent += 1
+    coefficient = ''.join(str(digit) for digit in digits) or '0'
+    return ('-' if sign else '') + coefficient + 'e' + str(exponent)
 
 
 def _canonical(value: object) -> str:
@@ -422,8 +431,8 @@ def _valid_reservation(row: object) -> bool:
             and type(row.side) is PositionSide and _is_id(row.strategy_id) and _is_id(row.book_id)
             and _is_decimal(row.quantity, positive=True)
             and _is_decimal(row.notional, positive=True)
-            and _is_decimal(row.risk, nonnegative=True)
-            and _is_decimal(row.margin, nonnegative=True))
+            and _is_decimal(row.risk, positive=True)
+            and _is_decimal(row.margin, positive=True))
 
 
 def _shape_reasons(evaluation: object) -> tuple[RefusalCode, ...]:
@@ -672,26 +681,30 @@ def _follower_diagnostics(evaluation: RiskEvaluation, quantity: Decimal, allocat
         seen.add(profile.profile_id)
         reasons: list[RefusalCode] = []
         bindings: list[Ceiling] = []
-        if not profile.fresh:
-            reasons.append(RefusalCode.STALE_ACCOUNT)
-        controlled = min(profile.capital, policy.capital_cap) - profile.reserved_capital
-        if controlled <= 0:
-            reasons.append(RefusalCode.CAPITAL_UNAVAILABLE)
-        else:
-            _leverage, bounds, _distance = _bounds(
-                evaluation, controlled=controlled, allocation=allocation,
-                bucket=bucket, correlation_cap=cap, aggregate=profile)
-            failed = [name for name, value in bounds if quantity > value]
-            bindings.extend(failed)
-            notional = quantity * request.entry_price
-            if quantity < f.min_quantity:
-                reasons.append(RefusalCode.BELOW_MIN_QUANTITY)
-                bindings.append(Ceiling.VENUE_MIN_QUANTITY)
-            if notional < f.min_notional:
-                reasons.append(RefusalCode.BELOW_MIN_NOTIONAL)
-                bindings.append(Ceiling.VENUE_MIN_NOTIONAL)
-            if failed:
-                reasons.append(RefusalCode.NO_CAPACITY)
+        try:
+            if not profile.fresh:
+                reasons.append(RefusalCode.STALE_ACCOUNT)
+            controlled = min(profile.capital, policy.capital_cap) - profile.reserved_capital
+            if controlled <= 0:
+                reasons.append(RefusalCode.CAPITAL_UNAVAILABLE)
+            else:
+                _leverage, bounds, _distance = _bounds(
+                    evaluation, controlled=controlled, allocation=allocation,
+                    bucket=bucket, correlation_cap=cap, aggregate=profile)
+                failed = [name for name, value in bounds if quantity > value]
+                bindings.extend(failed)
+                notional = quantity * request.entry_price
+                if quantity < f.min_quantity:
+                    reasons.append(RefusalCode.BELOW_MIN_QUANTITY)
+                    bindings.append(Ceiling.VENUE_MIN_QUANTITY)
+                if notional < f.min_notional:
+                    reasons.append(RefusalCode.BELOW_MIN_NOTIONAL)
+                    bindings.append(Ceiling.VENUE_MIN_NOTIONAL)
+                if failed:
+                    reasons.append(RefusalCode.NO_CAPACITY)
+        except DecimalException:
+            reasons = [RefusalCode.INPUT_INVALID]
+            bindings = []
         out.append(FollowerDiagnostic(
             profile_id=profile.profile_id, profile_generation=profile.generation,
             capital=profile.capital, exact_quantity=quantity,
@@ -750,11 +763,14 @@ def evaluate(evaluation: object) -> RiskDecision:
     with localcontext() as context:
         context.prec = 64
         context.rounding = ROUND_HALF_EVEN
-        return _evaluate(evaluation)
+        try:
+            return _evaluate(evaluation)
+        except DecimalException:
+            return _refuse(evaluation, (RefusalCode.INPUT_INVALID,))
 
 
 def authorization_is_current(decision: object, evaluation: object,
-                             consumed_authorizations: tuple[str, ...] = ()) -> bool:
+                             consumed_authorizations: tuple[str, ...]) -> bool:
     """Validate exact inputs/generations/output and enforce one-shot consumption."""
     if (type(decision) is not ApprovedDecision or type(evaluation) is not RiskEvaluation
             or type(consumed_authorizations) is not tuple
@@ -768,7 +784,8 @@ def authorization_is_current(decision: object, evaluation: object,
                   'account_generation', 'portfolio_generation', 'policy_id',
                   'policy_generation', 'filter_id', 'filter_generation', 'quantity',
                   'notional', 'risk', 'margin', 'leverage', 'controlled_capital', 'bindings')
-    return all(getattr(decision, name) == getattr(expected, name) for name in executable)
+    return all(type(getattr(decision, name)) is type(getattr(expected, name))
+               and getattr(decision, name) == getattr(expected, name) for name in executable)
 
 
 __all__ = [
