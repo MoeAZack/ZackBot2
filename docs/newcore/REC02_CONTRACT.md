@@ -37,17 +37,23 @@ NC-09.  Those adapters may not weaken this contract.
    an unknown order into an owned order.
 6. External reductions may be proposed for durable adoption only when the
    confirmed binding, exact position delta, and exhaustive typed trade evidence
-   agree.  Late/partial owned fills additionally require exact client-order
-   identity.  Applying or journaling that proposal is deferred.
+   agree.  Every adoption trade is strictly newer than the durable last venue
+   observation and no later than its coherent trade-page observation or `now`.
+   Late/partial owned fills additionally require exact client-order identity,
+   an ADD/REDUCE effect compatible with the durable purpose, exact equality to
+   the newly executed delta, and total executed quantity no greater than the
+   request.  Applying or journaling that proposal is deferred.
 7. A venue-only position/order or quantity above durable ownership is foreign or
    a manual add.  It is quarantined, entries remain held, and it is never silently
    adopted.  A known owned position with an external add may receive only a
    protection proposal for the corroborated venue quantity.
 8. Protection counts only an open, reduce-only stop whose client identity is
    durably owned as `Purpose.PROTECT`; foreign stops never satisfy coverage.
-   Missing/undersized protection holds.  `FLATTEN_REQUIRED` is possible only for
-   an exact corroborated residual position after an owned protective-stop trade.
-   Contradictory evidence yields HOLD without flatten.
+   Missing/undersized protection holds.  `FLATTEN_REQUIRED` is possible only when
+   the exact fresh, bounded owned protective-stop delta explains the exact
+   corroborated residual position.  Historical stop-trade presence, a wrong
+   effect, or a non-equal delta cannot authorize flatten.  Contradictory evidence
+   yields HOLD without flatten.
 
 ## Closed outcomes and determinism
 

@@ -307,6 +307,77 @@ def test_late_owned_fill_after_order_disappears_proposes_adoption():
 
 
 @pytest.mark.parametrize(
+    "trade_at,code",
+    [
+        (OBSERVED - 1_000, FindingCode.TRADE_STALE),
+        (OBSERVED + 1, FindingCode.TRADE_FUTURE),
+    ],
+)
+def test_adoption_trade_must_be_inside_exact_causal_window(trade_at, code):
+    local = _local_order(purpose=Purpose.ENTRY, state=IntentState.UNKNOWN, exchange_id=None)
+    trade = _trade(client="cid-1", qty="1", effect=TradeEffect.ADD, at_ms=trade_at)
+    plan = plan_reconciliation(_state(orders=(local,)), _snapshot(trades=(trade,)), _config())
+    assert code in _codes(plan)
+    assert plan.actions == ()
+
+
+def test_owned_trade_effect_must_match_durable_order_purpose():
+    local = _local_order(purpose=Purpose.ENTRY, state=IntentState.UNKNOWN, exchange_id=None)
+    wrong = _trade(client="cid-1", qty="1", effect=TradeEffect.REDUCE)
+    plan = plan_reconciliation(_state(orders=(local,)), _snapshot(trades=(wrong,)), _config())
+    assert FindingCode.TRADE_PURPOSE_MISMATCH in _codes(plan)
+    assert ActionKind.ADOPT_LATE_FILL not in _actions(plan)
+
+
+def test_partial_fill_requires_exact_new_execution_delta_not_greater_than():
+    local = _local_order(purpose=Purpose.ENTRY, qty="5", executed="1")
+    venue = _venue_order(kind=VenueOrderKind.LIMIT, reduce_only=False, qty="5", executed="2")
+    too_much = _trade(client="cid-1", qty="2", effect=TradeEffect.ADD)
+    plan = plan_reconciliation(_state(orders=(local,)), _snapshot(orders=(venue,), trades=(too_much,)), _config())
+    assert FindingCode.TRADE_DELTA_MISMATCH in _codes(plan)
+    assert ActionKind.ADOPT_LATE_FILL not in _actions(plan)
+
+
+def test_open_order_adoption_refuses_total_fill_above_requested_quantity():
+    local = _local_order(purpose=Purpose.ENTRY, qty="5", executed="4")
+    venue = _venue_order(kind=VenueOrderKind.LIMIT, reduce_only=False, qty="5", executed="4.5")
+    overflow = _trade(client="cid-1", qty="1.5", effect=TradeEffect.ADD)
+    plan = plan_reconciliation(_state(orders=(local,)), _snapshot(orders=(venue,), trades=(overflow,)), _config())
+    assert FindingCode.FILL_EXCEEDS_REQUESTED in _codes(plan)
+    assert ActionKind.ADOPT_LATE_FILL not in _actions(plan)
+
+
+def test_vanished_order_adoption_is_bounded_by_requested_quantity():
+    local = _local_order(purpose=Purpose.ENTRY, qty="5", executed="4", state=IntentState.UNKNOWN, exchange_id=None)
+    overflow = _trade(client="cid-1", qty="2", effect=TradeEffect.ADD)
+    plan = plan_reconciliation(_state(orders=(local,)), _snapshot(trades=(overflow,)), _config())
+    assert FindingCode.FILL_EXCEEDS_REQUESTED in _codes(plan)
+    assert ActionKind.ADOPT_LATE_FILL not in _actions(plan)
+
+
+def test_flatten_needs_exact_owned_stop_delta_not_mere_stop_trade_presence():
+    stop = _local_order(purpose=Purpose.PROTECT, state=IntentState.UNKNOWN)
+    partial_stop = _trade(number=1, client="cid-1", qty="1", effect=TradeEffect.REDUCE)
+    external_reduce = _trade(number=2, client=None, qty="2", effect=TradeEffect.REDUCE)
+    plan = plan_reconciliation(_state(positions=(_position("5"),), orders=(stop,)),
+                               _snapshot(positions=(_venue_position("2"),),
+                                         trades=(partial_stop, external_reduce)), _config())
+    assert ActionKind.FLATTEN_REQUIRED not in _actions(plan)
+    assert ActionKind.PROTECT_REQUIRED in _actions(plan)
+
+
+def test_flatten_needs_owned_stop_trade_on_exact_instrument_and_side():
+    stop = _local_order(purpose=Purpose.PROTECT, state=IntentState.UNKNOWN)
+    wrong_side = _trade(client="cid-1", qty="3", side=Side.SHORT, effect=TradeEffect.REDUCE)
+    external_reduce = _trade(number=2, client=None, qty="3", effect=TradeEffect.REDUCE)
+    plan = plan_reconciliation(_state(positions=(_position("5"),), orders=(stop,)),
+                               _snapshot(positions=(_venue_position("2"),),
+                                         trades=(wrong_side, external_reduce)), _config())
+    assert FindingCode.TRADE_PURPOSE_MISMATCH in _codes(plan)
+    assert ActionKind.FLATTEN_REQUIRED not in _actions(plan)
+
+
+@pytest.mark.parametrize(
     "snapshot,code",
     [
         (_snapshot(positions=(_venue_position(), _venue_position())), FindingCode.DUPLICATE_POSITION),

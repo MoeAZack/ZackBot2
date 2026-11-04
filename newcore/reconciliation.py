@@ -142,6 +142,11 @@ class FindingCode(enum.StrEnum):
     ORPHAN_ORDER = "orphan_order"
     PARTIAL_FILL = "partial_fill"
     LATE_FILL = "late_fill"
+    TRADE_STALE = "trade_stale"
+    TRADE_FUTURE = "trade_future"
+    TRADE_PURPOSE_MISMATCH = "trade_purpose_mismatch"
+    TRADE_DELTA_MISMATCH = "trade_delta_mismatch"
+    FILL_EXCEEDS_REQUESTED = "fill_exceeds_requested"
     PROTECTION_MISSING = "protection_missing"
     PROTECTION_UNDERSIZED = "protection_undersized"
     STOP_FILLED_OFFLINE = "stop_filled_offline"
@@ -427,6 +432,11 @@ _REASON = {
     FindingCode.FOREIGN_ORDER: ReasonCode.OWNERSHIP_FOREIGN_ORDER,
     FindingCode.PARTIAL_FILL: ReasonCode.EVIDENCE_PARTIAL_FILL,
     FindingCode.LATE_FILL: ReasonCode.RECONCILE_LATE_FILL,
+    FindingCode.TRADE_STALE: ReasonCode.RECONCILE_STALE_READ,
+    FindingCode.TRADE_FUTURE: ReasonCode.RECONCILE_STALE_READ,
+    FindingCode.TRADE_PURPOSE_MISMATCH: ReasonCode.RECONCILE_UNRECONCILED,
+    FindingCode.TRADE_DELTA_MISMATCH: ReasonCode.RECONCILE_UNRECONCILED,
+    FindingCode.FILL_EXCEEDS_REQUESTED: ReasonCode.RECONCILE_UNRECONCILED,
     FindingCode.PROTECTION_MISSING: ReasonCode.PROTECT_PLACE,
     FindingCode.PROTECTION_UNDERSIZED: ReasonCode.PROTECT_UNDERSIZED,
     FindingCode.STOP_FILLED_OFFLINE: ReasonCode.RECONCILE_LATE_FILL,
@@ -609,6 +619,13 @@ def _coherence(state: DurableState, snapshot: VenueSnapshot, config: PlannerConf
             findings.append(_finding(FindingCode.SNAPSHOT_FUTURE))
         if any(config.now_ms - x > age_limit_ms for x in observed):
             findings.append(_finding(FindingCode.SNAPSHOT_STALE))
+        if kind is SnapshotComponent.USER_TRADES:
+            for page in pages:
+                for trade in page.records:
+                    if trade.at_ms <= state.last_venue_observed_at_ms:
+                        findings.append(_finding(FindingCode.TRADE_STALE, trade.symbol, trade.side, trade.trade_id))
+                    if trade.at_ms > page.observed_at_ms or trade.at_ms > config.now_ms:
+                        findings.append(_finding(FindingCode.TRADE_FUTURE, trade.symbol, trade.side, trade.trade_id))
     return findings, generation
 
 
@@ -645,6 +662,20 @@ def _duplicate_findings(positions: list[VenuePosition], orders: list[VenueOrder]
     return findings
 
 
+def _expected_effect(purpose: Purpose) -> TradeEffect:
+    return TradeEffect.ADD if purpose in (Purpose.ENTRY, Purpose.ADD) else TradeEffect.REDUCE
+
+
+def _owned_trade_proof(order: LocalOrder, trades: list[VenueTrade]) -> tuple[Decimal, bool, bool]:
+    """Return fresh delta, purpose compatibility, and requested-quantity bound."""
+    owned = [trade for trade in trades if trade.client_order_id == order.client_order_id]
+    compatible = all(trade.effect is _expected_effect(order.purpose)
+                     and (trade.symbol, trade.side) == (order.symbol, order.side) for trade in owned)
+    delta = sum((trade.qty for trade in owned), ZERO)
+    bounded = order.executed_qty + delta <= order.requested_qty
+    return delta, compatible, bounded
+
+
 def plan_reconciliation(local: DurableState, snapshot: VenueSnapshot,
                         config: PlannerConfig) -> ReconciliationPlan:
     """Return a deterministic, immutable reconciliation plan.
@@ -679,7 +710,8 @@ def plan_reconciliation(local: DurableState, snapshot: VenueSnapshot,
     try:
         reductions: dict[tuple[str, Side], Decimal] = {}
         for trade in trades:
-            if trade.effect is TradeEffect.REDUCE:
+            owned = local_orders.get(trade.client_order_id) if trade.client_order_id is not None else None
+            if trade.effect is TradeEffect.REDUCE and (owned is None or _expected_effect(owned.purpose) is TradeEffect.REDUCE):
                 key = (trade.symbol, trade.side)
                 reductions[key] = reductions.get(key, ZERO) + trade.qty
 
@@ -732,13 +764,18 @@ def plan_reconciliation(local: DurableState, snapshot: VenueSnapshot,
                 continue
             if venue_order is None:
                 owned_trades = [t for t in trades if t.client_order_id == client_id]
-                newly_executed = sum((t.qty for t in owned_trades), ZERO)
-                if newly_executed > local_order.executed_qty:
+                delta, compatible, bounded = _owned_trade_proof(local_order, trades)
+                if owned_trades and not compatible:
+                    findings.append(_finding(FindingCode.TRADE_PURPOSE_MISMATCH, local_order.symbol, local_order.side,
+                                             local_order.intent_id))
+                elif owned_trades and not bounded:
+                    findings.append(_finding(FindingCode.FILL_EXCEEDS_REQUESTED, local_order.symbol, local_order.side,
+                                             local_order.intent_id))
+                elif delta > ZERO:
                     findings.append(_finding(FindingCode.LATE_FILL, local_order.symbol, local_order.side,
                                              local_order.intent_id))
                     actions.append(_action(ActionKind.ADOPT_LATE_FILL, ReasonCode.RECONCILE_LATE_FILL,
-                                           local_order.symbol, local_order.side,
-                                           newly_executed - local_order.executed_qty, local_order.intent_id))
+                                           local_order.symbol, local_order.side, delta, local_order.intent_id))
                 elif local_order.state not in (IntentState.CANCELLED, IntentState.FILLED, IntentState.REJECTED,
                                                 IntentState.NOT_SENT):
                     findings.append(_finding(FindingCode.LOCAL_ORDER_ONLY, local_order.symbol, local_order.side,
@@ -754,16 +791,25 @@ def plan_reconciliation(local: DurableState, snapshot: VenueSnapshot,
                 findings.append(_finding(FindingCode.ORDER_QUANTITY_MISMATCH, local_order.symbol, local_order.side,
                                          local_order.intent_id))
             elif venue_order.executed_qty > local_order.executed_qty:
-                matching = sum((t.qty for t in trades if t.client_order_id == client_id), ZERO)
-                if matching >= venue_order.executed_qty - local_order.executed_qty:
+                delta, compatible, bounded = _owned_trade_proof(local_order, trades)
+                expected_delta = venue_order.executed_qty - local_order.executed_qty
+                if not compatible:
+                    findings.append(_finding(FindingCode.TRADE_PURPOSE_MISMATCH, local_order.symbol, local_order.side,
+                                             local_order.intent_id))
+                elif not bounded:
+                    findings.append(_finding(FindingCode.FILL_EXCEEDS_REQUESTED, local_order.symbol, local_order.side,
+                                             local_order.intent_id))
+                elif delta == expected_delta:
                     findings.append(_finding(FindingCode.PARTIAL_FILL, local_order.symbol, local_order.side,
                                              local_order.intent_id))
                     actions.append(_action(ActionKind.ADOPT_LATE_FILL, ReasonCode.RECONCILE_LATE_FILL,
-                                           local_order.symbol, local_order.side,
-                                           venue_order.executed_qty - local_order.executed_qty, local_order.intent_id))
+                                           local_order.symbol, local_order.side, expected_delta, local_order.intent_id))
                 else:
-                    findings.append(_finding(FindingCode.ORDER_QUANTITY_MISMATCH, local_order.symbol, local_order.side,
+                    findings.append(_finding(FindingCode.TRADE_DELTA_MISMATCH, local_order.symbol, local_order.side,
                                              local_order.intent_id))
+            elif venue_order.executed_qty < local_order.executed_qty:
+                findings.append(_finding(FindingCode.TRADE_DELTA_MISMATCH, local_order.symbol, local_order.side,
+                                         local_order.intent_id))
             venue_is_protection = venue_order.kind is VenueOrderKind.STOP_MARKET and venue_order.reduce_only
             if (local_order.purpose is Purpose.PROTECT) != venue_is_protection:
                 findings.append(_finding(FindingCode.ORDER_SEMANTICS_MISMATCH, local_order.symbol, local_order.side,
@@ -787,13 +833,20 @@ def plan_reconciliation(local: DurableState, snapshot: VenueSnapshot,
                         and owned is not None and owned.purpose is Purpose.PROTECT
                         and (owned.exchange_order_id is None or owned.exchange_order_id == order.exchange_order_id)):
                     coverage += order.remaining_qty
-            protection_trades = [t for t in trades if (t.symbol, t.side) == key and t.effect is TradeEffect.REDUCE
-                                 and t.client_order_id in local_orders
-                                 and local_orders[t.client_order_id].purpose is Purpose.PROTECT]
+            protection_delta = ZERO
+            for local_order in local_orders.values():
+                if local_order.purpose is not Purpose.PROTECT or (local_order.symbol, local_order.side) != key:
+                    continue
+                delta, compatible, bounded = _owned_trade_proof(local_order, trades)
+                if compatible and bounded:
+                    protection_delta += delta
+            local_position = local_positions.get(key)
+            exact_stop_residual = (local_position is not None and protection_delta > ZERO
+                                   and local_position.qty - protection_delta == position.qty)
             if coverage < position.qty:
                 code = FindingCode.PROTECTION_MISSING if coverage == ZERO else FindingCode.PROTECTION_UNDERSIZED
                 findings.append(_finding(code, symbol, side))
-                if protection_trades and key in local_positions:
+                if exact_stop_residual:
                     findings.append(_finding(FindingCode.STOP_FILLED_OFFLINE, symbol, side))
                     actions.append(_action(ActionKind.FLATTEN_REQUIRED, ReasonCode.RECONCILE_LATE_FILL,
                                            symbol, side, position.qty))
