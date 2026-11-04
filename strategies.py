@@ -4698,6 +4698,12 @@ def _vwma(close,volume,length=20):
 def sig_vwma_crossover_long_1h(d,p,ctx):
  x=_vwma(d.c,d.v,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['vwma_crossover_long_1h']=dict(name='[RESEARCH] VWMA crossover long 1h',style='volume_weighted_moving_average',fn=sig_vwma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(VWMA1H),desc='C159 conventional VWMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+GMA1H=dict(length=20,cost_multiple=5.0)
+def _gma(close,length=20):
+ n=int(length);x=close.astype(float).where(close.astype(float)>0.0);return np.exp(np.log(x).rolling(n,min_periods=n).mean())
+def sig_gma_crossover_long_1h(d,p,ctx):
+ x=_gma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['gma_crossover_long_1h']=dict(name='[RESEARCH] GMA crossover long 1h',style='geometric_moving_average',fn=sig_gma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(GMA1H),desc='C160 conventional GMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
