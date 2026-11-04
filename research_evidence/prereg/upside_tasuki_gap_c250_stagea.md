@@ -1,0 +1,10 @@
+# Candidate 250 / Upside Tasuki Gap preregistration
+
+Status **FROZEN / NOT EVALUATED / RESEARCH ONLY**, 4 November 2026 Cairo. The complete C1-C249 tree, refs, history, preregistrations, results and research tools were searched for Upside Tasuki Gap; no implementation was found. C199/C200 Kicker, C233 Upside Gap Two Crows, C248/C249 Abandoned Baby and other strict- or gap-relaxed multi-candle families are disclosed. This is a distinct strict-gap continuation hypothesis: two bullish candles must have a true high-low range gap, then a bearish candle opens inside the second real body and closes into the gap while remaining strictly above the first high. The expected scarcity risk in continuous crypto is accepted before evaluation and will not be rescued by relaxing the gap. One cell only.
+
+On completed 1h bars, require bullish first and second candles with the second low strictly above the first high. The third candle must be bearish, open strictly inside the second real body, close strictly below the second open into the gap, and remain strictly above the first high without filling the gap. Enter long next open when the third candle closes above EMA200. Exit when close is at/below SMA10, after 24 bars, at 2ATR stop or 2R target. The protection stop must cover at least 5x modeled 0.14% round-trip cost. Costs are 5bp taker plus 2bp adverse slippage per fill and actual signed funding.
+
+CORE-20 development `2024-10-14T00:00:00Z..2025-04-01T00:00:00Z`. PASS requires gross>0, mean net R>0, PF>1.05, >=100 trades, >=8 symbols, >=20 trades in each BTC regime, and DD<=15R. Family 250; future family-wise alpha <=0.05/250. Default-OFF; PAPER eligibility remains BLOCK. No tuning, rescue, folds, holdout, PAPER activation, runtime, mainnet or BASE-CLEAN work; holdout sealed. Undefined zero-trade statistics fail closed.
+
+ROADMAP FIT: next distinct default-OFF strict-gap three-candle bullish continuation family.
+DEFERRED: bearish counterpart, gap-relaxed variants, folds, holdout, Stage B and activation.
