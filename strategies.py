@@ -3611,6 +3611,50 @@ STRATEGIES['coppock_zero_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+STC1H = dict(fast=23, slow=50, cycle=10, alpha=0.5, cost_multiple=5.0)
+
+
+def _recursive_smooth(series, alpha):
+    out = pd.Series(np.nan, index=series.index, dtype=float)
+    prior = np.nan
+    for i, raw in enumerate(series.to_numpy(float)):
+        if not np.isfinite(raw):
+            continue
+        prior = raw if not np.isfinite(prior) else alpha * raw + (1.0 - alpha) * prior
+        out.iloc[i] = prior
+    return out
+
+
+def _schaff_trend_cycle(close, fast=23, slow=50, cycle=10, alpha=0.5):
+    """Causal Schaff Trend Cycle: MACD passed through two smoothed stochastic transforms."""
+    c = close.astype(float)
+    macd = c.ewm(span=fast, adjust=False).mean() - c.ewm(span=slow, adjust=False).mean()
+    lo1, hi1 = macd.rolling(cycle).min(), macd.rolling(cycle).max()
+    k1 = 100.0 * (macd - lo1) / (hi1 - lo1).replace(0.0, np.nan)
+    d1 = _recursive_smooth(k1, alpha)
+    lo2, hi2 = d1.rolling(cycle).min(), d1.rolling(cycle).max()
+    k2 = 100.0 * (d1 - lo2) / (hi2 - lo2).replace(0.0, np.nan)
+    return _recursive_smooth(k2, alpha)
+
+
+def sig_schaff_cycle_long_1h(d, p, ctx):
+    """C108: enter an early dual-stochastic MACD cycle transition."""
+    stc = _schaff_trend_cycle(d.c, int(p['fast']), int(p['slow']), int(p['cycle']), float(p['alpha']))
+    cross_up = (stc > 25.0) & (stc.shift() <= 25.0)
+    cross_down = (stc < 75.0) & (stc.shift() >= 75.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=cross_down, sx=never)
+
+
+STRATEGIES['schaff_cycle_long_1h'] = dict(
+    name='[RESEARCH] Schaff Trend Cycle long 1h', style='dual_stochastic_macd_cycle',
+    fn=sig_schaff_cycle_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(STC1H),
+    desc='Candidate 108: conventional 23/50/10 Schaff cycle crosses 25 above EMA20; exit on downward 75 cross.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
