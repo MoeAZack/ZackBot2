@@ -3749,6 +3749,34 @@ STRATEGIES['vhf_trend_onset_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+COG1H = dict(lookback=10, cost_multiple=5.0)
+
+
+def _center_of_gravity(high, low, lookback=10):
+    """Causal Ehlers Center-of-Gravity oscillator on trailing median prices."""
+    price = (high.astype(float) + low.astype(float)) / 2.0
+    numerator = sum(float(i + 1) * price.shift(i) for i in range(lookback))
+    denominator = sum(price.shift(i) for i in range(lookback))
+    return -numerator / denominator.replace(0.0, np.nan) + (float(lookback) + 1.0) / 2.0
+
+
+def sig_cog_zero_cross_long_1h(d, p, ctx):
+    """C112: enter when the trailing price balance point shifts positive."""
+    cog = _center_of_gravity(d.h, d.l, int(p['lookback']))
+    cross_up = (cog > 0.0) & (cog.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=cog <= 0.0, sx=never)
+
+
+STRATEGIES['cog_zero_cross_long_1h'] = dict(
+    name='[RESEARCH] Center-of-Gravity zero-cross long 1h', style='price_balance_point',
+    fn=sig_cog_zero_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(COG1H),
+    desc='Candidate 112: conventional Ehlers median-price COG(10) crosses above zero above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
