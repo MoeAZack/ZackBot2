@@ -5423,6 +5423,14 @@ def sig_downside_gap_side_by_side_white_short_1h(d,p,ctx):
  pattern=_downside_gap_side_by_side_white(d.o,d.h,d.l,d.c,d.atr,p['open_tolerance_atr'],p['body_ratio_min'],p['body_ratio_max']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['downside_gap_side_by_side_white_short_1h']=dict(name='[RESEARCH] Downside Gap Side-by-Side White Lines short 1h',style='downside_gap_side_by_side_white_candlestick',fn=sig_downside_gap_side_by_side_white_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(DOWNSIDEWHITELINES1H),desc='C253 strict true-gap Downside Side-by-Side White Lines continuation short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+BULLLONGLINE1H=dict(body_fraction=.80,exit_length=10,cost_multiple=5.)
+def _bullish_long_line(open_,high,low,close,body_fraction=.80):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);rng=h-l;body=c-o
+ return (rng>0)&(body>0)&(body>=body_fraction*rng)
+def sig_bullish_long_line_long_1h(d,p,ctx):
+ pattern=_bullish_long_line(d.o,d.h,d.l,d.c,p['body_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_long_line_long_1h']=dict(name='[RESEARCH] Bullish Long Line long 1h',style='bullish_long_line_candlestick',fn=sig_bullish_long_line_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BULLLONGLINE1H),desc='C254 conventional dominant-body Bullish Long Line continuation above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
