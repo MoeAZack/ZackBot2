@@ -1,7 +1,7 @@
 # BASE-CLEAN-PROOF-03 two-account isolation contract
 
 Status: frozen offline exact-head proof slice. Base: protected `origin/master`
-`e43b67aa68baf86ea8e5e29d6c826aea1b18bb50`. This slice prepares only the
+`54c41dc6fe60c432bd0ce70dabb99dd3f06ee1d8`. This slice prepares only the
 `two_account_isolation` BASE-CLEAN proof. It does not start ZackBot, contact an
 exchange, use credentials, or place PAPER, testnet, or mainnet orders.
 
