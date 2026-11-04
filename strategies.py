@@ -4815,6 +4815,17 @@ def _classic_floor_pivots(time,high,low,close):
 def sig_floor_pivot_breakout_long_1h(d,p,ctx):
  pivot,r1,_=_classic_floor_pivots(d.t,d.h,d.l,d.c);up=(d.c>r1)&(d.c.shift()<=r1.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=pivot,sx=never)
 STRATEGIES['floor_pivot_breakout_long_1h']=dict(name='[RESEARCH] Classic floor-pivot breakout long 1h',style='prior_day_classic_floor_pivots',fn=sig_floor_pivot_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PIVOT1H),desc='C177 prior-UTC-day classic R1 breakout above EMA200 with pivot exit.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+DARVAS1H=dict(lookback=20,confirmation=3,cost_multiple=5.0)
+def _darvas_boxes(high,low,lookback=20,confirmation=3):
+ h=high.to_numpy(float);l=low.to_numpy(float);n=len(h);k=int(confirmation);roll=high.astype(float).rolling(int(lookback),min_periods=int(lookback)).max().to_numpy();top=np.full(n,np.nan);bottom=np.full(n,np.nan);ct=cb=np.nan
+ for i in range(n):
+  j=i-k
+  if j>=0 and np.isfinite(roll[j]) and h[j]>=roll[j] and np.all(h[j+1:i+1]<h[j]):ct=h[j];cb=float(np.min(l[j:i+1]))
+  top[i]=ct;bottom[i]=cb
+ return pd.Series(top,index=high.index),pd.Series(bottom,index=high.index)
+def sig_darvas_breakout_long_1h(d,p,ctx):
+ top,bottom=_darvas_boxes(d.h,d.l,p['lookback'],p['confirmation']);up=(d.c>top)&(d.c.shift()<=top.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=bottom,sx=never)
+STRATEGIES['darvas_breakout_long_1h']=dict(name='[RESEARCH] Darvas Box breakout long 1h',style='confirmed_darvas_box',fn=sig_darvas_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(DARVAS1H),desc='C178 confirmed three-bar Darvas box after a new 20-bar high, above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
