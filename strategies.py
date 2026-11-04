@@ -4692,6 +4692,12 @@ def _lsma(close,length=20):
 def sig_lsma_crossover_long_1h(d,p,ctx):
  x=_lsma(d.c,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
 STRATEGIES['lsma_crossover_long_1h']=dict(name='[RESEARCH] LSMA crossover long 1h',style='least_squares_moving_average',fn=sig_lsma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(LSMA1H),desc='C158 conventional LSMA(20) endpoint crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+VWMA1H=dict(length=20,cost_multiple=5.0)
+def _vwma(close,volume,length=20):
+ n=int(length);den=volume.astype(float).rolling(n,min_periods=n).sum();return (close.astype(float)*volume.astype(float)).rolling(n,min_periods=n).sum()/den.replace(0.0,np.nan)
+def sig_vwma_crossover_long_1h(d,p,ctx):
+ x=_vwma(d.c,d.v,p['length']);up=(d.c>x)&(d.c.shift()<=x.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=x,sx=never)
+STRATEGIES['vwma_crossover_long_1h']=dict(name='[RESEARCH] VWMA crossover long 1h',style='volume_weighted_moving_average',fn=sig_vwma_crossover_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(VWMA1H),desc='C159 conventional VWMA(20) price crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
