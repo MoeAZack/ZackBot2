@@ -4000,6 +4000,44 @@ STRATEGIES['cti_trend_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+HURST1H = dict(window=64, enter=0.60, exit=0.50, drift_bars=24, cost_multiple=5.0)
+
+
+def _hurst_rescaled_range(close, window=64):
+    """Causal rolling Hurst slope from average rescaled ranges at 8, 16, and 32 returns."""
+    sizes = (8, 16, 32); logs = np.log(np.asarray(sizes, float)); lm = logs.mean()
+    def estimate(prices):
+        returns = np.diff(prices); points = []
+        for size in sizes:
+            ratios = []
+            for start in range(0, len(returns) - size + 1, size):
+                block = returns[start:start + size]; dev = block - np.mean(block); s = np.std(block)
+                if s > 0.0:
+                    path = np.cumsum(dev); ratios.append((np.max(path) - np.min(path)) / s)
+            if not ratios or np.mean(ratios) <= 0.0: return np.nan
+            points.append(np.log(np.mean(ratios)))
+        y = np.asarray(points); return float(np.sum((logs - lm) * (y - y.mean())) / np.sum((logs - lm) ** 2))
+    return close.astype(float).rolling(window).apply(estimate, raw=True)
+
+
+def sig_hurst_persistence_long_1h(d, p, ctx):
+    """C120: enter when multi-scale rescaled range transitions into persistence."""
+    hurst = _hurst_rescaled_range(d.c, int(p['window'])); drift = d.c.pct_change(int(p['drift_bars']))
+    cross_up = (hurst > float(p['enter'])) & (hurst.shift() <= float(p['enter']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (drift > 0.0) & (d.c > d.e20) & cost_ok, se=never,
+                lx=(hurst < float(p['exit'])) | (drift <= 0.0), sx=never)
+
+
+STRATEGIES['hurst_persistence_long_1h'] = dict(
+    name='[RESEARCH] Hurst R/S persistence long 1h', style='multiscale_persistence',
+    fn=sig_hurst_persistence_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(HURST1H),
+    desc='Candidate 120: rolling 64-bar Hurst R/S crosses .60 with positive 24h drift above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
