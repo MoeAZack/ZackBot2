@@ -190,7 +190,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             for s in syms:
                 ap = (book.d[s].atr / book.d[s].c)
                 volr[s] = ap.rolling(180, min_periods=60).rank(pct=True).fillna(0.5).values
-        SL.append(dict(cfg=sl, m=m, syms=syms, sigs=sigs, pos={}, pend={}, tpend={}, volr=volr, hist=[],
+        SL.append(dict(cfg=sl, m=m, syms=syms, sigs=sigs, pos={}, pend={}, tpend={}, volr=volr, hist=[], last_exit={},
                        tps=S.norm_tps(m.get('tps')), pg=sl.get('pump_guard') or pump_guard or None))
 
     # ---- shared context for the v3.1 rules (computed only when used)
@@ -272,6 +272,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         if step: p['qty'] = max(0.0, F.round_step(p['qty'], step))
         if p['qty'] <= 1e-12:
             sl['hist'].append(p['realized'] / p['risk'])
+            if sl['cfg'].get('reentry_lock'):
+                sl['last_exit'][(s, p['side'])] = i
             trades.append(dict(sleeve=sl['cfg']['key'], sym=s, side=p['side'], i_in=p['i'], i_out=i,
                                pnl=p['realized'], R=p['realized'] / p['risk'], why=why))
             return True
@@ -608,6 +610,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
                     if sl['volr'] and sl['volr'][s][i] > cfg['vol_max_pct']: continue
                     side = 1 if g['le'][i] else (-1 if g['se'][i] else 0)
                     if not side: continue
+                    if cfg.get('reentry_lock') and sl['last_exit'].get((s, side)) == i:
+                        blocked['reentry_lock'] = blocked.get('reentry_lock', 0) + 1; continue
                     if RG is not None or sl['pg'] or RR['btc_breaker']:
                         why = entry_filters(sl, s, side, i)
                         if why: blocked[why] = blocked.get(why, 0) + 1; continue
