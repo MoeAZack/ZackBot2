@@ -4527,6 +4527,34 @@ STRATEGIES['alligator_alignment_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+PVT1H = dict(signal_span=20, cost_multiple=5.0)
+
+
+def _price_volume_trend(close, base_volume):
+    """Causal conventional Price Volume Trend cumulative line."""
+    increment = base_volume.astype(float) * close.astype(float).pct_change()
+    return increment.fillna(0.0).cumsum()
+
+
+def sig_pvt_cross_long_1h(d, p, ctx):
+    """C136: follow a bullish crossover in cumulative relative-return-weighted volume."""
+    pvt = _price_volume_trend(d.c, d.v)
+    signal = pvt.ewm(span=int(p['signal_span']), adjust=False, min_periods=int(p['signal_span'])).mean()
+    cross_up = (pvt > signal) & (pvt.shift() <= signal.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=pvt <= signal, sx=never)
+
+
+STRATEGIES['pvt_cross_long_1h'] = dict(
+    name='[RESEARCH] Price Volume Trend crossover long 1h', style='cumulative_relative_return_volume',
+    fn=sig_pvt_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(PVT1H),
+    desc='Candidate 136: conventional PVT crosses above EMA20 of PVT while price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
