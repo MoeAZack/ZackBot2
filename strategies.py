@@ -4782,6 +4782,15 @@ def _gmma_ribbons(close,short_periods=(3,5,8,10,12,15),long_periods=(30,35,40,45
 def sig_gmma_ribbon_long_1h(d,p,ctx):
  short_min,long_max=_gmma_ribbons(d.c,p['short_periods'],p['long_periods']);aligned=short_min>long_max;up=aligned&~aligned.shift(fill_value=False);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=~aligned,sx=never)
 STRATEGIES['gmma_ribbon_long_1h']=dict(name='[RESEARCH] GMMA ribbon long 1h',style='guppy_multiple_moving_average',fn=sig_gmma_ribbon_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(GMMA1H),desc='C172 canonical Guppy short EMA ribbon fully above long EMA ribbon and EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+SSL1H=dict(length=10,cost_multiple=5.0)
+def _ssl_channel(high,low,close,length=10):
+ n=int(length);mh=high.astype(float).rolling(n,min_periods=n).mean();ml=low.astype(float).rolling(n,min_periods=n).mean();state=np.zeros(len(close),dtype=np.int8)
+ for i in range(len(close)):
+  prev=state[i-1] if i else 0;state[i]=1 if close.iloc[i]>mh.iloc[i] else (-1 if close.iloc[i]<ml.iloc[i] else prev)
+ s=pd.Series(state,index=close.index);up=mh.where(s>=0,ml);down=ml.where(s>=0,mh);return s,up,down
+def sig_ssl_channel_long_1h(d,p,ctx):
+ state,_,_=_ssl_channel(d.h,d.l,d.c,p['length']);up=(state>0)&(state.shift(fill_value=0)<=0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=state<0,sx=never)
+STRATEGIES['ssl_channel_long_1h']=dict(name='[RESEARCH] SSL Channel long 1h',style='ssl_high_low_hysteresis',fn=sig_ssl_channel_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SSL1H),desc='C173 conventional SSL Channel(10) bullish state flip above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
