@@ -5278,6 +5278,14 @@ def sig_identical_three_crows_short_1h(d,p,ctx):
  pattern=_identical_three_crows(d.o,d.c,d.atr,p['open_tolerance_atr']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['identical_three_crows_short_1h']=dict(name='[RESEARCH] Identical Three Crows short 1h',style='identical_three_crows_candlestick',fn=sig_identical_three_crows_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(IDENTCROWS1H),desc='C235 conventional Identical Three Crows continuation short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+BULL3STRIKE1H=dict(exit_length=10,cost_multiple=5.)
+def _bullish_three_line_strike(open_,close):
+ o=open_.astype(float);c=close.astype(float);bull=c>o
+ return (o>c)&bull.shift(1)&bull.shift(2)&bull.shift(3)&(c.shift(1)>c.shift(2))&(c.shift(2)>c.shift(3))&(o.shift(2)>=o.shift(3))&(o.shift(2)<=c.shift(3))&(o.shift(1)>=o.shift(2))&(o.shift(1)<=c.shift(2))&(o>=c.shift(1))&(c<o.shift(3))
+def sig_bullish_three_line_strike_long_1h(d,p,ctx):
+ pattern=_bullish_three_line_strike(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_three_line_strike_long_1h']=dict(name='[RESEARCH] Bullish Three-Line Strike long 1h',style='bullish_three_line_strike_candlestick',fn=sig_bullish_three_line_strike_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BULL3STRIKE1H),desc='C236 gap-relaxed bullish Three-Line Strike continuation long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
