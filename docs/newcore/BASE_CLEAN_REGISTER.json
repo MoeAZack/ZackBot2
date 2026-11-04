@@ -1,0 +1,173 @@
+{
+  "schema": "zackbot-base-clean-register/1",
+  "version": 1,
+  "policy": {
+    "required_commands": [
+      "python verify.py full",
+      "python tests/newcore/nc01_mutations.py",
+      "python tests/newcore_store/nc02a_mutations.py"
+    ],
+    "validate_max_us": "1000",
+    "encode_max_us": "6750",
+    "decode_max_us": "23400",
+    "submit_max_ms": "10",
+    "step_max_ms": "50",
+    "snapshot_mean_max_ms": "1",
+    "publish_max_ms": "250",
+    "memory_private_max_mib": "512",
+    "memory_growth_max_mib": "32",
+    "memory_min_duration_ms": 3600000,
+    "memory_provisional": true,
+    "current_host_python_version": "3.12.10",
+    "nc04_endpoint_table_version": "binance-usdm-v1-2026-11-03",
+    "nc04_reserve_formula": "max(minimum,ceil(verified_limit*0.10));capped_at_verified_limit",
+    "nc04_cost_table_sha256": "66e65242d60d23a8d07ecb99c17f4b449b28ce6b8ed64b5c05b248475937fa90",
+    "nc04_window_policy": "request_weight_1m=60000;orders_10s=10000;orders_1m=60000",
+    "nc04_policy_sha256": "ee19285ed8c051d52bc02ca3854a05359fafe80d9f050f062bc5c7bd6779e81f"
+  },
+  "rules": [
+    {
+      "rule_id": "build_workflows",
+      "classification": "STILL_REQUIRED",
+      "role": "build_verify",
+      "prefixes": [".github/"],
+      "paths": [],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["verify_full"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "contract_documents",
+      "classification": "STILL_REQUIRED",
+      "role": "contract_evidence",
+      "prefixes": ["contracts/", "docs/"],
+      "paths": [],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["base_clean_gate"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "data_evidence",
+      "classification": "STILL_REQUIRED",
+      "role": "contract_evidence",
+      "prefixes": ["data/", "data1h/", "data_long/"],
+      "paths": [],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["verify_full"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "ml_shadow_runtime",
+      "classification": "STILL_REQUIRED",
+      "role": "runtime_asset",
+      "prefixes": ["ml_shadow/"],
+      "paths": [],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["legacy_runtime"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "newcore_replacement",
+      "classification": "STILL_REQUIRED",
+      "role": "newcore_replacement",
+      "prefixes": ["newcore/"],
+      "paths": [],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["wave_c"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "research_assets",
+      "classification": "RESEARCH_ONLY",
+      "role": "research_evidence",
+      "prefixes": ["research/", "research_evidence/", "tools/"],
+      "paths": [
+        "ai_scan_dataplane.py",
+        "exec_calibration.py",
+        "research_combos.py",
+        "research_grid.py",
+        "research_long.py",
+        "research_long2.py",
+        "research_refresh.py"
+      ],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["research_lane"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "golden_legacy_adapters",
+      "classification": "TEMPORARY_ADAPTER",
+      "role": "comparison_adapter",
+      "prefixes": [],
+      "paths": [
+        "tests/golden/goldenlib/adapters/legacy_backtest.py",
+        "tests/golden/goldenlib/adapters/legacy_engine.py"
+      ],
+      "excluded_paths": [],
+      "target": "retire_after_comparison",
+      "consumers": ["checkpoint_c_comparison"],
+      "expiry_gate": "newcore_golden_adapters_accepted"
+    },
+    {
+      "rule_id": "test_evidence",
+      "classification": "STILL_REQUIRED",
+      "role": "contract_evidence",
+      "prefixes": ["tests/"],
+      "paths": [],
+      "excluded_paths": [
+        "tests/golden/goldenlib/adapters/legacy_backtest.py",
+        "tests/golden/goldenlib/adapters/legacy_engine.py"
+      ],
+      "target": "keep",
+      "consumers": ["verify_full"],
+      "expiry_gate": null
+    },
+    {
+      "rule_id": "legacy_target_delete",
+      "classification": "STILL_REQUIRED",
+      "role": "runtime_legacy",
+      "prefixes": [],
+      "paths": ["ai_filter.py", "engine.py", "grid.py"],
+      "excluded_paths": [],
+      "target": "target_delete_no_port",
+      "consumers": ["legacy_entrypoint", "pyinstaller_bundle"],
+      "expiry_gate": "replacement_entrypoint_zero_consumers"
+    },
+    {
+      "rule_id": "root_product_and_verify",
+      "classification": "STILL_REQUIRED",
+      "role": "runtime_legacy",
+      "prefixes": [],
+      "paths": [
+        ".gitattributes", ".gitignore", "CLAUDE.md", "DATA_MANIFEST.json", "README.md", "ROADMAP.md",
+        "ZackBot_v3.1_Report_and_Audit.md", "ZackBot_v3.2_Response_to_Audit.md", "actual_costs.py",
+        "ai_scan.py", "ai_scan_ledger.py", "app.py", "backtest.py", "binance_client.py", "book_ledger.py",
+        "build_app.bat", "ca_bundle.py", "cand_evict_ack.py", "candidates.py", "exchange_rules.py",
+        "f01_activation.py", "f01_canary.py", "feasibility.py", "installer_check.ps1", "installer.ps1",
+        "instance.py", "lab.py", "load_data.py", "market_collector.py", "market_data.py", "panel.html",
+        "paper_books.py", "pytest.ini", "replay.py", "replay_scenario2.json", "requirements-dev.txt",
+        "requirements-ui.txt", "requirements.txt", "risk_fill.py", "rollback_drill.bat", "run_checks.bat",
+        "run_checks.sh", "run_pack.py", "run_ui_baseline.bat", "setup_git.bat", "shadow_analyst.py",
+        "shadow_funding.py", "strategies.py", "strategy_shadow.py", "telegram_ctl.py", "test_app_ui.py",
+        "test_engine_sim.py", "trade_audit.py", "tradfi_session.py", "tradfi_universe.py", "true_books.py",
+        "verify.bat", "verify_ci.py", "verify_release.bat", "verify.py", "zackbot.ico"
+      ],
+      "excluded_paths": [],
+      "target": "keep",
+      "consumers": ["legacy_runtime", "verify_full"],
+      "expiry_gate": null
+    }
+  ],
+  "current_expected_holds": [
+    "golden_adapters_missing",
+    "host_codec_rebaseline_missing",
+    "real_tnet_missing",
+    "two_account_isolation_missing"
+  ]
+}
