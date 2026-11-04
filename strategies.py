@@ -4554,6 +4554,13 @@ STRATEGIES['pvt_cross_long_1h'] = dict(
     desc='Candidate 136: conventional PVT crosses above EMA20 of PVT while price is above EMA20.',
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
+RAVI1H = dict(fast=7, slow=65, threshold=3.0, cost_multiple=5.0)
+def _ravi(close, fast=7, slow=65):
+    c=close.astype(float); f=c.rolling(int(fast),min_periods=int(fast)).mean(); s=c.rolling(int(slow),min_periods=int(slow)).mean(); return 100.0*(f-s).abs()/s.replace(0.0,np.nan),f,s
+def sig_ravi_trend_long_1h(d,p,ctx):
+    ravi,f,s=_ravi(d.c,p['fast'],p['slow']); active=(ravi>float(p['threshold']))&(f>s); cost_ok=2.0*d.atr/d.c>=float(p['cost_multiple'])*2*(.0005+.0002); le=active&~active.shift(fill_value=False)&(d.c>d.e20)&cost_ok; never=d.c<-1; return dict(le=le,se=never,lx=(ravi<=float(p['threshold']))|(f<=s),sx=never)
+STRATEGIES['ravi_trend_long_1h']=dict(name='[RESEARCH] RAVI trend activation long 1h',style='normalized_dual_sma_separation',fn=sig_ravi_trend_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RAVI1H),desc='Candidate 137: conventional RAVI(7,65) first exceeds 3% with fast SMA above slow.',mgmt=dict(stop_atr=2.0,tp_r=2.0,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
