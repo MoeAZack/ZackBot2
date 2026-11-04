@@ -4101,6 +4101,39 @@ STRATEGIES['projection_oscillator_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+MCG1H = dict(period=14, constant=0.6, cost_multiple=5.0)
+
+
+def _mcginley_dynamic(close, period=14, constant=0.6):
+    """Causal McGinley Dynamic with nonlinear price/prior feedback."""
+    c = close.to_numpy(float); out = np.full(len(c), np.nan); prior = np.nan
+    for i, price in enumerate(c):
+        if not np.isfinite(prior) or prior <= 0.0:
+            prior = price
+        else:
+            ratio = price / prior; denom = constant * period * ratio ** 4
+            prior = prior + (price - prior) / denom if denom > 0.0 else price
+        out[i] = prior
+    return pd.Series(out, index=close.index)
+
+
+def sig_mcginley_cross_long_1h(d, p, ctx):
+    """C123: enter a close transition above a nonlinear lag-adjusted baseline."""
+    dynamic = _mcginley_dynamic(d.c, int(p['period']), float(p['constant']))
+    cross_up = (d.c > dynamic) & (d.c.shift() <= dynamic.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=d.c <= dynamic, sx=never)
+
+
+STRATEGIES['mcginley_cross_long_1h'] = dict(
+    name='[RESEARCH] McGinley Dynamic crossover long 1h', style='nonlinear_ratio_adaptive_trend',
+    fn=sig_mcginley_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(MCG1H),
+    desc='Candidate 123: close crosses above conventional McGinley Dynamic(14,0.6) while above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
