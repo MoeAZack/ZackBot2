@@ -4764,6 +4764,12 @@ def _center_of_gravity(close,length=10):
 def sig_cog_oscillator_long_1h(d,p,ctx):
  x=_center_of_gravity(d.c,p['length']);trigger=x.shift();up=(x>trigger)&(x.shift()<=trigger.shift());down=(x<=trigger)&(x.shift()>trigger.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=down,sx=never)
 STRATEGIES['cog_oscillator_long_1h']=dict(name='[RESEARCH] Center of Gravity oscillator long 1h',style='ehlers_center_of_gravity',fn=sig_cog_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(COG1H),desc='C169 conventional Ehlers COG(10) crossing its one-bar trigger above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+RAVI1H=dict(fast=7,slow=65,threshold=3.0,cost_multiple=5.0)
+def _ravi(close,fast=7,slow=65):
+ f=close.astype(float).rolling(int(fast),min_periods=int(fast)).mean();s=close.astype(float).rolling(int(slow),min_periods=int(slow)).mean();return (100.0*(f-s).abs()/s.replace(0.0,np.nan)),f,s
+def sig_ravi_trend_long_1h(d,p,ctx):
+ x,f,s=_ravi(d.c,p['fast'],p['slow']);level=float(p['threshold']);up=(x>level)&(x.shift()<=level);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(f>s)&(d.c>d.e200)&cost,se=never,lx=(x<=level)|(f<=s),sx=never)
+STRATEGIES['ravi_trend_long_1h']=dict(name='[RESEARCH] RAVI trend long 1h',style='range_action_verification_index',fn=sig_ravi_trend_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RAVI1H),desc='C170 conventional RAVI(7,65) crossing 3% with bullish SMA ordering above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
