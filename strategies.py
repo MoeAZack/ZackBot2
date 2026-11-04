@@ -4464,6 +4464,39 @@ STRATEGIES['connors_rsi_recovery_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+KST1H = dict(cost_multiple=5.0)
+
+
+def _know_sure_thing(close):
+    """Causal conventional KST with standard ROC and smoothing horizons."""
+    c = close.astype(float)
+    components = []
+    for roc_n, smooth_n, weight in ((10, 10, 1.0), (15, 10, 2.0), (20, 10, 3.0), (30, 15, 4.0)):
+        roc = 100.0 * (c / c.shift(roc_n) - 1.0)
+        components.append(weight * roc.rolling(smooth_n, min_periods=smooth_n).mean())
+    kst = sum(components)
+    signal = kst.rolling(9, min_periods=9).mean()
+    return kst, signal
+
+
+def sig_kst_cross_long_1h(d, p, ctx):
+    """C134: follow a positive crossover in standard multi-horizon smoothed momentum."""
+    kst, signal = _know_sure_thing(d.c)
+    cross_up = (kst > signal) & (kst.shift() <= signal.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=kst <= signal, sx=never)
+
+
+STRATEGIES['kst_cross_long_1h'] = dict(
+    name='[RESEARCH] Know Sure Thing crossover long 1h', style='weighted_multihorizon_smoothed_roc',
+    fn=sig_kst_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KST1H),
+    desc='Candidate 134: standard KST crosses above its 9-bar signal while price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
