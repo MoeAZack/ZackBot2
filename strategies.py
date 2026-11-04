@@ -4134,6 +4134,36 @@ STRATEGIES['mcginley_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+EOM1H = dict(window=14, cost_multiple=5.0)
+
+
+def _ease_of_movement(high, low, quote_volume, window=14):
+    """Causal conventional Ease of Movement, with scale-free quote-volume normalization."""
+    midpoint = (high.astype(float) + low.astype(float)) / 2.0
+    distance = midpoint.diff()
+    traded_range = high.astype(float) - low.astype(float)
+    raw = distance * traded_range / quote_volume.astype(float).replace(0.0, np.nan)
+    return raw.rolling(int(window), min_periods=int(window)).mean()
+
+
+def sig_ease_of_movement_long_1h(d, p, ctx):
+    """C124: follow a positive transition in range displacement per unit of quote liquidity."""
+    eom = _ease_of_movement(d.h, d.l, d.qv, p['window'])
+    cross_up = (eom > 0.0) & (eom.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=eom <= 0.0, sx=never)
+
+
+STRATEGIES['ease_of_movement_long_1h'] = dict(
+    name='[RESEARCH] Ease of Movement zero-cross long 1h', style='range_liquidity_efficiency',
+    fn=sig_ease_of_movement_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(EOM1H),
+    desc='Candidate 124: conventional 14h Ease of Movement crosses above zero while price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
