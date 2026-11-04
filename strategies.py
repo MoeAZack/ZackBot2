@@ -4623,6 +4623,12 @@ def _elder_impulse(close,ema_span=13,macd_fast=12,macd_slow=26,macd_signal=9):
 def sig_elder_impulse_long_1h(d,p,ctx):
  trend,hist=_elder_impulse(d.c,p['ema_span'],p['macd_fast'],p['macd_slow'],p['macd_signal']);green=(trend>trend.shift())&(hist>hist.shift());up=green&~green.shift(fill_value=False);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=~green,sx=never)
 STRATEGIES['elder_impulse_long_1h']=dict(name='[RESEARCH] Elder Impulse System long 1h',style='trend_momentum_slope',fn=sig_elder_impulse_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(EIMP1H),desc='C147 conventional Elder Impulse turns green when EMA13 and MACD histogram both rise above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+CKS1H=dict(atr_window=10,stop_window=9,multiplier=1.0,cost_multiple=5.0)
+def _chande_kroll_stops(high,low,close,atr_window=10,stop_window=9,multiplier=1.0):
+ p=int(atr_window);q=int(stop_window);prev=close.astype(float).shift();tr=pd.concat([(high-low).abs(),(high-prev).abs(),(low-prev).abs()],axis=1).max(axis=1);atr=tr.ewm(alpha=1.0/p,adjust=False,min_periods=p).mean();first_long=high.astype(float).rolling(p,min_periods=p).max()-float(multiplier)*atr;first_short=low.astype(float).rolling(p,min_periods=p).min()+float(multiplier)*atr;return first_long.rolling(q,min_periods=q).max(),first_short.rolling(q,min_periods=q).min()
+def sig_chande_kroll_breakout_long_1h(d,p,ctx):
+ lower,upper=_chande_kroll_stops(d.h,d.l,d.c,p['atr_window'],p['stop_window'],p['multiplier']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=d.c<lower,sx=never)
+STRATEGIES['chande_kroll_breakout_long_1h']=dict(name='[RESEARCH] Chande Kroll Stop breakout long 1h',style='atr_stop_channel_breakout',fn=sig_chande_kroll_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CKS1H),desc='C148 conventional CKS(10,1,9) close crosses above upper stop over EMA20 and exits below lower stop.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
