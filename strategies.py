@@ -4770,6 +4770,12 @@ def _ravi(close,fast=7,slow=65):
 def sig_ravi_trend_long_1h(d,p,ctx):
  x,f,s=_ravi(d.c,p['fast'],p['slow']);level=float(p['threshold']);up=(x>level)&(x.shift()<=level);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(f>s)&(d.c>d.e200)&cost,se=never,lx=(x<=level)|(f<=s),sx=never)
 STRATEGIES['ravi_trend_long_1h']=dict(name='[RESEARCH] RAVI trend long 1h',style='range_action_verification_index',fn=sig_ravi_trend_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RAVI1H),desc='C170 conventional RAVI(7,65) crossing 3% with bullish SMA ordering above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+PFE1H=dict(length=10,smoothing=5,cost_multiple=5.0)
+def _polarized_fractal_efficiency(close,length=10,smoothing=5):
+ n=int(length);d=close.astype(float).diff();delta=close.astype(float)-close.astype(float).shift(n);straight=np.sqrt(delta*delta+float(n*n));path=np.sqrt(d*d+1.0).rolling(n,min_periods=n).sum();raw=100.0*np.sign(delta)*straight/path.replace(0.0,np.nan);return raw.ewm(span=int(smoothing),adjust=False,min_periods=int(smoothing)).mean()
+def sig_pfe_trend_long_1h(d,p,ctx):
+ x=_polarized_fractal_efficiency(d.c,p['length'],p['smoothing']);up=(x>0)&(x.shift()<=0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=x<=0,sx=never)
+STRATEGIES['pfe_trend_long_1h']=dict(name='[RESEARCH] Polarized Fractal Efficiency long 1h',style='polarized_fractal_efficiency',fn=sig_pfe_trend_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PFE1H),desc='C171 conventional smoothed PFE(10,5) positive crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
