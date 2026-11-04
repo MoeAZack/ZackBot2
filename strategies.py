@@ -5367,6 +5367,14 @@ def sig_bullish_tristar_long_1h(d,p,ctx):
  pattern=_bullish_tristar(d.o,d.h,d.l,d.c,p['doji_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['bullish_tristar_long_1h']=dict(name='[RESEARCH] Bullish Tri-Star long 1h',style='bullish_tristar_candlestick',fn=sig_bullish_tristar_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BULLTRISTAR1H),desc='C246 gap-relaxed bullish Tri-Star reversal long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+BEARTRISTAR1H=dict(doji_fraction=.10,exit_length=10,cost_multiple=5.)
+def _bearish_tristar(open_,high,low,close,doji_fraction=.10):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);rng=h-l;doji=(rng>0)&((c-o).abs()<=doji_fraction*rng)
+ return doji&doji.shift(1)&doji.shift(2)&(h.shift(1)>h.shift(2))&(h.shift(1)>h)
+def sig_bearish_tristar_short_1h(d,p,ctx):
+ pattern=_bearish_tristar(d.o,d.h,d.l,d.c,p['doji_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['bearish_tristar_short_1h']=dict(name='[RESEARCH] Bearish Tri-Star short 1h',style='bearish_tristar_candlestick',fn=sig_bearish_tristar_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(BEARTRISTAR1H),desc='C247 gap-relaxed bearish Tri-Star reversal short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
