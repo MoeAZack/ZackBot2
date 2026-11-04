@@ -5189,6 +5189,14 @@ def sig_ladder_bottom_long_1h(d,p,ctx):
  pattern=_ladder_bottom(d.o,d.h,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['ladder_bottom_long_1h']=dict(name='[RESEARCH] Ladder Bottom long 1h',style='ladder_bottom_candlestick',fn=sig_ladder_bottom_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(LADDERBOTTOM1H),desc='C224 conventional gap-relaxed Ladder Bottom reversal above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+ADVANCEBLOCK1H=dict(exit_length=10,cost_multiple=5.)
+def _advance_block(open_,high,close):
+ o=open_.astype(float);h=high.astype(float);c=close.astype(float);body=c-o;upper=h-c;bull=body>0
+ return bull&bull.shift(1)&bull.shift(2)&(c>c.shift(1))&(c.shift(1)>c.shift(2))&(body<body.shift(1))&(body.shift(1)<body.shift(2))&(upper>upper.shift(1))&(upper.shift(1)>upper.shift(2))
+def sig_advance_block_short_1h(d,p,ctx):
+ pattern=_advance_block(d.o,d.h,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['advance_block_short_1h']=dict(name='[RESEARCH] Advance Block short 1h',style='advance_block_candlestick',fn=sig_advance_block_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(ADVANCEBLOCK1H),desc='C225 conventional Advance Block weakening-recovery short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
