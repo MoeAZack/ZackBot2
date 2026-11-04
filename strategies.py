@@ -5054,6 +5054,14 @@ def sig_stick_sandwich_long_1h(d,p,ctx):
  pattern=_stick_sandwich(d.o,d.c,d.atr,p['close_tolerance_atr']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['stick_sandwich_long_1h']=dict(name='[RESEARCH] Stick Sandwich long 1h',style='stick_sandwich_candlestick',fn=sig_stick_sandwich_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(STICKSAND1H),desc='C207 conventional three-candle matched-close support reversal above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+THREEINUP1H=dict(exit_length=10,cost_multiple=5.)
+def _three_inside_up(open_,close):
+ o=open_.astype(float);c=close.astype(float);o2=o.shift(2);c2=c.shift(2);o1=o.shift(1);c1=c.shift(1)
+ return (o2>c2)&(c1>o1)&(o1>c2)&(c1<o2)&(c>o)&(c>o2)
+def sig_three_inside_up_long_1h(d,p,ctx):
+ pattern=_three_inside_up(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['three_inside_up_long_1h']=dict(name='[RESEARCH] Three Inside Up long 1h',style='three_inside_up_candlestick',fn=sig_three_inside_up_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(THREEINUP1H),desc='C208 conventional Harami-core bullish confirmation above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
