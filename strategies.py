@@ -4570,6 +4570,11 @@ def _gann_hilo_state(high,low,close,window=3):
 def sig_gann_hilo_long_1h(d,p,ctx):
     state,hi,lo=_gann_hilo_state(d.h,d.l,d.c,p['window']);bull=(state>0)&(state.shift()<=0);cost_ok=2*d.atr/d.c>=float(p['cost_multiple'])*2*(.0005+.0002);never=d.c<-1;return dict(le=bull&(d.c>d.e20)&cost_ok,se=never,lx=state<0,sx=never)
 STRATEGIES['gann_hilo_long_1h']=dict(name='[RESEARCH] Gann HiLo Activator long 1h',style='high_low_average_state_switch',fn=sig_gann_hilo_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(GANN_HILO1H),desc='Candidate 138: causal standard three-bar Gann HiLo state switches bullish.',mgmt=dict(stop_atr=2.0,tp_r=2.0,max_bars=24))
+PGO1H=dict(window=14,threshold=0.0,cost_multiple=5.0)
+def _pretty_good_oscillator(close,atr,window=14):return (close.astype(float)-close.astype(float).rolling(int(window),min_periods=int(window)).mean())/atr.astype(float).replace(0,np.nan)
+def sig_pgo_long_1h(d,p,ctx):
+ x=_pretty_good_oscillator(d.c,d.atr,p['window']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=0,sx=never)
+STRATEGIES['pgo_long_1h']=dict(name='[RESEARCH] Pretty Good Oscillator long 1h',style='atr_normalized_mean_deviation',fn=sig_pgo_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PGO1H),desc='C139 PGO14 crosses zero above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
