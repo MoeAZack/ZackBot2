@@ -4617,6 +4617,12 @@ def _percentage_volume_oscillator(volume,fast=12,slow=26,signal=9):
 def sig_percentage_volume_oscillator_long_1h(d,p,ctx):
  x,s=_percentage_volume_oscillator(d.v,p['fast'],p['slow'],p['signal']);up=(x>s)&(x.shift()<=s.shift())&(x>0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=s,sx=never)
 STRATEGIES['percentage_volume_oscillator_long_1h']=dict(name='[RESEARCH] Percentage Volume Oscillator long 1h',style='volume_ema_spread',fn=sig_percentage_volume_oscillator_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PVO1H),desc='C146 conventional PVO(12,26,9) bullish signal crossover above zero with price above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+EIMP1H=dict(ema_span=13,macd_fast=12,macd_slow=26,macd_signal=9,cost_multiple=5.0)
+def _elder_impulse(close,ema_span=13,macd_fast=12,macd_slow=26,macd_signal=9):
+ c=close.astype(float);trend=c.ewm(span=int(ema_span),adjust=False,min_periods=int(ema_span)).mean();macd=c.ewm(span=int(macd_fast),adjust=False,min_periods=int(macd_fast)).mean()-c.ewm(span=int(macd_slow),adjust=False,min_periods=int(macd_slow)).mean();signal=macd.ewm(span=int(macd_signal),adjust=False,min_periods=int(macd_signal)).mean();return trend,macd-signal
+def sig_elder_impulse_long_1h(d,p,ctx):
+ trend,hist=_elder_impulse(d.c,p['ema_span'],p['macd_fast'],p['macd_slow'],p['macd_signal']);green=(trend>trend.shift())&(hist>hist.shift());up=green&~green.shift(fill_value=False);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=~green,sx=never)
+STRATEGIES['elder_impulse_long_1h']=dict(name='[RESEARCH] Elder Impulse System long 1h',style='trend_momentum_slope',fn=sig_elder_impulse_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(EIMP1H),desc='C147 conventional Elder Impulse turns green when EMA13 and MACD histogram both rise above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
