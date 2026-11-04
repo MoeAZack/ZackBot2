@@ -4826,6 +4826,27 @@ def _darvas_boxes(high,low,lookback=20,confirmation=3):
 def sig_darvas_breakout_long_1h(d,p,ctx):
  top,bottom=_darvas_boxes(d.h,d.l,p['lookback'],p['confirmation']);up=(d.c>top)&(d.c.shift()<=top.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=bottom,sx=never)
 STRATEGIES['darvas_breakout_long_1h']=dict(name='[RESEARCH] Darvas Box breakout long 1h',style='confirmed_darvas_box',fn=sig_darvas_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(DARVAS1H),desc='C178 confirmed three-bar Darvas box after a new 20-bar high, above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+TLB1H=dict(reversal_lines=3,cost_multiple=5.0)
+def _three_line_break_direction(close,reversal_lines=3):
+ c=close.to_numpy(float);state=np.zeros(len(c),dtype=np.int8);opens=[];closes=[];dirs=[];base=c[0] if len(c) else np.nan;n=int(reversal_lines)
+ for i in range(1,len(c)):
+  x=c[i]
+  if not dirs:
+   if x!=base:opens.append(base);closes.append(x);dirs.append(1 if x>base else -1)
+  else:
+   direction=dirs[-1];last=closes[-1]
+   if (direction>0 and x>last) or (direction<0 and x<last):opens.append(last);closes.append(x);dirs.append(direction)
+   elif direction>0:
+    floor=min(min(o,z) for o,z in zip(opens[-n:],closes[-n:]))
+    if x<floor:opens.append(last);closes.append(x);dirs.append(-1)
+   else:
+    ceiling=max(max(o,z) for o,z in zip(opens[-n:],closes[-n:]))
+    if x>ceiling:opens.append(last);closes.append(x);dirs.append(1)
+  state[i]=dirs[-1] if dirs else 0
+ return pd.Series(state,index=close.index)
+def sig_three_line_break_long_1h(d,p,ctx):
+ state=_three_line_break_direction(d.c,p['reversal_lines']);up=(state>0)&(state.shift(fill_value=0)<=0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=state<0,sx=never)
+STRATEGIES['three_line_break_long_1h']=dict(name='[RESEARCH] Three-Line Break long 1h',style='three_line_break_event_chart',fn=sig_three_line_break_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(TLB1H),desc='C179 conventional close-only Three-Line Break bullish reversal above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
