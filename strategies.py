@@ -4357,6 +4357,49 @@ STRATEGIES['cmo_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+KVO1H = dict(fast=34, slow=55, signal=13, cost_multiple=5.0)
+
+
+def _klinger_volume_oscillator(high, low, close, quote_volume, fast=34, slow=55):
+    """Causal conventional Klinger Volume Oscillator and its volume force."""
+    h, l, c = (x.astype(float) for x in (high, low, close))
+    dm = h - l
+    hlc = h + l + c
+    trend = pd.Series(np.where(hlc > hlc.shift(), 1.0, -1.0), index=c.index)
+    trend.iloc[0] = np.nan
+    cm = pd.Series(np.nan, index=c.index, dtype=float)
+    for i in range(1, len(c)):
+        if not np.isfinite(dm.iloc[i]) or not np.isfinite(dm.iloc[i - 1]):
+            continue
+        if i > 1 and np.isfinite(cm.iloc[i - 1]) and trend.iloc[i] == trend.iloc[i - 1]:
+            cm.iloc[i] = cm.iloc[i - 1] + dm.iloc[i]
+        else:
+            cm.iloc[i] = dm.iloc[i - 1] + dm.iloc[i]
+    vf = quote_volume.astype(float) * (2.0 * dm / cm.replace(0.0, np.nan) - 1.0).abs() * trend * 100.0
+    kvo = vf.ewm(span=int(fast), adjust=False, min_periods=int(fast)).mean() - \
+          vf.ewm(span=int(slow), adjust=False, min_periods=int(slow)).mean()
+    return kvo, vf
+
+
+def sig_klinger_volume_long_1h(d, p, ctx):
+    """C131: follow a positive crossover in Klinger price-trend volume force."""
+    kvo, _ = _klinger_volume_oscillator(d.h, d.l, d.c, d.qv, p['fast'], p['slow'])
+    signal = kvo.ewm(span=int(p['signal']), adjust=False, min_periods=int(p['signal'])).mean()
+    cross_up = (kvo > signal) & (kvo.shift() <= signal.shift())
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=kvo <= signal, sx=never)
+
+
+STRATEGIES['klinger_volume_long_1h'] = dict(
+    name='[RESEARCH] Klinger Volume Oscillator crossover long 1h', style='price_trend_volume_force',
+    fn=sig_klinger_volume_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(KVO1H),
+    desc='Candidate 131: conventional KVO(34,55) crosses above its signal(13) while positive and price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
