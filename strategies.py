@@ -5038,6 +5038,14 @@ def sig_homing_pigeon_long_1h(d,p,ctx):
  pattern=_homing_pigeon(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['homing_pigeon_long_1h']=dict(name='[RESEARCH] Homing Pigeon long 1h',style='homing_pigeon_candlestick',fn=sig_homing_pigeon_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(HOMING1H),desc='C205 conventional nested bearish-body reversal above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+DESCHAWK1H=dict(exit_length=10,cost_multiple=5.)
+def _descending_hawk(open_,close):
+ o=open_.astype(float);c=close.astype(float);po=o.shift(1);pc=c.shift(1)
+ return (pc>po)&(c>o)&(o>po)&(c<pc)
+def sig_descending_hawk_short_1h(d,p,ctx):
+ pattern=_descending_hawk(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['descending_hawk_short_1h']=dict(name='[RESEARCH] Descending Hawk short 1h',style='descending_hawk_candlestick',fn=sig_descending_hawk_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(DESCHAWK1H),desc='C206 conventional nested bullish-body reversal below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
