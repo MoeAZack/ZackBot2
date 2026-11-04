@@ -4889,6 +4889,12 @@ def _bullish_harami(open_,close):
 def sig_bullish_harami_long_1h(d,p,ctx):
  pattern=_bullish_harami(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['bullish_harami_long_1h']=dict(name='[RESEARCH] Bullish Harami long 1h',style='bullish_harami_candlestick',fn=sig_bullish_harami_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(BHARAMI1H),desc='C186 conventional bullish real-body Harami above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+BEARHARAMI1H=dict(exit_length=10,cost_multiple=5.0)
+def _bearish_harami(open_,close):
+ o=open_.astype(float);c=close.astype(float);return (c<o)&(c.shift()>o.shift())&(o<=c.shift())&(c>=o.shift())
+def sig_bearish_harami_short_1h(d,p,ctx):
+ pattern=_bearish_harami(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['bearish_harami_short_1h']=dict(name='[RESEARCH] Bearish Harami short 1h',style='bearish_harami_candlestick',fn=sig_bearish_harami_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(BEARHARAMI1H),desc='C187 conventional bearish real-body Harami below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
