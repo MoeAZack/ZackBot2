@@ -5270,6 +5270,14 @@ def sig_two_crows_short_1h(d,p,ctx):
  pattern=_two_crows(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['two_crows_short_1h']=dict(name='[RESEARCH] Two Crows short 1h',style='two_crows_candlestick',fn=sig_two_crows_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(TWOCROWS1H),desc='C234 gap-relaxed Two Crows reversal short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+IDENTCROWS1H=dict(open_tolerance_atr=.10,exit_length=10,cost_multiple=5.)
+def _identical_three_crows(open_,close,atr,tolerance=.10):
+ o=open_.astype(float);c=close.astype(float);a=atr.astype(float);bear=c<o
+ return bear&bear.shift(1)&bear.shift(2)&(c<c.shift(1))&(c.shift(1)<c.shift(2))&((o-c.shift(1)).abs()<=tolerance*a)&((o.shift(1)-c.shift(2)).abs()<=tolerance*a.shift(1))
+def sig_identical_three_crows_short_1h(d,p,ctx):
+ pattern=_identical_three_crows(d.o,d.c,d.atr,p['open_tolerance_atr']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['identical_three_crows_short_1h']=dict(name='[RESEARCH] Identical Three Crows short 1h',style='identical_three_crows_candlestick',fn=sig_identical_three_crows_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(IDENTCROWS1H),desc='C235 conventional Identical Three Crows continuation short below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
