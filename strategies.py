@@ -4067,6 +4067,40 @@ STRATEGIES['smi_zero_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+PROJ1H = dict(lookback=14, threshold=50.0, cost_multiple=5.0)
+
+
+def _projection_oscillator(high, low, close, lookback=14):
+    """Close location within causal projected high/low linear-regression envelopes."""
+    x = np.arange(float(lookback)); xm = x.mean(); denom = float(np.sum((x - xm) ** 2)); last = lookback - 1.0
+    def upper(y):
+        slope = float(np.sum((x - xm) * (y - np.mean(y))) / denom)
+        return float(np.max(y - slope * x) + slope * last)
+    def lower(y):
+        slope = float(np.sum((x - xm) * (y - np.mean(y))) / denom)
+        return float(np.min(y - slope * x) + slope * last)
+    hi = high.astype(float).rolling(lookback).apply(upper, raw=True)
+    lo = low.astype(float).rolling(lookback).apply(lower, raw=True)
+    return 100.0 * (close.astype(float) - lo) / (hi - lo).replace(0.0, np.nan)
+
+
+def sig_projection_oscillator_long_1h(d, p, ctx):
+    """C122: enter when close moves into the upper half of a detrended price channel."""
+    po = _projection_oscillator(d.h, d.l, d.c, int(p['lookback'])); level = float(p['threshold'])
+    cross_up = (po > level) & (po.shift() <= level)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never, lx=po <= level, sx=never)
+
+
+STRATEGIES['projection_oscillator_long_1h'] = dict(
+    name='[RESEARCH] Projection Oscillator long 1h', style='projected_channel_location',
+    fn=sig_projection_oscillator_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(PROJ1H),
+    desc='Candidate 122: close crosses above the midpoint of 14-bar projected high/low regression envelopes above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
