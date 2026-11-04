@@ -8,6 +8,7 @@ strategy, runtime, UI, or order-submission behavior.
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import enum
 import hashlib
 from dataclasses import dataclass
@@ -58,6 +59,8 @@ class RefusalCode(enum.StrEnum):
     NO_CAPACITY = 'no_capacity'
     BELOW_MIN_QUANTITY = 'below_min_quantity'
     BELOW_MIN_NOTIONAL = 'below_min_notional'
+    DAILY_LOSS_HALT = 'daily_loss_halt'
+    SYMBOL_SIDE_OCCUPIED = 'symbol_side_occupied'
 
 
 class Ceiling(enum.StrEnum):
@@ -79,6 +82,8 @@ class Ceiling(enum.StrEnum):
     VENUE_STEP = 'venue_step'
     VENUE_MIN_QUANTITY = 'venue_min_quantity'
     VENUE_MIN_NOTIONAL = 'venue_min_notional'
+    DAILY_LOSS_BUDGET = 'daily_loss_budget'
+    CORRELATION_SIDE_RISK = 'correlation_side_risk'
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -120,12 +125,31 @@ class OpeningReservation:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class DailyLossState:
+    """RISK-LOSS-01 loss state for the current Africa/Cairo trading day.
+
+    The caller owns the clock: it starts a new ``trading_day`` (and bumps the
+    portfolio generation) at Cairo midnight, records ``day_start_equity`` then,
+    and persists ``halt_latched`` once :func:`daily_loss_breached` is true so a
+    later recovery cannot reopen the day.  The gateway checks only the format
+    of ``trading_day``; staleness is the caller's portfolio generation.  PnL values are net of fees and
+    funding; ``unrealized_pnl`` is mark-to-market of open positions.
+    """
+    trading_day: str
+    day_start_equity: Decimal
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
+    halt_latched: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class PortfolioRiskSnapshot:
     account_id: str
     generation: int
     fresh: bool
     exposures: tuple[Exposure, ...]
     reservations: tuple[OpeningReservation, ...]
+    daily: DailyLossState
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -149,6 +173,24 @@ class CorrelationCap:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class LossLimits:
+    """RISK-LOSS-01 limits.  1R = ``risk_unit_fraction`` x day-start equity.
+
+    * The daily breaker trips at a loss of ``min(daily_loss_fraction x
+      day_start_equity, daily_loss_r x 1R)``.
+    * Open plus reserved risk-to-stop in one correlation bucket and one
+      direction is capped at ``max_bucket_side_risk_r`` x 1R.
+    * ``one_position_per_symbol_side`` refuses a second strategy/book (or a
+      fresh ENTRY) on a symbol and side that is already held or reserved.
+    """
+    daily_loss_fraction: Decimal
+    daily_loss_r: Decimal
+    risk_unit_fraction: Decimal
+    max_bucket_side_risk_r: Decimal
+    one_position_per_symbol_side: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RiskPolicySnapshot:
     policy_id: str
     account_id: str
@@ -167,6 +209,7 @@ class RiskPolicySnapshot:
     allocations: tuple[Allocation, ...]
     correlation_map: tuple[CorrelationAssignment, ...]
     correlation_caps: tuple[CorrelationCap, ...]
+    loss_limits: LossLimits
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -435,6 +478,59 @@ def _valid_reservation(row: object) -> bool:
             and _is_decimal(row.margin, positive=True))
 
 
+def _valid_trading_day(value: object) -> bool:
+    if type(value) is not str or len(value) != 10 or not value.isascii():
+        return False
+    try:
+        return datetime.date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _valid_daily(row: object) -> bool:
+    return (type(row) is DailyLossState and _valid_trading_day(row.trading_day)
+            and _is_decimal(row.day_start_equity, positive=True)
+            and _is_decimal(row.realized_pnl, signed=True)
+            and _is_decimal(row.unrealized_pnl, signed=True)
+            and type(row.halt_latched) is bool)
+
+
+def _valid_loss_limits(row: object) -> bool:
+    return (type(row) is LossLimits and _fraction(row.daily_loss_fraction)
+            and _is_decimal(row.daily_loss_r, positive=True)
+            and _fraction(row.risk_unit_fraction)
+            and _is_decimal(row.max_bucket_side_risk_r, positive=True)
+            and type(row.one_position_per_symbol_side) is bool)
+
+
+def _daily_loss_limit(limits: LossLimits, daily: DailyLossState) -> Decimal:
+    risk_unit = daily.day_start_equity * limits.risk_unit_fraction
+    return min(daily.day_start_equity * limits.daily_loss_fraction,
+               limits.daily_loss_r * risk_unit)
+
+
+def _daily_loss(daily: DailyLossState) -> Decimal:
+    # Profits never widen the day's loss budget.
+    return max(Decimal('0'), -(daily.realized_pnl + daily.unrealized_pnl))
+
+
+def daily_loss_breached(limits: object, daily: object) -> bool:
+    """True when new risk must stay halted for the rest of the trading day.
+
+    Fail-closed: malformed limits or state count as breached.  The runtime
+    persists ``halt_latched`` once this is true.
+    """
+    if not _valid_loss_limits(limits) or not _valid_daily(daily):
+        return True
+    with localcontext() as context:
+        context.prec = 64
+        context.rounding = ROUND_HALF_EVEN
+        try:
+            return daily.halt_latched or _daily_loss(daily) >= _daily_loss_limit(limits, daily)
+        except DecimalException:
+            return True
+
+
 def _shape_reasons(evaluation: object) -> tuple[RefusalCode, ...]:
     if type(evaluation) is not RiskEvaluation:
         return (RefusalCode.INPUT_INVALID,)
@@ -476,6 +572,7 @@ def _shape_reasons(evaluation: object) -> tuple[RefusalCode, ...]:
         and len({(x.strategy_id, x.book_id) for x in policy.allocations}) == len(policy.allocations)
         and len({x.symbol for x in policy.correlation_map}) == len(policy.correlation_map)
         and len({x.bucket for x in policy.correlation_caps}) == len(policy.correlation_caps)
+        and _valid_loss_limits(policy.loss_limits) and _valid_daily(p.daily)
         and _is_id(f.filter_id) and _is_symbol(f.symbol) and _is_generation(f.generation)
         and type(f.fresh) is bool and type(f.verified) is bool
         and _is_decimal(f.step_size, positive=True) and _is_decimal(f.tick_size, positive=True)
@@ -586,6 +683,14 @@ def _base_checks(evaluation: RiskEvaluation) -> tuple[tuple[RefusalCode, ...], A
     cap = caps[0] if len(caps) == 1 else None
     if bucket is not None and cap is None:
         reasons.append(RefusalCode.CORRELATION_CAP_MISSING)
+    if daily_loss_breached(policy.loss_limits, p.daily):
+        reasons.append(RefusalCode.DAILY_LOSS_HALT)
+    if policy.loss_limits.one_position_per_symbol_side:
+        holders = {(x.strategy_id, x.book_id) for x in p.exposures + p.reservations
+                   if x.symbol == r.symbol and x.side is r.side}
+        if holders and (r.action is RiskAction.ENTRY
+                        or holders != {(r.strategy_id, r.book_id)}):
+            reasons.append(RefusalCode.SYMBOL_SIDE_OCCUPIED)
     for symbol in {x.symbol for x in p.exposures + p.reservations}:
         existing_assignments = [x.bucket for x in policy.correlation_map if x.symbol == symbol]
         if len(existing_assignments) != 1:
@@ -659,6 +764,27 @@ def _bounds(evaluation: RiskEvaluation, *, controlled: Decimal, allocation: Allo
     return leverage, qbounds, distance
 
 
+def _loss_bounds(evaluation: RiskEvaluation, bucket: str,
+                 distance: Decimal) -> list[tuple[Ceiling, Decimal]]:
+    """RISK-LOSS-01 master-account quantity ceilings (risk-to-stop based)."""
+    p, policy, r = evaluation.portfolio, evaluation.policy, evaluation.request
+    limits, daily = policy.loss_limits, p.daily
+    rows = p.exposures + p.reservations
+    bucket_symbols = {x.symbol for x in policy.correlation_map if x.bucket == bucket}
+    bucket_side_risk = _sum(rows, 'risk', lambda x: x.symbol in bucket_symbols and x.side is r.side)
+    risk_unit = daily.day_start_equity * limits.risk_unit_fraction
+    # Worst case for the day: today's loss so far plus every open position and
+    # in-flight reservation stopping out.  Open risk may overlap unrealized
+    # loss; double counting is the conservative side.
+    committed = _daily_loss(daily) + _sum(rows, 'risk')
+    return [
+        (Ceiling.DAILY_LOSS_BUDGET,
+         _remaining(_daily_loss_limit(limits, daily), committed) / distance),
+        (Ceiling.CORRELATION_SIDE_RISK,
+         _remaining(limits.max_bucket_side_risk_r * risk_unit, bucket_side_risk) / distance),
+    ]
+
+
 def _follower_diagnostics(evaluation: RiskEvaluation, quantity: Decimal, allocation: Allocation,
                           bucket: str, cap: CorrelationCap) -> tuple[FollowerDiagnostic, ...]:
     out: list[FollowerDiagnostic] = []
@@ -729,6 +855,7 @@ def _evaluate(evaluation: object) -> RiskDecision:
     leverage, bounds, distance = _bounds(
         evaluation, controlled=controlled, allocation=allocation,
         bucket=bucket, correlation_cap=correlation_cap)
+    bounds.extend(_loss_bounds(evaluation, bucket, distance))
     candidate = min(value for _name, value in bounds)
     bindings = [name for name, value in bounds if value == candidate]
     if leverage < r.requested_leverage:
@@ -790,8 +917,8 @@ def authorization_is_current(decision: object, evaluation: object,
 
 __all__ = [
     'AccountRiskSnapshot', 'Allocation', 'ApprovedDecision', 'Ceiling', 'CorrelationAssignment',
-    'CorrelationCap', 'Exposure', 'FollowerDiagnostic', 'FollowerProfile', 'OpeningReservation',
+    'CorrelationCap', 'DailyLossState', 'Exposure', 'FollowerDiagnostic', 'FollowerProfile', 'LossLimits', 'OpeningReservation',
     'Environment', 'PortfolioRiskSnapshot', 'PositionSide', 'RefusalCode', 'RefusedDecision', 'RiskAction',
     'RiskDecision', 'RiskEvaluation', 'RiskPolicySnapshot', 'RiskRequest', 'VenueRiskFilters',
-    'authorization_is_current', 'evaluate', 'requires_authorization',
+    'authorization_is_current', 'daily_loss_breached', 'evaluate', 'requires_authorization',
 ]
