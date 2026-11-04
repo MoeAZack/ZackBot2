@@ -4809,6 +4809,12 @@ def _nr7_setup(high,low,length=7):
 def sig_nr7_breakout_long_1h(d,p,ctx):
  setup=_nr7_setup(d.h,d.l,p['setup_length']);up=setup.shift(fill_value=False)&(d.c>d.h.shift());mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['nr7_breakout_long_1h']=dict(name='[RESEARCH] NR7 breakout long 1h',style='narrow_range_7_breakout',fn=sig_nr7_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(NR71H),desc='C176 conventional next-bar breakout above a Narrow Range 7 setup and EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+PIVOT1H=dict(cost_multiple=5.0)
+def _classic_floor_pivots(time,high,low,close):
+ day=pd.to_datetime(time,utc=True).dt.floor('D');frame=pd.DataFrame({'day':day.to_numpy(),'h':high.to_numpy(float),'l':low.to_numpy(float),'c':close.to_numpy(float)});daily=frame.groupby('day',sort=True).agg(h=('h','max'),l=('l','min'),c=('c','last')).shift();pivot=(daily.h+daily.l+daily.c)/3.0;r1=2.0*pivot-daily.l;s1=2.0*pivot-daily.h;keys=pd.Series(day.to_numpy(),index=close.index);return keys.map(pivot),keys.map(r1),keys.map(s1)
+def sig_floor_pivot_breakout_long_1h(d,p,ctx):
+ pivot,r1,_=_classic_floor_pivots(d.t,d.h,d.l,d.c);up=(d.c>r1)&(d.c.shift()<=r1.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=pivot,sx=never)
+STRATEGIES['floor_pivot_breakout_long_1h']=dict(name='[RESEARCH] Classic floor-pivot breakout long 1h',style='prior_day_classic_floor_pivots',fn=sig_floor_pivot_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PIVOT1H),desc='C177 prior-UTC-day classic R1 breakout above EMA200 with pivot exit.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
