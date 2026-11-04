@@ -1,0 +1,10 @@
+# Candidate 230 / Mat Hold preregistration
+
+Status **FROZEN / NOT EVALUATED / RESEARCH ONLY**, 4 November 2026 Cairo. The complete C1-C229 tree, refs, history, preregistrations, results and research tools were searched for Mat Hold; no implementation was found. C195 Rising Three Methods and other multi-candle continuation families are disclosed. This is a distinct fixed five-candle hypothesis: a bullish impulse is followed by three small descending bearish candles that begin at the impulse close and remain entirely above the impulse midpoint, then a bullish candle breaks above every prior high. The elevated upper-half hold distinguishes it from C195's full-range containment rule. It was selected as the next conventional family, not as a rescue or alteration of C229 or any prior result. One cell only.
+
+On completed 1h bars, candle 1 is bullish. Candles 2-4 are bearish with each body <=50% of candle 1, candle 2 opens at/above candle 1's close, their closes strictly descend, and each low remains above candle 1's real-body midpoint. Candle 5 is bullish, opens at/below candle 4's close, and closes above the highs of candles 1-4. Opening comparisons are gap-relaxed for continuous crypto. Enter long next open when candle 5 closes above EMA200. Exit when close is at/below SMA10, after 24 bars, at 2ATR stop or 2R target. The protection stop must cover at least 5x modeled 0.14% round-trip cost. Costs are 5bp taker plus 2bp adverse slippage per fill and actual signed funding.
+
+CORE-20 development `2024-10-14T00:00:00Z..2025-04-01T00:00:00Z`. PASS requires gross>0, mean net R>0, PF>1.05, >=100 trades, >=8 symbols, >=20 trades in each BTC regime, and DD<=15R. Family 230; future family-wise alpha <=0.05/230. PAPER remains BLOCK. No tuning, rescue, folds, holdout, PAPER, runtime, mainnet or BASE-CLEAN work; holdout sealed. Undefined zero-trade statistics fail closed.
+
+ROADMAP FIT: next distinct default-OFF conventional five-candle continuation family.
+DEFERRED: variants, folds, holdout, Stage B and activation.

@@ -5230,6 +5230,14 @@ def sig_concealing_baby_swallow_long_1h(d,p,ctx):
  pattern=_concealing_baby_swallow(d.o,d.h,d.l,d.c,p['shadow_body_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['concealing_baby_swallow_long_1h']=dict(name='[RESEARCH] Concealing Baby Swallow long 1h',style='concealing_baby_swallow_candlestick',fn=sig_concealing_baby_swallow_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CONCEALBABY1H),desc='C229 gap-relaxed Concealing Baby Swallow exhaustion-reversal long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+MATHOLD1H=dict(retracement_body_ratio=.50,exit_length=10,cost_multiple=5.)
+def _mat_hold(open_,high,low,close,retracement_body_ratio=.50):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);body=(c-o).abs();bull=c>o;bear=o>c;first_mid=(o.shift(4)+c.shift(4))/2.;pull_small=(body.shift(3)<=retracement_body_ratio*body.shift(4))&(body.shift(2)<=retracement_body_ratio*body.shift(4))&(body.shift(1)<=retracement_body_ratio*body.shift(4))
+ return bull&bull.shift(4)&bear.shift(3)&bear.shift(2)&bear.shift(1)&pull_small&(o.shift(3)>=c.shift(4))&(c.shift(2)<c.shift(3))&(c.shift(1)<c.shift(2))&(l.shift(3)>first_mid)&(l.shift(2)>first_mid)&(l.shift(1)>first_mid)&(o<=c.shift(1))&(c>h.shift(4))&(c>h.shift(3))&(c>h.shift(2))&(c>h.shift(1))
+def sig_mat_hold_long_1h(d,p,ctx):
+ pattern=_mat_hold(d.o,d.h,d.l,d.c,p['retracement_body_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['mat_hold_long_1h']=dict(name='[RESEARCH] Mat Hold long 1h',style='mat_hold_candlestick',fn=sig_mat_hold_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(MATHOLD1H),desc='C230 gap-relaxed Mat Hold elevated-pullback continuation long above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
