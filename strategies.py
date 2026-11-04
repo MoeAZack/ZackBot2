@@ -4865,6 +4865,12 @@ def _bullish_engulfing(open_,close):
 def sig_bullish_engulfing_long_1h(d,p,ctx):
  pattern=_bullish_engulfing(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['bullish_engulfing_long_1h']=dict(name='[RESEARCH] Bullish Engulfing long 1h',style='bullish_real_body_engulfing',fn=sig_bullish_engulfing_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(ENGULF1H),desc='C182 conventional bullish real-body engulfing pattern above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+BENGULF1H=dict(exit_length=10,cost_multiple=5.0)
+def _bearish_engulfing(open_,close):
+ o=open_.astype(float);c=close.astype(float);return (c<o)&(c.shift()>o.shift())&(o>=c.shift())&(c<=o.shift())
+def sig_bearish_engulfing_short_1h(d,p,ctx):
+ pattern=_bearish_engulfing(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['bearish_engulfing_short_1h']=dict(name='[RESEARCH] Bearish Engulfing short 1h',style='bearish_real_body_engulfing',fn=sig_bearish_engulfing_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(BENGULF1H),desc='C183 conventional bearish real-body engulfing pattern below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
