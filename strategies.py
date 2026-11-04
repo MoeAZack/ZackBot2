@@ -4575,6 +4575,12 @@ def _pretty_good_oscillator(close,atr,window=14):return (close.astype(float)-clo
 def sig_pgo_long_1h(d,p,ctx):
  x=_pretty_good_oscillator(d.c,d.atr,p['window']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=0,sx=never)
 STRATEGIES['pgo_long_1h']=dict(name='[RESEARCH] Pretty Good Oscillator long 1h',style='atr_normalized_mean_deviation',fn=sig_pgo_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PGO1H),desc='C139 PGO14 crosses zero above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+PSY1H=dict(window=12,threshold=50.0,cost_multiple=5.0)
+def _psychological_line(close,window=12):
+ return close.astype(float).diff().gt(0).astype(float).rolling(int(window),min_periods=int(window)).mean()*100.0
+def sig_psychological_line_long_1h(d,p,ctx):
+ x=_psychological_line(d.c,p['window']);up=(x>p['threshold'])&(x.shift()<=p['threshold']);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e20)&cost,se=never,lx=x<=p['threshold'],sx=never)
+STRATEGIES['psychological_line_long_1h']=dict(name='[RESEARCH] Psychological Line long 1h',style='up_close_frequency',fn=sig_psychological_line_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PSY1H),desc='C140 PSY12 crosses above 50 while close is above EMA20.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
