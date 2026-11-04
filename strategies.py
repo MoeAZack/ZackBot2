@@ -4926,6 +4926,14 @@ def sig_hanging_man_short_1h(d,p,ctx):
  pattern=_bearish_hanging_man(d.o,d.h,d.l,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['hanging_man_short_1h']=dict(name='[RESEARCH] Hanging Man short 1h',style='bearish_hanging_man_candlestick',fn=sig_hanging_man_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(HANGMAN1H),desc='C192 classical bearish Hanging Man geometry below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+MARUBOZU1H=dict(shadow_ratio=.10,exit_length=10,cost_multiple=5.)
+def _bullish_marubozu(open_,high,low,close,shadow_ratio=.10):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);body=c-o
+ return (body>0)&((o-l)<=shadow_ratio*body)&((h-c)<=shadow_ratio*body)
+def sig_bullish_marubozu_long_1h(d,p,ctx):
+ pattern=_bullish_marubozu(d.o,d.h,d.l,d.c,p['shadow_ratio']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['bullish_marubozu_long_1h']=dict(name='[RESEARCH] Bullish Marubozu long 1h',style='bullish_marubozu_candlestick',fn=sig_bullish_marubozu_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(MARUBOZU1H),desc='C193 classical bullish Marubozu geometry above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
