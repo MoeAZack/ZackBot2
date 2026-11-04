@@ -1,9 +1,8 @@
 # NC-09 Structured Observability Contract
 
-Status: freeze-ready contract and skipped implementation matrix only. Base:
-accepted NC-08 exact `226211f9b726d804862f6ec109b607ab27c433b5`.
-There is no runtime, PAPER, UI, persistence, file, network, or writer wiring in
-this branch.
+Status: frozen pure-kernel contract and bounded implementation. Base: accepted
+NC-08 exact `226211f9b726d804862f6ec109b607ab27c433b5`. There is no runtime, PAPER,
+UI, persistence, file, network, or writer wiring in this branch.
 
 ## Authority and safety boundary
 
@@ -37,7 +36,7 @@ sanitized bounded detail remain typed. Raw venue payloads, exception text,
 credentials, configuration, request headers, URLs, and arbitrary dictionaries
 are forbidden.
 
-Why-held and why-closed records are causal observations, not retrospective
+why-held and why-closed records are causal observations, not retrospective
 stories. They identify the exact selected NC-01 `ReasonCode` or NC-07
 `PlanReason`, source identity/hash, evaluated-at sequence/time, evidence and
 input generations. A HOLD/no-action observation remains distinct from a close;
@@ -123,34 +122,35 @@ Acceptance cases: `BOUNDARY-01`, `IMPORT-01`.
 
 ## Contract tests and smallest later implementation
 
-`tests/newcore_observability/test_nc09_contract.py` freezes 24 case IDs, required
-categories, and exact upstream object families. Its implementation cases remain
-skipped on this contract-only branch and must be activated without deletion or
-renaming when Codex freezes the open rulings.
+`tests/newcore_observability/test_nc09_contract.py` freezes and activates 24 case
+IDs against the exact upstream object families and `newcore/observability.py`.
+No case was deleted or renamed when the Codex rulings were frozen.
 
-The smallest later implementation is one pure `newcore/observability.py` value
+The bounded implementation is one pure `newcore/observability.py` value
 and transition kernel: immutable envelopes, metrics, queue state/outcomes,
 writer acknowledgements, counters, canonical bytes, and sanitized failures.
 Actual writer threads, persistence adapters, dashboards and runtime hooks remain
 separate integration work.
 
-## Codex rulings required before implementation
+## Frozen Codex rulings
 
-1. **Incident durability:** confirm that safety/control incidents are journaled
-   through NC-01/NC-02 first and NC-09 receives a best-effort mirror. Recommended:
-   yes; a droppable telemetry queue must never be the only safety audit trail.
-2. **Excursion basis:** choose mark/event samples or causal closed-bar extremes,
-   plus the frozen R and percent denominators across adds/partials. Recommended:
-   ordered mark/event samples with explicit gaps; preserve price excursion and
-   lifecycle net peak as separate series.
-3. **Queue policy:** freeze numeric capacity and whether saturation drops the
-   incoming record or evicts an older lower-severity record. Recommended: drop
-   the incoming record, never evict/reorder accepted evidence, and count drops
-   by event kind/severity; critical incidents remain durable under ruling 1.
-4. **Multiple explanations:** decide whether why-held/closed stores only the
-   selected reason or also evaluated alternatives. Recommended: selected stable
-   reason is mandatory; optional alternatives are an ordered typed tuple with
-   their own source bindings, never free text or a recomputed ranking.
+1. **Incident durability:** safety/control incidents are durably journaled by
+   NC-01/NC-02 first. NC-09 is only a best-effort droppable mirror and is never
+   the sole audit authority.
+2. **Excursion basis:** use ordered mark/event samples only and explicit gaps.
+   Price excursion and lifecycle net are separate series. Each sample freezes
+   contemporaneous average entry/quantity and lot-generation risk-basis ID.
+   MFE/MAE percent uses absolute contemporaneous average entry; R uses that
+   generation's accepted risk basis. Adds/partials begin a new explicit segment
+   and never rewrite earlier peaks. Give-back percent exists only for a positive
+   frozen lifecycle peak net; otherwise it is null.
+3. **Queue policy:** default capacity is 4096 per account stream and the hard
+   maximum is 65536; callers may choose 1..65536. Saturation drops the incoming
+   record, never evicts/reorders accepted records, and counts drops by kind and
+   severity. Critical incidents remain durable through NC-01/NC-02.
+4. **Multiple explanations:** the selected typed stable reason is mandatory.
+   Alternatives are optional ordered typed tuples with their own bindings,
+   never free text or a recomputed ranking.
 
 ## Explicit deferral
 
