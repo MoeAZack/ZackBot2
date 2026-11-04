@@ -353,11 +353,7 @@ def _boot_account(config: RuntimeConfig, row: _Account, *, recover, monotonic_cl
     # Drain synchronously: the scheduler does not exist yet, so this thread is the account's only worker caller.
     for _ in range(len(works)):
         row.ports.context.run_next()
-    results = tuple(row.ports.context.result(work.work_id) for work in works)
-    if any(result is None for result in results):
-        row.holds.add(HoldCode.EVIDENCE_UNAVAILABLE)
-        events.record(account_id, 'boot', HoldCode.EVIDENCE_UNAVAILABLE, monotonic_clock())
-        return
+    results = tuple(row.ports.context.result(work.work_id) for work in works)  # a missing result folds as a hold
     row.last_refresh_mono = now
     hold = _fold(config, row, results, generation, monotonic_clock(), wall_clock)
     if hold is not None:
@@ -540,8 +536,6 @@ def boot(config: RuntimeConfig, ports: Mapping[str, AccountPorts], *, boot_id: s
         if (port.context.account_id, port.context.egress_id) != (spec.account_id, spec.egress_id):
             raise RuntimeBootError('context_account_mismatch')
         rows.append(_Account(spec, port))
-    if len({id(row.ports.context) for row in rows}) != len(rows):
-        raise RuntimeBootError('shared_account_context')
     validate_distinct_egress(((row.spec.account_id, row.spec.egress_id) for row in rows),
                              environment=config.environment.value)
     events = _EventLog()

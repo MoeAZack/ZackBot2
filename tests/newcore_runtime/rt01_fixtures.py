@@ -158,6 +158,7 @@ class Evidence:
     def __init__(self, truth: Truth):
         self.truth = truth
         self.forbidden_work = False
+        self.extra_work = None
         self.assembled = 0
         self.assemble_result = None
 
@@ -172,9 +173,11 @@ class Evidence:
             from newcore.ports.venue import MarketOrder, OrderRef
             rows.append(VenueWork(
                 work_id=f'{prefix}-x', action=Action.ENTER, operation=Operation.SUBMIT_MARKET,
-                payload=MarketOrder(ref=OrderRef(symbol='BTCUSDT', client_id='zbn1o-x', route='classic'),
+                payload=MarketOrder(ref=OrderRef(symbol='BTCUSDT', client_id='zbn1o-1', route='classic'),
                                     position_side='LONG', qty=D('1'), reduce=False),
                 enqueued_at_ms=now_mono, deadline_ms=deadline_mono))
+        if self.extra_work is not None:
+            rows.append(self.extra_work(prefix, now_mono, deadline_mono))
         return tuple(rows)
 
     def assemble(self, account_id, generation, results):

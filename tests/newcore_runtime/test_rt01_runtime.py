@@ -253,9 +253,9 @@ def _evaluation(*, protection_status=ProtectionStatus.WORKING):
     market = MarketObservation(observation_id='bar_' + 'b' * 32, generation=11, fresh=True, completed=True,
                                high=D('101'), low=D('99'), mark=D('100'), path_order=PathOrder.NONE,
                                forced_exit_confirmed=False)
-    if protection_status is ProtectionStatus.MISSING:
+    if protection_status in (ProtectionStatus.MISSING, ProtectionStatus.UNKNOWN):
         protection = ProtectionState(protection_id='protect_' + 'c' * 32, generation=13, fresh=True,
-                                     status=ProtectionStatus.MISSING, confirmed_stop=None,
+                                     status=protection_status, confirmed_stop=None,
                                      confirmed_quantity=D('0'), confirmed_target_levels=())
     else:
         protection = ProtectionState(protection_id='protect_' + 'c' * 32, generation=13, fresh=True,
