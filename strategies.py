@@ -4877,6 +4877,12 @@ def _piercing_line(open_,close):
 def sig_piercing_line_long_1h(d,p,ctx):
  pattern=_piercing_line(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['piercing_line_long_1h']=dict(name='[RESEARCH] Piercing Line long 1h',style='piercing_line_candlestick',fn=sig_piercing_line_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PIERCING1H),desc='C184 conventional Piercing Line partial body recovery above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+DARKCLOUD1H=dict(exit_length=10,cost_multiple=5.0)
+def _dark_cloud_cover(open_,close):
+ o=open_.astype(float);c=close.astype(float);mid=(o.shift()+c.shift())/2.;return (c<o)&(c.shift()>o.shift())&(o>=c.shift())&(c<mid)&(c>o.shift())
+def sig_dark_cloud_cover_short_1h(d,p,ctx):
+ pattern=_dark_cloud_cover(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['dark_cloud_cover_short_1h']=dict(name='[RESEARCH] Dark Cloud Cover short 1h',style='dark_cloud_cover_candlestick',fn=sig_dark_cloud_cover_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(DARKCLOUD1H),desc='C185 conventional Dark Cloud Cover partial body reversal below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
