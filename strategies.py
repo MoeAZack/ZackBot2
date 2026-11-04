@@ -4871,6 +4871,12 @@ def _bearish_engulfing(open_,close):
 def sig_bearish_engulfing_short_1h(d,p,ctx):
  pattern=_bearish_engulfing(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
 STRATEGIES['bearish_engulfing_short_1h']=dict(name='[RESEARCH] Bearish Engulfing short 1h',style='bearish_real_body_engulfing',fn=sig_bearish_engulfing_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(BENGULF1H),desc='C183 conventional bearish real-body engulfing pattern below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+PIERCING1H=dict(exit_length=10,cost_multiple=5.0)
+def _piercing_line(open_,close):
+ o=open_.astype(float);c=close.astype(float);mid=(o.shift()+c.shift())/2.;return (c>o)&(c.shift()<o.shift())&(o<=c.shift())&(c>mid)&(c<o.shift())
+def sig_piercing_line_long_1h(d,p,ctx):
+ pattern=_piercing_line(d.o,d.c);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['piercing_line_long_1h']=dict(name='[RESEARCH] Piercing Line long 1h',style='piercing_line_candlestick',fn=sig_piercing_line_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PIERCING1H),desc='C184 conventional Piercing Line partial body recovery above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
