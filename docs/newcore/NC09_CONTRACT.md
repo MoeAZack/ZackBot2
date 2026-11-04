@@ -44,8 +44,10 @@ an absent close is never labelled as a successful hold. When facts are stale,
 ambiguous, incomplete, or generation-mismatched, the stable source reason is
 retained and numeric conclusions that depend on missing facts remain null.
 WHY_HELD rejects close, flatten, reduce, and exit-reason semantics. WHY_CLOSED
-requires a close/flatten/reduce action and its matching typed exit reason;
-`NO_CHANGE` or a no-action plan can never be reported as closed. Optional
+requires exactly one terminal `CloseAction` and its matching typed terminal-exit
+reason. A partial `ReduceAction` is not closed. `FlattenRequired` is
+conservatively a required action, not proof that flattening completed, so it is
+not closed either. `NO_CHANGE` or a no-action plan can never be reported as closed. Optional
 alternative reasons use only closed typed bindings (validated stable record
 IDs, NC-07 binding enums, or positive generations). URLs, secrets, payload
 text, and other arbitrary strings are not bindings.
@@ -91,6 +93,11 @@ and coverage state. Price excursion and lifecycle economics are separate:
 All comparisons and arithmetic are deterministic finite `Decimal`; timestamps
 never break ties without the explicit sequence. Long and short behavior is
 symmetric under the stated side convention.
+
+Every excursion update reconstructs and validates its complete prior segment
+history, including points, transitions, gap evidence, and typed source bindings.
+The returned series owns those sealed copies; later caller mutation of any input
+object cannot alter its canonical bytes or previously frozen peaks.
 
 Every queue, excursion, and lifecycle stream is contiguous by sequence. A
 silent jump such as 1 to 3 is invalid. Missing evidence is advanced only by an

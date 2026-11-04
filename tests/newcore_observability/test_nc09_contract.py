@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import inspect
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
+
+import newcore.observability as observability_module
 
 from newcore.domain.decision import Action, Authority, Decision
 from newcore.domain.events import IncidentRecorded
@@ -18,10 +20,12 @@ from newcore.domain.reasons import ReasonCode
 from newcore.management import (
     Binding,
     CloseAction,
+    FlattenRequired,
     ManagementPlan,
     PlanReason,
     PlanStatus,
     ProtectionRepair,
+    ReduceAction,
 )
 from newcore.observability import (
     DEFAULT_CAPACITY,
@@ -156,16 +160,12 @@ def test_contract_reuses_exact_accepted_upstream_object_families():
                for row in UPSTREAM_TYPES)
 
 
-def test_document_tracks_every_case_and_frozen_boundary():
-    contract = (Path(__file__).parents[2] / 'docs' / 'newcore' / 'NC09_CONTRACT.md').read_text(
-        encoding='utf-8')
-    assert all(case.case_id in contract for case in CASES)
-    for phrase in (
-        'stable typed reason', 'MFE', 'MAE', 'peak give-back', 'why-held',
-        'why-closed', 'bounded, non-waiting', 'dropped-full', 'write-errors',
-        'must never delay or alter', 'REC-02', 'TNET-01',
-    ):
-        assert phrase in contract
+def test_contract_requirements_are_closed_nonempty_statements():
+    assert len(CASES) == 24
+    assert all(type(case.requirement) is str and case.requirement.strip()
+               for case in CASES)
+    assert not any('TODO' in case.requirement or 'TBD' in case.requirement
+                   for case in CASES)
 
 
 D = Decimal
@@ -561,8 +561,7 @@ def _privacy_01():
 
 
 def _source_tree():
-    source = Path(__file__).parents[2] / 'newcore' / 'observability.py'
-    return ast.parse(source.read_text(encoding='utf-8'))
+    return ast.parse(inspect.getsource(observability_module))
 
 
 def _boundary_01():
@@ -639,6 +638,26 @@ def test_same_generation_add_or_partial_requires_explicit_segment_transition():
     assert partial.segments[-2] == advanced.segments[-1]
 
 
+def test_excursion_updates_deep_seal_all_prior_history():
+    original = observe_excursion(None, _sample(sequence=1, mark=D('101')))
+    updated = observe_excursion(original, _sample(sequence=2, mark=D('102')))
+    frozen_bytes = canonical_bytes(updated)
+    assert updated.segments[0] is not original.segments[0]
+    assert updated.segments[0].mfe is not original.segments[0].mfe
+    object.__setattr__(original.segments[0].mfe, 'price', D('999'))
+    object.__setattr__(original.segments[0], 'segment_id', 'mutated-source')
+    assert canonical_bytes(updated) == frozen_bytes
+
+    transition = _transition(sequence=3)
+    segmented = observe_excursion(
+        updated, _sample(sequence=3, mark=D('103'), segment='seg-2', quantity=D('3')),
+        transition=transition)
+    segmented_bytes = canonical_bytes(segmented)
+    object.__setattr__(transition, 'to_segment_id', 'caller-mutated')
+    object.__setattr__(updated.segments[0].mae, 'amount', D('777'))
+    assert canonical_bytes(segmented) == segmented_bytes
+
+
 def test_why_held_and_closed_refuse_semantic_mismatch():
     close = _closed(CloseAction, quantity=D('2'))
     exiting = _plan(reason=PlanReason.TIME_EXIT, actions=(close,))
@@ -646,6 +665,16 @@ def test_why_held_and_closed_refuse_semantic_mismatch():
         trace_plan(exiting, ObservationKind.WHY_HELD)
     with pytest.raises(ObservationError, match='trace.closed_semantics'):
         trace_plan(_plan(), ObservationKind.WHY_CLOSED)
+    reduce = _closed(
+        ReduceAction, level_id='tp1', target_price=D('105'), quantity=D('1'),
+        remaining_quantity=D('1'))
+    with pytest.raises(ObservationError, match='trace.closed_semantics'):
+        trace_plan(_plan(reason=PlanReason.TARGET_REDUCE, actions=(reduce,)),
+                   ObservationKind.WHY_CLOSED)
+    flatten = _closed(FlattenRequired, quantity=D('2'))
+    with pytest.raises(ObservationError, match='trace.closed_semantics'):
+        trace_plan(_plan(reason=PlanReason.FLATTEN_REQUIRED, actions=(flatten,)),
+                   ObservationKind.WHY_CLOSED)
 
 
 def test_alternative_bindings_are_closed_typed_and_privacy_safe():

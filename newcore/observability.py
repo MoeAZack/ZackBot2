@@ -310,16 +310,21 @@ def trace_plan(plan: object, kind: object, *, alternatives=()) -> DecisionTrace:
         _fail('trace.plan_shape')
     if type(plan.actions) is not tuple:
         _fail('trace.plan_actions')
-    exit_actions = tuple(row for row in plan.actions
-                         if type(row) in (CloseAction, FlattenRequired, ReduceAction))
+    terminal_closes = tuple(row for row in plan.actions if type(row) is CloseAction)
+    nonterminal_exits = tuple(row for row in plan.actions
+                              if type(row) in (FlattenRequired, ReduceAction))
     exit_reasons = frozenset({
         PlanReason.FLATTEN_REQUIRED, PlanReason.FORCED_EXIT,
         PlanReason.STRATEGY_EXIT, PlanReason.TARGET_REDUCE, PlanReason.TIME_EXIT,
     })
+    terminal_close_reasons = frozenset({
+        PlanReason.FORCED_EXIT, PlanReason.STRATEGY_EXIT, PlanReason.TIME_EXIT,
+    })
     if kind is ObservationKind.WHY_HELD:
-        if exit_actions or plan.reason in exit_reasons:
+        if terminal_closes or nonterminal_exits or plan.reason in exit_reasons:
             _fail('trace.held_semantics')
-    elif (not exit_actions or plan.reason not in exit_reasons
+    elif (len(terminal_closes) != 1 or nonterminal_exits
+          or plan.reason not in terminal_close_reasons
           or plan.reason is PlanReason.NO_CHANGE):
         _fail('trace.closed_semantics')
     generations = (plan.lot_generation, plan.policy_generation, plan.market_generation,
@@ -587,6 +592,100 @@ def _new_segment(sample: ExcursionSample,
                             transition, (), sample.sequence, sample.at_ms, 0)
 
 
+def _seal_excursion_point(value: object) -> ExcursionPoint:
+    if type(value) is not ExcursionPoint:
+        _fail('excursion.point')
+    for name in ('price', 'amount', 'percent', 'r_multiple'):
+        _decimal(getattr(value, name), 'excursion.point_' + name, nonnegative=True)
+    _integer(value.sequence, 'excursion.point_sequence', minimum=1)
+    _integer(value.at_ms, 'excursion.point_at_ms', minimum=1)
+    return ExcursionPoint(value.price, value.amount, value.percent,
+                          value.r_multiple, value.sequence, value.at_ms)
+
+
+def _seal_excursion_segment(value: object, lot_id: str) -> ExcursionSegment:
+    if type(value) is not ExcursionSegment:
+        _fail('excursion.segment')
+    _integer(value.lot_generation, 'excursion.segment_generation', minimum=1)
+    _text(value.segment_id, 'excursion.segment_id', maximum=64)
+    if type(value.side) is not Side:
+        _fail('excursion.segment_side')
+    _decimal(value.average_entry, 'excursion.segment_average', positive=True)
+    _decimal(value.quantity, 'excursion.segment_quantity', positive=True)
+    _text(value.risk_basis_id, 'excursion.segment_risk_basis', maximum=64)
+    _decimal(value.accepted_risk, 'excursion.segment_risk', positive=True)
+    mfe = _seal_excursion_point(value.mfe)
+    mae = _seal_excursion_point(value.mae)
+    with localcontext(_ARITHMETIC):
+        try:
+            for point in (mfe, mae):
+                if (point.amount != point.price * value.quantity
+                        or point.percent != point.price / abs(value.average_entry) * Decimal(100)
+                        or point.r_multiple != point.amount / value.accepted_risk):
+                    _fail('excursion.point_basis')
+        except DecimalException:
+            _fail('excursion.point_arithmetic')
+    transition = (None if value.transition is None
+                  else _seal_segment_transition(value.transition))
+    if transition is not None and transition.lot_id != lot_id:
+        _fail('excursion.segment_transition_lot')
+    if type(value.gaps) is not tuple:
+        _fail('excursion.segment_gaps')
+    gaps = tuple(_seal_gap(row) for row in value.gaps)
+    if any(row.stream_id != lot_id for row in gaps):
+        _fail('excursion.segment_gap_lot')
+    _integer(value.last_sequence, 'excursion.segment_last_sequence', minimum=1)
+    _integer(value.last_at_ms, 'excursion.segment_last_at_ms', minimum=1)
+    _integer(value.gap_count, 'excursion.segment_gap_count')
+    if value.gap_count != len(gaps):
+        _fail('excursion.segment_gap_count')
+    if (mfe.sequence > value.last_sequence or mae.sequence > value.last_sequence
+            or mfe.at_ms > value.last_at_ms or mae.at_ms > value.last_at_ms):
+        _fail('excursion.segment_point_order')
+    if gaps and (gaps[-1].missing_through > value.last_sequence
+                 or gaps[-1].observed_at_ms > value.last_at_ms):
+        _fail('excursion.segment_gap_order')
+    return ExcursionSegment(
+        value.lot_generation, value.segment_id, value.side, value.average_entry,
+        value.quantity, value.risk_basis_id, value.accepted_risk, mfe, mae,
+        transition, gaps, value.last_sequence, value.last_at_ms, value.gap_count)
+
+
+def _seal_excursion_series(value: object) -> ExcursionSeries:
+    if type(value) is not ExcursionSeries:
+        _fail('excursion.series')
+    _family_id(value.lot_id, 'excursion.series_lot_id', 'lot')
+    if (type(value.segments) is not tuple or not value.segments
+            or not all(type(row) is ExcursionSegment for row in value.segments)):
+        _fail('excursion.series_segments')
+    segments = tuple(_seal_excursion_segment(row, value.lot_id)
+                     for row in value.segments)
+    if segments[0].transition is not None:
+        _fail('excursion.initial_transition')
+    if len({row.segment_id for row in segments}) != len(segments):
+        _fail('excursion.segment_duplicate')
+    for previous, current in zip(segments, segments[1:]):
+        transition = current.transition
+        if (transition is None
+                or transition.from_segment_id != previous.segment_id
+                or transition.to_segment_id != current.segment_id
+                or transition.from_generation != previous.lot_generation
+                or transition.to_generation != current.lot_generation
+                or transition.sequence != previous.last_sequence + 1
+                or transition.sequence > current.last_sequence
+                or current.mfe.sequence < transition.sequence
+                or current.mae.sequence < transition.sequence
+                or current.side is not previous.side):
+            _fail('excursion.segment_chain')
+        if (transition.kind is SegmentTransitionKind.ADD
+                and current.quantity <= previous.quantity):
+            _fail('excursion.segment_add_quantity')
+        if (transition.kind is SegmentTransitionKind.PARTIAL
+                and current.quantity >= previous.quantity):
+            _fail('excursion.segment_partial_quantity')
+    return ExcursionSeries(value.lot_id, segments)
+
+
 def observe_excursion(series: object, sample: object, *, transition=None) -> ExcursionSeries:
     if type(sample) is not ExcursionSample:
         _fail('excursion.sample')
@@ -594,8 +693,8 @@ def observe_excursion(series: object, sample: object, *, transition=None) -> Exc
         if sample.sequence != 1 or transition is not None:
             _fail('excursion.initial_sequence')
         return ExcursionSeries(sample.lot_id, (_new_segment(sample),))
-    if (type(series) is not ExcursionSeries or series.lot_id != sample.lot_id
-            or type(series.segments) is not tuple or not series.segments):
+    series = _seal_excursion_series(series)
+    if series.lot_id != sample.lot_id:
         _fail('excursion.series')
     current = series.segments[-1]
     if sample.sequence != current.last_sequence + 1 or sample.at_ms < current.last_at_ms:
@@ -640,9 +739,7 @@ def observe_excursion(series: object, sample: object, *, transition=None) -> Exc
 
 
 def observe_excursion_gap(series: object, gap: object) -> ExcursionSeries:
-    if (type(series) is not ExcursionSeries or not series.segments
-            or type(series.segments) is not tuple):
-        _fail('excursion.series')
+    series = _seal_excursion_series(series)
     gap = _seal_gap(gap)
     current = series.segments[-1]
     if (gap.stream_id != series.lot_id or gap.after_sequence != current.last_sequence
