@@ -3836,6 +3836,39 @@ STRATEGIES['cfo_zero_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+RWI1H = dict(max_period=14, threshold=1.0, cost_multiple=5.0)
+
+
+def _random_walk_index(high, low, close, max_period=14):
+    """Causal high/low Random Walk Index maximized across horizons 2..max_period."""
+    prev = close.astype(float).shift()
+    tr = pd.concat([(high - low).abs(), (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
+    highs, lows = [], []
+    for n in range(2, max_period + 1):
+        scale = tr.rolling(n).mean() * np.sqrt(float(n))
+        highs.append((high.astype(float) - low.astype(float).shift(n - 1)) / scale.replace(0.0, np.nan))
+        lows.append((high.astype(float).shift(n - 1) - low.astype(float)) / scale.replace(0.0, np.nan))
+    return pd.concat(highs, axis=1).max(axis=1), pd.concat(lows, axis=1).max(axis=1)
+
+
+def sig_random_walk_index_long_1h(d, p, ctx):
+    """C115: enter when upward displacement becomes inconsistent with a random walk."""
+    rhi, rlo = _random_walk_index(d.h, d.l, d.c, int(p['max_period']))
+    level = float(p['threshold']); cross_up = (rhi > level) & (rhi.shift() <= level)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (rhi > rlo) & (d.c > d.e20) & cost_ok, se=never,
+                lx=(rhi <= level) | (rhi <= rlo), sx=never)
+
+
+STRATEGIES['random_walk_index_long_1h'] = dict(
+    name='[RESEARCH] Random Walk Index long 1h', style='atr_scaled_directional_displacement',
+    fn=sig_random_walk_index_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(RWI1H),
+    desc='Candidate 115: max 2-14 bar RWI-high crosses 1, dominates RWI-low, and close is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
