@@ -129,14 +129,8 @@
       "status": "known_divergence",
       "reason": "AUD-08: the backtester has one stop reason; it books the market close of a crossed ratcheted stop as `stop` (STOP_HIT)"
     },
-    "newcore_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
-    },
-    "newcore_live_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
-    }
+    "newcore_sim": "required",
+    "newcore_live_sim": "required"
   },
   "known_divergences": [
     {

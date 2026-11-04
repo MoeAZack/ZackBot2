@@ -267,7 +267,7 @@ def test_capabilities_and_final_state_are_strict():
     assert compare.compare(case, Trace(trades=[], final={}), 'legacy_backtest') == []      # declares no final keys
     with pytest.raises(AssertionError):
         compare.compare(case, Trace(trades=[], final={'lots': 0}), 'legacy_backtest')     # reports a key it does not declare
-    assert set(CAPS) == set(LEGACY) and all(set(v['final']) <= set(schema.FINAL_KEYS) for v in CAPS.values())
+    assert set(CAPS) == set(schema.ADAPTERS) and all(set(v['final']) <= set(schema.FINAL_KEYS) for v in CAPS.values())
     import copy
     c = copy.deepcopy(schema.load(schema.case_paths()[0])); c['expect']['final'] = {'lotz': 0}
     with pytest.raises(schema.CaseError, match='lotz'):

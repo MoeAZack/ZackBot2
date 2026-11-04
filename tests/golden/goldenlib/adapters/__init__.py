@@ -10,6 +10,8 @@ CAPS = {
     # replay metrics carry the open lots. funding: the engine journal (what is compared) carries no funding at all - the
     # replay's simulated account charges backtest.FUND_PER_BAR whatever the case says, which only reaches sizing equity
     'legacy_engine': dict(final=frozenset({'lots'}), funding=False),
+    'newcore_sim': dict(final=frozenset({'lots'}), funding=False),
+    'newcore_live_sim': dict(final=frozenset({'lots'}), funding=False),
 }
 
 
@@ -20,7 +22,13 @@ def get(name):
     if name == 'legacy_engine':
         from .legacy_engine import LegacyEngine
         return LegacyEngine()
-    raise KeyError(f'no adapter {name!r} in this tree (NEWCORE adapters arrive with NC-07/NC-08)')
+    if name == 'newcore_sim':
+        from .newcore_sim import NewcoreSim
+        return NewcoreSim()
+    if name == 'newcore_live_sim':
+        from .newcore_sim import NewcoreLiveSim
+        return NewcoreLiveSim()
+    raise KeyError(f'no adapter {name!r} in this tree')
 
 
 POISON = 'ADAPTER-READ-THE-EXPECTATION'

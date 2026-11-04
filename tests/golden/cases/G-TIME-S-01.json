@@ -84,14 +84,8 @@
       "status": "known_divergence",
       "reason": "AUD-07 C11: legacy behaviour differs from the corrected contract until the AUD-07 product fix lands"
     },
-    "newcore_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
-    },
-    "newcore_live_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
-    }
+    "newcore_sim": "required",
+    "newcore_live_sim": "required"
   },
   "known_divergences": [
     {
