@@ -4791,6 +4791,12 @@ def _ssl_channel(high,low,close,length=10):
 def sig_ssl_channel_long_1h(d,p,ctx):
  state,_,_=_ssl_channel(d.h,d.l,d.c,p['length']);up=(state>0)&(state.shift(fill_value=0)<=0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=state<0,sx=never)
 STRATEGIES['ssl_channel_long_1h']=dict(name='[RESEARCH] SSL Channel long 1h',style='ssl_high_low_hysteresis',fn=sig_ssl_channel_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(SSL1H),desc='C173 conventional SSL Channel(10) bullish state flip above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+CHAND1H=dict(length=22,multiplier=3.0,cost_multiple=5.0)
+def _chandelier_exit(high,low,close,length=22,multiplier=3.0):
+ n=int(length);prev=close.astype(float).shift();tr=pd.concat([(high-low).abs(),(high-prev).abs(),(low-prev).abs()],axis=1).max(axis=1);atr=tr.ewm(alpha=1.0/n,adjust=False,min_periods=n).mean();k=float(multiplier);long=high.astype(float).rolling(n,min_periods=n).max()-k*atr;short=low.astype(float).rolling(n,min_periods=n).min()+k*atr;return long,short
+def sig_chandelier_breakout_long_1h(d,p,ctx):
+ long,short=_chandelier_exit(d.h,d.l,d.c,p['length'],p['multiplier']);up=(d.c>short)&(d.c.shift()<=short.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<long,sx=never)
+STRATEGIES['chandelier_breakout_long_1h']=dict(name='[RESEARCH] Chandelier Exit breakout long 1h',style='chandelier_atr_stop_flip',fn=sig_chandelier_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(CHAND1H),desc='C174 canonical Chandelier Exit(22,3) short-stop upside crossing above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
