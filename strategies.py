@@ -3720,6 +3720,35 @@ STRATEGIES['frama_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+VHF1H = dict(lookback=28, enter=0.40, exit=0.20, cost_multiple=5.0)
+
+
+def _vertical_horizontal_filter(close, lookback=28):
+    """Directional close range divided by cumulative close-to-close path length."""
+    c = close.astype(float)
+    direction = c.rolling(lookback).max() - c.rolling(lookback).min()
+    path = c.diff().abs().rolling(lookback).sum()
+    return direction / path.replace(0.0, np.nan)
+
+
+def sig_vhf_trend_onset_long_1h(d, p, ctx):
+    """C111: enter when directional efficiency transitions into a trending state."""
+    vhf = _vertical_horizontal_filter(d.c, int(p['lookback']))
+    cross_up = (vhf > float(p['enter'])) & (vhf.shift() <= float(p['enter']))
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    never = d.c < -1
+    return dict(le=cross_up & (d.c > d.e20) & cost_ok, se=never,
+                lx=(vhf < float(p['exit'])) | (d.c <= d.e20), sx=never)
+
+
+STRATEGIES['vhf_trend_onset_long_1h'] = dict(
+    name='[RESEARCH] VHF trend-onset long 1h', style='directional_path_efficiency',
+    fn=sig_vhf_trend_onset_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(VHF1H),
+    desc='Candidate 111: VHF(28) crosses above 0.40 above EMA20; exits below 0.20 or EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
