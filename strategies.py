@@ -4803,6 +4803,12 @@ def _inertia_indicator(close,std_window=10,rvi_smooth=14,regression=20):
 def sig_inertia_long_1h(d,p,ctx):
  x=_inertia_indicator(d.c,p['std_window'],p['rvi_smooth'],p['regression']);up=(x>50.0)&(x.shift()<=50.0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=x<=50.0,sx=never)
 STRATEGIES['inertia_long_1h']=dict(name='[RESEARCH] Dorsey Inertia long 1h',style='rvi_linear_regression_inertia',fn=sig_inertia_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(INERTIA1H),desc='C175 conventional RVI(10,14) linear-regression(20) Inertia crossing 50 above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+NR71H=dict(setup_length=7,exit_length=10,cost_multiple=5.0)
+def _nr7_setup(high,low,length=7):
+ r=high.astype(float)-low.astype(float);return r.eq(r.rolling(int(length),min_periods=int(length)).min())
+def sig_nr7_breakout_long_1h(d,p,ctx):
+ setup=_nr7_setup(d.h,d.l,p['setup_length']);up=setup.shift(fill_value=False)&(d.c>d.h.shift());mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['nr7_breakout_long_1h']=dict(name='[RESEARCH] NR7 breakout long 1h',style='narrow_range_7_breakout',fn=sig_nr7_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(NR71H),desc='C176 conventional next-bar breakout above a Narrow Range 7 setup and EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
