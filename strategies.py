@@ -4327,6 +4327,36 @@ STRATEGIES['hull_ma_cross_long_1h'] = dict(
     mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
 
 
+CMO1H = dict(window=14, cost_multiple=5.0)
+
+
+def _chande_momentum_oscillator(close, window=14):
+    """Causal conventional Chande Momentum Oscillator."""
+    delta = close.astype(float).diff()
+    n = int(window)
+    gains = delta.clip(lower=0.0).rolling(n, min_periods=n).sum()
+    losses = (-delta.clip(upper=0.0)).rolling(n, min_periods=n).sum()
+    return 100.0 * (gains - losses) / (gains + losses).replace(0.0, np.nan)
+
+
+def sig_cmo_cross_long_1h(d, p, ctx):
+    """C130: follow a positive transition in fixed-window directional momentum balance."""
+    cmo = _chande_momentum_oscillator(d.c, p['window'])
+    cross_up = (cmo > 0.0) & (cmo.shift() <= 0.0)
+    cost_ok = 2.0 * d.atr / d.c >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    le = cross_up & (d.c > d.e20) & cost_ok
+    never = d.c < -1
+    return dict(le=le, se=never, lx=cmo <= 0.0, sx=never)
+
+
+STRATEGIES['cmo_cross_long_1h'] = dict(
+    name='[RESEARCH] Chande Momentum Oscillator crossover long 1h', style='fixed_window_momentum_balance',
+    fn=sig_cmo_cross_long_1h, sides='long', tf='1h', research_only=True,
+    reentry_lock=True, params=dict(CMO1H),
+    desc='Candidate 130: conventional CMO(14) crosses above zero while price is above EMA20.',
+    mgmt=dict(stop_atr=2.0, tp_r=2.0, max_bars=24))
+
+
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
 
