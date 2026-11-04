@@ -81,10 +81,12 @@ def _register() -> BaseCleanRegister:
         (FULL_COMMAND, NC01_MUTATION_COMMAND, NC02_MUTATION_COMMAND),
         Decimal("1000"), Decimal("6750"), Decimal("23400"), Decimal("10"), Decimal("50"),
         Decimal("1"), Decimal("250"), Decimal("512"), Decimal("32"), 3_600_000, True,
+        "3.12.10",
         "binance-usdm-v1-2026-11-03",
         "max(minimum,ceil(verified_limit*0.10));capped_at_verified_limit",
         "66e65242d60d23a8d07ecb99c17f4b449b28ce6b8ed64b5c05b248475937fa90",
         "request_weight_1m=60000;orders_10s=10000;orders_1m=60000",
+        "ee19285ed8c051d52bc02ca3854a05359fafe80d9f050f062bc5c7bd6779e81f",
     )
     return BaseCleanRegister("zackbot-base-clean-register/1", 1, rules, policy)
 
@@ -153,7 +155,7 @@ def _request(**changes) -> RequestBudgetEvidence:
         True,
         "66e65242d60d23a8d07ecb99c17f4b449b28ce6b8ed64b5c05b248475937fa90",
         "request_weight_1m=60000;orders_10s=10000;orders_1m=60000",
-        HASH,
+        "ee19285ed8c051d52bc02ca3854a05359fafe80d9f050f062bc5c7bd6779e81f",
     )
     return replace(row, **changes)
 
@@ -363,6 +365,12 @@ def test_each_frozen_latency_ceiling_is_enforced(changes: dict[str, Decimal]) ->
     assert HoldCode.LATENCY_EXCEEDED in result.holds
 
 
+def test_current_host_codec_evidence_rejects_an_old_python_baseline() -> None:
+    result = evaluate_base_clean(_register(), _evidence(latency=_latency(python_version="2.7.18")))
+    assert result.status is GateStatus.HOLD
+    assert result.holds == (HoldCode.HOST_CODEC_REBASELINE_MISSING,)
+
+
 @pytest.mark.parametrize(
     "changes",
     [
@@ -389,6 +397,7 @@ def test_provisional_memory_ceilings_and_sixty_minute_run_are_enforced(changes: 
         {"windows_verified": False},
         {"cost_table_sha256": "f" * 64},
         {"window_policy": "guessed"},
+        {"policy_sha256": "f" * 64},
         {"head_sha": OTHER_HEAD},
     ],
 )

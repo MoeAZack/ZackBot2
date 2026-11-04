@@ -33,10 +33,12 @@ PUBLISH_MAX_MS = Decimal("250")
 MEMORY_PRIVATE_MAX_MIB = Decimal("512")
 MEMORY_GROWTH_MAX_MIB = Decimal("32")
 MEMORY_MIN_DURATION_MS = 60 * 60 * 1000
+CURRENT_HOST_PYTHON_VERSION = "3.12.10"
 NC04_ENDPOINT_TABLE_VERSION = "binance-usdm-v1-2026-11-03"
 NC04_RESERVE_FORMULA = "max(minimum,ceil(verified_limit*0.10));capped_at_verified_limit"
 NC04_COST_TABLE_SHA256 = "66e65242d60d23a8d07ecb99c17f4b449b28ce6b8ed64b5c05b248475937fa90"
 NC04_WINDOW_POLICY = "request_weight_1m=60000;orders_10s=10000;orders_1m=60000"
+NC04_POLICY_SHA256 = "ee19285ed8c051d52bc02ca3854a05359fafe80d9f050f062bc5c7bd6779e81f"
 
 _SHA = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -228,10 +230,12 @@ class GatePolicy:
     memory_growth_max_mib: Decimal
     memory_min_duration_ms: int
     memory_provisional: bool
+    current_host_python_version: str
     nc04_endpoint_table_version: str
     nc04_reserve_formula: str
     nc04_cost_table_sha256: str
     nc04_window_policy: str
+    nc04_policy_sha256: str
 
     def __post_init__(self) -> None:
         _exact(self.required_commands, tuple, "validation.policy.commands")
@@ -255,6 +259,8 @@ class GatePolicy:
             _fail("validation.policy.memory_duration")
         if not _bool(self.memory_provisional, "validation.policy.memory_provisional"):
             _fail("validation.policy.memory_provisional")
+        if self.current_host_python_version != CURRENT_HOST_PYTHON_VERSION:
+            _fail("validation.policy.host_python")
         if self.nc04_endpoint_table_version != NC04_ENDPOINT_TABLE_VERSION:
             _fail("validation.policy.nc04_table")
         if self.nc04_reserve_formula != NC04_RESERVE_FORMULA:
@@ -263,6 +269,8 @@ class GatePolicy:
             _fail("validation.policy.nc04_costs")
         if self.nc04_window_policy != NC04_WINDOW_POLICY:
             _fail("validation.policy.nc04_windows")
+        if self.nc04_policy_sha256 != NC04_POLICY_SHA256:
+            _fail("validation.policy.nc04_policy")
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +593,8 @@ def _latency_holds(evidence: GateEvidence, policy: GatePolicy) -> set[HoldCode]:
     row = evidence.latency
     if row is None or row.head_sha != evidence.head_sha or row.host_id != evidence.host_id:
         return {HoldCode.LATENCY_MISSING}
+    if row.python_version != policy.current_host_python_version:
+        return {HoldCode.HOST_CODEC_REBASELINE_MISSING}
     limits = (
         (row.validate_us, policy.validate_max_us),
         (row.encode_us, policy.encode_max_us),
@@ -615,7 +625,8 @@ def _request_holds(evidence: GateEvidence, policy: GatePolicy) -> set[HoldCode]:
             or not row.windows_verified or row.endpoint_table_version != policy.nc04_endpoint_table_version
             or row.reserve_formula != policy.nc04_reserve_formula
             or row.cost_table_sha256 != policy.nc04_cost_table_sha256
-            or row.window_policy != policy.nc04_window_policy):
+            or row.window_policy != policy.nc04_window_policy
+            or row.policy_sha256 != policy.nc04_policy_sha256):
         return {HoldCode.REQUEST_BUDGET_UNVERIFIED}
     return set()
 

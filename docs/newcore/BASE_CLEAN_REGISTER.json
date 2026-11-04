@@ -18,10 +18,12 @@
     "memory_growth_max_mib": "32",
     "memory_min_duration_ms": 3600000,
     "memory_provisional": true,
+    "current_host_python_version": "3.12.10",
     "nc04_endpoint_table_version": "binance-usdm-v1-2026-11-03",
     "nc04_reserve_formula": "max(minimum,ceil(verified_limit*0.10));capped_at_verified_limit",
     "nc04_cost_table_sha256": "66e65242d60d23a8d07ecb99c17f4b449b28ce6b8ed64b5c05b248475937fa90",
-    "nc04_window_policy": "request_weight_1m=60000;orders_10s=10000;orders_1m=60000"
+    "nc04_window_policy": "request_weight_1m=60000;orders_10s=10000;orders_1m=60000",
+    "nc04_policy_sha256": "ee19285ed8c051d52bc02ca3854a05359fafe80d9f050f062bc5c7bd6779e81f"
   },
   "rules": [
     {

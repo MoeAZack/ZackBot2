@@ -78,8 +78,9 @@ the exact head.
 | Growth over steady run | 32 MiB provisional |
 | Memory run | at least 60 minutes |
 
-The old codec baseline used another Python version; an exact current-host
-baseline is mandatory even when supplied values are below the ceilings. Memory
+The accepted current-host baseline is Python `3.12.10`. The old codec baseline
+used another Python version; an exact current-host baseline is mandatory even
+when supplied values are below the ceilings. Memory
 limits are explicitly provisional evidence requirements, not performance claims.
 
 ## NC-04 request budgets
@@ -98,6 +99,12 @@ ceiling, verified windows/costs, the exact NC-04 cost-table digest
 `66e65242d60d23a8d07ecb99c17f4b449b28ce6b8ed64b5c05b248475937fa90`,
 and the frozen policy digest. BASE-CLEAN does not recalculate or replace NC-04
 admission.
+
+The frozen policy digest is
+`ee19285ed8c051d52bc02ca3854a05359fafe80d9f050f062bc5c7bd6779e81f`,
+the SHA-256 of canonical sorted compact JSON containing the frozen endpoint
+table version, reserve formula, cost-table digest and window policy. Evidence
+must match this register value exactly.
 
 ## Determinism and hostile inputs
 
