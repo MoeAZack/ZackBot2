@@ -57,9 +57,75 @@ def test_plan_refuses_bad_account_or_symbols(tmp_path, identity, capsys):
     assert "manifest_validation_binding_symbols" in capsys.readouterr().err
 
 
-def test_real_run_is_refused_in_this_build(capsys):
-    assert cli.main(["run"]) == cli.EXIT_REFUSED
-    assert "real_run_not_wired_in_this_build" in capsys.readouterr().err
+LIVE_KEY = "TNET02LIVEKEYMARKER0000000000000a"
+LIVE_SECRET = "TNET02LIVESECRETMARKER00000000000b"
+
+
+def _live_account(tmp_path):
+    from newcore.tnet02.wiring import key_digest
+    digest = key_digest(LIVE_KEY)
+    return _account_file(tmp_path, key_digest=digest, typed_phrase=confirmation_phrase(ACCOUNT_ID, digest))
+
+
+def _run_args(tmp_path, account, *extra):
+    journals, out = tmp_path / "journals", tmp_path / "out"
+    journals.mkdir(exist_ok=True)
+    out.mkdir(exist_ok=True)
+    return ["run", "--expected-head", BUILD_SHA, "--account-file", str(account), "--symbols", "BTCUSDT",
+            "--journal-dir", str(journals), "--out-dir", str(out), "--host-id", "tnet_x", *extra]
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    import newcore.venue as venue_pkg
+
+    def explode(*_a, **_k):
+        raise AssertionError("network sender constructed")
+    monkeypatch.setattr(venue_pkg, "TestnetHttpSender", explode)
+
+
+def test_run_refuses_without_credentials_before_any_network(tmp_path, identity, capsys, monkeypatch, no_network):
+    monkeypatch.delenv("ZACKBOT_TNET02_API_KEY", raising=False)
+    monkeypatch.delenv("ZACKBOT_TNET02_API_SECRET", raising=False)
+    assert cli.main(_run_args(tmp_path, _live_account(tmp_path))) == cli.EXIT_REFUSED
+    assert capsys.readouterr().err.strip() == "REFUSED: credentials_api_key_missing"
+
+
+def test_run_refuses_a_key_that_is_not_the_confirmed_one(tmp_path, identity, capsys, monkeypatch, no_network):
+    monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", "SomeOtherTestnetKey0000000000000")
+    monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)
+    assert cli.main(_run_args(tmp_path, _live_account(tmp_path))) == cli.EXIT_REFUSED
+    err = capsys.readouterr().err
+    assert err.strip() == "REFUSED: credentials_digest_mismatch" and LIVE_SECRET not in err
+
+
+def test_run_refuses_wrong_execute_ack_and_dirty_build(tmp_path, identity, capsys, monkeypatch, no_network):
+    monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", LIVE_KEY)
+    monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)
+    assert cli.main(_run_args(tmp_path, _live_account(tmp_path), "--execute", "yes")) == cli.EXIT_REFUSED
+    assert capsys.readouterr().err.strip() == "REFUSED: execute_ack"
+    identity["dirty"] = " M x.py"
+    assert cli.main(_run_args(tmp_path, _live_account(tmp_path), "--execute", "TESTNET")) == cli.EXIT_REFUSED
+    assert capsys.readouterr().err.strip() == "REFUSED: worktree_dirty"
+
+
+def test_run_preflight_reads_only_and_reports_isolation(tmp_path, identity, capsys, monkeypatch):
+    import newcore.venue as venue_pkg
+    from .fake_binance import FakeBinance, FakeClock
+
+    fake = FakeBinance(FakeClock())
+    monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda: fake)
+    monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", LIVE_KEY)
+    monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)
+    assert cli.main(_run_args(tmp_path, _live_account(tmp_path))) == cli.EXIT_OK
+    out = capsys.readouterr()
+    assert "isolated=true" in out.out and "no order was sent" in out.out
+    assert {m for m, _p, _q in fake.requests} == {"GET"}
+    assert LIVE_KEY not in out.out + out.err and LIVE_SECRET not in out.out + out.err
+    assert "/fapi/v1/exchangeInfo" in [p for _m, p, _q in fake.requests]
+    fake.positions[("ETHUSDT", "SHORT")] = __import__("decimal").Decimal("1")
+    assert cli.main(_run_args(tmp_path, _live_account(tmp_path))) == cli.EXIT_REFUSED
+    assert "isolated=false" in capsys.readouterr().out
 
 
 def test_proof_command(tmp_path, capsys):

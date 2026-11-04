@@ -241,7 +241,8 @@ class FakeBinance:
 
     def _get_fapi_v2_positionRisk(self, p):
         if not self.hedge_mode:
-            return ok([{"symbol": s, "positionSide": "BOTH", "positionAmt": "0", "entryPrice": "0"}
+            return ok([{"symbol": s, "positionSide": "BOTH", "positionAmt": "0", "entryPrice": "0",
+                        "markPrice": format(self.marks[s], "f"), "leverage": str(self.leverage[s])}
                        for s in self.marks if "symbol" not in p or s == p["symbol"]])
         rows = []
         for symbol in self.marks:
@@ -251,8 +252,33 @@ class FakeBinance:
                 qty = self.positions.get((symbol, side), Decimal("0"))
                 amt = qty if side == "LONG" else -qty
                 rows.append({"symbol": symbol, "positionSide": side, "positionAmt": format(amt, "f"),
-                             "entryPrice": format(self.marks[symbol] if qty else Decimal("0"), "f")})
+                             "entryPrice": format(self.marks[symbol] if qty else Decimal("0"), "f"),
+                             "markPrice": format(self.marks[symbol], "f"),
+                             "leverage": str(self.leverage[symbol])})
         return ok(rows)
+
+    def _get_fapi_v2_balance(self, p):
+        return ok([{"asset": "BNB", "balance": "0", "crossUnPnl": "0", "availableBalance": "0"},
+                   {"asset": "USDT", "balance": format(self.equity, "f"), "crossUnPnl": "0",
+                    "availableBalance": format(self.equity, "f")}])
+
+    def _get_fapi_v1_exchangeInfo(self, p):
+        assert p == {}
+        symbols = []
+        for symbol, tick, notional in (("BTCUSDT", "0.10", "100"), ("ETHUSDT", "0.01", "20")):
+            symbols.append({"symbol": symbol, "status": "TRADING", "contractType": "PERPETUAL", "quoteAsset": "USDT",
+                            "marginAsset": "USDT", "filters": [
+                                {"filterType": "PRICE_FILTER", "tickSize": tick},
+                                {"filterType": "LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "1000"},
+                                {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001",
+                                 "maxQty": "120"},
+                                {"filterType": "MIN_NOTIONAL", "notional": notional}]})
+        return ok({"rateLimits": [{"rateLimitType": "REQUEST_WEIGHT", "interval": "MINUTE", "intervalNum": 1,
+                                   "limit": 2400}], "symbols": symbols})
+
+    def _get_fapi_v1_rateLimit_order(self, p):
+        return ok([{"rateLimitType": "ORDERS", "interval": "SECOND", "intervalNum": 10, "limit": 300},
+                   {"rateLimitType": "ORDERS", "interval": "MINUTE", "intervalNum": 1, "limit": 1200}])
 
     def _get_fapi_v1_userTrades(self, p):
         rows = [t for t in self.trades if t.symbol == p["symbol"] and str(t.order_id) == p["orderId"]]

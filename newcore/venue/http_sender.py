@@ -29,9 +29,14 @@ _PATHS = frozenset({
     '/fapi/v1/openAlgoOrders',
     '/fapi/v1/openOrders',
     '/fapi/v1/order',
+    '/fapi/v1/rateLimit/order',
     '/fapi/v1/userTrades',
+    '/fapi/v2/balance',
     '/fapi/v2/positionRisk',
 })
+# The only unsigned route: public exchange rules (symbol filters and rate limits).  It must be a GET with an empty
+# query and no API-key header, so no credential ever travels with it.
+_PUBLIC_PATHS = frozenset({'/fapi/v1/exchangeInfo'})
 _QUERY_KEY = re.compile(r'^[A-Za-z][A-Za-z0-9]*$')
 _QUERY_VALUE = re.compile(r'^[A-Za-z0-9._~+%\-]*$')
 _API_KEY = re.compile(r'^[A-Za-z0-9_-]{1,256}$')
@@ -53,7 +58,7 @@ def _remaining(deadline: float) -> float:
     return remaining
 
 
-def _validate(request: HttpRequest) -> tuple[str, str]:
+def _validate(request: HttpRequest) -> tuple[str, str | None]:
     if not isinstance(request, HttpRequest):
         raise ValueError('invalid testnet HTTP request')
     if request.method not in _METHODS:
@@ -70,7 +75,13 @@ def _validate(request: HttpRequest) -> tuple[str, str]:
         raise ValueError('invalid testnet HTTP request')
     if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
         raise ValueError('invalid testnet HTTP request')
-    if parts.path not in _PATHS or request.url != TESTNET_BASE_URL + parts.path:
+    if request.url != TESTNET_BASE_URL + parts.path:
+        raise ValueError('invalid testnet HTTP request')
+    if parts.path in _PUBLIC_PATHS:
+        if request.method != 'GET' or request.headers != () or request.query != '':
+            raise ValueError('invalid testnet HTTP request')
+        return parts.path, None
+    if parts.path not in _PATHS:
         raise ValueError('invalid testnet HTTP request')
 
     if type(request.headers) is not tuple or len(request.headers) != 1:
@@ -184,11 +195,12 @@ class TestnetHttpSender:
             tls_sock = context.wrap_socket(raw, server_hostname=_HOST)
             holder[0] = tls_sock
 
-            target = path + '?' + request.query
+            target = path + '?' + request.query if request.query else path
+            key_line = '' if api_key is None else f'X-MBX-APIKEY: {api_key}\r\n'
             wire = (
                 f'{request.method} {target} HTTP/1.1\r\n'
                 f'Host: {_HOST}\r\n'
-                f'X-MBX-APIKEY: {api_key}\r\n'
+                f'{key_line}'
                 'Accept: application/json\r\n'
                 'Content-Length: 0\r\n'
                 'Connection: close\r\n\r\n'

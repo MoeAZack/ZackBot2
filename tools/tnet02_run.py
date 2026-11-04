@@ -2,11 +2,18 @@
 
     python -m tools.tnet02_run plan  --expected-head SHA --account-file ACCOUNT.json --symbols BTCUSDT[,ETHUSDT]
     python -m tools.tnet02_run proof --expected-head SHA --account-file ACCOUNT.json --report REPORT.json --host-id tnet_<id>
-    python -m tools.tnet02_run run   ...   (refused in this build: real wiring lands in a later commit)
+    python -m tools.tnet02_run run   --expected-head SHA --account-file ACCOUNT.json --symbols BTCUSDT
+                                     --journal-dir DIR --out-dir DIR --host-id tnet_<id> [--execute]
 
 ``plan`` checks that HEAD equals --expected-head with a clean tracked tree, builds and validates the frozen
 twelve-case manifest, and prints it.  It sends nothing and reads no credential.  ``proof`` decodes an exact report
-file, refuses a report for another account or key digest, and prints the GateProof as canonical JSON.  Output never contains credentials, URLs or exception text.
+file, refuses a report for another account or key digest, and prints the GateProof as canonical JSON.
+
+``run`` reads the dedicated TESTNET key from ZACKBOT_TNET02_API_KEY / ZACKBOT_TNET02_API_SECRET on this machine and
+refuses before any network use unless the key's digest equals the confirmed account file.  Without ``--execute`` it
+is a read-only preflight (exchange rules, rate limits, account facts and the binding/isolation check) and sends no
+order.  With ``--execute`` it runs the frozen twelve-case suite on Binance USD-M TESTNET, writes the exact-build
+report once, and prints the GateProof.  Output never contains credentials, URLs or exception text.
 
 Exit codes: 0 ok / passed proof, 1 failed proof, 3 refused precondition.
 """
@@ -31,6 +38,8 @@ from newcore.testnet_harness import (MAX_LEVERAGE, MAX_ORDERS_PER_SCENARIO, MAX_
                                      REQUIRED_SCENARIOS, HarnessBinding, HarnessError, ScenarioCase, ScenarioKind,
                                      SuiteManifest)
 from newcore.tnet02.gate import GateError, gate_proof  # noqa: E402
+
+EXECUTE_ACK = "TESTNET"
 
 
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED = 0, 1, 3
@@ -133,6 +142,93 @@ def _proof(args) -> int:
     return EXIT_OK if proof.passed else EXIT_FAILED
 
 
+def _live_parts(args, account: Account):
+    """Credential check first (no network), then the read-only exchange reads and the wired adapter."""
+    import time
+
+    from newcore.tnet02.journal import FileJournalOpener
+    from newcore.tnet02.live import EnvCredentialSource, LiveAccountPort, LiveFiltersPort, SignedReader, \
+        read_limit_payloads
+    from newcore.tnet02.ports import PortError
+    from newcore.tnet02.wiring import build_adapter, key_digest
+
+    try:
+        credentials = EnvCredentialSource()
+    except PortError as error:
+        raise Refused(error.code.replace(".", "_")) from None
+    if key_digest(credentials.api_key()) != account.binding.key_digest:
+        raise Refused("credentials_digest_mismatch")
+    try:
+        journals = FileJournalOpener(args.journal_dir)
+    except Exception:
+        raise Refused("journal_dir_invalid") from None
+    from newcore.venue import TestnetHttpSender
+
+    sender = TestnetHttpSender()
+
+    def clock() -> int:
+        return time.time_ns() // 1_000_000
+
+    def monotonic() -> int:
+        return time.monotonic_ns() // 1_000_000
+
+    reader = SignedReader(sender=sender, credentials=credentials, clock=clock)
+    try:
+        exchange, limits, info, raw = read_limit_payloads(reader)
+        filters = LiveFiltersPort(info, raw)
+        wired = build_adapter(sender=sender, credentials=credentials, account_id=account.account_id,
+                              egress_id="egress-tnet02-cli", exchange_info=exchange, account_order_limits=limits,
+                              account=LiveAccountPort(reader, clock), filters=filters, journals=journals,
+                              clock=clock, monotonic=monotonic, sleeper=lambda ms: time.sleep(ms / 1000))
+    except PortError as error:
+        raise Refused(error.code.replace(".", "_")) from None
+    except Exception:
+        raise Refused("live_wiring_failed") from None
+    return wired, clock
+
+
+def _run(args) -> int:
+    from newcore.testnet_harness import run_suite
+    from newcore.tnet02.writer import ExactBuildReportWriter, WriterError
+
+    check_identity(args.expected_head)
+    account = load_account(Path(args.account_file))
+    if args.execute and args.execute != EXECUTE_ACK:
+        raise Refused("execute_ack")
+    try:
+        writer = ExactBuildReportWriter(args.out_dir, args.expected_head) if args.execute else None
+    except WriterError:
+        raise Refused("out_dir_invalid") from None
+    wired, clock = _live_parts(args, account)
+    spec = build_manifest(build_sha=args.expected_head, account=account, symbols=_symbols(args.symbols),
+                          started_ms=clock())
+    if not args.execute:
+        try:
+            evidence = wired.adapter.confirm_binding(spec.binding)
+        except Exception as error:
+            raise Refused("preflight_" + str(getattr(error, "code", "failed")).replace(".", "_")) from None
+        print(f"PREFLIGHT account={evidence.account_id} digest={evidence.binding_digest} "
+              f"environment={evidence.environment.value} settlement={evidence.settlement_asset} "
+              f"isolated={str(evidence.isolated).lower()}")
+        print("PREFLIGHT read-only: no order was sent")
+        return EXIT_OK if evidence.isolated else EXIT_REFUSED
+    try:
+        run_suite(spec, wired.adapter, writer)
+    except Exception:
+        raise Refused("suite_aborted") from None
+    data = writer.path.read_bytes()
+    try:
+        proof = gate_proof(data, expected_head=args.expected_head, host_id=args.host_id,
+                           expected_account_id=account.account_id,
+                           expected_binding_digest=account.binding.key_digest)
+    except GateError as error:
+        raise Refused(error.code.replace(".", "_")) from None
+    print(json.dumps({"kind": proof.kind.value, "head_sha": proof.head_sha, "host_id": proof.host_id,
+                      "passed": proof.passed, "evidence_sha256": proof.evidence_sha256,
+                      "report": writer.path.name}, sort_keys=True, separators=(",", ":")))
+    return EXIT_OK if proof.passed else EXIT_FAILED
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tnet02_run")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -146,14 +242,21 @@ def main(argv: list[str] | None = None) -> int:
     proof.add_argument("--account-file", required=True)
     proof.add_argument("--report", required=True)
     proof.add_argument("--host-id", required=True)
-    sub.add_parser("run")
+    run = sub.add_parser("run")
+    run.add_argument("--expected-head", required=True)
+    run.add_argument("--account-file", required=True)
+    run.add_argument("--symbols", required=True)
+    run.add_argument("--journal-dir", required=True)
+    run.add_argument("--out-dir", required=True)
+    run.add_argument("--host-id", required=True)
+    run.add_argument("--execute", default=None, help=f"type {EXECUTE_ACK} to place testnet orders")
     args = parser.parse_args(argv)
     try:
         if args.command == "plan":
             return _plan(args)
         if args.command == "proof":
             return _proof(args)
-        raise Refused("real_run_not_wired_in_this_build")
+        return _run(args)
     except Refused as refused:
         print(f"REFUSED: {refused.code}", file=sys.stderr)
         return EXIT_REFUSED

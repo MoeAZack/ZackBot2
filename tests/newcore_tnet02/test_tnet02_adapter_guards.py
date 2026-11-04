@@ -53,7 +53,7 @@ def _cleanup_context(context, started=T0 + 1):
 def test_binding_key_digest_mismatch_refused_by_adapter(tmp_path):
     r = rig(tmp_path)
     binding = manifest(acct=account(digest="0" * 16)).binding
-    assert _code(r.adapter.confirm_binding, binding) == "binding.key_digest"
+    assert _code(r.adapter.confirm_binding, binding) == "bind.key_digest"
     assert r.fake.requests == []
 
 
@@ -66,7 +66,7 @@ def test_binding_non_testnet_environment_refused_by_adapter(tmp_path):
     for field in dataclasses.fields(HarnessBinding):
         object.__setattr__(forged, field.name, getattr(manifest().binding, field.name))
     object.__setattr__(forged, "account", mainnet)
-    assert _code(r.adapter.confirm_binding, forged) == "binding.environment"
+    assert _code(r.adapter.confirm_binding, forged) == "bind.environment"
     assert r.fake.requests == []
 
 
@@ -84,7 +84,7 @@ def test_binding_account_mode_mismatch_refused_by_adapter(tmp_path, hostile):
         binding = HarnessBinding(dataclasses.replace(acct, binding=dataclasses.replace(acct.binding,
                                                                                        settlement_asset="USDC")),
                                  True, binding.symbols)
-    assert _code(r.adapter.confirm_binding, binding) == "binding.account_mode"
+    assert _code(r.adapter.confirm_binding, binding) == "bind.account_mode"
     assert _posts(r) == []
 
 

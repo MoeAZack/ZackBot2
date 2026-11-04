@@ -84,9 +84,9 @@ class HarnessConfig:
             if type(value) is not Decimal or not value.is_finite() or not ZERO < value < Decimal("0.5"):
                 _hold(f"config.{name}")
         if type(self.notional_buffer) is not Decimal or not ONE <= self.notional_buffer <= Decimal("1.2"):
-            _hold("config.notional_buffer")
+            _hold("cfg.notional_buffer")
         if self.trigger_offset >= self.protective_offset:
-            _hold("config.offsets")
+            _hold("cfg.offsets")
         for name, low, high in (("poll_ms", 1, 60_000), ("settle_polls", 1, 120), ("work_timeout_ms", 1, 60_000),
                                 ("rate_retry_after_ms", 1, 60_000), ("max_snapshot_age_s", 1, 300),
                                 ("trigger_wait_ms", 1, 9 * 60 * 1000)):
@@ -420,7 +420,7 @@ class RealTestnetAdapter:
         result = self._run(Action.PROTECT, Operation.SUBMIT_STOP, payload)
         if not self._dispatched(case, result):
             self._set(case, order, IntentState.NOT_SENT)
-            _hold("protect.refused_before_send")
+            _hold("stop.refused_before_send")
         if result.state is WorkState.COMPLETED:
             self._absorb(case, order, result.value)
         elif order.state is not IntentState.UNKNOWN:
@@ -434,7 +434,7 @@ class RealTestnetAdapter:
             outcome = self._query(case, order, Action.PROTECT)
             if outcome is not None and outcome.kind not in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
                 self._absorb(case, order, outcome)
-        _hold("protect.unconfirmed")
+        _hold("stop.unconfirmed")
 
     def _cancel(self, case: _Case, order: _Order, action: Action = Action.PROTECT) -> None:
         if order.state in _TERMINAL:
@@ -549,7 +549,7 @@ class RealTestnetAdapter:
         now = self._now()
         account = self._account
         if account is None:
-            _hold("binding.unconfirmed")
+            _hold("bind.unconfirmed")
         rec_positions = tuple(RecPosition(s, side, qty) for (s, side), qty in sorted(positions.items(),
                                                                                        key=lambda x: (x[0][0], x[0][1].value)))
         rec_orders = []
@@ -635,20 +635,20 @@ class RealTestnetAdapter:
     # ------------------------------------------------------------------------------------------------ binding
     def confirm_binding(self, expected: HarnessBinding) -> BindingEvidence:
         if type(expected) is not HarnessBinding:
-            _hold("binding.expected")
+            _hold("bind.expected")
         account = expected.account
         if account.binding.environment is not Environment.TESTNET:
-            _hold("binding.environment")
+            _hold("bind.environment")
         if self._digest != account.binding.key_digest:
-            _hold("binding.key_digest")
+            _hold("bind.key_digest")
         self._account, self._symbols = account, tuple(expected.symbols)
         positions = self._read_positions(None)
         classic_algo = self._venue.open_orders(None)
         if classic_algo.kind is not ReadKind.OK:
-            _hold("binding.open_orders")
+            _hold("bind.open_orders")
         facts = self._facts(self._symbols)
         if facts.hedge_mode != account.hedge_mode or facts.settlement_asset != account.binding.settlement_asset:
-            _hold("binding.account_mode")
+            _hold("bind.account_mode")
         isolated = not positions and not classic_algo.value
         return BindingEvidence(account.account_id, self._digest, None, account.binding.venue, Environment.TESTNET,
                                facts.settlement_asset, isolated, self._now())
@@ -721,7 +721,7 @@ class RealTestnetAdapter:
         order = self._market(case, Purpose.ENTRY, decision.quantity, Action.ENTER)
         flags["entry"] = order.state is IntentState.FILLED and case.position == decision.quantity
         if not flags["entry"]:
-            _hold("entry.unconfirmed")
+            _hold("open.unconfirmed")
         stop_order = self._stop(case, case.position, stop)
         flags["protection"] = True
         return order.avg_price, stop, stop_order
@@ -865,7 +865,7 @@ class RealTestnetAdapter:
         flags["entry"] = (order.state is IntentState.FILLED and len(submits) == 1
                           and case.orders_placed == 1 and case.position == decision.quantity)
         if not flags["entry"]:
-            _hold("entry.unconfirmed")
+            _hold("open.unconfirmed")
         self._stop(case, case.position, stop)
         flags["protection"] = True
         self._finish_truth(case, flags)
