@@ -4734,6 +4734,12 @@ def _starc_bands(high,low,close,ma_length=6,atr_length=15,multiplier=2.0):
 def sig_starc_band_breakout_long_1h(d,p,ctx):
  mid,upper,_=_starc_bands(d.h,d.l,d.c,p['ma_length'],p['atr_length'],p['multiplier']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['starc_band_breakout_long_1h']=dict(name='[RESEARCH] STARC Band breakout long 1h',style='stoller_average_range_channel',fn=sig_starc_band_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(STARC1H),desc='C164 conventional STARC(6,15,2) upper-band breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+ACCEL1H=dict(length=20,factor=4.0,cost_multiple=5.0)
+def _acceleration_bands(high,low,close,length=20,factor=4.0):
+ n=int(length);h=high.astype(float);l=low.astype(float);c=close.astype(float);width=float(factor)*(h-l)/(h+l).replace(0.0,np.nan);upper=(h*(1.0+width)).rolling(n,min_periods=n).mean();lower=(l*(1.0-width)).rolling(n,min_periods=n).mean();mid=c.rolling(n,min_periods=n).mean();return mid,upper,lower
+def sig_acceleration_band_breakout_long_1h(d,p,ctx):
+ mid,upper,_=_acceleration_bands(d.h,d.l,d.c,p['length'],p['factor']);up=(d.c>upper)&(d.c.shift()<=upper.shift());cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
+STRATEGIES['acceleration_band_breakout_long_1h']=dict(name='[RESEARCH] Acceleration Band breakout long 1h',style='headley_acceleration_bands',fn=sig_acceleration_band_breakout_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(ACCEL1H),desc='C165 conventional Headley Acceleration Bands(20,4) upper-band breakout above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
