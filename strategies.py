@@ -4776,6 +4776,12 @@ def _polarized_fractal_efficiency(close,length=10,smoothing=5):
 def sig_pfe_trend_long_1h(d,p,ctx):
  x=_polarized_fractal_efficiency(d.c,p['length'],p['smoothing']);up=(x>0)&(x.shift()<=0);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=x<=0,sx=never)
 STRATEGIES['pfe_trend_long_1h']=dict(name='[RESEARCH] Polarized Fractal Efficiency long 1h',style='polarized_fractal_efficiency',fn=sig_pfe_trend_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(PFE1H),desc='C171 conventional smoothed PFE(10,5) positive crossover above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+GMMA1H=dict(short_periods=(3,5,8,10,12,15),long_periods=(30,35,40,45,50,60),cost_multiple=5.0)
+def _gmma_ribbons(close,short_periods=(3,5,8,10,12,15),long_periods=(30,35,40,45,50,60)):
+ c=close.astype(float);short=pd.concat([c.ewm(span=int(n),adjust=False,min_periods=int(n)).mean() for n in short_periods],axis=1);long=pd.concat([c.ewm(span=int(n),adjust=False,min_periods=int(n)).mean() for n in long_periods],axis=1);return short.min(axis=1,skipna=False),long.max(axis=1,skipna=False)
+def sig_gmma_ribbon_long_1h(d,p,ctx):
+ short_min,long_max=_gmma_ribbons(d.c,p['short_periods'],p['long_periods']);aligned=short_min>long_max;up=aligned&~aligned.shift(fill_value=False);cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=up&(d.c>d.e200)&cost,se=never,lx=~aligned,sx=never)
+STRATEGIES['gmma_ribbon_long_1h']=dict(name='[RESEARCH] GMMA ribbon long 1h',style='guppy_multiple_moving_average',fn=sig_gmma_ribbon_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(GMMA1H),desc='C172 canonical Guppy short EMA ribbon fully above long EMA ribbon and EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
