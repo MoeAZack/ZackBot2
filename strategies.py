@@ -4953,6 +4953,17 @@ def sig_rising_three_methods_long_1h(d,p,ctx):
  pattern=_rising_three_methods(d.o,d.h,d.l,d.c,p['body_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=pattern&(d.c>d.e200)&cost,se=never,lx=d.c<=mid,sx=never)
 STRATEGIES['rising_three_methods_long_1h']=dict(name='[RESEARCH] Rising Three Methods long 1h',style='rising_three_methods_candlestick',fn=sig_rising_three_methods_long_1h,sides='long',tf='1h',research_only=True,reentry_lock=True,params=dict(RISING3M1H),desc='C195 conventional five-candle contained-pullback continuation above EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
 
+FALLING3M1H=dict(body_fraction=.60,exit_length=10,cost_multiple=5.)
+def _falling_three_methods(open_,high,low,close,body_fraction=.60):
+ o=open_.astype(float);h=high.astype(float);l=low.astype(float);c=close.astype(float);o0=o.shift(4);h0=h.shift(4);l0=l.shift(4);c0=c.shift(4)
+ first=(o0>c0)&((o0-c0)>=body_fraction*(h0-l0));inner=True
+ for k in (3,2,1):inner=inner&(c.shift(k)>o.shift(k))&(h.shift(k)<=h0)&(l.shift(k)>=l0)
+ last=(o>c)&((o-c)>=body_fraction*(h-l))&(c<c0)
+ return first&inner&last
+def sig_falling_three_methods_short_1h(d,p,ctx):
+ pattern=_falling_three_methods(d.o,d.h,d.l,d.c,p['body_fraction']);mid=d.c.astype(float).rolling(int(p['exit_length']),min_periods=int(p['exit_length'])).mean();cost=2*d.atr/d.c>=p['cost_multiple']*2*(.0005+.0002);never=d.c<-1;return dict(le=never,se=pattern&(d.c<d.e200)&cost,lx=never,sx=d.c>=mid)
+STRATEGIES['falling_three_methods_short_1h']=dict(name='[RESEARCH] Falling Three Methods short 1h',style='falling_three_methods_candlestick',fn=sig_falling_three_methods_short_1h,sides='short',tf='1h',research_only=True,reentry_lock=True,params=dict(FALLING3M1H),desc='C196 conventional five-candle contained-rally continuation below EMA200.',mgmt=dict(stop_atr=2.,tp_r=2.,max_bars=24))
+
 
 # Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
 FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
