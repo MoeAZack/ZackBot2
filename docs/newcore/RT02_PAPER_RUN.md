@@ -63,6 +63,37 @@ Use `tools/newcore_release.py --root <dir>`. On Windows, `newcore_paper.bat <com
 | `rollback` | Re-verifies the previous release, swaps current and previous, and restarts if a run was live. |
 | `status` | Shows the pointer, whether a run is live, and its last status line. |
 
+## Testnet run (`tools/newcore_testnet_run.py`)
+
+The launcher needs TNET-02 (PR #294, which stacks on #291). It lives outside `newcore/runtime`, because the runtime
+package may not import `newcore.tnet02` or the HTTP sender. Each run covers one dedicated testnet account.
+
+1. **Account file.** Make the TNET-02 account file once, with TNET-02's tool. You type `BIND <account_id>
+   <key_digest>`. The file never holds keys.
+2. **`init`.** Run `python tools/newcore_testnet_run.py init --config <testnet cfg> --account-file <file>`. It
+   journals the file's CONFIRMED testnet binding into the account's journal. A second run with the same binding does
+   nothing; a run with a different binding is refused.
+3. **Keys.** Set `ZACKBOT_TNET02_API_KEY` and `ZACKBOT_TNET02_API_SECRET` on your PC. They are the dedicated testnet
+   key and nothing else.
+4. **`run`.** Run `python tools/newcore_testnet_run.py run --config <cfg> --account-file <file> --symbols BTCUSDT`.
+   It does these steps in order:
+   - builds the venue (`make_testnet_venue` over `TestnetHttpSender`);
+   - refuses keys whose digest is not the journaled binding, before sending anything;
+   - pins the key to its origin;
+   - reads the NC-04 limit payloads;
+   - drives the same runtime as the PAPER run.
+
+It refuses:
+- any live or mainnet switch variable;
+- a config that is not testnet;
+- more than one account;
+- `entries_enabled` without an entries factory (Python API);
+- more than 8 symbols.
+
+Tests: `tests/newcore_runtime/test_rt02_testnet_run.py` runs against a scripted testnet sender, with no network and
+throwaway keys. With #294 merged in a scratch worktree, all 14 pass. On this branch alone, the 9 that need TNET-02
+are skipped and say so.
+
 ## Tests (non-official, sandbox)
 
 - `tests/newcore_runtime/test_rt02_paper_run.py`:
