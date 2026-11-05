@@ -621,8 +621,7 @@ def test_slot_from_dict_exact_fields():
 
 # ---------------------------------------------------------------------------------------------------- presets
 def test_preset_caps_never_exceed_dd_policy_and_unavailable_keys_are_reported():
-    caps = {'c24_rotation_long': D('15') / D('18.60'), 'c213_evening_star_short': D('15') / D('32.369926'),
-            'c164_starc_long': D('15') / D('18.784330'), 'c101_kalman_long': D('1')}
+    caps = {'c101_kalman_long': D('1')}
     from newcore_strategies.presets import TESTNET_SET_2026_11_05
     for row in TESTNET_SET_2026_11_05:
         if row['name'] in caps:
@@ -635,6 +634,16 @@ def test_preset_caps_never_exceed_dd_policy_and_unavailable_keys_are_reported():
         assert code == 'strategy_unavailable'
         key = next(r['key'] for r in TESTNET_SET_2026_11_05 if r['name'] == name)
         assert key not in ST.STRATEGIES
+
+
+def test_holdout_failures_are_not_in_the_preset_and_are_refused_if_passed():
+    from newcore_strategies.presets import HOLDOUT_FAILED_2026_11_05, TESTNET_SET_2026_11_05
+    assert HOLDOUT_FAILED_2026_11_05 == {'rotation_long_h2', 'evening_star_short_1h', 'starc_band_breakout_long_1h'}
+    assert not {r['key'] for r in TESTNET_SET_2026_11_05} & HOLDOUT_FAILED_2026_11_05
+    row = dict(key='rotation_long_h2', name='c24_rotation_long', version='v1', tf='4h', side='LONG',
+               symbols=['BTCUSDT', 'ETHUSDT'], risk_mult='0.806', strategy_id='c24', book_id='b')
+    slots, refused = build_slots((row,))
+    assert slots == () and refused == {'c24_rotation_long': 'holdout_failed'}
 
 
 def test_factory_returns_source_and_refusals():

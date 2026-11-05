@@ -59,20 +59,24 @@ source, refused = build_strategy_entries(feed=..., risk=..., wall_clock=..., bas
                                          leverage=Decimal('3'))
 ```
 
-`refused` lists preset slots that this checkout cannot build. On #296's base, C101/C164/C213 report
-`strategy_unavailable`: their signal functions live on research branches (`codex/kalman-innovation-c101`,
-`codex/starc-bands-c164`, `codex/evening-star-c213`) and are never approximated here.
+`refused` lists preset slots that this checkout cannot build. On #296's base, C101 reports `strategy_unavailable`: its
+signal function lives on the research branch `codex/kalman-innovation-c101` and is never approximated here. A row whose
+key failed the 5 Nov sealed holdout is refused as `holdout_failed` (see below).
 
 ## Preset `TESTNET_SET_2026_11_05`
 
 | Slot | Strategy | TF | Side | risk_mult | Basis |
 |---|---|---|---|---:|---|
-| c24_rotation_long | rotation_long_h2 | 4h | LONG | 0.806 | elevated DD 18.6R |
-| c213_evening_star_short | evening_star_short_1h | 1h | SHORT | 0.4634 | high DD 32.37R |
-| c164_starc_long | starc_band_breakout_long_1h | 1h | LONG | 0.7985 | elevated DD 18.78R |
-| c101_kalman_long | kalman_innovation_recovery_long_1h | 1h | LONG | 1.0 | standard DD 9.69R |
+| c101_kalman_long | kalman_innovation_recovery_long_1h | 1h | LONG | 1.0 | standard DD 9.69R; weak holdout PASS |
 | range4h_long/short | exp_range | 4h | L/S | 0.5 | forward PAPER evidence only |
 | vwaprev4h_long/short | exp_vwaprev | 4h | L/S | 0.5 | forward PAPER evidence only |
+
+Removed after the one-shot sealed holdout (5 Nov 2026, window 2026-09-28 to 2026-11-05, prereg sha256
+`d3f93330...`, issue #219): C24 `rotation_long_h2` (-15.70R, PF 0.05), C213 `evening_star_short_1h` (-6.05R, PF 0.90)
+and C164 `starc_band_breakout_long_1h` (-20.98R, PF 0.38). Under "losing after costs = no PAPER" they get no testnet
+slot; `HOLDOUT_FAILED_2026_11_05` makes `build_slots` refuse them as `holdout_failed` even if a row is passed in.
+C101 passed on 16 trades, but its development edge depends on signal exits filling at the trigger candle's close, so
+it is not a mainnet candidate until that fill is modeled at the next open.
 
 Universe: CORE-20 from `research_evidence/universe/static-top40-minhist365-contract-20261011.json`.
 
@@ -89,5 +93,5 @@ Universe: CORE-20 from `research_evidence/universe/static-top40-minhist365-contr
   must decide that a candle has closed from exchange time or the kline's closed flag, not the local clock alone.
 - Stop anchor: live uses the decision close +/- `stop_atr x ATR`, while the backtest anchors on the next-open fill. This
   makes a small difference in R sizing.
-- The 1h research keys (C101/C164/C213) are allow-listed but absent on this base, so their last-bar parity is untested
+- The 1h research keys (C101, and the failed C164/C213) are allow-listed but absent on this base, so their last-bar parity is untested
   here. Add them to the parity test when their branches merge.
