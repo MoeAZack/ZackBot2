@@ -302,5 +302,34 @@ def read_limit_payloads(reader: SignedReader) -> tuple[RawLimitPayload, RawLimit
     return exchange, account, info, raw
 
 
+# --------------------------------------------------------------------------------------------- venue factory
+def make_testnet_venue(*, origin: str, clock: Callable[[], int], environ: Mapping[str, str] | None = None,
+                       rate_observer=None, sender: Callable[[HttpRequest], HttpResponse] | None = None):
+    """One-call ``BinanceUsdMTestnetVenue`` for launchers outside ``newcore`` (e.g. the RT runtime's ``tools/`` CLI).
+
+    ``origin`` must be one exact approved testnet origin (take it from the confirmed account file); there is no
+    default and no fallback.  Credentials come only from ``ZACKBOT_TNET02_API_KEY`` / ``_SECRET`` in ``environ``
+    (default: the process environment).  ``sender`` defaults to the real one-shot ``TestnetHttpSender`` bound to the
+    same origin; an injected sender that declares a different origin is refused.  Nothing is sent here.
+    Returns ``(venue, key_digest)`` so the caller can check the digest against its confirmed binding before use.
+    """
+    from newcore.venue.binance_usdm_testnet import BinanceUsdMTestnetVenue
+
+    from .wiring import key_digest
+
+    if type(origin) is not str or origin not in TESTNET_ORIGINS:
+        _fail("venue.origin")
+    credentials = EnvCredentialSource(environ)
+    if sender is None:
+        from newcore.venue.http_sender import TestnetHttpSender
+
+        sender = TestnetHttpSender(origin)
+    if getattr(sender, "origin", origin) != origin:
+        _fail("venue.origin_mismatch")
+    venue = BinanceUsdMTestnetVenue(environment="testnet", base_url=origin, sender=sender, credentials=credentials,
+                                    clock=clock, rate_observer=rate_observer)
+    return venue, key_digest(credentials.api_key())
+
+
 __all__ = ["API_KEY_ENV", "API_SECRET_ENV", "EnvCredentialSource", "LiveAccountPort", "LiveError", "LiveFiltersPort",
-           "SignedReader", "read_limit_payloads"]
+           "SignedReader", "make_testnet_venue", "read_limit_payloads"]
