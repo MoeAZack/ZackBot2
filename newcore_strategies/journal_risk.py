@@ -1,9 +1,10 @@
 """STRAT-01 risk context for PAPER runs, built from the account's own NC-02 journal (read-only).
 
-``JournalRiskContext`` implements ``RiskContextProvider``.  For every call it reads the journal **without the writer
-lock** (the runtime holds it): the store's read-only recovery phase verifies every segment and record, and a journal
-that is missing, damaged, of an unknown format or mid-write gives no context (fail closed; the strategy source counts
-``risk_context_missing`` and re-offers the key later).  It never seals, repairs or locks anything.
+``JournalRiskContext`` implements ``RiskContextProvider``.  It reads the runtime's own live journal through the
+read-only ``JournalView`` that ``paper_run`` hands an entries factory as ``journal`` (``read``/``state``/
+``last_sequence`` only; no append, no close).  The cycle hook calls ``candidates`` on the account's runner thread,
+which is also the journal's writer, so every read is consistent without a lock.  No view (before boot, or a factory
+called without one) gives no context: fail closed, and the strategy source re-offers the key later.
 
 From the journal it takes:
 
@@ -40,9 +41,6 @@ from newcore.domain.events import DecisionRecorded, IntentRecorded, ResultObserv
 from newcore.domain.account import Environment as BindingEnvironment
 from newcore.ports.keys import strategy_instance
 from newcore.runtime.projection import JournalProjection
-from newcore.store import ReadOnlyJournal
-from newcore.store.fs import RealFs
-from newcore.store.recovery import _Out, _read_only_safe
 
 from newcore_strategies.entry_source import RiskContext, StrategySlot
 
@@ -152,20 +150,9 @@ class PaperPolicy:
 
 
 # ---------------------------------------------------------------------------------------------------- journal
-def read_journal(account_dir: str, account_id: str, aggregate_id: str, *, fs=None) -> ReadOnlyJournal | None:
-    """The store's read-only recovery phase: verifies the segments, never takes the writer lock, never writes.
-    None for any verdict other than a clean read (missing, damaged, unknown format, torn tail mid-write)."""
-    try:
-        plan = _read_only_safe(fs or RealFs(), account_dir, account_id, aggregate_id)
-    except _Out:
-        return None
-    if (plan.active_scan is not None and plan.active_scan.tail_offset is not None) or plan.voids:
-        return None                                     # mid-write or interrupted: read again next cycle
-    return ReadOnlyJournal(plan.folder, 'strat01 risk context reader')
-
-
 class JournalRiskContext:
-    """``RiskContextProvider`` for one PAPER account.  ``journal_reader()`` returns a read-only journal or None;
+    """``RiskContextProvider`` for one PAPER account.  ``journal_reader()`` returns the runtime's read-only live
+    ``JournalView`` (``paper_run`` passes it to the entries factory as ``journal``) or None before boot;
     ``marks(symbol)`` the current mark (Decimal) or raises."""
 
     def __init__(self, *, account_id: str, journal_reader: Callable[[], object], marks: Callable[[str], Decimal],
@@ -296,5 +283,4 @@ class JournalRiskContext:
         return RiskContext(account=account, portfolio=portfolio, policy=self._policy, filters=filters)
 
 
-__all__ = ['JournalRiskContext', 'PaperPolicy', 'RiskSetupError', 'filters_from_exchange_info', 'load_exchange_info',
-           'read_journal']
+__all__ = ['JournalRiskContext', 'PaperPolicy', 'RiskSetupError', 'filters_from_exchange_info', 'load_exchange_info']

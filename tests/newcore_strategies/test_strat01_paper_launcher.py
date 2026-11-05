@@ -24,7 +24,7 @@ from newcore.runtime.config import config_from_mapping  # noqa: E402
 from newcore.runtime.paper_run import BOOK_FILE, init_paper_account  # noqa: E402
 from newcore.store import recover_journal  # noqa: E402
 from newcore_strategies.journal_risk import (JournalRiskContext, PaperPolicy, RiskSetupError,  # noqa: E402
-                                             filters_from_exchange_info, load_exchange_info, read_journal)
+                                             filters_from_exchange_info, load_exchange_info)
 from newcore_strategies.presets import TESTNET_SET_2026_11_05, build_slots  # noqa: E402
 
 H4 = 14_400_000
@@ -33,6 +33,25 @@ SIGNAL_BAR = 4497                                  # exp_range: NEAR long and WL
 SYMBOLS = ('BTCUSDT', 'ETHUSDT', 'ZECUSDT', 'SOLUSDT', 'XRPUSDT', 'NEARUSDT', 'WLDUSDT', 'DOGEUSDT')
 INFO = load_exchange_info(L.DEFAULT_EXCHANGE_INFO)
 A1 = 'acct_' + f'{1:032x}'
+_OPEN = {}
+
+
+@pytest.fixture(autouse=True)
+def _close_writers():
+    yield
+    while _OPEN:
+        _OPEN.popitem()[1].close()
+
+
+def read_journal(account_dir, account_id, aggregate_id):
+    """What paper_run hands a factory: a read-only JournalView over the (single) writer journal."""
+    from newcore.runtime.paper_run import JournalView
+    if account_dir not in _OPEN:
+        j = recover_journal(account_dir, account_id, aggregate_id).journal
+        if j is None:
+            return None
+        _OPEN[account_dir] = j
+    return JournalView(_OPEN[account_dir])
 
 
 class Clock:
@@ -209,29 +228,27 @@ def test_risk_context_refuses_a_non_paper_binding(tmp_path, monkeypatch):
     assert risk.risk_context(A1, slots[0], 'BTCUSDT') is None and risk.reasons['binding_not_paper'] == 1
 
 
-def test_read_journal_does_not_take_or_need_the_writer_lock(tmp_path):
+def test_a_factory_without_the_live_journal_offers_nothing(tmp_path):
     s = spec(tmp_path)
     init_paper_account(s, wall_ms=WALL0, event_n=7)
-    writer = recover_journal(s.account_dir, s.account_id, s.aggregate_id).journal     # the runtime's writer lock
-    try:
-        assert not getattr(writer, 'readonly', False)
-        view = read_journal(s.account_dir, s.account_id, s.aggregate_id)
-        assert view is not None and view.readonly and view.last_sequence() == 1
-    finally:
-        writer.close()
-    again = recover_journal(s.account_dir, s.account_id, s.aggregate_id).journal       # lock was never taken by us
-    assert again is not None and not getattr(again, 'readonly', False)
-    again.close()
+    cdir, marks, _ = candles(tmp_path)
+    sources = []
+    factory, slots = L.make_factory(marks_path=marks, candle_dir=cdir, equity=D('10000'), exchange_info=INFO,
+                                    base_risk_fraction=D('0.005'), leverage=D('3'), symbols=SYMBOLS, sources=sources)
+    factory(s, wall_clock=lambda: WALL0)                                    # no journal keyword
+    factory(s, wall_clock=lambda: WALL0, journal=lambda: None)              # before boot
+    for row in sources:
+        assert row['risk'].risk_context(A1, slots[0], 'BTCUSDT') is None
+        assert row['risk'].reasons['journal_unreadable'] == 1
+    import inspect
+    assert 'journal' in inspect.signature(factory).parameters               # paper_run passes the live view
 
 
-def test_read_journal_refuses_a_torn_tail(tmp_path):
+def test_the_view_has_no_write_handle(tmp_path):
     s = spec(tmp_path)
     init_paper_account(s, wall_ms=WALL0, event_n=7)
-    seg = sorted((tmp_path / 'a1').rglob('*.seg'))
-    assert seg, list((tmp_path / 'a1').rglob('*'))
-    with open(seg[-1], 'ab') as handle:
-        handle.write(b'\x01\x02\x03')                                  # a half-written record
-    assert read_journal(s.account_dir, s.account_id, s.aggregate_id) is None
+    view = read_journal(s.account_dir, s.account_id, s.aggregate_id)
+    assert not hasattr(view, 'append') and not hasattr(view, 'close') and view.last_sequence() == 1
 
 
 def test_unprotected_position_counts_its_whole_notional_as_risk(tmp_path):
@@ -383,8 +400,8 @@ class _Proxy:
         self._j, self._views, self._events = journal, tuple(views), tuple(events)
         self.account_id = journal.account_id
 
-    def read(self, after_sequence=0):
-        return tuple(self._j.read(after_sequence)) + self._events
+    def read(self):
+        return tuple(self._j.read()) + self._events
 
     def state(self):
         import dataclasses
@@ -542,7 +559,8 @@ def test_stale_marks_give_no_risk_context(tmp_path):
     factory, slots = L.make_factory(marks_path=marks, candle_dir=cdir, equity=D('10000'), exchange_info=INFO,
                                     base_risk_fraction=D('0.005'), leverage=D('3'), symbols=SYMBOLS,
                                     sources=sources, max_mark_age_s=300, now_s=lambda: now[0])
-    factory(s, wall_clock=lambda: WALL0 + 60_000)
+    factory(s, wall_clock=lambda: WALL0 + 60_000,
+            journal=lambda: read_journal(s.account_dir, s.account_id, s.aggregate_id))
     risk = sources[0]['risk']
     from newcore.domain import Side
     from newcore.reconciliation import LocalPosition

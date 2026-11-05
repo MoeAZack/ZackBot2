@@ -8,7 +8,7 @@ It composes, outside ``newcore/runtime`` (whose import boundary forbids strategy
 * ``newcore_strategies.build_strategy_entries`` (preset ``TESTNET_SET_2026_11_05``) over a ``CsvCandleFeed``, with every
   slot narrowed to ``--symbols`` (default CORE-20's first 8): the PAPER runtime marks and reconciles at most 8 symbols
   (``newcore.runtime.evidence.MAX_SYMBOLS``).  Cross-sectional keys cannot be narrowed and are refused;
-* a ``JournalRiskContext`` per account: the account's own journal read without the writer lock, the PAPER equity
+* a ``JournalRiskContext`` per account: the runtime's live read-only ``JournalView`` (the ``journal`` keyword), the PAPER equity
   given here, filters from the pinned exchangeInfo snapshot and the ``PaperPolicy`` ceilings;
 
 and hands the factory to ``newcore.runtime.paper_run.run_paper(..., entries_factory=...)``.  The config must be a
@@ -167,12 +167,11 @@ def paper_rows(rows, symbols):
 
 def make_factory(*, marks_path, candle_dir, equity, exchange_info, base_risk_fraction, leverage, symbols,
                  rows=None, policy=None, sources=None, max_mark_age_s=MAX_MARK_AGE_S, now_s=time.time):
-    """``entries_factory(spec, *, wall_clock)`` for ``run_paper``.  Built sources are appended to ``sources``."""
+    """``entries_factory(spec, *, wall_clock, journal)`` for ``run_paper``.  Built sources are appended to ``sources``."""
     from newcore.runtime.paper_run import FileMarks
     from newcore_strategies import CsvCandleFeed, build_strategy_entries
     from newcore_strategies.entry_source import StrategyConfigError
-    from newcore_strategies.journal_risk import (JournalRiskContext, PaperPolicy, filters_from_exchange_info,
-                                                 read_journal)
+    from newcore_strategies.journal_risk import JournalRiskContext, PaperPolicy, filters_from_exchange_info
     from newcore_strategies.presets import TESTNET_SET_2026_11_05, build_slots
     rows = paper_rows(TESTNET_SET_2026_11_05 if rows is None else rows, symbols)
     policy = PaperPolicy() if policy is None else policy
@@ -185,7 +184,10 @@ def make_factory(*, marks_path, candle_dir, equity, exchange_info, base_risk_fra
     if missing:
         raise StrategyConfigError('filters_missing:' + ','.join(missing))
 
-    def factory(spec, *, wall_clock):
+    def factory(spec, *, wall_clock, journal=None):
+        # ``journal``: paper_run's callable returning the live read-only JournalView (None before boot).  Without it
+        # the risk context has no journal and offers nothing.
+        journal = journal if callable(journal) else (lambda: None)
         marks = FileMarks(marks_path)
 
         def mark(symbol):
@@ -198,7 +200,7 @@ def make_factory(*, marks_path, candle_dir, equity, exchange_info, base_risk_fra
         risk = JournalRiskContext(
             account_id=spec.account_id, marks=mark, equity=equity, filters=filters, slots=slots, policy=policy,
             leverage=leverage,
-            journal_reader=lambda: read_journal(spec.account_dir, spec.account_id, spec.aggregate_id))
+            journal_reader=journal)
         source, refused = build_strategy_entries(feed=CsvCandleFeed(candle_dir), risk=risk, wall_clock=wall_clock,
                                                  base_risk_fraction=base_risk_fraction, leverage=leverage,
                                                  rows=rows)

@@ -82,8 +82,9 @@ python tools/strat01_paper_run.py --config cfg.json --marks marks.json --candles
 
 `newcore_strategies.journal_risk.JournalRiskContext` is the `RiskContextProvider`:
 
-- It reads the account's journal through the store's read-only verification phase, without the writer lock. A
-  missing, damaged or mid-write journal gives no context.
+- It reads the runtime's own live journal through the read-only `JournalView` that `run_paper` passes the factory
+  as `journal` (#296). Reads happen on the account's runner thread, which is also the writer, so no lock is needed.
+  Before boot, or without the view, there is no context.
 - The binding must be a confirmed SIM binding.
 - Exposures come from booked positions at the current mark. Risk uses the worst WORKING stop when stops cover the whole
   quantity. A stop that is unsent, unacknowledged, being cancelled, unreadable or past the mark counts as no stop,
