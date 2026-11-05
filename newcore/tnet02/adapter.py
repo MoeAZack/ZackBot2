@@ -451,6 +451,8 @@ class RealTestnetAdapter:
                 self._absorb(case, order, outcome)
             elif outcome is not None and outcome.kind is OutcomeKind.KNOWN and outcome.detail == "algo_triggered":
                 self._absorb_trigger(case, order, outcome)
+                if order.state not in _TERMINAL:
+                    self._sleep(self._cfg.poll_ms)  # child order still settling: wait, never spin the poll budget
             else:
                 self._sleep(self._cfg.poll_ms)
         if order.state not in _TERMINAL:
@@ -470,7 +472,12 @@ class RealTestnetAdapter:
             return
         notional = sum((f.qty * f.price for f in fills), ZERO)
         self._apply_fill(case, order, executed, notional / executed)
-        self._set(case, order, IntentState.FILLED if executed == order.requested_qty else IntentState.CANCELLED)
+        if executed == order.requested_qty:
+            self._set(case, order, IntentState.FILLED)
+        elif case.position == 0:
+            # the child closed everything that was open; the unexecuted remainder had nothing left to reduce
+            self._set(case, order, IntentState.CANCELLED)
+        # otherwise the child is still filling: the stop stays WORKING and callers poll again or HOLD
 
     def _working_stops(self, case: _Case) -> list[_Order]:
         return [o for o in case.orders if o.purpose is Purpose.PROTECT and o.state is IntentState.WORKING]
@@ -1037,7 +1044,7 @@ class RealTestnetAdapter:
             evidence = CleanupEvidence(context.token, context.started_ms, None, max(at, context.started_ms), None,
                                        FinalTruth.FLAT, True, case.orders_placed - before)
             flat = True
-        except AdapterError:
+        except Exception:  # any failure, coded or not, ends the cleanup in HOLD with the memo recorded
             self._halted = True
             at = self._now()
             evidence = CleanupEvidence(context.token, context.started_ms, None, None, max(at, context.started_ms),

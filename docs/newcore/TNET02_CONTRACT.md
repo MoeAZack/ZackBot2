@@ -117,6 +117,15 @@ Files actually added: `ports.py`, `faults.py`, `journal.py`, `adapter.py`, `wiri
 * Account reads in `LiveAccountPort` go straight through the sender, not the NC-04 budget (a handful of GETs per case). A real 429/418 on them fails closed as `read.account_facts`.
 * Adapter HOLD codes were renamed out of the NC-01 reason namespaces (`bind.*`, `cfg.*`, `stop.*`, `open.*`) so the reason-code literal scan stays clean.
 
+## 11. Commit 4: real-exchange hardening (5 Nov 2026)
+
+* A triggered stop whose child order has only partly filled stays WORKING until the child finishes (or the position is gone), instead of being marked CANCELLED early. Callers poll again or HOLD.
+* `_cancel` now waits `poll_ms` between polls while a triggered child is still settling, so it does not spend the whole poll budget at once and HOLD spuriously on a real exchange.
+* Cleanup turns *any* exception, not only coded `AdapterError`s, into a recorded HOLD with the adapter halted, so the second call returns the same record and sends nothing.
+* New test: no general read reaches the exchange between a 429 and its `Retry-After`.
+* Python 3.12 (the owner PC's version) passes the tnet02, venue and testnet suites.
+* **Open question for the real run, testnet host.** Binance's current USD-M docs (General Info, "Testnet API Information") name `https://demo-fapi.binance.com` as the testnet REST base URL, and new test keys are issued through Futures Demo Trading. NEWCORE's venue (#291) and sender are bound only to `testnet.binancefuture.com`. The paper bot still trades there with an older key, but it is unconfirmed whether a new Demo Trading key works on that host. If it does not, the run needs `demo-fapi.binance.com` added as a second exact testnet origin in the #291 venue and the sender. That is Codex's file and has not been changed here.
+
 ## Deferred
 
 Replacement entrypoint, runtime/PAPER wiring, installer, UI, leverage *setting* (the run refuses instead when account leverage exceeds the case), live canaries and all mainnet activity.
