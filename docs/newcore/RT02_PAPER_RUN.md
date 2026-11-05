@@ -77,6 +77,9 @@ package may not import `newcore.tnet02` or the HTTP sender. Each run covers one 
    key and nothing else.
 4. **`run`.** Run `python tools/newcore_testnet_run.py run --config <cfg> --account-file <file> --symbols BTCUSDT`.
    It does these steps in order:
+   - opens the journal read-only and refuses unless the account file's binding is the journal's last CONFIRMED
+     binding (`binding_not_confirmed`, `account_file_not_the_journaled_binding`, `journal_locked`), before any
+     request;
    - builds the venue (`make_testnet_venue` over `TestnetHttpSender`);
    - refuses keys whose digest is not the journaled binding, before sending anything;
    - pins the key to its origin;
@@ -91,8 +94,14 @@ It refuses:
 - more than 8 symbols.
 
 Tests: `tests/newcore_runtime/test_rt02_testnet_run.py` runs against a scripted testnet sender, with no network and
-throwaway keys. With #294 merged in a scratch worktree, all 14 pass. On this branch alone, the 9 that need TNET-02
-are skipped and say so.
+throwaway keys. With #294 merged in a scratch worktree, all 17 pass (also under the CP1252 shim). On this branch
+alone, the ones that need TNET-02 are skipped and say so.
+
+Launcher review (separate agent, runnable repros): 3 confirmed findings, all fixed with regression tests `r1`-`r3`.
+F1 (High): the key digest was checked against the account file, not the journal, so a swapped file could bind other
+keys. F2 (Medium): signed limit reads were sent before the journaled binding was checked. F3 (Low): `init` crashed
+with a raw `JournalLocked` while a runtime held the journal. Mutation check of the four new guard lines: 4 of 4
+killed.
 
 ## Tests (non-official, sandbox)
 
@@ -113,14 +122,9 @@ are skipped and say so.
 
 ## Not done
 
-- **Testnet run.** The combined classic and algo open-order read is Codex's PR #291
-  (`codex/tnet02-real-adapter`), so this branch does not touch the adapter. After #291 lands, a testnet port builder
-  is still missing. It needs:
-  - the sender;
-  - credentials from the owner's machine (never from the repo);
-  - a typed-confirmation testnet binding.
-
-  Until that exists, `run` refuses a testnet config.
+- **Testnet run.** `python -m newcore.runtime run` still refuses a testnet config; use the launcher above. It works
+  once #291 (combined classic and algo open-order read) and #294 (TNET-02) are merged, and needs the owner's
+  testnet keys and account file on the PC.
 - **Entries in PAPER.** `run_paper(..., entries_factory=f)` accepts `f(spec, *, wall_clock) -> EntrySource` from a
   launcher outside `newcore/runtime`. An example is the strategy source in PR #297. Without a factory, `run` refuses
   `entries_enabled` (`entries_source_missing`). The CLI passes no factory.
