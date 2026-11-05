@@ -212,77 +212,11 @@ def test_reads_are_typed_and_unknown_is_never_empty():
     assert bad.kind is ReadKind.UNKNOWN and bad.value is None
 
 
-def classic_row(**over):
-    row = dict(symbol='BTCUSDT', clientOrderId=CID, orderId=123, positionSide='LONG', type='LIMIT', status='NEW',
-               origQty='0.01', executedQty='0', reduceOnly=False, closePosition=False, stopPrice='0')
-    row.update(over)
-    return row
-
-
-def algo_row(**over):
-    row = dict(symbol='BTCUSDT', clientAlgoId=ALGO_CID, algoId=9001, positionSide='LONG', orderType='STOP_MARKET',
-               algoStatus='NEW', quantity='0.01', reduceOnly=True, closePosition=False, triggerPrice='59000',
-               actualOrderId='')
-    row.update(over)
-    return row
-
-
-def test_combined_open_order_book_reads_both_books_for_one_symbol():
-    sender = Sender(response([classic_row()]), response([algo_row()]))
-    out = venue(sender).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.OK
-    assert [(r.ref.route, r.ref.client_id, r.exchange_order_id, r.order_type, r.reduce, r.stop_price)
-            for r in out.value] == [('classic', CID, '123', 'LIMIT', False, None),
-                                    ('algo', ALGO_CID, '9001', 'STOP_MARKET', True, D('59000'))]
-    paths = [r.url.split('testnet.binancefuture.com')[1] for r in sender.requests]
-    assert paths == ['/fapi/v1/openOrders', '/fapi/v1/openAlgoOrders']
-    assert all('symbol=BTCUSDT' in r.query for r in sender.requests)        # the weight-1 form only
-
-
-def test_combined_open_order_book_empty_is_a_trusted_empty():
-    out = venue(Sender(response([]), response([]))).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.OK and out.value == ()
-
-
-def test_no_symbol_open_orders_is_refused_without_a_request():
+def test_combined_open_order_book_fails_closed_without_partial_request():
     sender = Sender()
-    out = venue(sender).open_orders()
-    assert out.kind is ReadKind.UNKNOWN and out.value is None and out.detail == 'symbol_required'
-    assert sender.requests == []
-
-
-def test_a_failed_classic_read_never_returns_a_partial_book():
-    sender = Sender(HttpResponse(200, b'{'))
     out = venue(sender).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.UNKNOWN and out.value is None and len(sender.requests) == 1
-
-
-@pytest.mark.parametrize('second', [HttpResponse(200, b'{'), HttpResponse(503, b'{}'), TimeoutError()])
-def test_a_failed_algo_read_never_returns_a_partial_book(second):
-    out = venue(Sender(response([classic_row()]), second)).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.UNKNOWN and out.value is None
-
-
-def test_a_rejected_algo_read_is_rejected():
-    out = venue(Sender(response([]), response({'code': -1021, 'msg': 'x'}, 400))).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.REJECTED and out.error_code == -1021
-
-
-@pytest.mark.parametrize('classic,algo,detail', [
-    ([classic_row(symbol='ETHUSDT')], [], 'echo_mismatch'),
-    ([], [algo_row(symbol='ETHUSDT')], 'echo_mismatch'),
-    ([classic_row(positionSide='BOTH')], [], 'malformed'),
-    ([classic_row(executedQty='0.005', status='PARTIALLY_FILLED')], [], 'partially_filled'),
-    ([classic_row(reduceOnly='false')], [], 'malformed'),
-    ([classic_row(origQty=1)], [], 'malformed'),
-    ([classic_row(orderId=0)], [], 'malformed'),
-    ([], [algo_row(clientAlgoId=None)], 'malformed'),
-    ([], [algo_row(algoId='x')], 'malformed'),
-    ([classic_row(clientOrderId=ALGO_CID)], [algo_row()], 'duplicate_cid'),
-])
-def test_untrusted_open_order_records_fail_closed(classic, algo, detail):
-    out = venue(Sender(response(classic), response(algo))).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.UNKNOWN and out.value is None and out.detail == detail
+    assert out.kind is ReadKind.UNKNOWN and out.value is None and out.detail == 'split_route_read'
+    assert sender.requests == []
 
 
 def test_duplicate_fill_row_fails_closed():

@@ -157,8 +157,8 @@ The runtime prefers `load_journal(account_id, journal)` over `load`, because the
    `docs/newcore/RT02_PAPER_RUN.md`. Evidence reads open orders only for watched symbols, because NC-04 refuses a
    no-symbol read. An order on a symbol nobody configured or traded is therefore not seen, so run NEWCORE on a
    dedicated account.
-1. **Venue evidence over the testnet.** *Update:* the adapter now reads the combined classic and algo book for one
-   symbol, and the sender allows both paths. The original note follows.
+1. **Venue evidence over the testnet.** *Update:* Codex's PR #291 adds the combined classic and algo read. This
+   branch leaves the adapter to it. The original note follows.
    - `BinanceUsdMTestnetVenue.open_orders` returns UNKNOWN (`split_route_read`) at master, and the sender
      allow-list lacks `/fapi/v1/openOrders`.
    - A concrete `EvidencePort` can therefore prove nothing on the testnet until the classic and algo open-order

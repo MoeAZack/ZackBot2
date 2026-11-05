@@ -82,9 +82,9 @@ Use `tools/newcore_release.py --root <dir>`. On Windows, `newcore_paper.bat <com
 
 ## Not done
 
-- **Testnet run.** The testnet adapter now reads the combined open-order book: `/fapi/v1/openOrders` plus
-  `/fapi/v1/openAlgoOrders`, one symbol at a time. Both paths are on the sender allow-list. What is still missing is a
-  testnet port builder. It needs:
+- **Testnet run.** The combined classic and algo open-order read is Codex's PR #291
+  (`codex/tnet02-real-adapter`), so this branch does not touch the adapter. After #291 lands, a testnet port builder
+  is still missing. It needs:
   - the sender;
   - credentials from the owner's machine (never from the repo);
   - a typed-confirmation testnet binding.

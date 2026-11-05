@@ -26,8 +26,6 @@ _RESOLVER_WORKERS = 4
 _METHODS = frozenset({'GET', 'POST', 'DELETE'})
 _PATHS = frozenset({
     '/fapi/v1/algoOrder',
-    '/fapi/v1/openAlgoOrders',
-    '/fapi/v1/openOrders',
     '/fapi/v1/order',
     '/fapi/v1/userTrades',
     '/fapi/v2/positionRisk',
