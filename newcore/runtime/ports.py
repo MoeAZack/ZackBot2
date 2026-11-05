@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from newcore.account_context import AccountContext, VenueWork, WorkResult
+from newcore.domain import DecisionKey
 from newcore.management import ManagementEvaluation, ManagementPlan
 from newcore.reconciliation import DurableState, VenueSnapshot
 from newcore.risk import ApprovedDecision, RiskEvaluation
@@ -39,11 +40,25 @@ class ManagementSource(Protocol):
     def evaluations(self, account_id: str, now_mono: int) -> tuple[ManagementEvaluation, ...]: ...
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EntryCandidate:
+    """An NC-06 opening request with the strategy DecisionKey that names its signal (journal rule G4)."""
+    key: DecisionKey
+    evaluation: RiskEvaluation
+
+    def __post_init__(self):
+        if type(self.key) is not DecisionKey or type(self.evaluation) is not RiskEvaluation:
+            raise ValueError('entry_candidate_invalid')
+
+
 @runtime_checkable
 class EntrySource(Protocol):
-    """Opening requests for NC-06; consulted only while entries are enabled and every account is ready."""
+    """Opening requests for NC-06; consulted only while entries are enabled and every account is ready.
 
-    def candidates(self, account_id: str, now_mono: int) -> tuple[RiskEvaluation, ...]: ...
+    A bare ``RiskEvaluation`` carries no signal key, so a journaling sink refuses it; an ``EntryCandidate`` carries one.
+    """
+
+    def candidates(self, account_id: str, now_mono: int) -> tuple[RiskEvaluation | EntryCandidate, ...]: ...
 
 
 @runtime_checkable
@@ -56,7 +71,8 @@ class ActionSink(Protocol):
 
     def accept_management(self, account_id: str, plan: ManagementPlan) -> bool: ...
 
-    def accept_entry(self, account_id: str, decision: ApprovedDecision, evaluation: RiskEvaluation) -> bool: ...
+    def accept_entry(self, account_id: str, decision: ApprovedDecision, evaluation: RiskEvaluation,
+                     key: DecisionKey | None = None) -> bool: ...
 
 
 class RefusingActionSink:
@@ -65,7 +81,8 @@ class RefusingActionSink:
     def accept_management(self, account_id: str, plan: ManagementPlan) -> bool:
         return False
 
-    def accept_entry(self, account_id: str, decision: ApprovedDecision, evaluation: RiskEvaluation) -> bool:
+    def accept_entry(self, account_id: str, decision: ApprovedDecision, evaluation: RiskEvaluation,
+                     key: DecisionKey | None = None) -> bool:
         return False
 
 
@@ -99,5 +116,6 @@ class AccountPorts:
                 raise ValueError('runtime_port_invalid')
 
 
-__all__ = ['AccountPorts', 'ActionSink', 'DurableStateSource', 'EntrySource', 'EvidencePort', 'ManagementSource',
+__all__ = ['AccountPorts', 'ActionSink', 'DurableStateSource', 'EntryCandidate', 'EntrySource', 'EvidencePort',
+           'ManagementSource',
            'NoEntries', 'NoManagedLots', 'RefusingActionSink']

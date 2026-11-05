@@ -36,7 +36,8 @@ from newcore.observability import ObservationKind, trace_plan
 from newcore.reconciliation import (DurableState, PlannerConfig, PlanStatus, VenueSnapshot,
                                     plan_reconciliation)
 from newcore.runtime.config import AccountSpec, RuntimeConfig, RuntimeEnvironment
-from newcore.runtime.ports import AccountPorts
+from newcore.runtime.journaling import SinkBinding
+from newcore.runtime.ports import AccountPorts, EntryCandidate
 from newcore.scheduler import AccountBinding, HookOutcome, Scheduler, SchedulerSnapshot, SchedulerState
 from newcore.store import JournalLocked, Verdict, recover_journal
 
@@ -87,6 +88,12 @@ class HoldCode(enum.StrEnum):
     MANAGEMENT_UNROUTED = 'management_unrouted'
     SINK_ERROR = 'action_sink_error'
     BOOT_ERROR = 'boot_error'
+    # RT-02 journaling sink problems (all sticky: resolving them needs a restart and the reconcile path).
+    ORDER_UNRESOLVED = 'order_unresolved'
+    ORDER_JOURNAL_FAILED = 'order_journal_failed'
+    PROTECTION_FAILED = 'protection_failed'
+    SINK_UNBOUND = 'sink_unbound'
+    RECOVERED_LIVE_INTENTS = 'recovered_live_intents'
     HOOK_ERROR = 'hook_error'
 
 
@@ -194,6 +201,8 @@ class Runtime:
         self.config, self.boot_id = config, boot_id
         self._mono, self._wall, self._events = monotonic_clock, wall_clock, events
         self._accounts = {row.spec.account_id: row for row in accounts}
+        for row in accounts:
+            self._bind_sink(row)
         bindings = tuple(AccountBinding(account_id=row.spec.account_id, worker=row.ports.context,
                                         hooks=_Hooks(self, row), restore_proven=row.restore_proven)
                          for row in accounts)
@@ -259,6 +268,22 @@ class Runtime:
                                entries_enabled=self.config.entries_enabled, scheduler=scheduler,
                                accounts=tuple(rows), events=self._events.rows(),
                                events_dropped=self._events.dropped)
+
+    def _bind_sink(self, row: _Account) -> None:
+        """Hand a journaling sink its account's journal and queue, before any runner thread exists."""
+        bind = getattr(row.ports.actions, 'bind', None)
+        if not callable(bind) or row.journal is None:
+            return
+        account_id = row.spec.account_id
+        try:
+            bind(SinkBinding(account_id=account_id, aggregate_id=row.spec.aggregate_id, journal=row.journal,
+                             submit=lambda work: self._submit(account_id, work), result=row.ports.context.result,
+                             cancel=row.ports.context.cancel, wall_clock=self._wall,
+                             order_deadline_ms=self.config.evidence_deadline_ms), self._mono)
+        except Exception:
+            row.holds.add(HoldCode.SINK_UNBOUND)
+            row.proof_mono = None
+            self._events.record(account_id, 'boot', HoldCode.SINK_UNBOUND, 0)
 
     def _submit(self, account_id: str, work: VenueWork) -> None:
         self._scheduler.submit(account_id, work)
@@ -431,6 +456,11 @@ class _Hooks:
 
     def _guards(self, account_id: str, now_ms: int) -> HookOutcome:
         row, cfg = self._row, self._rt.config
+        poll = getattr(row.ports.actions, 'poll', None)
+        if callable(poll) and row.journal is not None:
+            # Results are journaled before anything else reads the account, even while it holds.
+            for code in poll(now_ms):
+                self._hold(HoldCode(code), now_ms, 'guards')
         if (row.ports.context.snapshot().reconcile_before_restart
                 or self._rt._scheduler_reconcile(account_id)):
             self._hold(HoldCode.WORKER_RECONCILE, now_ms, 'guards')
@@ -549,16 +579,22 @@ class _Hooks:
         except Exception:
             self._rt._events.record(account_id, 'cycle', 'entry_source_error', now_ms)
             return HookOutcome.failed()
-        if type(candidates) is not tuple or any(type(c) is not nc06.RiskEvaluation for c in candidates):
+        if type(candidates) is not tuple or any(type(c) not in (nc06.RiskEvaluation, EntryCandidate)
+                                                for c in candidates):
             self._rt._events.record(account_id, 'cycle', 'entry_source_invalid', now_ms)
             return HookOutcome.failed()
-        for evaluation in candidates:
+        for candidate in candidates:
+            keyed = type(candidate) is EntryCandidate
+            evaluation = candidate.evaluation if keyed else candidate
             decision = nc06.evaluate(evaluation)
             if type(decision) is not nc06.ApprovedDecision:
                 self._rt._events.record(account_id, 'cycle', 'entry_refused', now_ms)
                 continue
             try:
-                accepted = row.ports.actions.accept_entry(account_id, decision, evaluation)
+                if keyed:
+                    accepted = row.ports.actions.accept_entry(account_id, decision, evaluation, key=candidate.key)
+                else:
+                    accepted = row.ports.actions.accept_entry(account_id, decision, evaluation)
             except Exception:
                 accepted = False
             self._rt._events.record(account_id, 'cycle', 'entry_routed' if accepted is True else 'entry_unrouted',
