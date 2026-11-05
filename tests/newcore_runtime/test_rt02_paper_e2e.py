@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from rt01_fixtures import WALL0, World, account_record, account_view, acct, pf  # noqa: E402
+from rt01_fixtures import WALL0, World, account_record, account_view, acct, pf  # noqa: E402,F401
 from test_rt02_journaling import KEY, Keyed  # noqa: E402
 
 from newcore.domain import BindingChanged, ReasonCode, make_id  # noqa: E402
@@ -111,3 +111,35 @@ def test_paper_stop_fill_is_journaled_and_the_account_reconciles_flat(paper):
     journal = w.runtime._accounts[A].journal
     assert journal.state().intents == ()                           # every intent closed
     assert snap.scheduler.ready
+
+
+def test_paper_restart_with_a_saved_book_reconciles_protected(paper, tmp_path):
+    w, venue, sink, marks = paper()
+    w.boot()
+    w.settle(lambda s: s.scheduler.ready)
+    w.settle(lambda s: account_view(s, A).last_plan_status == 'protected_confirmed', advance_ms=5_000)
+    saved = venue.export_state()
+    w.shutdown()
+    w.runtime = None
+    # a second process: same journal on disk, the paper book restored from what the first run saved
+    w2 = World(tmp_path, 1, create=False, environment=RuntimeEnvironment.PAPER_SIM, entries_enabled=False)
+    w2.mono.value, w2.wall.value = w.mono() + 1_000, w.wall() + 1_000
+    venue2 = PaperVenue(clock=w2.wall, marks=marks)
+    venue2.load_state(saved)
+    w2.venues[A] = venue2
+    sink2 = JournalingActionSink()
+    w2.extra_ports[A] = {'state_source': JournalProjection(label='paper'),
+                         'evidence': VenueEvidence(symbols=('BTCUSDT',)), 'actions': sink2}
+    try:
+        rt = w2.boot()
+        assert account_view(rt.snapshot(), A).last_plan_status == 'protected_confirmed'
+        snap = w2.settle(lambda s: s.scheduler.ready, advance_ms=1_000)
+        assert account_view(snap, A).holds == () and sink2.snapshot().problems == ()
+        # the restored stop still protects: a crossing mark fills it and the account reconciles flat
+        marks.price = D('94')
+        assert venue2.tick()
+        w2.settle(lambda s: 'filled:stop' in sink2.snapshot().log, advance_ms=1_000)
+        w2.settle(lambda s: account_view(s, A).last_plan_status == 'flat_confirmed' and account_view(s, A).holds == (),
+                  advance_ms=1_000)
+    finally:
+        w2.shutdown()

@@ -82,6 +82,28 @@ The sink never assumes that work NC-04 expired was "not sent". SENT is already d
 - A result is stamped no earlier than its intent's creation time, so a wall clock that steps back never loses a
   fill. If an entry's result cannot be journaled, the sink reports `protection_failed`.
 
+## Resting-stop watch
+
+The runtime has no user-data stream, so the sink queries every WORKING stop once per order deadline. It does this on
+guard passes, through NC-04, and only while no uncertain problem is active.
+
+- **KNOWN `NEW`/`WORKING`:** the stop is still resting.
+- **KNOWN with detail `algo_triggered`:** this is what the testnet adapter answers for a triggered algo stop. The
+  answer names only the child market order. The sink then reads that child's fills (`FILLS`, at most
+  `TRIGGER_READS` = 5 rounds):
+  - fills on the stop's symbol and side that sum exactly to the stop quantity are journaled as FINAL `FILLED`, with
+    the child id and the fills' VWAP;
+  - fills on another symbol or side, over-filling, or no full fill after 5 reads mark the order unresolved and hold
+    the account.
+- **FINAL:** journaled, and the lot follows (`_after_final`).
+- **NOT_FOUND:** `order_unresolved`.
+- The result is stamped with the venue's observation time. It is never earlier than the intent and never later than
+  the wall clock.
+
+Venue evidence never reads fills by an algo stop's id, because `userTrades` uses a different id space. Between the
+venue fill and the sink's journal entry, REC-02 sees the position drop and holds for about one refresh. That hold is
+correct and clears once the fill is journaled.
+
 ## Entries
 
 An entry is accepted only when all of these hold:
@@ -131,6 +153,10 @@ The runtime prefers `load_journal(account_id, journal)` over `load`, because the
 
 ## Open items
 
+0. **PAPER run.** `VenueEvidence`, `PaperVenue`, `run`/`init-paper` and the release tool are in
+   `docs/newcore/RT02_PAPER_RUN.md`. Evidence reads open orders only for watched symbols, because NC-04 refuses a
+   no-symbol read. An order on a symbol nobody configured or traded is therefore not seen, so run NEWCORE on a
+   dedicated account.
 1. **Venue evidence over the testnet.**
    - `BinanceUsdMTestnetVenue.open_orders` returns UNKNOWN (`split_route_read`) at master, and the sender
      allow-list lacks `/fapi/v1/openOrders`.
@@ -146,6 +172,15 @@ The runtime prefers `load_journal(account_id, journal)` over `load`, because the
 - The survivor is `lot.quantity <= 0 or not plan.actions` in `accept_management`. It is equivalent: a zero lot
   already fails the quantity checks, and an empty plan fails the one-step rule.
 
+- **Second review (evidence, PAPER venue, stop watch at 67458e4):**
+  - three findings were confirmed and are fixed:
+    - a triggered algo stop was never journaled under the adapter's answers, and the PAPER venue hid it;
+    - the PAPER stop price was reported instead of the fill price;
+    - evidence read fills by an algo id;
+  - one finding is documented and not fixed: an open order on an unwatched symbol is not seen;
+  - one finding is accepted as a correct, transient hold: a brief hold after a stop fill;
+  - regression tests are in `test_rt02_review2_fixes.py`.
+
 ## Deferred
 
 - The reconcile query path that resolves `order_unresolved` and `recovered_live_intents`.
@@ -153,4 +188,4 @@ The runtime prefers `load_journal(account_id, journal)` over `load`, because the
 - Reduce, add, and more than one action per plan.
 - Stop price tick quantization. The NC-06 stop is used as given; a venue rejection ends in the fail-safe flatten.
 - The cancel path, which would let a management close (or a stop move) remove the resting stop first.
-- The concrete `EvidencePort`, the `run` command, and the PAPER/testnet install, restart and rollback scripts.
+- The testnet `run` (it needs the testnet open-orders read), and PAPER entries (they need a strategy `EntrySource`).

@@ -6,8 +6,11 @@ It behaves like Binance USD-M in hedge mode for what NEWCORE sends:
   (-2022), like reduce-only;
 * ``submit_stop`` rests a reduce-only STOP_MARKET on the algo route; the classic route answers -4120 (Binance moved
   conditional orders to the algo service);
-* ``tick()`` triggers resting stops whose mark price crossed (LONG: mark <= stop, SHORT: mark >= stop) and fills them
-  at the mark, never for more than the open position;
+* ``tick()`` triggers resting stops whose mark price crossed (LONG: mark <= stop, SHORT: mark >= stop): like the algo
+  service, the stop gets a child market order (its own exchange order id) that fills at the mark, never for more than
+  the open position; a query of the triggered stop then answers KNOWN ``FINISHED`` with the child id and detail
+  ``algo_triggered`` (exactly what the testnet adapter answers), and the child's fills are read with ``fills``;
+  a stop that triggers with no position left ends FINAL ``EXPIRED`` with nothing executed;
 * ``positions`` / ``open_orders`` / ``fills`` / ``query`` / ``cancel`` read and change this book only.
 
 Every answer uses the frozen ``newcore.ports.venue`` outcome types, so the runtime, NC-04 and REC-02 see exactly what
@@ -24,6 +27,7 @@ from typing import Callable
 from newcore.ports import venue as P
 
 ZERO = Decimal('0')
+STATE_SCHEMA = 'zackbot.newcore.paper_book.v1'
 
 
 @dataclass(slots=True)
@@ -35,6 +39,7 @@ class _Stop:
     stop_price: Decimal
     status: str = 'NEW'
     executed: Decimal = ZERO
+    child: str | None = None
 
 
 class PaperVenue:
@@ -129,9 +134,11 @@ class PaperVenue:
         if stop.status == 'NEW':
             return P.OrderOutcome(kind=P.OutcomeKind.KNOWN, ref=stop.ref, observed_at_ms=at, status='NEW',
                                   exchange_order_id=stop.exchange_order_id)
+        if stop.status == 'FINISHED':                 # triggered: the algo service names the child order only
+            return P.OrderOutcome(kind=P.OutcomeKind.KNOWN, ref=stop.ref, observed_at_ms=at, status='FINISHED',
+                                  exchange_order_id=stop.child, detail='algo_triggered')
         return P.OrderOutcome(kind=P.OutcomeKind.FINAL, ref=stop.ref, observed_at_ms=at, status=stop.status,
-                              exchange_order_id=stop.exchange_order_id, executed_qty=stop.executed,
-                              avg_price=None if stop.executed == 0 else stop.stop_price)
+                              exchange_order_id=stop.exchange_order_id, executed_qty=ZERO)
 
     # ------------------------------------------------------------------------------------------------ market
     def tick(self) -> tuple[str, ...]:
@@ -147,13 +154,88 @@ class PaperVenue:
                     continue
                 key = (stop.ref.symbol, stop.position_side)
                 qty = min(stop.qty, self._positions.get(key, ZERO))
-                stop.status = 'FILLED' if qty == stop.qty else 'EXPIRED'
                 if qty > 0:
-                    stop.executed = qty
+                    stop.status, stop.executed, stop.child = 'FINISHED', qty, self._eid()
                     self._positions[key] -= qty
-                    self._fill(stop.exchange_order_id, stop.ref.symbol, stop.position_side, qty, mark, at)
+                    self._fill(stop.child, stop.ref.symbol, stop.position_side, qty, mark, at)
+                else:
+                    stop.status = 'EXPIRED'
                 fired.append(cid)
             return tuple(fired)
+
+    # ------------------------------------------------------------------------------------------------ persistence
+    def export_state(self) -> dict:
+        """The whole book as plain JSON values (Decimals as strings), so a paper run survives a restart."""
+        with self._lock:
+            def ref(r):
+                return [r.symbol, r.client_id, r.route]
+
+            def outcome(o):
+                return {'kind': o.kind.value, 'ref': ref(o.ref), 'at': o.observed_at_ms, 'status': o.status,
+                        'eid': o.exchange_order_id, 'qty': None if o.executed_qty is None else str(o.executed_qty),
+                        'price': None if o.avg_price is None else str(o.avg_price), 'code': o.error_code,
+                        'detail': o.detail}
+
+            return {
+                'schema': STATE_SCHEMA, 'next_order': self._next_order, 'next_trade': self._next_trade,
+                'positions': [[s, side, str(q)] for (s, side), q in sorted(self._positions.items())],
+                'stops': [{'ref': ref(t.ref), 'eid': t.exchange_order_id, 'side': t.position_side, 'qty': str(t.qty),
+                           'stop': str(t.stop_price), 'status': t.status, 'executed': str(t.executed),
+                           'child': t.child}
+                          for t in self._stops.values()],
+                'orders': [outcome(o) for o in self._orders.values()],
+                'fills': [{'trade': f.trade_id, 'eid': f.exchange_order_id, 'symbol': f.symbol,
+                           'side': f.position_side, 'qty': str(f.qty), 'price': str(f.price), 'at': f.at_ms}
+                          for rows in self._fills.values() for f in rows],
+            }
+
+    def load_state(self, raw: dict) -> None:
+        """Restore a book written by ``export_state``.  Only into an empty venue; any malformed value raises."""
+        with self._lock:
+            if self._positions or self._stops or self._orders or self._fills:
+                raise ValueError('paper_state_not_empty')
+            if type(raw) is not dict or raw.get('schema') != STATE_SCHEMA:
+                raise ValueError('paper_state_invalid')
+
+            def ref(r):
+                return P.OrderRef(symbol=r[0], client_id=r[1], route=r[2])
+
+            def dec(v):
+                if type(v) is not str:
+                    raise ValueError('paper_state_invalid')
+                return Decimal(v)
+
+            positions = {}
+            for s, side, q in raw['positions']:
+                if side not in ('LONG', 'SHORT') or dec(q) < 0:
+                    raise ValueError('paper_state_invalid')
+                positions[(s, side)] = dec(q)
+            stops = {}
+            for t in raw['stops']:
+                stop = _Stop(ref(t['ref']), t['eid'], t['side'], dec(t['qty']), dec(t['stop']), t['status'],
+                             dec(t['executed']), t['child'])
+                if stop.status not in ('NEW', 'FINISHED', 'EXPIRED', 'CANCELED') or stop.position_side not in (
+                        'LONG', 'SHORT') or (stop.status == 'FINISHED') != (type(stop.child) is str):
+                    raise ValueError('paper_state_invalid')
+                stops[stop.ref.client_id] = stop
+            orders = {}
+            for o in raw['orders']:
+                out = P.OrderOutcome(kind=P.OutcomeKind(o['kind']), ref=ref(o['ref']), observed_at_ms=o['at'],
+                                     status=o['status'], exchange_order_id=o['eid'],
+                                     executed_qty=None if o['qty'] is None else dec(o['qty']),
+                                     avg_price=None if o['price'] is None else dec(o['price']),
+                                     error_code=o['code'], detail=o['detail'])
+                orders[out.ref.client_id] = out
+            fills = {}
+            for f in raw['fills']:
+                fills.setdefault(f['eid'], []).append(P.VenueFill(
+                    trade_id=f['trade'], exchange_order_id=f['eid'], symbol=f['symbol'], position_side=f['side'],
+                    qty=dec(f['qty']), price=dec(f['price']), fee=ZERO, fee_asset='USDT', realized_pnl=ZERO,
+                    maker=False, at_ms=f['at']))
+            if type(raw['next_order']) is not int or type(raw['next_trade']) is not int:
+                raise ValueError('paper_state_invalid')
+            self._positions, self._stops, self._orders, self._fills = positions, stops, orders, fills
+            self._next_order, self._next_trade = raw['next_order'], raw['next_trade']
 
     # ------------------------------------------------------------------------------------------------ reads
     def positions(self, symbol: str | None = None) -> P.ReadOutcome:
@@ -176,4 +258,4 @@ class PaperVenue:
             return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=self._clock(), value=rows)
 
 
-__all__ = ['PaperVenue']
+__all__ = ['PaperVenue', 'STATE_SCHEMA']

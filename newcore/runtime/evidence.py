@@ -5,7 +5,11 @@ One generation reads, all as ``Action.RECONCILE`` read work:
 * ``POSITIONS`` for every symbol (one request);
 * ``OPEN_ORDERS`` per watched symbol: the configured symbols plus every symbol the journal has a live order or a
   booked position on (NC-04 refuses a no-symbol open-orders read);
-* ``FILLS`` for every live journal order that has an exchange order id, so a resting stop that executed is seen.
+* ``FILLS`` for every live classic-route journal order that has an exchange order id (an algo stop's journaled id is
+  an algo id, which ``userTrades`` does not know; the journaling sink follows a triggered stop's child order).
+
+Known limit: open orders are read only for the watched symbols (NC-04 refuses a no-symbol open-orders read), so an
+order on a symbol nobody configured or traded is not seen.  Run NEWCORE on a dedicated account.
 
 ``assemble`` is fail-closed: every read must be ``ReadKind.OK``, and every venue record must map exactly onto a REC-02
 record, or it raises (the runtime holds the account with ``evidence_invalid``).  Records it cannot represent exactly
@@ -20,6 +24,7 @@ from decimal import Decimal
 from newcore.account_context import FillsRequest, OpenOrdersRequest, Operation, PositionsRequest, VenueWork, WorkState
 from newcore.domain import Action, BindingChanged, IntentState, Purpose, Side
 from newcore.domain.account import BindingState
+from newcore.ports.keys import route_of
 from newcore.ports.values import check_symbol
 from newcore.ports.venue import ReadKind, ReadOutcome
 from newcore.ports.venue import VenueFill as PortFill
@@ -76,8 +81,11 @@ class VenueEvidence:
         if self._journal is None or self._journal.account_id != account_id:
             raise EvidenceError('journal_unbound')
         state = self._journal.state()
+        # An algo stop's journaled id is its algo id, a separate number space from userTrades' orderId: its
+        # execution is the child order the journaling sink follows, so it is never read here by that id.
         orders = tuple(v for v in state.intents
-                       if v.state in _ASKED and v.last_result is not None and v.last_result.exchange_order_id)
+                       if v.state in _ASKED and v.last_result is not None and v.last_result.exchange_order_id
+                       and route_of(v.intent.intent_id, v.intent.client_order_id) != 'algo')
         watched = list(self.symbols)
         for symbol in [v.intent.symbol for v in state.intents] + [s for (s, _side), net in state.booked if net]:
             if symbol not in watched:
