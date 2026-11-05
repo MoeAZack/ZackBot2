@@ -1,4 +1,4 @@
-"""STRAT-01 risk context for PAPER runs, built from the account's own NC-02 journal (read-only).
+"""STRAT-01 risk context for PAPER and TESTNET runs, built from the account's own NC-02 journal (read-only).
 
 ``JournalRiskContext`` implements ``RiskContextProvider``.  It reads the runtime's own live journal through the
 read-only ``JournalView`` that ``paper_run`` hands an entries factory as ``journal`` (``read``/``state``/
@@ -8,8 +8,10 @@ called without one) gives no context: fail closed, and the strategy source re-of
 
 From the journal it takes:
 
-* the CONFIRMED binding (``JournalProjection.load_journal``); its environment must be SIM (-> NC-06 ``paper``).  A
-  TESTNET or MAINNET binding is refused here: this provider's equity is an operator number, not a venue balance;
+* the CONFIRMED binding (``JournalProjection.load_journal``).  It must match the provider's ``environment``: SIM for
+  ``paper`` (the default), TESTNET for ``testnet``.  MAINNET is never accepted.  On testnet the operator's equity is a
+  capital cap of at most $2,000 (the owner's testnet bound), not a venue balance; the venue rejects what the real
+  balance cannot margin;
 * the booked positions per (symbol, side), priced at the current mark.  Risk per unit is (mark - stop) for a LONG
   (stop - mark for a SHORT) using the worst WORKING stop, only when WORKING stops cover the whole quantity.  A stop
   that is unsent, unacknowledged, being cancelled, unreadable or already past the mark counts as no stop, and an
@@ -47,6 +49,8 @@ from newcore_strategies.entry_source import RiskContext, StrategySlot
 ZERO = Decimal('0')
 ONE = Decimal('1')
 MAX_LEVERAGE = Decimal('3')
+MAX_TESTNET_CAPITAL = Decimal('2000')       # owner bound for the testnet run: <= $2k aggregate
+ENVIRONMENTS = {'paper': BindingEnvironment.SIM, 'testnet': BindingEnvironment.TESTNET}
 
 
 class RiskSetupError(ValueError):
@@ -133,10 +137,11 @@ class PaperPolicy:
                 raise RiskSetupError(f'{name}_invalid')
             _dec(getattr(self, name), f'{name}_invalid', at_most=self.max_leverage)
 
-    def snapshot(self, account_id: str, equity: Decimal, slots, symbols) -> nc06.RiskPolicySnapshot:
+    def snapshot(self, account_id: str, equity: Decimal, slots, symbols,
+                 environment: nc06.Environment = nc06.Environment.PAPER) -> nc06.RiskPolicySnapshot:
         books = sorted({(s.strategy_id, s.book_id) for s in slots})
         return nc06.RiskPolicySnapshot(
-            policy_id='strat01_paper_v1', account_id=account_id, environment=nc06.Environment.PAPER, generation=1,
+            policy_id=f'strat01_{environment.value}_v1', account_id=account_id, environment=environment, generation=1,
             fresh=True, capital_cap=equity, max_trade_risk_fraction=self.max_trade_risk_fraction,
             max_portfolio_risk_fraction=self.max_portfolio_risk_fraction,
             max_symbol_side_risk_fraction=self.max_symbol_side_risk_fraction,
@@ -156,12 +161,19 @@ class JournalRiskContext:
     ``marks(symbol)`` the current mark (Decimal) or raises."""
 
     def __init__(self, *, account_id: str, journal_reader: Callable[[], object], marks: Callable[[str], Decimal],
-                 equity: Decimal, filters: dict, slots, policy: PaperPolicy = PaperPolicy(), leverage: Decimal):
+                 equity: Decimal, filters: dict, slots, policy: PaperPolicy = PaperPolicy(), leverage: Decimal,
+                 environment: str = 'paper'):
+        if environment not in ENVIRONMENTS:
+            raise RiskSetupError('environment_invalid')        # never mainnet
+        self.environment = nc06.Environment(environment)
+        self._binding_env = ENVIRONMENTS[environment]
         self.account_id = account_id
         self._reader, self._marks = journal_reader, marks
         self.equity = _dec(equity, 'equity_invalid')
         if type(equity) is not Decimal:
             raise RiskSetupError('equity_invalid')
+        if self.environment is nc06.Environment.TESTNET and self.equity > MAX_TESTNET_CAPITAL:
+            raise RiskSetupError('equity_above_testnet_cap')
         self._leverage = _dec(leverage, 'leverage_invalid', at_most=policy.max_leverage)
         self._filters = dict(filters)
         self._slots = tuple(slots)
@@ -169,7 +181,7 @@ class JournalRiskContext:
             raise RiskSetupError('slots_invalid')
         self._books = {strategy_instance(s.name, s.tf): (s.strategy_id, s.book_id) for s in self._slots}
         symbols = sorted({x for s in self._slots for x in s.symbols})
-        self._policy = policy.snapshot(account_id, self.equity, self._slots, symbols)
+        self._policy = policy.snapshot(account_id, self.equity, self._slots, symbols, self.environment)
         self._projection = JournalProjection(label='paper')
         self.reasons: Counter = Counter()
 
@@ -237,8 +249,8 @@ class JournalRiskContext:
             durable = self._projection.load_journal(account_id, journal)
         except ValueError as ex:
             return self._refuse(f'journal_{ex}')
-        if durable.account.binding.environment is not BindingEnvironment.SIM:
-            return self._refuse('binding_not_paper')
+        if durable.account.binding.environment is not self._binding_env:
+            return self._refuse(f'binding_not_{self.environment.value}')
         state = journal.state()
         generation = state.last_sequence
         if type(generation) is not int or generation < 1:
@@ -274,7 +286,7 @@ class JournalRiskContext:
                                                book_id=book_id, quantity=q, notional=q * mark, risk=q * per_unit))
             used_margin += notional / self._leverage
         account = nc06.AccountRiskSnapshot(
-            account_id=account_id, environment=nc06.Environment.PAPER, generation=generation, confirmed=True,
+            account_id=account_id, environment=self.environment, generation=generation, confirmed=True,
             fresh=True, hedge_mode=durable.account.hedge_mode, equity=self.equity,
             available_margin=max(ZERO, self.equity - used_margin), reserved_capital=ZERO)
         portfolio = nc06.PortfolioRiskSnapshot(account_id=account_id, generation=generation, fresh=True,

@@ -166,8 +166,10 @@ def paper_rows(rows, symbols):
 
 
 def make_factory(*, marks_path, candle_dir, equity, exchange_info, base_risk_fraction, leverage, symbols,
-                 rows=None, policy=None, sources=None, max_mark_age_s=MAX_MARK_AGE_S, now_s=time.time):
-    """``entries_factory(spec, *, wall_clock, journal)`` for ``run_paper``.  Built sources are appended to ``sources``."""
+                 rows=None, policy=None, sources=None, max_mark_age_s=MAX_MARK_AGE_S, now_s=time.time,
+                 environment='paper'):
+    """``entries_factory(spec, *, wall_clock, journal)`` for ``run_paper`` (or ``run_testnet`` with
+    ``environment='testnet'``).  Built sources are appended to ``sources``."""
     from newcore.runtime.paper_run import FileMarks
     from newcore_strategies import CsvCandleFeed, build_strategy_entries
     from newcore_strategies.entry_source import StrategyConfigError
@@ -199,7 +201,7 @@ def make_factory(*, marks_path, candle_dir, equity, exchange_info, base_risk_fra
 
         risk = JournalRiskContext(
             account_id=spec.account_id, marks=mark, equity=equity, filters=filters, slots=slots, policy=policy,
-            leverage=leverage,
+            leverage=leverage, environment=environment,
             journal_reader=journal)
         source, refused = build_strategy_entries(feed=CsvCandleFeed(candle_dir), risk=risk, wall_clock=wall_clock,
                                                  base_risk_fraction=base_risk_fraction, leverage=leverage,

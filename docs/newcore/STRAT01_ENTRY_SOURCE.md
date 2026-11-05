@@ -95,6 +95,24 @@ python tools/strat01_paper_run.py --config cfg.json --marks marks.json --candles
   <= 2x, leverage <= 3x. Multiples can never exceed the leverage cap.
 - Equity is the operator's `--equity`. The PAPER venue keeps no balance, so P&L is not applied (known gap).
 
+## Testnet launcher
+
+`tools/strat01_testnet_run.py` runs the same factory on the NEWCORE testnet runtime
+(`tools/newcore_testnet_run.run_testnet`, #296; it needs TNET-02 #294 and the owner's testnet keys in the environment):
+
+```
+python tools/newcore_testnet_run.py init --config tcfg.json --account-file acct.json      # once
+python tools/strat01_testnet_run.py --config tcfg.json --account-file acct.json --marks marks.json \
+    --candles candles --equity 1000 [--symbols BTCUSDT,...] [--feed-origin https://demo-fapi.binance.com]
+```
+
+- The risk context runs with `environment='testnet'`: it needs a confirmed TESTNET binding, and `--equity` is a capital
+  cap of at most $2,000. MAINNET is refused at every layer.
+- Candles, marks and filters come from the testnet origin's public endpoints (`klines`, `premiumIndex`,
+  `exchangeInfo`), so signal prices and tick and step sizes match the venue. Only the two approved testnet origins
+  are accepted.
+- It refuses a live/mainnet switch variable, a non-testnet config or `entries_enabled: false` before any request.
+
 ## Preset `TESTNET_SET_2026_11_05`
 
 | Slot | Strategy | TF | Side | risk_mult | Basis |
@@ -116,8 +134,8 @@ Universe: CORE-20 from `research_evidence/universe/static-top40-minhist365-contr
 
 - **Exits other than the protective stop are not wired.** Signal exits (`lx`/`sx`), take-profit and max-bars
   from each strategy's `mgmt` need an NC-07 management source. Until then live behavior differs from the backtest.
-- The journal risk context is PAPER only. A testnet provider needs venue balances, and the #295 loss fields are not
-  wired. The correlation cap (<=2R same direction) and the daily loss breaker are NC-06 policy, not this module.
+- The testnet risk context sizes from the operator's capital cap, not the venue balance, and applies no P&L. The
+  #295 loss fields are not wired. The correlation cap (<=2R same direction) and the daily loss breaker are NC-06 policy, not this module.
 - `exp_vwaprev` needs a quote-volume column (`qv`); without it the slot fails closed.
 - Evaluation runs synchronously in `cycle`, once per candle close: about 0.3 s per slot, and about 1.2 s for
   `exp_vwaprev` over 17 symbols x 1500 bars (measured in the sandbox).
