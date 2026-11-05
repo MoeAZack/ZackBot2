@@ -143,6 +143,10 @@ class JournalingActionSink:
         self._problems: set[str] = set()
         self._log: list[str] = []
         self._send_failed = False          # the last _send queued nothing (journal or submit refusal)
+        self._watched: dict[str, _Order] = {}       # intent_id -> a WORKING stop, checked with a venue query
+        self._queries: dict[str, tuple[str, int]] = {}   # intent_id -> (query work id, deadline)
+        self._next_query_mono: int | None = None
+        self._query_seq = 0
 
     # ------------------------------------------------------------------------------------------------ wiring
     def bind(self, binding: SinkBinding, monotonic_clock: Callable[[], int]) -> None:
@@ -181,8 +185,11 @@ class JournalingActionSink:
             if lot is None:
                 continue
             if intent.purpose is Purpose.PROTECT:
-                lot.last_protect = (K.route_of(intent.intent_id, intent.client_order_id), sent,
-                                    state if state in TERMINAL else None)
+                route = K.route_of(intent.intent_id, intent.client_order_id)
+                lot.last_protect = (route, sent, state if state in TERMINAL else None)
+                if state is IntentState.WORKING:
+                    self._watched[intent.intent_id] = _Order(intent=intent, route=route, work_id='',
+                                                             deadline_mono=0, state=IntentState.WORKING)
             if intent.purpose in (Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE) and final is not None \
                     and final.executed_qty:
                 lot.quantity = max(Decimal('0'), lot.quantity - final.executed_qty)
@@ -443,7 +450,74 @@ class JournalingActionSink:
                         self._unresolved(order, Lookup.UNREADABLE)
                     continue
                 self._fold(order, result)
+            self._watch(now_mono)
             return tuple(sorted(self._problems))
+
+    # ------------------------------------------------------------------------------------------------ resting stops
+    def _watch(self, now_mono: int) -> None:
+        """Query every WORKING stop once per order deadline; a stop that ended is journaled and its lot follows."""
+        for intent_id, (work_id, deadline) in tuple(self._queries.items()):
+            order = self._watched.get(intent_id)
+            result = self._b.result(work_id)
+            if result is None:
+                if now_mono >= deadline:
+                    self._b.cancel(work_id, now_mono)
+                    del self._queries[intent_id]          # no answer: ask again next round
+                continue
+            del self._queries[intent_id]
+            if order is not None:
+                self._fold_query(order, result)
+        if self._next_query_mono is not None and now_mono < self._next_query_mono:
+            return
+        self._next_query_mono = now_mono + self._b.order_deadline_ms
+        if self._problems & UNCERTAIN:
+            return
+        for intent_id, order in self._watched.items():
+            if intent_id in self._queries:
+                continue
+            self._query_seq += 1
+            it = order.intent
+            work = VenueWork(work_id=f'qry{self._query_seq}-{intent_id}'[:64], action=Action.PROTECT,
+                             operation=Operation.QUERY,
+                             payload=OrderRef(symbol=it.symbol, client_id=it.client_order_id, route=order.route),
+                             enqueued_at_ms=now_mono, deadline_ms=now_mono + self._b.order_deadline_ms)
+            try:
+                self._b.submit(work)
+            except Exception:
+                return                                    # stopping: the next restart re-reads the journal
+            self._queries[intent_id] = (work.work_id, now_mono + 2 * self._b.order_deadline_ms)
+
+    def _fold_query(self, order: _Order, work: WorkResult) -> None:
+        outcome = work.value if work.state is WorkState.COMPLETED else None
+        if type(outcome) is not OrderOutcome or outcome.ref.client_id != order.intent.client_order_id:
+            return                                        # unreadable this round: REC-02 still checks the book
+        if outcome.kind is OutcomeKind.KNOWN:
+            return                                        # still resting
+        if outcome.kind is OutcomeKind.NOT_FOUND:
+            self._watched.pop(order.intent.intent_id, None)
+            self._unresolved(order, Lookup.NOT_FOUND)     # a vanished stop: only reconcile can explain it
+            return
+        if outcome.kind is not OutcomeKind.FINAL:
+            return
+        try:
+            status = ExchangeStatus(outcome.status)
+        except ValueError:
+            return
+        if status not in FINAL_STATUSES:
+            return
+        self._watched.pop(order.intent.intent_id, None)
+        at = max(self._b.wall_clock(), order.intent.created_at_ms)
+        try:
+            result = self._record(order, at, phase=ResultPhase.FINAL, exchange_order_id=outcome.exchange_order_id,
+                                  exchange_status=status, executed_qty=outcome.executed_qty,
+                                  avg_price=outcome.avg_price, evidence=Evidence.EXCHANGE_FINAL)
+            self._step(order, terminal_for(result), at)
+        except Exception:
+            self._problems.add(SinkProblem.ORDER_JOURNAL_FAILED)
+            self._note('journal_failed:stop_result')
+            return
+        self._note(f'{order.state.value}:stop')
+        self._after_final(order, result, at)
 
     def _unresolved(self, order: _Order, lookup: Lookup | None = None) -> None:
         self._pending.pop(order.work_id, None)
@@ -529,6 +603,7 @@ class JournalingActionSink:
 
     def _after_working(self, order: _Order) -> None:
         if order.intent.purpose is Purpose.PROTECT:
+            self._watched[order.intent.intent_id] = order
             lot = self._lots.get(order.intent.owner_id)
             if lot is not None:
                 lot.last_protect = (order.route, True, None)

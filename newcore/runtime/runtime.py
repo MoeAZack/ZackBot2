@@ -389,6 +389,9 @@ def _boot_account(config: RuntimeConfig, row: _Account, *, recover, monotonic_cl
         events.record(account_id, 'boot', code, now)
         return
     row.journal = recovery.journal
+    bind_journal = getattr(row.ports.evidence, 'bind_journal', None)
+    if callable(bind_journal):        # an evidence port that reads which orders to check from the journal
+        bind_journal(row.journal)
     _durable, hold = _load_durable(config, row)
     if hold is not None:
         row.holds.add(hold)

@@ -5,6 +5,7 @@ NC-09 tracing and REC-02 reconciliation.  It imports no legacy module and instal
 """
 from newcore.runtime.config import (AccountSpec, RuntimeConfig, RuntimeConfigError, RuntimeEnvironment,
                                     config_from_mapping)
+from newcore.runtime.evidence import EvidenceError, VenueEvidence, confirmed_binding
 from newcore.runtime.journaling import JournalingActionSink, SinkBinding, SinkProblem
 from newcore.runtime.projection import JournalProjection
 from newcore.runtime.ports import (AccountPorts, ActionSink, DurableStateSource, EntryCandidate, EntrySource,
@@ -14,9 +15,9 @@ from newcore.runtime.runtime import (AccountPhase, AccountRuntimeSnapshot, HoldC
                                      RuntimeEvent, RuntimeSnapshot, boot)
 
 __all__ = ['AccountPhase', 'AccountPorts', 'AccountRuntimeSnapshot', 'AccountSpec', 'ActionSink',
-           'DurableStateSource', 'EntryCandidate', 'EntrySource', 'EvidencePort', 'HoldCode', 'JournalingActionSink', 'JournalProjection',
+           'DurableStateSource', 'EntryCandidate', 'EvidenceError', 'EntrySource', 'EvidencePort', 'HoldCode', 'JournalingActionSink', 'JournalProjection',
            'ManagementSource', 'NoEntries',
            'NoManagedLots', 'RefusingActionSink', 'Runtime', 'RuntimeBootError', 'RuntimeConfig',
-           'RuntimeConfigError', 'RuntimeEnvironment', 'RuntimeEvent', 'RuntimeSnapshot', 'SinkBinding', 'SinkProblem',
+           'RuntimeConfigError', 'RuntimeEnvironment', 'RuntimeEvent', 'RuntimeSnapshot', 'SinkBinding', 'SinkProblem', 'VenueEvidence', 'confirmed_binding',
            'boot',
            'config_from_mapping']
