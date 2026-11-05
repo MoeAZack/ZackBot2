@@ -2,8 +2,7 @@
 
 Real NC-02 journals on disk, a real NC-04 AccountContext and budget, real NC-06 approvals and NC-07 plans.  The venue
 is scripted per call and records the journal length it saw, so "journaled before sent" is checked at the send itself.
-The classic SUBMIT_STOP row that NC-04 lacks at master is added by the ``classic_stop`` fixture only, to exercise the
-G6 classic-then-algo path; the tests without it pin today's behaviour (entries refused, nothing journaled).
+Stops go on the algo route first (journal rule G6 as amended by RT-02; NC-04 has only the algo SUBMIT_STOP row).
 """
 from __future__ import annotations
 
@@ -50,10 +49,9 @@ def risk_evaluation(**request_changes):
 
 
 @pytest.fixture
-def classic_stop(monkeypatch):
-    """Simulate the pending NC-04 ruling: a classic SUBMIT_STOP row (Binance answers it -4120, a G6 rejection)."""
-    row = nc04._cost(Operation.SUBMIT_STOP, 'classic', 'POST', '/fapi/v1/order', 0, 1, 1)
-    monkeypatch.setitem(nc04._ENDPOINTS, (Operation.SUBMIT_STOP, 'classic'), row)
+def no_algo_stop(monkeypatch):
+    """NC-04 without its algo SUBMIT_STOP row: no protect route is admissible."""
+    monkeypatch.delitem(nc04._ENDPOINTS, (Operation.SUBMIT_STOP, 'algo'))
 
 
 class OrderVenue:
@@ -189,14 +187,14 @@ ENTRY_SENT = [('decision', 'enter'), ('intent', 'entry', 'classic'), ('state', '
 
 
 # ------------------------------------------------------------------------------------------------ today's NC-04 table
-def test_entry_is_refused_while_nc04_cannot_send_a_classic_stop(h):
+def test_entry_is_refused_while_nc04_cannot_send_a_stop(h, no_algo_stop):
     accepted, _ = h.enter()
     assert accepted is False
     assert h.journal.last_sequence() == 0 and h.venue.calls == [] and h.submitted == []
     assert 'protect_route_unverified' in h.sink.snapshot().log
 
 
-def test_entry_without_a_signal_key_is_refused(h, classic_stop):
+def test_entry_without_a_signal_key_is_refused(h):
     evaluation = risk_evaluation()
     decision = nc06.evaluate(evaluation)
     assert h.sink.accept_entry(A, decision, evaluation) is False
@@ -207,12 +205,12 @@ def test_entry_without_a_signal_key_is_refused(h, classic_stop):
     K.decision_key('trend_ema_mom', 'v1', '4h', 'ETHUSDT', Side.LONG, CANDLE, Purpose.ENTRY),
     K.decision_key('trend_ema_mom', 'v1', '4h', 'BTCUSDT', Side.SHORT, CANDLE, Purpose.ENTRY),
     K.decision_key('trend_ema_mom', 'v1', '4h', 'BTCUSDT', Side.LONG, CANDLE, Purpose.CLOSE)])
-def test_entry_key_must_name_the_requested_symbol_side_and_entry(h, classic_stop, key):
+def test_entry_key_must_name_the_requested_symbol_side_and_entry(h, key):
     accepted, _ = h.enter(key=key)
     assert accepted is False and h.journal.last_sequence() == 0
 
 
-def test_entry_for_another_account_is_refused(h, classic_stop):
+def test_entry_for_another_account_is_refused(h):
     evaluation = risk_evaluation()
     decision = nc06.evaluate(evaluation)
     assert h.sink.accept_entry(acct(2), decision, evaluation, key=KEY) is False
@@ -220,20 +218,17 @@ def test_entry_for_another_account_is_refused(h, classic_stop):
 
 
 # ------------------------------------------------------------------------------------------------ the G6 path
-def test_entry_fill_is_protected_classic_then_algo(h, classic_stop):
+def test_entry_fill_is_protected_on_the_algo_route(h):
     accepted, decision = h.enter()
     assert accepted is True
     assert h.kinds() == ENTRY_SENT and h.venue.calls == []          # durable first, nothing sent yet
     assert h.drive() == ()
-    entry_call, classic, algo = h.venue.calls
+    entry_call, algo = h.venue.calls
     assert entry_call[:4] == ('submit_market', 'classic', False, decision.quantity) and entry_call[4] == 3
-    assert classic[:4] == ('submit_stop', 'classic', D('95'), decision.quantity)
     assert algo[:4] == ('submit_stop', 'algo', D('95'), decision.quantity)
-    assert classic[4] == 8 and algo[4] == 13                         # each stop was journaled before it was sent
+    assert algo[4] == 8                                              # the stop was journaled before it was sent
     assert h.kinds() == ENTRY_SENT + [
         ('result', 'final', 'exchange_final'), ('state', 'filled'),
-        ('decision', 'protect'), ('intent', 'protect', 'classic'), ('state', 'submitted'),
-        ('result', 'final', 'exchange_refused'), ('state', 'rejected'),
         ('decision', 'protect'), ('intent', 'protect', 'algo'), ('state', 'submitted'),
         ('result', 'known', None), ('state', 'working')]
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
@@ -241,7 +236,7 @@ def test_entry_fill_is_protected_classic_then_algo(h, classic_stop):
     assert h.sink.snapshot().pending == ()
 
 
-def test_journal_recovers_clean_after_a_protected_entry(h, classic_stop, tmp_path):
+def test_journal_recovers_clean_after_a_protected_entry(h, tmp_path):
     h.enter()
     h.drive()
     h.close()
@@ -254,7 +249,7 @@ def test_journal_recovers_clean_after_a_protected_entry(h, classic_stop, tmp_pat
     again.journal.close()
 
 
-def test_restart_rebuilds_the_lot_without_a_problem_for_a_working_stop(h, classic_stop):
+def test_restart_rebuilds_the_lot_without_a_problem_for_a_working_stop(h):
     h.enter()
     h.drive()
     lots = h.sink.snapshot().lots
@@ -264,7 +259,7 @@ def test_restart_rebuilds_the_lot_without_a_problem_for_a_working_stop(h, classi
     assert snap.lots == lots and snap.problems == ()
 
 
-def test_a_consumed_signal_is_never_sent_twice(h, classic_stop):
+def test_a_consumed_signal_is_never_sent_twice(h):
     h.enter()
     h.drive()
     accepted, _ = h.enter()
@@ -272,15 +267,15 @@ def test_a_consumed_signal_is_never_sent_twice(h, classic_stop):
     assert [c[0] for c in h.venue.calls].count('submit_market') == 1
 
 
-def test_second_entry_waits_while_an_order_is_in_flight(h, classic_stop):
+def test_second_entry_waits_while_an_order_is_in_flight(h):
     h.enter()
     other = K.decision_key('trend_ema_mom', 'v1', '4h', 'BTCUSDT', Side.LONG, CANDLE + 14_400_000, Purpose.ENTRY)
     accepted, _ = h.enter(key=other)
     assert accepted is False and 'entry_busy' in h.sink.snapshot().log
 
 
-def test_rejected_algo_stop_flattens_the_lot_and_holds(h, classic_stop):
-    h.venue.stop = {'classic': 'rejected', 'algo': 'rejected'}
+def test_rejected_algo_stop_flattens_the_lot_and_holds(h):
+    h.venue.stop = {'algo': 'rejected'}
     accepted, decision = h.enter()
     problems = h.drive()
     assert problems == (SinkProblem.PROTECTION_FAILED,)
@@ -295,7 +290,7 @@ def test_rejected_algo_stop_flattens_the_lot_and_holds(h, classic_stop):
     assert h.enter(key=other)[0] is False
 
 
-def test_partial_entry_fill_protects_only_the_executed_quantity(h, classic_stop):
+def test_partial_entry_fill_protects_only_the_executed_quantity(h):
     h.venue.market = 'partial'
     _, decision = h.enter()
     h.drive()
@@ -304,7 +299,7 @@ def test_partial_entry_fill_protects_only_the_executed_quantity(h, classic_stop)
     assert ('state', 'cancelled') in h.kinds()
 
 
-def test_rejected_entry_opens_no_lot_and_sends_no_stop(h, classic_stop):
+def test_rejected_entry_opens_no_lot_and_sends_no_stop(h):
     h.venue.market = 'rejected'
     h.enter()
     assert h.drive() == ()
@@ -315,7 +310,7 @@ def test_rejected_entry_opens_no_lot_and_sends_no_stop(h, classic_stop):
 
 # ------------------------------------------------------------------------------------------------ unresolved answers
 @pytest.mark.parametrize('answer', ['unknown', 'not_found', 'raise', 'echo'])
-def test_an_unresolved_answer_is_journaled_unknown_and_holds(h, classic_stop, answer):
+def test_an_unresolved_answer_is_journaled_unknown_and_holds(h, answer):
     h.venue.market = answer
     h.enter()
     assert h.drive() == (SinkProblem.ORDER_UNRESOLVED,)
@@ -326,7 +321,7 @@ def test_an_unresolved_answer_is_journaled_unknown_and_holds(h, classic_stop, an
         assert events[-2].result.lookup.value == 'not_found'
 
 
-def test_work_that_never_answers_is_cancelled_and_held(h, classic_stop):
+def test_work_that_never_answers_is_cancelled_and_held(h):
     h.enter()
     h.context.run_next = lambda: None                    # the worker never runs it
     h.mono.advance(25_000)
@@ -335,14 +330,14 @@ def test_work_that_never_answers_is_cancelled_and_held(h, classic_stop):
     assert h.kinds()[-1] == ('state', 'unknown')
 
 
-def test_expired_work_is_never_assumed_unsent(h, classic_stop):
+def test_expired_work_is_never_assumed_unsent(h):
     h.enter()
     h.mono.advance(10_001)                               # NC-04 expires it before dequeue
     assert h.drive() == (SinkProblem.ORDER_UNRESOLVED,)
     assert h.venue.calls == [] and h.kinds()[-1] == ('state', 'unknown')
 
 
-def test_restart_with_an_unanswered_order_reports_it(h, classic_stop):
+def test_restart_with_an_unanswered_order_reports_it(h):
     h.enter()
     h.close()
     h.open()
@@ -367,7 +362,7 @@ class FailingJournal:
 
 
 @pytest.mark.parametrize('fail_at', [1, 2, 3])
-def test_a_journal_failure_before_send_queues_nothing(tmp_path, classic_stop, fail_at):
+def test_a_journal_failure_before_send_queues_nothing(tmp_path, fail_at):
     h = Harness(tmp_path)
     h.sink = JournalingActionSink()
     h.sink.bind(SinkBinding(account_id=A, aggregate_id=pf(1), journal=FailingJournal(h.journal, fail_at),
@@ -379,7 +374,7 @@ def test_a_journal_failure_before_send_queues_nothing(tmp_path, classic_stop, fa
     h.close()
 
 
-def test_submit_refusal_after_sent_is_unresolved(tmp_path, classic_stop):
+def test_submit_refusal_after_sent_is_unresolved(tmp_path):
     h = Harness(tmp_path)
 
     def refuse(work):
@@ -413,10 +408,21 @@ def _exit_plan(lot_id, qty):
     return plan
 
 
-def test_management_close_is_journaled_and_sent(h, classic_stop):
+def test_management_close_is_refused_while_the_stop_rests(h):
     _, decision = h.enter()
     h.drive()
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
+    seq = h.journal.last_sequence()
+    # Review F2: a close would leave the resting stop larger than the position; it needs the cancel path first.
+    assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is False
+    assert h.journal.last_sequence() == seq
+
+
+def test_management_close_is_journaled_and_sent_once_no_stop_rests(h):
+    _, decision = h.enter()
+    h.drive()
+    lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
+    h.sink._lots[lot].last_protect = ('algo', True, IntentState.CANCELLED)   # as after a (future) cancel path
     before = len(h.venue.calls)
     assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is True
     assert h.kinds()[-3:] == [('decision', 'close'), ('intent', 'close', 'classic'), ('state', 'submitted')]
@@ -425,12 +431,12 @@ def test_management_close_is_journaled_and_sent(h, classic_stop):
     assert h.sink.snapshot().lots == ((lot, '0'),)
 
 
-def test_management_for_an_unknown_lot_is_refused(h, classic_stop):
+def test_management_for_an_unknown_lot_is_refused(h):
     assert h.sink.accept_management(A, _exit_plan('lot_' + 'f' * 32, D('10'))) is False
     assert h.journal.last_sequence() == 0
 
 
-def test_protection_repair_while_a_stop_is_working_is_refused(h, classic_stop):
+def test_protection_repair_while_a_stop_is_working_is_refused(h):
     _, decision = h.enter()
     h.drive()
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
@@ -440,11 +446,11 @@ def test_protection_repair_while_a_stop_is_working_is_refused(h, classic_stop):
     assert h.sink.accept_management(A, plan) is False and h.journal.last_sequence() == seq
 
 
-def test_management_while_the_lot_has_an_order_in_flight_sends_nothing_more(h, classic_stop):
+def test_management_while_the_lot_has_an_order_in_flight_sends_nothing_more(h):
     _, decision = h.enter()
     while h.context.run_next() is not None:
         pass
-    h.sink.poll(h.mono())                                # entry folded, classic protect queued, not yet sent
+    h.sink.poll(h.mono())                                # entry folded, protect queued, not yet sent
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
     seq = h.journal.last_sequence()
     assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is True
@@ -515,19 +521,18 @@ def _runtime_world(world):
     return w, venue, sink
 
 
-def test_runtime_routes_a_keyed_entry_and_protects_it(world, classic_stop):
+def test_runtime_routes_a_keyed_entry_and_protects_it(world):
     w, venue, sink = _runtime_world(world)
     w.boot()
     w.settle(lambda s: s.scheduler.ready)
     w.settle(lambda s: any(e.code == 'entry_routed' for e in s.events), advance_ms=5_000)
     w.settle(lambda s: sink.snapshot().log[-1:] == ('working:protect',), advance_ms=1_000)
-    assert [c[:2] for c in venue.calls] == [('submit_market', 'classic'), ('submit_stop', 'classic'),
-                                           ('submit_stop', 'algo')]
+    assert [c[:2] for c in venue.calls] == [('submit_market', 'classic'), ('submit_stop', 'algo')]
     from rt01_fixtures import account_view
     assert account_view(w.runtime.snapshot(), A).holds == ()
 
 
-def test_runtime_with_todays_nc04_table_routes_no_entry(world):
+def test_runtime_without_a_stop_route_routes_no_entry(world, no_algo_stop):
     w, venue, sink = _runtime_world(world)
     w.boot()
     w.settle(lambda s: s.scheduler.ready)
@@ -536,7 +541,7 @@ def test_runtime_with_todays_nc04_table_routes_no_entry(world):
     assert w.runtime._accounts[A].journal.last_sequence() == 0
 
 
-def test_runtime_turns_a_sink_problem_into_a_sticky_hold(world, classic_stop):
+def test_runtime_turns_a_sink_problem_into_a_sticky_hold(world):
     w, venue, sink = _runtime_world(world)
     venue.market = 'unknown'
     w.boot()

@@ -19,16 +19,15 @@ Results are folded back on later guard passes (``poll``):
 Protection, after a fill:
 
 * An entry FINAL with an execution opens the lot ``derive_lot_id(account, entry)``.  The sink journals and queues the
-  lot's protective stop at once (classic route first, journal rule G6), for the executed quantity at the NC-06
-  request's stop price.
-* A classic protect attempt that closes REJECTED is retried once on the algo route (the only G6 fallback).
-* An algo attempt that is rejected too, or a protect that NC-04 cannot admit, flattens the lot at market
-  (``exit.stop_failed``) and raises the sticky ``protection_failed`` problem.
+  lot's protective stop at once on the algo route (Binance's conditional-order route; journal rule G6), for the
+  executed quantity at the NC-06 request's stop price.
+* A stop that ends without protecting the whole lot (rejected, cancelled, expired, partly executed), or a protect that
+  NC-04 cannot admit, flattens the lot at market (``exit.stop_failed``) and raises the sticky ``protection_failed``.
+* A market order (entry or close) answered KNOWN is journaled WORKING and raises ``order_unresolved``: its executed
+  quantity is not known, so nothing is built on it until the reconcile query path resolves it.
 
-Entries are accepted only with a strategy ``DecisionKey`` (journal rule G4), only when nothing else is in flight, and
-only when NC-04 admits the entry, both protect routes and the fail-safe close.  With the NC-04 table at master (no
-classic ``SUBMIT_STOP`` row) the classic protect route is not admissible, so every entry is refused with
-``protect_route_unverified`` and nothing is journaled.
+Entries are accepted only with a strategy ``DecisionKey`` (journal rule G4), only when nothing else is in flight and
+no problem is active, and only when NC-04 admits the entry, the algo protect and the fail-safe close.
 """
 from __future__ import annotations
 
@@ -65,6 +64,9 @@ class SinkProblem:
     RECOVERED_LIVE_INTENTS = 'recovered_live_intents'
 
 
+# While any of these is active the sink's own view of the account is uncertain: it routes nothing new.
+UNCERTAIN = frozenset({SinkProblem.ORDER_UNRESOLVED, SinkProblem.ORDER_JOURNAL_FAILED,
+                       SinkProblem.RECOVERED_LIVE_INTENTS})
 PROBLEMS = frozenset({SinkProblem.ORDER_UNRESOLVED, SinkProblem.ORDER_JOURNAL_FAILED, SinkProblem.PROTECTION_FAILED,
                       SinkProblem.SINK_UNBOUND, SinkProblem.RECOVERED_LIVE_INTENTS})
 
@@ -140,6 +142,7 @@ class JournalingActionSink:
         self._lots: dict[str, _Lot] = {}
         self._problems: set[str] = set()
         self._log: list[str] = []
+        self._send_failed = False          # the last _send queued nothing (journal or submit refusal)
 
     # ------------------------------------------------------------------------------------------------ wiring
     def bind(self, binding: SinkBinding, monotonic_clock: Callable[[], int]) -> None:
@@ -180,11 +183,15 @@ class JournalingActionSink:
             if intent.purpose is Purpose.PROTECT:
                 lot.last_protect = (K.route_of(intent.intent_id, intent.client_order_id), sent,
                                     state if state in TERMINAL else None)
-                if state is IntentState.FILLED:
-                    lot.quantity = Decimal('0')
-            elif intent.purpose in (Purpose.CLOSE, Purpose.REDUCE) and final is not None and final.executed_qty:
+            if intent.purpose in (Purpose.PROTECT, Purpose.CLOSE, Purpose.REDUCE) and final is not None \
+                    and final.executed_qty:
                 lot.quantity = max(Decimal('0'), lot.quantity - final.executed_qty)
-        if self._problems:
+        for lot in self._lots.values():
+            if lot.quantity > 0 and (lot.last_protect is None or lot.last_protect[2] is not None):
+                # An open lot with no live stop (for example a crash between the fill and its protect).
+                self._problems.add(SinkProblem.PROTECTION_FAILED)
+                self._note('recovered_unprotected_lot')
+        if SinkProblem.RECOVERED_LIVE_INTENTS in self._problems:
             self._note('recovered_live_intents')
 
     # ------------------------------------------------------------------------------------------------ helpers
@@ -243,6 +250,7 @@ class JournalingActionSink:
               stop_price: Decimal | None = None) -> bool:
         """Journal decision, intent and SENT (each durable), then queue the work.  False if nothing was queued."""
         at = decision.at_ms
+        self._send_failed = True
         try:
             self._append(self._event(DecisionRecorded, at_ms=at, reason=decision.reason, decision=decision))
             durable = dataclasses.replace(intent, state=IntentState.DURABLE)
@@ -268,6 +276,7 @@ class JournalingActionSink:
             self._problems.add(SinkProblem.ORDER_UNRESOLVED)
             self._note(f'submit_failed:{intent.purpose.value}')
             return False
+        self._send_failed = False
         self._note(f'sent:{intent.purpose.value}:{route}')
         return True
 
@@ -276,7 +285,10 @@ class JournalingActionSink:
                         at_ms: int) -> tuple[Decision, OrderIntent]:
         grammar = self._b.journal.gate().grammar
         intent_id = grammar.next_child_intent_id(owner_id, purpose)
-        decision_id = make_id('dec', _h32('decision', self._b.account_id, intent_id))
+        # The journal position makes the id unique even if an earlier decision for this ordinal was journaled without
+        # its intent (a failed append): G4 never sees the same decision id twice.
+        decision_id = make_id('dec', _h32('decision', self._b.account_id, intent_id,
+                                          str(self._b.journal.last_sequence())))
         intent = self._intent(intent_id=intent_id, decision_id=decision_id, purpose=purpose, route=route,
                               symbol=lot.symbol, side=lot.side, qty=qty, reason=reason, at_ms=at_ms,
                               owner_id=owner_id, owner_kind=OwnerKind.LOT, stop_price=stop_price)
@@ -311,7 +323,7 @@ class JournalingActionSink:
         """Protection could not be placed: flatten the lot at market and hold the account."""
         self._problems.add(SinkProblem.PROTECTION_FAILED)
         self._note('protection_failed')
-        if lot.quantity > 0 and not self._lot_busy(lot.lot_id):
+        if lot.quantity > 0 and not self._send_failed and not self._lot_busy(lot.lot_id):
             self._close(lot, lot.quantity, Action.FLATTEN, ReasonCode.EXIT_STOP_FAILED, Authority.PROTECTION, at_ms)
 
     def _lot_busy(self, lot_id: str) -> bool:
@@ -348,8 +360,7 @@ class JournalingActionSink:
             if not routes_ok:
                 self._note('entry_route_unverified')
                 return False
-            if not (self._probe(Action.PROTECT, Purpose.PROTECT, 'classic', key.symbol, side, qty, stop)
-                    and self._probe(Action.PROTECT, Purpose.PROTECT, 'algo', key.symbol, side, qty, stop)):
+            if not self._probe(Action.PROTECT, Purpose.PROTECT, 'algo', key.symbol, side, qty, stop):
                 # An entry that could not be protected is never opened.
                 self._note('protect_route_unverified')
                 return False
@@ -366,7 +377,7 @@ class JournalingActionSink:
     def accept_management(self, account_id, plan) -> bool:
         with self._lock:
             b = self._b
-            if b is None or account_id != b.account_id or type(plan) is not ManagementPlan:
+            if b is None or account_id != b.account_id or type(plan) is not ManagementPlan or self._problems & UNCERTAIN:
                 return False
             lot = self._lots.get(plan.lot_id)
             if lot is None or lot.quantity <= 0 or not plan.actions:
@@ -387,6 +398,8 @@ class JournalingActionSink:
                     steps.append(('protect', route, action))
                 elif type(action) in (CloseAction, FlattenRequired):
                     flat = type(action) is FlattenRequired
+                    if lot.last_protect is not None and lot.last_protect[2] is None:
+                        return False              # a live stop would outlive the close: needs the cancel path first
                     if not 0 < action.quantity <= lot.quantity:
                         return False
                     if not self._probe(Action.FLATTEN if flat else Action.CLOSE, Purpose.CLOSE, 'classic',
@@ -410,10 +423,10 @@ class JournalingActionSink:
     def _next_protect_route(lot: _Lot) -> str | None:
         last = lot.last_protect
         if last is None or last[2] in (IntentState.CANCELLED, IntentState.FILLED, IntentState.NOT_SENT):
-            return 'classic'
-        if last[0] == 'classic' and last[1] and last[2] is IntentState.REJECTED:
             return 'algo'
-        return None                               # an algo attempt was rejected too: no third route (G6)
+        if last[0] == 'classic' and last[1] and last[2] is IntentState.REJECTED:
+            return 'algo'                         # the G6 fallback of a journal written before algo-first
+        return None                               # live, or an algo attempt was rejected: no third route (G6)
 
     # ------------------------------------------------------------------------------------------------ results
     def poll(self, now_mono: int) -> tuple[str, ...]:
@@ -437,7 +450,7 @@ class JournalingActionSink:
         self._problems.add(SinkProblem.ORDER_UNRESOLVED)
         self._note(f'unresolved:{order.intent.purpose.value}')
         try:
-            at = self._b.wall_clock()
+            at = max(self._b.wall_clock(), order.intent.created_at_ms)
             self._record(order, at, phase=ResultPhase.UNKNOWN, lookup=lookup)
             if order.state is not IntentState.UNKNOWN:
                 self._step(order, IntentState.UNKNOWN, at)
@@ -450,7 +463,7 @@ class JournalingActionSink:
                       evidence=None)
         fields.update(kw)
         seq = self._b.journal.last_sequence() + 1
-        result = OrderResult(result_id=make_id('res', _h32('res', self._b.account_id, str(seq))),
+        result = OrderResult(result_id=make_id('res', _h32('res', self._b.account_id, self._b.aggregate_id, str(seq))),
                              intent_id=it.intent_id, account_id=it.account_id, client_order_id=it.client_order_id,
                              requested_qty=it.qty, observed_at_ms=at, corroboration=(), resolved_by=None,
                              external_trades=(), supersedes_result_id=None, **fields)
@@ -476,7 +489,7 @@ class JournalingActionSink:
         except ValueError:
             self._unresolved(order)
             return
-        at = self._b.wall_clock()
+        at = max(self._b.wall_clock(), order.intent.created_at_ms)   # a wall clock that stepped back never loses a fill
         try:
             if kind is OutcomeKind.KNOWN and status in OPEN_STATUSES:
                 self._record(order, at, phase=ResultPhase.KNOWN, exchange_order_id=outcome.exchange_order_id,
@@ -484,7 +497,13 @@ class JournalingActionSink:
                 self._step(order, IntentState.WORKING, at)
                 self._pending.pop(order.work_id, None)
                 self._note(f'working:{order.intent.purpose.value}')
-                self._after_working(order)
+                if order.intent.purpose is Purpose.PROTECT:
+                    self._after_working(order)
+                else:
+                    # A market order resting KNOWN: its executed quantity is unknown, so nothing builds on it.
+                    self._problems.add(SinkProblem.ORDER_UNRESOLVED)
+                    if order.intent.purpose is Purpose.ENTRY:
+                        self._problems.add(SinkProblem.PROTECTION_FAILED)
                 return
             if kind is OutcomeKind.FINAL and status in FINAL_STATUSES:
                 result = self._record(order, at, phase=ResultPhase.FINAL, exchange_order_id=outcome.exchange_order_id,
@@ -500,6 +519,8 @@ class JournalingActionSink:
         except Exception:
             self._pending.pop(order.work_id, None)
             self._problems.add(SinkProblem.ORDER_JOURNAL_FAILED)
+            if order.intent.purpose is Purpose.ENTRY:
+                self._problems.add(SinkProblem.PROTECTION_FAILED)    # an entry answer we could not journal
             self._note('journal_failed:result')
             return
         self._pending.pop(order.work_id, None)
@@ -520,7 +541,7 @@ class JournalingActionSink:
                 lot_id = K.derive_lot_id(self._b.account_id, it.intent_id)
                 lot = _Lot(lot_id, it.symbol, it.side, executed, order.stop_price)
                 self._lots[lot_id] = lot
-                if not self._protect(lot, 'classic', at):
+                if not self._protect(lot, 'algo', at):
                     self._fail_protection(lot, at)
             return
         lot = self._lots.get(it.owner_id)
@@ -528,11 +549,11 @@ class JournalingActionSink:
             return
         if it.purpose is Purpose.PROTECT:
             lot.last_protect = (order.route, True, order.state)
-            if executed > 0:
-                lot.quantity = max(Decimal('0'), lot.quantity - executed)       # the stop itself closed the lot
-                return
-            if order.state is IntentState.REJECTED and lot.quantity > 0:
-                route = self._next_protect_route(lot)
+            lot.quantity = max(Decimal('0'), lot.quantity - executed)           # the stop itself closed (part of) it
+            if lot.quantity > 0:
+                # The stop is gone and the lot is still open.  Only a rejected classic attempt has a G6 fallback;
+                # anything else (rejected algo, cancelled, expired, partly executed) flattens the rest.
+                route = self._next_protect_route(lot) if order.state is IntentState.REJECTED else None
                 if route is None or not self._protect(lot, route, at):
                     self._fail_protection(lot, at)
             return

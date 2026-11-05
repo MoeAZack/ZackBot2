@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from rt01_fixtures import WALL0, account_record, acct, pf  # noqa: E402
-from test_rt02_journaling import A, KEY, Harness, classic_stop  # noqa: E402,F401
+from test_rt02_journaling import A, KEY, Harness  # noqa: E402
 
 from newcore.domain import BindingChanged, IntentState, Purpose, ReasonCode, Side, make_id  # noqa: E402
 from newcore.domain.account import BindingState, Environment  # noqa: E402
@@ -67,7 +67,7 @@ def _page(durable, component, records, generation=1):
     return EvidencePage(component, A, durable.account.binding, generation, 1, WALL0 + 1_000, True, tuple(records))
 
 
-def test_protected_entry_projects_and_reconciles_protected(h, classic_stop):
+def test_protected_entry_projects_and_reconciles_protected(h):
     confirm(h)
     _, decision = h.enter()
     h.drive()
@@ -90,7 +90,7 @@ def test_protected_entry_projects_and_reconciles_protected(h, classic_stop):
     assert plan.status is PlanStatus.PROTECTED_CONFIRMED
 
 
-def test_a_missing_stop_on_the_venue_never_confirms(h, classic_stop):
+def test_a_missing_stop_on_the_venue_never_confirms(h):
     confirm(h)
     _, decision = h.enter()
     h.drive()
@@ -103,9 +103,9 @@ def test_a_missing_stop_on_the_venue_never_confirms(h, classic_stop):
     assert plan.status is PlanStatus.HOLD
 
 
-def test_flattened_lot_projects_flat(h, classic_stop):
+def test_flattened_lot_projects_flat(h):
     confirm(h)
-    h.venue.stop = {'classic': 'rejected', 'algo': 'rejected'}
+    h.venue.stop = {'algo': 'rejected'}
     h.enter()
     h.drive()
     durable = JournalProjection().load_journal(A, h.journal)
