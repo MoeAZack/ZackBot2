@@ -203,8 +203,8 @@ def _live_parts(args, account: Account, origin: str):
     import time
 
     from newcore.tnet02.journal import FileJournalOpener
-    from newcore.tnet02.live import EnvCredentialSource, LiveAccountPort, LiveFiltersPort, SignedReader, \
-        read_limit_payloads
+    from newcore.tnet02.live import (SIGNED_RECV_WINDOW_MS, EnvCredentialSource, LiveAccountPort, LiveFiltersPort,
+                                     SignedReader, SyncedClock, read_limit_payloads, server_offset_ms)
     from newcore.tnet02.ports import PortError
     from newcore.tnet02.wiring import build_adapter, key_digest
 
@@ -226,13 +226,21 @@ def _live_parts(args, account: Account, origin: str):
     except ValueError:
         raise Refused("origin_invalid") from None
 
-    def clock() -> int:
+    def local_clock() -> int:
         return time.time_ns() // 1_000_000
 
     def monotonic() -> int:
         return time.monotonic_ns() // 1_000_000
 
-    reader = SignedReader(sender=sender, credentials=credentials, clock=clock, base_url=origin)
+    try:
+        # Sign in server time (measured once, unsigned) with the widest recvWindow the venue accepts.
+        offset = server_offset_ms(SignedReader(sender=sender, credentials=credentials, clock=local_clock,
+                                               base_url=origin), local_clock)
+    except PortError as error:
+        raise Refused(error.code.replace(".", "_")) from None
+    clock = SyncedClock(local_clock, offset)
+    reader = SignedReader(sender=sender, credentials=credentials, clock=clock, base_url=origin,
+                          recv_window_ms=SIGNED_RECV_WINDOW_MS)
     try:
         exchange, limits, info, raw = read_limit_payloads(reader)
         filters = LiveFiltersPort(info, raw)
@@ -240,7 +248,7 @@ def _live_parts(args, account: Account, origin: str):
                               egress_id="egress-tnet02-cli", exchange_info=exchange, account_order_limits=limits,
                               account=LiveAccountPort(reader, clock), filters=filters, journals=journals,
                               clock=clock, monotonic=monotonic, sleeper=lambda ms: time.sleep(ms / 1000),
-                              base_url=origin)
+                              base_url=origin, recv_window_ms=SIGNED_RECV_WINDOW_MS)
     except PortError as error:
         raise Refused(error.code.replace(".", "_")) from None
     except Exception:
@@ -271,7 +279,8 @@ def _run(args) -> int:
             evidence = wired.adapter.confirm_binding(spec.binding)
         except Exception as error:
             raise Refused("preflight_" + str(getattr(error, "code", "failed")).replace(".", "_")) from None
-        print(f"PREFLIGHT origin={origin} account={evidence.account_id} digest={evidence.binding_digest} "
+        print(f"PREFLIGHT origin={origin} clock_offset_ms={clock.offset_ms} account={evidence.account_id} "
+              f"digest={evidence.binding_digest} "
               f"environment={evidence.environment.value} settlement={evidence.settlement_asset} "
               f"isolated={str(evidence.isolated).lower()}")
         print("PREFLIGHT read-only: no order was sent")

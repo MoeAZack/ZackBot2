@@ -30,6 +30,11 @@ _KEY = re.compile(r"[A-Za-z0-9]{16,128}")
 _PARAM = re.compile(r"[A-Za-z0-9._-]{1,64}")
 _SYMBOL = re.compile(r"[A-Z0-9]{2,30}")
 BALANCE_PATH = "/fapi/v2/balance"
+SERVER_TIME_PATH = "/fapi/v1/time"
+SIGNED_RECV_WINDOW_MS = 10_000          # the venue's maximum; absorbs network jitter on the real testnet
+MAX_CLOCK_OFFSET_MS = 60_000
+MAX_SYNC_RTT_MS = 5_000
+SYNC_MARGIN_MS = 250                    # sign slightly behind server time: Binance rejects timestamps >1 s ahead
 POSITION_RISK_PATH = "/fapi/v2/positionRisk"
 
 
@@ -152,6 +157,54 @@ class SignedReader:
             return json.loads(response.body.decode("utf-8"), parse_float=Decimal, parse_int=int)
         except (UnicodeDecodeError, ValueError):
             _fail("reader.malformed")
+
+
+# --------------------------------------------------------------------------------------------- server clock
+def server_offset_ms(reader: SignedReader, local_clock: Callable[[], int], samples: int = 3) -> int:
+    """Median offset (server - local) from unsigned ``/fapi/v1/time`` reads, each corrected by half its round trip.
+
+    The real owner PC ran 1-2 s behind the testnet, and a signed read was refused with -1021 (outside recvWindow).
+    A huge offset or a slow round trip is refused rather than trusted.
+    """
+    if type(samples) is not int or not 1 <= samples <= 9:
+        _fail("clock.samples")
+    offsets = []
+    for _ in range(samples):
+        before = local_clock()
+        body, _raw = reader.public(SERVER_TIME_PATH)
+        after = local_clock()
+        server = body.get("serverTime") if type(body) is dict else None
+        if type(server) is not int or server <= 0 or type(before) is not int or type(after) is not int:
+            _fail("clock.server_time")
+        if not 0 <= after - before <= MAX_SYNC_RTT_MS:
+            _fail("clock.round_trip")
+        offsets.append(server - (before + after) // 2)
+    offsets.sort()
+    offset = offsets[len(offsets) // 2]
+    if abs(offset) > MAX_CLOCK_OFFSET_MS:
+        _fail("clock.offset_too_large")
+    return offset
+
+
+class SyncedClock:
+    """Wall clock in server time: ``local() + offset - margin``.  The offset is fixed for the run (measured once at
+    start), so the clock never jumps mid-run."""
+
+    __slots__ = ("_local", "_offset", "_margin")
+
+    def __init__(self, local_clock: Callable[[], int], offset_ms: int, margin_ms: int = SYNC_MARGIN_MS):
+        if not callable(local_clock) or type(offset_ms) is not int or abs(offset_ms) > MAX_CLOCK_OFFSET_MS:
+            _fail("clock.synced")
+        if type(margin_ms) is not int or not 0 <= margin_ms <= 1000:
+            _fail("clock.synced")
+        self._local, self._offset, self._margin = local_clock, offset_ms, margin_ms
+
+    @property
+    def offset_ms(self) -> int:
+        return self._offset
+
+    def __call__(self) -> int:
+        return self._local() + self._offset - self._margin
 
 
 def _decimal(value: object, code: str) -> Decimal:
@@ -328,4 +381,5 @@ def make_testnet_venue(*, origin: str, sender: Callable[[HttpRequest], HttpRespo
 
 
 __all__ = ["API_KEY_ENV", "API_SECRET_ENV", "EnvCredentialSource", "LiveAccountPort", "LiveError", "LiveFiltersPort",
-           "SignedReader", "make_testnet_venue", "read_limit_payloads"]
+           "SIGNED_RECV_WINDOW_MS", "SignedReader", "SyncedClock", "make_testnet_venue", "read_limit_payloads",
+           "server_offset_ms"]

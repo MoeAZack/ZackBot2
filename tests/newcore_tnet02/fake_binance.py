@@ -146,6 +146,12 @@ class FakeBinance:
         assert f"{parts.scheme}://{parts.netloc}" == getattr(self, "origin", TESTNET_BASE_URL)
         params = dict(parse_qsl(request.query, keep_blank_values=True))
         self.requests.append((request.method, parts.path, params))
+        if getattr(self, "enforce_recv_window", False) and "timestamp" in params:
+            # Binance -1021: reject a signed request more than 1 s ahead of, or recvWindow behind, its arrival.
+            arrival = self.clock.now + getattr(self, "latency_ms", 0)
+            stamp, window = int(params["timestamp"]), int(params.get("recvWindow", "5000"))
+            if stamp > arrival + 1000 or arrival - stamp > window:
+                return err(-1021, 400)
         self.tick()
         handler = getattr(self, "_" + request.method.lower() + parts.path.replace("/", "_"), None)
         if handler is None:
@@ -256,6 +262,9 @@ class FakeBinance:
                              "markPrice": format(self.marks[symbol], "f"),
                              "leverage": str(self.leverage[symbol])})
         return ok(rows)
+
+    def _get_fapi_v1_time(self, p):
+        return ok({"serverTime": self.clock.now + getattr(self, "server_ahead_ms", 0)})
 
     def _get_fapi_v2_balance(self, p):
         return ok([{"asset": "BNB", "balance": "0", "crossUnPnl": "0", "availableBalance": "0"},

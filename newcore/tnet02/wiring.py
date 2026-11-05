@@ -44,7 +44,8 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
                   account_id: str, egress_id: str, exchange_info: RawLimitPayload,
                   account_order_limits: RawLimitPayload, account: AccountPort, filters: FiltersPort,
                   journals: JournalOpener, clock: Clock, monotonic: Clock, sleeper: Sleeper,
-                  config: HarnessConfig = HarnessConfig(), base_url: str = TESTNET_BASE_URL) -> Wired:
+                  config: HarnessConfig = HarnessConfig(), base_url: str = TESTNET_BASE_URL,
+                  recv_window_ms: int = 5000) -> Wired:
     # One explicit origin per run: the venue, and (in the CLI) the sender and reader, all receive the same string.
     if type(base_url) is not str or base_url not in TESTNET_ORIGINS:
         raise ValueError("wiring.origin")
@@ -62,7 +63,8 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
         # Live account reads spend from, and report rate evidence to, the same budget as the venue.
         bind(budget)
     venue = BinanceUsdMTestnetVenue(environment="testnet", base_url=base_url, sender=faults,
-                                    credentials=credentials, clock=clock, rate_observer=observe)
+                                    credentials=credentials, clock=clock, rate_observer=observe,
+                                    recv_window_ms=recv_window_ms)
     context = AccountContext(account_id=account_id, egress_id=egress_id, venue=venue, budget=budget,
                              monotonic_clock=monotonic)
     try:

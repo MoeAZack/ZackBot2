@@ -7,6 +7,7 @@ consistently; mainnet, lookalike and redirect targets are refused.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -265,7 +266,7 @@ def senders(monkeypatch):
     built = []
 
     def make(origin):
-        fake = FakeBinance(FakeClock())
+        fake = FakeBinance(FakeClock(time.time_ns() // 1_000_000))  # CLI signs in server time
         fake.origin = origin
         built.append(origin)
         return fake

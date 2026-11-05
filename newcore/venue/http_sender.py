@@ -41,7 +41,7 @@ _PATHS = frozenset({
 })
 # The only unsigned route: public exchange rules (symbol filters and rate limits).  It must be a GET with an empty
 # query and no API-key header, so no credential ever travels with it.
-_PUBLIC_PATHS = frozenset({'/fapi/v1/exchangeInfo'})
+_PUBLIC_PATHS = frozenset({'/fapi/v1/exchangeInfo', '/fapi/v1/time'})
 _QUERY_KEY = re.compile(r'^[A-Za-z][A-Za-z0-9]*$')
 _QUERY_VALUE = re.compile(r'^[A-Za-z0-9._~+%\-]*$')
 _API_KEY = re.compile(r'^[A-Za-z0-9_-]{1,256}$')

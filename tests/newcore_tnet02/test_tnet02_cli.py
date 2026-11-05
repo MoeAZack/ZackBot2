@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -114,7 +115,7 @@ def test_run_preflight_reads_only_and_reports_isolation(tmp_path, identity, caps
     import newcore.venue as venue_pkg
     from .fake_binance import FakeBinance, FakeClock
 
-    fake = FakeBinance(FakeClock())
+    fake = FakeBinance(FakeClock(time.time_ns() // 1_000_000))  # CLI signs in server time
     monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda origin: fake)
     monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", LIVE_KEY)
     monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)
