@@ -454,7 +454,10 @@ class TelegramControl:
         try: days = int(args[0]) if args else 7
         except ValueError: return 'Usage: /profit [days]  e.g. /profit 30'
         days = max(1, min(days, 3650))
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        import engine as E
+        try: now = E.now_utc()                               # the engine clock, like /daily (not the wall clock)
+        except Exception: now = datetime.now(timezone.utc)
+        since = now - timedelta(days=days)
         with e.lock: H = list(e.history)
         H = [h for h in H if (_parse_ts(h.get('closed')) or since - timedelta(1)) >= since]
         if not H: return f'No closed trades in the last {days} day(s).'
