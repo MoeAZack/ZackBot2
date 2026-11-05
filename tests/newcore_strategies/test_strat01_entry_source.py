@@ -56,7 +56,7 @@ class MemFeed:
         if d is None:
             return None
         opens = d['t'].astype('datetime64[ms]').astype('int64')
-        out = d[opens + H4 <= now_wall_ms].iloc[-bars:].reset_index(drop=True)
+        out = d[opens + H4 <= now_wall_ms].iloc[-(bars + 10):].reset_index(drop=True)   # a few extra, like real feeds
         fn = self.tamper.get(symbol)
         return fn(out) if fn else out
 
@@ -219,6 +219,11 @@ def test_short_stop_rounds_up_away_from_entry():
     (cand,) = src.candidates(ACCT, 5)
     req = cand.evaluation.request
     assert req.stop_price > req.entry_price and req.stop_price % D('0.00001') == 0
+    sym = cand.key.symbol
+    d = ST.indicators(FRAMES[sym][FRAMES[sym]['t'].astype('datetime64[ms]').astype('int64') + H4 <= close]
+                      .iloc[-1500:].reset_index(drop=True))
+    raw_stop = req.entry_price + D(repr(1.5 * float(d['atr'].iloc[-1])))
+    assert req.stop_price >= raw_stop and req.stop_price - raw_stop < D('0.00001')   # ceiled, away from entry
     assert cand.key.side is Side.SHORT
 
 
@@ -443,6 +448,15 @@ def test_missing_newest_candle_gives_nothing():
     assert src.candidates(ACCT, 1) == ()
 
 
+def test_feed_stuck_one_candle_behind_gives_nothing_even_when_that_candle_fired():
+    prev = next(c for c in reversed(CLOSES[-200:]) if reference('exp_range', 'LONG', c))
+    src, _ = source([slot()], feed=MemFeed(FRAMES, tamper={s: (lambda d: d.iloc[:-1]) for s in UNIVERSE}),
+                    now=prev + H4 + 1)
+    assert src.candidates(ACCT, 1) == ()
+    ok, _ = source([slot()], now=prev + 1)
+    assert ok.candidates(ACCT, 1)                   # the same candle is a signal when it is the newest close
+
+
 def test_gap_in_window_skips_symbol_and_btc_gap_stops_slot():
     close, hits = _first_fire()
     sym = hits[0]
@@ -481,8 +495,10 @@ def test_corrupt_candles_fail_closed(bad):
             d.loc[len(d) - 3, 'c'] = float('nan')
         elif bad == 'nonpositive':
             d.loc[len(d) - 3, 'l'] = 0.0
-        elif bad == 'high_below_close':
-            d.loc[len(d) - 1, 'h'] = d.loc[len(d) - 1, 'c'] * 0.5
+        elif bad == 'high_below_close':           # high just under the body top, still above the low
+            row = d.loc[len(d) - 1]
+            top, low = max(row['o'], row['c']), row['l']
+            d.loc[len(d) - 1, 'h'] = top - (top - low) * 0.01 if top > low else top * 0.999
         elif bad == 'missing_col':
             d = d.drop(columns=['v'])
         elif bad == 'short':
@@ -498,8 +514,41 @@ def test_corrupt_candles_fail_closed(bad):
 def test_invalid_wall_clock():
     src, clock = source([slot()], now=None)
     assert src.candidates(ACCT, 1) == ()
-    clock['now'] = 1.5e12
-    assert src.candidates(ACCT, 1) == ()
+    for bad in (1.5e12, -5, 0, True):
+        clock['now'] = bad
+        assert src.candidates(ACCT, 1) == ()
+    assert src.reasons['wall_clock_invalid'] == 5
+
+
+def test_entry_is_put_on_a_coarse_tick_grid_and_degenerate_prices_give_nothing():
+    close, _ = _first_fire()
+    s = slot()
+    src, _ = source([s], risk=Risk([s], tick='0.1'), now=close + 1, max_entries_per_candle=5)
+    got = src.candidates(ACCT, 1)
+    assert got and all(c.evaluation.request.entry_price % D('0.1') == 0 for c in got)
+    raw = {c.key.symbol: D(repr(float(FRAMES[c.key.symbol].set_index('t')['c']
+                                      [pd.Timestamp(close - H4, unit='ms')]))) for c in got}
+    assert any(raw[c.key.symbol] != c.evaluation.request.entry_price for c in got)
+    huge, _ = source([s], risk=Risk([s], tick='1000000'), now=close + 1, max_entries_per_candle=5)
+    assert huge.candidates(ACCT, 1) == ()
+    assert huge.reasons['range4h_long:stop_invalid'] >= 1
+
+
+def test_vwaprev_stop_uses_its_own_atr_series():
+    s = slot(key='exp_vwaprev', name='vwaprev4h_long')
+    close = next(c for c in reversed(CLOSES) if reference('exp_vwaprev', 'LONG', c))
+    src, _ = source([s], now=close + 1)
+    (cand,) = src.candidates(ACCT, 1)
+    sym = cand.key.symbol
+    d = ST.indicators(FRAMES[sym][FRAMES[sym]['t'].astype('datetime64[ms]').astype('int64') + H4 <= close]
+                      .iloc[-1500:].reset_index(drop=True))
+    own = ST.signals('exp_vwaprev', d, ST.build_context({'BTCUSDT': ST.indicators(
+        FRAMES['BTCUSDT'][FRAMES['BTCUSDT']['t'].astype('datetime64[ms]').astype('int64') + H4 <= close]
+        .iloc[-1500:].reset_index(drop=True)), sym: d})[sym])['atr'][-1]
+    assert np.isfinite(own) and abs(own - float(d['atr'].iloc[-1])) > 1e-9
+    req = cand.evaluation.request
+    expect = req.entry_price - D(repr(1.5 * float(own)))
+    assert req.stop_price <= expect and expect - req.stop_price < D('0.00001')
 
 
 # ---------------------------------------------------------------------------------------------------- config

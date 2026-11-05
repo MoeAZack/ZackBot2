@@ -22,10 +22,24 @@ Status: PAPER / TESTNET only. Stacked on RT-02 (PR #296). Mainnet is out of scop
      base_risk_fraction x risk_mult`; leverage as configured. The request id is a hash of the account id and the key.
    - snapshots (account, portfolio, policy, filters, followers) come from the injected `RiskContextProvider`. This module
      never invents equity, exposures or filters. A missing, failing or mismatched context gives no candidate.
-5. Each key is offered once per process, and at most `max_entries_per_candle` (default 1) per slot, per account,
-   per candle, in universe order. The journaling sink's `claim_signal` is the durable once-only gate across restarts.
+5. At most `max_entries_per_candle` (default 1) candidates per slot, per account, per candle are chosen, always the
+   first ones in universe order. A chosen key is re-offered every `reoffer_ms` (default 60 s) while its candle is
+   inside the age window, so a transient refusal (sink busy, stale NC-06 snapshot) can still succeed. The journaling
+   sink's `claim_signal` is the durable once-only gate: a key already taken is refused there as `signal_consumed`.
+6. An incomplete evaluation (a late or broken window for any symbol) is not cached. It is retried every `retry_ms`
+   (default 30 s) until it is complete or the window closes. A complete evaluation runs once per candle.
 
-Every refusal is counted in `source.reasons` (for example `range4h_long:candles_unusable`).
+`candidates()` never raises. Every refusal or contained error is counted in `source.reasons` (for example
+`range4h_long:candles_unusable`, `range4h_long:risk_context_missing`, `vw:signal_error`).
+
+Candle times must be datetimes (naive = UTC; aware ones are converted to UTC). Numeric times are refused because
+pandas would read epoch milliseconds as nanoseconds. OHLCV values may be strings, Decimals or floats and are converted
+to float64 before the research path runs.
+
+Supported keys (explicit allowlist, `SUPPORTED`): rotation_long_h2, exp_range, exp_vwaprev, evening_star_short_1h,
+starc_band_breakout_long_1h, kalman_innovation_recovery_long_1h. Rank/breadth keys and keys that read mark-price or
+order-flow context are refused (`strategy_unsupported`), because `build_context` does not supply their inputs or they
+need a complete universe that this module does not guarantee.
 
 ## Hard bounds
 
@@ -71,4 +85,9 @@ Universe: CORE-20 from `research_evidence/universe/static-top40-minhist365-contr
 - `exp_vwaprev` needs a quote-volume column (`qv`); without it the slot fails closed.
 - Evaluation runs synchronously in `cycle`, once per candle close: about 0.3 s per slot, and about 1.2 s for
   `exp_vwaprev` over 17 symbols x 1500 bars (measured in the sandbox).
-- `CsvCandleFeed` is for PAPER/replay. A testnet kline feed is a separate ticket.
+- `CsvCandleFeed` is for PAPER/replay (ISO or epoch-millisecond `t`). A testnet kline feed is a separate ticket. It
+  must decide that a candle has closed from exchange time or the kline's closed flag, not the local clock alone.
+- Stop anchor: live uses the decision close +/- `stop_atr x ATR`, while the backtest anchors on the next-open fill. This
+  makes a small difference in R sizing.
+- The 1h research keys (C101/C164/C213) are allow-listed but absent on this base, so their last-bar parity is untested
+  here. Add them to the parity test when their branches merge.
