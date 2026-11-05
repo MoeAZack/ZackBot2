@@ -114,7 +114,7 @@ Files actually added: `ports.py`, `faults.py`, `journal.py`, `adapter.py`, `wiri
 * `newcore/tnet02/live.py`: `EnvCredentialSource` reads the dedicated testnet key from `ZACKBOT_TNET02_API_KEY` / `ZACKBOT_TNET02_API_SECRET` on the owner's PC only; HMAC-SHA256 signing (checked against Binance's documented example); redacted `repr`, no pickling or copying, codes-only errors. `SignedReader` (GET only, through the injected sender), `LiveAccountPort` (hedge mode, mark price and the higher side leverage from signed `positionRisk`; equity = balance + cross unrealized from `/fapi/v2/balance`), `LiveFiltersPort` (PRICE_FILTER, the stricter of LOT_SIZE/MARKET_LOT_SIZE, MIN_NOTIONAL; only TRADING USDT perpetuals; pinned by SHA-256 of the exact `exchangeInfo` bytes), and `read_limit_payloads` for NC-04.
 * **Shared file edited: `newcore/venue/http_sender.py`** (path posted on #219 at push time). Adds the signed read routes `/fapi/v1/rateLimit/order` and `/fapi/v2/balance`, and one unsigned public route, `GET /fapi/v1/exchangeInfo`, accepted only with an empty query and no headers so no key ever travels with it. Exact host, no retry and no redirect are unchanged. Tests in `tests/newcore_tnet02/test_tnet02_sender_routes.py`; the existing sender tests are untouched and pass.
 * CLI `run`: identity check, account file, credentials from the environment, and refusal **before any network** unless `key_digest(api key)` equals the confirmed account digest. Without `--execute` it is a read-only preflight (rules, limits, account facts, binding/isolation) that sends no order and exits 3 when the account is not isolated. `--execute TESTNET` runs the twelve cases, writes the report once and prints the GateProof checked against the account and digest.
-* Account reads in `LiveAccountPort` go straight through the sender, not the NC-04 budget (a handful of GETs per case). A real 429/418 on them fails closed as `read.account_facts`.
+* Account reads in `LiveAccountPort` go straight through the sender, not the NC-04 budget (a handful of GETs per case). A real 429/418 on them fails closed as `read.account_facts`. *Closed in commit 6 (§13).*
 * Adapter HOLD codes were renamed out of the NC-01 reason namespaces (`bind.*`, `cfg.*`, `stop.*`, `open.*`) so the reason-code literal scan stays clean.
 
 ## 11. Commit 4: real-exchange hardening (5 Nov 2026)
@@ -145,6 +145,22 @@ Codex ruling on #219 (6660693481), with owner approval: support the exact origin
   * redirect not followed;
   * CLI origin selection, mismatch, key reuse across origins and corrupt pins.
 * **Mutation check.** 25 of 28 mutants on the new lines were killed. The 3 that survive are the overlapping URL checks inside `_validate` (prefix, scheme/host/port, exact reconstruction). For an approved origin/host pair, removing any one of them is caught by the other two, so each is equivalent alone. They are the same layering the sender had before this change.
+
+## 13. Commit 6: account reads go through the NC-04 budget (5 Nov 2026)
+
+This closes the disclosure in §10.
+
+* **Reservation.** `LiveAccountPort.bind_budget(budget)` is called by `build_adapter` with the venue's own `AccountBudget`. Before each signed `positionRisk` or `balance` read, the port reserves the documented weight 5 from the **GENERAL** pool.
+* **Refusal.** The reservation is refused (`account.budget_refused`, nothing sent) in three cases:
+  * during `BLOCKED_UNTIL`;
+  * during `BLOCKED_UNKNOWN_DURATION`, including a 418 ban;
+  * when general weight is saturated.
+
+  Account facts are never charged to the protection reserve. The adapter turns the refusal into the HOLD `read.account_facts`.
+* **Rate evidence.** `SignedReader.set_rate_observer` passes every account-read response (status, Retry-After, used weight) to `budget.observe`. A 429 or 418 seen on an account read therefore blocks the venue's general work too, and an `X-MBX-USED-WEIGHT-1M` header raises the tracked usage. The budget and the observer can each be bound only once. If the observer fails, the read fails closed (`reader.rate_observer`).
+* **Startup reads.** The startup reads (`exchangeInfo` and `rateLimit/order`) happen before the budget exists, because the budget is built from them. They stay outside it, once per run.
+* **Tests.** `tests/newcore_tnet02/test_tnet02_account_budget.py` has 13 tests.
+* **Mutation check.** 10 of 10 mutants on the new lines were killed.
 
 ## Deferred
 

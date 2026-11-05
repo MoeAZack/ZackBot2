@@ -15,9 +15,11 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Callable, Mapping
 
-from newcore.account_context import (ACCOUNT_ORDER_LIMIT_PATH, ACCOUNT_SOURCE, EXCHANGE_INFO_PATH,
-                                     MARKET_DATA_SOURCE, SOURCE_RETRIEVED_ON, LimitAuthority, RawLimitPayload)
-from newcore.venue.binance_usdm_testnet import TESTNET_BASE_URL, TESTNET_ORIGINS, HttpRequest, HttpResponse
+from newcore.account_context import (ACCOUNT_ORDER_LIMIT_PATH, ACCOUNT_SOURCE, ENDPOINT_COSTS_V1, EXCHANGE_INFO_PATH,
+                                     MARKET_DATA_SOURCE, SOURCE_RETRIEVED_ON, AdmissionRefused, Limiter,
+                                     LimitAuthority, Operation, Pool, RawLimitPayload, Reservation)
+from newcore.venue.binance_usdm_testnet import (TESTNET_BASE_URL, TESTNET_ORIGINS, HttpRequest, HttpResponse,
+                                                RateEvidence)
 
 from .ports import AccountFacts, PortError, SymbolFacts, SymbolFilters
 
@@ -86,6 +88,7 @@ class SignedReader:
         if type(base_url) is not str or base_url not in TESTNET_ORIGINS:
             _fail("reader.origin")
         self._origin = base_url
+        self._observer: Callable[[RateEvidence], None] | None = None
         self._sender, self._credentials, self._clock = sender, credentials, clock
         self._recv_window_ms, self._timeout_s = recv_window_ms, timeout_s
 
@@ -112,6 +115,14 @@ class SignedReader:
     def origin(self) -> str:
         return self._origin
 
+    def set_rate_observer(self, observer: Callable[[RateEvidence], None]) -> None:
+        """Feed every later response's rate evidence (status, Retry-After, used weight) to the NC-04 budget.
+
+        Set once; a second binding is refused so evidence can never be split between two budgets."""
+        if self._observer is not None or not callable(observer):
+            _fail("reader.rate_observer")
+        self._observer = observer
+
     def _send(self, request: HttpRequest) -> HttpResponse:
         if self._origin not in TESTNET_ORIGINS:
             _fail("reader.origin")
@@ -121,6 +132,12 @@ class SignedReader:
             _fail("reader.transport")
         if not isinstance(response, HttpResponse) or type(response.body) is not bytes:
             _fail("reader.response")
+        if self._observer is not None:
+            try:
+                self._observer(RateEvidence(response.status, response.retry_after_ms, response.used_weight_1m,
+                                            self._clock()))
+            except Exception:
+                _fail("reader.rate_observer")
         if response.status == 418:
             _fail("reader.http_418")
         if response.status == 429:
@@ -150,17 +167,46 @@ def _decimal(value: object, code: str) -> Decimal:
 
 
 # --------------------------------------------------------------------------------------------- account port
+# Both account routes are documented at request weight 5 (positionRisk is in the NC-04 table; balance v2 carries the
+# same documented weight), so each read reserves the POSITIONS cost from the GENERAL pool.  Account facts are never
+# protection work: during any rate block they are refused rather than spent from the protection reserve.
+_POSITIONS_COST = next(c for c in ENDPOINT_COSTS_V1 if c.operation is Operation.POSITIONS)
+ACCOUNT_READ = Reservation(endpoint=_POSITIONS_COST, pool=Pool.GENERAL,
+                           costs=tuple((limiter, int(_POSITIONS_COST.documented_costs[limiter] or 0))
+                                       for limiter in Limiter))
+
+
 class LiveAccountPort:
-    """Fresh account facts from signed ``/fapi/v2/positionRisk`` (hedge mode, mark, leverage) and ``/fapi/v2/balance``."""
+    """Fresh account facts from signed ``/fapi/v2/positionRisk`` (hedge mode, mark, leverage) and ``/fapi/v2/balance``.
+
+    Once ``bind_budget`` is called (the wiring does it), each read first reserves weight from the account's NC-04
+    budget, is refused while the budget is blocked, and reports its rate evidence back, so a 429/418 seen here blocks
+    the venue too."""
 
     def __init__(self, reader: SignedReader, clock: Callable[[], int], settlement_asset: str = "USDT"):
         self._reader, self._clock, self._asset = reader, clock, settlement_asset
+        self._budget = None
+
+    def bind_budget(self, budget) -> None:
+        if self._budget is not None or not callable(getattr(budget, "reserve", None)) or not callable(
+                getattr(budget, "observe", None)):
+            _fail("account.budget_binding")
+        self._reader.set_rate_observer(budget.observe)
+        self._budget = budget
+
+    def _signed(self, path: str) -> object:
+        if self._budget is not None:
+            try:
+                self._budget.reserve(ACCOUNT_READ)
+            except AdmissionRefused:
+                _fail("account.budget_refused")
+        return self._reader.signed(path)
 
     def facts(self, symbols: tuple[str, ...]) -> AccountFacts:
         if type(symbols) is not tuple or not symbols or any(type(s) is not str or _SYMBOL.fullmatch(s) is None
                                                             for s in symbols):
             _fail("account.symbols")
-        rows = self._reader.signed(POSITION_RISK_PATH)
+        rows = self._signed(POSITION_RISK_PATH)
         if type(rows) is not list or not rows or any(type(r) is not dict for r in rows):
             _fail("account.position_rows")
         sides = {r.get("positionSide") for r in rows}
@@ -181,7 +227,7 @@ class LiveAccountPort:
                 _fail("account.mark_price")
             # conservative: the highest leverage set on either side is the one the case ceiling is checked against
             out.append(SymbolFacts(symbol, marks.pop(), max(leverages)))
-        balances = self._reader.signed(BALANCE_PATH)
+        balances = self._signed(BALANCE_PATH)
         if type(balances) is not list or any(type(b) is not dict for b in balances):
             _fail("account.balance_rows")
         asset = [b for b in balances if b.get("asset") == self._asset]

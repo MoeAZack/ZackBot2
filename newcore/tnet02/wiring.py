@@ -58,6 +58,10 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
     def observe(evidence) -> None:
         budget.observe(evidence)
 
+    bind = getattr(account, "bind_budget", None)
+    if bind is not None:
+        # Live account reads spend from, and report rate evidence to, the same budget as the venue.
+        bind(budget)
     venue = BinanceUsdMTestnetVenue(environment="testnet", base_url=base_url, sender=faults,
                                     credentials=credentials, clock=clock, rate_observer=observe)
     context = AccountContext(account_id=account_id, egress_id=egress_id, venue=venue, budget=budget,
