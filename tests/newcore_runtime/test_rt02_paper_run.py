@@ -269,3 +269,48 @@ def test_run_refuses_a_corrupt_book(tmp_path):
     assert main(['run', '--config', cfg, '--marks', marks, '--max-steps', '1'], environ={}, out=out,
                 run_hooks=FakeTime().hooks()) == EXIT_REFUSED
     assert lines(out) == [{'status': 'refused', 'code': 'paper_book_invalid'}]
+
+
+# ------------------------------------------------------------------------------------------------ entries hook
+def test_run_with_an_entries_factory_opens_a_protected_paper_position(tmp_path):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_rt02_journaling import Keyed                         # one keyed EntryCandidate, then nothing
+    from newcore.runtime.config import config_from_mapping
+    from newcore.runtime.paper_run import init_paper_account, run_paper
+
+    cfg = config_file(tmp_path, entries_enabled=True)
+    with open(cfg, encoding='utf-8') as handle:
+        config = config_from_mapping(json.load(handle))
+    init_paper_account(config.accounts[0], wall_ms=2_000_000_000_000 - 60_000, event_n=7)
+    marks = write_json(tmp_path / 'marks.json', {'BTCUSDT': '100'})
+    made = []
+
+    def factory(spec, *, wall_clock):
+        made.append(spec.account_id)
+        return Keyed()
+
+    rows = []
+    final = run_paper(config, marks_path=marks, emit=rows.append, max_steps=480, status_every=50,   # cycle: 60 s
+                      entries_factory=factory, **FakeTime().hooks())
+    assert made == [acct(1)] and final['entries_enabled'] is True
+    (account,) = final['accounts']
+    assert account['holds'] == [] and account['plan'] == 'protected_confirmed', final
+    with open(tmp_path / 'a1' / BOOK_FILE, encoding='utf-8') as handle:
+        book = json.load(handle)
+    (position,) = [p for p in book['positions'] if p[2] != '0']
+    (stop,) = [s for s in book['stops'] if s['status'] == 'NEW']
+    assert position[1] == 'LONG' and stop['qty'] == position[2]
+
+
+def test_a_non_callable_entries_factory_is_refused(tmp_path):
+    from newcore.runtime.config import config_from_mapping
+    from newcore.runtime.paper_run import run_paper
+    cfg = config_file(tmp_path, entries_enabled=True)
+    with open(cfg, encoding='utf-8') as handle:
+        config = config_from_mapping(json.load(handle))
+    (tmp_path / 'a1').mkdir()
+    marks = write_json(tmp_path / 'marks.json', {'BTCUSDT': '100'})
+    with pytest.raises(PaperRunError, match='entries_factory_invalid'):
+        run_paper(config, marks_path=marks, emit=lambda line: None, max_steps=1, entries_factory='x')

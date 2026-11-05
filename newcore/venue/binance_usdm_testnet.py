@@ -359,11 +359,79 @@ class BinanceUsdMTestnetVenue:
         return self._read('/fapi/v2/positionRisk', params, convert)
 
     def open_orders(self, symbol: str | None = None) -> P.ReadOutcome:
-        if symbol is not None:
-            check_symbol(symbol, 'open_orders.symbol')
-        # Binance exposes classic and algo books separately.  A one-request implementation cannot prove the combined
-        # frozen-port value, so fail closed rather than return a trusted partial/empty book.
-        return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='split_route_read')
+        """The combined book: classic ``/fapi/v1/openOrders`` plus algo ``/fapi/v1/openAlgoOrders``, one symbol only.
+
+        Binance keeps the two books apart, so both are read (weight 1 each with a symbol, 40 each without, which is
+        why a no-symbol read is refused here as in NC-04).  The answer is OK only when both reads are OK and every
+        record maps exactly; any refusal, ambiguity or duplicate client id across the books fails closed.  The
+        combined read is stamped with the earlier observation time.
+        """
+        if symbol is None:
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='symbol_required')
+        check_symbol(symbol, 'open_orders.symbol')
+
+        def flag(row, name):
+            value = row.get(name)
+            if type(value) is not bool:
+                raise _Unknown('malformed')
+            return value
+
+        def side(row):
+            if row.get('positionSide') not in ('LONG', 'SHORT') or row.get('symbol') != symbol:
+                raise _Unknown('echo_mismatch' if row.get('symbol') != symbol else 'malformed')
+            return row['positionSide']
+
+        def stop_price(value):
+            price = _decimal(value, 'stopPrice')
+            return None if price == 0 else price
+
+        def classic(data):
+            if not isinstance(data, list):
+                raise _Unknown('malformed')
+            out = []
+            for row in data:
+                if not isinstance(row, dict) or type(row.get('clientOrderId')) is not str \
+                        or type(row.get('type')) is not str or type(row.get('status')) is not str:
+                    raise _Unknown('malformed')
+                ps = side(row)
+                close = flag(row, 'closePosition')
+                if _decimal(row.get('executedQty'), 'executedQty') != 0:
+                    raise _Unknown('partially_filled')     # the port's open order has no executed quantity
+                out.append(P.VenueOrder(ref=P.OrderRef(symbol=symbol, client_id=row['clientOrderId'], route='classic'),
+                                        exchange_order_id=_positive_id(row.get('orderId')), position_side=ps,
+                                        reduce=flag(row, 'reduceOnly') or close, order_type=row['type'],
+                                        status=row['status'], qty=_decimal(row.get('origQty'), 'origQty'),
+                                        close_position=close, stop_price=stop_price(row.get('stopPrice', '0'))))
+            return tuple(out)
+
+        def algo(data):
+            if not isinstance(data, list):
+                raise _Unknown('malformed')
+            out = []
+            for row in data:
+                if not isinstance(row, dict) or type(row.get('clientAlgoId')) is not str \
+                        or type(row.get('orderType')) is not str or type(row.get('algoStatus')) is not str:
+                    raise _Unknown('malformed')
+                ps = side(row)
+                close = flag(row, 'closePosition')
+                out.append(P.VenueOrder(ref=P.OrderRef(symbol=symbol, client_id=row['clientAlgoId'], route='algo'),
+                                        exchange_order_id=_positive_id(row.get('algoId')), position_side=ps,
+                                        reduce=flag(row, 'reduceOnly') or close, order_type=row['orderType'],
+                                        status=row['algoStatus'], qty=_decimal(row.get('quantity'), 'quantity'),
+                                        close_position=close, stop_price=stop_price(row.get('triggerPrice', '0'))))
+            return tuple(out)
+
+        first = self._read('/fapi/v1/openOrders', [('symbol', symbol)], classic)
+        if first.kind is not P.ReadKind.OK:
+            return first                                   # never a partial book
+        second = self._read('/fapi/v1/openAlgoOrders', [('symbol', symbol)], algo)
+        if second.kind is not P.ReadKind.OK:
+            return second
+        rows = first.value + second.value
+        if len({r.ref.client_id for r in rows}) != len(rows):
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=first.observed_at_ms, detail='duplicate_cid')
+        return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=min(first.observed_at_ms, second.observed_at_ms),
+                             value=rows)
 
     def fills(self, symbol: str, exchange_order_id: str) -> P.ReadOutcome:
         check_symbol(symbol, 'fills.symbol')
