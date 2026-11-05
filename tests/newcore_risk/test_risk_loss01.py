@@ -14,13 +14,14 @@ from decimal import Decimal
 import pytest
 
 from newcore.risk import (
+    ClusterEntry,
     AccountRiskSnapshot,
     Allocation,
     ApprovedDecision,
     Ceiling,
     CorrelationAssignment,
     CorrelationCap,
-    DailyLossState,
+    LossState,
     Environment,
     Exposure,
     LossLimits,
@@ -36,26 +37,34 @@ from newcore.risk import (
     VenueRiskFilters,
     authorization_is_current,
     daily_loss_breached,
+    drawdown_kill_breached,
     evaluate,
     requires_authorization,
+    strategy_paused,
 )
 
 D = Decimal
 ACCOUNT = 'acct_' + 'a' * 32
 LONG, SHORT = PositionSide.LONG, PositionSide.SHORT
+DAY_MS = 24 * 3600 * 1000
 ALTS = ('BTCUSDT', 'DOGEUSDT', 'BNBUSDT', 'BCHUSDT', 'NEARUSDT', 'SOLUSDT')
 
 
 def limits(**changes):
     row = LossLimits(daily_loss_fraction=D('.03'), daily_loss_r=D('6'),
                      risk_unit_fraction=D('.005'), max_bucket_side_risk_r=D('2'),
+                     max_drawdown_fraction=D('.1'), max_net_side_risk_r=D('4'),
+                     max_entries_per_strategy_per_candle=2, max_entries_per_side_per_candle=3,
+                     cooldown_stop_outs=3, cooldown_window_ms=DAY_MS, cooldown_pause_ms=DAY_MS,
                      one_position_per_symbol_side=True)
     return dataclasses.replace(row, **changes)
 
 
 def day(**changes):
-    row = DailyLossState(trading_day='2026-11-04', day_start_equity=D('10000'),
-                         realized_pnl=D('0'), unrealized_pnl=D('0'), halt_latched=False)
+    row = LossState(trading_day='2026-11-04', day_start_equity=D('10000'),
+                         realized_pnl=D('0'), unrealized_pnl=D('0'), halt_latched=False,
+                         peak_equity=D('10000'), drawdown_kill_latched=False,
+                         paused_strategies=(), cluster_entries=())
     return dataclasses.replace(row, **changes)
 
 
@@ -93,7 +102,7 @@ def reservation(symbol, side=LONG, strategy='trend', risk='50', tag='c'):
 def portfolio(*, exposures=(), reservations=(), **daily_changes):
     return PortfolioRiskSnapshot(account_id=ACCOUNT, generation=11, fresh=True,
                                  exposures=tuple(exposures), reservations=tuple(reservations),
-                                 daily=day(**daily_changes))
+                                 loss=day(**daily_changes))
 
 
 def request(symbol='BTCUSDT', side=LONG, strategy='vwaprev', action=RiskAction.ENTRY,
@@ -180,7 +189,7 @@ def test_daily_budget_counts_reserved_and_open_risk_to_stop():
 
 
 def test_profits_never_widen_the_daily_budget():
-    wide_bucket = policy(loss_limits=limits(max_bucket_side_risk_r=D('10')))
+    wide_bucket = policy(loss_limits=limits(max_bucket_side_risk_r=D('10'), max_net_side_risk_r=D('10')))
     flat = approved(evaluation(pol=wide_bucket, r=request(risk='1000')))
     up = approved(evaluation(p=portfolio(realized_pnl=D('5000')), pol=wide_bucket,
                              r=request(risk='1000')))
@@ -226,7 +235,7 @@ def test_new_loss_invalidates_an_authorization_issued_before_it():
     {'halt_latched': 0}, {'halt_latched': None},
 ])
 def test_malformed_daily_state_refuses_as_input_invalid(bad_day):
-    p = dataclasses.replace(portfolio(), daily=dataclasses.replace(day(), **bad_day))
+    p = dataclasses.replace(portfolio(), loss=dataclasses.replace(day(), **bad_day))
     refused(evaluation(p=p), RefusalCode.INPUT_INVALID)
 
 
@@ -242,7 +251,7 @@ def test_malformed_loss_limits_refuse_as_input_invalid(bad_limit):
 
 @pytest.mark.parametrize('missing', [None, 'off', ()])
 def test_missing_loss_state_or_limits_fail_closed(missing):
-    refused(evaluation(p=dataclasses.replace(portfolio(), daily=missing)), RefusalCode.INPUT_INVALID)
+    refused(evaluation(p=dataclasses.replace(portfolio(), loss=missing)), RefusalCode.INPUT_INVALID)
     refused(evaluation(pol=policy(loss_limits=missing)), RefusalCode.INPUT_INVALID)
 
 
@@ -406,3 +415,168 @@ def test_decision_is_deterministic_and_spelling_invariant():
     ev = evaluation(p=portfolio(realized_pnl=D('-120.50')))
     same = evaluation(p=portfolio(realized_pnl=D('-120.5000')))
     assert evaluate(ev) == evaluate(ev) == evaluate(same)
+
+
+# ------------------------------------------------------- peak-drawdown kill
+
+def with_equity(ev, equity):
+    return dataclasses.replace(ev, account=dataclasses.replace(ev.account, equity=D(equity)))
+
+
+def test_drawdown_kill_trips_at_ten_percent_below_peak():
+    p = portfolio(peak_equity=D('11112'))
+    approved(with_equity(evaluation(p=p), '10001'))           # 9.999% below peak
+    refused(with_equity(evaluation(p=portfolio(peak_equity=D('11120'))), '10008'),
+            RefusalCode.DRAWDOWN_KILL)                         # exactly 10%
+    refused(with_equity(evaluation(p=portfolio(peak_equity=D('20000'))), '10000'),
+            RefusalCode.DRAWDOWN_KILL)
+
+
+def test_drawdown_kill_latch_needs_owner_resume_even_after_recovery():
+    refused(evaluation(p=portfolio(drawdown_kill_latched=True, peak_equity=D('10000'))),
+            RefusalCode.DRAWDOWN_KILL)
+
+
+def test_new_high_above_stale_peak_is_not_a_drawdown():
+    approved(with_equity(evaluation(p=portfolio(peak_equity=D('5000'))), '10000'))
+
+
+def test_drawdown_helper_fails_closed():
+    assert not drawdown_kill_breached(limits(), day(), D('10000'))
+    assert drawdown_kill_breached(limits(), day(peak_equity=D('11112')), D('10000'))
+    assert drawdown_kill_breached(limits(), day(), D('0'))
+    assert drawdown_kill_breached(limits(), day(), 10000)
+    assert drawdown_kill_breached(None, day(), D('10000'))
+    assert drawdown_kill_breached(limits(), None, D('10000'))
+
+
+# ------------------------------------------------------ loss-streak cooldown
+
+def test_strategy_cooldown_refuses_paused_strategy_only():
+    p = portfolio(paused_strategies=('vwaprev',))
+    refused(evaluation(p=p), RefusalCode.STRATEGY_COOLDOWN)
+    refused(evaluation(p=p, r=request(action=RiskAction.ADD)), RefusalCode.STRATEGY_COOLDOWN)
+    approved(evaluation(p=p, r=request(strategy='trend')))
+
+
+def test_strategy_paused_helper_three_stops_in_a_day_pause_for_a_day():
+    now = 10 * DAY_MS
+    hour = 3600 * 1000
+    three = (now - 5 * hour, now - 3 * hour, now - 1 * hour)
+    assert strategy_paused(limits(), three, now)
+    assert not strategy_paused(limits(), three[1:], now)                    # only two
+    spread = (now - 30 * hour, now - 3 * hour, now - 1 * hour)              # 29h apart
+    assert not strategy_paused(limits(), spread, now)
+    exactly_window = (now - 26 * hour, now - 14 * hour, now - 2 * hour)     # 24h apart
+    assert strategy_paused(limits(), exactly_window, now)
+    edge = (now - 26 * hour, now - 25 * hour, now - DAY_MS)                 # pause just ended
+    assert not strategy_paused(limits(), edge, now)
+    assert strategy_paused(limits(), edge, now - 1)
+
+
+def test_strategy_paused_helper_fails_closed():
+    now = 10 * DAY_MS
+    assert strategy_paused(limits(), (now + 1,), now)                       # future stop
+    assert strategy_paused(limits(), [now - 1], now)
+    assert strategy_paused(limits(), (D('1'),), now)
+    assert strategy_paused(limits(), (), 0)
+    assert strategy_paused(None, (), now)
+    assert not strategy_paused(limits(), (), now)
+
+
+# -------------------------------------------------- same-candle cluster limit
+
+def entry(strategy, symbol='DOGEUSDT', side=LONG):
+    return ClusterEntry(strategy_id=strategy, symbol=symbol, side=side)
+
+
+def test_two_entries_per_strategy_per_candle():
+    """4 Nov: three exp_vwaprev longs opened on one candle."""
+    p = portfolio(cluster_entries=(entry('vwaprev'), entry('vwaprev', 'BNBUSDT')))
+    refused(evaluation(p=p, r=request('PAXGUSDT')), RefusalCode.CANDLE_CLUSTER_LIMIT)
+    approved(evaluation(p=p, r=request('PAXGUSDT', strategy='trend')))
+
+
+def test_three_same_direction_entries_per_candle_across_strategies():
+    p = portfolio(cluster_entries=(entry('trend'), entry('range', 'BNBUSDT'),
+                                   entry('breakout', 'SOLUSDT')))
+    refused(evaluation(p=p, r=request('PAXGUSDT')), RefusalCode.CANDLE_CLUSTER_LIMIT)
+    approved(evaluation(p=p, r=request('PAXGUSDT', side=SHORT)))
+
+
+def test_cluster_limit_does_not_count_against_adds():
+    held = (exposure('BTCUSDT', strategy='vwaprev', risk='10'),)
+    p = portfolio(exposures=held, cluster_entries=(entry('vwaprev'), entry('vwaprev', 'BNBUSDT')))
+    approved(evaluation(p=p, r=request('BTCUSDT', action=RiskAction.ADD)))
+
+
+# ---------------------------------------------------- net directional R cap
+
+def test_net_side_risk_cap_is_four_r_and_opposite_side_offsets():
+    wide = policy(loss_limits=limits(max_bucket_side_risk_r=D('100'), daily_loss_r=D('100'),
+                                     daily_loss_fraction=D('1')))
+    longs = (exposure('DOGEUSDT', risk='90'), exposure('PAXGUSDT', risk='90'))
+    result = approved(evaluation(p=portfolio(exposures=longs), pol=wide, r=request(risk='100')))
+    assert result.risk == D('20') and Ceiling.NET_SIDE_RISK in result.bindings
+    hedged = longs + (exposure('SOLUSDT', side=SHORT, risk='80'),)
+    assert approved(evaluation(p=portfolio(exposures=hedged), pol=wide,
+                               r=request(risk='100'))).risk == D('100')
+
+
+def test_net_offset_ignores_unfilled_and_cross_bucket_opposites():
+    # Review 2: a reserved short may never fill, and a gold short does not
+    # hedge crypto longs, so neither widens the long allowance.
+    wide = policy(loss_limits=limits(max_bucket_side_risk_r=D('100'), daily_loss_r=D('100'),
+                                     daily_loss_fraction=D('1')))
+    longs = (exposure('DOGEUSDT', risk='90'), exposure('BNBUSDT', risk='90'))
+    reserved_short = (reservation('SOLUSDT', side=SHORT, risk='80'),)
+    assert approved(evaluation(p=portfolio(exposures=longs, reservations=reserved_short), pol=wide,
+                               r=request(risk='100'))).risk == D('20')
+    gold_short = longs + (exposure('PAXGUSDT', side=SHORT, risk='80'),)
+    assert approved(evaluation(p=portfolio(exposures=gold_short), pol=wide,
+                               r=request(risk='100'))).risk == D('20')
+
+
+def test_stale_peak_below_day_start_cannot_hide_a_drawdown():
+    # Review 2: peak 5000 but the day started at 10000; equity 8500 is 15% down.
+    p = portfolio(peak_equity=D('5000'))
+    refused(with_equity(evaluation(p=p), '8500'), RefusalCode.DRAWDOWN_KILL)
+    assert drawdown_kill_breached(limits(), day(peak_equity=D('5000')), D('8500'))
+
+
+def test_one_below_each_cluster_limit_still_approves():
+    approved(evaluation(p=portfolio(cluster_entries=(entry('vwaprev'),)), r=request('PAXGUSDT')))
+    approved(evaluation(p=portfolio(cluster_entries=(entry('trend'), entry('range', 'BNBUSDT'))),
+                        r=request('PAXGUSDT')))
+
+
+def test_strategy_paused_edge_inputs():
+    now = 10 * DAY_MS
+    assert not strategy_paused(limits(), (now - 1, now - 1), now)          # fewer than three
+    assert strategy_paused(limits(), (now, now, now), now)                  # duplicates, at now
+    assert strategy_paused(limits(), (True,), now)
+    assert strategy_paused(limits(), (2 ** 63,), now)
+
+
+# --------------------------------------------------------- malformed state
+
+@pytest.mark.parametrize('bad', [
+    {'peak_equity': D('0')}, {'peak_equity': None}, {'drawdown_kill_latched': 1},
+    {'paused_strategies': ['vwaprev']}, {'paused_strategies': ('vwaprev', 'vwaprev')},
+    {'paused_strategies': ('',)}, {'cluster_entries': [entry('trend')]},
+    {'cluster_entries': (('trend', 'BTCUSDT', LONG),)},
+    {'cluster_entries': (ClusterEntry(strategy_id='trend', symbol='btc', side=LONG),)},
+])
+def test_malformed_new_loss_state_refuses(bad):
+    p = dataclasses.replace(portfolio(), loss=dataclasses.replace(day(), **bad))
+    refused(evaluation(p=p), RefusalCode.INPUT_INVALID)
+
+
+@pytest.mark.parametrize('bad', [
+    {'max_drawdown_fraction': D('0')}, {'max_drawdown_fraction': D('1.5')},
+    {'max_net_side_risk_r': D('0')}, {'max_entries_per_strategy_per_candle': 0},
+    {'max_entries_per_side_per_candle': True}, {'cooldown_stop_outs': 2.0},
+    {'cooldown_window_ms': 0}, {'cooldown_pause_ms': -1},
+])
+def test_malformed_new_limits_refuse(bad):
+    refused(evaluation(pol=policy(loss_limits=limits(**bad))), RefusalCode.INPUT_INVALID)

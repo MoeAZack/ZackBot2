@@ -15,7 +15,7 @@ from newcore.risk import (
     Ceiling,
     CorrelationAssignment,
     CorrelationCap,
-    DailyLossState,
+    LossState,
     Environment,
     Exposure,
     FollowerProfile,
@@ -60,13 +60,18 @@ def allocation(**changes):
 def loss_limits(**changes):
     row = LossLimits(daily_loss_fraction=D('1'), daily_loss_r=D('1000'),
                      risk_unit_fraction=D('.01'), max_bucket_side_risk_r=D('1000'),
+                     max_drawdown_fraction=D('1'), max_net_side_risk_r=D('1000'),
+                     max_entries_per_strategy_per_candle=1000, max_entries_per_side_per_candle=1000,
+                     cooldown_stop_outs=1000, cooldown_window_ms=1, cooldown_pause_ms=1,
                      one_position_per_symbol_side=True)
     return dataclasses.replace(row, **changes)
 
 
 def daily(**changes):
-    row = DailyLossState(trading_day='2026-11-05', day_start_equity=D('10000'),
-                         realized_pnl=D('0'), unrealized_pnl=D('0'), halt_latched=False)
+    row = LossState(trading_day='2026-11-05', day_start_equity=D('10000'),
+                         realized_pnl=D('0'), unrealized_pnl=D('0'), halt_latched=False,
+                         peak_equity=D('10000'), drawdown_kill_latched=False,
+                         paused_strategies=(), cluster_entries=())
     return dataclasses.replace(row, **changes)
 
 
@@ -131,7 +136,7 @@ def reservation(*, request_id=None, auth=None, symbol='BTCUSDT', side=PositionSi
 def portfolio(*, exposures=(), reservations=(), **changes):
     row = PortfolioRiskSnapshot(account_id=ACCOUNT, generation=11, fresh=True,
                                 exposures=tuple(exposures), reservations=tuple(reservations),
-                                daily=daily())
+                                loss=daily())
     return dataclasses.replace(row, **changes)
 
 
