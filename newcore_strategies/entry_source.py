@@ -16,8 +16,9 @@ For every configured ``StrategySlot`` and every candle that has just closed:
    (the strategy's own ATR series when it supplies one, exactly like ``backtest._sig_atr``), rounded away from entry
    to the tick size.
 
-Each DecisionKey is offered once per process; the journaling sink's ``claim_signal`` is the durable once-only gate
-across restarts.  Every refusal is fail-closed (no candidate) and counted in ``reasons`` for observability.
+A DecisionKey is re-offered at most every ``reoffer_ms`` while its candle is inside ``max_signal_age_ms``, so a transient
+refusal (sink busy, stale snapshot) can still succeed; the journaling sink's ``claim_signal`` is the durable once-only
+gate.  An incomplete evaluation (late feed, bad window) is retried every ``retry_ms`` instead of being cached.  Every refusal is fail-closed (no candidate) and counted in ``reasons`` for observability.
 
 Only entries are produced.  Exits other than the protective stop (signal exits, take-profit, max-bars) are NOT wired
 here; see docs/newcore/STRAT01_ENTRY_SOURCE.md.
@@ -44,6 +45,10 @@ from newcore.runtime.ports import EntryCandidate
 NAME_RE = re.compile(r'[a-z0-9_]{1,24}')
 SYMBOL_RE = re.compile(r'[A-Z0-9]{2,24}USDT')
 CROSS_SECTIONAL = frozenset({'rotation_long_h2'})   # signals depend on the rank of the whole universe
+# Only keys whose signals need nothing beyond strategies.build_context and whose last-bar parity is tested.  Others
+# (rank/breadth keys, keys reading mark/order-flow context) are refused rather than run on inputs they never had.
+SUPPORTED = frozenset({'rotation_long_h2', 'exp_range', 'exp_vwaprev', 'evening_star_short_1h',
+                       'starc_band_breakout_long_1h', 'kalman_innovation_recovery_long_1h'})
 MAX_RISK_MULT = Decimal('1')
 MAX_BASE_RISK = Decimal('0.01')                       # 1% of equity per trade before the multiplier, hard ceiling
 MAX_LEVERAGE = Decimal('3')                           # owner testnet bound
@@ -82,7 +87,9 @@ class StrategySlot:
     book_id: str
 
     def __post_init__(self):
-        if type(self.key) is not str or self.key not in ST.STRATEGIES:
+        if type(self.key) is not str or self.key not in SUPPORTED:
+            raise StrategyConfigError('strategy_unsupported')
+        if self.key not in ST.STRATEGIES:
             raise StrategyConfigError('strategy_unavailable')
         st = ST.STRATEGIES[self.key]
         if type(self.name) is not str or NAME_RE.fullmatch(self.name) is None:
@@ -152,8 +159,16 @@ class Signal:
 
 
 def _to_ms(ts) -> int:
-    return int(pd.Timestamp(ts).tz_localize(None).value // 1_000_000) if pd.Timestamp(ts).tzinfo else \
-        int(pd.Timestamp(ts).value // 1_000_000)
+    """UTC epoch ms of a candle open time.  Naive values are UTC; aware ones are converted.  Numbers are refused:
+    ``pd.Timestamp(int)`` would read epoch milliseconds as nanoseconds."""
+    if isinstance(ts, (bool, int, float, np.integer, np.floating)):
+        raise ValueError('candle_time_numeric')
+    stamp = pd.Timestamp(ts)
+    if stamp is pd.NaT:
+        raise ValueError('candle_time_missing')
+    if stamp.tzinfo is not None:
+        stamp = stamp.tz_convert('UTC').tz_localize(None)
+    return int(stamp.value // 1_000_000)
 
 
 def _sig_atr(sig, i, fallback) -> float:
@@ -164,14 +179,14 @@ def _sig_atr(sig, i, fallback) -> float:
 
 
 def _clean(frame, tf_ms, bars, expected_close_ms, need_qv=False):
-    """The window, or None unless it is contiguous closed candles ending exactly at ``expected_close_ms``."""
+    """A float64 copy of the window, or None unless it is contiguous closed candles ending at ``expected_close_ms``."""
     cols = list(CANDLE_COLUMNS) + (['qv'] if need_qv else [])
     if not isinstance(frame, pd.DataFrame) or any(c not in frame.columns for c in cols) or len(frame) < bars:
         return None
-    frame = frame.loc[:, cols].iloc[-bars:].reset_index(drop=True)
+    frame = frame.iloc[-bars:]
     try:
         opens = [_to_ms(t) for t in frame['t']]
-        values = frame[cols[1:]].to_numpy(dtype=float)
+        values = np.array([[float(x) for x in frame[c]] for c in cols[1:]], dtype=float).T
     except Exception:
         return None
     if not np.isfinite(values).all() or (values[:, :4] <= 0).any() or (values[:, 4:] < 0).any():
@@ -180,8 +195,13 @@ def _clean(frame, tf_ms, bars, expected_close_ms, need_qv=False):
         return None
     if any(b - a != tf_ms for a, b in zip(opens, opens[1:])) or opens[-1] + tf_ms != expected_close_ms:
         return None
-    frame['t'] = pd.to_datetime(opens, unit='ms')
-    return frame
+    out = pd.DataFrame(values, columns=cols[1:])
+    out.insert(0, 't', pd.to_datetime(opens, unit='ms'))
+    return out
+
+
+def _is_dec(x, positive=True) -> bool:
+    return type(x) is Decimal and x.is_finite() and (x > 0 if positive else x >= 0)
 
 
 class StrategyEntrySource:
@@ -190,7 +210,7 @@ class StrategyEntrySource:
     def __init__(self, slots, *, feed: CandleFeed, risk: RiskContextProvider, wall_clock: Callable[[], int],
                  base_risk_fraction: Decimal, leverage: Decimal, warmup_bars: int = 1500,
                  max_signal_age_ms: int = 15 * 60_000, account_ids: tuple[str, ...] | None = None,
-                 max_entries_per_candle: int = 1):
+                 max_entries_per_candle: int = 1, retry_ms: int = 30_000, reoffer_ms: int = 60_000):
         slots = tuple(slots)
         if not slots or any(type(s) is not StrategySlot for s in slots):
             raise StrategyConfigError('slots_invalid')
@@ -198,8 +218,7 @@ class StrategyEntrySource:
             raise StrategyConfigError('slot_name_duplicate')
         if not callable(wall_clock) or not isinstance(feed, CandleFeed) or not isinstance(risk, RiskContextProvider):
             raise StrategyConfigError('ports_invalid')
-        if type(base_risk_fraction) is not Decimal or not base_risk_fraction.is_finite() \
-                or not Decimal('0') < base_risk_fraction <= MAX_BASE_RISK:
+        if not _is_dec(base_risk_fraction) or not base_risk_fraction <= MAX_BASE_RISK:
             raise StrategyConfigError('base_risk_invalid')
         if type(leverage) is not Decimal or not leverage.is_finite() or not Decimal('1') <= leverage <= MAX_LEVERAGE:
             raise StrategyConfigError('leverage_invalid')
@@ -211,78 +230,111 @@ class StrategyEntrySource:
             raise StrategyConfigError('account_ids_invalid')
         if type(max_entries_per_candle) is not int or not 1 <= max_entries_per_candle <= 5:
             raise StrategyConfigError('max_entries_per_candle_invalid')
-        self._per_candle = max_entries_per_candle
+        for value, code in ((retry_ms, 'retry_ms_invalid'), (reoffer_ms, 'reoffer_ms_invalid')):
+            if type(value) is not int or not 1_000 <= value <= max_signal_age_ms:
+                raise StrategyConfigError(code)
         self.slots = slots
         self._feed, self._risk, self._wall = feed, risk, wall_clock
         self._base, self._lev = base_risk_fraction, leverage
         self._bars, self._max_age = warmup_bars, max_signal_age_ms
-        self._accounts = account_ids
-        self._signals: dict[tuple[str, int], tuple[Signal, ...]] = {}    # (slot name, close ms) -> signals
-        self._offered: set[tuple[str, object]] = set()                   # (account id, DecisionKey)
+        self._accounts, self._per_candle = account_ids, max_entries_per_candle
+        self._retry, self._reoffer = retry_ms, reoffer_ms
+        self._signals: dict[str, tuple[int, tuple[Signal, ...]]] = {}   # slot -> (close ms, signals) once complete
+        self._partial: dict[str, tuple[int, int, tuple[Signal, ...]]] = {}  # slot -> (close, attempt wall, signals)
+        self._last_offer: dict[tuple[str, object], int] = {}            # (account id, DecisionKey) -> wall ms
         self.reasons: Counter = Counter()
 
     # ------------------------------------------------------------------------------------------------ signals
-    def _evaluate(self, slot: StrategySlot, close_ms: int) -> tuple[Signal, ...]:
-        frames = {}
+    def _evaluate(self, slot: StrategySlot, close_ms: int) -> tuple[tuple[Signal, ...], bool]:
+        """(signals, complete).  Incomplete results are never cached, so a late or broken feed is retried."""
+        frames, complete = {}, True
         for symbol in slot.symbols:
             try:
                 raw = self._feed.closed(symbol, slot.tf, self._bars, close_ms)
             except Exception:
                 raw = None
             frame = _clean(raw, slot.tf_ms, self._bars, close_ms, need_qv=slot.key in NEEDS_QV)
+            if frame is not None:
+                try:
+                    frame = ST.indicators(frame)
+                except Exception:
+                    frame = None
             if frame is None:
                 self.reasons[f'{slot.name}:candles_unusable'] += 1
                 if slot.key in CROSS_SECTIONAL or symbol == 'BTCUSDT':
-                    return ()          # a partial universe changes ranks / the BTC context: no decision at all
+                    return (), False   # a partial universe changes ranks / the BTC context: no decision at all
+                complete = False
                 continue
-            frames[symbol] = ST.indicators(frame)
-        if 'BTCUSDT' not in frames:
-            return ()
-        ctx = ST.build_context(frames)
+            frames[symbol] = frame
+        try:
+            ctx = ST.build_context(frames)
+        except Exception:
+            self.reasons[f'{slot.name}:context_error'] += 1
+            return (), False
         out = []
         for symbol, d in frames.items():
-            sig = ST.signals(slot.key, d, ctx[symbol])
-            i = len(d) - 1
-            fired = sig['le'][i] if slot.side is nc06.PositionSide.LONG else sig['se'][i]
+            try:
+                sig = ST.signals(slot.key, d, ctx[symbol])
+                i = len(d) - 1
+                fired = bool(sig['le'][i] if slot.side is nc06.PositionSide.LONG else sig['se'][i])
+                atr = _sig_atr(sig, i, d['atr'].iloc[i]) if fired else 0.0
+                entry = Decimal(repr(float(d['c'].iloc[i])))
+            except Exception:
+                self.reasons[f'{slot.name}:signal_error'] += 1
+                complete = False
+                continue
             if not fired:
                 continue
-            atr = _sig_atr(sig, i, d['atr'].iloc[i])
-            entry = Decimal(repr(float(d['c'].iloc[i])))
             if not math.isfinite(atr) or atr <= 0 or not entry > 0:
                 self.reasons[f'{slot.name}:atr_invalid'] += 1
                 continue
             out.append(Signal(slot=slot, symbol=symbol, close_ms=close_ms, entry=entry, atr=atr))
         self.reasons[f'{slot.name}:evaluated'] += 1
-        return tuple(out)
+        return tuple(out), complete
 
     def _current(self, slot: StrategySlot, now_wall: int) -> tuple[Signal, ...]:
         close_ms = now_wall // slot.tf_ms * slot.tf_ms
         if now_wall - close_ms > self._max_age:
             return ()                  # too late for this candle; wait for the next close
-        cache_key = (slot.name, close_ms)
-        if cache_key not in self._signals:
-            self._signals = {k: v for k, v in self._signals.items() if k[0] != slot.name}
-            self._signals[cache_key] = self._evaluate(slot, close_ms)
-        return self._signals[cache_key]
+        done = self._signals.get(slot.name)
+        if done is not None and done[0] == close_ms:
+            return done[1]
+        part = self._partial.get(slot.name)
+        if part is not None and part[0] == close_ms and now_wall - part[1] < self._retry:
+            return part[2]
+        signals, complete = self._evaluate(slot, close_ms)
+        if complete:
+            self._signals[slot.name] = (close_ms, signals)
+            self._partial.pop(slot.name, None)
+        else:
+            self._partial[slot.name] = (close_ms, now_wall, signals)
+        return signals
 
     # ------------------------------------------------------------------------------------------------ requests
+    def _context_ok(self, ctx, account_id: str, symbol: str) -> bool:
+        return (type(ctx) is RiskContext and type(ctx.account) is nc06.AccountRiskSnapshot
+                and type(ctx.portfolio) is nc06.PortfolioRiskSnapshot and type(ctx.policy) is nc06.RiskPolicySnapshot
+                and type(ctx.filters) is nc06.VenueRiskFilters and type(ctx.followers) is tuple
+                and ctx.account.account_id == account_id and ctx.filters.symbol == symbol
+                and _is_dec(ctx.account.equity) and _is_dec(ctx.filters.tick_size))
+
     def _candidate(self, account_id: str, s: Signal) -> EntryCandidate | None:
         slot = s.slot
         try:
             ctx = self._risk.risk_context(account_id, slot, s.symbol)
         except Exception:
             ctx = None
-        if type(ctx) is not RiskContext or ctx.account.account_id != account_id \
-                or ctx.filters.symbol != s.symbol or not ctx.filters.tick_size > 0:
+        if not self._context_ok(ctx, account_id, s.symbol):
             self.reasons[f'{slot.name}:risk_context_missing'] += 1
             return None
         tick = ctx.filters.tick_size
+        entry = (s.entry / tick).to_integral_value() * tick          # reference price on the tick grid
         distance = Decimal(repr(slot.stop_atr * s.atr))
         if slot.side is nc06.PositionSide.LONG:
-            stop = ((s.entry - distance) / tick).to_integral_value(ROUND_FLOOR) * tick
+            stop = ((entry - distance) / tick).to_integral_value(ROUND_FLOOR) * tick
         else:
-            stop = ((s.entry + distance) / tick).to_integral_value(ROUND_CEILING) * tick
-        if not stop > 0 or stop == s.entry:
+            stop = ((entry + distance) / tick).to_integral_value(ROUND_CEILING) * tick
+        if not entry > 0 or not stop > 0 or stop == entry:
             self.reasons[f'{slot.name}:stop_invalid'] += 1
             return None
         risk = (ctx.account.equity * self._base * slot.risk_mult).quantize(Decimal('0.00000001'), ROUND_FLOOR)
@@ -290,20 +342,41 @@ class StrategyEntrySource:
             self.reasons[f'{slot.name}:risk_zero'] += 1
             return None
         key = decision_key(slot.name, slot.version, slot.tf, s.symbol, slot.side.value, s.close_ms, Purpose.ENTRY)
-        digest = hashlib.sha256(b'zackbot.newcore_strategies.request.v1\x00' + account_id.encode('ascii') + b'\x00'
+        digest = hashlib.sha256(b'zackbot.newcore_strategies.request.v1\x00' + account_id.encode('utf-8') + b'\x00'
                                 + repr((key.strategy, key.strategy_version, key.symbol, key.side.value,
-                                        key.candle_close_ms)).encode('ascii')).hexdigest()
+                                        key.candle_close_ms)).encode('utf-8')).hexdigest()
         request = nc06.RiskRequest(
             request_id='req_' + digest[:32], account_id=account_id, environment=ctx.account.environment,
             account_generation=ctx.account.generation, portfolio_generation=ctx.portfolio.generation,
             policy_generation=ctx.policy.generation, filter_generation=ctx.filters.generation,
             action=nc06.RiskAction.ENTRY, strategy_id=slot.strategy_id, book_id=slot.book_id, symbol=s.symbol,
-            side=slot.side, entry_price=s.entry, stop_price=stop, requested_risk=risk, requested_leverage=self._lev)
+            side=slot.side, entry_price=entry, stop_price=stop, requested_risk=risk, requested_leverage=self._lev)
         evaluation = nc06.RiskEvaluation(account=ctx.account, portfolio=ctx.portfolio, policy=ctx.policy,
-                                         filters=ctx.filters, request=request, followers=tuple(ctx.followers))
+                                         filters=ctx.filters, request=request, followers=ctx.followers)
         return EntryCandidate(key=key, evaluation=evaluation)
 
+    def _slot_candidates(self, account_id: str, slot: StrategySlot, now_wall: int) -> list:
+        out, chosen = [], 0
+        for s in self._current(slot, now_wall):
+            if chosen >= self._per_candle:
+                self.reasons[f'{slot.name}:per_candle_cap'] += 1
+                break                  # universe order: the cap always keeps the same first signals
+            try:
+                candidate = self._candidate(account_id, s)
+            except Exception:
+                self.reasons[f'{slot.name}:candidate_error'] += 1
+                candidate = None
+            if candidate is None:
+                continue
+            chosen += 1
+            last = self._last_offer.get((account_id, candidate.key))
+            if last is not None and now_wall - last < self._reoffer:
+                continue               # offered recently; the sink's durable claim decides whether it was taken
+            out.append(candidate)
+        return out
+
     def candidates(self, account_id: str, now_mono: int) -> tuple[EntryCandidate, ...]:
+        """Never raises: any slot failure is counted in ``reasons`` and gives no candidate for that slot."""
         if self._accounts is not None and account_id not in self._accounts:
             return ()
         now_wall = self._wall()
@@ -312,21 +385,18 @@ class StrategyEntrySource:
             return ()
         out = []
         for slot in self.slots:
-            for s in self._current(slot, now_wall):
-                used = sum(1 for a, k in self._offered if a == account_id and k.strategy == f'{slot.name}@{slot.tf}'
-                           and k.candle_close_ms == s.close_ms)
-                if used >= self._per_candle:
-                    self.reasons[f'{slot.name}:per_candle_cap'] += 1
-                    break              # signals are in universe order: the cap keeps the first ones only
-                candidate = self._candidate(account_id, s)
-                if candidate is None or (account_id, candidate.key) in self._offered:
-                    continue
-                self._offered.add((account_id, candidate.key))
-                self.reasons[f'{slot.name}:offered'] += 1
-                out.append(candidate)
-        if len(self._offered) > 10_000:       # keys are per candle; old ones can never recur
+            try:
+                found = self._slot_candidates(account_id, slot, now_wall)
+            except Exception:
+                self.reasons[f'{slot.name}:slot_error'] += 1
+                continue
+            out.extend(found)
+        for candidate in out:          # recorded only once the whole answer is built
+            self._last_offer[(account_id, candidate.key)] = now_wall
+            self.reasons[f'{candidate.key.strategy.split("@")[0]}:offered'] += 1
+        if len(self._last_offer) > 1_000:
             horizon = now_wall - 2 * max(s.tf_ms for s in self.slots)
-            self._offered = {x for x in self._offered if x[1].candle_close_ms >= horizon}
+            self._last_offer = {k: v for k, v in self._last_offer.items() if k[1].candle_close_ms >= horizon}
         return tuple(out)
 
 
@@ -348,4 +418,4 @@ def slot_from_dict(raw: dict) -> StrategySlot:
 
 
 __all__ = ['CROSS_SECTIONAL', 'CandleFeed', 'RiskContext', 'RiskContextProvider', 'Signal', 'StrategyConfigError',
-           'StrategyEntrySource', 'StrategySlot', 'slot_from_dict']
+           'StrategyEntrySource', 'SUPPORTED', 'StrategySlot', 'slot_from_dict']

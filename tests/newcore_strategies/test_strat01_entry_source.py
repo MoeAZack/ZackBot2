@@ -262,15 +262,139 @@ def test_missing_or_broken_risk_context_yields_nothing(kind):
 
 
 # ---------------------------------------------------------------------------------------------------- once / caps
-def test_each_key_offered_once_and_evaluated_once_per_candle():
+def test_key_reoffered_only_after_reoffer_interval_and_evaluated_once_per_candle():
     close, _ = _first_fire()
     feed = MemFeed(FRAMES)
     src, clock = source([slot()], feed=feed, now=close + 1)
     first = src.candidates(ACCT, 1)
     calls = feed.calls
-    clock['now'] = close + 120_000
+    clock['now'] = close + 1 + 59_999
     assert first and src.candidates(ACCT, 2) == ()
+    clock['now'] = close + 1 + 60_000
+    again = src.candidates(ACCT, 3)
+    assert [c.key for c in again] == [c.key for c in first]         # a busy sink can still take it later
     assert feed.calls == calls                      # cached: no re-read until the next candle closes
+    clock['now'] = close + 15 * 60_000 + 1
+    assert src.candidates(ACCT, 4) == ()            # never after the age window
+
+
+def test_late_feed_is_retried_not_cached():
+    close, hits = _first_fire()
+    state = {'late': True}
+    feed = MemFeed(FRAMES, tamper={s: (lambda d: d.iloc[:-1] if state['late'] else d) for s in UNIVERSE})
+    src, clock = source([slot()], feed=feed, now=close + 1)
+    assert src.candidates(ACCT, 1) == ()
+    state['late'] = False
+    clock['now'] = close + 1 + 29_999
+    assert src.candidates(ACCT, 2) == ()            # retry is throttled
+    clock['now'] = close + 1 + 30_000
+    assert [c.key.symbol for c in src.candidates(ACCT, 3)] == hits[:1]
+
+
+def test_late_single_symbol_is_retried_and_joins_later():
+    close, hits = _first_fire()
+    sym = hits[0]
+    state = {'late': True}
+    feed = MemFeed(FRAMES, tamper={sym: lambda d: d.iloc[:-1] if state['late'] else d})
+    src, clock = source([slot()], feed=feed, now=close + 1, max_entries_per_candle=5)
+    assert sym not in {c.key.symbol for c in src.candidates(ACCT, 1)}
+    state['late'] = False
+    clock['now'] = close + 1 + 30_000
+    assert sym in {c.key.symbol for c in src.candidates(ACCT, 2)}
+
+
+def test_failing_slot_never_raises_and_never_drops_other_slots():
+    close, hits = _first_fire()
+    good, bad = slot(), slot(name='range4h_short', side='SHORT')
+
+    class Mixed(Risk):
+        def risk_context(self, a, sl, sym):
+            ctx = super().risk_context(a, sl, sym)
+            return dataclasses.replace(ctx, account=account(equity=10000.0)) if sl.name == 'range4h_short' else ctx
+    src, clock = source([bad, good], risk=Mixed([good, bad]), now=close + 1)
+    got = src.candidates(ACCT, 1)
+    assert [c.key.symbol for c in got] == hits[:1]
+    assert src.reasons['range4h_short:risk_context_missing'] >= 1
+
+
+@pytest.mark.parametrize('mutate', [
+    lambda c: dataclasses.replace(c, account=account(equity=10000.0)),
+    lambda c: dataclasses.replace(c, account=account(equity=D('NaN'))),
+    lambda c: dataclasses.replace(c, filters=dataclasses.replace(c.filters, tick_size=D('NaN'))),
+    lambda c: dataclasses.replace(c, filters=dataclasses.replace(c.filters, tick_size=D('0'))),
+    lambda c: dataclasses.replace(c, account=None),
+    lambda c: dataclasses.replace(c, followers=[]),
+    lambda c: dataclasses.replace(c, policy=None),
+])
+def test_malformed_risk_context_gives_nothing_and_does_not_raise(mutate):
+    close, _ = _first_fire()
+    s = slot()
+
+    class R(Risk):
+        def risk_context(self, a, sl, sym):
+            return mutate(super().risk_context(a, sl, sym))
+    src, _ = source([s], risk=R([s]), now=close + 1)
+    assert src.candidates(ACCT, 1) == ()
+    assert src.reasons['range4h_long:risk_context_missing'] >= 1
+
+
+def test_signal_exception_in_one_slot_is_contained(monkeypatch):
+    close, hits = _first_fire()
+    orig = ST.signals
+
+    def flaky(key, d, ctx, *a, **k):
+        if key == 'exp_vwaprev':
+            raise RuntimeError('signals')
+        return orig(key, d, ctx, *a, **k)
+    monkeypatch.setattr(ST, 'signals', flaky)
+    src, _ = source([slot(key='exp_vwaprev', name='vw'), slot()], now=close + 1)
+    assert [c.key.symbol for c in src.candidates(ACCT, 1)] == hits[:1]
+    assert src.reasons['vw:signal_error'] >= 1
+
+
+@pytest.mark.parametrize('kind', ['str', 'decimal', 'object_float'])
+def test_non_float_ohlcv_columns_are_converted(kind):
+    close, hits = _first_fire()
+
+    def conv(d):
+        d = d.copy()
+        for c in ('o', 'h', 'l', 'c', 'v', 'qv'):
+            if kind == 'str':
+                d[c] = d[c].map(repr)
+            elif kind == 'decimal':
+                d[c] = d[c].map(lambda x: D(repr(x)))
+            else:
+                d[c] = d[c].astype(object)
+        return d
+    src, _ = source([slot()], feed=MemFeed(FRAMES, tamper={s: conv for s in UNIVERSE}), now=close + 1)
+    assert [c.key.symbol for c in src.candidates(ACCT, 1)] == hits[:1]
+
+
+def test_tz_aware_times_are_converted_to_utc_and_numbers_refused():
+    close, hits = _first_fire()
+
+    def tokyo(d):
+        d = d.copy()
+        d['t'] = d['t'].dt.tz_localize('UTC').dt.tz_convert('Asia/Tokyo')
+        return d
+    src, _ = source([slot()], feed=MemFeed(FRAMES, tamper={s: tokyo for s in UNIVERSE}), now=close + 1)
+    assert [c.key.symbol for c in src.candidates(ACCT, 1)] == hits[:1]
+
+    def shifted(d):                  # forming candle relabelled by a wrong offset must not be accepted as closed
+        d = d.copy()
+        d['t'] = d['t'].dt.tz_localize('America/New_York', ambiguous='NaT', nonexistent='NaT')
+        return d
+    src2, _ = source([slot()], feed=MemFeed(FRAMES, tamper={s: shifted for s in UNIVERSE}), now=close + 1)
+    assert src2.candidates(ACCT, 1) == ()
+
+    def numeric(d):
+        d = d.copy()
+        d['t'] = d['t'].astype('datetime64[ms]').astype('int64')
+        return d
+    src3, _ = source([slot()], feed=MemFeed(FRAMES, tamper={s: numeric for s in UNIVERSE}), now=close + 1)
+    assert src3.candidates(ACCT, 1) == ()
+    with pytest.raises(ValueError):
+        ES._to_ms(1_700_000_000_000)
 
 
 def test_per_candle_cap_keeps_first_in_universe_order():
@@ -380,7 +504,9 @@ def test_invalid_wall_clock():
 
 # ---------------------------------------------------------------------------------------------------- config
 @pytest.mark.parametrize('changes,code', [
-    (dict(key='nope'), 'strategy_unavailable'),
+    (dict(key='nope'), 'strategy_unsupported'),
+    (dict(key='exp_mom_short_c27', side='SHORT'), 'strategy_unsupported'),
+    (dict(key='rank_breadth_reversal_4h'), 'strategy_unsupported'),
     (dict(tf='1h'), 'tf_mismatch'),
     (dict(key='rotation_long_h2', side='SHORT'), 'side_not_allowed'),
     (dict(mult='1.01'), 'risk_mult_invalid'),
@@ -399,6 +525,7 @@ def test_slot_validation(changes, code):
 
 def test_slot_without_stop_atr_is_refused(monkeypatch):
     monkeypatch.setitem(ST.STRATEGIES, 'tmp_nostop', dict(ST.STRATEGIES['exp_range'], mgmt={}))
+    monkeypatch.setattr(ES, 'SUPPORTED', ES.SUPPORTED | {'tmp_nostop'})
     with pytest.raises(StrategyConfigError) as e:
         slot(key='tmp_nostop', name='tmp_nostop')
     assert e.value.code == 'stop_atr_missing'
@@ -416,6 +543,8 @@ def test_slot_without_stop_atr_is_refused(monkeypatch):
     (dict(max_entries_per_candle=0), 'max_entries_per_candle_invalid'),
     (dict(max_entries_per_candle=6), 'max_entries_per_candle_invalid'),
     (dict(account_ids=[ACCT]), 'account_ids_invalid'),
+    (dict(retry_ms=999), 'retry_ms_invalid'),
+    (dict(reoffer_ms=15 * 60_000 + 1), 'reoffer_ms_invalid'),
 ])
 def test_source_validation(kw, code):
     with pytest.raises(StrategyConfigError) as e:
@@ -479,6 +608,16 @@ def test_csv_feed_returns_only_closed_candles(tmp_path):
     assert feed.closed('ETHUSDT', '4h', 10, last_open) is None
     assert feed.closed('../BTCUSDT', '4h', 10, last_open) is None
     assert feed.closed('BTCUSDT', '7h', 10, last_open) is None
+
+
+def test_csv_feed_reads_epoch_millisecond_times(tmp_path):
+    d = FRAMES['BTCUSDT'].iloc[-30:].copy()
+    d['t'] = d['t'].astype('datetime64[ms]').astype('int64').astype(float)
+    d.to_csv(tmp_path / 'BTCUSDT_4h.csv', index=False, encoding='utf-8')
+    feed = CsvCandleFeed(str(tmp_path))
+    last_open = _ms(FRAMES['BTCUSDT']['t'].iloc[-1])
+    out = feed.closed('BTCUSDT', '4h', 10, last_open + H4)
+    assert list(out['t']) == list(FRAMES['BTCUSDT']['t'].iloc[-10:])
 
 
 def test_module_does_not_live_inside_runtime_boundary():

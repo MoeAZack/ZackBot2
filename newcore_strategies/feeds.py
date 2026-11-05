@@ -30,7 +30,10 @@ class CsvCandleFeed:
             return hit[1]
         try:
             frame = pd.read_csv(path, encoding='utf-8')
-            frame['t'] = pd.to_datetime(frame['t'], utc=True).dt.tz_localize(None)
+            if pd.api.types.is_numeric_dtype(frame['t']):            # the app cache writes epoch milliseconds
+                frame['t'] = pd.to_datetime(frame['t'].astype('int64'), unit='ms')
+            else:
+                frame['t'] = pd.to_datetime(frame['t'], utc=True).dt.tz_localize(None)
         except Exception:
             return None
         self._cache[path] = (stamp, frame)
