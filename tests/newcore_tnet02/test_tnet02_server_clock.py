@@ -14,7 +14,7 @@ from newcore.venue import http_sender as transport
 from newcore.venue.binance_usdm_testnet import HttpResponse
 from tests.newcore_venue.test_nc03b_http_sender import FakeSocket, install_local_stack, request
 
-from .fake_binance import FakeBinance, FakeClock
+from .fake_binance import FakeBinance, FakeClock, RealtimeClock
 from .support import T0
 from .test_tnet02_live import _creds
 
@@ -142,10 +142,14 @@ def cli_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", LIVE_KEY)
     monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)
 
-    def run(*, server_ahead_ms=0, latency_ms=0):
-        fake = FakeBinance(FakeClock(time.time_ns() // 1_000_000 + server_ahead_ms))
+    def run(*, server_ahead_ms=0, latency_ms=0, real_delay_s=0.0):
+        fake = FakeBinance(RealtimeClock(server_ahead_ms))
         fake.enforce_recv_window, fake.latency_ms = True, latency_ms
-        monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda origin: fake)
+
+        def sender(request):
+            time.sleep(real_delay_s)                          # a slow, loaded machine: real time passes per call
+            return fake(request)
+        monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda origin: sender)
         code = cli.main(_run_args(tmp_path, _live_account(tmp_path)))
         return code, fake
     return run
@@ -156,7 +160,7 @@ def test_cli_preflight_passes_with_the_pc_clock_far_behind_the_server(cli_env, c
     out = capsys.readouterr().out
     assert code == 0 and "isolated=true" in out, out
     offset = int(out.split("clock_offset_ms=")[1].split()[0])
-    assert 11_500 <= offset <= 12_500
+    assert 11_500 <= offset <= 12_500, offset
     signed = [q for _m, _p, q in fake.requests if "timestamp" in q]
     assert signed and all(q["recvWindow"] == "10000" for q in signed)
 
@@ -165,3 +169,13 @@ def test_cli_preflight_survives_six_seconds_of_network_delay(cli_env, capsys):
     code, _fake = cli_env(latency_ms=6_000)                   # passes only with the 10 s recvWindow
     out = capsys.readouterr().out
     assert code == 0 and "isolated=true" in out, out
+
+
+def test_cli_offset_holds_on_a_slow_machine(cli_env, capsys):
+    # Owner-PC regression: under load the earlier static fake clock drifted from real time and the offset check
+    # flaked (10648 < 11500).  The fake now follows real time, so seconds of real delay do not skew the offset.
+    code, fake = cli_env(server_ahead_ms=12_000, real_delay_s=0.25)
+    out = capsys.readouterr().out
+    assert code == 0 and "isolated=true" in out, out
+    assert 11_500 <= int(out.split("clock_offset_ms=")[1].split()[0]) <= 12_500
+    assert len(fake.requests) >= 8                             # i.e. at least ~2 s of real delay elapsed

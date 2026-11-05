@@ -23,7 +23,7 @@ from newcore.venue.binance_usdm_testnet import (DEMO_TESTNET_BASE_URL, TESTNET_B
 from tools import tnet02_run as cli
 from tests.newcore_venue.test_nc03b_http_sender import QUERY, SECRET, FakeSocket, install_local_stack, request
 
-from .fake_binance import FakeBinance, FakeClock
+from .fake_binance import FakeBinance, FakeClock, RealtimeClock
 from .support import ACCOUNT_ID, BUILD_SHA, T0, account, manifest, wave
 from .test_tnet02_live import DOC_KEY, _creds
 
@@ -266,7 +266,7 @@ def senders(monkeypatch):
     built = []
 
     def make(origin):
-        fake = FakeBinance(FakeClock(time.time_ns() // 1_000_000))  # CLI signs in server time
+        fake = FakeBinance(RealtimeClock())  # CLI signs in server time
         fake.origin = origin
         built.append(origin)
         return fake

@@ -113,9 +113,9 @@ def test_run_refuses_wrong_execute_ack_and_dirty_build(tmp_path, identity, capsy
 
 def test_run_preflight_reads_only_and_reports_isolation(tmp_path, identity, capsys, monkeypatch):
     import newcore.venue as venue_pkg
-    from .fake_binance import FakeBinance, FakeClock
+    from .fake_binance import FakeBinance, FakeClock, RealtimeClock
 
-    fake = FakeBinance(FakeClock(time.time_ns() // 1_000_000))  # CLI signs in server time
+    fake = FakeBinance(RealtimeClock())  # CLI signs in server time
     monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda origin: fake)
     monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", LIVE_KEY)
     monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)

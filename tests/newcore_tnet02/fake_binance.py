@@ -32,6 +32,24 @@ class FakeClock:
         return self.now
 
 
+class RealtimeClock(FakeClock):
+    """Fake exchange time that keeps moving with the real wall clock (plus manual advances), for CLI tests where the
+    CLI itself reads the real clock.  A static fake drifts from real time under a loaded machine."""
+
+    def __init__(self, ahead_ms: int = 0):
+        import time as _time
+        self._real = lambda: _time.time_ns() // 1_000_000
+        self._shift = ahead_ms
+
+    @property
+    def now(self) -> int:
+        return self._real() + self._shift
+
+    @now.setter
+    def now(self, value: int) -> None:
+        self._shift = value - self._real()
+
+
 class FakeCredentials:
     def api_key(self) -> str:
         return SECRET_KEY
