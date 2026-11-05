@@ -303,14 +303,14 @@ def read_limit_payloads(reader: SignedReader) -> tuple[RawLimitPayload, RawLimit
 
 
 # --------------------------------------------------------------------------------------------- venue factory
-def make_testnet_venue(*, origin: str, clock: Callable[[], int], environ: Mapping[str, str] | None = None,
-                       rate_observer=None, sender: Callable[[HttpRequest], HttpResponse] | None = None):
+def make_testnet_venue(*, origin: str, sender: Callable[[HttpRequest], HttpResponse], clock: Callable[[], int],
+                       environ: Mapping[str, str] | None = None, rate_observer=None):
     """One-call ``BinanceUsdMTestnetVenue`` for launchers outside ``newcore`` (e.g. the RT runtime's ``tools/`` CLI).
 
     ``origin`` must be one exact approved testnet origin (take it from the confirmed account file); there is no
     default and no fallback.  Credentials come only from ``ZACKBOT_TNET02_API_KEY`` / ``_SECRET`` in ``environ``
-    (default: the process environment).  ``sender`` defaults to the real one-shot ``TestnetHttpSender`` bound to the
-    same origin; an injected sender that declares a different origin is refused.  Nothing is sent here.
+    (default: the process environment).  ``sender`` is the caller's ``TestnetHttpSender(origin)`` (this package never
+    imports the socket module); a sender that declares a different origin, or none, is refused.  Nothing is sent here.
     Returns ``(venue, key_digest)`` so the caller can check the digest against its confirmed binding before use.
     """
     from newcore.venue.binance_usdm_testnet import BinanceUsdMTestnetVenue
@@ -320,11 +320,7 @@ def make_testnet_venue(*, origin: str, clock: Callable[[], int], environ: Mappin
     if type(origin) is not str or origin not in TESTNET_ORIGINS:
         _fail("venue.origin")
     credentials = EnvCredentialSource(environ)
-    if sender is None:
-        from newcore.venue.http_sender import TestnetHttpSender
-
-        sender = TestnetHttpSender(origin)
-    if getattr(sender, "origin", origin) != origin:
+    if not callable(sender) or getattr(sender, "origin", None) != origin:
         _fail("venue.origin_mismatch")
     venue = BinanceUsdMTestnetVenue(environment="testnet", base_url=origin, sender=sender, credentials=credentials,
                                     clock=clock, rate_observer=rate_observer)
