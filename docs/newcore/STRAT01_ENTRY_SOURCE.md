@@ -63,6 +63,37 @@ source, refused = build_strategy_entries(feed=..., risk=..., wall_clock=..., bas
 signal function lives on the research branch `codex/kalman-innovation-c101` and is never approximated here. A row whose
 key failed the 5 Nov sealed holdout is refused as `holdout_failed` (see below).
 
+## PAPER launcher and journal risk context
+
+`tools/strat01_paper_run.py` runs the NEWCORE PAPER runtime with this source:
+
+```
+python -m newcore.runtime init-paper --config cfg.json            # once; cfg: paper_sim, entries_enabled: true
+python tools/strat01_paper_run.py --config cfg.json --marks marks.json --candles candles --equity 10000 \
+    --feed binance-public [--symbols BTCUSDT,...] [--max-steps N] [--stop-file STOP]
+```
+
+- It passes `entries_factory` to `newcore.runtime.paper_run.run_paper`, so `newcore/runtime` never imports strategy code.
+- Every slot is narrowed to `--symbols` (default: CORE-20's first 8). The PAPER runtime marks and reconciles at most
+  8 symbols (`evidence.MAX_SYMBOLS`). A cross-sectional key cannot be narrowed and is refused.
+- `--feed binance-public` refreshes closed klines (two pages, 1699 closed bars) and marks from Binance's public
+  market-data endpoints (no key, no account or order endpoint), writing atomically every `--feed-every` seconds.
+- It refuses to start while a live/mainnet switch variable is set, or for a non-`paper_sim` config.
+
+`newcore_strategies.journal_risk.JournalRiskContext` is the `RiskContextProvider`:
+
+- It reads the account's journal through the store's read-only verification phase, without the writer lock. A
+  missing, damaged or mid-write journal gives no context.
+- The binding must be a confirmed SIM binding.
+- Exposures come from booked positions at the current mark. Risk uses the worst WORKING stop when stops cover the whole
+  quantity. A stop that is unsent, unacknowledged, being cancelled, unreadable or past the mark counts as no stop,
+  and an unprotected position counts its full notional as risk.
+- Quantity is attributed to slots by executed ENTRY intents, newest first; the rest is `manual`.
+- A live ENTRY intent, a missing mark, or a marks file older than `--max-mark-age` (default 300 s) gives no context.
+- Policy (`PaperPolicy`): trade risk 1%, portfolio risk 3%, symbol-side risk 1%, slot risk 2%, gross <= 3x, net
+  <= 2x, leverage <= 3x. Multiples can never exceed the leverage cap.
+- Equity is the operator's `--equity`. The PAPER venue keeps no balance, so P&L is not applied (known gap).
+
 ## Preset `TESTNET_SET_2026_11_05`
 
 | Slot | Strategy | TF | Side | risk_mult | Basis |
@@ -84,12 +115,13 @@ Universe: CORE-20 from `research_evidence/universe/static-top40-minhist365-contr
 
 - **Exits other than the protective stop are not wired.** Signal exits (`lx`/`sx`), take-profit and max-bars
   from each strategy's `mgmt` need an NC-07 management source. Until then live behavior differs from the backtest.
-- The risk context provider (equity, exposures, reservations, filters and the #295 loss fields) belongs to the runtime
-  owner. The correlation cap (<=2R same direction) and the daily loss breaker are NC-06 policy, not this module.
+- The journal risk context is PAPER only. A testnet provider needs venue balances, and the #295 loss fields are not
+  wired. The correlation cap (<=2R same direction) and the daily loss breaker are NC-06 policy, not this module.
 - `exp_vwaprev` needs a quote-volume column (`qv`); without it the slot fails closed.
 - Evaluation runs synchronously in `cycle`, once per candle close: about 0.3 s per slot, and about 1.2 s for
   `exp_vwaprev` over 17 symbols x 1500 bars (measured in the sandbox).
-- `CsvCandleFeed` is for PAPER/replay (ISO or epoch-millisecond `t`). A testnet kline feed is a separate ticket. It
+- `CsvCandleFeed` is for PAPER/replay (ISO or epoch-millisecond `t`). The launcher's public feed uses mainnet public
+  prices, which suits PAPER. A testnet kline feed is a separate ticket. It
   must decide that a candle has closed from exchange time or the kline's closed flag, not the local clock alone.
 - Stop anchor: live uses the decision close +/- `stop_atr x ATR`, while the backtest anchors on the next-open fill. This
   makes a small difference in R sizing.
