@@ -18,6 +18,7 @@ opens a socket.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import time
@@ -194,7 +195,41 @@ def save_book(venue: PaperVenue, spec) -> None:
     os.replace(tmp, path)
 
 
-def build_paper_ports(config, marks: FileMarks, *, monotonic_clock, wall_clock, entries_factory=None):
+class JournalView:
+    """Read-only access to an account's live NC-02 journal for an entries factory (no append, no close).
+
+    It is valid once the runtime has booted (``None`` before that) and must be read from the account's own NC-05
+    runner thread, which is where the cycle hook calls ``EntrySource.candidates``.
+    """
+
+    __slots__ = ('_journal',)
+
+    def __init__(self, journal):
+        self._journal = journal
+
+    @property
+    def account_id(self):
+        return self._journal.account_id
+
+    def read(self):
+        return self._journal.read()
+
+    def state(self):
+        return self._journal.state()
+
+    def last_sequence(self):
+        return self._journal.last_sequence()
+
+
+def _factory_takes_journal(factory) -> bool:
+    try:
+        params = inspect.signature(factory).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(p.name == 'journal' or p.kind is inspect.Parameter.VAR_KEYWORD for p in params)
+
+
+def build_paper_ports(config, marks: FileMarks, *, monotonic_clock, wall_clock, entries_factory=None, views=None):
     """Returns (ports by account id, venues by account id)."""
     if config.environment is not RuntimeEnvironment.PAPER_SIM:
         raise PaperRunError('testnet_run_unavailable')
@@ -212,9 +247,16 @@ def build_paper_ports(config, marks: FileMarks, *, monotonic_clock, wall_clock, 
                                               evidence=VenueEvidence(symbols=marks.symbols),
                                               actions=JournalingActionSink(),
                                               **({} if entries_factory is None else
-                                                 {'entries': entries_factory(spec, wall_clock=wall_clock)}))
+                                                 {'entries': _entries(entries_factory, spec, wall_clock, views)}))
         venues[spec.account_id] = venue
     return ports, venues
+
+
+def _entries(factory, spec, wall_clock, views):
+    """Call the factory; one that accepts ``journal`` gets a callable returning the account's ``JournalView``."""
+    if views is None or not _factory_takes_journal(factory):
+        return factory(spec, wall_clock=wall_clock)
+    return factory(spec, wall_clock=wall_clock, journal=lambda: views.get(spec.account_id))
 
 
 # ---------------------------------------------------------------------------------------------------- run
@@ -243,11 +285,15 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
     marks = FileMarks(marks_path)
     if entries_factory is not None and not callable(entries_factory):
         raise PaperRunError('entries_factory_invalid')
+    views: dict[str, JournalView] = {}
     ports, venues = build_paper_ports(config, marks, monotonic_clock=monotonic_clock, wall_clock=wall_clock,
-                                      entries_factory=entries_factory)
+                                      entries_factory=entries_factory, views=views)
     specs = {s.account_id: s for s in config.accounts}
     runtime = boot(config, ports, boot_id=boot_id or f'paper-{uuid.uuid4().hex[:12]}',
                    monotonic_clock=monotonic_clock, wall_clock=wall_clock)
+    for account_id, row in runtime._accounts.items():
+        if row.journal is not None:
+            views[account_id] = JournalView(row.journal)
     step, snap, reason = 0, runtime.snapshot(), 'max_steps'
     emit(status_line(snap, step, 'booted'))
     try:
@@ -284,5 +330,5 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
     return final
 
 
-__all__ = ['BOOK_FILE', 'FileMarks', 'PAPER_KEY_DIGEST', 'PaperRunError', 'build_paper_ports', 'init_paper_account',
-           'paper_binding', 'run_paper', 'save_book', 'load_book']
+__all__ = ['BOOK_FILE', 'FileMarks', 'JournalView', 'PAPER_KEY_DIGEST', 'PaperRunError', 'build_paper_ports',
+           'init_paper_account', 'load_book', 'paper_binding', 'run_paper', 'save_book']

@@ -314,3 +314,43 @@ def test_a_non_callable_entries_factory_is_refused(tmp_path):
     marks = write_json(tmp_path / 'marks.json', {'BTCUSDT': '100'})
     with pytest.raises(PaperRunError, match='entries_factory_invalid'):
         run_paper(config, marks_path=marks, emit=lambda line: None, max_steps=1, entries_factory='x')
+
+
+def test_a_factory_that_takes_journal_reads_the_live_journal_read_only(tmp_path):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_rt02_journaling import Keyed
+    from newcore.domain import BindingChanged
+    from newcore.runtime.config import config_from_mapping
+    from newcore.runtime.paper_run import JournalView, init_paper_account, run_paper
+
+    cfg = config_file(tmp_path, entries_enabled=True)
+    with open(cfg, encoding='utf-8') as handle:
+        config = config_from_mapping(json.load(handle))
+    init_paper_account(config.accounts[0], wall_ms=2_000_000_000_000 - 60_000, event_n=7)
+    marks = write_json(tmp_path / 'marks.json', {'BTCUSDT': '100'})
+    seen = []
+
+    class Reading(Keyed):
+        def __init__(self, journal):
+            super().__init__()
+            self.journal = journal
+
+        def candidates(self, account_id, now_mono):
+            view = self.journal()
+            seen.append((type(view), view.account_id, view.last_sequence(),
+                         any(isinstance(e, BindingChanged) for e in view.read()), len(view.state().intents)))
+            return super().candidates(account_id, now_mono)
+
+    def factory(spec, *, wall_clock, journal):
+        assert journal() is None                                   # not booted yet
+        return Reading(journal)
+
+    final = run_paper(config, marks_path=marks, emit=lambda line: None, max_steps=960, entries_factory=factory,
+                      **FakeTime().hooks())
+    assert final['accounts'][0]['plan'] == 'protected_confirmed'
+    assert seen and seen[0][:2] == (JournalView, acct(1)) and seen[0][3] is True
+    assert len(seen) >= 2 and seen[-1][2] > seen[0][2]             # the view follows the live journal
+    view = seen[0][0]
+    assert not hasattr(view, 'append') and not hasattr(view, 'close')

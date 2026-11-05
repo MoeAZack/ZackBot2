@@ -93,4 +93,9 @@ Use `tools/newcore_release.py --root <dir>`. On Windows, `newcore_paper.bat <com
 - **Entries in PAPER.** `run_paper(..., entries_factory=f)` accepts `f(spec, *, wall_clock) -> EntrySource` from a
   launcher outside `newcore/runtime`. An example is the strategy source in PR #297. Without a factory, `run` refuses
   `entries_enabled` (`entries_source_missing`). The CLI passes no factory.
+  - A factory that also takes `journal` gets a callable that returns a read-only `JournalView` of the account's
+    live journal. The view has `read`, `state`, `last_sequence` and `account_id`, and no `append` or `close`.
+  - The callable returns `None` until the runtime has booted.
+  - It is read from the cycle hook on the account's own runner thread, so no second reader is needed and the
+    writer lock is not involved.
 - **Marks feed.** The marks come from a file. A live public mark feed is not wired.
