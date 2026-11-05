@@ -335,3 +335,53 @@ def test_cli_refuses_an_account_file_with_unknown_keys(tmp_path, identity, live_
     acct.write_text(json.dumps(raw), encoding="utf-8")
     assert cli.main(_args(tmp_path, acct, DEMO_TESTNET_BASE_URL)) == cli.EXIT_REFUSED
     assert capsys.readouterr().err.strip() == "REFUSED: account_file_keys" and senders == []
+
+
+# ------------------------------------------------------------------------------------------------- review regressions
+def test_cli_key_pin_survives_a_new_journal_dir_and_account_file(tmp_path, identity, live_env, senders, capsys):
+    # Adversarial finding: the pin lived only in --journal-dir, so a fresh journal dir let one key reach both origins.
+    demo = _account_file(tmp_path, DEMO_TESTNET_BASE_URL, "demo.json")
+    legacy = _account_file(tmp_path, TESTNET_BASE_URL, "legacy.json")
+    assert cli.main(_args(tmp_path, demo, DEMO_TESTNET_BASE_URL)) == cli.EXIT_OK
+    capsys.readouterr()
+    other = tmp_path / "second"
+    other.mkdir()
+    assert cli.main(_args(other, legacy, TESTNET_BASE_URL)) == cli.EXIT_REFUSED
+    assert capsys.readouterr().err.strip() == "REFUSED: credentials_origin_reuse"
+    assert senders == [DEMO_TESTNET_BASE_URL]
+    assert not (other / "journals" / "origin_pins.json").exists()      # a refusal writes no pin anywhere
+
+
+def test_cli_journal_pin_still_refuses_when_the_machine_store_is_fresh(tmp_path, identity, live_env, senders,
+                                                                      capsys, monkeypatch):
+    demo = _account_file(tmp_path, DEMO_TESTNET_BASE_URL, "demo.json")
+    legacy = _account_file(tmp_path, TESTNET_BASE_URL, "legacy.json")
+    assert cli.main(_args(tmp_path, demo, DEMO_TESTNET_BASE_URL)) == cli.EXIT_OK
+    capsys.readouterr()
+    monkeypatch.setattr(cli, "MACHINE_PIN_STORE", tmp_path / "fresh" / "pins.json")
+    assert cli.main(_args(tmp_path, legacy, TESTNET_BASE_URL)) == cli.EXIT_REFUSED
+    assert capsys.readouterr().err.strip() == "REFUSED: credentials_origin_reuse"
+
+
+def test_cli_corrupt_machine_store_refuses_before_network(tmp_path, identity, live_env, senders, capsys):
+    cli.MACHINE_PIN_STORE.parent.mkdir(parents=True, exist_ok=True)
+    cli.MACHINE_PIN_STORE.write_text("{bad", encoding="utf-8")
+    acct = _account_file(tmp_path, DEMO_TESTNET_BASE_URL)
+    assert cli.main(_args(tmp_path, acct, DEMO_TESTNET_BASE_URL)) == cli.EXIT_REFUSED
+    assert capsys.readouterr().err.strip() == "REFUSED: origin_pins_unreadable" and senders == []
+
+
+def test_wiring_refuses_an_account_reader_on_another_origin(tmp_path):
+    from .support import FakeFiltersPort, limit_payloads
+    clock = FakeClock(T0)
+    fake = FakeBinance(clock)
+    exchange, limits = limit_payloads()
+    port = LiveAccountPort(SignedReader(sender=fake, credentials=_creds(), clock=clock,
+                                        base_url=DEMO_TESTNET_BASE_URL), clock)
+    (tmp_path / "j").mkdir()
+    with pytest.raises(ValueError, match="^wiring.origin_mismatch$"):
+        build_adapter(sender=fake, credentials=_creds(), account_id=ACCOUNT_ID, egress_id="egress-test",
+                      exchange_info=exchange, account_order_limits=limits, account=port,
+                      filters=FakeFiltersPort(), journals=FileJournalOpener(tmp_path / "j"), clock=clock,
+                      monotonic=clock, sleeper=fake.advance, base_url=TESTNET_BASE_URL)
+    assert fake.requests == []

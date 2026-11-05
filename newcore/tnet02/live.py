@@ -187,6 +187,10 @@ class LiveAccountPort:
         self._reader, self._clock, self._asset = reader, clock, settlement_asset
         self._budget = None
 
+    @property
+    def origin(self) -> str:
+        return self._reader.origin
+
     def bind_budget(self, budget) -> None:
         if self._budget is not None or not callable(getattr(budget, "reserve", None)) or not callable(
                 getattr(budget, "observe", None)):

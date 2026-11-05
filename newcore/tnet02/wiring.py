@@ -48,8 +48,7 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
     # One explicit origin per run: the venue, and (in the CLI) the sender and reader, all receive the same string.
     if type(base_url) is not str or base_url not in TESTNET_ORIGINS:
         raise ValueError("wiring.origin")
-    sender_origin = getattr(sender, "origin", base_url)
-    if sender_origin != base_url:
+    if getattr(sender, "origin", base_url) != base_url or getattr(account, "origin", base_url) != base_url:
         raise ValueError("wiring.origin_mismatch")
     faults = FaultingSender(sender, clock)
     budget = AccountBudget(account_id=account_id, egress_id=egress_id, exchange_info=exchange_info,

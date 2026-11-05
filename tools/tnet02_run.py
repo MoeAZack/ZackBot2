@@ -13,8 +13,10 @@ file, refuses a report for another account or key digest, and prints the GatePro
 ``run`` reads the dedicated TESTNET key from ZACKBOT_TNET02_API_KEY / ZACKBOT_TNET02_API_SECRET on this machine and
 refuses before any network use unless the key's digest equals the confirmed account file.  The account file names
 exactly one approved testnet origin (optional ``origin`` key; a file without it keeps the original
-``https://testnet.binancefuture.com`` binding), ``--origin`` must repeat it, and the journal directory pins each key
-digest to the first origin it was used with, so one key is never reused on the other origin.  There is no fallback
+``https://testnet.binancefuture.com`` binding), and ``--origin`` must repeat it.  Each key digest is pinned to the first
+origin it was used with, both in a per-user store on this machine (``~/.zackbot/tnet02_origin_pins.json``) and in the
+journal directory; a digest pinned to the other origin in either place is refused, so changing the journal directory
+or the account file does not let one key reach both origins.  There is no fallback
 between origins.  Without ``--execute`` it
 is a read-only preflight (exchange rules, rate limits, account facts and the binding/isolation check) and sends no
 order.  With ``--execute`` it runs the frozen twelve-case suite on Binance USD-M TESTNET, writes the exact-build
@@ -53,6 +55,7 @@ _ACCOUNT_KEYS = {"account_id", "label", "key_digest", "hedge_mode", "settlement_
                  "typed_phrase"}
 _ORIGIN_KEY = "origin"
 _ORIGIN_PINS = "origin_pins.json"
+MACHINE_PIN_STORE = Path.home() / ".zackbot" / "tnet02_origin_pins.json"
 
 
 class Refused(Exception):
@@ -98,24 +101,33 @@ def account_origin(path: Path) -> str:
     return origin
 
 
-def pin_origin(journal_dir: Path, digest: str, origin: str) -> None:
-    """Refuse a key digest already used with the other origin; record it on first use.  No network."""
-    pins_path = Path(journal_dir) / _ORIGIN_PINS
+def _read_pins(path: Path) -> dict:
     try:
-        pins = json.loads(pins_path.read_text(encoding="utf-8")) if pins_path.exists() else {}
+        pins = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise Refused("origin_pins_unreadable") from None
     if type(pins) is not dict or any(type(k) is not str or type(v) is not str for k, v in pins.items()):
         raise Refused("origin_pins_unreadable")
-    if digest in pins:
-        if pins[digest] != origin:
-            raise Refused("credentials_origin_reuse")
-        return
-    pins[digest] = origin
-    try:
-        pins_path.write_text(json.dumps(pins, sort_keys=True), encoding="utf-8")
-    except OSError:
-        raise Refused("origin_pins_unwritable") from None
+    return pins
+
+
+def pin_origin(journal_dir: Path, digest: str, origin: str) -> None:
+    """Refuse a key digest already used with the other origin; record it on first use.  No network.
+
+    Every store is checked before any is written, so a refusal leaves both unchanged."""
+    stores = [Path(MACHINE_PIN_STORE), Path(journal_dir) / _ORIGIN_PINS]
+    loaded = [(path, _read_pins(path)) for path in stores]
+    if any(pins.get(digest, origin) != origin for _path, pins in loaded):
+        raise Refused("credentials_origin_reuse")
+    for path, pins in loaded:
+        if pins.get(digest) == origin:
+            continue
+        pins[digest] = origin
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(pins, sort_keys=True), encoding="utf-8")
+        except OSError:
+            raise Refused("origin_pins_unwritable") from None
 
 
 def load_account(path: Path) -> Account:
