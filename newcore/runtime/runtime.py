@@ -324,7 +324,12 @@ def _validate_work(works: object, deadline_mono: int, row: _Account) -> tuple[Ve
 
 def _load_durable(config: RuntimeConfig, row: _Account) -> tuple[DurableState | None, HoldCode | None]:
     try:
-        durable = row.ports.state_source.load(row.spec.account_id, row.journal.state())
+        source = row.ports.state_source
+        load_journal = getattr(source, 'load_journal', None)
+        if callable(load_journal):     # a projection that needs the journal's own events (binding, results)
+            durable = load_journal(row.spec.account_id, row.journal)
+        else:
+            durable = source.load(row.spec.account_id, row.journal.state())
     except Exception:
         return None, HoldCode.DURABLE_STATE_INVALID
     if type(durable) is not DurableState or durable.account.account_id != row.spec.account_id:

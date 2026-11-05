@@ -6,6 +6,7 @@ NC-09 tracing and REC-02 reconciliation.  It imports no legacy module and instal
 from newcore.runtime.config import (AccountSpec, RuntimeConfig, RuntimeConfigError, RuntimeEnvironment,
                                     config_from_mapping)
 from newcore.runtime.journaling import JournalingActionSink, SinkBinding, SinkProblem
+from newcore.runtime.projection import JournalProjection
 from newcore.runtime.ports import (AccountPorts, ActionSink, DurableStateSource, EntryCandidate, EntrySource,
                                    EvidencePort,
                                    ManagementSource, NoEntries, NoManagedLots, RefusingActionSink)
@@ -13,7 +14,7 @@ from newcore.runtime.runtime import (AccountPhase, AccountRuntimeSnapshot, HoldC
                                      RuntimeEvent, RuntimeSnapshot, boot)
 
 __all__ = ['AccountPhase', 'AccountPorts', 'AccountRuntimeSnapshot', 'AccountSpec', 'ActionSink',
-           'DurableStateSource', 'EntryCandidate', 'EntrySource', 'EvidencePort', 'HoldCode', 'JournalingActionSink',
+           'DurableStateSource', 'EntryCandidate', 'EntrySource', 'EvidencePort', 'HoldCode', 'JournalingActionSink', 'JournalProjection',
            'ManagementSource', 'NoEntries',
            'NoManagedLots', 'RefusingActionSink', 'Runtime', 'RuntimeBootError', 'RuntimeConfig',
            'RuntimeConfigError', 'RuntimeEnvironment', 'RuntimeEvent', 'RuntimeSnapshot', 'SinkBinding', 'SinkProblem',
