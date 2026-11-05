@@ -10,7 +10,9 @@
   book after every step, until ``max_steps``, a stop file or Ctrl-C; it then stops NC-05 with grace and closes.
 
 PAPER only.  A testnet config is refused (``testnet_run_unavailable``) because the testnet open-orders read cannot
-prove evidence yet; ``entries_enabled`` is refused (``entries_source_missing``).  Nothing here reads a credential or
+prove evidence yet; ``entries_enabled`` is refused (``entries_source_missing``) unless the caller passes an
+``entries_factory`` (a launcher outside this package composes a strategy ``EntrySource``; the runtime package never
+imports strategy code).  Nothing here reads a credential or
 opens a socket.
 """
 from __future__ import annotations
@@ -192,7 +194,7 @@ def save_book(venue: PaperVenue, spec) -> None:
     os.replace(tmp, path)
 
 
-def build_paper_ports(config, marks: FileMarks, *, monotonic_clock, wall_clock):
+def build_paper_ports(config, marks: FileMarks, *, monotonic_clock, wall_clock, entries_factory=None):
     """Returns (ports by account id, venues by account id)."""
     if config.environment is not RuntimeEnvironment.PAPER_SIM:
         raise PaperRunError('testnet_run_unavailable')
@@ -208,7 +210,9 @@ def build_paper_ports(config, marks: FileMarks, *, monotonic_clock, wall_clock):
                                  monotonic_clock=monotonic_clock)
         ports[spec.account_id] = AccountPorts(context=context, state_source=JournalProjection(label='paper'),
                                               evidence=VenueEvidence(symbols=marks.symbols),
-                                              actions=JournalingActionSink())
+                                              actions=JournalingActionSink(),
+                                              **({} if entries_factory is None else
+                                                 {'entries': entries_factory(spec, wall_clock=wall_clock)}))
         venues[spec.account_id] = venue
     return ports, venues
 
@@ -223,11 +227,12 @@ def status_line(snap, step: int, state: str) -> dict:
 
 def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: int | None = None,
               stop_file: str | None = None, status_every: int = 20, sleep=time.sleep,
-              monotonic_clock=_mono_ms, wall_clock=_wall_ms, boot_id: str | None = None) -> dict:
+              monotonic_clock=_mono_ms, wall_clock=_wall_ms, boot_id: str | None = None,
+              entries_factory=None) -> dict:
     """Run until max_steps, the stop file appears, or KeyboardInterrupt.  Returns the final status line."""
     if config.environment is not RuntimeEnvironment.PAPER_SIM:
         raise PaperRunError('testnet_run_unavailable')
-    if config.entries_enabled:
+    if config.entries_enabled and entries_factory is None:
         raise PaperRunError('entries_source_missing')
     if type(step_ms) is not int or not 10 <= step_ms <= 60_000:
         raise PaperRunError('step_ms_invalid')
@@ -236,7 +241,10 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
     if any(not os.path.isdir(spec.account_dir) for spec in config.accounts):
         raise PaperRunError('account_not_initialised')      # run never creates an account: init-paper does
     marks = FileMarks(marks_path)
-    ports, venues = build_paper_ports(config, marks, monotonic_clock=monotonic_clock, wall_clock=wall_clock)
+    if entries_factory is not None and not callable(entries_factory):
+        raise PaperRunError('entries_factory_invalid')
+    ports, venues = build_paper_ports(config, marks, monotonic_clock=monotonic_clock, wall_clock=wall_clock,
+                                      entries_factory=entries_factory)
     specs = {s.account_id: s for s in config.accounts}
     runtime = boot(config, ports, boot_id=boot_id or f'paper-{uuid.uuid4().hex[:12]}',
                    monotonic_clock=monotonic_clock, wall_clock=wall_clock)

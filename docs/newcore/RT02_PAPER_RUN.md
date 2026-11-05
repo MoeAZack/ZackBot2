@@ -82,8 +82,15 @@ Use `tools/newcore_release.py --root <dir>`. On Windows, `newcore_paper.bat <com
 
 ## Not done
 
-- **Testnet run.** It needs the classic and algo open-orders read in the testnet adapter, and the
-  `/fapi/v1/openOrders` sender path.
-- **Entries in PAPER.** They need a strategy `EntrySource` that emits `EntryCandidate`s. Until then `run` refuses
-  `entries_enabled`.
+- **Testnet run.** The combined classic and algo open-order read is Codex's PR #291
+  (`codex/tnet02-real-adapter`), so this branch does not touch the adapter. After #291 lands, a testnet port builder
+  is still missing. It needs:
+  - the sender;
+  - credentials from the owner's machine (never from the repo);
+  - a typed-confirmation testnet binding.
+
+  Until that exists, `run` refuses a testnet config.
+- **Entries in PAPER.** `run_paper(..., entries_factory=f)` accepts `f(spec, *, wall_clock) -> EntrySource` from a
+  launcher outside `newcore/runtime`. An example is the strategy source in PR #297. Without a factory, `run` refuses
+  `entries_enabled` (`entries_source_missing`). The CLI passes no factory.
 - **Marks feed.** The marks come from a file. A live public mark feed is not wired.
