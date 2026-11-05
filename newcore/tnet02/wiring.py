@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 from newcore.account_context import AccountBudget, AccountContext, RawLimitPayload
-from newcore.venue.binance_usdm_testnet import (TESTNET_BASE_URL, BinanceUsdMTestnetVenue, CredentialSource,
+from newcore.venue.binance_usdm_testnet import (TESTNET_BASE_URL, TESTNET_ORIGINS, BinanceUsdMTestnetVenue,
+                                                CredentialSource,
                                                 HttpRequest, HttpResponse)
 
 from .adapter import HarnessConfig, RealTestnetAdapter
@@ -43,7 +44,13 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
                   account_id: str, egress_id: str, exchange_info: RawLimitPayload,
                   account_order_limits: RawLimitPayload, account: AccountPort, filters: FiltersPort,
                   journals: JournalOpener, clock: Clock, monotonic: Clock, sleeper: Sleeper,
-                  config: HarnessConfig = HarnessConfig()) -> Wired:
+                  config: HarnessConfig = HarnessConfig(), base_url: str = TESTNET_BASE_URL) -> Wired:
+    # One explicit origin per run: the venue, and (in the CLI) the sender and reader, all receive the same string.
+    if type(base_url) is not str or base_url not in TESTNET_ORIGINS:
+        raise ValueError("wiring.origin")
+    sender_origin = getattr(sender, "origin", base_url)
+    if sender_origin != base_url:
+        raise ValueError("wiring.origin_mismatch")
     faults = FaultingSender(sender, clock)
     budget = AccountBudget(account_id=account_id, egress_id=egress_id, exchange_info=exchange_info,
                            account_order_limits=account_order_limits, monotonic_clock=monotonic, wall_clock=clock)
@@ -51,7 +58,7 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
     def observe(evidence) -> None:
         budget.observe(evidence)
 
-    venue = BinanceUsdMTestnetVenue(environment="testnet", base_url=TESTNET_BASE_URL, sender=faults,
+    venue = BinanceUsdMTestnetVenue(environment="testnet", base_url=base_url, sender=faults,
                                     credentials=credentials, clock=clock, rate_observer=observe)
     context = AccountContext(account_id=account_id, egress_id=egress_id, venue=venue, budget=budget,
                              monotonic_clock=monotonic)

@@ -10,6 +10,7 @@ from newcore.testnet_harness import run_suite
 from tools import tnet02_run as cli
 
 from .support import ACCOUNT_ID, BUILD_SHA, DIGEST, manifest, rig
+from newcore.venue.binance_usdm_testnet import TESTNET_BASE_URL as ORIGIN
 
 
 def _account_file(tmp_path, **override):
@@ -72,7 +73,7 @@ def _run_args(tmp_path, account, *extra):
     journals.mkdir(exist_ok=True)
     out.mkdir(exist_ok=True)
     return ["run", "--expected-head", BUILD_SHA, "--account-file", str(account), "--symbols", "BTCUSDT",
-            "--journal-dir", str(journals), "--out-dir", str(out), "--host-id", "tnet_x", *extra]
+            "--origin", ORIGIN, "--journal-dir", str(journals), "--out-dir", str(out), "--host-id", "tnet_x", *extra]
 
 
 @pytest.fixture
@@ -114,7 +115,7 @@ def test_run_preflight_reads_only_and_reports_isolation(tmp_path, identity, caps
     from .fake_binance import FakeBinance, FakeClock
 
     fake = FakeBinance(FakeClock())
-    monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda: fake)
+    monkeypatch.setattr(venue_pkg, "TestnetHttpSender", lambda origin: fake)
     monkeypatch.setenv("ZACKBOT_TNET02_API_KEY", LIVE_KEY)
     monkeypatch.setenv("ZACKBOT_TNET02_API_SECRET", LIVE_SECRET)
     assert cli.main(_run_args(tmp_path, _live_account(tmp_path))) == cli.EXIT_OK

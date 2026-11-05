@@ -125,6 +125,26 @@ Files actually added: `ports.py`, `faults.py`, `journal.py`, `adapter.py`, `wiri
 * New test: no general read reaches the exchange between a 429 and its `Retry-After`.
 * Python 3.12 (the owner PC's version) passes the tnet02, venue and testnet suites.
 * **Open question for the real run, testnet host.** Binance's current USD-M docs (General Info, "Testnet API Information") name `https://demo-fapi.binance.com` as the testnet REST base URL, and new test keys are issued through Futures Demo Trading. NEWCORE's venue (#291) and sender are bound only to `testnet.binancefuture.com`. The paper bot still trades there with an older key, but it is unconfirmed whether a new Demo Trading key works on that host. If it does not, the run needs `demo-fapi.binance.com` added as a second exact testnet origin in the #291 venue and the sender. That is Codex's file and has not been changed here.
+  *Resolved in commit 5 (§12).*
+
+## 12. Commit 5: second exact testnet origin (5 Nov 2026)
+
+Codex ruling on #219 (6660693481), with owner approval: support the exact origin `https://demo-fapi.binance.com` beside `https://testnet.binancefuture.com`. #291 stays frozen, so this change lives on #294.
+
+* **Venue.** The venue now offers `DEMO_TESTNET_BASE_URL` and `TESTNET_ORIGINS`, which holds exactly the two strings. The venue accepts only an exact member. It pins the chosen origin at construction, and every request re-checks it, so a swap mid-run is refused even to the other approved origin (`binding_changed`, nothing sent).
+* **Sender.** `TestnetHttpSender(base_url=TESTNET_BASE_URL)` binds to one origin at construction. It maps that origin to its one host, and the same host is used for URL validation, `getaddrinfo`, the TLS `server_hostname` and the `Host` header. The sender has `__slots__`, and a forged origin/host pair is refused before DNS. A request for the other approved origin is also refused before DNS. Redirects are still returned unchanged and never followed. The default keeps the original origin, so existing callers and bindings behave exactly as before.
+* **Reader and wiring.** `SignedReader(base_url=...)` and `build_adapter(base_url=...)` take the same single origin. The wiring refuses a sender that declares a different origin (`wiring.origin_mismatch`).
+* **CLI and binding.** The account file may carry an optional `origin` key with one of the two exact strings. A file without the key keeps the original origin. `run --origin` is required and must equal the account file's origin; otherwise the CLI refuses with `origin_mismatch`. Before any network use, `<journal-dir>/origin_pins.json` pins each key digest to the first origin it ran with. Reusing a key on the other origin is refused (`credentials_origin_reuse`), and corrupt pins are refused as well. `PLAN` and `PREFLIGHT` print the bare origin; they never print request URLs.
+* **Not done.**
+  * There is no automatic fallback or host migration; that is deferred by the ruling.
+  * The report schema does not record the origin. The account file and the preflight output do.
+* **Tests.** `tests/newcore_tnet02/test_tnet02_origins.py` covers:
+  * both origins end to end, including the full 12-case matrix over the fake exchange on the demo origin;
+  * mainnet, lookalike, case, port, slash, userinfo and downgrade refusals at the venue, sender and reader;
+  * cross-origin and tampered-pair refusals before DNS;
+  * redirect not followed;
+  * CLI origin selection, mismatch, key reuse across origins and corrupt pins.
+* **Mutation check.** 25 of 28 mutants on the new lines were killed. The 3 that survive are the overlapping URL checks inside `_validate` (prefix, scheme/host/port, exact reconstruction). For an approved origin/host pair, removing any one of them is caught by the other two, so each is equivalent alone. They are the same layering the sender had before this change.
 
 ## Deferred
 

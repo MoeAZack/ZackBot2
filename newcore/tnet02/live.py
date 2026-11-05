@@ -17,7 +17,7 @@ from typing import Callable, Mapping
 
 from newcore.account_context import (ACCOUNT_ORDER_LIMIT_PATH, ACCOUNT_SOURCE, EXCHANGE_INFO_PATH,
                                      MARKET_DATA_SOURCE, SOURCE_RETRIEVED_ON, LimitAuthority, RawLimitPayload)
-from newcore.venue.binance_usdm_testnet import TESTNET_BASE_URL, HttpRequest, HttpResponse
+from newcore.venue.binance_usdm_testnet import TESTNET_BASE_URL, TESTNET_ORIGINS, HttpRequest, HttpResponse
 
 from .ports import AccountFacts, PortError, SymbolFacts, SymbolFilters
 
@@ -82,7 +82,10 @@ class SignedReader:
     """GET-only reads through the injected sender: signed account routes and the one unsigned public route."""
 
     def __init__(self, *, sender: Callable[[HttpRequest], HttpResponse], credentials, clock: Callable[[], int],
-                 recv_window_ms: int = 5000, timeout_s: float = 10.0):
+                 recv_window_ms: int = 5000, timeout_s: float = 10.0, base_url: str = TESTNET_BASE_URL):
+        if type(base_url) is not str or base_url not in TESTNET_ORIGINS:
+            _fail("reader.origin")
+        self._origin = base_url
         self._sender, self._credentials, self._clock = sender, credentials, clock
         self._recv_window_ms, self._timeout_s = recv_window_ms, timeout_s
 
@@ -97,15 +100,21 @@ class SignedReader:
             api_key = self._credentials.api_key()
         except Exception:
             _fail("reader.credentials")
-        request = HttpRequest("GET", TESTNET_BASE_URL + path, payload + "&signature=" + signature,
+        request = HttpRequest("GET", self._origin + path, payload + "&signature=" + signature,
                               (("X-MBX-APIKEY", api_key),), self._timeout_s)
         return self._decode(self._send(request))
 
     def public(self, path: str) -> tuple[object, bytes]:
-        response = self._send(HttpRequest("GET", TESTNET_BASE_URL + path, "", (), self._timeout_s))
+        response = self._send(HttpRequest("GET", self._origin + path, "", (), self._timeout_s))
         return self._decode(response), response.body
 
+    @property
+    def origin(self) -> str:
+        return self._origin
+
     def _send(self, request: HttpRequest) -> HttpResponse:
+        if self._origin not in TESTNET_ORIGINS:
+            _fail("reader.origin")
         try:
             response = self._sender(request)
         except Exception:

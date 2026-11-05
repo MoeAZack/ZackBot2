@@ -143,7 +143,7 @@ class FakeBinance:
     def __call__(self, request: HttpRequest) -> HttpResponse:
         assert isinstance(request, HttpRequest)
         parts = urlsplit(request.url)
-        assert f"{parts.scheme}://{parts.netloc}" == TESTNET_BASE_URL
+        assert f"{parts.scheme}://{parts.netloc}" == getattr(self, "origin", TESTNET_BASE_URL)
         params = dict(parse_qsl(request.query, keep_blank_values=True))
         self.requests.append((request.method, parts.path, params))
         self.tick()

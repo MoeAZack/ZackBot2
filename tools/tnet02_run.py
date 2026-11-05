@@ -3,17 +3,23 @@
     python -m tools.tnet02_run plan  --expected-head SHA --account-file ACCOUNT.json --symbols BTCUSDT[,ETHUSDT]
     python -m tools.tnet02_run proof --expected-head SHA --account-file ACCOUNT.json --report REPORT.json --host-id tnet_<id>
     python -m tools.tnet02_run run   --expected-head SHA --account-file ACCOUNT.json --symbols BTCUSDT
-                                     --journal-dir DIR --out-dir DIR --host-id tnet_<id> [--execute]
+                                     --origin https://demo-fapi.binance.com
+                                     --journal-dir DIR --out-dir DIR --host-id tnet_<id> [--execute TESTNET]
 
 ``plan`` checks that HEAD equals --expected-head with a clean tracked tree, builds and validates the frozen
 twelve-case manifest, and prints it.  It sends nothing and reads no credential.  ``proof`` decodes an exact report
 file, refuses a report for another account or key digest, and prints the GateProof as canonical JSON.
 
 ``run`` reads the dedicated TESTNET key from ZACKBOT_TNET02_API_KEY / ZACKBOT_TNET02_API_SECRET on this machine and
-refuses before any network use unless the key's digest equals the confirmed account file.  Without ``--execute`` it
+refuses before any network use unless the key's digest equals the confirmed account file.  The account file names
+exactly one approved testnet origin (optional ``origin`` key; a file without it keeps the original
+``https://testnet.binancefuture.com`` binding), ``--origin`` must repeat it, and the journal directory pins each key
+digest to the first origin it was used with, so one key is never reused on the other origin.  There is no fallback
+between origins.  Without ``--execute`` it
 is a read-only preflight (exchange rules, rate limits, account facts and the binding/isolation check) and sends no
 order.  With ``--execute`` it runs the frozen twelve-case suite on Binance USD-M TESTNET, writes the exact-build
-report once, and prints the GateProof.  Output never contains credentials, URLs or exception text.
+report once, and prints the GateProof.  Output never contains credentials, request URLs, query strings or
+exception text; it names only the bare approved origin.
 
 Exit codes: 0 ok / passed proof, 1 failed proof, 3 refused precondition.
 """
@@ -45,6 +51,8 @@ EXECUTE_ACK = "TESTNET"
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED = 0, 1, 3
 _ACCOUNT_KEYS = {"account_id", "label", "key_digest", "hedge_mode", "settlement_asset", "confirmed_at_ms",
                  "typed_phrase"}
+_ORIGIN_KEY = "origin"
+_ORIGIN_PINS = "origin_pins.json"
 
 
 class Refused(Exception):
@@ -70,13 +78,48 @@ def check_identity(expected_head: str) -> None:
         raise Refused("worktree_dirty")
 
 
-def load_account(path: Path) -> Account:
+def _account_raw(path: Path) -> dict:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise Refused("account_file_unreadable") from None
-    if type(raw) is not dict or set(raw) != _ACCOUNT_KEYS:
+    if type(raw) is not dict or set(raw) not in (_ACCOUNT_KEYS, _ACCOUNT_KEYS | {_ORIGIN_KEY}):
         raise Refused("account_file_keys")
+    return raw
+
+
+def account_origin(path: Path) -> str:
+    """The one testnet origin this confirmed account is bound to; files without the key keep the original origin."""
+    from newcore.venue.binance_usdm_testnet import TESTNET_BASE_URL, TESTNET_ORIGINS
+
+    origin = _account_raw(path).get(_ORIGIN_KEY, TESTNET_BASE_URL)
+    if type(origin) is not str or origin not in TESTNET_ORIGINS:
+        raise Refused("account_file_origin")
+    return origin
+
+
+def pin_origin(journal_dir: Path, digest: str, origin: str) -> None:
+    """Refuse a key digest already used with the other origin; record it on first use.  No network."""
+    pins_path = Path(journal_dir) / _ORIGIN_PINS
+    try:
+        pins = json.loads(pins_path.read_text(encoding="utf-8")) if pins_path.exists() else {}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raise Refused("origin_pins_unreadable") from None
+    if type(pins) is not dict or any(type(k) is not str or type(v) is not str for k, v in pins.items()):
+        raise Refused("origin_pins_unreadable")
+    if digest in pins:
+        if pins[digest] != origin:
+            raise Refused("credentials_origin_reuse")
+        return
+    pins[digest] = origin
+    try:
+        pins_path.write_text(json.dumps(pins, sort_keys=True), encoding="utf-8")
+    except OSError:
+        raise Refused("origin_pins_unwritable") from None
+
+
+def load_account(path: Path) -> Account:
+    raw = _account_raw(path)
     try:
         binding = AccountBinding(venue=Venue.BINANCE_USDM, environment=Environment.TESTNET,
                                  settlement_asset=raw["settlement_asset"], key_digest=raw["key_digest"],
@@ -115,6 +158,7 @@ def _plan(args) -> int:
     spec = build_manifest(build_sha=args.expected_head, account=account, symbols=_symbols(args.symbols),
                           started_ms=args.started_ms)
     lines = [f"PLAN build={spec.build_sha} account={account.account_id} digest={account.binding.key_digest}",
+             f"PLAN origin={account_origin(Path(args.account_file))}",
              f"PLAN environment=TESTNET symbols={','.join(spec.binding.symbols)} leverage<={MAX_LEVERAGE} "
              f"notional<={MAX_SCENARIO_NOTIONAL} orders<={MAX_ORDERS_PER_SCENARIO}"]
     for case in spec.cases:
@@ -142,7 +186,7 @@ def _proof(args) -> int:
     return EXIT_OK if proof.passed else EXIT_FAILED
 
 
-def _live_parts(args, account: Account):
+def _live_parts(args, account: Account, origin: str):
     """Credential check first (no network), then the read-only exchange reads and the wired adapter."""
     import time
 
@@ -162,9 +206,13 @@ def _live_parts(args, account: Account):
         journals = FileJournalOpener(args.journal_dir)
     except Exception:
         raise Refused("journal_dir_invalid") from None
+    pin_origin(Path(args.journal_dir), account.binding.key_digest, origin)
     from newcore.venue import TestnetHttpSender
 
-    sender = TestnetHttpSender()
+    try:
+        sender = TestnetHttpSender(origin)
+    except ValueError:
+        raise Refused("origin_invalid") from None
 
     def clock() -> int:
         return time.time_ns() // 1_000_000
@@ -172,14 +220,15 @@ def _live_parts(args, account: Account):
     def monotonic() -> int:
         return time.monotonic_ns() // 1_000_000
 
-    reader = SignedReader(sender=sender, credentials=credentials, clock=clock)
+    reader = SignedReader(sender=sender, credentials=credentials, clock=clock, base_url=origin)
     try:
         exchange, limits, info, raw = read_limit_payloads(reader)
         filters = LiveFiltersPort(info, raw)
         wired = build_adapter(sender=sender, credentials=credentials, account_id=account.account_id,
                               egress_id="egress-tnet02-cli", exchange_info=exchange, account_order_limits=limits,
                               account=LiveAccountPort(reader, clock), filters=filters, journals=journals,
-                              clock=clock, monotonic=monotonic, sleeper=lambda ms: time.sleep(ms / 1000))
+                              clock=clock, monotonic=monotonic, sleeper=lambda ms: time.sleep(ms / 1000),
+                              base_url=origin)
     except PortError as error:
         raise Refused(error.code.replace(".", "_")) from None
     except Exception:
@@ -193,13 +242,16 @@ def _run(args) -> int:
 
     check_identity(args.expected_head)
     account = load_account(Path(args.account_file))
+    origin = account_origin(Path(args.account_file))
+    if args.origin != origin:
+        raise Refused("origin_mismatch")
     if args.execute and args.execute != EXECUTE_ACK:
         raise Refused("execute_ack")
     try:
         writer = ExactBuildReportWriter(args.out_dir, args.expected_head) if args.execute else None
     except WriterError:
         raise Refused("out_dir_invalid") from None
-    wired, clock = _live_parts(args, account)
+    wired, clock = _live_parts(args, account, origin)
     spec = build_manifest(build_sha=args.expected_head, account=account, symbols=_symbols(args.symbols),
                           started_ms=clock())
     if not args.execute:
@@ -207,7 +259,7 @@ def _run(args) -> int:
             evidence = wired.adapter.confirm_binding(spec.binding)
         except Exception as error:
             raise Refused("preflight_" + str(getattr(error, "code", "failed")).replace(".", "_")) from None
-        print(f"PREFLIGHT account={evidence.account_id} digest={evidence.binding_digest} "
+        print(f"PREFLIGHT origin={origin} account={evidence.account_id} digest={evidence.binding_digest} "
               f"environment={evidence.environment.value} settlement={evidence.settlement_asset} "
               f"isolated={str(evidence.isolated).lower()}")
         print("PREFLIGHT read-only: no order was sent")
@@ -246,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--expected-head", required=True)
     run.add_argument("--account-file", required=True)
     run.add_argument("--symbols", required=True)
+    run.add_argument("--origin", required=True, help="exact testnet origin named in the account file")
     run.add_argument("--journal-dir", required=True)
     run.add_argument("--out-dir", required=True)
     run.add_argument("--host-id", required=True)
