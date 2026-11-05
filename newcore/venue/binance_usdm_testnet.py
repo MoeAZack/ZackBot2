@@ -121,6 +121,14 @@ def _positive_id(value) -> str:
     return out
 
 
+def _plain_symbol(value: object) -> bool:
+    try:
+        check_symbol(value, 'positions.row_symbol')
+    except PortValueError:
+        return False
+    return True
+
+
 class BinanceUsdMTestnetVenue:
     """A fail-closed, injected-I/O VenuePort for Binance USD-M testnet."""
 
@@ -357,6 +365,11 @@ class BinanceUsdMTestnetVenue:
                 if symbol is not None and row.get('symbol') != symbol:
                     raise _Unknown('echo_mismatch')
                 qty = abs(_decimal(row.get('positionAmt'), 'positionAmt', nonnegative=False))
+                if symbol is None and qty == 0 and not _plain_symbol(row.get('symbol')):
+                    # Real testnet lists every contract, including dated futures (BTCUSDT_261225) and non-ASCII
+                    # names.  An empty row for a symbol NEWCORE cannot trade carries no exposure and is skipped;
+                    # a non-zero one still makes the whole read malformed/UNKNOWN below.
+                    continue
                 out.append(P.VenuePosition(symbol=row['symbol'], side=row['positionSide'], qty=qty,
                                            entry_price=_decimal(row.get('entryPrice'), 'entryPrice')))
             return tuple(out)
