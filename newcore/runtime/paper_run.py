@@ -291,9 +291,38 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
     specs = {s.account_id: s for s in config.accounts}
     runtime = boot(config, ports, boot_id=boot_id or f'paper-{uuid.uuid4().hex[:12]}',
                    monotonic_clock=monotonic_clock, wall_clock=wall_clock)
+    attach_views(runtime, views)
+
+    def each_step():
+        marks.refresh()
+
+    def after_step():
+        for account_id, venue in venues.items():
+            venue.tick()
+            save_book(venue, specs[account_id])
+
+    def on_close():
+        for account_id, venue in venues.items():
+            save_book(venue, specs[account_id])
+
+    return drive(runtime, config, emit=emit, step_ms=step_ms, max_steps=max_steps, stop_file=stop_file,
+                 status_every=status_every, sleep=sleep, monotonic_clock=monotonic_clock, before_step=each_step,
+                 after_step=after_step, on_close=on_close)
+
+
+def attach_views(runtime, views: dict) -> None:
+    """Fill the entries factories' journal views once the runtime has booted (see ``JournalView``)."""
     for account_id, row in runtime._accounts.items():
         if row.journal is not None:
             views[account_id] = JournalView(row.journal)
+
+
+def drive(runtime, config, *, emit, step_ms: int, max_steps: int | None, stop_file: str | None, status_every: int,
+          sleep, monotonic_clock, before_step=None, after_step=None, on_close=None) -> dict:
+    """Step a booted runtime until max_steps, the stop file or Ctrl-C; then stop NC-05 with grace and close.
+
+    Shared by the PAPER run and the testnet launcher (``tools/newcore_testnet_run.py``).  Returns the final status.
+    """
     step, snap, reason = 0, runtime.snapshot(), 'max_steps'
     emit(status_line(snap, step, 'booted'))
     try:
@@ -301,11 +330,11 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
             if stop_file is not None and os.path.exists(stop_file):
                 reason = 'stop_file'
                 break
-            marks.refresh()
+            if before_step is not None:
+                before_step()
             snap = runtime.step()
-            for account_id, venue in venues.items():
-                venue.tick()
-                save_book(venue, specs[account_id])
+            if after_step is not None:
+                after_step()
             step += 1
             if step % status_every == 0:
                 emit(status_line(snap, step, 'running'))
@@ -322,13 +351,13 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
                 sleep(step_ms / 1000)
         finally:
             runtime.close()
-            for account_id, venue in venues.items():
-                save_book(venue, specs[account_id])
+            if on_close is not None:
+                on_close()
     final = status_line(snap, step, 'stopped')
     final['reason'] = reason
     emit(final)
     return final
 
 
-__all__ = ['BOOK_FILE', 'FileMarks', 'JournalView', 'PAPER_KEY_DIGEST', 'PaperRunError', 'build_paper_ports',
-           'init_paper_account', 'load_book', 'paper_binding', 'run_paper', 'save_book']
+__all__ = ['BOOK_FILE', 'FileMarks', 'JournalView', 'PAPER_KEY_DIGEST', 'PaperRunError', 'attach_views',
+           'build_paper_ports', 'drive', 'init_paper_account', 'load_book', 'paper_binding', 'run_paper', 'save_book']
