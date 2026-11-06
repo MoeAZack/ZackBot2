@@ -1107,17 +1107,17 @@ def build_fold_source_signal_tape(
         signals[symbol] = {key: tuple(bool(value) for value in values) for key, values in out.items()}
         decision_atr[symbol] = tuple(float(value) for value in atr_out)
         prior_atr[symbol] = tuple(prior_out)
-    if len(segments["BTCUSDT"]) != 1 or segments["BTCUSDT"][0][0] != list(range(size)):
-        raise IncompleteCandidate(f"{INCOMPLETE}: causal BTC EMA200 regime grid is incomplete")
-    btc_frame = segments["BTCUSDT"][0][1]
-    btc_close = np.asarray(btc_frame["c"], dtype=float)
-    btc_ema200 = np.asarray(btc_frame["e200"], dtype=float)
-    regimes = tuple(
-        "btc_above_or_on_ema200" if math.isfinite(btc_ema200[index])
-        and btc_close[index] >= btc_ema200[index] else "btc_below_ema200"
-        for index in range(size)
-    )
-    return SourceSignalTape(first_times, membership, signals, decision_atr, prior_atr, regimes)
+    regimes: list[str | None] = [None] * size
+    for indices, btc_frame in segments["BTCUSDT"]:
+        btc_close = np.asarray(btc_frame["c"], dtype=float)
+        btc_ema200 = np.asarray(btc_frame["e200"], dtype=float)
+        for local, index in enumerate(indices):
+            if math.isfinite(btc_close[local]) and math.isfinite(btc_ema200[local]):
+                regimes[index] = (
+                    "btc_above_or_on_ema200"
+                    if btc_close[local] >= btc_ema200[local]
+                    else "btc_below_ema200")
+    return SourceSignalTape(first_times, membership, signals, decision_atr, prior_atr, tuple(regimes))
 
 
 def _evaluate_raw_fold(
@@ -1286,6 +1286,10 @@ def _evaluate_raw_fold(
                 if entry_bar is None:
                     raise IncompleteCandidate(
                         f"{INCOMPLETE}: missing tradable next open for {terms.symbol} at {time_ms}")
+                regime = tape.regime[decision]
+                if regime not in ("btc_above_or_on_ema200", "btc_below_ema200"):
+                    raise IncompleteCandidate(
+                        f"{INCOMPLETE}: missing causal BTC regime for admitted entry at {time_ms}")
                 pos = open_position(
                     side="short", entry_index=index, entry_time_ms=time_ms,
                     reference_open=entry_bar.open,
@@ -1305,7 +1309,7 @@ def _evaluate_raw_fold(
                 entry = pos.fills[0]
                 normalized_cashflows[terms.symbol] = [(
                     time_ms, -(entry.fee_cash + entry.slippage_cash) / actual_initial_risk)]
-                entry_regime[terms.symbol] = tape.regime[decision]
+                entry_regime[terms.symbol] = regime
                 return BookAdmission(
                     BookLot(terms.symbol, pos.side, pos.qty, pos.entry_reference, pos.entry_reference),
                     entry.fee_cash + entry.slippage_cash)

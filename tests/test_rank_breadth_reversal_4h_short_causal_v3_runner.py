@@ -29,7 +29,7 @@ def bars(symbols, n=225, *, start=None):
     }
 
 
-def tape(symbols, n, entries=(), exits=()):
+def tape(symbols, n, entries=(), exits=(), regimes=None):
     start = ms("2025-04-01T00:00:00")
     signals = {}
     for symbol in symbols:
@@ -47,7 +47,7 @@ def tape(symbols, n, entries=(), exits=()):
         tuple([tuple(symbols)] * n), signals,
         {symbol: tuple([1.0] * n) for symbol in symbols},
         {symbol: tuple([None] + [1.0] * (n - 1)) for symbol in symbols},
-        tuple(["btc_above_or_on_ema200"] * n),
+        tuple(regimes or ["btc_above_or_on_ema200"] * n),
     )
 
 
@@ -181,6 +181,34 @@ def test_sparse_indicators_restart_and_future_tail_cannot_change_earlier_signals
     assert sparse_tape.prior_closed_atr["S19"][110] is None
     assert sparse_tape.signals["S19"]["se"][:110] == dense_tape.signals["S19"]["se"][:110]
     assert sparse_tape.signals["S01"]["se"][:210] == dense_tape.signals["S01"]["se"][:210]
+
+
+def test_irrelevant_future_btc_gap_does_not_veto_earlier_decisions():
+    contract, _ = R.load_contract()
+    symbols = core20()
+    n, start, step = 225, ms("2025-04-01T00:00:00"), 4 * 3_600_000
+    dense = bars(symbols, n, start=start)
+    sparse = dict(dense)
+    sparse["BTCUSDT"] = dense["BTCUSDT"][:-1]
+    result = R.build_fold_source_signal_tape(
+        contract, R.CANDIDATE_IDS[0], sparse, [symbols] * n,
+        canonical_times_ms=[start + index * step for index in range(n)])
+    assert result.regime[-1] is None
+    assert result.regime[-2] in ("btc_above_or_on_ema200", "btc_below_ema200")
+
+
+def test_missing_btc_regime_fails_only_when_a_trade_would_be_admitted(monkeypatch):
+    contract, _ = R.load_contract()
+    symbols = core20()
+    raw, membership, rules, funding, marks = fold_inputs(symbols)
+    regimes = ["btc_above_or_on_ema200"] * 225
+    regimes[199] = None
+    monkeypatch.setattr(
+        R, "build_fold_source_signal_tape",
+        lambda *_: tape(symbols, 225, entries=(199,), regimes=regimes))
+    with pytest.raises(R.IncompleteCandidate, match="missing causal BTC regime"):
+        R._evaluate_raw_fold(contract, R.CANDIDATE_IDS[0], "btc-gap", raw,
+                             membership, rules, funding, marks)
 
 
 def test_unexposed_funding_gap_is_harmless_and_keeps_full_pit_cell(monkeypatch):
