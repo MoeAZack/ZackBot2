@@ -67,7 +67,7 @@ def test_flipped_byte_breaks_digest(passed_bytes):
 
 
 def test_wrong_schema_unknown_key_and_missing_key_refused(passed_bytes):
-    for fn, code in ((lambda raw: raw.__setitem__("schema", "zackbot-tnet01/2"), "report.schema"),
+    for fn, code in ((lambda raw: raw.__setitem__("schema", "zackbot-tnet01/1"), "report.schema"),
                      (lambda raw: raw.__setitem__("extra", 1), "report.keys"),
                      (lambda raw: raw.pop("failure"), "report.keys"),
                      (lambda raw: raw["cases"][0].__setitem__("note", "x"), "report.case_keys")):
@@ -114,7 +114,7 @@ def test_invalid_host_id_refused(passed_bytes):
 
 
 def test_schema_constant_is_frozen():
-    assert REPORT_SCHEMA == "zackbot-tnet01/1"
+    assert REPORT_SCHEMA == "zackbot-tnet01/2"
 
 
 # ------------------------------------------------------------------------------------------------- writer

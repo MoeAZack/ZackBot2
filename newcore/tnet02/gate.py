@@ -1,4 +1,4 @@
-"""TNET-02 strict decoder for ``zackbot-tnet01/1`` reports and REAL_TNET_EXACT_HEAD gate conversion.
+"""TNET-02 strict decoder for ``zackbot-tnet01/2`` reports and REAL_TNET_EXACT_HEAD gate conversion.
 
 Pure: no network, filesystem, clock or process access.  The only accepted input is the exact canonical byte string
 the TNET-01 kernel hands its writer.  Anything else is refused with a stable code that never echoes input text.
@@ -13,9 +13,9 @@ from typing import Any
 
 from newcore.base_clean import GateProof, ProofKind
 from newcore.testnet_harness import (MAX_AGGREGATE_NOTIONAL, MAX_LEVERAGE, MAX_ORDERS_PER_SCENARIO,
-                                     MAX_SCENARIO_MS, MAX_SCENARIO_NOTIONAL, MAX_SUITE_MS, REPORT_SCHEMA, REQUIRED_SCENARIOS, CaseReport, CaseStatus, FailureCode,
+                                     MAX_SCENARIO_MS, MAX_SCENARIO_NOTIONAL, MAX_SUITE_MS, REPORT_SCHEMA, CaseReport, CaseStatus, FailureCode,
                                      FinalTruth, HarnessError, ScenarioKind, SuiteReport, SuiteStatus,
-                                     canonical_report_bytes)
+                                     attempts_complete, canonical_report_bytes)
 
 
 MAX_REPORT_BYTES = 1024 * 1024
@@ -25,7 +25,7 @@ _REPORT_KEYS = frozenset({"schema", "report_sha256", "suite_id", "build_sha", "a
                           "started_ms", "finished_ms", "status", "failure", "cases", "redaction_clean"})
 _CASE_KEYS = frozenset({"case_id", "kind", "status", "failure", "started_ms", "finished_ms", "final_truth",
                         "orders_total", "peak_notional", "aggregate_peak_notional", "max_leverage",
-                        "evidence_sha256"})
+                        "evidence_sha256", "attempt", "attempt_of"})
 _SAFE_TERMINALS = (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED)
 
 
@@ -96,7 +96,7 @@ def _case(raw: Any) -> CaseReport:
             _enum(FinalTruth, row["final_truth"], "report.case_final_truth"), row["orders_total"],
             _decimal(row["peak_notional"], "report.case_peak_notional"),
             _decimal(row["aggregate_peak_notional"], "report.case_aggregate_peak_notional"), row["max_leverage"],
-            row["evidence_sha256"])
+            row["evidence_sha256"], row["attempt"], row["attempt_of"])
     except HarnessError:
         _fail("report.case_invalid")
 
@@ -149,14 +149,13 @@ def decode_report(data: bytes) -> SuiteReport:
 
 
 def report_passed(report: SuiteReport) -> bool:
-    """True only for a complete, ordered, all-passed, safely terminated twelve-case suite."""
+    """True only for a complete, ordered, safely terminated suite: twelve first attempts in order, then only further
+    attempts of retryable scenarios after clean flat misses, with every scenario's last attempt PASSED."""
     if type(report) is not SuiteReport:
         _fail("report.type")
     if report.status is not SuiteStatus.PASSED or report.failure is not None:
         return False
-    if tuple(case.kind for case in report.cases) != REQUIRED_SCENARIOS:
-        return False
-    if len({case.case_id for case in report.cases}) != len(REQUIRED_SCENARIOS):
+    if not attempts_complete(report.cases):
         return False
     if not report.redaction_clean:
         return False
@@ -165,7 +164,7 @@ def report_passed(report: SuiteReport) -> bool:
     cursor = report.started_ms
     for case in report.cases:
         # the digest is unkeyed, so re-check every frozen bound and the time order instead of trusting the status
-        if not (case.status is CaseStatus.PASSED and case.failure is None and case.final_truth in _SAFE_TERMINALS):
+        if case.final_truth not in _SAFE_TERMINALS:
             return False
         if not (0 <= case.orders_total <= MAX_ORDERS_PER_SCENARIO and 1 <= case.max_leverage <= MAX_LEVERAGE):
             return False

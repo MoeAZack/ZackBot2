@@ -204,7 +204,36 @@ Changes:
 - The final failure HOLDs `read.account_facts` as before, and now carries `cause=<port code>`, or `error.<Class>` for an unexpected exception.
 - Adapter-failure notes now record `cause` and the case's current target, stop or DCA `level`. Notes never record messages.
 
-The direction dependence of target and stop cases is an open owner decision: retry a clean no-trigger case later in the run, use a longer window, or keep rerunning as is.
+The direction dependence of target and stop cases is settled in §17.
+
+## 17. Bounded further attempts for market-trigger scenarios (owner decision, 6 Nov 2026)
+
+Across four real runs (cf7fc97, 7636dfa, 777badeb and 5d63b5c), every scenario passed at least once, but never all twelve in the same run. The six market-trigger scenarios passed 15 times in 24 attempts. Every failure in run 4 was price not moving far enough in the needed direction within the window. moe chose "Retry a scenario that saw no move" on the decision card.
+
+Rule (kernel `newcore/testnet_harness.py`, report schema `zackbot-tnet01/2`):
+
+- `RETRYABLE_SCENARIOS` = long/short target, long/short stop, partial close and bounded DCA. `MAX_ATTEMPTS = 3`.
+- An attempt is a **clean miss** (`_retryable_miss`) only if every one of these holds:
+  - the failure is ASSERTION;
+  - the evidence identity matches the context;
+  - the entry was NC-06-authorized, filled and protected;
+  - no rate-limit evidence was recorded;
+  - the attempt ended reconciled FLAT or PROTECTED_RECONCILED;
+  - cleanup reconciled it FLAT.
+
+  Adapter, setup, deadline, bounds, cleanup and HOLD failures are never retried.
+- Further attempts run only after the whole first pass, in manifest order, so each one sees a later market window. Each attempt gets:
+  - a fresh case id: `_derive("case", suite_id, original, "attempt", n)`;
+  - from that id, fresh intent ids, client order ids, a fresh journal and a fresh cleanup token.
+- No further attempts are made if any other scenario already failed, because the suite cannot pass and orders would be wasted.
+- `CaseReport` gains `attempt` (1..3) and `attempt_of` (the first attempt's case id, or null). Every attempt is reported.
+- Pass rule `attempts_complete`, shared by the kernel and `gate.report_passed`:
+  - the first twelve reports are attempt 1 of each required scenario, in order;
+  - every later report is attempt n+1 of a retryable scenario's chain;
+  - every attempt but the last in a chain is FAILED / ASSERTION / FLAT;
+  - every chain ends PASSED.
+- The gate still re-checks bounds, safe terminals and time order for **every** attempt.
+- `MAX_SUITE_MS` rises from 60 to 120 minutes. The per-scenario limits (10 min, 12 orders, $1,000, 3x) and the $2,000 aggregate are unchanged.
 
 ## Deferred
 
