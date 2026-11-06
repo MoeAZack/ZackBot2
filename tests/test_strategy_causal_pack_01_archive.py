@@ -110,6 +110,44 @@ def test_archive_internal_kline_gap_refuses_whole_symbol(tmp_path):
         adapter.load_klines("S00", "1h", T0, T0 + 3 * A.HOUR_MS)
 
 
+def test_sparse_kline_load_returns_verified_rows_and_explicit_internal_gap(tmp_path):
+    manifest, universe = _fixture(tmp_path, kline_times=(T0, T0 + 2 * A.HOUR_MS))
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    result = adapter.load_klines_sparse("S00", "1h", T0, T0 + 3 * A.HOUR_MS)
+    assert [row.open_ms for row in result.rows] == [T0, T0 + 2 * A.HOUR_MS]
+    assert result.gaps == (A.CoverageGap(
+        T0 + A.HOUR_MS, T0 + 2 * A.HOUR_MS, "missing_row"),)
+
+
+def test_sparse_kline_load_reports_absent_manifest_without_opening_rows(tmp_path):
+    manifest, _ = _fixture(tmp_path)
+    manifest = _manifest([row for row in manifest["files"] if row["series"] != "klines"])
+    universe = _universe(manifest)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    result = adapter.load_klines_sparse("S00", "1h", T0, T0 + 3 * A.HOUR_MS)
+    assert result.rows == ()
+    assert result.gaps == (
+        A.CoverageGap(T0, T0 + 3 * A.HOUR_MS, "missing_manifest"),
+        A.CoverageGap(T0, T0 + 3 * A.HOUR_MS, "missing_row"),
+    )
+
+
+def test_sparse_kline_load_keeps_checksum_and_grid_guards(tmp_path):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    path = tmp_path / "um/monthly/klines/S00/1h/S00-1h-2025-01.zip"
+    path.write_bytes(path.read_bytes() + b"tamper")
+    with pytest.raises(A.ArchiveIncomplete, match="archive verification failed"):
+        adapter.load_klines_sparse("S00", "1h", T0, T0 + 3 * A.HOUR_MS)
+    with pytest.raises(A.ArchiveIncomplete, match="grid-aligned"):
+        adapter.load_klines_sparse("S00", "1h", T0 + 1, T0 + 3 * A.HOUR_MS)
+
+
+def test_sparse_fixture_cannot_bypass_authoritative_duplicate_refusal(tmp_path):
+    with pytest.raises(M.ManifestError, match="unordered or duplicate row"):
+        _fixture(tmp_path, kline_times=(T0, T0, T0 + A.HOUR_MS))
+
+
 def test_missing_funding_archive_coverage_refuses_whole_symbol(tmp_path):
     manifest, _ = _fixture(tmp_path)
     manifest = _manifest([row for row in manifest["files"] if row["series"] != "fundingRate"])
@@ -117,6 +155,45 @@ def test_missing_funding_archive_coverage_refuses_whole_symbol(tmp_path):
     adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
     with pytest.raises(A.ArchiveIncomplete, match="no manifest coverage"):
         adapter.load_funding("S00", T0, T0 + 3 * A.HOUR_MS)
+
+
+def test_sparse_funding_load_reports_manifest_and_settlement_gaps_separately(tmp_path):
+    manifest, _ = _fixture(tmp_path)
+    manifest = _manifest([row for row in manifest["files"] if row["series"] != "fundingRate"])
+    universe = _universe(manifest)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    result = adapter.load_funding_sparse("S00", T0, T0 + 3 * A.HOUR_MS)
+    assert result.rows == ()
+    assert result.gaps == (
+        A.CoverageGap(T0, T0 + 3 * A.HOUR_MS, "missing_manifest"),
+        A.CoverageGap(T0, T0 + 3 * A.HOUR_MS, "no_settlement"),
+    )
+
+
+def test_sparse_funding_load_reports_tail_as_interval_not_boolean(tmp_path):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    end_ms = T0 + 12 * A.HOUR_MS
+    result = adapter.load_funding_sparse("S00", T0, end_ms)
+    assert result.rows == (A.RawFunding(T0 + 2 * A.HOUR_MS, 8, 0.0001),)
+    assert result.gaps == (A.CoverageGap(
+        T0 + 10 * A.HOUR_MS, end_ms, "settlement_gap"),)
+
+
+def test_sparse_mark_load_reports_gap_in_causal_availability_time(tmp_path):
+    manifest, universe = _fixture(tmp_path)
+    # Rebuild only the mark archive with the middle raw hour absent.
+    records = [row for row in manifest["files"] if row["series"] != "markPriceKlines"]
+    records.append(_write_archive(
+        tmp_path, "um/monthly/markPriceKlines/S00/1h/S00-1h-2025-01.zip",
+        [_kline(T0, 100.5), _kline(T0 + 2 * A.HOUR_MS, 100.5)]))
+    manifest = _manifest(records)
+    universe = _universe(manifest)
+    result = A.RawArchiveAdapter(manifest, universe, tmp_path).load_mark_closes_sparse(
+        "S00", T0 + A.HOUR_MS, T0 + 3 * A.HOUR_MS)
+    assert result.rows == ((T0 + A.HOUR_MS, 100.5), (T0 + 3 * A.HOUR_MS, 100.5))
+    assert result.gaps == (A.CoverageGap(
+        T0 + 2 * A.HOUR_MS, T0 + 3 * A.HOUR_MS, "missing_row"),)
 
 
 def test_cutoff_crossing_archive_is_refused_before_its_bytes_are_read(tmp_path):

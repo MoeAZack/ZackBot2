@@ -23,9 +23,9 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
-CONTRACT_SHA256 = "a3a16673340b6cfdb88257104ffc5a9f0e65c30b9733e9c8f0c62b87428d5572"
-CONTRACT_COMMIT = "370871b60f58ff6a0c87048826ac6c640a3ab2a5"
-FORMAT = "zackbot.strategy-causal-pack-01/2"
+CONTRACT_SHA256 = "14dcaad801bd5313d7f71775383dc676de339e74fca72450f5a37c8703ee1520"
+CONTRACT_COMMIT = "b16ed98edd2c756d5d90b5ab6209f1b92d031adb"
+FORMAT = "zackbot.strategy-causal-pack-01/3"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
     "pullback_rsi_short_h1_causal_v3",
@@ -89,9 +89,9 @@ def load_contract(path: Path = CONTRACT_PATH) -> tuple[dict, str]:
     with path.open(encoding="utf-8") as fh:
         contract = json.load(fh)
     if (contract.get("contract"), contract.get("version"), contract.get("status"), contract.get("signed_by")) != (
-        "STRATEGY-CAUSAL-PACK-01", 2, "FROZEN", "codex"
+        "STRATEGY-CAUSAL-PACK-01", 3, "FROZEN", "codex"
     ):
-        raise RunnerError("contract is not the frozen Codex-signed v2 contract")
+        raise RunnerError("contract is not the frozen Codex-signed v3 contract")
     ids = tuple(row.get("candidate_id") for row in contract.get("candidates", ()))
     if ids != CANDIDATE_IDS:
         raise RunnerError("frozen candidate identities changed")
@@ -356,10 +356,18 @@ class FundingEvent:
 
 
 @dataclass(frozen=True)
+class AuthorityGap:
+    start_ms: int
+    end_ms: int
+    reason: str = "unknown"
+
+
+@dataclass(frozen=True)
 class FundingLedger:
     events: tuple[FundingEvent, ...]
     checksum_verified: bool
     coverage_complete: bool
+    coverage_gaps: tuple[AuthorityGap, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -889,7 +897,7 @@ def holm_adjusted_p_values(raw_by_candidate: dict[str, float]) -> dict[str, floa
     return adjusted
 
 
-PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/2"
+PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/3"
 PACK_AUTHORITY_KEYS = (
     "manifest_digest", "pit_universe_digest", "manifest_file_sha256",
     "universe_file_sha256", "exchange_filter_authority_sha256",
@@ -1120,13 +1128,15 @@ def build_fold_source_signal_tape(
     candidate_id: str,
     bars_by_symbol: dict[str, Sequence[Bar]],
     core20_by_index: Sequence[Sequence[str]],
+    *,
+    canonical_times_ms: Sequence[int] | None = None,
 ) -> SourceSignalTape:
-    """Call the exact bound strategy on one complete fold with weekly PIT context.
+    """Call the bound strategy on a causal grid without bridging data gaps.
 
-    Indicators are computed once from fold-local bars only. Cross-sectional
-    context is rebuilt through ``strategies.build_context`` for each distinct
-    ordered PIT CORE-20 membership cell, so a symbol outside that week's set
-    cannot affect exp-momentum ranks.
+    Flat symbols may be absent from part of a fold.  Each contiguous observed
+    segment gets fresh indicators, while ranks at decision ``d`` include only
+    the PIT members with an observed, causal 42-bar return at ``d``.  The
+    original PIT cell is retained separately because it owns entry priority.
     """
     import numpy as np
     import pandas as pd
@@ -1137,18 +1147,26 @@ def build_fold_source_signal_tape(
     if not bars_by_symbol:
         raise IncompleteCandidate(f"{INCOMPLETE}: fold has no raw symbols")
     symbols = tuple(bars_by_symbol)
-    lengths = {len(rows) for rows in bars_by_symbol.values()}
-    if len(lengths) != 1 or not lengths or 0 in lengths:
-        raise IncompleteCandidate(f"{INCOMPLETE}: fold symbol bar counts differ")
-    size = lengths.pop()
+    step = {"1h": 3_600_000, "4h": 14_400_000}[spec["timeframe"]]
+    observed_times = sorted({int(bar.time_ms) for rows in bars_by_symbol.values() for bar in rows})
+    if canonical_times_ms is None:
+        if not observed_times:
+            raise IncompleteCandidate(f"{INCOMPLETE}: fold has no raw bars")
+        if any((value - observed_times[0]) % step for value in observed_times):
+            raise IncompleteCandidate(f"{INCOMPLETE}: symbol is not on the exact fold grid")
+        first_times = tuple(range(observed_times[0], observed_times[-1] + step, step))
+    else:
+        first_times = tuple(int(value) for value in canonical_times_ms)
+    if (not first_times or any(right - left != step for left, right in zip(first_times, first_times[1:]))):
+        raise IncompleteCandidate(f"{INCOMPLETE}: invalid canonical fold grid")
+    size = len(first_times)
     if len(core20_by_index) != size:
         raise IncompleteCandidate(f"{INCOMPLETE}: PIT membership does not cover every decision bar")
-    first_times = tuple(int(bar.time_ms) for bar in bars_by_symbol[symbols[0]])
-    if any(right <= left for left, right in zip(first_times, first_times[1:])):
-        raise IncompleteCandidate(f"{INCOMPLETE}: fold bars are not strictly increasing")
+    grid_index = {time_ms: index for index, time_ms in enumerate(first_times)}
     for symbol, rows in bars_by_symbol.items():
-        if tuple(int(bar.time_ms) for bar in rows) != first_times:
-            raise IncompleteCandidate(f"{INCOMPLETE}: {symbol} is not on the exact fold grid")
+        times = tuple(int(bar.time_ms) for bar in rows)
+        if any(right <= left for left, right in zip(times, times[1:])) or any(t not in grid_index for t in times):
+            raise IncompleteCandidate(f"{INCOMPLETE}: {symbol} has invalid sparse fold times")
         for row in rows:
             row.validate()
     membership = tuple(tuple(cell) for cell in core20_by_index)
@@ -1157,45 +1175,84 @@ def build_fold_source_signal_tape(
         if len(cell) != 20 or len(set(cell)) != 20 or not set(cell).issubset(known):
             raise IncompleteCandidate(f"{INCOMPLETE}: invalid or unavailable PIT CORE-20 cell")
 
-    frames = {}
+    segments: dict[str, list[tuple[list[int], object]]] = {symbol: [] for symbol in symbols}
+    ret42: dict[str, dict[int, float]] = {symbol: {} for symbol in symbols}
     for symbol, rows in bars_by_symbol.items():
-        frames[symbol] = source.indicators(pd.DataFrame({
-            "t": pd.to_datetime([bar.time_ms for bar in rows], unit="ms"),
-            "o": [bar.open for bar in rows], "h": [bar.high for bar in rows],
-            "l": [bar.low for bar in rows], "c": [bar.close for bar in rows],
-            "v": [bar.volume for bar in rows],
-        }))
+        current: list[Bar] = []
+        for row in rows:
+            if current and row.time_ms - current[-1].time_ms != step:
+                chunks = [current]
+                current = []
+                for chunk in chunks:
+                    indices = [grid_index[bar.time_ms] for bar in chunk]
+                    frame = source.indicators(pd.DataFrame({
+                        "t": pd.to_datetime([bar.time_ms for bar in chunk], unit="ms"),
+                        "o": [bar.open for bar in chunk], "h": [bar.high for bar in chunk],
+                        "l": [bar.low for bar in chunk], "c": [bar.close for bar in chunk],
+                        "v": [bar.volume for bar in chunk],
+                    }))
+                    segments[symbol].append((indices, frame))
+            current.append(row)
+        if current:
+            indices = [grid_index[bar.time_ms] for bar in current]
+            frame = source.indicators(pd.DataFrame({
+                "t": pd.to_datetime([bar.time_ms for bar in current], unit="ms"),
+                "o": [bar.open for bar in current], "h": [bar.high for bar in current],
+                "l": [bar.low for bar in current], "c": [bar.close for bar in current],
+                "v": [bar.volume for bar in current],
+            }))
+            segments[symbol].append((indices, frame))
+        for indices, frame in segments[symbol]:
+            for local, index in enumerate(indices):
+                value = float(frame["ret42"].iloc[local])
+                if math.isfinite(value):
+                    ret42[symbol][index] = value
 
-    # Base BTC regime/context, then exact PIT-cell rank fields are stitched in.
-    btc = "BTCUSDT" if "BTCUSDT" in frames else symbols[0]
-    base = source.build_context(frames, btc_key=btc)
-    ctx = {symbol: {key: np.asarray(value).copy() for key, value in base[symbol].items()}
-           for symbol in symbols}
-    cells: dict[tuple[str, ...], list[int]] = {}
+    rank7 = {symbol: np.full(size, 999.0) for symbol in symbols}
+    rank7_n = np.zeros(size, dtype=float)
+    breadth7 = np.full(size, np.nan)
     for index, cell in enumerate(membership):
-        cells.setdefault(cell, []).append(index)
-    for cell, indices in cells.items():
-        cell_frames = {symbol: frames[symbol] for symbol in cell}
-        cell_btc = "BTCUSDT" if "BTCUSDT" in cell_frames else cell[0]
-        local = source.build_context(cell_frames, btc_key=cell_btc)
-        for symbol in cell:
-            for key in ("rank", "rank7", "rank7_n", "breadth7"):
-                ctx[symbol][key][indices] = np.asarray(local[symbol][key])[indices]
-            ctx[symbol]["n_symbols"] = 20
+        values = {symbol: ret42[symbol][index] for symbol in cell if index in ret42[symbol]}
+        if not values:
+            continue
+        ranked = pd.Series(values, dtype=float).rank(axis=0, ascending=False)
+        rank7_n[index] = len(values)
+        breadth7[index] = sum(value > 0 for value in values.values()) / len(values)
+        for symbol, value in ranked.items():
+            rank7[symbol][index] = float(value)
 
     strategy_key = bindings[candidate_id]["strategy_key"]
     params = bindings[candidate_id]["params"]
     signals, decision_atr, prior_atr = {}, {}, {}
     for symbol in symbols:
-        raw = source.signals(strategy_key, frames[symbol], ctx[symbol], params, mask_sides=False)
-        signals[symbol] = {key: tuple(bool(value) for value in raw[key])
-                           for key in ("le", "se", "lx", "sx")}
-        engine_atr = np.asarray(frames[symbol]["atr"], dtype=float)
-        chosen = np.asarray(raw.get("atr", engine_atr), dtype=float)
-        decision_atr[symbol] = tuple(float(value) for value in chosen)
-        prior_atr[symbol] = tuple(None if index == 0 or not math.isfinite(engine_atr[index - 1])
-                                  else float(engine_atr[index - 1]) for index in range(size))
-    regime_frame = source.regime(frames[btc])
+        out = {key: np.zeros(size, dtype=bool) for key in ("le", "se", "lx", "sx")}
+        atr_out = np.full(size, np.nan)
+        prior_out: list[float | None] = [None] * size
+        for indices, frame in segments[symbol]:
+            local_ctx = {
+                "btc_down": pd.Series(False, index=frame.index),
+                "rank": pd.Series(rank7[symbol][indices], index=frame.index),
+                "rank7": pd.Series(rank7[symbol][indices], index=frame.index),
+                "rank7_n": pd.Series(rank7_n[indices], index=frame.index),
+                "breadth7": pd.Series(breadth7[indices], index=frame.index),
+                "n_symbols": 20,
+            }
+            raw = source.signals(strategy_key, frame, local_ctx, params, mask_sides=False)
+            engine_atr = np.asarray(frame["atr"], dtype=float)
+            chosen = np.asarray(raw.get("atr", engine_atr), dtype=float)
+            for local, index in enumerate(indices):
+                for key in out:
+                    out[key][index] = bool(raw[key].iloc[local] if hasattr(raw[key], "iloc") else raw[key][local])
+                atr_out[index] = chosen[local]
+                if local > 0 and math.isfinite(engine_atr[local - 1]):
+                    prior_out[index] = float(engine_atr[local - 1])
+        signals[symbol] = {key: tuple(bool(value) for value in values) for key, values in out.items()}
+        decision_atr[symbol] = tuple(float(value) for value in atr_out)
+        prior_atr[symbol] = tuple(prior_out)
+    btc = "BTCUSDT" if "BTCUSDT" in segments else symbols[0]
+    if len(segments[btc]) != 1 or segments[btc][0][0] != list(range(size)):
+        raise IncompleteCandidate(f"{INCOMPLETE}: BTC regime grid is incomplete")
+    regime_frame = source.regime(segments[btc][0][1])
     regimes = tuple(source.regime_label(regime_frame.iloc[index]) for index in range(size))
     return SourceSignalTape(first_times, membership, signals, decision_atr, prior_atr, regimes)
 
@@ -1209,17 +1266,25 @@ def _evaluate_raw_fold(
     rules: dict[str, ExchangeRule],
     funding: dict[str, FundingLedger],
     causal_marks: dict[str, dict[int, float]],
+    *,
+    canonical_times_ms: Sequence[int] | None = None,
 ) -> FoldEvaluation:
     """Internal synthetic/raw fold loop; public archive execution remains merge-gated."""
     spec = candidate_spec(contract, candidate_id)
-    tape = build_fold_source_signal_tape(contract, candidate_id, bars_by_symbol, core20_by_index)
+    tape = build_fold_source_signal_tape(
+        contract, candidate_id, bars_by_symbol, core20_by_index,
+        canonical_times_ms=canonical_times_ms)
     n, lookback, holding = len(tape.times_ms), int(spec["max_lookback_bars"]), int(spec["max_holding_bars"])
+    bars_on_grid = {
+        symbol: tuple({int(bar.time_ms): bar for bar in rows}.get(time_ms) for time_ms in tape.times_ms)
+        for symbol, rows in bars_by_symbol.items()
+    }
     for symbol in bars_by_symbol:
         if symbol not in rules or symbol not in funding or symbol not in causal_marks:
             raise IncompleteCandidate(f"{INCOMPLETE}: missing filters/funding/marks for {symbol}")
         rules[symbol].validate()
-        if not funding[symbol].checksum_verified or not funding[symbol].coverage_complete:
-            raise IncompleteCandidate(f"{INCOMPLETE}: funding authority incomplete for {symbol}")
+        if not funding[symbol].checksum_verified:
+            raise IncompleteCandidate(f"{INCOMPLETE}: funding checksum authority failed for {symbol}")
 
     book = FrozenCandidateBook(tape.membership[0])
     # CORE ordering may vary weekly, but the book priority for each cohort is
@@ -1251,6 +1316,14 @@ def _evaluate_raw_fold(
                 settle_event(symbol, event)
                 cursor += 1
             event_cursor[symbol] = cursor
+            pos = positions.get(symbol)
+            if pos is not None:
+                cutoff = time_ms + (1 if equal else 0)
+                if (not ledger.coverage_complete and not ledger.coverage_gaps) or any(
+                        gap.start_ms < cutoff and gap.end_ms > pos.entry_time_ms
+                        for gap in ledger.coverage_gaps):
+                    raise IncompleteCandidate(
+                        f"{INCOMPLETE}: funding coverage gap intersects exposure for {symbol}")
 
     def record_fills(symbol: str, fills: Sequence[Fill]) -> None:
         if not fills:
@@ -1297,7 +1370,7 @@ def _evaluate_raw_fold(
             signal = decision >= 0 and tape.signals[symbol]["sx"][decision]
             due = index == pos.entry_index + holding
             if signal or due:
-                fill = discretionary_exit(pos, bars_by_symbol[symbol], decision, rules[symbol],
+                fill = discretionary_exit(pos, bars_on_grid[symbol], decision, rules[symbol],
                                           "signal" if signal else "time")
                 record_fills(symbol, (fill,))
 
@@ -1311,9 +1384,13 @@ def _evaluate_raw_fold(
 
             def opener(terms: EntryTerms) -> BookAdmission | None:
                 atr = tape.decision_atr[terms.symbol][decision]
+                entry_bar = bars_on_grid[terms.symbol][index]
+                if entry_bar is None:
+                    raise IncompleteCandidate(
+                        f"{INCOMPLETE}: missing tradable next open for {terms.symbol} at {time_ms}")
                 pos = open_position(
                     side="short", entry_index=index, entry_time_ms=time_ms,
-                    reference_open=bars_by_symbol[terms.symbol][index].open,
+                    reference_open=entry_bar.open,
                     atr_entry=atr, risk_cash=terms.risk_cash,
                     leverage_notional_cap=terms.leverage_notional_cap,
                     management=spec["management"], rule=rules[terms.symbol])
@@ -1338,7 +1415,10 @@ def _evaluate_raw_fold(
         # Intrabar protection now runs for every position that survived or was
         # admitted at this open, strictly after open exits/entries/funding.
         for symbol in tuple(positions):
-            source_bar = bars_by_symbol[symbol][index]
+            source_bar = bars_on_grid[symbol][index]
+            if source_bar is None:
+                raise IncompleteCandidate(
+                    f"{INCOMPLETE}: open position has no tradable bar for {symbol} at {time_ms}")
             managed = Bar(source_bar.time_ms, source_bar.open, source_bar.high, source_bar.low,
                           source_bar.close, tape.prior_closed_atr[symbol][index], source_bar.volume)
             record_fills(symbol, walk_bar(positions[symbol], managed, index, spec["management"], rules[symbol]))
@@ -1471,6 +1551,33 @@ def evaluate_raw_candidate(
     spec = candidate_spec(contract, pf.candidate_id)
     validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
+    if spec.get("evaluation_status") == "DATA_INCOMPLETE_PRE_RUN":
+        report, contributions, stress = _candidate_report(contract, ())
+        report["incomplete_rows"] = 1
+        report["failure_reason"] = str(spec.get(
+            "data_incomplete_reason", "DATA_INCOMPLETE_PRE_RUN"))
+        gates = promotion_gates(
+            report, contract, fold_net_r=[], symbol_contributions=contributions,
+            stress_1_5_net_r=stress["1.5"], causal_parity=True,
+            independent_review=False)
+        return {
+            "_verified_authority": {
+                **authority.as_dict(),
+                "exchange_filter_authority_sha256":
+                    contract["data"]["exchange_filter_authority_sha256"],
+                "fold_filter_snapshots": {
+                    name: {"sha256": item.snapshot_sha256,
+                           "captured_at": item.captured_at}
+                    for name, item in filter_authorities.items()
+                },
+            },
+            "candidate_id": pf.candidate_id,
+            "source_binding": bindings[pf.candidate_id],
+            "folds": [], "report": report,
+            "cost_stress_net_r": stress, "promotion_gates": gates,
+            "promotable": False,
+            "promotion_status": "DATA_INCOMPLETE_PRE_RUN",
+        }
     interval = spec["timeframe"]
     folds = []
     for fold in contract["folds"]:
@@ -1480,36 +1587,41 @@ def evaluate_raw_candidate(
         eligible = fold_authority.eligible_symbols
         symbols = adapter.core20_union(start, end, eligible)
         rules = {symbol: ExchangeRule(**fold_authority.rules[symbol]) for symbol in symbols}
-        raw = {
-            symbol: adapter.load_klines(
+        sparse_raw = {
+            symbol: adapter.load_klines_sparse(
                 symbol, interval, start, end, eligible_symbols=eligible)
             for symbol in symbols
         }
         bars = {symbol: tuple(Bar(row.open_ms, row.open, row.high, row.low, row.close,
-                                  volume=row.volume) for row in rows) for symbol, rows in raw.items()}
-        times = tuple(row.time_ms for row in bars[symbols[0]])
+                                  volume=row.volume) for row in load.rows)
+                for symbol, load in sparse_raw.items()}
+        step = {"1h": 3_600_000, "4h": 14_400_000}[interval]
+        times = tuple(range(start, end, step))
         membership = [adapter.core20_at(time_ms, eligible) for time_ms in times]
         ledgers, marks_at_bar = {}, {}
         for symbol in symbols:
-            marks = adapter.load_mark_closes(
+            mark_load = adapter.load_mark_closes_sparse(
                 symbol, start, end, eligible_symbols=eligible)
-            mt, mp = [row[0] for row in marks], [row[1] for row in marks]
+            mt, mp = [row[0] for row in mark_load.rows], [row[1] for row in mark_load.rows]
             marks_at_bar[symbol] = {}
             for time_ms in times:
                 at = bisect_right(mt, time_ms) - 1
-                if at < 0 or time_ms - mt[at] > 3_600_000:
-                    raise IncompleteCandidate(f"{INCOMPLETE}: missing causal mark for {symbol}")
-                marks_at_bar[symbol][time_ms] = mp[at]
+                if at >= 0 and time_ms - mt[at] <= 3_600_000:
+                    marks_at_bar[symbol][time_ms] = mp[at]
             events = []
-            for event in adapter.load_funding(
-                    symbol, start, end, eligible_symbols=eligible):
+            funding_load = adapter.load_funding_sparse(
+                symbol, start, end, eligible_symbols=eligible)
+            for event in funding_load.rows:
                 at = bisect_right(mt, event.time_ms) - 1
-                if at < 0 or event.time_ms - mt[at] > 3_600_000:
-                    raise IncompleteCandidate(f"{INCOMPLETE}: funding mark gap for {symbol}")
-                events.append(FundingEvent(event.time_ms, event.rate, mp[at]))
-            ledgers[symbol] = FundingLedger(tuple(events), True, True)
+                mark = (mp[at] if at >= 0 and event.time_ms - mt[at] <= 3_600_000
+                        else float("nan"))
+                events.append(FundingEvent(event.time_ms, event.rate, mark))
+            gaps = tuple(AuthorityGap(gap.start_ms, gap.end_ms, gap.reason)
+                         for gap in funding_load.gaps)
+            ledgers[symbol] = FundingLedger(tuple(events), True, not gaps, gaps)
         folds.append(_evaluate_raw_fold(contract, pf.candidate_id, fold["name"], bars,
-                                        membership, rules, ledgers, marks_at_bar))
+                                        membership, rules, ledgers, marks_at_bar,
+                                        canonical_times_ms=times))
     report, contributions, stress = _candidate_report(contract, folds)
     fold_net = [math.fsum(trade["r"] for trade in fold.trades) for fold in folds]
     gates = promotion_gates(report, contract, fold_net_r=fold_net,
@@ -1560,15 +1672,20 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     elif not Path(archive_store).is_dir():
         gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
     return {
-        "format": "zackbot.strategy-causal-pack-01-readiness/2", "ready": False,
+        "format": "zackbot.strategy-causal-pack-01-readiness/3", "ready": False,
         "contract_sha256": contract_digest, "source_bindings": bindings,
         "required_sources": {"manifest": str(ARCHIVE_MANIFEST_PATH), "universe": str(UNIVERSE_PATH),
                              "exchange_filter_authority": str(FILTER_AUTHORITY_PATH),
                              "archive_store": str(Path(archive_store) if archive_store is not None else DEFAULT_ARCHIVE_STORE),
                              "source_runners": {k: str(v) for k, v in SOURCE_RUNNER_PATHS.items()}},
         "folds": contract["folds"], "cutoff": contract["data"]["forbid_read_at_or_after"],
-        "required_raw_series": ["klines:1h", "klines:4h", "fundingRate", "markPriceKlines:1h"],
+        "required_raw_series": ["klines:4h", "fundingRate", "markPriceKlines:1h"],
+        "known_data_incomplete": {
+            "volume_pressure_inventory_short_1h_causal_v3":
+                "no frozen 1h kline archive; retained as a sealed incomplete packet"},
         "invariants": ["causal fold-start filters + filtered CORE-20 PIT membership",
+                       "sparse decision availability without survivor deletion",
+                       "strict completeness for every actual exposure and fill",
                        "fold-local warmup/purge", "next-open fills",
                        "prior-closed ATR", "actual exchange filters", "actual funding/causal marks",
                        "isolated 500 USDT books", "dynamic 1% marked-equity risk",
