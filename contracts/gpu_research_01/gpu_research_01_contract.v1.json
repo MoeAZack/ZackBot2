@@ -1,0 +1,127 @@
+{
+  "contract": "GPU-RESEARCH-01",
+  "version": 1,
+  "status": "DRAFT",
+  "base_commit": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+  "doc": "GPU_RESEARCH_01_CONTRACT.md",
+  "authority": {
+    "orders": false,
+    "paper_activation": false,
+    "paper_scoring": false,
+    "holdout_read": false,
+    "strategy_selection": false,
+    "mainnet": false
+  },
+  "scope": {
+    "first_adapter": "xgboost_histogram_ml_train_01",
+    "cpu_gpu_models_interchangeable": false,
+    "edge04_migration": false,
+    "synthetic_probe_is_strategy_evidence": false
+  },
+  "local_capability_probe": {
+    "python": "3.12",
+    "xgboost": "3.4.1",
+    "gpu": "NVIDIA GeForce RTX 3080 Ti",
+    "rows": 160000,
+    "features": 48,
+    "boost_rounds": 100,
+    "gpu_seconds": "0.602",
+    "cpu_seconds_two_threads": "2.731",
+    "speedup": "4.54",
+    "prediction_pearson": "0.99584928",
+    "capability_only": true
+  },
+  "resource_guard": {
+    "python_isolated": true,
+    "required_device": "cuda:0",
+    "silent_cpu_fallback_allowed": false,
+    "max_gpu_memory_gib": 8,
+    "max_host_memory_gib": 4,
+    "max_cpu_threads": 2,
+    "min_free_gpu_memory_gib": 8,
+    "min_free_host_memory_gib": 4,
+    "paper_health_must_be_known": true,
+    "single_gpu_research_owner": true,
+    "oom_retry_with_larger_request": false
+  },
+  "ml_data_gate": {
+    "min_paired_labels": 1000,
+    "min_family_side_cell": 100,
+    "min_future_folds": 4,
+    "min_fold_labels": 50,
+    "min_cairo_days": 30,
+    "min_regimes": 2,
+    "synthetic_rows_count_toward_gate": false
+  },
+  "required_bindings": [
+    "source_commit",
+    "adapter_sha256",
+    "input_pack_sha256",
+    "feature_manifest_sha256",
+    "label_manifest_sha256",
+    "split_manifest_sha256",
+    "parameter_manifest_sha256",
+    "dependency_lock_sha256",
+    "seed",
+    "python_version",
+    "xgboost_version",
+    "nvidia_driver_version",
+    "cuda_version",
+    "gpu_identity",
+    "cpu_identity",
+    "artifact_sha256",
+    "result_packet_sha256"
+  ],
+  "pair_rules": {
+    "same_ordered_rows": true,
+    "same_fold_indices": true,
+    "same_features_labels_costs": true,
+    "same_seed_and_parameters": true,
+    "binary_model_equality_expected": false,
+    "independent_ml_train_gates_required": true,
+    "agreement_may_waive_failed_gate": false
+  },
+  "required_diagnostics": [
+    "training_seconds",
+    "peak_host_memory_bytes",
+    "peak_gpu_memory_bytes",
+    "fold_metrics",
+    "prediction_pearson",
+    "prediction_spearman",
+    "prediction_mean_abs_delta",
+    "prediction_max_abs_delta",
+    "threshold_decision_disagreement",
+    "artifact_hashes"
+  ],
+  "determinism": {
+    "same_device_gpu_repeats": 2,
+    "canonical_prediction_and_metric_packet_compare": "byte_exact",
+    "nondeterminism_blocks_candidate": true
+  },
+  "failure_policy": {
+    "oom": "fail_closed",
+    "driver_reset": "fail_closed",
+    "nan_or_inf": "fail_closed",
+    "missing_manifest_field": "fail_closed",
+    "silent_fallback": "fail_closed"
+  },
+  "implementation_boundary": {
+    "new_files_only": true,
+    "runtime_dependency_added": false,
+    "runtime_files_edited": false,
+    "paper_state_touched": false,
+    "holdout_opened": false
+  },
+  "deferred": [
+    "gpu_adapter_implementation",
+    "dependency_lock",
+    "measured_training_until_data_gate",
+    "synthetic_stress_kernel_contract",
+    "independent_execution",
+    "runtime_packaging",
+    "paper_influence",
+    "strategy_promotion",
+    "mainnet"
+  ]
+}
+
