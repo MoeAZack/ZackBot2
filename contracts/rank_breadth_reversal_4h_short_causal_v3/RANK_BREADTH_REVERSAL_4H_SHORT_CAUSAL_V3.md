@@ -1,4 +1,4 @@
-# RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V2
+# RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3
 
 **Status: FROZEN — signed by Codex, 6 November 2026 11:50 Cairo.**
 
@@ -27,8 +27,11 @@ digest `485c7522…d093`), bound to manifest digest `54912d9d…f1e7`, classific
 `crypto` book. CORE-20 is literally the first 20 ordered crypto members of the latest Monday-00:00-UTC row available at
 the decision close. The artifact order is exact 30-day quote-volume descending with symbol-ascending ties; this order
 also decides simultaneous admissions. Before any market row is opened, the runner verifies the committed universe,
-manifest and classes byte hashes/digests, schema, 348 ordered weeks and every ordered member/qv row. Any mismatch or a
-week with fewer than 20 crypto members makes the candidate incomplete; there is no static/current/union fallback.
+manifest and classes byte hashes/digests, schema, 348 ordered weeks and every ordered member/qv row. Before any market
+row, it also verifies the causal exchange-filter authority (`9463632b…a434`): both archive capture and Binance
+`serverTime` must predate the fold, the active-at-start PIT cell and every later Monday are pinned, and CORE-20 is the
+first 20 ranked TRADING PERPETUAL USDT COIN symbols with complete positive engine-parsed filters. Any mismatch or fewer
+than 20 eligible members makes the candidate incomplete; there is no static/current/union fallback.
 
 Entries and signal/time exits fill at the next tradable open. The 18-bar cap therefore exits at `e+18`, never at a
 same-candle close or synthetic final mark. Folds use a conservative 200-bar local warm-up for the causal BTC EMA200
@@ -91,7 +94,7 @@ its base `5 bp + 2 bp` constants so stress does not mutate the signal identity. 
 
 Raw inference is a one-sided 100,000-draw sign-flip over UTC exit-day net-R clusters (PCG64 seed 20261106115043). The
 ordinary 95% mean-R interval is a 10,000-draw exit-day cluster percentile bootstrap (seed 20261106115044). Holm uses the
-three-entry frozen RBR family ledger (`cafb8b56…3448`, canonical digest `8f6613af…1ba5`); the two contaminated trials get
+three-entry frozen RBR family ledger (`d3cdbd3c…e835`, canonical digest `79a3013a…a3dd`); the two contaminated trials get
 conservative p=1 because they have no preregistered raw p. Raw, bootstrap and Holm outputs are mandatory diagnostics but
 never promotion gates.
 
