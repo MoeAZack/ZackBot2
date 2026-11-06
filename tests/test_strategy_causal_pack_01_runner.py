@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,14 @@ def position(side="short", management=MGMT, qty_risk=10.0):
     return R.open_position(side=side, entry_index=10, entry_time_ms=1_000, reference_open=100,
                            atr_entry=1, risk_cash=qty_risk, leverage_notional_cap=100_000,
                            management=management, rule=RULE)
+
+
+def ms(iso_utc):
+    return int(datetime.fromisoformat(iso_utc).replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def core20():
+    return tuple(f"S{i:02d}" for i in range(20))
 
 
 def test_exact_fold_local_purge_off_by_one():
@@ -342,7 +351,7 @@ def test_cli_has_no_prepared_input_or_evaluation_route(tmp_path, capsys):
                  "--identity-dir", str(identities)])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "contract PR #298" in err and "binance_um archive store" in err
+    assert "contract PR #298" in err and "raw archive adapter" in err
     assert not out.exists() and not identities.exists()
 
 
@@ -360,5 +369,80 @@ def test_readiness_wires_exact_repository_sources_without_market_read():
     ]
     joined = "\n".join(report["gaps"])
     assert "contract PR #298" in joined
-    assert "risk_cash and leverage_notional_cap" in joined
+    assert "risk_cash and leverage_notional_cap" not in joined
     assert "raw archive adapter is not yet enabled" in joined
+
+
+def test_frozen_book_contract_and_default_archive_store_are_wired(tmp_path):
+    contract, _ = R.load_contract()
+    frozen = R.validate_book_contract(contract)
+    assert frozen["reference_start_equity_usdt"] == R.FrozenCandidateBook.START_EQUITY == 500.0
+    assert frozen["risk_fraction_of_current_candidate_book_equity"] == R.FrozenCandidateBook.RISK_FRACTION == 0.01
+    assert frozen["maximum_open_positions"] == R.FrozenCandidateBook.MAX_OPEN_POSITIONS == 4
+    assert frozen["gross_leverage_multiple"] == R.FrozenCandidateBook.GROSS_LEVERAGE_MULTIPLE == 10.0
+    assert frozen["daily_halt_fraction"] == R.FrozenCandidateBook.DAILY_HALT_FRACTION == 0.08
+    report = R.missing_input_report(archive_store=tmp_path, contract_merged=False)
+    assert report["required_sources"]["archive_store"] == str(tmp_path)
+    assert not any("archive store does not exist" in gap for gap in report["gaps"])
+    assert str(R.DEFAULT_ARCHIVE_STORE) == r"C:\Dev\ZackBot2_data\binance_um"
+
+
+def test_simultaneous_entries_use_core20_priority_dynamic_equity_and_caps():
+    book = R.FrozenCandidateBook(core20())
+    book.advance_bar(ms("2026-07-01T00:00:00"), {})
+    seen = []
+
+    def opener(terms):
+        seen.append(terms)
+        return R.BookLot(terms.symbol, "long", 10.0, 100.0, 100.0), 1.0
+
+    admitted = book.admit_simultaneous(
+        ms("2026-07-01T00:00:00"), ["S06", "S03", "S02", "S01", "S00"], opener)
+    assert admitted == ["S00", "S01", "S02", "S03"]
+    assert [terms.symbol for terms in seen] == admitted
+    assert [terms.risk_cash for terms in seen] == pytest.approx([5.0, 4.99, 4.98, 4.97])
+    assert [terms.leverage_notional_cap for terms in seen] == pytest.approx([5000, 3990, 2980, 1970])
+    assert len(book.positions) == 4
+
+
+def test_candidate_books_are_isolated_and_compound_realized_equity():
+    first, second = R.FrozenCandidateBook(core20()), R.FrozenCandidateBook(core20())
+    now = ms("2026-07-01T00:00:00")
+    first.advance_bar(now, {})
+    second.advance_bar(now, {})
+    first.admit_simultaneous(
+        now, ["S00"], lambda terms: (R.BookLot(terms.symbol, "long", 1, 100, 100), 0))
+    first.close("S00", 50.0)
+    assert first.cash_equity == 550.0
+    assert first.risk_cash() == pytest.approx(5.5)
+    assert second.cash_equity == 500.0
+    assert second.risk_cash() == pytest.approx(5.0)
+
+
+def test_cairo_daily_halt_latches_entries_but_never_blocks_exit_management():
+    book = R.FrozenCandidateBook(core20())
+    day_one = ms("2026-07-01T00:00:00")  # 03:00 Cairo (DST)
+    book.advance_bar(day_one, {})
+    book.admit_simultaneous(
+        day_one, ["S00"], lambda terms: (R.BookLot(terms.symbol, "long", 5, 100, 100), 0))
+    book.advance_bar(ms("2026-07-01T01:00:00"), {"S00": 90})
+    assert book.marked_equity() == 450
+    assert book.entries_halted
+    called = []
+    assert book.admit_simultaneous(
+        ms("2026-07-01T02:00:00"), ["S01"], lambda terms: called.append(terms) or None) == []
+    assert called == []
+    book.advance_bar(ms("2026-07-01T03:00:00"), {"S00": 100})
+    assert book.entries_halted  # recovery never unlatches within the Cairo day
+    book.close("S00", -50.0)  # exits/management remain enabled
+    assert book.cash_equity == 450
+    book.advance_bar(ms("2026-07-01T21:00:00"), {})  # 00:00 next Cairo day
+    assert not book.entries_halted and book.day_start_equity == 450
+
+
+def test_book_controls_have_no_caller_override_and_reject_non_core_entries():
+    with pytest.raises(TypeError):
+        R.FrozenCandidateBook(core20(), start_equity=999)  # type: ignore[call-arg]
+    book = R.FrozenCandidateBook(core20())
+    with pytest.raises(R.RunnerError, match="outside frozen CORE-20"):
+        book.admit_simultaneous(ms("2026-07-01T00:00:00"), ["NOTCORE20"], lambda _terms: None)

@@ -15,13 +15,15 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
-CONTRACT_SHA256 = "00e839b523e35fee63d7fdd254752c50e56817ad38aa548d99f7e8d899a2be85"
+CONTRACT_SHA256 = "ea6c6844374c3c9dff80743ff6a69855aa5c77777427182cfb63eb4c1c5a3105"
 FORMAT = "zackbot.strategy-causal-pack-01/1"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
@@ -36,6 +38,7 @@ SOURCE_BINDINGS = {
         "volume_pressure_inventory_1h", "sig_volume_pressure_inventory_1h"),
 }
 ARCHIVE_MANIFEST_PATH = ROOT / "research_evidence" / "manifests" / "binance-um-archive-v1.json.gz"
+DEFAULT_ARCHIVE_STORE = Path(r"C:\Dev\ZackBot2_data\binance_um")
 UNIVERSE_PATH = ROOT / "research_evidence" / "universe" / "pit-top40-qv30d-v4.json"
 EXCHANGE_INFO_PATH = (ROOT / "research_evidence" / "prereg" /
                       "binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json")
@@ -99,6 +102,30 @@ def candidate_spec(contract: dict, candidate_id: str) -> dict:
     if candidate_id not in CANDIDATE_IDS:
         raise RunnerError(f"candidate must be one of {', '.join(CANDIDATE_IDS)}")
     return next(row for row in contract["candidates"] if row["candidate_id"] == candidate_id)
+
+
+def validate_book_contract(contract: dict) -> dict:
+    """Refuse execution unless every executable book control is still frozen."""
+    book = contract.get("book_and_sizing") or {}
+    expected = {
+        "reference_start_equity_usdt": 500.0,
+        "risk_fraction_of_current_candidate_book_equity": 0.01,
+        "maximum_open_positions": 4,
+        "gross_leverage_multiple": 10.0,
+        "daily_halt_fraction": 0.08,
+        "equity_compounding": True,
+        "candidate_books_isolated": True,
+        "cross_candidate_capital_sharing": False,
+    }
+    if any(book.get(key) != value for key, value in expected.items()):
+        raise RunnerError("frozen candidate-book controls changed")
+    if not str(book.get("daily_halt_timezone", "")).startswith("Africa/Cairo"):
+        raise RunnerError("daily halt timezone is not frozen to Africa/Cairo")
+    if not str(book.get("entry_priority", "")).startswith("For simultaneous next-open entries"):
+        raise RunnerError("simultaneous-entry priority rule changed")
+    if not str(book.get("caller_override", "")).startswith("forbidden"):
+        raise RunnerError("candidate-book controls became caller-overridable")
+    return book
 
 
 def git_head(repo: Path = ROOT) -> str:
@@ -354,6 +381,161 @@ class Position:
     @property
     def sign(self) -> int:
         return 1 if self.side == "long" else -1
+
+
+@dataclass
+class BookLot:
+    """Minimal marked position state used by the raw evaluator's portfolio book."""
+
+    symbol: str
+    side: str
+    qty: float
+    entry_reference: float
+    mark: float
+
+    def validate(self) -> None:
+        if self.side not in ("long", "short"):
+            raise RunnerError("book position side must be long or short")
+        if not all(_positive(value) for value in (self.qty, self.entry_reference, self.mark)):
+            raise RunnerError("book position needs positive qty, entry reference, and mark")
+
+    @property
+    def sign(self) -> int:
+        return 1 if self.side == "long" else -1
+
+
+@dataclass(frozen=True)
+class EntryTerms:
+    symbol: str
+    risk_cash: float
+    leverage_notional_cap: float
+    marked_equity: float
+    gross_open_notional: float
+
+
+class FrozenCandidateBook:
+    """Contract-frozen, isolated candidate book for causal raw evaluation.
+
+    The constructor intentionally accepts no sizing or risk controls. A contract
+    change is required to alter any of these values.
+    """
+
+    START_EQUITY = 500.0
+    RISK_FRACTION = 0.01
+    MAX_OPEN_POSITIONS = 4
+    GROSS_LEVERAGE_MULTIPLE = 10.0
+    DAILY_HALT_FRACTION = 0.08
+    CAIRO = ZoneInfo("Africa/Cairo")
+
+    def __init__(self, core20_order: Sequence[str]):
+        order = tuple(core20_order)
+        if len(order) != 20 or len(set(order)) != 20 or any(not symbol for symbol in order):
+            raise RunnerError("checksum-verified frozen CORE-20 order must contain 20 unique symbols")
+        self.core20_order = order
+        self._priority = {symbol: index for index, symbol in enumerate(order)}
+        self.cash_equity = self.START_EQUITY
+        self.positions: dict[str, BookLot] = {}
+        self.day: str | None = None
+        self.day_start_equity: float | None = None
+        self.entries_halted = False
+
+    def marked_equity(self) -> float:
+        unrealized = sum(
+            lot.sign * (lot.mark - lot.entry_reference) * lot.qty
+            for lot in self.positions.values()
+        )
+        return self.cash_equity + unrealized
+
+    def gross_open_notional(self) -> float:
+        return sum(abs(lot.qty * lot.mark) for lot in self.positions.values())
+
+    def risk_cash(self) -> float:
+        return max(0.0, self.marked_equity() * self.RISK_FRACTION)
+
+    def leverage_notional_cap(self) -> float:
+        return max(
+            0.0,
+            self.GROSS_LEVERAGE_MULTIPLE * self.marked_equity() - self.gross_open_notional(),
+        )
+
+    @classmethod
+    def _cairo_day(cls, time_ms: int) -> str:
+        if type(time_ms) is not int:
+            raise RunnerError("bar timestamp must be integer milliseconds")
+        return datetime.fromtimestamp(time_ms / 1000, tz=timezone.utc).astimezone(cls.CAIRO).date().isoformat()
+
+    def advance_bar(self, time_ms: int, marks: dict[str, float]) -> None:
+        """Apply causal marks, freeze the Cairo-day baseline, and latch the halt."""
+        if set(marks) - set(self.positions):
+            raise RunnerError("mark supplied for a symbol without an open position")
+        for symbol, mark in marks.items():
+            if not _positive(mark):
+                raise IncompleteCandidate(f"{INCOMPLETE}: invalid causal mark for {symbol}")
+            self.positions[symbol].mark = float(mark)
+        cairo_day = self._cairo_day(time_ms)
+        equity = self.marked_equity()
+        if cairo_day != self.day:
+            self.day = cairo_day
+            self.day_start_equity = equity
+            self.entries_halted = False
+        elif equity <= float(self.day_start_equity) * (1.0 - self.DAILY_HALT_FRACTION):
+            self.entries_halted = True
+
+    def admit_simultaneous(
+        self,
+        time_ms: int,
+        symbols: Sequence[str],
+        opener: Callable[[EntryTerms], tuple[BookLot, float] | None],
+    ) -> list[str]:
+        """Process one next-open cohort in frozen CORE-20 priority order.
+
+        ``opener`` is an internal source-signal adapter: it receives only terms
+        computed from current book state and returns the resulting lot plus its
+        already-incurred entry fee/slippage cash. Later symbols therefore see
+        earlier fills and costs.
+        """
+        requested = tuple(symbols)
+        if len(set(requested)) != len(requested):
+            raise RunnerError("duplicate simultaneous entry request")
+        unknown = set(requested) - set(self._priority)
+        if unknown:
+            raise RunnerError(f"entry outside frozen CORE-20: {sorted(unknown)}")
+        if self.day != self._cairo_day(time_ms):
+            self.advance_bar(time_ms, {})
+        admitted: list[str] = []
+        for symbol in sorted(requested, key=self._priority.__getitem__):
+            self._latch_halt()
+            if (self.entries_halted or symbol in self.positions
+                    or len(self.positions) >= self.MAX_OPEN_POSITIONS):
+                continue
+            cap = self.leverage_notional_cap()
+            risk = self.risk_cash()
+            if cap <= 0 or risk <= 0:
+                continue
+            terms = EntryTerms(symbol, risk, cap, self.marked_equity(), self.gross_open_notional())
+            opened = opener(terms)
+            if opened is None:
+                continue
+            lot, entry_cost_cash = opened
+            lot.validate()
+            if lot.symbol != symbol or not math.isfinite(entry_cost_cash) or entry_cost_cash < 0:
+                raise RunnerError("internal opener returned mismatched lot or invalid entry cost")
+            self.positions[symbol] = lot
+            self.cash_equity -= entry_cost_cash
+            admitted.append(symbol)
+        return admitted
+
+    def _latch_halt(self) -> None:
+        if (self.day_start_equity is not None
+                and self.marked_equity() <= self.day_start_equity * (1.0 - self.DAILY_HALT_FRACTION)):
+            self.entries_halted = True
+
+    def close(self, symbol: str, net_cash: float) -> None:
+        """Apply an internally calculated exit at any time, including while halted."""
+        if symbol not in self.positions or not math.isfinite(net_cash):
+            raise RunnerError("invalid internally calculated position close")
+        del self.positions[symbol]
+        self.cash_equity += net_cash
 
 
 def _positive(value: object) -> bool:
@@ -650,11 +832,10 @@ def validate_source_bindings(contract: dict) -> dict:
 
 
 def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
-                         evaluation_config: os.PathLike[str] | str | None = None,
-                         evaluation_config_sha256: str | None = None,
                          contract_merged: bool = False) -> dict:
     """Read no market bytes; name the exact blockers to a real raw evaluation."""
     contract, contract_digest = load_contract()
+    validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
     gaps = []
     for label, path in (("archive manifest", ARCHIVE_MANIFEST_PATH), ("PIT universe", UNIVERSE_PATH),
@@ -670,24 +851,21 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
         gaps.append("missing external binance_um archive store path for manifest klines/fundingRate/markPriceKlines")
     elif not Path(archive_store).is_dir():
         gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
-    if evaluation_config is None or evaluation_config_sha256 is None:
-        gaps.append("missing checksum-bound evaluation config: risk_cash and leverage_notional_cap are not frozen in contract v1")
-    else:
-        try:
-            verify_file_digest(evaluation_config, evaluation_config_sha256)
-        except (OSError, RunnerError) as exc:
-            gaps.append(f"invalid evaluation config binding: {exc}")
     gaps.append("raw archive adapter is not yet enabled; no evaluation/promotion route exists")
     return {
         "format": "zackbot.strategy-causal-pack-01-readiness/1", "ready": False,
         "contract_sha256": contract_digest, "source_bindings": bindings,
         "required_sources": {"manifest": str(ARCHIVE_MANIFEST_PATH), "universe": str(UNIVERSE_PATH),
-                             "exchange_info": str(EXCHANGE_INFO_PATH), "archive_store": "external binance_um",
+                             "exchange_info": str(EXCHANGE_INFO_PATH),
+                             "archive_store": str(Path(archive_store) if archive_store is not None else DEFAULT_ARCHIVE_STORE),
                              "source_runners": {k: str(v) for k, v in SOURCE_RUNNER_PATHS.items()}},
         "folds": contract["folds"], "cutoff": contract["data"]["forbid_read_at_or_after"],
         "required_raw_series": ["klines:1h", "klines:4h", "fundingRate", "markPriceKlines:1h"],
         "invariants": ["CORE-20 PIT membership", "fold-local warmup/purge", "next-open fills",
                        "prior-closed ATR", "actual exchange filters", "actual funding/causal marks",
+                       "isolated 500 USDT books", "dynamic 1% marked-equity risk",
+                       "four-position/10x gross caps", "CORE-20 simultaneous-entry priority",
+                       "8% Africa/Cairo day entry halt with exits always enabled", "compounding",
                        "required report and promotion gates", "immutable identity tombstones"],
         "gaps": gaps,
     }
@@ -706,9 +884,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--candidate", required=True, choices=CANDIDATE_IDS)
     ap.add_argument("--out", required=True)
     ap.add_argument("--identity-dir", required=True)
+    ap.add_argument("--archive-store", default=str(DEFAULT_ARCHIVE_STORE))
     args = ap.parse_args(argv)
     try:
-        report = missing_input_report(contract_merged=False)
+        report = missing_input_report(archive_store=args.archive_store, contract_merged=False)
         candidate_spec(load_contract()[0], args.candidate)
         raise RunnerError("; ".join(report["gaps"]))
     except RunnerError as exc:
