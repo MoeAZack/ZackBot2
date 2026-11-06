@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
@@ -25,6 +26,9 @@ HOUR_MS = 3_600_000
 TRAINING_HOURS = 180 * 24
 HALF_HOURS = 90 * 24
 MIN_COMPLETE_FRACTION = 0.995
+FEE_BPS = 5.0
+ADVERSE_SLIPPAGE_BPS = 2.0
+STRESS_ROUND_TRIP_FRACTION = 0.003
 
 
 class C255Error(RuntimeError):
@@ -145,6 +149,12 @@ class TrainingSample:
 
 
 def build_training_sample(x_bars: Sequence[Bar], y_bars: Sequence[Bar], *, selection_ms: int) -> TrainingSample:
+    if not isinstance(selection_ms, int) or selection_ms < 0 or selection_ms % HOUR_MS:
+        raise IncompleteAuthority("selection_ms must be a non-negative UTC hourly timestamp")
+    selection = datetime.fromtimestamp(selection_ms / 1000, tz=timezone.utc)
+    if not (selection.day == 1 and selection.hour == 0 and selection.minute == 0
+            and selection.second == 0 and selection.microsecond == 0):
+        raise IncompleteAuthority("selection_ms must be exactly UTC month-start 00:00")
     start_ms = selection_ms - TRAINING_HOURS * HOUR_MS
     aligned = exact_bar_intersection(x_bars, y_bars, start_ms=start_ms, end_ms=selection_ms)
     minimum = math.ceil(TRAINING_HOURS * MIN_COMPLETE_FRACTION)
@@ -281,12 +291,12 @@ def select_monthly_pairs(
         full = fit_log_ols(x, y)
         first = fit_log_ols([row[0].close for row in first_rows], [row[1].close for row in first_rows])
         second = fit_log_ols([row[0].close for row in second_rows], [row[1].close for row in second_rows])
-        if not 0.2 < full.beta < 5.0 or first.beta <= 0 or second.beta <= 0:
-            continue
-        drift = beta_drift(full.beta, first.beta, second.beta)
+        # Every data-eligible pair enters the monthly Holm family.  All three
+        # frozen ADF calls therefore happen before beta or stability rejection.
         raw = adf_pvalue(full.residual, adf)
         first_p = adf_pvalue(first.residual, adf)
         second_p = adf_pvalue(second.residual, adf)
+        drift = beta_drift(full.beta, first.beta, second.beta)
         std = float(np.std(full.residual, ddof=1))
         try:
             _, half_life = residual_half_life(full.residual)
@@ -296,7 +306,8 @@ def select_monthly_pairs(
             "intercept": full.intercept, "beta": full.beta,
             "mean": float(np.mean(full.residual)), "std": std,
             "raw": raw, "half_life": half_life, "drift": drift,
-            "stable": bool(drift <= 0.25 and 6 <= half_life <= 72
+            "stable": bool(0.2 < full.beta < 5.0 and first.beta > 0 and second.beta > 0
+                           and drift <= 0.25 and 6 <= half_life <= 72
                            and first_p <= 0.05 and second_p <= 0.05 and std > 0),
         }
     corrected = holm_adjust({pair: float(row["raw"]) for pair, row in provisional.items()})
@@ -350,9 +361,11 @@ def next_open_fill(bars: Sequence[Bar], decision_open_ms: int) -> Bar:
 
 
 def catastrophic_stop_fill(*, side: str, entry_price: float, frozen_atr24: float,
-                           bar: Bar, adverse_slippage_bps: float = 2.0) -> float | None:
+                           bar: Bar, adverse_slippage_bps: float = ADVERSE_SLIPPAGE_BPS) -> float | None:
     """Resolve a leg stop pessimistically; return None when it was not touched."""
     bar.validate()
+    if adverse_slippage_bps != ADVERSE_SLIPPAGE_BPS:
+        raise C255Error("C255 adverse slippage is frozen at 2 bps")
     if side not in {"long", "short"} or entry_price <= 0 or frozen_atr24 <= 0:
         raise C255Error("invalid catastrophic-stop inputs")
     if side == "long":
@@ -375,6 +388,10 @@ def atr24_wilder(bars: Sequence[Bar]) -> float:
         raise IncompleteAuthority("ATR24 requires 24 true ranges plus previous close")
     for bar in bars:
         bar.validate()
+    if any(bar.open_ms % HOUR_MS for bar in bars):
+        raise IncompleteAuthority("ATR24 bars must use exact UTC hourly timestamps")
+    if any(right.open_ms - left.open_ms != HOUR_MS for left, right in zip(bars, bars[1:])):
+        raise IncompleteAuthority("ATR24 bars must be unique, sorted, and exactly hourly contiguous")
     tr = [
         max(bar.high - bar.low, abs(bar.high - previous.close), abs(bar.low - previous.close))
         for previous, bar in zip(bars, bars[1:])
@@ -391,13 +408,27 @@ def atr24_wilder(bars: Sequence[Bar]) -> float:
 class Fill:
     symbol: str
     notional_dollars: float
-    price_move_pnl: float = 0.0
-    funding_pnl: float = 0.0
+    phase: str
+    price_move_pnl: float
+    funding_pnl: float
 
 
-def actual_fill_cost(fills: Sequence[Fill], *, fee_bps: float = 5.0, slippage_bps: float = 2.0) -> float:
-    if len(fills) == 0 or any(not math.isfinite(f.notional_dollars) or f.notional_dollars <= 0 for f in fills):
+def _validate_fills(fills: Sequence[Fill]) -> None:
+    for fill in fills:
+        if fill.phase not in {"entry", "exit", "flatten"}:
+            raise C255Error("fill phase must be entry, exit, or flatten")
+        if (not fill.symbol or not math.isfinite(fill.notional_dollars) or fill.notional_dollars <= 0
+                or not math.isfinite(fill.price_move_pnl) or not math.isfinite(fill.funding_pnl)):
+            raise C255Error("every realized fill requires finite notional, price P&L, and funding P&L")
+
+
+def actual_fill_cost(fills: Sequence[Fill], *, fee_bps: float = FEE_BPS,
+                     slippage_bps: float = ADVERSE_SLIPPAGE_BPS) -> float:
+    if fee_bps != FEE_BPS or slippage_bps != ADVERSE_SLIPPAGE_BPS:
+        raise C255Error("C255 fill costs are frozen at 5 fee bps + 2 adverse slippage bps")
+    if len(fills) == 0:
         raise C255Error("actual-fill notionals must be finite and positive")
+    _validate_fills(fills)
     return sum(abs(fill.notional_dollars) * (fee_bps + slippage_bps) / 10_000 for fill in fills)
 
 
@@ -411,10 +442,27 @@ class ClosedPairAttempt:
     closed_attempts: int = 1
 
 
-def account_atomic_attempt(pair_id: str, fills: Sequence[Fill], *, both_legs_placed: bool) -> ClosedPairAttempt:
+def account_atomic_attempt(pair_id: str, fills: Sequence[Fill], *,
+                           expected_symbols: tuple[str, str]) -> ClosedPairAttempt:
     """Charge every realized fill even when one leg or its flatten failed atomically."""
-    if not pair_id or not fills:
+    if (not pair_id or len(expected_symbols) != 2 or expected_symbols[0] == expected_symbols[1]
+            or not all(expected_symbols)):
+        raise C255Error("atomic pair requires two distinct expected legs")
+    if not fills:
         raise C255Error("an attempted pair must retain its realized fills")
+    _validate_fills(fills)
+    expected = set(expected_symbols)
+    if any(fill.symbol not in expected for fill in fills):
+        raise C255Error("fill symbol is outside the attempted pair")
+    entries = [fill for fill in fills if fill.phase == "entry"]
+    closes = [fill for fill in fills if fill.phase in {"exit", "flatten"}]
+    entry_symbols = [fill.symbol for fill in entries]
+    if not entries or len(entry_symbols) != len(set(entry_symbols)):
+        raise C255Error("each realized leg must have exactly one entry fill")
+    close_symbols = [fill.symbol for fill in closes]
+    if sorted(close_symbols) != sorted(entry_symbols):
+        raise IncompleteAuthority("every realized entry leg requires exactly one exit or bounded flatten fill")
+    both_legs_placed = set(entry_symbols) == expected and len(entries) == 2
     costs = actual_fill_cost(fills)
     funding = sum(fill.funding_pnl for fill in fills)
     net = sum(fill.price_move_pnl + fill.funding_pnl for fill in fills) - costs
@@ -425,7 +473,9 @@ def modeled_loss_fraction(*, beta: float, z_entry: float, residual_std: float,
                           y_atr_fraction: float, x_atr_fraction: float,
                           y_other_leg_flatten_fraction: float,
                           x_other_leg_flatten_fraction: float,
-                          stress_round_trip_fraction: float = 0.003) -> float:
+                          stress_round_trip_fraction: float = STRESS_ROUND_TRIP_FRACTION) -> float:
+    if stress_round_trip_fraction != STRESS_ROUND_TRIP_FRACTION:
+        raise C255Error("C255 stressed round-trip cost is frozen at 30 bps")
     if (beta <= 0 or residual_std <= 0 or abs(z_entry) >= 4.5
             or min(y_atr_fraction, x_atr_fraction,
                    y_other_leg_flatten_fraction, x_other_leg_flatten_fraction) < 0):

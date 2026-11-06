@@ -1,4 +1,5 @@
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -23,10 +24,12 @@ def pair_sample(seed, beta=1.2, n=4320):
         residual[i] = 0.95 * residual[i - 1] + rng.normal(0, 0.002)
     log_y = 0.3 + beta * log_x + residual
     x, y = np.exp(log_x), np.exp(log_y)
-    def tape(values):
-        return [C.Bar(i * C.HOUR_MS, value, value * 1.01, value * 0.99, value, 1_000_000)
+    selection_ms = int(datetime(2026, 11, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    start_ms = selection_ms - n * C.HOUR_MS
+    def dated_tape(values):
+        return [C.Bar(start_ms + i * C.HOUR_MS, value, value * 1.01, value * 0.99, value, 1_000_000)
                 for i, value in enumerate(values)]
-    return C.build_training_sample(tape(x), tape(y), selection_ms=n * C.HOUR_MS)
+    return C.build_training_sample(dated_tape(x), dated_tape(y), selection_ms=selection_ms)
 
 
 def frozen_adf(values, **kwargs):
@@ -89,6 +92,31 @@ def test_training_sample_uses_exact_180_day_grid_and_995_percent_completeness():
     # Removing 22 rows drops below ceil(4320 * .995) = 4299.
     with pytest.raises(C.IncompleteAuthority, match="completeness"):
         C.build_training_sample(x[:-22], y[:-22], selection_ms=sample.selection_ms)
+    with pytest.raises(C.IncompleteAuthority, match="month-start"):
+        C.build_training_sample(x, y, selection_ms=sample.selection_ms + C.HOUR_MS)
+    with pytest.raises(C.IncompleteAuthority, match="hourly timestamp"):
+        C.build_training_sample(x, y, selection_ms=sample.selection_ms + 1)
+
+
+def test_every_data_eligible_pair_runs_all_three_adfs_before_negative_half_beta_rejection(monkeypatch):
+    sample = pair_sample(9)
+    original = C.fit_log_ols
+    calls = {"fit": 0, "adf": 0}
+
+    def negative_second_half(x, y):
+        calls["fit"] += 1
+        result = original(x, y)
+        if calls["fit"] == 3:
+            return C.OLSFit(result.intercept, -abs(result.beta), result.residual)
+        return result
+
+    def counted_adf(values, **kwargs):
+        calls["adf"] += 1
+        return frozen_adf(values, **kwargs)
+
+    monkeypatch.setattr(C, "fit_log_ols", negative_second_half)
+    assert C.select_monthly_pairs({("A", "B"): sample}, counted_adf) == ()
+    assert calls["adf"] == 3
 
 
 def test_monthly_selection_freezes_models_and_greedily_prevents_shared_symbols():
@@ -121,6 +149,13 @@ def test_atr24_uses_true_range_seed_then_wilder_updates_and_requires_previous_cl
     assert C.atr24_wilder(tape) == pytest.approx(4.0)
     with pytest.raises(C.IncompleteAuthority, match="24 true ranges"):
         C.atr24_wilder(tape[:24])
+    with pytest.raises(C.IncompleteAuthority, match="exactly hourly contiguous"):
+        C.atr24_wilder(tape[:10] + tape[11:] + [C.Bar(30 * C.HOUR_MS, 130, 132, 128, 131)])
+    with pytest.raises(C.IncompleteAuthority, match="exactly hourly contiguous"):
+        C.atr24_wilder(tape[:24] + [tape[23]])
+    shifted = [C.Bar(bar.open_ms + 1, bar.open, bar.high, bar.low, bar.close) for bar in tape]
+    with pytest.raises(C.IncompleteAuthority, match="exact UTC hourly"):
+        C.atr24_wilder(shifted)
 
 
 def test_catastrophic_stops_use_worse_of_stop_or_gap_then_adverse_slippage():
@@ -131,20 +166,40 @@ def test_catastrophic_stops_use_worse_of_stop_or_gap_then_adverse_slippage():
     assert C.catastrophic_stop_fill(side="short", entry_price=100, frozen_atr24=2, bar=short_gap) == pytest.approx(110 * 1.0002)
     untouched = C.Bar(0, 100, 103, 97, 101)
     assert C.catastrophic_stop_fill(side="long", entry_price=100, frozen_atr24=2, bar=untouched) is None
+    with pytest.raises(C.C255Error, match="frozen at 2 bps"):
+        C.catastrophic_stop_fill(side="long", entry_price=100, frozen_atr24=2, bar=long_gap,
+                                 adverse_slippage_bps=-2)
 
 
 def test_actual_fill_cost_uses_each_fill_notional_and_atomic_failure_is_a_closed_attempt():
     fills = [
-        C.Fill("A", 600, price_move_pnl=-3, funding_pnl=-0.2),
-        C.Fill("B", 400, price_move_pnl=1, funding_pnl=0.1),
-        C.Fill("A", 570, price_move_pnl=-2),
+        C.Fill("A", 600, "entry", price_move_pnl=-3, funding_pnl=-0.2),
+        C.Fill("A", 570, "flatten", price_move_pnl=-2, funding_pnl=0),
     ]
-    expected = (600 + 400 + 570) * 7 / 10_000
+    expected = (600 + 570) * 7 / 10_000
     assert C.actual_fill_cost(fills) == pytest.approx(expected)
-    attempt = C.account_atomic_attempt("A/B", fills, both_legs_placed=False)
+    attempt = C.account_atomic_attempt("A/B", fills, expected_symbols=("A", "B"))
     assert attempt.atomicity_failure and attempt.closed_attempts == 1
     assert attempt.costs == pytest.approx(expected)
-    assert attempt.net_pnl == pytest.approx(-4.1 - expected)
+    assert attempt.net_pnl == pytest.approx(-5.2 - expected)
+    with pytest.raises(C.IncompleteAuthority, match="bounded flatten"):
+        C.account_atomic_attempt("A/B", fills[:1], expected_symbols=("A", "B"))
+    with pytest.raises(C.C255Error, match="two distinct"):
+        C.account_atomic_attempt("A/A", fills, expected_symbols=("A", "A"))
+    with pytest.raises(C.C255Error, match="frozen at 5 fee"):
+        C.actual_fill_cost(fills, fee_bps=0, slippage_bps=-2)
+
+
+def test_atomic_success_requires_two_distinct_entries_and_two_matching_exits():
+    fills = [
+        C.Fill("A", 600, "entry", 0, 0), C.Fill("B", 400, "entry", 0, 0),
+        C.Fill("A", 590, "exit", 5, -0.1), C.Fill("B", 410, "exit", -2, 0.2),
+    ]
+    attempt = C.account_atomic_attempt("A/B", fills, expected_symbols=("A", "B"))
+    assert not attempt.atomicity_failure and attempt.closed_attempts == 1
+    duplicate_leg = [fills[0], C.Fill("A", 400, "entry", 0, 0), fills[2], C.Fill("A", 410, "exit", 0, 0)]
+    with pytest.raises(C.C255Error, match="exactly one entry"):
+        C.account_atomic_attempt("A/B", duplicate_leg, expected_symbols=("A", "B"))
 
 
 def test_risk_model_and_portfolio_caps_fail_closed_without_mutating_on_refusal():
@@ -161,3 +216,10 @@ def test_risk_model_and_portfolio_caps_fail_closed_without_mutating_on_refusal()
     assert not state.admit(x="A", y="C", proposed_gross=500, proposed_risk_r=1)
     assert not state.admit(x="C", y="D", proposed_gross=2_001, proposed_risk_r=1)
     assert before == (state.open_pair_gross, state.open_risk_r, state.open_pairs, state.symbols)
+    with pytest.raises(C.C255Error, match="frozen at 30 bps"):
+        C.modeled_loss_fraction(
+            beta=1.2, z_entry=2.6, residual_std=0.02,
+            y_atr_fraction=0.01, x_atr_fraction=0.015,
+            y_other_leg_flatten_fraction=0.005, x_other_leg_flatten_fraction=0.006,
+            stress_round_trip_fraction=-0.003,
+        )
