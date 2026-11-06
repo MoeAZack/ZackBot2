@@ -40,7 +40,7 @@ def test_saved_metadata_is_provisional_only_and_all_profiles_validate():
     assert gate["v4_contract_provisional_stack_pin"] == G.PROVISIONAL_STACK_PIN
     assert gate["authority_protected_merge_commit"] == "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6"
     assert gate["v4_contract_protected_commit"] == "11db5a45036a9cf831f7d46773b6e621d7c9dc92"
-    assert gate["filter_authority_protected_commit"] is None
+    assert gate["filter_authority_protected_commit"] == "51b38065482df908ee39cf6394a3c4ad5fb97138"
     assert metadata["scope"] == {
         "runner_metadata_and_validators_only": True,
         "strategy_logic_changed": False,
@@ -54,7 +54,10 @@ def test_saved_metadata_is_provisional_only_and_all_profiles_validate():
 
 @pytest.mark.parametrize("profile", ["pack", "rbr_short", "atr_shock"])
 def test_provisional_barrier_refuses_before_delegate_import_or_protected_ref_access(monkeypatch, profile):
+    metadata = copy.deepcopy(G.load_metadata())
+    metadata["protected_execution_gate"]["filter_authority_protected_commit"] = None
     touched = {"import": 0, "ancestor": 0}
+    monkeypatch.setattr(G, "load_metadata", lambda: metadata)
     monkeypatch.setattr(G.importlib, "import_module", lambda *_: touched.__setitem__("import", 1))
     with pytest.raises(G.V4ExecutionBarrier, match="filter-authority pins are incomplete"):
         G.guarded_dispatch(
@@ -147,9 +150,9 @@ def test_exact_closed_registry_delegate_resolves_by_identity_and_digest(profile)
 
 
 @pytest.mark.parametrize("entry", [PACK, RBR, ATR])
-def test_public_v4_entrypoints_are_pre_protection_blocked(entry, capsys):
+def test_public_v4_entrypoints_refuse_incomplete_argv_without_output(entry, capsys):
     assert entry.main([]) == 3
-    assert "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY" in capsys.readouterr().err
+    assert "refused:" in capsys.readouterr().err
 
 
 def test_atr_delegate_resolution_is_reachable_only_after_hypothetical_final_pins(monkeypatch):

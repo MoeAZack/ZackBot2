@@ -17,7 +17,7 @@
     "v4_contract_provisional_stack_pin": "d07cd61281a085d83a1c453cb82e063956ee348a",
     "v4_contract_protected_commit": "11db5a45036a9cf831f7d46773b6e621d7c9dc92",
     "filter_authority_pr": 306,
-    "filter_authority_protected_commit": null,
+    "filter_authority_protected_commit": "51b38065482df908ee39cf6394a3c4ad5fb97138",
     "rule": "All three non-null exact protected commit pins must be ancestors of the protected ref, and the clean executing HEAD must equal that protected ref, before an identity claim, loader construction, market/outcome read or delegate import. Provisional stack pins never authorize execution."
   },
   "authority_artifacts": {
