@@ -23,30 +23,28 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
-CONTRACT_SHA256 = "6c1ca9a6aa8695938d38ff0ba56a348891624d08c6110a5716791be7eb8c17b3"
-FORMAT = "zackbot.strategy-causal-pack-01/1"
+CONTRACT_SHA256 = "a3a16673340b6cfdb88257104ffc5a9f0e65c30b9733e9c8f0c62b87428d5572"
+FORMAT = "zackbot.strategy-causal-pack-01/2"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
-    "pullback_rsi_short_h1_causal_v2",
-    "exp_mom_short_c27_causal_v2",
-    "volume_pressure_inventory_short_1h_causal_v2",
+    "pullback_rsi_short_h1_causal_v3",
+    "exp_mom_short_c27_causal_v3",
+    "volume_pressure_inventory_short_1h_causal_v3",
 )
 SOURCE_BINDINGS = {
-    "pullback_rsi_short_h1_causal_v2": ("pullback_rsi_short_h1", "sig_trend_pullback_rsi"),
-    "exp_mom_short_c27_causal_v2": ("exp_mom_short_c27", "sig_exp_mom_short"),
-    "volume_pressure_inventory_short_1h_causal_v2": (
+    "pullback_rsi_short_h1_causal_v3": ("pullback_rsi_short_h1", "sig_trend_pullback_rsi"),
+    "exp_mom_short_c27_causal_v3": ("exp_mom_short_c27", "sig_exp_mom_short"),
+    "volume_pressure_inventory_short_1h_causal_v3": (
         "volume_pressure_inventory_1h", "sig_volume_pressure_inventory_1h"),
 }
 ARCHIVE_MANIFEST_PATH = ROOT / "research_evidence" / "manifests" / "binance-um-archive-v1.json.gz"
 DEFAULT_ARCHIVE_STORE = Path(r"C:\Dev\ZackBot2_data\binance_um")
 UNIVERSE_PATH = ROOT / "research_evidence" / "universe" / "pit-top40-qv30d-v4.json"
-EXCHANGE_INFO_PATH = (ROOT / "research_evidence" / "prereg" /
-                      "binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json")
-EXCHANGE_INFO_SHA256 = "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83"
+FILTER_AUTHORITY_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "exchange_filter_authority.v2.json"
 SOURCE_RUNNER_PATHS = {
-    "pullback_rsi_short_h1_causal_v2": ROOT / "tools" / "research" / "run_pullback_rsi_short_h1_candidate.py",
-    "exp_mom_short_c27_causal_v2": ROOT / "tools" / "research" / "run_exp_mom_short_c27_candidate.py",
-    "volume_pressure_inventory_short_1h_causal_v2": (
+    "pullback_rsi_short_h1_causal_v3": ROOT / "tools" / "research" / "run_pullback_rsi_short_h1_candidate.py",
+    "exp_mom_short_c27_causal_v3": ROOT / "tools" / "research" / "run_exp_mom_short_c27_candidate.py",
+    "volume_pressure_inventory_short_1h_causal_v3": (
         ROOT / "tools" / "research" / "run_volume_pressure_inventory_candidate.py"),
 }
 
@@ -90,9 +88,9 @@ def load_contract(path: Path = CONTRACT_PATH) -> tuple[dict, str]:
     with path.open(encoding="utf-8") as fh:
         contract = json.load(fh)
     if (contract.get("contract"), contract.get("version"), contract.get("status"), contract.get("signed_by")) != (
-        "STRATEGY-CAUSAL-PACK-01", 1, "FROZEN", "codex"
+        "STRATEGY-CAUSAL-PACK-01", 2, "FROZEN", "codex"
     ):
-        raise RunnerError("contract is not the frozen Codex-signed v1 contract")
+        raise RunnerError("contract is not the frozen Codex-signed v2 contract")
     ids = tuple(row.get("candidate_id") for row in contract.get("candidates", ()))
     if ids != CANDIDATE_IDS:
         raise RunnerError("frozen candidate identities changed")
@@ -879,10 +877,10 @@ def holm_adjusted_p_values(raw_by_candidate: dict[str, float]) -> dict[str, floa
     return adjusted
 
 
-PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/1"
+PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/2"
 PACK_AUTHORITY_KEYS = (
     "manifest_digest", "pit_universe_digest", "manifest_file_sha256",
-    "universe_file_sha256", "exchange_info_sha256",
+    "universe_file_sha256", "exchange_filter_authority_sha256",
 )
 
 
@@ -895,6 +893,15 @@ def _strict_json_object(path: Path) -> dict:
         raise RunnerError(f"invalid immutable JSON artifact {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise RunnerError(f"immutable JSON artifact is not an object: {path}")
+    return value
+
+
+def pf_contract_filter_authority_sha256() -> str:
+    """Return the filter-authority digest from the already byte-pinned contract."""
+    value = load_contract()[0].get("data", {}).get("exchange_filter_authority_sha256")
+    if (not isinstance(value, str) or len(value) != 64
+            or any(char not in "0123456789abcdef" for char in value.lower())):
+        raise RunnerError("contract exchange-filter authority digest is invalid")
     return value
 
 
@@ -927,8 +934,9 @@ def _verify_candidate_packet(path: Path, identity_dir: Path) -> dict:
            or any(char not in "0123456789abcdef" for char in integrity[key].lower())
            for key in PACK_AUTHORITY_KEYS):
         raise RunnerError(f"candidate authority digests are incomplete: {path}")
-    if integrity["exchange_info_sha256"] != EXCHANGE_INFO_SHA256:
-        raise RunnerError(f"candidate exchangeInfo authority changed: {path}")
+    expected_filter_authority = pf_contract_filter_authority_sha256()
+    if integrity["exchange_filter_authority_sha256"] != expected_filter_authority:
+        raise RunnerError(f"candidate exchange-filter authority changed: {path}")
     claim_path = identity_dir / f"{expected_identity}.claim.json"
     claim = _strict_json_object(claim_path)
     if claim != {"state": "COMPLETED", "identity": expected_identity,
@@ -1083,10 +1091,10 @@ def validate_source_bindings(contract: dict) -> dict:
             raise RunnerError(f"{candidate_id}: missing exact source function strategies.py:{function_name}")
         if strategy.get("tf") != spec["timeframe"] or not strategy.get("research_only"):
             raise RunnerError(f"{candidate_id}: source timeframe/research-only identity changed")
-        if candidate_id != "volume_pressure_inventory_short_1h_causal_v2" and strategy.get("sides") != spec["side"]:
+        if candidate_id != "volume_pressure_inventory_short_1h_causal_v3" and strategy.get("sides") != spec["side"]:
             raise RunnerError(f"{candidate_id}: source side changed")
         expected_management = dict(strategy["mgmt"])
-        if candidate_id == "exp_mom_short_c27_causal_v2":
+        if candidate_id == "exp_mom_short_c27_causal_v3":
             expected_management["max_bars"] = 180
         if expected_management != spec["management"]:
             raise RunnerError(f"{candidate_id}: source management no longer matches the frozen contract")
@@ -1426,13 +1434,22 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
     if not contract_merged:
         raise RunnerError("contract PR #298 merge signal absent; archive evaluation refused")
     from bisect import bisect_right
-    from tools.research.strategy_causal_pack_01_archive import RawArchiveAdapter, load_exchange_filters
+    from tools.research.strategy_causal_pack_01_archive import (
+        RawArchiveAdapter,
+        load_fold_filter_authorities,
+    )
     if not isinstance(adapter, RawArchiveAdapter):
         raise RunnerError("evaluate_raw_candidate requires the checksum-verifying RawArchiveAdapter")
     contract = pf.contract
     if contract.get("runner_integrity", {}).get("record_manifest_digest") is not True:
         raise RunnerError("contract no longer requires manifest digest recording")
     authority = adapter.verify_repository_authorities(ARCHIVE_MANIFEST_PATH, UNIVERSE_PATH)
+    filter_authorities = load_fold_filter_authorities(
+        FILTER_AUTHORITY_PATH,
+        contract["data"]["exchange_filter_authority_sha256"],
+        ROOT,
+        contract,
+    )
     spec = candidate_spec(contract, pf.candidate_id)
     validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
@@ -1441,17 +1458,23 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
     for fold in contract["folds"]:
         start = int(datetime.fromisoformat(fold["start"].replace("Z", "+00:00")).timestamp() * 1000)
         end = int(datetime.fromisoformat(fold["end"].replace("Z", "+00:00")).timestamp() * 1000)
-        symbols = adapter.core20_union(start, end)
-        parsed_rules, _ = load_exchange_filters(EXCHANGE_INFO_PATH, EXCHANGE_INFO_SHA256, symbols)
-        rules = {symbol: ExchangeRule(**parsed_rules[symbol]) for symbol in symbols}
-        raw = {symbol: adapter.load_klines(symbol, interval, start, end) for symbol in symbols}
+        fold_authority = filter_authorities[fold["name"]]
+        eligible = fold_authority.eligible_symbols
+        symbols = adapter.core20_union(start, end, eligible)
+        rules = {symbol: ExchangeRule(**fold_authority.rules[symbol]) for symbol in symbols}
+        raw = {
+            symbol: adapter.load_klines(
+                symbol, interval, start, end, eligible_symbols=eligible)
+            for symbol in symbols
+        }
         bars = {symbol: tuple(Bar(row.open_ms, row.open, row.high, row.low, row.close,
                                   volume=row.volume) for row in rows) for symbol, rows in raw.items()}
         times = tuple(row.time_ms for row in bars[symbols[0]])
-        membership = [adapter.core20_at(time_ms) for time_ms in times]
+        membership = [adapter.core20_at(time_ms, eligible) for time_ms in times]
         ledgers, marks_at_bar = {}, {}
         for symbol in symbols:
-            marks = adapter.load_mark_closes(symbol, start, end)
+            marks = adapter.load_mark_closes(
+                symbol, start, end, eligible_symbols=eligible)
             mt, mp = [row[0] for row in marks], [row[1] for row in marks]
             marks_at_bar[symbol] = {}
             for time_ms in times:
@@ -1460,7 +1483,8 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
                     raise IncompleteCandidate(f"{INCOMPLETE}: missing causal mark for {symbol}")
                 marks_at_bar[symbol][time_ms] = mp[at]
             events = []
-            for event in adapter.load_funding(symbol, start, end):
+            for event in adapter.load_funding(
+                    symbol, start, end, eligible_symbols=eligible):
                 at = bisect_right(mt, event.time_ms) - 1
                 if at < 0 or event.time_ms - mt[at] > 3_600_000:
                     raise IncompleteCandidate(f"{INCOMPLETE}: funding mark gap for {symbol}")
@@ -1476,7 +1500,15 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
                             independent_review=False)
     return {
         "_verified_authority": {**authority.as_dict(),
-                                "exchange_info_sha256": EXCHANGE_INFO_SHA256},
+                                "exchange_filter_authority_sha256":
+                                    contract["data"]["exchange_filter_authority_sha256"],
+                                "fold_filter_snapshots": {
+                                    name: {
+                                        "sha256": item.snapshot_sha256,
+                                        "captured_at": item.captured_at,
+                                    }
+                                    for name, item in filter_authorities.items()
+                                }},
         "candidate_id": pf.candidate_id, "source_binding": bindings[pf.candidate_id],
         "folds": [{"name": fold.name, "trades": list(fold.trades),
                    "net_r": fold_net[index], "final_equity": fold.final_equity}
@@ -1495,8 +1527,9 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
     gaps = []
-    for label, path in (("archive manifest", ARCHIVE_MANIFEST_PATH), ("PIT universe", UNIVERSE_PATH),
-                        ("frozen exchangeInfo", EXCHANGE_INFO_PATH)):
+    for label, path in (("archive manifest", ARCHIVE_MANIFEST_PATH),
+                        ("PIT universe", UNIVERSE_PATH),
+                        ("exchange-filter authority", FILTER_AUTHORITY_PATH)):
         if not path.is_file():
             gaps.append(f"missing {label}: {path}")
     for candidate_id, path in SOURCE_RUNNER_PATHS.items():
@@ -1511,15 +1544,16 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     gaps.append("raw evaluator is staged and synthetic-tested, but real archive execution remains disabled until the "
                 "contract merge signal; no public evaluation/promotion route exists")
     return {
-        "format": "zackbot.strategy-causal-pack-01-readiness/1", "ready": False,
+        "format": "zackbot.strategy-causal-pack-01-readiness/2", "ready": False,
         "contract_sha256": contract_digest, "source_bindings": bindings,
         "required_sources": {"manifest": str(ARCHIVE_MANIFEST_PATH), "universe": str(UNIVERSE_PATH),
-                             "exchange_info": str(EXCHANGE_INFO_PATH),
+                             "exchange_filter_authority": str(FILTER_AUTHORITY_PATH),
                              "archive_store": str(Path(archive_store) if archive_store is not None else DEFAULT_ARCHIVE_STORE),
                              "source_runners": {k: str(v) for k, v in SOURCE_RUNNER_PATHS.items()}},
         "folds": contract["folds"], "cutoff": contract["data"]["forbid_read_at_or_after"],
         "required_raw_series": ["klines:1h", "klines:4h", "fundingRate", "markPriceKlines:1h"],
-        "invariants": ["CORE-20 PIT membership", "fold-local warmup/purge", "next-open fills",
+        "invariants": ["causal fold-start filters + filtered CORE-20 PIT membership",
+                       "fold-local warmup/purge", "next-open fills",
                        "prior-closed ATR", "actual exchange filters", "actual funding/causal marks",
                        "isolated 500 USDT books", "dynamic 1% marked-equity risk",
                        "four-position/10x gross caps", "CORE-20 simultaneous-entry priority",

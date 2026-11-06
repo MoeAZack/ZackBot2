@@ -238,7 +238,7 @@ def test_caller_fill_injection_is_forbidden_and_raw_episode_uses_causal_primitiv
     # A frozen synthetic raw-bar episode still exercises the internal causal
     # primitives: completed decision ATR -> next-open entry -> FBL path fills.
     contract, _ = R.load_contract()
-    spec = R.candidate_spec(contract, "pullback_rsi_short_h1_causal_v2")
+    spec = R.candidate_spec(contract, "pullback_rsi_short_h1_causal_v3")
     raw_bars = [bar(t=i * 1_000) for i in range(202)]
     raw_bars[200] = bar(o=100, h=100.5, l=99.5, c=100, t=200_000)
     raw_bars[201] = bar(o=100, h=101, l=97.5, c=99.99, t=201_000)
@@ -343,9 +343,9 @@ def test_post_create_claim_fault_never_reopens_identity_or_emits_packet(tmp_path
 
 def test_cli_exposes_exactly_three_frozen_candidates():
     assert R.CANDIDATE_IDS == (
-        "pullback_rsi_short_h1_causal_v2",
-        "exp_mom_short_c27_causal_v2",
-        "volume_pressure_inventory_short_1h_causal_v2",
+        "pullback_rsi_short_h1_causal_v3",
+        "exp_mom_short_c27_causal_v3",
+        "volume_pressure_inventory_short_1h_causal_v3",
     )
     assert not hasattr(R, "run_with_loader")
     assert not hasattr(R, "trade_from_evidence")
@@ -365,9 +365,9 @@ def test_readiness_wires_exact_repository_sources_without_market_read():
     report = R.missing_input_report(contract_merged=False)
     assert report["ready"] is False
     assert set(report["source_bindings"]) == set(R.CANDIDATE_IDS)
-    assert report["source_bindings"]["pullback_rsi_short_h1_causal_v2"]["function"] == "sig_trend_pullback_rsi"
-    assert report["source_bindings"]["exp_mom_short_c27_causal_v2"]["function"] == "sig_exp_mom_short"
-    assert report["source_bindings"]["volume_pressure_inventory_short_1h_causal_v2"]["function"] == "sig_volume_pressure_inventory_1h"
+    assert report["source_bindings"]["pullback_rsi_short_h1_causal_v3"]["function"] == "sig_trend_pullback_rsi"
+    assert report["source_bindings"]["exp_mom_short_c27_causal_v3"]["function"] == "sig_exp_mom_short"
+    assert report["source_bindings"]["volume_pressure_inventory_short_1h_causal_v3"]["function"] == "sig_volume_pressure_inventory_1h"
     assert report["folds"] == [
         {"name": "wf1", "start": "2025-04-01T00:00:00Z", "end": "2025-09-30T00:00:00Z"},
         {"name": "wf2", "start": "2025-10-01T00:00:00Z", "end": "2026-03-31T00:00:00Z"},
@@ -545,7 +545,7 @@ def test_fold_signal_tape_calls_exact_vpi_source_with_weekly_core20_and_causal_a
     second = (symbols[0],) + symbols[2:21]
     membership = [first if index < 110 else second for index in range(n)]
     tape = R.build_fold_source_signal_tape(
-        contract, "volume_pressure_inventory_short_1h_causal_v2", bars, membership)
+        contract, "volume_pressure_inventory_short_1h_causal_v3", bars, membership)
     assert tape.membership[109] == first and tape.membership[110] == second
     assert len(tape.signals["BTCUSDT"]["se"]) == n
     assert tape.prior_closed_atr["BTCUSDT"][0] is None
@@ -562,12 +562,12 @@ def test_fold_signal_tape_fails_whole_candidate_on_bad_membership_or_grid():
     bad_membership[50] = symbols[:-1]
     with pytest.raises(R.IncompleteCandidate, match="PIT CORE-20"):
         R.build_fold_source_signal_tape(
-            contract, "volume_pressure_inventory_short_1h_causal_v2", bars, bad_membership)
+            contract, "volume_pressure_inventory_short_1h_causal_v3", bars, bad_membership)
     shifted = dict(bars)
     shifted["S19"] = tuple(R.Bar(bar.time_ms + 1, bar.open, bar.high, bar.low, bar.close) for bar in rows)
     with pytest.raises(R.IncompleteCandidate, match="exact fold grid"):
         R.build_fold_source_signal_tape(
-            contract, "volume_pressure_inventory_short_1h_causal_v2", shifted, [symbols] * 200)
+            contract, "volume_pressure_inventory_short_1h_causal_v3", shifted, [symbols] * 200)
 
 
 @pytest.mark.parametrize("candidate_id", R.CANDIDATE_IDS[:2])
@@ -609,7 +609,7 @@ def test_synthetic_vpi_fold_derives_source_signal_next_open_and_entry_bar_target
     ledgers = {symbol: R.FundingLedger((), True, True) for symbol in symbols}
     marks = {symbol: {start + index * 3_600_000: 100.0 for index in range(n)} for symbol in symbols}
     result = R._evaluate_raw_fold(
-        contract, "volume_pressure_inventory_short_1h_causal_v2", "synthetic",
+        contract, "volume_pressure_inventory_short_1h_causal_v3", "synthetic",
         bars, membership, rules, ledgers, marks)
     episode = next(trade for trade in result.trades if trade["symbol"] == "S01"
                    and trade["entry_index"] == 169)
@@ -638,7 +638,7 @@ def test_raw_fold_refuses_missing_mark_and_incomplete_funding_before_reduced_sam
     ledgers = {symbol: R.FundingLedger((), True, True) for symbol in symbols}
     ledgers["S00"] = R.FundingLedger((), True, False)
     with pytest.raises(R.IncompleteCandidate, match="funding authority incomplete"):
-        R._evaluate_raw_fold(contract, "volume_pressure_inventory_short_1h_causal_v2", "bad",
+        R._evaluate_raw_fold(contract, "volume_pressure_inventory_short_1h_causal_v3", "bad",
                              bars, membership, rules, ledgers, marks)
 
 
@@ -649,7 +649,7 @@ def _sealed_candidate_packets(tmp_path, *, heads=None):
     authority = {
         "manifest_digest": "1" * 64, "pit_universe_digest": "2" * 64,
         "manifest_file_sha256": "3" * 64, "universe_file_sha256": "4" * 64,
-        "exchange_info_sha256": R.EXCHANGE_INFO_SHA256,
+        "exchange_filter_authority_sha256": R.pf_contract_filter_authority_sha256(),
     }
     contract, _ = R.load_contract()
     for index, candidate_id in enumerate(R.CANDIDATE_IDS):
@@ -757,5 +757,24 @@ def test_raw_evaluator_rejects_nonrepository_authorities_before_first_row_read()
     row_reads = []
     adapter.core20_union = lambda *_: row_reads.append(True)
     with pytest.raises(A.ArchiveIncomplete, match="fixed repository manifest/PIT"):
+        R.evaluate_raw_candidate(adapter, pf, contract_merged=True)
+    assert row_reads == []
+
+
+def test_raw_evaluator_rejects_filter_authority_before_first_market_row(monkeypatch):
+    contract, digest = R.load_contract()
+    candidate_id = R.CANDIDATE_IDS[0]
+    pf = R.Preflight(contract, digest, "a" * 40, candidate_id, "f" * 64)
+    adapter = object.__new__(A.RawArchiveAdapter)
+    adapter.verify_repository_authorities = lambda *_: A.AuthorityDigests(
+        "1" * 64, "2" * 64, "3" * 64, "4" * 64)
+    row_reads = []
+    adapter.core20_union = lambda *_args, **_kwargs: row_reads.append(True)
+
+    def refuse(*_args, **_kwargs):
+        raise A.ArchiveIncomplete("filter authority checksum mismatch: hostile")
+
+    monkeypatch.setattr(A, "load_fold_filter_authorities", refuse)
+    with pytest.raises(A.ArchiveIncomplete, match="filter authority checksum mismatch"):
         R.evaluate_raw_candidate(adapter, pf, contract_merged=True)
     assert row_reads == []

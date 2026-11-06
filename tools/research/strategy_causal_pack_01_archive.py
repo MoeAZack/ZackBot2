@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.research import manifest as M
@@ -58,6 +59,164 @@ class AuthorityDigests:
             "manifest_file_sha256": self.manifest_file_sha256,
             "universe_file_sha256": self.universe_file_sha256,
         }
+
+
+@dataclass(frozen=True)
+class FoldFilterAuthority:
+    fold_name: str
+    authority_sha256: str
+    snapshot_sha256: str
+    captured_at: str
+    eligible_symbols: frozenset[str]
+    rules: dict[str, dict]
+
+
+def _utc_ms(value: str) -> int:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ArchiveIncomplete(f"invalid authority timestamp: {value!r}") from exc
+    return int(parsed.timestamp() * 1000)
+
+
+def load_fold_filter_authorities(authority_path: str | Path, expected_sha256: str,
+                                 repository_root: str | Path, contract: dict) -> dict[str, FoldFilterAuthority]:
+    """Bind causal, pre-fold Binance filter snapshots before any market row read."""
+    authority_file = Path(authority_path)
+    root = Path(repository_root).resolve()
+    try:
+        raw = authority_file.read_bytes()
+        authority = json.loads(raw.decode("utf-8"),
+                               parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    except (OSError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ArchiveIncomplete(f"filter authority unavailable or malformed: {exc}") from exc
+    actual_authority_sha = hashlib.sha256(raw).hexdigest()
+    if actual_authority_sha != expected_sha256:
+        raise ArchiveIncomplete(f"filter authority checksum mismatch: {actual_authority_sha}")
+    if (authority.get("authority"), authority.get("version"), authority.get("status"),
+            authority.get("signed_by")) != (
+            "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 2, "FROZEN", "codex"):
+        raise ArchiveIncomplete("filter authority identity/status changed")
+    data = contract.get("data") or {}
+    if (data.get("exchange_filter_authority_sha256") != actual_authority_sha
+            or data.get("pit_universe_path") != authority.get("pit_universe_path")
+            or data.get("pit_universe_sha256") != authority.get("pit_universe_sha256")
+            or data.get("pit_universe_digest") != authority.get("pit_universe_digest")):
+        raise ArchiveIncomplete("contract/filter authority PIT binding changed")
+    pit_rel = authority.get("pit_universe_path")
+    if not isinstance(pit_rel, str) or Path(pit_rel).is_absolute():
+        raise ArchiveIncomplete("PIT universe path must be repository-relative")
+    pit_path = (root / pit_rel).resolve()
+    if root != pit_path and root not in pit_path.parents:
+        raise ArchiveIncomplete("PIT universe escapes repository root")
+    try:
+        pit_raw = pit_path.read_bytes()
+        pit = json.loads(pit_raw.decode("utf-8"),
+                         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    except (OSError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ArchiveIncomplete(f"PIT universe unavailable or malformed: {exc}") from exc
+    if (hashlib.sha256(pit_raw).hexdigest() != authority.get("pit_universe_sha256")
+            or pit.get("digest") != authority.get("pit_universe_digest")
+            or pit.get("digest") != U.digest_of(pit)):
+        raise ArchiveIncomplete("PIT universe byte/content digest mismatch")
+    folds = contract.get("folds") or []
+    snapshots: dict[str, tuple[dict[str, dict], frozenset[str], str, int, int]] = {}
+    for row in authority.get("snapshots", ()):
+        captured = row.get("captured_at")
+        if not isinstance(captured, str) or captured in snapshots:
+            raise ArchiveIncomplete("filter authority has duplicate or invalid capture")
+        rel = row.get("path")
+        if not isinstance(rel, str) or Path(rel).is_absolute():
+            raise ArchiveIncomplete("filter snapshot path must be repository-relative")
+        path = (root / rel).resolve()
+        if root != path and root not in path.parents:
+            raise ArchiveIncomplete("filter snapshot escapes repository root")
+        try:
+            payload_raw = path.read_bytes()
+            payload = json.loads(payload_raw.decode("utf-8"),
+                                 parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+        except (OSError, TypeError, ValueError, UnicodeDecodeError) as exc:
+            raise ArchiveIncomplete(f"filter snapshot unavailable or malformed: {exc}") from exc
+        snapshot_sha = hashlib.sha256(payload_raw).hexdigest()
+        if snapshot_sha != row.get("sha256"):
+            raise ArchiveIncomplete(f"filter snapshot checksum mismatch: {path.name}")
+        captured_ms, declared_server_ms = _utc_ms(captured), _utc_ms(row.get("server_time"))
+        if type(payload.get("serverTime")) is not int or payload["serverTime"] != declared_server_ms:
+            raise ArchiveIncomplete(f"filter snapshot serverTime mismatch: {path.name}")
+        rules = F.rules_from_exchange_info(payload)
+        eligible: set[str] = set()
+        seen_symbols: set[str] = set()
+        for symbol_row in payload.get("symbols", ()):
+            symbol = symbol_row.get("symbol") if isinstance(symbol_row, dict) else None
+            if not isinstance(symbol, str) or symbol in seen_symbols:
+                raise ArchiveIncomplete(f"filter snapshot has duplicate/invalid symbol: {path.name}")
+            seen_symbols.add(symbol)
+            if not (symbol_row.get("status") == "TRADING"
+                    and symbol_row.get("contractType") == "PERPETUAL"
+                    and symbol_row.get("quoteAsset") == "USDT"
+                    and symbol_row.get("underlyingType") == "COIN"):
+                continue
+            filters = symbol_row.get("filters")
+            if not isinstance(filters, list):
+                continue
+            types = [item.get("filterType") for item in filters if isinstance(item, dict)]
+            required = ("PRICE_FILTER", "MARKET_LOT_SIZE", "MIN_NOTIONAL")
+            if any(types.count(filter_type) != 1 for filter_type in required) or symbol not in rules:
+                continue
+            rule = rules[symbol]
+            if any(not math.isfinite(float(rule.get(key, float("nan")))) or float(rule[key]) <= 0
+                   for key in ("tick", "step", "min_qty", "min_notional", "max_qty")):
+                continue
+            eligible.add(symbol)
+        snapshots[captured] = (
+            rules, frozenset(eligible), snapshot_sha, captured_ms, declared_server_ms)
+    bindings = authority.get("fold_bindings")
+    if not isinstance(bindings, dict) or set(bindings) != {fold.get("name") for fold in folds}:
+        raise ArchiveIncomplete("filter authority fold bindings do not match contract folds")
+    out: dict[str, FoldFilterAuthority] = {}
+    for fold in folds:
+        name, start_ms = fold.get("name"), _utc_ms(fold.get("start"))
+        eligible_captures = [
+            capture
+            for capture, (_, _, _, captured_ms, server_ms) in snapshots.items()
+            if captured_ms < start_ms and server_ms < start_ms
+        ]
+        if not eligible_captures:
+            raise ArchiveIncomplete(f"{name}: no causal pre-fold filter snapshot")
+        latest = max(eligible_captures, key=_utc_ms)
+        if bindings.get(name) != latest:
+            raise ArchiveIncomplete(f"{name}: binding is not the latest causal pre-fold snapshot")
+        rules, symbols, snapshot_sha, captured_ms, server_ms = snapshots[latest]
+        if captured_ms >= start_ms or server_ms >= start_ms:
+            raise ArchiveIncomplete(f"{name}: future-dated filter snapshot")
+        active_at_start = max(
+            (week for week in pit.get("weeks", ())
+             if type(week.get("monday_ms")) is int and week["monday_ms"] <= start_ms),
+            key=lambda week: week["monday_ms"],
+            default=None,
+        )
+        if active_at_start is None:
+            raise ArchiveIncomplete(f"{name}: PIT membership is unavailable at fold start")
+        weeks = [active_at_start]
+        end_ms = _utc_ms(fold.get("end"))
+        for week in pit.get("weeks", ()):
+            monday_ms = week.get("monday_ms")
+            if type(monday_ms) is int and start_ms < monday_ms < end_ms:
+                weeks.append(week)
+        cells = []
+        for week in weeks:
+            ranked = week.get("books", {}).get("crypto", {}).get("members", ())
+            members = [symbol for symbol in ranked if symbol in symbols][:20]
+            if len(members) != 20 or len(set(members)) != 20:
+                raise ArchiveIncomplete(f"{name}: causal filter-eligible CORE-20 is incomplete")
+            cells.append({"monday_utc": week.get("monday_utc"), "members": members})
+        cell_sha = hashlib.sha256(json.dumps(
+            cells, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+        if cell_sha != (authority.get("weekly_membership_sha256") or {}).get(name):
+            raise ArchiveIncomplete(f"{name}: causal weekly membership digest mismatch")
+        out[name] = FoldFilterAuthority(name, actual_authority_sha, snapshot_sha, latest,
+                                        symbols, {symbol: dict(rules[symbol]) for symbol in symbols})
+    return out
 
 
 def load_exchange_filters(path: str | Path, expected_sha256: str,
@@ -172,11 +331,14 @@ class RawArchiveAdapter:
                 "adapter authorities do not match fixed repository manifest/PIT bytes")
         return expected
 
-    def core20_at(self, time_ms: int) -> tuple[str, ...]:
+    def core20_at(self, time_ms: int,
+                  eligible_symbols: frozenset[str] | None = None) -> tuple[str, ...]:
         weeks = [week for week in self.pit_universe["weeks"] if week["monday_ms"] <= time_ms]
         if not weeks:
             raise ArchiveIncomplete(f"no PIT universe observation at {time_ms}")
-        members = tuple(max(weeks, key=lambda week: week["monday_ms"])["books"]["crypto"]["members"][:20])
+        ranked = tuple(max(weeks, key=lambda week: week["monday_ms"])["books"]["crypto"]["members"])
+        members = (ranked[:20] if eligible_symbols is None else
+                   tuple(symbol for symbol in ranked if symbol in eligible_symbols)[:20])
         if len(members) != 20 or len(set(members)) != 20:
             raise ArchiveIncomplete("PIT CORE-20 is not 20 unique crypto symbols")
         try:
@@ -186,7 +348,8 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"PIT membership unavailable: {exc}") from exc
         return members
 
-    def core20_union(self, start_ms: int, end_ms: int) -> tuple[str, ...]:
+    def core20_union(self, start_ms: int, end_ms: int,
+                     eligible_symbols: frozenset[str] | None = None) -> tuple[str, ...]:
         self._window(start_ms, end_ms)
         instants = [start_ms]
         instants.extend(
@@ -195,15 +358,16 @@ class RawArchiveAdapter:
         )
         seen: list[str] = []
         for instant in instants:
-            for symbol in self.core20_at(instant):
+            for symbol in self.core20_at(instant, eligible_symbols):
                 if symbol not in seen:
                     seen.append(symbol)
         return tuple(seen)
 
-    def load_klines(self, symbol: str, interval: str, start_ms: int, end_ms: int) -> tuple[RawKline, ...]:
+    def load_klines(self, symbol: str, interval: str, start_ms: int, end_ms: int, *,
+                    eligible_symbols: frozenset[str] | None = None) -> tuple[RawKline, ...]:
         if interval not in INTERVAL_MS:
             raise ArchiveIncomplete("candidate archive adapter permits only 1h/4h klines")
-        self._require_core_symbol(symbol, start_ms, end_ms)
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         rows = self._rows(symbol, "klines", interval, start_ms, end_ms)
         step = INTERVAL_MS[interval]
         chosen = [row for row in rows if start_ms <= int(row[0]) < end_ms]
@@ -223,8 +387,9 @@ class RawArchiveAdapter:
             out.append(RawKline(int(row[0]), o, h, low, close, volume))
         return tuple(out)
 
-    def load_funding(self, symbol: str, start_ms: int, end_ms: int) -> tuple[RawFunding, ...]:
-        self._require_core_symbol(symbol, start_ms, end_ms)
+    def load_funding(self, symbol: str, start_ms: int, end_ms: int, *,
+                     eligible_symbols: frozenset[str] | None = None) -> tuple[RawFunding, ...]:
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         rows = self._rows(symbol, "fundingRate", None, start_ms, end_ms)
         out = []
         for row in rows:
@@ -250,9 +415,10 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"{symbol}: funding coverage gap at window end")
         return tuple(out)
 
-    def load_mark_closes(self, symbol: str, start_ms: int, end_ms: int) -> tuple[tuple[int, float], ...]:
+    def load_mark_closes(self, symbol: str, start_ms: int, end_ms: int, *,
+                         eligible_symbols: frozenset[str] | None = None) -> tuple[tuple[int, float], ...]:
         """Return causal 1h mark closes as (available_ms, close), with exact hourly coverage."""
-        self._require_core_symbol(symbol, start_ms, end_ms)
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         raw_start = start_ms - HOUR_MS
         rows = self._rows(symbol, "markPriceKlines", "1h", raw_start, end_ms)
         chosen = [row for row in rows if raw_start <= int(row[0]) < end_ms]
@@ -273,9 +439,10 @@ class RawArchiveAdapter:
                 or start_ms >= end_ms or end_ms > CUTOFF_MS):
             raise ArchiveIncomplete("archive window must be nonempty and end at/before the frozen exclusive cutoff")
 
-    def _require_core_symbol(self, symbol: str, start_ms: int, end_ms: int) -> None:
+    def _require_core_symbol(self, symbol: str, start_ms: int, end_ms: int,
+                             eligible_symbols: frozenset[str] | None = None) -> None:
         self._window(start_ms, end_ms)
-        if symbol not in self.core20_union(start_ms, end_ms):
+        if symbol not in self.core20_union(start_ms, end_ms, eligible_symbols):
             raise ArchiveIncomplete(f"{symbol}: outside frozen PIT CORE-20 for requested window")
 
     def _rows(self, symbol: str, series: str, interval: str | None,

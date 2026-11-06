@@ -1,6 +1,7 @@
 import hashlib
 import json
 import zipfile
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -158,3 +159,130 @@ def test_exchange_filters_use_checksum_bound_shared_engine_parser(tmp_path):
         A.load_exchange_filters(path, "0" * 64, ("S00",))
     with pytest.raises(A.ArchiveIncomplete, match="lacks actual filters"):
         A.load_exchange_filters(path, digest, ("S01",))
+
+
+def _filter_authority_fixture(tmp_path, *, ineligible=(), capture="2024-12-01T00:00:00Z",
+                              server="2024-12-01T00:00:00Z", fold_start="2025-01-06T00:00:00Z"):
+    symbols = [f"S{i:02d}" for i in range(21)]
+    rules = {symbol: {"tick": 0.01, "step": 0.1, "min_qty": 0.1,
+                      "min_notional": 5, "max_qty": 100} for symbol in symbols}
+    info = F.exchange_info_from_rules(rules)
+    info["serverTime"] = int(datetime.fromisoformat(server.replace("Z", "+00:00")).timestamp() * 1000)
+    for row in info["symbols"]:
+        row["quoteAsset"] = "USDT"
+        row["underlyingType"] = "COIN"
+        if row["symbol"] in ineligible:
+            row["status"] = "SETTLING"
+    snapshot_rel = "evidence/exchange.json"
+    snapshot_path = tmp_path / snapshot_rel
+    snapshot_path.parent.mkdir(parents=True)
+    snapshot_raw = json.dumps(info, separators=(",", ":")).encode()
+    snapshot_path.write_bytes(snapshot_raw)
+
+    fold_dt = datetime.fromisoformat(fold_start.replace("Z", "+00:00"))
+    active_monday = fold_dt - timedelta(days=fold_dt.weekday())
+    monday_utc = active_monday.strftime("%Y-%m-%dT%H:%M:%SZ")
+    monday_ms = int(active_monday.timestamp() * 1000)
+    pit = {
+        "format": U.FORMAT, "universe_id": U.UNIVERSE_ID, "manifest_digest": "m" * 64,
+        "books": ["crypto"],
+        "weeks": [{"monday_ms": monday_ms, "monday_utc": monday_utc,
+                   "books": {"crypto": {"members": symbols, "eligible": 21,
+                                           "qv30d_usdt": ["1"] * 21}}}],
+        "symbols": [{"symbol": symbol, "class": "crypto", "subclass": "synthetic"}
+                    for symbol in symbols],
+    }
+    pit["digest"] = U.digest_of(pit)
+    pit_rel = "evidence/pit.json"
+    pit_path = tmp_path / pit_rel
+    pit_raw = json.dumps(pit, separators=(",", ":")).encode()
+    pit_path.write_bytes(pit_raw)
+    members = [symbol for symbol in symbols if symbol not in ineligible][:20]
+    cells = [{"monday_utc": monday_utc, "members": members}]
+    membership_sha = hashlib.sha256(json.dumps(
+        cells, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    authority = {
+        "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY",
+        "version": 2, "status": "FROZEN", "signed_by": "codex",
+        "pit_universe_path": pit_rel,
+        "pit_universe_sha256": hashlib.sha256(pit_raw).hexdigest(),
+        "pit_universe_digest": pit["digest"],
+        "snapshots": [{"captured_at": capture, "server_time": server,
+                       "path": snapshot_rel,
+                       "sha256": hashlib.sha256(snapshot_raw).hexdigest()}],
+        "fold_bindings": {"wf": capture},
+        "weekly_membership_sha256": {"wf": membership_sha},
+    }
+    authority_path = tmp_path / "authority.json"
+    authority_raw = json.dumps(authority, separators=(",", ":")).encode()
+    authority_path.write_bytes(authority_raw)
+    authority_sha = hashlib.sha256(authority_raw).hexdigest()
+    contract = {
+        "data": {"exchange_filter_authority_sha256": authority_sha,
+                 "pit_universe_path": pit_rel,
+                 "pit_universe_sha256": authority["pit_universe_sha256"],
+                 "pit_universe_digest": pit["digest"]},
+        "folds": [{"name": "wf", "start": fold_start, "end": "2025-01-13T00:00:00Z"}],
+    }
+    return authority_path, authority_sha, contract, members
+
+
+def test_filter_authority_replaces_ineligible_ranked_symbol_before_market_reads(tmp_path):
+    path, digest, contract, members = _filter_authority_fixture(
+        tmp_path, ineligible=("S00",))
+    result = A.load_fold_filter_authorities(path, digest, tmp_path, contract)
+    assert tuple(symbol for symbol in (f"S{i:02d}" for i in range(21))
+                 if symbol in result["wf"].eligible_symbols) == tuple(members)
+    assert "S00" not in result["wf"].eligible_symbols
+    assert "S20" in result["wf"].eligible_symbols
+
+
+def test_filter_authority_pins_membership_cell_active_before_midweek_fold_start(tmp_path):
+    path, digest, contract, _ = _filter_authority_fixture(
+        tmp_path, fold_start="2025-01-07T00:00:00Z")
+    result = A.load_fold_filter_authorities(path, digest, tmp_path, contract)
+    assert len(result["wf"].eligible_symbols) == 21
+
+
+def test_filter_authority_refuses_future_server_time_even_with_old_capture(tmp_path):
+    path, digest, contract, _ = _filter_authority_fixture(
+        tmp_path, capture="2024-12-01T00:00:00Z", server="2025-01-07T00:00:00Z")
+    with pytest.raises(A.ArchiveIncomplete, match="no causal pre-fold filter snapshot"):
+        A.load_fold_filter_authorities(path, digest, tmp_path, contract)
+
+
+def test_filter_authority_refuses_fewer_than_twenty_eligible_symbols(tmp_path):
+    path, digest, contract, _ = _filter_authority_fixture(
+        tmp_path, ineligible=("S00", "S01"))
+    with pytest.raises(A.ArchiveIncomplete, match="CORE-20 is incomplete"):
+        A.load_fold_filter_authorities(path, digest, tmp_path, contract)
+
+
+def test_filter_authority_refuses_declared_server_time_mismatch(tmp_path):
+    path, digest, contract, _ = _filter_authority_fixture(tmp_path)
+    authority = json.loads(path.read_text())
+    authority["snapshots"][0]["server_time"] = "2024-11-30T23:59:59Z"
+    raw = json.dumps(authority, separators=(",", ":")).encode()
+    path.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    contract["data"]["exchange_filter_authority_sha256"] = digest
+    with pytest.raises(A.ArchiveIncomplete, match="serverTime mismatch"):
+        A.load_fold_filter_authorities(path, digest, tmp_path, contract)
+
+
+def test_filter_authority_refuses_snapshot_and_membership_tamper(tmp_path):
+    path, digest, contract, _ = _filter_authority_fixture(tmp_path)
+    snapshot = tmp_path / "evidence/exchange.json"
+    snapshot.write_bytes(snapshot.read_bytes() + b" ")
+    with pytest.raises(A.ArchiveIncomplete, match="snapshot checksum mismatch"):
+        A.load_fold_filter_authorities(path, digest, tmp_path, contract)
+
+    path, digest, contract, _ = _filter_authority_fixture(tmp_path / "membership")
+    authority = json.loads(path.read_text())
+    authority["weekly_membership_sha256"]["wf"] = "0" * 64
+    raw = json.dumps(authority, separators=(",", ":")).encode()
+    path.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    contract["data"]["exchange_filter_authority_sha256"] = digest
+    with pytest.raises(A.ArchiveIncomplete, match="weekly membership digest mismatch"):
+        A.load_fold_filter_authorities(path, digest, tmp_path / "membership", contract)
