@@ -1,6 +1,6 @@
 # STRATEGY-CAUSAL-PACK-01
 
-**Status: FROZEN — signed by Codex, 6 November 2026 09:55 Cairo.**
+**Status: FROZEN — signed by Codex, 6 November 2026 11:27 Cairo.**
 
 The JSON twin is authoritative. This pack gives three previously positive-after-cost but under-sampled short ideas one
 new, causal identity each. Selection is disclosed and is not evidence. All old candidate verdicts remain rejected.
@@ -39,11 +39,18 @@ The only evidence windows are the three untouched folds: 1 April–30 September 
 and 1 April–28 September 2026, all end-exclusive. Every candidate observes its declared warm-up and holding-horizon
 purge. Nothing at or after 28 September 2026 may be read. The already viewed holdout is permanently excluded.
 
-Each candidate runs in its own frozen source-parity book: 500 USDT starting equity, 1% of current book equity risked per
-new entry, at most four open positions, and gross notional capped at 10x current book equity. Simultaneous next-open
-entries are processed in the checksum-bound CORE-20 order. The 8% daily entry halt uses Cairo calendar days through the
-`Africa/Cairo` IANA timezone; it blocks only new entries and never stops exit or protection management. Equity compounds
-inside a candidate book, candidates do not share capital, and none of these values may be overridden by the caller.
+Each candidate runs in its own frozen causal marked-equity book: 500 USDT starting equity, 1% of marked equity risked
+at each next-open entry attempt, at most four open positions, and gross marked notional capped at 10x marked equity.
+This is an identity-defining deviation from the legacy source's realized-cash sizing. Existing positions use the last
+verified 1h mark close available at the open; same-open admissions use their unslipped reference open. Settled cash
+includes all prior realized PnL, fees, slippage, funding, and partials exactly once. Simultaneous entries follow the
+checksum-bound CORE-20 order, so later symbols see earlier fills and entry costs.
+
+At each bar open, funding strictly before the open is settled, marks and any new Cairo-day baseline are frozen, and due
+signal/time exits execute before entry terms are calculated. The 8% Cairo-day threshold is checked before the first
+entry and after every cashflow; once latched it blocks only later entries that day. Same-timestamp funding is settled
+after all same-open entries (so new positions receive it), then intrabar protection runs. Exits and protection are never
+blocked. Equity compounds inside each isolated candidate book, and callers cannot override any value or ordering.
 
 Each fill pays 5 bp taker fee plus 2 bp adverse slippage, rounded against the strategy to the frozen exchange tick.
 Actual checksum-verified Binance funding is included for settlements from entry inclusive to exit exclusive: positive
