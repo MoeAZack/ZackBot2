@@ -42,7 +42,7 @@
   "profiles": {
     "pack": {
       "overlay_path": "contracts/strategy_causal_pack_01_causal_v4/strategy_causal_pack_01_causal_v4_rebind.v1.json",
-      "overlay_byte_sha256": "f0cb10aeff9b3ba3a5d644150a1e7896a9061db8cc0ffe8a5c811195e018cf0c",
+      "overlay_byte_sha256": "f6f192caf605d9d14ded7707cfcd9ef50c8dba3a9f00bcdc58fe6eb7b4e5894c",
       "candidate_ids": [
         "pullback_rsi_short_h1_causal_v4",
         "exp_mom_short_c27_causal_v4"
@@ -55,7 +55,7 @@
     },
     "rbr_short": {
       "overlay_path": "contracts/rank_breadth_reversal_4h_short_causal_v4/rank_breadth_reversal_4h_short_causal_v4_rebind.v1.json",
-      "overlay_byte_sha256": "7cb7c8e69500e3049b1ea5008c8af36ae2e2c48c29680a6b9f89927ebd17c499",
+      "overlay_byte_sha256": "22f042f658a8b7fcd6701743f9094a020b7e621f6dfc463b6514c3d390139bdc",
       "candidate_ids": [
         "rank_breadth_reversal_4h_short_causal_v4"
       ],
@@ -67,7 +67,7 @@
     },
     "atr_shock": {
       "overlay_path": "contracts/atr_shock_snapback_4h_causal_v4/atr_shock_snapback_4h_causal_v4_rebind.v1.json",
-      "overlay_byte_sha256": "8590f465422d374018b8fbf53277e76b4f8280503ee8906f140705e3b30b20ed",
+      "overlay_byte_sha256": "44b982af691888c18e09deb89b38a570e25f018098680abeefa053fdb78b710f",
       "candidate_ids": [
         "atr_shock_snapback_4h_long_causal_v4",
         "atr_shock_snapback_4h_short_causal_v4"
