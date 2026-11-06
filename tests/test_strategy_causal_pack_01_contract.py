@@ -1,0 +1,168 @@
+"""Static freeze for STRATEGY-CAUSAL-PACK-01. No data or backtest is read."""
+import json
+import os
+from datetime import datetime, timezone
+
+import strategies as S
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DIR = os.path.join(ROOT, 'contracts', 'strategy_causal_pack_01')
+JS = os.path.join(DIR, 'strategy_causal_pack_01_contract.v1.json')
+MD = os.path.join(DIR, 'STRATEGY_CAUSAL_PACK_01.md')
+
+
+def _load():
+    with open(JS, encoding='utf-8') as fh:
+        contract = json.load(fh)
+    with open(MD, encoding='utf-8') as fh:
+        markdown = fh.read()
+    return contract, markdown
+
+
+def _ts(value):
+    return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(timezone.utc)
+
+
+def test_contract_is_frozen_signed_and_has_no_live_authority():
+    c, md = _load()
+    assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
+        'STRATEGY-CAUSAL-PACK-01', 1, 'FROZEN', 'codex')
+    assert c['frozen_at'] == '2026-11-06T09:55:00+02:00'
+    assert c['scope']['paper_testnet_only'] is True
+    assert c['scope']['default_enabled'] is False
+    assert c['scope']['mainnet_authority'] is False
+    assert c['scope']['parameter_search'] is False
+    assert c['scope']['runtime_risk_before_independent_pass'] is False
+    assert md.splitlines()[2] == '**Status: FROZEN — signed by Codex, 6 November 2026 09:55 Cairo.**'
+
+
+def test_three_new_unique_identities_preserve_old_rejections():
+    c, _ = _load()
+    rows = c['candidates']
+    assert [x['candidate_id'] for x in rows] == [
+        'pullback_rsi_short_h1_causal_v2',
+        'exp_mom_short_c27_causal_v2',
+        'volume_pressure_inventory_short_1h_causal_v2',
+    ]
+    assert len({x['candidate_id'] for x in rows}) == len({x['old_id'] for x in rows}) == 3
+    assert all(x['candidate_id'] != x['old_id'] and x['signal_and_parameters_unchanged'] for x in rows)
+    assert c['candidate_selection_disclosure']['selection_is_not_evidence'] is True
+    assert len(c['candidate_selection_disclosure']['prior_results']) == 3
+    assert 'Holm-adjusted' in c['candidate_selection_disclosure']['multiplicity_rule']
+
+
+def test_source_strategy_facts_and_frozen_horizons_match_code():
+    c, md = _load()
+    by_id = {x['candidate_id']: x for x in c['candidates']}
+    pull = S.STRATEGIES['pullback_rsi_short_h1']
+    exp = S.STRATEGIES['exp_mom_short_c27']
+    vpi = S.STRATEGIES['volume_pressure_inventory_1h']
+    assert pull['research_only'] and pull['sides'] == 'short' and pull['tf'] == '4h'
+    assert pull['mgmt']['max_bars'] == by_id['pullback_rsi_short_h1_causal_v2']['max_holding_bars'] == 60
+    assert exp['research_only'] and exp['sides'] == 'short' and exp['tf'] == '4h'
+    assert exp['mgmt'].get('max_bars') is None  # adding the preregistered cap creates the new identity
+    assert by_id['exp_mom_short_c27_causal_v2']['max_holding_bars'] == 180
+    with open(os.path.join(ROOT, 'tools', 'research', 'trend_ema_mom.py'), encoding='utf-8') as fh:
+        assert 'TIME_CAP_BARS = 180' in fh.read()
+    assert vpi['research_only'] and vpi['sides'] == 'both' and vpi['tf'] == '1h'
+    assert vpi['mgmt']['max_bars'] == by_id['volume_pressure_inventory_short_1h_causal_v2']['max_holding_bars'] == 24
+    for row in by_id.values():
+        assert f"`{row['candidate_id']}`" in md
+
+
+def test_all_discretionary_exits_are_next_open_and_missing_open_is_incomplete():
+    c, md = _load()
+    e = c['execution']
+    assert e['entry_fill'].startswith('next_tradable_open')
+    assert e['signal_exit_fill'].startswith('next_tradable_open')
+    assert e['time_exit_fill'].startswith('next_tradable_open')
+    assert e['decision_time_strictly_before_signal_or_time_fill'] is True
+    assert e['same_candle_close_fill_for_signal_or_time'] is False
+    assert e['missing_next_open'] == 'INCOMPLETE_SPLIT_END'
+    assert e['last_mark_or_synthetic_close'] is False
+    assert 'next tradable open' in md and 'never a last-mark or synthetic close' in md
+
+
+def test_costs_are_realistic_and_stressed():
+    c, md = _load()
+    costs = c['costs']
+    assert costs['fee_per_fill_bps'] == 5 and costs['adverse_slippage_per_fill_bps'] == 2
+    assert 'actual Binance USD-M funding' in costs['funding']
+    assert costs['funding_gap'] == costs['mark_gap'] == 'INCOMPLETE'
+    assert costs['cost_stress_multipliers_to_report'] == [1.0, 1.5, 2.0]
+    assert '5 bp taker fee plus 2 bp adverse slippage' in md
+
+
+def test_folds_are_ordered_unspent_and_holdout_is_forbidden():
+    c, md = _load()
+    folds = c['folds']
+    assert [(x['name'], x['start'], x['end']) for x in folds] == [
+        ('wf1', '2025-04-01T00:00:00Z', '2025-09-30T00:00:00Z'),
+        ('wf2', '2025-10-01T00:00:00Z', '2026-03-31T00:00:00Z'),
+        ('wf3', '2026-04-01T00:00:00Z', '2026-09-28T00:00:00Z'),
+    ]
+    for previous, current in zip(folds, folds[1:]):
+        assert _ts(previous['end']) < _ts(current['start'])
+    cutoff = _ts(c['data']['forbid_read_at_or_after'])
+    assert all(_ts(x['end']) <= cutoff for x in folds)
+    assert c['scope']['old_holdout_reuse'] is False
+    assert c['data']['viewed_holdout'] == '[2026-09-28,2026-11-05)'
+    assert 'Nothing at or after 28 September 2026 may be read' in md
+
+
+def test_split_purge_is_candidate_specific_and_finite():
+    c, _ = _load()
+    s = c['split_rules']
+    assert s == {
+        'entries_begin_after_warmup_bars': 'candidate.max_lookback_bars',
+        'new_entries_stop_before_end_bars': 'candidate.max_holding_bars',
+        'boundary_isolation_bars': 'candidate.max_lookback_bars + candidate.max_holding_bars',
+        'episode_must_close_inside_fold': True,
+        'folds_reported_separately': True,
+        'fold_selection': False,
+        'pool_before_per_fold_reporting': False,
+    }
+    assert [(x['max_lookback_bars'], x['max_holding_bars']) for x in c['candidates']] == [
+        (200, 60), (180, 180), (168, 24)]
+
+
+def test_runner_fails_closed_before_data_and_outputs_are_immutable():
+    c, _ = _load()
+    r = c['runner_integrity']
+    assert all(r.values())
+    assert c['stop_conditions'][1].startswith('Any read at or after 2026-09-28 refuses')
+
+
+def test_promotion_is_economic_frequent_diversified_and_independent():
+    c, md = _load()
+    g = c['promotion_gates']
+    assert g['aggregate_net_r_gt'] == g['aggregate_mean_r_gt'] == 0
+    assert g['aggregate_pf_gt'] == 1.05 and g['minimum_closed_trades'] == 200
+    assert g['minimum_symbols'] == 8 and (g['minimum_positive_folds'], g['of_folds']) == (2, 3)
+    assert g['minimum_monthly_trade_median'] == 8 and g['max_dd_r_lte'] == 15
+    assert g['minimum_regime_mean_r'] == -0.05 and g['max_symbol_absolute_contribution_fraction'] == 0.35
+    assert g['positive_after_1_5x_cost_stress'] and g['causal_parity_required']
+    assert g['independent_review_required'] and g['all_required_reports_present']
+    assert g['missing_or_incomplete_is_pass'] is False
+    assert 'at least 200 closes' in md and 'Missing evidence never passes' in md
+
+
+def test_required_reports_cover_significance_costs_regimes_and_survivorship():
+    c, _ = _load()
+    required = set(c['required_report'])
+    assert {'trade_count', 'net_r', 'mean_r', 'profit_factor', 'max_dd_r', 'expectancy_r'} <= required
+    assert {'raw_p_value', 'holm_adjusted_p_value', 'bootstrap_ci_95_mean_r'} <= required
+    assert {'fee_drag_r', 'slippage_drag_r', 'funding_drag_r', 'gross_r'} <= required
+    assert {'regime_breakdown', 'coin_breakdown', 'symbol_concentration'} <= required
+    assert {'survivorship_disclosure', 'incomplete_rows', 'failure_reason'} <= required
+
+
+def test_cohort_remains_default_off_bounded_and_protected():
+    c, md = _load()
+    cohort = c['cohort']
+    assert cohort['target_qualified_candidates'] == [2, 3]
+    assert cohort['slot_isolation'] and cohort['protected_execution_required'] and cohort['rollback_ready']
+    assert cohort['activation'].startswith('default-OFF')
+    assert cohort['initial_risk_multiplier_max'] == 'min(1, 15 / accepted_max_dd_r)'
+    assert 'RISK-LOSS-01' in cohort['loss_controls_required']
+    assert 'grants no mainnet authority' in md
