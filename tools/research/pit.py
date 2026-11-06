@@ -174,16 +174,29 @@ class Dataset:
             return self._cache[p]
         ap = M.contained(self.store, p)
         if self.archive:
-            _, published, data = M.read_archive(ap, p)
-            if published != f['sha256']:
-                raise PITError(f'{p}: bytes no longer match the manifest sha256')
-            raw = M.parse_archive_csv(p, data, M.archive_meta(p))
-            if f['series'] == 'fundingRate':
-                out = [Funding(int(r[0]), float(r[2]), int(r[1]), int(r[0])) for r in raw]
-            else:
+            if f['source']['kind'] == M.FUNDING_API_KIND:
+                _, api_rows = M.read_funding_api(ap, p, f['source'])
+                times = [row['fundingTime'] for row in api_rows]
+                gaps = [max(1, round((right - left) / HOUR)) for left, right in zip(times, times[1:])]
+                intervals = ([gaps[0]] + gaps) if gaps else ([8] if times else [])
+                out = [Funding(row['fundingTime'], float(row['fundingRate']), interval, row['fundingTime'])
+                       for row, interval in zip(api_rows, intervals)]
+            elif f['source']['kind'] == M.KLINE_API_KIND:
+                _, api_rows = M.read_kline_api(ap, p, f['source'])
                 iv = M.INTERVALS[f['interval']]
-                out = [Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[7]),
-                           int(r[0]) + iv) for r in raw]
+                out = [Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]),
+                           float(r[7]), int(r[0]) + iv) for r in api_rows]
+            else:
+                _, published, data = M.read_archive(ap, p)
+                if published != f['sha256']:
+                    raise PITError(f'{p}: bytes no longer match the manifest sha256')
+                raw = M.parse_archive_csv(p, data, M.archive_meta(p))
+                if f['series'] == 'fundingRate':
+                    out = [Funding(int(r[0]), float(r[2]), int(r[1]), int(r[0])) for r in raw]
+                else:
+                    iv = M.INTERVALS[f['interval']]
+                    out = [Bar(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[7]),
+                               int(r[0]) + iv) for r in raw]
         else:
             with open(ap, 'rb') as fh:
                 data = fh.read()

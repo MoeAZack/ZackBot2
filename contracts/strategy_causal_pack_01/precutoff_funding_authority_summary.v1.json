@@ -1,0 +1,1320 @@
+{
+ "complete_symbols": 60,
+ "completeness_rule": "nonempty; head, every interior gap, and cutoff tail <= 8h + frozen 10m jitter tolerance",
+ "digest": "9658d2892c1f7ce68cad39ee5f7dd2ac6098622a96757bbc5b265c9d33dca737",
+ "explicit_incomplete_symbols": [
+  "TONUSDT",
+  "VANRYUSDT"
+ ],
+ "format": "zb-strategy-causal-pack-01-funding-authority-summary/1",
+ "missing_exposure_rule": "an empty or gapped symbol is retained; any required exposure intersecting its gap makes the candidate incomplete",
+ "symbols": [
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "6b6787a9a02dfc9df763f16f338bd849cbac7b63d859121a5efcc7ba219d5086",
+     "response_sha256": "059eba7f3afbc02f50a3c8440b00b7bf05348cafc67ecf997efbda45e0b2d955",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "BTCUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/ETHUSDT/ETHUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "9bf6920de45c138053a3ae12a8b8132bc683b6d31a0f3d21afacb76399434cf0",
+     "response_sha256": "f4b695acbc783d1d993a5444187b7f8fa04e5c08ba969344b573d957d0dcbd41",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "ETHUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/SOLUSDT/SOLUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "a342be5b1d5ebe8b44107e4359362853c7d4a4e3a05bf97fd3ea39b9e1b9ae61",
+     "response_sha256": "5962dc9e9302187950095e1d5894a853a2bf8ee5525310c3c18d8eda8fc45143",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "SOLUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/XRPUSDT/XRPUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "cea4dfe2231ec827f5d64efc5fb04b179cae6c9fcf523b0c0c12cf76a5d6175b",
+     "response_sha256": "375152c6c951b3afa57412f3ca826aeb9e58364c24126f1506295559fad80eab",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "XRPUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/DOGEUSDT/DOGEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "09dba8d6362cd31ec56dff5e42b7068cac18bbf524b4cce25f82b3a3c82efd7c",
+     "response_sha256": "fa3d0fac62422ed5c01c711ed1002853f93b784f73bc193e600f9aa8a132f527",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "DOGEUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/SIRENUSDT/SIRENUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "439adddec3f3b2d4618d5cab8449113ffd462e52129f3e9d81c66b6fcd400d66",
+     "response_sha256": "e09b9bb4a8fa1132aea54b44eee68cfdcb780d42a52bbde8a7646ff936df6ef0",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "SIRENUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/RIVERUSDT/RIVERUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "7b68694984dd9c0ab2f82d26be44c6e21df81abb20bb1c9677a742bef6080b19",
+     "response_sha256": "c8c1220877c3ac09d00d15038b0db20441bf7ec65fede1fedd39cf6cbade807d",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "RIVERUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/HYPEUSDT/HYPEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "7e73a95817491524ab128bae4d6efd7bc04a985f5d940c91103b9265e1ce5989",
+     "response_sha256": "41f62da4f7d854d798e044c503195e4eb26a4183e19212e04a70b8a7e50c1c78",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "HYPEUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/ZECUSDT/ZECUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "4cb00b744b6249c783a71a5491e391d0c629e3cdb11036030cd8983435da5a98",
+     "response_sha256": "99cbb7a840587d739b23658a69e94b0050d7faf21886c9c32f64a7f3e8f69a65",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "ZECUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/BNBUSDT/BNBUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "1d820899519f5fa0fbf8e8f24649f5f7b8a96f88bd1286540266a3326295ad8d",
+     "response_sha256": "16a7b6d6799b342ff17557e36269c97768a6286c13d66d5472706f7748f5da2b",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "BNBUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/TAOUSDT/TAOUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "97742ce419909528c40fcc4e0d9dedd2e7cca5c775a32940639232264aff38d1",
+     "response_sha256": "cb81579d98032cd0915d8d2bb32364597aee9a8e8efce23f59abb2023311e4e9",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "TAOUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/1000PEPEUSDT/1000PEPEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "15527e9437a899810d54d5a87fcce2fb5bae0fe9a04fc6aeb98c36cdf7f6b06f",
+     "response_sha256": "cd5c7e94b6b3f228015ade579bf4a2bb2f6f33c7fd9fd466aa7d50c105a53104",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "1000PEPEUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/PIPPINUSDT/PIPPINUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "b33e51e3c92e855e41900b42dcf442a4ee628c9f8cbed8555ea9f683d6ec1785",
+     "response_sha256": "cf1ee13e8b5c53770c03ca0e4e89c10489ea6b96e1a3182e85413f0aff3839df",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "PIPPINUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/ADAUSDT/ADAUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "2aee5410f86212beab9691ae1e5edfe9e4123a2aafedfc7efe2fdda9b828bbbd",
+     "response_sha256": "5bd1ebe35d8145daccbec4651d9e561a91546fbbc56e616be2942f9fc490bf8e",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "ADAUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/SUIUSDT/SUIUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "ff0de20d335283e369c1a66e9001a6e4272d22b6f6676eec784bcbcd48c42926",
+     "response_sha256": "1d8fbbfe7229df1d7b1818d690d84c5900f50edab9558bcb8ee777d4b887640f",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "SUIUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/TRUMPUSDT/TRUMPUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "fd46ba640ac3f792ee11ce78248c6ff0f34b3c75eb3319061f38d8bbd586b19a",
+     "response_sha256": "eca5b176a7171e5bc4c36a8735f2e4eb407c89fccc2ff4b3f45f457641a66446",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "TRUMPUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/PIXELUSDT/PIXELUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "d5e88dd84893c657884ce252f2ea03029a3b22cc46c0acc900cf39949629f938",
+     "response_sha256": "0c7ccda2926d195309aedf9f8384ad1fc70c6071d14547790f323191419cd1be",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "PIXELUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/POWERUSDT/POWERUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "d217153cdd9b3f2e5a00ee67b8872050d8a9f1552c03cebc46737243dd7e4700",
+     "response_sha256": "c8da9a3896f956bf124e2209418a2c1ddb72a0858f13012262f340ff7571190d",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "POWERUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/AVAXUSDT/AVAXUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "5a034b0d2d6cd592bd1c7999fe45c2d46172af355828845ffcf94a56dd79b47f",
+     "response_sha256": "595f588d74340c4b15aca635b860e3c0101f84f3384f9b5fe742fc7bfcac45e2",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "AVAXUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/NEARUSDT/NEARUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "e59f36b7a70147957f7e27ca74947a7b9e7bb7d487997079d2c5561c3b2f4353",
+     "response_sha256": "bdb7336da7d0570da5b4b8955b4099c5f5630ab33d0d3939754296d1a2b062e5",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "NEARUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/STOUSDT/STOUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "ea1b5815d9a1b21e095958a4087b685a0137c6fa407e8c1445257d814e591975",
+     "response_sha256": "1abf8f3ae055ac77c540064cd81a05db4e19aff83521f1f612212ada73d30026",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "STOUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/LYNUSDT/LYNUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "9c15f10028943202ff42e5bab4960fa1adb8528d30801711b84974f108f4232f",
+     "response_sha256": "7eee5ce6e4bdbe788347535510241537b9e5b4149a1823864dc161387c88f1eb",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "LYNUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/RAVEUSDT/RAVEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "45da6383983c4e499f56e57fc63555e3d1ee46e0a808f646211b6d1c6a20b83f",
+     "response_sha256": "d1a22a623762294581d67a73487f4201729a9dbe751e9a8db20065998f5ebd13",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "RAVEUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ARIAUSDT/ARIAUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "41f4e5bbb82fff7a31ef617e842ac4ec71f7b5e54a5410c7659997235e80d07c",
+     "response_sha256": "4d5e6386f5acade5b7e923328814a6a746d7915b85043714d5cd34fbfa3681e9",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ARIAUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ORDIUSDT/ORDIUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "09d1e3ad24526f546708ef0b1b5da2599a24f21b940ef3308049596e2c301b6c",
+     "response_sha256": "62427497c9684385d4fb4e7ce31d0a3cb6a6e9f378be990077d0d5d5d32a80d3",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ORDIUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ENJUSDT/ENJUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "0028df2220dd604431c48308a55f7838eada21452194c893a0b02f5535d1078b",
+     "response_sha256": "8f2dd383e48bce7589169034e905a21ed72e447beac8ca35707a89d0bf2d9141",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ENJUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/LABUSDT/LABUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "ff419d8474841aa47f8e7428c5683eb347992a25ebe7afbf802b49d295f3506f",
+     "response_sha256": "51f3b73425e5d8b7be5366999229850da84f7c116d8fcdb5759be841bb9c51c4",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "LABUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/SKYAIUSDT/SKYAIUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "dfa2af163550870dd2c0da3c3388b69cca85479b931edf8852a48313b2f91d77",
+     "response_sha256": "1ca99c04526ffe6ec7165bc00b806f4919c6a012740d9fb7a9cfe73df4fef00c",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "SKYAIUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": false,
+   "empty_is_explicit_incomplete": true,
+   "first_ms": null,
+   "head_gap_ms": null,
+   "last_ms": null,
+   "max_interior_gap_ms": null,
+   "pages": [
+    {
+     "first_ms": null,
+     "last_ms": null,
+     "path": "um/api/fundingRate/TONUSDT/TONUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "40cff54c8326ad53045d8c613c4da6a0795256b0dc4877d7728d0497d022a661",
+     "response_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "rows": 0
+    }
+   ],
+   "rows": 0,
+   "symbol": "TONUSDT",
+   "tail_gap_ms": null
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/BIOUSDT/BIOUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "ff87d1fc5bd0358a7609b12e685de547eaea55bc9d668c0cd76d03a2b7e1c383",
+     "response_sha256": "aa92240ca9d440b1a1f31d30e35636c24ac78655ad4367841858b442b8cb4a91",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "BIOUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ORCAUSDT/ORCAUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "fc1b12cea568272d9a5de2668adb7da64428812c63a00ed09a6afb57ff22208b",
+     "response_sha256": "e707c2fb501ec5fc3d8a3b9e4fcacb793ce445424c49f690311878c616d801c8",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ORCAUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/FILUSDT/FILUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "73bcb82c3dbe6a2643b701d1e737a1421d0d6425c5c0e155beca83deec2b88a8",
+     "response_sha256": "cb91d9fd471d270d8d589e163be717e49042ba5764cb9fd42aa64e0f981d4241",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "FILUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/BUSDT/BUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "ae683fc1c50a6ebff1b163b2b85869d62c9468b5a9271170f84f64bf1702d2db",
+     "response_sha256": "2d745f47d55ca29a4f779ea10a33e6cb6c2542db63973e980890113411b7bf7c",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "BUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ONDOUSDT/ONDOUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "230c14af654b2ad57f053d9fd568e36cb91b9d35c1fce940e8010c579fd1e053",
+     "response_sha256": "84519a924e182566bda062d3b53058877a2821288cedf31f7bfefd114a92215a",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ONDOUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/XLMUSDT/XLMUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "5ea3761ea05f8f1144bb8a97abb6159730ebde8b8afb784c511e63278c470833",
+     "response_sha256": "b57809ea1588f67ec3fcf6fa78edc52446cd378b5cf627b0197fbfe6069b7029",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "XLMUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/WLDUSDT/WLDUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "89438320ee77aa5735543ec6a4d988b0b1fb628191445b46d3f5e6b7d3e4c40f",
+     "response_sha256": "e89bcfbc10e6a1fbd764b6ced2bebda9c647e5b93b24442badebd7246f8a8a8b",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "WLDUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ALLOUSDT/ALLOUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "2b6a2bf885bef93d2114a4603ada1e7f778f6c6cdc98bfa83589b43f54fc61bd",
+     "response_sha256": "8210d7f41b97fd814b44fdf3efdb8b929799b189caae5847ae180e53d4785ed3",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ALLOUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/BEATUSDT/BEATUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "6c15a05fcdb9e7188ddeda8ae9af11595ecf4a791728231c26a9da92ad5d0239",
+     "response_sha256": "82fea5462fe28973dc698aa8193a27b9f7bb4b903576e2373694b1d7c85d44e1",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "BEATUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/HUSDT/HUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "f094a2447bf52b1d712a697eaef237152b48f0d005cf173941627d447f62a6fd",
+     "response_sha256": "a444394a0da7036c3c9a7c97b728c064111bc27046cf976d19ccfc9546f0b57d",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "HUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/VELVETUSDT/VELVETUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "9fff4b6a46c1ebeb140ee87dcfadfb8fd2d76fb258a6c92b5fc6631081c4286b",
+     "response_sha256": "52e7285189f5a15eaff1093078844be3ef398fc172504dbe8caa083ba9869049",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "VELVETUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/SYNUSDT/SYNUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "45eadbcafc50adb8d0f0458a7520e2f9e6cad487f2a9904cdc6b4e8576b47f7f",
+     "response_sha256": "adcf72a25f2bc0409e3a955a8bfac9fa7e74ac79288fdd5152af99642d1d65d2",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "SYNUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/EVAAUSDT/EVAAUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "a22815f72bf9282aa00cc3490450d2e2c8a5ed675c233ab065ee03c8352bd20e",
+     "response_sha256": "ccba6da5a5e021db5cde0a1c59a8e1d2b54092ba7ebb9d0cf1379c7ad6fa871c",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "EVAAUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/AKEUSDT/AKEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "6687af4c4f27eb9173f66d3ec78626f089f03ad5f06db4981576c59d74eaf0ea",
+     "response_sha256": "06685c0cf258056e318062a5c1d0b4693d503d85280d1a66dfda06df6b9b8c5b",
+     "rows": 189
+    }
+   ],
+   "rows": 189,
+   "symbol": "AKEUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/AAVEUSDT/AAVEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "5ae2c11e000adb228e403aa0186127fcba33457766ad17ea89ac9364f8db5e58",
+     "response_sha256": "c25d0b97d846fecc491fb0641e463b98386a8495d08b95d83eba0ce0c824efe7",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "AAVEUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/BANKUSDT/BANKUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "57cbbbfcb98f56521faa1ee41088a08a5fce359eec87e283eed32c881ed7df36",
+     "response_sha256": "a36da6d5075e658d75d66380b52827e82bee72255b1509273f74a0c5f4e14b64",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "BANKUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/DEXEUSDT/DEXEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "45b75bc8a61a16efb183b658619cc761eab59fc4cd11eb2cd76ed51448e99af4",
+     "response_sha256": "29a33e7ffd9dd5d7e7628d2823a076c29a851273eb3da8943e144ba225a00a11",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "DEXEUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ESPORTSUSDT/ESPORTSUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "cac5ef82ca8f42e309860c157ea7f3232ca338057d99a73a543c553b07c4904c",
+     "response_sha256": "2892ba7b90d9a1c32d7ec024975a97bc633668fbc062a000281adb7c93421f80",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ESPORTSUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": false,
+   "empty_is_explicit_incomplete": true,
+   "first_ms": null,
+   "head_gap_ms": null,
+   "last_ms": null,
+   "max_interior_gap_ms": null,
+   "pages": [
+    {
+     "first_ms": null,
+     "last_ms": null,
+     "path": "um/api/fundingRate/VANRYUSDT/VANRYUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "4964aeacf29b01b6bd572777ae296381bc9593769360ba5ca3b792db32762bf6",
+     "response_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "rows": 0
+    }
+   ],
+   "rows": 0,
+   "symbol": "VANRYUSDT",
+   "tail_gap_ms": null
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/BLESSUSDT/BLESSUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "8e77dff4a1cc7447772408c971e657eff64bffcef162ac2c020f19e380a7a0a6",
+     "response_sha256": "fefb2bda1fc2943f3d6463181e6be01b837b43aa2815db02f10bde91914f859e",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "BLESSUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/TUTUSDT/TUTUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "856841d535c7d27b1089ca4f464369a103bbb68a8c7eb13d5df477fad67f2358",
+     "response_sha256": "02ad910400f3f3f29d63df446a21b177a7af0385435744d90c8262185da8fdca",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "TUTUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/COTIUSDT/COTIUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "8589653d64141e9e5e6fcbf7f1c1f8e274da49a2390ec8a64674a11b041a1472",
+     "response_sha256": "25e4ba7c1ee5e4743cd49e508a8765f2ff2ff215d743ce96aabbad8c499b6229",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "COTIUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/HEIUSDT/HEIUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "39778e2c00821c351e9894f516bd415c472321a1002d40be9e5f96ba3e8f3df2",
+     "response_sha256": "44fa2d4df7dacbe3b86c2267dece4797d00a4cacbb7f5cde43ad1652996474e8",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "HEIUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ACEUSDT/ACEUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "2921171ff6818545177bbbc3f541df0dfc9a9f5dc8fa959d0e1bfde3acf75c40",
+     "response_sha256": "d5031845395a788ed72eb671058b49ce8081983d3002ce61d422e5cb2315b78b",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ACEUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/CYSUSDT/CYSUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "f4139f0f66dd19288ecf17df850e49855050f853dd7e37e9d23ddb166013b012",
+     "response_sha256": "9057fe842b0ced9b3bd730d7e59342b2f24575d7742e5da75fa29616e9922187",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "CYSUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/ENAUSDT/ENAUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "f9c12f0edc91db03d0d17269feec892ca970264757b217b859800ceff0d3958d",
+     "response_sha256": "80546719e6254f85a36f4e7c07510a75e2eb6660f90a1af5fa44efa303ba9958",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "ENAUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/PUMPUSDT/PUMPUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "5c28e086824d6d93109c9d33fcfa588f34f4ac94bf4b7d8e541c7f7ac6193084",
+     "response_sha256": "fca8ae5073b8c10c7b534d9edd7047a7ce5e3d2801ee3d2bf24c089962ba12ee",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "PUMPUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/LINKUSDT/LINKUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "915007a9bac0fbd439733d79d68af71cb9cc70eb07b17567e7f2f2c6ad42fa59",
+     "response_sha256": "3d96e67eec2920a842043fd67cd5b98d7c7787220a422ab356b502da402b8445",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "LINKUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/UNIUSDT/UNIUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "5f58f8ade27bb8b829f978b7b7227c68a422b046b4b5fcfa7ae56ce211292bbe",
+     "response_sha256": "a99e6dd14436e5c38c705895709699357493270a2d6ece6db36f63b34624020e",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "UNIUSDT",
+   "tail_gap_ms": 28800000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/BTRUSDT/BTRUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "7fab1ed39792f1483336fb74bbc9ac2cb024f5ecced9f15761edc6e3d95cb6ac",
+     "response_sha256": "735f8662b50da982f9739e71ef106f1c9358ca6e5fd52265c85b01e3110259ab",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "BTRUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/USELESSUSDT/USELESSUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "483a436cc1c96374fd8b0686ad7dfaa900fe4a4ac7a236bdeb983d8cac77573b",
+     "response_sha256": "17f3280a74e001cf138763ad30ecd4d0804ca1fb3aa89265f5320b7ab886449b",
+     "rows": 162
+    }
+   ],
+   "rows": 162,
+   "symbol": "USELESSUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790539200000,
+   "max_interior_gap_ms": 14400008,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790539200000,
+     "path": "um/api/fundingRate/LSKUSDT/LSKUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "8bebc3ba1a9870e0ce1e44770ab97bb7d049de2e9b555ec3930aa0c70b13f300",
+     "response_sha256": "c23b58c2659f28b35ec82cec7e87a09aa7d8105441f1853f2ca86ccf1545106f",
+     "rows": 374
+    }
+   ],
+   "rows": 374,
+   "symbol": "LSKUSDT",
+   "tail_gap_ms": 14400000
+  },
+  {
+   "bounded_window_complete": true,
+   "empty_is_explicit_incomplete": false,
+   "first_ms": 1788220800005,
+   "head_gap_ms": 5,
+   "last_ms": 1790524800000,
+   "max_interior_gap_ms": 28800009,
+   "pages": [
+    {
+     "first_ms": 1788220800005,
+     "last_ms": 1790524800000,
+     "path": "um/api/fundingRate/ARBUSDT/ARBUSDT-fundingRate-2026-09-01-2026-09-27-p000.json",
+     "provenance_sha256": "4fe38f68ece04460256d2138bc2688209319c19636f35cf5e04f48d4b8e90a60",
+     "response_sha256": "7feffcd55e870cba5dac822bb6b23fd6dfd0b761e50e1e095927338ae3ba50cb",
+     "rows": 81
+    }
+   ],
+   "rows": 81,
+   "symbol": "ARBUSDT",
+   "tail_gap_ms": 28800000
+  }
+ ],
+ "window": {
+  "cutoff_exclusive_ms": 1790553600000,
+  "end_ms_inclusive": 1790553599999,
+  "start_ms": 1788220800000
+ }
+}
