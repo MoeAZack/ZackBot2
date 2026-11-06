@@ -153,12 +153,12 @@ def test_preflight_refuses_dirty_and_overwrite_before_loader(tmp_path, monkeypat
         return {}
 
     with pytest.raises(R.RunnerError, match="dirty tree"):
-        R.run_with_loader(R.CANDIDATE_IDS[0], out, loader, lambda *_: {},
+        R._run_with_loader(R.CANDIDATE_IDS[0], out, loader, lambda *_: {},
                           head_fn=lambda: "abc", dirty_fn=lambda: True)
     assert called == []
     out.write_text("occupied", encoding="utf-8")
     with pytest.raises(R.RunnerError, match="overwrite refused"):
-        R.run_with_loader(R.CANDIDATE_IDS[0], out, loader, lambda *_: {},
+        R._run_with_loader(R.CANDIDATE_IDS[0], out, loader, lambda *_: {},
                           head_fn=lambda: "abc", dirty_fn=lambda: False)
     assert called == []
 
@@ -166,13 +166,13 @@ def test_preflight_refuses_dirty_and_overwrite_before_loader(tmp_path, monkeypat
 def test_one_evaluation_per_contract_head_candidate(tmp_path):
     out = tmp_path / "packet.json"
     ids = tmp_path / "ids"
-    payload = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "a" * 64,
-               "folds": ["wf1", "wf2", "wf3"], "trades": []}
-    R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: payload, R.evaluate_payload,
+    payload = {"internal_raw_fixture": True}
+    internal_evaluator = lambda data, _pf: {"internal": data}
+    R._run_with_loader(R.CANDIDATE_IDS[0], out, lambda: payload, internal_evaluator,
                       identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
     out.unlink()  # output deletion must not permit rerunning the same immutable identity
     with pytest.raises(R.RunnerError, match="already exists"):
-        R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: payload, R.evaluate_payload,
+        R._run_with_loader(R.CANDIDATE_IDS[0], out, lambda: payload, internal_evaluator,
                           identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
 
 
@@ -183,17 +183,14 @@ def test_fake_high_aggregate_metrics_and_self_verdicts_cannot_promote(tmp_path):
             "folds": ["wf1", "wf2", "wf3"], "trades": [],
             "report": {"trade_count": 9999, "net_r": 1e9},
             "causal_parity": True, "independent_review": True, "promoted": True}
-    with pytest.raises(R.RunnerError, match="aggregate/verdict fields are forbidden"):
+    with pytest.raises(R.RunnerError, match="prepared fills/trades are untrusted and forbidden"):
         R.evaluate_payload(fake, pf)
     honest_empty = {k: fake[k] for k in ("candidate_id", "manifest_digest", "folds", "trades")}
-    packet = R.evaluate_payload(honest_empty, pf)
-    assert packet["promoted"] is False
-    assert packet["promotion_gates"]["causal_parity"] is False
-    assert packet["promotion_gates"]["independent_review"] is False
-    assert packet["report"]["trade_count"] == 0
+    with pytest.raises(R.RunnerError, match="raw-bar source-signal evaluator is not implemented"):
+        R.evaluate_payload(honest_empty, pf)
 
 
-def test_report_is_derived_from_reference_fills_and_verified_funding(tmp_path):
+def test_caller_fill_injection_is_forbidden_and_raw_episode_uses_causal_primitives(tmp_path):
     pf = R.preflight(R.CANDIDATE_IDS[0], tmp_path / "out.json",
                      head_fn=lambda: "abc", dirty_fn=lambda: False)
     trade = {"trade_id": "wf1-BTC-1", "fold": "wf1", "symbol": "BTCUSDT", "regime": "trend",
@@ -207,13 +204,46 @@ def test_report_is_derived_from_reference_fills_and_verified_funding(tmp_path):
                          "checksum_verified": True, "coverage_complete": True}}
     payload = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "b" * 64,
                "folds": ["wf1", "wf2", "wf3"], "trades": [trade]}
-    packet = R.evaluate_payload(payload, pf)
-    derived = R.trade_from_evidence(trade)
-    assert packet["report"]["trade_count"] == 1
-    assert packet["report"]["net_r"] == pytest.approx(derived["r"])
-    assert packet["folds"][0]["net_r"] == pytest.approx(derived["r"])
-    assert packet["cost_stress_net_r"]["1.5"] == pytest.approx(derived["stress_r"]["1.5"])
-    assert packet["promoted"] is False
+    with pytest.raises(R.RunnerError, match="prepared fills/trades are untrusted and forbidden"):
+        R.evaluate_payload(payload, pf)
+
+    # A frozen synthetic raw-bar episode still exercises the internal causal
+    # primitives: completed decision ATR -> next-open entry -> FBL path fills.
+    contract, _ = R.load_contract()
+    spec = R.candidate_spec(contract, "pullback_rsi_short_h1_causal_v2")
+    raw_bars = [bar(t=i * 1_000) for i in range(202)]
+    raw_bars[200] = bar(o=100, h=100.5, l=99.5, c=100, t=200_000)
+    raw_bars[201] = bar(o=100, h=101, l=97.5, c=99.99, t=201_000)
+    entry_index, entry_open, entry_time = R.next_open(raw_bars, 199)
+    assert R.entry_is_eligible(entry_index, spec["max_lookback_bars"],
+                               spec["max_holding_bars"], 300)
+    p = R.open_position(side=spec["side"], entry_index=entry_index, entry_time_ms=entry_time,
+                        reference_open=entry_open, atr_entry=1.0, risk_cash=10.0,
+                        leverage_notional_cap=100_000, management=spec["management"], rule=RULE)
+    fills = R.walk_bar(p, raw_bars[201], 201, spec["management"], RULE)
+    assert [x.reason for x in fills] == ["tp1", "stop"]
+    assert fills[0].reference_price == pytest.approx(p.tp1)
+    assert fills[1].reference_price == pytest.approx(p.entry_exec)
+
+
+def test_digest_is_bound_to_file_bytes_not_arbitrary_hex(tmp_path):
+    evidence = tmp_path / "manifest.json"
+    evidence.write_bytes(b'{"universe":"CORE-20"}\n')
+    with pytest.raises(R.RunnerError, match="evidence digest mismatch"):
+        R.verify_file_digest(evidence, "a" * 64)
+    actual = R.hashlib.sha256(evidence.read_bytes()).hexdigest()
+    assert R.verify_file_digest(evidence, actual) == actual
+
+
+@pytest.mark.parametrize("mutation", [
+    {"symbol": "NOTCORE20"}, {"fold": "wf9"}, {"entry": {"index": -1}},
+    {"exits": [{"reason": "invented"}]}, {"atr": -1}, {"price": 0},
+])
+def test_wrong_membership_fold_index_reason_atr_or_price_payload_is_never_accepted(tmp_path, mutation):
+    pf = R.preflight(R.CANDIDATE_IDS[0], tmp_path / "out.json",
+                     head_fn=lambda: "abc", dirty_fn=lambda: False)
+    with pytest.raises(R.RunnerError, match="prepared fills/trades are untrusted and forbidden"):
+        R.evaluate_payload({"candidate_id": R.CANDIDATE_IDS[0], **mutation}, pf)
 
 
 def test_identity_reserved_before_loader_blocks_reentrant_second_packet(tmp_path):
@@ -224,12 +254,12 @@ def test_identity_reserved_before_loader_blocks_reentrant_second_packet(tmp_path
 
     def loader():
         with pytest.raises(R.RunnerError, match="already exists"):
-            R.run_with_loader(R.CANDIDATE_IDS[0], out2,
-                              lambda: nested_loader_called.append(True), R.evaluate_payload,
+            R._run_with_loader(R.CANDIDATE_IDS[0], out2,
+                              lambda: nested_loader_called.append(True), lambda data, _pf: {"data": data},
                               identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
         return payload
 
-    R.run_with_loader(R.CANDIDATE_IDS[0], out1, loader, R.evaluate_payload,
+    R._run_with_loader(R.CANDIDATE_IDS[0], out1, loader, lambda data, _pf: {"data": data},
                       identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
     assert nested_loader_called == [] and out1.exists() and not out2.exists()
     claim = next(ids.glob("*.claim.json"))
@@ -240,13 +270,13 @@ def test_failed_evaluation_consumes_identity_before_data_can_be_reloaded(tmp_pat
     ids, out = tmp_path / "ids", tmp_path / "failed.json"
     calls = []
     with pytest.raises(ValueError, match="boom"):
-        R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: calls.append(1),
+        R._run_with_loader(R.CANDIDATE_IDS[0], out, lambda: calls.append(1),
                           lambda *_: (_ for _ in ()).throw(ValueError("boom")),
                           identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
     claim = next(ids.glob("*.claim.json"))
     assert json.loads(claim.read_text(encoding="utf-8"))["state"] == "FAILED_CONSUMED"
     with pytest.raises(R.RunnerError, match="already exists"):
-        R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: calls.append(2), lambda *_: {},
+        R._run_with_loader(R.CANDIDATE_IDS[0], out, lambda: calls.append(2), lambda *_: {},
                           identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
     assert calls == [1]
 
@@ -269,16 +299,16 @@ def test_post_create_claim_fault_never_reopens_identity_or_emits_packet(tmp_path
         else:
             injected.setattr(R, "_fsync_json", fail)
         with pytest.raises(OSError, match=f"injected {fault} failure"):
-            R.run_with_loader(R.CANDIDATE_IDS[0], out,
-                              lambda: loader_calls.append(True) or payload, R.evaluate_payload,
+            R._run_with_loader(R.CANDIDATE_IDS[0], out,
+                              lambda: loader_calls.append(True) or payload, lambda data, _pf: {"data": data},
                               identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
 
     claims = list(ids.glob("*.claim.json"))
     assert len(claims) == 1 and claims[0].exists()
     assert not out.exists() and loader_calls == []
     with pytest.raises(R.RunnerError, match="already exists"):
-        R.run_with_loader(R.CANDIDATE_IDS[0], out,
-                          lambda: loader_calls.append(True) or payload, R.evaluate_payload,
+        R._run_with_loader(R.CANDIDATE_IDS[0], out,
+                          lambda: loader_calls.append(True) or payload, lambda data, _pf: {"data": data},
                           identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
     assert loader_calls == [] and not out.exists()
 
@@ -289,3 +319,14 @@ def test_cli_exposes_exactly_three_frozen_candidates():
         "exp_mom_short_c27_causal_v2",
         "volume_pressure_inventory_short_1h_causal_v2",
     )
+    assert not hasattr(R, "run_with_loader")
+    assert not hasattr(R, "trade_from_evidence")
+
+
+def test_cli_has_no_prepared_input_or_evaluation_route(tmp_path, capsys):
+    out, identities = tmp_path / "packet.json", tmp_path / "ids"
+    rc = R.main(["--candidate", R.CANDIDATE_IDS[0], "--out", str(out),
+                 "--identity-dir", str(identities)])
+    assert rc == 2
+    assert "raw-bar source-signal evaluator is unavailable" in capsys.readouterr().err
+    assert not out.exists() and not identities.exists()
