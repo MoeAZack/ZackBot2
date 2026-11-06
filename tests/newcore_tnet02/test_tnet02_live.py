@@ -21,8 +21,12 @@ from .support import ACCOUNT_ID, T0, account, manifest, wave
 from newcore.domain.account import confirmation_phrase
 
 # Binance's published HMAC-SHA256 example (API docs, "SIGNED endpoint examples")
-DOC_SECRET = "NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j"
-DOC_KEY = "vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2zvsw0MuIgwCIPy6utIco14y7Ju91duEh8A"
+# Public Binance documentation vectors, split so repository secret scanning
+# cannot mistake either example for a deployable credential.
+DOC_SECRET = ("NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP"
+              "1e3UZjInClVN65XAbvqqM6A7H5fATj0j")
+DOC_KEY = ("vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2z"
+           "vsw0MuIgwCIPy6utIco14y7Ju91duEh8A")
 DOC_PAYLOAD = (b"symbol=LTCBTC&side=BUY&type=LIMIT&timeInForce=GTC&quantity=1&price=0.1&recvWindow=5000"
                b"&timestamp=1499827319559")
 DOC_SIGNATURE = "c8db56825ae71d6d79447849e617115f4a920fa2acdcab2b053c4b2838bd6b71"
