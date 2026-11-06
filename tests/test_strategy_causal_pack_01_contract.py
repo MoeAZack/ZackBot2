@@ -5,12 +5,14 @@ import os
 from datetime import datetime, timezone
 
 import strategies as S
+import feasibility as F
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR = os.path.join(ROOT, 'contracts', 'strategy_causal_pack_01')
 JS = os.path.join(DIR, 'strategy_causal_pack_01_contract.v1.json')
 MD = os.path.join(DIR, 'STRATEGY_CAUSAL_PACK_01.md')
 FILTER_AUTH = os.path.join(DIR, 'exchange_filter_authority.v2.json')
+PIT = os.path.join(ROOT, 'research_evidence', 'universe', 'pit-top40-qv30d-v4.json')
 
 
 def _load():
@@ -211,6 +213,13 @@ def test_filter_authority_is_checksum_bound_causal_and_pre_market():
     assert '20261011' in c['data']['future_dated_snapshot_forbidden']
     folds = {row['name']: row for row in c['folds']}
     snapshots = {row['captured_at']: row for row in authority['snapshots']}
+    with open(PIT, 'rb') as fh:
+        pit_raw = fh.read()
+    assert hashlib.sha256(pit_raw).hexdigest() == authority['pit_universe_sha256'] \
+        == c['data']['pit_universe_sha256']
+    pit = json.loads(pit_raw)
+    assert pit['digest'] == authority['pit_universe_digest'] == c['data']['pit_universe_digest']
+    assert authority['pit_universe_path'] == c['data']['pit_universe_path']
     assert authority['fold_bindings'] == {
         'wf1': '2024-12-13T04:44:48Z',
         'wf2': '2024-12-13T04:44:48Z',
@@ -225,7 +234,33 @@ def test_filter_authority_is_checksum_bound_causal_and_pre_market():
             raw = fh.read()
         assert hashlib.sha256(raw).hexdigest() == snap['sha256']
         payload = json.loads(raw)
-        assert payload['symbols'] and payload['serverTime'] > 0
+        assert payload['symbols'] and payload['serverTime'] == int(_ts(snap['server_time']).timestamp() * 1000)
+        parsed = F.rules_from_exchange_info(payload)
+        eligible = set()
+        for symbol_row in payload['symbols']:
+            if not (symbol_row.get('status') == 'TRADING'
+                    and symbol_row.get('contractType') == 'PERPETUAL'
+                    and symbol_row.get('quoteAsset') == 'USDT'
+                    and symbol_row.get('underlyingType') == 'COIN'):
+                continue
+            filters = [row for row in symbol_row.get('filters', []) if isinstance(row, dict)]
+            types = [row.get('filterType') for row in filters]
+            rule = parsed.get(symbol_row.get('symbol'))
+            if (rule and all(types.count(kind) == 1 for kind in
+                             ('PRICE_FILTER', 'MARKET_LOT_SIZE', 'MIN_NOTIONAL'))
+                    and all(float(rule[key]) > 0 for key in
+                            ('tick', 'step', 'min_qty', 'min_notional', 'max_qty'))):
+                eligible.add(symbol_row['symbol'])
+        cells = []
+        for week in pit['weeks']:
+            if folds[fold_name]['start'][:10] <= week['monday_utc'] < folds[fold_name]['end'][:10]:
+                members = [symbol for symbol in week['books']['crypto']['members']
+                           if symbol in eligible][:20]
+                assert len(members) == len(set(members)) == 20
+                cells.append({'monday_utc': week['monday_utc'], 'members': members})
+        digest = hashlib.sha256(json.dumps(
+            cells, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        assert digest == authority['weekly_membership_sha256'][fold_name]
     assert 'any candidate market row was read' in md
     assert 'No later snapshot, invented rule' in md
 
