@@ -361,9 +361,83 @@ class BinanceUsdMTestnetVenue:
     def open_orders(self, symbol: str | None = None) -> P.ReadOutcome:
         if symbol is not None:
             check_symbol(symbol, 'open_orders.symbol')
-        # Binance exposes classic and algo books separately.  A one-request implementation cannot prove the combined
-        # frozen-port value, so fail closed rather than return a trusted partial/empty book.
-        return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=self._now(), detail='split_route_read')
+        now = self._now()
+
+        def boolean(row, name):
+            value = row.get(name, False)
+            if type(value) is bool:
+                return value
+            if value in ('true', 'false'):
+                return value == 'true'
+            raise _Unknown('malformed')
+
+        def rows(value, *, algo):
+            if algo and isinstance(value, dict):
+                value = value.get('orders')
+            if not isinstance(value, list):
+                raise _Unknown('malformed')
+            return value
+
+        def order(row, *, algo):
+            if not isinstance(row, dict):
+                raise _Unknown('malformed')
+            route = 'algo' if algo else 'classic'
+            cid_name, id_name = ('clientAlgoId', 'algoId') if algo else ('clientOrderId', 'orderId')
+            qty_name, stop_name = ('quantity', 'triggerPrice') if algo else ('origQty', 'stopPrice')
+            type_name, status_name = ('orderType', 'algoStatus') if algo else ('type', 'status')
+            echoed_symbol, position_side = row.get('symbol'), row.get('positionSide')
+            if (type(echoed_symbol) is not str or (symbol is not None and echoed_symbol != symbol)
+                    or position_side not in ('LONG', 'SHORT')):
+                raise _Unknown('echo_mismatch' if symbol is not None and echoed_symbol != symbol else 'malformed')
+            client_id = row.get(cid_name)
+            if type(client_id) is not str:
+                raise _Unknown('malformed')
+            exchange_id = _positive_id(row.get(id_name))
+            total = _decimal(row.get(qty_name), qty_name)
+            executed = _decimal(row.get('executedQty', '0'), 'executedQty')
+            if executed > total:
+                raise _Unknown('malformed')
+            remaining = total - executed
+            close_position = boolean(row, 'closePosition')
+            reduce = boolean(row, 'reduceOnly') or close_position
+            raw_stop = _decimal(row.get(stop_name, '0'), stop_name)
+            order_type, status = row.get(type_name), row.get(status_name)
+            if type(order_type) is not str or not order_type or type(status) is not str or not status:
+                raise _Unknown('malformed')
+            return P.VenueOrder(
+                ref=P.OrderRef(symbol=echoed_symbol, client_id=client_id, route=route),
+                exchange_order_id=exchange_id,
+                position_side=position_side,
+                reduce=reduce,
+                order_type=order_type,
+                status=status,
+                qty=remaining,
+                close_position=close_position,
+                stop_price=raw_stop if raw_stop > 0 else None,
+            )
+
+        params = [] if symbol is None else [('symbol', symbol)]
+        try:
+            classic = self._request('GET', '/fapi/v1/openOrders', params)
+            if isinstance(classic, _VenueError):
+                return P.ReadOutcome(kind=P.ReadKind.REJECTED, observed_at_ms=now,
+                                     error_code=classic.code, detail='venue_rejected')
+            algo = self._request('GET', '/fapi/v1/openAlgoOrders', params)
+            if isinstance(algo, _VenueError):
+                return P.ReadOutcome(kind=P.ReadKind.REJECTED, observed_at_ms=now,
+                                     error_code=algo.code, detail='venue_rejected')
+            out = [order(row, algo=False) for row in rows(classic, algo=False)]
+            out += [order(row, algo=True) for row in rows(algo, algo=True)]
+            keys = [(item.ref.route, item.ref.client_id) for item in out]
+            ids = [(item.ref.route, item.exchange_order_id) for item in out]
+            if len(set(keys)) != len(keys) or len(set(ids)) != len(ids):
+                raise _Unknown('duplicate_cid')
+            return P.ReadOutcome(kind=P.ReadKind.OK, observed_at_ms=now,
+                                 value=tuple(sorted(out, key=lambda item: (item.ref.symbol, item.ref.route,
+                                                                          item.ref.client_id))))
+        except (_Unknown, PortValueError, ValueError, TypeError, KeyError) as ex:
+            detail = ex.detail if isinstance(ex, _Unknown) else 'malformed'
+            return P.ReadOutcome(kind=P.ReadKind.UNKNOWN, observed_at_ms=now, detail=detail)
 
     def fills(self, symbol: str, exchange_order_id: str) -> P.ReadOutcome:
         check_symbol(symbol, 'fills.symbol')
