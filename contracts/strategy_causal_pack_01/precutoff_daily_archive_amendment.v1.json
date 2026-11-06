@@ -1,9 +1,9 @@
 {
   "amendment": "STRATEGY-CAUSAL-PACK-01-PRECUTOFF-DAILY-ARCHIVE",
   "version": 1,
-  "status": "FROZEN_AUTHORITY_AMENDMENT_BLOCKED",
+  "status": "FROZEN_AUTHORITY_AMENDMENT_READY_FOR_REVIEW",
   "signed_by": "codex",
-  "frozen_at": "2026-11-06T17:58:38+02:00",
+  "frozen_at": "2026-11-06T18:17:40+02:00",
   "roadmap_fit": "STRATEGY-CAUSAL-PACK-01 causal evidence authority repair",
   "scope": {
     "contract_rule_changes_metadata_only": true,
@@ -79,14 +79,20 @@
   "migration": {
     "retain": "checksum-bound monthly files whose declared UTC period ends at or before 2026-09-28T00:00:00Z (therefore September monthly files are excluded)",
     "append": "checksum-verified present daily files; 436 checksum-published Vision whole-month gap archives ending before cutoff; checksum/provenance-bound REST only for exact residual September windows",
-    "target_manifest": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v4.json.gz",
-    "target_manifest_file_sha256": "be3897a2b8eb78ca2d9f5a5bf892ca54014d1f5103dd05a73649e845541190dc",
-    "target_manifest_digest": "96dfafc82c258bf19d4a68d962a87f07bbc13363e284784c1d856a76e4129322",
-    "target_pit_universe": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v7.json",
-    "target_pit_universe_file_sha256": "57d72ebcbab27ac361f3119af56ba4e11ebda0003cd7dcc74aa6db5a6bd85b5e",
-    "target_pit_universe_digest": "bb59eb421610478b145151ddd0f7796436675ef43b994bda7b26ae63710a4b87",
+    "target_manifest": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+    "target_manifest_file_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+    "target_manifest_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8",
+    "target_pit_universe": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+    "target_pit_universe_file_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+    "target_pit_universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+    "supersedes_partial_authority": {
+      "manifest": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v4.json.gz",
+      "pit_universe": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v7.json",
+      "coverage_preflight": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v2.json",
+      "retention": "retain as immutable construction/audit history; never use as the review target"
+    },
     "pit_rule": "copy the already-frozen PIT identity and cells unchanged and rebind only manifest_digest/digest",
-    "replacement_identity_rule": "do not create or run causal_v4 identities until the authority coverage preflight has zero guaranteed 4h/mark gaps for every required wf3 cell; v3 trials remain permanently recorded",
+    "replacement_identity_rule": "the zero-gap authority gate is satisfied, but do not create or run causal_v4 identities until this authority amendment is independently reviewed and protected-branch merged; v3 trials remain permanently recorded",
     "pre_market_gate": "every manifest path period_end and last_open_ms must be strictly before the exclusive cutoff before any archive bytes are opened"
   },
   "kline_authority_repair": {
@@ -98,10 +104,12 @@
     "vision_monthly_bytes": 15110314,
     "vision_monthly_missing": 0,
     "september_monthly_forbidden": true,
-    "frozen_rest_response_files_total": 108,
-    "frozen_rest_raw_bytes_total": 15663122,
+    "frozen_rest_response_files_total": 166,
+    "frozen_rest_raw_bytes_total": 18391768,
+    "manifest_rest_response_files": 63,
     "rest_manifest_rule": "pre-September REST responses are preserved externally but excluded from the manifest after equivalent Vision monthly authority was frozen; manifest REST records must begin on or after 2026-09-01 and end by cutoff",
-    "rest_resume_blocker": "official fapi rate protection recurred during the exact 62-window September residual freeze; the process was stopped without probing through the protection window",
+    "residual_freeze": {"windows": 58, "pages": 58, "rows": 21702, "raw_bytes": 2728646, "incomplete_windows": 0},
+    "blocking_condition": null,
     "candidate_run_authorized": false
   },
   "funding_archive_blocker_resolution": {
@@ -121,18 +129,18 @@
     "forbidden_workaround": "do not read/crop the September monthly funding archive, use proxy funding, alter the cutoff, waive actual funding, or synthesize rows for empty responses"
   },
   "authority_coverage_preflight": {
-    "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v2.json",
-    "file_sha256": "5f791b713215256d91900d1095caef6c108e4377b8b261b8498de8532cf1a113",
-    "digest": "56b999dab762fbf3c0b04f4fc902cefe7248493aa8bf8d2404059a971a9486fa",
+    "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json",
+    "file_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
+    "digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
     "mode": "authority-only; no signal or economic outcome evaluated",
-    "guaranteed_period_gaps": 184,
-    "by_stream": {"klines_4h": 67, "markPriceKlines_1h": 67, "fundingRate": 0, "klines_1h": 50},
+    "guaranteed_period_gaps": 0,
+    "by_stream": {"klines_4h": 0, "markPriceKlines_1h": 0, "fundingRate": 0, "klines_1h": 0},
     "wf3_september_daily_grid_checks": 1620,
-    "wf3_september_missing_by_stream": {"klines_4h": 453, "klines_1h": 338, "markPriceKlines_1h": 453},
+    "wf3_september_missing_by_stream": {"klines_4h": 0, "klines_1h": 0, "markPriceKlines_1h": 0},
     "active_symbol_days": 540,
-    "fully_present_symbol_days_all_streams_combined": 376,
-    "activation_blocker": "Vision monthly authority fully repaired wf1/wf2, but 184 wf3 cell gaps remain across 58 merged partial-September REST windows after rate protection stopped the bounded freeze.",
-    "decision": "No replacement candidate identity is created or evaluated. Resume only the v2 preflight's exact residual windows after normal official endpoint recovery, rebuild a new immutable manifest, and require a zero-gap authority-only preflight first."
+    "fully_present_stream_day_checks": 1620,
+    "activation_blocker": null,
+    "decision": "Authority repair is frozen and ready for independent review. Candidate execution remains unauthorized until protected-branch merge; no replacement candidate identity was created or evaluated while building authority."
   },
   "deferred": "candidate execution, outcomes, parameter/fold/universe/gate changes, and any Sep 28+ row access"
 }

@@ -75,7 +75,7 @@ def test_concurrent_fetch_keeps_only_upstream_checksum_verified_bytes(tmp_path, 
 def test_metadata_amendment_appends_failed_trials_without_changing_research_rules():
     path = D.ROOT / "contracts/strategy_causal_pack_01/precutoff_daily_archive_amendment.v1.json"
     amendment = json.loads(path.read_text(encoding="utf-8"))
-    assert amendment["status"] == "FROZEN_AUTHORITY_AMENDMENT_BLOCKED"
+    assert amendment["status"] == "FROZEN_AUTHORITY_AMENDMENT_READY_FOR_REVIEW"
     assert amendment["scope"] == {
         "contract_rule_changes_metadata_only": True,
         "authority_build_parsed_rows_for_schema_and_cutoff_validation": True,
@@ -280,13 +280,36 @@ def test_funding_summary_is_digest_bound_and_preserves_empty_symbols():
     assert [row["symbol"] for row in empties] == ["TONUSDT", "VANRYUSDT"]
 
 
-def test_coverage_preflight_blocks_replacement_identity_before_any_outcome_run():
-    path = D.ROOT / "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v2.json"
+def test_final_coverage_preflight_is_zero_gap_but_candidate_remains_unauthorized():
+    path = D.ROOT / "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json"
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["digest"] == D._sha(D._canon({k: v for k, v in report.items() if k != "digest"}))
     assert report["guaranteed_period_gaps_by_stream"] == {
-        "fundingRate:None": 0, "klines:1h": 50, "klines:4h": 67, "markPriceKlines:1h": 67}
+        "fundingRate:None": 0, "klines:1h": 0, "klines:4h": 0, "markPriceKlines:1h": 0}
     missing = report["wf3_september"]["daily_grid_missing"]
-    assert len(missing) == 1244
-    assert all(item["date"] in D.ALLOWED_DATES for item in missing)
+    assert missing == []
+    assert report["wf3_september"]["funding_incomplete_symbols"] == []
     assert report["mode"].startswith("authority metadata/grid only")
+    amendment = json.loads((D.ROOT / "contracts/strategy_causal_pack_01/"
+                            "precutoff_daily_archive_amendment.v1.json").read_text())
+    assert amendment["scope"]["candidate_run_authorized"] is False
+
+
+def test_final_manifest_and_pit_are_exactly_bound_to_zero_gap_preflight():
+    manifest_path = D.ROOT / "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz"
+    universe_path = D.ROOT / "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json"
+    manifest = M.load(str(manifest_path))
+    universe = json.loads(universe_path.read_text())
+    preflight = json.loads((D.ROOT / "contracts/strategy_causal_pack_01/"
+                            "precutoff_authority_coverage_preflight.v3.json").read_text())
+    assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == \
+        "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a"
+    assert hashlib.sha256(universe_path.read_bytes()).hexdigest() == \
+        "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41"
+    assert manifest["digest"] == "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8"
+    assert universe["digest"] == "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd"
+    assert universe["manifest_digest"] == manifest["digest"]
+    assert preflight["manifest_digest"] == manifest["digest"]
+    assert preflight["pit_universe_digest"] == universe["digest"]
+    assert sum(row["source"]["kind"] == M.KLINE_API_KIND for row in manifest["files"]) == 63
+    assert all(M.archive_meta(row["path"])["month_end_ms"] <= A.CUTOFF_MS for row in manifest["files"])
