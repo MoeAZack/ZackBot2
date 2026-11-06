@@ -1,0 +1,47 @@
+{
+  "format": "zb-rbr-causal-v3-family-ledger/1",
+  "family": "rank_breadth_reversal_4h",
+  "status": "FROZEN_BEFORE_NEW_EVALUATION",
+  "frozen_at": "2026-11-06T11:50:43+02:00",
+  "rule": "Every distinct side, rule, management, causal-context or economic-book identity in this hypothesis family remains a trial. Rejections are never removed.",
+  "trials": [
+    {
+      "trial_id": "rank_breadth_reversal_4h_long_stagea_v1",
+      "source_head": "646ecc79612351d090fe36c02b6e4b2fdba2753d",
+      "side": "long",
+      "status": "REJECTED_CONTAMINATED_CONTEXT",
+      "closed_trades": 59,
+      "net_r": -1.70,
+      "profit_factor": 0.912,
+      "raw_p_value": "NOT_COMPUTED_CONSERVATIVE_ONE_FOR_HOLM"
+    },
+    {
+      "trial_id": "rank_breadth_reversal_4h_short_stagea_v1",
+      "source_head": "646ecc79612351d090fe36c02b6e4b2fdba2753d",
+      "side": "short",
+      "status": "REJECTED_CONTAMINATED_CONTEXT",
+      "closed_trades": 76,
+      "net_r": 7.33,
+      "profit_factor": 1.239,
+      "raw_p_value": "NOT_COMPUTED_CONSERVATIVE_ONE_FOR_HOLM"
+    },
+    {
+      "trial_id": "rank_breadth_reversal_4h_short_causal_v3",
+      "source_head": "9ba2cbaa3d11d861ec885acaf79fbcb7a91ea2cf",
+      "side": "short",
+      "status": "PREREGISTERED_UNEVALUATED",
+      "closed_trades": null,
+      "net_r": null,
+      "profit_factor": null,
+      "raw_p_value": null
+    }
+  ],
+  "holm_family_size": 3,
+  "holm_missing_prior_p_value": 1.0,
+  "program_selection_disclosure": {
+    "path": "research_evidence/ledger/candidate_risk_register.v1.json",
+    "byte_sha256": "378499725b21a2b839a05e79a8275205e5c376c323e8609539d511871604678f",
+    "role": "cross-family positive-candidate context only; it is not falsely represented as the complete RBR family ledger"
+  },
+  "digest": "79a3013abb8a8b16d11b23e56e1cdcb6b9376bf6a93baed96a54bc836694a3dd"
+}
