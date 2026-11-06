@@ -213,7 +213,7 @@ def test_fake_high_aggregate_metrics_and_self_verdicts_cannot_promote(tmp_path):
     with pytest.raises(R.RunnerError, match="prepared fills/trades are untrusted and forbidden"):
         R.evaluate_payload(fake, pf)
     honest_empty = {k: fake[k] for k in ("candidate_id", "manifest_digest", "folds", "trades")}
-    with pytest.raises(R.RunnerError, match="raw-bar source-signal evaluator is not implemented"):
+    with pytest.raises(R.RunnerError, match="only the merge-gated checksum-bound raw adapter"):
         R.evaluate_payload(honest_empty, pf)
 
 
@@ -356,7 +356,7 @@ def test_cli_has_no_prepared_input_or_evaluation_route(tmp_path, capsys):
                  "--identity-dir", str(identities)])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "contract PR #298" in err and "evaluate_raw_candidate" in err
+    assert "contract PR #298" in err and "real archive execution remains disabled" in err
     assert not out.exists() and not identities.exists()
 
 
@@ -375,7 +375,7 @@ def test_readiness_wires_exact_repository_sources_without_market_read():
     joined = "\n".join(report["gaps"])
     assert "contract PR #298" in joined
     assert "risk_cash and leverage_notional_cap" not in joined
-    assert "evaluate_raw_candidate is not yet implemented" in joined
+    assert "real archive execution remains disabled" in joined
 
 
 def test_frozen_book_contract_and_default_archive_store_are_wired(tmp_path):
@@ -453,6 +453,16 @@ def test_book_controls_have_no_caller_override_and_reject_non_core_entries():
         book.admit_simultaneous(ms("2026-07-01T00:00:00"), ["NOTCORE20"], lambda _terms: None)
 
 
+def test_holm_diagnostic_requires_and_adjusts_exact_frozen_family():
+    raw = dict(zip(R.CANDIDATE_IDS, (0.01, 0.04, 0.03)))
+    adjusted = R.holm_adjusted_p_values(raw)
+    assert adjusted[R.CANDIDATE_IDS[0]] == pytest.approx(0.03)
+    assert adjusted[R.CANDIDATE_IDS[2]] == pytest.approx(0.06)
+    assert adjusted[R.CANDIDATE_IDS[1]] == pytest.approx(0.06)
+    with pytest.raises(R.RunnerError, match="all three"):
+        R.holm_adjusted_p_values({R.CANDIDATE_IDS[0]: 0.01})
+
+
 def test_advance_bar_refuses_subset_marks_for_two_open_positions():
     book = R.FrozenCandidateBook(core20())
     now = ms("2026-07-01T00:00:00")
@@ -516,3 +526,116 @@ def test_funding_cashflow_latches_daily_halt_without_blocking_final_exit():
     assert book.entries_halted and book.marked_equity() == 460.0
     book.book_final_exit("S00", realized_reference_pnl_cash=0.0, exit_fee_and_slippage_cash=0.0)
     assert not book.positions
+
+
+def test_fold_signal_tape_calls_exact_vpi_source_with_weekly_core20_and_causal_atr():
+    contract, _ = R.load_contract()
+    symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 21))
+    n = 220
+    start = ms("2025-04-01T00:00:00")
+    bars = {}
+    for offset, symbol in enumerate(symbols):
+        rows = []
+        for index in range(n):
+            close = 100 + offset + index * 0.01
+            rows.append(R.Bar(start + index * 3_600_000, close, close + 1, close - 1, close))
+        bars[symbol] = tuple(rows)
+    first = symbols[:20]
+    second = (symbols[0],) + symbols[2:21]
+    membership = [first if index < 110 else second for index in range(n)]
+    tape = R.build_fold_source_signal_tape(
+        contract, "volume_pressure_inventory_short_1h_causal_v2", bars, membership)
+    assert tape.membership[109] == first and tape.membership[110] == second
+    assert len(tape.signals["BTCUSDT"]["se"]) == n
+    assert tape.prior_closed_atr["BTCUSDT"][0] is None
+    assert tape.prior_closed_atr["BTCUSDT"][100] == pytest.approx(
+        tape.decision_atr["BTCUSDT"][99])
+
+
+def test_fold_signal_tape_fails_whole_candidate_on_bad_membership_or_grid():
+    contract, _ = R.load_contract()
+    symbols = tuple(f"S{i:02d}" for i in range(20))
+    rows = tuple(R.Bar(i * 3_600_000, 100, 101, 99, 100) for i in range(200))
+    bars = {symbol: rows for symbol in symbols}
+    bad_membership = [symbols] * 200
+    bad_membership[50] = symbols[:-1]
+    with pytest.raises(R.IncompleteCandidate, match="PIT CORE-20"):
+        R.build_fold_source_signal_tape(
+            contract, "volume_pressure_inventory_short_1h_causal_v2", bars, bad_membership)
+    shifted = dict(bars)
+    shifted["S19"] = tuple(R.Bar(bar.time_ms + 1, bar.open, bar.high, bar.low, bar.close) for bar in rows)
+    with pytest.raises(R.IncompleteCandidate, match="exact fold grid"):
+        R.build_fold_source_signal_tape(
+            contract, "volume_pressure_inventory_short_1h_causal_v2", shifted, [symbols] * 200)
+
+
+@pytest.mark.parametrize("candidate_id", R.CANDIDATE_IDS[:2])
+def test_four_hour_candidates_build_exact_bound_source_tapes(candidate_id):
+    contract, _ = R.load_contract()
+    symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 20))
+    n, start = 220, ms("2025-04-01T00:00:00")
+    bars = {
+        symbol: tuple(R.Bar(start + index * 4 * 3_600_000, 100, 101, 99, 100, volume=1)
+                      for index in range(n))
+        for symbol in symbols
+    }
+    tape = R.build_fold_source_signal_tape(contract, candidate_id, bars, [symbols] * n)
+    assert len(tape.signals["BTCUSDT"]["se"]) == n
+    assert tape.membership[0] == symbols
+
+
+def test_synthetic_vpi_fold_derives_source_signal_next_open_and_entry_bar_target():
+    contract, _ = R.load_contract()
+    symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 20))
+    n = 220
+    start = ms("2025-04-01T00:00:00")
+    bars = {}
+    for symbol in symbols:
+        rows = []
+        for index in range(n):
+            if symbol == "S01":
+                close = 100.0 if index % 2 == 0 else 99.0
+                volume = 1.0 if index % 2 == 0 else 2.0
+            else:
+                close, volume = 100.0, 1.0
+            o, h, low = close, close + 1, close - 1
+            if symbol == "S01" and index == 169:
+                o, h, low, close = 100.0, 101.0, 90.0, 91.0
+            rows.append(R.Bar(start + index * 3_600_000, o, h, low, close, volume=volume))
+        bars[symbol] = tuple(rows)
+    membership = [symbols] * n
+    rules = {symbol: R.ExchangeRule(0.01, 0.1, 0.1, 1.0, 1_000) for symbol in symbols}
+    ledgers = {symbol: R.FundingLedger((), True, True) for symbol in symbols}
+    marks = {symbol: {start + index * 3_600_000: 100.0 for index in range(n)} for symbol in symbols}
+    result = R._evaluate_raw_fold(
+        contract, "volume_pressure_inventory_short_1h_causal_v2", "synthetic",
+        bars, membership, rules, ledgers, marks)
+    episode = next(trade for trade in result.trades if trade["symbol"] == "S01"
+                   and trade["entry_index"] == 169)
+    assert episode["exit_index"] == 169
+    assert episode["fills"][0]["reason"] == "entry"
+    assert episode["fills"][-1]["reason"] == "target"
+    assert episode["r"] > 0
+    report, contributions, stress = R._candidate_report(contract, (result,))
+    assert all(report[key] is not None for key in contract["required_report"])
+    assert report["trade_count"] == len(result.trades)
+    gates = R.promotion_gates(
+        report, contract, fold_net_r=[report["net_r"]], symbol_contributions=contributions,
+        stress_1_5_net_r=stress["1.5"], causal_parity=True, independent_review=False)
+    assert gates["independent_review"] is False
+
+
+def test_raw_fold_refuses_missing_mark_and_incomplete_funding_before_reduced_sample():
+    contract, _ = R.load_contract()
+    symbols = tuple(f"S{i:02d}" for i in range(20))
+    n, start = 200, ms("2025-04-01T00:00:00")
+    rows = tuple(R.Bar(start + i * 3_600_000, 100, 101, 99, 100) for i in range(n))
+    bars = {symbol: rows for symbol in symbols}
+    membership = [symbols] * n
+    rules = {symbol: R.ExchangeRule(0.01, 0.1) for symbol in symbols}
+    marks = {symbol: {bar.time_ms: 100.0 for bar in rows} for symbol in symbols}
+    ledgers = {symbol: R.FundingLedger((), True, True) for symbol in symbols}
+    ledgers["S00"] = R.FundingLedger((), True, False)
+    with pytest.raises(R.IncompleteCandidate, match="funding authority incomplete"):
+        R._evaluate_raw_fold(contract, "volume_pressure_inventory_short_1h_causal_v2", "bad",
+                             bars, membership, rules, ledgers, marks)
