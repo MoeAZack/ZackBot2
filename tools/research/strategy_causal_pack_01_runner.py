@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
-CONTRACT_SHA256 = "ea6c6844374c3c9dff80743ff6a69855aa5c77777427182cfb63eb4c1c5a3105"
+CONTRACT_SHA256 = "6c1ca9a6aa8695938d38ff0ba56a348891624d08c6110a5716791be7eb8c17b3"
 FORMAT = "zackbot.strategy-causal-pack-01/1"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
@@ -802,7 +802,7 @@ def walk_bar(pos: Position, bar: Bar, index: int, management: dict, rule: Exchan
 
 def discretionary_exit(pos: Position, bars: Sequence[Bar], decision_index: int, rule: ExchangeRule,
                        reason: str) -> Fill:
-    """Call only after the decision candle's full intrabar path was processed."""
+    """Fill a prior-close signal/time decision at the next bar's open."""
     index, reference, time_ms = next_open(bars, decision_index)
     if pos.qty <= 0:
         raise RunnerError("cannot discretionarily exit an already closed position")
@@ -1113,15 +1113,8 @@ def _evaluate_raw_fold(
             marks[symbol] = float(mark)
         book.advance_bar(time_ms, marks)
 
-        existing = tuple(positions)
-        for symbol in existing:
-            source_bar = bars_by_symbol[symbol][index]
-            managed = Bar(source_bar.time_ms, source_bar.open, source_bar.high, source_bar.low,
-                          source_bar.close, tape.prior_closed_atr[symbol][index], source_bar.volume)
-            record_fills(symbol, walk_bar(positions[symbol], managed, index, spec["management"], rules[symbol]))
-
-        # Signal/time decisions fill at this separately frozen next open, only
-        # after the full intrabar path, as required by the contract.
+        # Prior-close signal/time decisions execute at this open before any
+        # bar-t high/low/close can affect management or entry sizing.
         for symbol in tuple(positions):
             pos = positions[symbol]
             decision = index - 1
@@ -1132,7 +1125,6 @@ def _evaluate_raw_fold(
                                           "signal" if signal else "time")
                 record_fills(symbol, (fill,))
 
-        new_symbols: list[str] = []
         if index > 0 and entry_is_eligible(index, lookback, holding, n):
             decision = index - 1
             requested = [symbol for symbol in tape.membership[decision]
@@ -1155,7 +1147,6 @@ def _evaluate_raw_fold(
                 risks[terms.symbol] = terms.risk_cash
                 fund_cash[terms.symbol] = 0.0
                 entry_regime[terms.symbol] = tape.regime[decision]
-                new_symbols.append(terms.symbol)
                 entry = pos.fills[0]
                 return BookAdmission(
                     BookLot(terms.symbol, pos.side, pos.qty, pos.entry_reference, pos.entry_reference),
@@ -1163,12 +1154,14 @@ def _evaluate_raw_fold(
 
             book.admit_simultaneous(time_ms, requested, opener)
 
-        # A settlement exactly at an open applies to a just-entered position,
-        # but not to a position whose same-time exit was already filled.
+        # Exact-open funding is deliberately after the complete ordered entry
+        # cohort: same-time exits exclude it, same-time entries include it,
+        # and its cash effect can halt only later entries/bars.
         settle_before(time_ms, equal=True)
-        for symbol in tuple(new_symbols):
-            if symbol not in positions:
-                continue
+
+        # Intrabar protection now runs for every position that survived or was
+        # admitted at this open, strictly after open exits/entries/funding.
+        for symbol in tuple(positions):
             source_bar = bars_by_symbol[symbol][index]
             managed = Bar(source_bar.time_ms, source_bar.open, source_bar.high, source_bar.low,
                           source_bar.close, tape.prior_closed_atr[symbol][index], source_bar.volume)
