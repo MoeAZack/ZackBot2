@@ -75,6 +75,7 @@ class ExactBuildReportWriter:
             self._close_dir(dir_fd)
             raise WriterError("writer.open_failed") from None
         written_ok = False
+        temp_info = None
         try:
             view = memoryview(data)
             while view:
@@ -83,12 +84,12 @@ class ExactBuildReportWriter:
                     raise OSError("short write")
                 view = view[written:]
             os.fsync(fd)
+            temp_info = os.fstat(fd)
             written_ok = True
         except OSError:
             pass
-        finally:
-            os.close(fd)
         if not written_ok:
+            os.close(fd)
             self._unlink(temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.write_failed")
@@ -105,13 +106,24 @@ class ExactBuildReportWriter:
                 self._verify_dir_identity()
                 os.link(temp, target, follow_symlinks=False)
         except FileExistsError:
+            os.close(fd)
             self._unlink(temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.exists") from None
         except OSError:
+            os.close(fd)
             self._unlink(temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_failed") from None
+        try:
+            self._verify_published(name, target, dir_fd, temp_info, data)
+        except (OSError, WriterError):
+            os.close(fd)
+            self._unlink(name, target, dir_fd)
+            self._unlink(temp_name, temp, dir_fd)
+            self._close_dir(dir_fd)
+            raise WriterError("writer.publish_verify") from None
+        os.close(fd)
         self._unlink(temp_name, temp, dir_fd)
         if dir_fd is not None:
             try:
@@ -119,8 +131,58 @@ class ExactBuildReportWriter:
             except OSError:
                 self._close_dir(dir_fd)
                 raise WriterError("writer.sync_failed") from None
+        try:
+            self._verify_published(name, target, dir_fd, temp_info, data)
+        except (OSError, WriterError):
+            self._unlink(name, target, dir_fd)
+            self._close_dir(dir_fd)
+            raise WriterError("writer.publish_verify") from None
         self._close_dir(dir_fd)
         self._path = target
+
+    def _verify_published(self, name: str, target: Path, dir_fd: int | None, temp_info, data: bytes) -> None:
+        """Prove the final name is the fsynced temporary inode and contains exactly the accepted bytes.
+
+        The handle-less Windows hard-link API can race a directory replacement.  Identity checks on both sides of
+        an exact handle read, plus inode equality with the still-open temporary file, turn that race into a refusal.
+        """
+        if dir_fd is None:
+            self._verify_dir_identity()
+            path_info = os.lstat(target)
+            final_fd = os.open(target, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
+        else:
+            path_info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+            final_fd = os.open(name, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                               | getattr(os, "O_NOFOLLOW", 0), dir_fd=dir_fd)
+        try:
+            final_info = os.fstat(final_fd)
+            identity = (temp_info.st_dev, temp_info.st_ino)
+            if (not stat.S_ISREG(path_info.st_mode) or not stat.S_ISREG(final_info.st_mode)
+                    or (path_info.st_dev, path_info.st_ino) != identity
+                    or (final_info.st_dev, final_info.st_ino) != identity
+                    or path_info.st_size != len(data) or final_info.st_size != len(data)):
+                raise WriterError("writer.publish_verify")
+            chunks = []
+            remaining = len(data) + 1
+            while remaining:
+                chunk = os.read(final_fd, min(remaining, 1024 * 1024))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            if b"".join(chunks) != data:
+                raise WriterError("writer.publish_verify")
+        finally:
+            os.close(final_fd)
+        if dir_fd is None:
+            self._verify_dir_identity()
+            after = os.lstat(target)
+        else:
+            after = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        if (not stat.S_ISREG(after.st_mode)
+                or (after.st_dev, after.st_ino) != (temp_info.st_dev, temp_info.st_ino)
+                or after.st_size != len(data)):
+            raise WriterError("writer.publish_verify")
 
     @staticmethod
     def _unlink(name: str, path: Path, dir_fd: int | None) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -186,6 +187,55 @@ def test_writer_losing_final_name_race_preserves_competitor_bytes(tmp_path, pass
     assert caught.value.code == "writer.exists"
     assert target.read_bytes() == b"competitor"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("swap_point", ["before_link", "after_link"])
+def test_writer_fails_closed_when_windows_path_directory_swaps_during_publication(
+        tmp_path, passed_bytes, monkeypatch, swap_point):
+    out_dir = tmp_path / "reports"
+    out_dir.mkdir()
+    pinned = tmp_path / "reports.pinned"
+    replacement = tmp_path / "reports.replacement"
+    writer = ExactBuildReportWriter(out_dir, BUILD_SHA)
+    report = decode_report(passed_bytes)
+    final_name = report_filename(BUILD_SHA, report.report_sha256)
+    real_link = os.link
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+
+    def swap_dir():
+        os.rename(out_dir, pinned)
+        out_dir.mkdir()
+
+    def hostile_link(src, dst, **kwargs):
+        if swap_point == "before_link":
+            swap_dir()
+            (out_dir / Path(src).name).write_bytes(b"ATTACKER")
+            return real_link(src, dst, **kwargs)
+        result = real_link(src, dst, **kwargs)
+        swap_dir()
+        (out_dir / final_name).write_bytes(b"ATTACKER")
+        return result
+
+    monkeypatch.setattr(os, "link", hostile_link)
+    with pytest.raises(WriterError) as caught:
+        writer(passed_bytes)
+    # Windows normally refuses the rename while the temporary file handle remains open; platforms that permit the
+    # rename reach the post-publication identity proof.  Both are fail-closed outcomes.
+    assert caught.value.code in ("writer.publish_failed", "writer.publish_verify") and writer.path is None
+    if (out_dir / final_name).exists():
+        assert (out_dir / final_name).read_bytes() == passed_bytes
+    if pinned.exists() and (pinned / final_name).exists():
+        assert (pinned / final_name).read_bytes() == passed_bytes
+
+    if pinned.exists():
+        os.rename(out_dir, replacement)
+        os.rename(pinned, out_dir)
+    monkeypatch.setattr(os, "link", real_link)
+    if not (out_dir / final_name).exists():
+        writer(passed_bytes)
+        assert writer.path.read_bytes() == passed_bytes
+    else:
+        assert (out_dir / final_name).read_bytes() == passed_bytes
 
 
 def test_writer_losing_final_name_race_never_overwrites_or_follows_symlink(tmp_path, passed_bytes, monkeypatch):
