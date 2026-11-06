@@ -73,9 +73,34 @@ def test_d07_provisional_pin_can_never_be_relabelled_as_protected(monkeypatch):
     gate["filter_authority_protected_commit"] = "c" * 40
     calls = []
     monkeypatch.setattr(G, "load_metadata", lambda: metadata)
-    with pytest.raises(G.V4ExecutionBarrier, match="PROVISIONAL_STACK_PIN only"):
+    with pytest.raises(G.V4ExecutionBarrier, match="provisional stack pin cannot authorize"):
         G.require_execution_authority("pack", is_ancestor=lambda *args: calls.append(args) or True)
     assert calls == []
+
+
+@pytest.mark.parametrize("slot", [
+    "authority_protected_merge_commit",
+    "v4_contract_protected_commit",
+    "filter_authority_protected_commit",
+])
+@pytest.mark.parametrize("provisional_key", [
+    "authority_provisional_stack_pin",
+    "v4_contract_provisional_stack_pin",
+])
+def test_no_provisional_pin_can_authorize_any_protected_slot(
+        monkeypatch, slot, provisional_key):
+    metadata = _post_pin_metadata()
+    gate = metadata["protected_execution_gate"]
+    gate[slot] = gate[provisional_key]
+    calls = {"ancestor": 0, "head": 0}
+    monkeypatch.setattr(G, "load_metadata", lambda: metadata)
+    with pytest.raises(G.V4ExecutionBarrier, match="provisional stack pin cannot authorize"):
+        G.require_execution_authority(
+            "pack",
+            is_ancestor=lambda *_: calls.__setitem__("ancestor", 1) or True,
+            is_exact_clean_protected_head=lambda *_: calls.__setitem__("head", 1) or True,
+        )
+    assert calls == {"ancestor": 0, "head": 0}
 
 
 def _post_pin_metadata():

@@ -241,10 +241,14 @@ def require_execution_authority(
     if authority_commit is None or contract_commit is None or filter_commit is None:
         raise V4ExecutionBarrier(
             "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY: protected authority, v4 contract, and filter-authority pins are incomplete")
-    if authority_commit in (gate.get("authority_provisional_stack_pin"), PROVISIONAL_STACK_PIN):
-        raise V4ExecutionBarrier("a provisional stack pin cannot authorize protected authority")
-    if contract_commit == PROVISIONAL_STACK_PIN:
-        raise V4ExecutionBarrier("d07 is PROVISIONAL_STACK_PIN only and cannot authorize execution")
+    provisional_pins = {
+        gate.get("authority_provisional_stack_pin"),
+        gate.get("v4_contract_provisional_stack_pin"),
+    }
+    if any(commit in provisional_pins for commit in (
+            authority_commit, contract_commit, filter_commit)):
+        raise V4ExecutionBarrier(
+            "a provisional stack pin cannot authorize any protected commit slot")
     protected_ref = gate.get("protected_ref")
     if (not isinstance(authority_commit, str) or len(authority_commit) != 40
             or not isinstance(contract_commit, str) or len(contract_commit) != 40
