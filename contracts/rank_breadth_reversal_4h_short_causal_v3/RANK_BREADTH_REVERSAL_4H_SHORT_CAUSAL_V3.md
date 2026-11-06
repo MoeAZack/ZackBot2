@@ -1,10 +1,14 @@
-# RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3
+# RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3 — SPARSE AVAILABILITY
 
-**Status: FROZEN — signed by Codex, 6 November 2026 11:50 Cairo.**
+**Status: FROZEN — signed by Codex, 6 November 2026 13:41 Cairo.**
 
 The JSON twin is authoritative. This preregistration gives the unchanged short cell of
 `sig_rank_breadth_reversal_4h` one new causal identity. It is research-only, default-OFF and PAPER/testnet-only. It
 grants no runtime or mainnet authority. No market, archive or holdout data may be read before this contract is merged.
+This version-3 contract supersedes the unevaluated version-2 bytes with
+`RBR-SPARSE-CAUSAL-AVAILABILITY/v1`. The candidate remains
+`rank_breadth_reversal_4h_short_causal_v3` and the three-trial family ledger is unchanged because no evaluation occurred
+under the superseded bytes; the exact merged contract digest and head are part of the evaluation identity.
 
 ## Prior result is contaminated context
 
@@ -16,8 +20,11 @@ trial and this identity both remain in the complete multiplicity ledger, with ra
 ## Frozen signal and evidence
 
 The strategy remains short-only on 4h closed candles. At each decision candle, membership comes from the
-checksum-bound weekly point-in-time CORE-20 snapshot available then. `rank7` ranks causal 42-bar returns only among
-eligible members with both closes; `breadth7` is the positive-return fraction over that same set. A short entry requires
+checksum-bound weekly point-in-time CORE-20 snapshot available then. The effective decision set is that ordered CORE-20
+intersected with members having finite, actually observed closes at both canonical grid times `d` and `d-42`. `rank7`
+ranks those causal 42-bar returns and `breadth7` is the positive-return fraction over exactly that same set. Missing
+endpoints are excluded for that decision only: there is no imputation, time compression or future-value substitute, and
+original PIT order remains the simultaneous-entry priority. A short entry requires
 at least eight ranked members, the top `ceil(20% × n)` rank, breadth at least 0.65, RSI2 crossing below 70 on a red
 candle, volume at least 80% of the prior-42-volume median and the unchanged 5× cost-distance screen. The signal exit is
 the source rule: rank falls to the lower half or breadth drops below 0.45. All parameters and management are unchanged.
@@ -33,11 +40,31 @@ row, it also verifies the causal exchange-filter authority (`9463632b…a434`): 
 first 20 ranked TRADING PERPETUAL USDT COIN symbols with complete positive engine-parsed filters. Any mismatch or fewer
 than 20 eligible members makes the candidate incomplete; there is no static/current/union fallback.
 
+## Sparse causal availability
+
+Sparse observations are resolved at each decision using only information available by that decision. Full-fold coverage,
+a later candle, a later exchange status, archive tail length or later delisting knowledge can neither veto nor approve an
+earlier entry. A flat symbol lacking `d`, `d-42`, or enough contiguous local-indicator history is simply non-signalling at
+that decision. It remains in the PIT priority list for future decisions, and zero-signal decisions remain in all frequency
+denominators.
+
+Every missing or non-finite canonical 4h candle splits that symbol's tape. RSI2, ATR, the shifted prior-42-volume median
+and every other rolling or shifted symbol-local indicator restart inside the new maximal contiguous segment; no indicator
+may bridge a gap. Rank and breadth still use the explicitly frozen endpoint rule above. No forward-fill, backfill,
+interpolation, synthetic candle, compressed index or later value is allowed anywhere.
+
+The harmless treatment ends when exposure starts. After a valid signal schedules an entry, every required next open,
+point-in-time filter and entry fill must verify. After admission, every required bar, causal mark, funding interval,
+protection input and exit fill through final close must verify. Any such gap makes the **entire candidate incomplete**;
+the episode cannot be skipped or dropped. The end of a series is not proof of delisting. There is no last-mark,
+bankruptcy, inferred-delist or synthetic settlement unless a separate prior checksum-bound authority freezes the exact
+causal event and settlement rule. This contract binds no such authority.
+
 Entries and signal/time exits fill at the next tradable open. The 18-bar cap therefore exits at `e+18`, never at a
 same-candle close or synthetic final mark. Folds use a conservative 200-bar local warm-up for the causal BTC EMA200
 regime report and an 18-bar end purge: the first eligible decision is index 199, first entry 200 and last entry `N-19`.
-Every episode closes inside its fold. Missing membership, bars, next opens,
-exchange rules, marks or funding makes the whole candidate incomplete.
+Every admitted episode closes inside its fold. Missing flat/non-signalling observations follow the sparse rules above;
+missing evidence required by an admitted exposure makes the whole candidate incomplete.
 
 Stops, TP1, breakeven and the full target use the frozen `STRATEGY_CAUSAL_FBL_BT01_V1` event order. The entry bar
 participates; a gap through the stop fills at the open, and a stop present in the candle beats a favourable level.

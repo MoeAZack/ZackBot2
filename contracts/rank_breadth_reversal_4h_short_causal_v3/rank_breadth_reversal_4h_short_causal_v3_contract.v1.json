@@ -1,9 +1,9 @@
 {
-  "contract": "RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3",
-  "version": 2,
+  "contract": "RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3-SPARSE-AVAILABILITY",
+  "version": 3,
   "status": "FROZEN",
   "signed_by": "codex",
-  "frozen_at": "2026-11-06T11:50:43+02:00",
+  "frozen_at": "2026-11-06T13:41:43+02:00",
   "authority": "This JSON is authoritative. The Markdown twin is explanatory and cannot weaken it.",
   "purpose": "Give the unchanged rank_breadth_reversal_4h short cell one new causal identity on three unopened folds without reusing viewed evidence.",
   "scope": {
@@ -45,7 +45,7 @@
     },
     "max_lookback_bars": 200,
     "max_holding_bars": 18,
-    "allowed_change": "bind the unchanged source short rule to causal PIT CORE-20 context, next-open signal/time fills and the frozen marked-equity book; all signal and management values remain unchanged"
+    "allowed_change": "bind the unchanged source short rule to causal PIT CORE-20 context, sparse causal availability, next-open signal/time fills and the frozen marked-equity book; all signal and management values remain unchanged"
   },
   "contaminated_context": {
     "selection_is_not_evidence": true,
@@ -68,13 +68,26 @@
   },
   "point_in_time_signal": {
     "universe": "For every completed decision candle d, use only symbols present in the checksum-bound weekly PIT CORE-20 membership snapshot available at d; current membership and union-of-fold membership are forbidden.",
-    "rank": "rank7 is the descending cross-sectional rank of each eligible member's causal 42-bar return at d; ties use the source pandas average-rank semantics. A member without both d and d-42 closes is excluded from rank7_n, not assigned a future value.",
-    "breadth": "breadth7 is count(causal 42-bar return > 0) divided by rank7_n at d over that same PIT membership and data-eligible set.",
+    "rank": "At decision d, the effective decision set is exactly the checksum-bound weekly PIT CORE-20 members with finite actually observed closes at both d and d-42 on the canonical 4h grid. rank7 is the descending cross-sectional rank of each effective member's causal 42-bar return; ties use the source pandas average-rank semantics. Missing members are excluded from rank7_n, never imputed, compressed, forward-filled or assigned a future value.",
+    "breadth": "breadth7 is count(causal 42-bar return > 0) divided by rank7_n at d over exactly the same effective decision set used by rank7.",
     "minimum_ranked_members": 8,
     "short_entry": "top ceil(0.20 * rank7_n), breadth7 >= 0.65, RSI2 crosses below 70 on a red decision candle, volume >= 0.80 * the median of the prior 42 completed volumes, and 1.5*ATR/close >= 5*2*(0.0005+0.0002)",
     "short_signal_exit": "rank7 >= ceil(0.5 * rank7_n) or breadth7 < 0.45",
-    "availability": "Every membership, close, volume, ATR, RSI, rank and breadth input must have available_at <= decision candle close; restated, later-listed or later-ingested information is forbidden.",
-    "missing_input": "INCOMPLETE_CANDIDATE"
+    "availability": "Every membership, close, volume, ATR, RSI, rank and breadth input must have available_at <= decision candle close; restated, later-listed or later-ingested information is forbidden. No observation or archive availability after d may include, exclude, veto or reprioritize a member or entry at d.",
+    "missing_flat_or_non_signalling_input": "Exclude a member lacking d or d-42 from that decision's effective rank/breadth set. For a flat symbol, any missing candle or insufficient contiguous local-indicator segment makes that symbol non-signalling at d and is harmless to candidate completeness; it may not be repaired or used to remove another member.",
+    "missing_exposure_input": "Any missing required bar, next open, causal mark, funding interval, exchange filter or fill in the lifecycle of an admitted exposure makes the entire candidate INCOMPLETE_CANDIDATE.",
+    "missing_input": "SPARSE_CAUSAL_AVAILABILITY_V1"
+  },
+  "sparse_availability": {
+    "identity": "RBR-SPARSE-CAUSAL-AVAILABILITY/v1",
+    "effective_decision_set": "For each completed decision d independently, intersect the weekly PIT CORE-20 in its original artifact order with members having finite actually observed closes at canonical grid times d and d-42. Preserve that original order for priority; do not sort by file coverage, listing survival or later data.",
+    "no_imputation": "Do not forward-fill, backfill, interpolate, synthesize, compress time, bridge a missing canonical candle or borrow a later value for membership, OHLCV, rank, breadth, RSI, ATR, volume, marks, funding, fills or exchange rules.",
+    "segment_indicators": "Split each symbol's canonical 4h tape at every missing or non-finite candle. Compute RSI2, ATR, shifted prior-42-volume median and every other symbol-local rolling or shifted indicator independently inside each maximal contiguous segment; an indicator may not consume observations from an earlier segment across a gap.",
+    "flat_missing_is_harmless": "A flat symbol with a missing decision candle, a missing d-42 close or insufficient contiguous indicator history is non-signalling at that decision. It does not by itself make the candidate incomplete and cannot be removed from the PIT priority list for later decisions.",
+    "no_future_veto": "Eligibility at decision d is determined only from authorities and observations available by d. Full-fold coverage, a later candle, later funding, later exchange status, delisting knowledge or archive tail length may not veto or approve the decision.",
+    "exposure_fail_closed": "After a valid signal schedules an entry, every required next open, filter and fill and, after admission, every required bar, causal mark, funding interval, protection or exit fill through final close must exist and verify. Any gap makes the entire candidate INCOMPLETE_CANDIDATE; it is never a skipped trade or dropped row.",
+    "delisting_or_terminal_series": "The end of observed data is not proof of delisting. No synthetic close, last-mark settlement, assumed bankruptcy, inferred delisting exit or other terminal settlement is allowed unless a separate prior checksum-bound authority frozen in this contract supplies the exact causal event and settlement rule. This contract supplies none, so such an exposed episode is INCOMPLETE_CANDIDATE.",
+    "audit": "Report, by fold and decision, PIT member count, effective rank/breadth count, members excluded for missing endpoints, flat-symbol local-indicator gaps, and every exposure-critical availability failure. Preserve zero-signal decisions and never drop them from frequency denominators."
   },
   "pit_authority": {
     "universe_path": "research_evidence/universe/pit-top40-qv30d-v4.json",
@@ -112,7 +125,7 @@
     "time_exit_fill": "next_tradable_open_at_index_e_plus_H where H is max_holding_bars",
     "decision_time_strictly_before_signal_or_time_fill": true,
     "same_candle_close_fill_for_signal_or_time": false,
-    "missing_next_open": "INCOMPLETE_CANDIDATE",
+    "missing_next_open": "A flat non-signalling symbol needs no next open. Once a valid signal or exit decision requires a next-open fill, a missing or unverifiable next open makes the entire candidate INCOMPLETE_CANDIDATE.",
     "last_mark_or_synthetic_close": false,
     "actual_exchange_filters": true,
     "exchange_filter_rule": "Use the checksum-bound causal fold-start exchangeInfo snapshot and filtered weekly CORE-20 frozen by pit_authority. Use PRICE_FILTER.tickSize, MARKET_LOT_SIZE step/min/max quantity and MIN_NOTIONAL exactly as the engine parser does for every entry, partial and final exit in that fold. Missing, duplicate, invalid or non-positive required rules make the whole candidate INCOMPLETE before any market row is read. The known limitation that rules are last-observed at fold start is disclosed; current PAPER admission must independently pass current exchangeInfo parity.",
@@ -145,7 +158,7 @@
       "partial_then_management": "after a partial, update quantity once; breakeven ratchets only after the completed favourable leg and can be hit only on a later adverse leg",
       "signal_and_time_order": "process the full intrabar path first; if still open, a signal or time decision fills only at its frozen next-open index",
       "dca_or_pyramid": "forbidden",
-      "unresolved_or_missing_bar": "INCOMPLETE_CANDIDATE"
+      "unresolved_or_missing_bar": "A missing flat/non-signalling bar is handled only by sparse_availability and cannot bridge indicator history. A missing bar required by any admitted exposure or due fill makes the entire candidate INCOMPLETE_CANDIDATE."
     },
     "management_semantics": {
       "side_sign": "short=-1",
@@ -193,8 +206,8 @@
     "adverse_slippage_cash": "subtract the nonnegative reference-to-adverse-executable cash difference exactly once",
     "net_pnl_formula": "gross_reference_price_pnl + signed_funding_cash - fee_cash_on_executable_notional - adverse_slippage_cash",
     "adverse_fill_rule": "shift every buy upward and sell downward by the stress-adjusted slippage, round to the point-in-time tick against the strategy, then charge fees on executable notional",
-    "funding_gap": "INCOMPLETE_CANDIDATE",
-    "mark_gap": "INCOMPLETE_CANDIDATE",
+    "funding_gap": "A funding gap intersecting an admitted exposure makes the entire candidate INCOMPLETE_CANDIDATE; funding outside every exposure is not required.",
+    "mark_gap": "A causal-mark gap at a sizing, funding, daily-halt or protection event for an admitted exposure makes the entire candidate INCOMPLETE_CANDIDATE; a flat non-signalling symbol needs no mark.",
     "cost_stress_multipliers_to_report": [1.0, 1.5, 2.0],
     "cost_stress_rule": "multiply fees, adverse slippage and negative funding debits; positive funding credits remain at 1.0x"
   },
@@ -284,6 +297,7 @@
     "record_pit_universe_digest": true,
     "record_exchange_filter_authority_sha256": true,
     "record_fold_filter_snapshot_sha256": true,
+    "record_sparse_availability_identity": true,
     "record_candidate_and_fold_identity": true,
     "single_evaluation_per_exact_contract_and_head": true
   },
@@ -293,7 +307,7 @@
     "regime_breakdown", "coin_breakdown", "fee_drag_r", "slippage_drag_r", "funding_drag_r", "gross_r",
     "fold_cashflow_max_dd_r", "fold_marked_equity_max_dd_cash", "fold_marked_equity_max_dd_pct", "cost_stress_full_replay",
     "raw_p_value", "holm_adjusted_p_value", "bootstrap_ci_95_mean_r", "incomplete_rows",
-    "survivorship_disclosure", "full_candidate_ledger", "failure_reason"
+    "survivorship_disclosure", "sparse_availability_audit", "full_candidate_ledger", "failure_reason"
   ],
   "promotion_gates": {
     "aggregate_net_r_gt": 0,
@@ -317,7 +331,7 @@
     "all_required_reports_present": true,
     "full_ledger_and_multiplicity_disclosure_required": true,
     "maximum_incomplete_rows": 0,
-    "incomplete_scope": "Any missing PIT membership, candle, funding, mark, tradable next open, exchange rule or required report makes the entire candidate INCOMPLETE; rows may not be dropped to manufacture a passing sample.",
+    "incomplete_scope": "Sparse flat/non-signalling observations follow sparse_availability and do not fail the candidate. Any missing authority or required report, or any missing candle, funding interval, mark, tradable next open, exchange rule, protection input or fill required by an admitted exposure lifecycle makes the entire candidate INCOMPLETE; exposed episodes and rows may not be dropped to manufacture a passing sample.",
     "missing_or_incomplete_is_pass": false,
     "inference_required_for_promotion": false
   },
