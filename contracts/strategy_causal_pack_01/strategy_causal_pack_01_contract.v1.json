@@ -1,0 +1,156 @@
+{
+  "contract": "STRATEGY-CAUSAL-PACK-01",
+  "version": 1,
+  "status": "FROZEN",
+  "signed_by": "codex",
+  "frozen_at": "2026-11-06T09:55:00+02:00",
+  "signature_refs": ["issuecomment-6679947858", "issuecomment-6680010789", "issuecomment-6680054484"],
+  "authority": "This JSON is authoritative. The Markdown twin is explanatory and cannot weaken it.",
+  "purpose": "Find 2-3 profitable-after-cost candidates for an isolated protected PAPER/testnet cohort without reusing the viewed holdout.",
+  "scope": {
+    "research_only": true,
+    "paper_testnet_only": true,
+    "default_enabled": false,
+    "market_evaluation_authorized_after_contract_merge": true,
+    "mainnet_authority": false,
+    "parameter_search": false,
+    "old_holdout_reuse": false,
+    "runtime_risk_before_independent_pass": false
+  },
+  "candidate_selection_disclosure": {
+    "basis": "Previously viewed development near-misses selected because they were positive after costs and failed only the frozen sample-size gate.",
+    "selection_is_not_evidence": true,
+    "prior_results": [
+      {"old_id": "pullback_rsi_short_h1", "source_head": "d9079f11f6a5e7810f75651915e493c2322f4b99", "trades": 51, "net_r": 11.10, "pf": 1.448, "max_dd_r": 9.20},
+      {"old_id": "exp_mom_short_c27", "source_head": "e3533295cd773e91aa766dc2f00b82266388e09a", "trades": 65, "net_r": 5.13, "pf": 1.174, "max_dd_r": 5.55},
+      {"old_id": "volume_pressure_inventory_1h:short", "source_head": "730318588f986e5cc52bf0cee6f245a0e48a6180", "trades": 92, "net_r": 8.67, "pf": 1.236, "max_dd_r": 6.80}
+    ],
+    "multiplicity_rule": "Register all three new identities and retain every prior tested candidate in the program ledger. Report raw and Holm-adjusted inference; never erase rejected trials."
+  },
+  "candidates": [
+    {
+      "candidate_id": "pullback_rsi_short_h1_causal_v2",
+      "old_id": "pullback_rsi_short_h1",
+      "side": "short",
+      "timeframe": "4h",
+      "signal_and_parameters_unchanged": true,
+      "max_lookback_bars": 200,
+      "max_holding_bars": 60,
+      "source_rule": "strategies.py:sig_trend_pullback_rsi and STRATEGIES[pullback_rsi_short_h1]",
+      "allowed_change": "signal and time exits fill at the next tradable open"
+    },
+    {
+      "candidate_id": "exp_mom_short_c27_causal_v2",
+      "old_id": "exp_mom_short_c27",
+      "side": "short",
+      "timeframe": "4h",
+      "signal_and_parameters_unchanged": true,
+      "max_lookback_bars": 180,
+      "max_holding_bars": 180,
+      "source_rule": "strategies.py:sig_exp_mom_short with the preregistered 180-bar cap in research_evidence/prereg/trend_ema_mom_short.v1.json",
+      "allowed_change": "add the already-preregistered 180-bar cap and fill signal/time exits at the next tradable open"
+    },
+    {
+      "candidate_id": "volume_pressure_inventory_short_1h_causal_v2",
+      "old_id": "volume_pressure_inventory_1h:short",
+      "side": "short",
+      "timeframe": "1h",
+      "signal_and_parameters_unchanged": true,
+      "max_lookback_bars": 168,
+      "max_holding_bars": 24,
+      "source_rule": "strategies.py:sig_volume_pressure_inventory_1h and STRATEGIES[volume_pressure_inventory_1h] short cell",
+      "allowed_change": "signal and time exits fill at the next tradable open"
+    }
+  ],
+  "execution": {
+    "entry_fill": "next_tradable_open_after_completed_decision_candle",
+    "signal_exit_fill": "next_tradable_open_after_completed_exit_signal_candle",
+    "time_exit_fill": "next_tradable_open_after_the_frozen_max_holding_bar",
+    "stop_target_fill": "causal_intrabar_path_or_gap_open_using_the_existing_audited_rule",
+    "decision_time_strictly_before_signal_or_time_fill": true,
+    "same_candle_close_fill_for_signal_or_time": false,
+    "missing_next_open": "INCOMPLETE_SPLIT_END",
+    "last_mark_or_synthetic_close": false,
+    "actual_exchange_filters": true
+  },
+  "costs": {
+    "fee_per_fill_bps": 5,
+    "adverse_slippage_per_fill_bps": 2,
+    "funding": "checksum-verified actual Binance USD-M funding at every held settlement using the last causal verified mark",
+    "funding_gap": "INCOMPLETE",
+    "mark_gap": "INCOMPLETE",
+    "cost_stress_multipliers_to_report": [1.0, 1.5, 2.0]
+  },
+  "data": {
+    "universe": "frozen CORE-20 point-in-time rules of the source candidates",
+    "manifest": "research_evidence/manifests/binance-um-archive-v1.json.gz",
+    "allowed_latest_exclusive": "2026-09-28T00:00:00Z",
+    "forbid_read_at_or_after": "2026-09-28T00:00:00Z",
+    "viewed_holdout": "[2026-09-28,2026-11-05)",
+    "future_true_holdout_starts_no_earlier_than": "2026-11-05T00:00:00Z",
+    "survivorship_disclosure_required": true
+  },
+  "folds": [
+    {"name": "wf1", "start": "2025-04-01T00:00:00Z", "end": "2025-09-30T00:00:00Z"},
+    {"name": "wf2", "start": "2025-10-01T00:00:00Z", "end": "2026-03-31T00:00:00Z"},
+    {"name": "wf3", "start": "2026-04-01T00:00:00Z", "end": "2026-09-28T00:00:00Z"}
+  ],
+  "split_rules": {
+    "entries_begin_after_warmup_bars": "candidate.max_lookback_bars",
+    "new_entries_stop_before_end_bars": "candidate.max_holding_bars",
+    "boundary_isolation_bars": "candidate.max_lookback_bars + candidate.max_holding_bars",
+    "episode_must_close_inside_fold": true,
+    "folds_reported_separately": true,
+    "fold_selection": false,
+    "pool_before_per_fold_reporting": false
+  },
+  "runner_integrity": {
+    "validate_contract_before_any_market_read": true,
+    "record_contract_sha256": true,
+    "record_exact_git_head": true,
+    "refuse_dirty_tree": true,
+    "refuse_output_overwrite": true,
+    "record_manifest_digest": true,
+    "record_candidate_and_fold_identity": true,
+    "single_evaluation_per_exact_contract_and_head": true
+  },
+  "required_report": [
+    "trade_count", "net_r", "mean_r", "profit_factor", "win_rate", "max_dd_r", "expectancy_r",
+    "exposure_time", "monthly_trade_median", "symbol_concentration", "regime_breakdown", "coin_breakdown",
+    "fee_drag_r", "slippage_drag_r", "funding_drag_r", "gross_r", "raw_p_value", "holm_adjusted_p_value",
+    "bootstrap_ci_95_mean_r", "incomplete_rows", "survivorship_disclosure", "failure_reason"
+  ],
+  "promotion_gates": {
+    "aggregate_net_r_gt": 0,
+    "aggregate_mean_r_gt": 0,
+    "aggregate_pf_gt": 1.05,
+    "minimum_closed_trades": 200,
+    "minimum_symbols": 8,
+    "minimum_positive_folds": 2,
+    "of_folds": 3,
+    "minimum_monthly_trade_median": 8,
+    "max_dd_r_lte": 15,
+    "minimum_regime_mean_r": -0.05,
+    "max_symbol_absolute_contribution_fraction": 0.35,
+    "positive_after_1_5x_cost_stress": true,
+    "causal_parity_required": true,
+    "independent_review_required": true,
+    "all_required_reports_present": true,
+    "missing_or_incomplete_is_pass": false
+  },
+  "cohort": {
+    "target_qualified_candidates": [2, 3],
+    "slot_isolation": true,
+    "activation": "default-OFF until independent evidence and Codex exact-head acceptance",
+    "initial_risk_multiplier_max": "min(1, 15 / accepted_max_dd_r)",
+    "loss_controls_required": "RISK-LOSS-01 on master dc7f255 or descendant",
+    "protected_execution_required": true,
+    "rollback_ready": true
+  },
+  "stop_conditions": [
+    "Any contract or candidate-rule byte change creates a new candidate and evaluation identity.",
+    "Any read at or after 2026-09-28 refuses the pack before producing evidence.",
+    "A losing-after-cost candidate is rejected and receives no cohort risk.",
+    "No result may weaken a gate, select a fold, change a symbol set, or tune a parameter."
+  ]
+}
