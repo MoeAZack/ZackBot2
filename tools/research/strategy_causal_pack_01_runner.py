@@ -158,9 +158,9 @@ def _reserve_identity(pf: Preflight, identity_dir: Path, output: os.PathLike[str
     """O_EXCL is the concurrency boundary; even a failed attempt remains consumed."""
     claim = identity_dir / f"{pf.identity}.claim.json"
     try:
-        _exclusive_json(claim, {"state": "RESERVED", "identity": pf.identity,
-                                "contract_sha256": pf.contract_sha256, "git_head": pf.git_head,
-                                "candidate_id": pf.candidate_id, "output": str(Path(output).resolve())})
+        _exclusive_identity_json(claim, {"state": "RESERVED", "identity": pf.identity,
+                                         "contract_sha256": pf.contract_sha256, "git_head": pf.git_head,
+                                         "candidate_id": pf.candidate_id, "output": str(Path(output).resolve())})
     except FileExistsError as exc:
         raise RunnerError("this exact contract/head/candidate evaluation already exists") from exc
     return claim
@@ -174,21 +174,45 @@ def _finalize_claim(claim: Path, value: dict) -> None:
 
 
 def _exclusive_json(path: Path, value: dict) -> None:
+    """Create a disposable JSON artifact; remove it if its payload is incomplete."""
     path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     fd = os.open(path, flags, 0o644)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(value, fh, sort_keys=True, indent=2, allow_nan=False)
-            fh.write("\n")
-            fh.flush()
-            os.fsync(fh.fileno())
+        _write_json_fd(fd, value)
     except BaseException:
         try:
             path.unlink()
         except FileNotFoundError:
             pass
         raise
+
+
+def _exclusive_identity_json(path: Path, value: dict) -> None:
+    """Create a consumed identity and never unlink it after O_EXCL succeeds.
+
+    Even an empty or partial file is a tombstone: the filename binds the exact
+    identity, and all later attempts refuse on existence before loading data.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    _write_json_fd(fd, value)  # any exception propagates; the claim remains consumed
+
+
+def _write_json_fd(fd: int, value: dict) -> None:
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(value, fh, sort_keys=True, indent=2, allow_nan=False)
+        fh.write("\n")
+        _flush_json(fh)
+        _fsync_json(fh)
+
+
+def _flush_json(fh) -> None:
+    fh.flush()
+
+
+def _fsync_json(fh) -> None:
+    os.fsync(fh.fileno())
 
 
 def entry_is_eligible(entry_index: int, lookback: int, holding: int, fold_size: int) -> bool:

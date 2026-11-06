@@ -251,6 +251,38 @@ def test_failed_evaluation_consumes_identity_before_data_can_be_reloaded(tmp_pat
     assert calls == [1]
 
 
+@pytest.mark.parametrize("fault", ["json_dump", "write_flush", "fsync"])
+def test_post_create_claim_fault_never_reopens_identity_or_emits_packet(tmp_path, monkeypatch, fault):
+    ids, out = tmp_path / "ids", tmp_path / f"{fault}.json"
+    loader_calls = []
+    payload = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "a" * 64,
+               "folds": ["wf1", "wf2", "wf3"], "trades": []}
+
+    def fail(*_args, **_kwargs):
+        raise OSError(f"injected {fault} failure")
+
+    with monkeypatch.context() as injected:
+        if fault == "json_dump":
+            injected.setattr(R.json, "dump", fail)
+        elif fault == "write_flush":
+            injected.setattr(R, "_flush_json", fail)
+        else:
+            injected.setattr(R, "_fsync_json", fail)
+        with pytest.raises(OSError, match=f"injected {fault} failure"):
+            R.run_with_loader(R.CANDIDATE_IDS[0], out,
+                              lambda: loader_calls.append(True) or payload, R.evaluate_payload,
+                              identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+
+    claims = list(ids.glob("*.claim.json"))
+    assert len(claims) == 1 and claims[0].exists()
+    assert not out.exists() and loader_calls == []
+    with pytest.raises(R.RunnerError, match="already exists"):
+        R.run_with_loader(R.CANDIDATE_IDS[0], out,
+                          lambda: loader_calls.append(True) or payload, R.evaluate_payload,
+                          identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+    assert loader_calls == [] and not out.exists()
+
+
 def test_cli_exposes_exactly_three_frozen_candidates():
     assert R.CANDIDATE_IDS == (
         "pullback_rsi_short_h1_causal_v2",
