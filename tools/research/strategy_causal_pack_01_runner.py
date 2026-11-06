@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
 CONTRACT_SHA256 = "14dcaad801bd5313d7f71775383dc676de339e74fca72450f5a37c8703ee1520"
-CONTRACT_COMMIT = "b16ed98edd2c756d5d90b5ab6209f1b92d031adb"
+CONTRACT_COMMIT = "ad9eb9ab6378d41a150bc8addfad8406415c2aad"
 FORMAT = "zackbot.strategy-causal-pack-01/3"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
