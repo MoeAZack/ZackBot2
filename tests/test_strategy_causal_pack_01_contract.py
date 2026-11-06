@@ -1,5 +1,6 @@
 """Static freeze for STRATEGY-CAUSAL-PACK-01. No data or backtest is read."""
 import json
+import hashlib
 import os
 from datetime import datetime, timezone
 
@@ -9,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR = os.path.join(ROOT, 'contracts', 'strategy_causal_pack_01')
 JS = os.path.join(DIR, 'strategy_causal_pack_01_contract.v1.json')
 MD = os.path.join(DIR, 'STRATEGY_CAUSAL_PACK_01.md')
+FILTER_AUTH = os.path.join(DIR, 'exchange_filter_authority.v2.json')
 
 
 def _load():
@@ -26,23 +28,23 @@ def _ts(value):
 def test_contract_is_frozen_signed_and_has_no_live_authority():
     c, md = _load()
     assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
-        'STRATEGY-CAUSAL-PACK-01', 1, 'FROZEN', 'codex')
-    assert c['frozen_at'] == '2026-11-06T11:27:43+02:00'
+        'STRATEGY-CAUSAL-PACK-01', 2, 'FROZEN', 'codex')
+    assert c['frozen_at'] == '2026-11-06T12:45:34+02:00'
     assert c['scope']['paper_testnet_only'] is True
     assert c['scope']['default_enabled'] is False
     assert c['scope']['mainnet_authority'] is False
     assert c['scope']['parameter_search'] is False
     assert c['scope']['runtime_risk_before_independent_pass'] is False
-    assert md.splitlines()[2] == '**Status: FROZEN — signed by Codex, 6 November 2026 11:27 Cairo.**'
+    assert md.splitlines()[2] == '**Status: FROZEN v2 — signed by Codex, 6 November 2026 12:45 Cairo.**'
 
 
 def test_three_new_unique_identities_preserve_old_rejections():
     c, _ = _load()
     rows = c['candidates']
     assert [x['candidate_id'] for x in rows] == [
-        'pullback_rsi_short_h1_causal_v2',
-        'exp_mom_short_c27_causal_v2',
-        'volume_pressure_inventory_short_1h_causal_v2',
+        'pullback_rsi_short_h1_causal_v3',
+        'exp_mom_short_c27_causal_v3',
+        'volume_pressure_inventory_short_1h_causal_v3',
     ]
     assert len({x['candidate_id'] for x in rows}) == len({x['old_id'] for x in rows}) == 3
     assert all(x['candidate_id'] != x['old_id'] and x['signal_parameters_unchanged'] for x in rows)
@@ -62,18 +64,18 @@ def test_source_strategy_facts_and_frozen_horizons_match_code():
     exp = S.STRATEGIES['exp_mom_short_c27']
     vpi = S.STRATEGIES['volume_pressure_inventory_1h']
     assert pull['research_only'] and pull['sides'] == 'short' and pull['tf'] == '4h'
-    assert pull['mgmt']['max_bars'] == by_id['pullback_rsi_short_h1_causal_v2']['max_holding_bars'] == 60
-    assert by_id['pullback_rsi_short_h1_causal_v2']['management'] == pull['mgmt']
+    assert pull['mgmt']['max_bars'] == by_id['pullback_rsi_short_h1_causal_v3']['max_holding_bars'] == 60
+    assert by_id['pullback_rsi_short_h1_causal_v3']['management'] == pull['mgmt']
     assert exp['research_only'] and exp['sides'] == 'short' and exp['tf'] == '4h'
     assert exp['mgmt'].get('max_bars') is None  # adding the preregistered cap creates the new identity
-    assert by_id['exp_mom_short_c27_causal_v2']['max_holding_bars'] == 180
-    assert by_id['exp_mom_short_c27_causal_v2']['management'] == {
+    assert by_id['exp_mom_short_c27_causal_v3']['max_holding_bars'] == 180
+    assert by_id['exp_mom_short_c27_causal_v3']['management'] == {
         **exp['mgmt'], 'max_bars': 180}
     with open(os.path.join(ROOT, 'tools', 'research', 'trend_ema_mom.py'), encoding='utf-8') as fh:
         assert 'TIME_CAP_BARS = 180' in fh.read()
     assert vpi['research_only'] and vpi['sides'] == 'both' and vpi['tf'] == '1h'
-    assert vpi['mgmt']['max_bars'] == by_id['volume_pressure_inventory_short_1h_causal_v2']['max_holding_bars'] == 24
-    assert by_id['volume_pressure_inventory_short_1h_causal_v2']['management'] == {
+    assert vpi['mgmt']['max_bars'] == by_id['volume_pressure_inventory_short_1h_causal_v3']['max_holding_bars'] == 24
+    assert by_id['volume_pressure_inventory_short_1h_causal_v3']['management'] == {
         'stop_atr': 2.0, 'tp_r': 2.0, 'max_bars': 24}
     for row in by_id.values():
         assert f"`{row['candidate_id']}`" in md
@@ -167,7 +169,7 @@ def test_book_sizing_and_cairo_halt_are_frozen_not_caller_choices():
     assert 'every signal/time exit due at t' in b['entry_attempt_phase']
     assert 'unslipped reference open' in b['gross_open_notional_formula']
     assert 'current gross open notional' in b['leverage_notional_cap_formula']
-    assert 'frozen CORE-20 order' in b['entry_priority']
+    assert 'causal fold-start filter-eligible CORE-20 order' in b['entry_priority']
     assert b['daily_halt_fraction'] == 0.08
     assert b['daily_halt_timezone'].startswith('Africa/Cairo')
     assert 'before any fill at t or funding_time == t' in b['daily_halt_rule']
@@ -197,6 +199,35 @@ def test_folds_are_ordered_unspent_and_holdout_is_forbidden():
     assert 'Nothing at or after 28 September 2026 may be read' in md
 
 
+def test_filter_authority_is_checksum_bound_causal_and_pre_market():
+    c, md = _load()
+    with open(FILTER_AUTH, encoding='utf-8') as fh:
+        authority = json.load(fh)
+    assert (authority['authority'], authority['version'], authority['status'], authority['signed_by']) == (
+        'STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY', 2, 'FROZEN', 'codex')
+    assert c['data']['exchange_filter_authority'].endswith('exchange_filter_authority.v2.json')
+    assert '20261011' in c['data']['future_dated_snapshot_forbidden']
+    folds = {row['name']: row for row in c['folds']}
+    snapshots = {row['captured_at']: row for row in authority['snapshots']}
+    assert authority['fold_bindings'] == {
+        'wf1': '2024-12-13T04:44:48Z',
+        'wf2': '2024-12-13T04:44:48Z',
+        'wf3': '2026-02-17T04:13:28Z',
+    }
+    for fold_name, captured_at in authority['fold_bindings'].items():
+        snap = snapshots[captured_at]
+        assert _ts(snap['captured_at']) < _ts(folds[fold_name]['start'])
+        assert _ts(snap['server_time']) < _ts(folds[fold_name]['start'])
+        path = os.path.join(ROOT, *snap['path'].split('/'))
+        with open(path, 'rb') as fh:
+            raw = fh.read()
+        assert hashlib.sha256(raw).hexdigest() == snap['sha256']
+        payload = json.loads(raw)
+        assert payload['symbols'] and payload['serverTime'] > 0
+    assert 'any candidate market row was read' in md
+    assert 'No later snapshot, invented rule' in md
+
+
 def test_split_purge_is_candidate_specific_and_finite():
     c, _ = _load()
     s = c['split_rules']
@@ -224,7 +255,10 @@ def test_runner_fails_closed_before_data_and_outputs_are_immutable():
     c, _ = _load()
     r = c['runner_integrity']
     assert all(r.values())
-    assert c['stop_conditions'][1].startswith('Any read at or after 2026-09-28 refuses')
+    assert any(row.startswith('Any use of an exchange-rule snapshot captured at or after')
+               for row in c['stop_conditions'])
+    assert any(row.startswith('Any read at or after 2026-09-28 refuses')
+               for row in c['stop_conditions'])
 
 
 def test_promotion_is_economic_frequent_diversified_and_independent():
@@ -238,7 +272,7 @@ def test_promotion_is_economic_frequent_diversified_and_independent():
     assert g['positive_after_1_5x_cost_stress'] and g['causal_parity_required']
     assert g['independent_review_required'] and g['all_required_reports_present']
     assert g['maximum_incomplete_rows'] == 0
-    assert g['incomplete_scope'].startswith('Any missing funding')
+    assert g['incomplete_scope'].startswith('Any missing causal fold-start filter authority')
     assert g['missing_or_incomplete_is_pass'] is False
     assert g['inference_required_for_promotion'] is False
     assert 'at least 200 closes' in md and 'missing evidence never passes' in md

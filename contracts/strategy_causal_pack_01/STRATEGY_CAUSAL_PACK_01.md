@@ -1,6 +1,6 @@
 # STRATEGY-CAUSAL-PACK-01
 
-**Status: FROZEN — signed by Codex, 6 November 2026 11:27 Cairo.**
+**Status: FROZEN v2 — signed by Codex, 6 November 2026 12:45 Cairo.**
 
 The JSON twin is authoritative. This pack gives three previously positive-after-cost but under-sampled short ideas one
 new, causal identity each. Selection is disclosed and is not evidence. All old candidate verdicts remain rejected.
@@ -9,12 +9,25 @@ new, causal identity each. Selection is disclosed and is not evidence. All old c
 
 | New identity | Source cell | Frame | Causal maximum hold |
 |---|---|---:|---:|
-| `pullback_rsi_short_h1_causal_v2` | `pullback_rsi_short_h1` | 4h | 60 bars |
-| `exp_mom_short_c27_causal_v2` | `exp_mom_short_c27` | 4h | 180 bars |
-| `volume_pressure_inventory_short_1h_causal_v2` | `volume_pressure_inventory_1h:short` | 1h | 24 bars |
+| `pullback_rsi_short_h1_causal_v3` | `pullback_rsi_short_h1` | 4h | 60 bars |
+| `exp_mom_short_c27_causal_v3` | `exp_mom_short_c27` | 4h | 180 bars |
+| `volume_pressure_inventory_short_1h_causal_v3` | `volume_pressure_inventory_1h:short` | 1h | 24 bars |
 
 The exp-momentum 180-bar cap is inherited from the pre-existing canonical short-momentum preregistration, not selected
-from Candidate 27 outcomes. No grid, tuning, side pooling, universe change or fold selection is allowed.
+from Candidate 27 outcomes. The earlier v2 identities are retired before evaluation because their 11 October filter
+snapshot was future-dated relative to the folds. The v3 universe amendment below is metadata-only and was frozen before
+any candidate market row was read. No grid, tuning, side pooling, later universe change or fold selection is allowed.
+
+## Causal exchange-rule universe
+
+Each fold freezes the latest checksum-bound Binance USD-M exchangeInfo response observed strictly before that fold
+starts: the 13 December 2024 response for wf1 and wf2, and the 17 February 2026 response for wf3. The responses are
+raw Binance API payloads preserved by the Internet Archive and pinned by `exchange_filter_authority.v2.json`.
+For every PIT week, walk the existing crypto volume ranking in order and take the first 20 symbols that the fold
+snapshot records as TRADING USDT COIN perpetuals with complete positive price, market-quantity and minimum-notional
+filters. Fewer than 20 makes the candidate incomplete before any market row is read. No later snapshot, invented rule,
+current-survivor screen or outcome-driven deletion is allowed. The fold snapshot stays fixed for the whole fold; current
+PAPER/testnet admission must independently pass current exchangeInfo parity.
 
 ## Causal evidence
 
@@ -44,7 +57,7 @@ at each next-open entry attempt, at most four open positions, and gross marked n
 This is an identity-defining deviation from the legacy source's realized-cash sizing. Existing positions use the last
 verified 1h mark close available at the open; same-open admissions use their unslipped reference open. Settled cash
 includes all prior realized PnL, fees, slippage, funding, and partials exactly once. Simultaneous entries follow the
-checksum-bound CORE-20 order, so later symbols see earlier fills and entry costs.
+checksum-bound causal filter-eligible CORE-20 order, so later symbols see earlier fills and entry costs.
 
 At each bar open, funding strictly before the open is settled, marks and any new Cairo-day baseline are frozen, and due
 signal/time exits execute before entry terms are calculated. The 8% Cairo-day threshold is checked before the first

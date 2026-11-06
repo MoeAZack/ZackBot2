@@ -1,0 +1,44 @@
+{
+  "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY",
+  "version": 2,
+  "status": "FROZEN",
+  "signed_by": "codex",
+  "frozen_at": "2026-11-06T12:45:34+02:00",
+  "purpose": "Remove future-dated exchange-rule look-ahead before any candidate market row is read.",
+  "source_policy": "Each payload is the raw Binance USD-M GET /fapi/v1/exchangeInfo response preserved by the Internet Archive. The Binance response serverTime and the archive capture timestamp must both be no later than the fold start. No later snapshot, current status, or inferred rule may be used.",
+  "fold_policy": "For each fold, use the newest listed snapshot whose captured_at and server_time are both strictly earlier than the fold start. Freeze that snapshot for the whole fold. From each PIT weekly crypto ranking, take the first 20 rows that are TRADING PERPETUAL USDT COIN contracts in the fold snapshot and have complete positive PRICE_FILTER, MARKET_LOT_SIZE or LOT_SIZE, and MIN_NOTIONAL rules. Preserve ranking order. Fewer than 20 is INCOMPLETE before any market row read.",
+  "filter_policy": "Use PRICE_FILTER.tickSize, MARKET_LOT_SIZE.stepSize/minQty/maxQty with LOT_SIZE as an explicit fallback only when MARKET_LOT_SIZE is absent or unusable, and MIN_NOTIONAL.notional. Duplicate, missing, non-finite, zero, or negative required values are INCOMPLETE.",
+  "identity_effect": "This metadata-only eligibility rule changes the source CORE-20 and therefore creates the causal_v3 candidate identities. It was frozen before any candidate archive market row was read and may not be changed after outcomes are observed.",
+  "known_limitation": "Rules are last-observed at fold start, not a claim that Binance never changed them during the fold. Current PAPER/testnet admission must independently pass current exchangeInfo parity.",
+  "snapshots": [
+    {
+      "captured_at": "2024-12-13T04:44:48Z",
+      "server_time": "2024-12-13T00:00:07.467Z",
+      "source_url": "https://www.binance.com/fapi/v1/exchangeInfo",
+      "archive_url": "https://web.archive.org/web/20241213044448id_/https://www.binance.com/fapi/v1/exchangeInfo",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20241213T044448Z.json",
+      "sha256": "24496895b0796baa18293a3f849981df7c3f39f56f2bf0e22f20fa67ae58fa69"
+    },
+    {
+      "captured_at": "2026-02-17T04:13:28Z",
+      "server_time": "2026-02-17T04:00:13.648Z",
+      "source_url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "archive_url": "https://web.archive.org/web/20260217041328id_/https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20260217T041328Z.json",
+      "sha256": "fef22b65892ec2254be2850762621b4982ac462c66de31ee9d6c38df61a1c2ac"
+    }
+  ],
+  "fold_bindings": {
+    "wf1": "2024-12-13T04:44:48Z",
+    "wf2": "2024-12-13T04:44:48Z",
+    "wf3": "2026-02-17T04:13:28Z"
+  },
+  "forbidden": [
+    "the 2026-10-11 snapshot for any fold",
+    "backfilling a symbol from a snapshot captured after its fold starts",
+    "dropping a symbol after reading its candidate outcome",
+    "invented or inferred tick, quantity, or notional rules",
+    "current-symbol survivorship filtering",
+    "caller-supplied replacement snapshots or membership"
+  ]
+}
