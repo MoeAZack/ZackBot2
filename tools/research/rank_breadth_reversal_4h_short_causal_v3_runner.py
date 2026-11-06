@@ -1286,10 +1286,6 @@ def _evaluate_raw_fold(
                 if entry_bar is None:
                     raise IncompleteCandidate(
                         f"{INCOMPLETE}: missing tradable next open for {terms.symbol} at {time_ms}")
-                regime = tape.regime[decision]
-                if regime not in ("btc_above_or_on_ema200", "btc_below_ema200"):
-                    raise IncompleteCandidate(
-                        f"{INCOMPLETE}: missing causal BTC regime for admitted entry at {time_ms}")
                 pos = open_position(
                     side="short", entry_index=index, entry_time_ms=time_ms,
                     reference_open=entry_bar.open,
@@ -1299,6 +1295,10 @@ def _evaluate_raw_fold(
                     cost_multiplier=cost_multiplier)
                 if pos is None:
                     return None
+                regime = tape.regime[decision]
+                if regime not in ("btc_above_or_on_ema200", "btc_below_ema200"):
+                    raise IncompleteCandidate(
+                        f"{INCOMPLETE}: missing causal BTC regime for admitted entry at {time_ms}")
                 positions[terms.symbol] = pos
                 actual_initial_risk = pos.initial_qty * pos.r_price
                 if not _positive(actual_initial_risk):

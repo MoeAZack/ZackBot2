@@ -209,6 +209,14 @@ def test_missing_btc_regime_fails_only_when_a_trade_would_be_admitted(monkeypatc
     with pytest.raises(R.IncompleteCandidate, match="missing causal BTC regime"):
         R._evaluate_raw_fold(contract, R.CANDIDATE_IDS[0], "btc-gap", raw,
                              membership, rules, funding, marks)
+    blocked_rules = dict(rules)
+    blocked_rules["S01"] = R.ExchangeRule(
+        tick=0.01, step=0.1, min_qty=0.1, min_notional=1_000_000_000.0,
+        max_qty=1000)
+    result = R._evaluate_raw_fold(
+        contract, R.CANDIDATE_IDS[0], "btc-gap-not-admitted", raw,
+        membership, blocked_rules, funding, marks)
+    assert result.trades == ()
 
 
 def test_unexposed_funding_gap_is_harmless_and_keeps_full_pit_cell(monkeypatch):
