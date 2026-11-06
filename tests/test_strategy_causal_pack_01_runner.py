@@ -356,7 +356,7 @@ def test_cli_has_no_prepared_input_or_evaluation_route(tmp_path, capsys):
                  "--identity-dir", str(identities)])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "contract PR #298" in err and "raw archive adapter" in err
+    assert "contract PR #298" in err and "evaluate_raw_candidate" in err
     assert not out.exists() and not identities.exists()
 
 
@@ -375,7 +375,7 @@ def test_readiness_wires_exact_repository_sources_without_market_read():
     joined = "\n".join(report["gaps"])
     assert "contract PR #298" in joined
     assert "risk_cash and leverage_notional_cap" not in joined
-    assert "raw archive adapter is not yet enabled" in joined
+    assert "evaluate_raw_candidate is not yet implemented" in joined
 
 
 def test_frozen_book_contract_and_default_archive_store_are_wired(tmp_path):

@@ -919,7 +919,8 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
         gaps.append("missing external binance_um archive store path for manifest klines/fundingRate/markPriceKlines")
     elif not Path(archive_store).is_dir():
         gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
-    gaps.append("raw archive adapter is not yet enabled; no evaluation/promotion route exists")
+    gaps.append("raw archive adapter is staged and synthetic-tested, but evaluate_raw_candidate is not yet implemented; "
+                "no evaluation/promotion route exists")
     return {
         "format": "zackbot.strategy-causal-pack-01-readiness/1", "ready": False,
         "contract_sha256": contract_digest, "source_bindings": bindings,
