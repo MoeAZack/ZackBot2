@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tools.research import strategy_causal_pack_01_runner as R
+from tools.research import strategy_causal_pack_01_archive as A
 
 
 RULE = R.ExchangeRule(tick=0.01, step=0.1, min_qty=0.1, min_notional=1.0, max_qty=1000)
@@ -639,3 +640,122 @@ def test_raw_fold_refuses_missing_mark_and_incomplete_funding_before_reduced_sam
     with pytest.raises(R.IncompleteCandidate, match="funding authority incomplete"):
         R._evaluate_raw_fold(contract, "volume_pressure_inventory_short_1h_causal_v2", "bad",
                              bars, membership, rules, ledgers, marks)
+
+
+def _sealed_candidate_packets(tmp_path, *, heads=None):
+    identity_dir = tmp_path / "ids"
+    paths = []
+    heads = heads or ["a" * 40] * 3
+    authority = {
+        "manifest_digest": "1" * 64, "pit_universe_digest": "2" * 64,
+        "manifest_file_sha256": "3" * 64, "universe_file_sha256": "4" * 64,
+        "exchange_info_sha256": R.EXCHANGE_INFO_SHA256,
+    }
+    contract, _ = R.load_contract()
+    for index, candidate_id in enumerate(R.CANDIDATE_IDS):
+        path = tmp_path / f"{candidate_id}.json"
+        report = {key: 0 for key in contract["required_report"]}
+        report.update({"raw_p_value": (0.01, 0.03, 0.02)[index],
+                       "holm_adjusted_p_value": {
+                           "status": "PENDING_FROZEN_PACK_ASSEMBLY",
+                           "worst_rank_upper_bound": 0.1}})
+        gates = {"required_reports": False, "independent_review": False,
+                 "aggregate_net_r_gt_0": True}
+        R._run_with_loader(
+            candidate_id, path, lambda: None,
+            lambda _data, _pf, candidate_id=candidate_id, report=report, gates=gates: {
+                "_verified_authority": authority, "candidate_id": candidate_id,
+                "report": report, "promotion_gates": gates, "promotable": False,
+            }, identity_dir=identity_dir, head_fn=lambda head=heads[index]: head,
+            dirty_fn=lambda: False)
+        paths.append(path)
+    return paths, identity_dir
+
+
+def test_exact_three_packet_assembler_derives_holm_without_self_review(tmp_path):
+    paths, identity_dir = _sealed_candidate_packets(tmp_path)
+    before = [path.read_bytes() for path in paths]
+    result = R.assemble_frozen_pack(paths, tmp_path / "pack.json", identity_dir=identity_dir)
+    assert result["candidate_ids"] == list(R.CANDIDATE_IDS)
+    assert [row["report"]["holm_adjusted_p_value"] for row in result["candidates"]] == [
+        pytest.approx(0.03), pytest.approx(0.04), pytest.approx(0.04)]
+    assert all(row["promotion_gates"]["required_reports"] for row in result["candidates"])
+    assert all(not row["promotion_gates"]["independent_review"] for row in result["candidates"])
+    assert result["independent_review"] is False and result["promotable"] is False
+    assert before == [path.read_bytes() for path in paths]
+    with pytest.raises(R.RunnerError, match="already exists"):
+        R.assemble_frozen_pack(paths, tmp_path / "pack2.json", identity_dir=identity_dir)
+
+
+def test_pack_refuses_incomplete_duplicate_and_mixed_runner_heads(tmp_path):
+    paths, identity_dir = _sealed_candidate_packets(tmp_path / "one")
+    with pytest.raises(R.RunnerError, match="exactly three"):
+        R.assemble_frozen_pack(paths[:2], tmp_path / "short.json", identity_dir=identity_dir)
+    with pytest.raises(R.RunnerError, match="exactly once"):
+        R.assemble_frozen_pack([paths[0], paths[0], paths[2]], tmp_path / "dup.json",
+                               identity_dir=identity_dir)
+    mixed, mixed_ids = _sealed_candidate_packets(
+        tmp_path / "mixed", heads=["a" * 40, "b" * 40, "a" * 40])
+    with pytest.raises(R.RunnerError, match="one frozen runner head"):
+        R.assemble_frozen_pack(mixed, tmp_path / "mixed.json", identity_dir=mixed_ids)
+
+
+def test_pack_refuses_packet_or_completed_tombstone_tamper(tmp_path):
+    paths, identity_dir = _sealed_candidate_packets(tmp_path / "packet")
+    packet = json.loads(paths[0].read_text(encoding="utf-8"))
+    packet["report"]["raw_p_value"] = 0.99
+    paths[0].write_text(json.dumps(packet), encoding="utf-8")
+    with pytest.raises(R.RunnerError, match="packet checksum mismatch"):
+        R.assemble_frozen_pack(paths, tmp_path / "bad-packet.json", identity_dir=identity_dir)
+
+    paths, identity_dir = _sealed_candidate_packets(tmp_path / "claim")
+    packet = json.loads(paths[0].read_text(encoding="utf-8"))
+    claim = identity_dir / f'{packet["integrity"]["evaluation_identity"]}.claim.json'
+    claim.write_text(json.dumps({"state": "COMPLETED"}), encoding="utf-8")
+    with pytest.raises(R.RunnerError, match="tombstone does not seal"):
+        R.assemble_frozen_pack(paths, tmp_path / "bad-claim.json", identity_dir=identity_dir)
+
+
+def test_pending_holm_keeps_required_reports_and_promotion_false():
+    contract, _ = R.load_contract()
+    report = {key: 1 for key in contract["required_report"]}
+    report["holm_adjusted_p_value"] = {"status": "PENDING_FROZEN_PACK_ASSEMBLY"}
+    report["regime_breakdown"] = {"x": {"mean_r": 1}}
+    gates = R.promotion_gates(
+        report, contract, fold_net_r=[1, 1, 1], symbol_contributions={"x": 1},
+        stress_1_5_net_r=1, causal_parity=True, independent_review=False)
+    assert gates["required_reports"] is False
+    assert gates["independent_review"] is False
+    assert not all(gates.values())
+
+
+def test_monthly_trade_median_includes_zero_trade_frozen_fold_months():
+    contract, _ = R.load_contract()
+    trade = {
+        "r": 1.0, "symbol": "BTCUSDT", "regime": "normal",
+        "exit_time_ms": ms("2025-04-02T00:00:00"), "entry_index": 1, "exit_index": 2,
+        "risk_cash": 5.0,
+        "accounting": {"gross_reference_price_pnl": 5.0, "fee_cash": 0.0,
+                       "adverse_slippage_cash": 0.0, "signed_funding_cash": 0.0},
+    }
+    folds = (R.FoldEvaluation("wf1", (trade,), 501, False, 10),
+             R.FoldEvaluation("wf2", (), 500, False, 10),
+             R.FoldEvaluation("wf3", (), 500, False, 10))
+    report, _, _ = R._candidate_report(contract, folds)
+    assert len(R._frozen_fold_months_utc(contract)) == 18
+    assert report["monthly_trade_median"] == 0.0
+
+
+def test_raw_evaluator_rejects_nonrepository_authorities_before_first_row_read():
+    contract, digest = R.load_contract()
+    candidate_id = R.CANDIDATE_IDS[0]
+    identity = "f" * 64
+    pf = R.Preflight(contract, digest, "a" * 40, candidate_id, identity)
+    adapter = object.__new__(A.RawArchiveAdapter)
+    adapter.manifest = {"digest": "0" * 64}
+    adapter.pit_universe = {"digest": "1" * 64, "manifest_digest": "0" * 64}
+    row_reads = []
+    adapter.core20_union = lambda *_: row_reads.append(True)
+    with pytest.raises(A.ArchiveIncomplete, match="fixed repository manifest/PIT"):
+        R.evaluate_raw_candidate(adapter, pf, contract_merged=True)
+    assert row_reads == []

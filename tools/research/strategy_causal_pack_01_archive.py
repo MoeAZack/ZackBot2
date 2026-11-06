@@ -44,6 +44,22 @@ class RawFunding:
     rate: float
 
 
+@dataclass(frozen=True)
+class AuthorityDigests:
+    manifest_digest: str
+    pit_universe_digest: str
+    manifest_file_sha256: str
+    universe_file_sha256: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "manifest_digest": self.manifest_digest,
+            "pit_universe_digest": self.pit_universe_digest,
+            "manifest_file_sha256": self.manifest_file_sha256,
+            "universe_file_sha256": self.universe_file_sha256,
+        }
+
+
 def load_exchange_filters(path: str | Path, expected_sha256: str,
                           symbols: tuple[str, ...]) -> tuple[dict[str, dict], str]:
     """Checksum-bind raw frozen exchangeInfo and reuse the engine's exact parser."""
@@ -93,6 +109,22 @@ def load_authorities(manifest_path: str | Path, universe_path: str | Path) -> tu
     return manifest, pit
 
 
+def authority_digests(manifest_path: str | Path, universe_path: str | Path,
+                      manifest: dict, pit: dict) -> AuthorityDigests:
+    """Bind parsed authorities to the exact repository file bytes."""
+    try:
+        manifest_raw = Path(manifest_path).read_bytes()
+        universe_raw = Path(universe_path).read_bytes()
+    except OSError as exc:
+        raise ArchiveIncomplete(f"authority byte binding failed: {exc}") from exc
+    return AuthorityDigests(
+        manifest_digest=str(manifest["digest"]),
+        pit_universe_digest=str(pit["digest"]),
+        manifest_file_sha256=hashlib.sha256(manifest_raw).hexdigest(),
+        universe_file_sha256=hashlib.sha256(universe_raw).hexdigest(),
+    )
+
+
 class RawArchiveAdapter:
     """Read only manifest-authorized CORE-20 rows, failing closed on any gap."""
 
@@ -120,6 +152,25 @@ class RawArchiveAdapter:
             self.dataset = P.Dataset(manifest, self.store, pit_universe, books=["crypto"])
         except (M.ManifestError, P.M.ManifestError, P.PITError) as exc:
             raise ArchiveIncomplete(f"PIT dataset initialization failed: {exc}") from exc
+
+    def verify_repository_authorities(self, manifest_path: str | Path,
+                                      universe_path: str | Path) -> AuthorityDigests:
+        """Refuse a caller-supplied self-consistent authority pair.
+
+        The runner invokes this before the first row-loading method.  Only the
+        fixed repository manifest and PIT universe bytes can authorize an
+        evaluation; synthetic adapters remain usable solely for adapter tests.
+        """
+        expected_manifest, expected_pit = load_authorities(manifest_path, universe_path)
+        expected = authority_digests(
+            manifest_path, universe_path, expected_manifest, expected_pit)
+        if (self.manifest != expected_manifest or self.pit_universe != expected_pit
+                or self.manifest.get("digest") != expected.manifest_digest
+                or self.pit_universe.get("digest") != expected.pit_universe_digest
+                or self.pit_universe.get("manifest_digest") != expected.manifest_digest):
+            raise ArchiveIncomplete(
+                "adapter authorities do not match fixed repository manifest/PIT bytes")
+        return expected
 
     def core20_at(self, time_ms: int) -> tuple[str, ...]:
         weeks = [week for week in self.pit_universe["weeks"] if week["monday_ms"] <= time_ms]

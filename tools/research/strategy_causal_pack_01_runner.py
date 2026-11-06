@@ -192,10 +192,13 @@ def _run_with_loader(
     try:
         packet = evaluator(loader(), pf)
         packet.setdefault("format", FORMAT)
+        verified_authority = packet.pop("_verified_authority", None)
         packet["integrity"] = {
             "contract_sha256": pf.contract_sha256, "git_head": pf.git_head,
             "candidate_id": pf.candidate_id, "evaluation_identity": pf.identity,
         }
+        if verified_authority is not None:
+            packet["integrity"].update(verified_authority)
         packet["packet_sha256"] = hashlib.sha256(canonical(packet)).hexdigest()
         _exclusive_json(Path(output), packet)
     except BaseException as exc:
@@ -876,6 +879,156 @@ def holm_adjusted_p_values(raw_by_candidate: dict[str, float]) -> dict[str, floa
     return adjusted
 
 
+PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/1"
+PACK_AUTHORITY_KEYS = (
+    "manifest_digest", "pit_universe_digest", "manifest_file_sha256",
+    "universe_file_sha256", "exchange_info_sha256",
+)
+
+
+def _strict_json_object(path: Path) -> dict:
+    try:
+        with path.open(encoding="utf-8") as fh:
+            value = json.load(
+                fh, parse_constant=lambda item: (_ for _ in ()).throw(ValueError(item)))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise RunnerError(f"invalid immutable JSON artifact {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise RunnerError(f"immutable JSON artifact is not an object: {path}")
+    return value
+
+
+def _verify_candidate_packet(path: Path, identity_dir: Path) -> dict:
+    packet = _strict_json_object(path)
+    claimed = packet.get("packet_sha256")
+    unsigned = dict(packet)
+    unsigned.pop("packet_sha256", None)
+    actual = hashlib.sha256(canonical(unsigned)).hexdigest()
+    if claimed != actual:
+        raise RunnerError(f"candidate packet checksum mismatch: {path}")
+    integrity = packet.get("integrity")
+    candidate_id = packet.get("candidate_id")
+    if not isinstance(integrity, dict) or candidate_id not in CANDIDATE_IDS:
+        raise RunnerError(f"candidate packet identity is invalid: {path}")
+    head = integrity.get("git_head")
+    if (integrity.get("contract_sha256") != CONTRACT_SHA256
+            or integrity.get("candidate_id") != candidate_id
+            or not isinstance(head, str) or len(head) not in (40, 64)
+            or any(char not in "0123456789abcdef" for char in head.lower())):
+        raise RunnerError(f"candidate packet frozen integrity is invalid: {path}")
+    expected_identity = hashlib.sha256(canonical({
+        "contract_sha256": CONTRACT_SHA256,
+        "git_head": integrity["git_head"],
+        "candidate_id": candidate_id,
+    })).hexdigest()
+    if integrity.get("evaluation_identity") != expected_identity:
+        raise RunnerError(f"candidate evaluation identity mismatch: {path}")
+    if any(not isinstance(integrity.get(key), str) or len(integrity[key]) != 64
+           or any(char not in "0123456789abcdef" for char in integrity[key].lower())
+           for key in PACK_AUTHORITY_KEYS):
+        raise RunnerError(f"candidate authority digests are incomplete: {path}")
+    if integrity["exchange_info_sha256"] != EXCHANGE_INFO_SHA256:
+        raise RunnerError(f"candidate exchangeInfo authority changed: {path}")
+    claim_path = identity_dir / f"{expected_identity}.claim.json"
+    claim = _strict_json_object(claim_path)
+    if claim != {"state": "COMPLETED", "identity": expected_identity,
+                 "output": str(path.resolve()), "packet_sha256": claimed}:
+        raise RunnerError(f"candidate identity tombstone does not seal packet: {path}")
+    report = packet.get("report")
+    gates = packet.get("promotion_gates")
+    pending = report.get("holm_adjusted_p_value") if isinstance(report, dict) else None
+    if (not isinstance(gates, dict) or gates.get("required_reports") is not False
+            or packet.get("promotable") is not False
+            or not isinstance(pending, dict)
+            or pending.get("status") != "PENDING_FROZEN_PACK_ASSEMBLY"):
+        raise RunnerError(f"candidate packet is not a sealed pre-assembly packet: {path}")
+    return packet
+
+
+def assemble_frozen_pack(packet_paths: Sequence[os.PathLike[str] | str],
+                         output: os.PathLike[str] | str, *,
+                         identity_dir: os.PathLike[str] | str) -> dict:
+    """Seal exactly one packet per frozen candidate and derive Holm diagnostics.
+
+    Candidate packets are never modified.  This assembler can complete required
+    diagnostics, but deliberately cannot assert an independent-review verdict.
+    """
+    paths = tuple(Path(path) for path in packet_paths)
+    if len(paths) != len(CANDIDATE_IDS):
+        raise RunnerError("frozen pack requires exactly three candidate packets")
+    out = Path(output)
+    if out.exists() or Path(str(out) + ".tmp").exists():
+        raise RunnerError("assembled output exists or stale staging exists; overwrite refused")
+    identity_root = Path(identity_dir)
+    packets = [_verify_candidate_packet(path, identity_root) for path in paths]
+    by_id = {packet["candidate_id"]: packet for packet in packets}
+    if len(by_id) != len(packets) or set(by_id) != set(CANDIDATE_IDS):
+        raise RunnerError("pack must contain each frozen candidate exactly once")
+    heads = {packet["integrity"]["git_head"] for packet in packets}
+    authorities = {
+        tuple(packet["integrity"][key] for key in PACK_AUTHORITY_KEYS) for packet in packets
+    }
+    if len(heads) != 1:
+        raise RunnerError("candidate packets do not share one frozen runner head")
+    if len(authorities) != 1:
+        raise RunnerError("candidate packets do not share authority digests")
+    contract, _ = load_contract()
+    for packet in packets:
+        report = packet["report"]
+        missing = [key for key in contract["required_report"]
+                   if key not in report or (report[key] is None and key != "holm_adjusted_p_value")]
+        if missing:
+            raise RunnerError(f"candidate required reports are incomplete: {missing}")
+    raw = {candidate_id: float(by_id[candidate_id]["report"]["raw_p_value"])
+           for candidate_id in CANDIDATE_IDS}
+    adjusted = holm_adjusted_p_values(raw)
+    source_hashes = {candidate_id: by_id[candidate_id]["packet_sha256"]
+                     for candidate_id in CANDIDATE_IDS}
+    pack_identity = hashlib.sha256(canonical({
+        "format": PACK_FORMAT, "contract_sha256": CONTRACT_SHA256,
+        "git_head": next(iter(heads)), "authority": next(iter(authorities)),
+        "source_packet_sha256": source_hashes,
+    })).hexdigest()
+    claim = identity_root / f"pack-{pack_identity}.claim.json"
+    try:
+        _exclusive_identity_json(claim, {"state": "RESERVED", "identity": pack_identity,
+                                         "output": str(out.resolve())})
+    except FileExistsError as exc:
+        raise RunnerError("this exact three-candidate pack assembly already exists") from exc
+    try:
+        assembled = []
+        for candidate_id in CANDIDATE_IDS:
+            candidate = json.loads(json.dumps(by_id[candidate_id]))
+            source_hash = candidate.pop("packet_sha256")
+            candidate["source_packet_sha256"] = source_hash
+            candidate["report"]["holm_adjusted_p_value"] = adjusted[candidate_id]
+            candidate["promotion_gates"]["required_reports"] = True
+            candidate["promotion_gates"]["independent_review"] = False
+            candidate["promotable"] = False
+            candidate["promotion_status"] = (
+                "AWAITING_EXTERNAL_INDEPENDENT_REVIEW" if all(
+                    value for key, value in candidate["promotion_gates"].items()
+                    if key != "independent_review") else "FAILED_GATES")
+            assembled.append(candidate)
+        authority = dict(zip(PACK_AUTHORITY_KEYS, next(iter(authorities))))
+        result = {
+            "format": PACK_FORMAT, "pack_identity": pack_identity,
+            "contract_sha256": CONTRACT_SHA256, "git_head": next(iter(heads)),
+            "authority": authority, "candidate_ids": list(CANDIDATE_IDS),
+            "candidates": assembled, "independent_review": False, "promotable": False,
+        }
+        result["pack_sha256"] = hashlib.sha256(canonical(result)).hexdigest()
+        _exclusive_json(out, result)
+    except BaseException as exc:
+        _finalize_claim(claim, {"state": "FAILED_CONSUMED", "identity": pack_identity,
+                                "error_type": type(exc).__name__})
+        raise
+    _finalize_claim(claim, {"state": "COMPLETED", "identity": pack_identity,
+                            "output": str(out.resolve()),
+                            "pack_sha256": result["pack_sha256"]})
+    return result
+
+
 def required_report_shell(contract: dict, **values: object) -> dict:
     """No report can silently omit a required key; unknown values fail the gate."""
     report = {key: None for key in contract["required_report"]}
@@ -889,6 +1042,9 @@ def required_report_shell(contract: dict, **values: object) -> dict:
 def promotion_gates(report: dict, contract: dict, *, fold_net_r: Sequence[float], symbol_contributions: dict,
                     stress_1_5_net_r: float, causal_parity: bool, independent_review: bool) -> dict:
     missing = [key for key in contract["required_report"] if report.get(key) is None]
+    holm = report.get("holm_adjusted_p_value")
+    if isinstance(holm, dict) and holm.get("status") == "PENDING_FROZEN_PACK_ASSEMBLY":
+        missing.append("holm_adjusted_p_value")
     trades = int(report.get("trade_count") or 0)
     symbols = len(symbol_contributions)
     total_abs = math.fsum(abs(float(x)) for x in symbol_contributions.values())
@@ -1188,7 +1344,7 @@ def _candidate_report(contract: dict, folds: Sequence[FoldEvaluation]) -> tuple[
         max_dd = max(max_dd, peak - cumulative)
     by_symbol: dict[str, float] = {}
     by_regime: dict[str, list[float]] = {}
-    by_month: dict[str, int] = {}
+    by_month = {month: 0 for month in _frozen_fold_months_utc(contract)}
     for trade in trades:
         by_symbol[trade["symbol"]] = by_symbol.get(trade["symbol"], 0.0) + float(trade["r"])
         by_regime.setdefault(trade["regime"], []).append(float(trade["r"]))
@@ -1246,6 +1402,21 @@ def _candidate_report(contract: dict, folds: Sequence[FoldEvaluation]) -> tuple[
     return report, by_symbol, stress
 
 
+def _frozen_fold_months_utc(contract: dict) -> tuple[str, ...]:
+    """Every UTC calendar month touched by a frozen half-open fold."""
+    months: set[str] = set()
+    for fold in contract["folds"]:
+        current = datetime.fromisoformat(fold["start"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(fold["end"].replace("Z", "+00:00"))
+        current = datetime(current.year, current.month, 1, tzinfo=timezone.utc)
+        while current < end:
+            months.add(current.strftime("%Y-%m"))
+            current = (datetime(current.year + 1, 1, 1, tzinfo=timezone.utc)
+                       if current.month == 12 else
+                       datetime(current.year, current.month + 1, 1, tzinfo=timezone.utc))
+    return tuple(sorted(months))
+
+
 def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = False) -> dict:
     """Load and evaluate the exact three-fold candidate from a verified adapter.
 
@@ -1259,6 +1430,9 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
     if not isinstance(adapter, RawArchiveAdapter):
         raise RunnerError("evaluate_raw_candidate requires the checksum-verifying RawArchiveAdapter")
     contract = pf.contract
+    if contract.get("runner_integrity", {}).get("record_manifest_digest") is not True:
+        raise RunnerError("contract no longer requires manifest digest recording")
+    authority = adapter.verify_repository_authorities(ARCHIVE_MANIFEST_PATH, UNIVERSE_PATH)
     spec = candidate_spec(contract, pf.candidate_id)
     validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
@@ -1301,6 +1475,8 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
                             stress_1_5_net_r=stress["1.5"], causal_parity=True,
                             independent_review=False)
     return {
+        "_verified_authority": {**authority.as_dict(),
+                                "exchange_info_sha256": EXCHANGE_INFO_SHA256},
         "candidate_id": pf.candidate_id, "source_binding": bindings[pf.candidate_id],
         "folds": [{"name": fold.name, "trades": list(fold.trades),
                    "net_r": fold_net[index], "final_equity": fold.final_equity}
