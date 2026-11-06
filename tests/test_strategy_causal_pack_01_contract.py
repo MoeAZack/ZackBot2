@@ -251,13 +251,19 @@ def test_filter_authority_is_checksum_bound_causal_and_pre_market():
                     and all(float(rule[key]) > 0 for key in
                             ('tick', 'step', 'min_qty', 'min_notional', 'max_qty'))):
                 eligible.add(symbol_row['symbol'])
+        start = folds[fold_name]['start'][:10]
+        end = folds[fold_name]['end'][:10]
+        active_at_start = max(
+            (week for week in pit['weeks'] if week['monday_utc'] <= start),
+            key=lambda week: week['monday_utc'])
+        weeks = [active_at_start] + [
+            week for week in pit['weeks'] if start < week['monday_utc'] < end]
         cells = []
-        for week in pit['weeks']:
-            if folds[fold_name]['start'][:10] <= week['monday_utc'] < folds[fold_name]['end'][:10]:
-                members = [symbol for symbol in week['books']['crypto']['members']
-                           if symbol in eligible][:20]
-                assert len(members) == len(set(members)) == 20
-                cells.append({'monday_utc': week['monday_utc'], 'members': members})
+        for week in weeks:
+            members = [symbol for symbol in week['books']['crypto']['members']
+                       if symbol in eligible][:20]
+            assert len(members) == len(set(members)) == 20
+            cells.append({'monday_utc': week['monday_utc'], 'members': members})
         digest = hashlib.sha256(json.dumps(
             cells, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         assert digest == authority['weekly_membership_sha256'][fold_name]
