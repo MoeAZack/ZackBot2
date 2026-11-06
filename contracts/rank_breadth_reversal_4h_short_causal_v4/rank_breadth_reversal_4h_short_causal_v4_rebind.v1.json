@@ -39,6 +39,10 @@
       "byte_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
       "content_digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
       "required_guaranteed_period_gaps": 0
+    },
+    "exchange_filter_authority": {
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json",
+      "byte_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9"
     }
   },
   "immutable_rules": {
