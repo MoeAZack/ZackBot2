@@ -12,9 +12,12 @@ import hashlib
 import json
 import math
 import os
+import random
+import statistics
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -114,7 +117,7 @@ def preflight(
     identity = hashlib.sha256(canonical({
         "contract_sha256": digest, "git_head": head, "candidate_id": candidate_id
     })).hexdigest()
-    if identity_dir is not None and (Path(identity_dir) / f"{identity}.json").exists():
+    if identity_dir is not None and (Path(identity_dir) / f"{identity}.claim.json").exists():
         raise RunnerError("this exact contract/head/candidate evaluation already exists")
     return Preflight(contract, digest, head, candidate_id, identity)
 
@@ -129,22 +132,45 @@ def run_with_loader(
     head_fn: Callable[[], str] = git_head,
     dirty_fn: Callable[[], bool] = git_dirty,
 ) -> dict:
-    """Integrity checks precede ``loader``; output and identity records are O_EXCL."""
+    """Reserve identity before ``loader``; every attempt is consumed fail-closed."""
     pf = preflight(candidate_id, output, identity_dir=identity_dir, head_fn=head_fn, dirty_fn=dirty_fn)
-    packet = evaluator(loader(), pf)
-    packet.setdefault("format", FORMAT)
-    packet["integrity"] = {
-        "contract_sha256": pf.contract_sha256, "git_head": pf.git_head,
-        "candidate_id": pf.candidate_id, "evaluation_identity": pf.identity,
-    }
-    packet["packet_sha256"] = hashlib.sha256(canonical(packet)).hexdigest()
-    _exclusive_json(Path(output), packet)
-    if identity_dir is not None:
-        record = Path(identity_dir) / f"{pf.identity}.json"
-        record.parent.mkdir(parents=True, exist_ok=True)
-        _exclusive_json(record, {"identity": pf.identity, "output": str(Path(output).resolve()),
-                                 "packet_sha256": packet["packet_sha256"]})
+    identity_root = Path(identity_dir) if identity_dir is not None else Path(output).parent / ".strategy_causal_pack_01_ids"
+    claim = _reserve_identity(pf, identity_root, output)
+    try:
+        packet = evaluator(loader(), pf)
+        packet.setdefault("format", FORMAT)
+        packet["integrity"] = {
+            "contract_sha256": pf.contract_sha256, "git_head": pf.git_head,
+            "candidate_id": pf.candidate_id, "evaluation_identity": pf.identity,
+        }
+        packet["packet_sha256"] = hashlib.sha256(canonical(packet)).hexdigest()
+        _exclusive_json(Path(output), packet)
+    except BaseException as exc:
+        _finalize_claim(claim, {"state": "FAILED_CONSUMED", "identity": pf.identity,
+                                "error_type": type(exc).__name__})
+        raise
+    _finalize_claim(claim, {"state": "COMPLETED", "identity": pf.identity,
+                            "output": str(Path(output).resolve()), "packet_sha256": packet["packet_sha256"]})
     return packet
+
+
+def _reserve_identity(pf: Preflight, identity_dir: Path, output: os.PathLike[str] | str) -> Path:
+    """O_EXCL is the concurrency boundary; even a failed attempt remains consumed."""
+    claim = identity_dir / f"{pf.identity}.claim.json"
+    try:
+        _exclusive_json(claim, {"state": "RESERVED", "identity": pf.identity,
+                                "contract_sha256": pf.contract_sha256, "git_head": pf.git_head,
+                                "candidate_id": pf.candidate_id, "output": str(Path(output).resolve())})
+    except FileExistsError as exc:
+        raise RunnerError("this exact contract/head/candidate evaluation already exists") from exc
+    return claim
+
+
+def _finalize_claim(claim: Path, value: dict) -> None:
+    """Atomically move a reserved identity to completed or failed-consumed state."""
+    tmp = claim.with_name(f"{claim.name}.{os.getpid()}.tmp")
+    _exclusive_json(tmp, value)
+    os.replace(tmp, claim)
 
 
 def _exclusive_json(path: Path, value: dict) -> None:
@@ -376,6 +402,41 @@ def walk_bar(pos: Position, bar: Bar, index: int, management: dict, rule: Exchan
         fill = _close_fill(pos, bar, index, rule, pos.qty, frozen_stop, "stop_wins")
         pos.qty = 0.0; pos.fills.append(fill); return [fill]
 
+    # A favourable gap is an open-to-open path event.  Stops already had
+    # priority above.  Trigger fills never receive favourable gap improvement.
+    open_events: list[tuple[float, str]] = []
+    if pos.target is not None and ((sign == 1 and bar.open >= pos.target) or (sign == -1 and bar.open <= pos.target)):
+        open_events.append((pos.target, "target"))
+    if (not pos.tp1_done and pos.tp1 is not None
+            and ((sign == 1 and bar.open >= pos.tp1) or (sign == -1 and bar.open <= pos.tp1))):
+        open_events.append((pos.tp1, "tp1"))
+    open_events.sort(key=lambda x: x[0], reverse=sign == -1)
+    for level, kind in open_events:
+        if pos.qty <= 0:
+            break
+        if kind == "tp1":
+            close_qty = _floor_step(pos.qty * pos.tp1_frac, rule.step)
+            if close_qty <= 0:
+                continue
+            fill = _close_fill(pos, bar, index, rule, close_qty, level, "tp1")
+            pos.qty = _floor_step(pos.qty - close_qty, rule.step)
+            pos.tp1_done = True
+        else:
+            fill = _close_fill(pos, bar, index, rule, pos.qty, level, "target")
+            pos.qty = 0.0
+        pos.fills.append(fill); out.append(fill)
+    if open_events and pos.qty > 0:
+        pos.best_price = max(pos.best_price, bar.open) if sign == 1 else min(pos.best_price, bar.open)
+        if pos.be_trigger is not None:
+            reached = pos.best_price >= pos.be_trigger if sign == 1 else pos.best_price <= pos.be_trigger
+            if reached:
+                pos.stop = max(pos.stop, pos.entry_exec) if sign == 1 else min(pos.stop, pos.entry_exec)
+        if pos.trail_atr is not None:
+            if not _positive(bar.atr_prior):
+                raise IncompleteCandidate(f"{INCOMPLETE}: missing prior-closed-bar ATR for trail")
+            proposed = pos.best_price - sign * float(pos.trail_atr) * float(bar.atr_prior)
+            pos.stop = max(pos.stop, proposed) if sign == 1 else min(pos.stop, proposed)
+
     pts = path_points(bar, pos.side)
     for a, b in zip(pts, pts[1:]):
         if pos.qty <= 0:
@@ -515,46 +576,173 @@ def promotion_gates(report: dict, contract: dict, *, fold_net_r: Sequence[float]
     }
 
 
-def evaluate_payload(payload: object, pf: Preflight) -> dict:
-    """CLI boundary for a prepared packet; market adapters should replace this evaluator.
+def trade_from_evidence(row: dict) -> dict:
+    """Recompute one trade from reference fills and verified funding rows.
 
-    The prepared packet must already contain fold-level causal results.  The runner
-    refuses incomplete reports rather than pretending a partial packet is evidence.
+    Executable prices, fees, slippage, funding cash, net cash and R are never
+    accepted from the caller.  They are reconstructed with the frozen rules.
     """
+    try:
+        side, risk = row["side"], float(row["risk_cash"])
+        rule = ExchangeRule(**row["exchange_rule"])
+        entry, exits = row["entry"], row["exits"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise IncompleteCandidate(f"{INCOMPLETE}: malformed per-trade evidence") from exc
+    if side not in ("long", "short") or not _positive(risk) or not isinstance(exits, list) or not exits:
+        raise IncompleteCandidate(f"{INCOMPLETE}: invalid side, risk, or exit evidence")
+    rule.validate()
+    entry_qty = float(entry.get("qty", 0))
+    if (not _positive(entry_qty)
+            or not math.isclose(entry_qty, _floor_step(entry_qty, rule.step), rel_tol=0, abs_tol=1e-9)):
+        raise IncompleteCandidate(f"{INCOMPLETE}: invalid entry quantity")
+    entry_fill = make_fill(int(entry["index"]), int(entry["time_ms"]),
+                           "buy" if side == "long" else "sell", entry_qty,
+                           float(entry["reference_price"]), rule, "entry")
+    if (entry_qty < rule.min_qty or entry_qty * entry_fill.executable_price < rule.min_notional
+            or (rule.max_qty is not None and entry_qty > rule.max_qty + 1e-12)):
+        raise IncompleteCandidate(f"{INCOMPLETE}: entry violates frozen exchange filters")
+    pos = Position(side, entry_fill.index, entry_fill.time_ms, entry_fill.reference_price,
+                   entry_fill.executable_price, entry_qty, entry_qty, 1.0, 0.0,
+                   None, None, None, None, entry_fill.executable_price, fills=[entry_fill])
+    allowed = {"target", "tp1", "stop", "stop_wins", "gap_stop", "signal", "time"}
+    for raw in exits:
+        reason = raw.get("reason")
+        qty = float(raw.get("qty", 0))
+        if (reason not in allowed or not _positive(qty)
+                or not math.isclose(qty, _floor_step(qty, rule.step), rel_tol=0, abs_tol=1e-9)):
+            raise IncompleteCandidate(f"{INCOMPLETE}: invalid exit fill")
+        fill = make_fill(int(raw["index"]), int(raw["time_ms"]),
+                         "sell" if side == "long" else "buy", qty,
+                         float(raw["reference_price"]), rule, reason)
+        if fill.index < entry_fill.index or fill.time_ms < entry_fill.time_ms:
+            raise IncompleteCandidate(f"{INCOMPLETE}: exit precedes entry")
+        pos.fills.append(fill)
+    remaining = entry_qty - math.fsum(x.qty for x in pos.fills[1:])
+    pos.qty = 0.0 if abs(remaining) <= 1e-9 else max(0.0, remaining)
+    try:
+        raw_ledger = row["funding"]
+        events = tuple(sorted((FundingEvent(int(x["time_ms"]), float(x["rate"]),
+                                            None if x.get("mark") is None else float(x["mark"]))
+                               for x in raw_ledger["events"]), key=lambda x: x.time_ms))
+        if len({x.time_ms for x in events}) != len(events):
+            raise IncompleteCandidate(f"{INCOMPLETE}: duplicate funding settlement")
+        ledger = FundingLedger(events, raw_ledger["checksum_verified"] is True,
+                               raw_ledger["coverage_complete"] is True)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise IncompleteCandidate(f"{INCOMPLETE}: malformed funding evidence") from exc
+    funding = funding_cash_for_position(pos, ledger)
+    accounting = account_position(pos, funding)
+    r_value = accounting["net_pnl"] / risk
+    return {"trade_id": str(row.get("trade_id", "")), "fold": str(row.get("fold", "")),
+            "symbol": str(row.get("symbol", "")), "regime": str(row.get("regime", "")),
+            "entry_time_ms": entry_fill.time_ms, "exit_time_ms": max(x.time_ms for x in pos.fills[1:]),
+            "risk_cash": risk, "r": r_value, "accounting": accounting,
+            "stress_r": {str(k): stress_costs(accounting, k) / risk for k in (1.0, 1.5, 2.0)}}
+
+
+def _breakdown(trades: Sequence[dict], key: str) -> dict:
+    values: dict[str, list[float]] = {}
+    for trade in trades:
+        values.setdefault(trade[key], []).append(trade["r"])
+    return {name: {"trade_count": len(rows), "net_r": math.fsum(rows),
+                   "mean_r": math.fsum(rows) / len(rows)} for name, rows in sorted(values.items())}
+
+
+def _bootstrap_ci(values: Sequence[float]) -> list[float]:
+    if not values:
+        return [0.0, 0.0]
+    rng = random.Random(int(hashlib.sha256(canonical(list(values))).hexdigest()[:16], 16))
+    n = len(values)
+    means = sorted(math.fsum(values[rng.randrange(n)] for _ in range(n)) / n for _ in range(1000))
+    return [means[24], means[974]]
+
+
+def derive_report(trades: Sequence[dict], contract: dict) -> tuple[dict, dict, list[float], dict]:
+    """Derive every economic metric from reconstructed trades, never aggregates."""
+    ordered = sorted(trades, key=lambda x: (x["exit_time_ms"], x["trade_id"]))
+    rs = [x["r"] for x in ordered]
+    gains = math.fsum(x for x in rs if x > 0)
+    losses = -math.fsum(x for x in rs if x < 0)
+    net = math.fsum(rs)
+    equity = peak = max_dd = 0.0
+    for value in rs:
+        equity += value; peak = max(peak, equity); max_dd = max(max_dd, peak - equity)
+    symbol_contrib = {k: v["net_r"] for k, v in _breakdown(ordered, "symbol").items()}
+    total_abs = math.fsum(abs(x) for x in symbol_contrib.values())
+    concentration = max((abs(x) / total_abs for x in symbol_contrib.values()), default=1.0)
+    months: dict[str, int] = {}
+    for fold in contract["folds"]:
+        current = datetime.fromisoformat(fold["start"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(fold["end"].replace("Z", "+00:00"))
+        while current < end:
+            months.setdefault(current.strftime("%Y-%m"), 0)
+            current = datetime(current.year + (current.month == 12), current.month % 12 + 1, 1, tzinfo=timezone.utc)
+    for trade in ordered:
+        key = datetime.fromtimestamp(trade["exit_time_ms"] / 1000, timezone.utc).strftime("%Y-%m")
+        months[key] = months.get(key, 0) + 1
+    mean = net / len(rs) if rs else 0.0
+    if len(rs) >= 2 and statistics.stdev(rs) > 0:
+        z = abs(mean) / (statistics.stdev(rs) / math.sqrt(len(rs)))
+        raw_p = math.erfc(z / math.sqrt(2))
+    else:
+        raw_p = 1.0
+    fold_net = [math.fsum(x["r"] for x in ordered if x["fold"] == fold["name"]) for fold in contract["folds"]]
+    stress = {str(k): math.fsum(x["stress_r"][str(k)] for x in ordered) for k in (1.0, 1.5, 2.0)}
+    report = required_report_shell(
+        contract, trade_count=len(rs), net_r=net, mean_r=mean,
+        profit_factor=(gains / losses if losses else (1e12 if gains else 0.0)),
+        win_rate=(sum(x > 0 for x in rs) / len(rs) if rs else 0.0), max_dd_r=max_dd,
+        expectancy_r=mean,
+        exposure_time=math.fsum(x["exit_time_ms"] - x["entry_time_ms"] for x in ordered),
+        monthly_trade_median=(statistics.median(months.values()) if months else 0.0),
+        symbol_concentration=concentration, regime_breakdown=_breakdown(ordered, "regime"),
+        coin_breakdown=_breakdown(ordered, "symbol"),
+        fee_drag_r=math.fsum(x["accounting"]["fee_cash"] / x["risk_cash"] for x in ordered),
+        slippage_drag_r=math.fsum(x["accounting"]["adverse_slippage_cash"] / x["risk_cash"] for x in ordered),
+        funding_drag_r=math.fsum(-x["accounting"]["signed_funding_cash"] / x["risk_cash"] for x in ordered),
+        gross_r=math.fsum(x["accounting"]["gross_reference_price_pnl"] / x["risk_cash"] for x in ordered),
+        raw_p_value=raw_p, holm_adjusted_p_value=min(1.0, raw_p * len(CANDIDATE_IDS)),
+        bootstrap_ci_95_mean_r=_bootstrap_ci(rs), incomplete_rows=0,
+        survivorship_disclosure="Frozen CORE-20 point-in-time universe; delist/survivorship limits remain disclosed.",
+        failure_reason="external causal-parity and independent-review verdicts are not assertable by this runner",
+    )
+    return report, stress, fold_net, symbol_contrib
+
+
+def evaluate_payload(payload: object, pf: Preflight) -> dict:
+    """Reconstruct a packet from per-trade fill/funding evidence only."""
     if not isinstance(payload, dict) or payload.get("candidate_id") != pf.candidate_id:
         raise RunnerError("prepared input candidate identity does not match the CLI candidate")
+    forbidden = {"report", "promotion_gates", "promoted", "causal_parity", "independent_review"} & set(payload)
+    if forbidden:
+        raise RunnerError(f"caller-supplied aggregate/verdict fields are forbidden: {sorted(forbidden)}")
     digest = payload.get("manifest_digest")
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest.lower()):
         raise RunnerError("prepared input must record a SHA-256 manifest digest")
-    folds = payload.get("folds")
     expected_folds = [x["name"] for x in pf.contract["folds"]]
-    if not isinstance(folds, list) or [x.get("name") for x in folds if isinstance(x, dict)] != expected_folds:
-        raise RunnerError("prepared input must report wf1, wf2, and wf3 separately in frozen order")
-    report = payload.get("report")
-    if not isinstance(report, dict):
-        raise RunnerError("prepared input has no required report")
-    missing = [key for key in pf.contract["required_report"] if key not in report]
-    if missing:
-        raise RunnerError(f"prepared input omits required report fields: {missing}")
-    if report.get("incomplete_rows") != 0:
-        raise IncompleteCandidate(f"{INCOMPLETE}: prepared input contains incomplete rows")
-    contributions = payload.get("symbol_contributions")
-    if not isinstance(contributions, dict):
-        raise RunnerError("prepared input must include symbol contributions")
-    stress = payload.get("cost_stress_net_r")
-    if not isinstance(stress, dict) or not all(str(x) in stress for x in (1.0, 1.5, 2.0)):
-        raise RunnerError("prepared input must report 1.0x, 1.5x, and 2.0x cost stress")
-    fold_net = [x.get("net_r") for x in folds]
-    if any(not isinstance(x, (int, float)) or not math.isfinite(float(x)) for x in fold_net):
-        raise RunnerError("each frozen fold needs finite net_r")
+    folds_in = payload.get("folds")
+    if folds_in != expected_folds:
+        raise RunnerError("prepared input must identify wf1, wf2, and wf3 in frozen order")
+    raw_trades = payload.get("trades")
+    if not isinstance(raw_trades, list):
+        raise RunnerError("prepared input must contain per-trade fill/funding evidence")
+    trades = [trade_from_evidence(row) for row in raw_trades]
+    identities = [x["trade_id"] for x in trades]
+    if any(not x for x in identities) or len(identities) != len(set(identities)):
+        raise RunnerError("trade identities must be non-empty and unique")
+    if any(x["fold"] not in expected_folds or not x["symbol"] or not x["regime"] for x in trades):
+        raise RunnerError("each trade must identify a frozen fold, symbol, and regime")
+    report, stress, fold_net, contributions = derive_report(trades, pf.contract)
+    folds = [{"name": name, "trade_count": sum(x["fold"] == name for x in trades), "net_r": net}
+             for name, net in zip(expected_folds, fold_net)]
     gates = promotion_gates(
         report, pf.contract, fold_net_r=fold_net, symbol_contributions=contributions,
-        stress_1_5_net_r=float(stress["1.5"]), causal_parity=payload.get("causal_parity") is True,
-        independent_review=payload.get("independent_review") is True,
+        stress_1_5_net_r=float(stress["1.5"]), causal_parity=False, independent_review=False,
     )
     return {"candidate_id": pf.candidate_id, "manifest_digest": digest,
             "folds": folds, "report": report, "cost_stress_net_r": stress,
-            "promotion_gates": gates, "promoted": all(gates.values()),
+            "promotion_gates": gates, "promoted": False,
+            "external_verdict_required": ["causal_parity", "independent_review"],
             "scope": {"research_only": True, "paper_testnet_only": True,
                       "default_enabled": False, "mainnet_authority": False}}
 

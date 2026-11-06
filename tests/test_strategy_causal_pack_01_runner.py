@@ -81,6 +81,23 @@ def test_stop_frozen_at_open_suppresses_partial_even_if_path_would_hit_it_first(
     assert not p.tp1_done and p.qty == 0
 
 
+def test_favourable_gap_short_tp1_fills_at_trigger_without_improvement():
+    p = position()
+    fills = R.walk_bar(p, bar(o=97.0, h=97.5, l=96.5, c=97.2, t=2_000), 11, MGMT, RULE)
+    assert fills[0].reason == "tp1"
+    assert fills[0].reference_price == pytest.approx(p.tp1)
+    assert fills[0].reference_price > 97.0  # no favourable improvement to the gap open
+
+
+def test_favourable_gap_long_target_fills_at_trigger_without_improvement():
+    mgmt = {"stop_atr": 2.0, "tp_r": 1.0, "max_bars": 10}
+    p = position(side="long", management=mgmt)
+    fills = R.walk_bar(p, bar(o=103.0, h=103.5, l=102.5, c=103.2, t=2_000), 11, mgmt, RULE)
+    assert [x.reason for x in fills] == ["target"]
+    assert fills[0].reference_price == pytest.approx(p.target)
+    assert fills[0].reference_price < 103.0  # no favourable improvement to the gap open
+
+
 def test_partial_then_breakeven_only_hits_on_later_adverse_leg():
     p = position()
     # Red short path: open -> high -> low (tp1) -> close. BE is set only after low leg;
@@ -149,23 +166,89 @@ def test_preflight_refuses_dirty_and_overwrite_before_loader(tmp_path, monkeypat
 def test_one_evaluation_per_contract_head_candidate(tmp_path):
     out = tmp_path / "packet.json"
     ids = tmp_path / "ids"
-    contract, _ = R.load_contract()
-    report = {key: 0 for key in contract["required_report"]}
-    report.update(profit_factor=1.1, max_dd_r=1, monthly_trade_median=8,
-                  regime_breakdown={"all": {"mean_r": 0}}, incomplete_rows=0,
-                  survivorship_disclosure="PIT CORE-20", failure_reason="economic gates not met")
     payload = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "a" * 64,
-               "folds": [{"name": "wf1", "net_r": 0}, {"name": "wf2", "net_r": 0},
-                         {"name": "wf3", "net_r": 0}],
-               "report": report, "symbol_contributions": {},
-               "cost_stress_net_r": {"1.0": 0, "1.5": 0, "2.0": 0},
-               "causal_parity": False, "independent_review": False}
+               "folds": ["wf1", "wf2", "wf3"], "trades": []}
     R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: payload, R.evaluate_payload,
                       identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
     out.unlink()  # output deletion must not permit rerunning the same immutable identity
     with pytest.raises(R.RunnerError, match="already exists"):
         R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: payload, R.evaluate_payload,
                           identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+
+
+def test_fake_high_aggregate_metrics_and_self_verdicts_cannot_promote(tmp_path):
+    pf = R.preflight(R.CANDIDATE_IDS[0], tmp_path / "out.json",
+                     head_fn=lambda: "abc", dirty_fn=lambda: False)
+    fake = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "a" * 64,
+            "folds": ["wf1", "wf2", "wf3"], "trades": [],
+            "report": {"trade_count": 9999, "net_r": 1e9},
+            "causal_parity": True, "independent_review": True, "promoted": True}
+    with pytest.raises(R.RunnerError, match="aggregate/verdict fields are forbidden"):
+        R.evaluate_payload(fake, pf)
+    honest_empty = {k: fake[k] for k in ("candidate_id", "manifest_digest", "folds", "trades")}
+    packet = R.evaluate_payload(honest_empty, pf)
+    assert packet["promoted"] is False
+    assert packet["promotion_gates"]["causal_parity"] is False
+    assert packet["promotion_gates"]["independent_review"] is False
+    assert packet["report"]["trade_count"] == 0
+
+
+def test_report_is_derived_from_reference_fills_and_verified_funding(tmp_path):
+    pf = R.preflight(R.CANDIDATE_IDS[0], tmp_path / "out.json",
+                     head_fn=lambda: "abc", dirty_fn=lambda: False)
+    trade = {"trade_id": "wf1-BTC-1", "fold": "wf1", "symbol": "BTCUSDT", "regime": "trend",
+             "side": "short", "risk_cash": 10.0,
+             "exchange_rule": {"tick": 0.01, "step": 0.1, "min_qty": 0.1,
+                               "min_notional": 1.0, "max_qty": 1000},
+             "entry": {"index": 1, "time_ms": 1_000, "reference_price": 100.0, "qty": 1.0},
+             "exits": [{"index": 2, "time_ms": 3_000, "reference_price": 99.0,
+                         "qty": 1.0, "reason": "signal"}],
+             "funding": {"events": [{"time_ms": 2_000, "rate": 0.001, "mark": 100.0}],
+                         "checksum_verified": True, "coverage_complete": True}}
+    payload = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "b" * 64,
+               "folds": ["wf1", "wf2", "wf3"], "trades": [trade]}
+    packet = R.evaluate_payload(payload, pf)
+    derived = R.trade_from_evidence(trade)
+    assert packet["report"]["trade_count"] == 1
+    assert packet["report"]["net_r"] == pytest.approx(derived["r"])
+    assert packet["folds"][0]["net_r"] == pytest.approx(derived["r"])
+    assert packet["cost_stress_net_r"]["1.5"] == pytest.approx(derived["stress_r"]["1.5"])
+    assert packet["promoted"] is False
+
+
+def test_identity_reserved_before_loader_blocks_reentrant_second_packet(tmp_path):
+    ids, out1, out2 = tmp_path / "ids", tmp_path / "one.json", tmp_path / "two.json"
+    payload = {"candidate_id": R.CANDIDATE_IDS[0], "manifest_digest": "a" * 64,
+               "folds": ["wf1", "wf2", "wf3"], "trades": []}
+    nested_loader_called = []
+
+    def loader():
+        with pytest.raises(R.RunnerError, match="already exists"):
+            R.run_with_loader(R.CANDIDATE_IDS[0], out2,
+                              lambda: nested_loader_called.append(True), R.evaluate_payload,
+                              identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+        return payload
+
+    R.run_with_loader(R.CANDIDATE_IDS[0], out1, loader, R.evaluate_payload,
+                      identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+    assert nested_loader_called == [] and out1.exists() and not out2.exists()
+    claim = next(ids.glob("*.claim.json"))
+    assert json.loads(claim.read_text(encoding="utf-8"))["state"] == "COMPLETED"
+
+
+def test_failed_evaluation_consumes_identity_before_data_can_be_reloaded(tmp_path):
+    ids, out = tmp_path / "ids", tmp_path / "failed.json"
+    calls = []
+    with pytest.raises(ValueError, match="boom"):
+        R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: calls.append(1),
+                          lambda *_: (_ for _ in ()).throw(ValueError("boom")),
+                          identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+    claim = next(ids.glob("*.claim.json"))
+    assert json.loads(claim.read_text(encoding="utf-8"))["state"] == "FAILED_CONSUMED"
+    with pytest.raises(R.RunnerError, match="already exists"):
+        R.run_with_loader(R.CANDIDATE_IDS[0], out, lambda: calls.append(2), lambda *_: {},
+                          identity_dir=ids, head_fn=lambda: "abc", dirty_fn=lambda: False)
+    assert calls == [1]
 
 
 def test_cli_exposes_exactly_three_frozen_candidates():
