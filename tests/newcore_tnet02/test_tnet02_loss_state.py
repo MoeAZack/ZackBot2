@@ -1,6 +1,7 @@
 """Persistent account loss-state integration at the TNET-02 risk boundary."""
 from __future__ import annotations
 
+import shutil
 from decimal import Decimal
 
 import pytest
@@ -156,7 +157,9 @@ def test_full_tracker_and_wallet_survive_process_equivalent_restart(tmp_path):
 def test_known_durable_state_never_reinitializes_after_damage(fault, tmp_path):
     first, spec, _suite_id, _context = _bound(tmp_path / "first")
     state_path = first.journal_dir / ".tnet02-loss-state.json"
+    anchor_path = first.journal_dir / ".tnet02-loss-anchor.json"
     old = state_path.read_bytes()
+    old_anchor = anchor_path.read_bytes()
     if fault == "missing":
         state_path.unlink()
     elif fault == "corrupt":
@@ -165,6 +168,7 @@ def test_known_durable_state_never_reinitializes_after_damage(fault, tmp_path):
         first.fake.equity = Decimal("6000")
         _decision(first)
         state_path.write_bytes(old)
+        anchor_path.write_bytes(old_anchor)
 
     second_root = tmp_path / "second"
     second_root.mkdir()
@@ -174,6 +178,40 @@ def test_known_durable_state_never_reinitializes_after_damage(fault, tmp_path):
         second.adapter.confirm_binding(spec.binding)
     assert caught.value.code == "loss.state"
     assert second.adapter._loss_tracker is None
+
+
+def test_deleting_entire_state_directory_does_not_restore_first_use(tmp_path):
+    first, _spec, _suite_id, _context = _bound(tmp_path)
+    state_root = first.journal_dir
+    shutil.rmtree(state_root)
+    state_root.mkdir()
+    with pytest.raises(LossStoreError) as caught:
+        FileLossStore(state_root).load(first.adapter._account.account_id, first.adapter._digest)
+    assert caught.value.code == "loss_store.deleted"
+
+
+def test_interrupted_high_water_advance_leaves_store_fail_closed(tmp_path):
+    first, _spec, _suite_id, _context = _bound(tmp_path)
+    durable = first.adapter._loss_store._high_water
+
+    class Interrupted:
+        def load(self, account_id, binding_digest):
+            return durable.load(account_id, binding_digest)
+
+        def advance(self, account_id, binding_digest, expected_generation, record):
+            if expected_generation is not None:
+                raise OSError("simulated interruption")
+            return durable.advance(account_id, binding_digest, expected_generation, record)
+
+    first.adapter._loss_store._high_water = Interrupted()
+    first.fake.equity = Decimal("6000")
+    with pytest.raises(AdapterError) as caught:
+        _decision(first)
+    assert caught.value.code == "loss.state"
+    with pytest.raises(LossStoreError) as reopened:
+        FileLossStore(first.journal_dir, high_water=durable).load(first.adapter._account.account_id,
+                                                                 first.adapter._digest)
+    assert reopened.value.code == "loss_store.rollback"
 
 
 def test_loss_store_refuses_account_or_binding_mismatch(tmp_path):

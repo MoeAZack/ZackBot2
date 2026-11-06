@@ -141,9 +141,16 @@ def _machine_loss_store(account: Account):
     root = Path(MACHINE_LOSS_STATE_ROOT) / f"{account.account_id}-{account.binding.key_digest}"
     try:
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        return FileLossStore(root)
+        return FileLossStore(root, high_water=_machine_high_water())
     except Exception:
         raise Refused("loss_state_store_unavailable") from None
+
+
+def _machine_high_water():
+    """Independent production authority.  Tests replace this below the CLI boundary only."""
+    from newcore.tnet02.loss_store import WindowsRegistryLossHighWater
+
+    return WindowsRegistryLossHighWater()
 
 
 def load_account(path: Path) -> Account:
