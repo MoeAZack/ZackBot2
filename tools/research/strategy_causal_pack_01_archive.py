@@ -6,6 +6,7 @@ or implicit store.  The runner may call it only after the contract merge guard.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from pathlib import Path
 from tools.research import manifest as M
 from tools.research import pit as P
 from tools.research import universe as U
+import feasibility as F
 
 
 HOUR_MS = 3_600_000
@@ -40,6 +42,34 @@ class RawFunding:
     time_ms: int
     interval_hours: int
     rate: float
+
+
+def load_exchange_filters(path: str | Path, expected_sha256: str,
+                          symbols: tuple[str, ...]) -> tuple[dict[str, dict], str]:
+    """Checksum-bind raw frozen exchangeInfo and reuse the engine's exact parser."""
+    try:
+        raw = Path(path).read_bytes()
+    except OSError as exc:
+        raise ArchiveIncomplete(f"frozen exchangeInfo unavailable: {exc}") from exc
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected_sha256:
+        raise ArchiveIncomplete(f"frozen exchangeInfo checksum mismatch: {actual}")
+    try:
+        info = json.loads(raw.decode("utf-8"),
+                          parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+        rules = F.rules_from_exchange_info(info)
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ArchiveIncomplete(f"frozen exchangeInfo is malformed: {exc}") from exc
+    missing = sorted(set(symbols) - set(rules))
+    if missing:
+        raise ArchiveIncomplete(f"frozen exchangeInfo lacks actual filters for {missing}")
+    required = ("tick", "step", "min_qty", "min_notional")
+    for symbol in symbols:
+        rule = rules[symbol]
+        if any(not math.isfinite(float(rule.get(key, float("nan")))) or float(rule[key]) <= 0
+               for key in required):
+            raise ArchiveIncomplete(f"{symbol}: invalid frozen exchange filters")
+    return {symbol: dict(rules[symbol]) for symbol in symbols}, actual
 
 
 def load_authorities(manifest_path: str | Path, universe_path: str | Path) -> tuple[dict, dict]:

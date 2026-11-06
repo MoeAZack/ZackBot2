@@ -1,4 +1,5 @@
 import hashlib
+import json
 import zipfile
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 from tools.research import manifest as M
 from tools.research import universe as U
 from tools.research import strategy_causal_pack_01_archive as A
+import feasibility as F
 
 
 T0 = 1_736_121_600_000  # 2025-01-06T00:00:00Z, Monday
@@ -138,3 +140,21 @@ def test_universe_manifest_binding_and_non_core_symbol_fail_closed(tmp_path):
     adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
     with pytest.raises(A.ArchiveIncomplete, match="outside frozen PIT CORE-20"):
         adapter.load_klines("NOTCORE20", "1h", T0, T0 + A.HOUR_MS)
+
+
+def test_exchange_filters_use_checksum_bound_shared_engine_parser(tmp_path):
+    path = tmp_path / "exchangeInfo.json"
+    info = F.exchange_info_from_rules({
+        "S00": {"tick": 0.01, "step": 0.1, "min_qty": 0.1, "min_notional": 5, "max_qty": 100},
+    })
+    raw = json.dumps(info, separators=(",", ":")).encode()
+    path.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    rules, actual = A.load_exchange_filters(path, digest, ("S00",))
+    assert actual == digest
+    assert rules["S00"] == {"tick": 0.01, "step": 0.1, "min_qty": 0.1,
+                            "min_notional": 5.0, "max_qty": 100.0}
+    with pytest.raises(A.ArchiveIncomplete, match="checksum mismatch"):
+        A.load_exchange_filters(path, "0" * 64, ("S00",))
+    with pytest.raises(A.ArchiveIncomplete, match="lacks actual filters"):
+        A.load_exchange_filters(path, digest, ("S01",))

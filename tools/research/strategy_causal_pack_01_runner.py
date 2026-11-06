@@ -42,6 +42,7 @@ DEFAULT_ARCHIVE_STORE = Path(r"C:\Dev\ZackBot2_data\binance_um")
 UNIVERSE_PATH = ROOT / "research_evidence" / "universe" / "pit-top40-qv30d-v4.json"
 EXCHANGE_INFO_PATH = (ROOT / "research_evidence" / "prereg" /
                       "binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json")
+EXCHANGE_INFO_SHA256 = "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83"
 SOURCE_RUNNER_PATHS = {
     "pullback_rsi_short_h1_causal_v2": ROOT / "tools" / "research" / "run_pullback_rsi_short_h1_candidate.py",
     "exp_mom_short_c27_causal_v2": ROOT / "tools" / "research" / "run_exp_mom_short_c27_candidate.py",
