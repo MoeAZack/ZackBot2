@@ -38,8 +38,9 @@ def test_saved_metadata_is_provisional_only_and_all_profiles_validate():
     metadata = G.load_metadata()
     gate = metadata["protected_execution_gate"]
     assert gate["v4_contract_provisional_stack_pin"] == G.PROVISIONAL_STACK_PIN
-    assert gate["authority_protected_merge_commit"] is None
-    assert gate["v4_contract_protected_commit"] is None
+    assert gate["authority_protected_merge_commit"] == "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6"
+    assert gate["v4_contract_protected_commit"] == "11db5a45036a9cf831f7d46773b6e621d7c9dc92"
+    assert gate["filter_authority_protected_commit"] is None
     assert metadata["scope"] == {
         "runner_metadata_and_validators_only": True,
         "strategy_logic_changed": False,
@@ -55,7 +56,7 @@ def test_saved_metadata_is_provisional_only_and_all_profiles_validate():
 def test_provisional_barrier_refuses_before_delegate_import_or_protected_ref_access(monkeypatch, profile):
     touched = {"import": 0, "ancestor": 0}
     monkeypatch.setattr(G.importlib, "import_module", lambda *_: touched.__setitem__("import", 1))
-    with pytest.raises(G.V4ExecutionBarrier, match="protected authority and v4 contract pins are absent"):
+    with pytest.raises(G.V4ExecutionBarrier, match="filter-authority pins are incomplete"):
         G.guarded_dispatch(
             profile,
             PROFILE_IDS[profile],
@@ -69,6 +70,7 @@ def test_d07_provisional_pin_can_never_be_relabelled_as_protected(monkeypatch):
     gate = metadata["protected_execution_gate"]
     gate["authority_protected_merge_commit"] = "a" * 40
     gate["v4_contract_protected_commit"] = G.PROVISIONAL_STACK_PIN
+    gate["filter_authority_protected_commit"] = "c" * 40
     calls = []
     monkeypatch.setattr(G, "load_metadata", lambda: metadata)
     with pytest.raises(G.V4ExecutionBarrier, match="PROVISIONAL_STACK_PIN only"):
@@ -81,6 +83,7 @@ def _post_pin_metadata():
     gate = metadata["protected_execution_gate"]
     gate["authority_protected_merge_commit"] = "a" * 40
     gate["v4_contract_protected_commit"] = "b" * 40
+    gate["filter_authority_protected_commit"] = "c" * 40
     return metadata
 
 
@@ -105,6 +108,7 @@ def test_post_pin_spoofed_correct_label_callable_is_rejected(monkeypatch, profil
             profile,
             PROFILE_IDS[profile],
             is_ancestor=lambda *_: True,
+            is_exact_clean_protected_head=lambda *_: True,
         )
 
 
@@ -137,8 +141,46 @@ def test_atr_delegate_resolution_is_reachable_only_after_hypothetical_final_pins
         PROFILE_IDS["atr_shock"],
         argv=(),
         is_ancestor=lambda *_: True,
+        is_exact_clean_protected_head=lambda *_: True,
     ) == 7
     assert calls == [("atr_shock", metadata["profiles"]["atr_shock"])]
+
+
+def test_post_pin_execution_requires_clean_exact_protected_head(monkeypatch):
+    metadata = _post_pin_metadata()
+    monkeypatch.setattr(G, "load_metadata", lambda: metadata)
+    calls = []
+    with pytest.raises(G.V4ExecutionBarrier, match="clean HEAD exactly equal"):
+        G.require_execution_authority(
+            "pack",
+            is_ancestor=lambda *args: calls.append(args) or True,
+            is_exact_clean_protected_head=lambda *_: False,
+        )
+    assert len(calls) == 3
+
+
+def test_tampered_filter_authority_refuses_before_delegate_import(monkeypatch, tmp_path):
+    metadata = _post_pin_metadata()
+    original_contained = G._contained
+    filter_rel = metadata["authority_artifacts"]["exchange_filter_authority"]["path"]
+    tampered = tmp_path / "exchange_filter_authority.v3.json"
+    tampered.write_bytes((ROOT / filter_rel).read_bytes() + b"\n")
+    touched = {"import": 0, "ancestor": 0, "head": 0}
+
+    def contained(rel):
+        return tampered if rel == filter_rel else original_contained(rel)
+
+    monkeypatch.setattr(G, "load_metadata", lambda: metadata)
+    monkeypatch.setattr(G, "_contained", contained)
+    monkeypatch.setattr(G.importlib, "import_module", lambda *_: touched.__setitem__("import", 1))
+    with pytest.raises(G.V4ExecutionBarrier, match="exchange-filter authority byte hash changed"):
+        G.guarded_dispatch(
+            "pack",
+            PROFILE_IDS["pack"],
+            is_ancestor=lambda *_: touched.__setitem__("ancestor", 1) or True,
+            is_exact_clean_protected_head=lambda *_: touched.__setitem__("head", 1) or True,
+        )
+    assert touched == {"import": 0, "ancestor": 0, "head": 0}
 
 
 def test_strategy_logic_and_v3_runner_bytes_unchanged_except_reviewed_filter_loader():

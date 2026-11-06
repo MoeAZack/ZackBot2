@@ -12,10 +12,13 @@
     "protected_ref": "origin/master",
     "authority_pr": 304,
     "authority_provisional_stack_pin": "59babc0c13aa08fafdffe400029c7c1377b96319",
-    "authority_protected_merge_commit": null,
+    "authority_protected_merge_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
+    "v4_contract_pr": 305,
     "v4_contract_provisional_stack_pin": "d07cd61281a085d83a1c453cb82e063956ee348a",
-    "v4_contract_protected_commit": null,
-    "rule": "Both non-null exact protected commit pins must be ancestors of the protected ref before an identity claim, loader construction, market/outcome read or delegate import. Provisional stack pins never authorize execution."
+    "v4_contract_protected_commit": "11db5a45036a9cf831f7d46773b6e621d7c9dc92",
+    "filter_authority_pr": 306,
+    "filter_authority_protected_commit": null,
+    "rule": "All three non-null exact protected commit pins must be ancestors of the protected ref, and the clean executing HEAD must equal that protected ref, before an identity claim, loader construction, market/outcome read or delegate import. Provisional stack pins never authorize execution."
   },
   "authority_artifacts": {
     "manifest": {

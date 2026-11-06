@@ -20,7 +20,7 @@ from typing import Callable, Sequence
 
 ROOT = Path(__file__).resolve().parents[2]
 METADATA_PATH = ROOT / "contracts/causal_v4_runner_rebind/causal_v4_runner_rebind.v1.json"
-METADATA_SHA256 = "bd258e4bf0530b90836a6210c230bddfb18452ae9aa7467578d6468380dcfd70"
+METADATA_SHA256 = "38042db01e7bc076503aa6ebab1d7de6ed8e8666982286312a3c00e79af0b25b"
 STATUS = "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY"
 PROVISIONAL_STACK_PIN = "d07cd61281a085d83a1c453cb82e063956ee348a"
 CLOSED_DELEGATE_REGISTRY = {
@@ -141,6 +141,37 @@ def _git_is_ancestor(commit: str, protected_ref: str) -> bool:
     return result.returncode == 0
 
 
+def _git_is_exact_clean_protected_head(protected_ref: str) -> bool:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False)
+    protected = subprocess.run(
+        ["git", "rev-parse", protected_ref], cwd=ROOT, stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False)
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT, stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False)
+    return (head.returncode == protected.returncode == dirty.returncode == 0
+            and head.stdout.strip() == protected.stdout.strip()
+            and dirty.stdout == "")
+
+
+def _verify_filter_authority(binding: dict, pit_binding: dict) -> dict:
+    path = _contained(binding.get("path"))
+    raw = path.read_bytes()
+    if _sha(raw) != binding.get("byte_sha256"):
+        raise V4ExecutionBarrier("exchange-filter authority byte hash changed")
+    value = _strict_json(raw, "exchange-filter authority v3")
+    if (value.get("authority") != "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY"
+            or value.get("version") != 3
+            or value.get("status") != "FROZEN"
+            or value.get("pit_universe_path") != pit_binding.get("path")
+            or value.get("pit_universe_sha256") != pit_binding.get("byte_sha256")
+            or value.get("pit_universe_digest") != pit_binding.get("content_digest")):
+        raise V4ExecutionBarrier("exchange-filter authority is not exactly bound to PIT v8")
+    return value
+
+
 def _closed_delegate_spec(profile_name: str, profile: dict | None = None) -> dict:
     spec = CLOSED_DELEGATE_REGISTRY.get(profile_name)
     if spec is None:
@@ -184,14 +215,16 @@ def require_execution_authority(
     profile_name: str,
     *,
     is_ancestor: Callable[[str, str], bool] = _git_is_ancestor,
+    is_exact_clean_protected_head: Callable[[str], bool] = _git_is_exact_clean_protected_head,
 ) -> dict:
-    """Validate metadata, then refuse unless both exact protected commit pins exist and are merged."""
+    """Validate metadata, then refuse unless all exact protected pins and HEAD are protected."""
     metadata = load_metadata()
     profile = validate_profile(profile_name, metadata)
     authority = metadata["authority_artifacts"]
     manifest = _verify_artifact(authority["manifest"], "manifest v5")
     universe = _verify_artifact(authority["pit_universe"], "PIT v8")
     preflight = _verify_artifact(authority["coverage_preflight"], "coverage preflight v3")
+    _verify_filter_authority(authority["exchange_filter_authority"], authority["pit_universe"])
     if (universe.get("manifest_digest") != manifest.get("digest")
             or preflight.get("manifest_digest") != manifest.get("digest")
             or preflight.get("pit_universe_digest") != universe.get("digest")
@@ -204,9 +237,10 @@ def require_execution_authority(
         raise V4ExecutionBarrier("causal-v4 provisional stack pin changed")
     authority_commit = gate.get("authority_protected_merge_commit")
     contract_commit = gate.get("v4_contract_protected_commit")
-    if authority_commit is None or contract_commit is None:
+    filter_commit = gate.get("filter_authority_protected_commit")
+    if authority_commit is None or contract_commit is None or filter_commit is None:
         raise V4ExecutionBarrier(
-            "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY: protected authority and v4 contract pins are absent")
+            "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY: protected authority, v4 contract, and filter-authority pins are incomplete")
     if authority_commit in (gate.get("authority_provisional_stack_pin"), PROVISIONAL_STACK_PIN):
         raise V4ExecutionBarrier("a provisional stack pin cannot authorize protected authority")
     if contract_commit == PROVISIONAL_STACK_PIN:
@@ -214,10 +248,14 @@ def require_execution_authority(
     protected_ref = gate.get("protected_ref")
     if (not isinstance(authority_commit, str) or len(authority_commit) != 40
             or not isinstance(contract_commit, str) or len(contract_commit) != 40
+            or not isinstance(filter_commit, str) or len(filter_commit) != 40
             or not isinstance(protected_ref, str)
             or not is_ancestor(authority_commit, protected_ref)
-            or not is_ancestor(contract_commit, protected_ref)):
+            or not is_ancestor(contract_commit, protected_ref)
+            or not is_ancestor(filter_commit, protected_ref)):
         raise V4ExecutionBarrier("exact protected commits are not contained by the protected ref")
+    if not is_exact_clean_protected_head(protected_ref):
+        raise V4ExecutionBarrier("execution requires a clean HEAD exactly equal to the protected ref")
     return profile
 
 
@@ -227,10 +265,13 @@ def guarded_dispatch(
     *,
     argv: Sequence[str] | None = None,
     is_ancestor: Callable[[str, str], bool] = _git_is_ancestor,
+    is_exact_clean_protected_head: Callable[[str], bool] = _git_is_exact_clean_protected_head,
 ) -> int:
     """Dispatch only through the internally resolved, byte-pinned reviewed delegate."""
     _closed_delegate_spec(profile_name)
-    profile = require_execution_authority(profile_name, is_ancestor=is_ancestor)
+    profile = require_execution_authority(
+        profile_name, is_ancestor=is_ancestor,
+        is_exact_clean_protected_head=is_exact_clean_protected_head)
     if candidate_id is not None and candidate_id not in profile["candidate_ids"]:
         raise V4ExecutionBarrier("candidate is not bound to this causal-v4 runner profile")
     delegate = resolve_bound_delegate(profile_name, profile)
