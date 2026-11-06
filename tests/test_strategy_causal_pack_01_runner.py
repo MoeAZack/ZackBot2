@@ -585,6 +585,39 @@ def test_four_hour_candidates_build_exact_bound_source_tapes(candidate_id):
     assert tape.membership[0] == symbols
 
 
+def test_sparse_rank_membership_excludes_gap_and_requires_42_fresh_bars(monkeypatch):
+    import pandas as pd
+    import strategies
+
+    contract, _ = R.load_contract()
+    symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 20))
+    n, start, step = 200, ms("2025-04-01T00:00:00"), 4 * 3_600_000
+    bars = {}
+    for offset, symbol in enumerate(symbols):
+        rows = tuple(R.Bar(start + index * step, 100 + offset + index,
+                           101 + offset + index, 99 + offset + index,
+                           100 + offset + index, volume=10 + index)
+                     for index in range(n) if symbol != "S19" or not 100 <= index < 110)
+        bars[symbol] = rows
+    ranked_n = {}
+
+    def fake_signals(_key, frame, ctx, params=None, mask_sides=False):
+        del params, mask_sides
+        for time, value in zip(pd.to_datetime(frame.t), ctx["rank7_n"]):
+            ranked_n[int(time.timestamp() * 1000)] = float(value)
+        false = pd.Series(False, index=frame.index)
+        return {"le": false, "se": false, "lx": false, "sx": false}
+
+    monkeypatch.setattr(strategies, "signals", fake_signals)
+    R.build_fold_source_signal_tape(
+        contract, "exp_mom_short_c27_causal_v3", bars, [symbols] * n,
+        canonical_times_ms=[start + index * step for index in range(n)])
+    assert ranked_n[start + 99 * step] == 20
+    assert ranked_n[start + 100 * step] == 19
+    assert ranked_n[start + 151 * step] == 19
+    assert ranked_n[start + 152 * step] == 20
+
+
 def test_synthetic_vpi_fold_derives_source_signal_next_open_and_entry_bar_target():
     contract, _ = R.load_contract()
     symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 20))
@@ -625,8 +658,18 @@ def test_synthetic_vpi_fold_derives_source_signal_next_open_and_entry_bar_target
         stress_1_5_net_r=stress["1.5"], causal_parity=True, independent_review=False)
     assert gates["independent_review"] is False
 
+    gap_ledgers = dict(ledgers)
+    gap_ledgers["S01"] = R.FundingLedger(
+        (), True, False,
+        (R.AuthorityGap(start + 169 * 3_600_000,
+                        start + 170 * 3_600_000, "test gap"),))
+    with pytest.raises(R.IncompleteCandidate, match="funding coverage gap intersects exposure"):
+        R._evaluate_raw_fold(
+            contract, "volume_pressure_inventory_short_1h_causal_v3", "synthetic-gap",
+            bars, membership, rules, gap_ledgers, marks)
 
-def test_raw_fold_refuses_missing_mark_and_incomplete_funding_before_reduced_sample():
+
+def test_raw_fold_ignores_unexposed_funding_gap_without_reducing_pit_population():
     contract, _ = R.load_contract()
     symbols = tuple(f"S{i:02d}" for i in range(20))
     n, start = 200, ms("2025-04-01T00:00:00")
@@ -637,9 +680,10 @@ def test_raw_fold_refuses_missing_mark_and_incomplete_funding_before_reduced_sam
     marks = {symbol: {bar.time_ms: 100.0 for bar in rows} for symbol in symbols}
     ledgers = {symbol: R.FundingLedger((), True, True) for symbol in symbols}
     ledgers["S00"] = R.FundingLedger((), True, False)
-    with pytest.raises(R.IncompleteCandidate, match="funding authority incomplete"):
-        R._evaluate_raw_fold(contract, "volume_pressure_inventory_short_1h_causal_v3", "bad",
-                             bars, membership, rules, ledgers, marks)
+    result = R._evaluate_raw_fold(
+        contract, "volume_pressure_inventory_short_1h_causal_v3", "sparse-flat",
+        bars, membership, rules, ledgers, marks)
+    assert result.trades == ()
 
 
 def _sealed_candidate_packets(tmp_path, *, heads=None):
