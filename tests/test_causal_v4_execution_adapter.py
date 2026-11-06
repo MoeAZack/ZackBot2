@@ -2,6 +2,7 @@
 import argparse
 import copy
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -360,8 +361,16 @@ def test_failed_pack_serialization_consumes_claim_without_partial_output(tmp_pat
 def test_assembly_rejects_nonexistent_and_existing_other_heads_before_claim(
         tmp_path, profile_name, wrong_head):
     if wrong_head == "existing-other":
-        wrong_head = subprocess.check_output(
-            ["git", "rev-parse", "HEAD^"], cwd=ROOT, text=True).strip()
+        # CI checks out the PR head shallowly, but the workflow explicitly
+        # fetches ZB_GOLDEN_BASE for append-only verification.  Use that known
+        # existing commit there instead of assuming HEAD^ is locally present.
+        wrong_head = os.environ.get("ZB_GOLDEN_BASE")
+        if wrong_head:
+            subprocess.check_call(
+                ["git", "cat-file", "-e", f"{wrong_head}^{{commit}}"], cwd=ROOT)
+        else:
+            wrong_head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD^"], cwd=ROOT, text=True).strip()
         assert wrong_head != TEST_HEAD
     profile = _profile(profile_name); ids = profile["candidate_ids"]
     paths = [_fake_packet(tmp_path, profile_name, ids[0], head=wrong_head),
