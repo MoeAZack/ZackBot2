@@ -1,9 +1,9 @@
 {
   "contract": "STRATEGY-CAUSAL-PACK-01",
-  "version": 2,
+  "version": 3,
   "status": "FROZEN",
   "signed_by": "codex",
-  "frozen_at": "2026-11-06T12:45:34+02:00",
+  "frozen_at": "2026-11-06T13:28:29+02:00",
   "signature_refs": ["issuecomment-6679947858", "issuecomment-6680010789", "issuecomment-6680054484", "issuecomment-6683012929"],
   "authority": "This JSON is authoritative. The Markdown twin is explanatory and cannot weaken it.",
   "purpose": "Find 2-3 profitable-after-cost candidates for an isolated protected PAPER/testnet cohort without reusing the viewed holdout.",
@@ -26,6 +26,8 @@
       {"old_id": "volume_pressure_inventory_1h:short", "source_head": "730318588f986e5cc52bf0cee6f245a0e48a6180", "trades": 92, "net_r": 8.67, "pf": 1.236, "max_dd_r": 6.80}
     ],
     "multiplicity_rule": "Register all three new identities and retain every prior tested candidate in the program ledger. Report raw and Holm-adjusted inference as selection-bias diagnostics only; they are not promotion gates in this economic-screen pack and must never be described as confirmatory error control. Never erase rejected trials.",
+    "registered_packet_count": 3,
+    "data_incomplete_candidates": ["volume_pressure_inventory_short_1h_causal_v3"],
     "inference_role": "diagnostic_only",
     "promotion_uses_inference": false
   },
@@ -65,7 +67,10 @@
       "max_holding_bars": 24,
       "management": {"stop_atr": 2.0, "tp_r": 2.0, "max_bars": 24},
       "source_rule": "strategies.py:sig_volume_pressure_inventory_1h and STRATEGIES[volume_pressure_inventory_1h] short cell",
-      "allowed_change": "signal and time exits fill at the next tradable open; use the preregistered causal fold-start filter-eligible CORE-20"
+      "allowed_change": "signal and time exits fill at the next tradable open; use the preregistered causal fold-start filter-eligible CORE-20",
+      "evaluation_status": "DATA_INCOMPLETE_PRE_RUN",
+      "data_incomplete_reason": "The frozen archive manifest has no 1h kline archive for the required causal universe, so this packet must not read market rows or produce an economic verdict.",
+      "retained_in_multiplicity_and_three_packet_pack": true
     }
   ],
   "execution": {
@@ -151,7 +156,7 @@
     "cost_stress_rule": "multiply fees, adverse slippage, and negative funding debits by the stress multiplier; positive funding credits remain at 1.0x and are never amplified"
   },
   "data": {
-    "universe": "causal_v3 fold-start filter-eligible CORE-20: for each PIT week take the first 20 ranked crypto members eligible under the fold's pre-start Binance filter snapshot",
+    "universe": "causal_v3 PIT CORE-20: for each PIT week take the first 20 ranked crypto members eligible under the fold's pre-start Binance filter snapshot; at each decision d derive the effective membership under availability_policy without using later availability",
     "pit_universe_path": "research_evidence/universe/pit-top40-qv30d-v4.json",
     "pit_universe_sha256": "d7000458b2c6ec848c6a359aa4b011850a3be437d8f22e53701e76927c4d3229",
     "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093",
@@ -164,7 +169,18 @@
     "forbid_read_at_or_after": "2026-09-28T00:00:00Z",
     "viewed_holdout": "[2026-09-28,2026-11-05)",
     "future_true_holdout_starts_no_earlier_than": "2026-11-05T00:00:00Z",
-    "survivorship_disclosure_required": true
+    "survivorship_disclosure_required": true,
+    "availability_policy": {
+      "decision_time_effective_membership": "At completed decision bar d, intersect that PIT week's frozen ordered CORE-20 with symbols having finite checksum-verified causal closes at d and d-42, both available no later than decision time d; do not require any later row.",
+      "rank_and_breadth": "Compute every cross-sectional rank, breadth value, and denominator only over the decision-time effective membership, with no imputation, forward fill, synthetic value, or survivor backfill.",
+      "priority": "Preserve original PIT CORE-20 order after the decision-time intersection; that order alone controls simultaneous-entry priority.",
+      "flat_or_non_signalling_missing_data": "A symbol outside decision-time effective membership, or a flat/non-signalling symbol whose absent row is never required by an entered episode, creates no trade and does not make the candidate incomplete.",
+      "exposure_completeness": "Once a signal is admitted, every bar, next-open fill, open-position mark, exchange filter, and funding settlement intersecting the actual exposure must be checksum-bound, causal, and complete through the exit fill.",
+      "missing_required_exposure": "A missing tradable next open, any missing bar or mark while the position is open, or any missing funding settlement whose timestamp intersects entry_fill_time <= t < exit_fill_time makes the whole candidate INCOMPLETE_CANDIDATE.",
+      "no_future_suppression": "No row, listing status, archive coverage, delisting fact, or other availability learned after decision d may remove a symbol, suppress an entry, or change its decision-time rank, breadth, denominator, or priority.",
+      "delist_or_terminal_exit": "Never invent a synthetic, last-mark, zero, or delisting close. A delist/terminal exit is allowed only when a checksum-bound point-in-time authority available before the exit decision specifies the executable rule and price; otherwise the candidate is INCOMPLETE_CANDIDATE.",
+      "scope": "This sparse-availability rule is frozen before candidate market rows are read and is not permission to delete an entered episode, reduce an incomplete denominator, or select survivors."
+    }
   },
   "folds": [
     {"name": "wf1", "start": "2025-04-01T00:00:00Z", "end": "2025-09-30T00:00:00Z"},
@@ -219,7 +235,7 @@
     "independent_review_required": true,
     "all_required_reports_present": true,
     "maximum_incomplete_rows": 0,
-    "incomplete_scope": "Any missing causal fold-start filter authority, funding, mark, tradable next-open, or required report makes the entire candidate INCOMPLETE; incomplete rows may not be excluded from the denominator or reduced-sample promotion.",
+    "incomplete_scope": "Missing flat/non-signalling data never required by an entered episode is permitted only under data.availability_policy. Any missing causal filter authority, required exposure bar, open-position mark, intersecting funding settlement, tradable next-open fill, checksum-bound terminal authority, or required report makes the entire candidate INCOMPLETE; incomplete entered episodes may not be excluded from the denominator or reduced-sample promotion.",
     "missing_or_incomplete_is_pass": false,
     "inference_required_for_promotion": false
   },
@@ -235,6 +251,7 @@
   "stop_conditions": [
     "Any contract or candidate-rule byte change creates a new candidate and evaluation identity.",
     "Any use of an exchange-rule snapshot captured at or after its fold start refuses the pack before market data.",
+    "Any use of future availability to suppress an entry or preselect survivors refuses the pack.",
     "Any read at or after 2026-09-28 refuses the pack before producing evidence.",
     "A losing-after-cost candidate is rejected and receives no cohort risk.",
     "No result may weaken a gate, select a fold, change a symbol set, or tune a parameter."
