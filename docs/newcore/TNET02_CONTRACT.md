@@ -172,11 +172,25 @@ The first real run (head cf7fc97, 6 Nov 2026 02:20-02:47Z, report_sha256 c8214b8
 Change:
 - The DCA trigger is `trigger_offset` beyond the most adverse mark the case has read. That includes the mark read just after entry, so only a fresh adverse move can fire it.
 - The trigger is also clamped to at least one tick adverse to the actual fill.
-- The wait is `min(dca_wait_ms = 9 min, case deadline - dca_finish_margin_ms = 60 s)`.
+- The wait is `min(9 min, case deadline - 60 s)` (see §15 for the shared settings).
 - `dca_adds == 1` and every NC-06 and protection check are unchanged.
 - The CLI writes `diagnostics-<head12>-<ms>.json` next to the report. It records why each DCA path ended (`dca.added`, `dca.no_trigger`, `dca.no_proposal`, `dca.stop_crossed`, `dca.nc06_refused`, `dca.add_unconfirmed`), with mark low/high and the trigger, and holds prices only.
 - The diagnostics file is not part of the report, digest or proof.
 - The case still depends on the market: a quiet 9 minutes fails honestly as `assertion`.
+
+## 15. Targets follow the mark; shared trigger window; error codes recorded (6 Nov 2026)
+
+The second real run (head 7636dfa, 02:59-03:32Z, report_sha256 81acd9f4…) passed 9 of 12; bounded_dca passed.
+- **short_stop** failed. The mark rose 0.042% against a stop 0.05% away.
+- **partial_close** failed. The target was 0.05% above a fill that sat above mark; the mark reached +0.036%.
+- **restart_open_position** failed as `adapter` with no recorded cause. Its journal shows the reopen succeeded and cleanup closed it flat.
+
+Changes (pass conditions unchanged):
+- `_target_price` uses the same rule as the DCA level: `trigger_offset` beyond the most favourable mark seen, and at least one tick beyond the fill.
+- The default `trigger_offset` drops from 0.05% to 0.03%. Every trigger case still needs a real mark move and a real exchange fill or trigger, so the change only affects how far the market must move in the window. All six misses across both runs reached at least 0.036%.
+- Target, stop and DCA waits all use `min(trigger_wait_ms = 9 min, case deadline - finish_margin_ms = 60 s)`. These replace `dca_wait_ms` / `dca_finish_margin_ms` from §14.
+- `_refresh_stops` retries a stop read that did not complete, or returned UNKNOWN/NOT_FOUND, up to `settle_polls` times. These are read-only retries. It still HOLDs `refresh.stop_unknown` if the stop stays unknown.
+- `execute` records `adapter.<code>` for an `AdapterError` and `error.<ClassName>` for any other exception in the diagnostics notes. Messages are never recorded. Target and stop paths also note `target.no_trigger` / `target.no_reduce` / `stop.no_trigger` / `stop.unconfirmed`.
 
 ## Deferred
 

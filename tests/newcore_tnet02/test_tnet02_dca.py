@@ -49,7 +49,7 @@ def _dip_while_long(fake, *, depth: Decimal, hold_ms: int = 30_000, period_ms: i
 
 def _rig_with(tmp_path, depth: Decimal, fill_offset: Decimal, config: HarnessConfig | None = None):
     r = rig(tmp_path, price_path=lambda now, symbol: BASE if symbol == "BTCUSDT" else Decimal("3000"),
-            config=config or HarnessConfig(poll_ms=1000, trigger_wait_ms=60_000))
+            config=config or HarnessConfig(poll_ms=1000, trigger_offset=Decimal("0.0005")))
     r.fake.price_path = _dip_while_long(r.fake, depth=depth)
     r.fake.fill_offset = fill_offset
     r.fake.tick()
@@ -85,13 +85,17 @@ def test_no_adverse_mark_move_fails_honestly_with_a_reason_and_inside_the_deadli
 
 def test_dca_wait_stops_short_of_the_case_deadline(tmp_path):
     r = _rig_with(tmp_path, Decimal("0"), Decimal("0"),
-                  HarnessConfig(poll_ms=1000, trigger_wait_ms=60_000, dca_wait_ms=9 * 60 * 1000,
-                                dca_finish_margin_ms=5 * 60 * 1000))
+                  HarnessConfig(poll_ms=1000, trigger_offset=Decimal("0.0005"), finish_margin_ms=5 * 60 * 1000))
     report = run_suite(manifest(), r.adapter, [].append)
     case = _dca(report)
     assert case.failure is FailureCode.ASSERTION
     note = next(n for n in r.adapter.notes if n["kind"] == "bounded_dca")
     assert note["polls"] < 330                                 # capped by deadline minus the 5-minute margin
+
+
+def test_defaults_wait_nine_minutes_with_a_one_minute_margin_and_a_smaller_offset():
+    cfg = HarnessConfig()
+    assert (cfg.trigger_wait_ms, cfg.finish_margin_ms, cfg.trigger_offset) == (540_000, 60_000, Decimal("0.0003"))
 
 
 def _trigger(r, side, marks, entry):
@@ -107,7 +111,7 @@ def _trigger(r, side, marks, entry):
     (Side.SHORT, ["59900"], "60000", "60000.1"),
 ], ids=["long_min_mark", "long_fill_above", "long_clamp", "short_max_mark", "short_clamp"])
 def test_trigger_is_beyond_every_seen_mark_and_adverse_to_the_fill(tmp_path, side, marks, entry, expected):
-    r = rig(tmp_path)
+    r = rig(tmp_path, config=HarnessConfig(trigger_offset=Decimal("0.0005")))
     got = _trigger(r, side, marks, entry)
     assert got == Decimal(expected)
     seen = [Decimal(m) for m in marks]
@@ -117,10 +121,10 @@ def test_trigger_is_beyond_every_seen_mark_and_adverse_to_the_fill(tmp_path, sid
         assert got > max(seen) and got > Decimal(entry)
 
 
-@pytest.mark.parametrize("field, value", [("dca_wait_ms", 0), ("dca_wait_ms", 9 * 60 * 1000 + 1),
-                                          ("dca_finish_margin_ms", 0), ("dca_finish_margin_ms", 5 * 60 * 1000 + 1),
-                                          ("dca_wait_ms", 1.5)])
-def test_new_dca_config_is_bounded(field, value):
+@pytest.mark.parametrize("field, value", [("trigger_wait_ms", 0), ("trigger_wait_ms", 9 * 60 * 1000 + 1),
+                                          ("finish_margin_ms", 0), ("finish_margin_ms", 5 * 60 * 1000 + 1),
+                                          ("trigger_wait_ms", 1.5)])
+def test_wait_config_is_bounded(field, value):
     with pytest.raises(AdapterError) as caught:
         HarnessConfig(**{field: value})
     assert caught.value.code == f"config.{field}"

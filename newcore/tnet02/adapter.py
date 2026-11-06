@@ -69,18 +69,20 @@ class HarnessConfig:
 
     entry_notional_fraction: Decimal = Decimal("0.3")
     protective_offset: Decimal = Decimal("0.01")
-    trigger_offset: Decimal = Decimal("0.0005")
+    # Distance from the mark to a scenario's target, stop or DCA level.  Real testnet runs (6 Nov 2026) missed 0.05%
+    # three times in 12 trigger cases (mark reached 0.036%-0.057%); every trigger still needs a real mark move and a
+    # real exchange fill or trigger, this only sets how far the market must move within the case window.
+    trigger_offset: Decimal = Decimal("0.0003")
     notional_buffer: Decimal = Decimal("1.02")
     poll_ms: int = 1000
     settle_polls: int = 10
     work_timeout_ms: int = 30_000
     rate_retry_after_ms: int = 5_000
     max_snapshot_age_s: int = 30
-    trigger_wait_ms: int = 8 * 60 * 1000
-    # bounded_dca waits for a real adverse move, so it gets the longest wait the case deadline allows, minus a margin
-    # kept for the add, the stop swap, the close and the reconciliation that follow.
-    dca_wait_ms: int = 9 * 60 * 1000
-    dca_finish_margin_ms: int = 60_000
+    # Trigger scenarios wait for a real market move: up to ``trigger_wait_ms``, but never past the case deadline minus
+    # ``finish_margin_ms``, which is kept for the follow-up orders, the close and the reconciliation.
+    trigger_wait_ms: int = 9 * 60 * 1000
+    finish_margin_ms: int = 60_000
 
     def __post_init__(self) -> None:
         for name in ("entry_notional_fraction", "protective_offset", "trigger_offset"):
@@ -93,8 +95,8 @@ class HarnessConfig:
             _hold("cfg.offsets")
         for name, low, high in (("poll_ms", 1, 60_000), ("settle_polls", 1, 120), ("work_timeout_ms", 1, 60_000),
                                 ("rate_retry_after_ms", 1, 60_000), ("max_snapshot_age_s", 1, 300),
-                                ("trigger_wait_ms", 1, 9 * 60 * 1000), ("dca_wait_ms", 1, 9 * 60 * 1000),
-                                ("dca_finish_margin_ms", 1, 5 * 60 * 1000)):
+                                ("trigger_wait_ms", 1, 9 * 60 * 1000),
+                                ("finish_margin_ms", 1, 5 * 60 * 1000)):
             value = getattr(self, name)
             if type(value) is not int or not low <= value <= high:
                 _hold(f"config.{name}")
@@ -711,6 +713,12 @@ class RealTestnetAdapter:
         }[kind]
         try:
             handler(case, flags)
+        except AdapterError as error:
+            self._note(case, "adapter." + error.code)
+            raise
+        except Exception as error:
+            self._note(case, "error." + type(error).__name__)   # class name only: messages may carry venue text
+            raise
         finally:
             if self._faults.disarm():
                 flags["rate"] = None
@@ -740,15 +748,30 @@ class RealTestnetAdapter:
         return order.avg_price, stop, stop_order
 
     def _target_price(self, case: _Case, entry: Decimal) -> Decimal:
+        """Targets are compared with polled MARK prices, so (like the DCA level) the target is ``trigger_offset``
+        beyond the most favourable mark already seen, which includes the mark read just after entry, and at least one
+        tick beyond the actual fill."""
         tick = self._filters_for(case).tick_size
+        self._mark(case)
         if case.side is Side.LONG:
-            return _ceil(entry * (ONE + self._cfg.trigger_offset), tick)
-        return _floor(entry * (ONE - self._cfg.trigger_offset), tick)
+            return max(_ceil(max(case.marks) * (ONE + self._cfg.trigger_offset), tick), _ceil(entry, tick) + tick)
+        return min(_floor(min(case.marks) * (ONE - self._cfg.trigger_offset), tick), _floor(entry, tick) - tick)
+
+    def _trigger_deadline(self, case: _Case) -> int:
+        return min(self._now() + self._cfg.trigger_wait_ms,
+                   case.context.case_deadline_ms - self._cfg.finish_margin_ms)
 
     def _refresh_stops(self, case: _Case) -> None:
         """Fold any exchange-side stop trigger into local truth before a reconciliation claim."""
         for order in self._working_stops(case):
             outcome = self._query(case, order, Action.RECONCILE)
+            for _ in range(self._cfg.settle_polls - 1):
+                # a read that did not complete, or an algo stop the venue does not list yet, is retried (read-only);
+                # it still HOLDs if the stop stays unknown for the whole settle budget
+                if outcome is not None and outcome.kind not in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
+                    break
+                self._sleep(self._cfg.poll_ms)
+                outcome = self._query(case, order, Action.RECONCILE)
             if outcome is None or outcome.kind in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
                 _hold("refresh.stop_unknown")
             if outcome.kind is OutcomeKind.KNOWN and outcome.detail == "algo_triggered":
@@ -771,10 +794,11 @@ class RealTestnetAdapter:
         initial = case.position
         target = self._target_price(case, entry)
         rule = M.TargetRule(level_id="t1", trigger_price=target, reduce_fraction=fraction)
-        plan = self._wait_for_plan(case, self._now() + self._cfg.trigger_wait_ms, entry=entry, stop=stop,
+        plan = self._wait_for_plan(case, self._trigger_deadline(case), entry=entry, stop=stop,
                                    stop_order=stop_order, targets=(rule,), increases=(), initial_qty=initial)
         action = None if plan is None else next((a for a in plan.actions if isinstance(a, M.ReduceAction)), None)
         if action is None:
+            self._note(case, "target.no_trigger" if plan is None else "target.no_reduce", target=target)
             self._finish_truth(case, flags)
             return
         reduce = self._market(case, Purpose.CLOSE if action.remaining_quantity == 0 else Purpose.REDUCE,
@@ -796,7 +820,7 @@ class RealTestnetAdapter:
 
     def _run_stop(self, case: _Case, flags: dict) -> None:
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.trigger_offset)
-        deadline = self._now() + self._cfg.trigger_wait_ms
+        deadline = self._trigger_deadline(case)
         while self._now() < deadline and stop_order.state is IntentState.WORKING:
             self._sleep(self._cfg.poll_ms)
             self._mark(case)
@@ -806,6 +830,9 @@ class RealTestnetAdapter:
             elif outcome is not None and outcome.kind is OutcomeKind.FINAL:
                 self._absorb(case, stop_order, outcome)
         flags["stop"] = stop_order.state is IntentState.FILLED and case.position == 0
+        if not flags["stop"]:
+            self._note(case, "stop.no_trigger" if stop_order.state is IntentState.WORKING else "stop.unconfirmed",
+                       stop=stop)
         self._finish_truth(case, flags)
 
     def _run_dca(self, case: _Case, flags: dict) -> None:
@@ -818,9 +845,7 @@ class RealTestnetAdapter:
         add_risk = add_notional * abs(entry - stop) / entry
         rule = M.RiskIncreaseRule(level_id="d1", kind=M.IncreaseKind.DCA, trigger_price=trigger,
                                   requested_risk=add_risk)
-        deadline = min(self._now() + self._cfg.dca_wait_ms,
-                       case.context.case_deadline_ms - self._cfg.dca_finish_margin_ms)
-        plan = self._wait_for_plan(case, deadline, entry=entry, stop=stop,
+        plan = self._wait_for_plan(case, self._trigger_deadline(case), entry=entry, stop=stop,
                                    stop_order=stop_order, targets=(), increases=(rule,), initial_qty=initial)
         proposal = None if plan is None else next(
             (a for a in plan.actions if isinstance(a, M.RiskIncreaseProposal)), None)
