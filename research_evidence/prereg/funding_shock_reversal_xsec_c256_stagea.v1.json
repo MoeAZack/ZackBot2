@@ -1,0 +1,231 @@
+{
+  "candidate_id": 256,
+  "candidate_key": "funding_shock_reversal_xsec_8h",
+  "format": "zb-strategy-preregistration/1",
+  "base_commit": "1437dc48e70cb108abe10df74750d29961f01ad7",
+  "frozen_at_cairo": "2026-11-07T00:50:08+02:00",
+  "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
+  "default_off": true,
+  "evaluation_locked": true,
+  "paper_eligibility": "BLOCK_UNTIL_INDEPENDENT_OOS_PASS",
+  "pin_refresh_policy": "After PR #311 merges and before any evaluator, outcome, identity or market-row access, exactly one mechanical refresh may replace only base_commit and frozen_at_cairo with the new protected master. Any economic, data, signal, split, gate or multiplicity change creates a new numbered family and requires fresh independent review.",
+  "roadmap_fit": "Fresh high-frequency market-neutral strategy-economic lane after causal-v4 PACK/RBR/ATR and C255; contract and hostile tests only.",
+  "deferred": [
+    "evaluator implementation",
+    "outcome or identity access",
+    "sealed holdout",
+    "parameter tuning or subgroup selection",
+    "PAPER or testnet activation",
+    "mainnet"
+  ],
+  "hypothesis": "An extreme funding-rate surprise relative to the same perpetual's strictly prior settlement history identifies newly crowded positioning; after settlement, a dollar-neutral long-low-surprise/short-high-surprise book mean-reverts over the next eight hours after realistic two-leg costs and signed funding.",
+  "economic_distinction": {
+    "from_primary_causal_v4": "The primary candidates are directional OHLC pullback, momentum, breadth-rank or ATR-shock signals; C256 is a settlement-event cross-section driven only by point-in-time funding surprise.",
+    "from_c255": "C255 selects price-cointegrated residuals and trades continuous price z-scores; C256 pairs opposite funding-surprise tails at discrete settlement events without fitting a price relationship.",
+    "from_spent_edge05": "EDGE05 ranked the 24-hour funding level and held for 24 hours. C256 preregisters the robust within-symbol change surprise, a two-standard-deviation admission threshold, event-time pairing and an eight-hour fixed horizon. No EDGE05 outcome is used to choose a C256 parameter or subgroup.",
+    "primary_risk": "Funding shocks can reflect persistent informed demand rather than crowding; short-lived reversal may be smaller than four-fill costs, and simultaneous altcoin legs can retain common-market correlation despite dollar neutrality."
+  },
+  "data_authority": {
+    "bar_timeframe": "1h",
+    "decision_data": "settled Binance USD-M funding rows, completed 1h klines and causal 1h mark-price closes only",
+    "universe_path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+    "universe_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+    "universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+    "archive_manifest_path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+    "archive_manifest_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+    "exchange_filter_authority_path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json",
+    "exchange_filter_authority_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9",
+    "membership_cell_rule": "At funding nominal time T, convert T to selection_ms and use the PIT-v8 weekly cell with the greatest monday_ms satisfying monday_ms<=selection_ms. A later cell, current membership, backfill or survivor filter is forbidden.",
+    "exchange_filter_requirement": "Use only the exact protected filter-v3 authority bytes above. For each evaluable development segment or forward fold, select the newest listed snapshot whose captured_at and payload server_time are both strictly before that segment or fold start, freeze it for the whole segment or fold, and preserve PIT ranking order. Current exchangeInfo, a snapshot first observed during a segment/fold, or caller-supplied rules are forbidden. Missing symbol, filter, bar, mark, funding cadence or manifest authority vetoes the pair before entry.",
+    "exchange_filter_fold_bindings": {
+      "development_pre_authority": null,
+      "development_eligible_segment": "2024-12-13T04:44:48Z",
+      "wf1": "2024-12-13T04:44:48Z",
+      "wf2": "2024-12-13T04:44:48Z",
+      "wf3": "2026-02-17T04:13:28Z"
+    },
+    "availability_and_alignment": "A funding event at nominal T becomes usable only at T+300 seconds. Every trailing event must also be available at that decision. Bar and mark series inner-join exact timestamps only; never forward-fill, backfill, interpolate or synthesize.",
+    "outcome_embargo": "No C256 evaluator, outcome, identity, market row at or after the holdout boundary, or sealed-holdout artifact was read while freezing this contract."
+  },
+  "walk_forward": {
+    "development_test_range": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_filter_eligible_segment": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_pre_authority_policy": "Every scheduled row from 2024-10-14T00:00:00Z through 2024-12-14T00:00:00Z exclusive is recorded FILTER_AUTHORITY_UNAVAILABLE and is ineligible before any market/outcome read. These rows remain in scheduled-coverage counts but neither contribute P&L nor reject C256. The first evaluable development segment starts strictly after the first listed filter snapshot's capture and server times and freezes that snapshot through 2025-04-01.",
+    "forward_folds": [
+      "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+      "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+      "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+    ],
+    "sealed_holdout": "2026-09-28T00:00:00Z/2026-11-05T00:00:00Z",
+    "holdout_policy": "SEALED_AND_UNAVAILABLE_TO_STAGE_A",
+    "boundary_policy": "Every development/fold window starts flat. No position, lookback statistic, decision, fill or funding attribution crosses a test boundary; prior rows may warm the fixed trailing statistic but cannot contribute P&L.",
+    "parameter_policy": "All rules are immutable before results. Development can only reject C256. No threshold, side, symbol, cadence, horizon, exit, risk tier or subgroup can be tuned or rescued; any change is a new numbered family."
+  },
+  "funding_surprise": {
+    "decision_clock": "For each nominal UTC hour T with funding settlements, evaluate only rows available by T+300 seconds. A cohort requires at least 12 PIT-eligible symbols settling at that same nominal T.",
+    "interval_normalization": "For each symbol, interval_hours is the exact positive nominal-time difference from its immediately prior valid settlement and must be one of 1, 2, 4 or 8. Convert current and historical rates to r8=funding_rate*(8/interval_hours). Missing, duplicate, off-grid or changed-cadence ambiguity vetoes the symbol.",
+    "history": "Use exactly the 30 valid r8 observations with nominal times strictly before T and availability times no later than T+300 seconds. Fewer than 30 vetoes the symbol.",
+    "robust_center": "m=median(prior_30_r8); mad=median(abs(prior_30_r8-m)); scale=1.4826*mad. Non-positive or non-finite scale vetoes the symbol.",
+    "score": "z=(current_r8-m)/scale, computed only after the current settlement becomes available. No price, return, volume, rank history or future funding enters z.",
+    "thresholds": {
+      "long_tail": "z<=-2.0",
+      "short_tail": "z>=+2.0",
+      "rationale": "A fixed robust two-standard-deviation shock threshold is an ex-ante crowding definition, not selected from C256 or EDGE05 outcomes."
+    }
+  },
+  "selection_and_pairing": {
+    "long_order": "ascending z, then symbol ascending; take at most three",
+    "short_order": "descending z, then symbol ascending; take at most three",
+    "paired_primary": "Require at least one admitted symbol on each side. Pair the first long with the first short, second with second, and third with third; number of pairs is min(long_count, short_count, 3). Unpaired tail symbols are diagnostics only and never traded.",
+    "weights": "Each pair is 50% long gross and 50% short gross at actual rounded entry notionals. No beta, volatility, symbol or outcome weighting is fit.",
+    "duplicate_rule": "A symbol can occur once per cohort and cannot open a new C256 pair while already held by C256.",
+    "infeasible_pair_rule": "Pairing is by frozen rank index only. If indexed pair i is duplicate, already occupied, missing either authority, or infeasible on either leg, skip pair i and record the exact reason; never re-pair either member, backfill from a lower rank, or promote an unpaired symbol. Continue independently to indexed pair i+1.",
+    "empty_event": "A scheduled settlement event with fewer than 12 eligible symbols, no admitted symbol on either tail, or no feasible complete pair is recorded as a zero-trade cohort and remains in frequency denominators."
+  },
+  "execution": {
+    "entry": "Both legs enter atomically at the first available 1h open with open_time>=T+300 seconds, normally T+1h. Same-hour T open and same-bar close fills are forbidden.",
+    "fixed_exit": "Both legs exit at the first available 1h open whose open_time is at least eight hours after actual entry. Their fill timestamp is that bar's open_time, and the exit is processed before any funding event with the same nominal timestamp. No signal exit, partial, target, trailing stop, pyramiding or DCA.",
+    "atr": "For each leg, true_range=max(high-low,abs(high-previous_close),abs(low-previous_close)) on completed causal 1h bars. ATR24 is Wilder RMA alpha=1/24 seeded by the first 24 valid true ranges and frozen from the last completed bar before entry.",
+    "protective_stop": "Each leg has a reduce-only stop three frozen ATR24 values from its raw entry reference_price. Gap/open is checked first, then stop-first over the full 1h range. A gap stop has fill_timestamp=bar.open_time and raw long reference_price=min(stop_price,bar_open) or raw short reference_price=max(stop_price,bar_open); it is processed before any funding settlement at that same timestamp. A non-gap range-touched stop has raw reference_price=stop_price and fill_timestamp=bar.close_time; every funding settlement with nominal_time<=that close timestamp is processed first and included. If exactly one leg stops, its mate remains protected and is flattened at the next available 1h open using that raw open as reference_price and fill_timestamp=open_time before same-timestamp funding; if that open gaps through the mate's stop, use the same worse raw stop/open rule. Every fill then applies the one frozen ledger convention in costs.fill_ledger_and_pnl; these reference prices never embed slippage.",
+    "dual_stop_sequence": "If both legs trigger their 3ATR stops in the same 1h bar, apply each leg's frozen gap-open or range-close timestamp independently. At an identical fill timestamp, record both stop fills in lexicographic symbol order only for deterministic ledger hashing; neither fill changes the other's price, fee, slippage or funding. Funding ordering follows the protective_stop rule before ledger ordering. No mate next-open flatten remains after both legs close.",
+    "ambiguity_policy": "When a protective stop and fixed exit can occur in the same unresolved bar, book the stop first. Missing next-open data makes the attempt INCOMPLETE, never a favorable inferred fill.",
+    "atomicity": "Both entry legs must be accepted. One-leg acceptance or uncertain second leg is a failed paired attempt; the accepted leg keeps its reduce-only 3ATR stop and is flattened at the following available 1h open, never the same open or a same-bar close. A stop touched during the entry hour fills first under the exact gap-open/range-close timestamp and funding order in protective_stop. Otherwise its raw flatten reference_price is next_open and fill_timestamp is that open_time before any same-timestamp funding; if that next open gaps through its stop, use the worse raw stop/open reference-price rule. Slippage is not embedded here and is charged exactly once by costs.fill_ledger_and_pnl. Actual move, fees, slippage and funding count in C256 P&L, drawdown and sample size."
+  },
+  "position_and_portfolio": {
+    "risk_unit": "At proposed rounded entry quantities, aggregate_modeled_pair_loss equals the long leg's raw reference-price move from entry to its 3ATR stop plus the short leg's raw reference-price move from entry to its 3ATR stop plus stressed fee dollars and stressed explicit adverse-slippage dollars exactly once on both entry fills and both stop exits. The raw move never uses execution_price, and slippage is never embedded in a stop or open reference_price. This explicitly models simultaneous two-leg stops; mate-flatten cost is already bounded by the other leg's complete stressed stop exit and is not substituted with the larger single-leg loss. Size pair quantities downward until aggregate_modeled_pair_loss<=1R. Skip non-positive, non-finite or exchange-infeasible sizing; actual gap-through excess remains booked and reported.",
+    "risk_aggregation": "Each open pair consumes exactly its aggregate modeled pair risk, capped at 1R only after rounding. Sum pair risks across all open C256 pairs before admission; refuse a new pair if the total would exceed max_open_risk_r. With at most three 1R pairs, max_open_risk_r=3R is an aggregate modeled ceiling, not a claim that gap losses cannot exceed it.",
+    "max_pair_gross_leverage": 0.5,
+    "max_aggregate_gross_leverage": 1.5,
+    "max_concurrent_pairs": 3,
+    "max_open_risk_r": 3.0,
+    "capital_simulations_usd": [
+      1000,
+      2000,
+      3000,
+      4000
+    ],
+    "exchange_feasibility": "Both legs must satisfy causal tick, step, minQty, minNotional and maxQty after floor rounding for every reported capital simulation. Never round quantity up. A pair failing either leg is skipped before entry and reported.",
+    "correlation_disclosure": "Report pairwise and book return correlation, long/short gross imbalance after rounding, BTC beta and same-candle cluster size. Dollar neutrality is not claimed to remove common crypto beta."
+  },
+  "costs": {
+    "taker_fee_bps_per_fill_per_leg": 5.0,
+    "adverse_slippage_bps_per_fill_per_leg": 2.0,
+    "base_pair_round_trip_fills": 4,
+    "reference_base_pair_round_trip_bps_of_initial_gross": 14.0,
+    "stress_adverse_slippage_bps_per_fill_per_leg": 10.0,
+    "reference_stress_pair_round_trip_bps_of_initial_gross": 30.0,
+    "fill_ledger_and_pnl": "For every actual fill record timestamp, symbol, side, quantity, raw reference_price, adverse_slippage_bps, derived execution_price, fee_dollars, slippage_dollars and impact_ratio. For a buy execution_price=reference_price*(1+slippage_bps/10000); for a sell execution_price=reference_price*(1-slippage_bps/10000). Movement P&L is computed only from raw entry/exit reference_price. slippage_dollars=abs(quantity)*abs(execution_price-reference_price) and is subtracted exactly once. fee_dollars=abs(quantity*execution_price)*fee_bps/10000 and is subtracted exactly once. execution_price is used only for fee notional, exchange rounding/audit and the explicit slippage difference; it must never replace reference_price in movement P&L or generate a second slippage charge. Total net P&L equals raw-reference movement P&L minus explicit slippage_dollars minus fee_dollars plus signed funding_pnl.",
+    "cost_denominator": "Sum explicit fee_dollars and slippage_dollars exactly once across all actual entry, exit, stop and atomicity-failure fills; report cost bps divided by initial pair gross. Never use execution-price movement P&L, add an execution/reference difference again, or add unweighted leg bps.",
+    "funding": "For every applicable settlement, book funding_pnl=-side_sign*abs(actual_qty)*causal_mark_price*funding_rate independently per leg, where side_sign=+1 for long and -1 for short. causal_mark_price is the close of the latest verified 1h mark bar whose close_time is strictly before nominal_time; missing that exact causal authority makes the attempt INCOMPLETE and no older mark is substituted. Positive funding therefore debits longs and credits shorts; negative funding does the reverse. Deterministic entry boundary: an entry fill at an open timestamp is processed before funding at that same timestamp, the position therefore exists for the settlement, and nominal_time==entry_time is INCLUDED. Deterministic open-exit boundary: a fixed exit, gap stop, mate flatten or atomicity cleanup at an open timestamp is processed before same-timestamp funding, the position no longer exists for the settlement, and nominal_time==exit_fill_timestamp is EXCLUDED. A non-gap range-touched stop is timestamped at bar.close_time after funding, so every settlement satisfying entry_time<=nominal_time<=exit_fill_timestamp is included. All other exits include settlements satisfying entry_time<=nominal_time<exit_fill_timestamp. This order is immutable and no funding debit or credit may be selectively omitted.",
+    "market_impact": "For each proposed fill timestamp, including gap stops at bar.open_time and non-gap range stops at bar.close_time, bind the latest verified 1h quote-volume bar whose close_time is strictly before the proposed fill timestamp (the exact timestamp assigned by the execution rules); never use the fill bar, a still-open/current bar, or a later revision. impact_ratio=abs(quantity*reference_price)/prior_completed_quote_volume and a proposed entry leg is infeasible when impact_ratio>0.10%. Missing, non-finite or <=0 prior_completed_quote_volume vetoes a proposed entry pair before submission. After exposure exists, every required stop, fixed exit, mate flatten or atomicity cleanup executes even when impact_ratio>0.10%: book the raw reference fill and replace adverse_slippage_bps by base_or_stress_adverse_slippage_bps*max(1,impact_ratio/0.001), then mark the containing fold INCOMPLETE_IMPACT_LIMIT and reject C256; protection cannot be skipped and the over-cap fill cannot fall through to ordinary completion. If prior volume is missing, non-finite or <=0 for a required exit, execute and book it with the frozen ordinary base/stress slippage, mark the containing fold INCOMPLETE_IMPACT_AUTHORITY and reject C256; never omit the exit or infer favorable volume.",
+    "stress": "Reprice identical attempts with 5bp taker plus 10bp adverse slippage on every fill. Compute base signed funding_pnl first from the frozen formula; if funding_pnl<0 multiply its magnitude by 1.5, if funding_pnl>0 divide it by 1.5, and keep zero unchanged. Stress never flips a sign, turns a debit into a credit, increases a credit, changes selection, or improves a fill.",
+    "all_gates_apply_to": "actual exchange rounding and signed funding in base and stress rows"
+  },
+  "gates": {
+    "development_immediate_reject": [
+      "pre-cost gross expectancy<=0",
+      "mean net R<=0",
+      "profit factor<=1.05",
+      "fewer than 200 closed paired attempts",
+      "fewer than 12 distinct traded symbols",
+      "stress-cost mean net R<=0",
+      "max drawdown>60R",
+      "any missing causal bar, mark, funding, PIT-universe or exchange-filter authority"
+    ],
+    "forward_final_pass_all_required": [
+      "aggregate mean net R>0.03",
+      "aggregate profit factor>1.10",
+      "at least 600 closed paired attempts across at least 12 symbols",
+      "at least 2 of 3 forward folds have positive net R",
+      "worst forward-fold mean net R>-0.05",
+      "long-leg and short-leg standalone net contributions are each non-negative",
+      "at least 55% of calendar months have positive net R; zero-trade months remain in the denominator",
+      "stress-cost aggregate mean net R>0 and profit factor>1.02",
+      "stationary block-bootstrap one-sided performance p-value<=0.05/256",
+      "no symbol contributes more than 25% of sum(abs(symbol net R)); a zero denominator fails",
+      "the frozen drawdown disclosure tier passes",
+      "all exchange-feasibility, atomicity and causal-authority checks pass"
+    ],
+    "drawdown_disclosure_tiers": {
+      "standard": "max closed-R drawdown<=15R",
+      "elevated": "15R<max drawdown<=30R and total net R/max drawdown>=1.5",
+      "high": "30R<max drawdown<=60R, total net R/max drawdown>=2.0, stress net R/stress max drawdown>=1.0, and future PAPER risk multiplier capped at min(1,15/max_drawdown_R)",
+      "reject": "max drawdown>60R; Extreme risk is research/shadow only and cannot pass C256",
+      "report": "Always report total net R, mean R, PF, max drawdown R, recovery duration, return/drawdown ratio, stress drawdown and the resulting risk label together."
+    },
+    "uncertainty_report": [
+      "paired-attempt and leg counts",
+      "scheduled, eligible, admitted, skipped and zero-trade settlement cohorts",
+      "mean net R with stationary-bootstrap 95% interval",
+      "profit factor and maximum drawdown R",
+      "fold, month, side, symbol and regime results",
+      "fees, slippage, funding, impact and atomicity failures separately",
+      "holding time, exchange rejection rate, correlation and capital-simulation feasibility"
+    ],
+    "undefined_statistics": "FAIL_CLOSED"
+  },
+  "bootstrap_specification": {
+    "ordered_observations": "All closed paired attempts including atomicity failures, ordered by entry timestamp then long symbol then short symbol",
+    "statistic": "mean after-cost net R per closed paired attempt",
+    "null": "center ordered net-R observations by subtracting their observed mean; test whether the observed uncentered mean is greater than zero",
+    "method": "Politis-Romano stationary bootstrap",
+    "expected_block_length_attempts": 21,
+    "resamples": 10000,
+    "seed": 25620261107,
+    "p_value": "(1+count(null bootstrap mean>=observed mean))/(resamples+1)",
+    "confidence_interval": "two-sided percentile 95% interval from the uncentered stationary-bootstrap distribution"
+  },
+  "expected_test_count": {
+    "development_calendar_days": 169,
+    "development_filter_eligible_days": 108,
+    "forward_calendar_days": 545,
+    "actual_schedule_formula": "For each window, scheduled_event_hours is the sorted union of nominal UTC settlement hours T found in checksum-bound funding authority for PIT-eligible symbols after cadence/schema validation and before any price return, candidate signal or outcome is computed. Record the union digest and count; do not assume three events per day.",
+    "eight_hour_reference_only": {
+      "label": "non-gating reference if every eligible symbol remained on an 8h cadence",
+      "development_filter_eligible_event_hours": 324,
+      "forward_event_hours": 1635
+    },
+    "absolute_24_per_day_upper_bounds": {
+      "development_filter_eligible_event_hours": 2592,
+      "development_pairs_at_three_per_event": 7776,
+      "development_leg_round_trips": 15552,
+      "forward_event_hours": 13080,
+      "forward_pairs_at_three_per_event": 39240,
+      "forward_leg_round_trips": 78480
+    },
+    "note": "Actual union counts are unknown until the future locked evaluator reads only the immutable pre-cutoff funding authority. They may differ because Binance cadences can be 1/2/4/8h. These references and upper bounds are not sample-size evidence or promotion gates; zero-trade scheduled event hours remain reported."
+  },
+  "trial_budget": {
+    "promotable_primary": 1,
+    "non_promotable_diagnostics": [
+      "long-leg standalone attribution",
+      "short-leg standalone attribution"
+    ],
+    "report_only_baselines": [
+      "seeded random eligible opposite-tail pairs with identical cadence and costs",
+      "sign-flipped C256 pairs",
+      "equal-gross eligible-universe long/short book"
+    ],
+    "stress_rows": [
+      "base costs",
+      "stressed costs and asymmetric funding"
+    ],
+    "ledger_records_expected": 8,
+    "rescue_rule": "Diagnostics, baselines, a side, symbol, regime, month, cadence or capital slice cannot rescue the single primary."
+  },
+  "multiplicity": {
+    "numbered_candidate_family": 256,
+    "candidate_familywise_alpha_ceiling": 0.0001953125,
+    "primary_count": 1,
+    "rule": "Only the combined paired book is promotable. Test its performance p-value at 0.05/256; diagnostics and baselines cannot be selected as alternatives.",
+    "ledger_rule": "Record every scheduled cohort, empty event, skipped pair, attempted pair, atomicity failure and final rejection."
+  },
+  "falsification": [
+    "Reject at development if any immediate gate fails; do not open forward folds.",
+    "Reject after forward testing if any final gate fails; do not tune, rescue, subset or inspect the sealed holdout.",
+    "Reject if profitability disappears under stressed slippage, actual signed funding or exchange rounding.",
+    "Reject if any current settlement, PIT membership, bar, mark, filter or fill is used before its causal availability.",
+    "Reject if results rely on a single side, symbol, month, regime, cadence or capital slice.",
+    "A rejection is final for C256 and immediately advances the next preregistered family."
+  ]
+}
