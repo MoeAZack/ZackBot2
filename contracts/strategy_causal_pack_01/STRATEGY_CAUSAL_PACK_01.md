@@ -1,6 +1,6 @@
 # STRATEGY-CAUSAL-PACK-01
 
-**Status: FROZEN v2 — signed by Codex, 6 November 2026 12:45 Cairo.**
+**Status: FROZEN v3 — signed by Codex, 6 November 2026 13:28 Cairo.**
 
 The JSON twin is authoritative. This pack gives three previously positive-after-cost but under-sampled short ideas one
 new, causal identity each. Selection is disclosed and is not evidence. All old candidate verdicts remain rejected.
@@ -12,6 +12,10 @@ new, causal identity each. Selection is disclosed and is not evidence. All old c
 | `pullback_rsi_short_h1_causal_v3` | `pullback_rsi_short_h1` | 4h | 60 bars |
 | `exp_mom_short_c27_causal_v3` | `exp_mom_short_c27` | 4h | 180 bars |
 | `volume_pressure_inventory_short_1h_causal_v3` | `volume_pressure_inventory_1h:short` | 1h | 24 bars |
+
+The 1h VPI packet is explicitly `DATA_INCOMPLETE_PRE_RUN`: the frozen archive manifest contains no required 1h kline
+archive for this universe. It therefore reads no candidate market rows and receives no economic verdict. It remains one
+of the three registered packets and remains in the multiplicity ledger; missing data cannot erase a trial.
 
 The exp-momentum 180-bar cap is inherited from the pre-existing canonical short-momentum preregistration, not selected
 from Candidate 27 outcomes. The earlier v2 identities are retired before evaluation because their 11 October filter
@@ -28,6 +32,20 @@ snapshot records as TRADING USDT COIN perpetuals with complete positive price, m
 filters. The hash includes the PIT cell already active at fold start and every later Monday before fold end. Fewer than 20 makes the candidate incomplete before any market row is read. No later snapshot, invented rule,
 current-survivor screen or outcome-driven deletion is allowed. The fold snapshot stays fixed for the whole fold; current
 PAPER/testnet admission must independently pass current exchangeInfo parity.
+
+At every completed decision bar `d`, effective membership is the ordered PIT CORE-20 intersected with symbols whose
+checksum-verified causal closes at `d` and `d-42` are both finite and available by `d`. Cross-sectional ranks, breadth,
+and their denominator use only that effective set, without imputation, forward fill, synthetic values, or replacement
+survivors. The original PIT order is preserved after intersection and alone controls simultaneous-entry priority.
+Later archive coverage, listing state, or delisting knowledge may never suppress an entry or rewrite that decision.
+
+A missing row for a symbol outside effective membership, or for a flat/non-signalling symbol when that row is never
+needed by an entered episode, does not invalidate the candidate. Once a signal is admitted, however, every bar, next
+open, open-position mark, applicable exchange filter, and funding settlement intersecting the actual exposure must be
+causal, checksum-bound, and complete through exit. A missing next open, open-position bar or mark, or intersecting
+funding settlement makes the whole candidate incomplete. No last-mark, synthetic, zero, or delisting close is allowed;
+a terminal/delist exit requires checksum-bound point-in-time authority known before its exit decision, otherwise the
+candidate is incomplete. This sparse rule cannot delete an entered episode or create a reduced-sample pass.
 
 ## Causal evidence
 
