@@ -1,0 +1,82 @@
+{
+  "format": "zb-causal-v4-authority-rebind/1",
+  "rebind_id": "STRATEGY-CAUSAL-PACK-01-CAUSAL-V4-AUTHORITY-REBIND",
+  "version": 1,
+  "status": "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY",
+  "frozen_at_cairo": "2026-11-06T18:36:21+02:00",
+  "scope": {
+    "metadata_only": true,
+    "market_rows_read": false,
+    "candidate_signals_evaluated": false,
+    "candidate_outcomes_read": false,
+    "economics_run": false,
+    "runner_pins_changed": false
+  },
+  "source_contract": {
+    "path": "contracts/strategy_causal_pack_01/strategy_causal_pack_01_contract.v1.json",
+    "byte_sha256": "14dcaad801bd5313d7f71775383dc676de339e74fca72450f5a37c8703ee1520",
+    "immutable_in_full": true
+  },
+  "identity_rebinds": [
+    {
+      "v3_candidate_id": "pullback_rsi_short_h1_causal_v3",
+      "v4_candidate_id": "pullback_rsi_short_h1_causal_v4"
+    },
+    {
+      "v3_candidate_id": "exp_mom_short_c27_causal_v3",
+      "v4_candidate_id": "exp_mom_short_c27_causal_v4"
+    }
+  ],
+  "authority_artifacts": {
+    "manifest": {
+      "path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+      "byte_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+      "content_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8"
+    },
+    "pit_universe": {
+      "path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+      "byte_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+      "content_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd"
+    },
+    "coverage_preflight": {
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json",
+      "byte_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
+      "content_digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
+      "required_guaranteed_period_gaps": 0
+    }
+  },
+  "immutable_rules": {
+    "rule": "The source contract remains authoritative for every strategy parameter, source rule, fold, split, execution rule, book/sizing rule, cost model, exchange-filter rule, report field, promotion gate, cohort rule and stop condition. This rebind cannot override any of them.",
+    "overlays_exactly": [
+      "candidate_identity",
+      "authority_artifacts",
+      "authorization_status",
+      "multiplicity_append"
+    ],
+    "runner_pins_unchanged": true
+  },
+  "immutable_trial_history": [
+    {
+      "path": "contracts/strategy_causal_pack_01/precutoff_daily_archive_amendment.v1.json",
+      "byte_sha256": "886937683e9db66d211c1a69449c05080e24c1dfd4ab8c061d9088baa0e0286a",
+      "role": "pins both causal_v3 DATA_INCOMPLETE_PRE_RUN records and zero outcome-row access"
+    }
+  ],
+  "multiplicity_append": {
+    "rule": "Append both causal_v4 identities as new trials; never replace, relabel, erase or credit any prior v3 or earlier trial.",
+    "prior_registered_packet_count": 3,
+    "appended_v4_trial_count": 2,
+    "resulting_registered_packet_count": 5,
+    "holm_missing_prior_p_value": 1.0,
+    "inference_role": "diagnostic_only",
+    "promotion_uses_inference": false
+  },
+  "protected_authority_prerequisite": {
+    "pull_request": 304,
+    "authority_source_head": "59babc0c13aa08fafdffe400029c7c1377b96319",
+    "authority_protected_merge_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
+    "required_event": "PR #304 containing the exact authority artifact hashes in this rebind is merged into the protected branch",
+    "execution_authorized_now": false,
+    "post_merge_runner_pin_change_requires_separate_review": true
+  }
+}
