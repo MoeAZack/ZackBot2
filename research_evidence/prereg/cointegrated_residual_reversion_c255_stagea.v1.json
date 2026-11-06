@@ -1,0 +1,166 @@
+{
+  "candidate_id": 255,
+  "candidate_key": "cointegrated_residual_reversion_1h",
+  "format": "zb-strategy-preregistration/1",
+  "base_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
+  "frozen_at_cairo": "2026-11-06T21:06:53+02:00",
+  "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
+  "default_off": true,
+  "paper_eligibility": "BLOCK_UNTIL_INDEPENDENT_OOS_PASS",
+  "roadmap_fit": "Fresh market-neutral strategy-economic lane after PACK, rank-breadth reversal, and ATR shock-snapback; contract only, with no outcome access or activation.",
+  "deferred": [
+    "runner implementation",
+    "outcome access",
+    "parameter tuning",
+    "sealed holdout",
+    "PAPER or testnet activation",
+    "mainnet"
+  ],
+  "hypothesis": "Pairs of liquid crypto perpetuals whose log prices remain cointegrated in a strictly prior training window can exhibit temporary inventory-driven residual dislocations that mean-revert after paying both-leg execution costs and signed funding.",
+  "economic_distinction": {
+    "from_pack": "The signal is a beta-hedged two-instrument residual, not a directional pullback or momentum signal.",
+    "from_rank_breadth_reversal": "Pair membership and direction come from within-pair cointegration and residual distance, not cross-sectional return ranks or market breadth.",
+    "from_atr_shock_snapback": "Entry is a stationary relative-value deviation with two funded legs, not an absolute-price ATR shock in one symbol.",
+    "primary_risk": "Crypto relationships can break abruptly; selection error, two-leg execution, funding, and shared-symbol concentration can erase apparent mean reversion."
+  },
+  "data_authority": {
+    "bar_timeframe": "1h",
+    "decision_data": "completed Binance USD-M 1h bars only",
+    "entry_and_signal_exit_fill": "next available 1h open after the completed decision bar",
+    "universe_path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+    "universe_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+    "universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+    "archive_manifest_path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+    "archive_manifest_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+    "exchange_filter_requirement": "Use the protected point-in-time exchange-filter authority bound to the same universe version; fail closed if the authority, bar, mark-price, or funding coverage is missing.",
+    "survivorship_rule": "Membership is resolved at each selection instant from the point-in-time universe; current membership may never be projected backward.",
+    "outcome_embargo": "No C255 evaluation or sealed-holdout rows were read while freezing this contract."
+  },
+  "walk_forward": {
+    "selection_frequency": "month_start_00:00_UTC",
+    "training_window_days": 180,
+    "training_end": "strictly_before_selection_instant",
+    "test_window": "from_selection_instant_until_next_month_start_exclusive",
+    "development_test_range": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "forward_folds": [
+      "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+      "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+      "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+    ],
+    "sealed_holdout": "2026-09-28T00:00:00Z/2026-11-05T00:00:00Z",
+    "holdout_policy": "SEALED_AND_UNAVAILABLE_TO_STAGE_A",
+    "parameter_policy": "All thresholds are fixed here. Development may only reject the family; it may not tune or rescue it. A change creates a new numbered family."
+  },
+  "pair_selection": {
+    "eligible_book": "crypto",
+    "minimum_history_hours": 4320,
+    "minimum_complete_training_bars_fraction": 0.995,
+    "price_transform": "natural_log_of_completed_close",
+    "regression": "OLS log(y) on constant plus log(x), trained only in the trailing 180-day window",
+    "beta_bounds_exclusive": [
+      0.2,
+      5.0
+    ],
+    "residual_stationarity": "Engle-Granger residual ADF p-values are Holm-Bonferroni corrected across every eligible pair at that monthly selection; corrected alpha is 0.05.",
+    "stability": "Both non-overlapping 90-day training halves must have raw residual ADF p<=0.05, positive beta, beta drift<=25%, and residual half-life within 6..72 hours.",
+    "selection_order": "ascending corrected ADF p-value, then ascending half-life, then lexicographic y/x symbols",
+    "portfolio_pairs": "Greedily take at most six pairs in selection order; each symbol may occur in at most one selected pair for the entire test month.",
+    "frozen_monthly_model": "Pair identity, beta, residual mean, residual standard deviation, and all thresholds stay frozen throughout the test month."
+  },
+  "signals": {
+    "residual": "log(y_close) - trained_beta * log(x_close) - trained_intercept",
+    "z_score": "(residual - trained_residual_mean) / trained_residual_standard_deviation",
+    "long_spread": "At a completed 1h bar, z<=-2.5: buy y and sell beta-weighted x at the next 1h open.",
+    "short_spread": "At a completed 1h bar, z>=+2.5: sell y and buy beta-weighted x at the next 1h open.",
+    "cost_floor": "Absolute residual displacement must also be at least 0.014 log-price units, five times the 28 bp base four-fill pair round trip.",
+    "signal_exit": "After entry, first completed bar with abs(z)<=0.25 exits both legs at the next 1h open.",
+    "residual_stop": "After entry, first completed bar with abs(z)>=4.5 exits both legs at the next 1h open.",
+    "catastrophic_leg_stop": "Each leg has a reduce-only exchange stop three training-window ATRs from its entry; if either triggers, flatten the other leg at that bar's conservative executable price.",
+    "time_exit_hours": 72,
+    "reentry_cooldown_hours": 12,
+    "ambiguity_policy": "If a catastrophic stop and any favorable exit can occur in the same unresolved bar, book the stop first. Gap-through stops fill at the worse of stop and next executable open, plus adverse slippage.",
+    "forbidden": [
+      "same-bar close fills",
+      "updating model statistics with test-month observations",
+      "shared symbols across selected pairs",
+      "partial exits",
+      "pyramiding",
+      "DCA",
+      "subgroup rescue",
+      "symbol or month cherry-picking"
+    ]
+  },
+  "position_and_portfolio": {
+    "leg_weighting": "Allocate pair gross notional between y and x in the ratio 1:abs(trained_beta), preserving the signal side on each leg.",
+    "risk_unit": "Size the pair so the modeled loss at the 4.5z residual stop is 1R, then cap down for catastrophic-leg stops and exchange filters.",
+    "max_pair_gross_leverage": 1.0,
+    "max_concurrent_pairs": 4,
+    "max_open_risk_r": 4.0,
+    "exchange_feasibility": "Both legs must satisfy point-in-time tick, step, minimum quantity, and minimum notional after rounding at $1,000 and $4,000 account-capital simulations; otherwise skip before entry.",
+    "atomicity": "A pair is valid only if both legs can be placed. One-leg acceptance or an uncertain second leg is a failed entry requiring immediate bounded flatten and is never counted as a strategy trade."
+  },
+  "costs": {
+    "taker_fee_bps_per_fill_per_leg": 5.0,
+    "adverse_slippage_bps_per_fill_per_leg": 2.0,
+    "base_pair_round_trip_fills": 4,
+    "base_pair_round_trip_bps": 28.0,
+    "stress_adverse_slippage_bps_per_fill_per_leg": 10.0,
+    "stress_pair_round_trip_bps": 60.0,
+    "funding": "Book actual signed Binance funding independently on both legs at every settlement, using the last causal verified mark-price close.",
+    "market_impact": "Report participation against causal quote volume; reject any trade exceeding 0.10% of the completed bar quote volume on either leg.",
+    "all_gates_apply_to": "base costs and stressed slippage, with actual funding and exchange rounding in both cases"
+  },
+  "gates": {
+    "development_immediate_reject": [
+      "pre-cost gross expectancy<=0",
+      "mean net R<=0",
+      "profit factor<=1.05",
+      "fewer than 80 closed pair trades",
+      "fewer than 8 distinct symbols",
+      "max drawdown>15R",
+      "any missing causal bar, mark, funding, universe, or exchange-filter authority",
+      "stress-cost net expectancy<=0"
+    ],
+    "forward_final_pass_all_required": [
+      "aggregate mean net R>0.05",
+      "aggregate profit factor>1.10",
+      "at least 200 closed pair trades across at least 12 symbols and 6 distinct selected pairs",
+      "at least 2 of 3 forward folds have positive net R",
+      "worst forward-fold mean net R>-0.05",
+      "max drawdown<=15R",
+      "long-spread and short-spread each have at least 50 trades and non-negative mean net R",
+      "no pair contributes more than 25% of absolute net R",
+      "at least 55% of test months have positive net R",
+      "stress-cost aggregate mean net R>0 and profit factor>1.02",
+      "stationary block-bootstrap one-sided performance p-value<=0.05/255",
+      "all exchange-feasibility and causal-authority checks pass"
+    ],
+    "uncertainty_report": [
+      "trade count",
+      "mean net R with stationary block-bootstrap 95% confidence interval",
+      "profit factor",
+      "maximum drawdown R",
+      "fold and month results",
+      "direction split",
+      "pair and symbol concentration",
+      "holding time",
+      "fees, slippage, funding, and impact separately",
+      "failed or skipped two-leg entries"
+    ],
+    "undefined_statistics": "FAIL_CLOSED"
+  },
+  "falsification": [
+    "Reject if any immediate development gate fails; do not open forward folds.",
+    "Reject if any final forward gate fails; do not tune, rescue, or inspect the sealed holdout.",
+    "Reject if profitability disappears under stressed slippage or after signed two-leg funding.",
+    "Reject if pair stationarity or membership uses observations at or after its monthly selection instant.",
+    "Reject if realistic two-leg exchange rules cannot be reproduced atomically in the protected testnet harness.",
+    "A rejection is final for C255 and advances the next preregistered family."
+  ],
+  "multiplicity": {
+    "numbered_candidate_family": 255,
+    "candidate_familywise_alpha_ceiling": 0.000196078431372549,
+    "monthly_pair_selection_correction": "Holm-Bonferroni at family alpha 0.05 across all eligible pairs",
+    "ledger_rule": "Record every attempted family and pair-selection month, including empty selections and failures."
+  }
+}
