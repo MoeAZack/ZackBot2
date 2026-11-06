@@ -103,6 +103,42 @@ keys. F2 (Medium): signed limit reads were sent before the journaled binding was
 with a raw `JournalLocked` while a runtime held the journal. Mutation check of the four new guard lines: 4 of 4
 killed.
 
+## Watchdog and kill switch (`tools/newcore_watchdog.py`)
+
+This tool keeps a long run alive. It wraps any NEWCORE run command that writes JSON status lines and takes
+`--stop-file`, such as the testnet launcher or the strategy run in #297. The watchdog appends `--stop-file
+<root>/STOP` itself.
+
+```
+python tools/newcore_watchdog.py watch --root <dir> [--stall-s 300] [--startup-grace-s 300] [--max-restarts 5] -- <run command ...>
+python tools/newcore_watchdog.py kill   --root <dir>
+python tools/newcore_watchdog.py status --root <dir>
+```
+
+- **Kill switch.** `kill` writes `<root>/STOP` and waits for the run to stop. The runtime stops and closes. It
+  never cancels orders, so the protective stops stay on the venue. After a kill, nothing restarts the run.
+  `watch` refuses while the stop file exists (`stop_file_present`); `--clear-stop` removes it deliberately.
+- **Restart.** A crash (any other exit code, including 1 for an unhandled exception) is restarted after a backoff of
+  5 s that doubles up to 300 s. So is a hang, meaning no output for `--stall-s`, or for `--startup-grace-s` before
+  the first status line. The hung run is terminated first. At most `--max-restarts` restarts are allowed per hour;
+  past that the watchdog gives up (exit 1). Boot recovery and the REC-02 restore proof make a restart safe.
+- **Never restarts:**
+  - exit 0 (clean stop), 2 (refused), 3 (held) or 64 (usage);
+  - a crash whose last status line shows a hold outside the runtime's clearable evidence holds, because unknown
+    account state stops for a human (`held_needs_human`).
+
+  A second `watch` against the same account cannot double-run it: the journal's writer lock refuses the second
+  runtime (exit 2).
+- **Files.** The run's output goes to `logs/run-<n>.jsonl`. Watchdog events go to `watchdog.jsonl`.
+  `watchdog.json` is the heartbeat: run number, restarts, steps since the last boot, the last status, and the
+  time of the last line. The run inherits the environment unchanged, because the testnet keys come only from it.
+  Neither the command line nor any environment value is written to a file.
+- Any live or mainnet switch variable is refused.
+
+Tests: `tests/newcore_runtime/test_rt02_watchdog.py` has 17 tests with real child processes, covering crash, hang,
+slow start, cap, kill, kill during backoff, sticky hold, inherited environment and no secret in files. They also
+pass under the CP1252 shim. Mutation check of the eight policy lines: 8 of 8 killed.
+
 ## Tests (non-official, sandbox)
 
 - `tests/newcore_runtime/test_rt02_paper_run.py`:
