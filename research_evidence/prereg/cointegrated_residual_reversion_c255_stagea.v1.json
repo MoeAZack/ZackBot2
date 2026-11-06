@@ -2,7 +2,7 @@
   "candidate_id": 255,
   "candidate_key": "cointegrated_residual_reversion_1h",
   "format": "zb-strategy-preregistration/1",
-  "base_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
+  "base_commit": "11db5a45036a9cf831f7d46773b6e621d7c9dc92",
   "frozen_at_cairo": "2026-11-06T21:06:53+02:00",
   "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
   "default_off": true,
@@ -53,6 +53,7 @@
   },
   "pair_selection": {
     "eligible_book": "crypto",
+    "pair_enumeration": "Enumerate each unordered eligible symbol pair exactly once after sorting symbols lexicographically; the lexicographically first symbol is x and the second is y. Never test or select the reverse orientation.",
     "minimum_history_hours": 4320,
     "minimum_complete_training_bars_fraction": 0.995,
     "price_transform": "natural_log_of_completed_close",

@@ -79,6 +79,8 @@ def test_selection_and_signal_rules_are_frozen_and_causal():
     selection = contract["pair_selection"]
     signals = contract["signals"]
     assert contract["walk_forward"]["training_window_days"] == 180
+    assert "each unordered eligible symbol pair exactly once" in selection["pair_enumeration"]
+    assert "Never test or select the reverse orientation" in selection["pair_enumeration"]
     assert selection["frozen_monthly_model"].endswith("test month.")
     assert "Holm-Bonferroni" in selection["residual_stationarity"]
     assert "next 1h open" in signals["long_spread"]
