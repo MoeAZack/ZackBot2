@@ -30,14 +30,14 @@ def _ts(value):
 def test_contract_is_frozen_signed_and_has_no_live_authority():
     c, md = _load()
     assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
-        'STRATEGY-CAUSAL-PACK-01', 2, 'FROZEN', 'codex')
-    assert c['frozen_at'] == '2026-11-06T12:45:34+02:00'
+        'STRATEGY-CAUSAL-PACK-01', 3, 'FROZEN', 'codex')
+    assert c['frozen_at'] == '2026-11-06T13:28:29+02:00'
     assert c['scope']['paper_testnet_only'] is True
     assert c['scope']['default_enabled'] is False
     assert c['scope']['mainnet_authority'] is False
     assert c['scope']['parameter_search'] is False
     assert c['scope']['runtime_risk_before_independent_pass'] is False
-    assert md.splitlines()[2] == '**Status: FROZEN v2 — signed by Codex, 6 November 2026 12:45 Cairo.**'
+    assert md.splitlines()[2] == '**Status: FROZEN v3 — signed by Codex, 6 November 2026 13:28 Cairo.**'
 
 
 def test_three_new_unique_identities_preserve_old_rejections():
@@ -57,6 +57,9 @@ def test_three_new_unique_identities_preserve_old_rejections():
     assert 'Holm-adjusted' in disclosure['multiplicity_rule']
     assert disclosure['inference_role'] == 'diagnostic_only'
     assert disclosure['promotion_uses_inference'] is False
+    assert disclosure['registered_packet_count'] == 3
+    assert disclosure['data_incomplete_candidates'] == [
+        'volume_pressure_inventory_short_1h_causal_v3']
 
 
 def test_source_strategy_facts_and_frozen_horizons_match_code():
@@ -79,6 +82,10 @@ def test_source_strategy_facts_and_frozen_horizons_match_code():
     assert vpi['mgmt']['max_bars'] == by_id['volume_pressure_inventory_short_1h_causal_v3']['max_holding_bars'] == 24
     assert by_id['volume_pressure_inventory_short_1h_causal_v3']['management'] == {
         'stop_atr': 2.0, 'tp_r': 2.0, 'max_bars': 24}
+    vpi_row = by_id['volume_pressure_inventory_short_1h_causal_v3']
+    assert vpi_row['evaluation_status'] == 'DATA_INCOMPLETE_PRE_RUN'
+    assert 'no 1h kline archive' in vpi_row['data_incomplete_reason']
+    assert vpi_row['retained_in_multiplicity_and_three_packet_pack'] is True
     for row in by_id.values():
         assert f"`{row['candidate_id']}`" in md
 
@@ -271,6 +278,33 @@ def test_filter_authority_is_checksum_bound_causal_and_pre_market():
     assert 'No later snapshot, invented rule' in md
 
 
+def test_sparse_availability_is_causal_and_exposure_fail_closed():
+    c, md = _load()
+    p = c['data']['availability_policy']
+    assert all(term in p['decision_time_effective_membership'] for term in (
+        'PIT', 'CORE-20', 'd and d-42', 'available no later than decision time d'))
+    assert all(term in p['rank_and_breadth'] for term in (
+        'decision-time effective membership', 'no imputation', 'survivor backfill'))
+    assert p['priority'].startswith('Preserve original PIT CORE-20 order')
+    assert 'flat/non-signalling' in p['flat_or_non_signalling_missing_data']
+    assert 'does not make the candidate incomplete' in p['flat_or_non_signalling_missing_data']
+    assert all(term in p['exposure_completeness'] for term in (
+        'every bar', 'next-open fill', 'open-position mark', 'funding settlement'))
+    assert all(term in p['missing_required_exposure'] for term in (
+        'missing tradable next open', 'missing bar or mark', 'funding settlement',
+        'INCOMPLETE_CANDIDATE'))
+    assert all(term in p['no_future_suppression'] for term in (
+        'after decision d', 'suppress an entry', 'rank', 'breadth', 'priority'))
+    assert all(term in p['delist_or_terminal_exit'] for term in (
+        'Never invent', 'last-mark', 'delisting close', 'checksum-bound point-in-time authority',
+        'INCOMPLETE_CANDIDATE'))
+    assert 'not permission to delete an entered episode' in p['scope']
+    assert 'effective membership is the ordered PIT CORE-20' in md
+    assert 'Later archive coverage' in md and 'may never suppress an entry' in md
+    assert 'No last-mark, synthetic, zero, or delisting close is allowed' in md
+    assert any('future availability to suppress an entry' in row for row in c['stop_conditions'])
+
+
 def test_split_purge_is_candidate_specific_and_finite():
     c, _ = _load()
     s = c['split_rules']
@@ -315,7 +349,11 @@ def test_promotion_is_economic_frequent_diversified_and_independent():
     assert g['positive_after_1_5x_cost_stress'] and g['causal_parity_required']
     assert g['independent_review_required'] and g['all_required_reports_present']
     assert g['maximum_incomplete_rows'] == 0
-    assert g['incomplete_scope'].startswith('Any missing causal fold-start filter authority')
+    assert g['incomplete_scope'].startswith(
+        'Missing flat/non-signalling data never required by an entered episode')
+    assert all(term in g['incomplete_scope'] for term in (
+        'required exposure bar', 'open-position mark', 'intersecting funding settlement',
+        'tradable next-open fill', 'required report'))
     assert g['missing_or_incomplete_is_pass'] is False
     assert g['inference_required_for_promotion'] is False
     assert 'at least 200 closes' in md and 'missing evidence never passes' in md
