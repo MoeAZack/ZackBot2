@@ -36,14 +36,19 @@
   ],
   "identity_and_multiplicity": {
     "registered_cell_count": 2,
+    "total_family_trial_count": 4,
     "cells_judged_separately": true,
     "cross_side_pooling": false,
     "selection_is_not_evidence": true,
     "prior_results_credit": false,
     "rule": "Register both causal_v3 side identities before market rows are read; retain both and every prior tested candidate or rejection in the full program ledger. A failed side is parked without rescue, pruning or tuning.",
     "inference": "Report raw and Holm-adjusted inference for the complete frozen family as selection-bias diagnostics only; missing prior p-values equal 1.0; inference is never a promotion gate.",
-    "family_members_ordered": ["atr_shock_snapback_4h_long_causal_v3", "atr_shock_snapback_4h_short_causal_v3"],
-    "holm_family_size": 2,
+    "family_members_ordered": ["atr_shock_snapback_4h_long_stagea_v1", "atr_shock_snapback_4h_short_stagea_v1", "atr_shock_snapback_4h_long_causal_v3", "atr_shock_snapback_4h_short_causal_v3"],
+    "holm_family_size": 4,
+    "family_ledger_path": "contracts/atr_shock_snapback_4h_causal_v3/atr_shock_snapback_4h_family.v1.json",
+    "family_ledger_byte_sha256": "a82215dc33361e78460bb60f191a9ed937f3003d746250eef18011a361b455ef",
+    "family_ledger_content_digest": "a50a8b283716abd1e2b73deca918e49f7a6f59628d6e95e7fe3606fadcb28b99",
+    "append_only": true,
     "promotion_uses_inference": false
   },
   "signal": {
@@ -130,7 +135,9 @@
       "r_price": "1.5 * ATR_entry",
       "long_levels": "stop=entry_exec-R; tp1=entry_exec+0.8R; breakeven after +0.8R; target=entry_exec+1.5R",
       "short_levels": "stop=entry_exec+R; tp1=entry_exec-0.8R; breakeven after -0.8R; target=entry_exec-1.5R",
-      "quantity": "risk_cash/R_price, leverage-capped then floored to MARKET_LOT_SIZE; never round up minQty/minNotional or clip maxQty",
+      "quantity": "qty_raw=risk_cash/R_price; apply leverage cap, then floor to frozen MARKET_LOT_SIZE step. Skip the entry rather than round up if minQty or minNotional fails; maxQty excess refuses the entire side cell rather than clipping.",
+      "tp1_quantity": "At first 0.8R touch request current_qty*0.5 and floor to MARKET_LOT_SIZE. If the result is zero, send nothing, do not mark TP1 complete and retry on a later candle. After a fill floor remaining quantity to the same step.",
+      "tp1_dust": "TP1 has no automatic dust-to-full-close conversion. Full exits close all remaining model quantity.",
       "max_bars": 12,
       "forbidden": ["DCA", "pyramiding", "take-profit ladder", "same-leg retroactive breakeven"]
     }
@@ -142,7 +149,12 @@
     "maximum_open_positions": 4,
     "gross_leverage_multiple": 10.0,
     "equity_compounding": true,
-    "mark": "Last checksum-verified 1h mark close with availability <= event time; a same-open admission uses its unslipped reference open for same-open sizing.",
+    "entry_attempt_phase": "At open t, after funding_time<t settlements, causal marks, Cairo roll and every due signal/time exit, calculate terms sequentially before this entry fill. Earlier same-open entries reduce later equity by entry fee and slippage. Funding_time==t and intrabar management occur only after all entry attempts.",
+    "marked_equity_formula": "settled_cash_equity + sum(side_sign * remaining_qty * (causal_mark - unslipped_reference_entry)) over open positions. Settled cash starts at 500 and includes every earlier realized reference-price PnL, fee, adverse slippage, signed funding and partial exactly once.",
+    "mark": "Existing positions use the last checksum-verified 1h mark close with availability <= t; a same-open admission uses its unslipped reference open for same-open sizing, so its same-open unrealized PnL is zero.",
+    "risk_cash_formula": "risk_cash = current marked side-book equity * 0.01 at each sequential entry attempt",
+    "gross_open_notional_formula": "sum(abs(remaining_qty * causal_mark)) over positions open at the attempt; same-open admissions use unslipped reference open",
+    "leverage_notional_cap_formula": "max(0, 10.0 * current marked side-book equity - current gross open notional); new notional may not exceed this cap before step flooring",
     "entry_priority": "Original filter-eligible weekly PIT CORE-20 order; later simultaneous attempts see earlier fills, costs, occupancy and leverage.",
     "daily_halt_fraction": 0.08,
     "daily_halt_timezone": "Africa/Cairo resolved per timestamp through the IANA timezone database",
@@ -160,6 +172,45 @@
     "funding_or_mark_gap_during_exposure": "INCOMPLETE_CANDIDATE",
     "cost_stress_multipliers": [1.0, 1.5, 2.0],
     "stress_rule": "Run independent full causal books. Multiply fees, adverse slippage and negative funding debits; positive funding credits remain 1.0x. Repricing a fixed trade list is forbidden."
+  },
+  "verdict_math": {
+    "initial_risk_cash": "initial_filled_quantity_after_leverage_cap_and_step_floor * R_price. Record requested risk separately; initial risk is immutable, finite and >0.",
+    "trade_r": "episode_net_cash / initial_risk_cash, with reference-price PnL, signed funding, fees and adverse slippage across entry, partials and final exit counted exactly once",
+    "net_r": "math.fsum(trade_r for every fully closed episode across wf1,wf2,wf3)",
+    "mean_r": "net_r / closed_episode_count; zero episodes reports null and fails",
+    "profit_factor": "math.fsum(positive trade_r) / abs(math.fsum(negative trade_r)); positive numerator with zero denominator is Infinity, otherwise zero denominator is 0",
+    "fold_net_r": "math.fsum(trade_r) within each named fold; folds never pool to manufacture 2-of-3",
+    "cashflow_drawdown_r": "Normalize every entry fee/slippage, funding settlement, partial PnL/fee/slippage and final PnL/fee/slippage cashflow by that episode's immutable initial_risk_cash. Within each fold sort event_time_ms ascending; math.fsum exact-timestamp cashflows atomically before updating cumulative R and peak. Peak starts 0; fold DD=max(peak-cumulative); promotion max_dd_r=max of three fold DDs, never a cross-fold curve.",
+    "marked_equity_drawdown": "Report each fold maximum marked-equity cash and percentage drawdown after every frozen event phase and bar using causal marks; required disclosure, not a replacement for max_dd_r.",
+    "symbol_contribution": "symbol_net_r=math.fsum(trade_r for that symbol); concentration=max(abs(symbol_net_r))/math.fsum(abs(symbol_net_r) for symbols with a close). Zero denominator reports 1.0 and fails; minimum symbols counts distinct symbols with a fully closed episode.",
+    "numeric_order": "Use binary64 inputs and math.fsum. Sort folds by contract order, events by time and identity ties by symbol, entry_time_ms, immutable episode_id.",
+    "stress_replay": "Run three independent full causal side books from 500 USDT at 1.0x, 1.5x, 2.0x. Recompute costs, cash, marked equity, sizing, step floors, leverage, halt, occupancy, admissions, exits and every metric; post-hoc fixed-trade repricing is forbidden.",
+    "promotion_cost_row": "Base gates use the 1.0x replay. positive_after_1_5x_cost_stress means only 1.5x full-replay aggregate net_r > 0. The 2.0x replay is mandatory diagnostic disclosure."
+  },
+  "statistics": {
+    "role": "required selection-bias diagnostics only; no raw, bootstrap or Holm value is a promotion gate",
+    "raw_p_value": {
+      "test": "one-sided Monte Carlo sign-flip test of after-cost net R versus zero",
+      "alternative": "greater",
+      "unit": "UTC calendar exit day; sum all fully closed episode trade_r on that day with math.fsum; omit days without a close",
+      "statistic": "T = math.fsum(day_net_r)",
+      "resamples": 100000,
+      "rng": "numpy.random.Generator(PCG64)",
+      "seed": 20261106150747,
+      "formula": "(1 + count(T_star >= T_observed)) / 100001; each resample independently multiplies every day unit by equiprobable -1 or +1; comparison is inclusive, including exact ties",
+      "empty_sample": "raw_p_value=1.0 and failure_reason includes NO_CLOSED_EPISODES"
+    },
+    "bootstrap_ci_95_mean_r": {
+      "unit": "UTC calendar exit-day cluster carrying that day's ordered trade_r values",
+      "resamples": 10000,
+      "rng": "numpy.random.Generator(PCG64)",
+      "seed": 20261106150748,
+      "procedure": "Sample observed exit-day clusters with replacement, preserving all trades and their order inside a selected day; replicate mean=math.fsum(sampled trade_r)/sampled trade count.",
+      "interval": "ordinary percentile [quantile(method=linear,0.025), quantile(method=linear,0.975)]; ties follow numpy linear interpolation; never Holm-adjusted",
+      "empty_sample": "[null,null] with NO_CLOSED_EPISODES; cannot satisfy required-report or promotion gates"
+    },
+    "family_ledger": "Validate the byte SHA256 and canonical content digest frozen in identity_and_multiplicity before market reads. Prior Stage-A long and short receive conservative raw p=1.0 when unavailable. Any later trial requires a new append-only ledger and contract identity.",
+    "holm_adjustment": "For all m=4 trials, substitute 1.0 for unavailable prior p-values; sort (raw_p,trial_id) ascending. For j=1..m, adjusted_j=max over k<=j of min(1,(m-k+1)*raw_p_k), then map back to trial IDs. Exact p ties use trial_id ascending; report every raw/substituted and adjusted value."
   },
   "folds": [
     {"name": "wf1", "start": "2025-04-01T00:00:00Z", "end": "2025-09-30T00:00:00Z"},
@@ -216,6 +267,7 @@
     "record_exchange_filter_authority_and_fold_binding": true,
     "record_sparse_availability_identity": true,
     "record_side_and_fold_identity": true,
+    "record_and_validate_family_ledger_hash_and_digest": true,
     "single_evaluation_per_exact_contract_head_and_side": true
   },
   "activation": {

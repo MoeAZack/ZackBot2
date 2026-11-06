@@ -12,6 +12,7 @@ UNIVERSE = os.path.join(ROOT, 'research_evidence', 'universe', 'pit-top40-qv30d-
 MANIFEST = os.path.join(ROOT, 'research_evidence', 'manifests', 'binance-um-archive-v1.json.gz')
 CLASSES = os.path.join(ROOT, 'research_evidence', 'universe', 'instrument-classes-v1.json')
 FILTERS = os.path.join(ROOT, 'contracts', 'strategy_causal_pack_01', 'exchange_filter_authority.v2.json')
+FAMILY = os.path.join(DIR, 'atr_shock_snapback_4h_family.v1.json')
 
 
 def _load():
@@ -25,6 +26,11 @@ def _load():
 def _sha(path):
     with open(path, 'rb') as fh:
         return hashlib.sha256(fh.read()).hexdigest()
+
+
+def _canonical_digest(obj):
+    raw = json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def test_identity_is_frozen_to_stage_a_without_parameter_changes():
@@ -47,11 +53,26 @@ def test_two_side_cells_are_separate_and_multiplicity_is_not_erased():
         {'candidate_id': 'atr_shock_snapback_4h_long_causal_v3', 'side': 'long'},
         {'candidate_id': 'atr_shock_snapback_4h_short_causal_v3', 'side': 'short'}]
     m = c['identity_and_multiplicity']
-    assert m['registered_cell_count'] == m['holm_family_size'] == 2
+    assert m['registered_cell_count'] == 2
+    assert m['total_family_trial_count'] == m['holm_family_size'] == 4
     assert m['cells_judged_separately'] and m['cross_side_pooling'] is False
     assert m['prior_results_credit'] is False and m['promotion_uses_inference'] is False
     assert 'retain both and every prior tested candidate or rejection' in m['rule']
     assert 'missing prior p-values equal 1.0' in m['inference']
+    assert m['append_only']
+    assert _sha(FAMILY) == m['family_ledger_byte_sha256']
+    with open(FAMILY, encoding='utf-8') as fh:
+        ledger = json.load(fh)
+    core = {k: v for k, v in ledger.items() if k != 'digest'}
+    assert _canonical_digest(core) == ledger['digest'] == m['family_ledger_content_digest']
+    assert ledger['holm_family_size'] == 4 and ledger['holm_missing_prior_p_value'] == 1.0
+    assert [x['trial_id'] for x in ledger['trials']] == m['family_members_ordered']
+    assert [x['status'] for x in ledger['trials']] == [
+        'PRIOR_STAGE_A_TRIAL_P_UNAVAILABLE', 'PRIOR_STAGE_A_TRIAL_P_UNAVAILABLE',
+        'PREREGISTERED_UNEVALUATED', 'PREREGISTERED_UNEVALUATED']
+    assert [x['raw_p_value'] for x in ledger['trials'][:2]] == [
+        'NOT_COMPUTED_CONSERVATIVE_ONE_FOR_HOLM'] * 2
+    assert [x['holm_input_p_value'] for x in ledger['trials'][:2]] == [1.0, 1.0]
 
 
 def test_signal_and_exit_rules_are_exact_mirrors_and_causal():
@@ -138,9 +159,18 @@ def test_management_book_and_cairo_halt_are_explicit():
     assert all(x in m['long_levels'] for x in ('+0.8R', '+1.5R'))
     assert all(x in m['short_levels'] for x in ('-0.8R', '-1.5R'))
     assert m['max_bars'] == 12 and 'MARKET_LOT_SIZE' in m['quantity']
+    assert 'Skip the entry rather than round up' in m['quantity']
+    assert 'maxQty excess refuses the entire side cell' in m['quantity']
+    assert 'result is zero, send nothing' in m['tp1_quantity'] and 'retry on a later candle' in m['tp1_quantity']
+    assert 'no automatic dust-to-full-close' in m['tp1_dust']
     assert b['one_isolated_book_per_side'] and b['reference_start_equity_usdt'] == 500.0
     assert b['risk_fraction_of_current_marked_equity'] == 0.01
     assert b['maximum_open_positions'] == 4 and b['gross_leverage_multiple'] == 10.0
+    assert b['marked_equity_formula'].startswith('settled_cash_equity + sum(')
+    assert b['risk_cash_formula'] == 'risk_cash = current marked side-book equity * 0.01 at each sequential entry attempt'
+    assert b['gross_open_notional_formula'].startswith('sum(abs(remaining_qty * causal_mark))')
+    assert b['leverage_notional_cap_formula'].startswith('max(0, 10.0 * current marked side-book equity')
+    assert 'Earlier same-open entries reduce later equity' in b['entry_attempt_phase']
     assert 'weekly PIT CORE-20 order' in b['entry_priority']
     assert b['daily_halt_fraction'] == 0.08 and b['daily_halt_timezone'].startswith('Africa/Cairo')
     assert 'block later new entries only, never exits or protection' in b['daily_halt']
@@ -160,6 +190,45 @@ def test_cost_funding_exchange_and_full_stress_replays_are_single_count():
     assert x['cost_stress_multipliers'] == [1.0, 1.5, 2.0]
     assert 'independent full causal books' in x['stress_rule']
     assert 'Repricing a fixed trade list is forbidden' in x['stress_rule']
+
+
+def test_r_pf_drawdown_event_atomics_symbol_contribution_and_stress_row_are_frozen():
+    c, _ = _load()
+    v = c['verdict_math']
+    assert v['initial_risk_cash'].startswith('initial_filled_quantity_after_leverage_cap_and_step_floor * R_price')
+    assert v['trade_r'].startswith('episode_net_cash / initial_risk_cash')
+    assert v['net_r'].startswith('math.fsum') and 'closed_episode_count' in v['mean_r']
+    assert 'positive trade_r' in v['profit_factor'] and 'Infinity' in v['profit_factor']
+    assert 'math.fsum exact-timestamp cashflows atomically' in v['cashflow_drawdown_r']
+    assert 'promotion max_dd_r=max of three fold DDs' in v['cashflow_drawdown_r']
+    assert 'maximum marked-equity cash and percentage drawdown' in v['marked_equity_drawdown']
+    assert 'math.fsum(abs(symbol_net_r)' in v['symbol_contribution']
+    assert 'Zero denominator reports 1.0 and fails' in v['symbol_contribution']
+    assert 'three independent full causal side books' in v['stress_replay']
+    assert '1.5x full-replay aggregate net_r > 0' in v['promotion_cost_row']
+
+
+def test_raw_bootstrap_and_holm_statistics_freeze_units_seeds_ties_and_empty_cases():
+    c, _ = _load()
+    s = c['statistics']
+    raw, boot = s['raw_p_value'], s['bootstrap_ci_95_mean_r']
+    assert s['role'].startswith('required selection-bias diagnostics only')
+    assert raw['test'] == 'one-sided Monte Carlo sign-flip test of after-cost net R versus zero'
+    assert raw['unit'].startswith('UTC calendar exit day') and raw['statistic'] == 'T = math.fsum(day_net_r)'
+    assert raw['resamples'] == 100000 and raw['rng'] == 'numpy.random.Generator(PCG64)'
+    assert raw['seed'] == 20261106150747
+    assert raw['formula'].startswith('(1 + count(T_star >= T_observed)) / 100001')
+    assert 'inclusive, including exact ties' in raw['formula']
+    assert raw['empty_sample'].startswith('raw_p_value=1.0')
+    assert boot['unit'].startswith('UTC calendar exit-day cluster')
+    assert boot['resamples'] == 10000 and boot['seed'] == 20261106150748
+    assert boot['rng'] == 'numpy.random.Generator(PCG64)'
+    assert 'preserving all trades and their order' in boot['procedure']
+    assert 'quantile(method=linear' in boot['interval'] and 'ties follow numpy linear interpolation' in boot['interval']
+    assert boot['empty_sample'].startswith('[null,null]')
+    assert 'Prior Stage-A long and short receive conservative raw p=1.0' in s['family_ledger']
+    assert 'For all m=4 trials' in s['holm_adjustment']
+    assert 'Exact p ties use trial_id ascending' in s['holm_adjustment']
 
 
 def test_folds_embargo_and_holdout_cutoff_are_hard():
