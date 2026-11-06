@@ -524,7 +524,9 @@ def test_committed_prereg_artifacts_are_lf_in_every_checkout():
         pytest.skip('not a git checkout')
     d = os.path.join(ROOT, 'research_evidence', 'prereg')
     names = sorted(n for n in os.listdir(d) if n.endswith('.json'))
-    raw_names = ['binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json',                   # #242 raw-byte snapshot
+    raw_names = ['binance-um-exchangeinfo-mainnet-raw-20241213T044448Z.json',                  # #298 causal raw snapshot
+                 'binance-um-exchangeinfo-mainnet-raw-20260217T041328Z.json',                  # #298 causal raw snapshot
+                 'binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json',                   # #242 raw-byte snapshot
                  'breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json']                 # #242 signed amendment
     assert names == raw_names + ['breakout_pyramid_falsify.v1.json',                           # breakout_pyramid falsification (DRAFT)
                      'carry01_cash_and_carry.v1.json',                                         # #258 CARRY-01 prereg (DRAFT)
