@@ -11,6 +11,9 @@ import pytest
 from tools.research import causal_v4_execution_adapter as A
 from tools.research import causal_v4_runner_rebind as G
 from tools.research import strategy_causal_pack_01_runner as PACK_V3
+from tools.research import rank_breadth_reversal_4h_short_causal_v3_archive as RBR_ARCHIVE
+from tools.research import rank_breadth_reversal_4h_short_causal_v3_runner as RBR_V3
+from tools.research import atr_shock_snapback_4h_causal_v3_runner as ATR_V3
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,6 +148,59 @@ def test_legacy_v3_globals_are_restored_after_adapter_failure(tmp_path):
     assert PACK_V3.CANDIDATE_IDS == original_ids
     assert PACK_V3.ARCHIVE_MANIFEST_PATH == original_manifest
     assert PACK_V3.FILTER_AUTHORITY_PATH == original_filters
+
+
+def test_rbr_v4_dispatch_binds_protected_manifest_constants_then_restores(tmp_path):
+    profile = _profile("rbr_short")
+    authority = A.validate_overlay(ROOT, profile)[0]["authority_artifacts"]
+    original = (
+        RBR_ARCHIVE.EXPECTED_MANIFEST_SHA256,
+        RBR_ARCHIVE.EXPECTED_MANIFEST_DIGEST,
+        RBR_ARCHIVE.EXPECTED_UNIVERSE_SHA256,
+        RBR_ARCHIVE.EXPECTED_UNIVERSE_DIGEST,
+    )
+    def delegate(argv):
+        assert RBR_ARCHIVE.EXPECTED_MANIFEST_SHA256 == authority["manifest"]["byte_sha256"]
+        assert RBR_ARCHIVE.EXPECTED_MANIFEST_DIGEST == authority["manifest"]["content_digest"]
+        assert RBR_ARCHIVE.EXPECTED_UNIVERSE_SHA256 == authority["pit_universe"]["byte_sha256"]
+        assert RBR_ARCHIVE.EXPECTED_UNIVERSE_DIGEST == authority["pit_universe"]["content_digest"]
+        manifest, pit, _ = RBR_ARCHIVE.load_authorities(
+            RBR_V3.ARCHIVE_MANIFEST_PATH, RBR_V3.UNIVERSE_PATH, RBR_V3.CLASSES_PATH)
+        assert manifest["digest"] == authority["manifest"]["content_digest"]
+        assert pit["digest"] == authority["pit_universe"]["content_digest"]
+        return 0
+    delegate.__module__ = RBR_V3.__name__
+    argv = ["--candidate", profile["candidate_ids"][0], "--out", str(tmp_path / "p.json"),
+            "--identity-dir", str(tmp_path / "ids")]
+    assert A.execute("rbr_short", profile, delegate, candidate_id=None,
+                     argv=argv, root=ROOT) == 0
+    assert original == (
+        RBR_ARCHIVE.EXPECTED_MANIFEST_SHA256,
+        RBR_ARCHIVE.EXPECTED_MANIFEST_DIGEST,
+        RBR_ARCHIVE.EXPECTED_UNIVERSE_SHA256,
+        RBR_ARCHIVE.EXPECTED_UNIVERSE_DIGEST,
+    )
+
+
+def test_atr_v4_dispatch_supplies_authorized_merge_guard_then_restores(monkeypatch, tmp_path):
+    profile = _profile("atr_shock")
+    original = ATR_V3.run
+    seen = []
+    def fake_run(*args, **kwargs):
+        seen.append(kwargs["merge_guard"]())
+        return {"ok": True}
+    monkeypatch.setattr(ATR_V3, "run", fake_run)
+    def delegate(argv):
+        ATR_V3.run("candidate", "out", "ids")
+        return 0
+    delegate.__module__ = ATR_V3.__name__
+    argv = ["--candidate", profile["candidate_ids"][0], "--out", str(tmp_path / "p.json"),
+            "--identity-dir", str(tmp_path / "ids")]
+    assert A.execute("atr_shock", profile, delegate, candidate_id=None,
+                     argv=argv, root=ROOT) == 0
+    assert seen == [True]
+    assert ATR_V3.run is fake_run
+    monkeypatch.setattr(ATR_V3, "run", original)
 
 
 def test_filter_authority_byte_mismatch_refuses_before_delegate(monkeypatch, tmp_path):

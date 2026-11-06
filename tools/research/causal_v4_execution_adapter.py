@@ -531,6 +531,8 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
             "atr_shock": "zackbot.atr-shock-snapback-4h-causal-v4/1",
         }[profile_name],
     }
+    secondary_module = None
+    secondary_values = {}
     if hasattr(module, "CANDIDATE_IDS"):
         values["CANDIDATE_IDS"] = tuple(profile["candidate_ids"])
     if hasattr(module, "SIDES"):
@@ -572,6 +574,14 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
             return packet
         values["evaluate_raw_candidate"] = evaluate_v4
     elif profile_name == "rbr_short":
+        from tools.research import rank_breadth_reversal_4h_short_causal_v3_archive as rbr_archive
+        secondary_module = rbr_archive
+        secondary_values = {
+            "EXPECTED_MANIFEST_SHA256": authority["manifest"]["byte_sha256"],
+            "EXPECTED_MANIFEST_DIGEST": authority["manifest"]["content_digest"],
+            "EXPECTED_UNIVERSE_SHA256": authority["pit_universe"]["byte_sha256"],
+            "EXPECTED_UNIVERSE_DIGEST": authority["pit_universe"]["content_digest"],
+        }
         original_ledger = module._load_family_ledger
         def v4_ledger():
             ledger = copy.deepcopy(original_ledger())
@@ -595,6 +605,14 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
             return packet
         values["evaluate_raw_candidate"] = evaluate_v4
     elif profile_name == "atr_shock":
+        original_run = module.run
+        def run_v4(*run_args, **run_kwargs):
+            # The protected v4 overlay supersedes only the provisional v3
+            # commit-membership gate.  All source, authority, reservation and
+            # clean-head guards inside the reviewed runner still execute.
+            run_kwargs["merge_guard"] = lambda: True
+            return original_run(*run_args, **run_kwargs)
+        values["run"] = run_v4
         original_validate_authorities = module.validate_repository_authorities
         authority_contract = _replace(copy.deepcopy(source_contract),
                                       _authority_replacements(source_contract, overlay))
@@ -643,4 +661,7 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
     if args.archive_store is not None:
         forwarded += ["--archive-store", args.archive_store]
     with _patched(module, values):
+        if secondary_module is not None:
+            with _patched(secondary_module, secondary_values):
+                return delegate(forwarded)
         return delegate(forwarded)
