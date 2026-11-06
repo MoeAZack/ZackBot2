@@ -33,6 +33,8 @@
     "archive_manifest_path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
     "archive_manifest_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
     "exchange_filter_requirement": "Use the protected point-in-time exchange-filter authority bound to the same universe version; fail closed if the authority, bar, mark-price, or funding coverage is missing.",
+    "pair_bar_alignment": "For each pair and training/test cell, inner-join only exact completed 1h open-time timestamps present for both symbols. Never forward-fill, backfill, interpolate, or synthesize a bar. Eligibility and the 0.995 completeness fraction are measured against the expected UTC hourly grid after applying the monthly PIT membership cell.",
+    "membership_cell_rule": "At each month-start selection instant, use the last PIT weekly cell whose effective_at is <= the selection instant. Both symbols must be members in that same cell; no later cell or current-membership filter may be consulted.",
     "survivorship_rule": "Membership is resolved at each selection instant from the point-in-time universe; current membership may never be projected backward.",
     "outcome_embargo": "No C255 evaluation or sealed-holdout rows were read while freezing this contract."
   },
@@ -62,8 +64,10 @@
       0.2,
       5.0
     ],
-    "residual_stationarity": "Engle-Granger residual ADF p-values are Holm-Bonferroni corrected across every eligible pair at that monthly selection; corrected alpha is 0.05.",
-    "stability": "Both non-overlapping 90-day training halves must have raw residual ADF p<=0.05, positive beta, beta drift<=25%, and residual half-life within 6..72 hours.",
+    "residual_stationarity": "Engle-Granger residual ADF uses statsmodels adfuller on the OLS residual with regression='n', maxlag=24 and autolag='BIC'. The resulting p-values are Holm-Bonferroni corrected across every eligible pair at that monthly selection; corrected alpha is 0.05.",
+    "half_life_formula": "Fit residual[t]=constant+phi*residual[t-1] by OLS on each frozen training sample. Require 0<phi<1 and compute half_life_hours=-ln(2)/ln(phi); any other phi or non-finite result is ineligible.",
+    "beta_drift_formula": "Fit beta independently on the first and second non-overlapping 90-day halves. beta_drift=abs(beta_first-beta_second)/max(abs(beta_full_180d),1e-12).",
+    "stability": "Both non-overlapping 90-day training halves must pass the identical frozen ADF specification with raw p<=0.05, have positive beta, beta_drift<=0.25, and full-window residual half-life within 6..72 hours.",
     "selection_order": "ascending corrected ADF p-value, then ascending half-life, then lexicographic y/x symbols",
     "portfolio_pairs": "Greedily take at most six pairs in selection order; each symbol may occur in at most one selected pair for the entire test month.",
     "frozen_monthly_model": "Pair identity, beta, residual mean, residual standard deviation, and all thresholds stay frozen throughout the test month."
@@ -73,13 +77,14 @@
     "z_score": "(residual - trained_residual_mean) / trained_residual_standard_deviation",
     "long_spread": "At a completed 1h bar, z<=-2.5: buy y and sell beta-weighted x at the next 1h open.",
     "short_spread": "At a completed 1h bar, z>=+2.5: sell y and buy beta-weighted x at the next 1h open.",
-    "cost_floor": "Absolute residual displacement must also be at least 0.014 log-price units, five times the 28 bp base four-fill pair round trip.",
+    "cost_floor": "Absolute residual displacement must also be at least 0.007 log-price units, five times the 14 bp reference round trip measured on initial pair gross; actual eligibility is rechecked from the four notional-weighted fills.",
     "signal_exit": "After entry, first completed bar with abs(z)<=0.25 exits both legs at the next 1h open.",
     "residual_stop": "After entry, first completed bar with abs(z)>=4.5 exits both legs at the next 1h open.",
-    "catastrophic_leg_stop": "Each leg has a reduce-only exchange stop three training-window ATRs from its entry; if either triggers, flatten the other leg at that bar's conservative executable price.",
+    "catastrophic_leg_stop": "Each leg has a reduce-only exchange stop three training-window ATRs from entry. The stopped leg fills at the worse of its stop and that 1h bar open plus adverse slippage. The other leg is flattened at the next available 1h open plus adverse slippage; same-bar close or favorable intrabar prices are forbidden.",
     "time_exit_hours": 72,
+    "time_exit_execution": "At the first completed decision bar whose close time is at least 72 hours after entry, exit both legs at the next available 1h open plus adverse slippage.",
     "reentry_cooldown_hours": 12,
-    "ambiguity_policy": "If a catastrophic stop and any favorable exit can occur in the same unresolved bar, book the stop first. Gap-through stops fill at the worse of stop and next executable open, plus adverse slippage.",
+    "ambiguity_policy": "If a catastrophic stop and any favorable exit can occur in the same unresolved bar, book the stop first. Gap-through stops fill at the worse of stop and bar open, plus adverse slippage; the other leg still exits only at the next available 1h open.",
     "forbidden": [
       "same-bar close fills",
       "updating model statistics with test-month observations",
@@ -93,20 +98,23 @@
   },
   "position_and_portfolio": {
     "leg_weighting": "Allocate pair gross notional between y and x in the ratio 1:abs(trained_beta), preserving the signal side on each leg.",
-    "risk_unit": "Size the pair so the modeled loss at the 4.5z residual stop is 1R, then cap down for catastrophic-leg stops and exchange filters.",
-    "max_pair_gross_leverage": 1.0,
+    "risk_unit": "At the next-open entry, skip if abs(z)>=4.5. Let delta_r=(4.5-abs(z_entry))*trained_residual_std. Compute y-only adverse loss fraction w_y*(exp(delta_r)-1) and x-only adverse loss fraction w_x*(exp(delta_r/abs(beta))-1), where w_y=1/(1+abs(beta)) and w_x=abs(beta)/(1+abs(beta)). Add a full stressed round-trip cost and use the larger loss fraction; also compute each three-ATR catastrophic-leg loss plus the required other-leg next-open flatten cost. Size pair gross so the maximum modeled loss equals 1R, then cap down for all portfolio and exchange limits. Non-positive or non-finite modeled loss skips the trade.",
+    "max_pair_gross_leverage": 0.5,
+    "max_aggregate_pair_gross_leverage": 1.5,
+    "max_margin_fraction_at_3x": 0.5,
     "max_concurrent_pairs": 4,
     "max_open_risk_r": 4.0,
     "exchange_feasibility": "Both legs must satisfy point-in-time tick, step, minimum quantity, and minimum notional after rounding at $1,000 and $4,000 account-capital simulations; otherwise skip before entry.",
-    "atomicity": "A pair is valid only if both legs can be placed. One-leg acceptance or an uncertain second leg is a failed entry requiring immediate bounded flatten and is never counted as a strategy trade."
+    "atomicity": "A pair is valid only if both legs can be placed. One-leg acceptance or an uncertain second leg is a failed pair attempt requiring immediate bounded flatten. Its actual realized price move, entry fee, flatten fee, slippage and funding are charged to strategy net P&L and drawdown, and it counts as one closed pair attempt for every sample-size and economic gate; it is also reported separately as an atomicity failure."
   },
   "costs": {
     "taker_fee_bps_per_fill_per_leg": 5.0,
     "adverse_slippage_bps_per_fill_per_leg": 2.0,
     "base_pair_round_trip_fills": 4,
-    "base_pair_round_trip_bps": 28.0,
+    "cost_denominator": "For every leg fill, cost_dollars=abs(actual_fill_notional_dollars)*(fee_bps+slippage_bps)/10000. Pair round-trip cost is the sum of all four actual fill costs. Reported bps divide that dollar sum by initial pair gross notional; no unweighted four-fill bps addition is permitted.",
+    "reference_base_pair_round_trip_bps_of_initial_gross": 14.0,
     "stress_adverse_slippage_bps_per_fill_per_leg": 10.0,
-    "stress_pair_round_trip_bps": 60.0,
+    "reference_stress_pair_round_trip_bps_of_initial_gross": 30.0,
     "funding": "Book actual signed Binance funding independently on both legs at every settlement, using the last causal verified mark-price close.",
     "market_impact": "Report participation against causal quote volume; reject any trade exceeding 0.10% of the completed bar quote volume on either leg.",
     "all_gates_apply_to": "base costs and stressed slippage, with actual funding and exchange rounding in both cases"
@@ -130,10 +138,10 @@
       "worst forward-fold mean net R>-0.05",
       "max drawdown<=15R",
       "long-spread and short-spread each have at least 50 trades and non-negative mean net R",
-      "no pair contributes more than 25% of absolute net R",
-      "at least 55% of test months have positive net R",
+      "For each selected pair, abs(pair net R)/sum(abs(net R) across every selected pair, including atomicity failures) <=0.25; a zero denominator fails",
+      "At least 55% of all scheduled test months have net R>0; zero-trade months remain in the denominator and count as non-positive",
       "stress-cost aggregate mean net R>0 and profit factor>1.02",
-      "stationary block-bootstrap one-sided performance p-value<=0.05/255",
+      "stationary block-bootstrap one-sided performance p-value<=0.05/255 using the frozen bootstrap specification",
       "all exchange-feasibility and causal-authority checks pass"
     ],
     "uncertainty_report": [
@@ -149,6 +157,17 @@
       "failed or skipped two-leg entries"
     ],
     "undefined_statistics": "FAIL_CLOSED"
+  },
+  "bootstrap_specification": {
+    "ordered_observations": "All closed pair attempts, including atomicity failures, ordered by entry timestamp then lexicographic pair id",
+    "statistic": "mean net R per closed pair attempt after every fee, slippage, funding and failure cost",
+    "null": "center the ordered net-R observations by subtracting their observed mean, then test whether the observed uncentered mean is greater than zero",
+    "method": "Politis-Romano stationary bootstrap",
+    "expected_block_length_attempts": 24,
+    "resamples": 10000,
+    "seed": 25520261106,
+    "p_value": "(1 + count(null bootstrap mean >= observed mean)) / (resamples + 1)",
+    "confidence_interval": "two-sided percentile 95% interval from the uncentered stationary-bootstrap distribution using the same block length, resamples and seed"
   },
   "falsification": [
     "Reject if any immediate development gate fails; do not open forward folds.",

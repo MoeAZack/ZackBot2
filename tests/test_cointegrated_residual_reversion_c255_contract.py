@@ -63,14 +63,12 @@ def test_cost_arithmetic_charges_all_four_leg_fills_and_stress():
     costs = load_contract()["costs"]
     fills = costs["base_pair_round_trip_fills"]
     assert fills == 4
-    assert costs["base_pair_round_trip_bps"] == fills * (
+    assert costs["reference_base_pair_round_trip_bps_of_initial_gross"] == 2 * (
+        costs["taker_fee_bps_per_fill_per_leg"] + costs["adverse_slippage_bps_per_fill_per_leg"])
+    assert costs["reference_stress_pair_round_trip_bps_of_initial_gross"] == 2 * (
         costs["taker_fee_bps_per_fill_per_leg"]
-        + costs["adverse_slippage_bps_per_fill_per_leg"]
-    )
-    assert costs["stress_pair_round_trip_bps"] == fills * (
-        costs["taker_fee_bps_per_fill_per_leg"]
-        + costs["stress_adverse_slippage_bps_per_fill_per_leg"]
-    )
+        + costs["stress_adverse_slippage_bps_per_fill_per_leg"])
+    assert "actual_fill_notional_dollars" in costs["cost_denominator"]
     assert "both legs" in costs["funding"]
 
 
@@ -81,6 +79,9 @@ def test_selection_and_signal_rules_are_frozen_and_causal():
     assert contract["walk_forward"]["training_window_days"] == 180
     assert "each unordered eligible symbol pair exactly once" in selection["pair_enumeration"]
     assert "Never test or select the reverse orientation" in selection["pair_enumeration"]
+    assert "regression='n'" in selection["residual_stationarity"]
+    assert "maxlag=24" in selection["residual_stationarity"]
+    assert "autolag='BIC'" in selection["residual_stationarity"]
     assert selection["frozen_monthly_model"].endswith("test month.")
     assert "Holm-Bonferroni" in selection["residual_stationarity"]
     assert "next 1h open" in signals["long_spread"]
@@ -99,6 +100,19 @@ def test_gates_require_economic_breadth_stress_and_both_directions():
     assert "stress-cost aggregate mean net R>0" in joined
     assert "p-value<=0.05/255" in joined
     assert gates["undefined_statistics"] == "FAIL_CLOSED"
+
+
+def test_bootstrap_atomicity_alignment_and_portfolio_rules_are_exact():
+    contract = load_contract()
+    bootstrap = contract["bootstrap_specification"]
+    assert bootstrap["expected_block_length_attempts"] == 24
+    assert bootstrap["resamples"] == 10000
+    assert bootstrap["seed"] == 25520261106
+    assert "atomicity failures" in bootstrap["ordered_observations"]
+    assert "inner-join only exact completed 1h" in contract["data_authority"]["pair_bar_alignment"]
+    assert "next available 1h open" in contract["signals"]["time_exit_execution"]
+    assert "counts as one closed pair attempt" in contract["position_and_portfolio"]["atomicity"]
+    assert contract["position_and_portfolio"]["max_aggregate_pair_gross_leverage"] == 1.5
 
 
 def test_multiplicity_and_falsification_forbid_rescue():
