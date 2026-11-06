@@ -110,6 +110,7 @@ class FakeBinance:
     leverage: dict = field(default_factory=lambda: {"BTCUSDT": 3, "ETHUSDT": 3})
     hedge_mode: bool = True
     equity: Decimal = Decimal("5000")
+    unrealized_pnl: Decimal = Decimal("0")
     positions: dict = field(default_factory=dict)            # (symbol, side) -> qty
     orders: dict = field(default_factory=dict)               # client_id -> Order
     algos: dict = field(default_factory=dict)                # client_id -> Algo
@@ -328,7 +329,7 @@ class FakeAccountPort:
     def facts(self, symbols):
         f = self.fake
         f.tick()
-        return AccountFacts(f.clock.now, f.hedge_mode, "USDT", f.equity, f.equity,
+        return AccountFacts(f.clock.now, f.hedge_mode, "USDT", f.equity, f.unrealized_pnl, f.equity,
                             tuple(SymbolFacts(s, f.marks[s], f.leverage[s]) for s in symbols))
 
 

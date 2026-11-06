@@ -45,6 +45,13 @@ def _dec(value: object, code: str, *, positive: bool = False) -> Decimal:
     return out
 
 
+def _signed_dec(value: object, code: str) -> Decimal:
+    try:
+        return canonical_decimal(value, code)
+    except Exception:
+        _fail(code)
+
+
 def _ms(value: object, code: str) -> int:
     if type(value) is not int or not 1 <= value <= 2**63 - 1:
         _fail(code)
@@ -100,6 +107,7 @@ class AccountFacts:
     hedge_mode: bool
     settlement_asset: str
     equity: Decimal
+    unrealized_pnl: Decimal
     available_margin: Decimal
     symbols: tuple[SymbolFacts, ...]
 
@@ -110,6 +118,7 @@ class AccountFacts:
         if type(self.settlement_asset) is not str or not self.settlement_asset.isalnum():
             _fail("facts.settlement_asset")
         _dec(self.equity, "facts.equity", positive=True)
+        _signed_dec(self.unrealized_pnl, "facts.unrealized_pnl")
         _dec(self.available_margin, "facts.available_margin")
         if type(self.symbols) is not tuple or any(type(x) is not SymbolFacts for x in self.symbols):
             _fail("facts.symbols")

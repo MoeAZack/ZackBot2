@@ -291,11 +291,12 @@ class LiveAccountPort:
         if len(asset) != 1:
             _fail("account.settlement_asset")
         row = asset[0]
-        equity = _decimal(row.get("balance"), "account.balance") + _decimal(row.get("crossUnPnl"),
-                                                                             "account.unrealized")
+        unrealized = _decimal(row.get("crossUnPnl"), "account.unrealized")
+        equity = _decimal(row.get("balance"), "account.balance") + unrealized
         available = _decimal(row.get("availableBalance"), "account.available")
         try:
-            return AccountFacts(self._clock(), hedge, self._asset, equity, max(available, Decimal(0)), tuple(out))
+            return AccountFacts(self._clock(), hedge, self._asset, equity, unrealized,
+                                max(available, Decimal(0)), tuple(out))
         except PortError:
             _fail("account.facts_invalid")
 

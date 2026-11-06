@@ -29,7 +29,7 @@ from newcore.account_context import (AccountBudget, AccountContext, AdmissionRef
 from newcore.domain.account import Account, Environment
 from newcore.domain.decision import Action
 from newcore.domain.orders import IntentState, Purpose, Side
-from newcore.loss_state import cairo_trading_day
+from newcore import loss_state as LS
 from newcore.ports import keys as K
 from newcore.ports.rate_blocks import RateBlockState
 from newcore.ports.venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, StopOrder, VenuePort)
@@ -50,6 +50,16 @@ ZERO = Decimal("0")
 ONE = Decimal("1")
 STRATEGY_ID = "tnet02"
 BOOK_ID = "harness"
+# TNET-02 decisions are one-second control-loop candles (the adapter's minimum supported poll cadence).
+LOSS_CLUSTER_WINDOW_MS = 1_000
+LOSS_STRATEGIES = (STRATEGY_ID,)
+LOSS_LIMITS = R.LossLimits(
+    daily_loss_fraction=Decimal("0.03"), daily_loss_r=Decimal("6"),
+    risk_unit_fraction=Decimal("0.005"), max_bucket_side_risk_r=Decimal("2"),
+    one_position_per_symbol_side=True, max_drawdown_fraction=Decimal("0.10"),
+    max_net_side_risk_r=Decimal("4"), max_entries_per_strategy_per_candle=2,
+    max_entries_per_side_per_candle=3, cooldown_stop_outs=3,
+    cooldown_window_ms=86_400_000, cooldown_pause_ms=86_400_000)
 # Account-read failures worth a bounded read-only retry.  Rate answers (429/418), budget refusals, credential, origin
 # and shape errors are never retried.
 _TRANSIENT_READS = frozenset({"reader.transport", "reader.response", "reader.http_status", "reader.malformed",
@@ -124,6 +134,7 @@ class _Order:
     executed_qty: Decimal = ZERO
     avg_price: Decimal | None = None
     exchange_order_id: str | None = None
+    loss_close_recorded: bool = False
 
     @property
     def ref(self) -> OrderRef:
@@ -202,6 +213,9 @@ class RealTestnetAdapter:
         self._clock, self._mono, self._sleep = clock, monotonic, sleeper
         self._digest, self._cfg = binding_digest, config
         self._account: Account | None = None
+        self._loss_tracker: LS.LossTracker | None = None
+        self._loss_wallet_balance: Decimal | None = None
+        self._loss_valid = False
         self._symbols: tuple[str, ...] = ()
         self._case: _Case | None = None
         self._cleanups: dict[str, _CleanupMemo] = {}
@@ -276,6 +290,91 @@ class RealTestnetAdapter:
                 cause = "error." + type(error).__name__
                 break
         raise AdapterError("read.account_facts", cause) from None
+
+    def _loss_now(self, facts) -> int:
+        """Bind loss evidence to the injected server-adjusted clock and reject stale/future account truth."""
+        now = self._now()
+        if (type(facts.observed_at_ms) is not int or facts.observed_at_ms > now
+                or now - facts.observed_at_ms > self._cfg.max_snapshot_age_s * 1000):
+            _hold("loss.account_facts")
+        return now
+
+    def _start_loss_tracker(self, account: Account, facts) -> None:
+        """Start exactly once, only after binding and account facts have both been confirmed."""
+        if self._loss_tracker is not None or self._loss_wallet_balance is not None or self._loss_valid:
+            _hold("loss.already_started")
+        try:
+            now = self._loss_now(facts)
+            tracker = LS.start(account.account_id, now_ms=now, equity=facts.equity,
+                               unrealized_pnl=facts.unrealized_pnl)
+        except AdapterError:
+            raise
+        except Exception:
+            _hold("loss.state")
+        self._loss_tracker = tracker
+        self._loss_wallet_balance = facts.equity - facts.unrealized_pnl
+        self._loss_valid = True
+
+    def _sync_loss_state(self, facts, *, stopped_out: bool = False) -> R.LossState:
+        """Fold fresh account truth into the persistent tracker and return the current gateway snapshot.
+
+        ``equity - unrealized`` is the bounded account-derived wallet balance.  Its same-day delta is actual realized
+        account PnL (including fees and funding) without inventing fill economics.  At a Cairo day roll the current
+        account observation becomes the new baseline, so an unobserved overnight delta is never guessed into a day.
+        """
+        tracker, wallet_before = self._loss_tracker, self._loss_wallet_balance
+        account = self._account
+        if (not self._loss_valid or tracker is None or wallet_before is None or account is None
+                or tracker.account_id != account.account_id):
+            _hold("loss.state")
+        try:
+            now = self._loss_now(facts)
+            wallet = facts.equity - facts.unrealized_pnl
+            if LS.cairo_trading_day(now) != tracker.trading_day:
+                tracker = LS.observe(tracker, LOSS_LIMITS, now_ms=now, equity=facts.equity,
+                                     unrealized_pnl=facts.unrealized_pnl)
+                if stopped_out:
+                    tracker = LS.record_close(tracker, strategy_id=STRATEGY_ID, realized_pnl=ZERO,
+                                              stopped_out=True, now_ms=now)
+            else:
+                realized = wallet - wallet_before
+                if realized != ZERO or stopped_out:
+                    tracker = LS.record_close(tracker, strategy_id=STRATEGY_ID, realized_pnl=realized,
+                                              stopped_out=stopped_out, now_ms=now)
+                tracker = LS.observe(tracker, LOSS_LIMITS, now_ms=now, equity=facts.equity,
+                                     unrealized_pnl=facts.unrealized_pnl)
+            state = LS.snapshot(tracker, LOSS_LIMITS, now_ms=now, unrealized_pnl=facts.unrealized_pnl,
+                                strategy_ids=LOSS_STRATEGIES, cluster_window_ms=LOSS_CLUSTER_WINDOW_MS)
+        except AdapterError:
+            self._loss_valid = False
+            raise
+        except Exception:
+            self._loss_valid = False
+            _hold("loss.state")
+        self._loss_tracker, self._loss_wallet_balance = tracker, wallet
+        return state
+
+    def _loss_snapshot(self, facts) -> R.LossState:
+        return self._sync_loss_state(facts)
+
+    def _loss_record_entry(self, case: _Case) -> None:
+        tracker = self._loss_tracker
+        if not self._loss_valid or tracker is None:
+            _hold("loss.state")
+        try:
+            self._loss_tracker = LS.record_entry(
+                tracker, R.ClusterEntry(strategy_id=STRATEGY_ID, symbol=case.symbol,
+                                        side=R.PositionSide(case.side.value)), now_ms=self._now())
+        except Exception:
+            self._loss_valid = False
+            _hold("loss.state")
+
+    def _loss_record_close(self, case: _Case, order: _Order, *, stopped_out: bool) -> None:
+        if order.loss_close_recorded:
+            return
+        facts = self._facts((case.symbol,))
+        self._sync_loss_state(facts, stopped_out=stopped_out)
+        order.loss_close_recorded = True
 
     def _mark(self, case: _Case) -> Decimal:
         facts = self._facts((case.symbol,))
@@ -433,6 +532,9 @@ class RealTestnetAdapter:
         if not self._dispatched(case, result):
             self._set(case, order, IntentState.NOT_SENT)
             _hold("order.refused_before_send")
+        if purpose is Purpose.ENTRY:
+            # The cluster owns submitted ENTRYs, including a lost answer; never count a merely authorized request.
+            self._loss_record_entry(case)
         if result.state is WorkState.COMPLETED:
             self._absorb(case, order, result.value)
         elif order.state is not IntentState.UNKNOWN:
@@ -440,6 +542,8 @@ class RealTestnetAdapter:
         if order.state is IntentState.REJECTED:
             _hold("order.rejected")
         self._settle_market(case, order)
+        if reduce and order.executed_qty > 0:
+            self._loss_record_close(case, order, stopped_out=False)
         return order
 
     def _stop(self, case: _Case, qty: Decimal, stop_price: Decimal) -> _Order:
@@ -507,6 +611,8 @@ class RealTestnetAdapter:
         elif case.position == 0:
             # the child closed everything that was open; the unexecuted remainder had nothing left to reduce
             self._set(case, order, IntentState.CANCELLED)
+        if order.state in _TERMINAL and not order.loss_close_recorded:
+            self._loss_record_close(case, order, stopped_out=True)
         # otherwise the child is still filling: the stop stays WORKING and callers poll again or HOLD
 
     def _working_stops(self, case: _Case) -> list[_Order]:
@@ -530,6 +636,7 @@ class RealTestnetAdapter:
         account_id = case.context.account_id
         side = R.PositionSide(case.side.value)
         distance = abs(entry - stop)
+        loss = self._loss_snapshot(facts)
         exposures = ()
         if case.position > 0:
             exposures = (R.Exposure(symbol=case.symbol, side=side, strategy_id=STRATEGY_ID, book_id=BOOK_ID,
@@ -544,11 +651,7 @@ class RealTestnetAdapter:
             portfolio=R.PortfolioRiskSnapshot(
                 account_id=account_id, generation=gen, fresh=True,
                 exposures=exposures, reservations=(),
-                loss=R.LossState(
-                    trading_day=cairo_trading_day(self._now()), day_start_equity=facts.equity,
-                    realized_pnl=ZERO, unrealized_pnl=ZERO, halt_latched=False,
-                    peak_equity=facts.equity, drawdown_kill_latched=False,
-                    paused_strategies=(), cluster_entries=())),
+                loss=loss),
             policy=R.RiskPolicySnapshot(
                 policy_id="tnet02_policy_v1", account_id=account_id, environment=env, generation=gen, fresh=True,
                 capital_cap=case.context.case.max_notional, max_trade_risk_fraction=ONE,
@@ -558,13 +661,7 @@ class RealTestnetAdapter:
                                           risk_fraction=ONE),),
                 correlation_map=(R.CorrelationAssignment(symbol=case.symbol, bucket="tnet02"),),
                 correlation_caps=(R.CorrelationCap(bucket="tnet02", exposure_fraction=ONE),),
-                loss_limits=R.LossLimits(
-                    daily_loss_fraction=Decimal("0.03"), daily_loss_r=Decimal("6"),
-                    risk_unit_fraction=Decimal("0.005"), max_bucket_side_risk_r=Decimal("2"),
-                    one_position_per_symbol_side=True, max_drawdown_fraction=Decimal("0.10"),
-                    max_net_side_risk_r=Decimal("4"), max_entries_per_strategy_per_candle=2,
-                    max_entries_per_side_per_candle=3, cooldown_stop_outs=3,
-                    cooldown_window_ms=86_400_000, cooldown_pause_ms=86_400_000)),
+                loss_limits=LOSS_LIMITS),
             filters=R.VenueRiskFilters(
                 filter_id="tnet02_" + filters.source_sha256[:16], symbol=case.symbol, generation=gen, fresh=True,
                 verified=True, step_size=filters.step_size, tick_size=filters.tick_size,
@@ -695,15 +792,28 @@ class RealTestnetAdapter:
             _hold("bind.environment")
         if self._digest != account.binding.key_digest:
             _hold("bind.key_digest")
-        self._account, self._symbols = account, tuple(expected.symbols)
+        if self._account is not None or self._loss_tracker is not None:
+            _hold("bind.already_confirmed")
+        symbols = tuple(expected.symbols)
         positions = self._read_positions(None)
         classic_algo = self._venue.open_orders(None)
         if classic_algo.kind is not ReadKind.OK:
             _hold("bind.open_orders")
-        facts = self._facts(self._symbols)
+        facts = self._facts(symbols)
         if facts.hedge_mode != account.hedge_mode or facts.settlement_asset != account.binding.settlement_asset:
             _hold("bind.account_mode")
         isolated = not positions and not classic_algo.value
+        self._symbols = symbols
+        self._account = account
+        try:
+            self._start_loss_tracker(account, facts)
+        except Exception:
+            self._account = None
+            self._symbols = ()
+            self._loss_tracker = None
+            self._loss_wallet_balance = None
+            self._loss_valid = False
+            raise
         return BindingEvidence(account.account_id, self._digest, None, account.binding.venue, Environment.TESTNET,
                                facts.settlement_asset, isolated, self._now())
 
