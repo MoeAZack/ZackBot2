@@ -163,6 +163,19 @@ def test_preflight_refuses_dirty_and_overwrite_before_loader(tmp_path, monkeypat
     assert called == []
 
 
+def test_preflight_pins_contract_but_records_actual_clean_evaluator_head(tmp_path):
+    first = R.preflight(R.CANDIDATE_IDS[0], tmp_path / "a.json",
+                        head_fn=lambda: "head-one", dirty_fn=lambda: False)
+    second = R.preflight(R.CANDIDATE_IDS[0], tmp_path / "b.json",
+                         head_fn=lambda: "head-two", dirty_fn=lambda: False)
+    assert first.git_head == "head-one" and second.git_head == "head-two"
+    assert first.contract_sha256 == second.contract_sha256 == R.CONTRACT_SHA256
+    assert first.identity != second.identity
+    with pytest.raises(R.RunnerError, match="could not be recorded"):
+        R.preflight(R.CANDIDATE_IDS[0], tmp_path / "c.json",
+                    head_fn=lambda: "", dirty_fn=lambda: False)
+
+
 def test_one_evaluation_per_contract_head_candidate(tmp_path):
     out = tmp_path / "packet.json"
     ids = tmp_path / "ids"
@@ -328,5 +341,24 @@ def test_cli_has_no_prepared_input_or_evaluation_route(tmp_path, capsys):
     rc = R.main(["--candidate", R.CANDIDATE_IDS[0], "--out", str(out),
                  "--identity-dir", str(identities)])
     assert rc == 2
-    assert "raw-bar source-signal evaluator is unavailable" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "contract PR #298" in err and "binance_um archive store" in err
     assert not out.exists() and not identities.exists()
+
+
+def test_readiness_wires_exact_repository_sources_without_market_read():
+    report = R.missing_input_report(contract_merged=False)
+    assert report["ready"] is False
+    assert set(report["source_bindings"]) == set(R.CANDIDATE_IDS)
+    assert report["source_bindings"]["pullback_rsi_short_h1_causal_v2"]["function"] == "sig_trend_pullback_rsi"
+    assert report["source_bindings"]["exp_mom_short_c27_causal_v2"]["function"] == "sig_exp_mom_short"
+    assert report["source_bindings"]["volume_pressure_inventory_short_1h_causal_v2"]["function"] == "sig_volume_pressure_inventory_1h"
+    assert report["folds"] == [
+        {"name": "wf1", "start": "2025-04-01T00:00:00Z", "end": "2025-09-30T00:00:00Z"},
+        {"name": "wf2", "start": "2025-10-01T00:00:00Z", "end": "2026-03-31T00:00:00Z"},
+        {"name": "wf3", "start": "2026-04-01T00:00:00Z", "end": "2026-09-28T00:00:00Z"},
+    ]
+    joined = "\n".join(report["gaps"])
+    assert "contract PR #298" in joined
+    assert "risk_cash and leverage_notional_cap" in joined
+    assert "raw archive adapter is not yet enabled" in joined

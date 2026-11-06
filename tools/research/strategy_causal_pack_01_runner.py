@@ -22,7 +22,6 @@ from typing import Callable, Sequence
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
 CONTRACT_SHA256 = "00e839b523e35fee63d7fdd254752c50e56817ad38aa548d99f7e8d899a2be85"
-EXPECTED_HEAD = "ee7554bd5754b20544ab00fca47b6a1e3423d58d"
 FORMAT = "zackbot.strategy-causal-pack-01/1"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
@@ -30,6 +29,22 @@ CANDIDATE_IDS = (
     "exp_mom_short_c27_causal_v2",
     "volume_pressure_inventory_short_1h_causal_v2",
 )
+SOURCE_BINDINGS = {
+    "pullback_rsi_short_h1_causal_v2": ("pullback_rsi_short_h1", "sig_trend_pullback_rsi"),
+    "exp_mom_short_c27_causal_v2": ("exp_mom_short_c27", "sig_exp_mom_short"),
+    "volume_pressure_inventory_short_1h_causal_v2": (
+        "volume_pressure_inventory_1h", "sig_volume_pressure_inventory_1h"),
+}
+ARCHIVE_MANIFEST_PATH = ROOT / "research_evidence" / "manifests" / "binance-um-archive-v1.json.gz"
+UNIVERSE_PATH = ROOT / "research_evidence" / "universe" / "pit-top40-qv30d-v4.json"
+EXCHANGE_INFO_PATH = (ROOT / "research_evidence" / "prereg" /
+                      "binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json")
+SOURCE_RUNNER_PATHS = {
+    "pullback_rsi_short_h1_causal_v2": ROOT / "tools" / "research" / "run_pullback_rsi_short_h1_candidate.py",
+    "exp_mom_short_c27_causal_v2": ROOT / "tools" / "research" / "run_exp_mom_short_c27_candidate.py",
+    "volume_pressure_inventory_short_1h_causal_v2": (
+        ROOT / "tools" / "research" / "run_volume_pressure_inventory_candidate.py"),
+}
 
 
 class RunnerError(RuntimeError):
@@ -115,7 +130,9 @@ def preflight(
     contract, digest = load_contract()
     candidate_spec(contract, candidate_id)
     head = head_fn()
-    if head != EXPECTED_HEAD and not head:
+    # The contract bytes are pinned above. The evaluator head is intentionally
+    # the actual clean head and becomes part of the immutable evaluation ID.
+    if not head:
         raise RunnerError("exact git head could not be recorded")
     if dirty_fn():
         raise RunnerError("dirty tree: frozen evaluation refused")
@@ -608,6 +625,74 @@ def promotion_gates(report: dict, contract: dict, *, fold_net_r: Sequence[float]
     }
 
 
+def validate_source_bindings(contract: dict) -> dict:
+    """Prove all three identities point at the repository's exact frozen signal functions."""
+    import strategies as source
+
+    out = {}
+    for candidate_id, (strategy_key, function_name) in SOURCE_BINDINGS.items():
+        spec = candidate_spec(contract, candidate_id)
+        strategy = source.STRATEGIES.get(strategy_key)
+        if not strategy or strategy.get("fn") is not getattr(source, function_name, None):
+            raise RunnerError(f"{candidate_id}: missing exact source function strategies.py:{function_name}")
+        if strategy.get("tf") != spec["timeframe"] or not strategy.get("research_only"):
+            raise RunnerError(f"{candidate_id}: source timeframe/research-only identity changed")
+        if candidate_id != "volume_pressure_inventory_short_1h_causal_v2" and strategy.get("sides") != spec["side"]:
+            raise RunnerError(f"{candidate_id}: source side changed")
+        expected_management = dict(strategy["mgmt"])
+        if candidate_id == "exp_mom_short_c27_causal_v2":
+            expected_management["max_bars"] = 180
+        if expected_management != spec["management"]:
+            raise RunnerError(f"{candidate_id}: source management no longer matches the frozen contract")
+        out[candidate_id] = {"strategy_key": strategy_key, "function": function_name,
+                             "timeframe": strategy["tf"], "params": dict(strategy.get("params") or {})}
+    return out
+
+
+def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
+                         evaluation_config: os.PathLike[str] | str | None = None,
+                         evaluation_config_sha256: str | None = None,
+                         contract_merged: bool = False) -> dict:
+    """Read no market bytes; name the exact blockers to a real raw evaluation."""
+    contract, contract_digest = load_contract()
+    bindings = validate_source_bindings(contract)
+    gaps = []
+    for label, path in (("archive manifest", ARCHIVE_MANIFEST_PATH), ("PIT universe", UNIVERSE_PATH),
+                        ("frozen exchangeInfo", EXCHANGE_INFO_PATH)):
+        if not path.is_file():
+            gaps.append(f"missing {label}: {path}")
+    for candidate_id, path in SOURCE_RUNNER_PATHS.items():
+        if not path.is_file():
+            gaps.append(f"{candidate_id}: missing source runner {path}")
+    if not contract_merged:
+        gaps.append("contract PR #298 is not recorded merged; market-data reads remain forbidden")
+    if archive_store is None:
+        gaps.append("missing external binance_um archive store path for manifest klines/fundingRate/markPriceKlines")
+    elif not Path(archive_store).is_dir():
+        gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
+    if evaluation_config is None or evaluation_config_sha256 is None:
+        gaps.append("missing checksum-bound evaluation config: risk_cash and leverage_notional_cap are not frozen in contract v1")
+    else:
+        try:
+            verify_file_digest(evaluation_config, evaluation_config_sha256)
+        except (OSError, RunnerError) as exc:
+            gaps.append(f"invalid evaluation config binding: {exc}")
+    gaps.append("raw archive adapter is not yet enabled; no evaluation/promotion route exists")
+    return {
+        "format": "zackbot.strategy-causal-pack-01-readiness/1", "ready": False,
+        "contract_sha256": contract_digest, "source_bindings": bindings,
+        "required_sources": {"manifest": str(ARCHIVE_MANIFEST_PATH), "universe": str(UNIVERSE_PATH),
+                             "exchange_info": str(EXCHANGE_INFO_PATH), "archive_store": "external binance_um",
+                             "source_runners": {k: str(v) for k, v in SOURCE_RUNNER_PATHS.items()}},
+        "folds": contract["folds"], "cutoff": contract["data"]["forbid_read_at_or_after"],
+        "required_raw_series": ["klines:1h", "klines:4h", "fundingRate", "markPriceKlines:1h"],
+        "invariants": ["CORE-20 PIT membership", "fold-local warmup/purge", "next-open fills",
+                       "prior-closed ATR", "actual exchange filters", "actual funding/causal marks",
+                       "required report and promotion gates", "immutable identity tombstones"],
+        "gaps": gaps,
+    }
+
+
 def evaluate_payload(payload: object, pf: Preflight) -> dict:
     """Compatibility refusal: prepared trades/fills are never evaluation evidence."""
     del payload, pf
@@ -623,11 +708,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--identity-dir", required=True)
     args = ap.parse_args(argv)
     try:
-        contract, _ = load_contract()
-        candidate_spec(contract, args.candidate)
-        raise RunnerError(
-            "prepared input is forbidden and the complete checksum-bound raw-bar source-signal evaluator is unavailable"
-        )
+        report = missing_input_report(contract_merged=False)
+        candidate_spec(load_contract()[0], args.candidate)
+        raise RunnerError("; ".join(report["gaps"]))
     except RunnerError as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
