@@ -176,11 +176,13 @@ class Dataset:
         if self.archive:
             if f['source']['kind'] == M.FUNDING_API_KIND:
                 _, api_rows = M.read_funding_api(ap, p, f['source'])
-                times = [row['fundingTime'] for row in api_rows]
-                gaps = [max(1, round((right - left) / HOUR)) for left, right in zip(times, times[1:])]
-                intervals = ([gaps[0]] + gaps) if gaps else ([8] if times else [])
-                out = [Funding(row['fundingTime'], float(row['fundingRate']), interval, row['fundingTime'])
-                       for row, interval in zip(api_rows, intervals)]
+                # fundingRate REST exposes actual settlements, not the contractual cadence. Never infer a
+                # wider interval from the distance between observations: doing so would turn a missing 8h
+                # settlement into apparent 16h coverage. The frozen maximum is only a fail-closed coverage
+                # bound; rows/rates remain exactly those returned by Binance.
+                out = [Funding(row['fundingTime'], float(row['fundingRate']),
+                               C.MAX_FUNDING_INTERVAL_H, row['fundingTime'])
+                       for row in api_rows]
             elif f['source']['kind'] == M.KLINE_API_KIND:
                 _, api_rows = M.read_kline_api(ap, p, f['source'])
                 iv = M.INTERVALS[f['interval']]

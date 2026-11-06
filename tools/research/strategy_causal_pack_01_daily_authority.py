@@ -28,6 +28,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from tools.research import binance_archive_fill as BAF
+from tools.research import costs as C
 from tools.research import manifest as M
 from tools.research import strategy_causal_pack_01_archive as A
 from tools.research import universe as U
@@ -486,8 +487,9 @@ def funding_summary(plan: dict, store: Path) -> dict:
         gaps = [right - left for left, right in zip(times, times[1:])]
         head = times[0] - FUNDING_START_MS if times else None
         tail = CUTOFF_MS - times[-1] if times else None
-        complete = bool(times and head <= 8 * A.HOUR_MS + tolerance and tail <= 8 * A.HOUR_MS + tolerance
-                        and all(gap <= 8 * A.HOUR_MS + tolerance for gap in gaps))
+        maximum = C.MAX_FUNDING_INTERVAL_H * A.HOUR_MS + tolerance
+        complete = bool(times and head <= maximum and tail <= maximum
+                        and all(gap <= maximum for gap in gaps))
         symbols.append({"symbol": symbol, "pages": pages, "rows": len(times),
                         "first_ms": times[0] if times else None, "last_ms": times[-1] if times else None,
                         "head_gap_ms": head, "tail_gap_ms": tail,
@@ -496,7 +498,7 @@ def funding_summary(plan: dict, store: Path) -> dict:
     body = {"format": "zb-strategy-causal-pack-01-funding-authority-summary/1",
             "window": {"start_ms": FUNDING_START_MS, "end_ms_inclusive": FUNDING_END_MS,
                        "cutoff_exclusive_ms": CUTOFF_MS},
-            "completeness_rule": "nonempty; head, every interior gap, and cutoff tail <= 8h + frozen 10m jitter tolerance",
+            "completeness_rule": "nonempty; head, every interior gap, and cutoff tail <= frozen 8h maximum + frozen 10m jitter tolerance",
             "missing_exposure_rule": "an empty or gapped symbol is retained; any required exposure intersecting its gap makes the candidate incomplete",
             "symbols": symbols,
             "complete_symbols": sum(row["bounded_window_complete"] for row in symbols),

@@ -142,12 +142,47 @@ def test_funding_api_source_is_raw_checksum_provenance_and_gap_bound(tmp_path):
     result = A.RawArchiveAdapter(manifest, _api_universe(manifest), tmp_path).load_funding_sparse(
         "S00", D.FUNDING_START_MS, D.FUNDING_START_MS + 16 * A.HOUR_MS)
     assert [row.time_ms for row in result.rows] == [D.FUNDING_START_MS, D.FUNDING_START_MS + 8 * A.HOUR_MS]
+    assert [row.interval_hours for row in result.rows] == [8, 8]
     assert result.gaps == ()
     empty_path, empty_rel, empty = _write_funding_api(tmp_path, rows=[])
     empty_manifest = _api_manifest(empty)
     empty_result = A.RawArchiveAdapter(empty_manifest, _api_universe(empty_manifest), tmp_path).load_funding_sparse(
         "S00", D.FUNDING_START_MS, D.FUNDING_START_MS + 8 * A.HOUR_MS)
     assert empty_result.rows == () and empty_result.gaps
+
+
+def test_funding_api_16h_observation_gap_stays_explicitly_incomplete(tmp_path):
+    start = D.FUNDING_START_MS
+    rows = [
+        {"symbol": "S00", "fundingRate": "0.0001", "fundingTime": start},
+        {"symbol": "S00", "fundingRate": "-0.0002", "fundingTime": start + 16 * A.HOUR_MS},
+    ]
+    _, _, record = _write_funding_api(tmp_path, rows=rows)
+    manifest = _api_manifest(record)
+    result = A.RawArchiveAdapter(manifest, _api_universe(manifest), tmp_path).load_funding_sparse(
+        "S00", start, start + 24 * A.HOUR_MS)
+    assert [(row.time_ms, row.interval_hours, row.rate) for row in result.rows] == [
+        (start, 8, 0.0001), (start + 16 * A.HOUR_MS, 8, -0.0002)]
+    assert result.gaps == (A.CoverageGap(
+        start + 8 * A.HOUR_MS, start + 16 * A.HOUR_MS, "settlement_gap"),)
+
+
+def test_funding_api_actual_4h_then_8h_observations_are_valid_without_cadence_inference(tmp_path):
+    start = D.FUNDING_START_MS
+    rows = [
+        {"symbol": "S00", "fundingRate": "0.0001", "fundingTime": start},
+        {"symbol": "S00", "fundingRate": "0.0002", "fundingTime": start + 4 * A.HOUR_MS},
+        {"symbol": "S00", "fundingRate": "-0.0001", "fundingTime": start + 12 * A.HOUR_MS},
+    ]
+    _, _, record = _write_funding_api(tmp_path, rows=rows)
+    manifest = _api_manifest(record)
+    result = A.RawArchiveAdapter(manifest, _api_universe(manifest), tmp_path).load_funding_sparse(
+        "S00", start, start + 20 * A.HOUR_MS)
+    assert [row.time_ms for row in result.rows] == [
+        start, start + 4 * A.HOUR_MS, start + 12 * A.HOUR_MS]
+    assert [row.interval_hours for row in result.rows] == [8, 8, 8]
+    assert [row.rate for row in result.rows] == [0.0001, 0.0002, -0.0001]
+    assert result.gaps == ()
 
 
 def test_funding_api_duplicate_bounds_and_cutoff_crossing_refused_before_bytes(tmp_path):

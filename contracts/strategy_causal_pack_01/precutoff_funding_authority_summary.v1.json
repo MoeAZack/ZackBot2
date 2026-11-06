@@ -1,7 +1,7 @@
 {
  "complete_symbols": 60,
- "completeness_rule": "nonempty; head, every interior gap, and cutoff tail <= 8h + frozen 10m jitter tolerance",
- "digest": "9658d2892c1f7ce68cad39ee5f7dd2ac6098622a96757bbc5b265c9d33dca737",
+ "completeness_rule": "nonempty; head, every interior gap, and cutoff tail <= frozen 8h maximum + frozen 10m jitter tolerance",
+ "digest": "2638069770ae635ade8b25cb98ba787a203c597475eb16a1a396406af3235746",
  "explicit_incomplete_symbols": [
   "TONUSDT",
   "VANRYUSDT"
