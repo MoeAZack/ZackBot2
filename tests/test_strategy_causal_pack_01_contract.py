@@ -27,7 +27,7 @@ def test_contract_is_frozen_signed_and_has_no_live_authority():
     c, md = _load()
     assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
         'STRATEGY-CAUSAL-PACK-01', 1, 'FROZEN', 'codex')
-    assert c['frozen_at'] == '2026-11-06T09:55:00+02:00'
+    assert c['frozen_at'] == '2026-11-06T10:52:47+02:00'
     assert c['scope']['paper_testnet_only'] is True
     assert c['scope']['default_enabled'] is False
     assert c['scope']['mainnet_authority'] is False
@@ -151,6 +151,25 @@ def test_costs_are_realistic_and_stressed():
         'fee_cash_on_executable_notional - adverse_slippage_cash')
     assert 'positive funding credits remain at 1.0x' in costs['cost_stress_rule']
     assert '5 bp taker fee plus 2 bp adverse slippage' in md
+
+
+def test_book_sizing_and_cairo_halt_are_frozen_not_caller_choices():
+    c, md = _load()
+    b = c['book_and_sizing']
+    assert b['reference_start_equity_usdt'] == 500.0
+    assert b['risk_fraction_of_current_candidate_book_equity'] == 0.01
+    assert b['maximum_open_positions'] == 4
+    assert b['gross_leverage_multiple'] == 10.0
+    assert 'current candidate-book equity' in b['risk_cash_formula']
+    assert 'current gross open notional' in b['leverage_notional_cap_formula']
+    assert 'frozen CORE-20 order' in b['entry_priority']
+    assert b['daily_halt_fraction'] == 0.08
+    assert b['daily_halt_timezone'].startswith('Africa/Cairo')
+    assert b['equity_compounding'] is True
+    assert b['candidate_books_isolated'] is True
+    assert b['cross_candidate_capital_sharing'] is False
+    assert b['caller_override'].startswith('forbidden')
+    assert '500 USDT starting equity' in md and 'Cairo calendar days' in md
 
 
 def test_folds_are_ordered_unspent_and_holdout_is_forbidden():
