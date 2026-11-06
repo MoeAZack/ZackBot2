@@ -618,6 +618,23 @@ def test_sparse_rank_membership_excludes_gap_and_requires_42_fresh_bars(monkeypa
     assert ranked_n[start + 152 * step] == 20
 
 
+def test_irrelevant_future_btc_gap_does_not_veto_earlier_pack_decisions():
+    contract, _ = R.load_contract()
+    symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 20))
+    n, start, step = 220, ms("2025-04-01T00:00:00"), 4 * 3_600_000
+    bars = {
+        symbol: tuple(R.Bar(start + index * step, 100, 101, 99, 100, volume=10)
+                      for index in range(n))
+        for symbol in symbols
+    }
+    bars["BTCUSDT"] = bars["BTCUSDT"][:-1]
+    result = R.build_fold_source_signal_tape(
+        contract, "exp_mom_short_c27_causal_v3", bars, [symbols] * n,
+        canonical_times_ms=[start + index * step for index in range(n)])
+    assert result.regime[-1] is None
+    assert isinstance(result.regime[-2], str)
+
+
 def test_synthetic_vpi_fold_derives_source_signal_next_open_and_entry_bar_target():
     contract, _ = R.load_contract()
     symbols = ("BTCUSDT",) + tuple(f"S{i:02d}" for i in range(1, 20))
