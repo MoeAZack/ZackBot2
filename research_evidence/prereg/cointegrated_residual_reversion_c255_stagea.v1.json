@@ -2,7 +2,7 @@
   "candidate_id": 255,
   "candidate_key": "cointegrated_residual_reversion_1h",
   "format": "zb-strategy-preregistration/1",
-  "base_commit": "51b38065482df908ee39cf6394a3c4ad5fb97138",
+  "base_commit": "80892fb1337a954720ab16e00e0608f72ae9f894",
   "frozen_at_cairo": "2026-11-06T21:06:53+02:00",
   "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
   "default_off": true,

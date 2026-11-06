@@ -28,7 +28,7 @@ def interval(raw):
 def test_contract_is_frozen_research_only_and_not_activated():
     contract = load_contract()
     assert contract["candidate_id"] == 255
-    assert contract["base_commit"] == "51b38065482df908ee39cf6394a3c4ad5fb97138"
+    assert contract["base_commit"] == "80892fb1337a954720ab16e00e0608f72ae9f894"
     assert contract["status"] == "FROZEN_NOT_EVALUATED_RESEARCH_ONLY"
     assert contract["default_off"] is True
     assert contract["paper_eligibility"] == "BLOCK_UNTIL_INDEPENDENT_OOS_PASS"
