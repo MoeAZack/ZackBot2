@@ -12,7 +12,7 @@
     "protected_ref": "origin/master",
     "authority_pr": 304,
     "authority_provisional_stack_pin": "59babc0c13aa08fafdffe400029c7c1377b96319",
-    "authority_protected_merge_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
+    "authority_protected_merge_commit": null,
     "v4_contract_provisional_stack_pin": "d07cd61281a085d83a1c453cb82e063956ee348a",
     "v4_contract_protected_commit": null,
     "rule": "Both non-null exact protected commit pins must be ancestors of the protected ref before an identity claim, loader construction, market/outcome read or delegate import. Provisional stack pins never authorize execution."
@@ -33,12 +33,16 @@
       "byte_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
       "content_digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
       "required_guaranteed_period_gaps": 0
+    },
+    "exchange_filter_authority": {
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json",
+      "byte_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9"
     }
   },
   "profiles": {
     "pack": {
       "overlay_path": "contracts/strategy_causal_pack_01_causal_v4/strategy_causal_pack_01_causal_v4_rebind.v1.json",
-      "overlay_byte_sha256": "a9fb6ed8add6e37f02d1ee73d3628f197a41988e6ffa5fb693e5423e4ed1b09c",
+      "overlay_byte_sha256": "f0cb10aeff9b3ba3a5d644150a1e7896a9061db8cc0ffe8a5c811195e018cf0c",
       "candidate_ids": [
         "pullback_rsi_short_h1_causal_v4",
         "exp_mom_short_c27_causal_v4"
@@ -51,7 +55,7 @@
     },
     "rbr_short": {
       "overlay_path": "contracts/rank_breadth_reversal_4h_short_causal_v4/rank_breadth_reversal_4h_short_causal_v4_rebind.v1.json",
-      "overlay_byte_sha256": "4f1c93cfcd1680cef934eb0742b161ce5e1ef4974722e9d912cea75aec9a113a",
+      "overlay_byte_sha256": "7cb7c8e69500e3049b1ea5008c8af36ae2e2c48c29680a6b9f89927ebd17c499",
       "candidate_ids": [
         "rank_breadth_reversal_4h_short_causal_v4"
       ],
@@ -63,7 +67,7 @@
     },
     "atr_shock": {
       "overlay_path": "contracts/atr_shock_snapback_4h_causal_v4/atr_shock_snapback_4h_causal_v4_rebind.v1.json",
-      "overlay_byte_sha256": "13129e740dce8e91b81e7f1a8e4b05513a22a23ee243db493280a316f5d6a7f7",
+      "overlay_byte_sha256": "8590f465422d374018b8fbf53277e76b4f8280503ee8906f140705e3b30b20ed",
       "candidate_ids": [
         "atr_shock_snapback_4h_long_causal_v4",
         "atr_shock_snapback_4h_short_causal_v4"

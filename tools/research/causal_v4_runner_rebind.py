@@ -20,7 +20,7 @@ from typing import Callable, Sequence
 
 ROOT = Path(__file__).resolve().parents[2]
 METADATA_PATH = ROOT / "contracts/causal_v4_runner_rebind/causal_v4_runner_rebind.v1.json"
-METADATA_SHA256 = "dd7dcfee75f7c097182f8e7918652d87de40c64328ba8d5d3721833c84ee466d"
+METADATA_SHA256 = "9a8b289985b7362ab827bb2485e73ab0862a7f378c0254e5e4b522fd5acc0feb"
 STATUS = "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY"
 PROVISIONAL_STACK_PIN = "d07cd61281a085d83a1c453cb82e063956ee348a"
 CLOSED_DELEGATE_REGISTRY = {

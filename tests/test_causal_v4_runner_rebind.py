@@ -23,7 +23,7 @@ LEGACY_BYTES = {
     "tools/research/strategy_causal_pack_01_runner.py":
         "a0242ce5def9aa3c64b18f2554616e25d242c96d037d81f0362ae07505d4537f",
     "tools/research/strategy_causal_pack_01_archive.py":
-        "985d6844c7733c372b3b65f33717e701a50c72d353fbeaac54842527bb2ad49c",
+        "691a6aa2ec621f4b4d36f9ad60b3583b920162ae0c56956d0928dcdeaeb70e70",
     "tools/research/rank_breadth_reversal_4h_short_causal_v3_runner.py":
         "ca9acbf0cc6a1283b83ccdda41e19dcc256a48a39c3c6f5e1e074c94b7ff3b91",
     "tools/research/rank_breadth_reversal_4h_short_causal_v3_archive.py":
@@ -38,7 +38,7 @@ def test_saved_metadata_is_provisional_only_and_all_profiles_validate():
     metadata = G.load_metadata()
     gate = metadata["protected_execution_gate"]
     assert gate["v4_contract_provisional_stack_pin"] == G.PROVISIONAL_STACK_PIN
-    assert gate["authority_protected_merge_commit"] == "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6"
+    assert gate["authority_protected_merge_commit"] is None
     assert gate["v4_contract_protected_commit"] is None
     assert metadata["scope"] == {
         "runner_metadata_and_validators_only": True,
@@ -141,7 +141,7 @@ def test_atr_delegate_resolution_is_reachable_only_after_hypothetical_final_pins
     assert calls == [("atr_shock", metadata["profiles"]["atr_shock"])]
 
 
-def test_strategy_logic_loaders_and_v3_runner_bytes_are_unchanged_from_d07():
+def test_strategy_logic_and_v3_runner_bytes_unchanged_except_reviewed_filter_loader():
     for rel, expected in LEGACY_BYTES.items():
         assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == expected
 

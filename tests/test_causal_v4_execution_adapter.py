@@ -45,6 +45,28 @@ def test_rebound_contract_preserves_old_trials_and_appends_v4_atr_family():
     assert len(ordered) == profile["multiplicity"]["resulting"]
 
 
+@pytest.mark.parametrize("profile_name", ["pack", "rbr_short", "atr_shock"])
+def test_rebound_contract_uses_exact_v3_filter_authority(profile_name):
+    profile = _profile(profile_name)
+    overlay, source, _ = A.validate_overlay(ROOT, profile)
+    rebound, _ = A._rebound_contract(source, overlay)
+    authority = overlay["authority_artifacts"]["exchange_filter_authority"]
+    if profile_name == "pack":
+        actual = {
+            "path": rebound["data"]["exchange_filter_authority"],
+            "byte_sha256": rebound["data"]["exchange_filter_authority_sha256"],
+        }
+    elif profile_name == "rbr_short":
+        actual = {
+            "path": rebound["pit_authority"]["exchange_filter_authority_path"],
+            "byte_sha256": rebound["pit_authority"]["exchange_filter_authority_sha256"],
+        }
+    else:
+        actual = rebound["exchange_filter_authority"]
+    assert actual["path"] == authority["path"]
+    assert actual["byte_sha256"] == authority["byte_sha256"]
+
+
 def test_unknown_argv_and_candidate_mismatch_refuse_before_delegate(monkeypatch, tmp_path):
     calls = []
     def delegate(argv):
@@ -79,6 +101,7 @@ def test_fake_engine_gets_v4_contract_authority_and_reserves_before_loader(tmp_p
             claims = list(Path(args.identity_dir).glob("*.claim.json"))
             assert len(claims) == 1
             seen.append((PACK_V3.ARCHIVE_MANIFEST_PATH.name, PACK_V3.UNIVERSE_PATH.name,
+                         PACK_V3.FILTER_AUTHORITY_PATH.name,
                          json.loads(claims[0].read_text())["candidate_id"]))
             return object()
         PACK_V3._run_with_loader(
@@ -91,7 +114,8 @@ def test_fake_engine_gets_v4_contract_authority_and_reserves_before_loader(tmp_p
     assert A.execute("pack", _profile(), delegate, candidate_id=candidate, argv=argv, root=ROOT) == 0
     packet = json.loads(out.read_text())
     assert seen == [("binance-um-archive-precutoff-monthly-rest-v5.json.gz",
-                     "pit-top40-qv30d-precutoff-monthly-rest-v8.json", candidate)]
+                     "pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+                     "exchange_filter_authority.v3.json", candidate)]
     assert packet["candidate_id"] == packet["integrity"]["candidate_id"] == candidate
     assert packet["format"] == "zackbot.strategy-causal-pack-01/4"
     assert packet["integrity"]["contract_sha256"] != PACK_V3.CONTRACT_SHA256
@@ -105,6 +129,7 @@ def test_fake_engine_gets_v4_contract_authority_and_reserves_before_loader(tmp_p
 def test_legacy_v3_globals_are_restored_after_adapter_failure(tmp_path):
     original_ids = PACK_V3.CANDIDATE_IDS
     original_manifest = PACK_V3.ARCHIVE_MANIFEST_PATH
+    original_filters = PACK_V3.FILTER_AUTHORITY_PATH
     def explode(argv):
         assert PACK_V3.CANDIDATE_IDS == tuple(_profile()["candidate_ids"])
         raise RuntimeError("fake stop")
@@ -115,6 +140,26 @@ def test_legacy_v3_globals_are_restored_after_adapter_failure(tmp_path):
         A.execute("pack", _profile(), explode, candidate_id=None, argv=argv, root=ROOT)
     assert PACK_V3.CANDIDATE_IDS == original_ids
     assert PACK_V3.ARCHIVE_MANIFEST_PATH == original_manifest
+    assert PACK_V3.FILTER_AUTHORITY_PATH == original_filters
+
+
+def test_filter_authority_byte_mismatch_refuses_before_delegate(monkeypatch, tmp_path):
+    calls = []
+    def delegate(argv):
+        calls.append(argv)
+        return 0
+    delegate.__module__ = PACK_V3.__name__
+    authority_path = ROOT / "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json"
+    original = Path.read_bytes
+    def hostile_read(path):
+        raw = original(path)
+        return raw + b" " if path.resolve() == authority_path.resolve() else raw
+    monkeypatch.setattr(Path, "read_bytes", hostile_read)
+    argv = ["--candidate", _profile()["candidate_ids"][0], "--out", str(tmp_path / "p.json"),
+            "--identity-dir", str(tmp_path / "ids")]
+    with pytest.raises(A.AdapterError, match="exchange-filter authority bytes changed"):
+        A.execute("pack", _profile(), delegate, candidate_id=None, argv=argv, root=ROOT)
+    assert calls == []
 
 
 def _fake_packet(tmp_path, profile_name, candidate, head=None, raw_p=.04):

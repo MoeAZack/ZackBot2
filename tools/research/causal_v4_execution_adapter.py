@@ -161,6 +161,16 @@ def _authority_replacements(contract: dict, overlay: dict) -> dict[str, str]:
         replacements[old_manifest] = new["manifest"]["path"]
     if old_universe:
         replacements[old_universe] = new["pit_universe"]["path"]
+    # All three immutable v3 contracts point at the same v2 authority, but
+    # express the binding in different sections.  Replace only the exact
+    # frozen path and byte digest; narrative text and all economic rules stay
+    # unchanged.
+    replacements[
+        "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json"
+    ] = new["exchange_filter_authority"]["path"]
+    replacements[
+        "9463632b78004b367439b4fa3eae22523ffedf87b920c24cff8f5241d9fea434"
+    ] = new["exchange_filter_authority"]["byte_sha256"]
     old_values = {
         "manifest": ("manifest_gzip_byte_sha256", "manifest_content_digest"),
         "pit_universe": ("universe_byte_sha256", "pit_universe_sha256", "universe_content_digest", "pit_universe_digest"),
@@ -505,6 +515,9 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
     authority = overlay["authority_artifacts"]
     manifest = root.joinpath(*authority["manifest"]["path"].split("/"))
     universe = root.joinpath(*authority["pit_universe"]["path"].split("/"))
+    filter_authority = root.joinpath(*authority["exchange_filter_authority"]["path"].split("/"))
+    if hashlib.sha256(filter_authority.read_bytes()).hexdigest() != authority["exchange_filter_authority"]["byte_sha256"]:
+        raise AdapterError("exchange-filter authority bytes changed")
     old_source = getattr(module, "SOURCE_BINDINGS", {})
     source_bindings = {ids.get(key, key): value for key, value in old_source.items()}
     values = {
@@ -523,6 +536,10 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
         values["SIDES"] = {ids.get(key, key): value for key, value in module.SIDES.items()}
     if hasattr(module, "SOURCE_BINDINGS"):
         values["SOURCE_BINDINGS"] = source_bindings
+    if hasattr(module, "FILTER_AUTHORITY_PATH"):
+        values["FILTER_AUTHORITY_PATH"] = filter_authority
+    if hasattr(module, "FILTER_PATH"):
+        values["FILTER_PATH"] = filter_authority
     multiplicity = copy.deepcopy(overlay["multiplicity_append"])
     if profile_name == "pack":
         original_evaluate = module.evaluate_raw_candidate
