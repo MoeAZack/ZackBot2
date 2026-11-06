@@ -27,13 +27,13 @@ def test_contract_is_frozen_signed_and_has_no_live_authority():
     c, md = _load()
     assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
         'STRATEGY-CAUSAL-PACK-01', 1, 'FROZEN', 'codex')
-    assert c['frozen_at'] == '2026-11-06T10:52:47+02:00'
+    assert c['frozen_at'] == '2026-11-06T11:27:43+02:00'
     assert c['scope']['paper_testnet_only'] is True
     assert c['scope']['default_enabled'] is False
     assert c['scope']['mainnet_authority'] is False
     assert c['scope']['parameter_search'] is False
     assert c['scope']['runtime_risk_before_independent_pass'] is False
-    assert md.splitlines()[2] == '**Status: FROZEN — signed by Codex, 6 November 2026 09:55 Cairo.**'
+    assert md.splitlines()[2] == '**Status: FROZEN — signed by Codex, 6 November 2026 11:27 Cairo.**'
 
 
 def test_three_new_unique_identities_preserve_old_rejections():
@@ -160,16 +160,24 @@ def test_book_sizing_and_cairo_halt_are_frozen_not_caller_choices():
     assert b['risk_fraction_of_current_candidate_book_equity'] == 0.01
     assert b['maximum_open_positions'] == 4
     assert b['gross_leverage_multiple'] == 10.0
-    assert 'current candidate-book equity' in b['risk_cash_formula']
+    assert 'current marked candidate-book equity' in b['risk_cash_formula']
+    assert 'identity-defining causal-book deviation' in b['source']
+    assert 'settled_cash_equity + sum' in b['marked_equity_formula']
+    assert 'availability timestamp is <= t' in b['mark_timestamp_basis']
+    assert 'every signal/time exit due at t' in b['entry_attempt_phase']
+    assert 'unslipped reference open' in b['gross_open_notional_formula']
     assert 'current gross open notional' in b['leverage_notional_cap_formula']
     assert 'frozen CORE-20 order' in b['entry_priority']
     assert b['daily_halt_fraction'] == 0.08
     assert b['daily_halt_timezone'].startswith('Africa/Cairo')
+    assert 'before any fill at t or funding_time == t' in b['daily_halt_rule']
+    assert 'after all same-open entry attempts' in b['daily_halt_rule']
+    assert 'never block an exit or management action' in b['daily_halt_rule']
     assert b['equity_compounding'] is True
     assert b['candidate_books_isolated'] is True
     assert b['cross_candidate_capital_sharing'] is False
     assert b['caller_override'].startswith('forbidden')
-    assert '500 USDT starting equity' in md and 'Cairo calendar days' in md
+    assert '500 USDT starting equity' in md and 'identity-defining deviation' in md
 
 
 def test_folds_are_ordered_unspent_and_holdout_is_forbidden():
