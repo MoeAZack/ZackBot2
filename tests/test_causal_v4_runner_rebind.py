@@ -38,7 +38,7 @@ def test_saved_metadata_is_provisional_only_and_all_profiles_validate():
     metadata = G.load_metadata()
     gate = metadata["protected_execution_gate"]
     assert gate["v4_contract_provisional_stack_pin"] == G.PROVISIONAL_STACK_PIN
-    assert gate["authority_protected_merge_commit"] is None
+    assert gate["authority_protected_merge_commit"] == "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6"
     assert gate["v4_contract_protected_commit"] is None
     assert metadata["scope"] == {
         "runner_metadata_and_validators_only": True,
