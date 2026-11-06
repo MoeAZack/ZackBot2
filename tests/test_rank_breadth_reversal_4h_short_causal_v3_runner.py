@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from tools.research import rank_breadth_reversal_4h_short_causal_v2_runner as R
-from tools.research import rank_breadth_reversal_4h_short_causal_v2_archive as A
+from tools.research import rank_breadth_reversal_4h_short_causal_v3_runner as R
+from tools.research import rank_breadth_reversal_4h_short_causal_v3_archive as A
 
 
 RULE = R.ExchangeRule(tick=0.01, step=0.1, min_qty=0.1, min_notional=1.0, max_qty=1000)
@@ -255,6 +255,26 @@ def test_premerge_refusal_happens_before_adapter_or_archive_row_use():
             merge_guard=lambda: False, head_fn=lambda: "a" * 40,
             dirty_fn=lambda: False)
     assert loaded == []
+
+
+def test_filter_authority_failure_wins_before_first_market_row(monkeypatch):
+    from tools.research import strategy_causal_pack_01_archive as filter_archive
+
+    contract, digest = R.load_contract()
+    pf = R.Preflight(contract, digest, "a" * 40, R.CANDIDATE_IDS[0], "b" * 64)
+    adapter = object.__new__(A.RawArchiveAdapter)
+    adapter.verify_repository_authorities = lambda *_: A.AuthorityDigests(
+        "1" * 64, "2" * 64, "3" * 64, "4" * 64, "5" * 64, "6" * 64)
+    market_reads = []
+    adapter.core20_union = lambda *_args, **_kwargs: market_reads.append(True)
+
+    def refuse(*_args, **_kwargs):
+        raise filter_archive.ArchiveIncomplete("filter authority checksum mismatch: hostile")
+
+    monkeypatch.setattr(filter_archive, "load_fold_filter_authorities", refuse)
+    with pytest.raises(filter_archive.ArchiveIncomplete, match="checksum mismatch"):
+        R.evaluate_raw_candidate(adapter, pf, merge_guard=lambda: True)
+    assert market_reads == []
 
 
 def test_preflight_dirty_overwrite_and_identity_tombstone_precede_loader(tmp_path):

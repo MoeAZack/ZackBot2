@@ -1,4 +1,4 @@
-"""Checksum-bound raw archive input for RBR-4H short causal v2.
+"""Checksum-bound raw archive input for RBR-4H short causal v3.
 
 This module is deliberately separate from the executable runner.  It reuses the
 repository archive and PIT-universe authorities and has no CLI, promotion path,
@@ -247,11 +247,14 @@ class RawArchiveAdapter:
                 "adapter authorities do not match fixed repository manifest/PIT bytes")
         return expected
 
-    def core20_at(self, time_ms: int) -> tuple[str, ...]:
+    def core20_at(self, time_ms: int,
+                  eligible_symbols: frozenset[str] | None = None) -> tuple[str, ...]:
         weeks = [week for week in self.pit_universe["weeks"] if week["monday_ms"] <= time_ms]
         if not weeks:
             raise ArchiveIncomplete(f"no PIT universe observation at {time_ms}")
-        members = tuple(max(weeks, key=lambda week: week["monday_ms"])["books"]["crypto"]["members"][:20])
+        ranked = tuple(max(weeks, key=lambda week: week["monday_ms"])["books"]["crypto"]["members"])
+        members = (ranked[:20] if eligible_symbols is None else
+                   tuple(symbol for symbol in ranked if symbol in eligible_symbols)[:20])
         if len(members) != 20 or len(set(members)) != 20:
             raise ArchiveIncomplete("PIT CORE-20 is not 20 unique crypto symbols")
         try:
@@ -261,7 +264,8 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"PIT membership unavailable: {exc}") from exc
         return members
 
-    def core20_union(self, start_ms: int, end_ms: int) -> tuple[str, ...]:
+    def core20_union(self, start_ms: int, end_ms: int,
+                     eligible_symbols: frozenset[str] | None = None) -> tuple[str, ...]:
         self._window(start_ms, end_ms)
         instants = [start_ms]
         instants.extend(
@@ -270,15 +274,16 @@ class RawArchiveAdapter:
         )
         seen: list[str] = []
         for instant in instants:
-            for symbol in self.core20_at(instant):
+            for symbol in self.core20_at(instant, eligible_symbols):
                 if symbol not in seen:
                     seen.append(symbol)
         return tuple(seen)
 
-    def load_klines(self, symbol: str, interval: str, start_ms: int, end_ms: int) -> tuple[RawKline, ...]:
+    def load_klines(self, symbol: str, interval: str, start_ms: int, end_ms: int, *,
+                    eligible_symbols: frozenset[str] | None = None) -> tuple[RawKline, ...]:
         if interval not in INTERVAL_MS:
             raise ArchiveIncomplete("candidate archive adapter permits only 1h/4h klines")
-        self._require_core_symbol(symbol, start_ms, end_ms)
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         rows = self._rows(symbol, "klines", interval, start_ms, end_ms)
         step = INTERVAL_MS[interval]
         chosen = [row for row in rows if start_ms <= int(row[0]) < end_ms]
@@ -298,8 +303,9 @@ class RawArchiveAdapter:
             out.append(RawKline(int(row[0]), o, h, low, close, volume))
         return tuple(out)
 
-    def load_funding(self, symbol: str, start_ms: int, end_ms: int) -> tuple[RawFunding, ...]:
-        self._require_core_symbol(symbol, start_ms, end_ms)
+    def load_funding(self, symbol: str, start_ms: int, end_ms: int, *,
+                     eligible_symbols: frozenset[str] | None = None) -> tuple[RawFunding, ...]:
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         rows = self._rows(symbol, "fundingRate", None, start_ms, end_ms)
         out = []
         for row in rows:
@@ -325,9 +331,10 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"{symbol}: funding coverage gap at window end")
         return tuple(out)
 
-    def load_mark_closes(self, symbol: str, start_ms: int, end_ms: int) -> tuple[tuple[int, float], ...]:
+    def load_mark_closes(self, symbol: str, start_ms: int, end_ms: int, *,
+                         eligible_symbols: frozenset[str] | None = None) -> tuple[tuple[int, float], ...]:
         """Return causal 1h mark closes as (available_ms, close), with exact hourly coverage."""
-        self._require_core_symbol(symbol, start_ms, end_ms)
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         raw_start = start_ms - HOUR_MS
         rows = self._rows(symbol, "markPriceKlines", "1h", raw_start, end_ms)
         chosen = [row for row in rows if raw_start <= int(row[0]) < end_ms]
@@ -348,9 +355,10 @@ class RawArchiveAdapter:
                 or start_ms >= end_ms or end_ms > CUTOFF_MS):
             raise ArchiveIncomplete("archive window must be nonempty and end at/before the frozen exclusive cutoff")
 
-    def _require_core_symbol(self, symbol: str, start_ms: int, end_ms: int) -> None:
+    def _require_core_symbol(self, symbol: str, start_ms: int, end_ms: int,
+                             eligible_symbols: frozenset[str] | None = None) -> None:
         self._window(start_ms, end_ms)
-        if symbol not in self.core20_union(start_ms, end_ms):
+        if symbol not in self.core20_union(start_ms, end_ms, eligible_symbols):
             raise ArchiveIncomplete(f"{symbol}: outside frozen PIT CORE-20 for requested window")
 
     def _rows(self, symbol: str, series: str, interval: str | None,

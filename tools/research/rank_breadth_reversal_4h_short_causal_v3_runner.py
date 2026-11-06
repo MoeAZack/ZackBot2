@@ -1,4 +1,4 @@
-"""Causal, fail-closed runner for RBR-4H short causal v2.
+"""Causal, fail-closed runner for RBR-4H short causal v3.
 
 The module is deliberately data-source agnostic.  Production callers must provide
 checksum-verified bars, exchange rules, funding events and causal marks.  This
@@ -22,26 +22,24 @@ from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT_PATH = (ROOT / "contracts" / "rank_breadth_reversal_4h_short_causal_v2" /
-                 "rank_breadth_reversal_4h_short_causal_v2_contract.v1.json")
-CONTRACT_SHA256 = "5c7593657a1d3da7a17b81a5d1db2f4bcdc5c45d040a45c92d2249e9df6e8caf"
-CONTRACT_COMMIT = "d6d544b8efe923cc36be05a57a6b0b24de281d42"
-FORMAT = "zackbot.rank-breadth-reversal-4h-short-causal-v2/1"
+CONTRACT_PATH = (ROOT / "contracts" / "rank_breadth_reversal_4h_short_causal_v3" /
+                 "rank_breadth_reversal_4h_short_causal_v3_contract.v1.json")
+CONTRACT_SHA256 = "4df3132f9d12d03bc8f87e5811030fc2e39fb053ad8ed9c129dc9d07d2a5a1f6"
+CONTRACT_COMMIT = "246ae1e3b305caf5abcc4e015c17c61f3247705c"
+FORMAT = "zackbot.rank-breadth-reversal-4h-short-causal-v3/1"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
-CANDIDATE_IDS = ("rank_breadth_reversal_4h_short_causal_v2",)
+CANDIDATE_IDS = ("rank_breadth_reversal_4h_short_causal_v3",)
 SOURCE_BINDINGS = {
-    "rank_breadth_reversal_4h_short_causal_v2": (
+    "rank_breadth_reversal_4h_short_causal_v3": (
         "rank_breadth_reversal_4h", "sig_rank_breadth_reversal_4h"),
 }
 ARCHIVE_MANIFEST_PATH = ROOT / "research_evidence" / "manifests" / "binance-um-archive-v1.json.gz"
 DEFAULT_ARCHIVE_STORE = Path(r"C:\Dev\ZackBot2_data\binance_um")
 UNIVERSE_PATH = ROOT / "research_evidence" / "universe" / "pit-top40-qv30d-v4.json"
 CLASSES_PATH = ROOT / "research_evidence" / "universe" / "instrument-classes-v1.json"
-FAMILY_LEDGER_PATH = (ROOT / "contracts" / "rank_breadth_reversal_4h_short_causal_v2" /
+FAMILY_LEDGER_PATH = (ROOT / "contracts" / "rank_breadth_reversal_4h_short_causal_v3" /
                       "rank_breadth_reversal_4h_family.v1.json")
-EXCHANGE_INFO_PATH = (ROOT / "research_evidence" / "prereg" /
-                      "binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json")
-EXCHANGE_INFO_SHA256 = "b512355ad8ffcca88de5c5a1c9f30fb8a4418a957edc77f74c68003431e59c83"
+FILTER_AUTHORITY_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "exchange_filter_authority.v2.json"
 
 
 class RunnerError(RuntimeError):
@@ -83,9 +81,9 @@ def load_contract(path: Path = CONTRACT_PATH) -> tuple[dict, str]:
     with path.open(encoding="utf-8") as fh:
         contract = json.load(fh)
     if (contract.get("contract"), contract.get("version"), contract.get("status"), contract.get("signed_by")) != (
-        "RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V2", 1, "FROZEN", "codex"
+        "RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3", 2, "FROZEN", "codex"
     ):
-        raise RunnerError("contract is not the frozen Codex-signed v1 contract")
+        raise RunnerError("contract is not the frozen Codex-signed v2 contract")
     if (contract.get("candidate") or {}).get("candidate_id") != CANDIDATE_IDS[0]:
         raise RunnerError("frozen candidate identities changed")
     return contract, digest
@@ -190,7 +188,7 @@ def _run_with_loader(
     """Internal raw-adapter harness; not a public prepared-evidence route."""
     pf = preflight(candidate_id, output, identity_dir=identity_dir, head_fn=head_fn, dirty_fn=dirty_fn)
     identity_root = (Path(identity_dir) if identity_dir is not None else
-                     Path(output).parent / ".rank_breadth_reversal_4h_short_causal_v2_ids")
+                     Path(output).parent / ".rank_breadth_reversal_4h_short_causal_v3_ids")
     claim = _reserve_identity(pf, identity_root, output)
     try:
         packet = evaluator(loader(), pf)
@@ -1303,12 +1301,12 @@ def _evaluate_raw_fold(
 
 
 def _load_family_ledger() -> dict:
-    verify_file_digest(FAMILY_LEDGER_PATH, "cafb8b5661606aee35b341708d3a73f15ac817e3a80aa8009ae37d974e633448")
+    verify_file_digest(FAMILY_LEDGER_PATH, "d3cdbd3ca36871004eb999ca5b8c73683fc1bb1f23407e128a63b30e299ae835")
     ledger = _strict_json_object(FAMILY_LEDGER_PATH)
     claimed = ledger.get("digest")
     core = {key: value for key, value in ledger.items() if key != "digest"}
     if hashlib.sha256(canonical(core)).hexdigest() != claimed or claimed != (
-            "8f6613afd16ed0cc668a3150b5b4f2438790b0a13942e0dfa96fba5fbb3e1ba5"):
+        "79a3013abb8a8b16d11b23e56e1cdcb6b9376bf6a93baed96a54bc836694a3dd"):
         raise RunnerError("frozen RBR family ledger digest changed")
     if ledger.get("holm_family_size") != 3 or len(ledger.get("trials", ())) != 3:
         raise RunnerError("frozen RBR family ledger size changed")
@@ -1502,8 +1500,8 @@ def evaluate_raw_candidate(
         raise RunnerError(
             "frozen contract commit is not merged into origin/master; archive evaluation refused")
     from bisect import bisect_right
-    from tools.research.rank_breadth_reversal_4h_short_causal_v2_archive import (
-        RawArchiveAdapter, load_exchange_filters)
+    from tools.research.rank_breadth_reversal_4h_short_causal_v3_archive import RawArchiveAdapter
+    from tools.research.strategy_causal_pack_01_archive import load_fold_filter_authorities
     if not isinstance(adapter, RawArchiveAdapter):
         raise RunnerError(
             "evaluate_raw_candidate requires the checksum-verifying RBR RawArchiveAdapter")
@@ -1518,29 +1516,40 @@ def evaluate_raw_candidate(
     # first candle/funding/mark archive row is opened.
     authority = adapter.verify_repository_authorities(
         ARCHIVE_MANIFEST_PATH, UNIVERSE_PATH, CLASSES_PATH)
+    filter_authorities = load_fold_filter_authorities(
+        FILTER_AUTHORITY_PATH,
+        contract["pit_authority"]["exchange_filter_authority_sha256"],
+        ROOT,
+        {"data": {
+            "exchange_filter_authority_sha256":
+                contract["pit_authority"]["exchange_filter_authority_sha256"],
+            "pit_universe_path": contract["pit_authority"]["universe_path"],
+            "pit_universe_sha256": contract["pit_authority"]["universe_byte_sha256"],
+            "pit_universe_digest": contract["pit_authority"]["universe_content_digest"],
+        }, "folds": contract["folds"]},
+    )
     fold_bounds = []
-    all_symbols: list[str] = []
     for fold in contract["folds"]:
         start = int(datetime.fromisoformat(
             fold["start"].replace("Z", "+00:00")).timestamp() * 1000)
         end = int(datetime.fromisoformat(
             fold["end"].replace("Z", "+00:00")).timestamp() * 1000)
-        symbols = adapter.core20_union(start, end)
-        fold_bounds.append((fold, start, end, symbols))
-        for symbol in symbols:
-            if symbol not in all_symbols:
-                all_symbols.append(symbol)
-    parsed_rules, exchange_sha = load_exchange_filters(
-        EXCHANGE_INFO_PATH, EXCHANGE_INFO_SHA256, tuple(all_symbols))
-    all_rules = {
-        symbol: ExchangeRule(**parsed_rules[symbol]) for symbol in all_symbols}
-    for rule in all_rules.values():
-        rule.validate()
+        fold_authority = filter_authorities[fold["name"]]
+        eligible = fold_authority.eligible_symbols
+        symbols = adapter.core20_union(start, end, eligible)
+        rules = {
+            symbol: ExchangeRule(**fold_authority.rules[symbol])
+            for symbol in symbols
+        }
+        for rule in rules.values():
+            rule.validate()
+        fold_bounds.append((fold, start, end, symbols, eligible, rules))
 
     fold_inputs = []
-    for fold, start, end, symbols in fold_bounds:
+    for fold, start, end, symbols, eligible, rules in fold_bounds:
         raw = {
-            symbol: adapter.load_klines(symbol, "4h", start, end)
+            symbol: adapter.load_klines(
+                symbol, "4h", start, end, eligible_symbols=eligible)
             for symbol in symbols
         }
         bars = {
@@ -1553,12 +1562,14 @@ def evaluate_raw_candidate(
         }
         times = tuple(row.time_ms for row in bars[symbols[0]])
         membership = [
-            adapter.core20_at(min(time_ms + 4 * 3_600_000, end - 1))
+            adapter.core20_at(
+                min(time_ms + 4 * 3_600_000, end - 1), eligible)
             for time_ms in times
         ]
         ledgers, marks_at_bar = {}, {}
         for symbol in symbols:
-            marks = adapter.load_mark_closes(symbol, start, end)
+            marks = adapter.load_mark_closes(
+                symbol, start, end, eligible_symbols=eligible)
             mt, mp = [row[0] for row in marks], [row[1] for row in marks]
             marks_at_bar[symbol] = {}
             for time_ms in times:
@@ -1574,7 +1585,8 @@ def evaluate_raw_candidate(
                         f"{INCOMPLETE}: missing causal end-of-bar mark for {symbol}")
                 marks_at_bar[symbol][end_time] = mp[at_end]
             events = []
-            for event in adapter.load_funding(symbol, start, end):
+            for event in adapter.load_funding(
+                    symbol, start, end, eligible_symbols=eligible):
                 at = bisect_right(mt, event.time_ms) - 1
                 if at < 0 or event.time_ms - mt[at] > 3_600_000:
                     raise IncompleteCandidate(
@@ -1583,7 +1595,7 @@ def evaluate_raw_candidate(
             ledgers[symbol] = FundingLedger(tuple(events), True, True)
         fold_inputs.append((
             fold["name"], bars, membership,
-            {symbol: all_rules[symbol] for symbol in symbols},
+            rules,
             ledgers, marks_at_bar,
         ))
 
@@ -1607,7 +1619,13 @@ def evaluate_raw_candidate(
         causal_parity=True, independent_review=False)
     return {
         "_verified_authority": {
-            **authority.as_dict(), "exchange_info_sha256": exchange_sha},
+            **authority.as_dict(),
+            "exchange_filter_authority_sha256":
+                contract["pit_authority"]["exchange_filter_authority_sha256"],
+            "fold_filter_snapshots": {
+                name: {"sha256": item.snapshot_sha256, "captured_at": item.captured_at}
+                for name, item in filter_authorities.items()
+            }},
         "candidate_id": pf.candidate_id,
         "default_enabled": False,
         "paper_testnet_only": True,
@@ -1642,30 +1660,31 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
     gaps = []
-    for label, path in (("archive manifest", ARCHIVE_MANIFEST_PATH), ("PIT universe", UNIVERSE_PATH),
+    for label, path in (("archive manifest", ARCHIVE_MANIFEST_PATH),
+                        ("PIT universe", UNIVERSE_PATH),
                         ("instrument classes", CLASSES_PATH),
-                        ("frozen exchangeInfo", EXCHANGE_INFO_PATH)):
+                        ("exchange-filter authority", FILTER_AUTHORITY_PATH)):
         if not path.is_file():
             gaps.append(f"missing {label}: {path}")
     if not gaps:
         try:
-            from tools.research.rank_breadth_reversal_4h_short_causal_v2_archive import (
-                load_authorities, load_exchange_filters)
+            from tools.research.rank_breadth_reversal_4h_short_causal_v3_archive import load_authorities
+            from tools.research.strategy_causal_pack_01_archive import load_fold_filter_authorities
             _, pit, _ = load_authorities(
                 ARCHIVE_MANIFEST_PATH, UNIVERSE_PATH, CLASSES_PATH)
-            symbols: list[str] = []
-            for fold in contract["folds"]:
-                start = int(datetime.fromisoformat(
-                    fold["start"].replace("Z", "+00:00")).timestamp() * 1000)
-                end = int(datetime.fromisoformat(
-                    fold["end"].replace("Z", "+00:00")).timestamp() * 1000)
-                for week in pit["weeks"]:
-                    monday = int(week["monday_ms"])
-                    if monday < end and monday + 7 * 86_400_000 > start:
-                        for symbol in week["books"]["crypto"]["members"][:20]:
-                            if symbol not in symbols:
-                                symbols.append(symbol)
-            load_exchange_filters(EXCHANGE_INFO_PATH, EXCHANGE_INFO_SHA256, tuple(symbols))
+            del pit
+            load_fold_filter_authorities(
+                FILTER_AUTHORITY_PATH,
+                contract["pit_authority"]["exchange_filter_authority_sha256"],
+                ROOT,
+                {"data": {
+                    "exchange_filter_authority_sha256":
+                        contract["pit_authority"]["exchange_filter_authority_sha256"],
+                    "pit_universe_path": contract["pit_authority"]["universe_path"],
+                    "pit_universe_sha256": contract["pit_authority"]["universe_byte_sha256"],
+                    "pit_universe_digest": contract["pit_authority"]["universe_content_digest"],
+                }, "folds": contract["folds"]},
+            )
         except RuntimeError as exc:
             gaps.append(f"authority/filter preflight incomplete: {exc}")
     if not merge_guard():
@@ -1675,14 +1694,16 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     elif not Path(archive_store).is_dir():
         gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
     return {
-        "format": "zackbot.rank-breadth-reversal-4h-short-causal-v2-readiness/1", "ready": not gaps,
+        "format": "zackbot.rank-breadth-reversal-4h-short-causal-v3-readiness/1", "ready": not gaps,
         "contract_sha256": contract_digest, "source_bindings": bindings,
         "required_sources": {"manifest": str(ARCHIVE_MANIFEST_PATH), "universe": str(UNIVERSE_PATH),
-                             "classes": str(CLASSES_PATH), "exchange_info": str(EXCHANGE_INFO_PATH),
+                             "classes": str(CLASSES_PATH),
+                             "exchange_filter_authority": str(FILTER_AUTHORITY_PATH),
                              "archive_store": str(Path(archive_store) if archive_store is not None else DEFAULT_ARCHIVE_STORE)},
         "folds": contract["folds"], "cutoff": contract["data"]["forbid_read_at_or_after"],
         "required_raw_series": ["klines:1h", "klines:4h", "fundingRate", "markPriceKlines:1h"],
-        "invariants": ["CORE-20 PIT membership", "fold-local warmup/purge", "next-open fills",
+        "invariants": ["causal fold-start filters + filtered CORE-20 PIT membership",
+                       "fold-local warmup/purge", "next-open fills",
                        "prior-closed ATR", "actual exchange filters", "actual funding/causal marks",
                        "isolated 500 USDT books", "dynamic 1% marked-equity risk",
                        "four-position/10x gross caps", "CORE-20 simultaneous-entry priority",
@@ -1726,7 +1747,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise RunnerError(
                 "frozen contract commit is not contained by origin/master; "
                 "no archive row was read")
-        from tools.research.rank_breadth_reversal_4h_short_causal_v2_archive import (
+        from tools.research.rank_breadth_reversal_4h_short_causal_v3_archive import (
             RawArchiveAdapter, load_authorities)
 
         def load_adapter():
