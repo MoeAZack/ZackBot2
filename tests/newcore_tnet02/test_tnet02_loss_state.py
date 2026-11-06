@@ -10,6 +10,7 @@ from newcore.testnet_harness import (CLEANUP_FLATTEN_MS, CLEANUP_HOLD_MS, CLEANU
                                      SuiteStatus, _case_context, _derive, run_suite)
 from newcore.tnet02.adapter import AdapterError
 from newcore.tnet02.loss_store import FileLossStore, LossStoreError
+from tools import tnet02_run as cli
 
 from .support import T0, manifest, rig
 
@@ -182,3 +183,27 @@ def test_loss_store_refuses_account_or_binding_mismatch(tmp_path):
         store.load("acct_ffffffffffffffffffffffffffffffff", first.adapter._digest)
     with pytest.raises(LossStoreError):
         store.load(first.adapter._account.account_id, "f" * 16)
+
+
+def test_cli_machine_store_survives_fresh_journal_directory(tmp_path):
+    spec = manifest()
+    first = rig(tmp_path / "run-a", loss_store=cli._machine_loss_store(spec.binding.account))
+    first.adapter.confirm_binding(spec.binding)
+    first_context = _case_context(spec, _derive("suite", "cli-loss-a"), spec.cases[0], first.clock.now)
+    first.adapter.setup(first_context)
+    first.fake.equity = Decimal("4000")
+    refused = _decision(first)
+    assert isinstance(refused, R.RefusedDecision)
+    assert R.RefusalCode.DAILY_LOSS_HALT in refused.reasons
+
+    second = rig(tmp_path / "run-b", loss_store=cli._machine_loss_store(spec.binding.account))
+    assert second.journal_dir != first.journal_dir
+    second.clock.now = first.clock.now
+    second.fake.equity = Decimal("5000")
+    second.adapter.confirm_binding(spec.binding)
+    assert second.adapter._loss_tracker == first.adapter._loss_tracker
+    second_context = _case_context(spec, _derive("suite", "cli-loss-b"), spec.cases[1], second.clock.now)
+    second.adapter.setup(second_context)
+    recovered = _decision(second)
+    assert isinstance(recovered, R.RefusedDecision)
+    assert R.RefusalCode.DAILY_LOSS_HALT in recovered.reasons

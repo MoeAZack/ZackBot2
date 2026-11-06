@@ -16,7 +16,9 @@ exactly one approved testnet origin (optional ``origin`` key; a file without it 
 ``https://testnet.binancefuture.com`` binding), and ``--origin`` must repeat it.  Each key digest is pinned to the first
 origin it was used with, both in a per-user store on this machine (``~/.zackbot/tnet02_origin_pins.json``) and in the
 journal directory; a digest pinned to the other origin in either place is refused, so changing the journal directory
-or the account file does not let one key reach both origins.  There is no fallback
+or the account file does not let one key reach both origins.  Loss latches live independently under the fixed
+``~/.zackbot/tnet02_loss_state`` machine root, scoped by confirmed account and key digest; journal/output arguments
+cannot redirect or reset them.  There is no fallback
 between origins.  Without ``--execute`` it
 is a read-only preflight (exchange rules, rate limits, account facts and the binding/isolation check) and sends no
 order.  With ``--execute`` it runs the frozen twelve-case suite on Binance USD-M TESTNET, writes the exact-build
@@ -57,6 +59,7 @@ _ACCOUNT_KEYS = {"account_id", "label", "key_digest", "hedge_mode", "settlement_
 _ORIGIN_KEY = "origin"
 _ORIGIN_PINS = "origin_pins.json"
 MACHINE_PIN_STORE = Path.home() / ".zackbot" / "tnet02_origin_pins.json"
+MACHINE_LOSS_STATE_ROOT = Path.home() / ".zackbot" / "tnet02_loss_state"
 
 
 class Refused(Exception):
@@ -129,6 +132,18 @@ def pin_origin(journal_dir: Path, digest: str, origin: str) -> None:
             path.write_text(json.dumps(pins, sort_keys=True), encoding="utf-8")
         except OSError:
             raise Refused("origin_pins_unwritable") from None
+
+
+def _machine_loss_store(account: Account):
+    """The non-overridable production loss store; caller-selected run paths never participate."""
+    from newcore.tnet02.loss_store import FileLossStore
+
+    root = Path(MACHINE_LOSS_STATE_ROOT) / f"{account.account_id}-{account.binding.key_digest}"
+    try:
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        return FileLossStore(root)
+    except Exception:
+        raise Refused("loss_state_store_unavailable") from None
 
 
 def load_account(path: Path) -> Account:
@@ -204,7 +219,6 @@ def _live_parts(args, account: Account, origin: str):
     import time
 
     from newcore.tnet02.journal import FileJournalOpener
-    from newcore.tnet02.loss_store import FileLossStore
     from newcore.tnet02.live import (SIGNED_RECV_WINDOW_MS, EnvCredentialSource, LiveAccountPort, LiveFiltersPort,
                                      SignedReader, SyncedClock, read_limit_payloads, server_offset_ms)
     from newcore.tnet02.ports import PortError
@@ -221,6 +235,7 @@ def _live_parts(args, account: Account, origin: str):
     except Exception:
         raise Refused("journal_dir_invalid") from None
     pin_origin(Path(args.journal_dir), account.binding.key_digest, origin)
+    loss_store = _machine_loss_store(account)
     from newcore.venue import TestnetHttpSender
 
     try:
@@ -249,7 +264,7 @@ def _live_parts(args, account: Account, origin: str):
         wired = build_adapter(sender=sender, credentials=credentials, account_id=account.account_id,
                               egress_id="egress-tnet02-cli", exchange_info=exchange, account_order_limits=limits,
                               account=LiveAccountPort(reader, clock), filters=filters, journals=journals,
-                              loss_store=FileLossStore(args.journal_dir),
+                              loss_store=loss_store,
                               clock=clock, monotonic=monotonic, sleeper=lambda ms: time.sleep(ms / 1000),
                               base_url=origin, recv_window_ms=SIGNED_RECV_WINDOW_MS)
     except PortError as error:

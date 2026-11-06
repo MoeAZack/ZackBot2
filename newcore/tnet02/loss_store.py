@@ -169,6 +169,20 @@ class FileLossStore:
         if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != self._root_id:
             _fail("loss_store.root")
 
+    def _sync_root(self) -> None:
+        """Persist directory-entry changes when this platform exposes directory fsync."""
+        directory_flag = getattr(os, "O_DIRECTORY", None)
+        if directory_flag is None:  # Windows has no Python directory-fsync primitive.
+            return
+        try:
+            fd = os.open(self._root, os.O_RDONLY | directory_flag)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            _fail("loss_store.durability")
+
     def _read(self, name: str, code: str) -> tuple[dict, bytes] | None:
         self._check_root()
         path = self._root / name
@@ -204,6 +218,7 @@ class FileLossStore:
                 os.fsync(handle.fileno())
         except OSError:
             _fail("loss_store.write")
+        self._sync_root()
 
     def _replace(self, name: str, raw: bytes) -> None:
         self._check_root()
@@ -216,6 +231,7 @@ class FileLossStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
+            self._sync_root()
         except OSError:
             try:
                 os.unlink(temporary)
