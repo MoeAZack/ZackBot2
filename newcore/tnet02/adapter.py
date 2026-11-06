@@ -578,9 +578,11 @@ class RealTestnetAdapter:
         return entry, stop
 
     # ------------------------------------------------------------------------------------------------ REC-02
-    def _reconcile(self, case: _Case | None, symbol: str) -> ReconciliationPlan:
+    def _reconcile(self, case: _Case | None, symbol: str,
+                   positions: dict[tuple[str, Side], Decimal] | None = None) -> ReconciliationPlan:
         before = self._last_observed
-        positions = self._read_positions(symbol)
+        if positions is None:
+            positions = self._read_positions(symbol)
         orders = self._read_orders(symbol)
         now = self._now()
         account = self._account
@@ -613,8 +615,9 @@ class RealTestnetAdapter:
         self._last_observed = now
         return plan
 
-    def _reconciled(self, case: _Case) -> tuple[bool, FinalTruth]:
-        plan = self._reconcile(case, case.symbol)
+    def _reconciled(self, case: _Case,
+                    positions: dict[tuple[str, Side], Decimal] | None = None) -> tuple[bool, FinalTruth]:
+        plan = self._reconcile(case, case.symbol, positions)
         if plan.status is RecStatus.FLAT_CONFIRMED and case.position == 0:
             return True, FinalTruth.FLAT
         if plan.status is RecStatus.PROTECTED_CONFIRMED and case.position > 0:
@@ -795,30 +798,79 @@ class RealTestnetAdapter:
     def _refresh_stops(self, case: _Case) -> None:
         """Fold any exchange-side stop trigger into local truth before a reconciliation claim."""
         for order in self._working_stops(case):
-            outcome = self._query(case, order, Action.RECONCILE)
-            for _ in range(self._cfg.settle_polls - 1):
-                # a read that did not complete, or an algo stop the venue does not list yet, is retried (read-only);
-                # it still HOLDs if the stop stays unknown for the whole settle budget
-                if outcome is not None and outcome.kind not in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
-                    break
-                self._sleep(self._cfg.poll_ms)
+            outcome = None
+            settled = False
+            for attempt in range(self._cfg.settle_polls):
+                if attempt:
+                    self._sleep(self._cfg.poll_ms)
                 outcome = self._query(case, order, Action.RECONCILE)
+                if outcome is None or outcome.kind in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
+                    continue
+                if outcome.kind is OutcomeKind.KNOWN and outcome.detail == "algo_triggered":
+                    self._absorb_trigger(case, order, outcome)
+                    if order.state is IntentState.WORKING:
+                        continue                    # the child may publish more cumulative fills on the next poll
+                elif outcome.kind is OutcomeKind.FINAL:
+                    self._absorb(case, order, outcome)
+                    if order.state is not IntentState.FILLED:
+                        # this harness never cancels a stop without settling it in _cancel; a stop the exchange ended
+                        # any other way means protection was lost outside our control
+                        _hold("refresh.stop_lost")
+                settled = True
+                break
+            if settled:
+                continue
             if outcome is None or outcome.kind in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
                 _hold("refresh.stop_unknown")
-            if outcome.kind is OutcomeKind.KNOWN and outcome.detail == "algo_triggered":
-                self._absorb_trigger(case, order, outcome)
-                if order.state is IntentState.WORKING:
-                    _hold("refresh.trigger_unsettled")
-            elif outcome.kind is OutcomeKind.FINAL:
-                self._absorb(case, order, outcome)
-                if order.state is not IntentState.FILLED:
-                    # this harness never cancels a stop without settling it in _cancel; a stop the exchange ended any
-                    # other way means protection was lost outside our control
-                    _hold("refresh.stop_lost")
+            _hold("refresh.trigger_unsettled")
+
+    def _converge_stop_position(self, case: _Case) -> dict[tuple[str, Side], Decimal]:
+        """Boundedly join one owned protective stop with the venue position, using reads only.
+
+        Binance can trigger the stop after the last WORKING answer but before the position snapshot.  In that
+        boundary the two reads are individually true but cannot be compared until the triggered child and position
+        have converged.  Re-query only our still-owned stop, fold its cumulative child fills through ``_apply_fill``
+        (which applies only the new delta), and re-read the position.  Nothing is cancelled or closed here.
+        """
+        key = (case.symbol, case.side)
+        # Keep the established stop-read retry semantics (including transient UNKNOWN/NOT_FOUND handling) as the
+        # first poll.  If the following position read exposes the boundary race, the remaining polls below are the
+        # same settle budget and use the narrower one-read path.
+        self._refresh_stops(case)
+        for attempt in range(self._cfg.settle_polls):
+            if attempt:
+                self._sleep(self._cfg.poll_ms)
+                triggered_open = False
+                for order in self._working_stops(case):
+                    outcome = self._query(case, order, Action.RECONCILE)
+                    if outcome is None or outcome.kind in (OutcomeKind.UNKNOWN, OutcomeKind.NOT_FOUND):
+                        _hold("refresh.stop_unknown")
+                    if outcome.kind is OutcomeKind.KNOWN and outcome.detail == "algo_triggered":
+                        self._absorb_trigger(case, order, outcome)
+                        triggered_open = order.state is IntentState.WORKING
+                    elif outcome.kind is OutcomeKind.FINAL:
+                        self._absorb(case, order, outcome)
+                        if order.state is not IntentState.FILLED:
+                            _hold("refresh.stop_lost")
+            else:
+                triggered_open = False
+            positions = self._read_positions(case.symbol)
+            if any(position_key != key for position_key in positions):
+                _hold("refresh.position_foreign")
+            venue_qty = positions.get(key, ZERO)
+            if venue_qty > case.position:
+                _hold("refresh.position_increased")
+            if venue_qty == case.position and not triggered_open:
+                return positions
+        # A lower venue position without a confirmed cumulative stop fill, a partially filled child that remains
+        # open, or any persistent lag is never guessed into local truth.
+        _hold("refresh.position_unsettled")
 
     def _finish_truth(self, case: _Case, flags: dict) -> None:
-        self._refresh_stops(case)
-        flags["reconciled"], flags["truth"] = self._reconciled(case)
+        positions = self._converge_stop_position(case)
+        if any(order.purpose is Purpose.PROTECT and order.state is IntentState.FILLED for order in case.orders):
+            flags["stop"], flags["missed"] = True, False
+        flags["reconciled"], flags["truth"] = self._reconciled(case, positions)
 
     def _run_target(self, case: _Case, flags: dict, fraction: Decimal = ONE) -> None:
         self._require_window(case)
@@ -1122,8 +1174,7 @@ class RealTestnetAdapter:
                 if order.purpose is not Purpose.PROTECT and order.state not in _TERMINAL:
                     # an acknowledged entry/close that never settled: sending another order would be a guess
                     _hold("cleanup.unsettled_order")
-            self._refresh_stops(case)
-            positions = self._read_positions(case.symbol)
+            positions = self._converge_stop_position(case)
             venue_qty = positions.get((case.symbol, case.side), ZERO)
             if any(key != (case.symbol, case.side) for key in positions) or venue_qty != case.position:
                 _hold("cleanup.position_mismatch")
@@ -1140,7 +1191,19 @@ class RealTestnetAdapter:
             evidence = CleanupEvidence(context.token, context.started_ms, None, max(at, context.started_ms), None,
                                        FinalTruth.FLAT, True, case.orders_placed - before)
             flat = True
-        except Exception:  # any failure, coded or not, ends the cleanup in HOLD with the memo recorded
+        except AdapterError as error:
+            # Cleanup may be a consequence of an already-recorded execute failure.  Add a second diagnostic only
+            # for cleanup's own stop/position convergence boundary, where the reason is otherwise invisible.
+            if error.code.startswith("refresh.") or error.code == "cleanup.position_mismatch":
+                extra = {} if error.cause is None else {"cause": error.cause}
+                self._note(case, "adapter." + error.code, **extra)
+            self._halted = True
+            at = self._now()
+            evidence = CleanupEvidence(context.token, context.started_ms, None, None, max(at, context.started_ms),
+                                       FinalTruth.HOLD, False, case.orders_placed - before)
+            flat = False
+        except Exception as error:  # any failure ends cleanup in HOLD; record only the safe exception class
+            self._note(case, "error." + type(error).__name__)
             self._halted = True
             at = self._now()
             evidence = CleanupEvidence(context.token, context.started_ms, None, None, max(at, context.started_ms),
