@@ -9,6 +9,7 @@ from newcore import risk as R
 from newcore.testnet_harness import (CLEANUP_FLATTEN_MS, CLEANUP_HOLD_MS, CLEANUP_PROTECT_MS, CleanupContext,
                                      SuiteStatus, _case_context, _derive, run_suite)
 from newcore.tnet02.adapter import AdapterError
+from newcore.tnet02.loss_store import FileLossStore, LossStoreError
 
 from .support import T0, manifest, rig
 
@@ -111,3 +112,73 @@ def test_normal_twelve_case_matrix_still_passes(tmp_path):
     report = run_suite(manifest(), wired.adapter, [].append)
     assert report.status is SuiteStatus.PASSED
     assert len(report.cases) == 12
+
+
+def test_full_tracker_and_wallet_survive_process_equivalent_restart(tmp_path):
+    first, spec, _suite_id, _context = _bound(tmp_path / "first")
+    first.fake.equity = Decimal("6000")
+    assert isinstance(_decision(first), R.ApprovedDecision)
+    first.clock.now += 1
+    first.fake.equity = Decimal("4000")
+    assert isinstance(_decision(first), R.RefusedDecision)
+    case = first.adapter._case
+    assert case is not None
+    first.adapter._loss_record_entry(case)
+    first.adapter._loss_record_entry(case)
+    for _ in range(3):
+        first.clock.now += 1
+        first.adapter._sync_loss_state(first.adapter._facts((case.symbol,)), stopped_out=True)
+    expected_tracker = first.adapter._loss_tracker
+    expected_wallet = first.adapter._loss_wallet_balance
+    assert expected_tracker is not None
+    assert (expected_tracker.halt_latched and expected_tracker.drawdown_kill_latched
+            and expected_tracker.peak_equity == Decimal("6000"))
+    assert len(expected_tracker.stop_outs) == 3 and len(expected_tracker.entries) == 2
+
+    second_root = tmp_path / "second"
+    second_root.mkdir()
+    second = rig(second_root, loss_store=FileLossStore(first.journal_dir))
+    second.clock.now = first.clock.now
+    second.fake.equity = first.fake.equity
+    second.adapter.confirm_binding(spec.binding)
+    assert second.adapter._loss_tracker == expected_tracker
+    assert second.adapter._loss_wallet_balance == expected_wallet
+    context = _case_context(spec, _derive("suite", "loss-restart"), spec.cases[0], second.clock.now)
+    second.adapter.setup(context)
+    decision = _decision(second)
+    assert isinstance(decision, R.RefusedDecision)
+    assert {R.RefusalCode.DAILY_LOSS_HALT, R.RefusalCode.DRAWDOWN_KILL,
+            R.RefusalCode.STRATEGY_COOLDOWN, R.RefusalCode.CANDLE_CLUSTER_LIMIT} <= set(decision.reasons)
+
+
+@pytest.mark.parametrize("fault", ["missing", "corrupt", "rollback"])
+def test_known_durable_state_never_reinitializes_after_damage(fault, tmp_path):
+    first, spec, _suite_id, _context = _bound(tmp_path / "first")
+    state_path = first.journal_dir / ".tnet02-loss-state.json"
+    old = state_path.read_bytes()
+    if fault == "missing":
+        state_path.unlink()
+    elif fault == "corrupt":
+        state_path.write_bytes(b"{}\n")
+    else:
+        first.fake.equity = Decimal("6000")
+        _decision(first)
+        state_path.write_bytes(old)
+
+    second_root = tmp_path / "second"
+    second_root.mkdir()
+    second = rig(second_root, loss_store=FileLossStore(first.journal_dir))
+    second.clock.now = first.clock.now
+    with pytest.raises(AdapterError) as caught:
+        second.adapter.confirm_binding(spec.binding)
+    assert caught.value.code == "loss.state"
+    assert second.adapter._loss_tracker is None
+
+
+def test_loss_store_refuses_account_or_binding_mismatch(tmp_path):
+    first, _spec, _suite_id, _context = _bound(tmp_path)
+    store = FileLossStore(first.journal_dir)
+    with pytest.raises(LossStoreError):
+        store.load("acct_ffffffffffffffffffffffffffffffff", first.adapter._digest)
+    with pytest.raises(LossStoreError):
+        store.load(first.adapter._account.account_id, "f" * 16)

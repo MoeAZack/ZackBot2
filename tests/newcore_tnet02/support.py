@@ -12,6 +12,7 @@ from newcore.domain.orders import Side
 from newcore.testnet_harness import REQUIRED_SCENARIOS, HarnessBinding, ScenarioCase, ScenarioKind, SuiteManifest
 from newcore.tnet02.adapter import HarnessConfig
 from newcore.tnet02.journal import FileJournalOpener
+from newcore.tnet02.loss_store import FileLossStore
 from newcore.tnet02.wiring import build_adapter, key_digest
 
 from .fake_binance import (SECRET_KEY, FakeAccountPort, FakeBinance, FakeClock, FakeCredentials, FakeFiltersPort,
@@ -69,17 +70,18 @@ class Rig:
         return self.wired.adapter
 
 
-def rig(tmp_path, *, config: HarnessConfig | None = None, price_path=None, credentials=None) -> Rig:
+def rig(tmp_path, *, config: HarnessConfig | None = None, price_path=None, credentials=None, loss_store=None) -> Rig:
     clock = FakeClock(T0)
     fake = FakeBinance(clock)
     fake.price_path = price_path if price_path is not None else wave()
     fake.tick()
     exchange, limits = limit_payloads()
     journal_dir = tmp_path / "journals"
-    journal_dir.mkdir()
+    journal_dir.mkdir(parents=True)
     wired = build_adapter(sender=fake, credentials=credentials or FakeCredentials(), account_id=ACCOUNT_ID,
                           egress_id="egress-test", exchange_info=exchange, account_order_limits=limits,
                           account=FakeAccountPort(fake), filters=FakeFiltersPort(),
                           journals=FileJournalOpener(journal_dir), clock=clock, monotonic=clock,
+                          loss_store=loss_store or FileLossStore(journal_dir),
                           sleeper=fake.advance, config=config or HarnessConfig(poll_ms=1000))
     return Rig(fake, clock, wired, journal_dir)

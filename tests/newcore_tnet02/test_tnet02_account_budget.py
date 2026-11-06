@@ -15,6 +15,7 @@ from newcore.testnet_harness import SuiteStatus, run_suite
 from newcore.tnet02.adapter import AdapterError
 from newcore.tnet02.journal import FileJournalOpener
 from newcore.tnet02.live import LiveAccountPort, LiveError, LiveFiltersPort, SignedReader, read_limit_payloads
+from newcore.tnet02.loss_store import FileLossStore
 from newcore.tnet02.wiring import build_adapter, key_digest
 from newcore.venue.binance_usdm_testnet import HttpResponse, RateEvidence
 
@@ -38,6 +39,7 @@ def _live(tmp_path):
     wired = build_adapter(sender=fake, credentials=creds, account_id=ACCOUNT_ID, egress_id="egress-test",
                           exchange_info=exchange, account_order_limits=limits, account=port,
                           filters=LiveFiltersPort(info, raw), journals=FileJournalOpener(tmp_path / "j"),
+                          loss_store=FileLossStore(tmp_path / "j"),
                           clock=clock, monotonic=clock, sleeper=fake.advance)
     return fake, clock, port, reader, wired
 

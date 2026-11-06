@@ -42,8 +42,8 @@ from newcore.testnet_harness import (MAX_AGGREGATE_NOTIONAL, BindingEvidence, Cl
                                      ScenarioEvidence, ScenarioKind, SetupEvidence)
 
 from .faults import FaultingSender, FaultKind, client_id_of
-from .ports import (AccountPort, CaseJournal, Clock, FiltersPort, JournalOpener, JournalRecord, PortError, RecordKind,
-                    Sleeper)
+from .ports import (AccountPort, CaseJournal, Clock, FiltersPort, JournalOpener, JournalRecord, LossStore, PortError,
+                    RecordKind, Sleeper)
 
 
 ZERO = Decimal("0")
@@ -193,9 +193,10 @@ class RealTestnetAdapter:
     __test__ = False
 
     def __init__(self, *, venue: VenuePort, context: AccountContext, budget: AccountBudget, faults: FaultingSender,
-                 account: AccountPort, filters: FiltersPort, journals: JournalOpener, clock: Clock,
+                 account: AccountPort, filters: FiltersPort, journals: JournalOpener, loss_store: LossStore, clock: Clock,
                  monotonic: Clock, sleeper: Sleeper, binding_digest: str, config: HarnessConfig = HarnessConfig()):
-        for name, value in (("venue", venue), ("account", account), ("filters", filters), ("journals", journals)):
+        for name, value in (("venue", venue), ("account", account), ("filters", filters), ("journals", journals),
+                            ("loss_store", loss_store)):
             if value is None:
                 _hold(f"adapter.{name}")
         if type(context) is not AccountContext or type(budget) is not AccountBudget:
@@ -209,7 +210,7 @@ class RealTestnetAdapter:
         if type(binding_digest) is not str or len(binding_digest) != 16:
             _hold("adapter.binding_digest")
         self._venue, self._context, self._budget, self._faults = venue, context, budget, faults
-        self._account_port, self._filters, self._journals = account, filters, journals
+        self._account_port, self._filters, self._journals, self._loss_store = account, filters, journals, loss_store
         self._clock, self._mono, self._sleep = clock, monotonic, sleeper
         self._digest, self._cfg = binding_digest, config
         self._account: Account | None = None
@@ -300,20 +301,38 @@ class RealTestnetAdapter:
         return now
 
     def _start_loss_tracker(self, account: Account, facts) -> None:
-        """Start exactly once, only after binding and account facts have both been confirmed."""
+        """Restore a durable tracker, or initialize only when the store proves this is the first binding."""
         if self._loss_tracker is not None or self._loss_wallet_balance is not None or self._loss_valid:
             _hold("loss.already_started")
         try:
             now = self._loss_now(facts)
-            tracker = LS.start(account.account_id, now_ms=now, equity=facts.equity,
-                               unrealized_pnl=facts.unrealized_pnl)
+            restored = self._loss_store.load(account.account_id, self._digest)
+            if restored is None:
+                tracker = LS.start(account.account_id, now_ms=now, equity=facts.equity,
+                                   unrealized_pnl=facts.unrealized_pnl)
+                wallet = facts.equity - facts.unrealized_pnl
+                self._loss_store.initialize(account.account_id, self._digest, tracker, wallet)
+            else:
+                tracker, wallet = restored
+                if tracker.account_id != account.account_id or now < tracker.last_ms:
+                    _hold("loss.state")
         except AdapterError:
             raise
         except Exception:
             _hold("loss.state")
         self._loss_tracker = tracker
-        self._loss_wallet_balance = facts.equity - facts.unrealized_pnl
+        self._loss_wallet_balance = wallet
         self._loss_valid = True
+
+    def _persist_loss(self, tracker: LS.LossTracker, wallet: Decimal) -> None:
+        account = self._account
+        if account is None:
+            _hold("loss.state")
+        try:
+            self._loss_store.save(account.account_id, self._digest, tracker, wallet)
+        except Exception:
+            self._loss_valid = False
+            _hold("loss.state")
 
     def _sync_loss_state(self, facts, *, stopped_out: bool = False) -> R.LossState:
         """Fold fresh account truth into the persistent tracker and return the current gateway snapshot.
@@ -351,6 +370,7 @@ class RealTestnetAdapter:
         except Exception:
             self._loss_valid = False
             _hold("loss.state")
+        self._persist_loss(tracker, wallet)
         self._loss_tracker, self._loss_wallet_balance = tracker, wallet
         return state
 
@@ -362,9 +382,14 @@ class RealTestnetAdapter:
         if not self._loss_valid or tracker is None:
             _hold("loss.state")
         try:
-            self._loss_tracker = LS.record_entry(
+            updated = LS.record_entry(
                 tracker, R.ClusterEntry(strategy_id=STRATEGY_ID, symbol=case.symbol,
                                         side=R.PositionSide(case.side.value)), now_ms=self._now())
+            wallet = self._loss_wallet_balance
+            if wallet is None:
+                _hold("loss.state")
+            self._persist_loss(updated, wallet)
+            self._loss_tracker = updated
         except Exception:
             self._loss_valid = False
             _hold("loss.state")

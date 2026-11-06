@@ -17,7 +17,7 @@ from newcore.venue.binance_usdm_testnet import (TESTNET_BASE_URL, TESTNET_ORIGIN
 
 from .adapter import HarnessConfig, RealTestnetAdapter
 from .faults import FaultingSender
-from .ports import AccountPort, Clock, FiltersPort, JournalOpener, Sleeper
+from .ports import AccountPort, Clock, FiltersPort, JournalOpener, LossStore, Sleeper
 
 
 _KDF_SALT = b"zackbot-install-marker-v1"
@@ -43,7 +43,7 @@ class Wired:
 def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials: CredentialSource,
                   account_id: str, egress_id: str, exchange_info: RawLimitPayload,
                   account_order_limits: RawLimitPayload, account: AccountPort, filters: FiltersPort,
-                  journals: JournalOpener, clock: Clock, monotonic: Clock, sleeper: Sleeper,
+                  journals: JournalOpener, loss_store: LossStore, clock: Clock, monotonic: Clock, sleeper: Sleeper,
                   config: HarnessConfig = HarnessConfig(), base_url: str = TESTNET_BASE_URL,
                   recv_window_ms: int = 5000) -> Wired:
     # One explicit origin per run: the venue, and (in the CLI) the sender and reader, all receive the same string.
@@ -72,7 +72,8 @@ def build_adapter(*, sender: Callable[[HttpRequest], HttpResponse], credentials:
     except Exception:
         raise ValueError("wiring.credentials") from None
     adapter = RealTestnetAdapter(venue=venue, context=context, budget=budget, faults=faults, account=account,
-                                 filters=filters, journals=journals, clock=clock, monotonic=monotonic,
+                                 filters=filters, journals=journals, loss_store=loss_store, clock=clock,
+                                 monotonic=monotonic,
                                  sleeper=sleeper, binding_digest=digest, config=config)
     return Wired(adapter, venue, budget, context, faults)
 

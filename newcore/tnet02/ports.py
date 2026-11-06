@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Callable, Protocol
 
+from newcore import loss_state as LS
 from newcore.domain.base import canonical_decimal
 from newcore.domain.orders import IntentState, Purpose, Side
 
@@ -139,6 +140,18 @@ class AccountPort(Protocol):
         ...
 
 
+class LossStore(Protocol):
+    """Durable account/binding-scoped loss tracker; missing means first-ever initialization only."""
+
+    def load(self, account_id: str, binding_digest: str) -> tuple[LS.LossTracker, Decimal] | None: ...
+
+    def initialize(self, account_id: str, binding_digest: str, tracker: LS.LossTracker,
+                   wallet_balance: Decimal) -> None: ...
+
+    def save(self, account_id: str, binding_digest: str, tracker: LS.LossTracker,
+             wallet_balance: Decimal) -> None: ...
+
+
 class FiltersPort(Protocol):
     def filters(self, symbol: str) -> SymbolFilters: ...
 
@@ -233,4 +246,4 @@ class JournalOpener(Protocol):
 
 
 __all__ = ["AccountFacts", "AccountPort", "CaseJournal", "Clock", "FiltersPort", "JournalOpener", "JournalRecord",
-           "PortError", "RecordKind", "Sleeper", "SymbolFacts", "SymbolFilters"]
+           "LossStore", "PortError", "RecordKind", "Sleeper", "SymbolFacts", "SymbolFilters"]

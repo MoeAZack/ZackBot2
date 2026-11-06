@@ -266,18 +266,44 @@ class LiveAccountPort:
         rows = self._signed(POSITION_RISK_PATH)
         if type(rows) is not list or not rows or any(type(r) is not dict for r in rows):
             _fail("account.position_rows")
-        sides = {r.get("positionSide") for r in rows}
-        if not sides <= {"LONG", "SHORT", "BOTH"}:
+        verified = []
+        seen = set()
+        for row in rows:
+            symbol = row.get("symbol")
+            if type(symbol) is not str or _SYMBOL.fullmatch(symbol) is None or not symbol.endswith(self._asset):
+                # Binance includes dated/untradeable contracts in account-wide reads.  Ignore only a proven empty row.
+                if _decimal(row.get("positionAmt"), "account.position_amount") != 0:
+                    _fail("account.position_symbol")
+                continue
+            side = row.get("positionSide")
+            key = (symbol, side)
+            if side not in {"LONG", "SHORT", "BOTH"} or key in seen:
+                _fail("account.position_duplicate")
+            seen.add(key)
+            amount = _decimal(row.get("positionAmt"), "account.position_amount")
+            if (side == "LONG" and amount < 0) or (side == "SHORT" and amount > 0):
+                _fail("account.position_amount")
+            margin_type = row.get("marginType")
+            if margin_type not in {"cross", "isolated"}:
+                _fail("account.margin_type")
+            isolated_margin = _decimal(row.get("isolatedMargin"), "account.isolated_margin")
+            if isolated_margin < 0 or (margin_type == "cross" and isolated_margin != 0):
+                _fail("account.isolated_margin")
+            pnl = _decimal(row.get("unRealizedProfit"), "account.unrealized")
+            verified.append((row, symbol, side, margin_type, pnl))
+        sides = {side for _row, _symbol, side, _margin, _pnl in verified}
+        if not sides or ("BOTH" in sides and sides != {"BOTH"}):
             _fail("account.position_side")
-        hedge = "BOTH" not in sides
+        hedge = sides != {"BOTH"}
         out = []
         for symbol in symbols:
-            mine = [r for r in rows if r.get("symbol") == symbol]
-            if not mine:
+            mine = [item for item in verified if item[1] == symbol]
+            expected_sides = {"LONG", "SHORT"} if hedge else {"BOTH"}
+            if {item[2] for item in mine} != expected_sides:
                 _fail("account.symbol_missing")
-            marks = {_decimal(r.get("markPrice"), "account.mark_price") for r in mine}
+            marks = {_decimal(item[0].get("markPrice"), "account.mark_price") for item in mine}
             try:
-                leverages = {int(r.get("leverage")) for r in mine}
+                leverages = {int(item[0].get("leverage")) for item in mine}
             except (TypeError, ValueError):
                 _fail("account.leverage")
             if len(marks) != 1:
@@ -291,7 +317,11 @@ class LiveAccountPort:
         if len(asset) != 1:
             _fail("account.settlement_asset")
         row = asset[0]
-        unrealized = _decimal(row.get("crossUnPnl"), "account.unrealized")
+        reported_cross = _decimal(row.get("crossUnPnl"), "account.cross_unrealized")
+        cross = sum((pnl for _row, _symbol, _side, margin, pnl in verified if margin == "cross"), Decimal(0))
+        if reported_cross != cross:
+            _fail("account.cross_unrealized")
+        unrealized = sum((pnl for _row, _symbol, _side, _margin, pnl in verified), Decimal(0))
         equity = _decimal(row.get("balance"), "account.balance") + unrealized
         available = _decimal(row.get("availableBalance"), "account.available")
         try:

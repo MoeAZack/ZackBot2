@@ -204,6 +204,7 @@ def _live_parts(args, account: Account, origin: str):
     import time
 
     from newcore.tnet02.journal import FileJournalOpener
+    from newcore.tnet02.loss_store import FileLossStore
     from newcore.tnet02.live import (SIGNED_RECV_WINDOW_MS, EnvCredentialSource, LiveAccountPort, LiveFiltersPort,
                                      SignedReader, SyncedClock, read_limit_payloads, server_offset_ms)
     from newcore.tnet02.ports import PortError
@@ -248,6 +249,7 @@ def _live_parts(args, account: Account, origin: str):
         wired = build_adapter(sender=sender, credentials=credentials, account_id=account.account_id,
                               egress_id="egress-tnet02-cli", exchange_info=exchange, account_order_limits=limits,
                               account=LiveAccountPort(reader, clock), filters=filters, journals=journals,
+                              loss_store=FileLossStore(args.journal_dir),
                               clock=clock, monotonic=monotonic, sleeper=lambda ms: time.sleep(ms / 1000),
                               base_url=origin, recv_window_ms=SIGNED_RECV_WINDOW_MS)
     except PortError as error:

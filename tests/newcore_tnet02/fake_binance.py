@@ -269,7 +269,8 @@ class FakeBinance:
     def _get_fapi_v2_positionRisk(self, p):
         if not self.hedge_mode:
             return ok([{"symbol": s, "positionSide": "BOTH", "positionAmt": "0", "entryPrice": "0",
-                        "markPrice": format(self.marks[s], "f"), "leverage": str(self.leverage[s])}
+                        "markPrice": format(self.marks[s], "f"), "leverage": str(self.leverage[s]),
+                        "unRealizedProfit": "0", "marginType": "cross", "isolatedMargin": "0"}
                        for s in self.marks if "symbol" not in p or s == p["symbol"]])
         rows = []
         for symbol in self.marks:
@@ -281,7 +282,8 @@ class FakeBinance:
                 rows.append({"symbol": symbol, "positionSide": side, "positionAmt": format(amt, "f"),
                              "entryPrice": format(self.marks[symbol] if qty else Decimal("0"), "f"),
                              "markPrice": format(self.marks[symbol], "f"),
-                             "leverage": str(self.leverage[symbol])})
+                             "leverage": str(self.leverage[symbol]), "unRealizedProfit": "0",
+                             "marginType": "cross", "isolatedMargin": "0"})
         return ok(rows)
 
     def _get_fapi_v1_time(self, p):

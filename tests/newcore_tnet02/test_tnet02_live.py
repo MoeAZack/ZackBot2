@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import pickle
 from decimal import Decimal
 
@@ -9,6 +10,7 @@ import pytest
 
 from newcore.testnet_harness import SuiteStatus, run_suite
 from newcore.tnet02.journal import FileJournalOpener
+from newcore.tnet02.loss_store import FileLossStore
 from newcore.tnet02.live import (API_KEY_ENV, API_SECRET_ENV, EnvCredentialSource, LiveAccountPort, LiveError,
                                  LiveFiltersPort, SignedReader, read_limit_payloads)
 from newcore.tnet02.wiring import build_adapter
@@ -131,6 +133,60 @@ def test_account_port_takes_the_higher_side_leverage():
     assert LiveAccountPort(_reader(fake), fake.clock).facts(("BTCUSDT",)).symbol("BTCUSDT").leverage == 20
 
 
+def test_account_port_sums_signed_cross_and_isolated_unrealized():
+    fake = FakeBinance(FakeClock(T0))
+    real = fake._get_fapi_v2_positionRisk
+
+    def rows(params):
+        body = json.loads(real(params).body)
+        btc = [row for row in body if row["symbol"] == "BTCUSDT"]
+        long, short = next(row for row in btc if row["positionSide"] == "LONG"), next(
+            row for row in btc if row["positionSide"] == "SHORT")
+        long.update(marginType="isolated", isolatedMargin="20", unRealizedProfit="-125.5")
+        short.update(marginType="isolated", isolatedMargin="10", unRealizedProfit="25.25")
+        return HttpResponse(status=200, body=json.dumps(body).encode())
+
+    fake._get_fapi_v2_positionRisk = rows
+    facts = LiveAccountPort(_reader(fake), fake.clock).facts(("BTCUSDT",))
+    assert facts.unrealized_pnl == Decimal("-100.25")
+    assert facts.equity == fake.equity - Decimal("100.25")
+
+
+@pytest.mark.parametrize("fault, code", [
+    ("duplicate", "account.position_duplicate"),
+    ("cross_mismatch", "account.cross_unrealized"),
+    ("missing_pnl", "account.unrealized"),
+    ("nonfinite_pnl", "account.unrealized"),
+    ("missing_margin", "account.margin_type"),
+    ("nonfinite_isolated", "account.isolated_margin"),
+])
+def test_account_port_refuses_duplicate_inconsistent_or_incomplete_position_truth(fault, code):
+    fake = FakeBinance(FakeClock(T0))
+    real = fake._get_fapi_v2_positionRisk
+
+    def rows(params):
+        body = json.loads(real(params).body)
+        row = next(item for item in body if item["symbol"] == "BTCUSDT" and item["positionSide"] == "LONG")
+        if fault == "duplicate":
+            body.append(dict(row))
+        elif fault == "cross_mismatch":
+            row["unRealizedProfit"] = "1"
+        elif fault == "missing_pnl":
+            row.pop("unRealizedProfit")
+        elif fault == "nonfinite_pnl":
+            row["unRealizedProfit"] = "NaN"
+        elif fault == "missing_margin":
+            row.pop("marginType")
+        else:
+            row["isolatedMargin"] = "Infinity"
+        return HttpResponse(status=200, body=json.dumps(body).encode())
+
+    fake._get_fapi_v2_positionRisk = rows
+    with pytest.raises(LiveError) as caught:
+        LiveAccountPort(_reader(fake), fake.clock).facts(("BTCUSDT",))
+    assert caught.value.code == code
+
+
 # ------------------------------------------------------------------------------------------------- filters port
 def _info():
     fake = FakeBinance(FakeClock(T0))
@@ -174,6 +230,7 @@ def test_full_matrix_passes_with_live_ports_over_the_fake_exchange(tmp_path):
                           exchange_info=exchange, account_order_limits=limits,
                           account=LiveAccountPort(reader, clock), filters=LiveFiltersPort(info, raw),
                           journals=FileJournalOpener(tmp_path / "j"), clock=clock, monotonic=clock,
+                          loss_store=FileLossStore(tmp_path / "j"),
                           sleeper=fake.advance)
     from newcore.tnet02.wiring import key_digest
     digest = key_digest(DOC_KEY)
