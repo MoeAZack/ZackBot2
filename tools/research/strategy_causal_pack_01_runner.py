@@ -23,9 +23,9 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
-CONTRACT_SHA256 = "a3a16673340b6cfdb88257104ffc5a9f0e65c30b9733e9c8f0c62b87428d5572"
-CONTRACT_COMMIT = "370871b60f58ff6a0c87048826ac6c640a3ab2a5"
-FORMAT = "zackbot.strategy-causal-pack-01/2"
+CONTRACT_SHA256 = "14dcaad801bd5313d7f71775383dc676de339e74fca72450f5a37c8703ee1520"
+CONTRACT_COMMIT = "b16ed98edd2c756d5d90b5ab6209f1b92d031adb"
+FORMAT = "zackbot.strategy-causal-pack-01/3"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
     "pullback_rsi_short_h1_causal_v3",
@@ -89,9 +89,9 @@ def load_contract(path: Path = CONTRACT_PATH) -> tuple[dict, str]:
     with path.open(encoding="utf-8") as fh:
         contract = json.load(fh)
     if (contract.get("contract"), contract.get("version"), contract.get("status"), contract.get("signed_by")) != (
-        "STRATEGY-CAUSAL-PACK-01", 2, "FROZEN", "codex"
+        "STRATEGY-CAUSAL-PACK-01", 3, "FROZEN", "codex"
     ):
-        raise RunnerError("contract is not the frozen Codex-signed v2 contract")
+        raise RunnerError("contract is not the frozen Codex-signed v3 contract")
     ids = tuple(row.get("candidate_id") for row in contract.get("candidates", ()))
     if ids != CANDIDATE_IDS:
         raise RunnerError("frozen candidate identities changed")
@@ -897,7 +897,7 @@ def holm_adjusted_p_values(raw_by_candidate: dict[str, float]) -> dict[str, floa
     return adjusted
 
 
-PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/2"
+PACK_FORMAT = "zackbot.strategy-causal-pack-01.assembled/3"
 PACK_AUTHORITY_KEYS = (
     "manifest_digest", "pit_universe_digest", "manifest_file_sha256",
     "universe_file_sha256", "exchange_filter_authority_sha256",
@@ -1551,6 +1551,33 @@ def evaluate_raw_candidate(
     spec = candidate_spec(contract, pf.candidate_id)
     validate_book_contract(contract)
     bindings = validate_source_bindings(contract)
+    if spec.get("evaluation_status") == "DATA_INCOMPLETE_PRE_RUN":
+        report, contributions, stress = _candidate_report(contract, ())
+        report["incomplete_rows"] = 1
+        report["failure_reason"] = str(spec.get(
+            "data_incomplete_reason", "DATA_INCOMPLETE_PRE_RUN"))
+        gates = promotion_gates(
+            report, contract, fold_net_r=[], symbol_contributions=contributions,
+            stress_1_5_net_r=stress["1.5"], causal_parity=True,
+            independent_review=False)
+        return {
+            "_verified_authority": {
+                **authority.as_dict(),
+                "exchange_filter_authority_sha256":
+                    contract["data"]["exchange_filter_authority_sha256"],
+                "fold_filter_snapshots": {
+                    name: {"sha256": item.snapshot_sha256,
+                           "captured_at": item.captured_at}
+                    for name, item in filter_authorities.items()
+                },
+            },
+            "candidate_id": pf.candidate_id,
+            "source_binding": bindings[pf.candidate_id],
+            "folds": [], "report": report,
+            "cost_stress_net_r": stress, "promotion_gates": gates,
+            "promotable": False,
+            "promotion_status": "DATA_INCOMPLETE_PRE_RUN",
+        }
     interval = spec["timeframe"]
     folds = []
     for fold in contract["folds"]:
@@ -1645,15 +1672,20 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     elif not Path(archive_store).is_dir():
         gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
     return {
-        "format": "zackbot.strategy-causal-pack-01-readiness/2", "ready": False,
+        "format": "zackbot.strategy-causal-pack-01-readiness/3", "ready": False,
         "contract_sha256": contract_digest, "source_bindings": bindings,
         "required_sources": {"manifest": str(ARCHIVE_MANIFEST_PATH), "universe": str(UNIVERSE_PATH),
                              "exchange_filter_authority": str(FILTER_AUTHORITY_PATH),
                              "archive_store": str(Path(archive_store) if archive_store is not None else DEFAULT_ARCHIVE_STORE),
                              "source_runners": {k: str(v) for k, v in SOURCE_RUNNER_PATHS.items()}},
         "folds": contract["folds"], "cutoff": contract["data"]["forbid_read_at_or_after"],
-        "required_raw_series": ["klines:1h", "klines:4h", "fundingRate", "markPriceKlines:1h"],
+        "required_raw_series": ["klines:4h", "fundingRate", "markPriceKlines:1h"],
+        "known_data_incomplete": {
+            "volume_pressure_inventory_short_1h_causal_v3":
+                "no frozen 1h kline archive; retained as a sealed incomplete packet"},
         "invariants": ["causal fold-start filters + filtered CORE-20 PIT membership",
+                       "sparse decision availability without survivor deletion",
+                       "strict completeness for every actual exposure and fill",
                        "fold-local warmup/purge", "next-open fills",
                        "prior-closed ATR", "actual exchange filters", "actual funding/causal marks",
                        "isolated 500 USDT books", "dynamic 1% marked-equity risk",

@@ -833,3 +833,28 @@ def test_raw_evaluator_rejects_filter_authority_before_first_market_row(monkeypa
     with pytest.raises(A.ArchiveIncomplete, match="filter authority checksum mismatch"):
         R.evaluate_raw_candidate(adapter, pf, merge_guard=lambda: True)
     assert row_reads == []
+
+
+def test_predeclared_data_incomplete_candidate_seals_packet_without_market_rows(monkeypatch):
+    contract, digest = R.load_contract()
+    candidate_id = "volume_pressure_inventory_short_1h_causal_v3"
+    pf = R.Preflight(contract, digest, "a" * 40, candidate_id, "f" * 64)
+    adapter = object.__new__(A.RawArchiveAdapter)
+    adapter.verify_repository_authorities = lambda *_: A.AuthorityDigests(
+        "1" * 64, "2" * 64, "3" * 64, "4" * 64)
+    row_reads = []
+    for name in ("core20_union", "load_klines_sparse", "load_mark_closes_sparse",
+                 "load_funding_sparse"):
+        setattr(adapter, name, lambda *_args, **_kwargs: row_reads.append(True))
+    authorities = {
+        fold["name"]: A.FoldFilterAuthority(
+            fold["name"], "5" * 64, "6" * 64,
+            "2024-01-01T00:00:00Z", frozenset(), {})
+        for fold in contract["folds"]
+    }
+    monkeypatch.setattr(A, "load_fold_filter_authorities", lambda *_args, **_kwargs: authorities)
+    packet = R.evaluate_raw_candidate(adapter, pf, merge_guard=lambda: True)
+    assert packet["promotion_status"] == "DATA_INCOMPLETE_PRE_RUN"
+    assert packet["report"]["incomplete_rows"] == 1
+    assert packet["promotable"] is False
+    assert row_reads == []
