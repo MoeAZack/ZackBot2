@@ -253,6 +253,16 @@ An adversarial review of d11af28 found five issues. All are fixed here, with reg
   - The kernel never starts an attempt that could not get a full `MAX_SCENARIO_MS` window.
 - **F5 (low).** The diagnostics side file followed symlinks. It is now written with `O_CREAT | O_EXCL | O_NOFOLLOW`, like the report writer.
 
+## 19. Exact-head review of a3df14b (6 Nov 2026)
+
+A read-only review of a3df14b (posted on #294) blocked acceptance with two HIGH findings.
+
+- **R1 (high, fixed).** §18's contradiction rule (`trigger_missed` beside a confirmed target, stop, partial or add is ASSERTION) was not mirrored in `_retryable_miss`. A contradicted attempt could still be retried, and a later pass would have hidden it. `_retryable_miss` now also requires `target_confirmed`, `stop_confirmed` and `partial_close_confirmed` to be false and `dca_adds == 0`. The regression is `test_a_miss_that_also_claims_its_trigger_fired_is_never_retried`. Run 6 did not take this path: its only retried attempt was a plain `dca.no_trigger` with these fields clear.
+- **R2 (high, unchanged; ruling recorded).** The entry fills before its stop is placed. This is the order §§1–4 and TNET01_CONTRACT specify (market entry, then protection within 15 s). If placing the stop fails, the case ends ADAPTER, and cleanup either flattens and reconciles or HOLDs on unknown state. A HOLD fails the suite and needs manual action. This does not count as a pass under any rule.
+- **M1 (medium, disclosed).** The host label is not authenticated, and the report digest stays unkeyed (already disclosed).
+
+Any code change creates a new head, so the real-testnet proof must be re-run at the new head.
+
 ## Deferred
 
 Replacement entrypoint, runtime/PAPER wiring, installer, UI, leverage *setting* (the run refuses instead when account leverage exceeds the case), live canaries and all mainnet activity.

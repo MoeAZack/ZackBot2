@@ -245,3 +245,17 @@ def test_gate_rechecks_every_attempt_terminal_even_with_a_passed_status(tmp_path
     assert report_passed(report)
     forged = dataclasses.replace(report, cases=_swap(report.cases, 5, final_truth=FinalTruth.HOLD))
     assert not report_passed(forged)
+
+
+@pytest.mark.parametrize("changes", [dict(target_confirmed=True), dict(stop_confirmed=True),
+                                     dict(partial_close_confirmed=True), dict(dca_adds=1)],
+                         ids=["target", "stop", "partial", "dca_add"])
+def test_a_miss_that_also_claims_its_trigger_fired_is_never_retried(tmp_path, changes):
+    # review finding (codex exec on a3df14b): the kernel rejects this contradiction as ASSERTION, and that ASSERTION
+    # must not qualify as a clean miss, or a later pass would hide it
+    miss, context, evidence, cleanup, failure = _captured_miss(tmp_path)
+    try:
+        contradicted = dataclasses.replace(evidence, **changes)
+    except HarnessError:
+        return
+    assert not miss(context, contradicted, cleanup, failure)

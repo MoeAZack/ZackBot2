@@ -795,6 +795,8 @@ def _retryable_miss(context: ScenarioContext, evidence: ScenarioEvidence | None,
             and evidence.synthetic_intent_id == context.synthetic_intent_id
             and evidence.authorization_id == context.authorization_id and evidence.nc06_authorized
             and evidence.entry_confirmed and evidence.protection_confirmed and evidence.rate_limit is None
+            and not evidence.target_confirmed and not evidence.stop_confirmed
+            and not evidence.partial_close_confirmed and evidence.dca_adds == 0
             and evidence.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED) and evidence.reconciled
             and cleanup.final_truth is FinalTruth.FLAT and cleanup.reconciled)
 
