@@ -519,6 +519,7 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
     if hashlib.sha256(filter_authority.read_bytes()).hexdigest() != authority["exchange_filter_authority"]["byte_sha256"]:
         raise AdapterError("exchange-filter authority bytes changed")
     old_source = getattr(module, "SOURCE_BINDINGS", {})
+    old_candidate_ids = getattr(module, "CANDIDATE_IDS", ())
     source_bindings = {ids.get(key, key): value for key, value in old_source.items()}
     values = {
         "load_contract": lambda *unused, **ignored: (copy.deepcopy(rebound), contract_digest),
@@ -542,6 +543,20 @@ def execute(profile_name: str, profile: dict, delegate, *, candidate_id: str | N
         values["FILTER_PATH"] = filter_authority
     multiplicity = copy.deepcopy(overlay["multiplicity_append"])
     if profile_name == "pack":
+        original_validate_source_bindings = module.validate_source_bindings
+        def validate_v4_source_bindings(unused_rebound_contract):
+            # The v3 validator has one management exception keyed by the v3
+            # momentum identity (max_bars=180).  Rebinding the identity before
+            # calling it silently bypasses that exception and rejects the
+            # otherwise unchanged frozen management.  Validate the immutable
+            # source contract with the immutable v3 bindings, then relabel only
+            # the returned evidence keys for the authorized v4 identities.
+            del unused_rebound_contract
+            with _patched(module, {"SOURCE_BINDINGS": old_source,
+                                   "CANDIDATE_IDS": old_candidate_ids}):
+                verified = original_validate_source_bindings(source_contract)
+            return {ids.get(key, key): value for key, value in verified.items()}
+        values["validate_source_bindings"] = validate_v4_source_bindings
         original_evaluate = module.evaluate_raw_candidate
         def evaluate_v4(adapter, pf, **kwargs):
             packet = original_evaluate(adapter, pf, **kwargs)

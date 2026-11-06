@@ -98,6 +98,9 @@ def test_fake_engine_gets_v4_contract_authority_and_reserves_before_loader(tmp_p
         parser.add_argument("--candidate"); parser.add_argument("--out")
         parser.add_argument("--identity-dir"); parser.add_argument("--archive-store")
         args = parser.parse_args(argv)
+        bindings = PACK_V3.validate_source_bindings(PACK_V3.load_contract()[0])
+        assert set(_profile()["candidate_ids"]).issubset(bindings)
+        assert bindings[_profile()["candidate_ids"][1]]["strategy_key"] == "exp_mom_short_c27"
         def loader():
             claims = list(Path(args.identity_dir).glob("*.claim.json"))
             assert len(claims) == 1
