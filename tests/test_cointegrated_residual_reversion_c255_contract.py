@@ -39,10 +39,16 @@ def test_contract_binds_exact_point_in_time_authorities():
     contract = load_contract()["data_authority"]
     universe = ROOT / contract["universe_path"]
     manifest = ROOT / contract["archive_manifest_path"]
+    filters = ROOT / contract["exchange_filter_authority_path"]
     assert sha256(universe) == contract["universe_sha256"]
     assert sha256(manifest) == contract["archive_manifest_sha256"]
+    assert sha256(filters) == contract["exchange_filter_authority_sha256"]
     universe_doc = json.loads(universe.read_text(encoding="utf-8"))
     assert universe_doc["digest"] == contract["universe_digest"]
+    filter_doc = json.loads(filters.read_text(encoding="utf-8"))
+    assert filter_doc["pit_universe_path"] == contract["universe_path"]
+    assert filter_doc["pit_universe_sha256"] == contract["universe_sha256"]
+    assert filter_doc["pit_universe_digest"] == contract["universe_digest"]
     assert "fail closed" in contract["exchange_filter_requirement"].lower()
 
 
