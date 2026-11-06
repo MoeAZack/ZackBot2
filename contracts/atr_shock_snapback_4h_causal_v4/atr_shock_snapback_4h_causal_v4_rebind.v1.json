@@ -76,6 +76,7 @@
   "protected_authority_prerequisite": {
     "pull_request": 304,
     "authority_source_head": "59babc0c13aa08fafdffe400029c7c1377b96319",
+    "authority_protected_merge_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
     "required_event": "PR #304 containing the exact authority artifact hashes in this rebind is merged into the protected branch",
     "execution_authorized_now": false,
     "post_merge_runner_pin_change_requires_separate_review": true

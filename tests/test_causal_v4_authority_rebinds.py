@@ -122,6 +122,7 @@ def test_protected_authority_merge_is_a_hard_execution_barrier():
         assert gate == {
             "pull_request": 304,
             "authority_source_head": "59babc0c13aa08fafdffe400029c7c1377b96319",
+            "authority_protected_merge_commit": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
             "required_event": ("PR #304 containing the exact authority artifact hashes in this rebind is merged "
                                "into the protected branch"),
             "execution_authorized_now": False,
@@ -135,7 +136,8 @@ def test_multiplicity_is_append_only_and_does_not_reuse_v3_trials():
         "rule": ("Append both causal_v4 identities as new trials; never replace, relabel, erase or credit any "
                  "prior v3 or earlier trial."),
         "prior_registered_packet_count": 3, "appended_v4_trial_count": 2,
-        "resulting_registered_packet_count": 5, "inference_role": "diagnostic_only",
+        "resulting_registered_packet_count": 5, "holm_missing_prior_p_value": 1.0,
+        "inference_role": "diagnostic_only",
         "promotion_uses_inference": False,
     }
     assert (rbr["multiplicity_append"]["prior_family_size"],
