@@ -113,6 +113,29 @@ def test_intrabar_rule_is_fully_encoded_and_candidate_bounded():
     assert 'STRATEGY_CAUSAL_FBL_BT01_V1' in md
 
 
+def test_management_formulas_and_exchange_rounding_are_frozen():
+    c, md = _load()
+    m = c['execution']['management_semantics']
+    assert m['side_sign'] == 'long=+1, short=-1'
+    assert m['entry_atr'].startswith('ATR_entry is the candidate signal ATR at completed decision bar d')
+    assert m['entry_price_basis'].startswith('entry_exec is the adverse-slipped')
+    assert m['initial_r'] == 'R_price = management.stop_atr * ATR_entry'
+    assert m['initial_stop'] == 'stop = entry_exec - side_sign * R_price'
+    assert m['initial_quantity'].startswith('qty_raw = risk_cash / R_price')
+    assert m['level_precision'].startswith('management trigger levels remain the exact formula values')
+    assert m['full_target'].startswith('when tp_r exists, target = entry_exec + side_sign * tp_r * R_price')
+    assert m['tp1'].startswith('when tp1_r exists, tp1 = entry_exec + side_sign * tp1_r * R_price')
+    assert m['partial_quantity'].startswith('for a partial only, floor requested close quantity')
+    assert m['partial_dust'].startswith('tp1 has no automatic dust-to-full-close conversion')
+    assert m['breakeven'].startswith('when be_r exists and best_price reaches')
+    assert 'ATR_prior_closed_bar' in m['trail'] and 'never loosen' in m['trail']
+    assert m['best_price'].startswith('initialize to entry_exec')
+    assert set(m['forbidden']) == {
+        'DCA', 'pyramiding', 'take-profit ladder',
+        'same-leg retroactive breakeven', 'same-leg retroactive trail'}
+    assert 'Management uses the adverse executable entry' in md
+
+
 def test_costs_are_realistic_and_stressed():
     c, md = _load()
     costs = c['costs']

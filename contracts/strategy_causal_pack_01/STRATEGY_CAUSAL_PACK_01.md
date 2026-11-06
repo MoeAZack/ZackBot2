@@ -28,6 +28,13 @@ breakeven and trail changes occur once and only affect later path legs. All thre
 A missing next open or unresolved bar makes the whole candidate incomplete, never a last-mark or synthetic close and
 never a reduced passing sample.
 
+Management uses the adverse executable entry and the decision candle's last causal ATR. Initial `R` is `stop_atr × ATR`
+and the stop is `entry − side × R`. Targets are `entry + side × tp_r × R`; TP1 uses the same formula with `tp1_r`
+and floors its requested fraction to the venue step. A zero partial sends nothing and is not marked complete; TP1 does
+not auto-close dust. Breakeven tightens to entry only after its favourable leg. A chandelier trail uses the best price
+minus/plus `trail_atr ×` the prior closed bar's engine ATR, tightening only after a completed leg and never loosening.
+Trigger levels remain exact formula values; executable fills alone receive the frozen adverse tick rounding.
+
 The only evidence windows are the three untouched folds: 1 April–30 September 2025, 1 October 2025–31 March 2026,
 and 1 April–28 September 2026, all end-exclusive. Every candidate observes its declared warm-up and holding-horizon
 purge. Nothing at or after 28 September 2026 may be read. The already viewed holdout is permanently excluded.
