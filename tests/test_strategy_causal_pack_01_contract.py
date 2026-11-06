@@ -45,10 +45,14 @@ def test_three_new_unique_identities_preserve_old_rejections():
         'volume_pressure_inventory_short_1h_causal_v2',
     ]
     assert len({x['candidate_id'] for x in rows}) == len({x['old_id'] for x in rows}) == 3
-    assert all(x['candidate_id'] != x['old_id'] and x['signal_and_parameters_unchanged'] for x in rows)
+    assert all(x['candidate_id'] != x['old_id'] and x['signal_parameters_unchanged'] for x in rows)
+    assert rows[1]['management_parameters_unchanged'] is False
     assert c['candidate_selection_disclosure']['selection_is_not_evidence'] is True
     assert len(c['candidate_selection_disclosure']['prior_results']) == 3
-    assert 'Holm-adjusted' in c['candidate_selection_disclosure']['multiplicity_rule']
+    disclosure = c['candidate_selection_disclosure']
+    assert 'Holm-adjusted' in disclosure['multiplicity_rule']
+    assert disclosure['inference_role'] == 'diagnostic_only'
+    assert disclosure['promotion_uses_inference'] is False
 
 
 def test_source_strategy_facts_and_frozen_horizons_match_code():
@@ -78,7 +82,7 @@ def test_all_discretionary_exits_are_next_open_and_missing_open_is_incomplete():
     assert e['time_exit_fill'].startswith('next_tradable_open')
     assert e['decision_time_strictly_before_signal_or_time_fill'] is True
     assert e['same_candle_close_fill_for_signal_or_time'] is False
-    assert e['missing_next_open'] == 'INCOMPLETE_SPLIT_END'
+    assert e['missing_next_open'] == 'INCOMPLETE_CANDIDATE'
     assert e['last_mark_or_synthetic_close'] is False
     assert 'next tradable open' in md and 'never a last-mark or synthetic close' in md
 
@@ -88,8 +92,11 @@ def test_costs_are_realistic_and_stressed():
     costs = c['costs']
     assert costs['fee_per_fill_bps'] == 5 and costs['adverse_slippage_per_fill_bps'] == 2
     assert 'actual Binance USD-M funding' in costs['funding']
-    assert costs['funding_gap'] == costs['mark_gap'] == 'INCOMPLETE'
+    assert costs['funding_gap'] == costs['mark_gap'] == 'INCOMPLETE_CANDIDATE'
     assert costs['cost_stress_multipliers_to_report'] == [1.0, 1.5, 2.0]
+    assert 'positive rate is a receipt for a short' in costs['funding_sign']
+    assert costs['net_pnl_formula'].startswith('gross_price_pnl + signed_funding_cash')
+    assert 'positive funding credits remain at 1.0x' in costs['cost_stress_rule']
     assert '5 bp taker fee plus 2 bp adverse slippage' in md
 
 
@@ -113,17 +120,24 @@ def test_folds_are_ordered_unspent_and_holdout_is_forbidden():
 def test_split_purge_is_candidate_specific_and_finite():
     c, _ = _load()
     s = c['split_rules']
-    assert s == {
-        'entries_begin_after_warmup_bars': 'candidate.max_lookback_bars',
-        'new_entries_stop_before_end_bars': 'candidate.max_holding_bars',
-        'boundary_isolation_bars': 'candidate.max_lookback_bars + candidate.max_holding_bars',
-        'episode_must_close_inside_fold': True,
-        'folds_reported_separately': True,
-        'fold_selection': False,
-        'pool_before_per_fold_reporting': False,
-    }
-    assert [(x['max_lookback_bars'], x['max_holding_bars']) for x in c['candidates']] == [
-        (200, 60), (180, 180), (168, 24)]
+    assert s['bar_index_model'].startswith('Each fold has local bars 0..N-1')
+    assert s['first_eligible_decision_index'] == 'L-1 where L=candidate.max_lookback_bars'
+    assert s['first_eligible_entry_index'] == 'L'
+    assert s['time_cap_exit_index'] == 'x=e+H where H=candidate.max_holding_bars'
+    assert s['entry_eligibility_inequality'] == 'e >= L and e + H < N'
+    assert s['last_eligible_entry_index'] == 'N-H-1'
+    assert s['terminal_fill_inequality'].endswith('e <= x < N')
+    assert s['next_open_embargo_bars_at_end'] == 'H'
+    assert s['episode_must_close_inside_fold'] and s['folds_reported_separately']
+    assert s['fold_selection'] is False and s['pool_before_per_fold_reporting'] is False
+    for row in c['candidates']:
+        lookback, hold, n = row['max_lookback_bars'], row['max_holding_bars'], 1000
+        first_entry = lookback
+        last_entry = n - hold - 1
+        assert first_entry - 1 == lookback - 1
+        assert first_entry + hold < n
+        assert last_entry + hold == n - 1
+        assert last_entry + 1 + hold == n
 
 
 def test_runner_fails_closed_before_data_and_outputs_are_immutable():
@@ -143,8 +157,11 @@ def test_promotion_is_economic_frequent_diversified_and_independent():
     assert g['minimum_regime_mean_r'] == -0.05 and g['max_symbol_absolute_contribution_fraction'] == 0.35
     assert g['positive_after_1_5x_cost_stress'] and g['causal_parity_required']
     assert g['independent_review_required'] and g['all_required_reports_present']
+    assert g['maximum_incomplete_rows'] == 0
+    assert g['incomplete_scope'].startswith('Any missing funding')
     assert g['missing_or_incomplete_is_pass'] is False
-    assert 'at least 200 closes' in md and 'Missing evidence never passes' in md
+    assert g['inference_required_for_promotion'] is False
+    assert 'at least 200 closes' in md and 'missing evidence never passes' in md
 
 
 def test_required_reports_cover_significance_costs_regimes_and_survivorship():
