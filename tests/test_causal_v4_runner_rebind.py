@@ -155,6 +155,23 @@ def test_public_v4_entrypoints_refuse_incomplete_argv_without_output(entry, caps
     assert "refused:" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("entry", "profile"),
+    [(PACK, "pack"), (RBR, "rbr_short"), (ATR, "atr_shock")],
+)
+def test_public_v4_entrypoints_forward_process_argv(entry, profile, monkeypatch):
+    calls = []
+    process_argv = ["--out", "result.json", "--identity-dir", "identities"]
+    monkeypatch.setattr(G.sys, "argv", ["causal-v4-runner", *process_argv])
+    monkeypatch.setattr(
+        G,
+        "guarded_dispatch",
+        lambda saved_profile, *, argv: calls.append((saved_profile, argv)) or 0,
+    )
+    assert entry.main() == 0
+    assert calls == [(profile, process_argv)]
+
+
 def test_atr_delegate_resolution_is_reachable_only_after_hypothetical_final_pins(monkeypatch):
     metadata = _post_pin_metadata()
     calls = []
