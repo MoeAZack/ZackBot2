@@ -1,0 +1,142 @@
+{
+  "contract": "LLM-LEAK-01",
+  "version": 1,
+  "status": "DRAFT",
+  "base_commit": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+  "doc": "LLM_LEAK_01_CONTRACT.md",
+  "authority": {
+    "alpha_evidence": false,
+    "veto": false,
+    "approval": false,
+    "sizing": false,
+    "orders": false,
+    "paper_activation": false,
+    "mainnet": false
+  },
+  "blinding": {
+    "stable_one_way_aliases": true,
+    "mapping_excluded_from_request": true,
+    "mapping_excluded_from_logs": true,
+    "mapping_excluded_from_score_report": true,
+    "mapping_excluded_from_result_packet": true,
+    "remove_strategy_and_family_names": true,
+    "remove_symbols": true,
+    "remove_absolute_timestamps": true,
+    "remove_event_and_calendar_labels": true,
+    "retain_preregistered_numeric_geometry": true,
+    "deterministic_seeded_order": true,
+    "alias_key_bytes": 32,
+    "alias_key_public_value": false,
+    "public_alias_key_sha256_only": true,
+    "alias_derivation": "HMAC-SHA256(alias_key,canonical_candidate_id)",
+    "alias_format": "C_[0-9A-F]{12}",
+    "alias_hex_prefix_length": 12,
+    "stable_within_run": true,
+    "different_across_runs": true,
+    "allowed_relative_time_fields": [
+      "window_index",
+      "observation_age_bars",
+      "bars_to_cutoff",
+      "horizon_bars"
+    ],
+    "relative_time_values": "non_negative_integer"
+  },
+  "point_in_time": {
+    "availability_manifest_required": true,
+    "cutoff_required": true,
+    "append_after_cutoff_request_bytes_unchanged": true,
+    "pre_cutoff_mutation_changes_digest": true,
+    "ambiguous_availability_fails_closed": true,
+    "timestamp_zone": "UTC_aware",
+    "admission_rule": "event_at<=available_at<=cutoff",
+    "cutoff_interval_end": "inclusive"
+  },
+  "control_arms": [
+    "original_blinded",
+    "null_no_outcomes",
+    "permuted_labels",
+    "permuted_candidates",
+    "equal_information_deterministic_baseline",
+    "future_tainted_positive_control",
+    "fixed_request_repeats"
+  ],
+  "scoring": {
+    "same_schema_and_budget_for_all_arms": true,
+    "aliases_only_in_response": true,
+    "map_back_after_scoring": true,
+    "profitability_is_acceptance_gate": false,
+    "ranking_outcome_is_acceptance_gate": false,
+    "future_tainted_control_must_be_detected": true,
+    "fixed_seed_stability_reported": true,
+    "fixed_request_repeats": 5,
+    "stability_statistic": "pairwise_kendall_tau_b_min_and_median",
+    "stability_promotion_threshold": null,
+    "valid_alias_only_repeats_required": 5,
+    "future_taint_detection_fraction_required": "1.0",
+    "forbidden_identity_matches_allowed": 0,
+    "unknown_alias_responses_allowed": 0
+  },
+  "control_transforms": {
+    "null_remove_fields": [
+      "outcome",
+      "return",
+      "pnl",
+      "hit_rate",
+      "drawdown",
+      "rank_target"
+    ],
+    "permutation_algorithm": "fisher_yates",
+    "label_seed": "HMAC-SHA256(seed,labels)",
+    "candidate_seed": "HMAC-SHA256(seed,candidates)",
+    "preserve_counts_and_marginals": true,
+    "deterministic_baseline": "ascending_HMAC-SHA256(seed,alias)",
+    "deterministic_baseline_reads_candidate_metrics": false
+  },
+  "model_request": {
+    "model": "claude-sonnet-5-5",
+    "temperature": "0",
+    "max_output_tokens": 1200,
+    "identical_across_control_arms": true
+  },
+  "required_bindings": [
+    "availability_manifest_sha256",
+    "canonical_request_sha256",
+    "request_builder_sha256",
+    "rubric_sha256",
+    "model_identifier",
+    "model_parameters_sha256",
+    "seed",
+    "code_commit"
+  ],
+  "fail_closed": [
+    "missing_availability_metadata",
+    "ambiguous_timestamp",
+    "unprovided_alias_in_response",
+    "alias_mapping_in_request_or_report",
+    "post_cutoff_request_change",
+    "future_tainted_control_not_detected",
+    "result_key_content_conflict"
+  ],
+  "result_packet": {
+    "immutable": true,
+    "aliases_only": true,
+    "raw_response_hashes": true,
+    "control_digests": true,
+    "validation_and_scores": true,
+    "candidate_mapping_included": false
+  },
+  "implementation_boundary": {
+    "new_files_only": true,
+    "shadow_analyst_edited": false,
+    "runtime_files_edited": false,
+    "paper_state_touched": false,
+    "remote_calls_in_contract_tests": false
+  },
+  "deferred": [
+    "evaluation_tool",
+    "independent_synthetic_challenge",
+    "model_comparison",
+    "prospective_analyst_study",
+    "trading_authority"
+  ]
+}
