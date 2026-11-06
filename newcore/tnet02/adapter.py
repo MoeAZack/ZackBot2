@@ -268,6 +268,34 @@ class RealTestnetAdapter:
         self._observe(result.value.observed_at_ms)
         return result.value.value
 
+    def _read_account_state(self):
+        """Read the complete account, including both classic and algo open orders.
+
+        NC-04 deliberately requires a symbol for ordinary order reads.  Isolation and cleanup are the two
+        boundaries that instead need the venue's combined all-symbol read.
+        """
+        positions = self._read_positions(None)
+        orders = self._venue.open_orders(None)
+        if orders.kind is not ReadKind.OK:
+            _hold("read.open_orders")
+        self._observe(orders.observed_at_ms)
+        return positions, orders.value
+
+    @staticmethod
+    def _has_foreign_state(case: _Case, positions, orders) -> bool:
+        key = (case.symbol, case.side)
+        if any(position_key != key for position_key in positions):
+            return True
+        owned = {order.client_id: order for order in case.orders if order.state not in _TERMINAL}
+        for row in orders:
+            local = owned.get(row.ref.client_id)
+            if (local is None or row.ref.symbol != local.symbol or row.ref.route != local.route
+                    or row.exchange_order_id != local.exchange_order_id
+                    or Side(row.position_side) is not local.side or row.qty != local.requested_qty
+                    or not row.reduce):
+                return True
+        return False
+
     def _observe(self, at_ms: int) -> None:
         if at_ms < self._last_observed:
             _hold("clock.backward")
@@ -715,11 +743,12 @@ class RealTestnetAdapter:
 
     # ------------------------------------------------------------------------------------------------ REC-02
     def _reconcile(self, case: _Case | None, symbol: str,
-                   positions: dict[tuple[str, Side], Decimal] | None = None) -> ReconciliationPlan:
+                   positions: dict[tuple[str, Side], Decimal] | None = None, orders=None) -> ReconciliationPlan:
         before = self._last_observed
         if positions is None:
             positions = self._read_positions(symbol)
-        orders = self._read_orders(symbol)
+        if orders is None:
+            orders = self._read_orders(symbol)
         now = self._now()
         account = self._account
         if account is None:
@@ -851,7 +880,8 @@ class RealTestnetAdapter:
         if self._faults.armed:
             _hold("setup.fault_armed")
         case = context.case
-        plan = self._reconcile(None, case.symbol)
+        positions, orders = self._read_account_state()
+        plan = self._reconcile(None, case.symbol, positions, orders)
         facts = self._facts((case.symbol,))
         leverage = facts.symbol(case.symbol).leverage
         if leverage > case.leverage:
@@ -1323,6 +1353,9 @@ class RealTestnetAdapter:
                 if order.purpose is not Purpose.PROTECT and order.state not in _TERMINAL:
                     # an acknowledged entry/close that never settled: sending another order would be a guess
                     _hold("cleanup.unsettled_order")
+            account_positions, account_orders = self._read_account_state()
+            if self._has_foreign_state(case, account_positions, account_orders):
+                _hold("cleanup.foreign_state")
             positions = self._converge_stop_position(case)
             venue_qty = positions.get((case.symbol, case.side), ZERO)
             if any(key != (case.symbol, case.side) for key in positions) or venue_qty != case.position:
@@ -1333,7 +1366,8 @@ class RealTestnetAdapter:
             for order in list(case.orders):
                 if order.purpose is Purpose.PROTECT and order.state not in _TERMINAL:
                     self._cancel(case, order, Action.RECONCILE)
-            plan = self._reconcile(case, case.symbol)
+            account_positions, account_orders = self._read_account_state()
+            plan = self._reconcile(case, case.symbol, account_positions, account_orders)
             if plan.status is not RecStatus.FLAT_CONFIRMED or case.position != 0:
                 _hold("cleanup.not_flat")
             at = self._now()
@@ -1343,7 +1377,8 @@ class RealTestnetAdapter:
         except AdapterError as error:
             # Cleanup may be a consequence of an already-recorded execute failure.  Add a second diagnostic only
             # for cleanup's own stop/position convergence boundary, where the reason is otherwise invisible.
-            if error.code.startswith("refresh.") or error.code == "cleanup.position_mismatch":
+            if error.code.startswith("refresh.") or error.code in ("cleanup.position_mismatch",
+                                                                    "cleanup.foreign_state"):
                 extra = {} if error.cause is None else {"cause": error.cause}
                 self._note(case, "adapter." + error.code, **extra)
             self._halted = True
@@ -1369,16 +1404,13 @@ class RealTestnetAdapter:
         """Second call with the same token: re-read only, send nothing, and return the identical record."""
         if not memo.flat:
             return memo.evidence
-        symbol = next((c.symbol for c in (self._case,) if c is not None), None)
         try:
-            symbols = (symbol,) if symbol is not None else self._symbols
-            for name in symbols:
-                if self._read_positions(name) or any(
-                        True for _ in self._read_orders(name)):
-                    self._halted = True
-                    return CleanupEvidence(context.token, context.started_ms, None, None,
-                                           max(self._now(), context.started_ms), FinalTruth.HOLD, False,
-                                           memo.evidence.cleanup_orders_total)
+            positions, orders = self._read_account_state()
+            if positions or orders:
+                self._halted = True
+                return CleanupEvidence(context.token, context.started_ms, None, None,
+                                       max(self._now(), context.started_ms), FinalTruth.HOLD, False,
+                                       memo.evidence.cleanup_orders_total)
         except AdapterError:
             self._halted = True
             return CleanupEvidence(context.token, context.started_ms, None, None, max(self._now(), context.started_ms),

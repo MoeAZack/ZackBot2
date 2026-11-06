@@ -19,7 +19,7 @@ from newcore.tnet02.adapter import AdapterError, _Order
 from newcore.tnet02.faults import FaultKind
 from newcore.venue.binance_usdm_testnet import HttpResponse
 
-from .fake_binance import Algo
+from .fake_binance import Algo, Order
 from .support import T0, account, manifest, rig
 
 
@@ -41,6 +41,14 @@ def _bound(tmp_path):
     context = _case_context(spec, suite_id, spec.cases[0], T0)
     r.adapter.setup(context)
     return r, spec, context
+
+
+def _bound_context(tmp_path):
+    r = rig(tmp_path)
+    spec = manifest()
+    r.adapter.confirm_binding(spec.binding)
+    suite_id = _derive("suite", "account-wide-guards")
+    return r, _case_context(spec, suite_id, spec.cases[0], T0)
 
 
 def _cleanup_context(context, started=T0 + 1):
@@ -89,6 +97,22 @@ def test_binding_account_mode_mismatch_refused_by_adapter(tmp_path, hostile):
 
 
 # ------------------------------------------------------------------------------------------------- setup
+@pytest.mark.parametrize("foreign", ["position", "classic", "algo"])
+def test_setup_observes_all_symbols_and_refuses_foreign_eth_state(tmp_path, foreign):
+    r, context = _bound_context(tmp_path)
+    if foreign == "position":
+        r.fake.positions[("ETHUSDT", "SHORT")] = Decimal("1")
+    elif foreign == "classic":
+        r.fake.orders["foreign"] = Order(91, "foreign", "ETHUSDT", "BUY", "LONG", Decimal("1"), False)
+    else:
+        r.fake.algos["foreign"] = Algo(92, "foreign", "ETHUSDT", "LONG", Decimal("1"), Decimal("2500"))
+
+    evidence = r.adapter.setup(context)
+
+    assert evidence.initial_truth is FinalTruth.HOLD and evidence.reconciled is False
+    assert _posts(r) == []
+
+
 def test_setup_refuses_while_a_fault_is_armed(tmp_path):
     r = rig(tmp_path)
     spec = manifest()
@@ -123,6 +147,42 @@ def test_cleanup_holds_on_venue_position_it_does_not_own_and_sends_nothing(tmp_p
     assert evidence.final_truth is FinalTruth.HOLD
     assert r.fake.positions[("BTCUSDT", "LONG")] == Decimal("0.010")
     assert _posts(r) == []
+
+
+@pytest.mark.parametrize("foreign", ["position", "classic", "algo"])
+def test_cleanup_observes_all_symbols_and_never_touches_foreign_eth_state(tmp_path, foreign):
+    r, _spec, context = _bound(tmp_path)
+    if foreign == "position":
+        r.fake.positions[("ETHUSDT", "SHORT")] = Decimal("1")
+    elif foreign == "classic":
+        r.fake.orders["foreign"] = Order(93, "foreign", "ETHUSDT", "BUY", "LONG", Decimal("1"), False)
+    else:
+        r.fake.algos["foreign"] = Algo(94, "foreign", "ETHUSDT", "LONG", Decimal("1"), Decimal("2500"))
+
+    evidence = r.adapter.cleanup(_cleanup_context(context))
+
+    assert evidence.final_truth is FinalTruth.HOLD and evidence.reconciled is False
+    assert _posts(r) == []
+
+
+@pytest.mark.parametrize("foreign", ["position", "classic", "algo"])
+def test_cleanup_recheck_observes_new_foreign_eth_state_without_sending(tmp_path, foreign):
+    r, _spec, context = _bound(tmp_path)
+    cleanup_context = _cleanup_context(context)
+    first = r.adapter.cleanup(cleanup_context)
+    assert first.final_truth is FinalTruth.FLAT
+    if foreign == "position":
+        r.fake.positions[("ETHUSDT", "SHORT")] = Decimal("1")
+    elif foreign == "classic":
+        r.fake.orders["foreign"] = Order(95, "foreign", "ETHUSDT", "BUY", "LONG", Decimal("1"), False)
+    else:
+        r.fake.algos["foreign"] = Algo(96, "foreign", "ETHUSDT", "LONG", Decimal("1"), Decimal("2500"))
+    before = len(_posts(r))
+
+    second = r.adapter.cleanup(cleanup_context)
+
+    assert second.final_truth is FinalTruth.HOLD and second.reconciled is False
+    assert len(_posts(r)) == before
 
 
 def test_cleanup_holds_when_reconciliation_is_not_flat_and_second_call_sends_nothing(tmp_path):

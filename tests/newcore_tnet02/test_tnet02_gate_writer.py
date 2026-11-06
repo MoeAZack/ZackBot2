@@ -133,6 +133,85 @@ def test_writer_writes_once_exactly(tmp_path, passed_bytes):
     assert writer.path.read_bytes() == passed_bytes
 
 
+def test_writer_never_exposes_partial_final_and_failed_write_can_retry(tmp_path, passed_bytes, monkeypatch):
+    writer = ExactBuildReportWriter(tmp_path, BUILD_SHA)
+    real_write = os.write
+    calls = 0
+
+    def interrupted(fd, data):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return real_write(fd, data[:max(1, len(data) // 2)])
+        raise OSError("simulated interruption")
+
+    monkeypatch.setattr(os, "write", interrupted)
+    with pytest.raises(WriterError) as caught:
+        writer(passed_bytes)
+    assert caught.value.code == "writer.write_failed"
+    assert list(tmp_path.iterdir()) == [] and writer.path is None
+
+    monkeypatch.setattr(os, "write", real_write)
+    writer(passed_bytes)
+    assert writer.path.read_bytes() == passed_bytes
+
+
+def test_writer_publish_failure_leaves_no_final_that_blocks_retry(tmp_path, passed_bytes, monkeypatch):
+    writer = ExactBuildReportWriter(tmp_path, BUILD_SHA)
+    real_link = os.link
+    monkeypatch.setattr(os, "link", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("crash boundary")))
+    with pytest.raises(WriterError) as caught:
+        writer(passed_bytes)
+    assert caught.value.code == "writer.publish_failed"
+    assert list(tmp_path.iterdir()) == [] and writer.path is None
+
+    (tmp_path / ".stale-crash.tmp").write_bytes(b"partial temporary bytes")
+    monkeypatch.setattr(os, "link", real_link)
+    writer(passed_bytes)
+    assert writer.path.read_bytes() == passed_bytes
+
+
+def test_writer_losing_final_name_race_preserves_competitor_bytes(tmp_path, passed_bytes, monkeypatch):
+    report = decode_report(passed_bytes)
+    target = tmp_path / report_filename(BUILD_SHA, report.report_sha256)
+    real_link = os.link
+
+    def competitor_wins(*args, **kwargs):
+        target.write_bytes(b"competitor")
+        return real_link(*args, **kwargs)
+
+    monkeypatch.setattr(os, "link", competitor_wins)
+    with pytest.raises(WriterError) as caught:
+        ExactBuildReportWriter(tmp_path, BUILD_SHA)(passed_bytes)
+    assert caught.value.code == "writer.exists"
+    assert target.read_bytes() == b"competitor"
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_writer_losing_final_name_race_never_overwrites_or_follows_symlink(tmp_path, passed_bytes, monkeypatch):
+    if not hasattr(os, "symlink"):
+        pytest.skip("no symlink support")
+    report = decode_report(passed_bytes)
+    target = tmp_path / report_filename(BUILD_SHA, report.report_sha256)
+    sentinel = tmp_path / "sentinel"
+    sentinel.write_bytes(b"untouched")
+    real_link = os.link
+
+    def plant_symlink(*args, **kwargs):
+        try:
+            os.symlink(sentinel, target)
+        except OSError:
+            pytest.skip("symlink not permitted on this host")
+        return real_link(*args, **kwargs)
+
+    monkeypatch.setattr(os, "link", plant_symlink)
+    with pytest.raises(WriterError) as caught:
+        ExactBuildReportWriter(tmp_path, BUILD_SHA)(passed_bytes)
+    assert caught.value.code == "writer.exists"
+    assert sentinel.read_bytes() == b"untouched" and target.is_symlink()
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 def test_writer_refuses_other_build_and_non_canonical_bytes(tmp_path, passed_bytes):
     with pytest.raises(WriterError) as caught:
         ExactBuildReportWriter(tmp_path, "c" * 40)(passed_bytes)
