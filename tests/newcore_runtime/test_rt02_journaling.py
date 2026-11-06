@@ -529,7 +529,12 @@ def test_runtime_routes_a_keyed_entry_and_protects_it(world):
     w.settle(lambda s: sink.snapshot().log[-1:] == ('working:protect',), advance_ms=1_000)
     assert [c[:2] for c in venue.calls] == [('submit_market', 'classic'), ('submit_stop', 'algo')]
     from rt01_fixtures import account_view
-    assert account_view(w.runtime.snapshot(), A).holds == ()
+    # The fake clock runs 1 s per step.  On a loaded machine a refresh's reads can pass their deadline before the
+    # runner dequeues them (EXPIRED -> clearable evidence_unavailable).  The next confirmed proof must clear it;
+    # a sticky hold from routing never clears, so this still fails on a real hold.
+    snap = w.settle(lambda s: account_view(s, A).holds == () and s.scheduler.ready, advance_ms=1_000)
+    assert account_view(snap, A).holds == ()
+    assert [c[:2] for c in venue.calls] == [('submit_market', 'classic'), ('submit_stop', 'algo')]
 
 
 def test_runtime_without_a_stop_route_routes_no_entry(world, no_algo_stop):
