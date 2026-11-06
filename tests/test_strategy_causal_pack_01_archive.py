@@ -196,6 +196,70 @@ def test_sparse_funding_load_reports_tail_as_interval_not_boolean(tmp_path):
         T0 + 10 * A.HOUR_MS, end_ms, "settlement_gap"),)
 
 
+def test_sparse_funding_collapses_sub_tolerance_settlement_jitter(tmp_path, monkeypatch):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    jitter = A.FUNDING_TIME_TOLERANCE_MS - 1
+    rows = [
+        [str(T0).encode(), b"8", b"0.0001"],
+        [str(T0 + 8 * A.HOUR_MS + jitter).encode(), b"8", b"0.0001"],
+    ]
+    monkeypatch.setattr(adapter, "_rows_sparse", lambda *_: (rows, ()))
+    result = adapter.load_funding_sparse(
+        "S00", T0, T0 + 16 * A.HOUR_MS + jitter)
+    assert [row.time_ms for row in result.rows] == [
+        T0, T0 + 8 * A.HOUR_MS + jitter]
+    assert result.gaps == ()
+
+
+def test_sparse_funding_tolerance_boundary_covers_head_middle_and_tail(
+        tmp_path, monkeypatch):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    tolerance = A.FUNDING_TIME_TOLERANCE_MS
+    first = T0 + 8 * A.HOUR_MS + tolerance
+    second = first + 8 * A.HOUR_MS + tolerance
+    rows = [
+        [str(first).encode(), b"8", b"0.0001"],
+        [str(second).encode(), b"8", b"0.0001"],
+    ]
+    monkeypatch.setattr(adapter, "_rows_sparse", lambda *_: (rows, ()))
+    result = adapter.load_funding_sparse(
+        "S00", T0, second + 8 * A.HOUR_MS + tolerance)
+    assert result.gaps == ()
+
+
+def test_sparse_funding_one_ms_beyond_tolerance_is_a_gap(tmp_path, monkeypatch):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    lateness = A.FUNDING_TIME_TOLERANCE_MS + 1
+    rows = [
+        [str(T0).encode(), b"8", b"0.0001"],
+        [str(T0 + 8 * A.HOUR_MS + lateness).encode(), b"8", b"0.0001"],
+    ]
+    monkeypatch.setattr(adapter, "_rows_sparse", lambda *_: (rows, ()))
+    result = adapter.load_funding_sparse(
+        "S00", T0, T0 + 16 * A.HOUR_MS + lateness)
+    assert result.gaps == (A.CoverageGap(
+        T0 + 8 * A.HOUR_MS,
+        T0 + 8 * A.HOUR_MS + lateness,
+        "settlement_gap"),)
+
+
+def test_sparse_funding_tolerance_does_not_bridge_missing_settlement(
+        tmp_path, monkeypatch):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    rows = [
+        [str(T0 + 8 * A.HOUR_MS).encode(), b"8", b"0.0001"],
+        [str(T0 + 24 * A.HOUR_MS).encode(), b"8", b"0.0001"],
+    ]
+    monkeypatch.setattr(adapter, "_rows_sparse", lambda *_: (rows, ()))
+    result = adapter.load_funding_sparse("S00", T0, T0 + 32 * A.HOUR_MS)
+    assert result.gaps == (A.CoverageGap(
+        T0 + 16 * A.HOUR_MS, T0 + 24 * A.HOUR_MS, "settlement_gap"),)
+
+
 def test_sparse_mark_load_reports_gap_in_causal_availability_time(tmp_path):
     manifest, universe = _fixture(tmp_path)
     # Rebuild only the mark archive with the middle raw hour absent.
