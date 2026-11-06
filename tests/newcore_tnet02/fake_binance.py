@@ -116,6 +116,7 @@ class FakeBinance:
     trades: list = field(default_factory=list)
     requests: list = field(default_factory=list)
     price_path: Callable[[int, str], Decimal] | None = None
+    fill_offset: Decimal = Decimal("0")     # market fills print this far from mark (real testnet: last != mark)
     market_ack_only: bool = True
     fail_algo_open_read: bool = False
     reject_algo_stop: bool = False
@@ -190,8 +191,9 @@ class FakeBinance:
         order = Order(self._id(), cid, symbol, p["side"], ps, qty, reduce)
         self.orders[cid] = order
         mark = self.marks[symbol]
-        order.status, order.executed, order.avg = "FILLED", qty, mark
-        self._fill(order.order_id, symbol, ps, -qty if reduce else qty, mark)
+        price = mark + self.fill_offset
+        order.status, order.executed, order.avg = "FILLED", qty, price
+        self._fill(order.order_id, symbol, ps, -qty if reduce else qty, price)
         if self.market_ack_only:
             return ok({"symbol": symbol, "clientOrderId": cid, "orderId": order.order_id, "status": "NEW",
                        "executedQty": "0", "avgPrice": "0"})

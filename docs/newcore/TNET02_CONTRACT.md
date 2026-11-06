@@ -162,6 +162,22 @@ This closes the disclosure in §10.
 * **Tests.** `tests/newcore_tnet02/test_tnet02_account_budget.py` has 13 tests.
 * **Mutation check.** 10 of 10 mutants on the new lines were killed.
 
+## 14. bounded_dca trigger follows the mark it is compared with (6 Nov 2026)
+
+The first real run (head cf7fc97, 6 Nov 2026 02:20-02:47Z, report_sha256 c8214b8f…) passed 11 of 12 cases. bounded_dca failed `dca_adds == 1`. It placed only an entry, a stop and a close, and ended flat.
+- The ETHUSDT long filled at 2238.26 while mark was about 2239.17. The trigger was taken 0.05% under the fill (2237.14), but it is compared with polled mark prices.
+- Mark only reached 2236.98, inside a single 1-minute candle, so the polls missed it.
+- The 8-minute wait then ran out.
+
+Change:
+- The DCA trigger is `trigger_offset` beyond the most adverse mark the case has read. That includes the mark read just after entry, so only a fresh adverse move can fire it.
+- The trigger is also clamped to at least one tick adverse to the actual fill.
+- The wait is `min(dca_wait_ms = 9 min, case deadline - dca_finish_margin_ms = 60 s)`.
+- `dca_adds == 1` and every NC-06 and protection check are unchanged.
+- The CLI writes `diagnostics-<head12>-<ms>.json` next to the report. It records why each DCA path ended (`dca.added`, `dca.no_trigger`, `dca.no_proposal`, `dca.stop_crossed`, `dca.nc06_refused`, `dca.add_unconfirmed`), with mark low/high and the trigger, and holds prices only.
+- The diagnostics file is not part of the report, digest or proof.
+- The case still depends on the market: a quiet 9 minutes fails honestly as `assertion`.
+
 ## Deferred
 
 Replacement entrypoint, runtime/PAPER wiring, installer, UI, leverage *setting* (the run refuses instead when account leverage exceeds the case), live canaries and all mainnet activity.

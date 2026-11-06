@@ -256,6 +256,18 @@ def _live_parts(args, account: Account, origin: str):
     return wired, clock
 
 
+def _write_diagnostics(out_dir: Path, head: str, at_ms: int, notes) -> None:
+    """Side file of scenario path reasons (prices only).  It is not part of the report or its proof."""
+    body = json.dumps({"head_sha": head, "at_ms": at_ms, "notes": list(notes)}, sort_keys=True, indent=1)
+    try:
+        (out_dir / f"diagnostics-{head[:12]}-{at_ms}.json").write_text(body + "\n", encoding="utf-8")
+    except OSError:
+        print("DIAGNOSTICS not written")
+        return
+    for note in notes:
+        print("NOTE " + " ".join(f"{k}={note[k]}" for k in sorted(note)))
+
+
 def _run(args) -> int:
     from newcore.testnet_harness import run_suite
     from newcore.tnet02.writer import ExactBuildReportWriter, WriterError
@@ -288,7 +300,9 @@ def _run(args) -> int:
     try:
         run_suite(spec, wired.adapter, writer)
     except Exception:
+        _write_diagnostics(Path(args.out_dir), args.expected_head, clock(), wired.adapter.notes)
         raise Refused("suite_aborted") from None
+    _write_diagnostics(Path(args.out_dir), args.expected_head, clock(), wired.adapter.notes)
     data = writer.path.read_bytes()
     try:
         proof = gate_proof(data, expected_head=args.expected_head, host_id=args.host_id,

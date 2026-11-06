@@ -77,6 +77,10 @@ class HarnessConfig:
     rate_retry_after_ms: int = 5_000
     max_snapshot_age_s: int = 30
     trigger_wait_ms: int = 8 * 60 * 1000
+    # bounded_dca waits for a real adverse move, so it gets the longest wait the case deadline allows, minus a margin
+    # kept for the add, the stop swap, the close and the reconciliation that follow.
+    dca_wait_ms: int = 9 * 60 * 1000
+    dca_finish_margin_ms: int = 60_000
 
     def __post_init__(self) -> None:
         for name in ("entry_notional_fraction", "protective_offset", "trigger_offset"):
@@ -89,7 +93,8 @@ class HarnessConfig:
             _hold("cfg.offsets")
         for name, low, high in (("poll_ms", 1, 60_000), ("settle_polls", 1, 120), ("work_timeout_ms", 1, 60_000),
                                 ("rate_retry_after_ms", 1, 60_000), ("max_snapshot_age_s", 1, 300),
-                                ("trigger_wait_ms", 1, 9 * 60 * 1000)):
+                                ("trigger_wait_ms", 1, 9 * 60 * 1000), ("dca_wait_ms", 1, 9 * 60 * 1000),
+                                ("dca_finish_margin_ms", 1, 5 * 60 * 1000)):
             value = getattr(self, name)
             if type(value) is not int or not low <= value <= high:
                 _hold(f"config.{name}")
@@ -193,6 +198,7 @@ class RealTestnetAdapter:
         self._work_seq = 0
         self._last_observed = 1
         self._aggregate_peak = ZERO
+        self._notes: list[dict] = []
 
     # ------------------------------------------------------------------------------------------------ plumbing
     def _now(self) -> int:
@@ -806,28 +812,31 @@ class RealTestnetAdapter:
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.protective_offset)
         initial = case.position
         tick = self._filters_for(case).tick_size
-        if case.side is Side.LONG:
-            trigger = _floor(entry * (ONE - self._cfg.trigger_offset), tick)
-        else:
-            trigger = _ceil(entry * (ONE + self._cfg.trigger_offset), tick)
+        self._mark(case)
+        trigger = self._dca_trigger(case, entry, tick)
         add_notional = case.context.case.max_notional * self._cfg.entry_notional_fraction
         add_risk = add_notional * abs(entry - stop) / entry
         rule = M.RiskIncreaseRule(level_id="d1", kind=M.IncreaseKind.DCA, trigger_price=trigger,
                                   requested_risk=add_risk)
-        plan = self._wait_for_plan(case, self._now() + self._cfg.trigger_wait_ms, entry=entry, stop=stop,
+        deadline = min(self._now() + self._cfg.dca_wait_ms,
+                       case.context.case_deadline_ms - self._cfg.dca_finish_margin_ms)
+        plan = self._wait_for_plan(case, deadline, entry=entry, stop=stop,
                                    stop_order=stop_order, targets=(), increases=(rule,), initial_qty=initial)
         proposal = None if plan is None else next(
             (a for a in plan.actions if isinstance(a, M.RiskIncreaseProposal)), None)
         if proposal is None or not proposal.requires_nc06_authorization:
+            self._note(case, "dca.no_trigger" if plan is None else "dca.no_proposal", trigger=trigger)
             self._finish_truth(case, flags)
             return
         mark = self._mark(case)
         add_entry = _floor(mark, tick)
         if not ((case.side is Side.LONG and stop < add_entry) or (case.side is Side.SHORT and stop > add_entry)):
+            self._note(case, "dca.stop_crossed", trigger=trigger)
             self._finish_truth(case, flags)
             return
         decision = self._authorize(case, R.RiskAction.ADD, add_entry, stop, add_notional)
         if type(decision) is not R.ApprovedDecision:
+            self._note(case, "dca.nc06_refused", trigger=trigger)
             self._finish_truth(case, flags)
             return
         add = self._market(case, Purpose.ADD, decision.quantity, Action.ADD)
@@ -836,7 +845,30 @@ class RealTestnetAdapter:
             self._cancel(case, stop_order)
             if replacement.state is IntentState.WORKING and stop_order.state in _TERMINAL:
                 flags["dca"] = 1
+        self._note(case, "dca.added" if flags["dca"] == 1 else "dca.add_unconfirmed", trigger=trigger)
         self._finish_truth(case, flags)
+
+    def _dca_trigger(self, case: _Case, entry: Decimal, tick: Decimal) -> Decimal:
+        """The DCA level is compared with polled MARK prices (the market low/high is taken over every mark this case
+        has read), so it is set ``trigger_offset`` beyond the most adverse mark already seen, which includes the mark
+        read just after entry.  No mark seen so far can satisfy it, so only a fresh adverse move fires it, and it must
+        also be strictly adverse to the actual fill by at least one tick."""
+        if case.side is Side.LONG:
+            return min(_floor(min(case.marks) * (ONE - self._cfg.trigger_offset), tick), _floor(entry, tick) - tick)
+        return max(_ceil(max(case.marks) * (ONE + self._cfg.trigger_offset), tick), _ceil(entry, tick) + tick)
+
+    def _note(self, case: _Case, reason: str, **prices: Decimal) -> None:
+        """Run diagnostics: why a scenario took the path it did.  Prices only, never ids or account data."""
+        marks = case.marks
+        self._notes.append({"kind": case.context.case.kind.value, "reason": reason, "side": case.side.value,
+                            "symbol": case.symbol, "polls": len(marks),
+                            "mark_low": str(min(marks)) if marks else None,
+                            "mark_high": str(max(marks)) if marks else None,
+                            **{name: str(value) for name, value in prices.items()}})
+
+    @property
+    def notes(self) -> tuple[dict, ...]:
+        return tuple(dict(n) for n in self._notes)
 
     def _run_cancel_replace(self, case: _Case, flags: dict) -> None:
         _entry, stop, first = self._open_protected(case, flags, adverse=self._cfg.protective_offset)
