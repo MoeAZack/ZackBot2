@@ -153,6 +153,7 @@
   "data": {
     "universe": "causal_v3 fold-start filter-eligible CORE-20: for each PIT week take the first 20 ranked crypto members eligible under the fold's pre-start Binance filter snapshot",
     "exchange_filter_authority": "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json",
+    "exchange_filter_authority_sha256": "02bf73dd53c4b486e0c7073e6c7f850864d14d049c7f2b3d2aea27dc0dc0d6c9",
     "exchange_filter_authority_rule": "latest snapshot with capture and Binance serverTime strictly before fold start; freeze for whole fold; missing authority is a metadata eligibility veto before market data, never an outcome deletion",
     "future_dated_snapshot_forbidden": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json",
     "manifest": "research_evidence/manifests/binance-um-archive-v1.json.gz",
