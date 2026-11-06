@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "strategy_causal_pack_01_contract.v1.json"
 CONTRACT_SHA256 = "a3a16673340b6cfdb88257104ffc5a9f0e65c30b9733e9c8f0c62b87428d5572"
+CONTRACT_COMMIT = "370871b60f58ff6a0c87048826ac6c640a3ab2a5"
 FORMAT = "zackbot.strategy-causal-pack-01/2"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = (
@@ -133,6 +134,17 @@ def git_head(repo: Path = ROOT) -> str:
 
 def git_dirty(repo: Path = ROOT) -> bool:
     return bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=repo, text=True).strip())
+
+
+def contract_is_merged(repo: Path = ROOT, merge_ref: str = "origin/master") -> bool:
+    """A caller flag cannot authorize data; the frozen commit must be in the protected ref."""
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", CONTRACT_COMMIT, merge_ref], cwd=repo,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        ).returncode == 0
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -1425,14 +1437,20 @@ def _frozen_fold_months_utc(contract: dict) -> tuple[str, ...]:
     return tuple(sorted(months))
 
 
-def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = False) -> dict:
+def evaluate_raw_candidate(
+    adapter,
+    pf: Preflight,
+    *,
+    merge_guard: Callable[[], bool] = contract_is_merged,
+) -> dict:
     """Load and evaluate the exact three-fold candidate from a verified adapter.
 
     The explicit merge signal is checked before the first archive-row method is
     called. The CLI does not currently supply it.
     """
-    if not contract_merged:
-        raise RunnerError("contract PR #298 merge signal absent; archive evaluation refused")
+    if not merge_guard():
+        raise RunnerError(
+            "frozen contract commit is not merged into origin/master; archive evaluation refused")
     from bisect import bisect_right
     from tools.research.strategy_causal_pack_01_archive import (
         RawArchiveAdapter,
@@ -1521,7 +1539,7 @@ def evaluate_raw_candidate(adapter, pf: Preflight, *, contract_merged: bool = Fa
 
 
 def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
-                         contract_merged: bool = False) -> dict:
+                         merge_guard: Callable[[], bool] = contract_is_merged) -> dict:
     """Read no market bytes; name the exact blockers to a real raw evaluation."""
     contract, contract_digest = load_contract()
     validate_book_contract(contract)
@@ -1535,14 +1553,12 @@ def missing_input_report(*, archive_store: os.PathLike[str] | str | None = None,
     for candidate_id, path in SOURCE_RUNNER_PATHS.items():
         if not path.is_file():
             gaps.append(f"{candidate_id}: missing source runner {path}")
-    if not contract_merged:
-        gaps.append("contract PR #298 is not recorded merged; market-data reads remain forbidden")
+    if not merge_guard():
+        gaps.append("frozen contract commit is not contained by origin/master; market-data reads remain forbidden")
     if archive_store is None:
         gaps.append("missing external binance_um archive store path for manifest klines/fundingRate/markPriceKlines")
     elif not Path(archive_store).is_dir():
         gaps.append(f"binance_um archive store does not exist: {Path(archive_store)}")
-    gaps.append("raw evaluator is staged and synthetic-tested, but real archive execution remains disabled until the "
-                "contract merge signal; no public evaluation/promotion route exists")
     return {
         "format": "zackbot.strategy-causal-pack-01-readiness/2", "ready": False,
         "contract_sha256": contract_digest, "source_bindings": bindings,
@@ -1573,28 +1589,49 @@ def evaluate_payload(payload: object, pf: Preflight) -> dict:
 
 def _run_raw_candidate(candidate_id: str, output: os.PathLike[str] | str,
                        adapter_loader: Callable[[], object], *, identity_dir=None,
-                       contract_merged: bool = False, head_fn=git_head, dirty_fn=git_dirty) -> dict:
+                       merge_guard: Callable[[], bool] = contract_is_merged,
+                       head_fn=git_head, dirty_fn=git_dirty) -> dict:
     """Private immutable-output bridge; reservation precedes any adapter/archive load."""
+    if not merge_guard():
+        raise RunnerError(
+            "frozen contract commit is not merged into origin/master; adapter load refused")
     return _run_with_loader(
         candidate_id, output, adapter_loader,
-        lambda adapter, pf: evaluate_raw_candidate(adapter, pf, contract_merged=contract_merged),
+        lambda adapter, pf: evaluate_raw_candidate(adapter, pf, merge_guard=merge_guard),
         identity_dir=identity_dir, head_fn=head_fn, dirty_fn=dirty_fn)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Frozen STRATEGY-CAUSAL-PACK-01 runner (raw evaluator unavailable)")
+    ap = argparse.ArgumentParser(description="Frozen STRATEGY-CAUSAL-PACK-01 raw runner")
     ap.add_argument("--candidate", required=True, choices=CANDIDATE_IDS)
     ap.add_argument("--out", required=True)
     ap.add_argument("--identity-dir", required=True)
     ap.add_argument("--archive-store", default=str(DEFAULT_ARCHIVE_STORE))
     args = ap.parse_args(argv)
     try:
-        report = missing_input_report(archive_store=args.archive_store, contract_merged=False)
-        candidate_spec(load_contract()[0], args.candidate)
-        raise RunnerError("; ".join(report["gaps"]))
-    except RunnerError as exc:
+        if not contract_is_merged():
+            raise RunnerError(
+                "frozen contract commit is not contained by origin/master; no archive row was read")
+        from tools.research.strategy_causal_pack_01_archive import (
+            RawArchiveAdapter,
+            load_authorities,
+        )
+
+        def load_adapter():
+            manifest, pit = load_authorities(ARCHIVE_MANIFEST_PATH, UNIVERSE_PATH)
+            return RawArchiveAdapter(manifest, pit, args.archive_store)
+
+        packet = _run_raw_candidate(
+            args.candidate, args.out, load_adapter,
+            identity_dir=args.identity_dir)
+    except (RuntimeError, OSError, ValueError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
+    report = packet["report"]
+    print(
+        f"{args.candidate}: {report['trade_count']} closes, "
+        f"{report['net_r']:.6f}R, PF {report['profit_factor']} -> {args.out}")
+    return 0
 
 
 if __name__ == "__main__":

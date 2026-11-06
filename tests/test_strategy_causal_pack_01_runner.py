@@ -351,18 +351,19 @@ def test_cli_exposes_exactly_three_frozen_candidates():
     assert not hasattr(R, "trade_from_evidence")
 
 
-def test_cli_has_no_prepared_input_or_evaluation_route(tmp_path, capsys):
+def test_cli_refuses_before_adapter_load_when_contract_is_unmerged(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(R, "contract_is_merged", lambda: False)
     out, identities = tmp_path / "packet.json", tmp_path / "ids"
     rc = R.main(["--candidate", R.CANDIDATE_IDS[0], "--out", str(out),
                  "--identity-dir", str(identities)])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "contract PR #298" in err and "real archive execution remains disabled" in err
+    assert "frozen contract commit is not contained by origin/master" in err
     assert not out.exists() and not identities.exists()
 
 
 def test_readiness_wires_exact_repository_sources_without_market_read():
-    report = R.missing_input_report(contract_merged=False)
+    report = R.missing_input_report(merge_guard=lambda: False)
     assert report["ready"] is False
     assert set(report["source_bindings"]) == set(R.CANDIDATE_IDS)
     assert report["source_bindings"]["pullback_rsi_short_h1_causal_v3"]["function"] == "sig_trend_pullback_rsi"
@@ -374,9 +375,8 @@ def test_readiness_wires_exact_repository_sources_without_market_read():
         {"name": "wf3", "start": "2026-04-01T00:00:00Z", "end": "2026-09-28T00:00:00Z"},
     ]
     joined = "\n".join(report["gaps"])
-    assert "contract PR #298" in joined
+    assert "frozen contract commit is not contained by origin/master" in joined
     assert "risk_cash and leverage_notional_cap" not in joined
-    assert "real archive execution remains disabled" in joined
 
 
 def test_frozen_book_contract_and_default_archive_store_are_wired(tmp_path):
@@ -387,7 +387,7 @@ def test_frozen_book_contract_and_default_archive_store_are_wired(tmp_path):
     assert frozen["maximum_open_positions"] == R.FrozenCandidateBook.MAX_OPEN_POSITIONS == 4
     assert frozen["gross_leverage_multiple"] == R.FrozenCandidateBook.GROSS_LEVERAGE_MULTIPLE == 10.0
     assert frozen["daily_halt_fraction"] == R.FrozenCandidateBook.DAILY_HALT_FRACTION == 0.08
-    report = R.missing_input_report(archive_store=tmp_path, contract_merged=False)
+    report = R.missing_input_report(archive_store=tmp_path, merge_guard=lambda: False)
     assert report["required_sources"]["archive_store"] == str(tmp_path)
     assert not any("archive store does not exist" in gap for gap in report["gaps"])
     assert str(R.DEFAULT_ARCHIVE_STORE) == r"C:\Dev\ZackBot2_data\binance_um"
@@ -757,8 +757,19 @@ def test_raw_evaluator_rejects_nonrepository_authorities_before_first_row_read()
     row_reads = []
     adapter.core20_union = lambda *_: row_reads.append(True)
     with pytest.raises(A.ArchiveIncomplete, match="fixed repository manifest/PIT"):
-        R.evaluate_raw_candidate(adapter, pf, contract_merged=True)
+        R.evaluate_raw_candidate(adapter, pf, merge_guard=lambda: True)
     assert row_reads == []
+
+
+def test_unmerged_contract_refuses_before_raw_adapter_loader(tmp_path):
+    loaded = []
+    with pytest.raises(R.RunnerError, match="adapter load refused"):
+        R._run_raw_candidate(
+            R.CANDIDATE_IDS[0], tmp_path / "packet.json",
+            lambda: loaded.append(True), identity_dir=tmp_path / "ids",
+            merge_guard=lambda: False, head_fn=lambda: "a" * 40,
+            dirty_fn=lambda: False)
+    assert loaded == []
 
 
 def test_raw_evaluator_rejects_filter_authority_before_first_market_row(monkeypatch):
@@ -776,5 +787,5 @@ def test_raw_evaluator_rejects_filter_authority_before_first_market_row(monkeypa
 
     monkeypatch.setattr(A, "load_fold_filter_authorities", refuse)
     with pytest.raises(A.ArchiveIncomplete, match="filter authority checksum mismatch"):
-        R.evaluate_raw_candidate(adapter, pf, contract_merged=True)
+        R.evaluate_raw_candidate(adapter, pf, merge_guard=lambda: True)
     assert row_reads == []
