@@ -16,6 +16,14 @@ from pathlib import Path
 from tools.research import manifest as M
 from tools.research import pit as P
 from tools.research import universe as U
+from tools.research.strategy_causal_pack_01_archive import (
+    ArchiveIncomplete,
+    CoverageGap,
+    RawArchiveAdapter as SparseRawArchiveAdapter,
+    SparseFundingLoad,
+    SparseKlineLoad,
+    SparseMarkLoad,
+)
 import feasibility as F
 
 
@@ -29,10 +37,6 @@ EXPECTED_UNIVERSE_DIGEST = "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d2
 EXPECTED_CLASSES_SHA256 = "b5d3858e3b090f8e6b8a3769a23ba409949f6edfeeefe896baf4bc5d3d7f6198"
 EXPECTED_CLASSES_DIGEST = "48a9d32c4299495d0c58b175755d8ebdab562f8e18a05196a7f361fb6a986845"
 EXPECTED_BOOKS = ("crypto", "gold-commodity", "equity", "fx")
-
-
-class ArchiveIncomplete(RuntimeError):
-    """The complete frozen candidate must be refused, never reduced."""
 
 
 @dataclass(frozen=True)
@@ -197,7 +201,7 @@ def authority_digests(manifest_path: str | Path, universe_path: str | Path, clas
     )
 
 
-class RawArchiveAdapter:
+class RawArchiveAdapter(SparseRawArchiveAdapter):
     """Read only manifest-authorized CORE-20 rows, failing closed on any gap."""
 
     def __init__(self, manifest: dict, pit_universe: dict, store: str | Path):

@@ -128,6 +128,74 @@ def test_bad_pit_cell_or_time_grid_makes_whole_candidate_incomplete():
         R.build_fold_source_signal_tape(contract, R.CANDIDATE_IDS[0], shifted, [symbols] * 225)
 
 
+def test_sparse_rank_excludes_gap_and_requires_42_fresh_contiguous_bars(monkeypatch):
+    import pandas as pd
+    import strategies
+
+    contract, _ = R.load_contract()
+    symbols = core20()
+    n, start, step = 225, ms("2025-04-01T00:00:00"), 4 * 3_600_000
+    raw = {
+        symbol: tuple(
+            R.Bar(start + index * step, 100 + offset + index,
+                  101 + offset + index, 99 + offset + index,
+                  100 + offset + index, volume=10 + index)
+            for index in range(n)
+            if symbol != "S19" or not 100 <= index < 110)
+        for offset, symbol in enumerate(symbols)
+    }
+    ranked_n = {}
+
+    def fake_signals(_key, frame, ctx, params=None, mask_sides=False):
+        del params, mask_sides
+        for time, value in zip(pd.to_datetime(frame.t), ctx["rank7_n"]):
+            ranked_n[int(time.timestamp() * 1000)] = float(value)
+        false = pd.Series(False, index=frame.index)
+        return {"le": false, "se": false, "lx": false, "sx": false}
+
+    monkeypatch.setattr(strategies, "signals", fake_signals)
+    R.build_fold_source_signal_tape(
+        contract, R.CANDIDATE_IDS[0], raw, [symbols] * n,
+        canonical_times_ms=[start + index * step for index in range(n)])
+    assert ranked_n[start + 99 * step] == 20
+    assert ranked_n[start + 100 * step] == 19
+    assert ranked_n[start + 151 * step] == 19
+    assert ranked_n[start + 152 * step] == 20
+
+
+def test_sparse_indicators_restart_and_future_tail_cannot_change_earlier_signals():
+    contract, _ = R.load_contract()
+    symbols = core20()
+    n, start, step = 225, ms("2025-04-01T00:00:00"), 4 * 3_600_000
+    dense = bars(symbols, n, start=start)
+    sparse = dict(dense)
+    sparse["S19"] = tuple(row for index, row in enumerate(dense["S19"])
+                           if not 100 <= index < 110 and index < 210)
+    grid = [start + index * step for index in range(n)]
+    dense_tape = R.build_fold_source_signal_tape(
+        contract, R.CANDIDATE_IDS[0], dense, [symbols] * n,
+        canonical_times_ms=grid)
+    sparse_tape = R.build_fold_source_signal_tape(
+        contract, R.CANDIDATE_IDS[0], sparse, [symbols] * n,
+        canonical_times_ms=grid)
+    assert sparse_tape.prior_closed_atr["S19"][110] is None
+    assert sparse_tape.signals["S19"]["se"][:110] == dense_tape.signals["S19"]["se"][:110]
+    assert sparse_tape.signals["S01"]["se"][:210] == dense_tape.signals["S01"]["se"][:210]
+
+
+def test_unexposed_funding_gap_is_harmless_and_keeps_full_pit_cell(monkeypatch):
+    contract, _ = R.load_contract()
+    symbols = core20()
+    raw, membership, rules, funding, marks = fold_inputs(symbols)
+    monkeypatch.setattr(R, "build_fold_source_signal_tape",
+                        lambda *_: tape(symbols, 225))
+    sparse_funding = dict(funding)
+    sparse_funding["S01"] = R.FundingLedger((), True, False)
+    result = R._evaluate_raw_fold(contract, R.CANDIDATE_IDS[0], "flat-gap", raw,
+                                  membership, rules, sparse_funding, marks)
+    assert result.trades == ()
+
+
 def test_source_reentry_lock_blocks_exit_candle_but_next_candle_is_eligible(monkeypatch):
     contract, _ = R.load_contract()
     symbols = core20()
@@ -167,7 +235,7 @@ def test_due_signal_exit_precedes_fill_bar_gap_path(monkeypatch):
     assert trade["fills"][-1]["reference_price"] == 105
 
 
-def test_missing_mark_and_funding_refuse_before_reduced_sample(monkeypatch):
+def test_missing_mark_and_funding_refuse_when_exposure_intersects(monkeypatch):
     contract, _ = R.load_contract()
     symbols = core20()
     raw, membership, rules, funding, marks = fold_inputs(symbols)
@@ -175,7 +243,7 @@ def test_missing_mark_and_funding_refuse_before_reduced_sample(monkeypatch):
                         lambda *_: tape(symbols, 225, entries=(199,)))
     bad_funding = dict(funding)
     bad_funding["S01"] = R.FundingLedger((), True, False)
-    with pytest.raises(R.IncompleteCandidate, match="funding authority incomplete"):
+    with pytest.raises(R.IncompleteCandidate, match="funding coverage gap intersects exposure"):
         R._evaluate_raw_fold(contract, R.CANDIDATE_IDS[0], "wf", raw,
                              membership, rules, bad_funding, marks)
     bad_marks = {symbol: dict(values) for symbol, values in marks.items()}
