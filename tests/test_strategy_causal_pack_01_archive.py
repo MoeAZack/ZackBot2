@@ -143,6 +143,22 @@ def test_sparse_kline_load_keeps_checksum_and_grid_guards(tmp_path):
         adapter.load_klines_sparse("S00", "1h", T0 + 1, T0 + 3 * A.HOUR_MS)
 
 
+def test_sparse_kline_non_finite_row_becomes_explicit_gap_without_bridging(
+        tmp_path, monkeypatch):
+    manifest, universe = _fixture(tmp_path)
+    adapter = A.RawArchiveAdapter(manifest, universe, tmp_path)
+    rows = [
+        [str(T0).encode(), b"100", b"101", b"99", b"100", b"10"],
+        [str(T0 + A.HOUR_MS).encode(), b"100", b"101", b"99", b"nan", b"10"],
+        [str(T0 + 2 * A.HOUR_MS).encode(), b"100", b"101", b"99", b"100", b"10"],
+    ]
+    monkeypatch.setattr(adapter, "_rows_sparse", lambda *_: (rows, ()))
+    result = adapter.load_klines_sparse("S00", "1h", T0, T0 + 3 * A.HOUR_MS)
+    assert [row.open_ms for row in result.rows] == [T0, T0 + 2 * A.HOUR_MS]
+    assert result.gaps == (A.CoverageGap(
+        T0 + A.HOUR_MS, T0 + 2 * A.HOUR_MS, "non_finite_row"),)
+
+
 def test_sparse_fixture_cannot_bypass_authoritative_duplicate_refusal(tmp_path):
     with pytest.raises(M.ManifestError, match="unordered or duplicate row"):
         _fixture(tmp_path, kline_times=(T0, T0, T0 + A.HOUR_MS))

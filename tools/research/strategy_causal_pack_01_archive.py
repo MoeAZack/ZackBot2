@@ -419,8 +419,9 @@ class RawArchiveAdapter:
         """Return every verified grid-aligned bar and explicit missing grid intervals.
 
         Sparse mode relaxes coverage only.  Authority, archive checksum, cutoff,
-        parser, ordering, duplicate, timestamp alignment, and OHLCV validation
-        remain fail-closed.
+        parser, ordering, duplicate, timestamp alignment, and finite structural
+        OHLCV validation remain fail-closed. A checksum-verified row containing
+        a non-finite numeric candle is explicit unavailable data, not a bridge.
         """
         if interval not in INTERVAL_MS:
             raise ArchiveIncomplete("candidate archive adapter permits only 1h/4h klines")
@@ -435,19 +436,25 @@ class RawArchiveAdapter:
         if any((time_ms - start_ms) % step for time_ms in times):
             raise ArchiveIncomplete(f"{symbol} {interval}: misaligned kline timestamp")
         out = []
+        unavailable = []
         for row in chosen:
             try:
                 values = [float(row[index]) for index in range(1, 6)]
             except ValueError as exc:
                 raise ArchiveIncomplete(f"{symbol} {interval}: non-numeric OHLCV") from exc
             o, h, low, close, volume = values
-            if (not all(math.isfinite(value) for value in values) or min(o, h, low, close) <= 0
-                    or low > min(o, close) or h < max(o, close) or volume < 0):
+            if not all(math.isfinite(value) for value in values):
+                unavailable.append(CoverageGap(int(row[0]), int(row[0]) + step,
+                                               "non_finite_row"))
+                continue
+            if (min(o, h, low, close) <= 0 or low > min(o, close)
+                    or h < max(o, close) or volume < 0):
                 raise ArchiveIncomplete(f"{symbol} {interval}: malformed OHLCV row")
             out.append(RawKline(int(row[0]), o, h, low, close, volume))
-        observed = set(times)
+        observed = {row.open_ms for row in out} | {gap.start_ms for gap in unavailable}
         row_gaps = self._grid_gaps(start_ms, end_ms, step, observed, "missing_row")
-        return SparseKlineLoad(tuple(out), self._merge_gaps((*manifest_gaps, *row_gaps)))
+        return SparseKlineLoad(
+            tuple(out), self._merge_gaps((*manifest_gaps, *row_gaps, *unavailable)))
 
     def load_funding(self, symbol: str, start_ms: int, end_ms: int, *,
                      eligible_symbols: frozenset[str] | None = None) -> tuple[RawFunding, ...]:
