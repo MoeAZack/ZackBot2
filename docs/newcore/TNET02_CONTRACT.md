@@ -192,6 +192,20 @@ Changes (pass conditions unchanged):
 - `_refresh_stops` retries a stop read that did not complete, or returned UNKNOWN/NOT_FOUND, up to `settle_polls` times. These are read-only retries. It still HOLDs `refresh.stop_unknown` if the stop stays unknown.
 - `execute` records `adapter.<code>` for an `AdapterError` and `error.<ClassName>` for any other exception in the diagnostics notes. Messages are never recorded. Target and stop paths also note `target.no_trigger` / `target.no_reduce` / `stop.no_trigger` / `stop.unconfirmed`.
 
+## 16. Bounded retry of account-facts reads; failure notes carry level and cause (6 Nov 2026)
+
+The third real run (head 777badeb, 03:45-04:16Z, report_sha256 95ffe75f…) passed 9 of 12.
+- **long_target** and **partial_close** failed as `target.no_trigger`. BTC drifted down while both longs waited for the target.
+- **bounded_dca** failed as `adapter.read.account_facts`. A single failed read ended the case, and the port code that caused it was dropped.
+
+Changes:
+- `_facts` retries a read-only account read up to `settle_polls` times, with `poll_ms` between attempts, for transient codes only: `reader.transport`, `reader.response`, `reader.http_status`, `reader.malformed`, and `account.mark_price` (LONG and SHORT positionRisk rows caught mid-update).
+- Rate answers (429/418), budget refusals, and credential, origin or shape errors are not retried.
+- The final failure HOLDs `read.account_facts` as before, and now carries `cause=<port code>`, or `error.<Class>` for an unexpected exception.
+- Adapter-failure notes now record `cause` and the case's current target, stop or DCA `level`. Notes never record messages.
+
+The direction dependence of target and stop cases is an open owner decision: retry a clean no-trigger case later in the run, use a longer window, or keep rerunning as is.
+
 ## Deferred
 
 Replacement entrypoint, runtime/PAPER wiring, installer, UI, leverage *setting* (the run refuses instead when account leverage exceeds the case), live canaries and all mainnet activity.

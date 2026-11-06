@@ -41,21 +41,27 @@ from newcore.testnet_harness import (MAX_AGGREGATE_NOTIONAL, BindingEvidence, Cl
                                      ScenarioEvidence, ScenarioKind, SetupEvidence)
 
 from .faults import FaultingSender, FaultKind, client_id_of
-from .ports import AccountPort, CaseJournal, Clock, FiltersPort, JournalOpener, JournalRecord, RecordKind, Sleeper
+from .ports import (AccountPort, CaseJournal, Clock, FiltersPort, JournalOpener, JournalRecord, PortError, RecordKind,
+                    Sleeper)
 
 
 ZERO = Decimal("0")
 ONE = Decimal("1")
 STRATEGY_ID = "tnet02"
 BOOK_ID = "harness"
+# Account-read failures worth a bounded read-only retry.  Rate answers (429/418), budget refusals, credential, origin
+# and shape errors are never retried.
+_TRANSIENT_READS = frozenset({"reader.transport", "reader.response", "reader.http_status", "reader.malformed",
+                              "account.mark_price"})
 _TERMINAL = frozenset({IntentState.FILLED, IntentState.CANCELLED, IntentState.REJECTED, IntentState.NOT_SENT})
 
 
 class AdapterError(RuntimeError):
     """Closed failure code; never contains venue, credential or exception text."""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, cause: str | None = None):
         self.code = code
+        self.cause = cause              # a stable port code only, never venue text
         super().__init__(code)
 
 
@@ -138,6 +144,7 @@ class _Case:
     rate_latch_synthetic: bool = False
     leverage: int = 0
     trusted: bool = True
+    level: Decimal | None = None        # the current target/stop/DCA level, for diagnostics only
 
     @property
     def symbol(self) -> str:
@@ -250,10 +257,23 @@ class RealTestnetAdapter:
         self._last_observed = at_ms
 
     def _facts(self, symbols: tuple[str, ...]):
-        try:
-            return self._account_port.facts(symbols)
-        except Exception:
-            _hold("read.account_facts")
+        """Read-only account facts.  A transient read failure (transport, a 5xx or malformed answer, or positionRisk
+        rows of one symbol caught mid-update with different marks) is retried up to ``settle_polls`` times; a rate
+        refusal, ban or any other code is not.  The final failure HOLDs and names its port code as the cause."""
+        cause = "unknown"
+        for attempt in range(self._cfg.settle_polls):
+            if attempt:
+                self._sleep(self._cfg.poll_ms)
+            try:
+                return self._account_port.facts(symbols)
+            except PortError as error:
+                cause = error.code if type(error.code) is str else "unknown"
+                if cause not in _TRANSIENT_READS:
+                    break
+            except Exception as error:
+                cause = "error." + type(error).__name__
+                break
+        raise AdapterError("read.account_facts", cause) from None
 
     def _mark(self, case: _Case) -> Decimal:
         facts = self._facts((case.symbol,))
@@ -714,7 +734,10 @@ class RealTestnetAdapter:
         try:
             handler(case, flags)
         except AdapterError as error:
-            self._note(case, "adapter." + error.code)
+            extra = {} if case.level is None else {"level": case.level}
+            if error.cause is not None:
+                extra["cause"] = error.cause
+            self._note(case, "adapter." + error.code, **extra)
             raise
         except Exception as error:
             self._note(case, "error." + type(error).__name__)   # class name only: messages may carry venue text
@@ -792,7 +815,7 @@ class RealTestnetAdapter:
     def _run_target(self, case: _Case, flags: dict, fraction: Decimal = ONE) -> None:
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.protective_offset)
         initial = case.position
-        target = self._target_price(case, entry)
+        target = case.level = self._target_price(case, entry)
         rule = M.TargetRule(level_id="t1", trigger_price=target, reduce_fraction=fraction)
         plan = self._wait_for_plan(case, self._trigger_deadline(case), entry=entry, stop=stop,
                                    stop_order=stop_order, targets=(rule,), increases=(), initial_qty=initial)
@@ -820,6 +843,7 @@ class RealTestnetAdapter:
 
     def _run_stop(self, case: _Case, flags: dict) -> None:
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.trigger_offset)
+        case.level = stop
         deadline = self._trigger_deadline(case)
         while self._now() < deadline and stop_order.state is IntentState.WORKING:
             self._sleep(self._cfg.poll_ms)
@@ -840,7 +864,7 @@ class RealTestnetAdapter:
         initial = case.position
         tick = self._filters_for(case).tick_size
         self._mark(case)
-        trigger = self._dca_trigger(case, entry, tick)
+        trigger = case.level = self._dca_trigger(case, entry, tick)
         add_notional = case.context.case.max_notional * self._cfg.entry_notional_fraction
         add_risk = add_notional * abs(entry - stop) / entry
         rule = M.RiskIncreaseRule(level_id="d1", kind=M.IncreaseKind.DCA, trigger_price=trigger,
@@ -882,7 +906,7 @@ class RealTestnetAdapter:
             return min(_floor(min(case.marks) * (ONE - self._cfg.trigger_offset), tick), _floor(entry, tick) - tick)
         return max(_ceil(max(case.marks) * (ONE + self._cfg.trigger_offset), tick), _ceil(entry, tick) + tick)
 
-    def _note(self, case: _Case, reason: str, **prices: Decimal) -> None:
+    def _note(self, case: _Case, reason: str, **prices: Decimal | str) -> None:
         """Run diagnostics: why a scenario took the path it did.  Prices only, never ids or account data."""
         marks = case.marks
         self._notes.append({"kind": case.context.case.kind.value, "reason": reason, "side": case.side.value,

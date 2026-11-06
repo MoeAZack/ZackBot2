@@ -182,3 +182,129 @@ def test_stop_that_stays_unknown_still_holds(tmp_path):
     reasons = [n["reason"] for n in r.adapter.notes if n["kind"] == "long_stop"]
     assert reasons[-1] == "adapter.refresh.stop_unknown"
     assert [c.kind for c in report.cases][-1] is ScenarioKind.LONG_STOP
+
+
+# ------------------------------------------------------------------- account-facts reads (third real run, 777badeb)
+# bounded_dca failed as adapter 346 s into its wait. The diagnostics note said only "adapter.read.account_facts":
+# one failed read ended the case, and the port code that caused it was dropped.
+from newcore.tnet02.ports import PortError  # noqa: E402
+
+
+class _FlakyFacts:
+    """Wraps the account port: fails with ``code`` on the calls whose numbers are in ``failing``, counted from 1."""
+
+    def __init__(self, port, code, failing):
+        self._port, self._code, self._failing, self.calls = port, code, set(failing), 0
+
+    def facts(self, symbols):
+        self.calls += 1
+        if self.calls in self._failing:
+            raise PortError(self._code)
+        return self._port.facts(symbols)
+
+    def __getattr__(self, name):
+        return getattr(self._port, name)
+
+
+def _wrap(r, code, failing):
+    flaky = _FlakyFacts(r.adapter._account_port, code, failing)
+    r.adapter._account_port = flaky
+    return flaky
+
+
+def test_one_transient_facts_failure_mid_case_is_retried(tmp_path):
+    r = rig(tmp_path)
+    _wrap(r, "account.mark_price", {40, 41})       # LONG/SHORT rows caught mid-update, twice in a row
+    report = run_suite(manifest(), r.adapter, [].append)
+    assert [c.status for c in report.cases] == [CaseStatus.PASSED] * 12
+    assert not [n for n in r.adapter.notes if n["reason"].startswith("adapter.")]
+
+
+def test_persistent_transient_failure_holds_after_the_bounded_retries_and_names_the_cause(tmp_path):
+    r = rig(tmp_path, config=HarnessConfig(poll_ms=1000, settle_polls=4))
+    flaky = _wrap(r, "reader.transport", set(range(40, 10_000)))
+    report = run_suite(manifest(), r.adapter, [].append)
+    failed = [c for c in report.cases if c.status is not CaseStatus.PASSED]
+    assert failed and failed[0].failure is FailureCode.ADAPTER
+    note = next(n for n in r.adapter.notes if n["reason"] == "adapter.read.account_facts")
+    assert note["cause"] == "reader.transport"
+    assert flaky.calls >= 40 + 3                    # the failing read was attempted settle_polls (4) times
+
+
+def test_rate_refusal_mid_suite_holds_with_its_cause(tmp_path):
+    r = rig(tmp_path)
+    _wrap(r, "account.budget_refused", {40})
+    report = run_suite(manifest(), r.adapter, [].append)
+    note = next(n for n in r.adapter.notes if n["reason"] == "adapter.read.account_facts")
+    assert note["cause"] == "account.budget_refused"
+    assert any(c.failure is FailureCode.ADAPTER for c in report.cases)
+
+
+def test_facts_retry_policy_directly(tmp_path):
+    r = rig(tmp_path, config=HarnessConfig(poll_ms=1000, settle_polls=3))
+    for code, expected_calls in (("reader.transport", 3), ("reader.http_status", 3), ("account.mark_price", 3),
+                                 ("reader.malformed", 3), ("reader.response", 3),
+                                 ("account.budget_refused", 1), ("reader.http_429", 1), ("reader.http_418", 1),
+                                 ("account.symbol_missing", 1), ("reader.origin", 1)):
+        flaky = _FlakyFacts(_AlwaysOk(), code, set(range(1, 100)))
+        r.adapter._account_port = flaky
+        before = r.clock.now
+        try:
+            r.adapter._facts(("BTCUSDT",))
+        except Exception as error:   # noqa: BLE001
+            assert error.code == "read.account_facts" and error.cause == code
+        else:
+            raise AssertionError(code)
+        assert flaky.calls == expected_calls, code
+        assert r.clock.now - before == (expected_calls - 1) * 1000, code     # waits poll_ms between attempts
+
+
+def test_unexpected_exception_in_facts_records_only_its_class(tmp_path):
+    r = rig(tmp_path)
+
+    class Broken:
+        def facts(self, symbols):
+            raise RuntimeError("venue text api_key=abc")
+    r.adapter._account_port = Broken()
+    try:
+        r.adapter._facts(("BTCUSDT",))
+    except Exception as error:   # noqa: BLE001
+        assert error.cause == "error.RuntimeError" and "abc" not in str(error)
+
+
+class _AlwaysOk:
+    def facts(self, symbols):
+        raise AssertionError("never reached")
+
+
+def test_adapter_failure_note_carries_the_level_and_cause(tmp_path):
+    # mirrors the real DCA failure: a read fails while waiting for the add trigger
+    r = rig(tmp_path, price_path=lambda now, symbol: BASE if symbol == "BTCUSDT" else Decimal("3000"),
+            config=HarnessConfig(poll_ms=1000, settle_polls=2))
+    seen = {"dca": False}
+    real_run_dca = r.adapter._run_dca
+
+    def run_dca(case, flags):
+        seen["dca"] = True
+        return real_run_dca(case, flags)
+    r.adapter._run_dca = run_dca
+    port = r.adapter._account_port
+
+    class FailDuringDca:
+        calls = 0
+
+        def facts(self, symbols):
+            if seen["dca"]:
+                FailDuringDca.calls += 1
+                if FailDuringDca.calls > 5:
+                    raise PortError("reader.transport")
+            return port.facts(symbols)
+
+        def __getattr__(self, name):
+            return getattr(port, name)
+    r.adapter._account_port = FailDuringDca()
+    report = run_suite(manifest(), r.adapter, [].append)
+    assert _case(report, ScenarioKind.BOUNDED_DCA).failure is FailureCode.ADAPTER
+    note = next(n for n in r.adapter.notes if n["kind"] == "bounded_dca")
+    assert note["reason"] == "adapter.read.account_facts" and note["cause"] == "reader.transport"
+    assert Decimal(note["level"]) < BASE
