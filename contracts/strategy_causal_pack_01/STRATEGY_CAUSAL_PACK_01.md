@@ -25,7 +25,7 @@ starts: the 13 December 2024 response for wf1 and wf2, and the 17 February 2026 
 raw Binance API payloads preserved by the Internet Archive and pinned by `exchange_filter_authority.v2.json`.
 For every PIT week, walk the existing crypto volume ranking in order and take the first 20 symbols that the fold
 snapshot records as TRADING USDT COIN perpetuals with complete positive price, market-quantity and minimum-notional
-filters. Fewer than 20 makes the candidate incomplete before any market row is read. No later snapshot, invented rule,
+filters. The hash includes the PIT cell already active at fold start and every later Monday before fold end. Fewer than 20 makes the candidate incomplete before any market row is read. No later snapshot, invented rule,
 current-survivor screen or outcome-driven deletion is allowed. The fold snapshot stays fixed for the whole fold; current
 PAPER/testnet admission must independently pass current exchangeInfo parity.
 
