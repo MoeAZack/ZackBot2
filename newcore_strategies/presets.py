@@ -5,8 +5,10 @@ minus the three candidates that FAILED the one-shot sealed holdout of 5 Nov 2026
 
 Risk multipliers are the 3 Nov 2026 drawdown-policy caps (``min(1, 15 / dev max DD R)``), never raised:
 C101 9.689494R -> 1.0.
-The 4h range book (exp_range / exp_vwaprev) has positive forward PAPER P&L but no frozen backtest record, so it
-runs at 0.5x as forward-evidence-only sleeves.  Keys that this checkout's ``strategies.py`` does not define (C101, C164
+The 4h range book (exp_range / exp_vwaprev, one VWAP42 z-reversion mechanism) LOSES on development data: the REX dev
+screen range_vwap_rev.v1-splitcut, CORE-10, 2021-01-04..2026-09-28 (research_evidence/runs/rex-core10-gapfill-splitcut-v1)
+has primary long -159R / 1651 trades and short -209R / 1821, with all 20 variants negative after costs.  It stays here at
+0.5x only as an execution-test book for the testnet runtime (disposable funds); it is not edge evidence.  Keys that this checkout's ``strategies.py`` does not define (C101, C164
 and C213 live on research branches until merged) are reported as unavailable, never approximated.
 """
 from __future__ import annotations
