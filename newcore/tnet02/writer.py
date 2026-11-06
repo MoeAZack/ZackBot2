@@ -31,7 +31,7 @@ def report_filename(build_sha: str, report_sha256: str) -> str:
 class ExactBuildReportWriter:
     """Callable[[bytes], None]; one instance writes at most one report."""
 
-    __slots__ = ("_out_dir", "_dir_id", "_build_sha", "_path")
+    __slots__ = ("_out_dir", "_dir_id", "_build_sha", "_path", "_guard_fd")
 
     def __init__(self, out_dir: os.PathLike[str] | str, build_sha: str):
         if type(build_sha) is not str or _SHA.fullmatch(build_sha) is None:
@@ -46,6 +46,15 @@ class ExactBuildReportWriter:
         self._dir_id = (info.st_dev, info.st_ino)
         self._build_sha = build_sha
         self._path: Path | None = None
+        self._guard_fd: int | None = None
+
+    def __del__(self):
+        guard = getattr(self, "_guard_fd", None)
+        if guard is not None:
+            try:
+                os.close(guard)
+            except OSError:
+                pass
 
     @property
     def path(self) -> Path | None:
@@ -111,51 +120,67 @@ class ExactBuildReportWriter:
             self._close_dir(dir_fd)
             raise WriterError("writer.exists") from None
         except OSError:
+            self._unlink_owned(name, target, dir_fd, temp_info)
             os.close(fd)
             self._unlink(temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_failed") from None
+        guard_fd = None
         try:
-            self._verify_published(name, target, dir_fd, temp_info, data)
+            guard_fd = self._verify_published(name, target, dir_fd, temp_info, data)
         except (OSError, WriterError):
             os.close(fd)
-            self._unlink(name, target, dir_fd)
+            self._unlink_owned(name, target, dir_fd, temp_info)
             self._unlink(temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_verify") from None
         os.close(fd)
         self._unlink(temp_name, temp, dir_fd)
+        self._publication_hook("post_temp_unlink")
         if dir_fd is not None:
             try:
                 os.fsync(dir_fd)
             except OSError:
+                os.close(guard_fd)
+                self._unlink_owned(name, target, dir_fd, temp_info)
                 self._close_dir(dir_fd)
                 raise WriterError("writer.sync_failed") from None
         try:
-            self._verify_published(name, target, dir_fd, temp_info, data)
+            guard_fd = self._verify_published(name, target, dir_fd, temp_info, data, guard_fd)
+            self._publication_hook("post_final_verify")
+            guard_fd = self._verify_published(name, target, dir_fd, temp_info, data, guard_fd)
+            self._publication_hook("pre_return")
+            guard_fd = self._verify_published(name, target, dir_fd, temp_info, data, guard_fd)
         except (OSError, WriterError):
-            self._unlink(name, target, dir_fd)
+            os.close(guard_fd)
+            self._unlink_owned(name, target, dir_fd, temp_info)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_verify") from None
         self._close_dir(dir_fd)
+        self._guard_fd = guard_fd
         self._path = target
 
-    def _verify_published(self, name: str, target: Path, dir_fd: int | None, temp_info, data: bytes) -> None:
+    def _verify_published(self, name: str, target: Path, dir_fd: int | None, temp_info, data: bytes,
+                          guard_fd: int | None = None) -> int:
         """Prove the final name is the fsynced temporary inode and contains exactly the accepted bytes.
 
         The handle-less Windows hard-link API can race a directory replacement.  Identity checks on both sides of
         an exact handle read, plus inode equality with the still-open temporary file, turn that race into a refusal.
         """
-        if dir_fd is None:
-            self._verify_dir_identity()
-            path_info = os.lstat(target)
-            final_fd = os.open(target, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
-        else:
-            path_info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
-            final_fd = os.open(name, os.O_RDONLY | getattr(os, "O_BINARY", 0)
-                               | getattr(os, "O_NOFOLLOW", 0), dir_fd=dir_fd)
+        opened_here = guard_fd is None
         try:
-            final_info = os.fstat(final_fd)
+            if dir_fd is None:
+                self._verify_dir_identity()
+                path_info = os.lstat(target)
+                if opened_here:
+                    guard_fd = os.open(target, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                                       | getattr(os, "O_NOFOLLOW", 0))
+            else:
+                path_info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+                if opened_here:
+                    guard_fd = os.open(name, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                                       | getattr(os, "O_NOFOLLOW", 0), dir_fd=dir_fd)
+            final_info = os.fstat(guard_fd)
             identity = (temp_info.st_dev, temp_info.st_ino)
             if (not stat.S_ISREG(path_info.st_mode) or not stat.S_ISREG(final_info.st_mode)
                     or (path_info.st_dev, path_info.st_ino) != identity
@@ -163,26 +188,45 @@ class ExactBuildReportWriter:
                     or path_info.st_size != len(data) or final_info.st_size != len(data)):
                 raise WriterError("writer.publish_verify")
             chunks = []
+            os.lseek(guard_fd, 0, os.SEEK_SET)
             remaining = len(data) + 1
             while remaining:
-                chunk = os.read(final_fd, min(remaining, 1024 * 1024))
+                chunk = os.read(guard_fd, min(remaining, 1024 * 1024))
                 if not chunk:
                     break
                 chunks.append(chunk)
                 remaining -= len(chunk)
             if b"".join(chunks) != data:
                 raise WriterError("writer.publish_verify")
-        finally:
-            os.close(final_fd)
-        if dir_fd is None:
-            self._verify_dir_identity()
-            after = os.lstat(target)
-        else:
-            after = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
-        if (not stat.S_ISREG(after.st_mode)
-                or (after.st_dev, after.st_ino) != (temp_info.st_dev, temp_info.st_ino)
-                or after.st_size != len(data)):
-            raise WriterError("writer.publish_verify")
+            if dir_fd is None:
+                self._verify_dir_identity()
+                after = os.lstat(target)
+            else:
+                after = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+            if (not stat.S_ISREG(after.st_mode)
+                    or (after.st_dev, after.st_ino) != (temp_info.st_dev, temp_info.st_ino)
+                    or after.st_size != len(data)):
+                raise WriterError("writer.publish_verify")
+            return guard_fd
+        except Exception:
+            if opened_here and guard_fd is not None:
+                os.close(guard_fd)
+            raise
+
+    def _unlink_owned(self, name: str, path: Path, dir_fd: int | None, owned_info) -> None:
+        """Remove a claimed final name only while it still identifies the inode created by this writer."""
+        try:
+            info = (os.stat(name, dir_fd=dir_fd, follow_symlinks=False) if dir_fd is not None
+                    else os.lstat(path))
+            if (info.st_dev, info.st_ino) != (owned_info.st_dev, owned_info.st_ino):
+                return
+            self._unlink(name, path, dir_fd)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _publication_hook(stage: str) -> None:
+        """Test seam for deterministic namespace races; production intentionally does nothing."""
 
     @staticmethod
     def _unlink(name: str, path: Path, dir_fd: int | None) -> None:

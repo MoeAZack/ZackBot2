@@ -238,6 +238,55 @@ def test_writer_fails_closed_when_windows_path_directory_swaps_during_publicatio
         assert (out_dir / final_name).read_bytes() == passed_bytes
 
 
+@pytest.mark.parametrize("stage", ["post_temp_unlink", "post_final_verify", "pre_return"])
+def test_writer_retains_namespace_guard_at_every_success_boundary(tmp_path, passed_bytes, monkeypatch, stage):
+    out_dir = tmp_path / "reports"
+    out_dir.mkdir()
+    pinned = tmp_path / "reports.pinned"
+    writer = ExactBuildReportWriter(out_dir, BUILD_SHA)
+    final_name = report_filename(BUILD_SHA, decode_report(passed_bytes).report_sha256)
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    attempted = []
+
+    def hostile_hook(observed):
+        if observed != stage:
+            return
+        attempted.append(observed)
+        try:
+            os.rename(out_dir, pinned)
+        except OSError:
+            return  # Windows: the retained final handle is the namespace guard.
+        out_dir.mkdir()
+        (out_dir / final_name).write_bytes(b"ATTACKER")
+
+    monkeypatch.setattr(ExactBuildReportWriter, "_publication_hook", staticmethod(hostile_hook))
+    try:
+        writer(passed_bytes)
+    except WriterError as error:
+        assert error.code == "writer.publish_verify" and writer.path is None
+    else:
+        assert writer.path.read_bytes() == passed_bytes
+    assert attempted == [stage]
+    if (out_dir / final_name).exists() and (out_dir / final_name).read_bytes() == b"ATTACKER":
+        # Cleanup must not remove an unrelated same-name file in the replacement directory.
+        assert (out_dir / final_name).read_bytes() == b"ATTACKER"
+    if (pinned / final_name).exists():
+        assert (pinned / final_name).read_bytes() == passed_bytes
+
+
+def test_owned_cleanup_never_unlinks_same_name_competitor(tmp_path, passed_bytes):
+    owned = tmp_path / "owned"
+    owned.write_bytes(passed_bytes)
+    owned_info = os.lstat(owned)
+    competitor = tmp_path / "competitor"
+    competitor.write_bytes(b"ATTACKER")
+    writer = ExactBuildReportWriter(tmp_path, BUILD_SHA)
+
+    writer._unlink_owned("competitor", competitor, None, owned_info)
+
+    assert competitor.read_bytes() == b"ATTACKER"
+
+
 def test_writer_losing_final_name_race_never_overwrites_or_follows_symlink(tmp_path, passed_bytes, monkeypatch):
     if not hasattr(os, "symlink"):
         pytest.skip("no symlink support")
