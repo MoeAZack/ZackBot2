@@ -98,8 +98,7 @@ class ExactBuildReportWriter:
         except OSError:
             pass
         if not written_ok:
-            os.close(fd)
-            self._unlink(temp_name, temp, dir_fd)
+            self._discard_temp(fd, temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.write_failed")
 
@@ -115,34 +114,35 @@ class ExactBuildReportWriter:
                 self._verify_dir_identity()
                 os.link(temp, target, follow_symlinks=False)
         except FileExistsError:
-            os.close(fd)
-            self._unlink(temp_name, temp, dir_fd)
+            try:
+                guard_fd = self._recover_existing(name, target, dir_fd, data)
+            except (OSError, WriterError):
+                self._discard_temp(fd, temp_name, temp, dir_fd)
+                self._close_dir(dir_fd)
+                raise WriterError("writer.exists") from None
+            self._discard_temp(fd, temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
-            raise WriterError("writer.exists") from None
+            self._guard_fd = guard_fd
+            self._path = target
+            return
         except OSError:
-            self._unlink_owned(name, target, dir_fd, temp_info)
-            os.close(fd)
-            self._unlink(temp_name, temp, dir_fd)
+            self._discard_temp(fd, temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_failed") from None
         guard_fd = None
         try:
             guard_fd = self._verify_published(name, target, dir_fd, temp_info, data)
         except (OSError, WriterError):
-            os.close(fd)
-            self._unlink_owned(name, target, dir_fd, temp_info)
-            self._unlink(temp_name, temp, dir_fd)
+            self._discard_temp(fd, temp_name, temp, dir_fd)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_verify") from None
-        os.close(fd)
-        self._unlink(temp_name, temp, dir_fd)
+        self._discard_temp(fd, temp_name, temp, dir_fd)
         self._publication_hook("post_temp_unlink")
         if dir_fd is not None:
             try:
                 os.fsync(dir_fd)
             except OSError:
                 os.close(guard_fd)
-                self._unlink_owned(name, target, dir_fd, temp_info)
                 self._close_dir(dir_fd)
                 raise WriterError("writer.sync_failed") from None
         try:
@@ -153,12 +153,32 @@ class ExactBuildReportWriter:
             guard_fd = self._verify_published(name, target, dir_fd, temp_info, data, guard_fd)
         except (OSError, WriterError):
             os.close(guard_fd)
-            self._unlink_owned(name, target, dir_fd, temp_info)
             self._close_dir(dir_fd)
             raise WriterError("writer.publish_verify") from None
         self._close_dir(dir_fd)
         self._guard_fd = guard_fd
         self._path = target
+
+    def _recover_existing(self, name: str, target: Path, dir_fd: int | None, data: bytes) -> int:
+        """Recover an earlier atomic publication only when the existing final is exactly this canonical report."""
+        if dir_fd is None:
+            self._verify_dir_identity()
+            expected = os.lstat(target)
+        else:
+            expected = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        guard_fd = self._verify_published(name, target, dir_fd, expected, data)
+        try:
+            os.fsync(guard_fd)
+            if dir_fd is not None:
+                os.fsync(dir_fd)
+            guard_fd = self._verify_published(name, target, dir_fd, expected, data, guard_fd)
+            self._publication_hook("post_final_verify")
+            guard_fd = self._verify_published(name, target, dir_fd, expected, data, guard_fd)
+            self._publication_hook("pre_return")
+            return self._verify_published(name, target, dir_fd, expected, data, guard_fd)
+        except Exception:
+            os.close(guard_fd)
+            raise
 
     def _verify_published(self, name: str, target: Path, dir_fd: int | None, temp_info, data: bytes,
                           guard_fd: int | None = None) -> int:
@@ -173,12 +193,12 @@ class ExactBuildReportWriter:
                 self._verify_dir_identity()
                 path_info = os.lstat(target)
                 if opened_here:
-                    guard_fd = os.open(target, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                    guard_fd = os.open(target, os.O_RDWR | getattr(os, "O_BINARY", 0)
                                        | getattr(os, "O_NOFOLLOW", 0))
             else:
                 path_info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
                 if opened_here:
-                    guard_fd = os.open(name, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                    guard_fd = os.open(name, os.O_RDWR | getattr(os, "O_BINARY", 0)
                                        | getattr(os, "O_NOFOLLOW", 0), dir_fd=dir_fd)
             final_info = os.fstat(guard_fd)
             identity = (temp_info.st_dev, temp_info.st_ino)
@@ -213,15 +233,14 @@ class ExactBuildReportWriter:
                 os.close(guard_fd)
             raise
 
-    def _unlink_owned(self, name: str, path: Path, dir_fd: int | None, owned_info) -> None:
-        """Remove a claimed final name only while it still identifies the inode created by this writer."""
+    def _discard_temp(self, fd: int, name: str, path: Path, dir_fd: int | None) -> None:
+        """Best-effort cleanup of the private random name; it is never a caller-visible final path."""
+        os.close(fd)
         try:
-            info = (os.stat(name, dir_fd=dir_fd, follow_symlinks=False) if dir_fd is not None
-                    else os.lstat(path))
-            if (info.st_dev, info.st_ino) != (owned_info.st_dev, owned_info.st_ino):
-                return
+            if dir_fd is None:
+                self._verify_dir_identity()
             self._unlink(name, path, dir_fd)
-        except OSError:
+        except (OSError, WriterError):
             pass
 
     @staticmethod

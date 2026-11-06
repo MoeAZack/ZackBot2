@@ -128,9 +128,9 @@ def test_writer_writes_once_exactly(tmp_path, passed_bytes):
     with pytest.raises(WriterError) as caught:
         writer(passed_bytes)
     assert caught.value.code == "writer.already_written"
-    with pytest.raises(WriterError) as caught:
-        ExactBuildReportWriter(tmp_path, BUILD_SHA)(passed_bytes)
-    assert caught.value.code == "writer.exists"
+    recovered = ExactBuildReportWriter(tmp_path, BUILD_SHA)
+    recovered(passed_bytes)
+    assert recovered.path == writer.path
     assert writer.path.read_bytes() == passed_bytes
 
 
@@ -274,17 +274,44 @@ def test_writer_retains_namespace_guard_at_every_success_boundary(tmp_path, pass
         assert (pinned / final_name).read_bytes() == passed_bytes
 
 
-def test_owned_cleanup_never_unlinks_same_name_competitor(tmp_path, passed_bytes):
-    owned = tmp_path / "owned"
-    owned.write_bytes(passed_bytes)
-    owned_info = os.lstat(owned)
-    competitor = tmp_path / "competitor"
-    competitor.write_bytes(b"ATTACKER")
-    writer = ExactBuildReportWriter(tmp_path, BUILD_SHA)
+def test_post_link_failure_never_deletes_a_substituted_final_and_canonical_retry_recovers(
+        tmp_path, passed_bytes, monkeypatch):
+    final_name = report_filename(BUILD_SHA, decode_report(passed_bytes).report_sha256)
+    final = tmp_path / final_name
+    real_unlink = os.unlink
+    final_unlinks = []
 
-    writer._unlink_owned("competitor", competitor, None, owned_info)
+    def observe_unlink(path, *args, **kwargs):
+        if Path(path).name == final_name:
+            final_unlinks.append(path)
+        return real_unlink(path, *args, **kwargs)
 
-    assert competitor.read_bytes() == b"ATTACKER"
+    def fail_after_verify(stage):
+        if stage == "post_final_verify":
+            raise WriterError("injected")
+
+    monkeypatch.setattr(os, "unlink", observe_unlink)
+    monkeypatch.setattr(ExactBuildReportWriter, "_publication_hook", staticmethod(fail_after_verify))
+    with pytest.raises(WriterError) as caught:
+        ExactBuildReportWriter(tmp_path, BUILD_SHA)(passed_bytes)
+    assert caught.value.code == "writer.publish_verify"
+    assert final.read_bytes() == passed_bytes
+    assert final_unlinks == []
+
+    monkeypatch.setattr(ExactBuildReportWriter, "_publication_hook", staticmethod(lambda stage: None))
+    recovered = ExactBuildReportWriter(tmp_path, BUILD_SHA)
+    recovered(passed_bytes)
+    assert recovered.path == final and final.read_bytes() == passed_bytes
+
+    # A same-name substitution after all prior checks is never removed or overwritten on another retry.
+    del recovered
+    monkeypatch.setattr(os, "unlink", real_unlink)
+    final.unlink()
+    final.write_bytes(b"COMPETITOR")
+    with pytest.raises(WriterError) as caught:
+        ExactBuildReportWriter(tmp_path, BUILD_SHA)(passed_bytes)
+    assert caught.value.code == "writer.exists"
+    assert final.read_bytes() == b"COMPETITOR"
 
 
 def test_writer_losing_final_name_race_never_overwrites_or_follows_symlink(tmp_path, passed_bytes, monkeypatch):
