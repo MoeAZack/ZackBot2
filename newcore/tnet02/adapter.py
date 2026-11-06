@@ -29,6 +29,7 @@ from newcore.account_context import (AccountBudget, AccountContext, AdmissionRef
 from newcore.domain.account import Account, Environment
 from newcore.domain.decision import Action
 from newcore.domain.orders import IntentState, Purpose, Side
+from newcore.loss_state import cairo_trading_day
 from newcore.ports import keys as K
 from newcore.ports.rate_blocks import RateBlockState
 from newcore.ports.venue import (MarketOrder, OrderOutcome, OrderRef, OutcomeKind, ReadKind, StopOrder, VenuePort)
@@ -540,8 +541,14 @@ class RealTestnetAdapter:
             account=R.AccountRiskSnapshot(account_id=account_id, environment=env, generation=gen, confirmed=True,
                                           fresh=True, hedge_mode=facts.hedge_mode, equity=facts.equity,
                                           available_margin=facts.available_margin, reserved_capital=ZERO),
-            portfolio=R.PortfolioRiskSnapshot(account_id=account_id, generation=gen, fresh=True,
-                                              exposures=exposures, reservations=()),
+            portfolio=R.PortfolioRiskSnapshot(
+                account_id=account_id, generation=gen, fresh=True,
+                exposures=exposures, reservations=(),
+                loss=R.LossState(
+                    trading_day=cairo_trading_day(self._now()), day_start_equity=facts.equity,
+                    realized_pnl=ZERO, unrealized_pnl=ZERO, halt_latched=False,
+                    peak_equity=facts.equity, drawdown_kill_latched=False,
+                    paused_strategies=(), cluster_entries=())),
             policy=R.RiskPolicySnapshot(
                 policy_id="tnet02_policy_v1", account_id=account_id, environment=env, generation=gen, fresh=True,
                 capital_cap=case.context.case.max_notional, max_trade_risk_fraction=ONE,
@@ -550,7 +557,14 @@ class RealTestnetAdapter:
                 allocations=(R.Allocation(strategy_id=STRATEGY_ID, book_id=BOOK_ID, notional_fraction=ONE,
                                           risk_fraction=ONE),),
                 correlation_map=(R.CorrelationAssignment(symbol=case.symbol, bucket="tnet02"),),
-                correlation_caps=(R.CorrelationCap(bucket="tnet02", exposure_fraction=ONE),)),
+                correlation_caps=(R.CorrelationCap(bucket="tnet02", exposure_fraction=ONE),),
+                loss_limits=R.LossLimits(
+                    daily_loss_fraction=Decimal("0.03"), daily_loss_r=Decimal("6"),
+                    risk_unit_fraction=Decimal("0.005"), max_bucket_side_risk_r=Decimal("2"),
+                    one_position_per_symbol_side=True, max_drawdown_fraction=Decimal("0.10"),
+                    max_net_side_risk_r=Decimal("4"), max_entries_per_strategy_per_candle=2,
+                    max_entries_per_side_per_candle=3, cooldown_stop_outs=3,
+                    cooldown_window_ms=86_400_000, cooldown_pause_ms=86_400_000)),
             filters=R.VenueRiskFilters(
                 filter_id="tnet02_" + filters.source_sha256[:16], symbol=case.symbol, generation=gen, fresh=True,
                 verified=True, step_size=filters.step_size, tick_size=filters.tick_size,
