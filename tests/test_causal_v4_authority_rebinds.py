@@ -39,6 +39,10 @@ AUTHORITY = {
         "content_digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
         "required_guaranteed_period_gaps": 0,
     },
+    "exchange_filter_authority": {
+        "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json",
+        "byte_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9",
+    },
 }
 TOP_KEYS = {
     "format", "rebind_id", "version", "status", "frozen_at_cairo", "scope", "source_contract",
@@ -108,11 +112,16 @@ def test_all_rebinds_pin_the_same_exact_complete_authority_without_opening_marke
     for name, binding in AUTHORITY.items():
         raw, artifact = _artifact_json(binding)
         assert hashlib.sha256(raw).hexdigest() == binding["byte_sha256"]
-        assert artifact["digest"] == binding["content_digest"]
+        if "content_digest" in binding:
+            assert artifact["digest"] == binding["content_digest"]
         if name == "coverage_preflight":
             assert artifact["guaranteed_period_gaps"] == 0
             assert artifact["wf3_september"]["daily_grid_missing"] == []
             assert artifact["wf3_september"]["funding_incomplete_symbols"] == []
+        if name == "exchange_filter_authority":
+            assert artifact["authority"] == "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY"
+            assert artifact["version"] == 3
+            assert artifact["rebind_scope"]["candidate_outcomes_read"] is False
 
 
 def test_protected_authority_merge_is_a_hard_execution_barrier():
