@@ -146,16 +146,39 @@ def test_archive_checksum_and_member_refusals(tmp_path, case):
                                  'um/daily/klines/BTCUSDT/1d/BTCUSDT-1d-2024-01.zip'])
 def test_archive_layout_must_be_exact(tmp_path, rel):
     put_zip(tmp_path, rel, kline(ms('2024-01-01'), DAY) + '\n')
-    with pytest.raises(M.ManifestError, match='um/monthly'):
+    with pytest.raises(M.ManifestError, match=r'um/\{monthly,daily\}'):
         M.build(['um'], manifest_id='x', source_class='archive-verified', base=str(tmp_path), data_root='binance_um',
                 survivor_only=False, loader=M.ARCHIVE_LOADER)
+
+
+def test_daily_archive_layout_and_period_are_checksum_bound(tmp_path):
+    day = '2026-09-27'
+    rel = f'um/daily/klines/BTCUSDT/4h/BTCUSDT-4h-{day}.zip'
+    start = ms(day)
+    put_zip(tmp_path, rel, '\n'.join(
+        kline(start + i * 4 * 3_600_000, 4 * 3_600_000) for i in range(6)) + '\n')
+    m = M.build(['um/daily'], manifest_id='fx-daily', source_class='archive-verified', base=str(tmp_path),
+                data_root='binance_um', survivor_only=False, loader=M.ARCHIVE_LOADER)
+    row = m['files'][0]
+    meta = M.archive_meta(rel)
+    assert meta['month_start_ms'] == start and meta['month_end_ms'] == start + DAY
+    assert row['source']['url'].endswith(rel) and row['source']['archive_checksum'] == row['sha256']
+    assert M.verify(m, str(tmp_path)) == []
+
+
+def test_daily_archive_refuses_rows_outside_declared_utc_day(tmp_path):
+    rel = 'um/daily/klines/BTCUSDT/4h/BTCUSDT-4h-2026-09-27.zip'
+    put_zip(tmp_path, rel, kline(ms('2026-09-28'), 4 * 3_600_000) + '\n')
+    with pytest.raises(M.ManifestError, match='outside the file period'):
+        M.build(['um/daily'], manifest_id='fx-daily', source_class='archive-verified', base=str(tmp_path),
+                data_root='binance_um', survivor_only=False, loader=M.ARCHIVE_LOADER)
 
 
 @pytest.mark.parametrize('rows,msg', [
     ([kline(ms('2024-01-02'), DAY), kline(ms('2024-01-01'), DAY)], 'increasing'),
     ([kline(ms('2024-01-01'), DAY), kline(ms('2024-01-01'), DAY)], 'increasing'),
-    ([kline(ms('2024-02-01'), DAY)], 'outside the file month'),
-    ([kline(ms('2024-01-01') // 1000, DAY)], 'outside the file month'),             # seconds, not ms
+    ([kline(ms('2024-02-01'), DAY)], 'outside the file period'),
+    ([kline(ms('2024-01-01') // 1000, DAY)], 'outside the file period'),             # seconds, not ms
     ([kline(ms('2024-01-01') + 3_600_000, DAY)], 'aligned'),
     ([kline(ms('2024-01-01'), DAY).replace(str(ms('2024-01-01') + DAY - 1), str(ms('2024-01-01') + DAY))], 'close_time'),
     ([kline(ms('2024-01-01'), DAY, qv='nan')], 'quote_volume'),

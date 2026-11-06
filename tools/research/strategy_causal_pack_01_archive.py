@@ -608,9 +608,7 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"{symbol} {series} {interval}: missing archive month coverage")
         rows: list[list[bytes]] = []
         for record in files:
-            # Refuse before opening a monthly archive that contains forbidden rows.
-            if record["last_open_ms"] >= CUTOFF_MS:
-                raise ArchiveIncomplete(f"{record['path']}: archive crosses frozen cutoff; not read")
+            self._require_pre_cutoff_record(record)
             try:
                 parsed_objects = self.dataset.rows(record)
             except (OSError, M.ManifestError, P.M.ManifestError, P.PITError) as exc:
@@ -646,8 +644,7 @@ class RawArchiveAdapter:
         manifest_gaps = self._interval_gaps(start_ms, end_ms, covered, "missing_manifest")
         rows: list[list[bytes]] = []
         for record in files:
-            if record["last_open_ms"] >= CUTOFF_MS:
-                raise ArchiveIncomplete(f"{record['path']}: archive crosses frozen cutoff; not read")
+            self._require_pre_cutoff_record(record)
             try:
                 parsed_objects = self.dataset.rows(record)
             except (OSError, M.ManifestError, P.M.ManifestError, P.PITError) as exc:
@@ -663,6 +660,19 @@ class RawArchiveAdapter:
         if any(right <= left for left, right in zip(times, times[1:])):
             raise ArchiveIncomplete(f"{symbol} {series} {interval}: rows are not globally strictly increasing")
         return rows, manifest_gaps
+
+    @staticmethod
+    def _require_pre_cutoff_record(record: dict) -> None:
+        """Prove the archive period is wholly pre-cutoff before opening its bytes.
+
+        `last_open_ms` alone is insufficient: an empty or truncated September monthly file could
+        otherwise claim only pre-cutoff rows while its authority path still spans sealed dates.
+        """
+        meta = M.archive_meta(record["path"])
+        last = record.get("last_open_ms")
+        if meta["month_end_ms"] > CUTOFF_MS or (last is not None and last >= CUTOFF_MS):
+            raise ArchiveIncomplete(
+                f"{record['path']}: archive crosses frozen cutoff; not read (period metadata)")
 
     @staticmethod
     def _interval_gaps(start_ms: int, end_ms: int, covered: list[tuple[int, int]],

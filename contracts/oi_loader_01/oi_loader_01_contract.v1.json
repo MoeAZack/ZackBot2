@@ -53,7 +53,7 @@
       "_rule": "sha256 of the git blob bytes of each path at master_reference (git show <master_reference>:<path>), content-addressed so a moving master cannot invalidate the pin",
       "tools/research/oi_metrics_fetch.py": "be1f5bf9593f6e7f27617c44585d66c0878ca90df69b08fc61db6d5bc74881ee",
       "tools/research/oi_metrics_probe.py": "26c23018ac7097de29622aa22dbe1ed854dc124953a2fc6ebd02e51889c920a9",
-      "tools/research/manifest.py": "f3d3c729aae6ac3e965fa8eee1314d79966475fd39a810460613c1e77fa87fae",
+      "tools/research/manifest.py": "f49e23fd83911459bc2bddece4051f6c1a6765294471ac62e35bd62bfef9dd42",
       "tests/test_oi_metrics_fetch.py": "15cdaf524303b805a2c9aebbc263e71afaa2080c83f9fc56ae023e0cffd96f6a"
     },
     "rebind": {

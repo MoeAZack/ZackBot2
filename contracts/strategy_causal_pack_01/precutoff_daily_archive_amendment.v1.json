@@ -1,0 +1,146 @@
+{
+  "amendment": "STRATEGY-CAUSAL-PACK-01-PRECUTOFF-DAILY-ARCHIVE",
+  "version": 1,
+  "status": "FROZEN_AUTHORITY_AMENDMENT_READY_FOR_REVIEW",
+  "signed_by": "codex",
+  "frozen_at": "2026-11-06T18:17:40+02:00",
+  "roadmap_fit": "STRATEGY-CAUSAL-PACK-01 causal evidence authority repair",
+  "scope": {
+    "contract_rule_changes_metadata_only": true,
+    "authority_build_parsed_rows_for_schema_and_cutoff_validation": true,
+    "market_outcomes_inspected_or_candidate_evaluated": false,
+    "candidate_run_authorized": false,
+    "fold_change": false,
+    "parameter_change": false,
+    "universe_rule_change": false,
+    "promotion_gate_change": false,
+    "holdout_read_authorized": false
+  },
+  "cutoff_exclusive": "2026-09-28T00:00:00Z",
+  "daily_date_allowlist": [
+    "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07",
+    "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13", "2026-09-14",
+    "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21",
+    "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27"
+  ],
+  "streams": [
+    {"series": "klines", "interval": "4h"},
+    {"series": "klines", "interval": "1h"},
+    {"series": "markPriceKlines", "interval": "1h"},
+    {"series": "fundingRate", "interval": null}
+  ],
+  "base_authority": {
+    "manifest_path": "research_evidence/manifests/binance-um-archive-v1.json.gz",
+    "manifest_file_sha256": "94617184d0b6d409e90b5eb15f2a41f40f0465fb01fa5d659899be25e1a199fb",
+    "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+    "pit_universe_path": "research_evidence/universe/pit-top40-qv30d-v4.json",
+    "pit_universe_file_sha256": "d7000458b2c6ec848c6a359aa4b011850a3be437d8f22e53701e76927c4d3229",
+    "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093"
+  },
+  "deterministic_tool": "tools/research/strategy_causal_pack_01_daily_authority.py",
+  "offline_plan": {
+    "path": "contracts/strategy_causal_pack_01/precutoff_daily_authority_plan.v1.json",
+    "symbols": 62,
+    "candidate_paths": 6696,
+    "listed_present_paths": 1611,
+    "digest": "549c684798ba35b9cc8eab2884fa5a5701c04f898cbbe3415a542f39f428ba50"
+  },
+  "public_s3_metadata_observation": {
+    "observed_at_cairo": "2026-11-06T17:16:16+02:00",
+    "mode": "official S3 LIST metadata only; no zip or market row read",
+    "present_files": 1611,
+    "listed_bytes": 1497685,
+    "probed_plan_digest": "549c684798ba35b9cc8eab2884fa5a5701c04f898cbbe3415a542f39f428ba50",
+    "by_stream": [
+      {"series": "klines", "interval": "4h", "files": 537, "bytes": 317155},
+      {"series": "klines", "interval": "1h", "files": 537, "bytes": 742928},
+      {"series": "markPriceKlines", "interval": "1h", "files": 537, "bytes": 437602},
+      {"series": "fundingRate", "interval": null, "files": 0, "bytes": 0}
+    ]
+  },
+  "failed_trials_append": [
+    {
+      "candidate_id": "pullback_rsi_short_h1_causal_v3",
+      "status": "DATA_INCOMPLETE_PRE_RUN",
+      "reason": "required September 2026 monthly authority period crosses the frozen exclusive cutoff",
+      "outcome_rows_read": 0,
+      "economic_verdict": null,
+      "retained_in_multiplicity": true
+    },
+    {
+      "candidate_id": "exp_mom_short_c27_causal_v3",
+      "status": "DATA_INCOMPLETE_PRE_RUN",
+      "reason": "required September 2026 monthly authority period crosses the frozen exclusive cutoff",
+      "outcome_rows_read": 0,
+      "economic_verdict": null,
+      "retained_in_multiplicity": true
+    }
+  ],
+  "migration": {
+    "retain": "checksum-bound monthly files whose declared UTC period ends at or before 2026-09-28T00:00:00Z (therefore September monthly files are excluded)",
+    "append": "checksum-verified present daily files; 436 checksum-published Vision whole-month gap archives ending before cutoff; checksum/provenance-bound REST only for exact residual September windows",
+    "target_manifest": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+    "target_manifest_file_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+    "target_manifest_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8",
+    "target_pit_universe": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+    "target_pit_universe_file_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+    "target_pit_universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+    "supersedes_partial_authority": {
+      "manifest": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v4.json.gz",
+      "pit_universe": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v7.json",
+      "coverage_preflight": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v2.json",
+      "retention": "retain as immutable construction/audit history; never use as the review target"
+    },
+    "pit_rule": "copy the already-frozen PIT identity and cells unchanged and rebind only manifest_digest/digest",
+    "replacement_identity_rule": "the zero-gap authority gate is satisfied, but do not create or run causal_v4 identities until this authority amendment is independently reviewed and protected-branch merged; v3 trials remain permanently recorded",
+    "pre_market_gate": "every manifest path period_end and last_open_ms must be strictly before the exclusive cutoff before any archive bytes are opened"
+  },
+  "kline_authority_repair": {
+    "source_order": ["existing manifest", "official Binance Vision monthly", "official Binance Vision daily", "bounded official USD-M REST residual only"],
+    "initial_gap_plan_path": "contracts/strategy_causal_pack_01/precutoff_kline_gap_plan.v1.json",
+    "initial_gap_plan_file_sha256": "84a712f971c64194ad09e52fd82ea6e6707769669d22dd68883b0d2527a6ef69",
+    "initial_gap_plan_digest": "764c5895026800102435e3e37d293865897b1165719e576d59b5d92c27770b2b",
+    "vision_monthly_files": 436,
+    "vision_monthly_bytes": 15110314,
+    "vision_monthly_missing": 0,
+    "september_monthly_forbidden": true,
+    "frozen_rest_response_files_total": 166,
+    "frozen_rest_raw_bytes_total": 18391768,
+    "manifest_rest_response_files": 63,
+    "rest_manifest_rule": "pre-September REST responses are preserved externally but excluded from the manifest after equivalent Vision monthly authority was frozen; manifest REST records must begin on or after 2026-09-01 and end by cutoff",
+    "residual_freeze": {"windows": 58, "pages": 58, "rows": 21702, "raw_bytes": 2728646, "incomplete_windows": 0},
+    "blocking_condition": null,
+    "candidate_run_authorized": false
+  },
+  "funding_archive_blocker_resolution": {
+    "supersedes": "PUBLIC_ARCHIVE_SERIES_ABSENT",
+    "source": "unauthenticated official Binance USD-M GET /fapi/v1/fundingRate",
+    "query_rule": "every request includes one explicit symbol, startTime, endTime <= 2026-09-27T23:59:59.999Z, and limit=1000; deterministic pages advance to last fundingTime + 1; unbounded or duplicate query parameters are refused",
+    "frozen_raw_responses": 62,
+    "raw_response_bytes": 1037447,
+    "rows": 8420,
+    "summary_path": "contracts/strategy_causal_pack_01/precutoff_funding_authority_summary.v1.json",
+    "summary_file_sha256": "6d172bccd3e7fc7137f3c36ff15bb985d78a25f89e56ade6e556ef2b6568e70c",
+    "summary_digest": "2638069770ae635ade8b25cb98ba787a203c597475eb16a1a396406af3235746",
+    "complete_symbols": 60,
+    "explicit_incomplete_symbols": ["TONUSDT", "VANRYUSDT"],
+    "empty_rule": "retain empty responses as explicit incomplete authority; never synthesize zero/proxy funding and never remove the symbol",
+    "exposure_rule": "a candidate fails incomplete only if required exposure intersects an actual-funding gap; flat/non-signalling symbols are not silently excluded",
+    "forbidden_workaround": "do not read/crop the September monthly funding archive, use proxy funding, alter the cutoff, waive actual funding, or synthesize rows for empty responses"
+  },
+  "authority_coverage_preflight": {
+    "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json",
+    "file_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
+    "digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
+    "mode": "authority-only; no signal or economic outcome evaluated",
+    "guaranteed_period_gaps": 0,
+    "by_stream": {"klines_4h": 0, "markPriceKlines_1h": 0, "fundingRate": 0, "klines_1h": 0},
+    "wf3_september_daily_grid_checks": 1620,
+    "wf3_september_missing_by_stream": {"klines_4h": 0, "klines_1h": 0, "markPriceKlines_1h": 0},
+    "active_symbol_days": 540,
+    "fully_present_stream_day_checks": 1620,
+    "activation_blocker": null,
+    "decision": "Authority repair is frozen and ready for independent review. Candidate execution remains unauthorized until protected-branch merge; no replacement candidate identity was created or evaluated while building authority."
+  },
+  "deferred": "candidate execution, outcomes, parameter/fold/universe/gate changes, and any Sep 28+ row access"
+}
