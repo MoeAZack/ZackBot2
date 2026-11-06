@@ -206,6 +206,8 @@ def test_filter_authority_is_checksum_bound_causal_and_pre_market():
     assert (authority['authority'], authority['version'], authority['status'], authority['signed_by']) == (
         'STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY', 2, 'FROZEN', 'codex')
     assert c['data']['exchange_filter_authority'].endswith('exchange_filter_authority.v2.json')
+    with open(FILTER_AUTH, 'rb') as fh:
+        assert hashlib.sha256(fh.read()).hexdigest() == c['data']['exchange_filter_authority_sha256']
     assert '20261011' in c['data']['future_dated_snapshot_forbidden']
     folds = {row['name']: row for row in c['folds']}
     snapshots = {row['captured_at']: row for row in authority['snapshots']}
