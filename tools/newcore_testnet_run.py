@@ -96,13 +96,18 @@ def init_testnet(config, account_file: str, *, event_n: int | None = None) -> st
     from newcore.store import create_journal, recover_journal
     from newcore.store.errors import JournalExists
 
+    from newcore.store.errors import JournalLocked
+
     spec = _one_account(config)
     account, _origin = _load_account(account_file, spec)
     try:
-        create_journal(spec.account_dir, spec.account_id, spec.aggregate_id).close()
-    except JournalExists:
-        pass
-    journal = recover_journal(spec.account_dir, spec.account_id, spec.aggregate_id).journal
+        try:
+            create_journal(spec.account_dir, spec.account_id, spec.aggregate_id).close()
+        except JournalExists:
+            pass
+        journal = recover_journal(spec.account_dir, spec.account_id, spec.aggregate_id).journal
+    except JournalLocked:
+        raise TestnetRunError('journal_locked') from None      # a runtime is running on this account
     if journal is None:
         raise TestnetRunError('journal_unusable')
     try:
@@ -124,6 +129,34 @@ def init_testnet(config, account_file: str, *, event_n: int | None = None) -> st
 
 
 # ---------------------------------------------------------------------------------------------------- run
+def _require_journaled_binding(spec, account) -> None:
+    """Refuse unless the account's journal ends in a CONFIRMED binding equal to the account file's binding.
+
+    Run before any credential use or request: the env key digest is then compared with a binding the journal
+    itself confirmed, so a swapped account file cannot point the run at another key."""
+    from newcore.runtime.evidence import EvidenceError, confirmed_binding
+    from newcore.store import recover_journal
+    from newcore.store.errors import JournalLocked
+
+    try:
+        journal = recover_journal(spec.account_dir, spec.account_id, spec.aggregate_id).journal
+    except JournalLocked:
+        raise TestnetRunError('journal_locked') from None
+    except Exception:
+        raise TestnetRunError('journal_unusable') from None
+    if journal is None:
+        raise TestnetRunError('journal_unusable')
+    try:
+        try:
+            journaled = confirmed_binding(journal)
+        except EvidenceError:
+            raise TestnetRunError('binding_not_confirmed') from None
+        if journaled != account.binding:
+            raise TestnetRunError('account_file_not_the_journaled_binding')
+    finally:
+        journal.close()
+
+
 def run_testnet(config, account_file: str, *, symbols: tuple[str, ...], emit, step_ms: int = 500,
                 max_steps: int | None = None, stop_file: str | None = None, status_every: int = 20,
                 entries_factory=None, environ=None, sender_factory=None, sleep=time.sleep,
@@ -151,6 +184,7 @@ def run_testnet(config, account_file: str, *, symbols: tuple[str, ...], emit, st
         raise TestnetRunError('symbols_invalid') from None
     tnet02_run, live, sender_type = _tnet02()
     account, origin = _load_account(account_file, spec)
+    _require_journaled_binding(spec, account)        # the journal, not the file, is the authority; no request yet
     sender = (sender_factory or sender_type)(origin)
     observers = []
 
@@ -164,7 +198,7 @@ def run_testnet(config, account_file: str, *, symbols: tuple[str, ...], emit, st
     except Exception as ex:
         raise TestnetRunError(getattr(ex, 'code', None) or 'venue_unavailable') from None
     if digest != account.binding.key_digest:
-        raise TestnetRunError('key_digest_mismatch')       # the keys in the environment are not the bound account
+        raise TestnetRunError('key_digest_mismatch')       # the keys in the environment are not the journaled binding
     try:
         tnet02_run.pin_origin(Path(spec.account_dir), digest, origin)   # before any network use
     except tnet02_run.Refused as ex:

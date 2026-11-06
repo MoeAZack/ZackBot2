@@ -255,3 +255,54 @@ def test_cli_run_end_to_end(tmp_path, pins):
                    '--status-every', '10'], environ=ENV, out=out, run_hooks=hooks())
     rows = [json.loads(x) for x in out.getvalue().splitlines()]
     assert code == T.EXIT_OK and rows[0]['status'] == 'booted' and rows[-1]['status'] == 'stopped'
+
+
+# ------------------------------------------------------------------------------------------------ review regressions
+def test_r1_a_swapped_account_file_is_refused_before_any_request(tmp_path, pins):
+    """The journal's confirmed binding is the authority: file A init, file B (other key) + B's keys never runs."""
+    cfg = config(tmp_path)
+    T.init_testnet(load(cfg), account_file(tmp_path))                          # journal bound to key A
+    other_key = 'AnotherTestKey00000000002'
+    swapped = account_file(tmp_path, key=other_key)                            # same account, key B
+    made = []
+    env_b = {'ZACKBOT_TNET02_API_KEY': other_key, 'ZACKBOT_TNET02_API_SECRET': SECRET}
+    with pytest.raises(T.TestnetRunError, match='account_file_not_the_journaled_binding'):
+        T.run_testnet(load(cfg), swapped, symbols=('BTCUSDT',), emit=print, max_steps=5, environ=env_b,
+                      **hooks(made))
+    assert made == [] and not (tmp_path / 'machine_pins.json').exists()
+
+
+def test_r2_an_unbound_journal_sends_nothing(tmp_path, pins):
+    from newcore.store import create_journal
+    cfg = config(tmp_path)
+    create_journal(acct_dir(tmp_path), ACCOUNT, 'pf_' + '0' * 31 + '1').close()   # journal, but no binding
+    made = []
+    with pytest.raises(T.TestnetRunError, match='binding_not_confirmed'):
+        T.run_testnet(load(cfg), account_file(tmp_path), symbols=('BTCUSDT',), emit=print, max_steps=5,
+                      environ=ENV, **hooks(made))
+    assert made == []
+    os.makedirs(tmp_path / 'empty')
+    cfg2 = write_json(tmp_path / 'c2.json', {**json.load(open(cfg, encoding='utf-8')), 'accounts': [
+        {'account_id': ACCOUNT, 'aggregate_id': 'pf_' + '0' * 31 + '1', 'account_dir': str(tmp_path / 'empty'),
+         'egress_id': 'testnet-1'}]})
+    with pytest.raises(T.TestnetRunError, match='journal_unusable'):
+        T.run_testnet(load(cfg2), account_file(tmp_path), symbols=('BTCUSDT',), emit=print, max_steps=5,
+                      environ=ENV, **hooks(made))
+    assert made == []
+
+
+def test_r3_init_and_run_while_a_runtime_holds_the_journal_are_refused_cleanly(tmp_path, pins):
+    from newcore.store import recover_journal
+    cfg, acc = config(tmp_path), account_file(tmp_path)
+    T.init_testnet(load(cfg), acc)
+    held = recover_journal(acct_dir(tmp_path), ACCOUNT, 'pf_' + '0' * 31 + '1').journal
+    try:
+        out = io.StringIO()
+        assert T.main(['init', '--config', cfg, '--account-file', acc], environ={}, out=out) == T.EXIT_REFUSED
+        assert json.loads(out.getvalue()) == {'status': 'refused', 'code': 'journal_locked'}
+        made = []
+        with pytest.raises(T.TestnetRunError, match='journal_locked'):
+            T.run_testnet(load(cfg), acc, symbols=('BTCUSDT',), emit=print, max_steps=5, environ=ENV, **hooks(made))
+        assert made == []
+    finally:
+        held.close()
