@@ -21,7 +21,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "research_evidence/prereg/cointegrated_residual_reversion_c255_stagea.v1.json"
-CONTRACT_SHA256 = "353cc73b0dc00d7ed4689062ae26dfca88b909088da1862cc141941120338be1"
+CONTRACT_SHA256 = "99fb816babb0399f8aa5eab1f2be431acdb59535ab3e70b7c0154b9949dca572"
 HOUR_MS = 3_600_000
 TRAINING_HOURS = 180 * 24
 HALF_HOURS = 90 * 24
@@ -50,7 +50,7 @@ def _sha256(path: Path) -> str:
 def load_frozen_contract() -> dict:
     """Load and byte-bind the reviewed contract and its non-outcome authorities."""
     if _sha256(CONTRACT_PATH) != CONTRACT_SHA256:
-        raise IncompleteAuthority("C255 contract bytes do not match reviewed head fc34cf4f")
+        raise IncompleteAuthority("C255 contract bytes do not match reviewed head 61b2d8ab protected pin")
     doc = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     if (doc.get("candidate_id"), doc.get("default_off"), doc.get("status")) != (
         255, True, "FROZEN_NOT_EVALUATED_RESEARCH_ONLY"
