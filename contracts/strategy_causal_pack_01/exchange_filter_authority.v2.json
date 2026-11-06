@@ -10,10 +10,13 @@
   "filter_policy": "Use PRICE_FILTER.tickSize, MARKET_LOT_SIZE.stepSize/minQty/maxQty, and MIN_NOTIONAL.notional exactly as the engine does. Duplicate, missing, non-finite, zero, or negative required values are INCOMPLETE; LOT_SIZE is not a substitute for MARKET_LOT_SIZE.",
   "identity_effect": "This metadata-only eligibility rule changes the source CORE-20 and therefore creates the causal_v3 candidate identities. It was frozen before any candidate archive market row was read and may not be changed after outcomes are observed.",
   "known_limitation": "Rules are last-observed at fold start, not a claim that Binance never changed them during the fold. Current PAPER/testnet admission must independently pass current exchangeInfo parity.",
+  "pit_universe_path": "research_evidence/universe/pit-top40-qv30d-v4.json",
+  "pit_universe_sha256": "d7000458b2c6ec848c6a359aa4b011850a3be437d8f22e53701e76927c4d3229",
+  "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093",
   "snapshots": [
     {
       "captured_at": "2024-12-13T04:44:48Z",
-      "server_time": "2024-12-13T00:00:07.467Z",
+      "server_time": "2024-12-13T04:00:07.467Z",
       "source_url": "https://www.binance.com/fapi/v1/exchangeInfo",
       "archive_url": "https://web.archive.org/web/20241213044448id_/https://www.binance.com/fapi/v1/exchangeInfo",
       "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20241213T044448Z.json",
@@ -32,6 +35,11 @@
     "wf1": "2024-12-13T04:44:48Z",
     "wf2": "2024-12-13T04:44:48Z",
     "wf3": "2026-02-17T04:13:28Z"
+  },
+  "weekly_membership_sha256": {
+    "wf1": "ebbce27e52cd4928c3bf22feb5113af6bb6ed33cb02ef25a33baab6a7d17b795",
+    "wf2": "ebc18a1b8dc67f8c4bbdb283498a2cb3729693f54299b82efbb6f4a2af248f0d",
+    "wf3": "71b228f65ea8ecb3860ffe7f2e458aa9bd7a695ac014227e1895d208311e26f1"
   },
   "forbidden": [
     "the 2026-10-11 snapshot for any fold",
