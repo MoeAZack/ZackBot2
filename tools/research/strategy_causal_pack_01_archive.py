@@ -16,6 +16,7 @@ from pathlib import Path
 from tools.research import manifest as M
 from tools.research import pit as P
 from tools.research import universe as U
+from tools.research.costs import FUNDING_TIME_TOLERANCE_MS
 import feasibility as F
 
 
@@ -486,7 +487,12 @@ class RawArchiveAdapter:
 
     def load_funding_sparse(self, symbol: str, start_ms: int, end_ms: int, *,
                             eligible_symbols: frozenset[str] | None = None) -> SparseFundingLoad:
-        """Return verified settlements and explicit uncovered funding intervals."""
+        """Return verified settlements and explicit uncovered funding intervals.
+
+        Binance ``calc_time`` can land just after its nominal settlement time.
+        The frozen cost-model cadence tolerance collapses only that bounded
+        scheduling jitter; it never creates a row or bridges a missing event.
+        """
         self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
         rows, manifest_gaps = self._rows_sparse(
             symbol, "fundingRate", None, start_ms, end_ms)
@@ -508,18 +514,18 @@ class RawArchiveAdapter:
             settlement_gaps.append(CoverageGap(start_ms, end_ms, "no_settlement"))
         else:
             first_cover_start = out[0].time_ms - out[0].interval_hours * HOUR_MS
-            if first_cover_start > start_ms:
+            if first_cover_start > start_ms + FUNDING_TIME_TOLERANCE_MS:
                 settlement_gaps.append(CoverageGap(start_ms, min(first_cover_start, end_ms),
                                                    "settlement_gap"))
             for left, right in zip(out, out[1:]):
                 covered_until = left.time_ms + max(
                     left.interval_hours, right.interval_hours) * HOUR_MS
-                if covered_until < right.time_ms:
+                if covered_until + FUNDING_TIME_TOLERANCE_MS < right.time_ms:
                     settlement_gaps.append(CoverageGap(
                         max(start_ms, covered_until), min(end_ms, right.time_ms),
                         "settlement_gap"))
             covered_until = out[-1].time_ms + out[-1].interval_hours * HOUR_MS
-            if covered_until < end_ms:
+            if covered_until + FUNDING_TIME_TOLERANCE_MS < end_ms:
                 settlement_gaps.append(CoverageGap(max(start_ms, covered_until), end_ms,
                                                    "settlement_gap"))
         return SparseFundingLoad(tuple(out), self._merge_gaps((*manifest_gaps, *settlement_gaps)))
