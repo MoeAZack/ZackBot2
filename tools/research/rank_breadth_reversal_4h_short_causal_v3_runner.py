@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = (ROOT / "contracts" / "rank_breadth_reversal_4h_short_causal_v3" /
                  "rank_breadth_reversal_4h_short_causal_v3_contract.v1.json")
 CONTRACT_SHA256 = "0226f225d157a51b595e5893105d9054fb8f1b9e7abc8ad166ad1688c158e997"
-CONTRACT_COMMIT = "5e41cac065b5b28f75cabd695f6fe935b1e2edce"
+CONTRACT_COMMIT = "e9a764144140e34ec2e218bd174adc8f88919f1f"
 FORMAT = "zackbot.rank-breadth-reversal-4h-short-causal-v3/3"
 INCOMPLETE = "INCOMPLETE_CANDIDATE"
 CANDIDATE_IDS = ("rank_breadth_reversal_4h_short_causal_v3",)
