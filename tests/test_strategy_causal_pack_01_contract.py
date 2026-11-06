@@ -63,13 +63,18 @@ def test_source_strategy_facts_and_frozen_horizons_match_code():
     vpi = S.STRATEGIES['volume_pressure_inventory_1h']
     assert pull['research_only'] and pull['sides'] == 'short' and pull['tf'] == '4h'
     assert pull['mgmt']['max_bars'] == by_id['pullback_rsi_short_h1_causal_v2']['max_holding_bars'] == 60
+    assert by_id['pullback_rsi_short_h1_causal_v2']['management'] == pull['mgmt']
     assert exp['research_only'] and exp['sides'] == 'short' and exp['tf'] == '4h'
     assert exp['mgmt'].get('max_bars') is None  # adding the preregistered cap creates the new identity
     assert by_id['exp_mom_short_c27_causal_v2']['max_holding_bars'] == 180
+    assert by_id['exp_mom_short_c27_causal_v2']['management'] == {
+        **exp['mgmt'], 'max_bars': 180}
     with open(os.path.join(ROOT, 'tools', 'research', 'trend_ema_mom.py'), encoding='utf-8') as fh:
         assert 'TIME_CAP_BARS = 180' in fh.read()
     assert vpi['research_only'] and vpi['sides'] == 'both' and vpi['tf'] == '1h'
     assert vpi['mgmt']['max_bars'] == by_id['volume_pressure_inventory_short_1h_causal_v2']['max_holding_bars'] == 24
+    assert by_id['volume_pressure_inventory_short_1h_causal_v2']['management'] == {
+        'stop_atr': 2.0, 'tp_r': 2.0, 'max_bars': 24}
     for row in by_id.values():
         assert f"`{row['candidate_id']}`" in md
 
@@ -87,6 +92,27 @@ def test_all_discretionary_exits_are_next_open_and_missing_open_is_incomplete():
     assert 'next tradable open' in md and 'never a last-mark or synthetic close' in md
 
 
+def test_intrabar_rule_is_fully_encoded_and_candidate_bounded():
+    c, md = _load()
+    rule = c['execution']['intrabar_rule']
+    assert rule['id'] == 'STRATEGY_CAUSAL_FBL_BT01_V1'
+    assert rule['green_path'] == ['open', 'low', 'high', 'close']
+    assert rule['red_path'] == ['open', 'high', 'low', 'close']
+    assert rule['doji_short_path'] == ['open', 'low', 'high', 'close']
+    assert rule['doji_long_path'] == ['open', 'high', 'low', 'close']
+    assert rule['entry_bar_participates'] is True
+    assert rule['gap_stop'].startswith('if the bar opens at or beyond the stop')
+    assert rule['both_stop_and_favourable_level'].startswith('if the stop as frozen at the bar open')
+    assert rule['monotonic_leg_order'].startswith('otherwise fire reached levels in price order')
+    assert rule['target_and_partial_reference_fill'].startswith('fill at the frozen trigger level')
+    assert rule['partial_then_management'].startswith('after a partial target')
+    assert rule['trail_update'].startswith('ratchet only after each completed path leg')
+    assert rule['signal_and_time_order'].startswith('process the full intrabar path first')
+    assert rule['dca_or_pyramid'].startswith('forbidden')
+    assert rule['unresolved_or_missing_bar'] == 'INCOMPLETE_CANDIDATE'
+    assert 'STRATEGY_CAUSAL_FBL_BT01_V1' in md
+
+
 def test_costs_are_realistic_and_stressed():
     c, md = _load()
     costs = c['costs']
@@ -95,7 +121,11 @@ def test_costs_are_realistic_and_stressed():
     assert costs['funding_gap'] == costs['mark_gap'] == 'INCOMPLETE_CANDIDATE'
     assert costs['cost_stress_multipliers_to_report'] == [1.0, 1.5, 2.0]
     assert 'positive rate is a receipt for a short' in costs['funding_sign']
-    assert costs['net_pnl_formula'].startswith('gross_price_pnl + signed_funding_cash')
+    assert costs['price_pnl_basis'].startswith('gross_reference_price_pnl uses unslipped reference prices only')
+    assert costs['adverse_slippage_cash'].endswith('exactly once')
+    assert costs['net_pnl_formula'] == (
+        'gross_reference_price_pnl + signed_funding_cash - '
+        'fee_cash_on_executable_notional - adverse_slippage_cash')
     assert 'positive funding credits remain at 1.0x' in costs['cost_stress_rule']
     assert '5 bp taker fee plus 2 bp adverse slippage' in md
 
