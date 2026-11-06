@@ -413,6 +413,14 @@ class EntryTerms:
     gross_open_notional: float
 
 
+@dataclass(frozen=True)
+class BookAdmission:
+    """One new lot plus entry-only costs, booked exactly once on admission."""
+
+    lot: BookLot
+    entry_fee_and_slippage_cash: float
+
+
 class FrozenCandidateBook:
     """Contract-frozen, isolated candidate book for causal raw evaluation.
 
@@ -433,7 +441,10 @@ class FrozenCandidateBook:
             raise RunnerError("checksum-verified frozen CORE-20 order must contain 20 unique symbols")
         self.core20_order = order
         self._priority = {symbol: index for index, symbol in enumerate(order)}
-        self.cash_equity = self.START_EQUITY
+        # Settled cash starts at contract equity. Entry costs, signed funding,
+        # and incremental exit cashflows touch this ledger exactly once;
+        # open reference-price PnL remains unrealized in marked_equity().
+        self.settled_cash_equity = self.START_EQUITY
         self.positions: dict[str, BookLot] = {}
         self.day: str | None = None
         self.day_start_equity: float | None = None
@@ -444,7 +455,7 @@ class FrozenCandidateBook:
             lot.sign * (lot.mark - lot.entry_reference) * lot.qty
             for lot in self.positions.values()
         )
-        return self.cash_equity + unrealized
+        return self.settled_cash_equity + unrealized
 
     def gross_open_notional(self) -> float:
         return sum(abs(lot.qty * lot.mark) for lot in self.positions.values())
@@ -466,8 +477,13 @@ class FrozenCandidateBook:
 
     def advance_bar(self, time_ms: int, marks: dict[str, float]) -> None:
         """Apply causal marks, freeze the Cairo-day baseline, and latch the halt."""
-        if set(marks) - set(self.positions):
-            raise RunnerError("mark supplied for a symbol without an open position")
+        if set(marks) != set(self.positions):
+            missing = sorted(set(self.positions) - set(marks))
+            extra = sorted(set(marks) - set(self.positions))
+            raise IncompleteCandidate(
+                f"{INCOMPLETE}: causal marks must cover every open position exactly; "
+                f"missing={missing}, extra={extra}"
+            )
         for symbol, mark in marks.items():
             if not _positive(mark):
                 raise IncompleteCandidate(f"{INCOMPLETE}: invalid causal mark for {symbol}")
@@ -485,14 +501,15 @@ class FrozenCandidateBook:
         self,
         time_ms: int,
         symbols: Sequence[str],
-        opener: Callable[[EntryTerms], tuple[BookLot, float] | None],
+        opener: Callable[[EntryTerms], BookAdmission | None],
     ) -> list[str]:
         """Process one next-open cohort in frozen CORE-20 priority order.
 
         ``opener`` is an internal source-signal adapter: it receives only terms
         computed from current book state and returns the resulting lot plus its
-        already-incurred entry fee/slippage cash. Later symbols therefore see
-        earlier fills and costs.
+        entry-only fee/slippage cash. That cost is settled exactly once here;
+        close APIs accept only later incremental cashflows. Later symbols
+        therefore see earlier fills and costs.
         """
         requested = tuple(symbols)
         if len(set(requested)) != len(requested):
@@ -516,12 +533,14 @@ class FrozenCandidateBook:
             opened = opener(terms)
             if opened is None:
                 continue
-            lot, entry_cost_cash = opened
+            lot = opened.lot
+            entry_cost_cash = opened.entry_fee_and_slippage_cash
             lot.validate()
             if lot.symbol != symbol or not math.isfinite(entry_cost_cash) or entry_cost_cash < 0:
                 raise RunnerError("internal opener returned mismatched lot or invalid entry cost")
             self.positions[symbol] = lot
-            self.cash_equity -= entry_cost_cash
+            self.settled_cash_equity -= entry_cost_cash
+            self._latch_halt()
             admitted.append(symbol)
         return admitted
 
@@ -530,12 +549,61 @@ class FrozenCandidateBook:
                 and self.marked_equity() <= self.day_start_equity * (1.0 - self.DAILY_HALT_FRACTION)):
             self.entries_halted = True
 
-    def close(self, symbol: str, net_cash: float) -> None:
-        """Apply an internally calculated exit at any time, including while halted."""
-        if symbol not in self.positions or not math.isfinite(net_cash):
-            raise RunnerError("invalid internally calculated position close")
+    def book_signed_funding_cash(self, symbol: str, signed_funding_cash: float) -> None:
+        """Settle one funding event before any later entry or exit decision."""
+        if symbol not in self.positions or not math.isfinite(signed_funding_cash):
+            raise RunnerError("invalid signed funding settlement")
+        self.settled_cash_equity += signed_funding_cash
+        self._latch_halt()
+
+    def book_partial_exit(
+        self,
+        symbol: str,
+        executed_qty: float,
+        realized_reference_pnl_cash: float,
+        exit_fee_and_slippage_cash: float,
+        rule: "ExchangeRule",
+    ) -> None:
+        """Settle one exchange-floored partial fill and retain the marked remainder.
+
+        The realized PnL and exit cost must describe only this fill. Entry costs
+        were already settled at admission and are deliberately absent here.
+        """
+        if symbol not in self.positions:
+            raise RunnerError("partial exit has no open position")
+        rule.validate()
+        lot = self.positions[symbol]
+        floored_qty = _floor_step(executed_qty, rule.step)
+        if (not _positive(executed_qty) or abs(floored_qty - executed_qty) > 1e-9
+                or floored_qty >= lot.qty - 1e-12):
+            raise RunnerError("partial exit quantity is not a valid exchange-floored subset")
+        if (not math.isfinite(realized_reference_pnl_cash)
+                or not math.isfinite(exit_fee_and_slippage_cash)
+                or exit_fee_and_slippage_cash < 0):
+            raise RunnerError("invalid incremental partial-exit cashflow")
+        remaining = _floor_step(lot.qty - floored_qty, rule.step)
+        if remaining <= 0:
+            raise RunnerError("partial exit must retain positive exchange-floored quantity")
+        lot.qty = remaining
+        self.settled_cash_equity += realized_reference_pnl_cash - exit_fee_and_slippage_cash
+        self._latch_halt()
+
+    def book_final_exit(
+        self,
+        symbol: str,
+        realized_reference_pnl_cash: float,
+        exit_fee_and_slippage_cash: float,
+    ) -> None:
+        """Settle only the final fill's incremental PnL/cost and remove the lot."""
+        if symbol not in self.positions:
+            raise RunnerError("final exit has no open position")
+        if (not math.isfinite(realized_reference_pnl_cash)
+                or not math.isfinite(exit_fee_and_slippage_cash)
+                or exit_fee_and_slippage_cash < 0):
+            raise RunnerError("invalid incremental final-exit cashflow")
         del self.positions[symbol]
-        self.cash_equity += net_cash
+        self.settled_cash_equity += realized_reference_pnl_cash - exit_fee_and_slippage_cash
+        self._latch_halt()
 
 
 def _positive(value: object) -> bool:

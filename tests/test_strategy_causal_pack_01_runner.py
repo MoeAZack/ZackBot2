@@ -30,6 +30,11 @@ def core20():
     return tuple(f"S{i:02d}" for i in range(20))
 
 
+def admission(symbol, *, side="long", qty=1.0, price=100.0, entry_cost=0.0):
+    return R.BookAdmission(
+        R.BookLot(symbol, side, qty, price, price), entry_cost)
+
+
 def test_exact_fold_local_purge_off_by_one():
     assert list(R.eligible_entry_range(200, 60, 1000)) == list(range(200, 940))
     assert R.entry_is_eligible(200, 200, 60, 1000)
@@ -394,7 +399,7 @@ def test_simultaneous_entries_use_core20_priority_dynamic_equity_and_caps():
 
     def opener(terms):
         seen.append(terms)
-        return R.BookLot(terms.symbol, "long", 10.0, 100.0, 100.0), 1.0
+        return admission(terms.symbol, qty=10.0, entry_cost=1.0)
 
     admitted = book.admit_simultaneous(
         ms("2026-07-01T00:00:00"), ["S06", "S03", "S02", "S01", "S00"], opener)
@@ -411,11 +416,11 @@ def test_candidate_books_are_isolated_and_compound_realized_equity():
     first.advance_bar(now, {})
     second.advance_bar(now, {})
     first.admit_simultaneous(
-        now, ["S00"], lambda terms: (R.BookLot(terms.symbol, "long", 1, 100, 100), 0))
-    first.close("S00", 50.0)
-    assert first.cash_equity == 550.0
+        now, ["S00"], lambda terms: admission(terms.symbol))
+    first.book_final_exit("S00", realized_reference_pnl_cash=50.0, exit_fee_and_slippage_cash=0.0)
+    assert first.settled_cash_equity == 550.0
     assert first.risk_cash() == pytest.approx(5.5)
-    assert second.cash_equity == 500.0
+    assert second.settled_cash_equity == 500.0
     assert second.risk_cash() == pytest.approx(5.0)
 
 
@@ -424,7 +429,7 @@ def test_cairo_daily_halt_latches_entries_but_never_blocks_exit_management():
     day_one = ms("2026-07-01T00:00:00")  # 03:00 Cairo (DST)
     book.advance_bar(day_one, {})
     book.admit_simultaneous(
-        day_one, ["S00"], lambda terms: (R.BookLot(terms.symbol, "long", 5, 100, 100), 0))
+        day_one, ["S00"], lambda terms: admission(terms.symbol, qty=5))
     book.advance_bar(ms("2026-07-01T01:00:00"), {"S00": 90})
     assert book.marked_equity() == 450
     assert book.entries_halted
@@ -434,8 +439,8 @@ def test_cairo_daily_halt_latches_entries_but_never_blocks_exit_management():
     assert called == []
     book.advance_bar(ms("2026-07-01T03:00:00"), {"S00": 100})
     assert book.entries_halted  # recovery never unlatches within the Cairo day
-    book.close("S00", -50.0)  # exits/management remain enabled
-    assert book.cash_equity == 450
+    book.book_final_exit("S00", realized_reference_pnl_cash=-50.0, exit_fee_and_slippage_cash=0.0)
+    assert book.settled_cash_equity == 450  # exits/management remain enabled
     book.advance_bar(ms("2026-07-01T21:00:00"), {})  # 00:00 next Cairo day
     assert not book.entries_halted and book.day_start_equity == 450
 
@@ -446,3 +451,68 @@ def test_book_controls_have_no_caller_override_and_reject_non_core_entries():
     book = R.FrozenCandidateBook(core20())
     with pytest.raises(R.RunnerError, match="outside frozen CORE-20"):
         book.admit_simultaneous(ms("2026-07-01T00:00:00"), ["NOTCORE20"], lambda _terms: None)
+
+
+def test_advance_bar_refuses_subset_marks_for_two_open_positions():
+    book = R.FrozenCandidateBook(core20())
+    now = ms("2026-07-01T00:00:00")
+    book.advance_bar(now, {})
+    book.admit_simultaneous(
+        now, ["S00", "S01"], lambda terms: admission(terms.symbol))
+    with pytest.raises(R.IncompleteCandidate, match="cover every open position.*S01"):
+        book.advance_bar(ms("2026-07-01T01:00:00"), {"S00": 101})
+
+
+def test_entry_partial_and_final_cashflows_single_count_costs_and_keep_remainder():
+    book = R.FrozenCandidateBook(core20())
+    now = ms("2026-07-01T00:00:00")
+    book.advance_bar(now, {})
+    book.admit_simultaneous(
+        now, ["S00"], lambda terms: admission(terms.symbol, qty=10, entry_cost=1.0))
+    assert book.settled_cash_equity == 499
+    book.advance_bar(ms("2026-07-01T01:00:00"), {"S00": 110})
+    assert book.marked_equity() == 599
+    book.book_partial_exit(
+        "S00", executed_qty=4.0, realized_reference_pnl_cash=40.0,
+        exit_fee_and_slippage_cash=1.0, rule=RULE)
+    assert book.positions["S00"].qty == 6.0
+    assert book.gross_open_notional() == 660.0
+    assert book.settled_cash_equity == 538.0
+    assert book.marked_equity() == 598.0
+    book.book_final_exit(
+        "S00", realized_reference_pnl_cash=60.0, exit_fee_and_slippage_cash=1.0)
+    assert not book.positions
+    assert book.settled_cash_equity == 597.0  # 500 - entry 1 + gross 100 - exits 2
+
+
+def test_signed_funding_changes_next_entry_risk_equity_and_cap_before_exit():
+    book = R.FrozenCandidateBook(core20())
+    now = ms("2026-07-01T00:00:00")
+    book.advance_bar(now, {})
+    book.admit_simultaneous(
+        now, ["S00"], lambda terms: admission(terms.symbol, side="short"))
+    book.book_signed_funding_cash("S00", 5.0)  # positive rate receipt for short
+    seen = []
+    book.admit_simultaneous(
+        now, ["S01"], lambda terms: seen.append(terms) or admission(terms.symbol, side="short"))
+    assert seen[0].marked_equity == 505.0
+    assert seen[0].risk_cash == pytest.approx(5.05)
+    assert seen[0].leverage_notional_cap == pytest.approx(4950.0)
+    book.book_signed_funding_cash("S00", -10.0)
+    later = []
+    book.admit_simultaneous(
+        now, ["S02"], lambda terms: later.append(terms) or admission(terms.symbol, side="short"))
+    assert later[0].marked_equity == 495.0
+    assert later[0].risk_cash == pytest.approx(4.95)
+    assert later[0].leverage_notional_cap == pytest.approx(4750.0)
+
+
+def test_funding_cashflow_latches_daily_halt_without_blocking_final_exit():
+    book = R.FrozenCandidateBook(core20())
+    now = ms("2026-07-01T00:00:00")
+    book.advance_bar(now, {})
+    book.admit_simultaneous(now, ["S00"], lambda terms: admission(terms.symbol))
+    book.book_signed_funding_cash("S00", -40.0)
+    assert book.entries_halted and book.marked_equity() == 460.0
+    book.book_final_exit("S00", realized_reference_pnl_cash=0.0, exit_fee_and_slippage_cash=0.0)
+    assert not book.positions
