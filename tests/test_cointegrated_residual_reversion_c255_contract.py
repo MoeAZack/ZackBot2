@@ -116,7 +116,11 @@ def test_bootstrap_atomicity_alignment_and_portfolio_rules_are_exact():
     assert bootstrap["seed"] == 25520261106
     assert "atomicity failures" in bootstrap["ordered_observations"]
     assert "inner-join only exact completed 1h" in contract["data_authority"]["pair_bar_alignment"]
+    assert "monday_ms<=selection_ms" in contract["data_authority"]["membership_cell_rule"]
     assert "next available 1h open" in contract["signals"]["time_exit_execution"]
+    assert "Future exit prices/notionals may never qualify" in contract["signals"]["cost_floor"]
+    assert "Wilder RMA" in contract["signals"]["per_leg_atr"]
+    assert "alpha=1/24" in contract["signals"]["per_leg_atr"]
     assert "counts as one closed pair attempt" in contract["position_and_portfolio"]["atomicity"]
     assert contract["position_and_portfolio"]["max_aggregate_pair_gross_leverage"] == 1.5
 
