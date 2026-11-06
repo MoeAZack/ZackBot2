@@ -293,7 +293,8 @@ def guarded_dispatch(
 
 def blocked_main(profile_name: str, argv: Sequence[str] | None = None) -> int:
     try:
-        return guarded_dispatch(profile_name, argv=argv)
+        process_argv = sys.argv[1:] if argv is None else argv
+        return guarded_dispatch(profile_name, argv=process_argv)
     except V4ExecutionBarrier as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 3
