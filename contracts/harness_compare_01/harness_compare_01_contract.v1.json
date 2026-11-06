@@ -1,0 +1,113 @@
+{
+  "contract": "HARNESS-COMPARE-01",
+  "version": 1,
+  "status": "DRAFT",
+  "base_commit": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+  "doc": "HARNESS_COMPARE_01_CONTRACT.md",
+  "authority": {
+    "orders": false,
+    "paper_activation": false,
+    "holdout_read": false,
+    "strategy_selection": false,
+    "mainnet": false
+  },
+  "scope": {
+    "strategy_count": 1,
+    "dataset": "frozen_point_in_time_pack",
+    "engines": [
+      "zackbot_golden",
+      "freqtrade_isolated_later"
+    ],
+    "canonical_events": [
+      "signal",
+      "fill",
+      "exit",
+      "gross_pnl",
+      "fees",
+      "slippage",
+      "funding",
+      "net_pnl"
+    ]
+  },
+  "required_bindings": [
+    "strategy_sha256",
+    "parameters_sha256",
+    "dataset_sha256",
+    "cost_manifest_sha256",
+    "intrabar_policy_sha256",
+    "zackbot_commit",
+    "adapter_sha256",
+    "tool_versions_sha256"
+  ],
+  "diagnostics": {
+    "future_shift_mutation_detected": true,
+    "prefix_events_byte_identical": true,
+    "recursive_warmup_converges": true,
+    "tamper_refusal": true,
+    "long_short_and_same_bar_cases": true
+  },
+  "frozen_diagnostics": {
+    "warmup_closed_candles": [
+      128,
+      256,
+      512
+    ],
+    "scored_interval": "[512,pack_end)",
+    "prefix_endpoint_fractions": [
+      "0.25",
+      "0.50",
+      "0.75",
+      "1.00"
+    ],
+    "prefix_index_rule": "floor_fraction_of_scored_rows_and_record_utc_candle",
+    "timestamp_format": "UTC_ISO8601",
+    "price_quantity_format": "decimal_string_exchange_tick_step_quantized",
+    "money_r_format": "decimal_string_fixed_8dp",
+    "binary_float_allowed": false,
+    "canonical_json_compare": "byte_exact",
+    "unexplained_numeric_tolerance": "0"
+  },
+  "declared_divergence": {
+    "required_fields": [
+      "event_key",
+      "field",
+      "zackbot_value",
+      "foreign_value",
+      "reason_code",
+      "semantic_reason",
+      "source_engine",
+      "evidence_hash"
+    ],
+    "reason_codes": [
+      "ROUNDING_BEFORE_EXPORT",
+      "UNSUPPORTED_ORDER_TYPE",
+      "DECLARED_ENGINE_SEMANTIC"
+    ],
+    "wildcards_allowed": false,
+    "field_group_suppression_allowed": false
+  },
+  "acceptance": {
+    "unexplained_signal_divergences": 0,
+    "unexplained_fill_divergences": 0,
+    "unexplained_exit_divergences": 0,
+    "unexplained_cost_divergences": 0,
+    "expected_differences_ledgered": true,
+    "lookahead_diagnostics_clean": true,
+    "recursive_diagnostics_clean": true,
+    "cost_stress_multiplier": 1.5,
+    "cost_stress_trade_identity_unchanged": true
+  },
+  "implementation_boundary": {
+    "new_files_only": true,
+    "third_party_install_in_contract_slice": false,
+    "runtime_files_edited": false,
+    "paper_state_touched": false
+  },
+  "deferred": [
+    "freqtrade_adapter",
+    "pinned_isolated_environment",
+    "frozen_pack_selection",
+    "independent_execution",
+    "strategy_promotion"
+  ]
+}
