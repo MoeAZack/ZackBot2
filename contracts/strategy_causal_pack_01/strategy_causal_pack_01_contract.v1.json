@@ -3,7 +3,7 @@
   "version": 1,
   "status": "FROZEN",
   "signed_by": "codex",
-  "frozen_at": "2026-11-06T09:55:00+02:00",
+  "frozen_at": "2026-11-06T10:52:47+02:00",
   "signature_refs": ["issuecomment-6679947858", "issuecomment-6680010789", "issuecomment-6680054484"],
   "authority": "This JSON is authoritative. The Markdown twin is explanatory and cannot weaken it.",
   "purpose": "Find 2-3 profitable-after-cost candidates for an isolated protected PAPER/testnet cohort without reusing the viewed holdout.",
@@ -114,6 +114,23 @@
     "missing_next_open": "INCOMPLETE_CANDIDATE",
     "last_mark_or_synthetic_close": false,
     "actual_exchange_filters": true
+  },
+  "book_and_sizing": {
+    "source": "tools/research/run_vwaprev_candidate.py APP_DEFAULTS and backtest.py open_pos; frozen here because executable sizing is evidence, not a caller option",
+    "reference_start_equity_usdt": 500.0,
+    "risk_fraction_of_current_candidate_book_equity": 0.01,
+    "risk_cash_formula": "risk_cash = current candidate-book equity immediately before the entry decision * 0.01",
+    "maximum_open_positions": 4,
+    "gross_leverage_multiple": 10.0,
+    "leverage_notional_cap_formula": "leverage_notional_cap = max(0, 10.0 * current candidate-book equity - current gross open notional); size the new position to no more than leverage_notional_cap / entry_exec before exchange-step flooring",
+    "entry_priority": "For simultaneous next-open entries, process symbols in the frozen CORE-20 order from the checksum-verified universe artifact; later symbols see equity, open-position count, and gross notional after earlier fills.",
+    "daily_halt_fraction": 0.08,
+    "daily_halt_timezone": "Africa/Cairo resolved through the IANA timezone database for every timestamp",
+    "daily_halt_rule": "At the first bar of each Cairo calendar day freeze day_start_equity. If current marked candidate-book equity is <= day_start_equity * (1 - 0.08), refuse new entries for the rest of that Cairo day while continuing all exits and position management.",
+    "equity_compounding": true,
+    "candidate_books_isolated": true,
+    "cross_candidate_capital_sharing": false,
+    "caller_override": "forbidden; changing any value or formula creates a new contract and evaluation identity"
   },
   "costs": {
     "fee_per_fill_bps": 5,

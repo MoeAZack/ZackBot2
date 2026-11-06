@@ -39,6 +39,12 @@ The only evidence windows are the three untouched folds: 1 April–30 September 
 and 1 April–28 September 2026, all end-exclusive. Every candidate observes its declared warm-up and holding-horizon
 purge. Nothing at or after 28 September 2026 may be read. The already viewed holdout is permanently excluded.
 
+Each candidate runs in its own frozen source-parity book: 500 USDT starting equity, 1% of current book equity risked per
+new entry, at most four open positions, and gross notional capped at 10x current book equity. Simultaneous next-open
+entries are processed in the checksum-bound CORE-20 order. The 8% daily entry halt uses Cairo calendar days through the
+`Africa/Cairo` IANA timezone; it blocks only new entries and never stops exit or protection management. Equity compounds
+inside a candidate book, candidates do not share capital, and none of these values may be overridden by the caller.
+
 Each fill pays 5 bp taker fee plus 2 bp adverse slippage, rounded against the strategy to the frozen exchange tick.
 Actual checksum-verified Binance funding is included for settlements from entry inclusive to exit exclusive: positive
 funding is a receipt for shorts and a debit for longs. Gross price P&L uses unslipped reference prices; adverse slippage
