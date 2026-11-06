@@ -1,5 +1,5 @@
 {
-  "format": "zb-rbr-causal-v2-family-ledger/1",
+  "format": "zb-rbr-causal-v3-family-ledger/1",
   "family": "rank_breadth_reversal_4h",
   "status": "FROZEN_BEFORE_NEW_EVALUATION",
   "frozen_at": "2026-11-06T11:50:43+02:00",
@@ -26,7 +26,7 @@
       "raw_p_value": "NOT_COMPUTED_CONSERVATIVE_ONE_FOR_HOLM"
     },
     {
-      "trial_id": "rank_breadth_reversal_4h_short_causal_v2",
+      "trial_id": "rank_breadth_reversal_4h_short_causal_v3",
       "source_head": "9ba2cbaa3d11d861ec885acaf79fbcb7a91ea2cf",
       "side": "short",
       "status": "PREREGISTERED_UNEVALUATED",
@@ -43,5 +43,5 @@
     "byte_sha256": "378499725b21a2b839a05e79a8275205e5c376c323e8609539d511871604678f",
     "role": "cross-family positive-candidate context only; it is not falsely represented as the complete RBR family ledger"
   },
-  "digest": "8f6613afd16ed0cc668a3150b5b4f2438790b0a13942e0dfa96fba5fbb3e1ba5"
+  "digest": "79a3013abb8a8b16d11b23e56e1cdcb6b9376bf6a93baed96a54bc836694a3dd"
 }

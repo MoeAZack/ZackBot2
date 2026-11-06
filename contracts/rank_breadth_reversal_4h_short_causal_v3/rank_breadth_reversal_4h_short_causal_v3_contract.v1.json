@@ -1,6 +1,6 @@
 {
-  "contract": "RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V2",
-  "version": 1,
+  "contract": "RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3",
+  "version": 2,
   "status": "FROZEN",
   "signed_by": "codex",
   "frozen_at": "2026-11-06T11:50:43+02:00",
@@ -17,7 +17,7 @@
     "runtime_risk_before_independent_pass": false
   },
   "candidate": {
-    "candidate_id": "rank_breadth_reversal_4h_short_causal_v2",
+    "candidate_id": "rank_breadth_reversal_4h_short_causal_v3",
     "old_id": "rank_breadth_reversal_4h:short",
     "side": "short",
     "timeframe": "4h",
@@ -98,7 +98,13 @@
     "core20_derivation": "At decision close d, choose the unique week with greatest monday_ms <= d. CORE-20 is exactly week.books.crypto.members[0:20], preserving artifact order; fewer than 20 members is INCOMPLETE_CANDIDATE. No static, current, union or cross-book substitute exists.",
     "artifact_order_rule": "The artifact ranks exact Decimal 30-day USDT quote-volume descending within crypto after its frozen vetoes; exact-volume ties are symbol ascending. CORE-20 and simultaneous-entry order both preserve the first-20 artifact order. Signal rank7 remains a separate pandas average rank of causal 42-bar returns within those members.",
     "pre_market_row_validation": "Before any candle, mark, funding, exchange-rule or holdout row is opened: verify the three byte hashes; parse JSON/gzip; validate manifest canonical digest/schema/loader/source/survivor flag; validate universe canonical digest, format/id, manifest/classes digests and exact books; require 348 unique strictly increasing Monday-00:00-UTC weeks from 2020-02-03 through 2026-09-28; for every week require exact book keys, aligned unique members/qv arrays of at most 40 ASCII symbols, finite nonnegative exact-Decimal qv, descending qv and symbol-ascending ties. Any mismatch refuses before a market read.",
-    "no_forward_membership": "A decision may use only the greatest validated weekly row whose monday_ms <= decision close. No later weekly row may affect membership, ranks, breadth, eligibility or order."
+    "no_forward_membership": "A decision may use only the greatest validated weekly row whose monday_ms <= decision close. No later weekly row may affect membership, ranks, breadth, eligibility or order.",
+    "exchange_filter_authority_path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json",
+    "exchange_filter_authority_sha256": "9463632b78004b367439b4fa3eae22523ffedf87b920c24cff8f5241d9fea434",
+    "exchange_filter_authority_identity": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY/v2",
+    "exchange_filter_fold_policy": "Before any market row, select the newest listed raw Binance exchangeInfo snapshot whose archive capture and payload serverTime are both strictly before the fold start; freeze it for the whole fold. Pin the PIT cell active at fold start and every later Monday before fold end. From each ranking, retain the first 20 TRADING PERPETUAL USDT COIN symbols with one complete positive PRICE_FILTER, MARKET_LOT_SIZE and MIN_NOTIONAL rule. Preserve order; fewer than 20 is INCOMPLETE_CANDIDATE.",
+    "exchange_filter_fold_bindings": {"wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z", "wf3": "2026-02-17T04:13:28Z"},
+    "filtered_weekly_membership_sha256": {"wf1": "226fd412cbef90ec8fe4233d4f67bb12a2bb8451b19a6fd6d296c24d7673c5e9", "wf2": "4a249f1112e0412256258d7a79182e5ccfb31342508a6a2bb62b628fdcb8789a", "wf3": "6ab6458d914ce787558b8d5fcf071a339e91e2f2312326397e1ade5344f7b77f"}
   },
   "execution": {
     "entry_fill": "next_tradable_open_after_completed_decision_candle",
@@ -109,7 +115,7 @@
     "missing_next_open": "INCOMPLETE_CANDIDATE",
     "last_mark_or_synthetic_close": false,
     "actual_exchange_filters": true,
-    "exchange_filter_rule": "Query the checksum-bound point-in-time exchange rules in force at every entry, partial and final exit; never reuse entry rules for a later fill. Missing coverage makes the whole candidate INCOMPLETE.",
+    "exchange_filter_rule": "Use the checksum-bound causal fold-start exchangeInfo snapshot and filtered weekly CORE-20 frozen by pit_authority. Use PRICE_FILTER.tickSize, MARKET_LOT_SIZE step/min/max quantity and MIN_NOTIONAL exactly as the engine parser does for every entry, partial and final exit in that fold. Missing, duplicate, invalid or non-positive required rules make the whole candidate INCOMPLETE before any market row is read. The known limitation that rules are last-observed at fold start is disclosed; current PAPER admission must independently pass current exchangeInfo parity.",
     "event_timeline": "For decision candle d, first complete its entire intrabar path for positions already open. Only positions still open at d close receive the source signal/time-exit decision. At next bar open t, after funding_time < t, causal marks and Cairo roll, execute every due next-open signal/time exit at the unslipped reference open with adverse executable pricing before any entry attempt or fill-bar gap/intrabar event. Then apply re-entry locks and attempt entries in CORE-20 order, settle funding_time == t, and finally run the fill bar intrabar path. Thus a due signal/time exit at t wins over a fill-bar gap-stop classification; a position closed during d intrabar creates no close decision at d.",
     "same_timestamp_open_order": ["funding_time_lt_t", "causal_marks_and_cairo_roll", "due_signal_time_exits", "reentry_lock_checks", "core20_ordered_entry_attempts", "funding_time_eq_t", "fill_bar_intrabar_management"],
     "reentry_lock_semantics": {
@@ -231,9 +237,9 @@
       "empty_sample": "[null,null] with failure_reason NO_CLOSED_EPISODES; it cannot satisfy required-report or promotion gates"
     },
     "family_ledger": {
-      "path": "contracts/rank_breadth_reversal_4h_short_causal_v2/rank_breadth_reversal_4h_family.v1.json",
-      "byte_sha256": "cafb8b5661606aee35b341708d3a73f15ac817e3a80aa8009ae37d974e633448",
-      "content_digest": "8f6613afd16ed0cc668a3150b5b4f2438790b0a13942e0dfa96fba5fbb3e1ba5",
+      "path": "contracts/rank_breadth_reversal_4h_short_causal_v3/rank_breadth_reversal_4h_family.v1.json",
+      "byte_sha256": "d3cdbd3ca36871004eb999ca5b8c73683fc1bb1f23407e128a63b30e299ae835",
+      "content_digest": "79a3013abb8a8b16d11b23e56e1cdcb6b9376bf6a93baed96a54bc836694a3dd",
       "family": "rank_breadth_reversal_4h",
       "m": 3,
       "rule": "Validate byte hash and canonical digest before market reads. The two contaminated prior trials remain in the family and receive conservative raw p=1.0 because no preregistered raw p exists; the new trial supplies its frozen raw p. Any additional family trial requires a new append-only ledger identity and contract."
@@ -276,6 +282,8 @@
     "refuse_output_overwrite": true,
     "record_manifest_digest": true,
     "record_pit_universe_digest": true,
+    "record_exchange_filter_authority_sha256": true,
+    "record_fold_filter_snapshot_sha256": true,
     "record_candidate_and_fold_identity": true,
     "single_evaluation_per_exact_contract_and_head": true
   },

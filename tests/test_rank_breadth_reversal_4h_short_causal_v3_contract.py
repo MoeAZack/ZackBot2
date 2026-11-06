@@ -1,4 +1,4 @@
-"""Static freeze for RBR short causal v2. This test reads no market or archive data."""
+"""Static freeze for RBR short causal v3. This test reads no market or archive data."""
 import json
 import hashlib
 import os
@@ -10,13 +10,15 @@ import strategies as S
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DIR = os.path.join(ROOT, 'contracts', 'rank_breadth_reversal_4h_short_causal_v2')
-JS = os.path.join(DIR, 'rank_breadth_reversal_4h_short_causal_v2_contract.v1.json')
-MD = os.path.join(DIR, 'RANK_BREADTH_REVERSAL_4H_SHORT_CAUSAL_V2.md')
+DIR = os.path.join(ROOT, 'contracts', 'rank_breadth_reversal_4h_short_causal_v3')
+JS = os.path.join(DIR, 'rank_breadth_reversal_4h_short_causal_v3_contract.v1.json')
+MD = os.path.join(DIR, 'RANK_BREADTH_REVERSAL_4H_SHORT_CAUSAL_V3.md')
 FAMILY = os.path.join(DIR, 'rank_breadth_reversal_4h_family.v1.json')
 UNIVERSE = os.path.join(ROOT, 'research_evidence', 'universe', 'pit-top40-qv30d-v4.json')
 MANIFEST = os.path.join(ROOT, 'research_evidence', 'manifests', 'binance-um-archive-v1.json.gz')
 CLASSES = os.path.join(ROOT, 'research_evidence', 'universe', 'instrument-classes-v1.json')
+FILTER_AUTHORITY = os.path.join(
+    ROOT, 'contracts', 'strategy_causal_pack_01', 'exchange_filter_authority.v2.json')
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'research'))
 import manifest as M  # noqa: E402
 
@@ -49,7 +51,7 @@ def _canonical_digest(value):
 def test_contract_is_frozen_default_off_and_has_no_live_authority():
     c, md = _load()
     assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
-        'RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V2', 1, 'FROZEN', 'codex')
+        'RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3', 2, 'FROZEN', 'codex')
     assert c['frozen_at'] == '2026-11-06T11:50:43+02:00'
     assert c['scope']['research_only'] and c['scope']['paper_testnet_only']
     assert c['scope']['default_enabled'] is False
@@ -63,7 +65,7 @@ def test_source_signal_parameters_and_management_are_byte_for_byte_frozen():
     c, _ = _load()
     row = c['candidate']
     source = S.STRATEGIES['rank_breadth_reversal_4h']
-    assert row['candidate_id'] == 'rank_breadth_reversal_4h_short_causal_v2'
+    assert row['candidate_id'] == 'rank_breadth_reversal_4h_short_causal_v3'
     assert row['old_id'] == 'rank_breadth_reversal_4h:short'
     assert row['side'] == 'short' and row['timeframe'] == source['tf'] == '4h'
     assert source['research_only'] and source['sides'] == 'both'
@@ -148,12 +150,30 @@ def test_exact_pit_authority_bytes_content_and_core20_derivation_are_valid():
     assert 'Before any candle' in a['pre_market_row_validation']
 
 
+def test_causal_filter_authority_is_exactly_bound_before_market_rows():
+    c, md = _load()
+    a = c['pit_authority']
+    assert _sha(FILTER_AUTHORITY) == a['exchange_filter_authority_sha256']
+    with open(FILTER_AUTHORITY, encoding='utf-8') as fh:
+        authority = json.load(fh)
+    assert (authority['authority'], authority['version'], authority['status']) == (
+        'STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY', 2, 'FROZEN')
+    assert authority['fold_bindings'] == a['exchange_filter_fold_bindings']
+    assert authority['weekly_membership_sha256'] == a['filtered_weekly_membership_sha256']
+    assert 'strictly before the fold start' in a['exchange_filter_fold_policy']
+    assert 'active at fold start' in a['exchange_filter_fold_policy']
+    assert 'first 20' in a['exchange_filter_fold_policy']
+    assert 'causal exchange-filter authority' in md
+
+
 def test_all_discretionary_fills_are_next_open_and_fbl_is_frozen():
     c, md = _load()
     e, rule = c['execution'], c['execution']['intrabar_rule']
     assert e['entry_fill'].startswith('next_tradable_open')
     assert e['signal_exit_fill'].startswith('next_tradable_open')
     assert e['time_exit_fill'] == 'next_tradable_open_at_index_e_plus_H where H is max_holding_bars'
+    assert 'fold-start exchangeInfo snapshot' in e['exchange_filter_rule']
+    assert 'engine parser' in e['exchange_filter_rule']
     assert e['decision_time_strictly_before_signal_or_time_fill']
     assert e['same_candle_close_fill_for_signal_or_time'] is False
     assert e['missing_next_open'] == 'INCOMPLETE_CANDIDATE'
