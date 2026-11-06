@@ -46,6 +46,33 @@ class RawFunding:
 
 
 @dataclass(frozen=True)
+class CoverageGap:
+    """An explicit half-open interval absent from an otherwise verified load."""
+
+    start_ms: int
+    end_ms: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class SparseKlineLoad:
+    rows: tuple[RawKline, ...]
+    gaps: tuple[CoverageGap, ...]
+
+
+@dataclass(frozen=True)
+class SparseFundingLoad:
+    rows: tuple[RawFunding, ...]
+    gaps: tuple[CoverageGap, ...]
+
+
+@dataclass(frozen=True)
+class SparseMarkLoad:
+    rows: tuple[tuple[int, float], ...]
+    gaps: tuple[CoverageGap, ...]
+
+
+@dataclass(frozen=True)
 class AuthorityDigests:
     manifest_digest: str
     pit_universe_digest: str
@@ -387,6 +414,41 @@ class RawArchiveAdapter:
             out.append(RawKline(int(row[0]), o, h, low, close, volume))
         return tuple(out)
 
+    def load_klines_sparse(self, symbol: str, interval: str, start_ms: int, end_ms: int, *,
+                           eligible_symbols: frozenset[str] | None = None) -> SparseKlineLoad:
+        """Return every verified grid-aligned bar and explicit missing grid intervals.
+
+        Sparse mode relaxes coverage only.  Authority, archive checksum, cutoff,
+        parser, ordering, duplicate, timestamp alignment, and OHLCV validation
+        remain fail-closed.
+        """
+        if interval not in INTERVAL_MS:
+            raise ArchiveIncomplete("candidate archive adapter permits only 1h/4h klines")
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
+        step = INTERVAL_MS[interval]
+        if start_ms % step or end_ms % step:
+            raise ArchiveIncomplete(f"{symbol} {interval}: sparse window is not grid-aligned")
+        rows, manifest_gaps = self._rows_sparse(
+            symbol, "klines", interval, start_ms, end_ms)
+        chosen = [row for row in rows if start_ms <= int(row[0]) < end_ms]
+        times = [int(row[0]) for row in chosen]
+        if any((time_ms - start_ms) % step for time_ms in times):
+            raise ArchiveIncomplete(f"{symbol} {interval}: misaligned kline timestamp")
+        out = []
+        for row in chosen:
+            try:
+                values = [float(row[index]) for index in range(1, 6)]
+            except ValueError as exc:
+                raise ArchiveIncomplete(f"{symbol} {interval}: non-numeric OHLCV") from exc
+            o, h, low, close, volume = values
+            if (not all(math.isfinite(value) for value in values) or min(o, h, low, close) <= 0
+                    or low > min(o, close) or h < max(o, close) or volume < 0):
+                raise ArchiveIncomplete(f"{symbol} {interval}: malformed OHLCV row")
+            out.append(RawKline(int(row[0]), o, h, low, close, volume))
+        observed = set(times)
+        row_gaps = self._grid_gaps(start_ms, end_ms, step, observed, "missing_row")
+        return SparseKlineLoad(tuple(out), self._merge_gaps((*manifest_gaps, *row_gaps)))
+
     def load_funding(self, symbol: str, start_ms: int, end_ms: int, *,
                      eligible_symbols: frozenset[str] | None = None) -> tuple[RawFunding, ...]:
         self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
@@ -415,6 +477,46 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"{symbol}: funding coverage gap at window end")
         return tuple(out)
 
+    def load_funding_sparse(self, symbol: str, start_ms: int, end_ms: int, *,
+                            eligible_symbols: frozenset[str] | None = None) -> SparseFundingLoad:
+        """Return verified settlements and explicit uncovered funding intervals."""
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
+        rows, manifest_gaps = self._rows_sparse(
+            symbol, "fundingRate", None, start_ms, end_ms)
+        out = []
+        for row in rows:
+            time_ms = int(row[0])
+            if start_ms <= time_ms < end_ms:
+                try:
+                    interval_hours, rate = int(row[1]), float(row[2])
+                except ValueError as exc:
+                    raise ArchiveIncomplete(f"{symbol}: malformed funding row") from exc
+                if interval_hours <= 0 or not math.isfinite(rate):
+                    raise ArchiveIncomplete(f"{symbol}: malformed funding interval/rate")
+                out.append(RawFunding(time_ms, interval_hours, rate))
+        if any(right.time_ms <= left.time_ms for left, right in zip(out, out[1:])):
+            raise ArchiveIncomplete(f"{symbol}: funding rows are not strictly increasing")
+        settlement_gaps: list[CoverageGap] = []
+        if not out:
+            settlement_gaps.append(CoverageGap(start_ms, end_ms, "no_settlement"))
+        else:
+            first_cover_start = out[0].time_ms - out[0].interval_hours * HOUR_MS
+            if first_cover_start > start_ms:
+                settlement_gaps.append(CoverageGap(start_ms, min(first_cover_start, end_ms),
+                                                   "settlement_gap"))
+            for left, right in zip(out, out[1:]):
+                covered_until = left.time_ms + max(
+                    left.interval_hours, right.interval_hours) * HOUR_MS
+                if covered_until < right.time_ms:
+                    settlement_gaps.append(CoverageGap(
+                        max(start_ms, covered_until), min(end_ms, right.time_ms),
+                        "settlement_gap"))
+            covered_until = out[-1].time_ms + out[-1].interval_hours * HOUR_MS
+            if covered_until < end_ms:
+                settlement_gaps.append(CoverageGap(max(start_ms, covered_until), end_ms,
+                                                   "settlement_gap"))
+        return SparseFundingLoad(tuple(out), self._merge_gaps((*manifest_gaps, *settlement_gaps)))
+
     def load_mark_closes(self, symbol: str, start_ms: int, end_ms: int, *,
                          eligible_symbols: frozenset[str] | None = None) -> tuple[tuple[int, float], ...]:
         """Return causal 1h mark closes as (available_ms, close), with exact hourly coverage."""
@@ -432,6 +534,33 @@ class RawArchiveAdapter:
                 raise ArchiveIncomplete(f"{symbol}: invalid causal mark close")
             out.append((int(row[0]) + HOUR_MS, close))
         return tuple(out)
+
+    def load_mark_closes_sparse(self, symbol: str, start_ms: int, end_ms: int, *,
+                                eligible_symbols: frozenset[str] | None = None) -> SparseMarkLoad:
+        """Return verified causal mark closes and explicit missing availability intervals."""
+        self._require_core_symbol(symbol, start_ms, end_ms, eligible_symbols)
+        if start_ms % HOUR_MS or end_ms % HOUR_MS:
+            raise ArchiveIncomplete(f"{symbol}: sparse mark window is not grid-aligned")
+        raw_start = start_ms - HOUR_MS
+        rows, manifest_gaps = self._rows_sparse(
+            symbol, "markPriceKlines", "1h", raw_start, end_ms)
+        chosen = [row for row in rows if raw_start <= int(row[0]) < end_ms]
+        times = [int(row[0]) for row in chosen]
+        if any((time_ms - raw_start) % HOUR_MS for time_ms in times):
+            raise ArchiveIncomplete(f"{symbol}: misaligned causal mark timestamp")
+        out = []
+        for row in chosen:
+            close = float(row[4])
+            if not math.isfinite(close) or close <= 0:
+                raise ArchiveIncomplete(f"{symbol}: invalid causal mark close")
+            out.append((int(row[0]) + HOUR_MS, close))
+        observed = set(times)
+        row_gaps = self._grid_gaps(raw_start, end_ms, HOUR_MS, observed, "missing_row")
+        # Gap intervals are reported in availability time, matching returned rows.
+        shifted = tuple(CoverageGap(max(start_ms, gap.start_ms + HOUR_MS),
+                                    min(end_ms + HOUR_MS, gap.end_ms + HOUR_MS), gap.reason)
+                        for gap in (*manifest_gaps, *row_gaps))
+        return SparseMarkLoad(tuple(out), self._merge_gaps(shifted))
 
     @staticmethod
     def _window(start_ms: int, end_ms: int) -> None:
@@ -485,3 +614,88 @@ class RawArchiveAdapter:
         if any(right <= left for left, right in zip(times, times[1:])):
             raise ArchiveIncomplete(f"{symbol} {series} {interval}: rows are not globally strictly increasing")
         return rows
+
+    def _rows_sparse(self, symbol: str, series: str, interval: str | None,
+                     start_ms: int, end_ms: int) -> tuple[list[list[bytes]], tuple[CoverageGap, ...]]:
+        """Read only present manifest files, retaining every strict integrity check."""
+        self._window(max(0, start_ms), end_ms)
+        files = []
+        for record in self.dataset.files(series, symbol, interval):
+            meta = M.archive_meta(record["path"])
+            if meta["month_start_ms"] < end_ms and meta["month_end_ms"] > start_ms:
+                files.append(record)
+        files.sort(key=lambda record: M.archive_meta(record["path"])["month_start_ms"])
+        covered = [
+            (max(start_ms, M.archive_meta(record["path"])["month_start_ms"]),
+             min(end_ms, M.archive_meta(record["path"])["month_end_ms"]))
+            for record in files
+        ]
+        manifest_gaps = self._interval_gaps(start_ms, end_ms, covered, "missing_manifest")
+        rows: list[list[bytes]] = []
+        for record in files:
+            if record["last_open_ms"] >= CUTOFF_MS:
+                raise ArchiveIncomplete(f"{record['path']}: archive crosses frozen cutoff; not read")
+            try:
+                parsed_objects = self.dataset.rows(record)
+            except (OSError, M.ManifestError, P.M.ManifestError, P.PITError) as exc:
+                raise ArchiveIncomplete(f"{record['path']}: archive verification failed: {exc}") from exc
+            if series == "fundingRate":
+                rows.extend([[str(row.time_ms).encode(), str(row.interval_hours).encode(),
+                              repr(row.rate).encode()] for row in parsed_objects])
+            else:
+                rows.extend([[str(row.open_ms).encode(), repr(row.open).encode(), repr(row.high).encode(),
+                              repr(row.low).encode(), repr(row.close).encode(), repr(row.volume).encode()]
+                             for row in parsed_objects])
+        times = [int(row[0]) for row in rows]
+        if any(right <= left for left, right in zip(times, times[1:])):
+            raise ArchiveIncomplete(f"{symbol} {series} {interval}: rows are not globally strictly increasing")
+        return rows, manifest_gaps
+
+    @staticmethod
+    def _interval_gaps(start_ms: int, end_ms: int, covered: list[tuple[int, int]],
+                       reason: str) -> tuple[CoverageGap, ...]:
+        gaps: list[CoverageGap] = []
+        cursor = start_ms
+        for left, right in sorted(covered):
+            if right <= cursor:
+                continue
+            if left > cursor:
+                gaps.append(CoverageGap(cursor, min(left, end_ms), reason))
+            cursor = max(cursor, right)
+            if cursor >= end_ms:
+                break
+        if cursor < end_ms:
+            gaps.append(CoverageGap(cursor, end_ms, reason))
+        return tuple(gaps)
+
+    @classmethod
+    def _grid_gaps(cls, start_ms: int, end_ms: int, step_ms: int,
+                   observed: set[int], reason: str) -> tuple[CoverageGap, ...]:
+        missing = [time_ms for time_ms in range(start_ms, end_ms, step_ms)
+                   if time_ms not in observed]
+        if not missing:
+            return ()
+        gaps: list[CoverageGap] = []
+        left = previous = missing[0]
+        for time_ms in missing[1:]:
+            if time_ms != previous + step_ms:
+                gaps.append(CoverageGap(left, previous + step_ms, reason))
+                left = time_ms
+            previous = time_ms
+        gaps.append(CoverageGap(left, previous + step_ms, reason))
+        return tuple(gaps)
+
+    @staticmethod
+    def _merge_gaps(gaps: tuple[CoverageGap, ...]) -> tuple[CoverageGap, ...]:
+        """Normalize overlapping gaps without hiding their distinct causes."""
+        valid = sorted((gap for gap in gaps if gap.start_ms < gap.end_ms),
+                       key=lambda gap: (gap.reason, gap.start_ms, gap.end_ms))
+        merged: list[CoverageGap] = []
+        for gap in valid:
+            if (merged and merged[-1].reason == gap.reason
+                    and gap.start_ms <= merged[-1].end_ms):
+                prior = merged[-1]
+                merged[-1] = CoverageGap(prior.start_ms, max(prior.end_ms, gap.end_ms), prior.reason)
+            else:
+                merged.append(gap)
+        return tuple(sorted(merged, key=lambda gap: (gap.start_ms, gap.end_ms, gap.reason)))
