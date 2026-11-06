@@ -198,17 +198,21 @@ def _captured_miss(tmp_path):
     seen = []
     real = h._retryable_miss
 
-    def spy(context, evidence, cleanup, failure):
-        seen.append((context, evidence, cleanup, failure))
-        return real(context, evidence, cleanup, failure)
+    def spy(context, evidence, cleanup, failure, cleanup_failure=None, cleanup_repeat=None):
+        seen.append((context, evidence, cleanup, failure, cleanup_failure, cleanup_repeat))
+        return real(context, evidence, cleanup, failure, cleanup_failure, cleanup_repeat)
     h._retryable_miss = spy
     try:
         _run(r)
     finally:
         h._retryable_miss = real
-    context, evidence, cleanup, failure = seen[0]
-    assert context.case.kind is ScenarioKind.LONG_TARGET and real(context, evidence, cleanup, failure)
-    return real, context, evidence, cleanup, failure
+    context, evidence, cleanup, failure, cleanup_failure, repeat = seen[0]
+    assert cleanup_failure is None and repeat == cleanup
+
+    def miss(c, e, cl, f, cf=None, rep=None):
+        return real(c, e, cl, f, cf, cl if rep is None else rep)
+    assert context.case.kind is ScenarioKind.LONG_TARGET and miss(context, evidence, cleanup, failure)
+    return miss, context, evidence, cleanup, failure
 
 
 def test_only_a_clean_protected_flat_assertion_miss_is_retryable(tmp_path):

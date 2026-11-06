@@ -391,6 +391,9 @@ class ScenarioEvidence:
     restart_boot_id: str | None
     rate_limit: RateLimitEvidence | None
     final_truth: FinalTruth
+    # True only when a market-trigger scenario's wait ran to its deadline with the model answering HOLD/NO_CHANGE on
+    # every poll (or its exchange stop still working), and nothing but the entry and its protective stop was sent.
+    trigger_missed: bool = False
 
     def __post_init__(self) -> None:
         _local_id(self.case_id, "case", "validation.evidence.case_id")
@@ -411,6 +414,7 @@ class ScenarioEvidence:
                      "journal_reopened"):
             _boolean(getattr(self, name), f"validation.evidence.{name}")
         _integer(self.dca_adds, "validation.evidence.dca_adds")
+        _boolean(self.trigger_missed, "validation.evidence.trigger_missed")
         for name in ("accepted_at_ms", "answer_lost_at_ms"):
             value = getattr(self, name)
             if value is not None:
@@ -699,6 +703,10 @@ def _scenario_failure(context: ScenarioContext, setup: SetupEvidence, evidence: 
         return FailureCode.EVIDENCE_HOLD
     safe = evidence.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED)
     kind = case.kind
+    if evidence.trigger_missed and (kind not in RETRYABLE_SCENARIOS or evidence.target_confirmed
+                                    or evidence.stop_confirmed or evidence.partial_close_confirmed
+                                    or evidence.dca_adds != 0 or evidence.orders_placed != 2):
+        return FailureCode.ASSERTION
     if kind in (ScenarioKind.LONG_TARGET, ScenarioKind.SHORT_TARGET):
         ok = evidence.entry_confirmed and evidence.protection_confirmed and evidence.target_confirmed and safe
     elif kind in (ScenarioKind.LONG_STOP, ScenarioKind.SHORT_STOP):
@@ -753,15 +761,13 @@ def _cleanup_failure(context: CleanupContext, evidence: CleanupEvidence, orders_
 
 def _case_report(context: ScenarioContext, setup: SetupEvidence | None, evidence: ScenarioEvidence | None,
                  cleanup: CleanupEvidence | None, failure: FailureCode | None, attempt: int = 1,
-                 attempt_of: str | None = None) -> CaseReport:
+                 attempt_of: str | None = None, cleanup_failure: FailureCode | None = None) -> CaseReport:
     started = setup.at_ms if setup is not None else context.case_started_budget_ms
     finished = (cleanup.flattened_at_ms or cleanup.protected_at_ms or cleanup.hold_stopped_at_ms or cleanup.started_ms
                 if cleanup is not None else (evidence.finished_ms if evidence is not None else started))
-    untrusted_terminal = failure in (
-        FailureCode.CLEANUP_HOLD,
-        FailureCode.CLEANUP_NOT_IDEMPOTENT,
-        FailureCode.EVIDENCE_HOLD,
-    )
+    untrusted = (FailureCode.CLEANUP_HOLD, FailureCode.CLEANUP_NOT_IDEMPOTENT, FailureCode.EVIDENCE_HOLD)
+    # an earlier scenario failure must never hide a cleanup fault behind the first cleanup's FLAT
+    untrusted_terminal = failure in untrusted or cleanup_failure in untrusted
     final_truth = cleanup.final_truth if cleanup is not None and not untrusted_terminal else FinalTruth.HOLD
     orders = (evidence.orders_placed if evidence is not None else 0) + (
         cleanup.cleanup_orders_total if cleanup is not None else 0)
@@ -776,12 +782,15 @@ def _case_report(context: ScenarioContext, setup: SetupEvidence | None, evidence
 
 
 def _retryable_miss(context: ScenarioContext, evidence: ScenarioEvidence | None, cleanup: CleanupEvidence | None,
-                    failure: FailureCode | None) -> bool:
+                    failure: FailureCode | None, cleanup_failure: FailureCode | None = None,
+                    cleanup_repeat: CleanupEvidence | None = None) -> bool:
     """A clean market miss: the trigger scenario opened and protected a real, NC-06-authorized position, the market
     never reached its level, and the attempt ended reconciled and flat with no other fault.  Nothing else retries."""
     case = context.case
     return (case.kind in RETRYABLE_SCENARIOS and failure is FailureCode.ASSERTION
             and evidence is not None and cleanup is not None
+            and cleanup_failure is None and cleanup_repeat == cleanup and evidence.trigger_missed
+            and evidence.orders_placed == 2
             and evidence.case_id == case.case_id and evidence.kind is case.kind
             and evidence.synthetic_intent_id == context.synthetic_intent_id
             and evidence.authorization_id == context.authorization_id and evidence.nc06_authorized
@@ -897,20 +906,24 @@ def run_suite(manifest: SuiteManifest, adapter: HarnessAdapter, writer: ReportWr
                                          cleanup_started + CLEANUP_PROTECT_MS,
                                          cleanup_started + CLEANUP_FLATTEN_MS,
                                          cleanup_started + CLEANUP_HOLD_MS)
+        second = None
+        cleanup_failure = None
         try:
             first = _seal_cleanup(adapter.cleanup(cleanup_context))
             second = _seal_cleanup(adapter.cleanup(cleanup_context))
             cleanup = first
             if first != second:
-                failure = failure or FailureCode.CLEANUP_NOT_IDEMPOTENT
+                cleanup_failure = FailureCode.CLEANUP_NOT_IDEMPOTENT
             else:
-                failure = failure or _cleanup_failure(cleanup_context, first,
-                                                      evidence.orders_placed if evidence is not None else 0,
-                                                      case.max_orders)
+                cleanup_failure = _cleanup_failure(cleanup_context, first,
+                                                   evidence.orders_placed if evidence is not None else 0,
+                                                   case.max_orders)
         except Exception:
-            failure = failure or FailureCode.CLEANUP
-        report = _case_report(context, setup, evidence, cleanup, failure, attempt, attempt_of)
-        retry = report.final_truth is FinalTruth.FLAT and _retryable_miss(context, evidence, cleanup, failure)
+            cleanup_failure = FailureCode.CLEANUP
+        failure = failure or cleanup_failure
+        report = _case_report(context, setup, evidence, cleanup, failure, attempt, attempt_of, cleanup_failure)
+        retry = report.final_truth is FinalTruth.FLAT and _retryable_miss(context, evidence, cleanup, failure,
+                                                                          cleanup_failure, second)
         return report, failure, retry
 
     def stop_after(report: CaseReport, failure: FailureCode | None) -> FailureCode | None:
@@ -940,10 +953,10 @@ def run_suite(manifest: SuiteManifest, adapter: HarnessAdapter, writer: ReportWr
     missed = {case.case_id for case in misses}
     hopeless = any(r.status is not CaseStatus.PASSED and r.case_id not in missed for r in reports)
     for original in misses if suite_failure is None and not hopeless else ():
+        passed = False
         for attempt in range(2, MAX_ATTEMPTS + 1):
-            if cursor >= suite_deadline:
-                suite_failure = FailureCode.SUITE_DEADLINE
-                break
+            if cursor + MAX_SCENARIO_MS > suite_deadline:
+                break                   # never start an attempt that could not get a full scenario window
             again = ScenarioCase(_derive("case", suite_id, original.case_id, "attempt", attempt), original.kind,
                                  original.symbol, original.side, original.leverage, original.max_notional,
                                  original.max_orders)
@@ -951,9 +964,11 @@ def run_suite(manifest: SuiteManifest, adapter: HarnessAdapter, writer: ReportWr
             reports.append(report)
             cursor = max(cursor, report.finished_ms)
             suite_failure = stop_after(report, failure)
+            passed = report.status is CaseStatus.PASSED
             if suite_failure is not None or not retry:
                 break
-        if suite_failure is not None:
+        # once any scenario's chain ends without a pass the suite cannot pass: spend no further orders
+        if suite_failure is not None or not passed:
             break
 
     report = _report(spec, suite_id, tuple(reports), suite_failure, cursor)

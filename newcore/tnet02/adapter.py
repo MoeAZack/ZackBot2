@@ -53,6 +53,7 @@ BOOK_ID = "harness"
 # and shape errors are never retried.
 _TRANSIENT_READS = frozenset({"reader.transport", "reader.response", "reader.http_status", "reader.malformed",
                               "account.mark_price"})
+MIN_TRIGGER_WINDOW_MS = 3 * 60 * 1000     # a trigger attempt needs at least this much real waiting time
 _TERMINAL = frozenset({IntentState.FILLED, IntentState.CANCELLED, IntentState.REJECTED, IntentState.NOT_SENT})
 
 
@@ -663,7 +664,8 @@ class RealTestnetAdapter:
             if plan.status is M.PlanStatus.ACTIONS:
                 return plan
             if plan.status is not M.PlanStatus.HOLD or plan.reason is not M.PlanReason.NO_CHANGE:
-                return None
+                # a protection/model HOLD is a fault, never a market miss: it must not look like "no trigger"
+                _hold("manage.hold")
             self._sleep(self._cfg.poll_ms)
         return None
 
@@ -718,7 +720,7 @@ class RealTestnetAdapter:
             _hold("execute.context")
         started = self._now()
         flags: dict[str, Any] = dict(nc06=False, entry=False, protection=False, target=False, stop=False,
-                                     partial=False, dca=0, cancel_replace=False, minimum=False, accepted=None,
+                                     partial=False, dca=0, cancel_replace=False, minimum=False, accepted=None, missed=False,
                                      lost=None, reconciled=False, reopened=False, restart=None, rate=None,
                                      truth=FinalTruth.HOLD)
         kind = context.case.kind
@@ -751,7 +753,8 @@ class RealTestnetAdapter:
             flags["nc06"], case.orders_placed, case.peak_notional, self._aggregate_peak,
             case.leverage, flags["entry"], flags["protection"], flags["target"], flags["stop"],
             flags["partial"], flags["dca"], flags["cancel_replace"], flags["minimum"], flags["accepted"],
-            flags["lost"], flags["reconciled"], flags["reopened"], flags["restart"], flags["rate"], flags["truth"])
+            flags["lost"], flags["reconciled"], flags["reopened"], flags["restart"], flags["rate"], flags["truth"],
+            flags["missed"])
 
     def _open_protected(self, case: _Case, flags: dict, *, adverse: Decimal) -> tuple[Decimal, Decimal, _Order]:
         """NC-06-authorized market entry followed by a confirmed reduce-only protective stop."""
@@ -784,6 +787,11 @@ class RealTestnetAdapter:
         return min(self._now() + self._cfg.trigger_wait_ms,
                    case.context.case_deadline_ms - self._cfg.finish_margin_ms)
 
+    def _require_window(self, case: _Case) -> None:
+        """Refuse (before any order) a trigger scenario whose case window cannot hold a real wait."""
+        if case.context.case_deadline_ms - self._now() < self._cfg.finish_margin_ms + MIN_TRIGGER_WINDOW_MS:
+            _hold("window.too_short")
+
     def _refresh_stops(self, case: _Case) -> None:
         """Fold any exchange-side stop trigger into local truth before a reconciliation claim."""
         for order in self._working_stops(case):
@@ -813,6 +821,7 @@ class RealTestnetAdapter:
         flags["reconciled"], flags["truth"] = self._reconciled(case)
 
     def _run_target(self, case: _Case, flags: dict, fraction: Decimal = ONE) -> None:
+        self._require_window(case)
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.protective_offset)
         initial = case.position
         target = case.level = self._target_price(case, entry)
@@ -821,6 +830,7 @@ class RealTestnetAdapter:
                                    stop_order=stop_order, targets=(rule,), increases=(), initial_qty=initial)
         action = None if plan is None else next((a for a in plan.actions if isinstance(a, M.ReduceAction)), None)
         if action is None:
+            flags["missed"] = plan is None and case.orders_placed == 2
             self._note(case, "target.no_trigger" if plan is None else "target.no_reduce", target=target)
             self._finish_truth(case, flags)
             return
@@ -842,6 +852,7 @@ class RealTestnetAdapter:
         self._run_target(case, flags, Decimal("0.5"))
 
     def _run_stop(self, case: _Case, flags: dict) -> None:
+        self._require_window(case)
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.trigger_offset)
         case.level = stop
         deadline = self._trigger_deadline(case)
@@ -855,11 +866,14 @@ class RealTestnetAdapter:
                 self._absorb(case, stop_order, outcome)
         flags["stop"] = stop_order.state is IntentState.FILLED and case.position == 0
         if not flags["stop"]:
+            flags["missed"] = (stop_order.state is IntentState.WORKING and self._now() >= deadline
+                               and case.orders_placed == 2)
             self._note(case, "stop.no_trigger" if stop_order.state is IntentState.WORKING else "stop.unconfirmed",
                        stop=stop)
         self._finish_truth(case, flags)
 
     def _run_dca(self, case: _Case, flags: dict) -> None:
+        self._require_window(case)
         entry, stop, stop_order = self._open_protected(case, flags, adverse=self._cfg.protective_offset)
         initial = case.position
         tick = self._filters_for(case).tick_size
@@ -874,6 +888,7 @@ class RealTestnetAdapter:
         proposal = None if plan is None else next(
             (a for a in plan.actions if isinstance(a, M.RiskIncreaseProposal)), None)
         if proposal is None or not proposal.requires_nc06_authorization:
+            flags["missed"] = plan is None and case.orders_placed == 2
             self._note(case, "dca.no_trigger" if plan is None else "dca.no_proposal", trigger=trigger)
             self._finish_truth(case, flags)
             return

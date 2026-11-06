@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from decimal import Decimal
@@ -259,8 +260,12 @@ def _live_parts(args, account: Account, origin: str):
 def _write_diagnostics(out_dir: Path, head: str, at_ms: int, notes) -> None:
     """Side file of scenario path reasons (prices only).  It is not part of the report or its proof."""
     body = json.dumps({"head_sha": head, "at_ms": at_ms, "notes": list(notes)}, sort_keys=True, indent=1)
+    path = out_dir / f"diagnostics-{head[:12]}-{at_ms}.json"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
     try:
-        (out_dir / f"diagnostics-{head[:12]}-{at_ms}.json").write_text(body + "\n", encoding="utf-8")
+        fd = os.open(path, flags, 0o600)        # never follow or overwrite a planted file, like the report writer
+        with os.fdopen(fd, "wb") as handle:
+            handle.write((body + "\n").encode("utf-8"))
     except OSError:
         print("DIAGNOSTICS not written")
         return

@@ -235,6 +235,24 @@ Rule (kernel `newcore/testnet_harness.py`, report schema `zackbot-tnet01/2`):
 - The gate still re-checks bounds, safe terminals and time order for **every** attempt.
 - `MAX_SUITE_MS` rises from 60 to 120 minutes. The per-scenario limits (10 min, 12 orders, $1,000, 3x) and the $2,000 aggregate are unchanged.
 
+## 18. Review fixes to the further-attempts rule (6 Nov 2026)
+
+An adversarial review of d11af28 found five issues. All are fixed here, with regressions in `test_tnet02_attempts_review.py`.
+
+- **F1 (high).** A cleanup fault after a market miss was masked by `failure or …`, and the miss was then retried; the gate could pass.
+  - The cleanup failure is now computed separately. Any cleanup failure, or two cleanup passes that differ, blocks a retry.
+  - A cleanup HOLD, token mismatch or non-idempotent result marks the case terminal untrusted (HOLD) even when the scenario had already failed.
+- **F2 (medium-high).** Any ASSERTION counted as a market miss, including a model protection HOLD that was noted as `no_trigger`.
+  - `ScenarioEvidence.trigger_missed` (default False) is now positive evidence. The adapter sets it only when the wait ran to its deadline with HOLD/NO_CHANGE on every poll (or the exchange stop still working) and exactly the entry and its stop were sent.
+  - `_retryable_miss` requires `trigger_missed` and `orders_placed == 2`.
+  - Any other model HOLD now raises `manage.hold` (ADAPTER, never retried).
+  - `trigger_missed` beside a confirmed target, stop, partial or add, or on a non-trigger scenario, is ASSERTION.
+- **F3 (low).** Retries kept running after another chain was lost. Further attempts now stop as soon as any chain ends without a pass.
+- **F4 (low).** A trigger attempt could place its entry with no waiting window left.
+  - The adapter refuses `window.too_short` before any order when the case has less than `finish_margin_ms` + 3 minutes left.
+  - The kernel never starts an attempt that could not get a full `MAX_SCENARIO_MS` window.
+- **F5 (low).** The diagnostics side file followed symlinks. It is now written with `O_CREAT | O_EXCL | O_NOFOLLOW`, like the report writer.
+
 ## Deferred
 
 Replacement entrypoint, runtime/PAPER wiring, installer, UI, leverage *setting* (the run refuses instead when account leverage exceeds the case), live canaries and all mainnet activity.
