@@ -53,6 +53,7 @@ def world(tmp_path, monkeypatch):
     e = FakeEngine(root, runtime, evidence)
     monkeypatch.setattr(C, '_running_commit', lambda engine: COMMIT)
     monkeypatch.setattr(C, '_now', lambda: NOW)
+    monkeypatch.setattr(C, 'REPO_ROOT', str(root))
     return e, root, evidence
 
 
@@ -85,6 +86,17 @@ def test_generic_stage_preflight_enable_bound_and_rollback(world, monkeypatch):
     rolled = C.rollback(e, {'slot_id': 'C-RBR', 'reason': 'bound reached'}, testnet=E.TESTNET)
     assert rolled['enabled'] is False and e.S['SLEEVES'][0]['enabled'] is False
     assert [x['action'] for x in e.S[C.AUDIT_KEY]] == ['enable', 'rollback']
+
+
+def test_runtime_continuously_refuses_installed_commit_and_source_manifest_drift(world, monkeypatch):
+    e, root, evidence = world; stage(e, root, evidence)
+    assert C.preflight(e, {'slot_id': 'C-RBR'}, testnet=E.TESTNET, root=str(root))['passed']
+    C.enable(e, {'slot_id': 'C-RBR'}, testnet=E.TESTNET, root=str(root))
+    monkeypatch.setattr(C, '_running_commit', lambda engine: 'b' * 40)
+    assert 'installed commit drifted' in C.runtime_block(e, e.S['SLEEVES'][0], testnet=E.TESTNET)
+    monkeypatch.setattr(C, '_running_commit', lambda engine: COMMIT)
+    (root / 'candidate.py').write_text('EDGE = 999\n')
+    assert 'source manifest drifted' in C.runtime_block(e, e.S['SLEEVES'][0], testnet=E.TESTNET)
 
 
 @pytest.mark.parametrize('change,match', [
@@ -164,6 +176,19 @@ def test_boundary_requires_explicit_boolean_and_exact_environment(world):
         C.boundary(e, base, testnet=E.TESTNET)
 
 
+@pytest.mark.parametrize('poison,match', [
+    (lambda e: e.state['lots'].update(x={'symbol': 'BTCUSDT'}), 'flat/no-working account'),
+    (lambda e: setattr(e.trade, 'positions', lambda **_kw: {('ETHUSDT', 'SHORT'): 2.0}), 'exchange account'),
+    (lambda e: setattr(e.trade, 'open_orders_all', lambda: [{'symbol': 'SOLUSDT'}]), 'exchange account'),
+    (lambda e: e.state['candidate_cost_pending'].update(x={'sleeve': 'C-OTHER', 'symbol': 'XRPUSDT'}), 'pending/unreadable'),
+])
+def test_public_boundary_checks_local_exchange_and_account_cost_truth_before_engine(world, poison, match):
+    e, _root, evidence = world; poison(e)
+    body = dict(evidence_path=str(evidence), note='hostile', accept_drift=False)
+    with pytest.raises(ValueError, match=match): C.boundary(e, body, testnet=E.TESTNET)
+    assert e.boundary_calls == []
+
+
 def test_cli_verifies_hmac_then_posts_authenticated_explicit_boundary(tmp_path, monkeypatch):
     token, port = 't' * 43, 8765
     session = tmp_path / 'session.json'; session.write_text(json.dumps({'token': token, 'port': port}))
@@ -196,3 +221,37 @@ def test_engine_pack_seals_accept_drift_in_note_and_archive():
     with open(os.path.join(out['pack'], 'note.json'), encoding='utf-8') as fh: note = json.load(fh)
     assert note == {'accept_drift': False, 'note': 'explicit'}
     assert e.state['cohort_archive'][-1]['accept_drift'] is False
+
+
+def test_activation_identity_and_events_are_canonical_nonsecret_cohort_evidence(world):
+    from test_book_ledger import books_engine
+    fake, root, evidence = world; stage(fake, root, evidence)
+    assert C.preflight(fake, {'slot_id': 'C-RBR'}, testnet=E.TESTNET, root=str(root))['passed']
+    C.enable(fake, {'slot_id': 'C-RBR'}, testnet=E.TESTNET, root=str(root))
+    private_reason = 'operator-note-that-must-not-enter-cohort-evidence'
+    C.rollback(fake, {'slot_id': 'C-RBR', 'reason': private_reason}, testnet=E.TESTNET)
+
+    e, _ = books_engine(); e.S['SLEEVES'].append(copy.deepcopy(fake.S['SLEEVES'][0]))
+    for key in C.OWNED_KEYS: e.S[key] = copy.deepcopy(fake.S[key])
+    snap = e._settings_snapshot(); sealed = snap['CANDIDATE_ACTIVATION_EVIDENCE']
+    raw = json.dumps(sealed, sort_keys=True)
+    assert sealed == C.cohort_snapshot(e.S)
+    assert sealed['configs']['C-RBR']['source_commit'] == COMMIT
+    assert sealed['configs']['C-RBR']['bounds'] == BOUNDS
+    assert sealed['audit_head_sha256'] == fake.S[C.AUDIT_KEY][-1]['event_sha256']
+    assert private_reason not in raw and str(evidence) not in raw
+    assert sealed['audit'][-1]['reason_sha256'] == C._sha(private_reason)
+    identity = e._cohort_identity()
+    assert identity['settings_sha'] == E.RP.sha256_doc(snap)[:16]
+
+    dest = os.path.join(str(evidence), 'activation-evidence-packs')
+    out = e.cohort_boundary(dest, note='activation identity', accept_drift=True)
+    with open(os.path.join(out['pack'], 'settings_at_end.json'), encoding='utf-8') as fh: packed = json.load(fh)
+    assert packed['CANDIDATE_ACTIVATION_EVIDENCE'] == sealed
+    assert e.state['cohort_settings']['CANDIDATE_ACTIVATION_EVIDENCE'] == sealed
+    assert e.state['cohort']['settings_sha'] == identity['settings_sha']
+    assert e.state['cohort']['code_sha'] == e._cohort_identity()['code_sha']
+
+    broken = copy.deepcopy(e.S); broken[C.AUDIT_KEY][-1]['action'] = 'forged'
+    e.S = broken
+    with pytest.raises(ValueError, match='audit is malformed'): e._settings_snapshot()

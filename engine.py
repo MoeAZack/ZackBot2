@@ -7040,7 +7040,8 @@ class Engine:
     # ------------------------------------------------------------ RUN-PACK-01 / BOOK-LEDGER-01 (PAPER books, observe only)
     # Evidence never feeds trading: self.history keeps its 3000-row trading window untouched; the open cohort's closed rows
     # live in their own append-only cohort_rows.jsonl (self.cohort_rows), which only the ledger and the pack read.
-    COHORT_CODE = ('engine.py', 'strategies.py', 'paper_books.py', 'book_ledger.py', 'backtest.py')
+    COHORT_CODE = ('engine.py', 'strategies.py', 'paper_books.py', 'book_ledger.py', 'backtest.py',
+                   'candidate_activation.py')
     COHORT_VOLATILE = ('CAP_ADJ', 'CAP_CYCLES', 'CAP_SINCE')
     BOUNDARY_BUSY = ('lots', 'pending_entries', 'resting_entries', 'unconfirmed_entries', 'grids')
 
@@ -7052,7 +7053,10 @@ class Engine:
 
     def _settings_snapshot(self):
         """The causal settings a cohort is judged under (allow-listed, non-secret, without capital bookkeeping)."""
-        return RP.sanitize_settings(self.S, [k for k in self._settings_allow() if k not in self.COHORT_VOLATILE])
+        out = RP.sanitize_settings(self.S, [k for k in self._settings_allow() if k not in self.COHORT_VOLATILE])
+        if any(k in self.S for k in CA.OWNED_KEYS):
+            out['CANDIDATE_ACTIVATION_EVIDENCE'] = CA.cohort_snapshot(self.S)
+        return out
 
     def _cohort_identity(self):
         here = os.path.dirname(os.path.abspath(__file__))

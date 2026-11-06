@@ -385,6 +385,10 @@ def runtime_block(engine, slot, *, testnet):
         slot_id = (slot or {}).get('id')
         if slot_id not in _configs(getattr(engine, 'S', {})): return None
         cfg = _config(engine.S, slot_id); _env(engine, testnet)
+        if _running_commit(engine) != cfg['source_commit']:
+            return 'candidate installed commit drifted from its frozen source_commit - no new risk'
+        if _source_manifest(cfg['source_files'], REPO_ROOT) != cfg['source_manifest']:
+            return 'candidate source manifest drifted from its frozen identity - no new risk'
         if _sha(_card(slot)) != cfg['card_sha256']: return 'candidate activation card drifted - no new risk'
         status = bound_status(engine, cfg)
         return (status['block'] + ' - no new risk; open positions stay protected') if status['block'] else None
@@ -419,8 +423,53 @@ def boundary(engine, body, *, testnet):
     if not isinstance(body['note'], str) or len(body['note']) > 500: raise ValueError('note must be a string (max 500 chars)')
     _env(engine, testnet)
     path = _strict_path(body['evidence_path'], outside=(REPO_ROOT, getattr(engine, 'dir', REPO_ROOT)))
-    result = engine.cohort_boundary(path, note=body['note'], accept_drift=body['accept_drift'])
+    with engine.lock:
+        busy = _busy(engine)
+        if busy: raise ValueError('cohort boundary requires a flat/no-working account: ' + ', '.join(busy))
+        exchange_busy = _exchange_busy(engine)
+        if exchange_busy: raise ValueError('cohort boundary requires a flat/no-working exchange account: ' + ', '.join(exchange_busy))
+        pending = _account_pending_costs(engine)
+        if pending: raise ValueError(f'cohort boundary refused: {len(pending)} close(s) have pending/unreadable costs')
+        result = engine.cohort_boundary(path, note=body['note'], accept_drift=body['accept_drift'])
     return dict(result, evidence_path=path, accept_drift=body['accept_drift'], note=body['note'])
+
+
+def cohort_snapshot(settings):
+    """Canonical non-secret activation evidence included in cohort identity and packs.
+
+    Local evidence paths and free-form rollback text are represented only by hashes.  The
+    immutable config hash still binds their exact values without publishing them.
+    """
+    configs, clean = _configs(settings), {}
+    for slot_id in sorted(configs):
+        cfg = _config(settings, slot_id)
+        public = {k: copy.deepcopy(v) for k, v in cfg.items() if k != 'evidence_path'}
+        public['evidence_path_sha256'] = _sha(cfg['evidence_path'])
+        clean[slot_id] = public
+    rows = settings.get(AUDIT_KEY, [])
+    if not isinstance(rows, list): raise ValueError('candidate activation audit is malformed')
+    audit, prev = [], ZERO
+    for i, row in enumerate(rows, 1):
+        base_fields = {'version', 'sequence', 'prev_event_sha256', 'slot_id', 'action', 'config_sha256',
+                       'preflight_record_sha256', 'at_utc', 'event_sha256'}
+        action = row.get('action') if isinstance(row, dict) else None
+        expected_fields = base_fields | ({'reason'} if action == 'rollback' else set())
+        preflight = row.get('preflight_record_sha256') if isinstance(row, dict) else None
+        if (not isinstance(row, dict) or set(row) != expected_fields
+                or row.get('version') != 1 or row.get('sequence') != i
+                or row.get('prev_event_sha256') != prev or row.get('action') not in ('enable', 'rollback')
+                or row.get('slot_id') not in configs or not isinstance(row.get('event_sha256'), str)
+                or row.get('config_sha256') != configs.get(row.get('slot_id'), {}).get('config_sha256')
+                or (action == 'enable' and (not isinstance(preflight, str) or not HEX64.fullmatch(preflight)))
+                or (action == 'rollback' and preflight is not None)
+                or _timestamp(row.get('at_utc')) is None
+                or not HEX64.fullmatch(row['event_sha256'])
+                or row['event_sha256'] != _sha({k: v for k, v in row.items() if k != 'event_sha256'})):
+            raise ValueError('candidate activation audit is malformed')
+        public = {k: copy.deepcopy(v) for k, v in row.items() if k != 'reason'}
+        if 'reason' in row: public['reason_sha256'] = _sha(row['reason'])
+        audit.append(public); prev = row['event_sha256']
+    return dict(version=1, configs=clean, audit=audit, audit_head_sha256=prev)
 
 
 def handle(engine, path, body, *, testnet, root=REPO_ROOT):
