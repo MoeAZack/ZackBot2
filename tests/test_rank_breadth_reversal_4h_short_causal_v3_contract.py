@@ -51,14 +51,15 @@ def _canonical_digest(value):
 def test_contract_is_frozen_default_off_and_has_no_live_authority():
     c, md = _load()
     assert (c['contract'], c['version'], c['status'], c['signed_by']) == (
-        'RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3', 2, 'FROZEN', 'codex')
-    assert c['frozen_at'] == '2026-11-06T11:50:43+02:00'
+        'RANK-BREADTH-REVERSAL-4H-SHORT-CAUSAL-V3-SPARSE-AVAILABILITY',
+        3, 'FROZEN', 'codex')
+    assert c['frozen_at'] == '2026-11-06T13:41:43+02:00'
     assert c['scope']['research_only'] and c['scope']['paper_testnet_only']
     assert c['scope']['default_enabled'] is False
     assert c['scope']['mainnet_authority'] is False
     assert c['scope']['parameter_search'] is False
     assert c['scope']['runtime_risk_before_independent_pass'] is False
-    assert md.splitlines()[2] == '**Status: FROZEN — signed by Codex, 6 November 2026 11:50 Cairo.**'
+    assert md.splitlines()[2] == '**Status: FROZEN — signed by Codex, 6 November 2026 13:41 Cairo.**'
 
 
 def test_source_signal_parameters_and_management_are_byte_for_byte_frozen():
@@ -97,11 +98,53 @@ def test_pit_core_rank_and_breadth_are_causal_and_not_union_based():
     assert 'weekly PIT CORE-20 membership snapshot available at d' in p['universe']
     assert 'union-of-fold membership are forbidden' in p['universe']
     assert 'causal 42-bar return' in p['rank'] and 'excluded from rank7_n' in p['rank']
-    assert 'same PIT membership and data-eligible set' in p['breadth']
+    assert 'exactly the same effective decision set' in p['breadth']
     assert p['minimum_ranked_members'] == 8
-    assert p['missing_input'] == 'INCOMPLETE_CANDIDATE'
+    assert p['missing_input'] == 'SPARSE_CAUSAL_AVAILABILITY_V1'
     assert 'available_at <= decision candle close' in p['availability']
     assert 'weekly point-in-time CORE-20' in md
+
+
+def test_sparse_causal_availability_never_imputes_or_uses_future_coverage():
+    c, md = _load()
+    p, a = c['point_in_time_signal'], c['sparse_availability']
+    assert a['identity'] == 'RBR-SPARSE-CAUSAL-AVAILABILITY/v1'
+    assert 'finite actually observed closes at canonical grid times d and d-42' in a['effective_decision_set']
+    assert 'original artifact order' in a['effective_decision_set']
+    assert 'do not sort by file coverage' in a['effective_decision_set']
+    assert all(term in a['no_imputation'] for term in (
+        'forward-fill', 'backfill', 'interpolate', 'synthesize', 'compress time', 'bridge'))
+    assert 'maximal contiguous segment' in a['segment_indicators']
+    assert all(term in a['segment_indicators'] for term in (
+        'RSI2', 'ATR', 'shifted prior-42-volume median'))
+    assert 'flat symbol' in a['flat_missing_is_harmless']
+    assert 'does not by itself make the candidate incomplete' in a['flat_missing_is_harmless']
+    assert 'Full-fold coverage' in a['no_future_veto']
+    assert 'may not veto or approve the decision' in a['no_future_veto']
+    assert 'finite actually observed closes at both d and d-42' in p['rank']
+    assert 'exactly the same effective decision set' in p['breadth']
+    assert 'No observation or archive availability after d' in p['availability']
+    compact = ' '.join(md.split())
+    assert 'Sparse causal availability' in md
+    assert 'no imputation, time compression or future-value substitute' in compact
+    assert 'no indicator may bridge a gap' in compact
+
+
+def test_sparse_gaps_are_harmless_only_while_flat_and_fail_closed_for_exposure():
+    c, md = _load()
+    a, e = c['sparse_availability'], c['execution']
+    assert 'valid signal schedules an entry' in a['exposure_fail_closed']
+    assert all(term in a['exposure_fail_closed'] for term in (
+        'next open', 'filter', 'fill', 'bar', 'causal mark', 'funding interval', 'protection'))
+    assert 'entire candidate INCOMPLETE_CANDIDATE' in a['exposure_fail_closed']
+    assert 'never a skipped trade or dropped row' in a['exposure_fail_closed']
+    assert 'end of observed data is not proof of delisting' in a['delisting_or_terminal_series']
+    assert 'This contract supplies none' in a['delisting_or_terminal_series']
+    assert 'flat non-signalling symbol needs no next open' in e['missing_next_open']
+    assert 'valid signal or exit decision' in e['missing_next_open']
+    assert 'entire candidate INCOMPLETE_CANDIDATE' in e['missing_next_open']
+    assert 'zero-signal decisions' in a['audit']
+    assert 'no last-mark' in ' '.join(md.split())
 
 
 def test_exact_pit_authority_bytes_content_and_core20_derivation_are_valid():
@@ -176,14 +219,16 @@ def test_all_discretionary_fills_are_next_open_and_fbl_is_frozen():
     assert 'engine parser' in e['exchange_filter_rule']
     assert e['decision_time_strictly_before_signal_or_time_fill']
     assert e['same_candle_close_fill_for_signal_or_time'] is False
-    assert e['missing_next_open'] == 'INCOMPLETE_CANDIDATE'
+    assert 'valid signal or exit decision' in e['missing_next_open']
+    assert 'entire candidate INCOMPLETE_CANDIDATE' in e['missing_next_open']
     assert e['last_mark_or_synthetic_close'] is False
     assert rule['id'] == 'STRATEGY_CAUSAL_FBL_BT01_V1'
     assert rule['green_path'] == ['open', 'low', 'high', 'close']
     assert rule['red_path'] == ['open', 'high', 'low', 'close']
     assert rule['doji_short_path'] == ['open', 'low', 'high', 'close']
     assert rule['entry_bar_participates'] is True
-    assert rule['unresolved_or_missing_bar'] == 'INCOMPLETE_CANDIDATE'
+    assert 'flat/non-signalling bar' in rule['unresolved_or_missing_bar']
+    assert 'entire candidate INCOMPLETE_CANDIDATE' in rule['unresolved_or_missing_bar']
     assert 'next tradable open' in md and 'synthetic final mark' in md
 
 
@@ -255,7 +300,10 @@ def test_realistic_costs_funding_and_three_stress_rows_are_single_count():
     assert x['fee_per_fill_bps'] == 5 and x['adverse_slippage_per_fill_bps'] == 2
     assert 'actual Binance USD-M funding' in x['funding']
     assert 'positive rate is a receipt for a short' in x['funding_sign']
-    assert x['funding_gap'] == x['mark_gap'] == 'INCOMPLETE_CANDIDATE'
+    assert 'admitted exposure' in x['funding_gap']
+    assert 'entire candidate INCOMPLETE_CANDIDATE' in x['funding_gap']
+    assert 'flat non-signalling symbol needs no mark' in x['mark_gap']
+    assert 'entire candidate INCOMPLETE_CANDIDATE' in x['mark_gap']
     assert x['cost_stress_multipliers_to_report'] == [1.0, 1.5, 2.0]
     assert 'positive funding credits remain at 1.0x' in x['cost_stress_rule']
     assert x['net_pnl_formula'] == (
@@ -378,8 +426,10 @@ def test_required_reports_and_runner_integrity_fail_closed_before_market_reads()
     assert {'raw_p_value', 'holm_adjusted_p_value', 'bootstrap_ci_95_mean_r'} <= required
     assert {'fee_drag_r', 'slippage_drag_r', 'funding_drag_r', 'gross_r'} <= required
     assert {'utc_monthly_close_counts_including_zeros', 'regime_breakdown',
-            'symbol_concentration', 'full_candidate_ledger'} <= required
+            'symbol_concentration', 'sparse_availability_audit',
+            'full_candidate_ledger'} <= required
     assert all(c['runner_integrity'].values())
+    assert c['runner_integrity']['record_sparse_availability_identity']
     assert c['stop_conditions'][1].startswith('Any market or archive read before contract merge')
 
 
