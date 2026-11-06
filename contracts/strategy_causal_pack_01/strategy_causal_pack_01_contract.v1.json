@@ -156,7 +156,7 @@
     "pit_universe_sha256": "d7000458b2c6ec848c6a359aa4b011850a3be437d8f22e53701e76927c4d3229",
     "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093",
     "exchange_filter_authority": "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json",
-    "exchange_filter_authority_sha256": "1dfbebd625ef4b108138a0b2da6c9ba36446acc509a23f4388d38edfc2420409",
+    "exchange_filter_authority_sha256": "9463632b78004b367439b4fa3eae22523ffedf87b920c24cff8f5241d9fea434",
     "exchange_filter_authority_rule": "latest snapshot with capture and Binance serverTime strictly before fold start; freeze for whole fold; missing authority is a metadata eligibility veto before market data, never an outcome deletion",
     "future_dated_snapshot_forbidden": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json",
     "manifest": "research_evidence/manifests/binance-um-archive-v1.json.gz",
