@@ -1,10 +1,10 @@
 {
   "contract": "STRATEGY-CAUSAL-PACK-01",
-  "version": 1,
+  "version": 2,
   "status": "FROZEN",
   "signed_by": "codex",
-  "frozen_at": "2026-11-06T11:27:43+02:00",
-  "signature_refs": ["issuecomment-6679947858", "issuecomment-6680010789", "issuecomment-6680054484"],
+  "frozen_at": "2026-11-06T12:45:34+02:00",
+  "signature_refs": ["issuecomment-6679947858", "issuecomment-6680010789", "issuecomment-6680054484", "issuecomment-6683012929"],
   "authority": "This JSON is authoritative. The Markdown twin is explanatory and cannot weaken it.",
   "purpose": "Find 2-3 profitable-after-cost candidates for an isolated protected PAPER/testnet cohort without reusing the viewed holdout.",
   "scope": {
@@ -31,7 +31,7 @@
   },
   "candidates": [
     {
-      "candidate_id": "pullback_rsi_short_h1_causal_v2",
+      "candidate_id": "pullback_rsi_short_h1_causal_v3",
       "old_id": "pullback_rsi_short_h1",
       "side": "short",
       "timeframe": "4h",
@@ -40,10 +40,10 @@
       "max_holding_bars": 60,
       "management": {"stop_atr": 2.0, "tp1_r": 1.0, "tp1_frac": 0.5, "be_r": 1.0, "tp_r": 3.0, "max_bars": 60},
       "source_rule": "strategies.py:sig_trend_pullback_rsi and STRATEGIES[pullback_rsi_short_h1]",
-      "allowed_change": "signal and time exits fill at the next tradable open"
+      "allowed_change": "signal and time exits fill at the next tradable open; use the preregistered causal fold-start filter-eligible CORE-20"
     },
     {
-      "candidate_id": "exp_mom_short_c27_causal_v2",
+      "candidate_id": "exp_mom_short_c27_causal_v3",
       "old_id": "exp_mom_short_c27",
       "side": "short",
       "timeframe": "4h",
@@ -53,10 +53,10 @@
       "max_holding_bars": 180,
       "management": {"stop_atr": 2.0, "trail_atr": 2.5, "tp1_r": 2.0, "tp1_frac": 0.5, "max_bars": 180},
       "source_rule": "strategies.py:sig_exp_mom_short with the preregistered 180-bar cap in research_evidence/prereg/trend_ema_mom_short.v1.json",
-      "allowed_change": "add the already-preregistered 180-bar cap and fill signal/time exits at the next tradable open"
+      "allowed_change": "add the already-preregistered 180-bar cap, fill signal/time exits at the next tradable open, and use the preregistered causal fold-start filter-eligible CORE-20"
     },
     {
-      "candidate_id": "volume_pressure_inventory_short_1h_causal_v2",
+      "candidate_id": "volume_pressure_inventory_short_1h_causal_v3",
       "old_id": "volume_pressure_inventory_1h:short",
       "side": "short",
       "timeframe": "1h",
@@ -65,7 +65,7 @@
       "max_holding_bars": 24,
       "management": {"stop_atr": 2.0, "tp_r": 2.0, "max_bars": 24},
       "source_rule": "strategies.py:sig_volume_pressure_inventory_1h and STRATEGIES[volume_pressure_inventory_1h] short cell",
-      "allowed_change": "signal and time exits fill at the next tradable open"
+      "allowed_change": "signal and time exits fill at the next tradable open; use the preregistered causal fold-start filter-eligible CORE-20"
     }
   ],
   "execution": {
@@ -113,7 +113,7 @@
     "same_candle_close_fill_for_signal_or_time": false,
     "missing_next_open": "INCOMPLETE_CANDIDATE",
     "last_mark_or_synthetic_close": false,
-    "actual_exchange_filters": true
+    "actual_exchange_filters": "checksum-bound Binance filters observed before each fold starts and frozen for that fold under exchange_filter_authority.v2.json"
   },
   "book_and_sizing": {
     "source": "identity-defining causal-book deviation from tools/research/run_vwaprev_candidate.py APP_DEFAULTS and backtest.py open_pos: the legacy source sizes from realized cash at fill, while this contract sizes from the explicitly frozen causal marked-equity book at each next-open entry attempt; executable sizing is evidence, not a caller option",
@@ -127,7 +127,7 @@
     "gross_leverage_multiple": 10.0,
     "gross_open_notional_formula": "sum(abs(remaining_qty * causal_mark)) over positions open at the entry attempt; positions admitted earlier at the same open use their unslipped reference open as causal_mark",
     "leverage_notional_cap_formula": "At each entry attempt, leverage_notional_cap = max(0, 10.0 * current marked candidate-book equity - current gross open notional); size the new position to no more than leverage_notional_cap / adverse executable entry before exchange-step flooring.",
-    "entry_priority": "For simultaneous next-open entries, process symbols in the frozen CORE-20 order from the checksum-verified universe artifact; later symbols see earlier fills, entry costs, open-position count, and gross notional. Caller order cannot change this sequence.",
+    "entry_priority": "For simultaneous next-open entries, process symbols in the causal fold-start filter-eligible CORE-20 order derived from the checksum-verified PIT universe and exchange_filter_authority.v2.json; later symbols see earlier fills, entry costs, open-position count, and gross notional. Caller order cannot change this sequence.",
     "daily_halt_fraction": 0.08,
     "daily_halt_timezone": "Africa/Cairo resolved through the IANA timezone database for every timestamp",
     "daily_halt_rule": "The Cairo day is keyed by entry/exit fill timestamp t. At the first bar open t in a new Cairo calendar day, after funding_time < t is settled and existing positions receive the frozen causal mark snapshot, but before any fill at t or funding_time == t, freeze day_start_equity from marked_equity_formula and clear the prior day's latch. Process due signal/time exits at t, then test and latch the 8% threshold before the first entry attempt and again after every entry cost, funding settlement, partial exit, and final exit. Once latched, refuse all later new entries in that Cairo day; never block an exit or management action. Funding_time == t is settled after all same-open entry attempts, so positions entered at t receive it as required by entry_fill_time <= funding_time, and its equity effect can latch the halt only for later bars. Intrabar management follows that exact-time funding and can also latch the halt for later bars.",
@@ -151,7 +151,10 @@
     "cost_stress_rule": "multiply fees, adverse slippage, and negative funding debits by the stress multiplier; positive funding credits remain at 1.0x and are never amplified"
   },
   "data": {
-    "universe": "frozen CORE-20 point-in-time rules of the source candidates",
+    "universe": "causal_v3 fold-start filter-eligible CORE-20: for each PIT week take the first 20 ranked crypto members eligible under the fold's pre-start Binance filter snapshot",
+    "exchange_filter_authority": "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json",
+    "exchange_filter_authority_rule": "latest snapshot with capture and Binance serverTime strictly before fold start; freeze for whole fold; missing authority is a metadata eligibility veto before market data, never an outcome deletion",
+    "future_dated_snapshot_forbidden": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json",
     "manifest": "research_evidence/manifests/binance-um-archive-v1.json.gz",
     "allowed_latest_exclusive": "2026-09-28T00:00:00Z",
     "forbid_read_at_or_after": "2026-09-28T00:00:00Z",
@@ -185,6 +188,7 @@
     "refuse_dirty_tree": true,
     "refuse_output_overwrite": true,
     "record_manifest_digest": true,
+    "record_exchange_filter_authority_sha256": true,
     "record_candidate_and_fold_identity": true,
     "single_evaluation_per_exact_contract_and_head": true
   },
@@ -211,7 +215,7 @@
     "independent_review_required": true,
     "all_required_reports_present": true,
     "maximum_incomplete_rows": 0,
-    "incomplete_scope": "Any missing funding, mark, tradable next-open, or required report makes the entire candidate INCOMPLETE; incomplete rows may not be excluded from the denominator or reduced-sample promotion.",
+    "incomplete_scope": "Any missing causal fold-start filter authority, funding, mark, tradable next-open, or required report makes the entire candidate INCOMPLETE; incomplete rows may not be excluded from the denominator or reduced-sample promotion.",
     "missing_or_incomplete_is_pass": false,
     "inference_required_for_promotion": false
   },
@@ -226,6 +230,7 @@
   },
   "stop_conditions": [
     "Any contract or candidate-rule byte change creates a new candidate and evaluation identity.",
+    "Any use of an exchange-rule snapshot captured at or after its fold start refuses the pack before market data.",
     "Any read at or after 2026-09-28 refuses the pack before producing evidence.",
     "A losing-after-cost candidate is rejected and receives no cohort risk.",
     "No result may weaken a gate, select a fold, change a symbol set, or tune a parameter."
