@@ -1,0 +1,78 @@
+{
+  "format": "zb-causal-v4-runner-rebind/1",
+  "status": "NOT_AUTHORIZED_PRE_PROTECTED_AUTHORITY",
+  "scope": {
+    "runner_metadata_and_validators_only": true,
+    "strategy_logic_changed": false,
+    "parameters_folds_gates_costs_exchange_rules_changed": false,
+    "identity_claim_authorized": false,
+    "market_or_outcome_read_authorized": false
+  },
+  "protected_execution_gate": {
+    "protected_ref": "origin/master",
+    "authority_pr": 304,
+    "authority_provisional_stack_pin": "59babc0c13aa08fafdffe400029c7c1377b96319",
+    "authority_protected_merge_commit": null,
+    "v4_contract_provisional_stack_pin": "d07cd61281a085d83a1c453cb82e063956ee348a",
+    "v4_contract_protected_commit": null,
+    "rule": "Both non-null exact protected commit pins must be ancestors of the protected ref before an identity claim, loader construction, market/outcome read or delegate import. Provisional stack pins never authorize execution."
+  },
+  "authority_artifacts": {
+    "manifest": {
+      "path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+      "byte_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+      "content_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8"
+    },
+    "pit_universe": {
+      "path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+      "byte_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+      "content_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd"
+    },
+    "coverage_preflight": {
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json",
+      "byte_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
+      "content_digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
+      "required_guaranteed_period_gaps": 0
+    }
+  },
+  "profiles": {
+    "pack": {
+      "overlay_path": "contracts/strategy_causal_pack_01_causal_v4/strategy_causal_pack_01_causal_v4_rebind.v1.json",
+      "overlay_byte_sha256": "a9fb6ed8add6e37f02d1ee73d3628f197a41988e6ffa5fb693e5423e4ed1b09c",
+      "candidate_ids": [
+        "pullback_rsi_short_h1_causal_v4",
+        "exp_mom_short_c27_causal_v4"
+      ],
+      "multiplicity": {"prior": 3, "append": 2, "resulting": 5},
+      "post_protection_delegate": "tools.research.strategy_causal_pack_01_runner.main",
+      "delegate_module_sha256": "a0242ce5def9aa3c64b18f2554616e25d242c96d037d81f0362ae07505d4537f",
+      "delegate_callable_source_sha256": "f4344e7916843405b6dee0d8587ec637fc4ff2d057e0195193fd25f2f762341c",
+      "delegate_pin_status": "EXACT_CLOSED_REGISTRY_PIN_NOT_EXECUTABLE_PRE_PROTECTION"
+    },
+    "rbr_short": {
+      "overlay_path": "contracts/rank_breadth_reversal_4h_short_causal_v4/rank_breadth_reversal_4h_short_causal_v4_rebind.v1.json",
+      "overlay_byte_sha256": "4f1c93cfcd1680cef934eb0742b161ce5e1ef4974722e9d912cea75aec9a113a",
+      "candidate_ids": [
+        "rank_breadth_reversal_4h_short_causal_v4"
+      ],
+      "multiplicity": {"prior": 3, "append": 1, "resulting": 4},
+      "post_protection_delegate": "tools.research.rank_breadth_reversal_4h_short_causal_v3_runner.main",
+      "delegate_module_sha256": "ca9acbf0cc6a1283b83ccdda41e19dcc256a48a39c3c6f5e1e074c94b7ff3b91",
+      "delegate_callable_source_sha256": "73e57b84287a0f801e2c20ad09744282046af35c8bed7ac8b30cf598b2ac588e",
+      "delegate_pin_status": "EXACT_CLOSED_REGISTRY_PIN_NOT_EXECUTABLE_PRE_PROTECTION"
+    },
+    "atr_shock": {
+      "overlay_path": "contracts/atr_shock_snapback_4h_causal_v4/atr_shock_snapback_4h_causal_v4_rebind.v1.json",
+      "overlay_byte_sha256": "13129e740dce8e91b81e7f1a8e4b05513a22a23ee243db493280a316f5d6a7f7",
+      "candidate_ids": [
+        "atr_shock_snapback_4h_long_causal_v4",
+        "atr_shock_snapback_4h_short_causal_v4"
+      ],
+      "multiplicity": {"prior": 4, "append": 2, "resulting": 6},
+      "post_protection_delegate": "tools.research.atr_shock_snapback_4h_causal_v3_runner.main",
+      "delegate_module_sha256": "9843582b04d42ccafe1adc79ef1cbd702cf6bd11b9916ec38cc129bded8bca59",
+      "delegate_callable_source_sha256": "062753f87feff405e973422dd7f6ece22673d12828ba9df387ea95d938f5df50",
+      "delegate_pin_status": "EXACT_REVIEWED_CANDIDATE_13_CLOSED_REGISTRY_PIN_NOT_EXECUTABLE_PRE_PROTECTION"
+    }
+  }
+}
