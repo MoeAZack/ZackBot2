@@ -21,6 +21,7 @@ import book_ledger as BL
 import run_pack as RP
 import feasibility as F
 import f01_canary as FC
+import candidate_activation as CA
 import cand_evict_ack as CEA
 from binance_client import Futures, MAINNET, TESTNET, BinanceError, AmbiguousOrder, ExchangeUnavailable, is_transient, new_cid, scrub, testnet_faults, testnet_read_outage
 from binance_client import AuditSkipped
@@ -7276,7 +7277,8 @@ class Engine:
                 raise RuntimeError(f"cohort boundary refused: {', '.join(drift)} changed since the cohort started - "
                                    'pass accept_drift to seal it into the pack as drifted evidence')
             self.state['cohort_closing'] = dict(old=dict(self.state['cohort'], ended_utc=now_utc().isoformat(timespec='seconds')),
-                                                dest=dest_root, note=note, drift=drift, settings_end=self._settings_snapshot())
+                                                dest=dest_root, note=note, drift=drift,
+                                                accept_drift=bool(accept_drift), settings_end=self._settings_snapshot())
             try: self._save_wal()                                  # raises when not durable: nothing is written then
             except BaseException:
                 self.state.pop('cohort_closing', None); raise          # memory never holds an intent the disk does not
@@ -7317,7 +7319,7 @@ class Engine:
             arch = self.state.setdefault('cohort_archive', [])
             if not any(a.get('id') == coh['id'] for a in arch):
                 arch.append(dict(id=coh['id'], started_utc=coh['started_utc'], ended_utc=coh['ended_utc'], pack_sha=sha, pack=path,
-                                 drift=pend.get('drift') or []))
+                                 drift=pend.get('drift') or [], accept_drift=pend.get('accept_drift') is True))
             self._start_cohort(coh['ended_utc'], len(arch))
             self.state.pop('cohort_closing', None); self.state.pop('cohort_rows_gap', None)
             self.cohort_drift = []
@@ -7338,7 +7340,8 @@ class Engine:
         rows = self._ledger_rows(coh)
         led = BL.compute(coh, rows, (), {}, coh['book_cap'], prev=self.state.get('book_ledger'), t=now)
         led['drift'] = list(pend.get('drift') or [])
-        docs = {'cohort.json': coh, 'history.json': rows, 'book_ledger_final.json': led, 'note.json': dict(note=pend.get('note') or ''),
+        docs = {'cohort.json': coh, 'history.json': rows, 'book_ledger_final.json': led,
+                'note.json': dict(note=pend.get('note') or '', accept_drift=pend.get('accept_drift') is True),
                 'book_summary.json': PB.summary(0, coh['book_cap'], (), [r for r in rows if r.get('book')]),
                 'settings_at_end.json': pend.get('settings_end') if isinstance(pend.get('settings_end'), dict) else self._settings_snapshot()}
         if isinstance(self.state.get('cohort_settings'), dict): docs['settings_at_start.json'] = self.state['cohort_settings']
@@ -7358,7 +7361,9 @@ class Engine:
                                   runtime_wide=sorted(srcs), undrained_writers=undrained,
                                   note='runtime-wide files are raw copies; filter by cohort_id / time')
         forbid = [str(self.cfg.get(k) or '') for k in ('API_KEY', 'API_SECRET', 'TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_WORKSPACE_ID')]
-        return RP.write_pack(pend['dest'], coh, docs, srcs, forbid=forbid, meta=dict(drift=list(pend.get('drift') or [])))
+        return RP.write_pack(pend['dest'], coh, docs, srcs, forbid=forbid,
+                             meta=dict(drift=list(pend.get('drift') or []),
+                                       accept_drift=pend.get('accept_drift') is True))
 
     def _ctrl_log(self, what, sl, sym, side, ce, factor, why, **kw):
         """CTRL-01-LITE: one line for every control-caused scale / reject decision (never when the control had no effect)."""
@@ -7750,7 +7755,8 @@ class Engine:
         return out
 
     def _rules_block(self, sl, sym, side, size=None, manual=False):
-        cb = None if manual else self.f01_canary_block(sl)      # FACTORY-F01-IMPL-01: canary bounds (C-F01 only, flag ON)
+        cb = None if manual else CA.runtime_block(self, sl, testnet=TESTNET)
+        cb = cb or (None if manual else self.f01_canary_block(sl))  # legacy C-F01 bound during migration
         if cb:
             self._rule_warns = []
             return cb
