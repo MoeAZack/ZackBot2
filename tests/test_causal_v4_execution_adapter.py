@@ -348,6 +348,47 @@ def test_atr_forged_side_and_family_schema_are_rejected(tmp_path):
             source_contract=source, overlay=overlay, expected_head=TEST_HEAD)
 
 
+def test_atr_packet_accepts_legacy_missing_redundant_integrity_candidate_but_not_conflict(tmp_path):
+    profile = _profile("atr_shock"); candidate = profile["candidate_ids"][0]
+    path = _fake_packet(tmp_path, "atr_shock", candidate)
+    value = json.loads(path.read_text())
+    value["integrity"].pop("candidate_id")
+    path.write_text(json.dumps(value)); _resign_packet(path, tmp_path / "ids")
+    overlay, source, digest = A.validate_overlay(ROOT, profile)
+    got = A._verified_v4_packet(path, profile=profile, contract_digest=digest,
+        candidate_ids=tuple(profile["candidate_ids"]),
+        expected_format="zackbot.atr-shock-snapback-4h-causal-v4/1",
+        identity_dir=tmp_path / "ids", authority=overlay["authority_artifacts"],
+        source_contract=source, overlay=overlay, expected_head=TEST_HEAD)
+    assert got["candidate_id"] == candidate
+
+    value = json.loads(path.read_text())
+    value["integrity"]["candidate_id"] = profile["candidate_ids"][1]
+    path.write_text(json.dumps(value)); _resign_packet(path, tmp_path / "ids")
+    with pytest.raises(A.AdapterError, match="identity/authority mismatch"):
+        A._verified_v4_packet(path, profile=profile, contract_digest=digest,
+            candidate_ids=tuple(profile["candidate_ids"]),
+            expected_format="zackbot.atr-shock-snapback-4h-causal-v4/1",
+            identity_dir=tmp_path / "ids", authority=overlay["authority_artifacts"],
+            source_contract=source, overlay=overlay, expected_head=TEST_HEAD)
+
+
+def test_pack_packet_never_accepts_missing_integrity_candidate(tmp_path):
+    profile = _profile("pack"); candidate = profile["candidate_ids"][0]
+    path = _fake_packet(tmp_path, "pack", candidate)
+    value = json.loads(path.read_text())
+    value["integrity"].pop("candidate_id")
+    path.write_text(json.dumps(value)); _resign_packet(path, tmp_path / "ids")
+    overlay, source, digest = A.validate_overlay(ROOT, profile)
+    with pytest.raises(A.AdapterError, match="identity/authority mismatch"):
+        A._verified_v4_packet(
+            path, profile=profile, contract_digest=digest,
+            candidate_ids=tuple(profile["candidate_ids"]),
+            expected_format="zackbot.strategy-causal-pack-01/4",
+            identity_dir=tmp_path / "ids", authority=overlay["authority_artifacts"],
+            source_contract=source, overlay=overlay, expected_head=TEST_HEAD)
+
+
 def test_pack_assembly_builds_five_way_append_only_holm(tmp_path):
     ids = _profile()["candidate_ids"]
     paths = [_fake_packet(tmp_path, "pack", candidate, raw_p=.01 + i * .02)
@@ -379,7 +420,8 @@ def test_atr_family_assembly_builds_six_rows_and_rejects_wrong_head(tmp_path):
     _, source, _ = A.validate_overlay(ROOT, profile)
     assert A._assemble_atr(A._strict_parser("atr_shock", tuple(ids), base), profile,
                            overlay, source, digest, ROOT,
-                           clean_head_fn=lambda root: TEST_HEAD) == 0
+                           clean_head_fn=lambda root: TEST_HEAD,
+                           packet_head=TEST_HEAD) == 0
     result = json.loads((tmp_path / "family.json").read_text())
     assert len(result["full_candidate_ledger"]) == 6
     assert len(result["holm_adjusted_p_values"]) == 6
@@ -390,7 +432,26 @@ def test_atr_family_assembly_builds_six_rows_and_rejects_wrong_head(tmp_path):
     with pytest.raises(A.AdapterError, match="exact clean repository HEAD"):
         A._assemble_atr(A._strict_parser("atr_shock", tuple(ids), hostile), profile,
                         overlay, source, digest, ROOT,
-                        clean_head_fn=lambda root: TEST_HEAD)
+                        clean_head_fn=lambda root: TEST_HEAD,
+                        packet_head=TEST_HEAD)
+
+
+def test_atr_family_assembly_accepts_exact_completed_packets_from_frozen_ancestor(tmp_path):
+    assert TEST_HEAD != A.ATR_V4_COMPLETED_PACKET_HEAD
+    ids = _profile("atr_shock")["candidate_ids"]
+    paths = [_fake_packet(tmp_path, "atr_shock", ids[0],
+                          head=A.ATR_V4_COMPLETED_PACKET_HEAD, raw_p=.02),
+             _fake_packet(tmp_path, "atr_shock", ids[1],
+                          head=A.ATR_V4_COMPLETED_PACKET_HEAD, raw_p=.03)]
+    out = tmp_path / "historical-family.json"
+    argv = ["--long-packet", str(paths[0]), "--short-packet", str(paths[1]),
+            "--out", str(out), "--identity-dir", str(tmp_path / "ids")]
+    profile = _profile("atr_shock")
+    overlay, source, digest = A.validate_overlay(ROOT, profile)
+    assert A._assemble_atr(
+        A._strict_parser("atr_shock", tuple(ids), argv), profile, overlay, source,
+        digest, ROOT, clean_head_fn=lambda root: TEST_HEAD) == 0
+    assert json.loads(out.read_text())["git_head"] == A.ATR_V4_COMPLETED_PACKET_HEAD
 
 
 def test_failed_pack_serialization_consumes_claim_without_partial_output(tmp_path, monkeypatch):
@@ -448,7 +509,7 @@ def test_assembly_rejects_nonexistent_and_existing_other_heads_before_claim(
                 "--out", str(output), "--identity-dir", str(identity_dir)]
         invoke = lambda: A._assemble_atr(
             A._strict_parser("atr_shock", tuple(ids), argv), profile, overlay, source, digest, ROOT,
-            clean_head_fn=lambda root: TEST_HEAD)
+            clean_head_fn=lambda root: TEST_HEAD, packet_head=TEST_HEAD)
         claim_glob = "atr-family-v4-*.claim.json"
     with pytest.raises(A.AdapterError, match="exact clean repository HEAD"):
         invoke()
@@ -476,7 +537,7 @@ def test_dirty_repo_head_refuses_before_packet_or_claim(profile_name, tmp_path):
                 "--out", str(output), "--identity-dir", str(identity_dir)]
         invoke = lambda: A._assemble_atr(
             A._strict_parser("atr_shock", tuple(ids), argv), profile, overlay, source, digest, ROOT,
-            clean_head_fn=dirty)
+            clean_head_fn=dirty, packet_head=TEST_HEAD)
     with pytest.raises(A.AdapterError, match="dirty worktree"):
         invoke()
     assert not output.exists() and not identity_dir.exists()
