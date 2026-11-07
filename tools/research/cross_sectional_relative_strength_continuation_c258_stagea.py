@@ -283,6 +283,9 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[s
         "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 4
     ):
         raise IncompleteAuthority("filter-v4 identity mismatch")
+    if "weeks" in pit:
+        _validate_emitted_v6(decoded, pins, root=root)
+        return decoded
     _validate_coverage_and_manifest(manifest, coverage)
     _validate_full_authority_schema(pit, filters)
     for key, expected in (("manifest_v6_byte_sha256", pins.manifest_v6.byte_sha256),
@@ -309,6 +312,46 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[s
     if coverage.get("bindings") != expected_coverage_bindings:
         raise IncompleteAuthority("coverage-v4 exact cross-bindings mismatch")
     return decoded
+
+
+def _validate_emitted_v6(docs: Mapping[str, dict], pins: AuthorityPins, *, root: Path) -> None:
+    """Validate the exact schema emitted by the protected authority-v6 builder.
+
+    All four protected-tree byte hashes and recomputed content digests have
+    already passed before this function is called. Do not infer aliases for
+    fields that the real producer does not emit.
+    """
+    from tools.research import authority_v6 as V6
+
+    manifest, pit, filters, coverage = (docs[name] for name in EXPECTED_AUTHORITY_PATHS)
+    try:
+        V6._validate_pit_v9_prefix(pit, root=root)
+    except (V6.AuthorityV6Error, KeyError, TypeError, ValueError) as exc:
+        raise IncompleteAuthority("PIT-v9 frozen prefix/extension mismatch") from exc
+    if (manifest.get("authority_id") != AUTHORITY_ID
+            or manifest.get("cutoff_exclusive_ms") != V6.CUTOFF_MS
+            or pit.get("manifest_digest") != pins.manifest_v6.content_digest):
+        raise IncompleteAuthority("emitted manifest/PIT identity mismatch")
+    if (filters.get("pit_universe_path") != pins.pit_v9.path
+            or filters.get("pit_universe_sha256") != pins.pit_v9.byte_sha256
+            or filters.get("pit_universe_digest") != pins.pit_v9.content_digest):
+        raise IncompleteAuthority("emitted filter/PIT cross-binding mismatch")
+    plan = V6.load_frozen_plan(root / V6.PLAN_PATH.relative_to(V6.ROOT))
+    if filters.get("fold_bindings") != plan["acquisition_sequence"][5]["fold_bindings"]:
+        raise IncompleteAuthority("emitted filter fold bindings mismatch")
+    streams = ["klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null"]
+    if (coverage.get("format") != "zb-strategy-causal-pack-01-authority-coverage-preflight/1"
+            or coverage.get("authority_version") != 4
+            or coverage.get("cutoff_exclusive_ms") != V6.CUTOFF_MS
+            or coverage.get("required_result") != "ZERO_GUARANTEED_PERIOD_GAPS"
+            or coverage.get("required_streams") != streams
+            or coverage.get("guaranteed_period_gaps") != 0
+            or coverage.get("guaranteed_period_gaps_by_stream") != dict.fromkeys(streams, 0)
+            or coverage.get("gaps") != []
+            or coverage.get("manifest_digest") != pins.manifest_v6.content_digest
+            or coverage.get("pit_universe_digest") != pins.pit_v9.content_digest
+            or coverage.get("filter_authority_digest") != pins.filter_v4.content_digest):
+        raise IncompleteAuthority("emitted coverage is incomplete or cross-bound incorrectly")
 
 
 def run_with_authority(pins: AuthorityPins, loader: Callable[[dict[str, dict]], object], *,
