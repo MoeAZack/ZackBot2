@@ -1,4 +1,4 @@
-"""C256 Stage-A deterministic primitives with real evaluation locked.
+"""C257 Stage-A deterministic primitives with real evaluation locked.
 
 This module deliberately has no archive, market-data, identity, or outcome
 reader.  It binds the frozen preregistration and exposes only pure mechanics
@@ -13,16 +13,20 @@ import json
 import math
 import random
 import statistics
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT_PATH = ROOT / "research_evidence/prereg/funding_shock_reversal_xsec_c256_stagea.v1.json"
+SUCCESSOR_PATH = ROOT / "research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json"
+PREP_PATH = ROOT / "contracts/strategy_causal_pack_01/c257_successor_adapter_prep.v1.json"
 CONTRACT_SHA256 = "88294e16a44c4e2219284abeb26f4085123b9fd9de0c5120d0a19d5b84a94b54"
-CONTRACT_BASE = "1437dc48e70cb108abe10df74750d29961f01ad7"
+CONTRACT_BASE = "a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8"
+CANDIDATE_ID = 257
 HOUR_MS = 3_600_000
 FUNDING_DELAY_MS = 300_000
 ALLOWED_INTERVAL_HOURS = frozenset({1, 2, 4, 8})
@@ -35,8 +39,11 @@ FROZEN_RISK_FRACTION = 0.01
 PRE_FILTER_AUTHORITY_INELIGIBLE = "PRE_FILTER_AUTHORITY_INELIGIBLE"
 
 
-class C256Error(RuntimeError):
+class C257Error(RuntimeError):
     pass
+
+
+C256Error = C257Error  # compatibility name for inherited pure helper signatures
 
 
 class IncompleteAuthority(C256Error):
@@ -52,37 +59,24 @@ def _sha256(path: Path) -> str:
 
 
 def load_frozen_contract() -> dict:
-    """Byte-bind the reviewed contract and non-outcome authorities."""
-    if not CONTRACT_PATH.is_file() or _sha256(CONTRACT_PATH) != CONTRACT_SHA256:
-        raise IncompleteAuthority("C256 contract bytes do not match reviewed head 6cc7148a")
-    doc = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
-    expected = (256, True, True, "FROZEN_NOT_EVALUATED_RESEARCH_ONLY", CONTRACT_BASE)
-    actual = (
-        doc.get("candidate_id"), doc.get("default_off"), doc.get("evaluation_locked"),
-        doc.get("status"), doc.get("base_commit"),
-    )
-    if actual != expected:
-        raise IncompleteAuthority("C256 contract is not the reviewed default-OFF frozen contract")
-    authority = doc["data_authority"]
-    for path_key, sha_key in (
-        ("universe_path", "universe_sha256"),
-        ("archive_manifest_path", "archive_manifest_sha256"),
-        ("exchange_filter_authority_path", "exchange_filter_authority_sha256"),
-    ):
-        path = ROOT / authority[path_key]
-        if not path.is_file() or _sha256(path) != authority[sha_key]:
-            raise IncompleteAuthority(f"C256 authority mismatch: {path_key}")
-    universe = json.loads((ROOT / authority["universe_path"]).read_text(encoding="utf-8"))
-    if universe.get("digest") != authority["universe_digest"]:
-        raise IncompleteAuthority("C256 PIT universe digest mismatch")
-    return doc
+    """Bind the exact successor/prep and resolve inherited C256 bytes from Git."""
+    try:
+        from tools.research import c257_successor_guard as guard
+        successor = guard._strict_json(SUCCESSOR_PATH.read_bytes(), "C257 successor")
+        prep = guard._strict_json(PREP_PATH.read_bytes(), "C257 prep")
+        guard.validate_scaffold(successor, prep, repo=ROOT)
+        return guard._resolve_c256(successor, ROOT)
+    except Exception as exc:
+        if isinstance(exc, IncompleteAuthority):
+            raise
+        raise IncompleteAuthority("C257 exact C256 economic inheritance is unavailable") from exc
 
 
 def assert_real_evaluation_authorized(*, gate: Mapping[str, object] | None = None) -> None:
     """No caller-supplied flag can unlock this prestage head."""
     load_frozen_contract()
     raise EvaluationLocked(
-        "C256_REAL_EVALUATION_LOCKED: no protected evaluation authority is bound; "
+        "C257_REAL_EVALUATION_LOCKED: no protected authority-v6 evaluation capability is bound; "
         "market, outcome, identity, forward-fold and sealed-holdout access are forbidden"
     )
 
@@ -556,6 +550,88 @@ def admit_pair(
 
 
 @dataclass(frozen=True)
+class ExactFilters:
+    tick: Decimal
+    step: Decimal
+    min_qty: Decimal
+    max_qty: Decimal
+    min_notional: Decimal
+
+    def validate(self) -> None:
+        if any(not value.is_finite() or value <= 0 for value in (
+                self.tick, self.step, self.min_qty, self.max_qty, self.min_notional)):
+            raise IncompleteAuthority("non-positive exact exchange filter")
+        if self.min_qty > self.max_qty:
+            raise IncompleteAuthority("exact exchange quantity bounds are inverted")
+
+
+@dataclass(frozen=True)
+class ExactLeg:
+    symbol: str
+    side: int
+    entry: Decimal
+    atr24: Decimal
+    filters: ExactFilters
+
+
+@dataclass(frozen=True)
+class ExactPairSizing:
+    long_qty: Decimal
+    short_qty: Decimal
+    long_stop: Decimal
+    short_stop: Decimal
+    gross: Decimal
+    modeled_loss: Decimal
+    risk_r: Decimal
+
+
+def _floor_decimal(value: Decimal, step: Decimal) -> Decimal:
+    return (value / step).to_integral_value(rounding=ROUND_FLOOR) * step
+
+
+def _fill_drag(qty: Decimal, reference: Decimal, side: int) -> Decimal:
+    execution = reference * (Decimal(1) + Decimal(side) * Decimal("0.001"))
+    return abs(qty * execution) * Decimal("0.0005") + abs(qty * (execution-reference))
+
+
+def size_exact_pair(*, equity: Decimal, long: ExactLeg, short: ExactLeg) -> ExactPairSizing:
+    """Frozen equal-gross, floor-only, exact-Decimal 1R sizing."""
+    if not equity.is_finite() or equity <= 0 or long.side != 1 or short.side != -1:
+        raise C256Error("invalid exact pair sizing authority")
+    for leg in (long, short):
+        leg.filters.validate()
+        if (not leg.symbol or not leg.entry.is_finite() or leg.entry <= 0
+                or not leg.atr24.is_finite() or leg.atr24 <= 0):
+            raise IncompleteAuthority("invalid exact leg authority")
+    long_stop = _floor_decimal(long.entry - Decimal(3)*long.atr24, long.filters.tick)
+    short_stop = ((short.entry + Decimal(3)*short.atr24) / short.filters.tick
+                  ).to_integral_value(rounding=ROUND_CEILING) * short.filters.tick
+    if not (Decimal(0) < long_stop < long.entry and short.entry < short_stop):
+        raise IncompleteAuthority("invalid conservatively rounded 3ATR stop")
+    one_r, gross_cap = equity*Decimal("0.01"), equity*Decimal("0.5")
+    per_long = long.entry-long_stop + _fill_drag(Decimal(1), long.entry, 1) + _fill_drag(Decimal(1), long_stop, -1)
+    per_short = short_stop-short.entry + _fill_drag(Decimal(1), short.entry, -1) + _fill_drag(Decimal(1), short_stop, 1)
+    half = min(gross_cap/Decimal(2), one_r/(per_long/long.entry+per_short/short.entry))
+    lq = _floor_decimal(half/long.entry, long.filters.step)
+    sq = _floor_decimal(half/short.entry, short.filters.step)
+    while lq > 0 and sq > 0:
+        loss = lq*per_long + sq*per_short
+        gross = lq*long.entry + sq*short.entry
+        feasible = all((qty >= leg.filters.min_qty and qty <= leg.filters.max_qty
+                        and qty*leg.entry >= leg.filters.min_notional)
+                       for qty, leg in ((lq, long), (sq, short)))
+        if loss <= one_r and gross <= gross_cap and feasible:
+            return ExactPairSizing(lq, sq, long_stop, short_stop, gross, loss, loss/one_r)
+        # Never increase. Reduce the larger actual notional; lexicographically later on ties.
+        ln, sn = lq*long.entry, sq*short.entry
+        if ln > sn or (ln == sn and long.symbol > short.symbol):
+            lq -= long.filters.step
+        else:
+            sq -= short.filters.step
+    raise IncompleteAuthority("exact pair is exchange/risk infeasible")
+
+
+@dataclass(frozen=True)
 class FilterSnapshot:
     captured_ms: int
     server_time_ms: int
@@ -598,7 +674,7 @@ def enforce_split(timestamp_ms: int, split_name: str) -> str:
         raise IncompleteAuthority("unknown split; caller-defined ranges are forbidden")
     start_ms, end_ms, sealed = splits[split_name]
     if sealed:
-        raise EvaluationLocked("sealed holdout is unavailable on C256 Stage-A prestage")
+        raise EvaluationLocked("sealed holdout is unavailable on C257 Stage-A")
     if not start_ms <= timestamp_ms < end_ms:
         raise IncompleteAuthority("timestamp crosses frozen split boundary")
     if split_name == "development":
@@ -638,7 +714,7 @@ def validate_report_schema(report: Mapping[str, object]) -> None:
     if missing:
         raise C256Error(f"C256 report missing fields: {sorted(missing)}")
     if (report["candidate_id"], report["contract_sha256"], report["base_commit"]) != (
-        256, CONTRACT_SHA256, CONTRACT_BASE
+        257, CONTRACT_SHA256, CONTRACT_BASE
     ):
         raise C256Error("C256 report identity mismatch")
     if report["family_alpha"] != FAMILY_ALPHA:
@@ -682,15 +758,16 @@ def stationary_bootstrap_indices(length: int, *, resamples: int = 10_000, block_
     """Deterministic index generator only; it never reads outcomes itself."""
     if length <= 0 or resamples != 10_000 or block_length != 21 or seed != 25620261107:
         raise C256Error("C256 stationary-bootstrap settings are frozen")
-    rng = random.Random(seed)
+    import numpy as np
+    rng = np.random.Generator(np.random.PCG64(seed))
     restart_probability = 1.0 / block_length
     out: list[tuple[int, ...]] = []
     for _ in range(resamples):
-        index = rng.randrange(length)
+        index = int(rng.integers(length))
         sample: list[int] = []
         for _ in range(length):
-            if sample and rng.random() < restart_probability:
-                index = rng.randrange(length)
+            if sample and float(rng.random()) < restart_probability:
+                index = int(rng.integers(length))
             sample.append(index)
             index = (index + 1) % length
         out.append(tuple(sample))

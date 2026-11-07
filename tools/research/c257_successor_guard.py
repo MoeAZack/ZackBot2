@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -234,10 +235,30 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
               manifest.get("cutoff_exclusive_ms")) == (
         "zb-binance-um-archive-manifest/6", "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
         1793836800000), "manifest-v6 identity/boundary mismatch")
+    _require(manifest.get("cutoff_exclusive_utc") == "2026-11-05T00:00:00Z"
+             and manifest.get("timezone") == "UTC", "manifest-v6 UTC cutoff mismatch")
     pit = documents["pit_v9"]
     _require((pit.get("format"), pit.get("universe_id"), pit.get("manifest_digest")) == (
         "zb-pit-universe/2", "PIT-TOP40-QV30D-V9", manifest["digest"]),
         "PIT-v9 identity/manifest binding mismatch")
+    weeks = pit.get("weeks")
+    start = datetime(2024, 10, 14, tzinfo=timezone.utc)
+    end = datetime(2026, 11, 2, tzinfo=timezone.utc)
+    expected_mondays: list[int] = []
+    cursor = start
+    while cursor <= end:
+        expected_mondays.append(int(cursor.timestamp()*1000))
+        cursor += timedelta(days=7)
+    _require(isinstance(weeks, list)
+             and [cell.get("monday_ms") for cell in weeks] == expected_mondays,
+             "PIT-v9 weeks are not the exact frozen Monday sequence")
+    for cell in weeks:
+        books = cell.get("books")
+        _require(isinstance(books, Mapping) and books
+                 and all(isinstance(members, list) and members
+                         and all(isinstance(symbol, str) and symbol for symbol in members)
+                         and len(members) == len(set(members)) for members in books.values()),
+                 "PIT-v9 weekly membership is empty/malformed")
     filter_v4 = documents["filter_v4"]
     _require((filter_v4.get("authority"), filter_v4.get("version"), filter_v4.get("status")) == (
         "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 4, "FROZEN"),
@@ -246,6 +267,11 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
              and filter_v4.get("pit_universe_sha256") == byte_hashes["pit_v9"]
              and filter_v4.get("pit_universe_digest") == pit["digest"],
              "filter-v4 PIT binding mismatch")
+    _require(filter_v4.get("fold_bindings") == {
+        "development_eligible_segment": "2024-12-13T04:44:48Z",
+        "wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z",
+        "wf3": "2026-02-17T04:13:28Z", "sealed_holdout": "2026-02-17T04:13:28Z",
+    }, "filter-v4 fold bindings changed")
     coverage = documents["coverage_v4"]
     _require((coverage.get("format"), coverage.get("authority_version"),
               coverage.get("required_result")) == (
@@ -256,18 +282,24 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
              and coverage.get("filter_authority_digest") == filter_v4["digest"],
              "coverage-v4 authority binding mismatch")
     by_stream = coverage.get("guaranteed_period_gaps_by_stream")
+    required_streams = {"klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null"}
     _require(type(coverage.get("guaranteed_period_gaps")) is int
              and coverage["guaranteed_period_gaps"] == 0 and coverage.get("gaps") == []
-             and isinstance(by_stream, Mapping) and len(by_stream) == 4
+             and isinstance(by_stream, Mapping) and set(by_stream) == required_streams
              and all(type(value) is int and value == 0 for value in by_stream.values()),
              "coverage-v4 has guaranteed-period gaps")
+    _require(coverage.get("cutoff_exclusive_ms") == 1793836800000
+             and coverage.get("cutoff_exclusive_utc") == "2026-11-05T00:00:00Z"
+             and coverage.get("timezone") == "UTC",
+             "coverage-v4 cutoff/timezone mismatch")
 
 
 def verify_pin_amendment(scaffold: Mapping[str, Any], amended: Mapping[str, Any], *,
                          repo: Path = ROOT,
                          protected_ref: str = "refs/remotes/origin/master") -> None:
-    _require(hashlib.sha256(SUCCESSOR_PATH.read_bytes()).hexdigest() == SCAFFOLD_BYTE_SHA256,
-             "frozen scaffold file byte hash mismatch")
+    # The protected checkout legitimately contains the mechanical amendment;
+    # authenticate the supplied scaffold semantically and resolve its exact
+    # frozen C256 object rather than requiring the working-tree file to remain null-pinned.
     validate_scaffold(scaffold, _load(PREP_PATH), repo=repo)
     expected = copy.deepcopy(scaffold)
     authority = amended.get("authority_v6")

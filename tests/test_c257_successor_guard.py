@@ -5,6 +5,7 @@ import gzip
 import hashlib
 import json
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -70,12 +71,17 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         "format": "zb-binance-um-archive-manifest/6",
         "authority_id": "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
         "cutoff_exclusive_ms": 1793836800000,
+        "cutoff_exclusive_utc": "2026-11-05T00:00:00Z", "timezone": "UTC",
         "files_v6": [],
     })
     manifest_raw = gzip.compress(_canonical(manifest), mtime=0)
+    cursor, end, weeks = datetime(2024,10,14,tzinfo=timezone.utc), datetime(2026,11,2,tzinfo=timezone.utc), []
+    while cursor <= end:
+        weeks.append({"monday_ms": int(cursor.timestamp()*1000), "books": {"crypto": ["AAAUSDT"]}})
+        cursor += timedelta(days=7)
     pit = _with_digest({
         "format": "zb-pit-universe/2", "universe_id": "PIT-TOP40-QV30D-V9",
-        "manifest_digest": manifest["digest"], "weeks": [],
+        "manifest_digest": manifest["digest"], "weeks": weeks,
     })
     pit_raw = _canonical(pit)
     filter_v4 = _with_digest({
@@ -83,6 +89,9 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         "version": 4, "status": "FROZEN", "pit_universe_path": OUTPUT_PATHS["pit_v9"],
         "pit_universe_sha256": hashlib.sha256(pit_raw).hexdigest(),
         "pit_universe_digest": pit["digest"],
+        "fold_bindings": {"development_eligible_segment":"2024-12-13T04:44:48Z",
+            "wf1":"2024-12-13T04:44:48Z","wf2":"2024-12-13T04:44:48Z",
+            "wf3":"2026-02-17T04:13:28Z","sealed_holdout":"2026-02-17T04:13:28Z"},
     })
     filter_raw = _canonical(filter_v4)
     streams = {name: 0 for name in (
@@ -94,6 +103,8 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         "authority_version": 4, "manifest_digest": manifest["digest"],
         "pit_universe_digest": pit["digest"], "filter_authority_digest": filter_v4["digest"],
         "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+        "cutoff_exclusive_ms":1793836800000,"cutoff_exclusive_utc":"2026-11-05T00:00:00Z",
+        "timezone":"UTC",
         "guaranteed_period_gaps_by_stream": streams,
         "guaranteed_period_gaps": coverage_gaps,
         "gaps": ([{"stream": "klines:1h", "synthetic": True}] if coverage_gaps else []),
