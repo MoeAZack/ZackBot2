@@ -153,6 +153,8 @@ def report(book):
         'full_book_hourly_return_count':len(returns),'fraction_hours_exposed':sum(v['active_count']>0 for v in hours.values())/len(hours) if hours else None,
         'max_concurrent_positions':max((v['active_count'] for v in hours.values()),default=0),
         'cadence_diagnostics':book.observer.cadence_diagnostics,
+        'ambiguous_funding_credit_withheld_event_attempts':sorted(book.withheld),
+        'funding_credit_model_limit':'Ambiguous positive credits are withheld, not fabricated or used for sizing. This is conditional research accounting; actual venue eligibility/fee-ledger proof remains required.',
         'source_coefficient_coverage':'SEE_TOP_LEVEL_ONCE_PER_SOURCE_PROVIDER_TABLE',
         'comparison_packets':{'BOL_DSR_C258':'UNAVAILABLE_NO_AUTHORIZED_OTHER_STRATEGY_PACKET; not zero/no invented comparison'}}
 

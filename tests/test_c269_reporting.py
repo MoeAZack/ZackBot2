@@ -56,3 +56,17 @@ def test_missing_benchmark_required_report_cannot_pass_dev_complete():
     base={'monthly_including_zero':{'a':{'closed':8}},'closed_count':120,'symbols':8,'gross_R':1.,'mean_R':.1,
         'profit_factor':1.2,'gate_drawdown_R':1.,'data_complete':True,'required_report_complete':False}
     assert R.development_checks(base,base)['complete'] is False
+
+
+def test_conditional_credit_withholding_is_disclosed_without_changing_cash(source):
+    from tests.test_c269_book import cache
+    symbol=setup(source)[1].indexed[0].fit.symbol
+    cache(source,symbol,'fundingRate',{ENTRY-8*H:R.B.S.NativeFunding(ENTRY-8*H,8,D(0)),
+        ENTRY-1:R.B.S.NativeFunding(ENTRY-1,4,D('.01'))})
+    book,frame=setup(source);lot,reason=book.admit(frame,symbol,ENTRY);book.last_boundary=ENTRY
+    assert lot and reason is None and not lot.funding
+    before=book.cash.settled_cash
+    report=R.report(book)
+    assert report['ambiguous_funding_credit_withheld_event_attempts']==sorted(book.withheld)
+    assert len(report['ambiguous_funding_credit_withheld_event_attempts'])==1
+    assert report['funding_cash']==0 and report['known_current_cash']==before<2000
