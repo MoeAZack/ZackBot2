@@ -22,6 +22,7 @@ EVALUATOR_SOURCE_HEAD="5c332bd2faf2f06591a6d621965770ba3cdaecee"
 STRATEGY_NAME="c259_btc_leadlag"
 STRATEGY_VERSION="v1"
 TESTNET_ENDPOINT="https://testnet.binancefuture.com"
+APPROVED_TESTNET_ORIGINS=(TESTNET_ENDPOINT,"https://demo-fapi.binance.com")
 PAPER_RISK_R=Decimal("0.25")
 PAPER_OPEN_RISK_R=Decimal("0.50")
 PAPER_MAX_POSITIONS=2
@@ -68,6 +69,7 @@ class AdapterConfig:
     version: str=ADAPTER_VERSION
     evaluator_source_head: str=EVALUATOR_SOURCE_HEAD
     risk_multiplier: Decimal=PAPER_RISK_R
+    testnet_origin: str=TESTNET_ENDPOINT
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,20 @@ class SideBook:
 
 
 @dataclass(frozen=True)
+class C259SideCapacity:
+    """Collector-attested open AND reserved C259 exposure, including pending claims.
+
+    Both isolated books are required in the same account/generation snapshot.
+    Risk uses each book's own marked equity; capitals are never pooled.
+    """
+    side: int
+    book_sha256: str
+    marked_equity: Decimal
+    position_and_reservation_count: int
+    open_and_reserved_risk_cash: Decimal
+
+
+@dataclass(frozen=True)
 class SharedCapacity:
     account_fingerprint: str
     observed_ms: int
@@ -143,6 +159,8 @@ class SharedCapacity:
     available_gross_notional: Decimal
     additional_position_slots: int
     reservations_complete: bool=False
+    c259_side_capacity: tuple[C259SideCapacity,...]=()
+    c259_reservations_complete: bool=False
 
 
 @dataclass(frozen=True)
@@ -260,7 +278,8 @@ def _gates(config,acceptance,env,cohort,book,shared,now):
             or not all(value is True for value in (acceptance.development_pass,acceptance.forward_pass,
                 acceptance.holdout_pass,acceptance.independent_exact_head_pass,acceptance.report_acceptance_pass))):
         raise AdapterRefusal("UNQUALIFIED_SIDE_ECONOMICS")
-    if (env.mode!="PAPER" or env.endpoint!=TESTNET_ENDPOINT or env.live is not False
+    if (config.testnet_origin not in APPROVED_TESTNET_ORIGINS or env.endpoint!=config.testnet_origin
+            or env.mode!="PAPER" or env.live is not False
             or env.confirmed_testnet is not True or env.reconciliation_complete is not True
             or not _hash(env.account_fingerprint)):
         raise AdapterRefusal("UNCONFIRMED_PAPER_TESTNET_ENVIRONMENT")
@@ -292,6 +311,28 @@ def _gates(config,acceptance,env,cohort,book,shared,now):
                 or not _positive(position.quantity,position.entry_reference,position.initial_risk_cash)):
             raise AdapterRefusal("UNKNOWN_OR_UNPROTECTED_SIDE_POSITION")
         _validate_mark(position.mark,now)
+
+
+def _candidate_capacity(book,shared,equity,open_risk):
+    rows=shared.c259_side_capacity
+    if (shared.c259_reservations_complete is not True or type(rows) is not tuple
+            or len(rows)!=len(E.SIDES) or any(type(row) is not C259SideCapacity for row in rows)
+            or {row.side for row in rows}!=set(E.SIDES)):
+        raise AdapterRefusal("INCOMPLETE_ALL_C259_RESERVATIONS")
+    for row in rows:
+        if (type(row) is not C259SideCapacity or not _hash(row.book_sha256)
+                or not _positive(row.marked_equity) or not _nonnegative(row.open_and_reserved_risk_cash)
+                or type(row.position_and_reservation_count) is not int or row.position_and_reservation_count<0
+                or (row.position_and_reservation_count==0)!=(row.open_and_reserved_risk_cash==0)):
+            raise AdapterRefusal("INVALID_ALL_C259_RESERVATIONS")
+    local=next(row for row in rows if row.side==book.side)
+    if (local.book_sha256!=digest(book) or local.marked_equity!=equity
+            or local.position_and_reservation_count<len(book.positions)
+            or local.open_and_reserved_risk_cash<open_risk):
+        raise AdapterRefusal("C259_RESERVATION_BOOK_MISMATCH")
+    other_r=sum((row.open_and_reserved_risk_cash/(row.marked_equity*Decimal("0.01"))
+                 for row in rows if row.side!=book.side),Decimal(0))
+    return sum(row.position_and_reservation_count for row in rows),local.open_and_reserved_risk_cash,other_r
 
 
 def _pit(cohort):
@@ -327,6 +368,10 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
     """
     try:
         _gates(config,acceptance,environment,cohort,book,shared,now_ms)
+        marked=sum((Decimal(position.side)*position.quantity*(position.mark.price-position.entry_reference)
+                    for position in book.positions),Decimal(0))
+        open_risk=sum((position.initial_risk_cash for position in book.positions),Decimal(0))
+        candidate_count,open_risk,other_r=_candidate_capacity(book,shared,book.settled_cash+marked,open_risk)
         cell=_pit(cohort)
         btc=_validate_bars(cohort.btc_bars,cohort.segment_start_ms,now_ms)
         if cohort.decision_ms<cohort.segment_start_ms+722*E.HOUR_MS:raise AdapterRefusal("SPLIT_RESET_WARMUP")
@@ -362,9 +407,6 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
         occupied={position.symbol for position in book.positions}
         ranked=E.select_candidates(fits,book.side,decision_close_ms=d,limit=None)
         cash=book.settled_cash
-        marked=sum((Decimal(position.side)*position.quantity*(position.mark.price-position.entry_reference)
-                    for position in book.positions),Decimal(0))
-        open_risk=sum((position.initial_risk_cash for position in book.positions),Decimal(0))
         gross=sum((position.quantity*position.mark.price for position in book.positions),Decimal(0))
         available_cash=shared.available_collateral_cash;available_gross=shared.available_gross_notional
         intents=[];skips=[]
@@ -372,7 +414,7 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
         fit_map=dict(fits)
         for rank,symbol in enumerate(ranked,1):
             if symbol in occupied:skips.append((symbol,"ALREADY_OCCUPIED"));continue
-            if len(book.positions)+len(intents)>=PAPER_MAX_POSITIONS or len(intents)>=shared.additional_position_slots:
+            if candidate_count+len(intents)>=PAPER_MAX_POSITIONS or len(intents)>=shared.additional_position_slots:
                 skips.append((symbol,"PAPER_POSITION_CAP"));continue
             snapshot=by_symbol[symbol];index=indexes[symbol];f=snapshot.filters
             entry=snapshot.entry_reference
@@ -389,8 +431,12 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
             sized=E.size_position(side=book.side,entry=entry,stop=stop,filters=f,side_book_equity=equity,
                 entry_impact_asof_ms=now_ms,entry_volume_rows=volumes)
             if sized is None:skips.append((symbol,"EXCHANGE_OR_SIZE_INFEASIBLE"));continue
+            remaining_r=PAPER_OPEN_RISK_R-other_r
+            # Entry drag cannot exceed the modeled entry+stop risk. Reserve that
+            # upper bound while sizing so post-entry equity still respects the
+            # BOTH-side 0.50R cap, including same-open fees and pending claims.
             risk_ceiling=min(equity*Decimal("0.01")*min(config.risk_multiplier,acceptance.paper_risk_multiplier_cap),
-                equity*Decimal("0.01")*PAPER_OPEN_RISK_R-open_risk)
+                (equity*Decimal("0.01")*remaining_r-open_risk)/(1+max(Decimal(0),remaining_r)*Decimal("0.01")))
             if risk_ceiling<=0:skips.append((symbol,"PAPER_OPEN_RISK_CAP"));continue
             q=E._floor(sized.quantity*min(Decimal(1),risk_ceiling/sized.initial_risk_cash),f.step)
             if q<f.min_qty or q>f.max_qty or min(q*entry,q*stop,q*target)<f.min_notional:
@@ -407,6 +453,9 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
             entry_fill=E.make_fill(timestamp_ms=now_ms,phase="ENTRY",symbol=symbol,side=book.side,quantity=float(q),
                 reference=float(entry),movement_from=None,volume_bars=snapshot.bars)
             reserve=Decimal(str(entry_fill.fee_drag+entry_fill.slippage_drag+entry_fill.impact_drag))
+            if (reserve>risk or equity<=reserve
+                    or other_r+(open_risk+risk)/((equity-reserve)*Decimal("0.01"))>PAPER_OPEN_RISK_R):
+                skips.append((symbol,"PAPER_OPEN_RISK_CAP"));continue
             identity=digest({"candidate":259,"adapter_version":ADAPTER_VERSION,"contract":E.CONTRACT_SHA256,
                 "account":environment.account_fingerprint,"side":book.side,"decision_ms":d,"symbol":symbol})
             intent=PaperIntent(identity,259,ADAPTER_VERSION,EVALUATOR_SOURCE_HEAD,E.CONTRACT_SHA256,STRATEGY_NAME,
@@ -429,7 +478,7 @@ def native_integration_gap() -> Mapping[str,object]:
         "entry_source_head":"8f81b266c8315d1a7c6991cdbacba472be920b1e",
         "entry_seam":"newcore.runtime.ports.EntrySource.candidates -> EntryCandidate(DecisionKey,RiskEvaluation)",
         "decision_key_clock":"Use intent.decision_ms (on-grid availability boundary), never decision_candle_close_ms (Binance raw close is boundary-1ms).",
-        "risk_gap":"Map isolated side book and shared reservations into fresh NC-06 generations; preserve conservative quantity ceiling/stop rather than re-size from wallet equity.",
+        "risk_gap":"Map isolated side books and mandatory same-generation all-C259 open+pending reservations into NC-06; atomically enforce two positions/0.50R across BOTH sides and preserve quantity ceiling, with the one pinned approved testnet origin.",
         "durability_seam":"newcore.runtime.journaling.JournalingActionSink.accept_entry; durable DecisionKey claim before venue work",
         "management_gap":"Provide NC-07 ManagementSource for frozen target, 12h due-open exit and C259 funding/gap/range ordering; STRAT-01 currently wires entries/protective stops only.",
         "activation_gap":"Protected economic/environment attestation verifier and installed default-OFF launcher composition are still required; this module reads no outcome/identity files and performs no activation."}
