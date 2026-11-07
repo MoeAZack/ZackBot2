@@ -2,7 +2,7 @@
   "format": "zb-c257-successor-adapter-prep/1",
   "candidate_id": 257,
   "status": "PREP_ONLY_FAIL_CLOSED",
-  "base_commit": "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3",
+  "base_commit": "a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8",
   "successor_contract_path": "research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json",
   "guard_path": "tools/research/c257_successor_guard.py",
   "evaluator": null,

@@ -2,7 +2,7 @@
   "format": "zb-strategy-successor-preregistration/1",
   "candidate_id": 257,
   "candidate_key": "funding_shock_reversal_xsec_8h",
-  "base_commit": "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3",
+  "base_commit": "a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8",
   "frozen_at_cairo": "2026-11-07T03:16:49+02:00",
   "status": "FROZEN_SUCCESSOR_SCAFFOLD_AUTHORITY_PINS_ABSENT",
   "default_off": true,
@@ -45,6 +45,8 @@
     ],
     "exact_rule": "Every value in every unchanged section is inherited byte-semantically from the exact C256 contract. Signal, thresholds, side construction, pairing, execution, risk, costs, split boundaries, gates, multiplicity and PAPER terms may not change.",
     "multiplicity_rule": "Retain C256's already-frozen 0.05/256 ceiling unchanged; C257 may not use its new number to relax that gate.",
+    "multiplicity_primary_count": 1,
+    "multiplicity_alpha_ceiling": 0.0001953125,
     "identity_rule": "candidate_id=257 is an audit-ledger identity only. It does not alter inherited economics or revive C256.",
     "no_c256_rescue": "C256 remains terminally DATA-INCOMPLETE. No C256 outcome may be created, inspected, inferred or used to select, tune, reject or rescue C257."
   },
