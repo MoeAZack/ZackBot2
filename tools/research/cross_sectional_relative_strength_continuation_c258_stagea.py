@@ -28,7 +28,7 @@ PLAN_PATH = ROOT / "contracts/strategy_causal_pack_01/authority_extension_plan.v
 PLAN_SHA256 = "30080d16132348fabceb91bffe110f43ee33824c4496622f736ee6a6c4d7af60"
 AUTHORITY_ID = "BINANCE-UM-PRECUTOFF-AUTHORITY-V6"
 C258_FROZEN_HEAD = "976adda2653584559a5fc105468a6d422796d3a9"
-AUTHORITY_PROTECTED_REF = "refs/heads/master"
+AUTHORITY_PROTECTED_REF = "refs/remotes/origin/master"
 AUTHORITY_EXPECTED_ANCESTORS = (
     "6754a336652496952aaab82e42fbe9bd6171430a",  # authority-v6 protected base
 )

@@ -116,6 +116,25 @@ def test_protected_authentication_uses_base_lineage_and_keeps_missing_pin_lock(m
     assert ancestry == [(A.PROTECTED_PLAN_COMMIT, head)]
 
 
+def test_original_scaffold_object_is_explicitly_available_in_an_isolated_shallow_store(tmp_path):
+    import hashlib
+    import subprocess
+    from tools.research import c257_successor_guard as G
+    repo = tmp_path / 'shallow'
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    path = 'research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json'
+    missing = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', f'{A.SUCCESSOR_HEAD}:{path}'],
+                             capture_output=True)
+    assert missing.returncode != 0
+    # CI fetches this exact bound object into the source store; no moving branch,
+    # replacement fixture contract or alternate scaffold is accepted.
+    subprocess.run(['git', '-C', str(repo), 'fetch', '--no-tags', '--depth=1', str(A.ROOT), A.SUCCESSOR_HEAD],
+                   check=True, capture_output=True)
+    assert subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--is-shallow-repository']).strip() == b'true'
+    raw = G._tree_bytes(repo, A.SUCCESSOR_HEAD, path)
+    assert hashlib.sha256(raw).hexdigest() == G.SCAFFOLD_BYTE_SHA256
+
+
 def test_empty_book_is_reported_as_rejection_without_invented_statistics(monkeypatch):
     monkeypatch.setattr(S,"frozen_splits",lambda:{"development":(0,24*S.HOUR_MS,False)})
     raw=E.SealedEvidence("development",Decimal(1000),(),())

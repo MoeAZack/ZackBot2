@@ -419,6 +419,15 @@ def test_nothing_executed_reads_docs():
     assert hits == []
 
 
+def test_c257_original_scaffold_is_fetched_and_blob_checked_in_both_shallow_workflows():
+    commit = '27f3eef77a4d10d300a288ef917fc5842170550d'
+    path = 'research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json'
+    for workflow in (WF, WQ):
+        assert f'git fetch --no-tags --depth=1 origin {commit}\n' in workflow
+        assert f"git cat-file -e '{commit}^{{commit}}'" in workflow
+        assert f"git cat-file -e '{commit}:{path}'" in workflow
+
+
 # ---------------------------------------------------------------- round 2: deterministic dataset bytes on every checkout
 def _manifest():
     return json.load(open(os.path.join(ROOT, 'DATA_MANIFEST.json'), encoding='utf-8'))['files']

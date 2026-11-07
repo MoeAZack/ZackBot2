@@ -20,11 +20,11 @@ IMPLEMENTATION_PATHS = (
 def protected_amendment(root: Path, *, verify_local_code: bool = True):
     """Resolve only the current protected ref and its byte-bound amendment."""
     C.load_frozen_contract()
-    head = C._git(root, "rev-parse", "--verify", f"{C.AUTHORITY_PROTECTED_REF}^{{commit}}")
     try:
+        head = C._git(root, "rev-parse", "--verify", f"{C.AUTHORITY_PROTECTED_REF}^{{commit}}")
         raw = C._git(root, "show", f"{head}:{AMENDMENT_PATH}", binary=True)
     except C.IncompleteAuthority as exc:
-        raise C.EvaluationLocked("C258_REAL_EVALUATION_LOCKED: protected mechanical amendment absent; no loader was invoked") from exc
+        raise C.EvaluationLocked("C258_REAL_EVALUATION_LOCKED: protected remote ref or mechanical amendment absent; no loader was invoked") from exc
     try:
         doc = json.loads(raw)
         if set(doc) != {"format", "candidate_id", "contract_sha256", "default_off",
