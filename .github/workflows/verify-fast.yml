@@ -42,6 +42,9 @@ jobs:
           # C257 inherits exact C256 economics from this terminal pre-market contract object.
           git fetch --no-tags --depth=1 origin 6cc7148a453be054f5c02ecf1eecc8369fcfc533
           git cat-file -e '6cc7148a453be054f5c02ecf1eecc8369fcfc533^{commit}'
+          # C257 hostile-tree tests clone this exact protected baseline from the local checkout.
+          git fetch --no-tags --depth=1 origin a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8
+          git cat-file -e 'a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8^{commit}'
       - name: Fetch the breadth_static40 registration tag (annotated, peels to Y)
         run: |
           git fetch --no-tags --depth=2 origin +refs/tags/zb-breadth-static40-v1-registration-20261016:refs/tags/zb-breadth-static40-v1-registration-20261016
