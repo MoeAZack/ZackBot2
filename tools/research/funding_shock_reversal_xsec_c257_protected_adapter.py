@@ -72,8 +72,26 @@ def _exclusive(path: Path, value: Mapping[str, object]) -> None:
     with os.fdopen(fd, "wb") as stream:
         stream.write(raw); stream.flush(); os.fsync(stream.fileno())
 
-def evaluate_once(loader: E.SealedTypedLoader, *, identity_dir: Path) -> Mapping[str, object]:
+PRODUCTION_LOADER_BOUND = False
+
+
+def _load_protected_folds(bindings: Bindings) -> tuple[E.SealedEvidence, tuple[E.SealedEvidence, ...]]:
+    """Reserved seam for the reviewed archive->book loader.
+
+    The calculator must not be activated by injecting caller-created typed
+    packets.  A later protected commit must implement this function by reading
+    the checksum-bound authority-v6 archive bytes and deriving the four frozen
+    books.  Until then no identity or outcome access is permitted.
+    """
+    raise ProtectedAdapterError(
+        "C257_PRODUCTION_LOADER_UNBOUND: protected archive-to-book loader is absent")
+
+
+def evaluate_once(*, identity_dir: Path) -> Mapping[str, object]:
     bindings = authenticate_before_loader()  # must precede loader and identity
+    if not PRODUCTION_LOADER_BOUND:
+        raise ProtectedAdapterError(
+            "C257_PRODUCTION_LOADER_UNBOUND: protected archive-to-book loader is absent")
     identity = hashlib.sha256(json.dumps({"candidate_id": 257, "bindings": bindings.digest},
         sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     claim = identity_dir / f"candidate-257-{identity}.claim.json"
@@ -82,10 +100,16 @@ def evaluate_once(loader: E.SealedTypedLoader, *, identity_dir: Path) -> Mapping
     except FileExistsError as exc:
         raise ProtectedAdapterError("candidate-257 evaluation identity is already consumed") from exc
     try:
-        typed = loader.load(capability=object())
-        if not isinstance(typed, E.EvaluationInput):
-            raise ProtectedAdapterError("sealed loader returned an untyped payload")
-        packet = dict(E.evaluate(typed)); packet["promotable"] = False
+        raw, forwards = _load_protected_folds(bindings)
+        if (not isinstance(raw, E.SealedEvidence) or raw.fold != "development"
+                or tuple(item.fold for item in forwards) != ("wf1", "wf2", "wf3")):
+            raise ProtectedAdapterError("protected loader returned wrong frozen fold books")
+        dev_packet = E.evaluate(raw)
+        if dev_packet["verdict"] != "DEVELOPMENT_SURVIVOR":
+            packet = dict(E.evaluate_stage_a(raw, ()))
+        else:
+            packet = dict(E.evaluate_stage_a(raw,tuple(forwards)))
+        packet["promotable"] = False
         packet["integrity"] = {"bindings_digest": bindings.digest,
             "evaluation_identity": identity, "git_head": bindings.head}
         packet["output_identity_sha256"] = hashlib.sha256(json.dumps(packet,sort_keys=True,

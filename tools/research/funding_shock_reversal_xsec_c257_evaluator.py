@@ -4,7 +4,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from datetime import datetime, timezone
+from dataclasses import dataclass, field, fields, is_dataclass
 from decimal import Decimal
 from typing import Mapping, Protocol, Sequence
 
@@ -19,6 +20,7 @@ class EvaluatorError(RuntimeError):
 class FundingPoint:
     symbol: str
     nominal_ms: int
+    available_ms: int
     rate: Decimal
 
 
@@ -37,6 +39,10 @@ class LegPlan:
     entry_ms: int
     entry_reference: Decimal
     stop_reference: Decimal
+    funding_interval_hours: int = 8
+    settlement_anchor_ms: int = 0
+    funding_authority_start_ms: int = 0
+    funding_authority_end_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -58,6 +64,7 @@ class FillCash:
     movement: Decimal
     fee: Decimal
     slippage: Decimal
+    impact: Decimal
     impact_ratio: Decimal
     impact_failure: str | None
 
@@ -76,6 +83,7 @@ class ClosedAttempt:
     close_ms: int
     initial_risk_cash: Decimal
     fills: tuple[FillCash, ...]
+    stress_fills: tuple[FillCash, ...]
     funding: tuple[FundingCash, ...]
     base_net_cash: Decimal
     base_R: Decimal
@@ -84,6 +92,7 @@ class ClosedAttempt:
     atomic_failure: bool
     symbols: tuple[str, ...]
     regime: str = "UNSPECIFIED"
+    _capability: object = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -91,10 +100,168 @@ class EvaluationInput:
     attempts: tuple[ClosedAttempt, ...]
     marks: tuple[MarkClose, ...]
     fold: str
+    _capability: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class RawSymbolEvidence:
+    current: S.FundingRow
+    prior_31: tuple[S.FundingRow, ...]
+    bars: tuple[S.HourBar, ...]
+    atr_bars: tuple[S.HourBar, ...]
+    filters: S.ExactFilters
+    funding_tape: tuple[FundingPoint, ...]
+    funding_marks: tuple[MarkClose, ...]
+    funding_authority_start_ms: int
+    funding_authority_end_ms: int
+
+
+@dataclass(frozen=True)
+class RawCohortEvidence:
+    cohort_id: str
+    nominal_ms: int
+    equity: Decimal
+    symbols: Mapping[str, RawSymbolEvidence]
+
+
+@dataclass(frozen=True)
+class SealedEvidence:
+    fold: str
+    cohorts: tuple[RawCohortEvidence, ...]
+    portfolio_marks: tuple[MarkClose, ...]
 
 
 class SealedTypedLoader(Protocol):
-    def load(self, *, capability: object) -> EvaluationInput: ...
+    def load_development(self, *, capability: object) -> SealedEvidence: ...
+    def load_forward(self, fold: str, *, capability: object) -> SealedEvidence: ...
+
+
+FOLD_NAMES = ("development", "wf1", "wf2", "wf3")
+_DERIVED_CAPABILITY = object()
+
+
+def _canonical_evidence(value: object) -> object:
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise S.IncompleteAuthority("sealed evidence contains non-finite Decimal")
+        return str(value)
+    if is_dataclass(value):
+        return {item.name: _canonical_evidence(getattr(value, item.name))
+                for item in fields(value) if not item.name.startswith("_")}
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise S.IncompleteAuthority("sealed evidence mapping keys must be strings")
+        return {key: _canonical_evidence(value[key]) for key in sorted(value)}
+    if isinstance(value, (tuple, list)):
+        return [_canonical_evidence(item) for item in value]
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise S.IncompleteAuthority("sealed evidence contains non-finite float")
+        return value
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    raise S.IncompleteAuthority("sealed evidence contains an unsupported typed value")
+
+
+def sealed_evidence_digest(value: SealedEvidence) -> str:
+    if not isinstance(value, SealedEvidence):
+        raise EvaluatorError("only typed sealed evidence can be source-bound")
+    raw = json.dumps(_canonical_evidence(value), sort_keys=True, separators=(",", ":"),
+                     allow_nan=False).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _exact_entry_bar(bars: Sequence[S.HourBar], nominal_ms: int) -> S.HourBar:
+    target = ((nominal_ms+S.FUNDING_DELAY_MS+S.HOUR_MS-1)//S.HOUR_MS)*S.HOUR_MS
+    index = _bar_index(bars)
+    if target != nominal_ms+S.HOUR_MS or nominal_ms not in index or target not in index:
+        raise S.IncompleteAuthority("T+300 entry lacks exact next canonical open/continuity")
+    return index[target]
+
+
+def _atr24(bars: Sequence[S.HourBar], entry_ms: int) -> Decimal:
+    completed = sorted((bar for bar in bars if bar.close_ms <= entry_ms), key=lambda bar: bar.open_ms)
+    if len(completed) < 25:
+        raise S.IncompleteAuthority("ATR24 requires previous close plus 24 causal true ranges")
+    completed = completed[-25:]
+    if [bar.open_ms for bar in completed] != list(range(completed[0].open_ms,
+                                                        entry_ms, S.HOUR_MS)):
+        raise S.IncompleteAuthority("ATR24 bars are not exact contiguous causal rows")
+    values: list[Decimal] = []
+    for previous, bar in zip(completed, completed[1:]):
+        values.append(max(Decimal(str(bar.high-bar.low)),
+                          abs(Decimal(str(bar.high-previous.close))),
+                          abs(Decimal(str(bar.low-previous.close)))))
+    atr = sum(values[:24], Decimal(0))/Decimal(24)
+    for value in values[24:]:
+        atr = (atr*Decimal(23)+value)/Decimal(24)
+    if not atr.is_finite() or atr <= 0:
+        raise S.IncompleteAuthority("ATR24 is non-positive")
+    return atr
+
+
+def derive_evaluation(sealed: SealedEvidence) -> EvaluationInput:
+    """Consume sealed raw rows and derive all economic attempts from scratch."""
+    if not isinstance(sealed, SealedEvidence) or sealed.fold not in FOLD_NAMES:
+        raise EvaluatorError("loader must return sealed raw evidence for one frozen fold")
+    split = S.frozen_splits()[sealed.fold]
+    attempts: list[ClosedAttempt] = []
+    active_until: dict[str, int] = {}
+    active_pairs: list[tuple[int, Decimal, Decimal]] = []
+    for cohort in sorted(sealed.cohorts, key=lambda row: (row.nominal_ms, row.cohort_id)):
+        if not split[0] <= cohort.nominal_ms < split[1] or not cohort.cohort_id:
+            raise S.IncompleteAuthority("cohort crosses frozen fold boundary")
+        if not cohort.equity.is_finite() or cohort.equity <= 0:
+            raise EvaluatorError("cohort equity authority is invalid")
+        if any(symbol != evidence.current.symbol for symbol, evidence in cohort.symbols.items()):
+            raise S.IncompleteAuthority("cohort symbol key differs from funding authority")
+        shocks = []
+        for evidence in cohort.symbols.values():
+            if evidence.current.nominal_ms != cohort.nominal_ms:
+                raise S.IncompleteAuthority("mixed cohort nominal funding time")
+            if not (split[0] <= evidence.funding_authority_start_ms
+                    <= evidence.current.nominal_ms
+                    < evidence.funding_authority_end_ms <= split[1]):
+                raise S.IncompleteAuthority("full funding authority bounds escape the frozen fold")
+            shocks.append(S.robust_funding_surprise(evidence.current, evidence.prior_31,
+                decision_ms=cohort.nominal_ms+S.FUNDING_DELAY_MS))
+        pairs = S.fixed_index_pairs(shocks)
+        for pair in pairs:
+            if active_until.get(pair.long_symbol, -1) > cohort.nominal_ms or active_until.get(pair.short_symbol, -1) > cohort.nominal_ms:
+                continue
+            long_raw, short_raw = cohort.symbols[pair.long_symbol], cohort.symbols[pair.short_symbol]
+            long_entry, short_entry = (_exact_entry_bar(long_raw.bars, cohort.nominal_ms),
+                                       _exact_entry_bar(short_raw.bars, cohort.nominal_ms))
+            if long_entry.open_ms != short_entry.open_ms:
+                raise S.IncompleteAuthority("pair legs do not share exact atomic entry open")
+            long_atr, short_atr = _atr24(long_raw.atr_bars, long_entry.open_ms), _atr24(short_raw.atr_bars, short_entry.open_ms)
+            exact_long = S.ExactLeg(pair.long_symbol, 1, Decimal(str(long_entry.open)), long_atr, long_raw.filters)
+            exact_short = S.ExactLeg(pair.short_symbol, -1, Decimal(str(short_entry.open)), short_atr, short_raw.filters)
+            sizing = S.size_exact_pair(equity=cohort.equity, long=exact_long, short=exact_short)
+            plans = (
+                LegPlan(pair.long_symbol,1,sizing.long_qty,long_entry.open_ms,exact_long.entry,
+                        sizing.long_stop,long_raw.current.interval_hours,cohort.nominal_ms,
+                        long_raw.funding_authority_start_ms,long_raw.funding_authority_end_ms),
+                LegPlan(pair.short_symbol,-1,sizing.short_qty,short_entry.open_ms,exact_short.entry,
+                        sizing.short_stop,short_raw.current.interval_hours,cohort.nominal_ms,
+                        short_raw.funding_authority_start_ms,short_raw.funding_authority_end_ms),)
+            attempt = close_attempt(attempt_id=f"{cohort.cohort_id}:{pair.index}", legs=plans,
+                bars={pair.long_symbol:long_raw.bars,pair.short_symbol:short_raw.bars},
+                points=long_raw.funding_tape+short_raw.funding_tape,
+                marks=long_raw.funding_marks+short_raw.funding_marks, sizing=sizing)
+            active_pairs = [item for item in active_pairs if item[0] > attempt.entry_ms]
+            if (len(active_pairs) >= 3
+                    or sum((item[1] for item in active_pairs),Decimal(0))+sizing.modeled_loss > cohort.equity*Decimal("0.03")
+                    or sum((item[2] for item in active_pairs),Decimal(0))+sizing.gross > cohort.equity*Decimal("1.5")):
+                continue
+            if attempt.close_ms >= split[1]:
+                raise S.IncompleteAuthority("attempt crosses frozen flat fold boundary")
+            attempts.append(attempt)
+            active_pairs.append((attempt.close_ms,sizing.modeled_loss,sizing.gross))
+            for symbol in attempt.symbols:
+                active_until[symbol] = attempt.close_ms
+    return EvaluationInput(tuple(attempts), sealed.portfolio_marks, sealed.fold,
+                           _DERIVED_CAPABILITY)
 
 
 def _bar_index(bars: Sequence[S.HourBar]) -> dict[int, S.HourBar]:
@@ -172,15 +339,20 @@ def derive_lifecycle(legs: Sequence[LegPlan], bars: Mapping[str, Sequence[S.Hour
     return tuple(sorted((first, cleanup), key=lambda item: (item.timestamp_ms, item.symbol)))
 
 
-def _latest_prior_volume(bars: Sequence[S.HourBar], timestamp_ms: int) -> Decimal:
-    eligible = [bar for bar in bars if bar.close_ms < timestamp_ms]
-    if not eligible:
-        raise S.IncompleteAuthority("strict-prior impact authority is missing")
-    latest = max(bar.close_ms for bar in eligible)
+def _latest_prior_volume(bars: Sequence[S.HourBar], asof_open_ms: int) -> Decimal:
+    """Exact 24 completed bars available at the fill's source-bar open.
+
+    Open/gap/cleanup fills may use only bars closed by that open.  A range stop
+    is decided at the source bar close, but the frozen impact model is also
+    bound to the information set at that source-bar open so it cannot consume
+    the stop bar's outcome volume.
+    """
+    eligible = [bar for bar in bars if bar.close_ms <= asof_open_ms]
     ordered = sorted(eligible, key=lambda bar: bar.close_ms)[-24:]
+    expected = list(range(asof_open_ms-23*S.HOUR_MS,
+                          asof_open_ms+S.HOUR_MS, S.HOUR_MS))
     if (len(ordered) != 24
-            or [bar.close_ms for bar in ordered] != list(range(latest-23*S.HOUR_MS,
-                                                               latest+S.HOUR_MS, S.HOUR_MS))
+            or [bar.close_ms for bar in ordered] != expected
             or any(not math.isfinite(bar.quote_volume) or bar.quote_volume <= 0 for bar in ordered)):
         raise S.IncompleteAuthority("exact causal prior-24h quote-volume authority is incomplete")
     return sum((Decimal(str(bar.quote_volume)) for bar in ordered), Decimal(0))
@@ -188,7 +360,7 @@ def _latest_prior_volume(bars: Sequence[S.HourBar], timestamp_ms: int) -> Decima
 
 def account_fill(fill: DerivedFill, leg: LegPlan, bars: Sequence[S.HourBar], *, stress: bool) -> FillCash:
     try:
-        volume = _latest_prior_volume(bars, fill.timestamp_ms)
+        volume = _latest_prior_volume(bars, fill.source_open_ms)
         ratio = abs(fill.quantity*fill.reference)/volume
         incomplete = "INCOMPLETE_IMPACT_LIMIT" if ratio > Decimal("0.001") else None
     except S.IncompleteAuthority:
@@ -197,18 +369,22 @@ def account_fill(fill: DerivedFill, leg: LegPlan, bars: Sequence[S.HourBar], *, 
         ratio, incomplete = Decimal("NaN"), "INCOMPLETE_IMPACT_AUTHORITY"
     base_bps = Decimal(10 if stress else 2)
     multiplier = max(Decimal(1), ratio/Decimal("0.001")) if ratio.is_finite() else Decimal(1)
-    slip = base_bps*multiplier/Decimal(10_000)
-    execution = fill.reference*(Decimal(1)+Decimal(fill.transaction_side)*slip)
+    ordinary_rate = base_bps/Decimal(10_000)
+    impact_rate = base_bps*(multiplier-Decimal(1))/Decimal(10_000)
+    execution = fill.reference*(Decimal(1)+Decimal(fill.transaction_side)*(ordinary_rate+impact_rate))
     fee = abs(fill.quantity*execution)*Decimal("0.0005")
-    slippage = abs(fill.quantity*(execution-fill.reference))
+    slippage = abs(fill.quantity*fill.reference*ordinary_rate)
+    impact = abs(fill.quantity*fill.reference*impact_rate)
     movement = (fill.reference-leg.entry_reference)*fill.quantity*Decimal(leg.position_side)
-    return FillCash(fill, execution, movement, fee, slippage, ratio, incomplete)
+    return FillCash(fill, execution, movement, fee, slippage, impact, ratio, incomplete)
 
 
 def derive_funding(legs: Sequence[LegPlan], finals: Sequence[DerivedFill],
                    points: Sequence[FundingPoint], marks: Sequence[MarkClose]) -> tuple[FundingCash, ...]:
     if len({(point.symbol, point.nominal_ms) for point in points}) != len(points):
         raise S.IncompleteAuthority("duplicate funding event")
+    if {point.symbol for point in points} - {leg.symbol for leg in legs}:
+        raise S.IncompleteAuthority("extra funding symbol outside accepted lifecycle")
     mark_index = {(mark.symbol, mark.close_ms): mark for mark in marks}
     if len(mark_index) != len(marks):
         raise S.IncompleteAuthority("duplicate causal mark")
@@ -216,7 +392,26 @@ def derive_funding(legs: Sequence[LegPlan], finals: Sequence[DerivedFill],
     out: list[FundingCash] = []
     for leg in legs:
         final = final_by_symbol[leg.symbol]
-        for point in sorted((p for p in points if p.symbol == leg.symbol), key=lambda p: p.nominal_ms):
+        if type(leg.funding_interval_hours) is not int or leg.funding_interval_hours not in S.ALLOWED_INTERVAL_HOURS:
+            raise S.IncompleteAuthority("funding cadence is not canonical")
+        step = leg.funding_interval_hours*S.HOUR_MS
+        if (type(leg.funding_authority_start_ms) is not int
+                or type(leg.funding_authority_end_ms) is not int
+                or not 0 <= leg.funding_authority_start_ms < leg.funding_authority_end_ms):
+            raise S.IncompleteAuthority("full funding authority bounds are missing")
+        first = leg.settlement_anchor_ms
+        while first < leg.funding_authority_start_ms:
+            first += step
+        expected_times = tuple(range(first, leg.funding_authority_end_ms, step))
+        leg_points = tuple(sorted((p for p in points if p.symbol == leg.symbol), key=lambda p: p.nominal_ms))
+        if tuple(point.nominal_ms for point in leg_points) != expected_times:
+            raise S.IncompleteAuthority("funding authority tape omits/adds a canonical settlement")
+        if any(point.available_ms != point.nominal_ms+S.FUNDING_DELAY_MS
+               for point in leg_points):
+            raise S.IncompleteAuthority("funding authority availability is not exact T+300")
+        for point in leg_points:
+            if not point.rate.is_finite():
+                raise S.IncompleteAuthority("non-finite funding authority rate")
             inclusive = final.range_stop
             exposed = leg.entry_ms <= point.nominal_ms <= final.timestamp_ms if inclusive else leg.entry_ms <= point.nominal_ms < final.timestamp_ms
             if not exposed:
@@ -226,6 +421,9 @@ def derive_funding(legs: Sequence[LegPlan], finals: Sequence[DerivedFill],
                 raise S.IncompleteAuthority("immediate strict-prior funding mark is missing")
             cash = -Decimal(leg.position_side)*leg.quantity*mark.price*point.rate
             out.append(FundingCash(point, mark, cash))
+    expected_mark_keys = {(row.point.symbol, row.point.nominal_ms-S.HOUR_MS) for row in out}
+    if set(mark_index) != expected_mark_keys:
+        raise S.IncompleteAuthority("funding mark authority omits/adds a canonical strict-prior mark")
     return tuple(out)
 
 
@@ -263,15 +461,15 @@ def close_attempt(*, attempt_id: str, legs: Sequence[LegPlan], bars: Mapping[str
     stress_funding = sum((row.cash*Decimal("1.5") if row.cash < 0 else row.cash/Decimal("1.5")
                           for row in funding), Decimal(0))
     def net(rows: Sequence[FillCash], funding_cash: Decimal) -> Decimal:
-        return sum((row.movement-row.fee-row.slippage for row in rows), Decimal(0))+funding_cash
+        return sum((row.movement-row.fee-row.slippage-row.impact for row in rows), Decimal(0))+funding_cash
     base_net, stress_net = net(base, base_funding), net(stressed, stress_funding)
     if atomic_failure:
-        base_net = min(base_net, -sum((row.fee+row.slippage for row in base), Decimal(0)))
-        stress_net = min(stress_net, -sum((row.fee+row.slippage for row in stressed), Decimal(0)))
+        base_net = min(base_net, -sum((row.fee+row.slippage+row.impact for row in base), Decimal(0)))
+        stress_net = min(stress_net, -sum((row.fee+row.slippage+row.impact for row in stressed), Decimal(0)))
     return ClosedAttempt(attempt_id, legs[0].entry_ms, max(fill.timestamp_ms for fill in finals),
-                         initial_risk_cash, base, funding, base_net, base_net/initial_risk_cash,
+                         initial_risk_cash, base, stressed, funding, base_net, base_net/initial_risk_cash,
                          stress_net, stress_net/initial_risk_cash, atomic_failure,
-                         tuple(sorted(leg_map)))
+                         tuple(sorted(leg_map)), _capability=_DERIVED_CAPABILITY)
 
 
 def profit_factor(values: Sequence[Decimal]) -> Decimal:
@@ -292,41 +490,84 @@ def realized_drawdown(values: Sequence[Decimal]) -> Decimal:
     return worst
 
 
+def _validate_derived_attempt(row: ClosedAttempt) -> None:
+    if row._capability is not _DERIVED_CAPABILITY:
+        raise EvaluatorError("caller-constructed closed attempt is forbidden")
+    if (not row.attempt_id or not row.initial_risk_cash.is_finite()
+            or row.initial_risk_cash <= 0 or row.entry_ms >= row.close_ms):
+        raise EvaluatorError("derived attempt identity/risk/lifecycle is invalid")
+    for fills in (row.fills, row.stress_fills):
+        entries = {cash.fill.symbol: cash.fill for cash in fills if cash.fill.phase == "entry"}
+        finals = {cash.fill.symbol: cash.fill for cash in fills if cash.fill.phase != "entry"}
+        if set(entries) != set(row.symbols) or set(finals) != set(row.symbols):
+            raise EvaluatorError("derived attempt is not one complete flat lifecycle")
+        if max(fill.timestamp_ms for fill in finals.values()) != row.close_ms:
+            raise EvaluatorError("derived close timestamp differs from lifecycle fills")
+        if any(not value.is_finite() for cash in fills for value in (
+                cash.execution, cash.movement, cash.fee, cash.slippage,
+                cash.impact)):
+            raise EvaluatorError("derived attempt contains non-finite execution economics")
+        if any(cash.impact_failure is not None for cash in fills):
+            raise S.IncompleteAuthority("derived attempt contains an impact authority/limit failure")
+    funding_cash = sum((item.cash for item in row.funding), Decimal(0))
+    base_net = sum((cash.movement-cash.fee-cash.slippage-cash.impact
+                    for cash in row.fills), Decimal(0))+funding_cash
+    stress_funding = sum((item.cash*Decimal("1.5") if item.cash < 0
+                          else item.cash/Decimal("1.5") for item in row.funding), Decimal(0))
+    stress_net = sum((cash.movement-cash.fee-cash.slippage-cash.impact
+                      for cash in row.stress_fills), Decimal(0))+stress_funding
+    if row.atomic_failure:
+        base_net = min(base_net, -sum((cash.fee+cash.slippage+cash.impact
+                                      for cash in row.fills), Decimal(0)))
+        stress_net = min(stress_net, -sum((cash.fee+cash.slippage+cash.impact
+                                          for cash in row.stress_fills), Decimal(0)))
+    if (row.base_net_cash != base_net or row.base_R != base_net/row.initial_risk_cash
+            or row.stress_net_cash != stress_net
+            or row.stress_R != stress_net/row.initial_risk_cash):
+        raise EvaluatorError("derived attempt economics were altered after causal derivation")
+
+
 def marked_cashflow_drawdown(rows: Sequence[ClosedAttempt], marks: Sequence[MarkClose]) -> Decimal:
     mark_index = {(mark.symbol, mark.close_ms): mark for mark in marks}
     if len(mark_index) != len(marks):
         raise S.IncompleteAuthority("duplicate chronological portfolio mark")
     events: list[tuple[int, int, Decimal]] = []
+    required_marks: set[tuple[str, int]] = set()
     for row in rows:
+        _validate_derived_attempt(row)
         entries = {cash.fill.symbol: cash.fill for cash in row.fills if cash.fill.phase == "entry"}
         finals = {cash.fill.symbol: cash.fill for cash in row.fills if cash.fill.phase != "entry"}
         if set(entries) != set(row.symbols) or set(finals) != set(row.symbols):
             raise EvaluatorError("marked drawdown lifecycle is not fully flat")
-        realized_actual = Decimal(0)
         for cash in row.fills:
-            delta = cash.movement-cash.fee-cash.slippage
-            realized_actual += delta
-            events.append((cash.fill.timestamp_ms, 1 if cash.fill.phase == "entry" else 3,
+            delta = cash.movement-cash.fee-cash.slippage-cash.impact
+            events.append((cash.fill.timestamp_ms, 0 if cash.fill.phase == "entry" else 2,
                            delta/row.initial_risk_cash))
         for funding in row.funding:
-            realized_actual += funding.cash
-            events.append((funding.point.nominal_ms, 2, funding.cash/row.initial_risk_cash))
-        adjustment = row.base_net_cash-realized_actual
-        events.append((row.close_ms, 4, adjustment/row.initial_risk_cash))
+            events.append((funding.point.nominal_ms, 1, funding.cash/row.initial_risk_cash))
         for symbol, entry in entries.items():
             final = finals[symbol]
             position_side = entry.transaction_side
             for timestamp in range(row.entry_ms, final.timestamp_ms+S.HOUR_MS, S.HOUR_MS):
+                required_marks.add((symbol, timestamp))
                 mark = mark_index.get((symbol, timestamp))
                 if mark is None:
                     raise S.IncompleteAuthority("missing chronological marked exposure")
                 unrealized = Decimal(0) if timestamp >= final.timestamp_ms else (
                     Decimal(position_side)*entry.quantity*(mark.price-entry.reference)/row.initial_risk_cash)
-                events.append((timestamp, 0, unrealized))
+                events.append((timestamp, 3, unrealized))
+    if set(mark_index) != required_marks:
+        raise S.IncompleteAuthority("chronological mark authority omits/adds an exposure mark")
+    mark_totals: dict[int, Decimal] = {}
+    nonmarks=[]
+    for timestamp,phase,value in events:
+        if phase == 3: mark_totals[timestamp]=mark_totals.get(timestamp,Decimal(0))+value
+        else: nonmarks.append((timestamp,phase,value))
+    events = nonmarks+[(timestamp,3,value) for timestamp,value in mark_totals.items()]
     cash = peak = worst = Decimal(0)
     marks_at_time: dict[int, Decimal] = {}
     for timestamp, phase, value in sorted(events, key=lambda item: (item[0], item[1])):
-        if phase == 0:
+        if phase == 3:
             marks_at_time[timestamp] = marks_at_time.get(timestamp, Decimal(0))+value
             equity = cash+marks_at_time[timestamp]
         else:
@@ -336,9 +577,13 @@ def marked_cashflow_drawdown(rows: Sequence[ClosedAttempt], marks: Sequence[Mark
     return worst
 
 
-def evaluate(input_: EvaluationInput) -> Mapping[str, object]:
-    if input_.fold == "holdout":
-        raise S.EvaluationLocked("sealed holdout is unavailable to Stage A")
+def _evaluate_input(input_: EvaluationInput) -> Mapping[str, object]:
+    if input_._capability is not _DERIVED_CAPABILITY or input_.fold not in (*FOLD_NAMES, "wf_combined"):
+        raise EvaluatorError("statistics require causally derived frozen-fold evidence")
+    if len({row.attempt_id for row in input_.attempts}) != len(input_.attempts):
+        raise EvaluatorError("duplicate derived attempt identity")
+    for row in input_.attempts:
+        _validate_derived_attempt(row)
     rows = tuple(sorted(input_.attempts, key=lambda row: (row.entry_ms, row.symbols)))
     if not rows:
         raise EvaluatorError("empty fold statistics are undefined")
@@ -352,13 +597,15 @@ def evaluate(input_: EvaluationInput) -> Mapping[str, object]:
     exceed = sum(1 for sample in indices
                  if sum((centered[i] for i in sample), Decimal(0))/Decimal(len(sample)) >= observed)
     p_value = Decimal(1+exceed)/Decimal(10_001)
+    close_order = tuple(sorted(rows, key=lambda row: (row.close_ms, row.attempt_id)))
+    realized_dd = realized_drawdown([row.base_R for row in close_order])
     packet = {
         "candidate_id": 257, "default_off": True, "paper_testnet_only": True,
         "fold": input_.fold, "attempts": len(rows), "mean_R": str(observed),
         "profit_factor": str(pf), "stress_mean_R": str(sum(stress, Decimal(0))/Decimal(len(stress))),
-        "stress_profit_factor": str(stress_pf), "realized_drawdown_R": str(realized_drawdown(values)),
+        "stress_profit_factor": str(stress_pf), "realized_drawdown_R": str(realized_dd),
         "marked_cashflow_drawdown_R": str(marked_dd),
-        "worse_of_drawdown_R": str(max(marked_dd, realized_drawdown(values))),
+        "worse_of_drawdown_R": str(max(marked_dd, realized_dd)),
         "bootstrap_p_value": str(p_value), "family_alpha": str(Decimal("0.05")/Decimal(256)),
         "folds": {input_.fold: {"attempts": len(rows), "mean_R": str(observed)}},
         "regimes": {regime: {"attempts": sum(row.regime == regime for row in rows),
@@ -378,7 +625,7 @@ def evaluate(input_: EvaluationInput) -> Mapping[str, object]:
             "attempts_gte_200": len(rows) >= 200,
             "symbols_gte_12": len(packet["symbols"]) >= 12,
             "stress_mean_gt_0": sum(stress, Decimal(0))/Decimal(len(stress)) > 0,
-            "worse_of_drawdown_lte_60": max(marked_dd, realized_drawdown(values)) <= 60,
+            "worse_of_drawdown_lte_60": max(marked_dd, realized_dd) <= 60,
         }
         packet["gate_checks"] = checks
         packet["verdict"] = "DEVELOPMENT_SURVIVOR" if all(checks.values()) else "REJECT_DEVELOPMENT"
@@ -388,3 +635,87 @@ def evaluate(input_: EvaluationInput) -> Mapping[str, object]:
     packet["result_digest"] = hashlib.sha256(json.dumps(packet, sort_keys=True,
         separators=(",", ":")).encode()).hexdigest()
     return packet
+
+
+def evaluate(sealed: SealedEvidence) -> Mapping[str, object]:
+    """Only sealed raw rows may cross the public evaluator boundary."""
+    return _evaluate_input(derive_evaluation(sealed))
+
+
+def _symbol_contributions(rows: Sequence[ClosedAttempt]) -> Mapping[str, Decimal]:
+    out: dict[str, Decimal] = {}
+    for row in rows:
+        funding = {symbol: sum((item.cash for item in row.funding if item.point.symbol == symbol), Decimal(0))
+                   for symbol in row.symbols}
+        for symbol in row.symbols:
+            fills = [item for item in row.fills if item.fill.symbol == symbol]
+            value = sum((item.movement-item.fee-item.slippage-item.impact for item in fills), Decimal(0))+funding[symbol]
+            out[symbol] = out.get(symbol, Decimal(0))+value/row.initial_risk_cash
+    return out
+
+
+def evaluate_stage_a(development: SealedEvidence,
+                     forwards: Sequence[SealedEvidence]) -> Mapping[str, object]:
+    development_input = derive_evaluation(development)
+    dev = dict(_evaluate_input(development_input))
+    if dev["verdict"] != "DEVELOPMENT_SURVIVOR":
+        return {"candidate_id":257,"verdict":"REJECT_DEVELOPMENT","forward_opened":False,
+                "development":dev,"default_off":True,"paper_testnet_only":True}
+    if tuple(item.fold for item in forwards) != ("wf1","wf2","wf3"):
+        raise EvaluatorError("forward evidence must be exact wf1/wf2/wf3 order")
+    forward_inputs = tuple(derive_evaluation(item) for item in forwards)
+    fold_packets = [dict(_evaluate_input(item)) for item in forward_inputs]
+    rows = tuple(row for item in forward_inputs for row in item.attempts)
+    marks = tuple(mark for item in forward_inputs for mark in item.marks)
+    combined = dict(_evaluate_input(EvaluationInput(
+        rows, marks, "wf_combined", _DERIVED_CAPABILITY)))
+    contributions = _symbol_contributions(rows)
+    denominator = sum((abs(value) for value in contributions.values()), Decimal(0))
+    if denominator <= 0:
+        raise EvaluatorError("symbol concentration denominator is undefined")
+    side_values = {1:Decimal(0),-1:Decimal(0)}
+    for row in rows:
+        entries = {item.fill.symbol:item for item in row.fills if item.fill.phase == "entry"}
+        for item in row.fills:
+            entry = entries[item.fill.symbol]
+            side_values[entry.fill.transaction_side] += (item.movement-item.fee-item.slippage-item.impact)/row.initial_risk_cash
+        for funding in row.funding:
+            entry = entries[funding.point.symbol]
+            side_values[entry.fill.transaction_side] += funding.cash/row.initial_risk_cash
+    monthly: dict[str, Decimal] = {}
+    for row in rows:
+        key = datetime.fromtimestamp(row.entry_ms/1000,tz=timezone.utc).strftime("%Y-%m")
+        monthly[key] = monthly.get(key,Decimal(0))+row.base_R
+    expected_months=[]
+    forward_start = S.frozen_splits()["wf1"][0]
+    forward_end = S.frozen_splits()["wf3"][1]
+    start_dt = datetime.fromtimestamp(forward_start/1000,tz=timezone.utc)
+    end_dt = datetime.fromtimestamp(forward_end/1000,tz=timezone.utc)
+    cursor=datetime(start_dt.year,start_dt.month,1,tzinfo=timezone.utc)
+    while cursor < end_dt:
+        expected_months.append(cursor.strftime("%Y-%m"))
+        cursor=datetime(cursor.year+(cursor.month==12),1 if cursor.month==12 else cursor.month+1,1,tzinfo=timezone.utc)
+    positive_months=sum(monthly.get(key,Decimal(0))>0 for key in expected_months)
+    mean=Decimal(combined["mean_R"]); stress_mean=Decimal(combined["stress_mean_R"])
+    pf=Decimal(combined["profit_factor"]); stress_pf=Decimal(combined["stress_profit_factor"])
+    dd=Decimal(combined["worse_of_drawdown_R"]); total=sum((r.base_R for r in rows),Decimal(0))
+    stress_total=sum((r.stress_R for r in rows),Decimal(0))
+    stress_close_order=sorted(rows,key=lambda row:(row.close_ms,row.attempt_id))
+    stress_dd=realized_drawdown([r.stress_R for r in stress_close_order])
+    tier_pass = (dd <= 15 or (dd <= 30 and dd > 0 and total/dd >= Decimal("1.5"))
+                 or (dd <= 60 and dd > 0 and stress_dd > 0 and total/dd >= 2 and stress_total/stress_dd >= 1))
+    checks={
+        "mean_R_gt_0_03":mean>Decimal("0.03"),"profit_factor_gt_1_10":pf>Decimal("1.10"),
+        "attempts_gte_600":len(rows)>=600,"symbols_gte_12":len(contributions)>=12,
+        "two_of_three_positive":sum(sum((r.base_R for r in item.attempts),Decimal(0))>0 for item in forward_inputs)>=2,
+        "worst_fold_mean_gt_minus_0_05":min(sum((r.base_R for r in item.attempts),Decimal(0))/Decimal(len(item.attempts)) for item in forward_inputs)>Decimal("-0.05"),
+        "both_sides_nonnegative":all(value>=0 for value in side_values.values()),
+        "positive_months_gte_55pct":Decimal(positive_months)/Decimal(len(expected_months))>=Decimal("0.55"),
+        "stress_mean_gt_0":stress_mean>0,"stress_pf_gt_1_02":stress_pf>Decimal("1.02"),
+        "multiplicity":Decimal(combined["bootstrap_p_value"])<=Decimal("0.05")/Decimal(256),
+        "symbol_concentration_lte_25pct":max(abs(value)/denominator for value in contributions.values())<=Decimal("0.25"),
+        "drawdown_tier":tier_pass,
+    }
+    return {"candidate_id":257,"verdict":"PASS_STAGE_A" if all(checks.values()) else "REJECT_FORWARD",
+            "forward_opened":True,"checks":checks,"development":dev,"folds":fold_packets,
+            "combined":combined,"default_off":True,"paper_testnet_only":True}

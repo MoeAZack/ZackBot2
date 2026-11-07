@@ -92,8 +92,9 @@ class FundingRow:
     def validate(self) -> None:
         if not self.symbol or not isinstance(self.nominal_ms, int) or not isinstance(self.available_ms, int):
             raise IncompleteAuthority("invalid funding row identity or timestamp")
-        if self.nominal_ms < 0 or self.nominal_ms % HOUR_MS or self.available_ms < self.nominal_ms:
-            raise IncompleteAuthority("funding row is off-grid or available before settlement")
+        if (self.nominal_ms < 0 or self.nominal_ms % HOUR_MS
+                or self.available_ms != self.nominal_ms + FUNDING_DELAY_MS):
+            raise IncompleteAuthority("funding row availability must be exact settlement T+300")
         if not math.isfinite(self.rate):
             raise IncompleteAuthority("non-finite funding rate")
         if type(self.interval_hours) is not int or self.interval_hours not in ALLOWED_INTERVAL_HOURS:
@@ -130,7 +131,7 @@ def robust_funding_surprise(
 ) -> FundingShock:
     """Compute the frozen current r8 surprise from exactly 30 strictly prior rows."""
     current.validate()
-    if decision_ms != current.nominal_ms + FUNDING_DELAY_MS or current.available_ms > decision_ms:
+    if decision_ms != current.nominal_ms + FUNDING_DELAY_MS or current.available_ms != decision_ms:
         raise IncompleteAuthority("current funding is not available at the frozen T+300 decision")
     rows = sorted(prior_rows, key=lambda row: row.nominal_ms)
     # Thirty normalized observations require thirty-one settlement rows: the
