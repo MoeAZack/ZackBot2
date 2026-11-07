@@ -355,6 +355,64 @@ def _allowed_vision_coordinate(request: VisionRequest) -> bool:
             and request.checksum_url == request.url + ".CHECKSUM")
 
 
+def _vision_resume_index(ledger: Path) -> tuple[dict, dict]:
+    """Index validated append-only history once; never cache negative decisions."""
+    raw = ledger.read_bytes() if ledger.exists() else b""
+    rows = _validate_ledger_raw(raw)[1] if raw else []
+    attempts, checksums, admitted = {}, {}, {}
+    for row in rows:
+        if row.get("kind") != "VISION":
+            continue
+        path, attempt = row["path"], row["attempt"]
+        attempts[path] = attempt
+        if row["decision"] == "CHECKSUM_RAW_PRESERVED":
+            checksums[path, attempt] = row
+        elif row["decision"] == "PRESENT_CHECKSUM_VERIFIED":
+            admitted[path] = (checksums.get((path, attempt)), row)
+    return attempts, admitted
+
+
+def _cached_vision_bytes(request: VisionRequest, store: Path,
+                         checksum_raw: bytes, expected: str) -> bytes | None:
+    """Byte verification only. The unchanged later scan still proves schema/cutoff."""
+    target = _safe_store_path(store, request.path)
+    try:
+        if (Path(str(target) + ".CHECKSUM").read_bytes() != checksum_raw
+                or Path(str(target) + ".ok").read_bytes() != (expected + "\n").encode("ascii")):
+            return None
+        raw = target.read_bytes()
+    except OSError:
+        return None
+    return raw if sha256(raw) == expected else None
+
+
+def _linked_cached_vision(request: VisionRequest, store: Path, evidence) -> bytes | None:
+    if evidence is None:
+        return None
+    checksum, admitted = evidence
+    if checksum is None:
+        return None
+    for row in (checksum, admitted):
+        if (row.get("path") != request.path or row.get("url") != request.url
+                or row.get("checksum_url") != request.checksum_url):
+            return None
+    target = _safe_store_path(store, request.path)
+    try:
+        checksum_raw = Path(str(target) + ".CHECKSUM").read_bytes()
+        expected = parse_official_checksum(checksum_raw, target.name)
+    except (OSError, AuthorityV6Error):
+        return None
+    digest = sha256(checksum_raw)
+    if (checksum.get("checksum_path") != request.path + ".CHECKSUM"
+            or checksum.get("checksum_raw_bytes") != len(checksum_raw)
+            or checksum.get("checksum_raw_sha256") != digest
+            or admitted.get("checksum_raw_sha256") != digest
+            or admitted.get("raw_sha256") != expected):
+        return None
+    raw = _cached_vision_bytes(request, store, checksum_raw, expected)
+    return raw if raw is not None and admitted.get("raw_bytes") == len(raw) else None
+
+
 def acquire_vision(requests: Sequence[VisionRequest], store: Path, ledger: Path,
                    fetch: Fetch = http_fetch, *, max_total_bytes: int,
                    phase: str, pit_v9: Mapping | None = None, root: Path = ROOT) -> dict:
@@ -362,7 +420,8 @@ def acquire_vision(requests: Sequence[VisionRequest], store: Path, ledger: Path,
     if max_total_bytes <= 0:
         raise AuthorityV6Error("a positive acquisition byte cap is required")
     total = 0
-    result = {"verified": [], "official_404": [], "checksum_failure": []}
+    result = {"verified": [], "official_404": [], "checksum_failure": [], "cache_reused": []}
+    attempts, admitted = _vision_resume_index(ledger)
     seen: set[str] = set()
     if phase == "seed":
         frozen_symbols = set(frozen_seed_symbols(root))
@@ -376,7 +435,18 @@ def acquire_vision(requests: Sequence[VisionRequest], store: Path, ledger: Path,
         if request.path in seen:
             raise AuthorityV6Error("duplicate Vision request")
         seen.add(request.path)
-        attempt = _next_vision_attempt(ledger, request.path)
+        cached = _linked_cached_vision(request, store, admitted.get(request.path))
+        if cached is not None:
+            total += len(cached)
+            if total > max_total_bytes:
+                raise AuthorityV6Error("Vision acquisition byte cap exceeded")
+            # Retain the original network/checksum admission as provenance.
+            # No new attempt or synthetic parser verdict is manufactured.
+            result["verified"].append(request.path)
+            result["cache_reused"].append(request.path)
+            continue
+        attempt = attempts.get(request.path, -1) + 1
+        attempts[request.path] = attempt
         base_record = {"kind": "VISION", "path": request.path, "attempt": attempt,
                        "url": request.url, "checksum_url": request.checksum_url}
         try:
@@ -411,13 +481,22 @@ def acquire_vision(requests: Sequence[VisionRequest], store: Path, ledger: Path,
                                     "reason": "malformed_checksum"})
             result["checksum_failure"].append(request.path)
             raise
-        try:
-            status, raw, final = fetch(request.url)
-        except Exception as exc:
-            _append_ledger(ledger, {**base_record, "decision": "ARCHIVE_FETCH_FAILED",
-                                    "reason": type(exc).__name__,
-                                    "expected_sha256": expected})
-            raise AuthorityV6Error("Vision archive fetch failed") from exc
+        # An unlinked/prefetched positive requires a fresh official checksum
+        # response first. Identical bytes can then be admitted in this attempt
+        # without another archive transfer. Missing/bad cache follows the
+        # original checksum-verified network acquisition and repair path.
+        raw = _cached_vision_bytes(request, store, checksum_raw, expected)
+        if raw is None:
+            try:
+                status, raw, final = fetch(request.url)
+            except Exception as exc:
+                _append_ledger(ledger, {**base_record, "decision": "ARCHIVE_FETCH_FAILED",
+                                        "reason": type(exc).__name__,
+                                        "expected_sha256": expected})
+                raise AuthorityV6Error("Vision archive fetch failed") from exc
+        else:
+            status, final = 200, request.url
+            result["cache_reused"].append(request.path)
         actual = sha256(raw)
         if final != request.url or status != 200 or actual != expected:
             reason = "redirect" if final != request.url else (
@@ -431,14 +510,15 @@ def acquire_vision(requests: Sequence[VisionRequest], store: Path, ledger: Path,
             _append_ledger(ledger, {**base_record, "decision": "CHECKSUM_FAILURE",
                                     "reason": "byte_cap_exceeded"})
             raise AuthorityV6Error("Vision acquisition byte cap exceeded")
-        _write_atomic(target, raw)
-        _write_atomic(Path(str(target) + ".ok"), (expected + "\n").encode("ascii"))
+        if request.path not in result["cache_reused"]:
+            _write_atomic(target, raw)
+            _write_atomic(Path(str(target) + ".ok"), (expected + "\n").encode("ascii"))
         _append_ledger(ledger, {**base_record, "decision": "PRESENT_CHECKSUM_VERIFIED",
                                 "raw_bytes": len(raw), "raw_sha256": actual,
                                 "checksum_raw_sha256": checksum_raw_sha})
         result["verified"].append(request.path)
     result["bytes"] = total
-    for key in ("verified", "official_404", "checksum_failure"):
+    for key in ("verified", "official_404", "checksum_failure", "cache_reused"):
         result[key].sort()
     return result
 
