@@ -14,6 +14,10 @@ import pytest
 
 from tools.research import btc_residual_leadlag_continuation_c259_stagea as c259
 
+DEV_START = c259.ALL_SPLIT_RANGES["development"][0]
+SOURCE_DIGEST = "a"*64
+VALID_ENTRY = DEV_START+26*c259.HOUR_MS
+
 
 def _run(cwd: Path, *args: str) -> str:
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
@@ -125,17 +129,26 @@ def _volume_rows(asof: int, volume: float = 1_000_000) -> tuple[c259.VolumePoint
                  for timestamp in range(asof-24*c259.HOUR_MS, asof, c259.HOUR_MS))
 
 
-def _atr_bars(decision_close_ms: int) -> tuple[c259.Bar, ...]:
+def _atr_bars(decision_close_ms: int, split_start_ms: int = DEV_START) -> tuple[c259.Bar, ...]:
     return tuple(_bar(timestamp, 100, 101, 99, 100)
-                 for timestamp in range(decision_close_ms-25*c259.HOUR_MS,
+                 for timestamp in range(split_start_ms,
                                         decision_close_ms, c259.HOUR_MS))
 
 
 def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
            cash: float, regime: str = "BTC_ABOVE_OR_ON_EMA200",
-           incomplete: bool = False) -> c259.ClosedTrade:
+           incomplete: bool = False,
+           funding_authority: tuple[c259.FundingEvent, ...] = ()) -> c259.ClosedTrade:
     decision = entry-c259.HOUR_MS
-    atr_bars = _atr_bars(decision)
+    split = c259.split_name(decision)
+    split_start, split_end = c259.ALL_SPLIT_RANGES[split]
+    atr_bars = _atr_bars(decision, split_start)
+    atr_digest = c259.atr_tape_digest(
+        source_digest=SOURCE_DIGEST, split_start_ms=split_start,
+        decision_close_ms=decision, bars=atr_bars)
+    funding_digest = c259.funding_tape_digest(
+        source_digest=SOURCE_DIGEST, symbol=symbol, split_start_ms=split_start,
+        split_end_ms=split_end, events=funding_authority)
     stop, target_decimal = c259.protection_prices(
         Decimal("100"), Decimal(str(c259.atr24_wilder(atr_bars, decision))), side,
         Decimal("0.01"))
@@ -161,8 +174,9 @@ def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
                                    phase=("PROTECTION_FAILURE_CLEANUP" if incomplete
                                           else "SCHEDULED"), symbol=symbol,
                                    reference=exit_reference, quantity=quantity)),
-                            (), sizing, decision, atr_bars, lifecycle, entry_bar, exit_bar,
-                            float(stop), target, incomplete)
+                            (), sizing, decision, split_start, SOURCE_DIGEST, atr_digest,
+                            atr_bars, funding_authority, funding_digest, lifecycle,
+                            entry_bar, exit_bar, float(stop), target, incomplete)
 
 
 def _stress_trade(trade: c259.ClosedTrade) -> c259.ClosedTrade:
@@ -408,10 +422,18 @@ def test_exit_order_gap_cap_collision_and_schedule(side: int, bar: c259.Bar,
 
 
 def test_closed_trade_replays_full_tape_protection_and_earliest_exit() -> None:
-    entry = 30*c259.HOUR_MS
+    entry = DEV_START+30*c259.HOUR_MS
     scheduled = _trade("scheduled", 1, "ALT", entry, entry+12*c259.HOUR_MS, 1)
     assert c259.metrics((scheduled,))["closed"] == 1
     quantity = float(scheduled.sizing.quantity)
+    for suffix_length in (25, 26):
+        suffix = scheduled.atr_bars[-suffix_length:]
+        suffix_digest = c259.atr_tape_digest(
+            source_digest=SOURCE_DIGEST, split_start_ms=DEV_START,
+            decision_close_ms=scheduled.decision_close_ms, bars=suffix)
+        with pytest.raises(c259.IncompleteAuthority, match="split-bound"):
+            c259.metrics((replace(scheduled, atr_bars=suffix,
+                                  atr_authority_digest=suffix_digest),))
 
     target_ms = entry+2*c259.HOUR_MS
     target_bar = _bar(target_ms, 109, 110, 107, 109)
@@ -425,7 +447,17 @@ def test_closed_trade_replays_full_tape_protection_and_earliest_exit() -> None:
     assert c259.metrics((target_trade,))["closed"] == 1
     boundary_funding = c259.AppliedFunding(
         c259.FundingEvent(target_ms, .001), _mark(target_ms-c259.HOUR_MS, "ALT"))
-    assert c259.metrics((replace(target_trade, funding_events=(boundary_funding,)),))[
+    target_authority = (boundary_funding.event,)
+    target_funding_digest = c259.funding_tape_digest(
+        source_digest=SOURCE_DIGEST, symbol="ALT", split_start_ms=DEV_START,
+        split_end_ms=c259.ALL_SPLIT_RANGES["development"][1],
+        events=target_authority)
+    with pytest.raises(c259.IncompleteEpisode, match="exactly cover"):
+        c259.metrics((replace(target_trade, funding_authority=target_authority,
+                              funding_authority_digest=target_funding_digest),))
+    assert c259.metrics((replace(target_trade, funding_events=(boundary_funding,),
+                                 funding_authority=target_authority,
+                                 funding_authority_digest=target_funding_digest),))[
         "closed"] == 1
 
     collision_open = entry+2*c259.HOUR_MS
@@ -442,9 +474,15 @@ def test_closed_trade_replays_full_tape_protection_and_earliest_exit() -> None:
     range_boundary_funding = c259.AppliedFunding(
         c259.FundingEvent(collision_trade.close_ms, .001),
         _mark(collision_trade.close_ms-c259.HOUR_MS, "ALT"))
+    range_authority = (range_boundary_funding.event,)
+    range_funding_digest = c259.funding_tape_digest(
+        source_digest=SOURCE_DIGEST, symbol="ALT", split_start_ms=DEV_START,
+        split_end_ms=c259.ALL_SPLIT_RANGES["development"][1], events=range_authority)
     with pytest.raises(c259.IncompleteEpisode, match="funding"):
         c259.metrics((replace(collision_trade,
-                              funding_events=(range_boundary_funding,)),))
+                              funding_events=(range_boundary_funding,),
+                              funding_authority=range_authority,
+                              funding_authority_digest=range_funding_digest),))
 
     with pytest.raises(c259.IncompleteEpisode, match="stop/target"):
         c259.metrics((replace(scheduled, target=999999),))
@@ -472,11 +510,19 @@ def test_funding_sign_fill_costs_and_frozen_event_order() -> None:
                               volume_bars=intrabar_bars)
     assert intrabar.impact_asof_ms == timestamp-c259.HOUR_MS
     phases = [row[1] for row in c259.ordered_events([
-        (1, "ENTRY", "A", None), (1, "FUNDING", "A", None),
-        (1, "GAP_OR_SCHEDULED", "A", None),
-        (1, "INTRABAR_PRIOR_BOUNDARY", "A", None), (1, "MARK", "A", None)])]
+        (c259.HOUR_MS, "ENTRY", "A", "x", None),
+        (c259.HOUR_MS, "FUNDING", "A", "x", None),
+        (c259.HOUR_MS, "GAP_OR_SCHEDULED", "A", "x", None),
+        (c259.HOUR_MS, "INTRABAR_PRIOR_BOUNDARY", "A", "x", None),
+        (c259.HOUR_MS, "MARK", "A", "x", None)])]
     assert phases == ["INTRABAR_PRIOR_BOUNDARY", "FUNDING", "GAP_OR_SCHEDULED",
                       "ENTRY", "MARK"]
+    same_symbol = c259.ordered_events([
+        (c259.HOUR_MS, "ENTRY", "A", "z-attempt", None),
+        (c259.HOUR_MS, "ENTRY", "A", "a-attempt", None)])
+    assert [row[3] for row in same_symbol] == ["a-attempt", "z-attempt"]
+    with pytest.raises(c259.IncompleteAuthority, match="duplicate"):
+        c259.ordered_events([same_symbol[0], same_symbol[0]])
 
 
 def test_causal_marks_funding_and_fill_volume_fail_on_duplicates_or_gaps() -> None:
@@ -488,7 +534,8 @@ def test_causal_marks_funding_and_fill_volume_fail_on_duplicates_or_gaps() -> No
     with pytest.raises(c259.IncompleteAuthority, match="duplicate"):
         c259.causal_mark_before(marks + [marks[0]], event)
     assert len(c259.validate_funding_events([
-        c259.FundingEvent(event, .001), c259.FundingEvent(event+1, -.001)])) == 2
+        c259.FundingEvent(event, .001),
+        c259.FundingEvent(event+c259.HOUR_MS, -.001)])) == 2
     with pytest.raises(c259.IncompleteAuthority, match="duplicate funding"):
         c259.validate_funding_events([c259.FundingEvent(event, 0),
                                       c259.FundingEvent(event, .001)])
@@ -501,12 +548,13 @@ def test_causal_marks_funding_and_fill_volume_fail_on_duplicates_or_gaps() -> No
 
 
 def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
+    entry_ms, cleanup_ms = VALID_ENTRY, VALID_ENTRY+c259.HOUR_MS
     filters = c259.Filters(Decimal("0.01"), Decimal("0.001"), Decimal("0.001"),
                            Decimal("100"), Decimal("5"))
     sized = c259.size_position(side=1, entry=Decimal("100"), stop=Decimal("96"),
                                filters=filters, side_book_equity=Decimal("2000"),
-                               entry_impact_asof_ms=c259.HOUR_MS,
-                               entry_volume_rows=_volume_rows(c259.HOUR_MS))
+                               entry_impact_asof_ms=entry_ms,
+                               entry_volume_rows=_volume_rows(entry_ms))
     assert sized is not None
     long_book, short_book = c259.SideBook(Decimal("2000")), c259.SideBook(Decimal("2000"))
     long_book.admit("ALT", sized)
@@ -515,44 +563,71 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
         long_book.admit(symbol, sized)
     assert not long_book.can_admit("D", sized)
     quantity = float(sized.quantity)
-    decision = 0
+    decision = entry_ms-c259.HOUR_MS
     atr_bars = _atr_bars(decision)
-    entry_bar = _bar(c259.HOUR_MS, 100, 101, 99, 100)
-    exit_bar = _bar(2*c259.HOUR_MS, 100, 101, 99, 100)
+    atr_digest = c259.atr_tape_digest(
+        source_digest=SOURCE_DIGEST, split_start_ms=DEV_START,
+        decision_close_ms=decision, bars=atr_bars)
+    funding_authority = (c259.FundingEvent(cleanup_ms, .005),)
+    funding_digest = c259.funding_tape_digest(
+        source_digest=SOURCE_DIGEST, symbol="ALT", split_start_ms=DEV_START,
+        split_end_ms=c259.ALL_SPLIT_RANGES["development"][1],
+        events=funding_authority)
+    entry_bar = _bar(entry_ms, 100, 101, 99, 100)
+    exit_bar = _bar(cleanup_ms, 100, 101, 99, 100)
     lifecycle = (entry_bar, exit_bar)
     failed = c259.protection_failure(attempt_id="x", side=1, symbol="ALT",
-                                    entry_ms=c259.HOUR_MS, cleanup_ms=2*c259.HOUR_MS, fills=[
+                                    entry_ms=entry_ms, cleanup_ms=cleanup_ms, fills=[
                                         _fill(phase="ENTRY", symbol="ALT",
-                                              timestamp=c259.HOUR_MS, side=1, quantity=quantity),
+                                              timestamp=entry_ms, side=1, quantity=quantity),
                                         _fill(phase="PROTECTION_FAILURE_CLEANUP", symbol="ALT",
-                                              timestamp=2*c259.HOUR_MS, side=-1,
+                                              timestamp=cleanup_ms, side=-1,
                                               quantity=quantity)],
                                     funding_events=[c259.AppliedFunding(
-                                        c259.FundingEvent(2*c259.HOUR_MS, .005),
-                                        _mark(c259.HOUR_MS, "ALT", 100))],
+                                        funding_authority[0],
+                                        _mark(entry_ms, "ALT", 100))],
                                     sizing=sized, decision_close_ms=decision,
-                                    atr_bars=atr_bars, lifecycle_bars=lifecycle,
+                                    split_start_ms=DEV_START,
+                                    authority_source_digest=SOURCE_DIGEST,
+                                    atr_authority_digest=atr_digest, atr_bars=atr_bars,
+                                    funding_authority=funding_authority,
+                                    funding_authority_digest=funding_digest,
+                                    lifecycle_bars=lifecycle,
                                     entry_bar=entry_bar, exit_bar=exit_bar,
                                     stop=96, target=108,
                                     regime="BTC_ABOVE_OR_ON_EMA200")
     assert failed.incomplete and failed.net_cash < -.5
     with pytest.raises(c259.IncompleteEpisode, match="exactly flat"):
         c259.protection_failure(attempt_id="x", side=1, symbol="ALT",
-                                entry_ms=c259.HOUR_MS, cleanup_ms=2*c259.HOUR_MS, fills=[
-                                    _fill(phase="ENTRY", symbol="ALT", timestamp=c259.HOUR_MS,
+                                entry_ms=entry_ms, cleanup_ms=cleanup_ms, fills=[
+                                    _fill(phase="ENTRY", symbol="ALT", timestamp=entry_ms,
                                           side=1, quantity=quantity),
                                     _fill(phase="PROTECTION_FAILURE_CLEANUP", symbol="ALT",
-                                          timestamp=2*c259.HOUR_MS, side=-1,
+                                          timestamp=cleanup_ms, side=-1,
                                           quantity=quantity/2)],
                                 funding_events=[], sizing=sized, decision_close_ms=decision,
-                                atr_bars=atr_bars, lifecycle_bars=lifecycle,
+                                split_start_ms=DEV_START,
+                                authority_source_digest=SOURCE_DIGEST,
+                                atr_authority_digest=atr_digest, atr_bars=atr_bars,
+                                funding_authority=(), funding_authority_digest=c259.funding_tape_digest(
+                                    source_digest=SOURCE_DIGEST, symbol="ALT",
+                                    split_start_ms=DEV_START,
+                                    split_end_ms=c259.ALL_SPLIT_RANGES["development"][1],
+                                    events=()), lifecycle_bars=lifecycle,
                                 entry_bar=entry_bar,
                                 exit_bar=exit_bar, stop=96, target=108,
                                 regime="BTC_ABOVE_OR_ON_EMA200")
     with pytest.raises(c259.IncompleteEpisode):
         c259.protection_failure(attempt_id="x", side=1, symbol="ALT", entry_ms=1,
                                 cleanup_ms=1, fills=[], funding_events=[], sizing=sized,
-                                decision_close_ms=decision, atr_bars=atr_bars,
+                                decision_close_ms=decision, split_start_ms=DEV_START,
+                                authority_source_digest=SOURCE_DIGEST,
+                                atr_authority_digest=atr_digest, atr_bars=atr_bars,
+                                funding_authority=(), funding_authority_digest=c259.funding_tape_digest(
+                                    source_digest=SOURCE_DIGEST, symbol="ALT",
+                                    split_start_ms=DEV_START,
+                                    split_end_ms=c259.ALL_SPLIT_RANGES["development"][1],
+                                    events=()),
                                 lifecycle_bars=lifecycle,
                                 entry_bar=entry_bar, exit_bar=exit_bar, stop=96, target=108,
                                 regime="BTC_ABOVE_OR_ON_EMA200")
@@ -562,8 +637,10 @@ def test_chronological_marked_drawdown_and_realized_order_are_not_entry_order() 
     # Marked equity falls $100 from a $2,050 peak; close-time realized fall is 2R.
     marked_dd = c259.marked_equity_drawdown_R([(1, 0, 2050), (2, 0, 1950),
                                                 (3, 0, 2000)], 2000)
-    trades = [_trade("late-entry", 1, "A", 10*c259.HOUR_MS, 22*c259.HOUR_MS, -2),
-              _trade("early-entry", 1, "B", c259.HOUR_MS, 13*c259.HOUR_MS, 1)]
+    trades = [_trade("late-entry", 1, "A", VALID_ENTRY+9*c259.HOUR_MS,
+                     VALID_ENTRY+21*c259.HOUR_MS, -2),
+              _trade("early-entry", 1, "B", VALID_ENTRY,
+                     VALID_ENTRY+12*c259.HOUR_MS, 1)]
     realized_dd = c259.closed_realized_drawdown_R(trades)
     assert marked_dd == pytest.approx(5) and realized_dd > 0
     assert c259.gate_drawdown_R(marked_drawdown_R=marked_dd,
@@ -573,15 +650,16 @@ def test_chronological_marked_drawdown_and_realized_order_are_not_entry_order() 
 
 
 def test_derived_drawdown_requires_every_open_hour_mark() -> None:
-    trade = _trade("marks", 1, "ALT", 10*c259.HOUR_MS, 22*c259.HOUR_MS, 1)
+    trade = _trade("marks", 1, "ALT", VALID_ENTRY, VALID_ENTRY+12*c259.HOUR_MS, 1)
     complete = tuple(_mark(t, "ALT", 100) for t in range(
         trade.entry_ms, trade.close_ms, c259.HOUR_MS))
-    points = c259.derive_equity_points((trade,), complete, start_ms=9*c259.HOUR_MS,
-                                      end_ms=23*c259.HOUR_MS)
+    points = c259.derive_equity_points((trade,), complete, start_ms=VALID_ENTRY-c259.HOUR_MS,
+                                      end_ms=VALID_ENTRY+13*c259.HOUR_MS)
     assert points[-1][0] == trade.close_ms
     with pytest.raises(c259.IncompleteAuthority, match="missing, extra"):
-        c259.derive_equity_points((trade,), complete[::2], start_ms=9*c259.HOUR_MS,
-                                  end_ms=23*c259.HOUR_MS)
+        c259.derive_equity_points((trade,), complete[::2],
+                                  start_ms=VALID_ENTRY-c259.HOUR_MS,
+                                  end_ms=VALID_ENTRY+13*c259.HOUR_MS)
 
 
 def test_split_boundaries_and_regime_state_reset() -> None:
@@ -595,8 +673,9 @@ def test_split_boundaries_and_regime_state_reset() -> None:
 
 
 def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
-    base = [_trade("a", 1, "A", c259.HOUR_MS, 13*c259.HOUR_MS, 5),
-            _trade("b", 1, "B", 3*c259.HOUR_MS, 15*c259.HOUR_MS, -1)]
+    base = [_trade("a", 1, "A", VALID_ENTRY, VALID_ENTRY+12*c259.HOUR_MS, 5),
+            _trade("b", 1, "B", VALID_ENTRY+2*c259.HOUR_MS,
+                   VALID_ENTRY+14*c259.HOUR_MS, -1)]
     stress = [_stress_trade(trade) for trade in base]
     c259.stress_same_selection(base, stress)
     with pytest.raises(c259.C259Error, match="changed admitted"):
@@ -630,10 +709,11 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
                           initial_risk_cash=base[0].sizing.initial_risk_cash/2)
     with pytest.raises(c259.IncompleteEpisode, match="initial risk"):
         c259.metrics([replace(base[0], sizing=forged_risk)])
-    early = _trade("early", 1, "EARLY", c259.HOUR_MS, 2*c259.HOUR_MS, 1)
+    early = _trade("early", 1, "EARLY", VALID_ENTRY,
+                   VALID_ENTRY+c259.HOUR_MS, 1)
     with pytest.raises(c259.IncompleteEpisode, match="mandatory"):
         c259.metrics([early])
-    gap = _trade("gap", 1, "GAP", c259.HOUR_MS, 13*c259.HOUR_MS, -1)
+    gap = _trade("gap", 1, "GAP", VALID_ENTRY, VALID_ENTRY+12*c259.HOUR_MS, -1)
     forged_gap_fill = _fill(movement=-float(gap.sizing.quantity)*5, side=-1,
                             timestamp=gap.close_ms, phase="STOP_GAP", symbol="GAP",
                             reference=95.0, quantity=float(gap.sizing.quantity))
@@ -649,8 +729,8 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
     for name, (start, _end) in c259.FOLD_RANGES.items():
         if name == "development":
             continue
-        trade = _trade(name, 1, f"{name}USDT", start+c259.HOUR_MS,
-                       start+13*c259.HOUR_MS, 1)
+        trade = _trade(name, 1, f"{name}USDT", start+26*c259.HOUR_MS,
+                       start+38*c259.HOUR_MS, 1)
         stressed = _stress_trade(trade)
         marks = tuple(_mark(timestamp, trade.symbol, 100)
                       for timestamp in range(trade.entry_ms, trade.close_ms, c259.HOUR_MS))
@@ -668,7 +748,14 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
                                           timestamp_ms=event_ms-c259.HOUR_MS,
                                           symbol=funded.symbol, price=100,
                                           source_digest="b"*64))
-    funded_base = replace(funded, funding_events=(conflicting,))
+    funded_authority = (conflicting.event,)
+    split_start, split_end = c259.ALL_SPLIT_RANGES[folds[0].name]
+    funded_base = replace(
+        funded, funding_events=(conflicting,), funding_authority=funded_authority,
+        funding_authority_digest=c259.funding_tape_digest(
+            source_digest=SOURCE_DIGEST, symbol=funded.symbol,
+            split_start_ms=split_start, split_end_ms=split_end,
+            events=funded_authority))
     funded_stress = _stress_trade(funded_base)
     conflicting_fold = replace(folds[0], base=(funded_base,), stress=(funded_stress,))
     with pytest.raises(c259.IncompleteAuthority, match="conflicts"):
