@@ -22,7 +22,8 @@ BOUND_CODE = (
  "tools/research/funding_shock_reversal_xsec_c257_protected_adapter.py",
  "tools/research/run_funding_shock_reversal_xsec_c257_protected.py",
  "tools/research/c257_archive_loader.py", "tools/research/authority_v6.py",
- "tools/research/manifest.py", "tools/research/universe.py")
+ "tools/research/manifest.py", "tools/research/universe.py", "tools/research/c257_reporting.py",
+ "contracts/strategy_causal_pack_01/c257_reporting_diagnostic_amendment.v1.json")
 
 class ProtectedAdapterError(RuntimeError): pass
 
@@ -133,6 +134,12 @@ def evaluate_once(*, store: Path | None = None, identity_dir: Path | None = None
                 "capital_simulations":capital_results,"forward_opened":True,
                 "default_off":True,"paper_testnet_only":True}
         packet["promotable"] = False
+        packet["economic_verdict"] = packet["verdict"]
+        packet["full_report_acceptance"] = "PENDING_INDEPENDENT_REVIEW_AND_BASKET_CONTROL_SPECIFICATION"
+        packet["paper_or_forward_qualification_claimed"] = False
+        packet["capital_feasibility"] = {"required_capitals_usd":capitals,
+            "all_required_development_cases_survived":passed,
+            "selection_policy":"All fixed capital cases reported; no capital-slice rescue"}
         packet["integrity"] = {"bindings_digest": bindings.digest,
             "evaluation_identity": identity, "git_head": bindings.head}
         packet["output_identity_sha256"] = hashlib.sha256(json.dumps(packet,sort_keys=True,

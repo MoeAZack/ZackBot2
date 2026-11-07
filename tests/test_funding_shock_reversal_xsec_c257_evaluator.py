@@ -85,9 +85,9 @@ def test_atomic_one_leg_is_protected_and_next_open_only():
     assert final[0].phase == "atomic_cleanup" and final[0].timestamp_ms == 26*S.HOUR_MS
 
 
-def test_frozen_ambiguity_policy_keeps_due_bar_stop_first():
+def test_resolved_fixed_exit_open_precedes_due_bar_future_range():
     finals=E.derive_lifecycle(legs(),{"L":bars(touch_long_at=33),"S":bars()})
-    assert finals[0].phase=="stop" and finals[0].timestamp_ms==34*S.HOUR_MS
+    assert all(fill.phase=="exit" and fill.timestamp_ms==33*S.HOUR_MS for fill in finals)
 
 
 def test_new_admission_keeps_prior_unrealized_profit_in_marked_drawdown():

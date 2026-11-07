@@ -72,9 +72,12 @@ class ProtectedArchiveLoader:
         rel = record["path"]
         path = _path(self.store, rel)
         meta = M.archive_meta(rel)
-        if (meta["series"], meta["interval"], meta["symbol"]) != (
+        if new and (meta["series"], meta["interval"], meta["symbol"]) != (
                 record["series"], record["interval"], record["symbol"]):
             raise ArchiveLoaderError("record coordinates differ from archive path")
+        if not new and any(key in record and record[key] != meta[key]
+                           for key in ("series","interval","symbol")):
+            raise ArchiveLoaderError("base record coordinates differ from archive path")
         raw = path.read_bytes()
         expected = record["raw_sha256"] if new else record["sha256"]
         expected_size = record["raw_bytes"] if new else record["bytes"]
@@ -196,26 +199,29 @@ class ProtectedArchiveLoader:
                 or V.sha256(V.canonical(cells)) != self.filters["weekly_membership_sha256"][key]):
             raise ArchiveLoaderError("derived CORE-20 differs from bound membership")
         symbols = {symbol for cell in cells for symbol in cell["members"]}
+        read_symbols = symbols | {"BTCUSDT"}
         warm = start-32*8*S.HOUR_MS
         tables: dict[tuple[str, str], dict[int, object]] = {}
         for new, records in ((False, self.manifest["active_base_files_v5"]),
                              (True, self.manifest["files_v6"])):
             for record in records:
-                stream = record["series"]
-                if record["symbol"] not in symbols or (stream, record["interval"]) not in (
+                meta = M.archive_meta(record["path"])
+                stream, symbol = meta["series"], meta["symbol"]
+                if symbol not in read_symbols or (stream, meta["interval"]) not in (
                         ("klines", "1h"), ("markPriceKlines", "1h"), ("fundingRate", None)):
                     continue
-                meta = M.archive_meta(record["path"])
+                if symbol not in symbols and stream != "klines":
+                    continue
                 if meta["month_start_ms"] >= end or meta["month_end_ms"] <= warm:
                     continue
-                target = tables.setdefault((record["symbol"], stream), {})
+                target = tables.setdefault((symbol, stream), {})
                 for row in self._source_rows(record, warm, end, new=new):
                     timestamp = int(row["fundingTime"] if isinstance(row, Mapping) else row[0])
                     if timestamp in target:
                         raise ArchiveLoaderError("duplicate source timestamp in active authority")
                     target[timestamp] = row
         bars, marks, funding, funding_rates = {}, {}, {}, {}
-        for symbol in symbols:
+        for symbol in read_symbols:
             bars[symbol] = tuple(S.HourBar(t, *(_number(row[i]) for i in (1,2,3,4,7)))
                 for t, row in sorted(tables.get((symbol, "klines"), {}).items()))
             marks[symbol] = {t: _number(row[4]) for t, row in
@@ -236,34 +242,48 @@ class ProtectedArchiveLoader:
         funding_indices = {symbol:{row.nominal_ms:index for index,row in enumerate(chain)}
                            for symbol,chain in funding.items()}
         times = sorted({row.nominal_ms for chain in funding.values() for row in chain
-                        if start <= row.nominal_ms and row.nominal_ms+10*S.HOUR_MS < end})
+                        if start <= row.nominal_ms < end and row.interval_hours in S.ALLOWED_INTERVAL_HOURS})
         for timestamp in times:
             active = max((cell for cell in cells if S._iso_ms(cell["monday_utc"]) <= timestamp),
                          key=lambda cell: cell["monday_utc"])
+            if not any(timestamp in funding_indices[symbol] for symbol in active["members"]):
+                continue
+            if timestamp+10*S.HOUR_MS >= end:
+                cohorts.append(E.RawCohortEvidence(f"{fold}:{timestamp}",timestamp,{},"FOLD_FLAT_BOUNDARY"))
+                continue
             evidence = {}
+            vetoes = {}
             for symbol in active["members"]:
                 chain = funding[symbol]
                 index = funding_indices[symbol].get(timestamp)
                 current = chain[index] if index is not None else None
                 prior = chain[max(0,index-31):index] if index is not None else []
                 if current is None or len(prior) != 31:
+                    vetoes[symbol] = "NO_CURRENT_SETTLEMENT" if current is None else "INSUFFICIENT_PRIOR_FUNDING"
                     continue
                 try:
                     S.robust_funding_surprise(current, prior, decision_ms=timestamp+S.FUNDING_DELAY_MS)
-                except S.IncompleteAuthority:
+                except S.IncompleteAuthority as exc:
+                    vetoes[symbol] = str(exc)
                     continue  # the immutable symbol veto, before tail pairing
                 causal_bars = tuple(bar for bar in bars[symbol]
                     if timestamp-24*S.HOUR_MS <= bar.open_ms <= timestamp+10*S.HOUR_MS)
-                evidence[symbol] = E.RawSymbolEvidence(current,tuple(prior),causal_bars,causal_bars,
+                evidence[symbol] = E.RawSymbolEvidence(current,tuple(prior),causal_bars,bars[symbol],
                     filters[symbol],tuple(E.FundingPoint(symbol,row.nominal_ms,row.available_ms,
                         funding_rates[symbol][row.nominal_ms]) for row in chain
                         if timestamp <= row.nominal_ms < timestamp+10*S.HOUR_MS),
                     tuple(E.MarkClose(symbol,t,price) for t,price in marks[symbol].items()
                           if timestamp <= t < timestamp+10*S.HOUR_MS),
                     timestamp,timestamp+10*S.HOUR_MS)
-            cohorts.append(E.RawCohortEvidence(f"{fold}:{timestamp}",timestamp,evidence))
+            cohorts.append(E.RawCohortEvidence(f"{fold}:{timestamp}",timestamp,evidence,symbol_vetoes=vetoes))
         # Portfolio marks use each verified last-completed mark's causal boundary.
         # Evaluator trims these to actual exposure windows after deriving entries.
         portfolio = tuple(E.MarkClose(symbol,t+S.HOUR_MS,price) for symbol in sorted(symbols)
                           for t,price in sorted(marks[symbol].items()) if start <= t+S.HOUR_MS < end)
-        return E.SealedEvidence(fold,initial_equity,tuple(cohorts),portfolio)
+        coverage = {"effective_start_ms":start,"end_exclusive_ms":end,
+            "scheduled_event_hours":tuple(cohort.nominal_ms for cohort in cohorts),
+            "pre_authority_ineligible_calendar_hours":(start-S.frozen_splits()[fold][0])//S.HOUR_MS,
+            "pre_authority_event_count":None,
+            "pre_authority_policy":"FILTER_AUTHORITY_UNAVAILABLE; no pre-authority market rows read"}
+        return E.SealedEvidence(fold,initial_equity,tuple(cohorts),portfolio,
+                                tuple(bar for bar in bars["BTCUSDT"] if bar.open_ms>=start-S.HOUR_MS),coverage)

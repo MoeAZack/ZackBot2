@@ -5,11 +5,12 @@ import hashlib
 import json
 import math
 from datetime import datetime, timezone
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from decimal import Decimal
 from typing import Mapping, Protocol, Sequence
 
 from tools.research import funding_shock_reversal_xsec_c257_stagea as S
+from tools.research import c257_reporting as R
 
 
 class EvaluatorError(RuntimeError):
@@ -92,7 +93,7 @@ class ClosedAttempt:
     stress_R: Decimal
     atomic_failure: bool
     symbols: tuple[str, ...]
-    regime: str = "UNSPECIFIED"
+    regime: str = "UNCLASSIFIED"
     _capability: object = field(default=None, repr=False, compare=False)
 
 
@@ -102,6 +103,7 @@ class EvaluationInput:
     marks: tuple[MarkClose, ...]
     fold: str
     _capability: object = field(default=None, repr=False, compare=False)
+    disclosure: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,8 @@ class RawCohortEvidence:
     cohort_id: str
     nominal_ms: int
     symbols: Mapping[str, RawSymbolEvidence]
+    ineligible_reason: str | None = None
+    symbol_vetoes: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -130,6 +134,8 @@ class SealedEvidence:
     initial_equity: Decimal
     cohorts: tuple[RawCohortEvidence, ...]
     portfolio_marks: tuple[MarkClose, ...]
+    benchmark_bars: tuple[S.HourBar, ...] = ()
+    coverage: Mapping[str, object] = field(default_factory=dict)
 
 
 class SealedTypedLoader(Protocol):
@@ -184,7 +190,8 @@ def _atr24(bars: Sequence[S.HourBar], entry_ms: int) -> Decimal:
     completed = sorted((bar for bar in bars if bar.close_ms <= entry_ms), key=lambda bar: bar.open_ms)
     if len(completed) < 25:
         raise S.IncompleteAuthority("ATR24 requires previous close plus 24 causal true ranges")
-    completed = completed[-25:]
+    for bar in completed:
+        bar.validate()
     if [bar.open_ms for bar in completed] != list(range(completed[0].open_ms,
                                                         entry_ms, S.HOUR_MS)):
         raise S.IncompleteAuthority("ATR24 bars are not exact contiguous causal rows")
@@ -235,19 +242,36 @@ def _book_equity_at(initial_equity: Decimal, rows: Sequence[ClosedAttempt],
     return equity
 
 
-def derive_evaluation(sealed: SealedEvidence) -> EvaluationInput:
+def derive_evaluation(sealed: SealedEvidence, *, _diagnostic: str | None = None,
+                      _primary_admissions: frozenset[str] | None = None) -> EvaluationInput:
     """Consume sealed raw rows and derive all economic attempts from scratch."""
     if not isinstance(sealed, SealedEvidence) or sealed.fold not in FOLD_NAMES:
         raise EvaluatorError("loader must return sealed raw evidence for one frozen fold")
     if not sealed.initial_equity.is_finite() or sealed.initial_equity <= 0:
         raise EvaluatorError("sealed book initial equity must be finite and positive")
+    if (len({row.cohort_id for row in sealed.cohorts}) != len(sealed.cohorts)
+            or len({row.nominal_ms for row in sealed.cohorts}) != len(sealed.cohorts)):
+        raise S.IncompleteAuthority("duplicate scheduled cohort identity or nominal timestamp")
     split = S.frozen_splits()[sealed.fold]
     attempts: list[ClosedAttempt] = []
+    decisions: list[dict[str, object]] = []
     active_until: dict[str, int] = {}
     active_pairs: list[tuple[int, Decimal, Decimal]] = []
+    regime_start = sealed.coverage.get("effective_start_ms",split[0])
+    regime_labels = R.regime_labels(tuple(bar for bar in sealed.benchmark_bars if bar.open_ms>=regime_start))
+    if _diagnostic is not None:
+        import numpy as np
+        diagnostic_rng=np.random.Generator(np.random.PCG64(R.BASELINE_SEED))
     for cohort in sorted(sealed.cohorts, key=lambda row: (row.nominal_ms, row.cohort_id)):
         if not split[0] <= cohort.nominal_ms < split[1] or not cohort.cohort_id:
             raise S.IncompleteAuthority("cohort crosses frozen fold boundary")
+        decision = {"cohort_id":cohort.cohort_id,"nominal_ms":cohort.nominal_ms,
+                    "eligible_symbols":len(cohort.symbols),"admitted_attempts":[],
+                    "skipped_pairs":[],"symbol_vetoes":dict(cohort.symbol_vetoes),
+                    "reason":cohort.ineligible_reason}
+        decisions.append(decision)
+        if cohort.ineligible_reason is not None:
+            continue
         if any(symbol != evidence.current.symbol for symbol, evidence in cohort.symbols.items()):
             raise S.IncompleteAuthority("cohort symbol key differs from funding authority")
         shocks = []
@@ -260,23 +284,34 @@ def derive_evaluation(sealed: SealedEvidence) -> EvaluationInput:
                 raise S.IncompleteAuthority("full funding authority bounds escape the frozen fold")
             shocks.append(S.robust_funding_surprise(evidence.current, evidence.prior_31,
                 decision_ms=cohort.nominal_ms+S.FUNDING_DELAY_MS))
-        pairs = S.fixed_index_pairs(shocks)
+        pairs = (S.fixed_index_pairs(shocks) if _diagnostic is None
+                 else R.diagnostic_pairs(shocks,_diagnostic,diagnostic_rng))
         for pair in pairs:
+            if (_primary_admissions is not None
+                    and f"{cohort.cohort_id}:{pair.index}" not in _primary_admissions):
+                decision["skipped_pairs"].append({"index":pair.index,"reason":"PRIMARY_NOT_ADMITTED"})
+                continue
             if active_until.get(pair.long_symbol, -1) > cohort.nominal_ms+S.HOUR_MS or active_until.get(pair.short_symbol, -1) > cohort.nominal_ms+S.HOUR_MS:
+                decision["skipped_pairs"].append({"index":pair.index,"reason":"ALREADY_OCCUPIED"})
                 continue
             long_raw, short_raw = cohort.symbols[pair.long_symbol], cohort.symbols[pair.short_symbol]
-            long_entry, short_entry = (_exact_entry_bar(long_raw.bars, cohort.nominal_ms),
-                                       _exact_entry_bar(short_raw.bars, cohort.nominal_ms))
+            try:
+                long_entry, short_entry = (_exact_entry_bar(long_raw.bars, cohort.nominal_ms),
+                                           _exact_entry_bar(short_raw.bars, cohort.nominal_ms))
+                long_atr, short_atr = _atr24(long_raw.atr_bars, long_entry.open_ms), _atr24(short_raw.atr_bars, short_entry.open_ms)
+            except S.IncompleteAuthority as exc:
+                decision["skipped_pairs"].append({"index":pair.index,"reason":"CAUSAL_AUTHORITY_VETO","detail":str(exc)})
+                continue
             if long_entry.open_ms != short_entry.open_ms:
                 raise S.IncompleteAuthority("pair legs do not share exact atomic entry open")
-            long_atr, short_atr = _atr24(long_raw.atr_bars, long_entry.open_ms), _atr24(short_raw.atr_bars, short_entry.open_ms)
             exact_long = S.ExactLeg(pair.long_symbol, 1, Decimal(str(long_entry.open)), long_atr, long_raw.filters)
             exact_short = S.ExactLeg(pair.short_symbol, -1, Decimal(str(short_entry.open)), short_atr, short_raw.filters)
             equity = _book_equity_at(sealed.initial_equity, attempts,
                                      sealed.portfolio_marks, long_entry.open_ms)
             try:
                 sizing = S.size_exact_pair(equity=equity, long=exact_long, short=exact_short)
-            except S.IncompleteAuthority:
+            except S.IncompleteAuthority as exc:
+                decision["skipped_pairs"].append({"index":pair.index,"reason":"EXCHANGE_INFEASIBLE","detail":str(exc)})
                 continue  # frozen index is skipped, never re-paired
             plans = (
                 LegPlan(pair.long_symbol,1,sizing.long_qty,long_entry.open_ms,exact_long.entry,
@@ -290,20 +325,24 @@ def derive_evaluation(sealed: SealedEvidence) -> EvaluationInput:
                     volume = _latest_prior_volume(raw.bars, leg.entry_ms)
                     if abs(leg.quantity*leg.entry_reference)/volume > Decimal("0.001"):
                         raise S.IncompleteAuthority("entry exceeds frozen impact cap")
-            except S.IncompleteAuthority:
+            except S.IncompleteAuthority as exc:
+                decision["skipped_pairs"].append({"index":pair.index,"reason":"ENTRY_IMPACT_VETO","detail":str(exc)})
                 continue
             active_pairs = [item for item in active_pairs if item[0] > long_entry.open_ms]
             if (len(active_pairs) >= 3
                     or sum((item[1] for item in active_pairs),Decimal(0))+sizing.modeled_loss > equity*Decimal("0.03")
                     or sum((item[2] for item in active_pairs),Decimal(0))+sizing.gross > equity*Decimal("1.5")):
+                decision["skipped_pairs"].append({"index":pair.index,"reason":"PORTFOLIO_LIMIT"})
                 continue
             attempt = close_attempt(attempt_id=f"{cohort.cohort_id}:{pair.index}", legs=plans,
                 bars={pair.long_symbol:long_raw.bars,pair.short_symbol:short_raw.bars},
                 points=long_raw.funding_tape+short_raw.funding_tape,
                 marks=long_raw.funding_marks+short_raw.funding_marks, sizing=sizing)
+            attempt = replace(attempt,regime=regime_labels.get(cohort.nominal_ms,"UNCLASSIFIED"))
             if attempt.close_ms >= split[1]:
                 raise S.IncompleteAuthority("attempt crosses frozen flat fold boundary")
             attempts.append(attempt)
+            decision["admitted_attempts"].append(attempt.attempt_id)
             active_pairs.append((attempt.close_ms,sizing.modeled_loss,sizing.gross))
             for symbol in attempt.symbols:
                 active_until[symbol] = attempt.close_ms
@@ -313,7 +352,9 @@ def derive_evaluation(sealed: SealedEvidence) -> EvaluationInput:
     selected_marks = tuple(mark for mark in sealed.portfolio_marks
                            if (mark.symbol,mark.close_ms) in required_marks)
     return EvaluationInput(tuple(attempts), selected_marks, sealed.fold,
-                           _DERIVED_CAPABILITY)
+                           _DERIVED_CAPABILITY, {"cohort_decisions":decisions,
+                           "benchmark_bars":sealed.benchmark_bars,"coverage":sealed.coverage,
+                           "initial_equity":sealed.initial_equity})
 
 
 def _bar_index(bars: Sequence[S.HourBar]) -> dict[int, S.HourBar]:
@@ -339,12 +380,12 @@ def _first_event(leg: LegPlan, bars: Sequence[S.HourBar], due_ms: int) -> Derive
             raw = min(stop, bar.open) if leg.position_side == 1 else max(stop, bar.open)
             return DerivedFill(open_ms, leg.symbol, -leg.position_side, leg.quantity,
                                Decimal(str(raw)), "stop", open_ms, False)
-        if touch:
-            return DerivedFill(open_ms + S.HOUR_MS, leg.symbol, -leg.position_side,
-                               leg.quantity, leg.stop_reference, "stop", open_ms, True)
         if open_ms == due_ms:
             return DerivedFill(due_ms, leg.symbol, -leg.position_side, leg.quantity,
                                Decimal(str(bar.open)), "exit", open_ms, False)
+        if touch:
+            return DerivedFill(open_ms + S.HOUR_MS, leg.symbol, -leg.position_side,
+                               leg.quantity, leg.stop_reference, "stop", open_ms, True)
     raise EvaluatorError("mandatory lifecycle event was not derived")
 
 
@@ -561,8 +602,6 @@ def _validate_derived_attempt(row: ClosedAttempt) -> None:
                 cash.execution, cash.movement, cash.fee, cash.slippage,
                 cash.impact)):
             raise EvaluatorError("derived attempt contains non-finite execution economics")
-        if any(cash.impact_failure is not None for cash in fills):
-            raise S.IncompleteAuthority("derived attempt contains an impact authority/limit failure")
     funding_cash = sum((item.cash for item in row.funding), Decimal(0))
     base_net = sum((cash.movement-cash.fee-cash.slippage-cash.impact
                     for cash in row.fills), Decimal(0))+funding_cash
@@ -655,16 +694,31 @@ def _evaluate_input(input_: EvaluationInput) -> Mapping[str, object]:
         _validate_derived_attempt(row)
     rows = tuple(sorted(input_.attempts, key=lambda row: (row.entry_ms, row.symbols)))
     if not rows:
-        raise EvaluatorError("empty fold statistics are undefined")
+        packet={"candidate_id":257,"default_off":True,"paper_testnet_only":True,
+            "fold":input_.fold,"attempts":0,"mean_R":None,"profit_factor":None,
+            "stress_mean_R":None,"stress_profit_factor":None,"gross_mean_R":None,
+            "realized_drawdown_R":"0","marked_cashflow_drawdown_R":"0","worse_of_drawdown_R":"0",
+            "max_drawdown_R":"0","stress_max_drawdown_R":"0","bootstrap_p_value":None,
+            "bootstrap_mean_R_95pct_interval":None,"family_alpha":str(Decimal("0.05")/256),
+            "folds":{input_.fold:{"attempts":0,"mean_R":None}},"symbols":{},
+            "gate_checks":{"nonempty_required_statistics":False},
+            "verdict":"REJECT_DEVELOPMENT" if input_.fold=="development" else "REJECT_UNDEFINED"}
+        packet.update(R.build_disclosures(input_,drawdown=Decimal(0),stress_drawdown=Decimal(0)))
+        packet["result_digest"]=_packet_digest(packet)
+        return packet
     values = [row.base_R for row in rows]
     stress = [row.stress_R for row in rows]
-    pf, stress_pf = profit_factor(values), profit_factor(stress)
+    try: pf=profit_factor(values)
+    except EvaluatorError: pf=None
+    try: stress_pf=profit_factor(stress)
+    except EvaluatorError: stress_pf=None
     marked_dd = marked_cashflow_drawdown(rows, input_.marks)
     indices = S.stationary_bootstrap_indices(len(rows))
     observed = sum(values, Decimal(0))/Decimal(len(values))
+    bootstrapped = [sum((values[i] for i in sample),Decimal(0))/Decimal(len(sample)) for sample in indices]
     centered = [value-observed for value in values]
-    exceed = sum(1 for sample in indices
-                 if sum((centered[i] for i in sample), Decimal(0))/Decimal(len(sample)) >= observed)
+    exceed = sum(sum((centered[i] for i in sample),Decimal(0))/Decimal(len(sample)) >= observed
+                 for sample in indices)
     p_value = Decimal(1+exceed)/Decimal(10_001)
     close_order = tuple(sorted(rows, key=lambda row: (row.close_ms, row.attempt_id)))
     realized_dd = realized_drawdown([row.base_R for row in close_order])
@@ -673,14 +727,18 @@ def _evaluate_input(input_: EvaluationInput) -> Mapping[str, object]:
     packet = {
         "candidate_id": 257, "default_off": True, "paper_testnet_only": True,
         "fold": input_.fold, "attempts": len(rows), "mean_R": str(observed),
-        "profit_factor": str(pf), "stress_mean_R": str(sum(stress, Decimal(0))/Decimal(len(stress))),
-        "stress_profit_factor": str(stress_pf), "realized_drawdown_R": str(realized_dd),
+        "profit_factor": str(pf) if pf is not None else None, "stress_mean_R": str(sum(stress, Decimal(0))/Decimal(len(stress))),
+        "stress_profit_factor": str(stress_pf) if stress_pf is not None else None, "realized_drawdown_R": str(realized_dd),
         "marked_cashflow_drawdown_R": str(marked_dd),
         "worse_of_drawdown_R": str(max(marked_dd, realized_dd)),
+        "max_drawdown_R":str(max(marked_dd, realized_dd)),
         "stress_realized_drawdown_R": str(stress_realized_dd),
         "stress_marked_cashflow_drawdown_R": str(stress_marked_dd),
         "stress_worse_of_drawdown_R": str(max(stress_realized_dd,stress_marked_dd)),
+        "stress_max_drawdown_R":str(max(stress_realized_dd,stress_marked_dd)),
         "bootstrap_p_value": str(p_value), "family_alpha": str(Decimal("0.05")/Decimal(256)),
+        "bootstrap_mean_R_95pct_interval":[str(R.percentile(bootstrapped,Decimal("0.025"))),
+                                         str(R.percentile(bootstrapped,Decimal("0.975")))],
         "folds": {input_.fold: {"attempts": len(rows), "mean_R": str(observed)}},
         "regimes": {regime: {"attempts": sum(row.regime == regime for row in rows),
                               "net_R": str(sum((row.base_R for row in rows if row.regime == regime), Decimal(0)))}
@@ -691,15 +749,23 @@ def _evaluate_input(input_: EvaluationInput) -> Mapping[str, object]:
     gross_mean = sum((sum((cash.movement for cash in row.fills), Decimal(0))/row.initial_risk_cash
                       for row in rows), Decimal(0))/Decimal(len(rows))
     packet["gross_mean_R"] = str(gross_mean)
+    packet.update(R.build_disclosures(input_,drawdown=max(marked_dd,realized_dd),
+                                     stress_drawdown=max(stress_realized_dd,stress_marked_dd)))
+    if pf is None: packet["undefined_statistics"].append("profit_factor")
+    if stress_pf is None: packet["undefined_statistics"].append("stress_profit_factor")
+    packet["report_statistics_defined"]=not packet["undefined_statistics"]
     if input_.fold == "development":
         checks = {
             "gross_expectancy_gt_0": gross_mean > 0,
             "mean_net_R_gt_0": observed > 0,
-            "profit_factor_gt_1_05": pf > Decimal("1.05"),
+            "profit_factor_gt_1_05": pf is not None and pf > Decimal("1.05"),
             "attempts_gte_200": len(rows) >= 200,
             "symbols_gte_12": len(packet["symbols"]) >= 12,
             "stress_mean_gt_0": sum(stress, Decimal(0))/Decimal(len(stress)) > 0,
             "worse_of_drawdown_lte_60": max(marked_dd, realized_dd) <= 60,
+            "complete_causal_authority":packet["impact_failures"]==0
+                 and not packet["skipped_pair_reasons"].get("CAUSAL_AUTHORITY_VETO",0),
+            "defined_required_statistics":packet["report_statistics_defined"],
         }
         packet["gate_checks"] = checks
         packet["verdict"] = "DEVELOPMENT_SURVIVOR" if all(checks.values()) else "REJECT_DEVELOPMENT"
@@ -713,7 +779,34 @@ def _evaluate_input(input_: EvaluationInput) -> Mapping[str, object]:
 
 def evaluate(sealed: SealedEvidence) -> Mapping[str, object]:
     """Only sealed raw rows may cross the public evaluator boundary."""
-    return _evaluate_input(derive_evaluation(sealed))
+    input_=derive_evaluation(sealed)
+    packet=dict(_evaluate_input(input_))
+    packet["diagnostics"]=report_diagnostics(sealed,input_)
+    packet["result_digest"]=_packet_digest(packet)
+    return packet
+
+
+def report_diagnostics(sealed: SealedEvidence, primary: EvaluationInput) -> Mapping[str, object]:
+    packets={}
+    for mode in ("random_opposite_tail","sign_flipped"):
+        try:
+            derived=derive_evaluation(sealed,_diagnostic=mode,
+                _primary_admissions=frozenset(row.attempt_id for row in primary.attempts)
+                if mode=="sign_flipped" else None)
+            packets[mode]=R.diagnostic_summary(derived,mode)
+        except (S.C257Error,EvaluatorError) as exc:
+            packets[mode]={"case":mode,"status":"INCOMPLETE","reason":str(exc),
+                           "promotable":False,"rescue_permitted":False}
+    packets["equal_gross_eligible_universe"]={"status":"INCOMPLETE_SPECIFICATION",
+        "missing":"Multi-symbol basket lifecycle, stop-mate cleanup, atomicity/attempt identity and inherited three-pair-cap mapping are unspecified, including odd eligible symbol counts.",
+        "ruling":"Do not broaden the frozen two-leg primary engine; basket specification is a separate report-only follow-up.",
+        "promotable":False,"rescue_permitted":False}
+    return packets
+
+
+def _packet_digest(packet: Mapping[str, object]) -> str:
+    return hashlib.sha256(json.dumps({key:value for key,value in packet.items() if key!="result_digest"},
+        sort_keys=True,separators=(",", ":")).encode()).hexdigest()
 
 
 def _symbol_contributions(rows: Sequence[ClosedAttempt]) -> Mapping[str, Decimal]:
@@ -732,6 +825,8 @@ def evaluate_stage_a(development: SealedEvidence,
                      forwards: Sequence[SealedEvidence]) -> Mapping[str, object]:
     development_input = derive_evaluation(development)
     dev = dict(_evaluate_input(development_input))
+    dev["diagnostics"]=report_diagnostics(development,development_input)
+    dev["result_digest"]=_packet_digest(dev)
     if dev["verdict"] != "DEVELOPMENT_SURVIVOR":
         return {"candidate_id":257,"verdict":"REJECT_DEVELOPMENT","forward_opened":False,
                 "development":dev,"default_off":True,"paper_testnet_only":True}
@@ -739,10 +834,21 @@ def evaluate_stage_a(development: SealedEvidence,
         raise EvaluatorError("forward evidence must be exact wf1/wf2/wf3 order")
     forward_inputs = tuple(derive_evaluation(item) for item in forwards)
     fold_packets = [dict(_evaluate_input(item)) for item in forward_inputs]
+    for packet,sealed,input_ in zip(fold_packets,forwards,forward_inputs):
+        packet["diagnostics"]=report_diagnostics(sealed,input_)
+        packet["result_digest"]=_packet_digest(packet)
+    if any(not item.attempts for item in forward_inputs):
+        return {"candidate_id":257,"verdict":"REJECT_FORWARD","reason":"EMPTY_FORWARD_FOLD",
+                "forward_opened":True,"development":dev,"folds":fold_packets,
+                "default_off":True,"paper_testnet_only":True,"promotable":False}
     rows = tuple(row for item in forward_inputs for row in item.attempts)
     marks = tuple(mark for item in forward_inputs for mark in item.marks)
     combined = dict(_evaluate_input(EvaluationInput(
-        rows, marks, "wf_combined", _DERIVED_CAPABILITY)))
+        rows, marks, "wf_combined", _DERIVED_CAPABILITY,
+        {"cohort_decisions":[decision for item in forward_inputs for decision in item.disclosure["cohort_decisions"]],
+         "benchmark_bars":tuple(bar for item in forward_inputs for bar in item.disclosure["benchmark_bars"]),
+         "coverage":{"segments":tuple(item.disclosure["coverage"] for item in forward_inputs)},
+         "fold_inputs":forward_inputs})))
     contributions = _symbol_contributions(rows)
     denominator = sum((abs(value) for value in contributions.values()), Decimal(0))
     if denominator <= 0:
@@ -771,23 +877,27 @@ def evaluate_stage_a(development: SealedEvidence,
         cursor=datetime(cursor.year+(cursor.month==12),1 if cursor.month==12 else cursor.month+1,1,tzinfo=timezone.utc)
     positive_months=sum(monthly.get(key,Decimal(0))>0 for key in expected_months)
     mean=Decimal(combined["mean_R"]); stress_mean=Decimal(combined["stress_mean_R"])
-    pf=Decimal(combined["profit_factor"]); stress_pf=Decimal(combined["stress_profit_factor"])
+    pf=Decimal(combined["profit_factor"]) if combined["profit_factor"] is not None else None
+    stress_pf=Decimal(combined["stress_profit_factor"]) if combined["stress_profit_factor"] is not None else None
     dd=Decimal(combined["worse_of_drawdown_R"]); total=sum((r.base_R for r in rows),Decimal(0))
     stress_total=sum((r.stress_R for r in rows),Decimal(0))
     stress_dd=Decimal(combined["stress_worse_of_drawdown_R"])
     tier_pass = (dd <= 15 or (dd <= 30 and dd > 0 and total/dd >= Decimal("1.5"))
                  or (dd <= 60 and dd > 0 and stress_dd > 0 and total/dd >= 2 and stress_total/stress_dd >= 1))
     checks={
-        "mean_R_gt_0_03":mean>Decimal("0.03"),"profit_factor_gt_1_10":pf>Decimal("1.10"),
+        "mean_R_gt_0_03":mean>Decimal("0.03"),"profit_factor_gt_1_10":pf is not None and pf>Decimal("1.10"),
         "attempts_gte_600":len(rows)>=600,"symbols_gte_12":len(contributions)>=12,
         "two_of_three_positive":sum(sum((r.base_R for r in item.attempts),Decimal(0))>0 for item in forward_inputs)>=2,
         "worst_fold_mean_gt_minus_0_05":min(sum((r.base_R for r in item.attempts),Decimal(0))/Decimal(len(item.attempts)) for item in forward_inputs)>Decimal("-0.05"),
         "both_sides_nonnegative":all(value>=0 for value in side_values.values()),
         "positive_months_gte_55pct":Decimal(positive_months)/Decimal(len(expected_months))>=Decimal("0.55"),
-        "stress_mean_gt_0":stress_mean>0,"stress_pf_gt_1_02":stress_pf>Decimal("1.02"),
+        "stress_mean_gt_0":stress_mean>0,"stress_pf_gt_1_02":stress_pf is not None and stress_pf>Decimal("1.02"),
         "multiplicity":Decimal(combined["bootstrap_p_value"])<=Decimal("0.05")/Decimal(256),
         "symbol_concentration_lte_25pct":max(abs(value)/denominator for value in contributions.values())<=Decimal("0.25"),
         "drawdown_tier":tier_pass,
+        "complete_causal_authority":combined["impact_failures"]==0
+            and not combined["skipped_pair_reasons"].get("CAUSAL_AUTHORITY_VETO",0),
+        "defined_required_statistics":combined["report_statistics_defined"],
     }
     return {"candidate_id":257,"verdict":"PASS_STAGE_A" if all(checks.values()) else "REJECT_FORWARD",
             "forward_opened":True,"checks":checks,"development":dev,"folds":fold_packets,

@@ -1,0 +1,38 @@
+{
+  "format": "zb-c257-reporting-diagnostic-amendment/1",
+  "candidate_id": 257,
+  "status": "DRAFT_REQUIRES_INDEPENDENT_PROTECTED_REVIEW_BEFORE_REAL_ROWS",
+  "authority": "Codex reporting-only ruling, 2026-11-07 Cairo",
+  "economic_contract_sha256": "88294e16a44c4e2219284abeb26f4085123b9fd9de0c5120d0a19d5b84a94b54",
+  "roadmap_fit": "Complete C257 uncertainty disclosures before protected authority-pinned Stage-A evaluation.",
+  "regime": {
+    "input": "Only checksum-bound BTCUSDT 1h bars strictly inside the current evaluable fold or development eligible segment; no sealed holdout or pre-authority rows.",
+    "clock": "At nominal settlement T+300 seconds, attribute the latest completed canonical BTC bar at boundary T. No future entry-hour close is used.",
+    "reset": "Reset at each evaluable fold or eligible segment start. A missing hourly bar resets the reporting-only warmup; never fill a gap.",
+    "warmup": "The first 199 contiguous completed closes are UNCLASSIFIED.",
+    "seed": "Seed EMA200 with math.fsum(first200)/200 using binary64 closes in chronological order.",
+    "update": "Binary64 ema=(2/201)*close+(199/201)*previous_ema in this exact written order.",
+    "labels": "BTC_ABOVE_EMA200 when close>=ema; BTC_BELOW_EMA200 otherwise; missing or warmup is explicitly UNCLASSIFIED.",
+    "disclosure": "Report attempt count and net R for every observed label, including UNCLASSIFIED.",
+    "limitation": "The original qualitative single-regime-reliance criterion defines no numeric minimum or threshold. Report that limitation and make no regime-robustness claim."
+  },
+  "correlation": {
+    "paired": "Pearson correlation of long-leg and short-leg after-cost R contributions across identical paired attempts, with signed funding attributed per leg.",
+    "book": "Pearson correlation of every canonical hourly marked book equity return and aligned BTC completed 1h close return, including flat no-trade hours with settled equity carried forward. Each fold starts with its fixed capital independently; never compute a return across fold boundaries. A missing aligned hour fails the completeness gate.",
+    "btc_beta": "Population covariance(book hourly return,BTC hourly return) divided by population variance(BTC hourly return), using exactly the same aligned hourly observations.",
+    "undefined": "Fewer than two aligned observations or a zero variance is explicitly undefined and fails the required-statistics completeness gate; no zero is substituted."
+  },
+  "pre_authority": {
+    "policy": "No market rows before the development filter-eligible segment are read.",
+    "report": "Report the FILTER_AUTHORITY_UNAVAILABLE calendar-hour coverage separately. Exact pre-authority settlement-event count is unavailable under the embargo and is never inferred from an assumed cadence."
+  },
+  "report_only_baselines": {
+    "seed": "integer big-endian first 8 bytes of SHA256(b'C257_REPORT_BASELINE_V1:'+C256_BYTE_SHA256.encode('ascii'))",
+    "random_opposite_tail": "Initialize np.random.Generator(PCG64(seed)) independently for each frozen fold and fixed capital case. At each causal cohort with at least 12 eligible symbols, sort complete eligible long and short tails by the unchanged frozen rank rules. Draw up to three indices uniformly without replacement from each tail using Generator.choice; zip draw order into fixed pair indices 1..3. Replay the unchanged cadence, feasibility, current-equity sizing, portfolio caps, stops, exits, costs and signed funding on its own flat-start book. No re-pairing or lower-rank backfill after a skipped index.",
+    "sign_flipped": "Swap the original ranked long/short directions only for original primary admitted cohort/pair indices at the identical canonical entry open. Rerun exchange feasibility, sizing, protection, exits, costs and signed funding on its own flat-start book; never fabricate opposite P&L from the primary trades.",
+    "equal_gross_eligible_universe": "INCOMPLETE_SPECIFICATION: multi-symbol basket lifecycle, stop-mate cleanup, atomicity/attempt identity and inherited three-pair-cap mapping are unspecified, including odd eligible symbol counts. Codex's attempted hash-ranked basket direction/weight proposal is superseded as insufficiently specified. Do not broaden the frozen atomic two-leg primary engine. Preserve an explicit incomplete control record and queue basket specification separately; no fabricated economics.",
+    "ledger": "Account every diagnostic attempt and its fill/cost result in a separately identified report-only ledger. Diagnostic results have no candidate-family promotion test and cannot rescue or qualify the single primary. Development rejection remains terminal even when a diagnostic specification is incomplete."
+  },
+  "effect": "Reporting only. No signal, thresholds, pairing, sizing, admission, execution, costs, numerical economic gates, holdout boundary or capital-simulation set changes. No diagnostic can rescue a rejected candidate.",
+  "deferred": ["real evaluation until independent protected review and exact authority pins", "PAPER activation", "sealed holdout", "mainnet"]
+}

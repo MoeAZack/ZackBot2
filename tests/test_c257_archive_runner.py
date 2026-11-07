@@ -31,6 +31,7 @@ def synthetic_archive(tmp_path, monkeypatch):
     start = S._iso_ms("2024-12-14T00:00:00Z")
     end = start+24*S.HOUR_MS
     symbols = [f"S{i:02d}USDT" for i in range(20)]
+    symbols[-1] = "BTCUSDT"
     records = []
     for symbol in symbols:
         i = symbols.index(symbol)
@@ -58,8 +59,7 @@ def synthetic_archive(tmp_path, monkeypatch):
             path.write_bytes(raw)
             checksum = hashlib.sha256(raw).hexdigest()
             path.with_name(path.name+".ok").write_text(checksum,encoding="ascii")
-            records.append({"path":rel,"series":series,"symbol":symbol,
-                "interval":None if token=="fundingRate" else "1h", "sha256":checksum,
+            records.append({"path":rel,"sha256":checksum,
                 "bytes":len(raw),"rows":len(rows),"first_open_ms":start-40*S.HOUR_MS,
                 "last_open_ms":end,"source":{"kind":"binance-vision-archive",
                     "url":"https://data.binance.vision/data/futures/"+rel,"archive_checksum":checksum}})
@@ -136,6 +136,20 @@ def test_checksum_archive_to_concurrent_cash_book_and_economic_report(synthetic_
     assert Decimal(report["profit_factor"])==0
     assert Decimal(report["marked_cashflow_drawdown_R"])>0
     assert all(row.close_ms<end for row in derived.attempts)
+    assert report["scheduled_cohorts"]==24
+    assert report["zero_trade_cohorts"]>0
+    assert report["skipped_cohorts"]>=10
+    assert len(report["bootstrap_mean_R_95pct_interval"])==2
+    assert Decimal(report["fees_dollars"])>0 and Decimal(report["slippage_dollars"])>0
+    assert Decimal(report["stress_costs_dollars"]["slippage"])>Decimal(report["slippage_dollars"])
+    assert set(report["regimes"])=={"UNCLASSIFIED"}
+    assert report["btc_beta"] is None and not report["report_statistics_defined"]
+    assert not report["gate_checks"]["defined_required_statistics"]
+    assert report["book_correlation_hourly_observations"]==24
+    assert report["diagnostics"]["random_opposite_tail"]["status"]=="REPORT_ONLY"
+    assert report["diagnostics"]["sign_flipped"]["status"]=="REPORT_ONLY"
+    assert report["diagnostics"]["equal_gross_eligible_universe"]["status"]=="INCOMPLETE_SPECIFICATION"
+    assert report["result_digest"]==E._packet_digest(report)
 
 
 def test_runner_dev_veto_precedes_forward_reads_and_claim_is_single_use(synthetic_archive,monkeypatch,tmp_path,capsys):
