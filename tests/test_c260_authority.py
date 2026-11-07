@@ -164,3 +164,35 @@ def test_actual_protected_bad_receipts_fail_before_claim(protected_metadata_repo
         with A.development_authority():
             pytest.fail('invalid authority opened source')
     assert not (root / '.git/c260-evaluation').exists()
+
+
+def test_squash_equivalent_reviewed_code_tree_does_not_require_feature_ancestry(protected_metadata_repo):
+    root, _, receipt, git = protected_metadata_repo
+    # A genuinely disjoint reviewed commit models the feature source object
+    # after a protected squash. It has exactly the accepted code, no parent.
+    reviewed = subprocess.run(['git', '-C', str(root), 'commit-tree', git('rev-parse', 'HEAD^{tree}')],
+                              input=b'Synthetic independent reviewed source\n', capture_output=True, check=True).stdout.decode().strip()
+    lineage = subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', reviewed, 'HEAD'], capture_output=True)
+    assert lineage.returncode == 1
+    receipt['accepted_implementation_head'] = reviewed
+    (root / A.RECEIPT).write_bytes(A._canonical(receipt))
+    git('add', A.RECEIPT)
+    git('commit', '-qm', 'Synthetic protected exact-code acceptance after squash')
+    git('update-ref', 'refs/remotes/origin/master', git('rev-parse', 'HEAD'))
+    with A.development_authority() as authority:
+        A.validate_issued(authority)
+        assert authority.implementation_head == git('rev-parse', 'HEAD')
+
+
+def test_annotated_tag_object_cannot_substitute_for_an_exact_reviewed_commit(protected_metadata_repo):
+    root, _, receipt, git = protected_metadata_repo
+    git('tag', '-a', 'synthetic-reviewed-tag', '-m', 'not a commit identity')
+    receipt['accepted_implementation_head'] = git('rev-parse', 'refs/tags/synthetic-reviewed-tag')
+    (root / A.RECEIPT).write_bytes(A._canonical(receipt))
+    git('add', A.RECEIPT)
+    git('commit', '-qm', 'Synthetic tag identity attack')
+    git('update-ref', 'refs/remotes/origin/master', git('rev-parse', 'HEAD'))
+    with pytest.raises(A.C.C260Locked, match='EXACT_COMMIT'):
+        with A.development_authority():
+            pytest.fail('tag object accepted as reviewed commit')
+    assert not (root / '.git/c260-evaluation').exists()

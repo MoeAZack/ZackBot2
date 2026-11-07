@@ -113,7 +113,8 @@ def _authenticate_metadata():
     # protected receipt binds the independently reviewed source object, and
     # exact code-tree equality below proves the installed implementation is
     # identical. Current execution still requires clean protected HEAD.
-    _git('cat-file', '-e', f'{accepted}^{{commit}}')
+    if _git('rev-parse', '--verify', f'{accepted}^{{commit}}') != accepted:
+        raise C.C260Locked('C260_ACCEPTED_SOURCE_MUST_BE_AN_EXACT_COMMIT')
     for path in ('tools/research/c260_authority.py', 'tools/research/c260_archive.py',
                  'tools/research/c260_runner.py'):
         _tree(path, accepted)
