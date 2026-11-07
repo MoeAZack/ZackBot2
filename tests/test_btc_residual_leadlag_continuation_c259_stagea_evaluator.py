@@ -297,11 +297,13 @@ def test_authority_validates_protected_tree_before_loader(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("funding_format", ["zip", "api_json"])
+@pytest.mark.parametrize("split_end_exit", [False, True])
 def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
-        tmp_path: Path, funding_format: str) -> None:
+        tmp_path: Path, funding_format: str, split_end_exit: bool) -> None:
     symbol = "ALT"
     split_start, split_end = c259.ALL_SPLIT_RANGES["development"]
-    entry, close = split_start+26*c259.HOUR_MS, split_start+38*c259.HOUR_MS
+    entry, close = ((split_end-12*c259.HOUR_MS, split_end) if split_end_exit else
+                    (split_start+26*c259.HOUR_MS, split_start+38*c259.HOUR_MS))
     timestamps = tuple(range(split_start-24*c259.HOUR_MS,
                              close+c259.HOUR_MS, c259.HOUR_MS))
     kline_rows = [[timestamp, 100, 101, 99, 100, 1, timestamp+c259.HOUR_MS-1,
@@ -309,7 +311,15 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
     mark_rows = [[timestamp, 100, 101, 99, 100, 1, timestamp+c259.HOUR_MS-1,
                   1_000_000, 1, 1, 1, 0] for timestamp in timestamps]
     funding_time = entry+c259.HOUR_MS
-    funding_rows = [[funding_time, 0, "0.001"]]
+    funding_rows = [[funding_time, 0, "0.001"], [split_end, 0, "0.002"],
+                    [split_end+c259.HOUR_MS, 0, "FORBIDDEN_FUNDING"]]
+    # The archives straddle the frozen split. Future economic cells must never
+    # be interpreted; only the exact boundary open is allowed for a due exit.
+    if split_end_exit:
+        kline_rows[-1][2:] = ["FORBIDDEN_BOUNDARY_RANGE"]*10
+        mark_rows[-1][1:] = ["FORBIDDEN_BOUNDARY_MARK"]*11
+    for rows in (kline_rows, mark_rows):
+        rows.append([split_end+c259.HOUR_MS]+["FORBIDDEN_FORWARD_ECONOMICS"]*11)
     payloads = {
         "um/monthly/klines/ALT/1h/ALT-1h-test.zip": _zip_csv("klines.csv", kline_rows),
         "um/monthly/markPriceKlines/ALT/1h/ALT-1h-test.zip": _zip_csv(
@@ -320,8 +330,8 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
     if funding_format == "api_json":
         payloads.pop("um/monthly/fundingRate/ALT/ALT-fundingRate-test.zip")
         payloads["um/api/fundingRate/ALT/ALT-fundingRate-test.json"] = json.dumps([
-            {"fundingTime": funding_time, "fundingRate": "0.001", "symbol": symbol}
-        ]).encode()
+            {"fundingTime": row[0], "fundingRate": row[2], "symbol": symbol}
+            for row in funding_rows]).encode()
     records = []
     for path, raw in payloads.items():
         if "/klines/" in path:
@@ -330,8 +340,23 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
             series, interval = "markPriceKlines", "1h"
         else:
             series, interval = "fundingRate", None
-        records.append({"path": path, "series": series, "interval": interval,
-                        "symbol": symbol, "raw_sha256": hashlib.sha256(raw).hexdigest()})
+        # Exercise real v5 records (no series key, sha256 + first/last bounds)
+        # alongside v6/API records (series + declared period + raw_sha256).
+        if series == "klines":
+            records.append({"path": path, "interval": interval, "symbol": symbol,
+                            "sha256": hashlib.sha256(raw).hexdigest(),
+                            "first_open_ms": timestamps[0],
+                            "last_open_ms": split_end+c259.HOUR_MS})
+        else:
+            records.append({"path": path, "series": series, "interval": interval,
+                            "symbol": symbol, "raw_sha256": hashlib.sha256(raw).hexdigest(),
+                            "declared_start_ms": timestamps[0],
+                            "declared_end_ms": split_end+2*c259.HOUR_MS})
+    # A disjoint v5 record must be filtered before even attempting to open it.
+    records.append({"path": "future-must-not-open.zip", "series": "klines", "interval": "1h",
+                    "symbol": symbol, "sha256": "a"*64,
+                    "first_open_ms": split_end+24*c259.HOUR_MS,
+                    "last_open_ms": split_end+25*c259.HOUR_MS})
     repo, pins = _authority_repo(tmp_path, source_records=records)
     store = tmp_path / "store"
     for path, raw in payloads.items():
@@ -347,12 +372,16 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
         split_start, entry-c259.HOUR_MS, c259.HOUR_MS))
     lifecycle = tuple(by_time[timestamp] for timestamp in range(
         entry, close+c259.HOUR_MS, c259.HOUR_MS))
+    if split_end_exit:
+        lifecycle = lifecycle[:-1]+(c259.BoundaryOpen(split_end, 100.0),)
     fills = (_fill(timestamp=entry, phase="ENTRY", symbol=symbol),
              _fill(timestamp=close, phase="SCHEDULED", symbol=symbol, side=-1))
     funding = (c259.FundingEvent(funding_time, .001),)
-    funding_marks = (c259.make_position_mark(
-        timestamp_ms=funding_time-c259.HOUR_MS, symbol=symbol, price=100.0,
-        source_digest=authority.source_digest),)
+    if split_end_exit:
+        funding += (c259.FundingEvent(split_end, .002),)
+    funding_marks = tuple(c259.make_position_mark(
+        timestamp_ms=event.timestamp_ms-c259.HOUR_MS, symbol=symbol, price=100.0,
+        source_digest=authority.source_digest) for event in funding)
     lifecycle_marks = tuple(c259.make_position_mark(
         timestamp_ms=timestamp, symbol=symbol, price=100.0,
         source_digest=authority.source_digest)
@@ -368,7 +397,17 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
                     source_seal=seal, atr_authority_digest=seal.atr_digest,
                     funding_authority=funding, funding_authority_digest=seal.funding_digest,
                     lifecycle_bars=lifecycle, entry_bar=lifecycle[0], exit_bar=lifecycle[-1],
-                    funding_events=(c259.AppliedFunding(funding[0], funding_marks[0]),))
+                    funding_events=tuple(c259.AppliedFunding(event, mark)
+                                         for event, mark in zip(funding, funding_marks)))
+    assert set(archive._cache) == {(symbol, split_start, split_end, split_end_exit)}
+    cached_bars, cached_marks, cached_funding = next(iter(archive._cache.values()))
+    assert not any(timestamp > split_end for timestamp in cached_bars)
+    assert not any(timestamp >= split_end for timestamp in cached_marks)
+    assert not any(event.timestamp_ms > split_end for event in cached_funding)
+    if split_end_exit:
+        assert isinstance(cached_bars[split_end], c259.BoundaryOpen)
+        assert not hasattr(cached_bars[split_end], "high")
+        assert not hasattr(cached_bars[split_end], "quote_volume")
     c259.validate_closed_trade(trade)
     omitted_digest = c259.funding_tape_digest(
         source_digest=authority.source_digest, symbol=symbol, split_start_ms=split_start,
