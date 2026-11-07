@@ -170,3 +170,37 @@ def test_variable_exhaustive_funding_uses_actual_mark_close_and_leg_exit():
     with pytest.raises(C.IncompleteAuthority, match="stale"):
         C.derive_funding_events(**{**kwargs, "symbol_marks": {
             **marks, "L": [C.MarkClose(0, 100)]}})
+
+
+def test_api_clips_sealed_rate_before_interpreting_economic_value(tmp_path):
+    from tools.research import manifest as M
+    lo = S._ms("2026-09-27T23:00:00Z")
+    hi = lo+S.C.HOUR_MS
+    relative = "um/api/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-09-27-2026-09-28-p000.json"
+    raw = json.dumps([{"fundingTime": lo, "fundingRate": ".001"},
+                      {"fundingTime": hi, "fundingRate": "SEALED_RATE_MUST_NOT_PARSE"}]).encode()
+    target = tmp_path/relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(raw)
+    record = {"path": relative, "sha256": hashlib.sha256(raw).hexdigest(),
+              "source": {"kind": M.FUNDING_API_KIND}}
+    _, rows = S._read_window_rows(tmp_path, record, new=False, start_ms=lo, end_ms=hi)
+    assert len(rows) == 1 and float(rows[0]["fundingRate"]) == .001
+
+
+def test_actual_boundary_zip_opens_only_time_and_open_not_sealed_range(tmp_path, monkeypatch):
+    _, boundary = S.frozen_window("wf3")
+    relative = "um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-09.zip"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("boundary.csv", f"{boundary},100,SEALED_HIGH,SEALED_LOW,SEALED_CLOSE,SEALED_VOLUME\n"
+                         f"{boundary+S.C.HOUR_MS},SEALED_OPEN,SEALED_HIGH\n")
+    raw = buffer.getvalue()
+    target = tmp_path/relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(raw)
+    archive = source(monkeypatch, [{"path": relative, "sha256": hashlib.sha256(raw).hexdigest()}])
+    archive._store = tmp_path
+    opened = archive.boundary_open(symbol="BTCUSDT", fold="wf3")
+    assert opened == S.C.OpenBar(boundary, 100)
+    assert not hasattr(opened, "high") and not hasattr(opened, "quote_volume")

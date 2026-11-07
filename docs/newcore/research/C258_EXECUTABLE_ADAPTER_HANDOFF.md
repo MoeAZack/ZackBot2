@@ -1,21 +1,42 @@
-# C258 executable adapter: remaining acceptance work
+# C258 fixed executable replay
 
-ROADMAP FIT: produce the frozen C258 development/forward economics and admit a qualified protected PAPER candidate.
+ROADMAP FIT: produce frozen C258 development/forward economics and prepare a qualified protected PAPER candidate.
 
-The reviewed calculation module is not an executable backtest. The current CLI always refuses evaluation, and `run_with_authority` accepts a caller loader. Neither proves a complete archive-to-report replay.
+The fixed path is `c258_executable.py`: archive → concurrent book → FoldEvidence → immutable report. Implementation evidence is not a profitable-strategy result or PAPER acceptance. No real economic rows or identities were opened during this work.
 
-## Required implementation
+## Production execution
 
-1. Resolve the mechanical protected authority amendment and verify all exact output bytes, digests, protected Git ancestry and cross-bindings before market reads. Replace the arbitrary production loader with a fixed reviewed implementation. Do not relax the current evaluation lock before protected pins exist.
-2. Read only checksum-bound manifest-v6 archive records. The legacy `RawArchiveAdapter` assumes older manifest/PIT identities and CORE-20 membership; do not silently reuse its selection. C258 requires the artifact-ordered PIT-v9 crypto book and fold-specific filter-v4 snapshot. Preserve exact quote volume, mark and funding sources.
-3. Claim a persistent single-use evaluation identity before opening economic rows. Enforce exact frozen development/wf1/wf2/wf3 ranges and refuse holdout access, relabeling and cross-boundary exposure. Implement development veto before any forward read.
-4. Build contiguous causal candles, Wilder ATR24 and fold-reset BTC EMA200. At every hourly decision form the frozen robust cross-section and indexed pairs; skips never promote another member. Bind decisions, filters, next-open entries, quantities and stops to sealed source bytes.
-5. Process the chronological concurrent book: prior funding and marks, due exits/cleanup, pre-admission equity and remaining stressed risk, indexed admissions, same-time funding and range stops under the frozen phase rules. Maintain occupancy, gross and risk caps. Charge movement, fees, slippage and funding exactly once. Implement protected one-leg cleanup, gap precedence and required-exit impact rules.
-6. Replay the 2000 USD primary and isolated 1000/3000/4000 diagnostics. Diagnostics cannot alter primary decisions. Construct authenticated attempt, fill, funding and portfolio-mark evidence rather than accepting caller summaries.
-7. Derive zero-inclusive week/month grids, regime and side/symbol contributions, chronological marked and realized drawdown, stress and all frozen gates from the event ledger. Emit immutable contract/code/authority/source/result identities and a complete candidate ledger, including rejection and incompleteness.
+```text
+python -m tools.research.run_cross_sectional_relative_strength_continuation_c258_stagea --evaluate --archive-store <bound-store> --output <result.json>
+```
 
-## Proof before real execution
+Execution remains locked while `contracts/strategy_causal_pack_01/c258_stagea_execution_authority.v1.json` is absent, null or invalid. Original frozen preregistration bytes are unchanged. No production pin, root, fold, metric or result override is accepted.
 
-Use a small checksum-bound synthetic archive through the actual CLI to prove archive-to-report execution. Hostile tests must cover source mutation, omitted funding, caller metric forgery, holdout relabeling, missing bars, concurrent equity, stops/cleanup, zero-trade periods and diagnostic isolation. Independent review and required protected CI precede the one-shot economic run.
+The mechanical amendment binds four exact authority output pins; accepted output/implementation heads as protected ancestors; the nine executed implementation/dependency blobs in `c258_production_authority.IMPLEMENTATION_PATHS`; and protected independent PASS evidence. Candidate contract bytes are verified at the current accepted protected head, while plan/artifact bytes remain bound at the authority-output head. Real execution requires clean exact protected HEAD, identical accepted local code/dependencies and NumPy 2.5.3.
 
-DEFERRED: parameter changes, unrelated infrastructure, holdout inspection and activation before economic qualification. PAPER/testnet only.
+The exclusive synced claim is fixed across worktrees at shared Git common-dir `research-evaluation-claims/c258/c258-stage-a-single-use.json`. Code, pin and caller path changes cannot create another run. Failure/INCOMPLETE consumes it; completion metadata is replaced atomically.
+
+## Causal behavior
+
+- Real v5 identities are resolved with the exact archive path; v6 fields must agree. Whole bytes are rehashed, disjoint periods are filtered before open, and ZIP/API timestamps are clipped before economic numeric conversion. Integrity/schema/overlap errors abort; only typed verified absence allows pre-entry ineligibility.
+- Membership retains full causal PIT-v9 order and exact frozen raw filter snapshots. Wilder ATR updates through contiguous history; BTC EMA200 resets per fold. At boundary `t`, only bars ending `t-1 ms` contribute the signal; entry uses open `t`. Indexed tails never re-pair or promote skipped members.
+- Each capital has an isolated book with concurrent equity, remaining stressed risk, occupancy, gross, exchange and impact constraints. Due exits precede admissions. Entry fees affect the next indexed proposal; funding at the same open waits until all proposals complete.
+- Funding comes from the exhaustive verified settlement tape, including variable cadence and API unknown cadence, without invented zeros or a production 8-hour default. Each leg has its own exposure end and actual strictly prior Binance mark close.
+- Stops and protected mate cleanup are causal. A scheduled open never exposes its future range. Exact split-end exits request only `OpenBar` time/open. A gap stop at the scheduled boundary retains its mate until the following open. Missing/cross-boundary exposure is INCOMPLETE and retains known accepted entry fills/costs.
+- Required impact/filter failures and atomic loss rows remain in evidence. Base/stress retain admitted identities/quantities/references and reconcile all costs/cash once. Diagnostic-only exposure failure cannot veto primary.
+
+## Report and gate behavior
+
+Reports include complete decision/skip/base/stress ledgers, four capital simulations, costs and contributions, zero-inclusive UTC week/month keys, exact close attribution, global chronological marked/closed-R drawdown and recovery, side/symbol/regime results, exposure/occupancy/imbalance, pair/book/BTC return correlations, BTC beta and frozen bootstrap results. Shared forward periods are summed by key, never double-counted. Cairo labels accompany machine timestamps and frozen UTC statistic grids.
+
+Development veto occurs before forward economic reads. Verified zero-trade statistics reject economically; missing accepted exposure authority is INCOMPLETE. Contract/authority/source/code/dependency/ledger/result identities are bound; code drift during replay invalidates the result.
+
+An accepted C257 source tape does not yet exist. The report discloses `C257_overlap=UNAVAILABLE_NO_ACCEPTED_C257_TAPE`, with economic verdict/`economic_pass` separate from `readiness=INCOMPLETE_DEPENDENCY`. It does not invent zero overlap or turn a valid economic pass into an economic failure.
+
+## Verification and remaining gates
+
+The distinct `--synthetic-evaluate` command requires a separate protected authority tree marked `synthetic_fixture_only=true` plus isolated claims. Generated checksum ZIP/API prices exercise the actual CLI through the book/evidence/report. This mode cannot override production authority.
+
+Independent exact-head review and protected CI precede the real one-shot run. Accepted authority outputs/mechanical amendment are not installed here. Runtime paired execution sleeves, independent parity/protection/rollback evidence, the C257 comparison dependency and cohort acceptance remain separate gates.
+
+DEFERRED: parameters, optional venues, holdout inspection, live/mainnet use, runtime activation, and any claim of profitable C258 economics before the protected result.

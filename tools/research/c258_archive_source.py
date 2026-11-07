@@ -9,9 +9,15 @@ from decimal import Decimal
 import hashlib
 import json
 import math
+import zipfile
+import io
 
 from tools.research import cross_sectional_relative_strength_continuation_c258_stagea as C
 from tools.research.authority_v6_runner import _read_record_rows
+
+
+class VerifiedSourceAbsence(C.IncompleteAuthority):
+    """The protected manifest contains no applicable records; no integrity failure."""
 
 
 def _read_window_rows(store: Path, record: Mapping, *, new: bool,
@@ -23,6 +29,8 @@ def _read_window_rows(store: Path, record: Mapping, *, new: bool,
         # JSON sources are hash-bound and timestamp-clipped before conversion.
         if not str(record.get("path", "")).endswith(".json"):
             return _read_record_rows(store, record, new=new)
+        if record.get("source", {}).get("kind") not in {V6.M.FUNDING_API_KIND, V6.M.KLINE_API_KIND}:
+            raise C.IncompleteAuthority("unsupported protected JSON source kind")
         rel = record["path"]
         raw = V6._safe_store_path(store, rel).read_bytes()
         expected = record["raw_sha256" if new else "sha256"]
@@ -37,6 +45,8 @@ def _read_window_rows(store: Path, record: Mapping, *, new: bool,
             timestamp = int(row["fundingTime"] if isinstance(row, Mapping) else row[0])
             if start_ms <= timestamp < end_ms:
                 if isinstance(row, Mapping):
+                    if row.get("symbol", meta["symbol"]) != meta["symbol"]:
+                        raise C.IncompleteAuthority("API source symbol does not match protected path")
                     row = {**row, "fundingTime": timestamp}
                 selected.append(row)
         return meta, selected
@@ -102,8 +112,8 @@ def frozen_window(fold: str) -> tuple[int, int]:
 class C258ArchiveSource:
     """Opens protected authority first, then only explicitly bound archive records.
 
-    This source is a data dependency of the pending replay, not an executable
-    evaluator. It cannot accept caller market rows or replace the frozen universe.
+    This source supplies the fixed executable replay. It cannot accept caller
+    market rows or replace the frozen universe.
     """
 
     def __init__(self, pins: C.AuthorityPins, store: Path, *, root: Path = C.ROOT):
@@ -123,11 +133,16 @@ class C258ArchiveSource:
         normalized = []
         for original, new in self._records:
             record = dict(original)
-            if not new and any(key not in record for key in ("symbol", "series", "interval")):
+            fields = ("symbol", "series", "interval")
+            if new and any(key not in record for key in fields):
+                raise C.IncompleteAuthority("v6 source record identity is incomplete")
+            if (not new and any(key not in record for key in fields)
+                    or record.get("source", {}).get("kind") in {
+                        M.ARCHIVE_KIND, M.FUNDING_API_KIND, M.KLINE_API_KIND}):
                 # v5 FILE_KEYS deliberately omit series/symbol aliases in some
                 # producers. Resolve the exact frozen archive path, not a guess.
                 meta = M.archive_meta(record["path"])
-                for key in ("symbol", "series", "interval"):
+                for key in fields:
                     if key in record and record[key] != meta[key]:
                         raise C.IncompleteAuthority("v5 path/record identity mismatch")
                     record[key] = meta[key]
@@ -188,10 +203,43 @@ class C258ArchiveSource:
             by_symbol[symbol] = (filters, tick)
         return members, by_symbol
 
-    def candles(self, *, symbol: str, fold: str, start_ms: int, end_ms: int
-                ) -> tuple[C.Bar, ...]:
+    def boundary_open(self, *, symbol: str, fold: str) -> C.OpenBar:
+        """Permit only the exact fold-end open for an already exposed due exit."""
+        _, boundary = frozen_window(fold)
+        found = []
+        for record, new in self._records:
+            if (record["symbol"], record["series"], record["interval"]) != (symbol, "klines", "1h"):
+                continue
+            from tools.research import manifest as M
+            meta = M.archive_meta(record["path"])
+            if not meta["month_start_ms"] <= boundary < meta["month_end_ms"]:
+                continue
+            from tools.research import authority_v6 as V6
+            raw = V6._safe_store_path(self._store, record["path"]).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != record["raw_sha256" if new else "sha256"]:
+                raise C.IncompleteAuthority("boundary source bytes changed")
+            if record["path"].endswith(".zip"):
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    names = [name for name in archive.namelist() if name.endswith(".csv")]
+                    if len(names) != 1:
+                        raise C.IncompleteAuthority("boundary archive is ambiguous")
+                    rows = [line.decode("utf-8").split(",")
+                            for line in archive.read(names[0]).splitlines()]
+                rows = [row for row in rows if row and row[0].isdigit()]
+            else:
+                rows = json.loads(raw, parse_int=str, parse_float=str)
+            for row in rows:
+                if int(row[0]) == boundary:
+                    found.append(C.OpenBar(boundary, float(row[1])))
+        if len(found) != 1:
+            raise C.IncompleteAuthority("missing or duplicate exact boundary open")
+        found[0].validate()
+        return found[0]
+
+    def candles(self, *, symbol: str, fold: str, start_ms: int, end_ms: int,
+                allow_gaps: bool = False) -> tuple[C.Bar, ...]:
         source = self.load(symbol=symbol, stream="klines", fold=fold,
-                           start_ms=start_ms, end_ms=end_ms)
+                           start_ms=start_ms, end_ms=end_ms, allow_gaps=allow_gaps)
         bars = []
         for row in source.rows:
             if len(row) != 12:
@@ -203,10 +251,10 @@ class C258ArchiveSource:
             bars.append(bar)
         return tuple(bars)
 
-    def marks(self, *, symbol: str, fold: str, start_ms: int, end_ms: int
-              ) -> tuple[C.MarkClose, ...]:
+    def marks(self, *, symbol: str, fold: str, start_ms: int, end_ms: int,
+              allow_gaps: bool = False) -> tuple[C.MarkClose, ...]:
         source = self.load(symbol=symbol, stream="markPriceKlines", fold=fold,
-                           start_ms=start_ms, end_ms=end_ms)
+                           start_ms=start_ms, end_ms=end_ms, allow_gaps=allow_gaps)
         marks = []
         for row in source.rows:
             if len(row) != 12 or int(row[6]) != int(row[0])+C.HOUR_MS-1:
@@ -239,7 +287,7 @@ class C258ArchiveSource:
         return tuple(events)
 
     def load(self, *, symbol: str, stream: str, fold: str,
-             start_ms: int, end_ms: int) -> SourceRows:
+             start_ms: int, end_ms: int, allow_gaps: bool = False) -> SourceRows:
         lo, hi = frozen_window(fold)
         if (type(start_ms) is not int or type(end_ms) is not int
                 or not lo <= start_ms < end_ms <= hi):
@@ -257,8 +305,20 @@ class C258ArchiveSource:
             last = record.get("observed_last_ms") if new else record.get("last_open_ms")
             if first is not None and last is not None and (last < start_ms or first >= end_ms):
                 continue
-            _, parsed = _read_window_rows(self._store, record, new=new,
-                                          start_ms=start_ms, end_ms=end_ms)
+            if first is None or last is None:
+                from tools.research import manifest as M
+                period = M.archive_meta(record["path"])
+                period_start = record.get("declared_start_ms", period["month_start_ms"])
+                period_end = record.get("declared_end_ms", period["month_end_ms"])
+                if period_end <= start_ms or period_start >= end_ms:
+                    continue
+            try:
+                _, parsed = _read_window_rows(self._store, record, new=new,
+                                              start_ms=start_ms, end_ms=end_ms)
+            except C.IncompleteAuthority:
+                raise
+            except (OSError, ValueError, RuntimeError) as exc:
+                raise C.IncompleteAuthority("checksum-bound source integrity failure") from exc
             digest = record["raw_sha256" if new else "sha256"]
             selected.append((record["path"], digest))
             for item in parsed:
@@ -272,9 +332,10 @@ class C258ArchiveSource:
                     if stamp in rows:
                         raise C.IncompleteAuthority("overlapping active authority timestamps")
                     rows[stamp] = row
-        if stream != "fundingRate" and tuple(sorted(rows)) != tuple(range(start_ms, end_ms, C.HOUR_MS)):
+        if (not allow_gaps and stream != "fundingRate"
+                and tuple(sorted(rows)) != tuple(range(start_ms, end_ms, C.HOUR_MS))):
             raise C.IncompleteAuthority("missing canonical C258 source candle")
         if not selected:
-            raise C.IncompleteAuthority("no checksum-bound source records")
+            raise VerifiedSourceAbsence("no checksum-bound source records")
         return SourceRows(symbol, stream, fold, start_ms, end_ms,
                           tuple(rows[t] for t in sorted(rows)), tuple(sorted(selected)))

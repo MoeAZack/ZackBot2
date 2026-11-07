@@ -1,9 +1,8 @@
-"""C258 Stage-A causal evaluator primitives and synthetic runner.
+"""C258 Stage-A frozen calculation and evidence functions.
 
-The public entrypoint deliberately validates every authority-v6 byte/content pin
-before invoking a market loader.  The pure functions in this module are used by
-hostile synthetic tests; importing the module never opens an authority, market,
-outcome, packet, identity, or holdout file.
+The fixed executable replay is in c258_executable. Pure functions here also serve
+hostile synthetic tests; importing this module never opens authority, market,
+outcome, packet, identity, or holdout files.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ import json
 import math
 import subprocess
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_FLOOR, InvalidOperation
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -56,6 +55,12 @@ class EvaluationLocked(C258Error):
 
 class IncompleteEpisode(C258Error):
     """An exposed position cannot be completely and conservatively accounted."""
+
+
+class MissingLifecycleBar(IncompleteAuthority):
+    def __init__(self, symbol: str, timestamp_ms: int):
+        super().__init__(f"{symbol} lifecycle is missing canonical bar {timestamp_ms}")
+        self.symbol, self.timestamp_ms = symbol, timestamp_ms
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -250,13 +255,18 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[s
         raise IncompleteAuthority("accepted protected head is not exactly pinned")
     resolved_head = _git(root, "rev-parse", "--verify", f"{pins.protected_head}^{{commit}}")
     resolved_ref = _git(root, "rev-parse", "--verify", f"{AUTHORITY_PROTECTED_REF}^{{commit}}")
-    if resolved_head != pins.protected_head or resolved_ref != pins.protected_head:
+    if resolved_head != pins.protected_head:
         raise IncompleteAuthority("protected head/ref exact equality failed")
+    if resolved_ref != pins.protected_head:
+        from tools.research.c258_production_authority import authority_head_is_bound_ancestor
+        if not authority_head_is_bound_ancestor(root, pins):
+            raise IncompleteAuthority("protected head/ref exact equality or mechanical output binding failed")
     for ancestor in AUTHORITY_EXPECTED_ANCESTORS:
         _git(root, "merge-base", "--is-ancestor", ancestor, pins.protected_head)
-    for path, expected_hash in ((CONTRACT_PATH.relative_to(ROOT).as_posix(), CONTRACT_SHA256),
-                                (PLAN_PATH.relative_to(ROOT).as_posix(), PLAN_SHA256)):
-        frozen_raw = _git(root, "show", f"{pins.protected_head}:{path}", binary=True)
+    for path, expected_hash, tree in (
+            (CONTRACT_PATH.relative_to(ROOT).as_posix(), CONTRACT_SHA256, resolved_ref),
+            (PLAN_PATH.relative_to(ROOT).as_posix(), PLAN_SHA256, pins.protected_head)):
+        frozen_raw = _git(root, "show", f"{tree}:{path}", binary=True)
         assert isinstance(frozen_raw, bytes)
         if _sha256_bytes(frozen_raw) != expected_hash:
             raise IncompleteAuthority(f"protected tree frozen metadata mismatch: {path}")
@@ -355,17 +365,14 @@ def _validate_emitted_v6(docs: Mapping[str, dict], pins: AuthorityPins, *, root:
 
 def run_with_authority(pins: AuthorityPins, loader: Callable[[dict[str, dict]], object], *,
                        root: Path = ROOT) -> object:
-    """The only real-data boundary: pins and schemas pass before loader invocation."""
+    """Metadata integration/test callback; production uses the fixed archive runner."""
     authorities = validate_authority_pins(pins, root=root)
     return loader(authorities)
 
 
-def assert_real_evaluation_authorized() -> None:
-    load_frozen_contract()
-    raise EvaluationLocked(
-        "C258_REAL_EVALUATION_LOCKED: authority-v6 output byte/content pins and accepted protected head "
-        "are absent from the frozen contract; no loader was invoked"
-    )
+def assert_real_evaluation_authorized() -> AuthorityPins:
+    from tools.research.c258_production_authority import authorize_production
+    return authorize_production()
 
 
 @dataclass(frozen=True)
@@ -380,11 +387,24 @@ class Bar:
     def validate(self) -> None:
         if not isinstance(self.open_ms, int) or self.open_ms % HOUR_MS:
             raise IncompleteAuthority("bar timestamp is not on the canonical 1h grid")
-        values = (self.open, self.high, self.low, self.close, self.quote_volume)
+        values = (self.open, self.high, self.low, self.close)
         if not all(math.isfinite(v) and v > 0 for v in values):
             raise IncompleteAuthority("bar fields must be finite and positive")
+        if not math.isfinite(self.quote_volume) or self.quote_volume < 0:
+            raise IncompleteAuthority("canonical quote volume must be finite and nonnegative")
         if self.high < max(self.open, self.close) or self.low > min(self.open, self.close) or self.low > self.high:
             raise IncompleteAuthority("inconsistent OHLC")
+
+
+@dataclass(frozen=True)
+class OpenBar:
+    """Exact boundary open only; no future high/low/close/volume is observable."""
+    open_ms: int
+    open: float
+
+    def validate(self) -> None:
+        if self.open_ms % HOUR_MS or not math.isfinite(self.open) or self.open <= 0:
+            raise IncompleteAuthority("invalid canonical boundary open")
 
 
 def exact_index(bars: Sequence[Bar]) -> dict[int, Bar]:
@@ -773,7 +793,8 @@ def _derive_fill_from_bar_authority(fill: FillCash, *, leg: LegSpec,
                                     final_event: "_DerivedFinal | None" = None) -> FillCash:
     """Bind every raw reference and impact input to exact timestamped causal bars."""
     index = exact_index(bars)
-    bar = index.get(fill.timestamp_ms)
+    bar = index.get(final_event.source_open_ms if final_event is not None
+                    and final_event.stop_kind == "range" else fill.timestamp_ms)
     prior = index.get(fill.timestamp_ms - HOUR_MS)
     if bar is None or prior is None:
         raise IncompleteAuthority("fill is missing exact bar or strict-prior volume authority")
@@ -849,43 +870,50 @@ def _first_leg_event(*, leg: LegSpec, quantity: Decimal, bars: Sequence[Bar],
 def _derive_final_events(*, legs: Mapping[str, LegSpec], quantities: Mapping[str, Decimal],
                          symbol_bars: Mapping[str, Sequence[Bar]], entry_ms: int,
                          atomic_one_leg: bool) -> tuple[_DerivedFinal, ...]:
-    due_ms = entry_ms + (HOUR_MS if atomic_one_leg else 6 * HOUR_MS)
-    events = {symbol: _first_leg_event(leg=leg, quantity=quantities[symbol],
-                                      bars=symbol_bars[symbol], entry_ms=entry_ms, due_ms=due_ms)
-              for symbol, leg in legs.items()}
-    if atomic_one_leg:
-        event = next(iter(events.values()))
-        if event.phase == "stop":
-            return (event,)
-        bar = exact_index(symbol_bars[event.symbol])[due_ms]
-        return (_DerivedFinal(event.symbol, due_ms, "cleanup", event.side, event.quantity,
-                              bar.open, due_ms, None),)
-    first_stop = min((event for event in events.values() if event.phase == "stop"),
-                     key=lambda event: (event.source_open_ms, event.symbol), default=None)
-    if first_stop is None:
-        return tuple(events[symbol] for symbol in sorted(events))
-    same_bar_stops = [event for event in events.values()
-                      if event.phase == "stop" and event.source_open_ms == first_stop.source_open_ms]
-    if len(same_bar_stops) == len(events):
-        return tuple(sorted(same_bar_stops, key=lambda event: event.symbol))
-    cleanup_ms = first_stop.source_open_ms + HOUR_MS
-    finals = [first_stop]
-    for symbol, event in events.items():
-        if symbol == first_stop.symbol:
-            continue
-        if (event.phase == "stop" and event.source_open_ms == first_stop.source_open_ms):
-            finals.append(event)
-            continue
-        # At the cleanup boundary a stop gap is processed before the mate cleanup.
-        if (event.phase == "stop" and event.stop_kind == "gap"
-                and event.source_open_ms == cleanup_ms):
-            finals.append(event)
-            continue
-        bar = exact_index(symbol_bars[symbol]).get(cleanup_ms)
-        if bar is None:
-            raise IncompleteAuthority("mate cleanup is missing the exact next canonical open")
-        finals.append(_DerivedFinal(symbol, cleanup_ms, "cleanup", -legs[symbol].side,
-                                    quantities[symbol], bar.open, cleanup_ms, None))
+    """Replay opens then the completed range; never inspect a due exit's future range."""
+    due_ms = entry_ms+(HOUR_MS if atomic_one_leg else 6*HOUR_MS)
+    indexes = {symbol: exact_index(symbol_bars[symbol]) for symbol in legs}
+    active = set(legs)
+    finals = []
+    cleanup_due = None
+    for timestamp in range(entry_ms, due_ms+2*HOUR_MS, HOUR_MS):
+        for symbol in sorted(tuple(active)):
+            leg, stop = legs[symbol], float(legs[symbol].stop_reference)
+            bar = indexes[symbol].get(timestamp)
+            if bar is None:
+                raise MissingLifecycleBar(symbol, timestamp)
+            gap = bar.open <= stop if leg.side == 1 else bar.open >= stop
+            if gap:
+                reference = min(stop, bar.open) if leg.side == 1 else max(stop, bar.open)
+                finals.append(_DerivedFinal(symbol, timestamp, "stop", -leg.side,
+                    quantities[symbol], reference, timestamp, "gap"))
+                active.remove(symbol)
+                cleanup_due = timestamp+HOUR_MS
+        if not active:
+            break
+        if cleanup_due == timestamp or timestamp == due_ms and cleanup_due is None:
+            for symbol in sorted(active):
+                leg, bar = legs[symbol], indexes[symbol][timestamp]
+                phase = "cleanup" if atomic_one_leg or cleanup_due == timestamp else "exit"
+                finals.append(_DerivedFinal(symbol, timestamp, phase, -leg.side,
+                    quantities[symbol], bar.open, timestamp, None))
+            active.clear()
+            break
+        for symbol in sorted(tuple(active)):
+            leg, bar = legs[symbol], indexes[symbol][timestamp]
+            if isinstance(bar, OpenBar):
+                raise IncompleteAuthority("open-only evidence cannot prove an exposed range")
+            stop = float(leg.stop_reference)
+            touched = bar.low <= stop if leg.side == 1 else bar.high >= stop
+            if touched:
+                finals.append(_DerivedFinal(symbol, timestamp+HOUR_MS, "stop", -leg.side,
+                    quantities[symbol], stop, timestamp, "range"))
+                active.remove(symbol)
+                cleanup_due = timestamp+HOUR_MS
+        if not active:
+            break
+    if active:
+        raise IncompleteEpisode("mandatory close lifecycle is incomplete")
     return tuple(sorted(finals, key=lambda event: event.symbol))
 
 
@@ -1171,12 +1199,6 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
             or any(fill.timestamp_ms != entry_ms or fill.quantity <= 0 for fill in entry_fills)):
         raise IncompleteEpisode("submitted lifecycle entries are not exact")
     proposed_quantities = {fill.symbol: Decimal(str(fill.quantity)) for fill in entry_fills}
-    authority_end = entry_ms + (2 if atomic_one_leg else 7) * HOUR_MS
-    required_bar_times = set(range(entry_ms-HOUR_MS, authority_end+HOUR_MS, HOUR_MS))
-    for symbol, bars in symbol_bars.items():
-        available = set(exact_index(bars))
-        if not required_bar_times <= available:
-            raise IncompleteAuthority(f"{symbol} lifecycle bar authority is missing/compressed")
     expected_finals = _derive_final_events(
         legs=legs_by_symbol, quantities=proposed_quantities, symbol_bars=symbol_bars,
         entry_ms=entry_ms, atomic_one_leg=atomic_one_leg)
@@ -1442,7 +1464,9 @@ def derive_drawdown_events(attempts: Sequence[ClosedAttempt], marks: Sequence[Po
             phase = "ENTRY" if fill.phase == "entry" else "EXIT"
             actions.append((fill.timestamp_ms, DRAW_PHASE_ORDER[phase], phase, attempt, fill))
         for funding in attempt.funding_events:
-            phase = "FUNDING_AT_OPEN" if funding.timestamp_ms == attempt.entry_ms else "FUNDING_BEFORE"
+            # Verified nominal settlements at t occur after every indexed entry
+            # at t, including settlements on previously held positions.
+            phase = "FUNDING_AT_OPEN"
             actions.append((funding.timestamp_ms, DRAW_PHASE_ORDER[phase], phase, attempt, funding))
         if attempt.conservative_adjustment_cash:
             actions.append((attempt.close_ms, DRAW_PHASE_ORDER["CONSERVATIVE_ADJUSTMENT"],
@@ -1522,15 +1546,20 @@ def chronological_drawdown(events: Sequence[DrawdownEvent], initial_equity_R: fl
         event.timestamp_ms, DRAW_PHASE_ORDER[event.phase], event.sequence))
     cash = high = initial_equity_R
     max_dd, high_ts, recovery = 0.0, ordered[0].timestamp_ms, 0
+    underwater = False
     for event in ordered:
         cash += event.cashflow_R
         equity = cash + event.marked_open_R
-        if equity > high:
+        if equity >= high:
+            if underwater:
+                recovery = max(recovery, event.timestamp_ms-high_ts)
             high, high_ts = equity, event.timestamp_ms
+            underwater = False
         else:
             dd = high - equity
-            if dd > max_dd:
-                max_dd, recovery = dd, event.timestamp_ms - high_ts
+            max_dd = max(max_dd, dd)
+            recovery = max(recovery, event.timestamp_ms-high_ts)
+            underwater = True
     return max_dd, recovery
 
 
@@ -1683,6 +1712,8 @@ class FoldEvidence:
     indexed_skips: int
     complete_required_reports: bool = True
     causal_exchange_impact_atomicity_pass: bool = True
+    weekly_period_keys: tuple[str, ...] = ()
+    monthly_period_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1700,7 +1731,7 @@ class TrialLedger:
     events: list[TrialEvent] = field(default_factory=list)
 
     def append(self, *, fold: str, kind: str, detail: str, attempt_id: str | None = None) -> TrialEvent:
-        allowed = {"SCHEDULED", "ZERO_TRADE", "INDEXED_SKIP", "BASE_ROW", "STRESS_ROW", "REJECTION"}
+        allowed = {"SCHEDULED", "ZERO_TRADE", "INDEXED_SKIP", "BASE_ROW", "STRESS_ROW", "REJECTION", "VERDICT"}
         if kind not in allowed or not fold or not detail:
             raise C258Error("invalid trial-ledger event")
         event = TrialEvent(len(self.events), fold, kind, attempt_id, detail)
@@ -1720,6 +1751,10 @@ def validate_fold_evidence(fold: FoldEvidence) -> None:
         raise C258Error("weekly counts cannot be negative")
     if any(not math.isfinite(value) for value in fold.monthly_net_R_including_zero):
         raise C258Error("monthly R must be finite")
+    for keys, values in ((fold.weekly_period_keys, fold.weekly_closed_counts_including_zero),
+                         (fold.monthly_period_keys, fold.monthly_net_R_including_zero)):
+        if keys and (len(keys) != len(values) or len(set(keys)) != len(keys)):
+            raise C258Error("calendar period keys are not exact and unique")
     counts = (fold.scheduled_decisions, fold.eligible_decisions, fold.admitted_attempts,
               fold.zero_trade_decisions, fold.indexed_skips)
     if any(not isinstance(value, int) or value < 0 for value in counts):
@@ -1823,6 +1858,15 @@ def drawdown_tier(*, net_R: float, max_drawdown_R: float,
 
 def development_gate(fold: FoldEvidence) -> dict[str, object]:
     validate_fold_evidence(fold)
+    if not fold.base.attempts or not fold.stress.attempts:
+        checks = {"pre_cost_gross_expectancy_positive": False,
+            "mean_after_cost_R_positive": False, "profit_factor_gt_1_05": False,
+            "closed_attempts_gte_300": False, "symbols_gte_12": False,
+            "median_weekly_closed_gte_25": False, "stress_mean_R_positive": False,
+            "closed_R_drawdown_lte_60": False, "complete": False}
+        return {"pass": False, "checks": checks, "reasons": list(checks),
+                "undefined": "zero-trade statistics", "base": {"closed_attempts": 0},
+                "stress": {"closed_attempts": 0}}
     base, stress = fold_metrics(fold.base.attempts), fold_metrics(fold.stress.attempts)
     gross = math.fsum(row.gross_R for row in fold.base.attempts)
     reasons = []
@@ -1841,17 +1885,59 @@ def development_gate(fold: FoldEvidence) -> dict[str, object]:
     return {"pass": not reasons, "checks": checks, "reasons": reasons, "base": base, "stress": stress}
 
 
+def aggregate_forward_periods(folds: Sequence[FoldEvidence]) -> tuple[tuple[int, ...], tuple[float, ...]]:
+    if not any(fold.weekly_period_keys or fold.monthly_period_keys for fold in folds):
+        return (tuple(value for fold in folds for value in fold.weekly_closed_counts_including_zero),
+                tuple(value for fold in folds for value in fold.monthly_net_R_including_zero))
+    if any(not fold.weekly_period_keys or not fold.monthly_period_keys for fold in folds):
+        raise C258Error("cannot mix keyed and unkeyed forward calendar evidence")
+    windows = load_frozen_contract()["splits"]["forward_folds"]
+    start = datetime.fromisoformat(windows[0].split("/")[0].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(windows[-1].split("/")[1].replace("Z", "+00:00"))
+    monday = start-timedelta(days=start.weekday())
+    weeks = {}
+    while monday < end:
+        weeks[monday.isoformat()] = 0
+        monday += timedelta(days=7)
+    month = start.replace(day=1)
+    months = {}
+    while month < end:
+        months[month.strftime("%Y-%m")] = []
+        month = month.replace(year=month.year+1, month=1) if month.month == 12 else month.replace(month=month.month+1)
+    for fold in folds:
+        for key, count in zip(fold.weekly_period_keys, fold.weekly_closed_counts_including_zero):
+            if key in weeks:
+                weeks[key] += count
+        for key, value in zip(fold.monthly_period_keys, fold.monthly_net_R_including_zero):
+            if key in months:
+                months[key].append(value)
+    return tuple(weeks.values()), tuple(math.fsum(values) for values in months.values())
+
+
 def forward_gate(folds: Sequence[FoldEvidence], *, bootstrap_resamples: int = 10_000) -> dict[str, object]:
     if len(folds) != 3:
         raise C258Error("exactly three frozen forward folds are required")
+    if tuple(fold.name for fold in folds) != ("wf1", "wf2", "wf3"):
+        raise C258Error("forward evidence must retain the three exact frozen fold names")
     for fold in folds:
         validate_fold_evidence(fold)
     attempts = tuple(row for fold in folds for row in fold.base.attempts)
     stress_attempts = tuple(row for fold in folds for row in fold.stress.attempts)
+    if not attempts or not stress_attempts:
+        checks = {name: False for name in ("aggregate_mean_R_gt_0_03", "aggregate_pf_gt_1_10",
+            "attempts_gte_1000_and_symbols_gte_16", "median_weekly_closed_gte_30",
+            "two_of_three_folds_positive", "worst_fold_mean_gt_minus_0_05",
+            "strictly_more_than_55pct_months_positive", "both_regimes", "stress_mean_and_pf",
+            "bootstrap_bonferroni", "symbol_concentration", "drawdown_tier", "complete")}
+        checks["both_leg_contributions_nonnegative"] = True
+        return {"pass": False, "checks": checks,
+            "reasons": [name for name, passed in checks.items() if not passed],
+            "undefined": "zero-trade statistics", "base": {"closed_attempts": 0},
+            "stress": {"closed_attempts": 0}, "bootstrap": None}
     base, stress = fold_metrics(attempts), fold_metrics(stress_attempts)
-    fold_base = [fold_metrics(fold.base.attempts) for fold in folds]
-    weeks = tuple(value for fold in folds for value in fold.weekly_closed_counts_including_zero)
-    months = tuple(value for fold in folds for value in fold.monthly_net_R_including_zero)
+    fold_base = [fold_metrics(fold.base.attempts) if fold.base.attempts
+                 else {"net_R": 0.0, "mean_R": math.nan} for fold in folds]
+    weeks, months = aggregate_forward_periods(folds)
     long_net = math.fsum(row.long_contribution_R for row in attempts)
     short_net = math.fsum(row.short_contribution_R for row in attempts)
     regime_rows: dict[str, list[float]] = {"BTC_ABOVE_OR_ON_EMA200": [], "BTC_BELOW_EMA200": []}
@@ -1865,8 +1951,16 @@ def forward_gate(folds: Sequence[FoldEvidence], *, bootstrap_resamples: int = 10
         attempts, key=lambda item: (item.entry_ms, item.long_symbol, item.short_symbol))],
         resamples=bootstrap_resamples)
     net_R = float(base["net_R"]); stress_net_R = float(stress["net_R"])
-    max_dd = max(float(fold_drawdown(fold)["worse_of_R"]) for fold in folds)
-    stress_max_dd = max(float(fold_drawdown(fold, stress=True)["worse_of_R"]) for fold in folds)
+    all_marks = tuple(mark for fold in folds for mark in fold.base_marks)
+    stress_marks = tuple(mark for fold in folds for mark in fold.stress_marks)
+    end = int(datetime.fromisoformat(load_frozen_contract()["splits"]["forward_folds"][-1]
+        .split("/")[1].replace("Z", "+00:00")).timestamp()*1000)
+    flat_end = DrawdownEvent(end, "MARK_END", 0, 0.0, 0.0)
+    marked_dd, recovery = chronological_drawdown((*derive_drawdown_events(attempts, all_marks), flat_end))
+    stress_marked_dd, stress_recovery = chronological_drawdown((
+        *derive_drawdown_events(stress_attempts, stress_marks), flat_end))
+    max_dd = max(marked_dd, _max_closed_r_drawdown(attempts))
+    stress_max_dd = max(stress_marked_dd, _max_closed_r_drawdown(stress_attempts))
     tier = drawdown_tier(net_R=net_R, max_drawdown_R=max_dd,
                          stress_net_R=stress_net_R, stress_max_drawdown_R=stress_max_dd)
     checks = {
@@ -1875,7 +1969,8 @@ def forward_gate(folds: Sequence[FoldEvidence], *, bootstrap_resamples: int = 10
         "attempts_gte_1000_and_symbols_gte_16": int(base["closed_attempts"]) >= 1000 and int(base["symbols"]) >= 16,
         "median_weekly_closed_gte_30": _median(weeks) >= 30,
         "two_of_three_folds_positive": sum(float(item["net_R"]) > 0 for item in fold_base) >= 2,
-        "worst_fold_mean_gt_minus_0_05": min(float(item["mean_R"]) for item in fold_base) > -0.05,
+        "worst_fold_mean_gt_minus_0_05": all(math.isfinite(float(item["mean_R"])) for item in fold_base)
+            and min(float(item["mean_R"]) for item in fold_base) > -0.05,
         "both_leg_contributions_nonnegative": long_net >= 0 and short_net >= 0,
         "strictly_more_than_55pct_months_positive": sum(value > 0 for value in months) / len(months) > 0.55,
         "both_regimes": regime_pass,
@@ -1888,6 +1983,8 @@ def forward_gate(folds: Sequence[FoldEvidence], *, bootstrap_resamples: int = 10
     reasons = [name for name, passed in checks.items() if not passed]
     return {"pass": not reasons, "checks": checks, "reasons": reasons, "base": base,
             "stress": stress, "bootstrap": bootstrap, "drawdown": tier,
+            "drawdown_details": {"max_drawdown_R": max_dd, "recovery_ms": recovery,
+                "stress_max_drawdown_R": stress_max_dd, "stress_recovery_ms": stress_recovery},
             "long_net_R": long_net, "short_net_R": short_net}
 
 
