@@ -7,12 +7,12 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 PARENT_PATH='research_evidence/prereg/btc_residual_leadlag_continuation_c259_stagea.v1.json'
 PARENT_SHA256='1aad55f092c0c308cb901701e2ee8bd3062d1eee9a07e13729673efbf5b17719'
-PROPOSAL_PATH='contracts/c267_btc_residual_leadlag/c267_prereg_proposal.v3.json'
-PROPOSAL_SHA256='4ceb26dc632a390fdc7253e17232f22e23cce88d1fb71953469a6bc1e92225ae'
-MODEL_PATH='contracts/c267_btc_residual_leadlag/c267_funding_liability_model.v2.json'
-MODEL_SHA256='5acba50cd2b9b25007087b51bb8d5845daa525188c3f9c0f2c120dbe4e4c4a63'
-CATALOG_PATH='contracts/c267_btc_residual_leadlag/c267_lifecycle_catalog.v1.json'
-CATALOG_SHA256='fa810f782ff3da3dd14b35cd029812aa71f540ef23182df3aca7eb1bf665e1b0'
+PROPOSAL_PATH='contracts/c267_btc_residual_leadlag/c267_prereg_proposal.v4.json'
+PROPOSAL_SHA256='baab7e0431eb5cd71c9a6425ac23be6ff1d7a3b18a58f8f087085666ace39866'
+MODEL_PATH='contracts/c267_btc_residual_leadlag/c267_funding_liability_model.v3.json'
+MODEL_SHA256='e333fc5b328bca928eec6e6bfaa496cad1658669d11ad164e66d98dee9433ed9'
+CATALOG_PATH='contracts/c267_btc_residual_leadlag/c267_lifecycle_catalog.v2.json'
+CATALOG_SHA256='c3287d28e774b6494aad828c1676ee98c0313423f1916fff940833840974751b'
 PREFIX_PATH='contracts/c267_btc_residual_leadlag/c267_initial_source_prefix_clarification.v1.json'
 PREFIX_SHA256='ade5921021d9cc3b740eb5b189954b5592a6b3c26f20a8008144218b910e7e58'
 EXECUTION_AUTHORIZED=False
@@ -91,7 +91,7 @@ def load_catalog_metadata():
     raw=(ROOT/CATALOG_PATH).read_bytes()
     if hashlib.sha256(raw).hexdigest()!=CATALOG_SHA256:raise C267Locked('C267_CATALOG_BYTE_DRIFT')
     catalog=json.loads(raw);records=[]
-    if catalog['candidate_scope']!=267 or catalog['coverage']!='ONE_OBSERVED_EVENT_NOT_COMPLETE_WORLD':
+    if catalog['candidate_scope']!=267 or catalog['coverage']!='KNOWN_OBSERVED_EVENTS_NOT_COMPLETE_WORLD':
         raise C267Locked('C267_NO_COMPLETE_WORLD_OR_OTHER_CANDIDATE_GRANT')
     for pin in catalog['records']:
         raw=(ROOT/pin['path']).read_bytes()

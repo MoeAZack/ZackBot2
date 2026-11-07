@@ -63,9 +63,19 @@ def test_three_lifecycle_clocks_do_not_fabricate_advance_notice_or_settlement():
 
 
 def test_pinned_current_event_does_not_upgrade_publication_date_into_asof_or_fill():
-    ((pin,event),)=C.load_catalog_metadata()
+    pin,event=C.load_catalog_metadata()[0]
     assert pin['kind']=='DERIVED_CURRENT_OFFICIAL_OBSERVATION'
     assert event['effective_no_new_entry_ms']==1736152200000 and event['effective_settlement_ms']==1736154000000
     assert event['advance_information_available_ms'] is None and not event['original_asof_version_verified']
     assert event['raw_http_sha256'] is None and event['settlement_price_or_cost_proof'] is None
     assert event['displayed_publication_timezone']=='UNSPECIFIED_DO_NOT_INFER'
+
+
+def test_two_generic_effective_events_and_ranked_entry_override_do_not_change_science():
+    p,m=C.load_metadata();records=C.load_catalog_metadata()
+    assert {e['symbol'] for pin,e in records}=={'FTMUSDT','BNXUSDT'}
+    assert all(pin['kind']=='DERIVED_CURRENT_OFFICIAL_OBSERVATION' and e['advance_information_available_ms'] is None for pin,e in records)
+    override=m['accounting']['entry_phase_override']
+    assert override['candidate_scope']==267 and override['preserve_ranked_causal_admission_sizing'] is True
+    assert '2*admission_ordinal+0' in override['cash_sequence'] and '2*admission_ordinal+1' in override['cash_sequence']
+    assert p['statistics']['resamples']==20000 and p['statistics']['short_null_seed']==267202611073

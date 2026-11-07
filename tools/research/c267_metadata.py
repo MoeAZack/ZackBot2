@@ -21,6 +21,7 @@ DOCUMENTS={META.PROPOSAL_PATH:META.PROPOSAL_SHA256,META.MODEL_PATH:META.MODEL_SH
     META.PREFIX_PATH:META.PREFIX_SHA256}
 # The exact single derived notice is metadata, not a raw HTTP/market payload.
 DOCUMENTS['contracts/c267_btc_residual_leadlag/lifecycle/root.browser-derived.current-observation.v1.json']='d8144e94ec63b5e89d8cda7af04338d4b5106aa2bdabe6be591c537037f439e6'
+DOCUMENTS['contracts/c267_btc_residual_leadlag/lifecycle/root.web-derived.bnx-current-observation.v1.json']='11d288a05f9466e9d33dc7c7612993bf11de0309a438b851b519938f88487586'
 
 
 def load_proposal_metadata():return META.load_metadata()[0]
