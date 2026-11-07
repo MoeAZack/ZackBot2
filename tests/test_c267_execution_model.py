@@ -168,3 +168,14 @@ def test_balanced_per_attempt_cash_drift_cannot_hide_behind_same_global_total():
     ledger._per_attempt['b']-=M.Fraction(D('1e-9'))
     assert ledger.settled_cash==before
     assert ledger.reconciliation()['component_identity_reconciled'] is False
+
+
+def test_funding_phase_requires_raw_identity_even_when_sequence_changes():
+    ledger=M.SideCash(1)
+    for sequence in(0,1):
+        with pytest.raises(M.ModelIncomplete,match='INVALID_CHRONOLOGICAL'):
+            ledger.append(cash_event(time=B+H,phase='FUNDING',sequence=sequence,components=(-1.,)))
+    assert not ledger.events and ledger.settled_cash==2000
+    ledger.append(cash_event())
+    ledger.append(cash_event(phase='ENTRY',sequence=1,components=(-1.,),raw=B-1))
+    assert len(ledger.events)==2

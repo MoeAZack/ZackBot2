@@ -192,6 +192,7 @@ class SideCash:
         if (type(event)is not CashEvent or type(event.timestamp_ms)is not int or event.phase not in PHASES
             or not event.symbol or not event.attempt_id or type(event.sequence)is not int or event.sequence<0
             or type(event.components)is not tuple or not event.components
+            or event.phase=='FUNDING' and event.raw_time_ms is None
             or any(type(v)not in(float,D) or not (v.is_finite() if type(v)is D else math.isfinite(v)) for v in event.components)):
             raise ModelIncomplete('C267_INVALID_CHRONOLOGICAL_COMPONENT_EVENT')
         key=(event.timestamp_ms,PHASES[event.phase],event.symbol,event.attempt_id,event.sequence)
