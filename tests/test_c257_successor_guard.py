@@ -5,10 +5,12 @@ import gzip
 import hashlib
 import json
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from tools.research import authority_v6 as V
+from tools.research import c257_successor_guard as G
 
 from tools.research.c257_successor_guard import (
     BASE_COMMIT,
@@ -40,8 +42,24 @@ def _canonical(value: object) -> bytes:
 
 def _with_digest(value: dict) -> dict:
     result = copy.deepcopy(value)
+    result.pop("digest", None)
     result["digest"] = hashlib.sha256(_canonical(result)).hexdigest()
     return result
+
+
+def _emitted_pit(manifest_digest: str) -> dict:
+    plan = V.load_frozen_plan()
+    base, _ = V._load_bound_json(ROOT, plan["base_authorities"]["pit_v8"], "PIT-v8")
+    draft = copy.deepcopy(base)
+    draft["universe_id"] = "PIT-TOP40-QV30D-V9"
+    for monday in V.NEW_CELLS:
+        cell = copy.deepcopy(base["weeks"][-1])
+        cell["monday_ms"] = monday
+        cell["monday_utc"] = datetime.fromtimestamp(monday/1000, timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+        draft["weeks"].append(cell)
+    draft = _with_digest(draft)
+    # Exercise the real output builder and its full protected-prefix validator.
+    return V.finalize_pit_v9(draft, copy.deepcopy(draft), manifest_digest=manifest_digest)
 
 
 def _run(repo: Path, *args: str) -> str:
@@ -63,7 +81,12 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
                     str(ROOT), BASE_COMMIT], capture_output=True, check=True)
     subprocess.run(["git", "-C", str(repo), "fetch", "--no-tags", "--depth=1",
                     str(ROOT), C256_COMMIT], capture_output=True, check=True)
-    _run(repo, "checkout", "--detach", BASE_COMMIT)
+    # Keep the base tree in the index without materializing any market/outcome files.
+    _run(repo, "update-ref", "--no-deref", "HEAD", BASE_COMMIT)
+    _run(repo, "read-tree", BASE_COMMIT)
+    plan_path = repo / V.PLAN_PATH.relative_to(ROOT)
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_bytes(V.PLAN_PATH.read_bytes())
     _run(repo, "config", "user.name", "C257 Test")
     _run(repo, "config", "user.email", "c257@example.invalid")
 
@@ -75,14 +98,7 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         "files_v6": [],
     })
     manifest_raw = gzip.compress(_canonical(manifest), mtime=0)
-    cursor, end, weeks = datetime(2024,10,14,tzinfo=timezone.utc), datetime(2026,11,2,tzinfo=timezone.utc), []
-    while cursor <= end:
-        weeks.append({"monday_ms": int(cursor.timestamp()*1000), "books": {"crypto": {"members":["AAAUSDT"]}}})
-        cursor += timedelta(days=7)
-    pit = _with_digest({
-        "format": "zb-pit-universe/2", "universe_id": "PIT-TOP40-QV30D-V9",
-        "manifest_digest": manifest["digest"], "weeks": weeks,
-    })
+    pit = _emitted_pit(manifest["digest"])
     pit_raw = _canonical(pit)
     filter_v4 = _with_digest({
         "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY",
@@ -124,7 +140,7 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
         plan["status"] = "FORGED"
         plan_path.write_bytes(_canonical(plan))
-    _run(repo, "add", "--all")
+    _run(repo, "add", *OUTPUT_PATHS.values(), V.PLAN_PATH.relative_to(ROOT).as_posix())
     _run(repo, "commit", "-m", "synthetic authority outputs")
     head = _run(repo, "rev-parse", "HEAD")
     _run(repo, "update-ref", "refs/remotes/origin/master", head)
@@ -219,6 +235,62 @@ def test_exact_protected_tree_and_four_real_pins_are_accepted(valid_authority) -
     repo, head, pins = valid_authority
     scaffold = _load(SUCCESSOR_PATH)
     verify_pin_amendment(scaffold, _amend(scaffold, head, pins), repo=repo)
+
+
+def _bound_documents(valid_authority):
+    repo, head, _ = valid_authority
+    documents = {}
+    hashes = {}
+    for name, path in OUTPUT_PATHS.items():
+        raw = subprocess.run(["git", "-C", str(repo), "show", f"{head}:{path}"],
+                             capture_output=True, check=True).stdout
+        hashes[name] = hashlib.sha256(raw).hexdigest()
+        documents[name] = json.loads(gzip.decompress(raw) if name == "manifest_v6" else raw)
+    return documents, hashes
+
+
+def _rebind_pit(documents, hashes):
+    # An attacker may recompute every public digest/crossbinding; the frozen
+    # prefix and planned extension must still be enforced independently.
+    pit = documents["pit_v9"] = _with_digest(documents["pit_v9"])
+    hashes["pit_v9"] = hashlib.sha256(_canonical(pit)).hexdigest()
+    filter_ = documents["filter_v4"]
+    filter_.update(pit_universe_sha256=hashes["pit_v9"], pit_universe_digest=pit["digest"])
+    documents["filter_v4"] = _with_digest(filter_)
+    documents["coverage_v4"].update(pit_universe_digest=pit["digest"],
+        filter_authority_digest=documents["filter_v4"]["digest"])
+    documents["coverage_v4"] = _with_digest(documents["coverage_v4"])
+
+
+def test_actual_emitter_full_v8_prefix_and_empty_inactive_books_pass_guard(valid_authority):
+    documents, hashes = _bound_documents(valid_authority)
+    pit = documents["pit_v9"]
+    plan = V.load_frozen_plan()
+    base, _ = V._load_bound_json(ROOT, plan["base_authorities"]["pit_v8"], "PIT-v8")
+    assert len(base["weeks"]) == 348
+    assert pit["weeks"][:348] == base["weeks"]
+    assert [cell["monday_ms"] for cell in pit["weeks"][348:]] == list(V.NEW_CELLS)
+    assert any(not cell["books"]["fx"]["members"] for cell in pit["weeks"])
+    V._validate_pit_v9_prefix(pit)  # No validator mock or abbreviated prefix.
+    G._verify_output_structure(documents, hashes)
+
+
+@pytest.mark.parametrize("mutation, message", [
+    (lambda pit: pit.__setitem__("weeks", pit["weeks"][245:]), "Monday sequence"),
+    (lambda pit: pit["weeks"].reverse(), "Monday sequence"),
+    (lambda pit: pit["weeks"].append(copy.deepcopy(pit["weeks"][-1])), "Monday sequence"),
+    (lambda pit: pit["weeks"][-1].__setitem__("monday_ms", float(pit["weeks"][-1]["monday_ms"])), "Monday sequence"),
+    (lambda pit: pit["weeks"][0]["books"]["crypto"]["members"].reverse(), "PIT-v8 cell"),
+    (lambda pit: pit.__setitem__("rule", {}), "ranking rule"),
+    (lambda pit: pit["weeks"][-1]["books"]["crypto"]["members"].append("FORGEDUSDT"), "outside frozen seed"),
+    (lambda pit: pit["weeks"][-1]["books"]["crypto"].__setitem__("members", []), "membership is empty/malformed"),
+])
+def test_rehashed_pit_cannot_truncate_mutate_or_extend_protected_prefix(valid_authority, mutation, message):
+    documents, hashes = _bound_documents(valid_authority)
+    mutation(documents["pit_v9"])
+    _rebind_pit(documents, hashes)
+    with pytest.raises(C257GuardError, match=message):
+        G._verify_output_structure(documents, hashes)
 
 
 def test_invented_commit_is_rejected(valid_authority) -> None:

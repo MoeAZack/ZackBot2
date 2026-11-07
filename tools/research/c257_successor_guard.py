@@ -7,7 +7,6 @@ import hashlib
 import json
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -240,24 +239,30 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
         "zb-pit-universe/2", "PIT-TOP40-QV30D-V9", manifest["digest"]),
         "PIT-v9 identity/manifest binding mismatch")
     weeks = pit.get("weeks")
-    start = datetime(2024, 10, 14, tzinfo=timezone.utc)
-    end = datetime(2026, 11, 2, tzinfo=timezone.utc)
-    expected_mondays: list[int] = []
-    cursor = start
-    while cursor <= end:
-        expected_mondays.append(int(cursor.timestamp()*1000))
-        cursor += timedelta(days=7)
+    from tools.research import authority_v6 as V
+    try:
+        plan = V.load_frozen_plan(PLAN_PATH)
+        base, _ = V._load_bound_json(ROOT, plan["base_authorities"]["pit_v8"], "PIT-v8")
+        expected_mondays = [cell["monday_ms"] for cell in base["weeks"]] + list(V.NEW_CELLS)
+    except (V.AuthorityV6Error, OSError, KeyError, TypeError) as exc:
+        raise C257GuardError(f"PIT-v9 frozen prefix binding invalid: {exc}") from exc
     _require(isinstance(weeks, list)
+             and all(isinstance(cell, Mapping) and type(cell.get("monday_ms")) is int for cell in weeks)
              and [cell.get("monday_ms") for cell in weeks] == expected_mondays,
              "PIT-v9 weeks are not the exact frozen Monday sequence")
     for cell in weeks:
         books = cell.get("books")
         _require(isinstance(books, Mapping) and books
+                 and isinstance(books.get("crypto"), Mapping)
+                 and books["crypto"].get("members")
                  and all(isinstance(book, Mapping) and isinstance(book.get("members"), list)
-                         and (members := book["members"])
-                         and all(isinstance(symbol, str) and symbol for symbol in members)
-                         and len(members) == len(set(members)) for book in books.values()),
+                         and all(isinstance(symbol, str) and symbol for symbol in book["members"])
+                         and len(book["members"]) == len(set(book["members"])) for book in books.values()),
                  "PIT-v9 weekly membership is empty/malformed")
+    try:
+        V._validate_pit_v9_prefix(pit, ROOT)
+    except (V.AuthorityV6Error, OSError, KeyError, TypeError) as exc:
+        raise C257GuardError(f"PIT-v9 frozen prefix validation failed: {exc}") from exc
     filter_v4 = documents["filter_v4"]
     _require((filter_v4.get("authority"), filter_v4.get("version"), filter_v4.get("status")) == (
         "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 4, "FROZEN"),

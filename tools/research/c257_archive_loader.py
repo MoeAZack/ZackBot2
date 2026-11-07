@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Mapping
@@ -198,6 +199,15 @@ class ProtectedArchiveLoader:
         if (cells != self.filters["weekly_membership"][key]
                 or V.sha256(V.canonical(cells)) != self.filters["weekly_membership_sha256"][key]):
             raise ArchiveLoaderError("derived CORE-20 differs from bound membership")
+        # monday_utc is a display date in the protected prefix, not a split
+        # timestamp. Order cells by the validated integer PIT coordinate.
+        monday_times = {}
+        for week in self.pit["weeks"]:
+            monday = week["monday_ms"]
+            day = datetime.fromtimestamp(monday/1000, timezone.utc).strftime("%Y-%m-%d")
+            if week["monday_utc"] not in (day, day+"T00:00:00Z"):
+                raise ArchiveLoaderError("PIT Monday display differs from canonical timestamp")
+            monday_times[week["monday_utc"]] = monday
         symbols = {symbol for cell in cells for symbol in cell["members"]}
         read_symbols = symbols | {"BTCUSDT"}
         warm = start-32*8*S.HOUR_MS
@@ -244,8 +254,8 @@ class ProtectedArchiveLoader:
         times = sorted({row.nominal_ms for chain in funding.values() for row in chain
                         if start <= row.nominal_ms < end and row.interval_hours in S.ALLOWED_INTERVAL_HOURS})
         for timestamp in times:
-            active = max((cell for cell in cells if S._iso_ms(cell["monday_utc"]) <= timestamp),
-                         key=lambda cell: cell["monday_utc"])
+            active = max((cell for cell in cells if monday_times[cell["monday_utc"]] <= timestamp),
+                         key=lambda cell: monday_times[cell["monday_utc"]])
             if not any(timestamp in funding_indices[symbol] for symbol in active["members"]):
                 continue
             if timestamp+10*S.HOUR_MS >= end:

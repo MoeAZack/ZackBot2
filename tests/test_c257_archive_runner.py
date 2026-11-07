@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import gzip
+import copy
 import hashlib
 import io
 import json
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -30,8 +31,12 @@ def synthetic_archive(tmp_path, monkeypatch):
     root, store = tmp_path/"repo", tmp_path/"store"
     start = S._iso_ms("2024-12-14T00:00:00Z")
     end = start+24*S.HOUR_MS
-    symbols = [f"S{i:02d}USDT" for i in range(20)]
-    symbols[-1] = "BTCUSDT"
+    plan = V.load_frozen_plan()
+    base, _ = V._load_bound_json(V.ROOT, plan["base_authorities"]["pit_v8"], "PIT-v8")
+    active = max((cell for cell in base["weeks"] if cell["monday_ms"] <= start),
+                 key=lambda cell: cell["monday_ms"])
+    symbols = active["books"]["crypto"]["members"][:20]
+    assert "BTCUSDT" in symbols
     records = []
     for symbol in symbols:
         i = symbols.index(symbol)
@@ -66,15 +71,15 @@ def synthetic_archive(tmp_path, monkeypatch):
     manifest = digest({"format":"zb-binance-um-archive-manifest/6",
         "authority_id":"BINANCE-UM-PRECUTOFF-AUTHORITY-V6","cutoff_exclusive_ms":V.CUTOFF_MS,
         "active_base_files_v5":records,"files_v6":[]})
-    weeks=[]
-    cursor=datetime(2024,10,14,tzinfo=timezone.utc)
-    while cursor <= datetime(2026,11,2,tzinfo=timezone.utc):
-        weeks.append({"monday_ms":int(cursor.timestamp()*1000),
-            "monday_utc":cursor.strftime("%Y-%m-%dT00:00:00Z"),
-            "books":{"crypto":{"members":symbols}}})
-        cursor+=timedelta(days=7)
-    pit = digest({"format":"zb-pit-universe/2","universe_id":"PIT-TOP40-QV30D-V9",
-                  "manifest_digest":manifest["digest"],"weeks":weeks})
+    pit = copy.deepcopy(base)
+    pit["universe_id"] = "PIT-TOP40-QV30D-V9"
+    for monday in V.NEW_CELLS:
+        cell = copy.deepcopy(base["weeks"][-1])
+        cell["monday_ms"] = monday
+        cell["monday_utc"] = datetime.fromtimestamp(monday/1000,timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+        pit["weeks"].append(cell)
+    pit = digest(pit)
+    pit = V.finalize_pit_v9(pit, copy.deepcopy(pit), manifest_digest=manifest["digest"])
     snapshot = {"serverTime":S._iso_ms("2024-12-13T04:00:07.467Z"),"symbols":[{
         "symbol":symbol,"status":"TRADING","contractType":"PERPETUAL","quoteAsset":"USDT",
         "underlyingType":"COIN","filters":[{"filterType":"PRICE_FILTER","tickSize":"0.1"},
@@ -120,6 +125,8 @@ def synthetic_archive(tmp_path, monkeypatch):
 def test_checksum_archive_to_concurrent_cash_book_and_economic_report(synthetic_archive, monkeypatch):
     root,store,pins,start,end=synthetic_archive
     loader=L.ProtectedArchiveLoader(root=root,store=store,pins=pins)
+    assert len(loader.pit["weeks"]) == 353
+    assert any(cell["monday_utc"] == "2024-12-09" for cell in loader.pit["weeks"])
     with pytest.raises(L.ArchiveLoaderError,match="sealed"):
         loader.load_fold("wf1",Decimal(1000))
     raw=loader.load_fold("development",Decimal(1000))
@@ -150,6 +157,30 @@ def test_checksum_archive_to_concurrent_cash_book_and_economic_report(synthetic_
     assert report["diagnostics"]["sign_flipped"]["status"]=="REPORT_ONLY"
     assert report["diagnostics"]["equal_gross_eligible_universe"]["status"]=="INCOMPLETE_SPECIFICATION"
     assert report["result_digest"]==E._packet_digest(report)
+
+
+def test_rehashed_monday_display_mismatch_fails_before_source_access(synthetic_archive, monkeypatch):
+    root, store, pins, _, _ = synthetic_archive
+    documents = {}
+    for name, path in G.OUTPUT_PATHS.items():
+        raw = (root/path).read_bytes()
+        documents[name] = json.loads(gzip.decompress(raw) if name == "manifest_v6" else raw)
+    pit = documents["pit_v9"]
+    pit["weeks"][-1]["monday_utc"] = "2099-01-01"
+    digest(pit)
+    filter_ = documents["filter_v4"]
+    filter_.update(pit_universe_digest=pit["digest"], pit_universe_sha256=V.sha256(V.canonical(pit)))
+    digest(filter_)
+    documents["coverage_v4"].update(pit_universe_digest=pit["digest"], filter_authority_digest=filter_["digest"])
+    digest(documents["coverage_v4"])
+    for name in ("pit_v9", "filter_v4", "coverage_v4"):
+        raw = V.canonical(documents[name])
+        (root/G.OUTPUT_PATHS[name]).write_bytes(raw)
+        pins[name].update(byte_sha256=V.sha256(raw), content_digest=documents[name]["digest"])
+    loader = L.ProtectedArchiveLoader(root=root, store=store, pins=pins)
+    monkeypatch.setattr(loader, "_source_rows", lambda *args, **kwargs: pytest.fail("source opened"))
+    with pytest.raises(L.ArchiveLoaderError, match="Monday display differs"):
+        loader.load_fold("development", Decimal(1000))
 
 
 def test_runner_dev_veto_precedes_forward_reads_and_claim_is_single_use(synthetic_archive,monkeypatch,tmp_path,capsys):
