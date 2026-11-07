@@ -2,6 +2,8 @@ from pathlib import Path
 from types import SimpleNamespace
 import hashlib
 import json
+import io
+import zipfile
 
 import pytest
 
@@ -84,3 +86,28 @@ def test_protected_filter_snapshot_preserves_full_pit_order_without_core20_cut(m
         archive.membership_and_filters(fold="wf1", decision_ms=lo)
     with pytest.raises(S.C.IncompleteAuthority, match="escapes"):
         archive.membership_and_filters(fold="wf1", decision_ms=lo-S.C.HOUR_MS)
+
+
+def test_checksum_archive_clips_sealed_values_before_schema_parse(tmp_path):
+    lo = S._ms("2026-09-27T23:00:00Z")
+    hi = lo+S.C.HOUR_MS
+    rel = "um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-09.zip"
+    row = f"{lo},1,2,0.5,1,1,{hi-1},1,1,1,1,0\n"
+    # Deliberately unparseable economic field after the sealed boundary proves
+    # only its timestamp is examined; it cannot affect returned economic rows.
+    sealed = f"{hi},1,2,0.5,1,1,{hi+S.C.HOUR_MS-1},SEALED,1,1,1,0\n"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("BTCUSDT-1h-2026-09.csv", row+sealed)
+    raw = buffer.getvalue()
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True)
+    target.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    Path(str(target)+".ok").write_text(digest, encoding="ascii")
+    record = {"path": rel, "sha256": digest, "source": {"kind": "binance-vision-archive"}}
+    _, rows = S._read_window_rows(tmp_path, record, new=False, start_ms=lo, end_ms=hi)
+    assert len(rows) == 1 and int(rows[0][0]) == lo
+    target.write_bytes(raw+b"changed")
+    with pytest.raises(Exception, match="SHA-256"):
+        S._read_window_rows(tmp_path, record, new=False, start_ms=lo, end_ms=hi)
