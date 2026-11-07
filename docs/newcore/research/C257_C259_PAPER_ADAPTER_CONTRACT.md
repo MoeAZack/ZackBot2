@@ -4,6 +4,17 @@ ROADMAP FIT: move independently qualified C257/C258/C259 economics into bounded 
 
 ## Existing seams verified on protected code
 
+The deployment target is the native NEWCORE runtime, not the legacy `Engine`.
+At the 7 Nov 2026, 07:13 Cairo integration check, runtime PR #296 remains open at
+`936628a63f7f54a18e04004a9215a40fd3d3e6c4` and STRAT-01 EntrySource PR #297 remains
+open at `8f81b266c8315d1a7c6991cdbacba472be920b1e`. Reuse and independently accept
+those existing runtime and EntrySource interfaces before installing candidates.
+The legacy seams below are an inventory of existing behavior and compatibility
+risks; they do not authorize installing candidates through the legacy runtime or
+building a duplicate execution engine. A causal intent helper alone is not an
+installed candidate, and an independent per-symbol EntrySource cannot silently
+stand in for an atomic paired-entry lifecycle.
+
 - `candidate_activation.py` freezes, preflights, enables and rolls back an already installed sleeve. It explicitly does not install strategies or supply candidate logic.
 - `strategies.signals` returns independent per-symbol entry/exit arrays. `Engine.compute_signals` and `Engine.cycle` consume that interface.
 - `Engine.cycle` currently admits each symbol independently and manages its exits independently. Registering two ordinary signals does not implement a paired candidate.
