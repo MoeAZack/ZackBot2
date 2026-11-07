@@ -183,6 +183,7 @@ class SideCash:
     def __init__(self,side,capital=2000):
         if side not in(-1,1) or capital not in(1000,2000,3000,4000):raise ModelIncomplete('C267_FIXED_SIDE_CAPITAL')
         self.side=side;self.capital=capital;self._events=[];self._ids=set();self._funding_allocations=set();self._last=None;self.positions={}
+        self._cumulative=Fraction(0);self._per_attempt={}
 
     @property
     def events(self):return tuple(self._events)
@@ -202,13 +203,16 @@ class SideCash:
                 raise ModelIncomplete('C267_FUTURE_OR_DUPLICATE_EVENT_ATTEMPT_FUNDING')
             self._funding_allocations.add((event.event_id,event.attempt_id))
         self._ids.add(key);self._last=key;self._events.append(event)
+        delta=self._exact(event.components)
+        self._cumulative+=delta
+        self._per_attempt[event.attempt_id]=self._per_attempt.get(event.attempt_id,Fraction(0))+delta
 
     @staticmethod
     def _exact(values):
         return sum((Fraction(v) for v in values),Fraction(0))
 
     def exact_components(self,attempt_id=None):
-        return self._exact(v for event in self.events if attempt_id is None or event.attempt_id==attempt_id for v in event.components)
+        return self._cumulative if attempt_id is None else self._per_attempt.get(attempt_id,Fraction(0))
 
     @property
     def settled_cash_exact(self):
@@ -226,7 +230,8 @@ class SideCash:
     def reconciliation(self,*,expected_components=None):
         ids={e.attempt_id for e in self.events}
         grouped=sum((self.exact_components(identifier) for identifier in ids),Fraction(0))
-        return {'component_identity_reconciled':grouped==self.exact_components(),
+        independently_recomputed=self._exact(v for event in self.events for v in event.components)
+        return {'component_identity_reconciled':grouped==self._cumulative==independently_recomputed and len(self.events)==len(self._ids),
             'expected_component_total_reconciled':None if expected_components is None else self._exact(expected_components)==self.exact_components(),
             'source_binding_checked':expected_components is not None,
             'exact_cash':self.settled_cash_exact,

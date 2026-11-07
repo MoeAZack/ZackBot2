@@ -147,3 +147,14 @@ def test_alternate_trade_grouping_matches_exact_authoritative_component_sum():
     assert ledger.exact_components('a')+ledger.exact_components('b')==exact==ledger.exact_components()
     assert ledger.reconciliation(expected_components=(*first,*second))['component_identity_reconciled']
     with pytest.raises(AttributeError):ledger.events.clear()
+
+
+def test_cached_exact_prefix_is_constant_work_but_report_reaudits_missing_component(monkeypatch):
+    ledger=M.SideCash(1);event=cash_event(components=(-.05,-1e-9));ledger.append(event)
+    expected=ledger.exact_components();original=ledger._exact
+    monkeypatch.setattr(ledger,'_exact',lambda *args:pytest.fail('cash prefix rescanned history'))
+    assert ledger.exact_components()==ledger.exact_components('a')==expected
+    assert ledger.settled_cash==float(M.Fraction(2000)+expected)
+    monkeypatch.setattr(ledger,'_exact',original)
+    ledger._events[0]=replace(event,components=(-.05,))
+    assert ledger.reconciliation()['component_identity_reconciled'] is False
