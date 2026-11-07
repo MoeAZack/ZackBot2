@@ -66,7 +66,7 @@ def evaluate_books(provider):
         'bootstrap':inference,'statistics_specification':{'draws':20000,'block_expected_trades':21,'side_seeds':SCI.SEEDS[source.side],
             'p_threshold':'.05/268','historical_global_variant_total':'UNKNOWN','global_FWER_claimed':False,
             'development_inference_is_diagnostic':True},
-        'lifecycle_catalog':{'path':S.C.META.CATALOG_PATH,'sha256':S.C.META.CATALOG_SHA256,'complete_world':False,
+        'lifecycle_catalog':{'path':S.C.CATALOG_PATH,'sha256':S.C.CATALOG_SHA256,'complete_world':False,
             'kind':'DERIVED_CURRENT_OFFICIAL_OBSERVATION_EFFECTIVE_EVENTS_ONLY','original_announcement_asof_proven':False,
             'advance_horizon_veto_authorized':False,'settlement_execution_proof':None},
         'published_funding_completeness_model':[vars(p) for p in dict.fromkeys(source.published_funding_proofs)],
