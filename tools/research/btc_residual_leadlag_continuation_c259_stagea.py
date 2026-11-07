@@ -151,6 +151,17 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
                                CONTRACT_HEAD, pins.protected_head], capture_output=True)
     if ancestry.returncode:
         raise IncompleteAuthority("authority head does not descend from C259 contract")
+    contract_tree_path = CONTRACT_PATH.relative_to(ROOT).as_posix()
+    contract_raw = _tree_bytes(repo, pins.protected_head, contract_tree_path)
+    if _sha(contract_raw) != CONTRACT_SHA256:
+        raise IncompleteAuthority("protected C259 contract blob mismatch")
+    try:
+        protected_contract = json.loads(contract_raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise IncompleteAuthority("protected C259 contract is invalid") from exc
+    if (protected_contract.get("candidate_id"), protected_contract.get("default_off"),
+            protected_contract.get("evaluation_locked")) != (259, True, True):
+        raise IncompleteAuthority("protected C259 contract semantics mismatch")
     if _sha(_tree_bytes(repo, pins.protected_head, PLAN_PATH.relative_to(ROOT).as_posix())) != PLAN_SHA256:
         raise IncompleteAuthority("protected authority plan bytes changed")
     docs: dict[str, dict] = {}
@@ -192,6 +203,11 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
                               for symbol in pit_members(cell))  # type: ignore[union-attr]
                    for cell in cells)):
         raise IncompleteAuthority("PIT-v9 weekly cells are empty or malformed")
+    mondays = tuple(int(cell["monday_ms"]) for cell in cells)
+    expected_mondays = tuple(range(1728864000000, 1793577600000 + 1,
+                                   7 * 24 * HOUR_MS))
+    if mondays != expected_mondays:
+        raise IncompleteAuthority("PIT-v9 weekly range coverage mismatch")
     if (filters.get("authority"), filters.get("version")) != (
         "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 4
     ):
@@ -210,7 +226,11 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
     result = coverage.get("required_result", coverage.get("result"))
     if (coverage.get("format") != "zb-strategy-causal-pack-01-authority-coverage-preflight/1"
             or gaps != 0 or coverage.get("gaps") not in ([], None)
-            or result != "ZERO_GUARANTEED_PERIOD_GAPS"):
+            or result != "ZERO_GUARANTEED_PERIOD_GAPS"
+            or coverage.get("required_streams") != [
+                "klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null"]
+            or coverage.get("coverage_start_ms") != 1728864000000
+            or coverage.get("cutoff_exclusive_ms") != 1793836800000):
         raise IncompleteAuthority("coverage-v4 is not ZERO_GUARANTEED_PERIOD_GAPS")
     if (coverage.get("manifest_digest") != _declared_digest(manifest)
             or coverage.get("pit_universe_digest") != _declared_digest(pit)
@@ -270,6 +290,9 @@ def next_open(bars: Sequence[Bar], decision_close_ms: int) -> Bar:
 
 @dataclass(frozen=True)
 class SignalFit:
+    decision_close_ms: int
+    btc_decision_price: float
+    alt_decision_price: float
     beta0: float
     gamma: float
     se_gamma: float
@@ -300,9 +323,11 @@ def _prior_returns(closes: Sequence[ClosePrice], decision_close_ms: int) -> tupl
 
 
 def fit_signal(prior_btc_closes: Sequence[ClosePrice], prior_alt_closes: Sequence[ClosePrice], *,
-               decision_close_ms: int, btc_decision_price: float,
-               alt_decision_price: float) -> SignalFit:
+               btc_decision: ClosePrice, alt_decision: ClosePrice) -> SignalFit:
+    decision_close_ms = btc_decision.close_ms
+    btc_decision_price, alt_decision_price = btc_decision.price, alt_decision.price
     if (not isinstance(decision_close_ms, int) or decision_close_ms % HOUR_MS
+            or alt_decision.close_ms != decision_close_ms
             or not all(math.isfinite(value) and value > 0
                        for value in (btc_decision_price, alt_decision_price))):
         raise IncompleteAuthority("invalid decision close authority")
@@ -345,7 +370,8 @@ def fit_signal(prior_btc_closes: Sequence[ClosePrice], prior_alt_closes: Sequenc
         side == 1 and forecast >= 0.0028 and residual_d <= 0.25 * forecast
         or side == -1 and forecast <= -0.0028 and residual_d >= 0.25 * forecast
     ))
-    return SignalFit(beta, gamma, se, t, residual_d, forecast, threshold, side, qualifies)
+    return SignalFit(decision_close_ms, btc_decision_price, alt_decision_price,
+                     beta, gamma, se, t, residual_d, forecast, threshold, side, qualifies)
 
 
 def select_candidates(rows: Iterable[tuple[str, SignalFit]], side: int,
@@ -481,6 +507,12 @@ def size_position(*, side: int, entry: Decimal, stop: Decimal, filters: Filters,
 
 
 @dataclass(frozen=True)
+class VolumePoint:
+    open_ms: int
+    quote_volume: float
+
+
+@dataclass(frozen=True)
 class Fill:
     timestamp_ms: int
     phase: str
@@ -492,19 +524,29 @@ class Fill:
     fee_drag: float
     slippage_drag: float
     impact_drag: float
+    slippage_bps: float
+    impact_asof_ms: int
+    volume_rows: tuple[VolumePoint, ...]
 
 
 def make_fill(*, timestamp_ms: int, phase: str, symbol: str, side: int, quantity: float,
-              reference: float, movement_from: float | None, quote_volume_24h: float,
+              reference: float, movement_from: float | None, volume_bars: Sequence[Bar],
+              impact_asof_ms: int,
               slippage_bps: float = BASE_SLIPPAGE_BPS) -> Fill:
     if side not in (-1, 1) or quantity <= 0 or reference <= 0:
         raise C259Error("invalid fill")
     execution = reference * (1 + side * slippage_bps / 10_000)
     fee = abs(quantity * execution) * FEE_BPS / 10_000
     slip = abs(quantity) * abs(execution - reference)
+    quote_volume_24h = causal_quote_volume_24h(volume_bars, impact_asof_ms)
     impact = float(impact_drag(Decimal(str(quantity)), Decimal(str(reference)), quote_volume_24h))
     movement = 0.0 if movement_from is None else -side * quantity * (reference - movement_from)
-    return Fill(timestamp_ms, phase, symbol, side, quantity, reference, movement, fee, slip, impact)
+    required = tuple(sorted((bar for bar in volume_bars
+                             if impact_asof_ms-24*HOUR_MS <= bar.open_ms < impact_asof_ms),
+                            key=lambda bar: bar.open_ms))
+    rows = tuple(VolumePoint(bar.open_ms, bar.quote_volume) for bar in required)
+    return Fill(timestamp_ms, phase, symbol, side, quantity, reference, movement, fee, slip,
+                impact, slippage_bps, impact_asof_ms, rows)
 
 
 def funding_cash(position_side: int, quantity: float, mark: float, rate: float) -> float:
@@ -560,6 +602,15 @@ def validate_funding_events(events: Sequence[FundingEvent]) -> tuple[FundingEven
     return tuple(ordered)
 
 
+@dataclass(frozen=True)
+class AppliedFunding:
+    timestamp_ms: int
+    rate: float
+    mark_close_ms: int
+    mark_price: float
+    cash: float
+
+
 def causal_quote_volume_24h(bars: Sequence[Bar], impact_asof_ms: int) -> float:
     if not isinstance(impact_asof_ms, int) or impact_asof_ms % HOUR_MS:
         raise IncompleteAuthority("impact as-of is off canonical grid")
@@ -606,9 +657,13 @@ class ClosedTrade:
     close_ms: int
     regime: str
     fills: tuple[Fill, ...]
-    funding: float
+    funding_events: tuple[AppliedFunding, ...]
     initial_risk_cash: float
     incomplete: bool = False
+
+    @property
+    def funding(self) -> float:
+        return math.fsum(event.cash for event in self.funding_events)
 
     @property
     def net_cash(self) -> float:
@@ -628,7 +683,7 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     if (not trade.attempt_id or trade.side not in (-1, 1) or not trade.symbol
             or trade.entry_ms % HOUR_MS or trade.close_ms % HOUR_MS
             or trade.close_ms <= trade.entry_ms or trade.initial_risk_cash <= 0
-            or not math.isfinite(trade.initial_risk_cash) or not math.isfinite(trade.funding)
+            or not math.isfinite(trade.initial_risk_cash)
             or trade.regime not in {"BTC_ABOVE_OR_ON_EMA200", "BTC_BELOW_EMA200"}):
         raise IncompleteEpisode("invalid closed-trade identity or authority")
     if trade.incomplete:
@@ -648,10 +703,41 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
                     fill.slippage_drag, fill.impact_drag))
                 or min(fill.fee_drag, fill.slippage_drag, fill.impact_drag) < 0):
             raise IncompleteEpisode("invalid fill cashflow")
+        if (fill.slippage_bps not in (BASE_SLIPPAGE_BPS, STRESS_SLIPPAGE_BPS)
+                or len(fill.volume_rows) != 24
+                or tuple(row.open_ms for row in fill.volume_rows) != tuple(
+                    range(fill.impact_asof_ms-24*HOUR_MS, fill.impact_asof_ms, HOUR_MS))
+                or not all(math.isfinite(row.quote_volume) and row.quote_volume > 0
+                           for row in fill.volume_rows)):
+            raise IncompleteEpisode("fill volume/slippage authority is not exact")
+        volume = math.fsum(row.quote_volume for row in fill.volume_rows)
+        expected_impact = float(impact_drag(Decimal(str(fill.quantity)),
+                                            Decimal(str(fill.reference)), volume))
+        execution = fill.reference * (1 + fill.side * fill.slippage_bps / 10_000)
+        expected_fee = abs(fill.quantity * execution) * FEE_BPS / 10_000
+        expected_slip = abs(fill.quantity) * abs(execution - fill.reference)
+        if (not math.isclose(fill.impact_drag, expected_impact, abs_tol=1e-12)
+                or not math.isclose(fill.fee_drag, expected_fee, abs_tol=1e-12)
+                or not math.isclose(fill.slippage_drag, expected_slip, abs_tol=1e-12)):
+            raise IncompleteEpisode("fill costs do not recompute from frozen authority")
     if (entry.side != trade.side or exit_fill.side != -trade.side
             or entry.quantity != exit_fill.quantity
             or entry.timestamp_ms != trade.entry_ms or exit_fill.timestamp_ms != trade.close_ms):
         raise IncompleteEpisode("closed trade quantity is not conserved to flat")
+    seen_funding: set[int] = set()
+    for event in trade.funding_events:
+        expected_cash = funding_cash(trade.side, entry.quantity, event.mark_price, event.rate)
+        exit_includes_same_boundary = exit_fill.phase not in {"STOP_RANGE", "TARGET_RANGE"}
+        exposed = (trade.entry_ms < event.timestamp_ms < trade.close_ms
+                   or exit_includes_same_boundary and event.timestamp_ms == trade.close_ms)
+        if (event.timestamp_ms in seen_funding or not exposed
+                or event.timestamp_ms % HOUR_MS
+                or event.mark_close_ms != event.timestamp_ms-HOUR_MS
+                or event.mark_price <= 0 or not all(math.isfinite(value) for value in (
+                    event.rate, event.mark_price, event.cash))
+                or not math.isclose(event.cash, expected_cash, abs_tol=1e-12)):
+            raise IncompleteEpisode("funding event identity/cash is invalid")
+        seen_funding.add(event.timestamp_ms)
 
 
 @dataclass
@@ -678,7 +764,8 @@ class SideBook:
 
 
 def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int,
-                       cleanup_ms: int, fills: Sequence[Fill], funding: float,
+                       cleanup_ms: int, fills: Sequence[Fill],
+                       funding_events: Sequence[AppliedFunding],
                        initial_risk_cash: float, regime: str) -> ClosedTrade:
     entries = [fill for fill in fills if fill.phase == "ENTRY"]
     cleanups = [fill for fill in fills if fill.phase == "PROTECTION_FAILURE_CLEANUP"]
@@ -691,7 +778,7 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
             or entry.timestamp_ms != entry_ms or cleanup.timestamp_ms != cleanup_ms):
         raise IncompleteEpisode("protection failure lifecycle is not exactly flat")
     trade = ClosedTrade(attempt_id, side, symbol, entry_ms, cleanup_ms, regime,
-                        tuple(fills), funding, initial_risk_cash, True)
+                        tuple(fills), tuple(funding_events), initial_risk_cash, True)
     validate_closed_trade(trade)
     return trade
 
@@ -833,12 +920,70 @@ def split_name(timestamp_ms: int) -> str:
 
 
 @dataclass(frozen=True)
+class PositionMark:
+    timestamp_ms: int
+    symbol: str
+    price: float
+
+
+def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[PositionMark], *,
+                         start_ms: int, end_ms: int,
+                         capital: float = PRIMARY_CAPITAL) -> tuple[tuple[int, int, float], ...]:
+    for trade in trades:
+        validate_closed_trade(trade)
+    required = {(timestamp, trade.symbol)
+                for trade in trades
+                for timestamp in range(trade.entry_ms, trade.close_ms, HOUR_MS)}
+    supplied: dict[tuple[int, str], float] = {}
+    for mark in marks:
+        key = (mark.timestamp_ms, mark.symbol)
+        if (key in supplied or key not in required or not math.isfinite(mark.price)
+                or mark.price <= 0 or mark.timestamp_ms % HOUR_MS):
+            raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
+        supplied[key] = mark.price
+    if set(supplied) != required:
+        raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
+    deltas: dict[tuple[int, int], list[float]] = {}
+    for trade in trades:
+        for fill in trade.fills:
+            if fill.phase == "ENTRY":
+                value, phase = -(fill.fee_drag+fill.slippage_drag+fill.impact_drag), 4
+            else:
+                value = fill.movement_cash-fill.fee_drag-fill.slippage_drag-fill.impact_drag
+                phase = (0 if fill.phase in {"STOP_RANGE", "TARGET_RANGE"}
+                         else 3 if fill.phase == "PROTECTION_FAILURE_CLEANUP" else 2)
+            deltas.setdefault((fill.timestamp_ms, phase), []).append(value)
+        for event in trade.funding_events:
+            deltas.setdefault((event.timestamp_ms, 1), []).append(event.cash)
+    cash = capital
+    points: list[tuple[int, int, float]] = [(start_ms, 0, capital)]
+    timestamps = sorted({timestamp for timestamp, _phase in deltas} | {timestamp for timestamp, _ in required})
+    for timestamp in timestamps:
+        for phase in range(5):
+            values = deltas.get((timestamp, phase))
+            if values:
+                cash = math.fsum((cash, *values))
+                points.append((timestamp, phase, cash))
+        if any(key[0] == timestamp for key in required):
+            unrealized = math.fsum(
+                trade.side * trade.fills[0].quantity *
+                (supplied[(timestamp, trade.symbol)] - trade.fills[0].reference)
+                for trade in trades if trade.entry_ms <= timestamp < trade.close_ms)
+            points.append((timestamp, 5, cash+unrealized))
+    if not points or points[-1][0] > end_ms:
+        raise IncompleteEpisode("lifecycle equity escaped fold")
+    terminal = capital + math.fsum(trade.net_cash for trade in trades)
+    if not math.isclose(cash, terminal, abs_tol=1e-9):
+        raise IncompleteEpisode("derived terminal cash does not reconcile")
+    return tuple(points)
+
+
+@dataclass(frozen=True)
 class FoldLifecycle:
     name: str
     base: tuple[ClosedTrade, ...]
     stress: tuple[ClosedTrade, ...]
-    base_equity_points: tuple[tuple[int, int, float], ...]
-    stress_equity_points: tuple[tuple[int, int, float], ...]
+    marks: tuple[PositionMark, ...]
 
 
 FOLD_RANGES = {
@@ -868,22 +1013,10 @@ def _validate_lifecycle(fold: FoldLifecycle) -> None:
         if fold.name == "development" and trade.entry_ms < 1734134400000:
             raise IncompleteAuthority("pre-filter development trade is forbidden")
     stress_same_selection(fold.base, fold.stress)
-    if (fold.base_equity_points[0][0] != start or fold.stress_equity_points[0][0] != start
-            or fold.base_equity_points[0][2] != PRIMARY_CAPITAL
-            or fold.stress_equity_points[0][2] != PRIMARY_CAPITAL
-            or fold.base_equity_points[-1][0] < max(trade.close_ms for trade in fold.base)
-            or fold.stress_equity_points[-1][0] < max(trade.close_ms for trade in fold.stress)
-            or any(not start <= point[0] <= end for point in
-                   fold.base_equity_points + fold.stress_equity_points)):
-        raise IncompleteEpisode("fold marked-equity reset/boundary is invalid")
-    marked_equity_drawdown_R(fold.base_equity_points, PRIMARY_CAPITAL)
-    marked_equity_drawdown_R(fold.stress_equity_points, PRIMARY_CAPITAL)
-    base_terminal = PRIMARY_CAPITAL + math.fsum(trade.net_cash for trade in fold.base)
-    stress_terminal = PRIMARY_CAPITAL + math.fsum(trade.net_cash for trade in fold.stress)
-    if (not math.isclose(fold.base_equity_points[-1][2], base_terminal, abs_tol=1e-9)
-            or not math.isclose(fold.stress_equity_points[-1][2], stress_terminal,
-                                abs_tol=1e-9)):
-        raise IncompleteEpisode("terminal marked equity does not reconcile to lifecycle cashflows")
+    base_points = derive_equity_points(fold.base, fold.marks, start_ms=start, end_ms=end)
+    stress_points = derive_equity_points(fold.stress, fold.marks, start_ms=start, end_ms=end)
+    marked_equity_drawdown_R(base_points, PRIMARY_CAPITAL)
+    marked_equity_drawdown_R(stress_points, PRIMARY_CAPITAL)
 
 
 def _month_keys(start_ms: int, end_ms: int) -> tuple[tuple[int, int], ...]:
@@ -912,7 +1045,8 @@ def development_gate(fold: FoldLifecycle) -> dict[str, object]:
     counts = {month: 0 for month in months}
     for trade in fold.base:
         counts[_month_of(trade.close_ms)] += 1
-    marked = marked_equity_drawdown_R(fold.base_equity_points, PRIMARY_CAPITAL)
+    marked = marked_equity_drawdown_R(
+        derive_equity_points(fold.base, fold.marks, start_ms=start, end_ms=end), PRIMARY_CAPITAL)
     realized = closed_realized_drawdown_R(fold.base)
     gross_mean = math.fsum(
         (math.fsum(fill.movement_cash for fill in trade.fills) + trade.funding)
@@ -953,11 +1087,13 @@ def forward_gate(folds: Sequence[FoldLifecycle], *, bootstrap_resamples: int = 2
         if trade.regime not in regimes:
             raise C259Error("unfrozen regime label")
         regimes[trade.regime].append(trade.trade_R)
-    marked = max(marked_equity_drawdown_R(fold.base_equity_points, PRIMARY_CAPITAL)
-                 for fold in folds)
+    marked = max(marked_equity_drawdown_R(derive_equity_points(
+        fold.base, fold.marks, start_ms=FOLD_RANGES[fold.name][0],
+        end_ms=FOLD_RANGES[fold.name][1]), PRIMARY_CAPITAL) for fold in folds)
     realized = max(closed_realized_drawdown_R(fold.base) for fold in folds)
-    stress_marked = max(marked_equity_drawdown_R(fold.stress_equity_points, PRIMARY_CAPITAL)
-                        for fold in folds)
+    stress_marked = max(marked_equity_drawdown_R(derive_equity_points(
+        fold.stress, fold.marks, start_ms=FOLD_RANGES[fold.name][0],
+        end_ms=FOLD_RANGES[fold.name][1]), PRIMARY_CAPITAL) for fold in folds)
     stress_realized = max(closed_realized_drawdown_R(fold.stress) for fold in folds)
     gate_dd = gate_drawdown_R(marked_drawdown_R=marked, realized_drawdown_R=realized)
     stress_dd = gate_drawdown_R(marked_drawdown_R=stress_marked,
@@ -995,12 +1131,23 @@ def stress_same_selection(base: Sequence[ClosedTrade], stress: Sequence[ClosedTr
     def identity(trade: ClosedTrade) -> tuple[object, ...]:
         fills = tuple((fill.timestamp_ms, fill.phase, fill.symbol, fill.side, fill.quantity,
                        fill.reference, fill.movement_cash) for fill in trade.fills)
+        funding = tuple(asdict(event).items() for event in trade.funding_events)
         return (trade.attempt_id, trade.side, trade.symbol, trade.entry_ms, trade.close_ms,
-                trade.regime, fills, trade.funding, trade.initial_risk_cash, trade.incomplete)
+                trade.regime, fills, funding, trade.initial_risk_cash, trade.incomplete)
     left = [identity(trade) for trade in base]
     right = [identity(trade) for trade in stress]
     if left != right:
         raise C259Error("stress replay changed admitted trade set")
+    for base_trade, stress_trade in zip(base, stress):
+        validate_closed_trade(base_trade); validate_closed_trade(stress_trade)
+        for base_fill, stress_fill in zip(base_trade.fills, stress_trade.fills):
+            if (base_fill.slippage_bps != BASE_SLIPPAGE_BPS
+                    or stress_fill.slippage_bps != STRESS_SLIPPAGE_BPS
+                    or base_fill.impact_drag != stress_fill.impact_drag
+                    or base_fill.volume_rows != stress_fill.volume_rows
+                    or base_fill.fee_drag == stress_fill.fee_drag
+                    or stress_fill.slippage_drag <= base_fill.slippage_drag):
+                raise C259Error("stress costs are not exact frozen 10bp replay")
 
 
 def drawdown_tier(net_R: float, gate_drawdown_R: float, stress_net_R: float,
