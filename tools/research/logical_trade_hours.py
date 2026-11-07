@@ -64,7 +64,11 @@ def exact_hours(rows):
             raise ValueError('invalid exact native minute price range')
         grouped.setdefault(t//HOUR_MS*HOUR_MS, []).append((t,values,count,row,prices))
     hours = []
-    for h, group in sorted(grouped.items()):
+    observed = sorted(grouped)
+    if observed and observed != list(range(observed[0],observed[-1]+HOUR_MS,HOUR_MS)):
+        raise ValueError('missing entire internal canonical minute hour')
+    for h in observed:
+        group = grouped[h]
         if [row[0] for row in group] != list(range(h,h+HOUR_MS,MINUTE_MS)):
             raise ValueError('missing/partial canonical minute hour')
         sums = {i:math.fsum(row[1][i] for row in group) for i in (4,5,6,7)}

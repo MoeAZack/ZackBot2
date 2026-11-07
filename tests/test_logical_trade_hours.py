@@ -18,6 +18,19 @@ def test_exact_sixty_and_no_minute_order_exposure():
     assert result == ((H.SEAM_MS-H.HOUR_MS,100.,102.,98.,101.,60.,H.SEAM_MS-1,600.,60,60.,60.,'0'),)
 
 
+def test_missing_whole_sixty_minute_internal_hour_is_not_silently_compressed():
+    rows=minutes(0)+minutes(2*H.HOUR_MS)
+    assert len(rows)==120
+    with pytest.raises(ValueError,match='missing entire internal'):
+        H.exact_hours(rows)
+
+
+def test_empty_and_observed_edges_do_not_invent_prelisting_or_tail_history():
+    assert H.exact_hours([])==()
+    assert [row[0] for row in H.exact_hours(minutes(7*H.HOUR_MS))]==[7*H.HOUR_MS]
+    assert [row[0] for row in H.exact_hours(minutes(7*H.HOUR_MS)+minutes(8*H.HOUR_MS))]==[7*H.HOUR_MS,8*H.HOUR_MS]
+
+
 def test_decimal_price_cells_are_not_rounded_by_shared_derivation():
     from decimal import Decimal
     rows=[list(row) for row in minutes(H.SEAM_MS-H.HOUR_MS)]
