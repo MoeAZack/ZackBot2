@@ -1,0 +1,56 @@
+{
+  "DEFERRED": "Actual source/receipt/claim,forward/holdout/PAPER pending independent acceptance.",
+  "ROADMAP FIT": "One fixed269 SHORT source/cash offline economic adapter; no engine work.",
+  "candidate_id": 269,
+  "default_off": true,
+  "execution_authorized": false,
+  "format": "zb-c269-fixed-source-model-binding/1",
+  "funding_model": {
+    "path": "contracts/c269_overhead_notional/funding_lifecycle_model.v1.json",
+    "sha256": "bc0a89603af06a628755e3d5258f73cd349a575059243a9440010c02f407a346"
+  },
+  "historical_global_variant_total": "UNKNOWN",
+  "independent_review_required_before_any_rows": true,
+  "initial_prefix": {
+    "path": "contracts/c269_overhead_notional/initial_source_prefix.v1.json",
+    "sha256": "08921a6216d1291091063b0b56568d902a8086dd898bfc56dcefb15d0cbde9bc"
+  },
+  "lifecycle_catalog": {
+    "path": "contracts/c269_overhead_notional/lifecycle_catalog.v1.json",
+    "sha256": "9ea2610d1c6621690b039dec6cb33b519047ef1944099e7652e52c8e9ef7bb64"
+  },
+  "new_primary_trials": 1,
+  "paper_qualified": false,
+  "preregistration": {
+    "path": "contracts/c269_overhead_notional/preregistration.v1.json",
+    "sha256": "d291916387ab2a7c5936de62debaa6eb491f1cf30ba16261a1aac06f7e55ea7d"
+  },
+  "source_authority_bound": false,
+  "source_pins": {
+    "coverage": {
+      "byte_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65",
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json"
+    },
+    "filters": {
+      "byte_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9",
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json"
+    },
+    "manifest": {
+      "byte_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+      "path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz"
+    },
+    "pit": {
+      "byte_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+      "path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json"
+    }
+  },
+  "source_scope": {
+    "development_only": true,
+    "filter_policy": "LATEST_CAPTURE_AND_SERVER_STRICTLY_BEFORE_2024_12_14",
+    "full_PIT_no_CORE20_override": true,
+    "funding_only_old_liability_tail_exclusive_offset_ms": 15001,
+    "maximum_exposure_hours": 24,
+    "required_lookback_hours": 169,
+    "trade_source": "EXACT60_V5_MINUTE_BEFORE2026_09_01;SEPARATE_V6_NATIVE1H_AFTER_NO_FALLBACK"
+  }
+}
