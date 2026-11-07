@@ -84,7 +84,7 @@ SERIES = ('klines', 'markPriceKlines', 'fundingRate')
 ZIP_RE = re.compile(r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-(' + '|'.join(INTERVALS)
                     + r'|fundingRate)-(\d{4})-(\d{2})(?:-(\d{2}))?\.zip$')
 FUNDING_API_RE = re.compile(
-    r'^([A-Z0-9]+)-fundingRate-(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})-p(\d{3})\.json$')
+    r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-fundingRate-(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})-p(\d{3})\.json$')
 KLINE_API_RE = re.compile(
     r'^([A-Z0-9]+)-(' + '|'.join(INTERVALS) + r')-(\d{13})-(\d{13})-p(\d{3})\.json$')
 KLINE_HEADER = (b'open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,'
