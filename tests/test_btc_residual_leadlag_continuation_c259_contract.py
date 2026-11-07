@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "research_evidence" / "prereg" / "btc_residual_leadlag_continuation_c259_stagea.v1.json"
 PLAN_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "authority_extension_plan.v6.json"
 BASE = "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3"
-CANONICAL_CONTRACT_SHA256 = "408fb121a122b08643f43c2375f24350ef7c062c28bab7ea5b46aa640aee2b25"
+CANONICAL_CONTRACT_SHA256 = "d63bcf1fbdc37f9d628037badaca63a9b3a75ad771ef59695c7fe31a86685132"
 EXPECTED_TOP_LEVEL = {
     "format", "candidate_id", "candidate_key", "base_commit", "frozen_at_cairo",
     "status", "default_off", "evaluation_locked", "paper_eligibility", "roadmap_fit",
     "deferred", "hypothesis", "selection_provenance", "authority", "splits", "signal",
-    "execution", "sizing", "risk", "costs", "regime", "gates", "statistics",
+    "execution", "sizing", "risk", "costs", "accounting", "regime", "gates", "statistics",
     "multiplicity", "paper_admission",
 }
 EXPECTED_OUTPUTS = [
@@ -44,6 +44,9 @@ def interval(value):
 
 def validate_contract(c, *, check_hash=True):
     assert set(c) == EXPECTED_TOP_LEVEL
+    # Hostile checks validate the complete structured contract, not keyword presence.
+    # The byte hash independently binds the checked-in source.
+    assert c == load_contract()
     if check_hash:
         assert canonical_hash(c) == CANONICAL_CONTRACT_SHA256
     assert c["format"] == "zb-strategy-preregistration/1"
@@ -76,6 +79,7 @@ def validate_contract(c, *, check_hash=True):
     assert "mechanical amendment" in authority["future_pin_rule"]
     assert "ZERO_GUARANTEED_PERIOD_GAPS" in authority["pre_market_gate"]
     assert "BTCUSDT is the external benchmark and cannot be traded" in authority["membership"]
+    assert "before that instant is an explicit zero-trade FILTER_AUTHORITY_UNAVAILABLE" in authority["membership"]
     assert "Never forward-fill" in authority["availability"]
     assert authority["cutoff_exclusive"] == "2026-11-05T00:00:00Z"
 
@@ -88,7 +92,8 @@ def validate_contract(c, *, check_hash=True):
     assert folds[-1][1] == holdout[0]
     assert holdout[1].isoformat() == "2026-11-05T00:00:00+00:00"
     assert splits["holdout_policy"] == "SEALED_UNTIL_FORWARD_PASS_AND_INDEPENDENT_SPEND"
-    assert "resets all beta, lag, ATR" in splits["boundary_rule"]
+    assert "two separate flat side books" in splits["boundary_rule"]
+    assert "before 2024-12-14T00:00:00Z are recorded zero-trade" in splits["boundary_rule"]
     assert "Development can only reject C259" in splits["one_shot_rule"]
     assert "No threshold" in splits["one_shot_rule"]
 
@@ -120,20 +125,35 @@ def validate_contract(c, *, check_hash=True):
     assert "strictly after d" in execution["entry"]
     assert "updated through completed decision bar d exactly once" in execution["atr"]
     assert "No entry-open or later value" in execution["atr"]
-    assert "reduce-only 2ATR stop" in execution["protection"]
-    assert "Stop wins" in execution["protection"]
-    assert "at least 12 hours" in execution["exit"]
+    assert "raw stop S0=E-2A" in execution["protection"]
+    assert "long ceil, short floor" in execution["protection"]
+    assert "raw target T0=E+2D" in execution["protection"]
+    assert "2R target reference" in execution["protection"]
+    assert "t>=actual_entry_time+12h" in execution["exit"]
+    assert "stop gap" in execution["exit"]
+    assert "target gap" in execution["exit"]
+    assert "if both S and T are touched, stop wins" in execution["exit"]
+    assert "target gap reference is frozen T" in execution["exit"]
+    assert "INTRABAR_PRIOR_BOUNDARY" in execution["exit"]
+    assert "impact to every exit fill exactly once" in execution["exit"]
     assert "No partial" in execution["exit"]
-    assert "include all actual cashflows as a closed loss-row" in execution["failure_accounting"]
-    assert "whole candidate INCOMPLETE" in execution["failure_accounting"]
+    assert "first finalize INTRABAR_PRIOR_BOUNDARY exits" in execution["funding_order"]
+    assert "Then apply verified funding at t" in execution["funding_order"]
+    assert "An entry at t does not receive funding at t" in execution["funding_order"]
+    assert "an open exit at t does" in execution["funding_order"]
+    assert "Include every chronological cashflow and marked exposure as a closed loss-row" in execution["failure_accounting"]
+    assert "causal prior-volume impact" in execution["failure_accounting"]
+    assert "whole side candidate INCOMPLETE" in execution["failure_accounting"]
     assert "Floor quantity" in execution["exchange_rules"]
 
     sizing = c["sizing"]
     assert sizing["primary_capital_usd"] == 2000
     assert sizing["diagnostic_capitals_usd"] == [1000, 3000, 4000]
     assert "cannot veto, select, rescue" in sizing["capital_selection_rule"]
-    assert "0.01*book_equity" in sizing["risk_cash"]
-    assert "stressed nonnegative" in sizing["risk_cash"]
+    assert "only that side's positions" in sizing["book_equity"]
+    assert "0.01*side_book_equity" in sizing["risk_cash"]
+    assert "fee_drag, slippage_drag and impact_drag" in sizing["risk_cash"]
+    assert "Freeze both impact terms from the exact 24 completed causal quote-volume bars available before entry" in sizing["risk_cash"]
     assert "floor(continuous_quantity/stepSize)*stepSize" in sizing["rounding"]
     assert "Never increase" in sizing["rounding"]
     assert "only from the 2000 USD primary replay" in sizing["primary_gate"]
@@ -143,19 +163,39 @@ def validate_contract(c, *, check_hash=True):
     assert risk["max_concurrent_positions"] == 3
     assert risk["max_open_risk_r"] == 3.0
     assert risk["capital_simulations_usd"] == [1000, 2000, 3000, 4000]
-    assert "cannot rescue" in risk["side_isolation"]
+    assert "fully independent books" in risk["side_isolation"]
+    assert "separate starting capital" in risk["side_isolation"]
+    assert "Neither side can reserve or release capacity" in risk["side_isolation"]
 
     costs = c["costs"]
     assert costs["taker_fee_bps_per_fill"] == 5.0
     assert costs["adverse_slippage_bps_per_fill"] == 2.0
     assert costs["stress_adverse_slippage_bps_per_fill"] == 10.0
     assert costs["base_round_trip_bps"] == 14.0
-    assert "fee_drag and slippage_drag are finite nonnegative" in costs["pnl_rule"]
-    assert "net_cash=movement_cash+funding_cash-fee_drag-slippage_drag" in costs["pnl_rule"]
+    assert "fee_drag, slippage_drag and impact_drag are finite nonnegative" in costs["pnl_rule"]
+    assert "actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag-impact_drag" in costs["pnl_rule"]
+    assert "Every trade R, PF numerator/denominator" in costs["pnl_rule"]
     assert "never assume zero" in costs["funding"]
-    assert "<=1%" in costs["impact"]
+    assert "Freeze impact_asof by fill type" in costs["impact"]
+    assert "For an intrabar stop/target" in costs["impact"]
+    assert "impact_asof=b" in costs["impact"]
+    assert "fill-type-defined causal impact_asof" in costs["impact"]
+    assert "never current/incomplete fill-bar volume" in costs["impact"]
     assert "five times base 14 bp" in costs["cost_admission"]
     assert "identical admitted primary trade set" in costs["stress"]
+
+    accounting = c["accounting"]
+    assert "Never order closed trades by entry time" in accounting["event_order"]
+    assert "INTRABAR_PRIOR_BOUNDARY exits" in accounting["event_order"]
+    assert "funding on remaining pre-existing positions" in accounting["event_order"]
+    assert "PROTECTION_FAILURE" in accounting["event_order"]
+    assert "fee_drag, slippage_drag and impact_drag" in accounting["cashflows"]
+    assert "chronological cashflows must equal actual_net_cash exactly" in accounting["cashflows"]
+    assert "every still-open lot" in accounting["marked_equity"]
+    assert "Overlapping normal and PROTECTION_FAILURE positions" in accounting["marked_equity"]
+    assert "marked-equity sequence in event order" in accounting["drawdown"]
+    assert "cannot replace or reduce marked-equity drawdown" in accounting["drawdown"]
+    assert "impact exactly once" in accounting["trade_r_and_pf"]
 
     regime = c["regime"]
     assert "EMA200" in regime["definition"]
@@ -179,11 +219,12 @@ def validate_contract(c, *, check_hash=True):
 
     stats = c["statistics"]
     assert stats["expected_block_length_trades"] == 21
-    assert stats["resamples"] == 10000
+    assert stats["resamples"] == 20000
     assert "PCG64 only" in stats["prng"]
-    assert "exactly resamples*n*2 uniforms" in stats["fixed_draw"]
+    assert "exactly 20000*n*2 uniforms" in stats["fixed_draw"]
     assert len({stats["long_null_seed"], stats["long_ci_seed"], stats["short_null_seed"], stats["short_ci_seed"]}) == 4
-    assert "10000+1" in stats["p_value"]
+    assert "20000+1" in stats["p_value"]
+    assert "Minimum attainable p is 1/20001" in stats["p_value"]
     assert "method='linear'" in stats["confidence_interval"]
 
     multiplicity = c["multiplicity"]
@@ -220,7 +261,7 @@ def test_splits_are_contiguous_but_statistics_reset_and_holdout_stays_sealed():
     holdout = interval(c["sealed_holdout"])
     assert dev[1] == folds[0][0]
     assert folds[-1][1] == holdout[0]
-    assert "starts flat" in c["boundary_rule"]
+    assert "starts with two separate flat side books" in c["boundary_rule"]
     assert "Prior rows may not warm" in c["boundary_rule"]
     assert "spends the sealed holdout once" in c["one_shot_rule"]
 
@@ -249,8 +290,32 @@ def test_both_sides_are_separate_cells_with_correct_multiple_testing_ceiling():
     c = load_contract()
     assert len(c["signal"]["side_cells"]) == 2
     assert "separate hypotheses" in c["signal"]["unconsumed_forecast"]
-    assert "one side cannot rescue" in c["risk"]["side_isolation"]
+    assert "rescue/promote the other" in c["risk"]["side_isolation"]
     assert c["multiplicity"]["cell_alpha_ceiling"] == pytest.approx(0.05 / 518)
+
+
+def test_bootstrap_resolution_can_attain_the_frozen_multiple_testing_gate():
+    c = load_contract()
+    resamples = c["statistics"]["resamples"]
+    assert resamples == 20000
+    assert 1 / (resamples + 1) <= c["multiplicity"]["cell_alpha_ceiling"]
+
+
+def test_event_accounting_covers_impact_overlap_and_failures_chronologically():
+    c = load_contract()
+    assert "impact_drag" in c["costs"]["pnl_rule"]
+    assert "impact_drag" in c["sizing"]["risk_cash"]
+    assert "PROTECTION_FAILURE" in c["accounting"]["event_order"]
+    assert "Overlapping normal and PROTECTION_FAILURE positions" in c["accounting"]["marked_equity"]
+    assert "Never order closed trades by entry time" in c["accounting"]["event_order"]
+
+
+def test_prefilter_decisions_and_exit_impact_are_causally_pinned():
+    c = load_contract()
+    assert "FILTER_AUTHORITY_UNAVAILABLE" in c["authority"]["membership"]
+    assert "2024-12-14T00:00:00Z" in c["splits"]["boundary_rule"]
+    assert "each actual exit uses the fill-type-defined causal impact_asof" in c["costs"]["impact"]
+    assert "never current/incomplete fill-bar volume" in c["costs"]["impact"]
 
 
 @pytest.mark.parametrize(
@@ -283,6 +348,15 @@ def test_both_sides_are_separate_cells_with_correct_multiple_testing_ceiling():
         ("alpha_relax", lambda d: d["multiplicity"].update(cell_alpha_ceiling=0.05)),
         ("rescue", lambda d: d["multiplicity"].update(no_rescue="select best side")),
         ("paper_risk", lambda d: d["paper_admission"].update(bounded_canary="3R each")),
+        ("bootstrap_resolution_impossible", lambda d: d["statistics"].update(resamples=10000)),
+        ("impact_omitted_from_net", lambda d: d["costs"].update(pnl_rule="net_cash excludes impact")),
+        ("impact_omitted_from_initial_risk", lambda d: d["sizing"].update(risk_cash="stop plus fees only")),
+        ("target_reference_undefined", lambda d: d["execution"].update(protection="2 ATR stop; 2R target")),
+        ("funding_after_exit", lambda d: d["execution"].update(funding_order="exit before funding")),
+        ("shared_side_capital", lambda d: d["risk"].update(side_isolation="one shared account")),
+        ("entry_time_drawdown_order", lambda d: d["accounting"].update(event_order="sort closed trades by entry")),
+        ("prefilter_trade_allowed", lambda d: d["authority"].update(membership="use later filter snapshot")),
+        ("exit_fill_bar_volume", lambda d: d["costs"].update(impact="use current exit candle volume")),
     ],
 )
 def test_hostile_mutations_fail_semantic_validator(name, mutate):
