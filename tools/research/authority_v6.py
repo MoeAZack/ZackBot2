@@ -528,7 +528,7 @@ def acquire_vision(requests: Sequence[VisionRequest], store: Path, ledger: Path,
 
 
 def funding_url(symbol: str, start_ms: int) -> str:
-    if not SYMBOL.fullmatch(symbol) or not API_START_MS <= start_ms <= API_END_MS:
+    if not _vision_symbol(symbol) or not API_START_MS <= start_ms <= API_END_MS:
         raise AuthorityV6Error("funding request is outside the frozen symbol/time allowlist")
     query = urllib.parse.urlencode((
         ("symbol", symbol), ("startTime", start_ms), ("endTime", API_END_MS), ("limit", 1000)))
@@ -557,6 +557,61 @@ def parse_funding_page(raw: bytes, symbol: str, start_ms: int) -> list[dict]:
     return rows
 
 
+def _funding_resume_index(ledger: Path) -> dict[str, list[dict]]:
+    """Index preserved funding acquisition links once; never infer from a file."""
+    result: dict[str, list[dict]] = {}
+    if ledger.exists():
+        for line in ledger.read_bytes().splitlines():
+            row = _load_strict(line, "acquisition ledger record")
+            if not isinstance(row, dict) or row.get("kind") != "FUNDING_API":
+                continue
+            path = row.get("artifact_path", row.get("path"))
+            if isinstance(path, str):
+                result.setdefault(path, []).append(row)
+    return result
+
+
+def _verified_funding_resume(store: Path, entries: Sequence[Mapping], rel: str,
+                             record: Mapping) -> tuple[bytes, list[dict]] | None:
+    accepted = [row for row in entries if row.get("path") == rel
+                and row.get("decision") == "PRESERVED"]
+    if not accepted:
+        return None  # Empty or unlinked responses must be requested again.
+    saved = accepted[-1]
+    raw_path = saved.get("raw_attempt_path")
+    attempts = [row for row in entries if type(row.get("attempt")) is int]
+    if not isinstance(raw_path, str) or not attempts:
+        return None
+    latest = max(row["attempt"] for row in attempts)
+    linked = [row for row in attempts if row["attempt"] == latest and row.get("path") == raw_path]
+    transport = [row for row in linked if row.get("decision") == "RAW_RESPONSE_PRESERVED"]
+    parsed = [row for row in linked if row.get("decision") == "PARSER_SCHEMA_CUTOFF_ACCEPTED"]
+    if not transport or not parsed:
+        return None  # Never fall back across a newer failed observation.
+    keys = ("symbol", "page", "url", "requested_start_ms", "requested_end_ms")
+    if any(any(row.get(key) != record[key] for key in keys)
+           for row in (saved, transport[-1], parsed[-1])):
+        return None
+    if transport[-1].get("http_status") != 200 or transport[-1].get("final_url") != record["url"]:
+        return None
+    target = _safe_store_path(store, rel)
+    try:
+        scanned = _scan_v6_record_unledgered(store, rel)
+        raw = target.read_bytes()
+        attempt_raw = _safe_store_path(store, raw_path).read_bytes()
+    except (OSError, ValueError) as exc:
+        raise AuthorityV6Error("preserved funding cache failed revalidation") from exc
+    digest = sha256(raw)
+    if (raw != attempt_raw or scanned["source"]["url"] != record["url"]
+            or any(row.get("raw_sha256") != digest for row in (saved, transport[-1], parsed[-1]))
+            or any(row.get("raw_bytes") != len(raw) for row in (saved, transport[-1]))):
+        raise AuthorityV6Error("preserved funding cache differs from acquisition links")
+    rows = parse_funding_page(raw, record["symbol"], record["requested_start_ms"])
+    if not rows or any(row.get("rows") != len(rows) for row in (saved, parsed[-1])):
+        raise AuthorityV6Error("preserved funding cache count differs from acquisition links")
+    return raw, rows
+
+
 def capture_funding_residual(symbols: Sequence[str], store: Path, ledger: Path,
                              fetch: Fetch = http_fetch, *, max_total_bytes: int,
                              pit_v9: Mapping, root: Path = ROOT,
@@ -570,8 +625,9 @@ def capture_funding_residual(symbols: Sequence[str], store: Path, ledger: Path,
         raise AuthorityV6Error("funding symbols are not a subset of the exact PIT-v9 union")
     total = 0
     completed, incomplete = [], []
+    resume = _funding_resume_index(ledger)
     for symbol in sorted(set(symbols)):
-        if not SYMBOL.fullmatch(symbol):
+        if not _vision_symbol(symbol):
             raise AuthorityV6Error("invalid residual funding symbol")
         start, page, previous = API_START_MS, 0, None
         while True:
@@ -582,6 +638,24 @@ def capture_funding_residual(symbols: Sequence[str], store: Path, ledger: Path,
                       "url": url, "requested_start_ms": start, "requested_end_ms": API_END_MS}
             rel = (f"um/api/fundingRate/{symbol}/"
                    f"{symbol}-fundingRate-2026-11-01-2026-11-04-p{page:03d}.json")
+            cached = _verified_funding_resume(store, resume.get(rel, ()), rel, record)
+            if cached is not None:
+                raw, rows = cached
+                total += len(raw)
+                if total > max_total_bytes:
+                    raise AuthorityV6Error("funding acquisition byte cap exceeded")
+                times = [row["fundingTime"] for row in rows]
+                if previous is not None and times[0] <= previous:
+                    raise AuthorityV6Error("funding pages overlap or regress")
+                _append_ledger(ledger, {**record, "path": rel,
+                    "decision": "CACHE_REUSED_REVALIDATED", "raw_bytes": len(raw),
+                    "raw_sha256": sha256(raw), "rows": len(rows)})
+                previous = times[-1]
+                if len(rows) < 1000 or previous + 1 > API_END_MS:
+                    completed.append(symbol)
+                    break
+                start, page = previous + 1, page + 1
+                continue
             target = _safe_store_path(store, rel)
             attempt = _next_funding_attempt(ledger, rel)
             attempt_rel = rel + f".attempt-{attempt:03d}.raw"
