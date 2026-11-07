@@ -108,6 +108,29 @@ def test_contract_is_byte_bound_default_off_and_real_loader_is_locked():
         C.assert_real_evaluation_authorized()
 
 
+def test_production_authority_uses_protected_remote_only_and_locks_with_missing_ref(tmp_path):
+    from tools.research import c258_production_authority as P
+    assert C.AUTHORITY_PROTECTED_REF == 'refs/remotes/origin/master'
+    source, shallow = tmp_path / 'source', tmp_path / 'shallow'
+    source.mkdir()
+    subprocess.run(['git', 'init', '-q', '--initial-branch=ci-head'], cwd=source, check=True)
+    subprocess.run(['git', 'config', 'user.name', 'Synthetic'], cwd=source, check=True)
+    subprocess.run(['git', 'config', 'user.email', 'synthetic@example.invalid'], cwd=source, check=True)
+    subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'synthetic shallow authority'], cwd=source, check=True)
+    subprocess.run(['git', 'clone', '--depth=1', '--no-checkout', source.as_uri(), str(shallow)],
+                   check=True, capture_output=True)
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=shallow, text=True).strip()
+    assert subprocess.check_output(['git', 'rev-parse', '--is-shallow-repository'], cwd=shallow).strip() == b'true'
+    # A local master branch must never become production authority, including
+    # when shallow CI supplies no protected remote-tracking master at all.
+    subprocess.run(['git', 'update-ref', 'refs/heads/master', head], cwd=shallow, check=True)
+    with pytest.raises(C.EvaluationLocked, match='no loader was invoked'):
+        P.protected_amendment(shallow)
+    subprocess.run(['git', 'update-ref', C.AUTHORITY_PROTECTED_REF, head], cwd=shallow, check=True)
+    with pytest.raises(C.EvaluationLocked, match='mechanical amendment absent'):
+        P.protected_amendment(shallow)
+
+
 def test_authority_gate_refuses_before_loader_and_checks_every_exact_pin(tmp_path, monkeypatch):
     called = False
 

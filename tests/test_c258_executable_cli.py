@@ -213,7 +213,7 @@ def test_protected_amendment_unlocks_ancestor_outputs_and_binds_frozen_implement
     git(root, "add", contract_path)
     git(root, "commit", "-m", "synthetic independently accepted candidate integration")
     implementation_head = git(root, "rev-parse", "HEAD")
-    evidence_path = "docs/reviews/c258-synthetic-independent-acceptance.json"
+    evidence_path = "research_evidence/acceptance/c258-synthetic-independent-acceptance.json"
     evidence = C._canonical_bytes({"accepted_implementation_head": implementation_head,
                                   "verdict": "PASS", "independent": True})
     write(root/evidence_path, evidence)
