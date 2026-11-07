@@ -88,7 +88,3 @@ authority, reading any zip or row, synthesizing a missing day.
 
 None open: Q1–Q6 resolved by 6490314342, Q7 and Q8 by 6490439004. #225 has merged and the code identity is
 rebound to `93642d8` (6493041460, 6494813780); signing waits only for independent evidence and Integration's signature.
-
-## Current draft identity supplement (PR #332)
-
-The original JSON predicate and historical citations remain unchanged, DRAFT and unsigned. `manifest_unicode_identity_amendment.v1.json` explicitly binds the current accepted manifest identity to its actual protected baseline `4f27e13` and the reviewed Unicode funding-path change. The original draft manifest pin already matched that baseline rather than its older `93642d8` citation; the supplement discloses this distinction instead of rewriting history. Only `FUNDING_API_RE` differs from that baseline. The referenced OI `canonical()` function, every other manifest AST node, and every other OI code pin are unchanged. Original contract and replacement source hashes remain enforced; unrelated byte changes still fail. This identity-only supplement grants no loader, data read, admission decision, economic result or execution authority.
