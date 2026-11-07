@@ -33,3 +33,5 @@ contracts/c268_downside_beta_premium/funding_lifecycle_model.v1.json -text
 contracts/c268_downside_beta_premium/initial_source_prefix.v1.json -text
 contracts/c268_downside_beta_premium/lifecycle_catalog.v1.json -text
 contracts/c268_downside_beta_premium/source_model_binding.v1.json -text
+contracts/c269_overhead_notional/nomination.v1.json -text
+contracts/c269_overhead_notional/preregistration.v1.json -text

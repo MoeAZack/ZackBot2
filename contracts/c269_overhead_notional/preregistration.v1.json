@@ -1,0 +1,23 @@
+{
+  "DEFERRED": "Actual rows/claims/receipt until independent exact code/source/cost acceptance; all forward/holdout/PAPER/mainnet grants.",
+  "ROADMAP FIT": "One fixedSHORT economic trial only; no engine work.",
+  "accepted_rules": "ALL exact nomination rules, windows, costs, risk, funding/lifecycle conditional MODEL, statistics and gates; no beta-fit minimum16/no opposite side or variant.",
+  "candidate_id": 269,
+  "candidate_key": "overhead_traded_notional_concentration_short_1h",
+  "default_off": true,
+  "execution_authorized": false,
+  "format": "zb-c269-fixed-preregistration/1",
+  "forward_authorized": false,
+  "holdout_authorized": false,
+  "new_primary_trials": 1,
+  "nomination": {
+    "path": "contracts/c269_overhead_notional/nomination.v1.json",
+    "sha256": "6d5dfc1890ccfd499cd5dbeb2b524cec92f358481ee4b828b0192c037a7f6a81"
+  },
+  "own_claim": null,
+  "own_receipt": null,
+  "paper_qualified": false,
+  "primary_side": -1,
+  "root_decision": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-6709305742",
+  "source_authority_bound": false
+}

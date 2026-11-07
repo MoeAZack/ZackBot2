@@ -1,0 +1,74 @@
+{
+  "format": "zb-c269-metadata-only-nomination/1",
+  "candidate_id_proposed": 269,
+  "candidate_key": "overhead_traded_notional_concentration_short_1h",
+  "status": "ROOT_SELECTION_AND_PREREGISTRATION_REQUIRED_NOT_REGISTERED",
+  "default_off": true,
+  "execution_authorized": false,
+  "source_authority_bound": false,
+  "own_receipt": null,
+  "own_claim": null,
+  "paper_qualified": false,
+  "mechanism": {
+    "conjecture": "Recent trading concentrated just above the current completed close may leave nearby offers when price revisits those transaction levels. Test SHORT the largest nearby overhead traded-notional share. This is a falsifiable price-volume resistance conjecture, not observed crypto profitability or proof of investor cost bases, ownership, orders or supply.",
+    "distinct_variable": "A price-local weighted empirical distribution: quote volume assigned by the price level of each historical completed bar. Neither unsigned activity growth, temporal volume HHI, signed OBV/MFI flow, a moving-average crossover, return rank nor a BTC lag/beta estimate is the score.",
+    "material_risks": [
+      "An hourly typical price assigns an entire hour's quote volume to one proxy price; it is not an actual volume-at-price histogram or holder cost basis.",
+      "High overhead concentration may instead precede positive breakout continuation; the conjectured SHORT direction can be wrong.",
+      "The score can correlate with momentum, current price location and other price-volume families. No independent-alpha or global-novelty claim.",
+      "No evidence yet establishes gross expectancy above realistic 14bp base or 30bp stress round trip plus impact and funding."
+    ],
+    "external_empirical_result_exposure_for_this_nomination": "NONE_ADDED; mechanism is an unverified conjecture, not calibrated from an external reported return."
+  },
+  "proposed_fixed_rules": {
+    "side": "ONE SHORT primary only; no opposite-side test, mirror, grid or parameter comparison.",
+    "clock": "Canonical UTC00/06/12/18 opens T, decision uses completed bars with native close_time<T, then exact raw T entry open. Rank before reading that entry reference; no one-hour delay.",
+    "history": "Exactly168 completed native logical1h OHLCV bars, opens T-168H through T-H, wholly inside the split. Full causal WilderATR24 prefix through T-H, seed first24 true ranges after first close, unchanged operation order. Missing required/internal history INCOMPLETE; only the independently bound first validated suffix may remain unavailable warmup.",
+    "formula": "Let C be the close at T-H, A the full-prefix ATR24, p_j=math.fsum((float(high_j),float(low_j),float(close_j)))/3.0 and w_j=float(quote_volume_j), in ascending native hour order. Require finite positive OHLC/C/A and finite NONNEGATIVE w_j. Let Q=math.fsum(w_j). For Q>0, score=math.fsum(w_j for j where C<p_j<=C+A)/Q. Strict lower and inclusive upper comparisons use written binary64 values; no epsilon. Q==0 is observed liquidity-infeasible before exposure, not missing data or an invented zero-cost fill; malformed inputs INCOMPLETE.",
+    "ranking": "Full causal PIT/filter universe excluding BTC. Among statistically defined positive scores sort score descending then Unicode symbol. Freeze at most first3 indexed proposals. Skip occupied/infeasible indexed proposals without replacement; do not rerank, select a different side or filter by regime/current return. No minimum-score threshold beyond positive and no current-price crossover trigger.",
+    "protection_and_holding": "Original259 single-leg SHORT toward-entry tick stop floor(E+2ATR), positive D=stop-E, target ceil(E-2D), all native filter feasibility required. Full exit at earlier stop/2R target or exact entry+24H open; prior-range stop-first, raw gap/open/due ordering unchanged. No partial/add/trail/reentry reset or signal exit.",
+    "cost_distance": "Stop distance >=5*0.0014*entry reference. Score is dimensionless traded-notional share, NOT a forecast return; never impose a forecast>=2cost predicate.",
+    "capital_and_risk": "Own isolated USD2000 primary SHORT; 1% requested equity risk, max3 actual lots/3% aggregate frozen initial risk, .5x per-lot and1.5x aggregate gross. Independent USD1000/3000/4000 books are diagnostic, never primary rescue or selection. Exact Decimal floor/decrement single-leg sizing, prior actual same-open costs/debits reduce later entry equity.",
+    "costs_and_liquidity": "5bp taker per fill,2bp base/10bp stress adverse slippage, original259 sqrt-impact with24 completed-hour quote volume/1% participation. Entry-asof volume freezes initial-risk hypothetical stop impact; actual fill-type causal volume for exits. Decision completed-hour qv positive and >=prior24h median (median0 allowed); otherwise infeasible. Mandatory zero/missing exit liquidity INCOMPLETE with known costs/exposure retained.",
+    "funding_and_lifecycle": "Own separately preread-bound published-ledger/raw-cash/15s eligibility MODEL, SHORT cash=+qty*causalmark*rawrate, known possible adverse entry debit reserve1.0, no favorable credit netting. Stress replays identical primary admissions/quantity/frozenrisk and identical natural funding. Generic pinned FTM/BNX effective-event restrictions only at/after enforcement; no advance-asof or settlement fill fiction. Own source/cap/receipt/one-shot claim required, no other candidate grant transfers."
+  },
+  "source_and_windows_proposed": {
+    "streams": "Existing fixed v5 minute trade OHLCV exact60-to-logical1h, native1h marks and published funding; no additional feed/venue fields needed. Native Decimal prices retained for grid/fills; explicit binary64 projection for ranking/ATR only. Before2026-09-01 fixed v5 derivation, afterward separately pinned v6 native1h; never source availability fallback.",
+    "development": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_filter_eligible": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "snapshot": "Exact latest authenticated capture AND serverTime strictly before Dec14 eligibility, full PIT in artifact order; no CORE20/survivor override.",
+    "forward": ["2025-04-01T00:00:00Z/2025-10-01T00:00:00Z", "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z", "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"],
+    "new_sealed_holdout": "2026-09-28T01:00:00Z/2026-11-05T00:00:00Z",
+    "boundaries": "StageA exactEND open-only scheduled exit plus independently authorized old-liability funding-only tail through END+15000ms inclusive, no future prices/marks or nextfold capital. StageB due>=END entry veto, no ENDopen/postcutoff grant, full01 reset/no excluded00 warmup.",
+    "opportunity_arithmetic_only": "108 filter-eligible DEV days permit at most324 ordinary full24h closes at max3 continually occupied lots, before costs/feasibility and with early exits able to increase counts. StageB911h less168h warmup then next fixed6h clock yields first possible Oct5 06UTC (09Cairo),738h remaining;30 complete24h cycles*3=90 ordinary closes possible under strict due<END. Not actual fills, sample power or expected profits."
+  },
+  "proposed_inference_and_gates": {
+    "development_nomination": "Same frozen C268 prospective funnel: complete source/lifecycle/cash/protection/report integrity; pre-cost gross expectancy>0, aftercost meanR>0, cashPF>1.05, >=120closed/>=8symbols, median>=8perintersectingUTCmonth including zeros, identical-set stressmeanR>0, DD=max(markedcash/1%startingcapital,chronologicalclosedfinalR)<=60. DEV CI/p diagnostics only; no PAPER qualification.",
+    "forward": "Same accepted C268 full strict aggregate confirmation: meanR>.03, cashPF>1.10, >=300closed/>=12symbols, median>=12monthly inclzeros, >=2of3foldnetRpositive, worstfoldmeanR>-.05, >55%positive intersectingmonths, each exact BTCEMA200 label>=30closes and meanR>-.03, stressmeanR>0/PF>1.02, own p<=.05/269, no symbol>25%sumabs(symbolnetR), full risk tiers/integrity. No regime subset rescue.",
+    "holdout": ">=30closed/>=8symbols,netR>0/meanR>0/cashPF>1.05,20k95%CI lower>0,stressnetR>0/PF>1.02,DD tiers and all source/lifecycle/cost/protection/parity/report complete. Own one-shot spend; no extension or tuning.",
+    "DDtiers": "<=15R standard;15<DD<=30 requires netR/DD>=1.5;30<DD<=60 requires netR/DD>=2 andstressnetR/stressDD>=1 with futurePAPERrisk<=min(.5,15/DD);>60reject. No new relaxed tier.",
+    "statistics": "One primary trial proposed; fixed stationary20000/21-trade PCG64 C-order(B,n,2), math.fsum/linearquantile/inclusiveplusone; nullseed26920261107/CIseed26920261108, no repeats until pass. Numbered-family .05/269 only, historical global testedvariant total UNKNOWN, NOT globalFWER. Coarse MC tail disclosed; only0/1/2 null exceedances can pass.",
+    "diagnostics_and_controls": "Cashzero and complete canonical full-hour BTC beta/correlation, all exact EMA200 labels incl UNCLASSIFIED, all defined proposal scores once, skips/zero/failure, net/gross/cash/R/fees/slip/impact/funding/month/week/symbol/DD. No diagnostic selects/rescues primary. No additional BTC trading cell/grant implied.",
+    "final_PAPER": "Independent forward+holdout/code/source/execution acceptance plus actual testnet fee/eligibility ledger, protections/restart/rollback and bounded canary remain mandatory. No PAPER/mainnet grant from nomination or DEV."
+  },
+  "duplicate_review": {
+    "metadata_read_base": "0aed9def213af22c12a263fc10b69582fba8e45e",
+    "scope": "Names across all discoverable local refs/history, latest accessible preregistration definition per path; targeted closest definitions only. Not a complete historical global trial ledger.",
+    "discoverable_metadata_entries_not_trial_count": 266,
+    "identity_inventory_sha256": "4cd8140f1341ef51851fc5c2ee6309b9bba989075b6004d9a0d9e06da52cbbfc",
+    "exact_term_scan": "No matches in scoped prereg metadata for overhead supply/volume/resistance, capital-gains overhang, volume-at-price, volume profile or cost basis. Names-only results exposed; no outcome files read.",
+    "closest": {
+      "C159_VWMA": "8c1be32ad02cae2dec70b04abd8bcf2baeffb4d4; d577f240e184072b98ed11b9d795ec61e380917813c8dd1752895b58bc83688b. Weighted mean20/basevolume crossover+EMA200 LONG; no price-local weighted mass.",
+      "C71_volume_HHI": "ac1eb9b321652b424b41d22219c0e1407f516b36; da645d7ba0ec6a64883070afb565171200b0f54bab57cb80f3e1302658941b92.24h time concentration and positive returns LONG; no price bins or overhead resistance.",
+      "C36_MFI": "1a24edf49ef6ccaa40867ed930603737364d28ce;00b55f4eedb9b3915a04a050d94baef53d6ed901ae76ae07f5041f97a43df5b4. Direction-signed typicalprice flow oversold recovery, not local historical price distribution.",
+      "C35_OBV": "1a24edf49ef6ccaa40867ed930603737364d28ce;9679b235d8bc73f0aa4b4c14a11fb3df2baff39118b59e74173862069a0f67e6. Signed cumulative flow leads breakout, no quote-weighted price-band mass.",
+      "C265": "Unsigned24h/prior7day volume attention LONG; this is not its inverted ratio and no activity-growth requirement.",
+      "C264": "Binary unchanged-close frequency SHORT, not volume assigned to historical price locations.",
+      "C266_267_268": "No relative-return pair, BTC impulse regression or conditional beta/covariance in this score. Generic price-volume/momentum correlation remains possible."
+    },
+    "root_must_decide": "Accept distinct mechanism/definition or reject BEFORE freeze/rows. This bounded metadata check cannot certify independent alpha or complete worldwide novelty."
+  },
+  "exposure_disclosure": "Earlier accidental prior-family summary exposure remains disclosed. Root has also supplied terminal summary economics/status for C261-C267, including newly known C267 LONG/SHORT DEV rejections. No raw outcomes, returns, ranks, claims or holdout payloads were opened for this nomination. No hypothesis inversion/parameter choice/grid/coin selection uses those numbers; no zero-prior-knowledge or global independence claim. C268 is already frozen independently and remains unchanged.",
+  "ROADMAP FIT": "ONE proposed next costed strategy trial while C268 independent review runs; metadata only, no engine expansion.",
+  "DEFERRED": "Registration/frozen executable prereg, implementation, source/model/code authority, all real rows/claims/receipts, forward/holdout/PAPER/mainnet until root selection. No current/spent study repair."
+}
