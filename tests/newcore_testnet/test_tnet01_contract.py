@@ -224,7 +224,7 @@ def test_complete_matrix_passes_and_writer_gets_only_canonical_redacted_json() -
     assert all(case.status is CaseStatus.PASSED for case in report.cases)
     assert written == [canonical_report_bytes(report)]
     decoded = json.loads(written[0])
-    assert decoded["schema"] == "zackbot-tnet01/1"
+    assert decoded["schema"] == "zackbot-tnet01/2"
     raw = written[0].decode("ascii")
     for forbidden in ("tnet-owner", "Dedicated TNET-01", "secret", "https://", "api_key"):
         assert forbidden not in raw

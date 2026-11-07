@@ -26,11 +26,15 @@ MAX_SCENARIO_NOTIONAL = Decimal("1000")
 MAX_AGGREGATE_NOTIONAL = Decimal("2000")
 MAX_ORDERS_PER_SCENARIO = 12
 MAX_SCENARIO_MS = 10 * 60 * 1000
-MAX_SUITE_MS = 60 * 60 * 1000
+MAX_SUITE_MS = 120 * 60 * 1000
+# A market-trigger scenario that ends with no trigger, clean and flat, may be attempted again later in the same suite
+# with a fresh case id, a fresh entry and fresh order ids.  Every attempt is reported, and a pass still needs the real
+# trigger and fill (owner decision, 6 Nov 2026, after four real runs missed only on price direction).
+MAX_ATTEMPTS = 3
 CLEANUP_PROTECT_MS = 15 * 1000
 CLEANUP_FLATTEN_MS = 60 * 1000
 CLEANUP_HOLD_MS = 120 * 1000
-REPORT_SCHEMA = "zackbot-tnet01/1"
+REPORT_SCHEMA = "zackbot-tnet01/2"
 
 _HEX_16 = re.compile(r"[0-9a-f]{16}")
 _HEX_40 = re.compile(r"[0-9a-f]{40}")
@@ -113,6 +117,10 @@ class ScenarioKind(enum.StrEnum):
 
 
 REQUIRED_SCENARIOS = tuple(ScenarioKind)
+RETRYABLE_SCENARIOS = frozenset({
+    ScenarioKind.LONG_TARGET, ScenarioKind.SHORT_TARGET, ScenarioKind.LONG_STOP, ScenarioKind.SHORT_STOP,
+    ScenarioKind.PARTIAL_CLOSE, ScenarioKind.BOUNDED_DCA,
+})
 
 
 class FinalTruth(enum.StrEnum):
@@ -383,6 +391,9 @@ class ScenarioEvidence:
     restart_boot_id: str | None
     rate_limit: RateLimitEvidence | None
     final_truth: FinalTruth
+    # True only when a market-trigger scenario's wait ran to its deadline with the model answering HOLD/NO_CHANGE on
+    # every poll (or its exchange stop still working), and nothing but the entry and its protective stop was sent.
+    trigger_missed: bool = False
 
     def __post_init__(self) -> None:
         _local_id(self.case_id, "case", "validation.evidence.case_id")
@@ -403,6 +414,7 @@ class ScenarioEvidence:
                      "journal_reopened"):
             _boolean(getattr(self, name), f"validation.evidence.{name}")
         _integer(self.dca_adds, "validation.evidence.dca_adds")
+        _boolean(self.trigger_missed, "validation.evidence.trigger_missed")
         for name in ("accepted_at_ms", "answer_lost_at_ms"):
             value = getattr(self, name)
             if value is not None:
@@ -466,9 +478,18 @@ class CaseReport:
     aggregate_peak_notional: Decimal
     max_leverage: int
     evidence_sha256: str
+    attempt: int
+    attempt_of: str | None
 
     def __post_init__(self) -> None:
         _local_id(self.case_id, "case", "validation.case_report.case_id")
+        _integer(self.attempt, "validation.case_report.attempt", minimum=1, maximum=MAX_ATTEMPTS)
+        if (self.attempt == 1) != (self.attempt_of is None):
+            _fail("validation.case_report.attempt_of")
+        if self.attempt_of is not None:
+            _local_id(self.attempt_of, "case", "validation.case_report.attempt_of")
+            if self.attempt_of == self.case_id or self.kind not in RETRYABLE_SCENARIOS:
+                _fail("validation.case_report.attempt_of")
         _exact(self.kind, ScenarioKind, "validation.case_report.kind")
         _exact(self.status, CaseStatus, "validation.case_report.status")
         if self.failure is not None:
@@ -682,6 +703,10 @@ def _scenario_failure(context: ScenarioContext, setup: SetupEvidence, evidence: 
         return FailureCode.EVIDENCE_HOLD
     safe = evidence.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED)
     kind = case.kind
+    if evidence.trigger_missed and (kind not in RETRYABLE_SCENARIOS or evidence.target_confirmed
+                                    or evidence.stop_confirmed or evidence.partial_close_confirmed
+                                    or evidence.dca_adds != 0 or evidence.orders_placed != 2):
+        return FailureCode.ASSERTION
     if kind in (ScenarioKind.LONG_TARGET, ScenarioKind.SHORT_TARGET):
         ok = evidence.entry_confirmed and evidence.protection_confirmed and evidence.target_confirmed and safe
     elif kind in (ScenarioKind.LONG_STOP, ScenarioKind.SHORT_STOP):
@@ -735,15 +760,14 @@ def _cleanup_failure(context: CleanupContext, evidence: CleanupEvidence, orders_
 
 
 def _case_report(context: ScenarioContext, setup: SetupEvidence | None, evidence: ScenarioEvidence | None,
-                 cleanup: CleanupEvidence | None, failure: FailureCode | None) -> CaseReport:
+                 cleanup: CleanupEvidence | None, failure: FailureCode | None, attempt: int = 1,
+                 attempt_of: str | None = None, cleanup_failure: FailureCode | None = None) -> CaseReport:
     started = setup.at_ms if setup is not None else context.case_started_budget_ms
     finished = (cleanup.flattened_at_ms or cleanup.protected_at_ms or cleanup.hold_stopped_at_ms or cleanup.started_ms
                 if cleanup is not None else (evidence.finished_ms if evidence is not None else started))
-    untrusted_terminal = failure in (
-        FailureCode.CLEANUP_HOLD,
-        FailureCode.CLEANUP_NOT_IDEMPOTENT,
-        FailureCode.EVIDENCE_HOLD,
-    )
+    untrusted = (FailureCode.CLEANUP_HOLD, FailureCode.CLEANUP_NOT_IDEMPOTENT, FailureCode.EVIDENCE_HOLD)
+    # an earlier scenario failure must never hide a cleanup fault behind the first cleanup's FLAT
+    untrusted_terminal = failure in untrusted or cleanup_failure in untrusted
     final_truth = cleanup.final_truth if cleanup is not None and not untrusted_terminal else FinalTruth.HOLD
     orders = (evidence.orders_placed if evidence is not None else 0) + (
         cleanup.cleanup_orders_total if cleanup is not None else 0)
@@ -754,12 +778,64 @@ def _case_report(context: ScenarioContext, setup: SetupEvidence | None, evidence
         CaseStatus.HOLD if final_truth is FinalTruth.HOLD else CaseStatus.FAILED)
     evidence_hash = hashlib.sha256(_bytes((context, setup, evidence, cleanup, failure))).hexdigest()
     return CaseReport(context.case.case_id, context.case.kind, status, failure, started, finished, final_truth, orders,
-                      peak, aggregate, leverage, evidence_hash)
+                      peak, aggregate, leverage, evidence_hash, attempt, attempt_of)
+
+
+def _retryable_miss(context: ScenarioContext, evidence: ScenarioEvidence | None, cleanup: CleanupEvidence | None,
+                    failure: FailureCode | None, cleanup_failure: FailureCode | None = None,
+                    cleanup_repeat: CleanupEvidence | None = None) -> bool:
+    """A clean market miss: the trigger scenario opened and protected a real, NC-06-authorized position, the market
+    never reached its level, and the attempt ended reconciled and flat with no other fault.  Nothing else retries."""
+    case = context.case
+    return (case.kind in RETRYABLE_SCENARIOS and failure is FailureCode.ASSERTION
+            and evidence is not None and cleanup is not None
+            and cleanup_failure is None and cleanup_repeat == cleanup and evidence.trigger_missed
+            and evidence.orders_placed == 2
+            and evidence.case_id == case.case_id and evidence.kind is case.kind
+            and evidence.synthetic_intent_id == context.synthetic_intent_id
+            and evidence.authorization_id == context.authorization_id and evidence.nc06_authorized
+            and evidence.entry_confirmed and evidence.protection_confirmed and evidence.rate_limit is None
+            and not evidence.target_confirmed and not evidence.stop_confirmed
+            and not evidence.partial_close_confirmed and evidence.dca_adds == 0
+            and evidence.final_truth in (FinalTruth.FLAT, FinalTruth.PROTECTED_RECONCILED) and evidence.reconciled
+            and cleanup.final_truth is FinalTruth.FLAT and cleanup.reconciled)
+
+
+def attempts_complete(cases: tuple[CaseReport, ...]) -> bool:
+    """The suite pass rule over case reports (shared with the gate).
+
+    The first twelve reports are attempt 1 of each required scenario, in order.  Every later report is a further
+    attempt of a retryable scenario, numbered 2..MAX_ATTEMPTS in order.  In each scenario's chain, every attempt but
+    the last is a clean flat ASSERTION miss, and the last one PASSED.
+    """
+    n = len(REQUIRED_SCENARIOS)
+    if type(cases) is not tuple or len(cases) < n or len({c.case_id for c in cases}) != len(cases):
+        return False
+    first = cases[:n]
+    if tuple(c.kind for c in first) != REQUIRED_SCENARIOS or any(c.attempt != 1 or c.attempt_of is not None
+                                                                   for c in first):
+        return False
+    chains: dict[str, list[CaseReport]] = {c.case_id: [c] for c in first}
+    for case in cases[n:]:
+        chain = chains.get(case.attempt_of) if case.attempt_of is not None else None
+        if chain is None or case.kind is not chain[0].kind or case.kind not in RETRYABLE_SCENARIOS:
+            return False
+        if case.attempt != len(chain) + 1:
+            return False
+        chain.append(case)
+    for chain in chains.values():
+        *misses, last = chain
+        if last.status is not CaseStatus.PASSED or last.failure is not None:
+            return False
+        if any(m.status is not CaseStatus.FAILED or m.failure is not FailureCode.ASSERTION
+               or m.final_truth is not FinalTruth.FLAT for m in misses):
+            return False
+    return True
 
 
 def _report(manifest: SuiteManifest, suite_id: str, cases: tuple[CaseReport, ...],
             failure: FailureCode | None, finished_ms: int) -> SuiteReport:
-    if failure is None and all(case.status is CaseStatus.PASSED for case in cases) and len(cases) == len(REQUIRED_SCENARIOS):
+    if failure is None and attempts_complete(cases):
         status = SuiteStatus.PASSED
     elif any(case.status is CaseStatus.HOLD for case in cases):
         status, failure = SuiteStatus.HOLD, failure or FailureCode.CLEANUP_HOLD
@@ -806,56 +882,96 @@ def run_suite(manifest: SuiteManifest, adapter: HarnessAdapter, writer: ReportWr
     else:
         cursor = max(cursor, binding_evidence.confirmed_at_ms)
 
+    def run_case(case: ScenarioCase, at_ms: int, attempt: int, attempt_of: str | None
+                 ) -> tuple[CaseReport, FailureCode | None, bool]:
+        context = _case_context(spec, suite_id, case, at_ms)
+        setup = None
+        evidence = None
+        cleanup = None
+        failure = None
+        try:
+            setup = _seal_setup(adapter.setup(context))
+        except Exception:
+            failure = FailureCode.SETUP
+        if setup is not None:
+            failure = _setup_failure(context, setup)
+        if setup is not None and failure is None:
+            try:
+                evidence = _seal_scenario(adapter.execute(context))
+            except Exception:
+                failure = failure or FailureCode.ADAPTER
+        if setup is not None and evidence is not None:
+            failure = failure or _scenario_failure(context, setup, evidence)
+        cleanup_started = evidence.finished_ms if evidence is not None else (setup.at_ms if setup is not None else at_ms)
+        token = _derive("cleanup", suite_id, case.case_id)
+        cleanup_context = CleanupContext(suite_id, case.case_id, token, cleanup_started,
+                                         cleanup_started + CLEANUP_PROTECT_MS,
+                                         cleanup_started + CLEANUP_FLATTEN_MS,
+                                         cleanup_started + CLEANUP_HOLD_MS)
+        second = None
+        cleanup_failure = None
+        try:
+            first = _seal_cleanup(adapter.cleanup(cleanup_context))
+            second = _seal_cleanup(adapter.cleanup(cleanup_context))
+            cleanup = first
+            if first != second:
+                cleanup_failure = FailureCode.CLEANUP_NOT_IDEMPOTENT
+            else:
+                cleanup_failure = _cleanup_failure(cleanup_context, first,
+                                                   evidence.orders_placed if evidence is not None else 0,
+                                                   case.max_orders)
+        except Exception:
+            cleanup_failure = FailureCode.CLEANUP
+        failure = failure or cleanup_failure
+        report = _case_report(context, setup, evidence, cleanup, failure, attempt, attempt_of, cleanup_failure)
+        retry = report.final_truth is FinalTruth.FLAT and _retryable_miss(context, evidence, cleanup, failure,
+                                                                          cleanup_failure, second)
+        return report, failure, retry
+
+    def stop_after(report: CaseReport, failure: FailureCode | None) -> FailureCode | None:
+        if cursor > suite_deadline:
+            return FailureCode.SUITE_DEADLINE
+        if report.final_truth is FinalTruth.HOLD:
+            return failure or FailureCode.CLEANUP_HOLD
+        return None
+
+    misses: list[ScenarioCase] = []
     if suite_failure is None:
         for case in spec.cases:
             if cursor >= suite_deadline:
                 suite_failure = FailureCode.SUITE_DEADLINE
                 break
-            context = _case_context(spec, suite_id, case, cursor)
-            setup = None
-            evidence = None
-            cleanup = None
-            failure = None
-            try:
-                setup = _seal_setup(adapter.setup(context))
-            except Exception:
-                failure = FailureCode.SETUP
-            if setup is not None:
-                failure = _setup_failure(context, setup)
-            if setup is not None and failure is None:
-                try:
-                    evidence = _seal_scenario(adapter.execute(context))
-                except Exception:
-                    failure = failure or FailureCode.ADAPTER
-            if setup is not None and evidence is not None:
-                failure = failure or _scenario_failure(context, setup, evidence)
-            cleanup_started = evidence.finished_ms if evidence is not None else (setup.at_ms if setup is not None else cursor)
-            token = _derive("cleanup", suite_id, case.case_id)
-            cleanup_context = CleanupContext(suite_id, case.case_id, token, cleanup_started,
-                                             cleanup_started + CLEANUP_PROTECT_MS,
-                                             cleanup_started + CLEANUP_FLATTEN_MS,
-                                             cleanup_started + CLEANUP_HOLD_MS)
-            try:
-                first = _seal_cleanup(adapter.cleanup(cleanup_context))
-                second = _seal_cleanup(adapter.cleanup(cleanup_context))
-                cleanup = first
-                if first != second:
-                    failure = failure or FailureCode.CLEANUP_NOT_IDEMPOTENT
-                else:
-                    failure = failure or _cleanup_failure(cleanup_context, first,
-                                                          evidence.orders_placed if evidence is not None else 0,
-                                                          case.max_orders)
-            except Exception:
-                failure = failure or FailureCode.CLEANUP
-            report = _case_report(context, setup, evidence, cleanup, failure)
+            report, failure, retry = run_case(case, cursor, 1, None)
             reports.append(report)
             cursor = max(cursor, report.finished_ms)
-            if cursor > suite_deadline:
-                suite_failure = FailureCode.SUITE_DEADLINE
+            suite_failure = stop_after(report, failure)
+            if suite_failure is not None:
                 break
-            if report.final_truth is FinalTruth.HOLD:
-                suite_failure = failure or FailureCode.CLEANUP_HOLD
+            if retry:
+                misses.append(case)
+
+    # Further attempts run only after the whole first pass, so each one sees a later, independent market window.  They
+    # are skipped when any other scenario already failed: the suite cannot pass, so no further orders are spent.
+    missed = {case.case_id for case in misses}
+    hopeless = any(r.status is not CaseStatus.PASSED and r.case_id not in missed for r in reports)
+    for original in misses if suite_failure is None and not hopeless else ():
+        passed = False
+        for attempt in range(2, MAX_ATTEMPTS + 1):
+            if cursor + MAX_SCENARIO_MS > suite_deadline:
+                break                   # never start an attempt that could not get a full scenario window
+            again = ScenarioCase(_derive("case", suite_id, original.case_id, "attempt", attempt), original.kind,
+                                 original.symbol, original.side, original.leverage, original.max_notional,
+                                 original.max_orders)
+            report, failure, retry = run_case(again, cursor, attempt, original.case_id)
+            reports.append(report)
+            cursor = max(cursor, report.finished_ms)
+            suite_failure = stop_after(report, failure)
+            passed = report.status is CaseStatus.PASSED
+            if suite_failure is not None or not retry:
                 break
+        # once any scenario's chain ends without a pass the suite cannot pass: spend no further orders
+        if suite_failure is not None or not passed:
+            break
 
     report = _report(spec, suite_id, tuple(reports), suite_failure, cursor)
     try:
@@ -869,7 +985,7 @@ __all__ = [
     "BindingEvidence", "CaseReport", "CaseStatus", "CleanupContext", "CleanupEvidence", "FailureCode",
     "FinalTruth", "HarnessAdapter", "HarnessBinding", "HarnessError", "MAX_AGGREGATE_NOTIONAL",
     "MAX_LEVERAGE", "MAX_ORDERS_PER_SCENARIO", "MAX_SCENARIO_MS", "MAX_SCENARIO_NOTIONAL",
-    "MAX_SUITE_MS", "REPORT_SCHEMA", "REQUIRED_SCENARIOS", "RateLimitEvidence", "RateLimitKind", "ScenarioCase",
+    "MAX_ATTEMPTS", "MAX_SUITE_MS", "REPORT_SCHEMA", "REQUIRED_SCENARIOS", "RETRYABLE_SCENARIOS", "attempts_complete", "RateLimitEvidence", "RateLimitKind", "ScenarioCase",
     "ScenarioContext", "ScenarioEvidence", "ScenarioKind", "SetupEvidence", "SuiteManifest", "SuiteReport",
     "SuiteStatus", "canonical_report_bytes", "run_suite",
 ]
