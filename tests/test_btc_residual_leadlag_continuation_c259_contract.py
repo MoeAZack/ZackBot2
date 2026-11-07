@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "research_evidence" / "prereg" / "btc_residual_leadlag_continuation_c259_stagea.v1.json"
 PLAN_PATH = ROOT / "contracts" / "strategy_causal_pack_01" / "authority_extension_plan.v6.json"
 BASE = "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3"
-CANONICAL_CONTRACT_SHA256 = "d63bcf1fbdc37f9d628037badaca63a9b3a75ad771ef59695c7fe31a86685132"
+CANONICAL_CONTRACT_SHA256 = "f75c65d4ea7d08d18071c5fba588c17e7a4e2a07ad4695139d46aa7e2585450d"
 EXPECTED_TOP_LEVEL = {
     "format", "candidate_id", "candidate_key", "base_commit", "frozen_at_cairo",
     "status", "default_off", "evaluation_locked", "paper_eligibility", "roadmap_fit",
@@ -150,11 +150,12 @@ def validate_contract(c, *, check_hash=True):
     assert sizing["primary_capital_usd"] == 2000
     assert sizing["diagnostic_capitals_usd"] == [1000, 3000, 4000]
     assert "cannot veto, select, rescue" in sizing["capital_selection_rule"]
-    assert "only that side's positions" in sizing["book_equity"]
+    assert "only that side's positions" in sizing["side_book_equity"]
     assert "0.01*side_book_equity" in sizing["risk_cash"]
     assert "fee_drag, slippage_drag and impact_drag" in sizing["risk_cash"]
     assert "Freeze both impact terms from the exact 24 completed causal quote-volume bars available before entry" in sizing["risk_cash"]
     assert "floor(continuous_quantity/stepSize)*stepSize" in sizing["rounding"]
+    assert "raw gross<=0.50*side_book_equity" in sizing["rounding"]
     assert "Never increase" in sizing["rounding"]
     assert "only from the 2000 USD primary replay" in sizing["primary_gate"]
 
@@ -175,7 +176,11 @@ def validate_contract(c, *, check_hash=True):
     assert "fee_drag, slippage_drag and impact_drag are finite nonnegative" in costs["pnl_rule"]
     assert "actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag-impact_drag" in costs["pnl_rule"]
     assert "Every trade R, PF numerator/denominator" in costs["pnl_rule"]
-    assert "never assume zero" in costs["funding"]
+    assert "side_sign=+1 for long and side_sign=-1 for short" in costs["funding"]
+    assert "funding_cash=-side_sign*abs(quantity)*mark_price*funding_rate" in costs["funding"]
+    assert "positive funding debits longs and credits shorts" in costs["funding"]
+    assert "explicit authority failure" in costs["funding"]
+    assert "never substitute zero" in costs["funding"]
     assert "Freeze impact_asof by fill type" in costs["impact"]
     assert "For an intrabar stop/target" in costs["impact"]
     assert "impact_asof=b" in costs["impact"]
@@ -193,8 +198,10 @@ def validate_contract(c, *, check_hash=True):
     assert "chronological cashflows must equal actual_net_cash exactly" in accounting["cashflows"]
     assert "every still-open lot" in accounting["marked_equity"]
     assert "Overlapping normal and PROTECTION_FAILURE positions" in accounting["marked_equity"]
-    assert "marked-equity sequence in event order" in accounting["drawdown"]
-    assert "cannot replace or reduce marked-equity drawdown" in accounting["drawdown"]
+    assert "chronological_marked_equity_drawdown_R" in accounting["drawdown"]
+    assert "closed_realized_R_drawdown_R" in accounting["drawdown"]
+    assert "never entry-time ordering" in accounting["drawdown"]
+    assert "gate_drawdown_R=max" in accounting["drawdown"]
     assert "impact exactly once" in accounting["trade_r_and_pf"]
 
     regime = c["regime"]
@@ -214,7 +221,8 @@ def validate_contract(c, *, check_hash=True):
     assert "0.05/(259*2)" in fwd
     assert "strictly more than 55%" in fwd
     assert "at least 20" in hold
-    assert gates["drawdown_tiers"]["reject"] == "max drawdown>60R"
+    assert "gate_drawdown_R=max(chronological marked-equity drawdown R, closed-realized R drawdown R)>60R" in dev
+    assert gates["drawdown_tiers"]["reject"] == "gate_drawdown_R>60R"
     assert gates["undefined_statistics"] == "FAIL_CLOSED"
 
     stats = c["statistics"]
@@ -308,6 +316,24 @@ def test_event_accounting_covers_impact_overlap_and_failures_chronologically():
     assert "PROTECTION_FAILURE" in c["accounting"]["event_order"]
     assert "Overlapping normal and PROTECTION_FAILURE positions" in c["accounting"]["marked_equity"]
     assert "Never order closed trades by entry time" in c["accounting"]["event_order"]
+    assert "gate_drawdown_R=max" in c["accounting"]["drawdown"]
+
+
+def test_funding_sign_and_failure_behavior_are_exact():
+    funding = load_contract()["costs"]["funding"]
+    assert "side_sign=+1 for long and side_sign=-1 for short" in funding
+    assert "funding_cash=-side_sign*abs(quantity)*mark_price*funding_rate" in funding
+    assert "positive funding debits longs and credits shorts" in funding
+    assert "refuse a not-yet-open entry" in funding
+    assert "mark the side candidate INCOMPLETE" in funding
+
+
+def test_no_shared_book_equity_alias_exists_in_sizing_or_risk():
+    c = load_contract()
+    assert "side_book_equity" in c["sizing"]
+    assert "book_equity" not in c["sizing"]
+    assert "0.50*side_book_equity" in c["sizing"]["rounding"]
+    assert "fully independent books" in c["risk"]["side_isolation"]
 
 
 def test_prefilter_decisions_and_exit_impact_are_causally_pinned():
@@ -357,6 +383,9 @@ def test_prefilter_decisions_and_exit_impact_are_causally_pinned():
         ("entry_time_drawdown_order", lambda d: d["accounting"].update(event_order="sort closed trades by entry")),
         ("prefilter_trade_allowed", lambda d: d["authority"].update(membership="use later filter snapshot")),
         ("exit_fill_bar_volume", lambda d: d["costs"].update(impact="use current exit candle volume")),
+        ("funding_sign_inverted", lambda d: d["costs"].update(funding="funding_cash=side_sign*abs(quantity)*mark_price*funding_rate")),
+        ("shared_book_equity_alias", lambda d: d["sizing"].update(rounding="raw gross<=0.50*book_equity")),
+        ("development_closed_only_dd", lambda d: d["gates"]["development_reject_if_any_per_side"].__setitem__(7, "max closed-R drawdown>60R")),
     ],
 )
 def test_hostile_mutations_fail_semantic_validator(name, mutate):
