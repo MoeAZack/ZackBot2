@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import io
 import json
 import math
 import statistics
 import subprocess
+import zipfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
+from weakref import WeakValueDictionary
 
 import numpy as np
 
@@ -69,6 +72,11 @@ class EvaluationLocked(C259Error):
     pass
 
 
+_SOURCE_SEAL_CAPABILITY = object()
+_ISSUED_SOURCE_SEALS: WeakValueDictionary[int, ProtectedSourceSeal] = WeakValueDictionary()
+_VALIDATED_AUTHORITIES: WeakValueDictionary[int, ProtectedAuthority] = WeakValueDictionary()
+
+
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
@@ -109,6 +117,60 @@ class AuthorityPins:
     coverage_v4: ArtifactPin
 
 
+@dataclass(frozen=True)
+class ProtectedSourceSeal:
+    """Immutable expected tape identities issued only after protected-tree validation."""
+
+    source_digest: str
+    attempt_id: str
+    symbol: str
+    entry_ms: int
+    close_ms: int
+    split_start_ms: int
+    split_end_ms: int
+    atr_digest: str
+    funding_digest: str
+    lifecycle_digest: str
+    fill_volume_digests: tuple[tuple[int, str, str], ...]
+    funding_mark_digest: str
+    lifecycle_mark_digest: str
+    _capability: object = field(repr=False, compare=False)
+
+
+def _stream_digest(source_digest: str, stream: str, records: Sequence[object]) -> str:
+    if not _valid_source_digest(source_digest):
+        raise IncompleteAuthority("invalid protected source identity")
+    return _sha(_canon({"source_digest": source_digest, "stream": stream,
+                        "records": [asdict(record) for record in records]}))
+
+
+@dataclass(frozen=True)
+class ProtectedAuthority(Mapping[str, dict]):
+    """Validated authority documents plus a non-caller-mintable source-seal issuer."""
+
+    _documents: tuple[tuple[str, bytes], ...]
+    source_digest: str
+    _capability: object = field(repr=False, compare=False)
+
+    def __getitem__(self, key: str) -> dict:
+        for name, raw in self._documents:
+            if name == key:
+                return json.loads(raw)
+        raise KeyError(key)
+
+    def __iter__(self):
+        return (name for name, _raw in self._documents)
+
+    def __len__(self) -> int:
+        return len(self._documents)
+
+    def open_source(self, store: Path) -> "ProtectedSourceArchive":
+        if (_VALIDATED_AUTHORITIES.get(id(self)) is not self
+                or self._capability is not _SOURCE_SEAL_CAPABILITY):
+            raise IncompleteAuthority("source issuer is not protected-tree validated")
+        return ProtectedSourceArchive(self, Path(store), _SOURCE_SEAL_CAPABILITY)
+
+
 def _git(repo: Path, *args: str, raw: bool = False) -> str | bytes:
     run = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=False)
     if run.returncode:
@@ -145,7 +207,7 @@ def _computed_digest(value: Mapping[str, object]) -> str:
 
 
 def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
-                            protected_ref: str = "refs/remotes/origin/master") -> dict[str, dict]:
+                            protected_ref: str = "refs/remotes/origin/master") -> ProtectedAuthority:
     """Validate exact protected Git-tree bytes before any loader can run."""
     load_frozen_contract()
     if len(pins.protected_head) != 40 or any(c not in "0123456789abcdef" for c in pins.protected_head):
@@ -190,28 +252,26 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
     manifest, pit, filters, coverage = (docs[n] for n in EXPECTED_PATHS)
     if manifest.get("format") != "zb-binance-um-archive-manifest/6":
         raise IncompleteAuthority("manifest-v6 identity mismatch")
-    cutoff = manifest.get("cutoff_exclusive_utc", manifest.get("cutoff_exclusive"))
-    cutoff_ms = manifest.get("cutoff_exclusive_ms")
-    if cutoff != "2026-11-05T00:00:00Z" or cutoff_ms != 1793836800000:
+    if manifest.get("cutoff_exclusive_ms") != 1793836800000:
         raise IncompleteAuthority("manifest cutoff mismatch")
     if pit.get("format") != "zb-pit-universe/2" or pit.get("manifest_digest") != _declared_digest(manifest):
         raise IncompleteAuthority("PIT-v9 manifest binding mismatch")
-    cells = pit.get("cells")
-    def pit_members(cell: Mapping[str, object]) -> object:
-        books = cell.get("books")
-        return books.get("crypto") if isinstance(books, Mapping) else cell.get("symbols")
-    if (not isinstance(cells, list) or not cells
-            or any(not isinstance(cell, Mapping) or not isinstance(cell.get("monday_ms"), int)
-                   or int(cell["monday_ms"]) % (7 * 24 * HOUR_MS) != 4 * 24 * HOUR_MS
-                   or int(cell["monday_ms"]) >= 1793836800000
-                   or not isinstance(pit_members(cell), list) or not pit_members(cell)
-                   or len(pit_members(cell)) != len(set(pit_members(cell)))  # type: ignore[arg-type]
+    weeks = pit.get("weeks")
+    def pit_members(week: Mapping[str, object]) -> object:
+        books = week.get("books")
+        crypto = books.get("crypto") if isinstance(books, Mapping) else None
+        return crypto.get("members") if isinstance(crypto, Mapping) else None
+    if (not isinstance(weeks, list) or not weeks
+            or any(not isinstance(week, Mapping) or not isinstance(week.get("monday_ms"), int)
+                   or not isinstance(pit_members(week), list) or not pit_members(week)
+                   or len(pit_members(week)) != len(set(pit_members(week)))  # type: ignore[arg-type]
+                   or len(pit_members(week)) > 40
                    or not all(isinstance(symbol, str) and symbol
-                              for symbol in pit_members(cell))  # type: ignore[union-attr]
-                   for cell in cells)):
+                              for symbol in pit_members(week))  # type: ignore[union-attr]
+                   for week in weeks)):
         raise IncompleteAuthority("PIT-v9 weekly cells are empty or malformed")
-    mondays = tuple(int(cell["monday_ms"]) for cell in cells)
-    expected_mondays = tuple(range(1728864000000, 1793577600000 + 1,
+    mondays = tuple(int(week["monday_ms"]) for week in weeks)
+    expected_mondays = tuple(range(1580688000000, 1793577600000 + 1,
                                    7 * 24 * HOUR_MS))
     if mondays != expected_mondays:
         raise IncompleteAuthority("PIT-v9 weekly range coverage mismatch")
@@ -229,24 +289,44 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
     }
     if filters.get("fold_bindings") != expected_folds:
         raise IncompleteAuthority("filter-v4 fold bindings mismatch")
+    weekly_membership = filters.get("weekly_membership")
+    if (not isinstance(weekly_membership, Mapping)
+            or set(weekly_membership) != set(expected_folds)
+            or any(not isinstance(cells, list) or not cells
+                   or any(not isinstance(cell, Mapping)
+                          or not isinstance(cell.get("members"), list)
+                          or len(cell["members"]) != 20
+                          or len(set(cell["members"])) != 20
+                          for cell in cells)
+                   for cells in weekly_membership.values())):
+        raise IncompleteAuthority("filter-v4 weekly membership schema mismatch")
     gaps = coverage.get("guaranteed_period_gaps")
     result = coverage.get("required_result", coverage.get("result"))
     if (coverage.get("format") != "zb-strategy-causal-pack-01-authority-coverage-preflight/1"
             or gaps != 0 or coverage.get("gaps") not in ([], None)
             or result != "ZERO_GUARANTEED_PERIOD_GAPS"
+            or coverage.get("authority_version") != 4
+            or coverage.get("cutoff_exclusive_ms") != 1793836800000
             or coverage.get("required_streams") != [
                 "klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null"]
-            or coverage.get("coverage_start_ms") != 1728864000000
-            or coverage.get("cutoff_exclusive_ms") != 1793836800000):
+            or coverage.get("guaranteed_period_gaps_by_stream") != {
+                "klines:1d": 0, "klines:1h": 0,
+                "markPriceKlines:1h": 0, "fundingRate:null": 0}):
         raise IncompleteAuthority("coverage-v4 is not ZERO_GUARANTEED_PERIOD_GAPS")
     if (coverage.get("manifest_digest") != _declared_digest(manifest)
             or coverage.get("pit_universe_digest") != _declared_digest(pit)
             or coverage.get("filter_authority_digest") != _declared_digest(filters)):
         raise IncompleteAuthority("coverage-v4 cross-binding mismatch")
-    return docs
+    source_digest = _declared_digest(manifest)
+    if not isinstance(source_digest, str) or not _valid_source_digest(source_digest):
+        raise IncompleteAuthority("manifest source identity is malformed")
+    authority = ProtectedAuthority(tuple((name, _canon(doc)) for name, doc in docs.items()),
+                                   source_digest, _SOURCE_SEAL_CAPABILITY)
+    _VALIDATED_AUTHORITIES[id(authority)] = authority
+    return authority
 
 
-def run_with_authority(pins: AuthorityPins, loader: Callable[[dict[str, dict]], object], *,
+def run_with_authority(pins: AuthorityPins, loader: Callable[[ProtectedAuthority], object], *,
                        repo: Path = ROOT, protected_ref: str = "refs/remotes/origin/master") -> object:
     authorities = validate_authority_pins(pins, repo=repo, protected_ref=protected_ref)
     return loader(authorities)
@@ -758,6 +838,7 @@ class ClosedTrade:
     decision_close_ms: int
     split_start_ms: int
     authority_source_digest: str
+    source_seal: ProtectedSourceSeal
     atr_authority_digest: str
     atr_bars: tuple[Bar, ...]
     funding_authority: tuple[FundingEvent, ...]
@@ -806,9 +887,20 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
         raise IncompleteEpisode("entry is not the exact next open after ATR decision")
     split = split_name(trade.decision_close_ms)
     expected_split_start, split_end = ALL_SPLIT_RANGES[split]
+    seal = trade.source_seal
+    if (not isinstance(seal, ProtectedSourceSeal)
+            or _ISSUED_SOURCE_SEALS.get(id(seal)) is not seal
+            or seal._capability is not _SOURCE_SEAL_CAPABILITY
+            or seal.source_digest != trade.authority_source_digest
+            or (seal.attempt_id, seal.symbol, seal.entry_ms, seal.close_ms,
+                seal.split_start_ms, seal.split_end_ms) != (
+                    trade.attempt_id, trade.symbol, trade.entry_ms, trade.close_ms,
+                    expected_split_start, split_end)):
+        raise IncompleteAuthority("trade is not bound to protected source evidence")
     if (trade.split_start_ms != expected_split_start
             or tuple(bar.open_ms for bar in trade.atr_bars)
             != tuple(range(expected_split_start, trade.decision_close_ms, HOUR_MS))
+            or trade.atr_authority_digest != seal.atr_digest
             or trade.atr_authority_digest != atr_tape_digest(
                 source_digest=trade.authority_source_digest,
                 split_start_ms=expected_split_start,
@@ -846,6 +938,7 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     if (tuple(trade.funding_authority) != ordered_funding_authority
             or any(not expected_split_start <= event.timestamp_ms < split_end
                    for event in ordered_funding_authority)
+            or trade.funding_authority_digest != seal.funding_digest
             or trade.funding_authority_digest != funding_tape_digest(
                 source_digest=trade.authority_source_digest, symbol=trade.symbol,
                 split_start_ms=expected_split_start, split_end_ms=split_end,
@@ -885,6 +978,13 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
                 or not math.isclose(fill.fee_drag, expected_fee, abs_tol=1e-12)
                 or not math.isclose(fill.slippage_drag, expected_slip, abs_tol=1e-12)):
             raise IncompleteEpisode("fill costs do not recompute from frozen authority")
+    actual_volume_digests = tuple(
+        (fill.timestamp_ms, fill.phase,
+         _stream_digest(trade.authority_source_digest,
+                        f"volume:{trade.symbol}:{fill.timestamp_ms}:{fill.phase}",
+                        fill.volume_rows)) for fill in trade.fills)
+    if actual_volume_digests != seal.fill_volume_digests:
+        raise IncompleteAuthority("fill volume rows differ from protected source evidence")
     if (entry.side != trade.side or exit_fill.side != -trade.side
             or entry.quantity != exit_fill.quantity
             or Decimal(str(entry.quantity)) != trade.sizing.quantity
@@ -906,6 +1006,10 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
         raise IncompleteAuthority("lifecycle bar tape is missing/compressed")
     for bar in lifecycle:
         bar.validate()
+    if (_stream_digest(trade.authority_source_digest,
+                       f"lifecycle:{trade.symbol}", lifecycle)
+            != seal.lifecycle_digest):
+        raise IncompleteAuthority("lifecycle bars differ from protected source evidence")
     if (trade.entry_bar.open_ms != trade.entry_ms
             or trade.entry_bar != lifecycle[0]
             or not math.isclose(trade.entry_bar.open, entry.reference, abs_tol=1e-12)
@@ -953,10 +1057,16 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
                 or event.timestamp_ms % HOUR_MS
                 or mark.timestamp_ms != event.timestamp_ms-HOUR_MS
                 or mark.symbol != trade.symbol
+                or mark.source_digest != trade.authority_source_digest
                 or mark.price <= 0 or not all(math.isfinite(value) for value in (
                     event.rate, mark.price))):
             raise IncompleteEpisode("funding event identity/cash is invalid")
         seen_funding.add(event.timestamp_ms)
+    if (_stream_digest(trade.authority_source_digest,
+                       f"funding-marks:{trade.symbol}",
+                       tuple(item.mark for item in trade.funding_events))
+            != seal.funding_mark_digest):
+        raise IncompleteAuthority("funding marks differ from protected source evidence")
 
 
 @dataclass
@@ -987,6 +1097,7 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
                        funding_events: Sequence[AppliedFunding],
                        sizing: SizedPosition, decision_close_ms: int,
                        split_start_ms: int, authority_source_digest: str,
+                       source_seal: ProtectedSourceSeal,
                        atr_authority_digest: str, atr_bars: Sequence[Bar],
                        funding_authority: Sequence[FundingEvent],
                        funding_authority_digest: str, lifecycle_bars: Sequence[Bar],
@@ -1004,7 +1115,8 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
         raise IncompleteEpisode("protection failure lifecycle is not exactly flat")
     trade = ClosedTrade(attempt_id, side, symbol, entry_ms, cleanup_ms, regime,
                         tuple(fills), tuple(funding_events), sizing, decision_close_ms,
-                        split_start_ms, authority_source_digest, atr_authority_digest,
+                        split_start_ms, authority_source_digest, source_seal,
+                        atr_authority_digest,
                         tuple(atr_bars), tuple(funding_authority), funding_authority_digest,
                         tuple(lifecycle_bars), entry_bar, exit_bar, stop, target, True)
     validate_closed_trade(trade)
@@ -1174,6 +1286,213 @@ def validate_position_mark(mark: PositionMark) -> None:
         raise IncompleteAuthority("invalid canonical position-mark identity")
 
 
+class ProtectedSourceArchive:
+    """Fixed checksum-verifying loader for protected manifest-v6 source bytes.
+
+    The sealing method derives every expected tape from checksum-bound archive
+    bytes and requires exact equality. There is no arbitrary-row seal issuer.
+    """
+
+    def __init__(self, authority: ProtectedAuthority, store: Path, capability: object):
+        if (capability is not _SOURCE_SEAL_CAPABILITY
+                or _VALIDATED_AUTHORITIES.get(id(authority)) is not authority
+                or authority._capability is not _SOURCE_SEAL_CAPABILITY):
+            raise IncompleteAuthority("source archive lacks protected authority")
+        self._authority = authority
+        self._store = store.resolve()
+        manifest = authority["manifest_v6"]
+        active = manifest.get("active_base_files_v5", ())
+        extension = manifest.get("files_v6", ())
+        if not isinstance(active, list) or not isinstance(extension, list):
+            raise IncompleteAuthority("manifest source record sets are malformed")
+        records = tuple(dict(record) for record in (*active, *extension)
+                        if isinstance(record, Mapping))
+        if len(records) != len(active) + len(extension):
+            raise IncompleteAuthority("manifest source record is malformed")
+        self._records = records
+        self._cache: dict[str, tuple[dict[int, Bar], dict[int, PositionMark],
+                                     tuple[FundingEvent, ...]]] = {}
+        self._capability = capability
+
+    def _safe_path(self, relative: str) -> Path:
+        if (not isinstance(relative, str) or not relative
+                or Path(relative).is_absolute() or ".." in Path(relative).parts):
+            raise IncompleteAuthority("manifest source path is unsafe")
+        target = (self._store / Path(*relative.replace("\\", "/").split("/"))).resolve()
+        if target == self._store or self._store not in target.parents:
+            raise IncompleteAuthority("manifest source path escapes store")
+        return target
+
+    @staticmethod
+    def _rows(raw: bytes, path: str) -> list[object]:
+        try:
+            if path.endswith(".zip"):
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    names = [name for name in archive.namelist()
+                             if not name.endswith("/") and name.lower().endswith(".csv")]
+                    if len(names) != 1:
+                        raise IncompleteAuthority("archive must contain one canonical CSV")
+                    text = archive.read(names[0]).decode("utf-8-sig")
+                rows: list[object] = [line.split(",") for line in text.splitlines() if line]
+                if rows and not str(rows[0][0]).lstrip("-").isdigit():  # type: ignore[index]
+                    rows = rows[1:]
+                return rows
+            payload = gzip.decompress(raw) if path.endswith(".gz") else raw
+            value = json.loads(payload.decode("utf-8"))
+            if not isinstance(value, list):
+                raise IncompleteAuthority("API source is not a row list")
+            return list(value)
+        except (OSError, UnicodeError, json.JSONDecodeError, zipfile.BadZipFile,
+                IndexError, TypeError, ValueError) as exc:
+            if isinstance(exc, IncompleteAuthority):
+                raise
+            raise IncompleteAuthority("checksum-bound source bytes are unparsable") from exc
+
+    def _load_symbol(self, symbol: str) -> tuple[dict[int, Bar], dict[int, PositionMark],
+                                                  tuple[FundingEvent, ...]]:
+        if symbol in self._cache:
+            return self._cache[symbol]
+        bars: dict[int, Bar] = {}
+        marks: dict[int, PositionMark] = {}
+        funding: dict[int, FundingEvent] = {}
+        relevant = [record for record in self._records if record.get("symbol") == symbol
+                    and (record.get("series"), record.get("interval")) in {
+                        ("klines", "1h"), ("markPriceKlines", "1h"),
+                        ("fundingRate", None)}]
+        if not relevant:
+            raise IncompleteAuthority(f"no protected source records for {symbol}")
+        if {(record.get("series"), record.get("interval")) for record in relevant} != {
+                ("klines", "1h"), ("markPriceKlines", "1h"), ("fundingRate", None)}:
+            raise IncompleteAuthority("protected source lacks a required stream")
+        for record in sorted(relevant, key=lambda row: str(row.get("path", ""))):
+            path = record.get("path")
+            expected = record.get("raw_sha256", record.get("sha256"))
+            if (not isinstance(path, str) or not _valid_source_digest(str(expected))):
+                raise IncompleteAuthority("manifest source record lacks byte identity")
+            try:
+                raw = self._safe_path(path).read_bytes()
+            except OSError as exc:
+                raise IncompleteAuthority(f"missing protected source bytes: {path}") from exc
+            if _sha(raw) != expected:
+                raise IncompleteAuthority(f"protected source byte mismatch: {path}")
+            for row in self._rows(raw, path):
+                series = record.get("series")
+                try:
+                    if series in {"klines", "markPriceKlines"}:
+                        if not isinstance(row, list) or len(row) < 8:
+                            raise ValueError("short kline row")
+                        timestamp = int(row[0])
+                        if series == "klines":
+                            value = Bar(timestamp, float(row[1]), float(row[2]),
+                                        float(row[3]), float(row[4]), float(row[7]))
+                            value.validate()
+                            if timestamp in bars:
+                                raise IncompleteAuthority("duplicate protected kline timestamp")
+                            bars[timestamp] = value
+                        else:
+                            value = make_position_mark(
+                                timestamp_ms=timestamp, symbol=symbol, price=float(row[4]),
+                                source_digest=self._authority.source_digest)
+                            if timestamp in marks:
+                                raise IncompleteAuthority("duplicate protected mark timestamp")
+                            marks[timestamp] = value
+                    elif series == "fundingRate":
+                        if isinstance(row, Mapping):
+                            timestamp, rate = int(row["fundingTime"]), float(row["fundingRate"])
+                        elif isinstance(row, list) and len(row) >= 3:
+                            timestamp, rate = int(row[0]), float(row[2])
+                        else:
+                            raise ValueError("short funding row")
+                        event = FundingEvent(timestamp, rate)
+                        if timestamp in funding:
+                            raise IncompleteAuthority("duplicate protected funding timestamp")
+                        funding[timestamp] = event
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise IncompleteAuthority(f"invalid protected source row: {path}") from exc
+        result = bars, marks, tuple(funding[key] for key in sorted(funding))
+        self._cache[symbol] = result
+        return result
+
+    def seal_trade(self, *, attempt_id: str, symbol: str, entry_ms: int, close_ms: int,
+                   split_start_ms: int, split_end_ms: int, atr_bars: Sequence[Bar],
+                   funding_authority: Sequence[FundingEvent],
+                   lifecycle_bars: Sequence[Bar], fills: Sequence[Fill],
+                   funding_marks: Sequence[PositionMark],
+                   lifecycle_marks: Sequence[PositionMark]) -> ProtectedSourceSeal:
+        if (type(self) is not ProtectedSourceArchive
+                or self._capability is not _SOURCE_SEAL_CAPABILITY
+                or _VALIDATED_AUTHORITIES.get(id(self._authority)) is not self._authority):
+            raise IncompleteAuthority("source archive is not protected-tree validated")
+        split = split_name(entry_ms-HOUR_MS)
+        if (not attempt_id or not symbol or close_ms <= entry_ms
+                or (split_start_ms, split_end_ms) != ALL_SPLIT_RANGES[split]
+                or entry_ms % HOUR_MS or close_ms % HOUR_MS
+                or close_ms > split_end_ms or len(fills) != 2):
+            raise IncompleteAuthority("source episode bounds are invalid")
+        bars, marks, funding = self._load_symbol(symbol)
+        def require_rows(rows: Mapping[int, object], timestamps: Iterable[int]) -> tuple:
+            try:
+                return tuple(rows[timestamp] for timestamp in timestamps)
+            except KeyError as exc:
+                raise IncompleteAuthority("checksum-verified source stream has a gap") from exc
+
+        expected_atr = require_rows(bars, range(split_start_ms, entry_ms-HOUR_MS, HOUR_MS))
+        expected_lifecycle = require_rows(bars, range(entry_ms, close_ms+HOUR_MS, HOUR_MS))
+        expected_funding = tuple(event for event in funding
+                                 if split_start_ms <= event.timestamp_ms < split_end_ms)
+        exit_includes_boundary = fills[-1].phase not in {"STOP_RANGE", "TARGET_RANGE"}
+        exposed_funding = tuple(event for event in expected_funding
+                                if entry_ms < event.timestamp_ms < close_ms
+                                or exit_includes_boundary and event.timestamp_ms == close_ms)
+        expected_funding_marks = require_rows(
+            marks, (event.timestamp_ms-HOUR_MS for event in exposed_funding))
+        expected_lifecycle_marks = require_rows(marks, range(entry_ms, close_ms, HOUR_MS))
+        expected_volumes = tuple(
+            tuple(VolumePoint(bar.open_ms, bar.quote_volume) for bar in require_rows(
+                bars, range(fill.impact_asof_ms-24*HOUR_MS,
+                            fill.impact_asof_ms, HOUR_MS))) for fill in fills)
+        comparisons = {
+            "atr": tuple(atr_bars) == expected_atr,
+            "funding": tuple(funding_authority) == expected_funding,
+            "lifecycle": tuple(lifecycle_bars) == expected_lifecycle,
+            "funding_marks": tuple(funding_marks) == expected_funding_marks,
+            "lifecycle_marks": tuple(lifecycle_marks) == expected_lifecycle_marks,
+            "volumes": tuple(fill.volume_rows for fill in fills) == expected_volumes,
+        }
+        failures = tuple(name for name, matched in comparisons.items() if not matched)
+        if failures:
+            raise IncompleteAuthority(
+                "submitted tape differs from checksum-verified source bytes: "
+                + ",".join(failures))
+        if (not attempt_id or not symbol or close_ms <= entry_ms
+                or any(mark.source_digest != self._authority.source_digest
+                       for mark in tuple(funding_marks) + tuple(lifecycle_marks))):
+            raise IncompleteAuthority("source evidence escaped protected authority identity")
+        for mark in tuple(funding_marks) + tuple(lifecycle_marks):
+            validate_position_mark(mark)
+        source_digest = self._authority.source_digest
+        atr_digest = atr_tape_digest(
+            source_digest=source_digest, split_start_ms=split_start_ms,
+            decision_close_ms=entry_ms-HOUR_MS, bars=atr_bars)
+        funding_digest = funding_tape_digest(
+            source_digest=source_digest, symbol=symbol,
+            split_start_ms=split_start_ms, split_end_ms=split_end_ms,
+            events=funding_authority)
+        seal = ProtectedSourceSeal(
+            source_digest, attempt_id, symbol, entry_ms, close_ms,
+            split_start_ms, split_end_ms, atr_digest, funding_digest,
+            _stream_digest(source_digest, f"lifecycle:{symbol}", lifecycle_bars),
+            tuple((fill.timestamp_ms, fill.phase,
+                   _stream_digest(source_digest,
+                                  f"volume:{symbol}:{fill.timestamp_ms}:{fill.phase}",
+                                  fill.volume_rows)) for fill in fills),
+            _stream_digest(source_digest, f"funding-marks:{symbol}", funding_marks),
+            _stream_digest(source_digest, f"lifecycle-marks:{symbol}", lifecycle_marks),
+            _SOURCE_SEAL_CAPABILITY)
+        _ISSUED_SOURCE_SEALS[id(seal)] = seal
+        return seal
+
+
 def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[PositionMark], *,
                          start_ms: int, end_ms: int,
                          capital: float = PRIMARY_CAPITAL) -> tuple[tuple[int, int, float], ...]:
@@ -1192,6 +1511,14 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
         supplied[key] = mark
     if set(supplied) != required:
         raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
+    for trade in trades:
+        trade_marks = tuple(supplied[(timestamp, trade.symbol)]
+                            for timestamp in range(trade.entry_ms, trade.close_ms, HOUR_MS))
+        if (any(mark.source_digest != trade.authority_source_digest for mark in trade_marks)
+                or _stream_digest(trade.authority_source_digest,
+                                  f"lifecycle-marks:{trade.symbol}", trade_marks)
+                != trade.source_seal.lifecycle_mark_digest):
+            raise IncompleteAuthority("lifecycle marks differ from protected source evidence")
     deltas: dict[tuple[int, int], list[tuple[str, str, float]]] = {}
     event_keys: set[tuple[int, int, str, str]] = set()
     for trade in trades:
@@ -1402,7 +1729,8 @@ def stress_same_selection(base: Sequence[ClosedTrade], stress: Sequence[ClosedTr
         return (trade.attempt_id, trade.side, trade.symbol, trade.entry_ms, trade.close_ms,
                 trade.regime, fills, funding, trade.sizing, trade.decision_close_ms,
                 trade.split_start_ms, trade.authority_source_digest,
-                trade.atr_authority_digest, trade.atr_bars, trade.funding_authority,
+                trade.source_seal, trade.atr_authority_digest, trade.atr_bars,
+                trade.funding_authority,
                 trade.funding_authority_digest, trade.lifecycle_bars,
                 trade.entry_bar, trade.exit_bar,
                 trade.stop, trade.target, trade.initial_risk_cash, trade.incomplete)
