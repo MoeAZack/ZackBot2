@@ -38,13 +38,44 @@ def doc_bytes(value):
     return value, C._canonical_bytes(value)
 
 
+def shallow_ci_source(directory):
+    """Actual depth-one source, with the same explicitly fetched object as CI.
+
+    No history walk from PR HEAD to the frozen base is assumed, and no local
+    master or remote-tracking master is manufactured in this source checkout.
+    Only Git objects are fetched; no source working tree is materialized.
+    """
+    directory.mkdir()
+    git(directory, 'init', '-q')
+    git(directory, 'fetch', '--no-tags', '--depth=1', str(C.ROOT), 'HEAD')
+    template = git(directory, 'rev-parse', 'FETCH_HEAD')
+    git(directory, 'update-ref', 'refs/heads/ci-head', template)
+    git(directory, 'symbolic-ref', 'HEAD', 'refs/heads/ci-head')
+    base, = C.AUTHORITY_EXPECTED_ANCESTORS
+    git(directory, 'fetch', '--no-tags', '--depth=1', str(C.ROOT), base)
+    assert git(directory, 'rev-parse', '--is-shallow-repository') == 'true'
+    return directory
+
+
+def initialize_synthetic_authority(root, source):
+    subprocess.run(['git', 'clone', '--shared', '--no-checkout', str(source), str(root)],
+                   check=True, capture_output=True)
+    template = git(root, 'rev-parse', 'HEAD')
+    base, = C.AUTHORITY_EXPECTED_ANCESTORS
+    # A fetched root's tree is available in shallow CI, but its parents need
+    # not be. Parent generated commits at the exact required base itself;
+    # retain the independently supplied accepted-code/contract template index.
+    git(root, 'fetch', '--no-tags', '--depth=1', str(source), base)
+    git(root, 'update-ref', '--no-deref', 'HEAD', base)
+    git(root, 'read-tree', template)
+
+
 @pytest.fixture(scope="module")
 def synthetic_authority(tmp_path_factory):
     directory = tmp_path_factory.mktemp("c258-complete-cli")
     root, store = directory/"authority", directory/"store"
-    subprocess.run(["git", "clone", "--shared", "--no-checkout", str(C.ROOT), str(root)],
-                   check=True, capture_output=True)
-    git(root, "read-tree", "HEAD")
+    source = shallow_ci_source(directory/'shallow-ci-source')
+    initialize_synthetic_authority(root, source)
     git(root, "config", "user.name", "C258 Synthetic")
     git(root, "config", "user.email", "c258@example.invalid")
     # Only immutable authority metadata is copied. Prices below are generated.
@@ -153,8 +184,22 @@ def synthetic_authority(tmp_path_factory):
         for path, raw, doc in zip(C.EXPECTED_AUTHORITY_PATHS.values(), raw_docs, docs)))
     pin_path = directory/"pins.json"
     pin_path.write_text(json.dumps(asdict(pins)), encoding="utf-8")
-    return dict(root=root, store=store, pins=pins, pin_path=pin_path, directory=directory,
+    return dict(root=root, store=store, pins=pins, pin_path=pin_path, directory=directory, ci_source=source,
                 member=members[3], corrupt_path=paths_by_symbol[members[3]][0])
+
+
+def test_synthetic_authority_has_frozen_base_lineage_without_local_master_or_deep_history(synthetic_authority):
+    root, source = synthetic_authority['root'], synthetic_authority['ci_source']
+    base, = C.AUTHORITY_EXPECTED_ANCESTORS
+    assert git(source, 'rev-parse', '--is-shallow-repository') == 'true'
+    for ref in ('refs/heads/master', C.AUTHORITY_PROTECTED_REF):
+        missing = subprocess.run(['git', '-C', str(source), 'show-ref', '--verify', ref], capture_output=True)
+        assert missing.returncode != 0
+    unprovable = subprocess.run(['git', '-C', str(source), 'merge-base', '--is-ancestor', base, 'HEAD'],
+                               capture_output=True)
+    assert unprovable.returncode != 0                       # fetching alone does not reconnect a shallow PR graph
+    assert git(root, 'merge-base', '--is-ancestor', base, synthetic_authority['pins'].protected_head) == ''
+    assert C.validate_authority_pins(synthetic_authority['pins'], root=root)['manifest_v6']['synthetic_fixture_only']
 
 
 def run_cli(fixture, path, claims):
