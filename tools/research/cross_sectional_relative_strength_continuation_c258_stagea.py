@@ -219,6 +219,29 @@ def _validate_full_authority_schema(pit: Mapping[str, object], filters: Mapping[
         raise IncompleteAuthority("filter-v4 fold bindings are not exact")
 
 
+def _validate_coverage_and_manifest(manifest: Mapping[str, object],
+                                    coverage: Mapping[str, object]) -> None:
+    required_streams = [{"series": "klines", "interval": "1h"},
+                        {"series": "markPriceKlines", "interval": "1h"},
+                        {"series": "fundingRate", "interval": None}]
+    coverage_streams = {"klines:1h", "markPriceKlines:1h", "fundingRate:null"}
+    if (coverage.get("format") != "zb-strategy-causal-pack-01-authority-coverage-preflight/1"
+            or coverage.get("required_result") != "ZERO_GUARANTEED_PERIOD_GAPS"
+            or coverage.get("result") != "ZERO_GUARANTEED_PERIOD_GAPS"
+            or coverage.get("required_streams") != required_streams
+            or coverage.get("gaps") != []
+            or coverage.get("guaranteed_period_gaps") != 0
+            or coverage.get("guaranteed_period_gaps_by_stream")
+            != {stream: 0 for stream in coverage_streams}):
+        raise IncompleteAuthority("coverage-v4 is not ZERO_GUARANTEED_PERIOD_GAPS")
+    cutoff = manifest.get("cutoff_exclusive_utc", manifest.get("cutoff", {}).get("exclusive_utc")
+                          if isinstance(manifest.get("cutoff"), Mapping) else None)
+    if (cutoff != "2026-11-05T00:00:00Z"
+            or manifest.get("cutoff_exclusive_ms") != 1793836800000
+            or manifest.get("timezone") != "UTC"):
+        raise IncompleteAuthority("manifest-v6 cutoff is not exact and exclusive")
+
+
 def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[str, dict]:
     """Validate all v6 identities before any market-row loader may be called."""
     load_frozen_contract()
@@ -258,14 +281,7 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[s
         "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 4
     ):
         raise IncompleteAuthority("filter-v4 identity mismatch")
-    gaps = coverage.get("guaranteed_period_gaps", coverage.get("required_guaranteed_period_gaps"))
-    status = coverage.get("result", coverage.get("status"))
-    if gaps != 0 or status not in {"ZERO_GUARANTEED_PERIOD_GAPS", "PASS"}:
-        raise IncompleteAuthority("coverage-v4 is not ZERO_GUARANTEED_PERIOD_GAPS")
-    cutoff = manifest.get("cutoff_exclusive_utc", manifest.get("cutoff", {}).get("exclusive_utc")
-                          if isinstance(manifest.get("cutoff"), Mapping) else None)
-    if cutoff != "2026-11-05T00:00:00Z":
-        raise IncompleteAuthority("manifest-v6 cutoff is not exact and exclusive")
+    _validate_coverage_and_manifest(manifest, coverage)
     _validate_full_authority_schema(pit, filters)
     for key, expected in (("manifest_v6_byte_sha256", pins.manifest_v6.byte_sha256),
                           ("manifest_v6_content_digest", pins.manifest_v6.content_digest)):
@@ -544,6 +560,34 @@ class SizedPair:
         return self.long_raw_notional + self.short_raw_notional
 
 
+@dataclass(frozen=True)
+class AcceptedPair:
+    long: LegSpec
+    short: LegSpec
+    sizing: SizedPair
+
+    def exact_initial_risk(self) -> Decimal:
+        self.long.validate(); self.short.validate()
+        if self.long.side != 1 or self.short.side != -1 or self.long.symbol == self.short.symbol:
+            raise IncompleteEpisode("accepted pair symbols/sides are invalid")
+        risk = (self.sizing.long_qty * stressed_loss_per_unit(self.long)
+                + self.sizing.short_qty * stressed_loss_per_unit(self.short))
+        long_notional = self.sizing.long_qty * self.long.entry_reference
+        short_notional = self.sizing.short_qty * self.short.entry_reference
+        if (not risk.is_finite() or risk <= Decimal("1e-12") or risk != self.sizing.initial_pair_risk_cash
+                or self.sizing.long_qty <= 0 or self.sizing.short_qty <= 0
+                or self.sizing.long_raw_notional != long_notional
+                or self.sizing.short_raw_notional != short_notional
+                or self.sizing.book_equity <= 0
+                or self.sizing.requested_pair_risk_cash != self.sizing.book_equity * Decimal("0.01")
+                or risk > self.sizing.requested_pair_risk_cash
+                or self.sizing.gross > self.sizing.book_equity * Decimal("0.5")
+                or abs(long_notional - short_notional) / max(long_notional, short_notional)
+                > Decimal("0.01")):
+            raise IncompleteEpisode("accepted pair initial risk is not exact, finite, and positive")
+        return risk
+
+
 def _valid_quantity(quantity: Decimal, reference: Decimal, filters: Filters) -> bool:
     return (quantity >= filters.min_qty and quantity <= filters.max_qty
             and quantity * reference >= filters.min_notional)
@@ -603,15 +647,26 @@ class FillCash:
     fee_drag: float
     slippage_drag: float
     phase: str
+    prior_quote_volume: float = 0.0
+    stress: bool = False
+    impact_incomplete: bool = False
+    movement_from: float | None = None
 
 
 def make_fill(*, timestamp_ms: int, symbol: str, side: int, quantity: float,
               reference_price: float, phase: str, movement_from: float | None,
-              slippage_bps: float = BASE_SLIPPAGE_BPS, impact_multiplier: float = 1.0) -> FillCash:
+              prior_quote_volume: float = 1_000_000_000.0, stress: bool = False) -> FillCash:
     if side not in {-1, 1} or phase not in {"entry", "exit", "stop", "cleanup"}:
         raise C258Error("invalid fill side/phase")
-    if not all(math.isfinite(v) and v > 0 for v in (quantity, reference_price, impact_multiplier)):
+    if not all(math.isfinite(v) and v > 0 for v in (quantity, reference_price, prior_quote_volume)):
         raise C258Error("invalid fill quantity/reference/impact")
+    if phase == "entry":
+        if not entry_impact_feasible(quantity, reference_price, prior_quote_volume):
+            raise IncompleteEpisode("entry exceeds frozen causal impact cap")
+        impact_multiplier, incomplete = 1.0, False
+    else:
+        impact_multiplier, incomplete = required_exit_impact(quantity, reference_price, prior_quote_volume)
+    slippage_bps = STRESS_SLIPPAGE_BPS if stress else BASE_SLIPPAGE_BPS
     effective_slip = slippage_bps * max(1.0, impact_multiplier)
     # side is the transaction direction: +1 buy, -1 sell.
     execution = reference_price * (1 + side * effective_slip / 10_000)
@@ -620,8 +675,30 @@ def make_fill(*, timestamp_ms: int, symbol: str, side: int, quantity: float,
     slip = abs(quantity) * abs(execution - reference_price)
     if not all(math.isfinite(v) for v in (execution, movement, fee, slip)) or min(fee, slip) < 0:
         raise C258Error("non-finite or signed drag")
+    if fee <= 0 or slip <= 0:
+        raise IncompleteEpisode("zero-cost fill is impossible under frozen costs")
     return FillCash(timestamp_ms, symbol, side, quantity, reference_price, execution,
-                    movement, fee, slip, phase)
+                    movement, fee, slip, phase, prior_quote_volume, stress, incomplete, movement_from)
+
+
+def _rederive_fill(fill: FillCash, *, stress: bool) -> FillCash:
+    """Treat FillCash as raw references only; caller-supplied economics are discarded."""
+    base = make_fill(timestamp_ms=fill.timestamp_ms, symbol=fill.symbol, side=fill.side,
+                     quantity=fill.quantity, reference_price=fill.reference_price,
+                     phase=fill.phase, movement_from=fill.movement_from,
+                     prior_quote_volume=fill.prior_quote_volume, stress=False)
+    supplied = (fill.execution_price, fill.movement_cash, fill.fee_drag, fill.slippage_drag,
+                fill.impact_incomplete, fill.stress)
+    expected = (base.execution_price, base.movement_cash, base.fee_drag, base.slippage_drag,
+                base.impact_incomplete, False)
+    if supplied != expected:
+        raise IncompleteEpisode("caller-supplied fill economics do not match frozen derivation")
+    if not stress:
+        return base
+    return make_fill(timestamp_ms=fill.timestamp_ms, symbol=fill.symbol, side=fill.side,
+                     quantity=fill.quantity, reference_price=fill.reference_price,
+                     phase=fill.phase, movement_from=fill.movement_from,
+                     prior_quote_volume=fill.prior_quote_volume, stress=True)
 
 
 def impact_ratio(quantity: float, reference_price: float, prior_quote_volume: float) -> float:
@@ -737,6 +814,39 @@ class FundingCashEvent:
     cash: float
 
 
+def derive_funding_events(*, funding_points: Sequence["FundingPoint"],
+                          funding_authority: Sequence["FundingPoint"],
+                          symbol_marks: Mapping[str, Sequence[MarkClose]],
+                          position_sides: Mapping[str, int], quantities: Mapping[str, Decimal],
+                          entry_ms: int, close_ms: int, stress: bool) -> tuple[FundingCashEvent, ...]:
+    authority: dict[tuple[str, int], float] = {}
+    for row in funding_authority:
+        key = (row.symbol, row.nominal_time_ms)
+        if key in authority or not math.isfinite(row.rate):
+            raise IncompleteAuthority("duplicate or invalid funding authority")
+        authority[key] = row.rate
+    seen: set[tuple[str, int]] = set()
+    events = []
+    for row in funding_points:
+        key = (row.symbol, row.nominal_time_ms)
+        if key in seen:
+            raise IncompleteEpisode("duplicate funding row")
+        seen.add(key)
+        if (row.symbol not in position_sides or not entry_ms <= row.nominal_time_ms < close_ms
+                or key not in authority or authority[key] != row.rate):
+            raise IncompleteEpisode("funding row is not exactly bound to exposure authority")
+        mark = causal_mark_strictly_before(symbol_marks.get(row.symbol, ()), row.nominal_time_ms)
+        cash = signed_funding_cash(position_side=position_sides[row.symbol],
+                                   quantity=float(quantities[row.symbol]), causal_mark=mark.price,
+                                   funding_rate=row.rate, stress=stress)
+        events.append(FundingCashEvent(row.nominal_time_ms, row.symbol, cash))
+    required = {key for key in authority
+                if key[0] in position_sides and entry_ms <= key[1] < close_ms}
+    if seen != required:
+        raise IncompleteEpisode("funding rows do not exactly cover exposure authority")
+    return tuple(events)
+
+
 @dataclass(frozen=True)
 class LegResult:
     symbol: str
@@ -798,6 +908,8 @@ def _validate_fill_lifecycle(*, fills: Sequence[FillCash], entry_ms: int, close_
         entry, final = entries[0], closes[0]
         if entry.side != position_side or final.side != -position_side:
             raise IncompleteEpisode("fill side does not match the accepted leg")
+        if entry.movement_from is not None or final.movement_from != entry.reference_price:
+            raise IncompleteEpisode("movement reference is not bound to the accepted entry reference")
         accepted_quantity = Decimal(str(entry.quantity))
         if accepted_quantity <= 0 or Decimal(str(final.quantity)) != accepted_quantity:
             raise IncompleteEpisode("fill quantity does not conserve the accepted quantity")
@@ -817,11 +929,16 @@ def _validate_fill_lifecycle(*, fills: Sequence[FillCash], entry_ms: int, close_
 
 def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol: str,
                   short_symbol: str, regime: str, fills: Sequence[FillCash],
-                  funding_events: Sequence[FundingCashEvent],
-                  initial_risk_cash: float,
+                  accepted_pair: AcceptedPair | None = None,
+                  accepted_atomic_leg: LegSpec | None = None,
+                  funding_points: Sequence["FundingPoint"] = (),
+                  funding_authority: Sequence["FundingPoint"] = (),
+                  funding_marks: Mapping[str, Sequence[MarkClose]] = {},
+                  stress: bool = False,
                   atomic_one_leg: bool = False) -> ClosedAttempt:
     if not fills or close_ms < entry_ms:
         raise IncompleteEpisode("attempt cashflows are incomplete")
+    fills = tuple(_rederive_fill(fill, stress=stress) for fill in fills)
     present_symbols = {fill.symbol for fill in fills}
     pair_sides = {long_symbol: 1, short_symbol: -1}
     if atomic_one_leg:
@@ -832,9 +949,38 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
         declared_sides = pair_sides
     accepted = _validate_fill_lifecycle(fills=fills, entry_ms=entry_ms, close_ms=close_ms,
                                         declared_sides=declared_sides, atomic_one_leg=atomic_one_leg)
-    if any(event.symbol not in declared_sides or not entry_ms <= event.timestamp_ms < close_ms
-           or not math.isfinite(event.cash) for event in funding_events):
-        raise IncompleteEpisode("funding event is outside the accepted lifecycle")
+    if atomic_one_leg:
+        if accepted_pair is not None or accepted_atomic_leg is None:
+            raise IncompleteEpisode("atomic lifecycle requires exactly its accepted LegSpec")
+        accepted_atomic_leg.validate()
+        only_symbol = next(iter(declared_sides))
+        if accepted_atomic_leg.symbol != only_symbol or accepted_atomic_leg.side != declared_sides[only_symbol]:
+            raise IncompleteEpisode("atomic accepted leg does not match lifecycle")
+        entry_fill = next(fill for fill in fills if fill.phase == "entry")
+        if Decimal(str(entry_fill.reference_price)) != accepted_atomic_leg.entry_reference:
+            raise IncompleteEpisode("atomic entry fill is not bound to LegSpec reference")
+        initial_risk = accepted[only_symbol] * stressed_loss_per_unit(accepted_atomic_leg)
+    else:
+        if accepted_pair is None or accepted_atomic_leg is not None:
+            raise IncompleteEpisode("normal lifecycle requires exact SizedPair and LegSpecs")
+        initial_risk = accepted_pair.exact_initial_risk()
+        expected_qty = {accepted_pair.long.symbol: accepted_pair.sizing.long_qty,
+                        accepted_pair.short.symbol: accepted_pair.sizing.short_qty}
+        if (accepted_pair.long.symbol != long_symbol or accepted_pair.short.symbol != short_symbol
+                or accepted != expected_qty):
+            raise IncompleteEpisode("fills do not match exact accepted SizedPair quantities")
+        entry_refs = {fill.symbol: Decimal(str(fill.reference_price))
+                      for fill in fills if fill.phase == "entry"}
+        if entry_refs != {long_symbol: accepted_pair.long.entry_reference,
+                          short_symbol: accepted_pair.short.entry_reference}:
+            raise IncompleteEpisode("entry fills are not bound to LegSpec references")
+    if not initial_risk.is_finite() or initial_risk <= Decimal("1e-12"):
+        raise IncompleteEpisode("initial risk must be finite and positive")
+    initial_risk_cash = float(initial_risk)
+    funding_events = derive_funding_events(
+        funding_points=funding_points, funding_authority=funding_authority,
+        symbol_marks=funding_marks, position_sides=declared_sides, quantities=accepted,
+        entry_ms=entry_ms, close_ms=close_ms, stress=stress)
     funding_cash = math.fsum(event.cash for event in funding_events)
     movement = math.fsum(fill.movement_cash for fill in fills)
     fee = math.fsum(fill.fee_drag for fill in fills)
@@ -880,7 +1026,10 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
 
 def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expected_short_symbol: str,
                            accepted_leg: LegSpec, fills: Sequence[FillCash],
-                           funding_events: Sequence[FundingCashEvent], regime: str) -> ClosedAttempt:
+                           funding_points: Sequence["FundingPoint"] = (),
+                           funding_authority: Sequence["FundingPoint"] = (),
+                           funding_marks: Mapping[str, Sequence[MarkClose]] = {},
+                           regime: str, stress: bool = False) -> ClosedAttempt:
     accepted_leg.validate()
     if len(fills) != 2:
         raise IncompleteEpisode("atomic accepted quantity/lifecycle is incomplete")
@@ -892,8 +1041,6 @@ def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expect
         -1 if accepted_leg.symbol == expected_short_symbol else 0)
     if declared_side == 0 or accepted_leg.side != declared_side:
         raise IncompleteEpisode("atomic leg symbol/side is not one declared pair leg")
-    quantity = Decimal(str(entry.quantity))
-    risk = float(quantity * stressed_loss_per_unit(accepted_leg))
     if final.phase == "stop":
         if accepted_leg.side == 1 and final.reference_price > float(accepted_leg.stop_reference):
             raise IncompleteEpisode("long atomic stop was filled favorably above its frozen reference")
@@ -901,9 +1048,49 @@ def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expect
             raise IncompleteEpisode("short atomic stop was filled favorably below its frozen reference")
     return close_attempt(attempt_id=attempt_id, entry_ms=entry.timestamp_ms, close_ms=final.timestamp_ms,
                          long_symbol=expected_long_symbol, short_symbol=expected_short_symbol,
-                         regime=regime, fills=fills, funding_events=funding_events,
-                         initial_risk_cash=risk,
+                         regime=regime, fills=fills, accepted_atomic_leg=accepted_leg,
+                         funding_points=funding_points, funding_authority=funding_authority,
+                         funding_marks=funding_marks, stress=stress,
                          atomic_one_leg=True)
+
+
+def mechanical_stress_attempt(base: ClosedAttempt) -> ClosedAttempt:
+    """Replay the same lifecycle with frozen 5bp fee, 10bp adverse slippage and funding rule."""
+    fills = tuple(_rederive_fill(fill, stress=True) for fill in base.fills)
+    funding_events = tuple(FundingCashEvent(event.timestamp_ms, event.symbol,
+        event.cash * 1.5 if event.cash < 0 else event.cash / 1.5)
+        for event in base.funding_events)
+    movement = math.fsum(fill.movement_cash for fill in fills)
+    fee = math.fsum(fill.fee_drag for fill in fills)
+    slippage = math.fsum(fill.slippage_drag for fill in fills)
+    funding = math.fsum(event.cash for event in funding_events)
+    actual = movement + funding - fee - slippage
+    verdict = min(actual, -(fee + slippage)) if base.atomic_one_leg_loss else actual
+    adjustment = verdict - actual
+    legs = []
+    for source in base.legs:
+        symbol_fills = [fill for fill in fills if fill.symbol == source.symbol]
+        leg_movement = math.fsum(fill.movement_cash for fill in symbol_fills)
+        leg_fee = math.fsum(fill.fee_drag for fill in symbol_fills)
+        leg_slip = math.fsum(fill.slippage_drag for fill in symbol_fills)
+        leg_funding = math.fsum(event.cash for event in funding_events if event.symbol == source.symbol)
+        leg_net = leg_movement + leg_funding - leg_fee - leg_slip
+        if base.atomic_one_leg_loss:
+            leg_net += adjustment
+        legs.append(LegResult(source.symbol, source.position_side, source.quantity, leg_movement,
+                              leg_funding, leg_fee, leg_slip, leg_net,
+                              leg_net / base.initial_risk_cash))
+    contributions = {leg.symbol: leg.net_R for leg in legs}
+    row = replace(base, movement_cash=movement, funding_cash=funding, fee_drag=fee,
+                  slippage_drag=slippage, actual_net_cash=actual, verdict_net_cash=verdict,
+                  verdict_R=verdict / base.initial_risk_cash,
+                  conservative_adjustment_cash=adjustment,
+                  gross_R=movement / base.initial_risk_cash,
+                  long_contribution_R=contributions.get(base.long_symbol, 0.0),
+                  short_contribution_R=contributions.get(base.short_symbol, 0.0),
+                  fills=fills, funding_events=funding_events, legs=tuple(legs),
+                  derivation_identity_sha256="")
+    return bind_attempt_derivation(row)
 
 
 @dataclass(frozen=True)
@@ -1327,10 +1514,10 @@ def validate_fold_evidence(fold: FoldEvidence) -> None:
     if base_ids != stress_ids:
         raise C258Error("stress replay changed selection/order")
     for base_row, stress_row in zip(fold.base.attempts, fold.stress.attempts):
-        for base_event, stress_event in zip(base_row.funding_events, stress_row.funding_events):
-            expected = base_event.cash * 1.5 if base_event.cash < 0 else base_event.cash / 1.5
-            if not math.isclose(stress_event.cash, expected, rel_tol=0, abs_tol=1e-12):
-                raise IncompleteEpisode("stress funding cash is not mechanically derived")
+        for fill in base_row.fills:
+            _rederive_fill(fill, stress=False)
+        if stress_row != mechanical_stress_attempt(base_row):
+            raise IncompleteEpisode("stress fills/funding/costs are not mechanically derived")
 
 
 def _median(values: Sequence[int]) -> float:

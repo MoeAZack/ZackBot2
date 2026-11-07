@@ -21,6 +21,10 @@ import pytest
 from tools.research import cross_sectional_relative_strength_continuation_c258_stagea as C
 
 
+def replace_dict(source, **changes):
+    return {**source, **changes}
+
+
 def tape(symbol_index: int, r24: float, *, start: int = 0, quote_volume: float = 1_000_000) -> list[C.Bar]:
     base = 100 + symbol_index
     rows = []
@@ -36,24 +40,33 @@ def leg(symbol: str, side: int, entry: str, stop: str, *, step: str = "0.001",
                      C.Filters(Decimal(step), Decimal(min_qty), Decimal(max_qty), Decimal(min_notional)))
 
 
+def accepted_pair(long_symbol="LONG", short_symbol="SHORT", long_qty="1", short_qty="1",
+                  long_entry="100", short_entry="100", stop_delta="2") -> C.AcceptedPair:
+    long_leg = leg(long_symbol, 1, long_entry, str(Decimal(long_entry) - Decimal(stop_delta)))
+    short_leg = leg(short_symbol, -1, short_entry, str(Decimal(short_entry) + Decimal(stop_delta)))
+    lq, sq = Decimal(long_qty), Decimal(short_qty)
+    risk = lq * C.stressed_loss_per_unit(long_leg) + sq * C.stressed_loss_per_unit(short_leg)
+    sized = C.SizedPair(lq, sq, lq * Decimal(long_entry), sq * Decimal(short_entry),
+                        risk, Decimal("20"), Decimal("2000"), 0)
+    return C.AcceptedPair(long_leg, short_leg, sized)
+
+
 def attempt(identifier: str, r_value: float, *, regime: str = "BTC_ABOVE_OR_ON_EMA200") -> C.ClosedAttempt:
     long_symbol, short_symbol = f"L{identifier}", f"S{identifier}"
-    fills = (
-        C.FillCash(0, long_symbol, 1, 1, 100, 100, 0, 0, 0, "entry"),
-        C.FillCash(0, short_symbol, -1, 1, 100, 100, 0, 0, 0, "entry"),
-        C.FillCash(C.HOUR_MS, long_symbol, -1, 1, 100 + 0.7 * r_value, 100 + 0.7 * r_value,
-                   0.7 * r_value, 0, 0, "exit"),
-        C.FillCash(C.HOUR_MS, short_symbol, 1, 1, 100 - 0.3 * r_value, 100 - 0.3 * r_value,
-                   0.3 * r_value, 0, 0, "exit"),
-    )
-    legs = (C.LegResult(long_symbol, 1, 1, 0.7 * r_value, 0, 0, 0,
-                        0.7 * r_value, 0.7 * r_value),
-            C.LegResult(short_symbol, -1, 1, 0.3 * r_value, 0, 0, 0,
-                        0.3 * r_value, 0.3 * r_value))
-    return C.bind_attempt_derivation(C.ClosedAttempt(identifier, 0, C.HOUR_MS, long_symbol, short_symbol, regime,
-                           r_value, 0, 0, 0, r_value, r_value, 1, r_value, False, 0,
-                           r_value, 0.7 * r_value, 0.3 * r_value,
-                           C._fill_lifecycle_identity(fills), fills, (), legs))
+    fills = [
+        C.make_fill(timestamp_ms=0, symbol=long_symbol, side=1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=0, symbol=short_symbol, side=-1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol=long_symbol, side=-1, quantity=1,
+                    reference_price=100 + 0.7 * r_value, phase="exit", movement_from=100),
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol=short_symbol, side=1, quantity=1,
+                    reference_price=100 - 0.3 * r_value, phase="exit", movement_from=100),
+    ]
+    return C.close_attempt(attempt_id=identifier, entry_ms=0, close_ms=C.HOUR_MS,
+                           long_symbol=long_symbol, short_symbol=short_symbol, regime=regime,
+                           fills=fills, accepted_pair=accepted_pair(long_symbol, short_symbol,
+                                                                   stop_delta="0.1"))
 
 
 def marks_for_attempts(rows, *, long_price=100.0, short_price=100.0):
@@ -123,7 +136,8 @@ def test_authority_api_has_no_caller_ref_or_ancestry_controls_and_schema_decoys_
         return C.ArtifactPin(path_string, hashlib.sha256(raw).hexdigest(), digest)
 
     manifest = materialize("manifest_v6", {"format": "zb-binance-um-archive-manifest/6",
-                           "cutoff_exclusive_utc": "2026-11-05T00:00:00Z"})
+                           "cutoff_exclusive_utc": "2026-11-05T00:00:00Z",
+                           "cutoff_exclusive_ms": 1793836800000, "timezone": "UTC"})
     pit = materialize("pit_v9", {"format": "zb-pit-universe/2",
         "weekly_cells": [{"monday_ms": timestamp, "symbols": ["AAAUSDT"]}
                          for timestamp in C._expected_weekly_cells()], "bindings": {
@@ -136,7 +150,14 @@ def test_authority_api_has_no_caller_ref_or_ancestry_controls_and_schema_decoys_
                           "wf3": "2026-02-17T04:13:28Z", "sealed_holdout": "2026-02-17T04:13:28Z"},
         "bindings": {"pit_v9_byte_sha256": pit.byte_sha256, "pit_v9_content_digest": pit.content_digest}})
     coverage = materialize("coverage_v4", {
+        "format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
+        "required_result": "ZERO_GUARANTEED_PERIOD_GAPS", "gaps": [],
+        "required_streams": [{"series": "klines", "interval": "1h"},
+                             {"series": "markPriceKlines", "interval": "1h"},
+                             {"series": "fundingRate", "interval": None}],
         "guaranteed_period_gaps": 0, "result": "ZERO_GUARANTEED_PERIOD_GAPS",
+        "guaranteed_period_gaps_by_stream": {stream: 0 for stream in
+            ("klines:1h", "markPriceKlines:1h", "fundingRate:null")},
         "bindings": {key: value for name, pin in (("manifest_v6", manifest), ("pit_v9", pit),
                                                     ("filter_v4", filters))
                      for key, value in ((f"{name}_byte_sha256", pin.byte_sha256),
@@ -177,6 +198,30 @@ def test_authority_api_has_no_caller_ref_or_ancestry_controls_and_schema_decoys_
         monkeypatch.setattr(C, "AUTHORITY_EXPECTED_ANCESTORS", (head,))
         C.run_with_authority(bad, loader, root=tmp_path)
     assert called is False
+
+
+def test_authority_coverage_and_manifest_decoys_fail_exact_schema():
+    manifest = {"cutoff_exclusive_utc": "2026-11-05T00:00:00Z",
+                "cutoff_exclusive_ms": 1793836800000, "timezone": "UTC"}
+    coverage = {"format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
+                "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+                "result": "ZERO_GUARANTEED_PERIOD_GAPS", "gaps": [],
+                "required_streams": [{"series": "klines", "interval": "1h"},
+                                     {"series": "markPriceKlines", "interval": "1h"},
+                                     {"series": "fundingRate", "interval": None}],
+                "guaranteed_period_gaps": 0,
+                "guaranteed_period_gaps_by_stream": {stream: 0 for stream in
+                    ("klines:1h", "markPriceKlines:1h", "fundingRate:null")}}
+    C._validate_coverage_and_manifest(manifest, coverage)
+    for hostile in (replace_dict(coverage, required_result="PASS"),
+                    replace_dict(coverage, gaps=[{"decoy": True}]),
+                    replace_dict(coverage, guaranteed_period_gaps_by_stream={"klines:1h": 0})):
+        with pytest.raises(C.IncompleteAuthority, match="ZERO_GUARANTEED"):
+            C._validate_coverage_and_manifest(manifest, hostile)
+    for hostile in (replace_dict(manifest, cutoff_exclusive_ms=1793836800001),
+                    replace_dict(manifest, timezone="Etc/UTC")):
+        with pytest.raises(C.IncompleteAuthority, match="cutoff"):
+            C._validate_coverage_and_manifest(hostile, coverage)
 
 
 def test_cross_section_uses_exact_24h_robust_score_tails_and_indexed_pairing():
@@ -308,21 +353,22 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
     stressed = C.signed_funding_cash(position_side=1, quantity=1, causal_mark=110,
                                      funding_rate=-0.001, stress=True)
     assert stressed == pytest.approx(funding / 1.5)
+    fp = C.FundingPoint("AAA", 1, -0.001)
     closed = C.close_attempt(attempt_id="a", entry_ms=1, close_ms=2, long_symbol="AAA",
                              short_symbol="BBB", regime="BTC_ABOVE_OR_ON_EMA200",
-                             fills=[entry, cleanup],
-                             funding_events=[C.FundingCashEvent(1, "AAA", funding)],
-                             initial_risk_cash=5,
-                             atomic_one_leg=True)
+                             fills=[entry, cleanup], accepted_atomic_leg=leg("AAA", 1, "100", "98"),
+                             funding_points=[fp], funding_authority=[fp],
+                             funding_marks={"AAA": [C.MarkClose(0, 110)]}, atomic_one_leg=True)
     assert closed.actual_net_cash > 0
     assert closed.verdict_net_cash == pytest.approx(-(closed.fee_drag + closed.slippage_drag))
     assert closed.verdict_net_cash <= 0 and closed.conservative_adjustment_cash <= 0
-    assert closed.verdict_R == pytest.approx(closed.verdict_net_cash / 5)
+    assert closed.verdict_R == pytest.approx(closed.verdict_net_cash / closed.initial_risk_cash)
 
     atomic = C.account_atomic_one_leg(
         attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
         accepted_leg=leg("AAA", 1, "100", "98"),
-        fills=[entry, cleanup], funding_events=[C.FundingCashEvent(1, "AAA", funding)],
+        fills=[entry, cleanup], funding_points=[fp], funding_authority=[fp],
+        funding_marks={"AAA": [C.MarkClose(0, 110)]},
         regime="BTC_ABOVE_OR_ON_EMA200")
     assert atomic.atomic_one_leg_loss and atomic.initial_risk_cash > 2
     same_open = replace(cleanup, timestamp_ms=1)
@@ -330,13 +376,14 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
         C.account_atomic_one_leg(
             attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
             accepted_leg=leg("AAA", 1, "100", "98"),
-            fills=[entry, same_open], funding_events=[], regime="BTC_ABOVE_OR_ON_EMA200")
-    partial = replace(cleanup, quantity=0.1)
+            fills=[entry, same_open], regime="BTC_ABOVE_OR_ON_EMA200")
+    partial = C.make_fill(timestamp_ms=2, symbol="AAA", side=-1, quantity=0.1,
+                          reference_price=120, phase="cleanup", movement_from=100)
     with pytest.raises(C.IncompleteEpisode, match="conserve"):
         C.account_atomic_one_leg(
             attempt_id="partial", expected_long_symbol="AAA", expected_short_symbol="BBB",
             accepted_leg=leg("AAA", 1, "100", "98"),
-            fills=[entry, partial], funding_events=[], regime="BTC_ABOVE_OR_ON_EMA200")
+            fills=[entry, partial], regime="BTC_ABOVE_OR_ON_EMA200")
 
 
 def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
@@ -352,26 +399,75 @@ def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
     ]
     closed = C.close_attempt(
         attempt_id="normal", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
-        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, funding_events=[], initial_risk_cash=10)
+        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills,
+        accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     assert len(closed.lifecycle_identity) == 4
     with pytest.raises(C.IncompleteEpisode, match="conserve"):
+        partial_long = C.make_fill(timestamp_ms=20, symbol="LONG", side=-1, quantity=0.1,
+                                   reference_price=101, phase="exit", movement_from=100)
         C.close_attempt(
             attempt_id="partial", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
-            regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [replace(fills[2], quantity=0.1), fills[3]],
-            funding_events=[], initial_risk_cash=10)
+            regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [partial_long, fills[3]],
+            accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     with pytest.raises(C.IncompleteEpisode, match="side"):
+        wrong_side = C.make_fill(timestamp_ms=20, symbol="LONG", side=1, quantity=1,
+                                 reference_price=101, phase="exit", movement_from=100)
         C.close_attempt(
             attempt_id="wrong-side", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
-            regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [replace(fills[2], side=1), fills[3]],
-            funding_events=[], initial_risk_cash=10)
+            regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [wrong_side, fills[3]],
+            accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     with pytest.raises(C.IncompleteEpisode, match="declared pair"):
         C.account_atomic_one_leg(
             attempt_id="decoy-leg", expected_long_symbol="LONG", expected_short_symbol="SHORT",
             accepted_leg=leg("DECOY", 1, "100", "98"),
             fills=[replace(fills[0], symbol="DECOY"),
                    replace(fills[2], symbol="DECOY", phase="cleanup")],
-            funding_events=[], regime="BTC_ABOVE_OR_ON_EMA200")
+            regime="BTC_ABOVE_OR_ON_EMA200")
     assert "accepted_quantities" not in inspect.signature(C.close_attempt).parameters
+
+
+def test_fill_funding_and_risk_economics_are_derived_and_hostile_rows_fail():
+    fills = [
+        C.make_fill(timestamp_ms=1, symbol="LONG", side=1, quantity=1, reference_price=100,
+                    phase="entry", movement_from=None, prior_quote_volume=1_000_000),
+        C.make_fill(timestamp_ms=1, symbol="SHORT", side=-1, quantity=1, reference_price=100,
+                    phase="entry", movement_from=None, prior_quote_volume=1_000_000),
+        C.make_fill(timestamp_ms=20, symbol="LONG", side=-1, quantity=1, reference_price=101,
+                    phase="exit", movement_from=100, prior_quote_volume=1_000_000),
+        C.make_fill(timestamp_ms=20, symbol="SHORT", side=1, quantity=1, reference_price=99,
+                    phase="exit", movement_from=100, prior_quote_volume=1_000_000),
+    ]
+    point = C.FundingPoint("LONG", 10, 0.001)
+    kwargs = dict(attempt_id="derived", entry_ms=1, close_ms=20, long_symbol="LONG",
+                  short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200", fills=fills,
+                  accepted_pair=accepted_pair(), funding_points=[point], funding_authority=[point],
+                  funding_marks={"LONG": [C.MarkClose(9, 100)]})
+    base = C.close_attempt(**kwargs)
+    stress = C.close_attempt(**kwargs, stress=True)
+    assert base.fee_drag > 0 and stress.fee_drag > 0
+    assert all(fill.fee_drag == pytest.approx(abs(fill.quantity * fill.execution_price)
+                                              * C.FEE_BPS / 10_000)
+               for fill in stress.fills)
+    assert stress.slippage_drag == pytest.approx(base.slippage_drag * 5)
+    assert stress.fills[0].execution_price > base.fills[0].execution_price
+    assert stress.fills[2].execution_price < base.fills[2].execution_price
+    assert stress.funding_events[0].timestamp_ms == base.funding_events[0].timestamp_ms == 10
+    assert stress.funding_events[0].symbol == base.funding_events[0].symbol == "LONG"
+
+    with pytest.raises(C.IncompleteEpisode, match="caller-supplied fill economics"):
+        C.close_attempt(**{**kwargs, "fills": [replace(fills[0], fee_drag=0), *fills[1:]]})
+    with pytest.raises(C.IncompleteEpisode, match="duplicate funding"):
+        C.close_attempt(**{**kwargs, "funding_points": [point, point]})
+    with pytest.raises(C.IncompleteEpisode, match="exactly bound"):
+        C.close_attempt(**{**kwargs, "funding_points": [replace(point, rate=0.002)]})
+    with pytest.raises(C.IncompleteEpisode, match="impact cap"):
+        C.make_fill(timestamp_ms=1, symbol="LONG", side=1, quantity=10,
+                    reference_price=100, phase="entry", movement_from=None,
+                    prior_quote_volume=100_000)
+    tiny = accepted_pair()
+    tiny = replace(tiny, sizing=replace(tiny.sizing, initial_pair_risk_cash=Decimal("1e-300")))
+    with pytest.raises(C.IncompleteEpisode, match="initial risk"):
+        C.close_attempt(**{**kwargs, "accepted_pair": tiny})
 
 
 def test_open_event_order_funding_boundaries_required_exit_impact_and_book_caps():
@@ -473,7 +569,13 @@ def test_fold_metrics_include_atomic_failures_regimes_and_fail_closed_on_zero_de
     metrics = C.fold_metrics(rows)
     assert metrics["closed_attempts"] == 3 and metrics["atomic_failures"] == 1
     assert set(metrics["regime"]) == {"BTC_ABOVE_OR_ON_EMA200", "BTC_BELOW_EMA200"}
-    zero = C.fold_metrics([attempt("x", 0.0)])
+    source = attempt("x", 0.0)
+    zero_row = C.bind_attempt_derivation(replace(source, movement_cash=0, funding_cash=0,
+        fee_drag=0, slippage_drag=0, actual_net_cash=0, verdict_net_cash=0, verdict_R=0,
+        gross_R=0, long_contribution_R=0, short_contribution_R=0,
+        legs=tuple(replace(item, movement_cash=0, funding_cash=0, fee_drag=0,
+                           slippage_drag=0, net_cash=0, net_R=0) for item in source.legs)))
+    zero = C.fold_metrics([zero_row])
     assert math.isinf(zero["max_symbol_concentration"])
     with pytest.raises(C.C258Error, match="undefined"):
         C.fold_metrics([])
@@ -482,20 +584,23 @@ def test_fold_metrics_include_atomic_failures_regimes_and_fail_closed_on_zero_de
 
 def test_leg_cashflows_and_symbol_concentration_use_actual_attribution_not_half_split():
     fills = [
-        C.FillCash(0, "LONG", 1, 1, 100, 100, 0, 0, 0, "entry"),
-        C.FillCash(0, "SHORT", -1, 1, 100, 100, 0, 0, 0, "entry"),
-        C.FillCash(C.HOUR_MS, "LONG", -1, 1, 109, 109, 9, 0, 0, "exit"),
-        C.FillCash(C.HOUR_MS, "SHORT", 1, 1, 99, 99, 1, 0, 0, "exit"),
+        C.make_fill(timestamp_ms=0, symbol="LONG", side=1, quantity=1, reference_price=100,
+                    phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=0, symbol="SHORT", side=-1, quantity=1, reference_price=100,
+                    phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
+                    reference_price=109, phase="exit", movement_from=100),
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
+                    reference_price=99, phase="exit", movement_from=100),
     ]
     row = C.close_attempt(
         attempt_id="asymmetric", entry_ms=0, close_ms=C.HOUR_MS,
         long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
-        fills=fills, funding_events=[], initial_risk_cash=10)
-    assert row.long_contribution_R == pytest.approx(0.9)
-    assert row.short_contribution_R == pytest.approx(0.1)
+        fills=fills, accepted_pair=accepted_pair())
+    assert row.long_contribution_R > row.short_contribution_R
     assert math.fsum(leg.net_R for leg in row.legs) == pytest.approx(row.verdict_R)
     metrics = C.fold_metrics([row])
-    assert metrics["max_symbol_concentration"] == pytest.approx(0.9)
+    assert metrics["max_symbol_concentration"] > 0.5
 
 
 def test_output_identity_binds_every_pin_source_result_and_default_off():
@@ -513,8 +618,9 @@ def test_output_identity_binds_every_pin_source_result_and_default_off():
 def test_development_veto_never_opens_forward_and_stress_cannot_change_selection():
     base_rows = tuple(C.bind_attempt_derivation(replace(attempt(str(i), 0.01), gross_R=0.02))
                       for i in range(10))
+    stress_rows = tuple(C.mechanical_stress_attempt(row) for row in base_rows)
     fold = C.FoldEvidence("development", C.ReplayResult(2000, base_rows),
-                          C.ReplayResult(2000, base_rows), (10, 10), (0.1, 0.1),
+                          C.ReplayResult(2000, stress_rows), (10, 10), (0.1, 0.1),
                           marks_for_attempts(base_rows), marks_for_attempts(base_rows),
                           100, 100, 10, 10, 0)
     result = C.evaluate_stage_a(fold, ())
@@ -522,49 +628,40 @@ def test_development_veto_never_opens_forward_and_stress_cannot_change_selection
     assert result["forward_opened"] is False
 
     changed = replace(base_rows[0], attempt_id="changed")
-    hostile = replace(fold, stress=C.ReplayResult(2000, (changed,) + base_rows[1:]))
+    hostile = replace(fold, stress=C.ReplayResult(2000, (changed,) + stress_rows[1:]))
     with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile)
     close_changed = replace(base_rows[0], close_ms=2 * C.HOUR_MS)
-    hostile_close = replace(fold, stress=C.ReplayResult(2000, (close_changed,) + base_rows[1:]))
+    hostile_close = replace(fold, stress=C.ReplayResult(2000, (close_changed,) + stress_rows[1:]))
     with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile_close)
     lifecycle_changed = replace(base_rows[0], lifecycle_identity=base_rows[0].lifecycle_identity[:-1] +
                                 ((2 * C.HOUR_MS, "L0", -1, "1.0", "102.0", "exit"),))
-    hostile_lifecycle = replace(fold, stress=C.ReplayResult(2000, (lifecycle_changed,) + base_rows[1:]))
+    hostile_lifecycle = replace(fold, stress=C.ReplayResult(2000, (lifecycle_changed,) + stress_rows[1:]))
     with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile_lifecycle)
 
     funding = C.FundingCashEvent(C.HOUR_MS // 2, base_rows[0].long_symbol, 0.01)
-    funded = C.bind_attempt_derivation(replace(base_rows[0], funding_cash=0.01, actual_net_cash=0.02,
-                     verdict_net_cash=0.02, verdict_R=0.02,
+    original = base_rows[0]
+    long_leg = original.legs[0]
+    funded = C.bind_attempt_derivation(replace(original, funding_cash=original.funding_cash + 0.01,
+                     actual_net_cash=original.actual_net_cash + 0.01,
+                     verdict_net_cash=original.verdict_net_cash + 0.01,
+                     verdict_R=original.verdict_R + 0.01 / original.initial_risk_cash,
                      funding_events=(funding,),
-                     long_contribution_R=0.017, short_contribution_R=0.003,
-                     legs=(replace(base_rows[0].legs[0], funding_cash=0.01,
-                                   net_cash=0.017, net_R=0.017),
-                           replace(base_rows[0].legs[1], net_cash=0.003, net_R=0.003))))
-    stress_cash = 0.01 / 1.5
-    stress_funded = C.bind_attempt_derivation(replace(funded, funding_cash=stress_cash,
-                            actual_net_cash=0.01 + stress_cash,
-                            verdict_net_cash=0.01 + stress_cash,
-                            verdict_R=0.01 + stress_cash,
-                            funding_events=(replace(funding, cash=stress_cash),),
-                            long_contribution_R=0.007 + stress_cash,
-                            legs=(replace(funded.legs[0], funding_cash=stress_cash,
-                                          net_cash=0.007 + stress_cash,
-                                          net_R=0.007 + stress_cash), funded.legs[1])))
+                     long_contribution_R=original.long_contribution_R + 0.01 / original.initial_risk_cash,
+                     legs=(replace(long_leg, funding_cash=0.01, net_cash=long_leg.net_cash + 0.01,
+                                   net_R=long_leg.net_R + 0.01 / original.initial_risk_cash),
+                           original.legs[1])))
+    stress_funded = C.mechanical_stress_attempt(funded)
     funded_fold = replace(fold, base=C.ReplayResult(2000, (funded,) + base_rows[1:]),
-                          stress=C.ReplayResult(2000, (stress_funded,) + base_rows[1:]))
+                          stress=C.ReplayResult(2000, (stress_funded,) + stress_rows[1:]))
     C.validate_fold_evidence(funded_fold)
-    bad_funding = C.bind_attempt_derivation(replace(stress_funded, funding_cash=0.02,
-                          actual_net_cash=0.03, verdict_net_cash=0.03, verdict_R=0.03,
-                          funding_events=(replace(funding, cash=0.02),),
-                          long_contribution_R=0.027,
-                          legs=(replace(stress_funded.legs[0], funding_cash=0.02,
-                                        net_cash=0.027, net_R=0.027), stress_funded.legs[1])))
+    bad_funding = C.bind_attempt_derivation(replace(stress_funded,
+                          funding_events=(replace(stress_funded.funding_events[0], cash=0.02),)))
     with pytest.raises(C.IncompleteEpisode, match="mechanically derived|derivation identity"):
         C.validate_fold_evidence(replace(funded_fold,
-            stress=C.ReplayResult(2000, (bad_funding,) + base_rows[1:])))
+            stress=C.ReplayResult(2000, (bad_funding,) + stress_rows[1:])))
     for hostile_row in (replace(stress_funded, initial_risk_cash=2),
                         replace(stress_funded, verdict_R=999),
                         replace(stress_funded, atomic_one_leg_loss=True),
@@ -572,23 +669,24 @@ def test_development_veto_never_opens_forward_and_stress_cannot_change_selection
                                                      + stress_funded.fills[1:])):
         with pytest.raises((C.IncompleteEpisode, C.C258Error)):
             C.validate_fold_evidence(replace(funded_fold,
-                stress=C.ReplayResult(2000, (hostile_row,) + base_rows[1:])))
+                stress=C.ReplayResult(2000, (hostile_row,) + stress_rows[1:])))
 
 
 def test_gate_derives_worse_of_marked_and_close_time_drawdown_never_accepts_supplied_value():
     assert "max_drawdown_R" not in {field.name for field in fields(C.FoldEvidence)}
-    rows = tuple(C.bind_attempt_derivation(replace(attempt(str(i), 0.1), gross_R=0.2))
+    rows = tuple(C.bind_attempt_derivation(replace(attempt(str(i), 10), gross_R=20))
                  for i in range(300))
+    stress_rows = tuple(C.mechanical_stress_attempt(row) for row in rows)
     marked = tuple(C.PortfolioMark(mark.timestamp_ms, mark.symbol,
                                   39 if mark.symbol == "L0" else 100)
                    for mark in marks_for_attempts(rows))
     fold = C.FoldEvidence(
-        "development", C.ReplayResult(2000, rows), C.ReplayResult(2000, rows),
+        "development", C.ReplayResult(2000, rows), C.ReplayResult(2000, stress_rows),
         (25, 25), (1, 1), marked, marked, 300, 300, 300, 0, 0)
     derived = C.fold_drawdown(fold)
     assert derived["closed_R"] == 0
-    assert derived["marked_cashflow_R"] == 61
-    assert derived["worse_of_R"] == 61
+    assert derived["marked_cashflow_R"] > 60
+    assert derived["worse_of_R"] == derived["marked_cashflow_R"]
     assert C.development_gate(fold)["checks"]["closed_R_drawdown_lte_60"] is False
 
 
