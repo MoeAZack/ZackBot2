@@ -121,7 +121,10 @@ def test_one_command_orders_full_vertical_and_publishes_only_zero_gap(tmp_path):
     outputs = {name: Path(path) for name, path in result["outputs"].items()}
     assert all(path.exists() for path in outputs.values())
     assert json.loads(gzip.decompress(outputs["manifest_v6"].read_bytes()))["digest"] == "2" * 64
-    assert not (tmp_path / ".authority-v6-output-stage").exists()
+    assert R.resolve_current_outputs(_plan(), tmp_path) == outputs
+    assert Path(result["current_pointer"]).exists()
+    assert not any((tmp_path / row["path"]).exists() for row in _plan()["outputs"].values())
+    assert not (tmp_path / R.PUBLICATION_ROOT_REL / R.STAGE_NAME).exists()
 
 
 def test_gap_report_fails_before_any_output_is_staged(tmp_path):
@@ -129,7 +132,7 @@ def test_gap_report_fails_before_any_output_is_staged(tmp_path):
     with pytest.raises(R.RunnerError, match="ZERO_GUARANTEED_PERIOD_GAPS"):
         R.run(_config(tmp_path), backend=backend, emit=lambda _: None)
     assert not (tmp_path / "out").exists()
-    assert not (tmp_path / ".authority-v6-output-stage").exists()
+    assert not (tmp_path / R.PUBLICATION_ROOT_REL).exists()
 
 
 def test_hostile_pit_union_escape_is_refused_before_intraday_network_seam(tmp_path):
@@ -145,38 +148,77 @@ def test_restart_refuses_partial_or_torn_state_before_acquisition(tmp_path, part
     if partial == "output":
         target = tmp_path / "out/pit.json"; target.parent.mkdir(); target.write_bytes(b"partial")
     elif partial == "stage":
-        (tmp_path / ".authority-v6-output-stage").mkdir()
+        (tmp_path / R.PUBLICATION_ROOT_REL / R.STAGE_NAME).mkdir(parents=True)
     elif partial == "store-part":
         target = config.store / "x/y.zip.part"; target.parent.mkdir(parents=True); target.write_bytes(b"partial")
     else:
         config.ledger.write_bytes(b'{"kind":"VISION"}')
-    with pytest.raises(R.RunnerError):
+    with pytest.raises(V6.AuthorityV6Error):
         R.run(config, backend=backend, emit=lambda _: None)
     assert not any(step.startswith("acquire-") for step in backend.steps)
 
 
-def test_interrupted_publication_is_preserved_and_restart_fails_closed(tmp_path, monkeypatch):
+@pytest.mark.parametrize("boundary", range(1, 8))
+def test_interruption_at_every_publication_boundary_exposes_nothing(
+        tmp_path, monkeypatch, boundary):
     config, backend = _config(tmp_path), OfflineBackend()
-    real_replace, commits = R.os.replace, 0
+    real_replace, transitions = R.os.replace, 0
 
-    def interrupt_second(source, target):
-        nonlocal commits
-        if Path(target).parent == tmp_path / "out":
-            commits += 1
-            if commits == 2:
-                raise OSError("hostile power loss")
+    def interrupt_boundary(source, target):
+        nonlocal transitions
+        transitions += 1
+        if transitions == boundary:
+            raise OSError("hostile power loss")
         return real_replace(source, target)
 
-    monkeypatch.setattr(R.os, "replace", interrupt_second)
+    monkeypatch.setattr(R.os, "replace", interrupt_boundary)
     with pytest.raises(OSError, match="power loss"):
         R.run(config, backend=backend, emit=lambda _: None)
     monkeypatch.setattr(R.os, "replace", real_replace)
-    assert (tmp_path / "out/manifest.json.gz").exists()
-    assert (tmp_path / ".authority-v6-output-stage").exists()
+    assert not (tmp_path / R.CURRENT_POINTER_REL).exists()
+    assert not any((tmp_path / row["path"]).exists() for row in _plan()["outputs"].values())
+    with pytest.raises(R.RunnerError, match="no committed"):
+        R.resolve_current_outputs(_plan(), tmp_path)
     fresh = OfflineBackend()
-    with pytest.raises(R.RunnerError, match="partial"):
+    with pytest.raises(R.RunnerError):
         R.run(config, backend=fresh, emit=lambda _: None)
     assert not any(step.startswith("acquire-") for step in fresh.steps)
+
+
+def test_interruption_after_pointer_commit_exposes_complete_publication(tmp_path, monkeypatch):
+    config, backend = _config(tmp_path), OfflineBackend()
+    real_replace, transitions = R.os.replace, 0
+
+    def crash_after_pointer(source, target):
+        nonlocal transitions
+        transitions += 1
+        result = real_replace(source, target)
+        if transitions == 7:
+            raise OSError("power loss after commit")
+        return result
+
+    monkeypatch.setattr(R.os, "replace", crash_after_pointer)
+    with pytest.raises(OSError, match="after commit"):
+        R.run(config, backend=backend, emit=lambda _: None)
+    monkeypatch.setattr(R.os, "replace", real_replace)
+    resolved = R.resolve_current_outputs(_plan(), tmp_path)
+    assert set(resolved) == set(R.ARTIFACT_FILES)
+    assert all(path.exists() for path in resolved.values())
+
+
+@pytest.mark.parametrize("raw", [
+    b"{}\n",
+    b'{"kind":"VISION","path":"x.zip","attempt":1,"decision":"CHECKSUM_FETCH_FAILED"}\n',
+    (b'{"kind":"VISION","path":"x.zip","attempt":0,'
+     b'"decision":"VISION_PARSER_SCHEMA_CUTOFF_ACCEPTED",'
+     b'"acquisition_record_sha256":"' + b"0" * 64 + b'","acquisition_attempt":0}\n'),
+])
+def test_semantically_malformed_ledger_fails_before_any_acquisition(tmp_path, raw):
+    config, backend = _config(tmp_path), OfflineBackend()
+    config.ledger.write_bytes(raw)
+    with pytest.raises(V6.AuthorityV6Error):
+        R.run(config, backend=backend, emit=lambda _: None)
+    assert not any(step.startswith("acquire-") for step in backend.steps)
 
 
 def test_wrong_plan_confirmation_refuses_before_acquisition(tmp_path):

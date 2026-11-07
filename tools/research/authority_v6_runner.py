@@ -22,6 +22,17 @@ from zoneinfo import ZoneInfo
 from tools.research import authority_v6 as V6
 
 
+PUBLICATION_ROOT_REL = Path("research_evidence/authority_v6_publications")
+CURRENT_POINTER_REL = Path("research_evidence/authority_v6_current.json")
+STAGE_NAME = ".authority-v6-stage"
+ARTIFACT_FILES = {
+    "manifest_v6": "manifest-v6.json.gz",
+    "pit_v9": "pit-v9.json",
+    "filter_v4": "filter-v4.json",
+    "coverage_v4": "coverage-v4.json",
+}
+
+
 class RunnerError(V6.AuthorityV6Error):
     """An orchestration invariant failed before authority publication."""
 
@@ -42,12 +53,10 @@ def _strict_ledger_preflight(ledger: Path) -> None:
     if not ledger.exists():
         return
     raw = ledger.read_bytes()
-    if raw and not raw.endswith(b"\n"):
-        raise RunnerError("acquisition ledger has a torn final row")
-    for line in raw.splitlines():
-        row = V6._load_strict(line, "acquisition ledger row")
-        if not isinstance(row, dict):
-            raise RunnerError("acquisition ledger row is not an object")
+    if raw:
+        # This is the same complete attempt/link state-machine validation used by
+        # manifest-v6, deliberately run before either network-capable seam.
+        V6._validate_ledger_raw(raw)
 
 
 def _output_paths(plan: Mapping, root: Path) -> dict[str, Path]:
@@ -63,19 +72,87 @@ def _output_paths(plan: Mapping, root: Path) -> dict[str, Path]:
     return paths
 
 
-def _publication_preflight(plan: Mapping, config: RunConfig) -> tuple[dict[str, Path], Path]:
-    outputs = _output_paths(plan, config.root)
-    present = sorted(name for name, path in outputs.items() if path.exists())
+def _publication_preflight(plan: Mapping, config: RunConfig) -> tuple[dict[str, Path], Path, Path, Path]:
+    logical = _output_paths(plan, config.root)
+    present = sorted(name for name, path in logical.items() if path.exists())
     if present:
-        state = "partial" if len(present) != len(outputs) else "already published"
-        raise RunnerError(f"authority-v6 outputs are {state}; immutable restart refused: {present}")
-    stage = config.root / ".authority-v6-output-stage"
+        raise RunnerError(f"legacy direct authority-v6 output paths exist; restart refused: {present}")
+    publication_root = config.root / PUBLICATION_ROOT_REL
+    stage = publication_root / STAGE_NAME
+    current = config.root / CURRENT_POINTER_REL
+    current_part = current.with_name(current.name + ".part")
+    if current.exists():
+        resolve_current_outputs(plan, config.root)
+        raise RunnerError("authority-v6 publication is already committed")
+    if current_part.exists():
+        raise RunnerError("partial authority-v6 current pointer exists; restart refused")
     if stage.exists():
         raise RunnerError("stale authority-v6 output stage exists; restart refused")
+    if publication_root.exists() and any(publication_root.iterdir()):
+        raise RunnerError("orphan authority-v6 publication exists without a current pointer")
     if config.store.exists() and next(config.store.rglob("*.part"), None) is not None:
         raise RunnerError("authority store contains a partial atomic-write file")
     _strict_ledger_preflight(config.ledger)
-    return outputs, stage
+    return logical, publication_root, stage, current
+
+
+def resolve_current_outputs(plan: Mapping, root: Path) -> dict[str, Path]:
+    """Resolve one committed publication; the pointer is the sole visibility gate."""
+    pointer_path = root / CURRENT_POINTER_REL
+    try:
+        pointer = V6._load_strict(pointer_path.read_bytes(), "authority-v6 current pointer")
+    except OSError as exc:
+        raise RunnerError("authority-v6 has no committed current publication") from exc
+    if (not isinstance(pointer, dict)
+            or pointer.get("format") != "zb-authority-v6-publication-pointer/1"
+            or pointer.get("authority_id") != plan.get("authority_id")
+            or pointer.get("plan_sha256") != V6.PLAN_SHA256
+            or pointer.get("digest") != V6.content_digest(pointer)):
+        raise RunnerError("authority-v6 current pointer is malformed or unbound")
+    publication_id = pointer.get("publication_id")
+    if not V6.HEX64.fullmatch(publication_id or ""):
+        raise RunnerError("authority-v6 publication identity is malformed")
+    publication_root = (root / PUBLICATION_ROOT_REL).resolve()
+    bundle = (publication_root / publication_id).resolve()
+    if bundle.parent != publication_root or not bundle.is_dir():
+        raise RunnerError("authority-v6 committed publication directory is missing")
+    entries = pointer.get("artifacts")
+    _output_paths(plan, root)
+    if not isinstance(entries, dict) or set(entries) != set(ARTIFACT_FILES):
+        raise RunnerError("authority-v6 current pointer has an incomplete artifact set")
+    try:
+        publication = V6._load_strict(
+            (bundle / "publication.json").read_bytes(), "authority-v6 publication")
+    except OSError as exc:
+        raise RunnerError("authority-v6 committed publication metadata is missing") from exc
+    expected_hashes = {name: entries[name].get("byte_sha256")
+                       for name in ARTIFACT_FILES if isinstance(entries[name], dict)}
+    if (not isinstance(publication, dict)
+            or publication.get("format") != "zb-authority-v6-publication/1"
+            or publication.get("publication_id") != publication_id
+            or publication.get("authority_id") != plan.get("authority_id")
+            or publication.get("plan_sha256") != V6.PLAN_SHA256
+            or publication.get("required_result") != "ZERO_GUARANTEED_PERIOD_GAPS"
+            or publication.get("artifacts") != expected_hashes
+            or publication.get("digest") != V6.content_digest(publication)):
+        raise RunnerError("authority-v6 committed publication metadata is malformed or unbound")
+    resolved = {}
+    for name, filename in ARTIFACT_FILES.items():
+        entry = entries[name]
+        if (not isinstance(entry, dict)
+                or entry.get("logical_path") != plan["outputs"][name]["path"]
+                or entry.get("bundle_file") != filename
+                or not V6.HEX64.fullmatch(entry.get("byte_sha256", ""))):
+            raise RunnerError(f"authority-v6 current pointer has a malformed {name} binding")
+        path = bundle / filename
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise RunnerError(f"authority-v6 committed {name} is missing") from exc
+        if V6.sha256(raw) != entry["byte_sha256"]:
+            raise RunnerError(f"authority-v6 committed {name} bytes changed")
+        resolved[name] = path
+    return resolved
 
 
 def _complete_vision(result: Mapping, requests: Sequence[V6.VisionRequest], label: str) -> tuple[str, ...]:
@@ -292,7 +369,7 @@ def run(config: RunConfig, *, backend=None, emit=print) -> dict:
     plan = backend.load_plan()
     if config.confirm_plan_sha256 != V6.PLAN_SHA256:
         raise RunnerError("operator confirmation does not match the frozen plan checksum")
-    outputs, stage = _publication_preflight(plan, config)
+    _, publication_root, stage, current = _publication_preflight(plan, config)
     symbols = tuple(backend.seed_symbols())
     seed_requests = tuple(backend.seed_requests(symbols))
     plan_notice = {
@@ -335,21 +412,51 @@ def run(config: RunConfig, *, backend=None, emit=print) -> dict:
 
     artifacts = {"manifest_v6": manifest, "pit_v9": pit_v9,
                  "filter_v4": filter_v4, "coverage_v4": coverage_v4}
+    publication_root.mkdir(parents=True, exist_ok=True)
     stage.mkdir(parents=False)
-    staged = {}
+    staged: dict[str, Path] = {}
     try:
         for name, value in artifacts.items():
-            staged[name] = stage / outputs[name].name
+            staged[name] = stage / ARTIFACT_FILES[name]
             V6.write_json_immutable(value, staged[name], gzip_output=(name == "manifest_v6"))
-        for name in ("manifest_v6", "pit_v9", "filter_v4", "coverage_v4"):
-            outputs[name].parent.mkdir(parents=True, exist_ok=True)
-            if outputs[name].exists():
-                raise RunnerError(f"immutable output appeared during commit: {name}")
-            os.replace(staged[name], outputs[name])
-        stage.rmdir()
+        artifact_hashes = {name: V6.sha256(path.read_bytes()) for name, path in staged.items()}
+        publication_id = V6.sha256(V6.canonical({
+            "authority_id": plan["authority_id"], "plan_sha256": V6.PLAN_SHA256,
+            "artifacts": artifact_hashes,
+        }))
+        version_dir = publication_root / publication_id
+        publication = {
+            "format": "zb-authority-v6-publication/1", "publication_id": publication_id,
+            "authority_id": plan["authority_id"], "plan_sha256": V6.PLAN_SHA256,
+            "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+            "artifacts": artifact_hashes,
+        }
+        publication["digest"] = V6.content_digest(publication)
+        V6.write_json_immutable(publication, stage / "publication.json")
+        if version_dir.exists():
+            raise RunnerError("immutable authority-v6 publication directory already exists")
+        # One same-volume directory rename makes all four artifacts exist together,
+        # but they remain invisible to readers until the single pointer commit.
+        os.replace(stage, version_dir)
+        pointer = {
+            "format": "zb-authority-v6-publication-pointer/1",
+            "authority_id": plan["authority_id"], "plan_sha256": V6.PLAN_SHA256,
+            "publication_id": publication_id,
+            "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+            "artifacts": {
+                name: {"logical_path": plan["outputs"][name]["path"],
+                       "bundle_file": ARTIFACT_FILES[name],
+                       "byte_sha256": artifact_hashes[name]}
+                for name in ARTIFACT_FILES
+            },
+        }
+        pointer["digest"] = V6.content_digest(pointer)
+        V6.write_json_immutable(pointer, current)
     except Exception:
-        # Preserve staged/partially committed evidence.  The next run refuses it.
+        # Preserve staged/orphan evidence.  Without the pointer no reader can see a
+        # partial authority, and the next run refuses the state before acquisition.
         raise
+    outputs = resolve_current_outputs(plan, config.root)
     result = {
         "authority_id": plan["authority_id"], "plan_sha256": V6.PLAN_SHA256,
         "intraday_symbols": list(intraday_symbols),
@@ -358,6 +465,7 @@ def run(config: RunConfig, *, backend=None, emit=print) -> dict:
         "funding_paths": len(funding_paths),
         "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
         "outputs": {name: str(path) for name, path in outputs.items()},
+        "current_pointer": str(current), "publication_id": publication_id,
     }
     emit(json.dumps(result, sort_keys=True))
     return result
