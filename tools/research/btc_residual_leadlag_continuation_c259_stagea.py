@@ -1447,6 +1447,15 @@ class ProtectedSourceArchive:
                      boundary_open: bool = False) -> tuple[
                          dict[int, Bar | BoundaryOpen], dict[int, PositionMark],
                          tuple[FundingEvent, ...]]:
+        # Also cover seal_trade and direct internal calls before cache,
+        # manifest periods, paths or bytes. Stage-A cannot spend holdout or
+        # caller-defined/straddling windows. An exact Stage-A end may still
+        # supply its frozen open-only flatten reference and funding due on
+        # pre-existing exposure, never the next bar range.
+        if (type(start_ms) is not int or type(end_ms) is not int
+                or type(boundary_open) is not bool
+                or (start_ms, end_ms) not in FOLD_RANGES.values()):
+            raise EvaluationLocked("Stage-A source window is sealed or not an exact frozen fold")
         key = symbol, start_ms, end_ms, boundary_open
         if key in self._cache:
             return self._cache[key]

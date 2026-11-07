@@ -291,6 +291,75 @@ def test_frozen_bytes_and_cli_remain_locked() -> None:
         c259.assert_real_evaluation_authorized()
 
 
+@pytest.mark.parametrize("route", ["read_fold", "seal_trade", "internal"])
+def test_stagea_holdout_routes_refuse_before_any_source_or_period_access(monkeypatch, route):
+    assert SOURCE_ARCHIVE is not None
+    start, end = c259.ALL_SPLIT_RANGES["sealed_holdout"]
+    def forbidden(*args, **kwargs):
+        pytest.fail("sealed source/store/period access occurred")
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_safe_path", forbidden)
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_rows", forbidden)
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_record_bounds", forbidden)
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_records", [
+        {"symbol": "ALT", "series": series, "interval": interval}
+        for series, interval in (("klines", "1h"), ("markPriceKlines", "1h"), ("fundingRate", None))])
+    with pytest.raises(c259.EvaluationLocked, match="sealed"):
+        if route == "read_fold":
+            SOURCE_ARCHIVE.read_fold("ALT", "sealed_holdout", boundary_open=True)
+        elif route == "internal":
+            SOURCE_ARCHIVE._load_symbol("ALT", start, end, boundary_open=True)
+        else:
+            entry, close = start+25*c259.HOUR_MS, start+37*c259.HOUR_MS
+            # Valid frozen holdout bounds and two fills previously reached
+            # _load_symbol before caller/source equality could reject rows.
+            SOURCE_ARCHIVE.seal_trade(attempt_id="sealed-trap", symbol="ALT", entry_ms=entry,
+                close_ms=close, split_start_ms=start, split_end_ms=end, atr_bars=(),
+                funding_authority=(), lifecycle_bars=(), funding_marks=(), lifecycle_marks=(),
+                fills=(_fill(timestamp=entry, phase="ENTRY", symbol="ALT"),
+                       _fill(timestamp=close, phase="SCHEDULED", symbol="ALT", side=-1)))
+
+
+@pytest.mark.parametrize("window", ["holdout_cache", "wf3_straddle", "custom", "float"])
+def test_internal_source_window_gate_precedes_even_cached_rows(monkeypatch, window):
+    assert SOURCE_ARCHIVE is not None
+    start, end = c259.ALL_SPLIT_RANGES["sealed_holdout"]
+    if window == "wf3_straddle": start = c259.FOLD_RANGES["wf3"][0]
+    elif window == "custom": end -= c259.HOUR_MS
+    elif window == "float": start, end = map(float, c259.FOLD_RANGES["wf3"])
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_cache", {("ALT", start, end, False): ({}, {}, ())})
+    with pytest.raises(c259.EvaluationLocked, match="sealed"):
+        SOURCE_ARCHIVE._load_symbol("ALT", start, end)
+
+
+def test_wf3_end_still_exposes_only_flatten_open_and_due_funding(tmp_path, monkeypatch):
+    assert SOURCE_ARCHIVE is not None
+    start, end = c259.FOLD_RANGES["wf3"]
+    records = []
+    rows = {
+        "klines": [[end-c259.HOUR_MS, 100, 101, 99, 100, 1, end-1, 1_000_000],
+                   [end, 100]+["FORBIDDEN_HOLDOUT_RANGE"]*10,
+                   [end+c259.HOUR_MS]+["FORBIDDEN_HOLDOUT_ROW"]*11],
+        "markPriceKlines": [[end-c259.HOUR_MS, 100, 101, 99, 100],
+                            [end]+["FORBIDDEN_HOLDOUT_MARK"]*11],
+        "fundingRate": [[end, 8, "0.0001"], [end+c259.HOUR_MS, 8, "FORBIDDEN_HOLDOUT_FUNDING"]],
+    }
+    for series, data in rows.items():
+        raw = _zip_csv("synthetic.csv", data)
+        path = f"{series}.zip"
+        (tmp_path/path).write_bytes(raw)
+        records.append({"path": path, "symbol": "ALT", "series": series,
+            "interval": None if series == "fundingRate" else "1h", "raw_sha256": c259._sha(raw),
+            "declared_start_ms": end-c259.HOUR_MS, "declared_end_ms": end+2*c259.HOUR_MS})
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_records", records)
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_cache", {})
+    monkeypatch.setattr(SOURCE_ARCHIVE, "_safe_path", lambda path: tmp_path/path)
+    stream = SOURCE_ARCHIVE.read_fold("ALT", "wf3", boundary_open=True)
+    assert stream.bars[-1] == c259.BoundaryOpen(end, 100.0)
+    assert all(bar.open_ms <= end for bar in stream.bars)
+    assert all(mark.timestamp_ms < end for mark in stream.marks)
+    assert stream.funding == (c259.FundingEvent(end, 0.0001),)
+
+
 def test_authority_validates_protected_tree_before_loader(tmp_path: Path) -> None:
     repo, pins = _authority_repo(tmp_path)
     calls: list[dict] = []
