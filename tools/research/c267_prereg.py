@@ -7,12 +7,14 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 PARENT_PATH='research_evidence/prereg/btc_residual_leadlag_continuation_c259_stagea.v1.json'
 PARENT_SHA256='1aad55f092c0c308cb901701e2ee8bd3062d1eee9a07e13729673efbf5b17719'
-PROPOSAL_PATH='contracts/c267_btc_residual_leadlag/c267_prereg_proposal.v2.json'
-PROPOSAL_SHA256='44e6fc7cdb8a55528273c1e65e7488d34d8d3a5a6274725dfec996692e1a646f'
+PROPOSAL_PATH='contracts/c267_btc_residual_leadlag/c267_prereg_proposal.v3.json'
+PROPOSAL_SHA256='4ceb26dc632a390fdc7253e17232f22e23cce88d1fb71953469a6bc1e92225ae'
 MODEL_PATH='contracts/c267_btc_residual_leadlag/c267_funding_liability_model.v2.json'
 MODEL_SHA256='5acba50cd2b9b25007087b51bb8d5845daa525188c3f9c0f2c120dbe4e4c4a63'
 CATALOG_PATH='contracts/c267_btc_residual_leadlag/c267_lifecycle_catalog.v1.json'
 CATALOG_SHA256='fa810f782ff3da3dd14b35cd029812aa71f540ef23182df3aca7eb1bf665e1b0'
+PREFIX_PATH='contracts/c267_btc_residual_leadlag/c267_initial_source_prefix_clarification.v1.json'
+PREFIX_SHA256='ade5921021d9cc3b740eb5b189954b5592a6b3c26f20a8008144218b910e7e58'
 EXECUTION_AUTHORIZED=False
 SEEDS={'long_null_seed':267202611071,'long_ci_seed':267202611072,
        'short_null_seed':267202611073,'short_ci_seed':267202611074}
@@ -77,6 +79,10 @@ def load_metadata():
     if proposal['funding_model']!={'path':MODEL_PATH,'sha256':MODEL_SHA256}:
         raise C267Locked('C267_OWN_MODEL_BINDING_DRIFT')
     validate_metadata(proposal,model,parent)
+    raw=(ROOT/PREFIX_PATH).read_bytes()
+    if (hashlib.sha256(raw).hexdigest()!=PREFIX_SHA256
+        or proposal['source_plan']['initial_prefix_clarification']!={'path':PREFIX_PATH,'sha256':PREFIX_SHA256}):
+        raise C267Locked('C267_OWN_PREFIX_CLARIFICATION_DRIFT')
     load_catalog_metadata()
     return proposal,model
 
