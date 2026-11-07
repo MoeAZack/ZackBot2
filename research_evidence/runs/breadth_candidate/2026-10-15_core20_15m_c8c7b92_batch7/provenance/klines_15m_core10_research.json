@@ -1,0 +1,279 @@
+{
+ "cache_dir": "outside the repo (not committed); files named <SYMBOL>_<interval>.csv",
+ "fetch": {
+  "end_exclusive": "2026-09-28T00:00:00Z",
+  "pacing": {
+   "min_gap_s": 1.0,
+   "weight_per_min": 600
+  },
+  "requests": 446,
+  "start": "2024-10-11T17:00:00Z",
+  "warmup_bars": 220
+ },
+ "files": {
+  "BTCUSDT": {
+   "bytes": 5021718,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "BTCUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+   "status": "complete"
+  },
+  "DOGEUSDT": {
+   "bytes": 5084419,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "DOGEUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+   "status": "complete"
+  },
+  "ETHUSDT": {
+   "bytes": 5051889,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "ETHUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+   "status": "complete"
+  },
+  "HYPEUSDT": {
+   "bytes": 3154277,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "HYPEUSDT_15m.csv",
+   "first": "2025-05-30T10:30:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 22150,
+   "missing_runs": [
+    [
+     "2024-10-11T17:00:00Z",
+     "2025-05-30T10:15:00Z",
+     22150
+    ]
+   ],
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 32,
+   "rows": 46614,
+   "sha256": "02130df50ef72d041bc5798e655e648970a0cd4584955d163e89eacef8ced7f1",
+   "status": "INCOMPLETE"
+  },
+  "NEARUSDT": {
+   "bytes": 4206480,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "NEARUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "56e5eb2ed35e5db2e8c329a03e4c6e9c231c78b7cea93e8c4a89af8e46f9ca46",
+   "status": "complete"
+  },
+  "SOLUSDT": {
+   "bytes": 4563734,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "SOLUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+   "status": "complete"
+  },
+  "SUIUSDT": {
+   "bytes": 4691372,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "SUIUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "60313f17f09f44d5015ee69d960fc165b58cc128bf0efb698dd3bc7224e5aebb",
+   "status": "complete"
+  },
+  "UNIUSDT": {
+   "bytes": 4210612,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "UNIUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "3b9270610dc91a57967535f61c080be84bca5501d697e9ad70fd2717e1446ca8",
+   "status": "complete"
+  },
+  "XRPUSDT": {
+   "bytes": 4753628,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "XRPUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+   "status": "complete"
+  },
+  "ZECUSDT": {
+   "bytes": 4482107,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 68764,
+   "fetched": "this run",
+   "file": "ZECUSDT_15m.csv",
+   "first": "2024-10-11T17:00:00Z",
+   "last": "2026-09-27T23:45:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "15m",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-10-11T17:00:00Z"
+   },
+   "requests": 46,
+   "rows": 68764,
+   "sha256": "a47b6ac2e8c9193af20b6f7db8470db0394dcb2a8592f7b2ef27cf66b4f5a662",
+   "status": "complete"
+  }
+ },
+ "format": "zb-klines-research/1",
+ "format_cols": "app._get_candles CSV: t(ms),o,h,l,c,v,qv",
+ "incomplete": [
+  "HYPEUSDT"
+ ],
+ "interval": "15m",
+ "source": "https://fapi.binance.com/fapi/v1/klines (public Binance USD-M futures trade klines, no API key)",
+ "stopped": null,
+ "tool": {
+  "collect_klines_research.py": "b6a2a70a59d805f67541be42019e393a6677a954e0be889bfb06eb1f66a46856"
+ },
+ "window": {
+  "end": "2026-09-28T00:00:00Z",
+  "end_exclusive": true,
+  "sealed_cutoff": "2026-09-28T00:00:00Z",
+  "start": "2024-10-14T00:00:00Z"
+ }
+}
