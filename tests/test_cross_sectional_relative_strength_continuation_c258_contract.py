@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "research_evidence/prereg/cross_sectional_relative_strength_continuation_c258_stagea.v1.json"
 PLAN_PATH = ROOT / "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json"
 BASE = "8f63b5e8affd2d23a8c69d6d0185c502951aff78"
-CANONICAL_CONTRACT_SHA256 = "a8368734832110aa1b74d2ea4ba71d1f3752454425e1346b981296b78c00adc7"
+CANONICAL_CONTRACT_SHA256 = "487eaf27ee8c49c16a76c1b792dbef87759524c69cf723af07c3173672a2f658"
 EXPECTED_TOP_LEVEL = {
     "candidate_id", "candidate_key", "format", "base_commit", "frozen_at_cairo", "status",
     "default_off", "evaluation_locked", "paper_eligibility", "roadmap_fit", "deferred",
@@ -89,7 +89,9 @@ def validate_frozen_contract(contract):
     assert signal["tails"]["long"] == "z>=+1.5"
     assert signal["tails"]["short"] == "z<=-1.5"
     assert "never re-pair" in signal["pairing"]
-    assert "50% long and 50% short" in signal["weights"]
+    assert "target equal raw notional" in signal["weights"]
+    assert "actual rounded raw notionals need not be exactly equal" in signal["weights"]
+    assert "<=0.01" in signal["weights"]
 
     execution = contract["execution"]
     assert "strictly after decision close" in execution["entry"]
@@ -100,7 +102,10 @@ def validate_frozen_contract(contract):
     assert "never at the same open" in execution["atomic_failure"]
     assert "ATOMIC_ONE_LEG_LOSS" in execution["atomic_failure"]
     assert "verdict_net_cash=min(actual_net_cash" in execution["atomic_failure"]
-    assert "atomic_penalty_cash=verdict_net_cash-actual_net_cash" in execution["atomic_failure"]
+    assert "fee_drag" in execution["atomic_failure"]
+    assert "slippage_drag" in execution["atomic_failure"]
+    assert "actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag" in execution["atomic_failure"]
+    assert "conservative_adjustment_cash=verdict_net_cash-actual_net_cash" in execution["atomic_failure"]
     assert "included without exception" in execution["atomic_failure"]
     assert "every development, forward and PAPER transfer gate" in execution["atomic_failure"]
 
@@ -113,13 +118,18 @@ def validate_frozen_contract(contract):
     assert sizing["primary_capital_usd"] == 2000
     assert sizing["diagnostic_capitals_usd"] == [1000, 3000, 4000]
     assert "Only the complete 2000 USD replay" in sizing["capital_selection_rule"]
+    assert "cannot veto, select, rescue" in sizing["capital_selection_rule"]
+    assert "alter an admission" in sizing["capital_selection_rule"]
     assert "0.01*book_equity" in sizing["r_cash"]
     assert "loss_rate_per_raw_notional_j" in sizing["continuous_start"]
+    assert "stressed_entry_fee_drag_per_unit_j" in sizing["continuous_start"]
+    assert "every *_drag_per_unit is finite and nonnegative" in sizing["continuous_start"]
     assert "equal_raw_notional_start=min" in sizing["continuous_start"]
     assert "decrement exactly one MARKET_LOT_SIZE step" in sizing["step_floor_and_search"]
     assert "100000 decrements" in sizing["step_floor_and_search"]
     assert "<=0.01" in sizing["neutrality"]
     assert "first passing state" in sizing["neutrality"]
+    assert "exact equality is not required" in sizing["neutrality"]
     assert "0<initial_pair_risk_cash<=requested_pair_risk_cash" in sizing["post_rounding_checks"]
     assert "symbol sorts lexicographically later" in sizing["post_rounding_checks"]
     assert "only from the 2000 USD primary replay" in sizing["primary_gate"]
@@ -146,7 +156,13 @@ def validate_frozen_contract(contract):
     assert costs["adverse_slippage_bps_per_fill_per_leg"] == 2.0
     assert costs["stress_adverse_slippage_bps_per_fill_per_leg"] == 10.0
     assert costs["fills_per_pair_round_trip"] == 4
-    assert "exactly once" in costs["pnl_rule"]
+    assert "fee_drag" in costs["pnl_rule"]
+    assert "slippage_drag" in costs["pnl_rule"]
+    assert "finite and nonnegative" in costs["pnl_rule"]
+    assert "actual_net_cash=movement_cash+funding_cash-sum(fee_drag)-sum(slippage_drag)" in costs["pnl_rule"]
+    assert "never encode a cost as signed negative drag" in costs["pnl_rule"]
+    assert "signed funding_cash=" in costs["funding"]
+    assert "funding credits positive and debits negative" in costs["funding"]
     assert "last verified 1h mark close strictly before" in costs["funding"]
     assert "0.10%" in costs["impact"]
     assert "never improves a fill" in costs["stress"]
@@ -245,7 +261,7 @@ def test_sizing_is_single_primary_deterministic_neutral_and_fail_closed():
     sizing = load_contract()["sizing"]
     assert sizing["primary_capital_usd"] == 2000
     assert set(sizing["diagnostic_capitals_usd"]) == {1000, 3000, 4000}
-    assert "cannot rescue" in sizing["capital_selection_rule"]
+    assert "cannot veto, select, rescue" in sizing["capital_selection_rule"]
     assert "latest verified 1h mark close whose close_time<t" in sizing["book_equity"]
     assert "requested_pair_risk_cash=1.0*R_cash_at_attempt" in sizing["r_cash"]
     assert "floor(continuous_qty_j/stepSize_j)*stepSize_j" in sizing["step_floor_and_search"]
@@ -258,14 +274,41 @@ def test_sizing_is_single_primary_deterministic_neutral_and_fail_closed():
 def test_atomic_one_leg_failure_is_a_conservative_loss_in_every_gate():
     atomic = load_contract()["execution"]["atomic_failure"]
     assert "exactly one ATOMIC_ONE_LEG_LOSS" in atomic
-    assert "actual_net_cash is their exact sum" in atomic
+    assert "actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag" in atomic
     assert "verdict_net_cash=min(actual_net_cash" in atomic
-    assert "atomic_penalty_cash=verdict_net_cash-actual_net_cash" in atomic
+    assert "fee_drag=sum" in atomic
+    assert "slippage_drag=sum" in atomic
+    assert "execution_failure_penalty_drag=0.0" in atomic
+    assert "actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag" in atomic
+    assert "conservative_adjustment_cash=verdict_net_cash-actual_net_cash" in atomic
     assert "atomic_trade_R=verdict_net_cash/atomic_initial_risk_cash" in atomic
     assert "included without exception" in atomic
     assert "bootstrap" in atomic
     assert "Zero accepted legs is a pre-entry indexed skip" in atomic
     assert "cannot exclude the row" in atomic
+
+
+def test_rounded_neutrality_is_tolerance_based_not_exact_equality():
+    contract = load_contract()
+    weights = contract["signal"]["weights"]
+    neutrality = contract["sizing"]["neutrality"]
+    assert "target equal raw notional" in weights
+    assert "need not be exactly equal" in weights
+    assert "inclusive tolerance" in neutrality
+    assert "exact equality is not required" in neutrality
+    assert "abs(long_raw_notional-short_raw_notional)" in neutrality
+
+
+def test_diagnostic_capitals_are_replay_local_and_cannot_veto_primary():
+    contract = load_contract()
+    selection = contract["sizing"]["capital_selection_rule"]
+    feasibility = contract["risk"]["feasibility"]
+    assert "Only the complete 2000 USD replay can admit/skip primary attempts" in selection
+    assert "1000/3000/4000 USD replays are replay-local feasibility diagnostics" in selection
+    assert "cannot veto, select, rescue" in selection
+    assert "Only the 2000 USD replay's result admits or skips" in feasibility
+    assert "skip only in that diagnostic" in feasibility
+    assert "cannot veto, select, rescue or alter" in feasibility
 
 
 def test_btc_regime_and_bootstrap_are_fully_reproducible():
@@ -320,7 +363,11 @@ def test_cost_risk_frequency_regime_and_drawdown_gates_are_all_hard():
         ("primary_capital_changed", lambda d: d["sizing"].update(primary_capital_usd=4000)),
         ("sizing_search_changed", lambda d: d["sizing"].update(step_floor_and_search="find closest neutral quantities")),
         ("neutrality_relaxed", lambda d: d["sizing"].update(neutrality="allow 10 percent mismatch")),
+        ("exact_equality_required", lambda d: d["signal"].update(weights="require exactly equal rounded notionals")),
         ("atomic_loss_excluded", lambda d: d["execution"].update(atomic_failure="drop partial admissions from gates")),
+        ("signed_cost_rescue", lambda d: d["execution"].update(atomic_failure="actual_net_cash=movement_cash+funding_cash+fee_drag+slippage_drag")),
+        ("signed_drag_cost_rescue", lambda d: d["costs"].update(pnl_rule="actual_net_cash=movement_cash+funding_cash+fee_drag+slippage_drag")),
+        ("diagnostic_veto", lambda d: d["risk"].update(feasibility="all capital replays must pass or primary skips")),
         ("regime_current_btc", lambda d: d["regime"].update(stream="current BTC websocket")),
         ("regime_seed_crosses_fold", lambda d: d["regime"].update(boundary="carry EMA across folds")),
         ("bootstrap_default_rng", lambda d: d["statistics"].update(prng="numpy default_rng")),
