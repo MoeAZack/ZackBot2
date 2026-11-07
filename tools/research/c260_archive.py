@@ -22,7 +22,9 @@ from tools.research import strategy_causal_pack_01_archive as A
 from tools.research import universe as U
 
 H = C.HOUR_MS
+MINUTE = 60_000
 SEALED_START = 1_790_553_600_000
+TRADE_BAR_DERIVATION = 'C260_DEV_TRADE_1M_EXACT60_TO_1H_V1'
 
 
 class SourceIncomplete(RuntimeError):
@@ -71,6 +73,33 @@ class Funding:
     time_ms: int
     interval_hours: int | None
     rate: float
+
+
+def _trade_hours(minutes):
+    """Fixed logical bars only; minute order never enters execution semantics.
+
+    Availability is raw hour open +1h. No interpolation, partial hour or native
+    1h fallback is allowed. Missing complete hours within the observed source
+    span are gaps too; wholly absent pre-listing/post-source spans stay absent.
+    """
+    if not minutes:
+        raise SourceIncomplete('MISSING_TRADE_1M_AUTHORITY')
+    if any(type(t) is not int or t % MINUTE for t in minutes):
+        raise SourceIncomplete('TRADE_1M_GRID_INVALID')
+    first, last = min(minutes) // H * H, max(minutes) // H * H
+    result = {}
+    for hour in range(first, last + H, H):
+        rows = tuple(minutes.get(t) for t in range(hour, hour + H, MINUTE))
+        if any(row is None for row in rows):
+            raise SourceIncomplete(f'TRADE_1M_TO_1H_GAP:{hour}')
+        point = Kline(hour, rows[0].open, max(row.high for row in rows),
+                      min(row.low for row in rows), rows[-1].close,
+                      math.fsum(row.quote_volume for row in rows))
+        point.pack().validate()
+        if not math.isfinite(point.quote_volume) or point.quote_volume < 0:
+            raise SourceIncomplete('NONFINITE_DERIVED_QUOTE_VOLUME')
+        result[hour] = point
+    return result
 
 
 class _Archive:
@@ -311,11 +340,7 @@ class _Archive:
         if end > SEALED_START:
             raise SourceIncomplete('SEALED_BOUNDARY_BEFORE_SOURCE_READ')
         converted = {}
-        for record in self.manifest['files']:
-            if (record['symbol'] != symbol or record['series'] != series
-                    or record['interval'] != (None if series == 'fundingRate' else '1h')
-                    or not record['rows'] or record['last_open_ms'] < start or record['first_open_ms'] >= end):
-                continue
+        for record in self._records(symbol, series):
             rows, zipped = self._selected_rows(record, start, end)
             for row in rows:
                 if series == 'fundingRate':
@@ -336,9 +361,23 @@ class _Archive:
                 converted[t] = point
         if not converted:
             raise SourceIncomplete(f'MISSING_REQUIRED_STREAM:{symbol}:{series}')
+        if series == 'klines' and type(self) is DevelopmentArchive:
+            converted = _trade_hours(converted)
         self._cache[key] = MappingProxyType(dict(sorted(converted.items())))
         self._issued_streams[key] = self._cache[key]
         return self._cache[key]
+
+    def _records(self, symbol: str, series: str):
+        self._ensure_authority()
+        # This is fixed by the pre-read C260 source-derivation amendment. The
+        # old v3 period coverage does not establish native hourly trade bars.
+        # Always derive from 1m, even when a native 1h record also exists.
+        interval = (None if series == 'fundingRate' else
+                    '1m' if series == 'klines' and type(self) is DevelopmentArchive else '1h')
+        return tuple(record for record in self.manifest['files']
+                     if record['symbol'] == symbol and record['series'] == series
+                     and record['interval'] == interval and record['rows']
+                     and record['last_open_ms'] >= self.start_ms and record['first_open_ms'] < self.end_ms)
 
     def klines(self, symbol: str):
         return self._stream(symbol, 'klines')
@@ -351,7 +390,11 @@ class _Archive:
 
 
 class SyntheticArchive(_Archive):
-    """Explicit fixture receipt; permanently synthetic and non-authorizing."""
+    """Explicit native-hourly fixture; synthetic and never production authority.
+
+    Retains cheap full-rank component tests. The production TYPE always uses
+    authenticated minute derivation; no caller flag enables a native fallback.
+    """
 
     synthetic_only = True
 

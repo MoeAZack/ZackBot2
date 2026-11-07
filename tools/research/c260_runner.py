@@ -18,7 +18,8 @@ from pathlib import Path
 from tools.research import c260_low_idio_variance as C
 from tools.research import c260_authority as AUTH
 from tools.research import c260_statistics as S
-from tools.research.c260_archive import DevelopmentArchive, SyntheticArchive, SourceIncomplete, milliseconds
+from tools.research.c260_archive import (DevelopmentArchive, SyntheticArchive, SourceIncomplete,
+                                        TRADE_BAR_DERIVATION, milliseconds)
 from tools.research import btc_residual_leadlag_continuation_c259_stagea as X
 
 P = C.PACK
@@ -490,6 +491,9 @@ def _replay_development(source) -> dict:
                        else 'zb-c260-development-research/1'), 'candidate_id': 260,
             'proposal_sha256': C.PREREG_SHA256, 'source_digests': dict(source.digests),
             'source_reads': source.source_reads, 'synthetic_only': source.synthetic_only,
+            'trade_bar_derivation': ('SYNTHETIC_NATIVE_1H_COMPONENT_FIXTURE' if source.synthetic_only
+                                     else TRADE_BAR_DERIVATION),
+            'period_coverage_is_not_native_trade_1h_proof': True,
             'primary': primary, 'stress': stress, 'diagnostic_books': diagnostics,
             'inference': inference, 'drawdown_tier': tier, 'development_gates': gates,
             'economic_development_verdict': verdict,

@@ -15,7 +15,8 @@ import pytest
 from tools.research import c260_low_idio_variance as C
 from tools.research import c260_runner as R
 from tools.research import c260_authority as AUTH
-from tools.research.c260_archive import DevelopmentArchive, SyntheticArchive, SourceIncomplete, milliseconds
+from tools.research.c260_archive import (DevelopmentArchive, SyntheticArchive, SourceIncomplete,
+                                        Kline, MINUTE, _trade_hours, milliseconds)
 from tools.research import manifest as M
 from tools.research import universe as U
 
@@ -32,9 +33,9 @@ def write_json(path, obj):
     return hashlib.sha256(raw).hexdigest()
 
 
-def archive(store, symbol, series, month, rows):
-    suffix = 'fundingRate' if series == 'fundingRate' else '1h'
-    folder = '' if series == 'fundingRate' else '1h/'
+def archive(store, symbol, series, month, rows, interval='1h'):
+    suffix = 'fundingRate' if series == 'fundingRate' else interval
+    folder = '' if series == 'fundingRate' else interval + '/'
     rel = f'um/monthly/{series}/{symbol}/{folder}{symbol}-{suffix}-2025-{month:02d}.zip'
     path = store / rel
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,13 +46,14 @@ def archive(store, symbol, series, month, rows):
     return M.scan_archive(str(path), rel)
 
 
-def make_fixture(root):
+def make_fixture(root, *, hours=90 * 24, members=MEMBERS, trade_interval='1h'):
     files = []
+    stop = min(END, START + hours * H)
     # More than twenty eligible members in nonlexicographic artifact order.
-    for symbol in MEMBERS:
+    for symbol in members:
         price = 100.
         all_rows = {}
-        for index, t in enumerate(range(START, END, H)):
+        for index, t in enumerate(range(START, stop, H)):
             change = .00025 * math.sin(index * .07) + .00015 * math.cos(index * .03)
             if symbol != 'BTCUSDT':
                 change = .5 * change + (int(symbol[3:5]) + 1) * .0000005 * math.sin(index * .11)
@@ -64,9 +66,22 @@ def make_fixture(root):
             month = datetime.fromtimestamp(t / 1000, timezone.utc).month
             all_rows.setdefault(month, []).append(line)
         for month, rows in all_rows.items():
-            for series in ('klines', 'markPriceKlines'):
-                files.append(archive(root / 'store', symbol, series, month, rows))
-            funding = [f'{t},8,0.00001'.encode() for t in range(START, END, 8 * H)
+            files.append(archive(root / 'store', symbol, 'markPriceKlines', month, rows))
+            if trade_interval == '1m':
+                minutes = []
+                for row in rows:
+                    cells = row.split(b','); timestamp = int(cells[0])
+                    for minute in range(60):
+                        point = list(cells)
+                        point[0] = str(timestamp + minute * MINUTE).encode()
+                        point[1] = cells[1] if minute == 0 else cells[4]
+                        point[6] = str(timestamp + (minute + 1) * MINUTE - 1).encode()
+                        point[7] = b'41000000' if minute == 0 else b'1000000'
+                        minutes.append(b','.join(point))
+                files.append(archive(root / 'store', symbol, 'klines', month, minutes, interval='1m'))
+            else:
+                files.append(archive(root / 'store', symbol, 'klines', month, rows))
+            funding = [f'{t},8,0.00001'.encode() for t in range(START, stop, 8 * H)
                        if datetime.fromtimestamp(t / 1000, timezone.utc).month == month]
             files.append(archive(root / 'store', symbol, 'fundingRate', month, funding))
     manifest = dict(format=M.FORMAT, manifest_id='C260_SYNTHETIC_ONLY', source_class='archive-verified',
@@ -78,7 +93,7 @@ def make_fixture(root):
     for monday in range(milliseconds('2024-12-30T00:00:00Z'), END, 7 * C.DAY_MS):
         weeks.append({'monday_ms': monday,
                       'monday_utc': datetime.fromtimestamp(monday / 1000, timezone.utc).isoformat().replace('+00:00', 'Z'),
-                      'books': {'crypto': {'members': list(MEMBERS)}}})
+                      'books': {'crypto': {'members': list(members)}}})
     pit = {'format': U.FORMAT, 'universe_id': 'C260_SYNTHETIC_PIT_V8',
            'manifest_digest': manifest['digest'], 'weeks': weeks}
     pit['digest'] = U.digest_of(pit)
@@ -89,9 +104,9 @@ def make_fixture(root):
          'underlyingType': 'COIN', 'filters': [
              {'filterType': 'PRICE_FILTER', 'tickSize': '0.01'},
              {'filterType': 'MARKET_LOT_SIZE', 'stepSize': '0.001', 'minQty': '0.001', 'maxQty': '10000'},
-             {'filterType': 'MIN_NOTIONAL', 'notional': '5'}]} for symbol in MEMBERS]}
+             {'filterType': 'MIN_NOTIONAL', 'notional': '5'}]} for symbol in members]}
     snapshot_sha = write_json(root / 'snapshot.json', snapshot)
-    core_cells = [{'monday_utc': w['monday_utc'], 'members': list(MEMBERS[:20])} for w in weeks]
+    core_cells = [{'monday_utc': w['monday_utc'], 'members': list(members[:20])} for w in weeks]
     base = {'authority': 'STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY', 'version': 2,
             'status': 'FROZEN', 'signed_by': 'codex', 'pit_universe_path': 'old-pit.json',
             'pit_universe_sha256': '0' * 64, 'pit_universe_digest': '1' * 64,
@@ -129,9 +144,34 @@ def fixture_root(tmp_path_factory):
     return make_fixture(tmp_path_factory.mktemp('c260-archive'))
 
 
+@pytest.fixture(scope='module')
+def minute_fixture_root(tmp_path_factory):
+    # Production-type issued loop derives actual authenticated minute ZIPs.
+    # A small universe keeps this proof cheap; full22 ranks use the separate,
+    # explicitly synthetic native-hourly component fixture.
+    return make_fixture(tmp_path_factory.mktemp('c260-minute-archive'),
+                        members=('ALT00USDT', 'ALT01USDT', 'BTCUSDT'), trade_interval='1m')
+
+
+@pytest.fixture(scope='module')
+def parsed_fixture(fixture_root):
+    # Authenticate the explicit native-hourly fixture once. Each test receives
+    # its own cache dictionary; values are immutable typed rows, and mutations
+    # replace only that test's map. CLI proofs still load actual ZIPs afresh.
+    source = SyntheticArchive(fixture_root)
+    for symbol in MEMBERS:
+        source.klines(symbol)
+        source.marks(symbol)
+        source.funding(symbol)
+    return source
+
+
 @pytest.fixture
-def source(fixture_root):
-    return SyntheticArchive(fixture_root)
+def source(fixture_root, parsed_fixture):
+    source = SyntheticArchive(fixture_root)
+    source._cache = dict(parsed_fixture._cache)
+    source._issued_streams = dict(parsed_fixture._issued_streams)
+    return source
 
 
 def issue_test_metadata(monkeypatch, *, repository, store, artifacts, common):
@@ -152,6 +192,164 @@ def fixture_artifacts(root):
     receipt = json.loads((root / 'c260.synthetic.json').read_bytes())
     return tuple((name, pin['path'], pin['byte_sha256'], (root / pin['path']).read_bytes())
                  for name, pin in receipt['artifacts'].items())
+
+
+def repin_synthetic_manifest(root, manifest):
+    """Keep generated fixture crossbindings exact; never a production receipt."""
+    manifest['digest'] = M.digest_of(manifest)
+    pit = json.loads((root / 'pit.json').read_bytes())
+    pit['manifest_digest'] = manifest['digest']; pit['digest'] = U.digest_of(pit)
+    pit_sha = write_json(root / 'pit.json', pit)
+    filters = json.loads((root / 'filters.json').read_bytes())
+    filters['pit_universe_sha256'], filters['pit_universe_digest'] = pit_sha, pit['digest']
+    coverage = json.loads((root / 'coverage.json').read_bytes())
+    coverage['manifest_digest'], coverage['pit_universe_digest'] = manifest['digest'], pit['digest']
+    coverage['digest'] = M.digest_of(coverage)
+    receipt = json.loads((root / 'c260.synthetic.json').read_bytes())
+    for name, doc in (('manifest', manifest), ('pit', pit), ('filters', filters), ('coverage', coverage)):
+        receipt['artifacts'][name]['byte_sha256'] = write_json(root / (name + '.json'), doc)
+    write_json(root / 'c260.synthetic.json', receipt)
+
+
+def write_test_zip(store, rel, lines):
+    path = store / rel; path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as output:
+        output.writestr(path.name[:-4] + '.csv', M.KLINE_HEADER + b'\n' + b'\n'.join(lines) + b'\n')
+    raw = path.read_bytes(); digest = hashlib.sha256(raw).hexdigest()
+    Path(str(path) + '.ok').write_text(digest)
+    return raw, digest
+
+
+def minute_points(hours=1):
+    return {START + i * MINUTE: Kline(START + i * MINUTE, 100. + i * .01,
+                                     102. + i * .01, 99. + i * .01, 101. + i * .01,
+                                     1e16 if i % 60 == 0 else 1.) for i in range(hours * 60)}
+
+
+def test_exact_sixty_minute_hour_ohlc_and_binary64_fsum():
+    minutes = minute_points()
+    hour, = _trade_hours(minutes).values()
+    assert hour.open_ms == START and hour.open == minutes[START].open
+    assert hour.high == max(row.high for row in minutes.values())
+    assert hour.low == min(row.low for row in minutes.values())
+    assert hour.close == minutes[START + 59 * MINUTE].close
+    assert hour.quote_volume == math.fsum(row.quote_volume for row in minutes.values())
+    naive = 0.
+    for row in minutes.values():
+        naive += row.quote_volume
+    assert hour.quote_volume != naive
+    assert set(hour.__dataclass_fields__) == {'open_ms', 'open', 'high', 'low', 'close', 'quote_volume'}
+
+
+@pytest.mark.parametrize('attack', ['missing_minute', 'missing_whole_hour', 'off_grid'])
+def test_derivation_rejects_partial_hours_internal_gaps_and_off_grid_minutes(attack):
+    points = minute_points(3)
+    if attack == 'missing_minute':
+        del points[START + 30 * MINUTE]
+    elif attack == 'missing_whole_hour':
+        for t in range(START + H, START + 2 * H, MINUTE): del points[t]
+    else:
+        points[START + 1] = points[START]
+    with pytest.raises(SourceIncomplete, match='TRADE_1M'):
+        _trade_hours(points)
+
+
+def test_minute_order_does_not_become_a_new_execution_path():
+    a = {START + i * MINUTE: Kline(START + i * MINUTE, 100., 101., 99., 100., 1.) for i in range(60)}
+    a[START + 10 * MINUTE] = replace(a[START + 10 * MINUTE], high=110.)
+    a[START + 20 * MINUTE] = replace(a[START + 20 * MINUTE], low=90.)
+    b = dict(a)
+    b[START + 10 * MINUTE] = replace(a[START + 20 * MINUTE], open_ms=START + 10 * MINUTE)
+    b[START + 20 * MINUTE] = replace(a[START + 10 * MINUTE], open_ms=START + 20 * MINUTE)
+    first, second = _trade_hours(a)[START], _trade_hours(b)[START]
+    assert first == second
+    rule = C.PACK.ExchangeRule(.01, .001, .001, 1., 1000.)
+    def fill(hour):
+        pos = C.PACK.open_position(side='long', entry_index=0, entry_time_ms=START, reference_open=100.,
+            atr_entry=1., risk_cash=20., leverage_notional_cap=3000., management={'stop_atr': 2.}, rule=rule)
+        return C.PACK.walk_bar(pos, hour.pack(), 0, {'stop_atr': 2.}, rule)
+    assert fill(first) == fill(second) and fill(first)[0].reason == 'stop'
+
+
+@pytest.mark.parametrize('attack', ['minute_gap', 'duplicate', 'bad_close_time', 'ignore_native_hourly'])
+def test_issued_minute_archive_integrity_and_no_native_fallback(tmp_path, monkeypatch, attack):
+    root = make_fixture(tmp_path / 'fixture', hours=2, members=('ALT00USDT', 'BTCUSDT'), trade_interval='1m')
+    manifest = json.loads((root / 'manifest.json').read_bytes())
+    record = next(r for r in manifest['files'] if r['symbol'] == 'BTCUSDT' and r['series'] == 'klines')
+    _, _, payload = M.read_archive(str(root / 'store' / record['path']), record['path'])
+    lines = payload.splitlines()[1:]
+    if attack in ('minute_gap', 'bad_close_time'):
+        if attack == 'minute_gap': del lines[30]
+        else:
+            cells = lines[0].split(b','); cells[6] = str(START + MINUTE).encode(); lines[0] = b','.join(cells)
+        raw, digest = write_test_zip(root / 'store', record['path'], lines)
+        record.update(sha256=digest, bytes=len(raw), rows=len(lines))
+        record['source']['archive_checksum'] = digest
+    elif attack == 'duplicate':
+        rel = 'um/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2025-01-01.zip'
+        write_test_zip(root / 'store', rel, lines[:60])
+        manifest['files'].append(M.scan_archive(str(root / 'store' / rel), rel))
+    else:
+        # Schema/checksum-valid but deliberately nonsensical native1h prices.
+        # The production type must never open or interpret this fallback.
+        native = f'{START},NATIVE_1H_MUST_NOT_BE_READ,101,99,100,1,{START+H-1},1,1,1,1,0'.encode()
+        manifest['files'].append(archive(root / 'store', 'BTCUSDT', 'klines', 1, [native]))
+    manifest['files'].sort(key=lambda r: r['path'])
+    repin_synthetic_manifest(root, manifest)
+    issue_test_metadata(monkeypatch, repository=root, store=root / 'store',
+                        artifacts=fixture_artifacts(root), common=tmp_path / 'common')
+    original, opened = M.read_archive, []
+    def watch(path, rel):
+        opened.append(rel)
+        return original(path, rel)
+    monkeypatch.setattr(M, 'read_archive', watch)
+    with AUTH.development_authority() as cap:
+        source = DevelopmentArchive(cap)
+        if attack == 'ignore_native_hourly':
+            bars = source.klines('BTCUSDT')
+            assert len(bars) == 2 and bars[START].open == 100.
+            assert all(M.archive_meta(rel)['interval'] == '1m' for rel in opened)
+        else:
+            with pytest.raises((SourceIncomplete, M.ManifestError), match='GAP|DUPLICATE_SOURCE_COORDINATE|close_time'):
+                source.klines('BTCUSDT')
+
+
+def test_production_type_refuses_native_only_trade_fixture_without_reading_it(fixture_root, tmp_path, monkeypatch):
+    issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
+                        artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
+    monkeypatch.setattr(M, 'read_archive', lambda *args: pytest.fail('native1h fallback read'))
+    with AUTH.development_authority() as cap:
+        source = DevelopmentArchive(cap)
+        with pytest.raises(SourceIncomplete, match='MISSING_REQUIRED_STREAM'):
+            source.klines('BTCUSDT')
+
+
+def test_production_minute_derivation_excludes_april_poison_before_source_read(tmp_path, monkeypatch):
+    root = make_fixture(tmp_path / 'fixture', hours=1, members=('ALT00USDT', 'BTCUSDT'), trade_interval='1m')
+    manifest = json.loads((root / 'manifest.json').read_bytes())
+    manifest['files'] = [r for r in manifest['files'] if not (r['symbol'] == 'BTCUSDT' and r['series'] == 'klines')]
+    for month, start in ((3, END - H), (4, END)):
+        rows = []
+        for minute in range(60):
+            t = start + minute * MINUTE
+            price = '100' if month == 3 else 'FORBIDDEN_OUTSIDE_DEVELOPMENT'
+            rows.append(f'{t},{price},{price},{price},{price},1,{t+MINUTE-1},1,1,1,1,0'.encode())
+        manifest['files'].append(archive(root / 'store', 'BTCUSDT', 'klines', month, rows, interval='1m'))
+    manifest['files'].sort(key=lambda r: r['path'])
+    repin_synthetic_manifest(root, manifest)
+    issue_test_metadata(monkeypatch, repository=root, store=root / 'store',
+                        artifacts=fixture_artifacts(root), common=tmp_path / 'common')
+    original, opened = M.read_archive, []
+    def watch(path, rel):
+        assert '2025-04' not in rel
+        opened.append(rel)
+        return original(path, rel)
+    monkeypatch.setattr(M, 'read_archive', watch)
+    with AUTH.development_authority() as cap:
+        source = DevelopmentArchive(cap)
+        bars = source.klines('BTCUSDT')
+        assert tuple(bars) == (END - H,) and bars[END - H].close == 100.
+        assert bars[END - H].quote_volume == 60. and len(opened) == 1
 
 
 def first_ranking(source, day=31):
@@ -487,7 +685,8 @@ def test_pre_entry_off_tick_skips_in_original_rank_but_exposed_exit_fails(source
     assert lot.symbol in book.lots and book.report()['unresolved_exposures']
 
 
-def test_issued_factory_actual_cli_uses_same_checksum_book_and_shared_single_spend(fixture_root, tmp_path, monkeypatch):
+def test_issued_factory_actual_cli_uses_same_checksum_book_and_shared_single_spend(minute_fixture_root, tmp_path, monkeypatch):
+    fixture_root = minute_fixture_root
     issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
                         artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
     # The production path must never read or relabel a synthetic receipt.
@@ -511,6 +710,8 @@ def test_issued_factory_actual_cli_uses_same_checksum_book_and_shared_single_spe
     report = json.loads(out.read_text())
     assert not report['synthetic_only'] and report['development_source_authorized']
     assert report['format'] == 'zb-c260-development-research/1'
+    assert report['trade_bar_derivation'] == 'C260_DEV_TRADE_1M_EXACT60_TO_1H_V1'
+    assert report['period_coverage_is_not_native_trade_1h_proof']
     assert report['development_authority']['implementation_head'] == 'a' * 40
     assert report['economic_development_verdict'] == 'REJECT'
     assert report['forward_state'] == 'VETOED_BEFORE_FORWARD_READ'
@@ -535,7 +736,8 @@ def test_production_factory_requires_actual_issued_object_before_artifact_access
         DevelopmentArchive(fake)
 
 
-def test_issued_source_expiry_copy_scope_and_cache_cannot_reopen(fixture_root, tmp_path, monkeypatch):
+def test_issued_source_expiry_copy_scope_and_cache_cannot_reopen(minute_fixture_root, tmp_path, monkeypatch):
+    fixture_root = minute_fixture_root
     issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
                         artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
     with AUTH.development_authority() as cap:
@@ -557,7 +759,8 @@ def test_issued_source_expiry_copy_scope_and_cache_cannot_reopen(fixture_root, t
         R.DevelopmentBook(source, capital=2000)
 
 
-def test_production_metadata_and_issued_cached_rows_cannot_mutate_or_be_replaced(fixture_root, tmp_path, monkeypatch):
+def test_production_metadata_and_issued_cached_rows_cannot_mutate_or_be_replaced(minute_fixture_root, tmp_path, monkeypatch):
+    fixture_root = minute_fixture_root
     issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
                         artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
     with AUTH.development_authority() as cap:
@@ -598,7 +801,8 @@ def test_cli_preflights_export_before_authority_or_one_shot_claim(tmp_path, monk
         assert out.read_bytes() == b'previous record'
 
 
-def test_export_failure_preserves_canonical_record_published_inside_authority(fixture_root, tmp_path, monkeypatch):
+def test_export_failure_preserves_canonical_record_published_inside_authority(minute_fixture_root, tmp_path, monkeypatch):
+    fixture_root = minute_fixture_root
     issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
                         artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
     # Publication-only failure drill. The full economic replay and its exact
@@ -653,7 +857,8 @@ def test_source_file_oserror_is_incomplete_and_preserves_known_exposure(source, 
         assert report['unresolved_exposures'] == []
 
 
-def test_missing_raw_cache_cli_persists_canonical_data_incomplete_before_revoking_cap(fixture_root, tmp_path, monkeypatch):
+def test_missing_raw_cache_cli_persists_canonical_data_incomplete_before_revoking_cap(minute_fixture_root, tmp_path, monkeypatch):
+    fixture_root = minute_fixture_root
     issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
                         artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
     monkeypatch.setattr(M, 'read_archive', lambda *args: (_ for _ in ()).throw(
@@ -687,6 +892,35 @@ def test_actual_frozen_v3_wf_only_metadata_derives_development_without_market_or
         assert source.filters.captured_at == '2024-12-13T04:44:48Z'
         expected = next(w for w in reversed(source.pit['weeks']) if w['monday_ms'] <= START)['books']['crypto']['members']
         assert source.eligible(START) == tuple(s for s in expected if s in source.filters.eligible_symbols)
+        assert source.source_reads == [] and list(store.iterdir()) == []
+        # Metadata/grid only. The old v3 period profile's logical1h request did
+        # not establish that native hourly trade files actually existed.
+        active = next(w for w in reversed(source.pit['weeks']) if w['monday_ms'] <= START)
+        weeks = [active, *(w for w in source.pit['weeks'] if START < w['monday_ms'] < END)]
+        required = {'BTCUSDT'} | {s for w in weeks for s in w['books']['crypto']['members']
+                                  if s in source.filters.eligible_symbols}
+        native = [record for record in source.manifest['files'] if record['symbol'] in required
+                  and record['series'] == 'klines' and record['interval'] == '1h' and record['rows']
+                  and record['last_open_ms'] >= START and record['first_open_ms'] < END]
+        assert len(required) == 63 and native == []
+        selected = []
+        def intercept(record, start, end):
+            assert (start, end) == (START, END)
+            selected.append(record)
+            return (), True  # stop before ANY raw price/cache byte read
+        monkeypatch.setattr(source, '_selected_rows', intercept)
+        for symbol in required:
+            records = source._records(symbol, 'klines')
+            assert len(records) == 3 and all(record['interval'] == '1m' for record in records)
+            assert min(record['first_open_ms'] for record in records) == START
+            assert max(record['last_open_ms'] for record in records) == END - MINUTE
+            assert sum(record['rows'] for record in records) == 90 * 1440
+            # Exercise the actual production stream route, not only its filter
+            # helper. The former native1h assumption would visit zero paths.
+            with pytest.raises(SourceIncomplete, match='MISSING_REQUIRED_STREAM'):
+                source.klines(symbol)
+        assert len(selected) == 189 and sum(record['rows'] for record in selected) == 8_164_800
+        assert all(record['interval'] == '1m' and record['series'] == 'klines' for record in selected)
         assert source.source_reads == [] and list(store.iterdir()) == []
 
 
