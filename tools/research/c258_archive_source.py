@@ -8,6 +8,7 @@ from typing import Mapping
 from decimal import Decimal
 import hashlib
 import json
+import math
 
 from tools.research import cross_sectional_relative_strength_continuation_c258_stagea as C
 from tools.research.authority_v6_runner import _read_record_rows
@@ -55,6 +56,13 @@ class SourceRows:
     end_ms: int
     rows: tuple[tuple, ...]
     records: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class FundingObservation:
+    nominal_ms: int
+    rate: float
+    interval_hours: int | None
 
 
 def _ms(value: str) -> int:
@@ -144,6 +152,56 @@ class C258ArchiveSource:
                 raise C.IncompleteAuthority("invalid price tick")
             by_symbol[symbol] = (filters, tick)
         return members, by_symbol
+
+    def candles(self, *, symbol: str, fold: str, start_ms: int, end_ms: int
+                ) -> tuple[C.Bar, ...]:
+        source = self.load(symbol=symbol, stream="klines", fold=fold,
+                           start_ms=start_ms, end_ms=end_ms)
+        bars = []
+        for row in source.rows:
+            if len(row) != 12:
+                raise C.IncompleteAuthority("invalid canonical candle width")
+            bar = C.Bar(int(row[0]), *(float(row[index]) for index in (1, 2, 3, 4, 7)))
+            bar.validate()
+            if int(row[6]) != bar.open_ms+C.HOUR_MS-1:
+                raise C.IncompleteAuthority("canonical candle close time changed")
+            bars.append(bar)
+        return tuple(bars)
+
+    def marks(self, *, symbol: str, fold: str, start_ms: int, end_ms: int
+              ) -> tuple[C.MarkClose, ...]:
+        source = self.load(symbol=symbol, stream="markPriceKlines", fold=fold,
+                           start_ms=start_ms, end_ms=end_ms)
+        marks = []
+        for row in source.rows:
+            if len(row) != 12 or int(row[6]) != int(row[0])+C.HOUR_MS-1:
+                raise C.IncompleteAuthority("invalid canonical mark close")
+            price = float(row[4])
+            if not math.isfinite(price) or price <= 0:
+                raise C.IncompleteAuthority("invalid source mark price")
+            # Keep Binance's actual close timestamp, not its candle open time.
+            marks.append(C.MarkClose(int(row[6]), price))
+        return tuple(marks)
+
+    def funding(self, *, symbol: str, fold: str, start_ms: int, end_ms: int
+                ) -> tuple[FundingObservation, ...]:
+        source = self.load(symbol=symbol, stream="fundingRate", fold=fold,
+                           start_ms=start_ms, end_ms=end_ms)
+        events = []
+        for row in source.rows:
+            if len(row) == 3:
+                interval, rate = int(row[1]), float(row[2])
+                if interval <= 0 or interval > 24:
+                    raise C.IncompleteAuthority("invalid declared funding interval")
+            elif len(row) == 2:
+                # API rates do not declare cadence; never invent an 8h default.
+                interval, rate = None, float(row[1])
+            else:
+                raise C.IncompleteAuthority("invalid funding observation")
+            if not math.isfinite(rate):
+                raise C.IncompleteAuthority("non-finite source funding")
+            events.append(FundingObservation(int(row[0]), rate, interval))
+        return tuple(events)
 
     def load(self, *, symbol: str, stream: str, fold: str,
              start_ms: int, end_ms: int) -> SourceRows:
