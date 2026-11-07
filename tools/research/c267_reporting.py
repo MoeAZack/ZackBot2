@@ -44,7 +44,10 @@ def report(book):
     expected=tuple(v for components in expected_by_attempt.values() for v in components)
     audit=book.cash.reconciliation(expected_components=expected)
     individual=all(book.cash._exact(components)==book.cash.exact_components(identifier) for identifier,components in expected_by_attempt.items())
-    reconciled=audit['component_identity_reconciled'] and audit['expected_component_total_reconciled'] and individual
+    cash_ids={event.attempt_id for event in book.cash.events}
+    owned_ids=set(expected_by_attempt)
+    reconciled=(audit['component_identity_reconciled'] and audit['expected_component_total_reconciled'] and individual
+        and cash_ids==owned_ids and len(owned_ids)==len(book.lots))
     all_rows=[];closed=[];integrity=[]
     for lot in book.lots:
         sizing=lot.sizing
@@ -136,6 +139,7 @@ def report(book):
         'drawdown_recovery_ms':recovery,'return_drawdown_ratio':math.fsum(rs)/gate_dd if gate_dd>0 else None,
         'monthly_including_zero':months,'weekly_including_zero':weeks,'symbol_net_R':by_symbol,'regime_table':regime_table,
         'cash_reconciled':reconciled,'cash_audit':audit,'expected_cash_components_from':'ALL actual lot.fills and lot.funding, including OPEN/PROTECTION_FAILURE; independently compared per attempt and global',
+        'exact_cash_attempt_identity_set_matches_lots':cash_ids==owned_ids and len(owned_ids)==len(book.lots),
         'known_current_cash':book.cash.settled_cash,'known_current_cash_exact':book.cash.settled_cash_exact,
         'current_marked_equity':current_equity,'current_mark_prices':current_marks,'unknown_current_marks':unknown_marks,
         'unresolved_exposure':[r for r in all_rows if r['close_ms'] is None],
@@ -144,11 +148,11 @@ def report(book):
         'admitted':len(book.lots),'skipped':sum(len(v['skipped']) for v in book.decisions),'zero_trade':sum(not v['admitted'] for v in book.decisions),
         'hourly_equity':list(hours.values()),'phase_equity':book.snapshots,'cash_events':[vars(e) for e in book.cash.events],
         'book_BTC_correlation':corr,'book_BTC_beta':beta,'BTC_alignment_complete':not gaps,'BTC_interval_gaps':gaps,
+        'required_report_complete':not gaps and corr is not None and beta is not None,
         'full_book_hourly_return_count':len(returns),'fraction_hours_exposed':sum(v['active_count']>0 for v in hours.values())/len(hours) if hours else None,
         'max_concurrent_positions':max((v['active_count'] for v in hours.values()),default=0),
         'cadence_diagnostics':book.observer.cadence_diagnostics,
-        'source_coefficient_coverage':[{'decision_ms':d,'status':frame.status,'fit_count':len(frame.fits),'history_ineligible':frame.history_ineligible}
-            for d,frame in book.provider._frames.items()],
+        'source_coefficient_coverage':'SEE_TOP_LEVEL_ONCE_PER_SOURCE_PROVIDER_TABLE',
         'comparison_packets':{'BOL_DSR_C258':'UNAVAILABLE_NO_AUTHORIZED_OTHER_STRATEGY_PACKET; not zero/no invented comparison'}}
 
 
@@ -161,5 +165,6 @@ def development_checks(base,stress):
         'median_monthly_closed_gte_8':bool(counts) and B.E.statistics.median(counts)>=8,
         'stress_mean_R_positive':stress['mean_R'] is not None and stress['mean_R']>0,
         'gate_drawdown_R_lte_60':base['gate_drawdown_R']<=60,
-        'complete':base['data_complete'] and stress['data_complete']}
+        'complete':base['data_complete'] and stress['data_complete']
+            and base.get('required_report_complete',False) and stress.get('required_report_complete',False)}
     return checks

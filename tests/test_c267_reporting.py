@@ -41,3 +41,18 @@ def test_cash_pf_and_dev_worse_drawdown_remain_original259_not266_r_pf_or_closed
     base={'monthly_including_zero':{'a':{'closed':8}},'closed_count':120,'symbols':8,'gross_R':1.,'mean_R':.1,
         'profit_factor':1.2,'gate_drawdown_R':70.,'data_complete':True}
     assert R.development_checks(base,base)['gate_drawdown_R_lte_60'] is False
+
+
+def test_coherent_unowned_zero_total_cash_attempts_cannot_pass_source_audit(source):
+    book,frame=setup(source);lot,_=book.admit(frame,'ALT00USDT',ENTRY);book.last_boundary=ENTRY
+    book.cash.append(R.B.K.CashEvent(ENTRY+H,'MARK','A','ghost-a',0,(1e-9,),'ghost-a'))
+    book.cash.append(R.B.K.CashEvent(ENTRY+H,'MARK','Z','ghost-b',0,(-1e-9,),'ghost-b'))
+    report=R.report(book)
+    assert book.cash.reconciliation()['component_identity_reconciled']
+    assert report['cash_reconciled'] is False and not report['exact_cash_attempt_identity_set_matches_lots']
+
+
+def test_missing_benchmark_required_report_cannot_pass_dev_complete():
+    base={'monthly_including_zero':{'a':{'closed':8}},'closed_count':120,'symbols':8,'gross_R':1.,'mean_R':.1,
+        'profit_factor':1.2,'gate_drawdown_R':1.,'data_complete':True,'required_report_complete':False}
+    assert R.development_checks(base,base)['complete'] is False

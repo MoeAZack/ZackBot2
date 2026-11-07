@@ -9,6 +9,7 @@ import math
 import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import statistics
 
 from tools.research import c267_authority as A
 from tools.research import c267_source as S
@@ -36,6 +37,22 @@ def evaluate_books(provider):
     checks=R.development_checks(primary,stress)
     incomplete=not primary['data_complete'] or not stress['data_complete']
     verdict='DATA_INCOMPLETE' if incomplete else 'DEVELOPMENT_SURVIVOR_FORWARD_STILL_LOCKED' if all(checks.values()) else 'REJECT'
+    fit_table=[];coverage=[]
+    for d,frame in sorted(provider._frames.items()):
+        coverage.append({'decision_ms':d,'status':frame.status,'statistical_fit_count':len(frame.fits),'history_ineligible':frame.history_ineligible})
+        for symbol,fit in frame.fits:
+            native=source.native_candles(symbol)  # Already authenticated cached stream, no new archive read.
+            prior=tuple(float(native[t].quote_volume) for t in range(d-25*B.H,d-B.H,B.H))
+            median=statistics.median(prior);decision_qv=float(native[d-B.H].quote_volume)
+            fit_table.append({'decision_ms':d,'symbol':symbol,'side':fit.side,'beta0':fit.beta0,'gamma':fit.gamma,
+                't_gamma':fit.t_gamma,'forecast':fit.forecast,'residual_d':fit.residual_d,'impulse_threshold':fit.impulse_threshold,
+                'btc_impulse':math.log(fit.btc_decision_price/fit.prior_btc_closes[-1].price),
+                'residual_consumption_ratio':fit.residual_d/fit.forecast if fit.forecast else None,
+                'decision_quote_volume':decision_qv,'preceding_24h_median_quote_volume':median,
+                'decision_liquidity_ratio':decision_qv/median if median else None,
+                'liquidity_diagnostic_status':'ZERO_BASELINE' if not median else 'DEFINED',
+                'qualifies_statistically':fit.qualifies,'decision_liquidity_gate':decision_qv>0 and decision_qv>=median,
+                'window_identity_sha256':fit.window_identity_sha256})
     return {'candidate_id':267,'side':source.side,'alpha_lineage':259,'proposal_sha256':S.C.PREREG_SHA256,
         'model':{'path':S.C.MODEL_PATH,'sha256':S.C.MODEL_SHA256,'conditional_research_model':True,'actual_testnet_fee_and_eligibility_ledger_required_before_final_qualification':True},
         'source_digests':dict(source.digests),'source_reads':source.source_reads,'source_gaps_unavailable_prefixes':source.known_gaps,
@@ -44,6 +61,8 @@ def evaluate_books(provider):
         'funding_only_old_liability_tail':{'exclusive_end_ms':source.funding_tail_exclusive_end_ms,
             'fixed_cash_observation_ms':source.end_ms+15000,'no_new_trade_price_mark_or_nextfold_cash':True},
         'economic_development_verdict':verdict,'development_gates':checks,'primary':primary,'stress':stress,
+        'all_statistically_fit_proposals_once':fit_table,'source_fit_coverage_once':coverage,
+        'fit_table_scope':'ALL alreadycomputed source impulse-hour fits inclnonqualifying/skipped symbols; no721-price tapes. Shared-noimpulse hours explicitly NOT_ESTIMATED. Provider shared across isolated diagnostic capitals; primary verdict unchanged.',
         'stress_same_admitted_primary_quantity_frozen_risk_and_natural_funding':True,'diagnostic_isolated_capitals_nonselecting':diagnostics,
         'bootstrap':inference,'statistics_specification':{'draws':20000,'block_expected_trades':21,'side_seeds':SCI.SEEDS[source.side],
             'p_threshold':'.05/(267*2)','historical_global_variant_total':'UNKNOWN','global_FWER_claimed':False,

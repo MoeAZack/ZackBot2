@@ -107,6 +107,11 @@ class SideBook:
         if t+12*H>self.source.end_ms:return None,'SPLIT_END_VETO'
         fit=dict(frame.fits).get(symbol)
         if fit is None or not fit.qualifies or fit.side!=self.side:raise S.C.C267Locked('C267_FIXED_QUALIFYING_SOURCE_FIT_REQUIRED')
+        native=self.source.native_candles(symbol);d=frame.decision_ms
+        try:preceding=tuple(float(native[u].quote_volume) for u in range(d-25*H,d-H,H));decision_qv=float(native[d-H].quote_volume)
+        except KeyError as exc:raise S.SourceIncomplete('C267_DECISION_LIQUIDITY_HISTORY_GAP') from exc
+        if decision_qv<=0:return None,'DECISION_QUOTE_VOLUME_NOT_POSITIVE'
+        if not K.liquidity_ratio_diagnostic(decision_qv,preceding)['eligible_original_gate']:return None,'DECISION_LIQUIDITY_BELOW_MEDIAN'
         lifecycle=K.assess_current_lifecycle(symbol=symbol,contract_identity=f'BINANCE_USDM_PERPETUAL_{symbol}',entry_ms=t,scheduled_due_ms=t+12*H)
         if lifecycle.veto:return None,lifecycle.reason
         reference=self.source.exact_native_bar(symbol,t).open;filters,_=self.source.filters.rules[symbol]
@@ -123,9 +128,6 @@ class SideBook:
             side_book_equity=equity,entry_impact_asof_ms=t,entry_volume_rows=rows,reserve=reserve)
         if sized is None:return None,'EXCHANGE_OR_KNOWN_RISK_INFEASIBLE'
         if min(sized.quantity*stop,sized.quantity*target)<filters.min_notional:return None,'PROTECTION_EXIT_MIN_NOTIONAL'
-        native=self.source.native_candles(symbol);d=frame.decision_ms
-        try:preceding=tuple(float(native[u].quote_volume) for u in range(d-25*H,d-H,H));decision_qv=float(native[d-H].quote_volume)
-        except KeyError as exc:raise S.SourceIncomplete('C267_DECISION_LIQUIDITY_HISTORY_GAP') from exc
         if not K.liquidity_admission(decision_quote_volume=decision_qv,preceding_quote_volumes=preceding,
             raw_entry_notional=sized.raw_notional,causal_quote_volume_24h=sized.quote_volume_24h):return None,'LIQUIDITY_INFEASIBLE'
         if (sum((l.sizing.initial_risk_cash for l in self.active.values()),D(0))+sized.initial_risk_cash>equity*D('.03')
