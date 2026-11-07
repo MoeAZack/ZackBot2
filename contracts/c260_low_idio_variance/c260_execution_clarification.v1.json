@@ -1,0 +1,25 @@
+{
+  "format": "zb-c260-pre-read-execution-clarification/1",
+  "candidate_id": 260,
+  "kind": "PRE_READ_EXECUTION_CONTRACT_CLARIFICATION_NOT_MECHANICAL_PINNING",
+  "status": "PENDING_EXACT_BYTE_INDEPENDENT_REVIEW_AND_PROTECTED_ACCEPTANCE",
+  "proposal_path": "contracts/c260_low_idio_variance/c260_prereg_proposal.v1.json",
+  "proposal_byte_sha256": "8b14aa5ebb554728462d759c35eae215220855b7933f5f069adbeb0d1a262d48",
+  "defect": "The inherited PACK stop-only position sets a binary64 raw stop but rounds only eventual executable fills. The proposal's inherited adverse tick rules did not explicitly define a tick-valid protective trigger. No real C260 rows, evaluation identity or economics have been opened; synthetic fixture checks exposed this implementation gap.",
+  "long_trigger": {
+    "raw_stop": "Compute binary64 raw_stop=entry_exec-2.0*ATR24 exactly as the frozen stop-only position; entry_exec is the adverse tick-valid executable entry at the applicable base or stressed slippage.",
+    "rounding": "trigger=floor(Decimal(str(raw_stop))/Decimal(str(tick)))*Decimal(str(tick)). Floor is the inherited adverse SELL direction: the trigger is never rounded toward entry to improve the modeled exit.",
+    "protection": "Require a positive tick-valid trigger below executable entry and below the causally completed entry mark. A stop that cannot be placed is an explicit pre-exposure protection skip; do not enter and manufacture protection afterward.",
+    "sizing": "Recalculate conservative stressed round-trip modeled initial risk, quantity floor, gross/open-risk constraints and stop feasibility from this exact trigger. No quantity upsize, maxQty clipping or use of a narrower unrounded stop to understate risk.",
+    "lifecycle": "Use that immutable trigger for gap/range detection, mandatory stop execution and all reported risk. Keep 72-hour due-open exit, no target/partials/adds/trailing. Mandatory raw exit/reference or exchange-rule failures retain exposure and known costs as INCOMPLETE."
+  },
+  "raw_price_and_quantity_validity": "Authenticate raw reference prices against the frozen filter tick before adverse executable-price rounding. Pre-exposure infeasibility is an explicit skip; a mandatory exposed exit failure is INCOMPLETE. Use exact Decimal filter arithmetic or explicitly bounded absolute-error checks with relative tolerance zero; a large quantity must not acquire an off-step allowance from relative tolerance.",
+  "funding_mark": "Match accepted C259 chronological phase semantics using the completed raw mark bar at open_ms=funding_time-1h and its close, not the bar an additional hour earlier. Entry-time funding is excluded; funding precedes actual gap/due exits; a prior-range exit at that boundary precedes its funding. No assumed zero or eight-hour default.",
+  "phase_equity": "Every recorded cashflow phase retains causally marked remaining exposure. Pending prior-range exits use their actual exit reference rather than a later post-stop bar close; surviving exposure uses the causally completed mark. A new cashflow timestamp never resets open movement to zero or combines fresh settled cash with stale surviving-lot marks.",
+  "source_integrity": "Authenticate source byte digest and length before economic parsing. Inspect only timestamp envelopes for clipping; economic fields outside the authorized window remain uninterpreted. Unbound sources cannot produce evidence or consume a real evaluation identity.",
+  "trial_disclosure": "One preregistered primary, no real outcome comparison or parameter search. Retain this pre-read clarification and the original proposal permanently. This is not a post-result adjustment, a second evaluated variant or a qualification claim.",
+  "unchanged": "Signal, side, universe, ranks, decision/entry clocks, stop distance parameter, 72-hour holding, costs, capital books, risk fractions/caps, economic sample/PF/mean/CI/p-screen gates, bootstrap, DD tiers and sealed-window discipline remain unchanged. Independent exact-head review and protected source/code/registration gates remain required before real evaluation.",
+  "execution_authorized": false,
+  "paper_or_live_authority_granted": false,
+  "promotable": false
+}

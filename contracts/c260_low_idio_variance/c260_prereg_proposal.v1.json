@@ -1,0 +1,138 @@
+{
+  "format": "zb-c260-prereg-proposal/1",
+  "candidate_id": 260,
+  "candidate_key": "low_idiosyncratic_variance_long_1h",
+  "status": "EXACT_PROPOSAL_PENDING_ROOT_REVIEW_AND_PROTECTED_REGISTRATION",
+  "default_off": true,
+  "execution_authorized": false,
+  "source_authority_bound": false,
+  "promotable": false,
+  "hypothesis": "Test whether a single fixed daily long selection of low BTC-residual-variance perpetuals has positive after-cost economics. This is a neutral selection hypothesis, not a defensive or alpha claim, return-rank, BTC-impulse, funding-shock or technical-breakout signal. Long market exposure and BTC beta must be disclosed.",
+  "selection_disclosure": {
+    "c260_market_rows_read": false,
+    "c260_development_forward_or_holdout_results_read": false,
+    "zero_prior_outcome_knowledge_claimed": false,
+    "prior_exposure": "During metadata inspection, research_evidence/ledger/candidate_risk_register.v1.json exposed numerical summaries of prior families. Those fields were not used to choose this family, parameters, windows or gates; no prior-family outcome packet or raw market file was opened. The exposure is retained rather than represented as zero prior knowledge.",
+    "uniqueness_basis": "Preregistration identity and strategies.py signal-function inventories contain no low-idiosyncratic-variance selection family. This is a bounded metadata check, not a claim of exhaustive economic independence.",
+    "search": "One hypothesis, one long primary, no short variant, parameter grid, optimization, retuning, ranked hypothesis list or holdout rescue."
+  },
+  "trial_accounting": {
+    "reserved_family_index": 260,
+    "new_primary_trials": 1,
+    "new_parameter_variants": 0,
+    "root_pre_read_revision": "Before any C260 row or result was read, root reserved one primary and removed the unevaluated draft target. The sole frozen proposal uses only a fixed 2ATR stop and 72h time exit. No alternate C260 outcome or tuned variant exists.",
+    "diagnostic_capitals_are_not_selectable_hypotheses": true,
+    "nonpromotable_benchmarks": ["cash", "BTC_USDT_buy_and_hold"],
+    "benchmarks_cannot_select_rescue_or_replace_primary": true,
+    "protected_prior_trial_count": null,
+    "protected_prior_trial_ledger_sha256": null,
+    "unlock_requires_exact_prior_count_and_ledger_digest": true,
+    "numbered_family_p_screen": "One C260 cell: one-sided centered-bootstrap p<=0.05/260 in development and aggregate forward. This is explicitly a NON-GLOBAL-FWER numbered-family screen, not proof of familywise error control over every historical variant/control/adaptive choice.",
+    "rule": "Append this primary and every control attempt; preserve all prior families, variants, spends, failures and incomplete runs. Family index 260 is not asserted to equal the total number of tested variants. Raw/bootstrap/Holm diagnostics cannot be called confirmatory familywise-error control."
+  },
+  "stage_a_authority_proposal": {
+    "independent_c260_receipt_required": true,
+    "protected_execution_head": null,
+    "code_dependency_closure_sha256": null,
+    "manifest": {"path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz", "byte_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a"},
+    "pit": {"path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json", "byte_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41"},
+    "filters": {"path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json", "byte_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9"},
+    "coverage": {"path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json", "byte_sha256": "eeb985475e553602321151bfa973e338f943ef3c8181836c220c46862e1a4c65"},
+    "rule": "A new C260 protected receipt must authenticate these existing artifacts, exact content crossbindings, actual bounded source queries/pages and accepted implementation closure before any source-row or identity read. This proposal does not unlock causal-v4 or C257/C258/C259. No calendar-month-end substitute for actual page bounds; clip before economic parsing."
+  },
+  "windows_half_open_utc": {
+    "development": ["2025-01-01T00:00:00Z", "2025-04-01T00:00:00Z"],
+    "wf1": ["2025-04-01T00:00:00Z", "2025-10-01T00:00:00Z"],
+    "wf2": ["2025-10-01T00:00:00Z", "2026-04-01T00:00:00Z"],
+    "wf3": ["2026-04-01T00:00:00Z", "2026-09-28T00:00:00Z"],
+    "sealed_holdout": ["2026-09-28T00:00:00Z", "2026-11-05T00:00:00Z"],
+    "stage_order": "Development veto precedes every forward read. Stage A cannot read or admit source windows intersecting the sealed holdout. The holdout remains locked behind an independently accepted v6 closure, fresh C260 one-spend Stage-B receipt and explicit root ruling; v5 never authorizes its rows.",
+    "reset": "Every fold/capital resets cash, positions, rolling fit, ATR and drawdown diagnostics. Preserve global chronological forward closed-R and stitched marked-equity drawdown without carrying fold capital into sizing. No position, return or fit crosses folds. No admission whose scheduled exit is at or after the fold end."
+  },
+  "signal": {
+    "timeframe_ms": 3600000,
+    "decision_schedule": "00:00 UTC daily; d is the completed-bar availability boundary, not Binance raw close d-1ms",
+    "universe": "Full effective PIT-v8 crypto.members in original artifact order, followed by exact frozen filter-v3 snapshot eligibility; BTCUSDT is an independent reference stream, never a tradable. No CORE20 truncation or current/survivor/backfill universe.",
+    "fit": "For each eligible symbol, require 721 contiguous closed prices wholly inside the fold. Compute 720 binary64 log returns r_t=log(close_t/close_(t-1h)), ending at d. Using math.fsum two-pass centered moments, fit y=alpha+beta*x where x is contemporaneous BTC return and y the symbol return. beta=fsum((x-mean_x)*(y-mean_y))/fsum((x-mean_x)^2); alpha=mean_y-beta*mean_x. Zero/nonfinite BTC sum of squares means no signal for the cohort. Score=math.fsum((y-alpha-beta*x)^2)/718. No return-direction, momentum, funding-sign or BTC-direction filter.",
+    "ranking": "Ascending finite nonnegative score; exact score ties by Unicode symbol order. Retain full ranks. At most one actual long admission per decision, walking same-side lower ranks past occupied or infeasible symbols without reranking or reallocating to another side.",
+    "warmup": "Fold-reset 720-return fit and Wilder ATR24; no entry until both are causally complete. Missing prior signal history is an explicit causal skip, never a future-availability filter. Record every decision, warmup, filter, occupied, cost, sizing and incomplete-data reason.",
+    "entry": "Fixed next hourly open at d+1h. Never inspect entry-bar high/low/close before admission; any eventual live dispatcher requires independently accepted latency/quote/provenance handling, not a backdated observation."
+  },
+  "book_and_execution": {
+    "primary_capital_usd": 2000,
+    "diagnostic_capitals_usd": [1000, 3000, 4000],
+    "diagnostic_capitals_cannot_veto_select_or_rescue_primary": true,
+    "risk_fraction": 0.01,
+    "max_gross_multiple": 1.5,
+    "max_concurrent_positions": 3,
+    "max_positions_per_symbol": 1,
+    "max_open_modeled_risk_fraction": 0.03,
+    "holding_hours": 72,
+    "stop": "2*WilderATR24 from completed decision bars, fixed at the accepted causal engine's adverse executable entry; exact inherited adverse tick rules.",
+    "full_target_r": null,
+    "path": "No target or partial target exists. Reuse accepted causal PACK stop-only open_position/walk_bar/time_exit fill primitives, with the accepted C259 chronological funding phases. Sort by timestamp then: prior-bar intrabar stop exits, funding on remaining pre-existing exposure, gap-stop at this raw open, fixed 72h full due-open exit, protection-failure cleanup, new admissions, marks. A due-open exit uses only that raw open and precedes every later high/low in its bar. Within phase use symbol then immutable attempt ID. No BE, trailing, pyramids, adds or favorable-path stop suppression.",
+    "sizing": "Current isolated marked equity = settled cash plus every remaining position's causal marked reference movement. Settle signed funding, fees, adverse slippage and impact exactly once in chronological phases. Earlier same-open costs reduce later admission equity. Floor quantities; no minimum upsize or clipping maxQty. Feasibility at entry/stop and every mandatory time exit must satisfy actual side-correct price ticks, min/max quantity, step and minNotional. Conservative initial modeled risk includes stressed round-trip fees/slippage/impact.",
+    "drawdown": "Show per-fold and global stitched marked cash drawdown / (0.01*fold starting capital), and global chronological cumulative closed net-R drawdown (each closed net-R uses that admission's modeled initial risk). Economic risk gate uses the worse global value. Open exposure never disappears at cashflow phases."
+  },
+  "costs": {
+    "fee_bps_per_fill": 5,
+    "base_adverse_slippage_bps_per_fill": 2,
+    "stress_adverse_slippage_bps_per_fill": 10,
+    "funding": "Actual signed settlements at verified effective cadence and causal marks, never assumed zero or invented 8h cadence. An entry at T is not funded at T. An open-gap or scheduled exit at T pays/receives funding at T before closing; a prior-bar intrabar exit reported at T closes before funding at T. Thus include entry<T_funding<=exit for gap/due exits and entry<T_funding<exit for prior-bar intrabar exits. Reuse accepted C259 phase accounting; the older PACK [entry,exit) funding helper is explicitly incompatible and must not be called for C260.",
+    "impact": "Reuse accepted pure impact_drag: participation=quantity*reference/prior_24h_quote_volume; participation>0.01 is infeasible; bps=min(10,10*sqrt(participation/0.01)); charge quantity*reference*bps/10000 per fill. All volume is causally closed before that fill.",
+    "missing_exposure": "Any missing required open/bar/mark/funding/filter/actual source integrity after exposure retains the attempted trade, known costs and all known marks, then makes candidate DATA_INCOMPLETE. No favorable zero, synthetic close, survivor deletion or forward fill."
+  },
+  "economic_gates": {
+    "development_closed_min": 50,
+    "forward_closed_total_min": 100,
+    "closed_min_each_forward_fold": 20,
+    "net_cash_and_net_r": "strictly positive in development, forward aggregate and each forward fold",
+    "profit_factor_min": 1.2,
+    "mean_net_r": "strictly positive",
+    "bootstrap_mean_net_r_95pct_lower_bound": "strictly positive",
+    "numbered_family_one_sided_p_screen_max": "0.05/260 (one cell; NON-GLOBAL-FWER)",
+    "inference_gate_scope": "Development and aggregate forward require PF, mean, CI and the numbered-family p-screen. Individual forward folds require their frozen sample floor and strictly positive net cash/net R; their CI/p are diagnostics, not a subset-selection route.",
+    "forward_distinct_symbols_min": 8,
+    "positive_symbol_concentration_max": 0.35,
+    "concentration_formula": "max(positive net contribution per symbol)/sum(positive net contributions per symbol); no positive denominator fails",
+    "stress_net_cash_and_net_r": "strictly positive in full causal stressed replay with stressed costs/equity/admissions; no same-trade fiction",
+    "drawdown_tiers": {
+      "standard": "gate_drawdown_R<=15R; future PAPER multiplier<=1",
+      "elevated": "15R<gate_drawdown_R<=30R and total net R/gate_drawdown_R>=1.5; future PAPER multiplier<=min(1,15/gate_drawdown_R)",
+      "high": "30R<gate_drawdown_R<=60R and total net R/gate_drawdown_R>=2.0 and stress net R/stress gate_drawdown_R>=1.0; future PAPER multiplier<=min(0.5,15/gate_drawdown_R)",
+      "reject": "gate_drawdown_R>60R or a required tier ratio is undefined/fails"
+    },
+    "data_complete_and_cashflow_reconciled": true,
+    "gates_cannot_be_rescued_by_diagnostics": true
+  },
+  "bootstrap_exact": {
+    "method": "Circular moving blocks of exactly seven UTC calendar days, with fold-preserving sampling; 10000 replicates per distribution, binary64 and NumPy 2.5.3 Generator(PCG64(seed)) only.",
+    "unit": "For every UTC calendar day in the complete half-open fold, store (math.fsum(closed net trade_R), closed trade count). Attribute a trade to its actual close day. Include flat/no-trade/zero-net days as (0,0); never drop days. Source-incomplete exposure fails candidate independently of any prefix statistic.",
+    "observed_statistic": "T=math.fsum(day_net_R)/sum(day_trade_count). A zero original count fails closed. Day pairs retain zero days and each day's full trade cluster.",
+    "draw_order": "Create a fresh generator for each named distribution/seed. For folds in development-only or wf1,wf2,wf3 chronological order, let N=calendar days and K=ceil(N/7). Draw generator.integers(0,N,size=(10000,K),dtype=numpy.int64) once for that fold in C array order. All draws for the first fold precede all draws for the second. For replicate b, concatenate each sampled start plus offsets0..6 moduloN in sampled-block order and truncate to N days. Never let a block or return cross fold boundaries. Aggregate-forward replicates combine the independently sampled day pairs from all three folds. No redraw, dropped replicate or seed selection.",
+    "replicate": "Compute replicate numerator with math.fsum and denominator as the exact integer sum of resampled day counts; statistic=numerator/denominator. Consume every predeclared draw. If any replicate has zero count, CI and p for that distribution are undefined/null and its inference gate fails; do not discard or replace it.",
+    "ci": "Uncentered day pairs. Compute 10000 means, then numpy.quantile(method='linear') at0.025 and0.975; finite lower bound must be strictly positive in each gated scope.",
+    "null": "Replace each day's net_R by day_net_R-T*day_trade_count, retaining count. Use the same exact block algorithm with the separate null seed; p=(1+number of centered replicate means>=T)/10001, inclusive upper tail. Compare exactly to0.05/260. The minimum attainable p=1/10001 is below that ceiling.",
+    "seeds": {
+      "development_ci": 260202611071,
+      "development_null": 260202611072,
+      "aggregate_forward_ci": 260202611073,
+      "aggregate_forward_null": 260202611074,
+      "wf1_diagnostic_ci": 260202611075,
+      "wf1_diagnostic_null": 260202611076,
+      "wf2_diagnostic_ci": 260202611077,
+      "wf2_diagnostic_null": 260202611078,
+      "wf3_diagnostic_ci": 260202611079,
+      "wf3_diagnostic_null": 260202611080
+    }
+  },
+  "report_and_acceptance": {
+    "required": "Complete attempt/skip/pre-authority ledger, gross/net cash and R, all cost components, funding, holding time, per-symbol/fold/month/week/regime attribution, full canonical hourly equity including flat hours, BTC correlation/beta and benchmark/cash disclosure, capacity diagnostics and source-integrity failures. Explicitly disclose unavailable diagnostics. Never call long beta exposure alpha or an enabling artifact profitable.",
+    "cash_control": "No trading, no fees, zero net return; diagnostic only.",
+    "btc_control": "One unlevered BTCUSDT long from the first causally eligible entry open to the last source-authorized open strictly before fold end, same fill fees/slippage/impact and signed funding; no reallocations or optimization. Missing benchmark feasibility/authority is explicit incomplete diagnostic, never fabricated economics or primary rescue.",
+    "regime": "Reporting only: inherited fold-reset BTC 1h EMA200, first199 unclassified, seed=math.fsum(first200)/200, update=(2/201)*close+(199/201)*ema, ABOVE iff close>=ema else BELOW; gaps reset, missing/warmup UNCLASSIFIED. No regime entry filter or numeric regime-rescue gate.",
+    "implementation_status": "No C260 source loader, executable historical CLI, receipt verifier, single-use identity claim or PAPER adapter is installed by this proposal. Reuse the accepted causal PACK execution/book/report semantics and accepted impact primitive through a separately reviewed fixed adapter; do not relabel an old candidate or bypass its gates.",
+    "before_real_reads": "Root must accept exact proposal/implementation bytes, append the protected trial registry/count, bind exact checksum source/content/implementation/dependency pins and persistent candidate260 single-use identity, and issue the fixed development-only command. No arbitrary loader/tape-to-evidence seal oracle. Independent review and exact-head protected gates remain mandatory.",
+    "paper_or_live_authority": false
+  }
+}
