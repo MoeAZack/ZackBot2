@@ -43,7 +43,9 @@ def fixture(side=1):
     environment=A.PaperEnvironment(account,entry,3,confirmed_testnet=True,reconciliation_complete=True)
     book=A.SideBook(side,A.side_book_id(side),account,entry,3,D(2000),reconciled=True,actual_costs_complete=True,
         source_sha256=A.digest("isolated book state"))
-    shared=A.SharedCapacity(account,entry,3,D(10000),D(10000),8,True)
+    shared=A.SharedCapacity(account,entry,3,D(10000),D(10000),8,True,
+        (A.C259SideCapacity(side,A.digest(book),D(2000),0,D(0)),
+         A.C259SideCapacity(-side,A.digest(("opposite book",-side)),D(2000),0,D(0))),True)
     accepted=A.EconomicAcceptance(side,A.digest("synthetic historical PASS attestation"),True,True,True,True,True)
     return dict(cohort=cohort,book=book,acceptance=accepted,environment=environment,shared=shared,
                 now_ms=entry,config=A.AdapterConfig(enabled=True))
@@ -157,7 +159,11 @@ def test_existing_position_and_pending_recovery_are_not_duplicated():
     row=next(row for row in inputs["cohort"].symbols if row.symbol==first.symbol)
     position=A.OpenPosition(first.intent_id,first.symbol,1,first.quantity,first.entry_reference,first.modeled_risk_cash,row.entry_mark,True)
     book=replace(inputs["book"],positions=(position,))
-    result=A.build_intents(**{**inputs,"book":book})
+    shared=replace(inputs["shared"],c259_side_capacity=tuple(
+        replace(row,book_sha256=A.digest(book),position_and_reservation_count=1,
+                open_and_reserved_risk_cash=first.modeled_risk_cash) if row.side==book.side else row
+        for row in inputs["shared"].c259_side_capacity))
+    result=A.build_intents(**{**inputs,"book":book,"shared":shared})
     assert len(result.intents)==1 and result.intents[0].symbol!=first.symbol
     assert (first.symbol,"ALREADY_OCCUPIED") in result.skips
     pending=replace(inputs["book"],pending_intent_ids=(first.intent_id,))
@@ -191,3 +197,89 @@ def test_native_key_mapping_uses_canonical_boundary_not_raw_binance_close():
     assert fields["candle_close_ms"]==inputs["cohort"].decision_ms
     assert fields["candle_close_ms"]%H==0 and intent.decision_candle_close_ms==fields["candle_close_ms"]-1
     assert fields["side"]=="LONG" and fields["purpose"]=="entry" and fields["tf"]=="1h"
+
+
+def test_all_c259_reservations_are_mandatory_complete_and_same_generation():
+    inputs=fixture();shared=inputs["shared"]
+    for bad in (replace(shared,c259_reservations_complete=False),
+                replace(shared,c259_side_capacity=()),
+                replace(shared,c259_side_capacity=shared.c259_side_capacity[:1])):
+        assert A.build_intents(**{**inputs,"shared":bad}).rejection=="INCOMPLETE_ALL_C259_RESERVATIONS"
+    assert A.build_intents(**{**inputs,"shared":replace(shared,generation=2)}).rejection=="STALE_OR_MIXED_EVIDENCE_GENERATION"
+    mismatched=replace(shared,c259_side_capacity=tuple(
+        replace(row,book_sha256=A.digest("other snapshot")) if row.side==1 else row
+        for row in shared.c259_side_capacity))
+    assert A.build_intents(**{**inputs,"shared":mismatched}).rejection=="C259_RESERVATION_BOOK_MISMATCH"
+
+
+@pytest.mark.parametrize("side",[1,-1])
+def test_opposite_side_open_or_pending_reservations_consume_candidate_count(side):
+    inputs=fixture(side);shared=inputs["shared"]
+    rows=tuple(replace(row,position_and_reservation_count=2,open_and_reserved_risk_cash=D(8))
+               if row.side!=side else row for row in shared.c259_side_capacity)
+    result=A.build_intents(**{**inputs,"shared":replace(shared,c259_side_capacity=rows)})
+    assert not result.intents and result.rejection is None
+    assert all(reason=="PAPER_POSITION_CAP" for _,reason in result.skips)
+    rows=tuple(replace(row,position_and_reservation_count=1,open_and_reserved_risk_cash=D(4))
+               if row.side!=side else row for row in shared.c259_side_capacity)
+    result=A.build_intents(**{**inputs,"shared":replace(shared,c259_side_capacity=rows)})
+    assert len(result.intents)==1
+    assert result.intents[0].side==side and result.intents[0].side_book_equity==D(2000)
+
+
+def test_cross_side_risk_is_normalized_to_each_isolated_book_and_costs():
+    inputs=fixture();shared=inputs["shared"]
+    # Opposite book has lost equity: 3 cash risk / (1000 * 1%) = 0.30R.
+    rows=tuple(replace(row,marked_equity=D(1000),position_and_reservation_count=1,
+                       open_and_reserved_risk_cash=D(3)) if row.side==-1 else row
+               for row in shared.c259_side_capacity)
+    result=A.build_intents(**{**inputs,"shared":replace(shared,c259_side_capacity=rows)})
+    assert len(result.intents)==1
+    intent=result.intents[0]
+    assert intent.quantity<A.build_intents(**inputs).intents[0].quantity
+    assert D("0.30")+intent.modeled_risk_cash/((intent.side_book_equity-intent.estimated_entry_drag_reserve)*D("0.01"))<=D("0.50")
+    full=tuple(replace(row,open_and_reserved_risk_cash=D(5)) if row.side==-1 else row for row in rows)
+    result=A.build_intents(**{**inputs,"shared":replace(shared,c259_side_capacity=full)})
+    assert not result.intents and all(reason=="PAPER_OPEN_RISK_CAP" for _,reason in result.skips)
+
+
+def test_first_side_proposals_reserved_before_other_side_block_four_position_escape():
+    long_inputs=fixture(1);long_batch=A.build_intents(**long_inputs)
+    assert len(long_batch.intents)==2
+    short_inputs=fixture(-1)
+    # Native atomic reservation must publish this refreshed all-C259 snapshot
+    # before asking the opposite source for proposals. This helper sends none.
+    reserved=replace(short_inputs["shared"],c259_side_capacity=tuple(
+        replace(row,book_sha256=A.digest(long_inputs["book"]),
+                marked_equity=D(2000)-sum((intent.estimated_entry_drag_reserve for intent in long_batch.intents),D(0)),
+                position_and_reservation_count=2,
+                open_and_reserved_risk_cash=sum((intent.modeled_risk_cash for intent in long_batch.intents),D(0)))
+        if row.side==1 else row for row in short_inputs["shared"].c259_side_capacity))
+    assert not A.build_intents(**{**short_inputs,"shared":reserved}).intents
+
+
+def test_reservation_cannot_omit_known_local_exposure():
+    inputs=fixture();intent=A.build_intents(**inputs).intents[0]
+    snapshot=next(row for row in inputs["cohort"].symbols if row.symbol==intent.symbol)
+    position=A.OpenPosition(intent.intent_id,intent.symbol,1,intent.quantity,intent.entry_reference,
+                            intent.modeled_risk_cash,snapshot.entry_mark,True)
+    book=replace(inputs["book"],positions=(position,))
+    # The collector's zero-risk/count snapshot no longer matches this local book.
+    shared=replace(inputs["shared"],c259_side_capacity=tuple(
+        replace(row,book_sha256=A.digest(book)) if row.side==1 else row
+        for row in inputs["shared"].c259_side_capacity))
+    assert A.build_intents(**{**inputs,"book":book,"shared":shared}).rejection=="C259_RESERVATION_BOOK_MISMATCH"
+
+
+@pytest.mark.parametrize("origin",A.APPROVED_TESTNET_ORIGINS)
+def test_one_approved_origin_is_pinned_without_fallback(origin):
+    inputs=fixture()
+    inputs["config"]=replace(inputs["config"],testnet_origin=origin)
+    inputs["environment"]=replace(inputs["environment"],endpoint=origin)
+    assert A.build_intents(**inputs).intents
+    other=next(item for item in A.APPROVED_TESTNET_ORIGINS if item!=origin)
+    inputs["environment"]=replace(inputs["environment"],endpoint=other)
+    assert A.build_intents(**inputs).rejection=="UNCONFIRMED_PAPER_TESTNET_ENVIRONMENT"
+    inputs["config"]=replace(inputs["config"],testnet_origin="https://fapi.binance.com")
+    inputs["environment"]=replace(inputs["environment"],endpoint="https://fapi.binance.com")
+    assert A.build_intents(**inputs).rejection=="UNCONFIRMED_PAPER_TESTNET_ENVIRONMENT"
