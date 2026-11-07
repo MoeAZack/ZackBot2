@@ -237,7 +237,7 @@ def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
                    phase=("PROTECTION_FAILURE_CLEANUP" if incomplete else "SCHEDULED"),
                    symbol=symbol, reference=exit_reference, quantity=quantity))
     lifecycle_marks = tuple(_mark(timestamp, symbol, 100)
-                            for timestamp in range(entry, close, c259.HOUR_MS))
+                            for timestamp in range(entry-c259.HOUR_MS, close, c259.HOUR_MS))
     assert SOURCE_ARCHIVE is not None
     source_seal = _synthetic_source_seal(
         attempt_id=attempt, symbol=symbol, entry_ms=entry, close_ms=close,
@@ -263,7 +263,7 @@ def _reseal_trade(trade: c259.ClosedTrade) -> c259.ClosedTrade:
     assert SOURCE_ARCHIVE is not None
     split = c259.split_name(trade.decision_close_ms)
     split_start, split_end = c259.ALL_SPLIT_RANGES[split]
-    lifecycle_marks = tuple(
+    lifecycle_marks = (_mark(trade.entry_ms-c259.HOUR_MS,trade.symbol,100),)+tuple(
         _mark(bar.open_ms, trade.symbol, bar.close)
         for bar in trade.lifecycle_bars if bar.open_ms < trade.close_ms)
     seal = _synthetic_source_seal(
@@ -370,7 +370,7 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
                             "declared_start_ms": timestamps[0],
                             "declared_end_ms": split_end+2*c259.HOUR_MS})
     # A disjoint v5 record must be filtered before even attempting to open it.
-    records.append({"path": "future-must-not-open.zip", "series": "klines", "interval": "1h",
+    records.append({"path": "um/daily/klines/ALT/1h/future-must-not-open.zip", "series": "klines", "interval": "1h",
                     "symbol": symbol, "sha256": "a"*64,
                     "first_open_ms": split_end+24*c259.HOUR_MS,
                     "last_open_ms": split_end+25*c259.HOUR_MS})
@@ -402,7 +402,7 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
     lifecycle_marks = tuple(c259.make_position_mark(
         timestamp_ms=timestamp, symbol=symbol, price=100.0,
         source_digest=authority.source_digest)
-        for timestamp in range(entry, close, c259.HOUR_MS))
+        for timestamp in range(entry-c259.HOUR_MS, close, c259.HOUR_MS))
     seal = archive.seal_trade(
         attempt_id="source", symbol=symbol, entry_ms=entry, close_ms=close,
         split_start_ms=split_start, split_end_ms=split_end, atr_bars=atr,
@@ -531,11 +531,12 @@ def test_recomputed_caller_hashes_cannot_replace_sealed_source() -> None:
     with pytest.raises(c259.IncompleteEpisode, match="funding"):
         c259.validate_closed_trade(replace(funded, funding_events=(c259.AppliedFunding(
             event, bad_mark),)))
-    lifecycle_marks = tuple(_mark(timestamp, "ALT") for timestamp in range(entry, close,
+    lifecycle_marks = tuple(_mark(timestamp, "ALT") for timestamp in range(entry-c259.HOUR_MS, close,
                                                                                 c259.HOUR_MS))
+    bad_lifecycle_mark=c259.make_position_mark(timestamp_ms=entry-c259.HOUR_MS,symbol="ALT",price=100,source_digest="b"*64)
     with pytest.raises(c259.IncompleteAuthority, match="protected source"):
         c259.derive_equity_points((funded,),
-            (bad_mark, *lifecycle_marks[1:]),
+            (bad_lifecycle_mark, *lifecycle_marks[1:]),
             start_ms=entry, end_ms=close)
 
 
@@ -907,7 +908,7 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
                    timestamp=cleanup_ms, side=-1, quantity=quantity))
     funding_mark = _mark(entry_ms, "ALT", 100)
     funding_events = (c259.AppliedFunding(funding_authority[0], funding_mark),)
-    lifecycle_marks = (_mark(entry_ms, "ALT", 100),)
+    lifecycle_marks = (_mark(entry_ms-c259.HOUR_MS,"ALT",100),_mark(entry_ms, "ALT", 100))
     assert SOURCE_ARCHIVE is not None
     source_seal = _synthetic_source_seal(
         attempt_id="x", symbol="ALT", entry_ms=entry_ms, close_ms=cleanup_ms,
@@ -988,7 +989,7 @@ def test_chronological_marked_drawdown_and_realized_order_are_not_entry_order() 
 def test_derived_drawdown_requires_every_open_hour_mark() -> None:
     trade = _trade("marks", 1, "ALT", VALID_ENTRY, VALID_ENTRY+12*c259.HOUR_MS, 1)
     complete = tuple(_mark(t, "ALT", 100) for t in range(
-        trade.entry_ms, trade.close_ms, c259.HOUR_MS))
+        trade.entry_ms-c259.HOUR_MS, trade.close_ms, c259.HOUR_MS))
     points = c259.derive_equity_points((trade,), complete, start_ms=VALID_ENTRY-c259.HOUR_MS,
                                       end_ms=VALID_ENTRY+13*c259.HOUR_MS)
     assert points[-1][0] == trade.close_ms
@@ -1000,6 +1001,22 @@ def test_derived_drawdown_requires_every_open_hour_mark() -> None:
 
 def test_split_boundaries_and_regime_state_reset() -> None:
     assert c259.split_name(1743465600000) == "wf1"
+    assert c259.split_name(1759276800000)=="wf2"
+
+
+def test_forward_drawdown_preserves_consecutive_losses_across_reset_folds():
+    folds=[]
+    for name in ("wf1","wf2","wf3"):
+        start,end=c259.FOLD_RANGES[name]
+        trade=_trade(name,1,name+"USDT",start+26*c259.HOUR_MS,start+38*c259.HOUR_MS,-1)
+        marks=tuple(_mark(timestamp,trade.symbol,100)
+                    for timestamp in range(trade.entry_ms-c259.HOUR_MS,trade.close_ms,c259.HOUR_MS))
+        folds.append(c259.FoldLifecycle(name,(trade,),(_stress_trade(trade),),marks))
+    result=c259.forward_drawdowns(folds)
+    assert result["realized_R"]==pytest.approx(sum(c259.closed_realized_drawdown_R(fold.base) for fold in folds))
+    assert result["marked_R"]>max(row["marked_R"] for row in result["per_fold"])
+    assert not result["admission_capital_carried_across_folds"]
+    assert all(trade.sizing.side_book_equity==2000 for fold in folds for trade in fold.base)
     assert c259.split_name(1790553600000) == "sealed_holdout"
     state = c259.EMA200()
     for i in range(200):
@@ -1069,7 +1086,7 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
                        start+38*c259.HOUR_MS, 1)
         stressed = _stress_trade(trade)
         marks = tuple(_mark(timestamp, trade.symbol, 100)
-                      for timestamp in range(trade.entry_ms, trade.close_ms, c259.HOUR_MS))
+                      for timestamp in range(trade.entry_ms-c259.HOUR_MS, trade.close_ms, c259.HOUR_MS))
         folds.append(c259.FoldLifecycle(name, (trade,), (stressed,), marks))
     derived = c259.forward_gate(folds, bootstrap_resamples=25)
     assert derived["pass"] is False and derived["base"]["closed"] == 3

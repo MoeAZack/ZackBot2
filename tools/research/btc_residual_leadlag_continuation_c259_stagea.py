@@ -49,8 +49,8 @@ EXPECTED_PATHS = {
 }
 ALL_SPLIT_RANGES = {
     "development": (1728864000000, 1743465600000),
-    "wf1": (1743465600000, 1761955200000),
-    "wf2": (1761955200000, 1775001600000),
+    "wf1": (1743465600000, 1759276800000),
+    "wf2": (1759276800000, 1775001600000),
     "wf3": (1775001600000, 1790553600000),
     "sealed_holdout": (1790553600000, 1793836800000),
 }
@@ -187,10 +187,17 @@ def _tree_bytes(repo: Path, head: str, path: str) -> bytes:
 
 
 def _decode(name: str, raw: bytes) -> dict:
+    def pairs(rows):
+        result={}
+        for key,value in rows:
+            if key in result:raise ValueError("duplicate JSON key")
+            result[key]=value
+        return result
     try:
         payload = gzip.decompress(raw) if name == "manifest_v6" else raw
-        value = json.loads(payload.decode("utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        value = json.loads(payload.decode("utf-8"),object_pairs_hook=pairs,
+                           parse_constant=lambda _:(_ for _ in ()).throw(ValueError("nonfinite JSON")))
+    except (OSError, UnicodeError, ValueError) as exc:
         raise IncompleteAuthority(f"invalid {name}") from exc
     if not isinstance(value, dict):
         raise IncompleteAuthority(f"{name} is not an object")
@@ -214,8 +221,25 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
         raise IncompleteAuthority("invalid protected authority head")
     if _git(repo, "rev-parse", "--verify", f"{pins.protected_head}^{{commit}}") != pins.protected_head:
         raise IncompleteAuthority("authority head does not resolve exactly")
-    if _git(repo, "rev-parse", "--verify", f"{protected_ref}^{{commit}}") != pins.protected_head:
-        raise IncompleteAuthority("authority head is not protected ref")
+    protected=str(_git(repo,"rev-parse","--verify",f"{protected_ref}^{{commit}}"))
+    if protected!=pins.protected_head:
+        lineage=subprocess.run(["git","-C",str(repo),"merge-base","--is-ancestor",pins.protected_head,protected],capture_output=True)
+        if lineage.returncode:
+            raise IncompleteAuthority("authority head is not protected ref ancestry")
+        receipt=_decode("C259 protected receipt",_tree_bytes(repo,protected,
+            "contracts/strategy_causal_pack_01/c259_authority_pins.v1.json"))
+        if (set(receipt)!={"format","candidate_id","contract_sha256","status","default_off","authority_pins"}
+                or receipt.get("format")!="zb-c259-protected-authority-amendment/1"
+                or receipt.get("candidate_id")!=259 or receipt.get("contract_sha256")!=CONTRACT_SHA256
+                or receipt.get("status")!="FROZEN_AUTHORITY_PINNED_NOT_EVALUATED"
+                or receipt.get("default_off") is not True or receipt.get("authority_pins")!=asdict(pins)):
+            raise IncompleteAuthority("ancestor output head lacks its exact current protected mechanical receipt")
+        for path in ("tools/research/c259_runner.py","tools/research/c259_reporting.py",
+                     "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+                     "tools/research/run_btc_residual_leadlag_continuation_c259_stagea.py"):
+            expected=_tree_bytes(repo,protected,path)
+            if (repo/path).read_bytes()!=expected:
+                raise IncompleteAuthority("protected receipt implementation/dependency bytes differ")
     ancestry = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor",
                                frozen_contract["base_commit"], pins.protected_head], capture_output=True)
     if ancestry.returncode:
@@ -486,6 +510,8 @@ def fit_signal(prior_btc_closes: Sequence[ClosePrice], prior_alt_closes: Sequenc
     threshold = max(0.0075, 3 * scale)
     residual_d = alt_d - beta * btc_d
     forecast = gamma * btc_d
+    if not all(math.isfinite(value) for value in (beta,gamma,t,residual_d,forecast,threshold)):
+        raise IncompleteAuthority("non-finite fitted signal coefficient or forecast")
     side = 1 if btc_d >= threshold else -1 if btc_d <= -threshold else None
     qualifies = bool(gamma >= 0.10 and t >= 2.0 and (
         side == 1 and forecast >= 0.0028 and residual_d <= 0.25 * forecast
@@ -503,7 +529,7 @@ def fit_signal(prior_btc_closes: Sequence[ClosePrice], prior_alt_closes: Sequenc
 
 
 def select_candidates(rows: Iterable[tuple[str, SignalFit]], side: int, *, decision_close_ms: int,
-                      occupied: Iterable[str] = ()) -> tuple[str, ...]:
+                      occupied: Iterable[str] = (),limit: int | None = 3) -> tuple[str, ...]:
     occupied_set = set(occupied)
     materialized = list(rows)
     for _symbol, fit in materialized:
@@ -520,7 +546,9 @@ def select_candidates(rows: Iterable[tuple[str, SignalFit]], side: int, *, decis
     eligible = [(symbol, fit) for symbol, fit in materialized
                 if fit.qualifies and fit.side == side and symbol not in occupied_set]
     eligible.sort(key=lambda item: (-abs(item[1].forecast - item[1].residual_d), item[0]))
-    return tuple(symbol for symbol, _ in eligible[:3])
+    if limit is not None and (type(limit) is not int or limit<0):
+        raise C259Error("candidate limit must be nonnegative or complete ranked list")
+    return tuple(symbol for symbol, _ in (eligible if limit is None else eligible[:limit]))
 
 
 def filter_authority_available(decision_close_ms: int) -> bool:
@@ -876,10 +904,10 @@ class ClosedTrade:
 
     @property
     def net_cash(self) -> float:
-        return math.fsum([self.funding] + [
-            fill.movement_cash - fill.fee_drag - fill.slippage_drag - fill.impact_drag
-            for fill in self.fills
-        ])
+        return math.fsum([funding_cash(self.side,self.fills[0].quantity,item.mark.price,item.event.rate)
+                          for item in self.funding_events]+[
+            value for fill in self.fills for value in (
+                fill.movement_cash,-fill.fee_drag,-fill.slippage_drag,-fill.impact_drag)])
 
     @property
     def trade_R(self) -> float:
@@ -1266,8 +1294,8 @@ def metrics(trades: Sequence[ClosedTrade]) -> dict[str, object]:
 
 def split_name(timestamp_ms: int) -> str:
     boundaries = (
-        (1743465600000, 1761955200000, "wf1"),
-        (1761955200000, 1775001600000, "wf2"),
+        (1743465600000, 1759276800000, "wf1"),
+        (1759276800000, 1775001600000, "wf2"),
         (1775001600000, 1790553600000, "wf3"),
         (1790553600000, 1793836800000, "sealed_holdout"),
     )
@@ -1306,6 +1334,16 @@ def validate_position_mark(mark: PositionMark) -> None:
         raise IncompleteAuthority("invalid canonical position-mark identity")
 
 
+@dataclass(frozen=True)
+class ReadOnlySymbolStreams:
+    symbol: str
+    fold: str
+    source_digest: str
+    bars: tuple[Bar | BoundaryOpen,...]
+    marks: tuple[PositionMark,...]
+    funding: tuple[FundingEvent,...]
+
+
 class ProtectedSourceArchive:
     """Fixed checksum-verifying loader for protected manifest-v6 source bytes.
 
@@ -1331,17 +1369,32 @@ class ProtectedSourceArchive:
             raise IncompleteAuthority("manifest source record is malformed")
         # Actual v5 records carry path/interval but no explicit series key.
         for record in records:
-            if "series" not in record:
-                parts = str(record.get("path", "")).replace("\\", "/").split("/")
-                matches = {part for part in parts
-                           if part in {"klines", "markPriceKlines", "fundingRate"}}
-                if len(matches) != 1:
-                    raise IncompleteAuthority("v5 source path does not identify one stream")
-                record["series"] = matches.pop()
+            parts=str(record.get("path","")).replace("\\","/").split("/")
+            if len(parts)<4 or parts[:1]!=["um"] or parts[2] not in {
+                    "klines","markPriceKlines","fundingRate"}:
+                raise IncompleteAuthority("source path does not identify canonical coordinates")
+            coordinates={"series":parts[2],"symbol":parts[3],
+                         "interval":None if parts[2]=="fundingRate" else parts[4]}
+            for name in ("series","symbol","interval"):
+                if name in record and record[name]!=coordinates[name]:
+                    raise IncompleteAuthority("source coordinates differ from bound path")
+                record[name]=coordinates[name]
         self._records = records
         self._cache: dict[tuple[str, int, int, bool], tuple[dict[int, Bar | BoundaryOpen], dict[int, PositionMark],
                                      tuple[FundingEvent, ...]]] = {}
         self._capability = capability
+
+    def read_fold(self, symbol: str, fold: str, *, boundary_open: bool = False) -> ReadOnlySymbolStreams:
+        """Fixed frozen split streams; callers cannot supply replacement tapes."""
+        if (type(self) is not ProtectedSourceArchive or self._capability is not _SOURCE_SEAL_CAPABILITY
+                or _VALIDATED_AUTHORITIES.get(id(self._authority)) is not self._authority):
+            raise IncompleteAuthority("source archive is not protected-tree validated")
+        if fold not in FOLD_RANGES:
+            raise EvaluationLocked("sealed holdout and caller-defined source windows are unavailable")
+        start,end=FOLD_RANGES[fold]
+        bars,marks,funding=self._load_symbol(symbol,start,end,boundary_open=boundary_open)
+        return ReadOnlySymbolStreams(symbol,fold,self._authority.source_digest,
+            tuple(bars[t] for t in sorted(bars)),tuple(marks[t] for t in sorted(marks)),funding)
 
     def _safe_path(self, relative: str) -> Path:
         if (not isinstance(relative, str) or not relative
@@ -1500,7 +1553,7 @@ class ProtectedSourceArchive:
                                 or exit_includes_boundary and event.timestamp_ms == close_ms)
         expected_funding_marks = require_rows(
             marks, (event.timestamp_ms-HOUR_MS for event in exposed_funding))
-        expected_lifecycle_marks = require_rows(marks, range(entry_ms, close_ms, HOUR_MS))
+        expected_lifecycle_marks = require_rows(marks, range(entry_ms-HOUR_MS, close_ms, HOUR_MS))
         expected_volumes = tuple(
             tuple(VolumePoint(bar.open_ms, bar.quote_volume) for bar in require_rows(
                 bars, range(fill.impact_asof_ms-24*HOUR_MS,
@@ -1554,7 +1607,7 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
         validate_closed_trade(trade)
     required = {(timestamp, trade.symbol)
                 for trade in trades
-                for timestamp in range(trade.entry_ms, trade.close_ms, HOUR_MS)}
+                for timestamp in range(trade.entry_ms-HOUR_MS, trade.close_ms, HOUR_MS)}
     supplied: dict[tuple[int, str], PositionMark] = {}
     for mark in marks:
         validate_position_mark(mark)
@@ -1567,7 +1620,7 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
         raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
     for trade in trades:
         trade_marks = tuple(supplied[(timestamp, trade.symbol)]
-                            for timestamp in range(trade.entry_ms, trade.close_ms, HOUR_MS))
+                            for timestamp in range(trade.entry_ms-HOUR_MS, trade.close_ms, HOUR_MS))
         if (any(mark.source_digest != trade.authority_source_digest for mark in trade_marks)
                 or _stream_digest(trade.authority_source_digest,
                                   f"lifecycle-marks:{trade.symbol}", trade_marks)
@@ -1587,8 +1640,9 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
             if key in event_keys:
                 raise IncompleteAuthority("duplicate immutable event identity")
             event_keys.add(key)
-            deltas.setdefault((fill.timestamp_ms, phase), []).append(
-                (trade.symbol, trade.attempt_id, value))
+            deltas.setdefault((fill.timestamp_ms, phase), []).extend(
+                (trade.symbol,trade.attempt_id,component) for component in (
+                    fill.movement_cash,-fill.fee_drag,-fill.slippage_drag,-fill.impact_drag))
         for event in trade.funding_events:
             cash = funding_cash(trade.side, trade.fills[0].quantity,
                                 event.mark.price, event.event.rate)
@@ -1599,22 +1653,30 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
             deltas.setdefault((event.event.timestamp_ms, 1), []).append(
                 (trade.symbol, trade.attempt_id, cash))
     cash = capital
+    cashflows: list[float] = []
+    inventory: dict[str,ClosedTrade] = {}
     points: list[tuple[int, int, float]] = [(start_ms, 0, capital)]
-    timestamps = sorted({timestamp for timestamp, _phase in deltas} | {timestamp for timestamp, _ in required})
+    timestamps = sorted({timestamp for timestamp, _phase in deltas} | {timestamp+HOUR_MS for timestamp, _ in required})
+    def equity(timestamp: int) -> float:
+        unrealized=math.fsum(trade.side*trade.fills[0].quantity*(
+            supplied[(timestamp-HOUR_MS,trade.symbol)].price-trade.fills[0].reference)
+            for trade in sorted(inventory.values(),key=lambda item:(item.symbol,item.attempt_id)))
+        return math.fsum((cash,unrealized))
     for timestamp in timestamps:
         for phase in range(5):
             values = deltas.get((timestamp, phase))
             if values:
                 ordered_values = sorted(values, key=lambda row: (row[0], row[1]))
-                cash = math.fsum((cash, *(row[2] for row in ordered_values)))
-                points.append((timestamp, phase, cash))
-        if any(key[0] == timestamp for key in required):
-            unrealized = math.fsum(
-                trade.side * trade.fills[0].quantity *
-                (supplied[(timestamp, trade.symbol)].price - trade.fills[0].reference)
-                for trade in sorted(trades, key=lambda item: (item.symbol, item.attempt_id))
-                if trade.entry_ms <= timestamp < trade.close_ms)
-            points.append((timestamp, 5, cash+unrealized))
+                cashflows.extend(row[2] for row in ordered_values)
+                cash = math.fsum((capital,*cashflows))
+                for trade in trades:
+                    if phase==4 and trade.entry_ms==timestamp:
+                        inventory[trade.attempt_id]=trade
+                    exit_phase=0 if trade.fills[-1].phase in {"STOP_RANGE","TARGET_RANGE"} else 3 if trade.incomplete else 2
+                    if trade.close_ms==timestamp and phase==exit_phase:
+                        inventory.pop(trade.attempt_id,None)
+                points.append((timestamp, phase, equity(timestamp)))
+        points.append((timestamp,5,equity(timestamp)))
     if not points or points[-1][0] > end_ms:
         raise IncompleteEpisode("lifecycle equity escaped fold")
     terminal = capital + math.fsum(
@@ -1714,6 +1776,31 @@ def development_gate(fold: FoldLifecycle) -> dict[str, object]:
             "base": base, "stress": stress}
 
 
+def forward_drawdowns(folds: Sequence[FoldLifecycle], *, stress: bool = False) -> dict[str,object]:
+    """Stitch P&L for aggregate risk only; never feed it into reset admission."""
+    if tuple(fold.name for fold in folds)!=("wf1","wf2","wf3"):
+        raise C259Error("exact ordered forward folds required for aggregate drawdown")
+    carry=[];stitched=[];per_fold=[];trades=[]
+    peak=float(PRIMARY_CAPITAL);maximum=0.0
+    for fold in folds:
+        rows=fold.stress if stress else fold.base
+        start,end=FOLD_RANGES[fold.name]
+        points=derive_equity_points(rows,fold.marks,start_ms=start,end_ms=end,capital=PRIMARY_CAPITAL)
+        per_fold.append({"fold":fold.name,"marked_R":marked_equity_drawdown_R(points,PRIMARY_CAPITAL),
+            "realized_R":closed_realized_drawdown_R(rows) if rows else 0.0})
+        for timestamp,phase,equity in points:
+            value=math.fsum((equity,*carry))
+            peak=max(peak,value);maximum=max(maximum,peak-value)
+            stitched.append((fold.name,timestamp,phase,value))
+        carry.append(math.fsum(trade.net_cash for trade in rows))
+        trades.extend(rows)
+    marked=maximum/(0.01*PRIMARY_CAPITAL)
+    realized=closed_realized_drawdown_R(trades) if trades else 0.0
+    return {"marked_R":marked,"realized_R":realized,"gate_R":max(marked,realized),
+            "per_fold":per_fold,"stitched_marked_equity_points":stitched,
+            "admission_capital_carried_across_folds":False}
+
+
 def forward_gate(folds: Sequence[FoldLifecycle], *, bootstrap_resamples: int = 20_000) -> dict[str, object]:
     """Derive every forward gate from exact frozen lifecycle evidence."""
     if tuple(fold.name for fold in folds) != ("wf1", "wf2", "wf3"):
@@ -1735,17 +1822,10 @@ def forward_gate(folds: Sequence[FoldLifecycle], *, bootstrap_resamples: int = 2
         if trade.regime not in regimes:
             raise C259Error("unfrozen regime label")
         regimes[trade.regime].append(trade.trade_R)
-    marked = max(marked_equity_drawdown_R(derive_equity_points(
-        fold.base, fold.marks, start_ms=FOLD_RANGES[fold.name][0],
-        end_ms=FOLD_RANGES[fold.name][1]), PRIMARY_CAPITAL) for fold in folds)
-    realized = max(closed_realized_drawdown_R(fold.base) for fold in folds)
-    stress_marked = max(marked_equity_drawdown_R(derive_equity_points(
-        fold.stress, fold.marks, start_ms=FOLD_RANGES[fold.name][0],
-        end_ms=FOLD_RANGES[fold.name][1]), PRIMARY_CAPITAL) for fold in folds)
-    stress_realized = max(closed_realized_drawdown_R(fold.stress) for fold in folds)
-    gate_dd = gate_drawdown_R(marked_drawdown_R=marked, realized_drawdown_R=realized)
-    stress_dd = gate_drawdown_R(marked_drawdown_R=stress_marked,
-                                realized_drawdown_R=stress_realized)
+    global_base=forward_drawdowns(folds)
+    global_stress=forward_drawdowns(folds,stress=True)
+    gate_dd=float(global_base["gate_R"])
+    stress_dd=float(global_stress["gate_R"])
     tier = drawdown_tier(float(base["net_R"]), gate_dd,
                          float(stress["net_R"]), stress_dd)
     bootstrap = bootstrap_stats([trade.trade_R for trade in sorted(
@@ -1772,7 +1852,8 @@ def forward_gate(folds: Sequence[FoldLifecycle], *, bootstrap_resamples: int = 2
     failures = tuple(name for name, passed in checks.items() if not passed)
     return {"pass": not failures, "failures": failures, "checks": checks,
             "base": base, "stress": stress, "bootstrap": bootstrap,
-            "drawdown": tier, "month_net_R": month_net}
+            "drawdown": tier, "month_net_R": month_net,
+            "global_base_drawdown":global_base,"global_stress_drawdown":global_stress}
 
 
 def stress_same_selection(base: Sequence[ClosedTrade], stress: Sequence[ClosedTrade]) -> None:
