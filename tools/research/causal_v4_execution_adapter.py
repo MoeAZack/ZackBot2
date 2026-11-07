@@ -24,6 +24,9 @@ class AdapterError(RuntimeError):
     pass
 
 
+ATR_V4_COMPLETED_PACKET_HEAD = "6754a336652496952aaab82e42fbe9bd6171430a"
+
+
 def _clean_repo_head(root: Path) -> str:
     """Return the exact clean commit checked out at root, without shell parsing."""
     try:
@@ -47,6 +50,27 @@ def _clean_repo_head(root: Path) -> str:
     if dirty:
         raise AdapterError("dirty worktree: causal-v4 assembly refused")
     return head
+
+
+def _require_ancestor_packet_head(root: Path, packet_head: str, current_head: str) -> None:
+    """Require the frozen evaluator head to exist in, and precede, this clean checkout."""
+    if re.fullmatch(r"[0-9a-f]{40}", packet_head) is None:
+        raise AdapterError("frozen candidate packet head is not exact lowercase hex")
+    try:
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{packet_head}^{{commit}}"], cwd=root,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", packet_head, current_head], cwd=root,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise AdapterError(
+            "frozen candidate packet head is not an ancestor of the clean repository HEAD"
+        ) from exc
 
 
 def _canonical(value: object) -> bytes:
@@ -442,8 +466,10 @@ def _assemble_pack(args, profile: dict, overlay: dict, contract: dict,
 
 
 def _assemble_atr(args, profile: dict, overlay: dict, source_contract: dict,
-                  contract_digest: str, root: Path, *, clean_head_fn=None) -> int:
-    exact_head = (clean_head_fn or _clean_repo_head)(root)
+                  contract_digest: str, root: Path, *, clean_head_fn=None,
+                  packet_head: str = ATR_V4_COMPLETED_PACKET_HEAD) -> int:
+    current_head = (clean_head_fn or _clean_repo_head)(root)
+    _require_ancestor_packet_head(root, packet_head, current_head)
     paths = [Path(args.long_packet), Path(args.short_packet)]
     packets = [_verified_v4_packet(path, profile=profile, contract_digest=contract_digest,
                                    candidate_ids=tuple(profile["candidate_ids"]),
@@ -451,7 +477,7 @@ def _assemble_atr(args, profile: dict, overlay: dict, source_contract: dict,
                                    identity_dir=Path(args.identity_dir),
                                    authority=overlay["authority_artifacts"],
                                    source_contract=source_contract, overlay=overlay,
-                                   expected_head=exact_head) for path in paths]
+                                   expected_head=packet_head) for path in paths]
     by_id = {packet["candidate_id"]: packet for packet in packets}
     if len(by_id) != 2 or set(by_id) != set(profile["candidate_ids"]):
         raise AdapterError("ATR family requires one long and one short v4 packet")
