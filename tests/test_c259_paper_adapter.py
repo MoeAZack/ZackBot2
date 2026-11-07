@@ -8,6 +8,7 @@ import socket
 import numpy as np
 import pytest
 from tools.research import c259_paper_adapter as A
+from newcore.runtime.config import RuntimeConfig,RuntimeEnvironment,AccountSpec
 
 D=Decimal
 H=A.E.HOUR_MS
@@ -33,22 +34,28 @@ def fixture(side=1):
         quote=D(str(tape[-1].close))
         mark=A.Mark(entry-1,quote,A.digest(("mark",symbol)))
         symbols.append(A.SymbolSnapshot(symbol,tape,A.E.Filters(D("0.00000001"),D("0.001"),D("0.001"),D("100000"),D(1)),
-            entry,A.digest(("filters",symbol)),quote,entry,entry,mark,A.digest(("market",symbol))))
+            entry,A.digest(("filters",symbol)),quote,entry,entry,mark,A.digest(("market",symbol)),
+            A.QuoteObservation(entry,entry,123,quote if side==-1 else quote-D('0.00000001'),
+                               quote if side==1 else quote+D('0.00000001'),quote,A.digest(('actual quote',symbol)))))
     stamp=datetime.fromtimestamp(decision/1000,tz=timezone.utc)
     monday=int(stamp.replace(hour=0,minute=0,second=0).timestamp()*1000)-stamp.weekday()*24*H
     cell=A.PITCell(monday,monday,("DDDUSDT","BBBUSDT","AAAUSDT","CCCUSDT","BTCUSDT"),A.digest("PIT"))
     cohort=A.CohortSnapshot(decision,entry,entry,3,start,benchmark,tuple(reversed(symbols)),(cell,),
-        A.digest("BTC"),A.digest("funding"),entry,True)
+        A.digest("BTC"),A.digest("funding"),entry,True,123)
     account=A.digest("test account identity only")
-    environment=A.PaperEnvironment(account,entry,3,confirmed_testnet=True,reconciliation_complete=True)
+    environment=A.PaperEnvironment(account,entry,3,confirmed_testnet=True,reconciliation_complete=True,observed_mono=123)
     book=A.SideBook(side,A.side_book_id(side),account,entry,3,D(2000),reconciled=True,actual_costs_complete=True,
-        source_sha256=A.digest("isolated book state"))
+        source_sha256=A.digest("isolated book state"),observed_mono=123)
     shared=A.SharedCapacity(account,entry,3,D(10000),D(10000),8,True,
         (A.C259SideCapacity(side,A.digest(book),D(2000),0,D(0)),
-         A.C259SideCapacity(-side,A.digest(("opposite book",-side)),D(2000),0,D(0))),True)
+         A.C259SideCapacity(-side,A.digest(("opposite book",-side)),D(2000),0,D(0))),True,123)
     accepted=A.EconomicAcceptance(side,A.digest("synthetic historical PASS attestation"),True,True,True,True,True)
+    runtime=RuntimeConfig(environment=RuntimeEnvironment.TESTNET,
+        accounts=(AccountSpec(account_id='acct_'+format(1,'032x'),aggregate_id='pf_'+format(1,'032x'),
+                              account_dir='synthetic-unused-c259',egress_id='synthetic'),))
     return dict(cohort=cohort,book=book,acceptance=accepted,environment=environment,shared=shared,
-                now_ms=entry,config=A.AdapterConfig(enabled=True))
+                now_ms=entry,now_mono_ms=123,config=A.AdapterConfig(enabled=True,runtime_config=runtime,
+                    protected_runtime_config_sha256=A.digest(runtime)))
 
 
 def test_default_off_precedes_any_signal_computation(monkeypatch):
@@ -99,7 +106,7 @@ def test_stale_snapshot_and_mixed_book_generation_are_rejected():
     inputs=fixture();cohort=inputs["cohort"]
     assert A.build_intents(**{**inputs,"cohort":replace(cohort,observed_ms=cohort.observed_ms-H)}).rejection=="STALE_OR_MIXED_EVIDENCE_GENERATION"
     assert A.build_intents(**{**inputs,"book":replace(inputs["book"],generation=2)}).rejection=="STALE_OR_MIXED_EVIDENCE_GENERATION"
-    assert A.build_intents(**{**inputs,"now_ms":inputs["now_ms"]+H}).rejection=="WRONG_CANONICAL_ENTRY_CLOCK"
+    assert A.build_intents(**{**inputs,"now_ms":inputs["now_ms"]+H}).rejection=="STALE_FUTURE_OR_BACKDATED_EXECUTION_TIMING"
 
 
 def test_missing_or_future_closed_bar_never_reaches_ranking():
@@ -283,3 +290,66 @@ def test_one_approved_origin_is_pinned_without_fallback(origin):
     inputs["config"]=replace(inputs["config"],testnet_origin="https://fapi.binance.com")
     inputs["environment"]=replace(inputs["environment"],endpoint="https://fapi.binance.com")
     assert A.build_intents(**inputs).rejection=="UNCONFIRMED_PAPER_TESTNET_ENVIRONMENT"
+
+
+def observed_inputs(delay_ms=1,prepare_delay_ms=0,quote_shift=D(0)):
+    """Preserve canonical bars/open; stamp actual collector and preparation times."""
+    inputs=fixture();event=inputs['cohort'].entry_open_ms
+    observed=event+delay_ms;mono=123+delay_ms
+    book=replace(inputs['book'],observed_ms=observed,observed_mono=mono)
+    shared=replace(inputs['shared'],observed_ms=observed,observed_mono=mono,
+        c259_side_capacity=tuple(replace(row,book_sha256=A.digest(book)) if row.side==book.side else row
+                                for row in inputs['shared'].c259_side_capacity))
+    symbols=tuple(replace(row,entry_available_ms=observed,filters_observed_ms=observed,
+        quote=replace(row.quote,event_ms=observed,observed_ms=observed,observed_mono=mono,
+                      bid=row.quote.bid+quote_shift,ask=row.quote.ask+quote_shift,mark=row.quote.mark+quote_shift,
+                      source_sha256=A.digest(('actual delayed quote',row.symbol,observed,str(quote_shift)))))
+        for row in inputs['cohort'].symbols)
+    inputs.update(book=book,shared=shared,cohort=replace(inputs['cohort'],observed_ms=observed,
+        observed_mono=mono,symbols=symbols),environment=replace(inputs['environment'],observed_ms=observed,
+        observed_mono=mono),now_ms=observed+prepare_delay_ms,now_mono_ms=mono+prepare_delay_ms)
+    return inputs
+
+
+def test_real_plus_one_ms_clock_envelope_preserves_canonical_signal_and_actual_quote():
+    inputs=observed_inputs(quote_shift=D('0.00000001'))
+    result=A.build_intents(**inputs)
+    assert result.intents and result.rejection is None
+    p=result.intents[0];event=inputs['cohort'].entry_open_ms
+    assert p.entry_due_ms==event and p.scheduled_exit_ms==event+12*H
+    assert p.collector_observed_ms==p.prepared_ms==event+1
+    assert p.collector_observed_mono==p.prepared_mono==124
+    assert p.dispatch_entry_reference==p.entry_reference+D('0.00000001')
+    assert p.gross_notional==p.quantity*p.dispatch_entry_reference
+    assert p.runtime_config_sha256==inputs['config'].protected_runtime_config_sha256
+    assert p.intent_id==A.build_intents(**fixture()).intents[0].intent_id
+
+
+@pytest.mark.parametrize('mode',['snapshot_age','dispatch_deadline','future','mixed_mono','policy_digest'])
+def test_verified_existing_runtime_bound_plus_one_or_bad_clocks_refuse(mode):
+    base=fixture();runtime=base['config'].runtime_config
+    if mode=='snapshot_age': inputs=observed_inputs(1,runtime.max_snapshot_age_s*1000+1)
+    elif mode=='dispatch_deadline': inputs=observed_inputs(runtime.evidence_deadline_ms+1)
+    else:
+        inputs=observed_inputs()
+        if mode=='future': inputs['now_ms']-=1;inputs['now_mono_ms']-=1
+        elif mode=='mixed_mono': inputs['book']=replace(inputs['book'],observed_mono=123)
+        else: inputs['config']=replace(inputs['config'],protected_runtime_config_sha256=A.digest('unbound config'))
+    assert not A.build_intents(**inputs).intents
+    assert A.build_intents(**inputs).rejection is not None
+    if mode=='snapshot_age': assert A.build_intents(**observed_inputs(1,runtime.max_snapshot_age_s*1000)).intents
+    if mode=='dispatch_deadline': assert A.build_intents(**observed_inputs(runtime.evidence_deadline_ms)).intents
+
+
+def test_delayed_dispatch_does_not_promote_current_open_bar_into_closed_prefix():
+    inputs=observed_inputs();cohort=inputs['cohort'];event=cohort.entry_open_ms
+    poison=replace(cohort.btc_bars[-1],open_ms=event)
+    result=A.build_intents(**{**inputs,'cohort':replace(cohort,btc_bars=(*cohort.btc_bars,poison))})
+    assert result.rejection=='INCOMPLETE_OR_NONCAUSAL_CLOSED_BAR_PREFIX'
+
+
+def test_actual_executable_quote_does_not_change_frozen_open_or_bypass_cost_protection():
+    inputs=observed_inputs(quote_shift=D(100))
+    result=A.build_intents(**inputs)
+    assert not result.intents
+    assert any(reason=='EXECUTABLE_QUOTE_OUTSIDE_FROZEN_PROTECTION' for _,reason in result.skips)

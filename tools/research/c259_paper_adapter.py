@@ -7,7 +7,7 @@ The native integration gap is described by ``native_integration_gap``.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -16,8 +16,9 @@ from typing import Mapping
 from zoneinfo import ZoneInfo
 
 from tools.research import btc_residual_leadlag_continuation_c259_stagea as E
+from newcore.runtime.config import RuntimeConfig, RuntimeEnvironment
 
-ADAPTER_VERSION="c259-paper-intent/1"
+ADAPTER_VERSION="c259-paper-intent/2"
 EVALUATOR_SOURCE_HEAD="5c332bd2faf2f06591a6d621965770ba3cdaecee"
 STRATEGY_NAME="c259_btc_leadlag"
 STRATEGY_VERSION="v1"
@@ -70,6 +71,8 @@ class AdapterConfig:
     evaluator_source_head: str=EVALUATOR_SOURCE_HEAD
     risk_multiplier: Decimal=PAPER_RISK_R
     testnet_origin: str=TESTNET_ENDPOINT
+    runtime_config: RuntimeConfig | None=None
+    protected_runtime_config_sha256: str=""
 
 
 @dataclass(frozen=True)
@@ -98,6 +101,7 @@ class PaperEnvironment:
     live: bool=False
     confirmed_testnet: bool=False
     reconciliation_complete: bool=False
+    observed_mono: int | None=None
 
 
 @dataclass(frozen=True)
@@ -134,6 +138,7 @@ class SideBook:
     allocated_capital: Decimal=Decimal(E.PRIMARY_CAPITAL)
     cashflow_net: Decimal=Decimal(0)
     source_sha256: str=""
+    observed_mono: int | None=None
 
 
 @dataclass(frozen=True)
@@ -161,6 +166,7 @@ class SharedCapacity:
     reservations_complete: bool=False
     c259_side_capacity: tuple[C259SideCapacity,...]=()
     c259_reservations_complete: bool=False
+    observed_mono: int | None=None
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,18 @@ class PITCell:
     monday_ms: int
     available_ms: int
     members: tuple[str,...]
+    source_sha256: str
+
+
+@dataclass(frozen=True)
+class QuoteObservation:
+    """Actual executable quote/mark, distinct from the canonical hourly open."""
+    event_ms: int
+    observed_ms: int
+    observed_mono: int
+    bid: Decimal
+    ask: Decimal
+    mark: Decimal
     source_sha256: str
 
 
@@ -183,6 +201,7 @@ class SymbolSnapshot:
     entry_available_ms: int
     entry_mark: Mark
     market_sha256: str
+    quote: QuoteObservation | None=None
 
 
 @dataclass(frozen=True)
@@ -199,6 +218,7 @@ class CohortSnapshot:
     funding_source_sha256: str
     funding_available_through_ms: int
     funding_complete: bool=False
+    observed_mono: int | None=None
 
 
 @dataclass(frozen=True)
@@ -235,6 +255,13 @@ class PaperIntent:
     inputs_sha256: str
     signal_window_sha256: str
     source_digests: tuple[tuple[str,str],...]
+    dispatch_entry_reference: Decimal
+    collector_observed_ms: int
+    collector_observed_mono: int
+    prepared_ms: int
+    prepared_mono: int
+    runtime_config_sha256: str
+    dispatch_quote_source_sha256: str
     requires_atomic_shared_reservation: bool=True
     execution_authorized: bool=False
 
@@ -263,7 +290,7 @@ def _validate_mark(mark,entry):
         raise AdapterRefusal("STALE_OR_UNVERIFIED_MARK")
 
 
-def _gates(config,acceptance,env,cohort,book,shared,now):
+def _gates(config,acceptance,env,cohort,book,shared,now,now_mono):
     if config.enabled is not True:raise AdapterRefusal("DEFAULT_OFF")
     if (config.version!=ADAPTER_VERSION or config.evaluator_source_head!=EVALUATOR_SOURCE_HEAD
             or not _positive(config.risk_multiplier) or config.risk_multiplier>PAPER_RISK_R):
@@ -283,13 +310,26 @@ def _gates(config,acceptance,env,cohort,book,shared,now):
             or env.confirmed_testnet is not True or env.reconciliation_complete is not True
             or not _hash(env.account_fingerprint)):
         raise AdapterRefusal("UNCONFIRMED_PAPER_TESTNET_ENVIRONMENT")
-    if (type(now) is not int or now%E.HOUR_MS or cohort.entry_open_ms!=now
-            or cohort.decision_ms+E.HOUR_MS!=now or cohort.decision_ms%E.HOUR_MS
+    runtime=config.runtime_config
+    if (type(runtime) is not RuntimeConfig or runtime.environment is not RuntimeEnvironment.TESTNET
+            or not _hash(config.protected_runtime_config_sha256)
+            or digest(runtime)!=config.protected_runtime_config_sha256):
+        raise AdapterRefusal("UNBOUND_RUNTIME_TIMING_POLICY")
+    event=cohort.entry_open_ms
+    if (type(now) is not int or type(now_mono) is not int or now_mono<0
+            or event%E.HOUR_MS or cohort.decision_ms+E.HOUR_MS!=event or cohort.decision_ms%E.HOUR_MS
             or cohort.segment_start_ms%E.HOUR_MS or cohort.segment_start_ms>cohort.decision_ms):
         raise AdapterRefusal("WRONG_CANONICAL_ENTRY_CLOCK")
     if (type(cohort.generation) is not int or cohort.generation<=0
-            or any(row.observed_ms!=now or row.generation!=cohort.generation for row in (cohort,env,book,shared))):
+            or any(row.observed_ms!=cohort.observed_ms or row.observed_mono!=cohort.observed_mono
+                   or row.generation!=cohort.generation for row in (cohort,env,book,shared))):
         raise AdapterRefusal("STALE_OR_MIXED_EVIDENCE_GENERATION")
+    if (type(cohort.observed_ms) is not int or type(cohort.observed_mono) is not int
+            or cohort.observed_mono<0
+            or not event<=cohort.observed_ms<=now<=event+runtime.evidence_deadline_ms
+            or not 0<=now-cohort.observed_ms<=runtime.max_snapshot_age_s*1000
+            or not 0<=now_mono-cohort.observed_mono<=runtime.max_snapshot_age_s*1000):
+        raise AdapterRefusal("STALE_FUTURE_OR_BACKDATED_EXECUTION_TIMING")
     if (book.account_fingerprint!=env.account_fingerprint or shared.account_fingerprint!=env.account_fingerprint
             or book.book_id!=side_book_id(book.side) or book.reconciled is not True
             or book.actual_costs_complete is not True or book.pending_intent_ids):
@@ -302,7 +342,7 @@ def _gates(config,acceptance,env,cohort,book,shared,now):
         raise AdapterRefusal("UNVERIFIED_ISOLATED_PRIMARY_CAPITAL")
     if (shared.reservations_complete is not True or type(shared.additional_position_slots) is not int
             or shared.additional_position_slots<0):raise AdapterRefusal("UNCONFIRMED_SHARED_RESERVATIONS")
-    if (cohort.funding_complete is not True or cohort.funding_available_through_ms<now
+    if (cohort.funding_complete is not True or cohort.funding_available_through_ms<event
             or not _hash(cohort.funding_source_sha256) or not _hash(cohort.btc_source_sha256)):
         raise AdapterRefusal("INCOMPLETE_FUNDING_OR_BENCHMARK_AUTHORITY")
     if len({row.symbol for row in book.positions})!=len(book.positions):raise AdapterRefusal("DUPLICATE_BOOK_SYMBOL")
@@ -310,7 +350,19 @@ def _gates(config,acceptance,env,cohort,book,shared,now):
         if (position.side!=book.side or not _hash(position.intent_id) or position.protection_confirmed is not True
                 or not _positive(position.quantity,position.entry_reference,position.initial_risk_cash)):
             raise AdapterRefusal("UNKNOWN_OR_UNPROTECTED_SIDE_POSITION")
-        _validate_mark(position.mark,now)
+        _validate_mark(position.mark,event)
+
+
+def _quote(snapshot,cohort,config):
+    q=snapshot.quote
+    if (type(q) is not QuoteObservation or not _positive(q.bid,q.ask,q.mark) or q.bid>q.ask
+            or type(q.event_ms) is not int or type(q.observed_ms) is not int or type(q.observed_mono) is not int
+            or q.bid%snapshot.filters.tick or q.ask%snapshot.filters.tick
+            or not cohort.entry_open_ms<=q.event_ms<=q.observed_ms==cohort.observed_ms
+            or q.observed_ms-q.event_ms>config.runtime_config.max_snapshot_age_s*1000
+            or q.observed_mono!=cohort.observed_mono or not _hash(q.source_sha256)):
+        raise AdapterRefusal("STALE_OR_UNVERIFIED_EXECUTABLE_QUOTE")
+    return q
 
 
 def _candidate_capacity(book,shared,equity,open_risk):
@@ -359,21 +411,24 @@ def _risk(sizing,q):
 
 def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAcceptance,
                   environment: PaperEnvironment,shared: SharedCapacity,now_ms: int,
+                  now_mono_ms: int | None=None,
                   config: AdapterConfig=AdapterConfig()) -> IntentBatch:
-    """Prepare proposals at the exact entry event; no wall-clock grace or sending.
+    """Prepare proposals from the canonical event within verified runtime limits.
 
     A native collector must bind ``now_ms`` to the actual canonical event and
-    reject delayed dispatch independently. Activation must verify the supplied
+    distinguish actual collection/preparation/dispatch clocks. Activation verifies
     acceptance/environment attestations. The batch reserves nothing durably.
     """
     try:
-        _gates(config,acceptance,environment,cohort,book,shared,now_ms)
-        marked=sum((Decimal(position.side)*position.quantity*(position.mark.price-position.entry_reference)
+        _gates(config,acceptance,environment,cohort,book,shared,now_ms,now_mono_ms)
+        event=cohort.entry_open_ms
+        by_symbol={row.symbol:row for row in cohort.symbols}
+        marked=sum((Decimal(position.side)*position.quantity*(_quote(by_symbol[position.symbol],cohort,config).mark-position.entry_reference)
                     for position in book.positions),Decimal(0))
         open_risk=sum((position.initial_risk_cash for position in book.positions),Decimal(0))
         candidate_count,open_risk,other_r=_candidate_capacity(book,shared,book.settled_cash+marked,open_risk)
         cell=_pit(cohort)
-        btc=_validate_bars(cohort.btc_bars,cohort.segment_start_ms,now_ms)
+        btc=_validate_bars(cohort.btc_bars,cohort.segment_start_ms,event)
         if cohort.decision_ms<cohort.segment_start_ms+722*E.HOUR_MS:raise AdapterRefusal("SPLIT_RESET_WARMUP")
         if len({row.symbol for row in cohort.symbols})!=len(cohort.symbols):raise AdapterRefusal("DUPLICATE_SNAPSHOT_SYMBOL")
         by_symbol={row.symbol:row for row in cohort.symbols}
@@ -383,15 +438,16 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
         indexes={}
         for symbol in eligible:
             snapshot=by_symbol[symbol]
-            if (snapshot.entry_open_ms!=now_ms or snapshot.entry_available_ms!=now_ms
-                    or snapshot.filters_observed_ms!=now_ms or not _hash(snapshot.filters_sha256)
+            if (snapshot.entry_open_ms!=event or not event<=snapshot.entry_available_ms<=cohort.observed_ms
+                    or snapshot.filters_observed_ms!=cohort.observed_ms or not _hash(snapshot.filters_sha256)
                     or not _hash(snapshot.market_sha256) or not _positive(snapshot.entry_reference)):
                 raise AdapterRefusal("STALE_OR_UNVERIFIED_SYMBOL_INPUTS")
             f=snapshot.filters
             if not _positive(f.tick,f.step,f.min_qty,f.max_qty,f.min_notional) or f.min_qty>f.max_qty:
                 raise AdapterRefusal("INVALID_EXCHANGE_FILTERS")
-            _validate_mark(snapshot.entry_mark,now_ms)
-            indexes[symbol]=_validate_bars(snapshot.bars,cohort.segment_start_ms,now_ms)
+            _validate_mark(snapshot.entry_mark,event)
+            _quote(snapshot,cohort,config)
+            indexes[symbol]=_validate_bars(snapshot.bars,cohort.segment_start_ms,event)
         d=cohort.decision_ms
         prior=tuple(E.ClosePrice(t,btc[t-E.HOUR_MS].close) for t in range(d-721*E.HOUR_MS,d,E.HOUR_MS))
         fits=[]
@@ -407,7 +463,7 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
         occupied={position.symbol for position in book.positions}
         ranked=E.select_candidates(fits,book.side,decision_close_ms=d,limit=None)
         cash=book.settled_cash
-        gross=sum((position.quantity*position.mark.price for position in book.positions),Decimal(0))
+        gross=sum((position.quantity*_quote(by_symbol[position.symbol],cohort,config).mark for position in book.positions),Decimal(0))
         available_cash=shared.available_collateral_cash;available_gross=shared.available_gross_notional
         intents=[];skips=[]
         source_input=digest({"cohort":cohort,"book":book,"shared":shared,"environment":environment,"acceptance":acceptance})
@@ -418,18 +474,23 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
                 skips.append((symbol,"PAPER_POSITION_CAP"));continue
             snapshot=by_symbol[symbol];index=indexes[symbol];f=snapshot.filters
             entry=snapshot.entry_reference
+            live=_quote(snapshot,cohort,config).ask if book.side==1 else snapshot.quote.bid
             if entry%f.tick:skips.append((symbol,"ENTRY_OFF_TICK"));continue
             atr=E.atr24_wilder(snapshot.bars,d)
             try:stop,target=E.protection_prices(entry,Decimal(str(atr)),book.side,f.tick)
             except E.C259Error:
                 skips.append((symbol,"PROTECTION_INFEASIBLE"));continue
+            if not (stop<live<target if book.side==1 else target<live<stop):
+                skips.append((symbol,"EXECUTABLE_QUOTE_OUTSIDE_FROZEN_PROTECTION"));continue
             if not E.cost_admission(entry=entry,stop=stop,forecast=fit_map[symbol].forecast):
                 skips.append((symbol,"COST_INFEASIBLE"));continue
+            if not E.cost_admission(entry=live,stop=stop,forecast=fit_map[symbol].forecast):
+                skips.append((symbol,"EXECUTABLE_QUOTE_COST_INFEASIBLE"));continue
             equity=cash+marked
             if equity<=0:raise AdapterRefusal("NONPOSITIVE_ISOLATED_SIDE_EQUITY")
-            volumes=tuple(E.VolumePoint(t,index[t].quote_volume) for t in range(now_ms-24*E.HOUR_MS,now_ms,E.HOUR_MS))
+            volumes=tuple(E.VolumePoint(t,index[t].quote_volume) for t in range(event-24*E.HOUR_MS,event,E.HOUR_MS))
             sized=E.size_position(side=book.side,entry=entry,stop=stop,filters=f,side_book_equity=equity,
-                entry_impact_asof_ms=now_ms,entry_volume_rows=volumes)
+                entry_impact_asof_ms=event,entry_volume_rows=volumes)
             if sized is None:skips.append((symbol,"EXCHANGE_OR_SIZE_INFEASIBLE"));continue
             remaining_r=PAPER_OPEN_RISK_R-other_r
             # Entry drag cannot exceed the modeled entry+stop risk. Reserve that
@@ -438,10 +499,12 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
             risk_ceiling=min(equity*Decimal("0.01")*min(config.risk_multiplier,acceptance.paper_risk_multiplier_cap),
                 (equity*Decimal("0.01")*remaining_r-open_risk)/(1+max(Decimal(0),remaining_r)*Decimal("0.01")))
             if risk_ceiling<=0:skips.append((symbol,"PAPER_OPEN_RISK_CAP"));continue
-            q=E._floor(sized.quantity*min(Decimal(1),risk_ceiling/sized.initial_risk_cash),f.step)
-            if q<f.min_qty or q>f.max_qty or min(q*entry,q*stop,q*target)<f.min_notional:
+            actual_sized=replace(sized,entry=live)
+            worst_full_risk=max(sized.initial_risk_cash,_risk(actual_sized,sized.quantity))
+            q=E._floor(sized.quantity*min(Decimal(1),risk_ceiling/worst_full_risk),f.step)
+            if q<f.min_qty or q>f.max_qty or min(q*entry,q*live,q*stop,q*target)<f.min_notional:
                 skips.append((symbol,"ROUNDED_PAPER_EXCHANGE_INFEASIBLE"));continue
-            risk=_risk(sized,q);notional=q*entry
+            risk=max(_risk(sized,q),_risk(actual_sized,q));notional=q*live
             if risk>risk_ceiling or gross+notional>equity*Decimal("1.5"):
                 skips.append((symbol,"ISOLATED_SIDE_CAP"));continue
             if not E.liquidity_admission(decision_quote_volume=index[d-E.HOUR_MS].quote_volume,
@@ -450,8 +513,8 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
                 skips.append((symbol,"LIQUIDITY_INFEASIBLE"));continue
             if notional>available_cash or notional>available_gross:
                 skips.append((symbol,"INSUFFICIENT_SHARED_CAPACITY"));continue
-            entry_fill=E.make_fill(timestamp_ms=now_ms,phase="ENTRY",symbol=symbol,side=book.side,quantity=float(q),
-                reference=float(entry),movement_from=None,volume_bars=snapshot.bars)
+            entry_fill=E.make_fill(timestamp_ms=event,phase="ENTRY",symbol=symbol,side=book.side,quantity=float(q),
+                reference=float(live),movement_from=None,volume_bars=snapshot.bars)
             reserve=Decimal(str(entry_fill.fee_drag+entry_fill.slippage_drag+entry_fill.impact_drag))
             if (reserve>risk or equity<=reserve
                     or other_r+(open_risk+risk)/((equity-reserve)*Decimal("0.01"))>PAPER_OPEN_RISK_R):
@@ -459,12 +522,14 @@ def build_intents(*,cohort: CohortSnapshot,book: SideBook,acceptance: EconomicAc
             identity=digest({"candidate":259,"adapter_version":ADAPTER_VERSION,"contract":E.CONTRACT_SHA256,
                 "account":environment.account_fingerprint,"side":book.side,"decision_ms":d,"symbol":symbol})
             intent=PaperIntent(identity,259,ADAPTER_VERSION,EVALUATOR_SOURCE_HEAD,E.CONTRACT_SHA256,STRATEGY_NAME,
-                STRATEGY_VERSION,book.book_id,environment.account_fingerprint,book.side,symbol,rank,d,d-1,now_ms,
-                now_ms+12*E.HOUR_MS,datetime.fromtimestamp(now_ms/1000,ZoneInfo("Africa/Cairo")).isoformat(),
+                STRATEGY_VERSION,book.book_id,environment.account_fingerprint,book.side,symbol,rank,d,d-1,event,
+                event+12*E.HOUR_MS,datetime.fromtimestamp(event/1000,ZoneInfo("Africa/Cairo")).isoformat(),
                 q,entry,stop,target,equity,risk,risk_ceiling,notional,notional,reserve,regime,digest(config),source_input,
                 fit_map[symbol].window_identity_sha256,tuple(sorted({"market":snapshot.market_sha256,"pit":cell.source_sha256,
                     "filters":snapshot.filters_sha256,"BTC":cohort.btc_source_sha256,"funding":cohort.funding_source_sha256,
-                    "economic_acceptance":acceptance.evidence_sha256}.items())))
+                    "economic_acceptance":acceptance.evidence_sha256}.items())),live,cohort.observed_ms,
+                    cohort.observed_mono,now_ms,now_mono_ms,config.protected_runtime_config_sha256,
+                    snapshot.quote.source_sha256)
             intents.append(intent);occupied.add(symbol)
             cash-=reserve;gross+=notional;open_risk+=risk
             available_cash-=notional;available_gross-=notional

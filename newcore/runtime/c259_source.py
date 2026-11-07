@@ -6,6 +6,9 @@ result themselves, or submit venue work. The injected protected-receipt verifier
 must authenticate the complete snapshot, helper/code/config closure, acceptance
 of the selected side, account binding and collector provenance. No production
 verifier, collector or launcher composition is installed by this module.
+Retroactive intrabar target ranges are explicitly unsupported. A verified
+first-touch/trigger and actual-fill provider is still an ACTIVATION BLOCKER;
+this component must not be installed as a parity-qualified C259 strategy.
 
 Entry quantity is bounded through NC-06's existing requested-risk ceiling. The
 actual account/loss snapshots are retained; a separately verified isolated-book
@@ -28,9 +31,10 @@ from newcore import management as M, risk as R
 from newcore.domain import DecisionRecorded, IntentRecorded, Purpose, ResultObserved, ResultPhase, Side
 from newcore.ports import keys as K
 from newcore.runtime.ports import EntryCandidate
+from newcore.runtime.config import RuntimeConfig, RuntimeEnvironment
 
-VERSION = 'c259-native-source/1'
-HELPER_VERSION = 'c259-paper-intent/1'
+VERSION = 'c259-native-source/2'
+HELPER_VERSION = 'c259-paper-intent/2'
 # Historical helper component label only. Production acceptance authority is
 # the verifier-bound execution head and exact closures below, not this label.
 EVALUATOR_HEAD = '5c332bd2faf2f06591a6d621965770ba3cdaecee'
@@ -63,6 +67,13 @@ class CausalProposal(Protocol):
     scheduled_exit_ms: int
     quantity: Decimal
     entry_reference: Decimal
+    dispatch_entry_reference: Decimal
+    collector_observed_ms: int
+    collector_observed_mono: int
+    prepared_ms: int
+    prepared_mono: int
+    runtime_config_sha256: str
+    dispatch_quote_source_sha256: str
     stop: Decimal
     target: Decimal
     side_book_equity: Decimal
@@ -94,6 +105,11 @@ def digest(value) -> str:
                                      allow_nan=False).encode()).hexdigest()
 
 
+def activation_blockers() -> tuple[str, ...]:
+    return ('VERIFIED_FIRST_TOUCH_TARGET_TRIGGER_AND_ACTUAL_FILL_PROVIDER_UNINSTALLED',
+            'PROTECTED_RECEIPT_VERIFIER_COLLECTOR_AND_LAUNCHER_UNINSTALLED')
+
+
 def _hash(value):
     return type(value) is str and len(value) == 64 and set(value) <= set('0123456789abcdef') and value != '0' * 64
 
@@ -119,6 +135,8 @@ class SourceConfig:
     accepted_execution_head: str = ''
     evaluator_closure_sha256: str = ''
     helper_closure_sha256: str = ''
+    runtime_config: RuntimeConfig | None = None
+    protected_runtime_config_sha256: str = ''
 
 
 @dataclass(frozen=True)
@@ -142,10 +160,14 @@ class ReceiptAuthorization:
     accepted_execution_head: str
     evaluator_closure_sha256: str
     helper_closure_sha256: str
+    dispatch_ms: int
+    dispatch_mono: int
+    runtime_config_sha256: str
 
 
 class ReceiptVerifier(Protocol):
-    def authorize(self, scope: str, snapshot, config: SourceConfig) -> ReceiptAuthorization | None: ...
+    def authorize(self, scope: str, snapshot, config: SourceConfig, dispatch_ms: int,
+                  dispatch_mono: int) -> ReceiptAuthorization | None: ...
 
 
 @dataclass(frozen=True)
@@ -156,6 +178,10 @@ class NativeRiskContext:
     policy: R.RiskPolicySnapshot
     filters: R.VenueRiskFilters
     filters_sha256: str
+    executable_quote: Decimal
+    quote_observed_ms: int
+    quote_observed_mono: int
+    quote_source_sha256: str
 
 
 @dataclass(frozen=True)
@@ -195,6 +221,8 @@ class FrozenExitEvent:
     prior_events_receipt_sha256: str
     funding_applied_through_ms: int
     funding_receipt_sha256: str
+    canonical_event_ms: int
+    observed_mono: int
 
 
 @dataclass(frozen=True)
@@ -229,12 +257,14 @@ def _proposal(p, config):
              and p.decision_candle_close_ms == p.decision_ms - 1
              and p.entry_due_ms == p.decision_ms + HOUR_MS
              and p.scheduled_exit_ms == p.entry_due_ms + 12 * HOUR_MS, 'PROPOSAL_CLOCK_OR_BOOK_MISMATCH')
-    _require(_positive(p.quantity, p.entry_reference, p.stop, p.target, p.side_book_equity,
+    _require(_positive(p.quantity, p.entry_reference, p.dispatch_entry_reference, p.stop, p.target, p.side_book_equity,
                        p.modeled_risk_cash, p.requested_risk_cash_ceiling, p.gross_notional)
              and p.modeled_risk_cash <= p.requested_risk_cash_ceiling
              and p.requested_risk_cash_ceiling <= p.side_book_equity * D('.0025')
-             and p.gross_notional == p.quantity * p.entry_reference
+             and p.gross_notional == p.quantity * p.dispatch_entry_reference
              and p.collateral_cash_ceiling >= p.gross_notional
+             and (p.stop < p.dispatch_entry_reference < p.target if p.side == 1 else
+                  p.target < p.dispatch_entry_reference < p.stop)
              and (p.stop < p.entry_reference < p.target if p.side == 1 else p.target < p.entry_reference < p.stop),
              'INVALID_PROPOSAL_PROTECTION_OR_SIZE')
     _require(type(p.source_digests) is tuple and len(p.source_digests) == 6
@@ -264,17 +294,26 @@ class _Source:
                  and type(c.accepted_execution_head) is str and len(c.accepted_execution_head) == 40
                  and set(c.accepted_execution_head) <= set('0123456789abcdef')
                  and c.accepted_execution_head != '0' * 40, 'UNBOUND_SOURCE_CONFIG')
+        timing = c.runtime_config
+        _require(type(timing) is RuntimeConfig and timing.environment is (
+            RuntimeEnvironment.TESTNET if c.environment is R.Environment.TESTNET else RuntimeEnvironment.PAPER_SIM)
+            and account_id in {account.account_id for account in timing.accounts}
+            and digest(timing) == c.protected_runtime_config_sha256
+            and _hash(c.protected_runtime_config_sha256), 'UNBOUND_RUNTIME_TIMING_POLICY')
         now = self._wall()
         snapshot = self._provider(account_id, now_mono)
         _require(type(now_mono) is int and now_mono >= 0 and type(snapshot) is expected
-                 and type(snapshot.observed_ms) is int and snapshot.observed_ms == now
-                 and snapshot.observed_mono == now_mono and type(snapshot.generation) is int
+                 and type(snapshot.observed_ms) is int and type(snapshot.observed_mono) is int
+                 and snapshot.observed_mono >= 0
+                 and 0 <= now - snapshot.observed_ms <= timing.max_snapshot_age_s * 1000
+                 and 0 <= now_mono - snapshot.observed_mono <= timing.max_snapshot_age_s * 1000
+                 and type(snapshot.generation) is int
                  and snapshot.generation > 0, 'MISSING_OR_STALE_COLLECTOR_SNAPSHOT')
         view = self._journal()
         _require(view is not None and view.account_id == account_id
                  and snapshot.journal_sequence == view.last_sequence()
                  and snapshot.journal_sha256 == digest(tuple(view.read())), 'JOURNAL_SNAPSHOT_MISMATCH')
-        authorization = self._verifier.authorize(scope, snapshot, c)
+        authorization = self._verifier.authorize(scope, snapshot, c, now, now_mono)
         _require(type(authorization) is ReceiptAuthorization
                  and authorization.scope == scope and authorization.account_id == account_id
                  and authorization.snapshot_sha256 == digest(snapshot)
@@ -285,7 +324,9 @@ class _Source:
                  and authorization.helper_closure_sha256 == c.helper_closure_sha256
                  and authorization.generation == snapshot.generation
                  and authorization.journal_sequence == snapshot.journal_sequence
-                 and authorization.observed_ms == now
+                 and authorization.observed_ms == snapshot.observed_ms
+                 and authorization.dispatch_ms == now and authorization.dispatch_mono == now_mono
+                 and authorization.runtime_config_sha256 == c.protected_runtime_config_sha256
                  and all(_hash(v) for v in (authorization.protected_receipt_sha256,
                      authorization.economic_receipt_sha256, authorization.collector_receipt_sha256)),
                  'PROTECTED_RECEIPT_AUTHORIZATION_REQUIRED')
@@ -300,7 +341,12 @@ class C259EntrySource(_Source):
             snapshot, view = self._snapshot(account_id, now_mono, 'ENTRY', EntrySnapshot)
             p, context = snapshot.proposal, snapshot.risk
             key = _proposal(p, self.config)
-            _require(snapshot.observed_ms == p.entry_due_ms, 'WRONG_CANONICAL_ENTRY_EVENT')
+            timing = self.config.runtime_config
+            _require(p.entry_due_ms <= p.collector_observed_ms == snapshot.observed_ms <= p.prepared_ms <= self._wall()
+                     and self._wall() - p.entry_due_ms <= timing.evidence_deadline_ms
+                     and p.collector_observed_mono == snapshot.observed_mono <= p.prepared_mono <= now_mono
+                     and p.runtime_config_sha256 == self.config.protected_runtime_config_sha256,
+                     'WRONG_OR_LATE_CANONICAL_ENTRY_EVENT')
             _require(not any(isinstance(ev, DecisionRecorded) and ev.decision.key == key for ev in view.read()),
                      'SIGNAL_ALREADY_CONSUMED')
             _require(type(context) is NativeRiskContext and snapshot.isolated_equity == p.side_book_equity
@@ -320,6 +366,10 @@ class C259EntrySource(_Source):
                      and portfolio.generation == snapshot.journal_sequence
                      and policy.capital_cap == snapshot.isolated_equity
                      and context.filters_sha256 == dict(p.source_digests).get('filters')
+                     and context.executable_quote == p.dispatch_entry_reference
+                     and context.quote_observed_ms == snapshot.observed_ms
+                     and context.quote_observed_mono == snapshot.observed_mono
+                     and context.quote_source_sha256 == p.dispatch_quote_source_sha256
                      and f.symbol == p.symbol, 'NATIVE_RISK_OR_BOOK_BINDING_MISMATCH')
             _require(type(portfolio.loss) is R.LossState and type(policy.loss_limits) is R.LossLimits
                      and portfolio.loss.trading_day == datetime.fromtimestamp(snapshot.observed_ms / 1000,
@@ -333,22 +383,28 @@ class C259EntrySource(_Source):
                     filter_generation=f.generation, action=R.RiskAction.ENTRY, strategy_id=key.strategy,
                     book_id=p.book_id, symbol=p.symbol,
                     side=R.PositionSide.LONG if p.side == 1 else R.PositionSide.SHORT,
-                    entry_price=p.entry_reference, stop_price=p.stop,
-                    requested_risk=p.quantity * abs(p.entry_reference - p.stop), requested_leverage=D(1))
+                    entry_price=p.dispatch_entry_reference, stop_price=p.stop,
+                    requested_risk=p.quantity * abs(p.dispatch_entry_reference - p.stop), requested_leverage=D(1))
                 evaluation = R.RiskEvaluation(account=a, portfolio=portfolio, policy=policy,
                                               filters=f, request=request, followers=())
                 decision = R.evaluate(evaluation)
             _require(type(decision) is R.ApprovedDecision and decision.quantity <= p.quantity,
                      'NATIVE_RISK_REFUSED_OR_UPSIZED')
             _require(view.last_sequence() == snapshot.journal_sequence, 'JOURNAL_CHANGED_DURING_ADMISSION')
+            _require(0 <= self._wall() - p.entry_due_ms <= timing.evidence_deadline_ms,
+                     'DISPATCH_DEADLINE_EXPIRED_DURING_ADMISSION')
             return (EntryCandidate(key=key, evaluation=evaluation),)
         except (SourceRefusal, ValueError, TypeError, AttributeError, DecimalException) as error:
             self.reasons[str(error) if type(error) is SourceRefusal else 'SOURCE_INPUT_INVALID'] += 1
             return ()
 
 
-def _exit_event(p, event, now):
-    _require(type(event) is FrozenExitEvent and event.observed_ms == now and event.bar_open_ms % HOUR_MS == 0
+def _exit_event(p, event, snapshot, dispatch_ms, config):
+    now = event.canonical_event_ms
+    _require(type(event) is FrozenExitEvent and event.observed_ms == snapshot.observed_ms
+             and event.observed_mono == snapshot.observed_mono
+             and now <= event.observed_ms <= dispatch_ms <= now + config.runtime_config.evidence_deadline_ms
+             and event.bar_open_ms % HOUR_MS == 0
              and event.bar_open_ms >= p.entry_due_ms
              and all(_hash(v) for v in (event.source_sha256, event.prior_events_receipt_sha256,
                                        event.funding_receipt_sha256))
@@ -373,6 +429,7 @@ def _exit_event(p, event, now):
         expected = 'STOP_RANGE' if stop_touch else 'TARGET_RANGE' if target_touch else 'HOLD'
         high, low = event.high, event.low
     _require(event.exit_kind == expected, 'FROZEN_EXIT_ORDER_MISMATCH')
+    _require(expected != 'TARGET_RANGE', 'UNSUPPORTED_RETROACTIVE_TARGET_RANGE')
     return expected, high, low
 
 
@@ -425,7 +482,7 @@ class C259ManagementSource(_Source):
                 owned = [ev.intent for ev in view.read() if isinstance(ev, IntentRecorded) and ev.intent.intent_id == entry]
                 _require(len(owned) == 1 and owned[0].slot_id == key.strategy and owned[0].symbol == p.symbol
                          and owned[0].side is key.side, 'JOURNAL_OWNERSHIP_MISMATCH')
-                kind, high, low = _exit_event(p, event, snapshot.observed_ms)
+                kind, high, low = _exit_event(p, event, snapshot, self._wall(), self.config)
                 policy = replace(evaluation.policy, targets=(), preserve_runner=False, runner_quantity=D(0),
                     breakeven_trigger_r=None, trail_trigger_r=None, trail_distance_r=None, max_holding_bars=None,
                     max_add_count=0, max_single_add_risk=D(0), max_cumulative_add_risk=D(0), risk_increases=())
@@ -444,6 +501,8 @@ class C259ManagementSource(_Source):
                              and plan.actions[0].quantity == lot.quantity, 'FULL_EXIT_PARITY_UNAVAILABLE')
                 output.append(actual)
             _require(view.last_sequence() == snapshot.journal_sequence, 'JOURNAL_CHANGED_DURING_MANAGEMENT')
+            _require(all(0 <= self._wall() - row.event.canonical_event_ms <= self.config.runtime_config.evidence_deadline_ms
+                         for row in snapshot.lots), 'DISPATCH_DEADLINE_EXPIRED_DURING_MANAGEMENT')
             return tuple(output)
         except (ValueError, TypeError, AttributeError, DecimalException) as error:
             code = str(error) if type(error) is SourceRefusal else 'MANAGEMENT_INPUT_INVALID'
