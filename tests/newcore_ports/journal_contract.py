@@ -46,6 +46,13 @@ def flow_fallback(s):
     s.step(aid, S, W)
 
 
+def flow_algo_first(s):
+    s.entry_filled()
+    aid = s.protect_attempt(0, 'algo')                     # conditional orders live on the algo route (G6)
+    s.result(aid, 'known')
+    s.step(aid, S, W)
+
+
 def flow_unknown_then_found(s):
     s.entry_filled()
     sid = s.protect_attempt(0)
@@ -69,7 +76,7 @@ def flow_skip(s):
     s.decision(key=KEY)                                    # a SKIP / WAIT-like keyed decision authorizing nothing
 
 
-GOOD = {'fill_and_protect': flow_fill_and_protect, 'fallback': flow_fallback,
+GOOD = {'fill_and_protect': flow_fill_and_protect, 'fallback': flow_fallback, 'algo_first': flow_algo_first,
         'unknown_then_found': flow_unknown_then_found, 'never_sent': flow_never_sent}
 
 
@@ -222,11 +229,19 @@ def bad_fallback_after_unknown():
     return s.events[:], s.record(aid)
 
 
-def bad_algo_without_classic():
+def bad_algo_while_previous_live():
     s = _flow(lambda s: s.entry_filled())
-    aid = K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 0)
-    s.decision(purpose=Purpose.PROTECT, intent_ids=(aid,), owner=LOT, route='algo')
-    return s.events[:], s.record(aid)
+    aid = s.protect_attempt(0, 'algo')                     # sent, no answer yet: a second stop could double up
+    a2 = K.derive_child_intent_id(ACCT, LOT, Purpose.PROTECT, 1)
+    s.decision(purpose=Purpose.PROTECT, intent_ids=(a2,), owner=LOT, route='algo')
+    return s.events[:], s.record(a2)
+
+
+def bad_algo_route_for_a_close():
+    s = _flow(lambda s: s.entry_filled())
+    cid = K.derive_child_intent_id(ACCT, LOT, Purpose.CLOSE, 0)
+    s.decision(purpose=Purpose.CLOSE, intent_ids=(cid,), owner=LOT, route='algo')
+    return s.events[:], s.record(cid)
 
 
 def bad_duplicate_route_send():
@@ -274,7 +289,8 @@ BAD = {f.__name__[4:]: (f, why) for f, why in (
     (bad_keyed_decision_with_another_id, 'G4: a keyed decision id must be'),
     (bad_unauthorized_intent, "not in its decision's authorized intent set"),
     (bad_client_id_not_derived, 'G5: the client id must be client_id_for'),
-    (bad_fallback_after_unknown, 'G6: algo only as the fallback'), (bad_algo_without_classic, 'G6: algo only'),
+    (bad_fallback_after_unknown, 'G6: algo only as the fallback'), (bad_algo_while_previous_live, 'G6: algo only'),
+    (bad_algo_route_for_a_close, 'G6: algo only'),
     (bad_duplicate_route_send, 'G7: sent twice'), (bad_second_algo_after_algo_rejected, 'G6: algo only'),
     (bad_wrong_from_state, 'the intent is submitted'), (bad_not_an_event, 'is not an NC-01 DomainEvent'))}
 
