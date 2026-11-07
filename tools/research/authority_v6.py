@@ -256,7 +256,7 @@ def intraday_requests(symbols: Sequence[str]) -> tuple[VisionRequest, ...]:
 
 def parse_official_checksum(raw: bytes, basename: str) -> str:
     match = CHECKSUM.fullmatch(raw)
-    if not match or match.group(2).decode("ascii", "strict") != basename:
+    if not match or match.group(2) != basename.encode("utf-8", "strict"):
         raise AuthorityV6Error("official checksum is malformed or bound to another basename")
     return match.group(1).decode("ascii")
 
