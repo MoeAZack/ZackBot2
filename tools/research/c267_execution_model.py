@@ -203,7 +203,11 @@ class SideCash:
             or event.phase=='FUNDING' and event.raw_time_ms is None
             or any(type(v)not in(float,D) or not (v.is_finite() if type(v)is D else math.isfinite(v)) for v in event.components)):
             raise ModelIncomplete('C267_INVALID_CHRONOLOGICAL_COMPONENT_EVENT')
-        key=(event.timestamp_ms,PHASES[event.phase],event.symbol,event.attempt_id,event.sequence)
+        # NEW267 preread override: ranked causal ENTRY bundles use accepted
+        # admission ordinal (2*ordinal cost, 2*ordinal+1 known funding).
+        # Other phases retain symbol/attempt/sequence ordering.
+        key=((event.timestamp_ms,PHASES[event.phase],event.sequence,event.symbol,event.attempt_id) if event.phase=='ENTRY'
+             else (event.timestamp_ms,PHASES[event.phase],event.symbol,event.attempt_id,event.sequence))
         if key in self._ids or self._last is not None and key<self._last:raise ModelIncomplete('C267_DUPLICATE_OR_BACKDATED_CASH_EVENT')
         if event.raw_time_ms is not None:
             if (type(event.raw_time_ms)is not int or event.raw_time_ms>event.timestamp_ms
