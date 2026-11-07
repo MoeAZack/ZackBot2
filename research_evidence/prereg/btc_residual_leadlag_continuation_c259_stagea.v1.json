@@ -92,9 +92,9 @@
     "primary_capital_usd": 2000,
     "diagnostic_capitals_usd": [1000, 3000, 4000],
     "capital_selection_rule": "Only the complete 2000 USD replay admits/skips primary attempts and passes/rejects gates. The 1000/3000/4000 replays are replay-local feasibility diagnostics; they cannot veto, select, rescue, replace, average with or alter the 2000 USD trade set or verdict.",
-    "book_equity": "Each side and capital replay starts with its own settled cash and no positions. Before admission, side_book_equity=side settled cash plus causal marked P&L of only that side's positions using the latest verified mark close strictly before the entry open. The other side's cash, positions, capacity, costs and P&L never enter. Missing or non-positive equity/mark is INCOMPLETE for that side replay.",
+    "side_book_equity": "Each side and capital replay starts with its own settled cash and no positions. Before admission, side_book_equity=side settled cash plus causal marked P&L of only that side's positions using the latest verified mark close strictly before the entry open. The other side's cash, positions, capacity, costs and P&L never enter. Missing or non-positive equity/mark is INCOMPLETE for that side replay.",
     "risk_cash": "requested_risk_cash=0.01*side_book_equity. Continuous quantity=requested_risk_cash divided by conservative_loss_per_unit, which equals raw E-to-rounded-S loss plus stressed nonnegative fee_drag, slippage_drag and impact_drag for the actual entry side and a complete hypothetical stop exit. Freeze both impact terms from the exact 24 completed causal quote-volume bars available before entry; future volume cannot reduce the denominator. Every component is charged exactly once and every denominator must be finite and positive.",
-    "rounding": "q=floor(continuous_quantity/stepSize)*stepSize using exact Decimal. Recompute raw notional and stressed stop loss; require min/max quantity, minNotional, raw gross<=0.50*book_equity, actual_initial_risk_cash<=requested_risk_cash and impact/liquidity admission. Never increase or search for a favorable quantity.",
+    "rounding": "q=floor(continuous_quantity/stepSize)*stepSize using exact Decimal. Recompute raw notional and stressed stop loss; require min/max quantity, minNotional, raw gross<=0.50*side_book_equity, actual_initial_risk_cash<=requested_risk_cash and impact/liquidity admission. Never increase or search for a favorable quantity.",
     "primary_gate": "All headline frequency, expectancy, PF, drawdown, bootstrap and promotion values come only from the 2000 USD primary replay."
   },
   "risk": {
@@ -114,7 +114,7 @@
     "base_round_trip_bps": 14.0,
     "stress_round_trip_bps": 30.0,
     "pnl_rule": "movement_cash is signed; funding_cash is signed with credits positive; fee_drag, slippage_drag and impact_drag are finite nonnegative sums over every fill. actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag-impact_drag. Every trade R, PF numerator/denominator, cashflow, drawdown, stress replay and gate uses actual_net_cash; reference-price movement and each drag are disjoint and charged exactly once.",
-    "funding": "Book every verified Binance funding event during exposure using signed side quantity and the last verified 1h mark close strictly before funding time. Missing, duplicate or non-causal funding/mark authority makes the candidate INCOMPLETE; never assume zero.",
+    "funding": "Freeze side_sign=+1 for long and side_sign=-1 for short. For every verified Binance funding event during exposure, funding_cash=-side_sign*abs(quantity)*mark_price*funding_rate, using the last verified 1h mark close strictly before funding time. Thus positive funding debits longs and credits shorts; negative funding credits longs and debits shorts. Non-finite, missing, duplicate or non-causal funding rate, quantity or mark is an explicit authority failure: refuse a not-yet-open entry, or for exposed/protection handling retain protection, flatten under the failure rule, mark the side candidate INCOMPLETE and never substitute zero.",
     "impact": "Freeze impact_asof by fill type. For an entry, gap, scheduled or PROTECTION_FAILURE-cleanup fill at boundary t, impact_asof=t and the source is the exact 24 contiguous completed symbol 1h candles with close_time<=t and open_time<t. For an intrabar stop/target in the bar opening b, impact_asof=b, so the current fill bar is excluded even though its exit event key is at bar close. In both cases causal_quote_volume_24h=math.fsum(those 24 quote_volume values) must be finite and positive. participation=abs(quantity*reference_price)/causal_quote_volume_24h must be <=0.01. impact_drag_bps=min(10.0,10.0*sqrt(participation/0.01)); impact_drag=abs(quantity*reference_price)*impact_drag_bps/10000. Missing/gapped volume makes the exposed episode INCOMPLETE, never zero impact. Impact is nonnegative and never improves a fill. The conservative initial-risk denominator freezes entry impact_asof and volume for both its entry and hypothetical-stop impact terms; each actual exit uses the fill-type-defined causal impact_asof, never current/incomplete fill-bar volume.",
     "cost_admission": "The 2ATR stop distance must be at least five times base 14 bp round-trip cost and abs(forecast) must be at least twice base round-trip cost before rounding.",
     "stress": "Replay the identical admitted primary trade set with 10 bp adverse slippage per fill plus the same fees, funding and causal per-fill impact; stress may never change admission, improve a fill or remove a trade."
@@ -123,7 +123,7 @@
     "event_order": "Within each independent side replay, sort by UTC event timestamp and frozen phase. For equal timestamps process: INTRABAR_PRIOR_BOUNDARY exits from the bar just ended; funding on remaining pre-existing positions; stop-gap then target-gap then scheduled exits; PROTECTION_FAILURE cleanup; new entries; then the causal hourly mark snapshot. Within one phase sort symbol ascending then immutable attempt_id. Never order closed trades by entry time to construct equity or drawdown.",
     "cashflows": "Append every signed movement_cash and funding_cash and every negative fee_drag, slippage_drag and impact_drag at its exact event timestamp. Entry fills append only their three negative drags; raw entry notional is not P&L. Exit fills append reference-price movement from E plus their three negative drags. PROTECTION_FAILURE uses the same ledger. math.fsum of a closed trade's chronological cashflows must equal actual_net_cash exactly.",
     "marked_equity": "After each ordered cashflow/fill class and at every canonical hourly mark, compute side marked_equity=starting_capital+math.fsum(all chronological realized cashflows)+math.fsum(side_sign*quantity*(causal_mark-reference_entry_price) for every still-open lot). The mark is the verified markPriceKline close available at that timestamp; missing/non-finite marks make the side candidate INCOMPLETE. Overlapping normal and PROTECTION_FAILURE positions are all included simultaneously.",
-    "drawdown": "Start peak and equity at side starting capital. Traverse the marked-equity sequence in event order, update peak=max(peak,equity), and drawdown_cash=peak-equity. max_drawdown_cash is the maximum over all event and hourly-mark points; max_drawdown_R=max_drawdown_cash/(0.01*starting_capital). Closed-R drawdown is additionally reported but cannot replace or reduce marked-equity drawdown. Every drawdown gate uses the worse applicable frozen value.",
+    "drawdown": "Start peak and equity at side starting capital. Traverse the marked-equity sequence in event order, update peak=max(peak,equity), and drawdown_cash=peak-equity. chronological_marked_equity_drawdown_R=max(drawdown_cash)/(0.01*starting_capital). Separately compute closed_realized_R_drawdown_R from chronological close-time trade_R, never entry-time ordering. Freeze gate_drawdown_R=max(chronological_marked_equity_drawdown_R,closed_realized_R_drawdown_R). Every development, forward, stress, holdout and PAPER drawdown tier/gate uses gate_drawdown_R; neither series may replace or reduce the other.",
     "trade_r_and_pf": "initial_risk_cash is the immutable post-rounding conservative denominator from sizing, including raw stop loss and stressed entry-plus-hypothetical-stop fee, slippage and impact exactly once. trade_R=actual_net_cash/initial_risk_cash. PF=sum(positive actual_net_cash)/abs(sum(negative actual_net_cash)); no losses gives undefined and fails closed."
   },
   "regime": {
@@ -140,7 +140,7 @@
       "fewer than 8 distinct traded symbols",
       "median fewer than 8 closed trades per UTC month including zero months",
       "stress-cost mean net R<=0",
-      "max closed-R drawdown>60R",
+      "gate_drawdown_R=max(chronological marked-equity drawdown R, closed-realized R drawdown R)>60R",
       "any missing causal authority or incomplete exposed episode"
     ],
     "forward_pass_all_required_per_side": [
@@ -166,10 +166,10 @@
       "no authority, exchange, protection or causal-parity failure"
     ],
     "drawdown_tiers": {
-      "standard": "max drawdown<=15R",
-      "elevated": "15R<max drawdown<=30R and total net R/max drawdown>=1.5",
-      "high": "30R<max drawdown<=60R, total net R/max drawdown>=2.0, stress net R/stress max drawdown>=1.0, and future PAPER risk multiplier<=min(0.5,15/max_drawdown_R)",
-      "reject": "max drawdown>60R"
+      "standard": "gate_drawdown_R<=15R",
+      "elevated": "15R<gate_drawdown_R<=30R and total net R/gate_drawdown_R>=1.5",
+      "high": "30R<gate_drawdown_R<=60R, total net R/gate_drawdown_R>=2.0, stress net R/stress gate_drawdown_R>=1.0, and future PAPER risk multiplier<=min(0.5,15/gate_drawdown_R)",
+      "reject": "gate_drawdown_R>60R"
     },
     "undefined_statistics": "FAIL_CLOSED",
     "required_report": [
