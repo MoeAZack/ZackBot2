@@ -96,9 +96,9 @@ def synthetic_authority(tmp_path_factory):
         rows = []
         for hour, stamp in enumerate(stamps):
             slope = .004 if rank < 2 else -.004 if 18 <= rank < 20 else (rank-10)*.00002
-            price = (100+math.sin(hour/19) if symbol == "BTCUSDT"
-                     else 100*math.exp(slope*min(hour, 160)))
-            rows.append([stamp, price, price+1, price-1, price, 1,
+            price = round(100+math.sin(hour/19) if symbol == "BTCUSDT"
+                          else 100*math.exp(slope*min(hour, 160)), 4)
+            rows.append([stamp, price, round(price+1, 4), round(price-1, 4), price, 1,
                          stamp+C.HOUR_MS-1, 1e9, 1, 1, 1, 0])
         archive(symbol, "klines", rows)
         archive(symbol, "markPriceKlines", rows)

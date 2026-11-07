@@ -469,6 +469,9 @@ def replay_book(source, data, capital, ledger, *, synthetic=False):
                     reason = "missing exact next-open/causal ATR"
                     break
                 exchange, tick = filters[symbol]
+                if Decimal(str(bar.open)) % tick:
+                    reason = "PRICE_FILTER off-grid raw entry reference"
+                    break
                 raw = Decimal(str(bar.open))-Decimal(side)*Decimal(2)*Decimal(str(atr))
                 rounding = ROUND_FLOOR if side == 1 else ROUND_CEILING
                 stop = (raw/tick).to_integral_value(rounding=rounding)*tick
@@ -530,6 +533,9 @@ def replay_book(source, data, capital, ledger, *, synthetic=False):
             leg_rules = {leg.symbol: leg.filters for leg in legs}
             for fill in row.fills:
                 rule, quantity = leg_rules[fill.symbol], Decimal(str(fill.quantity))
+                if Decimal(str(fill.reference_price)) % filters[fill.symbol][1]:
+                    incomplete_reasons.add("INCOMPLETE_PRICE_FILTER_TICK_EXIT"
+                        if fill.phase != "entry" else "INCOMPLETE_PRICE_FILTER_TICK_ENTRY")
                 if (quantity < rule.min_qty or quantity > rule.max_qty
                         or quantity % rule.step_size
                         or quantity*Decimal(str(fill.reference_price)) < rule.min_notional):

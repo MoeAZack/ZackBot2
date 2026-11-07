@@ -22,8 +22,8 @@ def book_fixture(*, rate=0.0, settlement_hour=200, atomic=False):
                  (rank-10)*.00002 if rank < 20 else 0)
         tape = []
         for hour in range(220):
-            price = 100*math.exp(slope*hour) if symbol != "BTCUSDT" else 100+math.sin(hour/15)
-            tape.append(C.Bar(lo+hour*C.HOUR_MS, price, price+.05, price-.05, price, 1e9))
+            price = round(100*math.exp(slope*hour) if symbol != "BTCUSDT" else 100+math.sin(hour/15), 4)
+            tape.append(C.Bar(lo+hour*C.HOUR_MS, price, round(price+.05, 4), round(price-.05, 4), price, 1e9))
         bars[symbol] = {bar.open_ms: bar for bar in tape}
         marks[symbol] = {bar.open_ms+C.HOUR_MS-1: C.MarkClose(bar.open_ms+C.HOUR_MS-1, bar.close)
                          for bar in tape}
@@ -242,3 +242,28 @@ def test_null_protected_amendment_locks_before_source_or_identity(tmp_path, monk
     monkeypatch.setattr(C, "_git", fake_git)
     with pytest.raises(C.EvaluationLocked, match="invalid protected"):
         E.run_archive_evaluation(None, tmp_path, None, synthetic=False)
+
+
+def test_off_grid_indexed_entry_is_skipped_without_rounding_or_promotion():
+    source, data = book_fixture()
+    members, rules = data.memberships[data.start]
+    data.memberships[data.start] = (members, {symbol: (filters, Decimal("1"))
+                                             for symbol, (filters, _) in rules.items()})
+    replay, detail = E.replay_book(source, data, 2000, C.TrialLedger(), synthetic=True)
+    assert not replay.attempts and not replay.incomplete
+    assert any("PRICE_FILTER off-grid raw entry reference" in skip for skip in replay.skips)
+    assert detail["indexed_skips"] > 0
+
+
+def test_off_grid_mandatory_exit_is_retained_unrounded_and_incomplete():
+    source, data = book_fixture()
+    due = data.start+206*C.HOUR_MS
+    original = data.bars["S00USDT"][due]
+    invalid = original.open+.00005
+    data.bars["S00USDT"][due] = replace(original, open=invalid)
+    replay, detail = E.replay_book(source, data, 2000, C.TrialLedger(), synthetic=True)
+    exits = [fill for row in replay.attempts for fill in row.fills
+             if fill.symbol == "S00USDT" and fill.phase != "entry" and fill.timestamp_ms == due]
+    assert exits and exits[0].reference_price == invalid
+    assert Decimal(str(exits[0].reference_price)) % Decimal("0.0001") != 0
+    assert replay.incomplete and "INCOMPLETE_PRICE_FILTER_TICK_EXIT" in detail["incomplete_reasons"]
