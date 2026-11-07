@@ -60,6 +60,8 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
     # anchored to the frozen protected base.
     subprocess.run(["git", "-C", str(repo), "fetch", "--no-tags", "--depth=1",
                     str(ROOT), BASE_COMMIT], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "fetch", "--no-tags", "--depth=1",
+                    str(ROOT), C256_COMMIT], capture_output=True, check=True)
     _run(repo, "checkout", "--detach", BASE_COMMIT)
     _run(repo, "config", "user.name", "C257 Test")
     _run(repo, "config", "user.email", "c257@example.invalid")
