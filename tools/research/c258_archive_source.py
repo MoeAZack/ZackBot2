@@ -53,11 +53,6 @@ class C258ArchiveSource:
         if len(paths) != len(set(paths)):
             raise C.IncompleteAuthority("duplicate active archive path")
 
-    def membership(self, decision_ms: int, eligible_symbols: tuple[str, ...]) -> tuple[str, ...]:
-        # Fold-filter eligibility is derived by the fixed replay from filter-v4.
-        return C.apply_filter_snapshot(
-            C.latest_pit_membership(self._pit["weeks"], decision_ms), eligible_symbols)
-
     def load(self, *, symbol: str, stream: str, fold: str,
              start_ms: int, end_ms: int) -> SourceRows:
         lo, hi = frozen_window(fold)
