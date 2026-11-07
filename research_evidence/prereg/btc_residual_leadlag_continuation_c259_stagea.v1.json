@@ -1,0 +1,222 @@
+{
+  "format": "zb-strategy-preregistration/1",
+  "candidate_id": 259,
+  "candidate_key": "btc_residual_leadlag_continuation_1h",
+  "base_commit": "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3",
+  "frozen_at_cairo": "2026-11-07T02:53:56+02:00",
+  "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
+  "default_off": true,
+  "evaluation_locked": true,
+  "paper_eligibility": "BLOCK_UNTIL_INDEPENDENT_OOS_PASS",
+  "roadmap_fit": "Fresh frequent 1h cross-asset information-diffusion candidate after rejecting duplicate compression and pullback proposals.",
+  "deferred": [
+    "evaluator or runner implementation",
+    "market-row, outcome, packet, identity-ledger or sealed-holdout access",
+    "parameter, side, symbol, regime, window or management selection",
+    "PAPER or testnet activation",
+    "mainnet"
+  ],
+  "hypothesis": "After removing an alt perpetual's contemporaneous BTC beta, a large completed BTCUSDT hourly impulse predicts a delayed same-direction residual response in PIT-eligible alts whose frozen pre-decision lag coefficient is positive and whose impulse-hour residual has not already consumed that forecast.",
+  "selection_provenance": {
+    "chosen_without_outcomes": true,
+    "metadata_sources_only": [
+      "docs/newcore/research/STRATEGY_RESEARCH_BOARD_2026-10-23.md",
+      "research_evidence/prereg metadata across current and historical Git refs",
+      "research_evidence/ledger registration metadata",
+      "contracts metadata"
+    ],
+    "duplicate_search": "Metadata-only searches across the current tree and Git history found BOL-1H BTC aggressor-flow lead-lag, DSR-1H BTC-neutral residual reversion, C52 own-symbol volume-return lead-lag, C258 cross-sectional relative-strength continuation and time-series momentum. No frozen candidate estimates a symbol-specific lagged BTC coefficient after removing contemporaneous BTC beta and then trades its unconsumed forecast after a completed BTC price impulse.",
+    "not_holdout_rescue": "No C259 market row, signal, return, outcome, packet, identity ledger or sealed-holdout artifact was opened. No rule was inferred from BOL-1H, DSR-1H, C258 or any later-period outcome.",
+    "economic_distinction": {
+      "from_bol_1h": "BOL-1H thresholds archived one-minute BTC aggressor imbalance plus a fixed BTC price move and admits a target merely because its same-hour raw move is flat. C259 uses no trades or taker-flow stream: it estimates separate contemporaneous beta and lag-response coefficients from prior 1h returns and admits only a positive statistically identified, still-unconsumed residual forecast.",
+      "from_dsr_1h": "DSR-1H fades cross-sectional six-hour residual extremes after recovery during elevated dispersion. C259 follows a one-hour delayed response to a completed BTC impulse; it has no cross-sectional residual rank, dispersion event or reversion entry.",
+      "from_c258": "C258 pairs relative 24h leaders and laggards and never uses BTC to form its score. C259 is single-symbol time-series lead-lag, separately judged by side, and conditions on a completed BTC impulse.",
+      "from_c52": "C52 estimates whether an alt's own lagged quote-volume change predicts its own return. C259 uses BTC return as the external lagged predictor after contemporaneous market residualization and volume only for liquidity admission."
+    }
+  },
+  "authority": {
+    "plan_path": "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json",
+    "plan_sha256": "30080d16132348fabceb91bffe110f43ee33824c4496622f736ee6a6c4d7af60",
+    "plan_authority_id": "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
+    "plan_status_required_at_freeze": "FROZEN_METADATA_ONLY_NOT_ACQUIRED",
+    "required_future_outputs": [
+      "research_evidence/manifests/binance-um-archive-precutoff-v6.json.gz",
+      "research_evidence/universe/pit-top40-qv30d-precutoff-v9.json",
+      "contracts/strategy_causal_pack_01/exchange_filter_authority.v4.json",
+      "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v4.json"
+    ],
+    "required_streams": ["klines:1h", "markPriceKlines:1h", "fundingRate:null"],
+    "future_pin_rule": "After all four authority-v6 outputs independently pass and protected-merge, and before any market or outcome read, one mechanical amendment may bind their exact byte hashes/content digests and accepted protected head. It may change no hypothesis, signal, side, universe, execution, risk, cost, split, gate, multiplicity or PAPER term; any other change creates a new numbered candidate.",
+    "pre_market_gate": "Validate the authority-v6 plan byte hash, output byte hashes/content digests, cutoff-exclusive rule, PIT-v9 weekly cells, filter-v4 fold bindings and coverage-v4 ZERO_GUARANTEED_PERIOD_GAPS before opening any 1h bar, mark or funding row.",
+    "membership": "At each completed 1h decision close d, use the PIT-v9 crypto book from the greatest weekly Monday cell with monday_ms<=d, preserving artifact order, then apply filter-v4 for the fold. BTCUSDT is the external benchmark and cannot be traded by C259. Current membership, archive availability, survivor filtering and future cells are forbidden. Because frozen filter authority begins 2024-12-14T00:00:00Z, every development decision before that instant is an explicit zero-trade FILTER_AUTHORITY_UNAVAILABLE decision; it is never omitted, backfilled or evaluated with a later snapshot.",
+    "availability": "Use only completed exact-timestamp 1h klines, causal mark closes and funding rows available by the event. Never forward-fill, backfill, interpolate, compress time, synthesize zero funding or bridge a missing bar.",
+    "cutoff_exclusive": "2026-11-05T00:00:00Z"
+  },
+  "splits": {
+    "development": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_filter_eligible": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "forward_folds": [
+      "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+      "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+      "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+    ],
+    "sealed_holdout": "2026-09-28T00:00:00Z/2026-11-05T00:00:00Z",
+    "holdout_policy": "SEALED_UNTIL_FORWARD_PASS_AND_INDEPENDENT_SPEND",
+    "boundary_rule": "Every development, fold and holdout window starts with two separate flat side books and resets all beta, lag, ATR, liquidity and regime statistics. Prior rows may not warm a window or contribute a signal, fill, funding or P&L. Development decisions before 2024-12-14T00:00:00Z are recorded zero-trade because filter authority is unavailable.",
+    "one_shot_rule": "Development can only reject C259. Each surviving side runs unchanged through all three forward folds once; a forward survivor spends the sealed holdout once under independent exact-head control. No threshold, side, symbol, regime, coefficient, holding period, stop, cost, capital slice or gate may be tuned or rescued."
+  },
+  "signal": {
+    "timeframe": "1h",
+    "side_cells": ["long_after_positive_btc_impulse", "short_after_negative_btc_impulse"],
+    "decision_clock": "At completed canonical 1h close d, calculate only from candles whose close timestamp is <=d. Any signal can fill only at the next canonical 1h open strictly after d.",
+    "returns": "For BTCUSDT and each eligible alt, r_t=log(close_t/close_t_minus_1h) on exact contiguous canonical timestamps. Nearest-bar substitution and compressed-time returns are forbidden.",
+    "estimation_window": "For each alt at d, use exactly the 720 paired hourly observations s=d-720h..d-1h, excluding d. Require all 720 contiguous finite BTC and alt returns; otherwise that symbol is ineligible. No estimator state crosses a split boundary.",
+    "contemporaneous_beta": "beta0=math.fsum(r_alt_s*r_btc_s)/math.fsum(r_btc_s*r_btc_s) over the frozen window. A non-finite or non-positive denominator refuses the symbol. residual_s=r_alt_s-beta0*r_btc_s.",
+    "lag_model": "For s=d-719h..d-1h set x_s=r_btc_s_minus_1h and y_s=residual_s. With n=719, xx=math.fsum(x_s*x_s), gamma=math.fsum(y_s*x_s)/xx, error_s=y_s-gamma*x_s, sse=math.fsum(error_s*error_s), sigma2=sse/718, se_gamma=sqrt(sigma2/xx), and t_gamma=gamma/se_gamma, evaluated in that order in IEEE-754 binary64. Non-finite values, xx<=0, sse<0 or se_gamma<=0 refuse the symbol.",
+    "btc_impulse": "scale=median(abs(r_btc_s)) over the 168 completed hours ending d-1h. Require finite scale>0. Positive impulse: r_btc_d>=max(0.0075,3.0*scale). Negative impulse: r_btc_d<=-max(0.0075,3.0*scale). Equality qualifies; no other BTC hour signals.",
+    "unconsumed_forecast": "At d compute residual_d=r_alt_d-beta0*r_btc_d and forecast=gamma*r_btc_d. Long requires gamma>=0.10, t_gamma>=2.0, positive BTC impulse, forecast>=0.0028 and residual_d<=0.25*forecast. Short requires gamma>=0.10, t_gamma>=2.0, negative BTC impulse, forecast<=-0.0028 and residual_d>=0.25*forecast. Sides are separate hypotheses and cannot pool or rescue each other.",
+    "liquidity": "Decision-hour quote_volume must be finite, positive and >=the median of the preceding 24 completed hours excluding d. Causal 24h quote notional must be >=100 times proposed raw entry notional; otherwise record IMPACT_INFEASIBLE before entry.",
+    "ordering_and_capacity": "Within a side, sort eligible symbols by abs(forecast-residual_d) descending then symbol ascending. Admit at most three symbols at d, skipping occupied or infeasible symbols without backfill from another side. A symbol may have at most one C259 position.",
+    "anti_lookahead": "The impulse-hour alt return is used only to measure response already consumed; d is excluded from every coefficient and every scale/liquidity baseline, while its completed OHLC is included exactly once in causal ATR24. Entry reference, exchange rounding and P&L begin at the strictly later open."
+  },
+  "execution": {
+    "entry": "Enter the admitted alt side at the first canonical 1h open strictly after d. The raw reference is that open after exchange-price validation. A buy execution price is reference*(1+2bp) and a sell is reference*(1-2bp); slippage is charged once as nonnegative drag, and impact is a separate nonnegative cash drag. Missing next-open authority makes the candidate INCOMPLETE.",
+    "atr": "ATR24 is Wilder RMA alpha=1/24 over completed contiguous bars, seeded by the first 24 true ranges inside each split and updated through completed decision bar d exactly once. No entry-open or later value enters the stop distance.",
+    "protection": "From raw entry reference E and causal ATR24 A, compute raw stop S0=E-2A for long or E+2A for short. Round the stop trigger toward E to the filter tick (long ceil, short floor) and require positive distance D=abs(E-S). Place that reduce-only stop before exposure counts. Compute raw target T0=E+2D for long or E-2D for short and round toward E (long floor, short ceil); require target distance>0. These immutable rounded S and T define initial price risk and the 2R target reference.",
+    "exit": "A 12-hour scheduled exit is due at the first canonical open t with t>=actual_entry_time+12h. For each canonical bar after entry, boundary processing follows funding_order, then tests stop gap (long open<=S; short open>=S), target gap (long open>=T; short open<=T), and a due scheduled exit. A stop gap reference is the adverse bar open; a target gap reference is frozen T (never favorable gap improvement); scheduled reference is bar open. If still open, test the bar range: if both S and T are touched, stop wins; otherwise the touched level is the reference. A range exit receives event key (bar_close_time,INTRABAR_PRIOR_BOUNDARY), which sorts before any event exactly at that close boundary. Apply side-adverse slippage and nonnegative causal impact to every exit fill exactly once. No partial, trailing stop, signal exit, pyramid or DCA.",
+    "funding_order": "At boundary timestamp t, first finalize INTRABAR_PRIOR_BOUNDARY exits from the bar ending at t; those lots receive funding events strictly before t but not at t. Then apply verified funding at t to positions still open from before t; then process stop-gap, target-gap and scheduled open exits; then PROTECTION_FAILURE cleanup; then new entries. An entry at t does not receive funding at t; an open exit at t does. Funding credits and debits are both retained with their natural sign.",
+    "failure_accounting": "A rejected or uncertain entry is a pre-entry skip only when zero quantity is accepted. If any quantity is accepted without confirmed protection, classify PROTECTION_FAILURE, retain all entry fee/slippage/impact, use the same frozen stop if available, and flatten at the next canonical open after same-timestamp funding. The failure exit uses its own causal prior-volume impact and adverse slippage. Include every chronological cashflow and marked exposure as a closed loss-row in every gate and make the whole side candidate INCOMPLETE; no accepted exposure, cost, funding or drawdown point may be dropped.",
+    "exchange_rules": "Apply point-in-time PRICE_FILTER, MARKET_LOT_SIZE, MIN_NOTIONAL and maximum quantity to every entry and exit. Floor quantity with exact Decimal arithmetic; never round up or use current exchangeInfo."
+  },
+  "sizing": {
+    "primary_capital_usd": 2000,
+    "diagnostic_capitals_usd": [1000, 3000, 4000],
+    "capital_selection_rule": "Only the complete 2000 USD replay admits/skips primary attempts and passes/rejects gates. The 1000/3000/4000 replays are replay-local feasibility diagnostics; they cannot veto, select, rescue, replace, average with or alter the 2000 USD trade set or verdict.",
+    "side_book_equity": "Each side and capital replay starts with its own settled cash and no positions. Before admission, side_book_equity=side settled cash plus causal marked P&L of only that side's positions using the latest verified mark close strictly before the entry open. The other side's cash, positions, capacity, costs and P&L never enter. Missing or non-positive equity/mark is INCOMPLETE for that side replay.",
+    "risk_cash": "requested_risk_cash=0.01*side_book_equity. Continuous quantity=requested_risk_cash divided by conservative_loss_per_unit, which equals raw E-to-rounded-S loss plus stressed nonnegative fee_drag, slippage_drag and impact_drag for the actual entry side and a complete hypothetical stop exit. Freeze both impact terms from the exact 24 completed causal quote-volume bars available before entry; future volume cannot reduce the denominator. Every component is charged exactly once and every denominator must be finite and positive.",
+    "rounding": "q=floor(continuous_quantity/stepSize)*stepSize using exact Decimal. Recompute raw notional and stressed stop loss; require min/max quantity, minNotional, raw gross<=0.50*side_book_equity, actual_initial_risk_cash<=requested_risk_cash and impact/liquidity admission. Never increase or search for a favorable quantity.",
+    "primary_gate": "All headline frequency, expectancy, PF, drawdown, bootstrap and promotion values come only from the 2000 USD primary replay."
+  },
+  "risk": {
+    "risk_per_position_r": 1.0,
+    "max_concurrent_positions": 3,
+    "max_open_risk_r": 3.0,
+    "max_position_gross_leverage": 0.5,
+    "max_aggregate_gross_leverage": 1.5,
+    "capital_simulations_usd": [1000, 2000, 3000, 4000],
+    "side_isolation": "Long and short are fully independent books for every capital replay: separate starting capital, settled cash, marked equity, position/capacity limits, open-risk budget, event queue, costs, drawdown, trial ledger and verdict. Neither side can reserve or release capacity, alter sizing/equity, offset P&L or rescue/promote the other.",
+    "correlation_disclosure": "Report same-hour cluster size, symbol/side concentration, pairwise return correlation, BTC beta, impulse clustering and overlap with BOL-1H, DSR-1H and C258."
+  },
+  "costs": {
+    "taker_fee_bps_per_fill": 5.0,
+    "adverse_slippage_bps_per_fill": 2.0,
+    "stress_adverse_slippage_bps_per_fill": 10.0,
+    "base_round_trip_bps": 14.0,
+    "stress_round_trip_bps": 30.0,
+    "pnl_rule": "movement_cash is signed; funding_cash is signed with credits positive; fee_drag, slippage_drag and impact_drag are finite nonnegative sums over every fill. actual_net_cash=movement_cash+funding_cash-fee_drag-slippage_drag-impact_drag. Every trade R, PF numerator/denominator, cashflow, drawdown, stress replay and gate uses actual_net_cash; reference-price movement and each drag are disjoint and charged exactly once.",
+    "funding": "Freeze side_sign=+1 for long and side_sign=-1 for short. For every verified Binance funding event during exposure, funding_cash=-side_sign*abs(quantity)*mark_price*funding_rate, using the last verified 1h mark close strictly before funding time. Thus positive funding debits longs and credits shorts; negative funding credits longs and debits shorts. Non-finite, missing, duplicate or non-causal funding rate, quantity or mark is an explicit authority failure: refuse a not-yet-open entry, or for exposed/protection handling retain protection, flatten under the failure rule, mark the side candidate INCOMPLETE and never substitute zero.",
+    "impact": "Freeze impact_asof by fill type. For an entry, gap, scheduled or PROTECTION_FAILURE-cleanup fill at boundary t, impact_asof=t and the source is the exact 24 contiguous completed symbol 1h candles with close_time<=t and open_time<t. For an intrabar stop/target in the bar opening b, impact_asof=b, so the current fill bar is excluded even though its exit event key is at bar close. In both cases causal_quote_volume_24h=math.fsum(those 24 quote_volume values) must be finite and positive. participation=abs(quantity*reference_price)/causal_quote_volume_24h must be <=0.01. impact_drag_bps=min(10.0,10.0*sqrt(participation/0.01)); impact_drag=abs(quantity*reference_price)*impact_drag_bps/10000. Missing/gapped volume makes the exposed episode INCOMPLETE, never zero impact. Impact is nonnegative and never improves a fill. The conservative initial-risk denominator freezes entry impact_asof and volume for both its entry and hypothetical-stop impact terms; each actual exit uses the fill-type-defined causal impact_asof, never current/incomplete fill-bar volume.",
+    "cost_admission": "The 2ATR stop distance must be at least five times base 14 bp round-trip cost and abs(forecast) must be at least twice base round-trip cost before rounding.",
+    "stress": "Replay the identical admitted primary trade set with 10 bp adverse slippage per fill plus the same fees, funding and causal per-fill impact; stress may never change admission, improve a fill or remove a trade."
+  },
+  "accounting": {
+    "event_order": "Within each independent side replay, sort by UTC event timestamp and frozen phase. For equal timestamps process: INTRABAR_PRIOR_BOUNDARY exits from the bar just ended; funding on remaining pre-existing positions; stop-gap then target-gap then scheduled exits; PROTECTION_FAILURE cleanup; new entries; then the causal hourly mark snapshot. Within one phase sort symbol ascending then immutable attempt_id. Never order closed trades by entry time to construct equity or drawdown.",
+    "cashflows": "Append every signed movement_cash and funding_cash and every negative fee_drag, slippage_drag and impact_drag at its exact event timestamp. Entry fills append only their three negative drags; raw entry notional is not P&L. Exit fills append reference-price movement from E plus their three negative drags. PROTECTION_FAILURE uses the same ledger. math.fsum of a closed trade's chronological cashflows must equal actual_net_cash exactly.",
+    "marked_equity": "After each ordered cashflow/fill class and at every canonical hourly mark, compute side marked_equity=starting_capital+math.fsum(all chronological realized cashflows)+math.fsum(side_sign*quantity*(causal_mark-reference_entry_price) for every still-open lot). The mark is the verified markPriceKline close available at that timestamp; missing/non-finite marks make the side candidate INCOMPLETE. Overlapping normal and PROTECTION_FAILURE positions are all included simultaneously.",
+    "drawdown": "Start peak and equity at side starting capital. Traverse the marked-equity sequence in event order, update peak=max(peak,equity), and drawdown_cash=peak-equity. chronological_marked_equity_drawdown_R=max(drawdown_cash)/(0.01*starting_capital). Separately compute closed_realized_R_drawdown_R from chronological close-time trade_R, never entry-time ordering. Freeze gate_drawdown_R=max(chronological_marked_equity_drawdown_R,closed_realized_R_drawdown_R). Every development, forward, stress, holdout and PAPER drawdown tier/gate uses gate_drawdown_R; neither series may replace or reduce the other.",
+    "trade_r_and_pf": "initial_risk_cash is the immutable post-rounding conservative denominator from sizing, including raw stop loss and stressed entry-plus-hypothetical-stop fee, slippage and impact exactly once. trade_R=actual_net_cash/initial_risk_cash. PF=sum(positive actual_net_cash)/abs(sum(negative actual_net_cash)); no losses gives undefined and fails closed."
+  },
+  "regime": {
+    "definition": "At each decision d, compute BTCUSDT EMA200 from contiguous completed 1h closes inside the same split, seeded with the first 200 closes and updated through d. Label BTC_ABOVE_OR_ON_EMA200 when close_d>=EMA200_d, else BTC_BELOW_EMA200.",
+    "causality": "The exact BTC d close is available at decision time; no later close or state crosses a split. Missing/non-finite BTC data resets warm-up and prevents admission.",
+    "attribution": "Freeze regime at entry decision and retain it through close. Every normal or failure row must have exactly one label."
+  },
+  "gates": {
+    "development_reject_if_any_per_side": [
+      "pre-cost gross expectancy<=0",
+      "mean after-cost net R<=0",
+      "profit factor<=1.05",
+      "fewer than 120 closed trades",
+      "fewer than 8 distinct traded symbols",
+      "median fewer than 8 closed trades per UTC month including zero months",
+      "stress-cost mean net R<=0",
+      "gate_drawdown_R=max(chronological marked-equity drawdown R, closed-realized R drawdown R)>60R",
+      "any missing causal authority or incomplete exposed episode"
+    ],
+    "forward_pass_all_required_per_side": [
+      "aggregate mean after-cost net R>0.03",
+      "aggregate profit factor>1.10",
+      "at least 300 closed trades across at least 12 symbols",
+      "median at least 12 closed trades per UTC month including zero months",
+      "at least 2 of 3 forward folds have positive net R",
+      "worst forward-fold mean net R>-0.05",
+      "strictly more than 55% of UTC months intersecting the folds have positive net R; zero-trade months remain in the denominator",
+      "at least 30 closes in each BTC regime and each regime mean net R>-0.03",
+      "stress-cost aggregate mean net R>0 and profit factor>1.02",
+      "stationary-block-bootstrap one-sided p-value<=0.05/(259*2)",
+      "no symbol contributes more than 25% of sum(abs(symbol net R)); zero denominator fails",
+      "drawdown disclosure tier passes",
+      "all exchange, impact, protection, causal-parity and report checks pass"
+    ],
+    "holdout_pass_all_required_per_side": [
+      "at least 20 complete closed trades across at least 6 symbols",
+      "after-cost net R>0 and profit factor>1.05",
+      "mean net R>0 with the frozen bootstrap 95% interval reported",
+      "stress net R>0",
+      "no authority, exchange, protection or causal-parity failure"
+    ],
+    "drawdown_tiers": {
+      "standard": "gate_drawdown_R<=15R",
+      "elevated": "15R<gate_drawdown_R<=30R and total net R/gate_drawdown_R>=1.5",
+      "high": "30R<gate_drawdown_R<=60R, total net R/gate_drawdown_R>=2.0, stress net R/stress gate_drawdown_R>=1.0, and future PAPER risk multiplier<=min(0.5,15/gate_drawdown_R)",
+      "reject": "gate_drawdown_R>60R"
+    },
+    "undefined_statistics": "FAIL_CLOSED",
+    "required_report": [
+      "scheduled, eligible, admitted, skipped, failed and closed counts by side",
+      "gross/net R, mean R, PF, win rate, drawdown, recovery and return/drawdown ratio",
+      "nonnegative fee, slippage and impact drags plus signed funding",
+      "chronological cashflow and marked-equity drawdown with every overlapping and PROTECTION_FAILURE position",
+      "fold, week, month, side, symbol, regime and capital diagnostics",
+      "coefficient, t-stat, impulse, residual-consumption and liquidity distributions without post-result subgroup selection",
+      "base/stress results, bootstrap interval/p-value, authority gaps, correlations and full trial ledger"
+    ]
+  },
+  "statistics": {
+    "ordered_unit": "closed trade within one side ordered by entry timestamp then symbol",
+    "statistic": "mean after-cost net R per closed trade",
+    "method": "Politis-Romano stationary bootstrap with fixed draws",
+    "expected_block_length_trades": 21,
+    "resamples": 20000,
+    "prng": "numpy 2.5.3 numpy.random.Generator(numpy.random.PCG64(seed)); draw float64 uniforms with size=(resamples,n,2) in C order; PCG64 only.",
+    "fixed_draw": "For each of exactly 20000 replicates and each ordered observation j consume pre-drawn float64 u_restart=data[b,j,0] and u_index=data[b,j,1]. At j=0 set index=floor(u_index*n) and ignore but consume u_restart. At j>0 restart at floor(u_index*n) when u_restart<1/21, otherwise set index=(previous_index+1)%n while still consuming u_index. PCG64 generates exactly 20000*n*2 uniforms per distribution in one C-order array; n=0 fails closed.",
+    "long_null_seed": 259202611071,
+    "long_ci_seed": 259202611072,
+    "short_null_seed": 259202611073,
+    "short_ci_seed": 259202611074,
+    "p_value": "Observed T=math.fsum(trade_R)/n. Center each trade_R by subtracting T, run exactly 20000 fixed-draw replicates with the side-specific null seed, compute T_star=math.fsum(resampled_centered_R)/n, and report p=(1+count(T_star>=T))/(20000+1), inclusive upper tail. Minimum attainable p is 1/20001, which is below 0.05/(259*2).",
+    "confidence_interval": "Run exactly 20000 uncentered fixed-draw replicates with the side-specific CI seed; compute each mean with math.fsum/n and report numpy.quantile(method='linear') at 0.025 and 0.975."
+  },
+  "multiplicity": {
+    "numbered_candidate_family": 259,
+    "promotable_primary_count": 2,
+    "promotable_primaries": ["long_after_positive_btc_impulse", "short_after_negative_btc_impulse"],
+    "cell_alpha_ceiling": 0.00009652509652509653,
+    "formula": "0.05/(259 numbered families*2 C259 side cells)",
+    "ledger_rule": "Append every scheduled decision, zero-trade hour, skip, attempt, failure, base/stress row and rejection. Prior and rejected candidates remain counted.",
+    "no_rescue": "Each side passes independently. Pooling sides or selecting a symbol, regime, month, fold, coefficient slice, capital diagnostic or baseline is forbidden; any rule change is a new numbered candidate."
+  },
+  "paper_admission": {
+    "default_off": true,
+    "paper_testnet_only": true,
+    "prerequisites_per_side": [
+      "development, all forward gates and one independently spent sealed holdout pass unchanged",
+      "independent exact-head reproduction passes with byte-bound authorities",
+      "runtime causal-parity, filter, protection, restart and rollback drills pass",
+      "isolated C259 side book and immutable cohort evidence are ready"
+    ],
+    "bounded_canary": "Start each independently qualified side at 0.25R per position, maximum two C259 positions and 0.50R total C259 open risk. Apply any stricter frozen drawdown multiplier. No mainnet authority.",
+    "paper_transfer_gate": "For a side, require at least 50 complete measured closes over at least 14 Cairo days, positive actual-cost mean net R, PF>1.05, no unprotected lot, no incomplete cost row and no risk/protection breach. PAPER cannot rescue a historical failure.",
+    "rollback": "Unknown account state, protection failure, authority drift, incomplete costs or causal mismatch disables new C259 entries immediately while existing testnet exposure remains protected and managed."
+  }
+}
