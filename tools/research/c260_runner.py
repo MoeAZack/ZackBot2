@@ -402,7 +402,10 @@ class DevelopmentBook:
                 self.hourly.append((t, self.equity()))
             if self.lots:
                 raise SourceIncomplete('UNRESOLVED_EXPOSURE_AT_FOLD_END')
-        except (SourceIncomplete, X.C259Error, P.RunnerError, ValueError, KeyError) as exc:
+        except (OSError, SourceIncomplete, X.C259Error, P.RunnerError, ValueError, KeyError) as exc:
+            # A missing/unreadable checksum cache is an incomplete data result,
+            # including after an admission. Retain all known costs and open
+            # lots so the one-shot CLI can persist its canonical failure report.
             self.failures.append(str(exc))
         return self.report()
 

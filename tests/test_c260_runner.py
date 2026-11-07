@@ -630,6 +630,46 @@ def test_export_failure_preserves_canonical_record_published_inside_authority(fi
             pytest.fail('export failure refunded the candidate')
 
 
+@pytest.mark.parametrize('stage', ['before_entry', 'after_exposure'])
+def test_source_file_oserror_is_incomplete_and_preserves_known_exposure(source, monkeypatch, stage):
+    book = R.DevelopmentBook(source, capital=2000)
+    original = source.klines
+    def missing(symbol):
+        if stage == 'before_entry' or book.lots:
+            raise FileNotFoundError('synthetic missing raw cache')
+        return original(symbol)
+    monkeypatch.setattr(source, 'klines', missing)
+    report = book.run()
+    assert not report['data_complete'] and report['cash_reconciled']
+    assert report['failures'] == ['synthetic missing raw cache']
+    assert report['closed_count'] == 0
+    if stage == 'after_exposure':
+        assert report['known_open_cash'] < 0 and report['settled_cash'] < book.capital
+        assert len(report['unresolved_exposures']) == 1
+        assert report['unresolved_exposures'][0]['known_cost_cash'] > 0
+        assert any(attempt.get('reason') == 'ADMITTED' for attempt in report['attempts'])
+    else:
+        assert report['known_open_cash'] == 0 and report['settled_cash'] == book.capital
+        assert report['unresolved_exposures'] == []
+
+
+def test_missing_raw_cache_cli_persists_canonical_data_incomplete_before_revoking_cap(fixture_root, tmp_path, monkeypatch):
+    issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
+                        artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
+    monkeypatch.setattr(M, 'read_archive', lambda *args: (_ for _ in ()).throw(
+        FileNotFoundError('synthetic missing checksum ZIP')))
+    out = tmp_path / 'incomplete.json'
+    assert R.main(['development', '--out', str(out)]) == 0
+    report = json.loads(out.read_bytes())
+    assert report['economic_development_verdict'] == 'DATA_INCOMPLETE'
+    assert report['forward_state'] == 'VETOED_BEFORE_FORWARD_READ'
+    assert not report['development_gates']['data_complete']
+    assert report['primary']['failures'] == ['synthetic missing checksum ZIP']
+    assert report['primary']['cash_reconciled'] and not report['paper_qualified']
+    assert Path(report['canonical_report_path']).read_bytes() == out.read_bytes()
+    assert not AUTH._ISSUED
+
+
 def test_actual_frozen_v3_wf_only_metadata_derives_development_without_market_or_identity_reads(tmp_path, monkeypatch):
     repository = C.PREREG.parents[2]
     proposal = C.load_proposal_metadata()
