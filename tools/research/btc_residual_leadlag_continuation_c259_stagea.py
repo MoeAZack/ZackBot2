@@ -293,6 +293,9 @@ class SignalFit:
     decision_close_ms: int
     btc_decision_price: float
     alt_decision_price: float
+    window_start_ms: int
+    window_end_ms: int
+    window_identity_sha256: str
     beta0: float
     gamma: float
     se_gamma: float
@@ -370,14 +373,26 @@ def fit_signal(prior_btc_closes: Sequence[ClosePrice], prior_alt_closes: Sequenc
         side == 1 and forecast >= 0.0028 and residual_d <= 0.25 * forecast
         or side == -1 and forecast <= -0.0028 and residual_d >= 0.25 * forecast
     ))
+    window_body = [(btc.close_ms, btc.price, alt.price)
+                   for btc, alt in zip(prior_btc_closes, prior_alt_closes)]
+    window_identity = _sha(_canon(window_body))
     return SignalFit(decision_close_ms, btc_decision_price, alt_decision_price,
+                     prior_btc_closes[0].close_ms, prior_btc_closes[-1].close_ms,
+                     window_identity,
                      beta, gamma, se, t, residual_d, forecast, threshold, side, qualifies)
 
 
-def select_candidates(rows: Iterable[tuple[str, SignalFit]], side: int,
+def select_candidates(rows: Iterable[tuple[str, SignalFit]], side: int, *, decision_close_ms: int,
                       occupied: Iterable[str] = ()) -> tuple[str, ...]:
     occupied_set = set(occupied)
-    eligible = [(symbol, fit) for symbol, fit in rows
+    materialized = list(rows)
+    for _symbol, fit in materialized:
+        if (fit.decision_close_ms != decision_close_ms
+                or fit.window_start_ms != decision_close_ms-721*HOUR_MS
+                or fit.window_end_ms != decision_close_ms-HOUR_MS
+                or len(fit.window_identity_sha256) != 64):
+            raise IncompleteAuthority("candidate signal provenance is stale or mismatched")
+    eligible = [(symbol, fit) for symbol, fit in materialized
                 if fit.qualifies and fit.side == side and symbol not in occupied_set]
     eligible.sort(key=lambda item: (-abs(item[1].forecast - item[1].residual_d), item[0]))
     return tuple(symbol for symbol, _ in eligible[:3])
@@ -531,13 +546,14 @@ class Fill:
 
 def make_fill(*, timestamp_ms: int, phase: str, symbol: str, side: int, quantity: float,
               reference: float, movement_from: float | None, volume_bars: Sequence[Bar],
-              impact_asof_ms: int,
               slippage_bps: float = BASE_SLIPPAGE_BPS) -> Fill:
     if side not in (-1, 1) or quantity <= 0 or reference <= 0:
         raise C259Error("invalid fill")
     execution = reference * (1 + side * slippage_bps / 10_000)
     fee = abs(quantity * execution) * FEE_BPS / 10_000
     slip = abs(quantity) * abs(execution - reference)
+    impact_asof_ms = (timestamp_ms-HOUR_MS if phase in {"STOP_RANGE", "TARGET_RANGE"}
+                      else timestamp_ms)
     quote_volume_24h = causal_quote_volume_24h(volume_bars, impact_asof_ms)
     impact = float(impact_drag(Decimal(str(quantity)), Decimal(str(reference)), quote_volume_24h))
     movement = 0.0 if movement_from is None else -side * quantity * (reference - movement_from)
@@ -604,11 +620,8 @@ def validate_funding_events(events: Sequence[FundingEvent]) -> tuple[FundingEven
 
 @dataclass(frozen=True)
 class AppliedFunding:
-    timestamp_ms: int
-    rate: float
-    mark_close_ms: int
-    mark_price: float
-    cash: float
+    event: FundingEvent
+    mark: MarkClose
 
 
 def causal_quote_volume_24h(bars: Sequence[Bar], impact_asof_ms: int) -> float:
@@ -663,7 +676,9 @@ class ClosedTrade:
 
     @property
     def funding(self) -> float:
-        return math.fsum(event.cash for event in self.funding_events)
+        quantity = self.fills[0].quantity
+        return math.fsum(funding_cash(self.side, quantity, item.mark.price, item.event.rate)
+                         for item in self.funding_events)
 
     @property
     def net_cash(self) -> float:
@@ -704,6 +719,9 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
                 or min(fill.fee_drag, fill.slippage_drag, fill.impact_drag) < 0):
             raise IncompleteEpisode("invalid fill cashflow")
         if (fill.slippage_bps not in (BASE_SLIPPAGE_BPS, STRESS_SLIPPAGE_BPS)
+                or fill.impact_asof_ms != (fill.timestamp_ms-HOUR_MS
+                                           if fill.phase in {"STOP_RANGE", "TARGET_RANGE"}
+                                           else fill.timestamp_ms)
                 or len(fill.volume_rows) != 24
                 or tuple(row.open_ms for row in fill.volume_rows) != tuple(
                     range(fill.impact_asof_ms-24*HOUR_MS, fill.impact_asof_ms, HOUR_MS))
@@ -724,18 +742,22 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
             or entry.quantity != exit_fill.quantity
             or entry.timestamp_ms != trade.entry_ms or exit_fill.timestamp_ms != trade.close_ms):
         raise IncompleteEpisode("closed trade quantity is not conserved to flat")
+    expected_movement = trade.side * entry.quantity * (exit_fill.reference-entry.reference)
+    if (entry.movement_cash != 0
+            or not math.isclose(exit_fill.movement_cash, expected_movement, abs_tol=1e-12)):
+        raise IncompleteEpisode("fill movement is not derived from frozen references")
     seen_funding: set[int] = set()
-    for event in trade.funding_events:
-        expected_cash = funding_cash(trade.side, entry.quantity, event.mark_price, event.rate)
+    validate_funding_events(tuple(item.event for item in trade.funding_events))
+    for item in trade.funding_events:
+        event, mark = item.event, item.mark
         exit_includes_same_boundary = exit_fill.phase not in {"STOP_RANGE", "TARGET_RANGE"}
         exposed = (trade.entry_ms < event.timestamp_ms < trade.close_ms
                    or exit_includes_same_boundary and event.timestamp_ms == trade.close_ms)
         if (event.timestamp_ms in seen_funding or not exposed
                 or event.timestamp_ms % HOUR_MS
-                or event.mark_close_ms != event.timestamp_ms-HOUR_MS
-                or event.mark_price <= 0 or not all(math.isfinite(value) for value in (
-                    event.rate, event.mark_price, event.cash))
-                or not math.isclose(event.cash, expected_cash, abs_tol=1e-12)):
+                or mark.close_ms != event.timestamp_ms-HOUR_MS
+                or mark.price <= 0 or not all(math.isfinite(value) for value in (
+                    event.rate, mark.price))):
             raise IncompleteEpisode("funding event identity/cash is invalid")
         seen_funding.add(event.timestamp_ms)
 
@@ -954,7 +976,9 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
                          else 3 if fill.phase == "PROTECTION_FAILURE_CLEANUP" else 2)
             deltas.setdefault((fill.timestamp_ms, phase), []).append(value)
         for event in trade.funding_events:
-            deltas.setdefault((event.timestamp_ms, 1), []).append(event.cash)
+            cash = funding_cash(trade.side, trade.fills[0].quantity,
+                                event.mark.price, event.event.rate)
+            deltas.setdefault((event.event.timestamp_ms, 1), []).append(cash)
     cash = capital
     points: list[tuple[int, int, float]] = [(start_ms, 0, capital)]
     timestamps = sorted({timestamp for timestamp, _phase in deltas} | {timestamp for timestamp, _ in required})

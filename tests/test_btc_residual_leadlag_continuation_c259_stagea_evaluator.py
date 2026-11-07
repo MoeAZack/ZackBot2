@@ -105,15 +105,15 @@ def _bar(open_ms: int, open_: float = 100, high: float = 102, low: float = 98,
 def _fill(*, movement: float = 0, fee: float = 0, slip: float = 0,
           impact: float = 0, side: int = 1, timestamp: int = 1,
           phase: str = "TEST", quantity: float = 1, symbol: str = "ALTUSDT",
-          slippage_bps: float = c259.BASE_SLIPPAGE_BPS) -> c259.Fill:
+          slippage_bps: float = c259.BASE_SLIPPAGE_BPS,
+          reference: float = 100) -> c259.Fill:
     asof = timestamp
     rows = tuple(c259.VolumePoint(asof-(24-i)*c259.HOUR_MS, 1_000_000)
                  for i in range(24))
-    reference = 100
     execution = reference*(1+side*slippage_bps/10_000)
     computed_fee = abs(quantity*execution)*c259.FEE_BPS/10_000
     computed_slip = abs(quantity)*abs(execution-reference)
-    computed_impact = float(c259.impact_drag(Decimal(str(quantity)), Decimal("100"),
+    computed_impact = float(c259.impact_drag(Decimal(str(quantity)), Decimal(str(reference)),
                                              24_000_000))
     return c259.Fill(timestamp, phase, symbol, side, quantity, reference, movement,
                      computed_fee if fee == 0 else fee, computed_slip if slip == 0 else slip,
@@ -127,7 +127,8 @@ def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
                             (_fill(side=side, timestamp=entry, phase="ENTRY", symbol=symbol),
                              _fill(movement=cash, side=-side, timestamp=close,
                                    phase=("PROTECTION_FAILURE_CLEANUP" if incomplete
-                                          else "SCHEDULED"), symbol=symbol)),
+                                          else "SCHEDULED"), symbol=symbol,
+                                   reference=100+cash/side)),
                             (), risk, incomplete)
 
 
@@ -135,7 +136,8 @@ def _stress_trade(trade: c259.ClosedTrade) -> c259.ClosedTrade:
     return replace(trade, fills=tuple(_fill(
         movement=fill.movement_cash, side=fill.side, timestamp=fill.timestamp_ms,
         phase=fill.phase, quantity=fill.quantity, symbol=fill.symbol,
-        slippage_bps=c259.STRESS_SLIPPAGE_BPS) for fill in trade.fills))
+        slippage_bps=c259.STRESS_SLIPPAGE_BPS,
+        reference=fill.reference) for fill in trade.fills))
 
 
 def test_frozen_bytes_and_cli_remain_locked() -> None:
@@ -255,15 +257,21 @@ def test_signal_uses_prior_window_only_and_unconsumed_residual() -> None:
 
 
 def test_signal_sides_are_separate_and_candidate_order_is_deterministic() -> None:
-    base = c259.SignalFit(10*c259.HOUR_MS, 100, 100, 1, .3, .01, 30, 0,
+    decision = 10*c259.HOUR_MS
+    base = c259.SignalFit(decision, 100, 100, decision-721*c259.HOUR_MS,
+                          decision-c259.HOUR_MS, "a"*64, 1, .3, .01, 30, 0,
                           .005, .0075, 1, True)
     stronger = replace(base, forecast=.007)
     short = replace(base, forecast=-.006, side=-1)
     rows = [("ZZZUSDT", stronger), ("AAAUSDT", stronger), ("MIDUSDT", base),
             ("SHORTUSDT", short), ("OCCUPIED", replace(base, forecast=.02))]
-    assert c259.select_candidates(rows, 1, occupied=["OCCUPIED"]) == (
+    assert c259.select_candidates(rows, 1, decision_close_ms=decision,
+                                  occupied=["OCCUPIED"]) == (
         "AAAUSDT", "ZZZUSDT", "MIDUSDT")
-    assert c259.select_candidates(rows, -1) == ("SHORTUSDT",)
+    assert c259.select_candidates(rows, -1, decision_close_ms=decision) == ("SHORTUSDT",)
+    with pytest.raises(c259.IncompleteAuthority, match="stale"):
+        c259.select_candidates([("STALE", replace(base, decision_close_ms=decision-c259.HOUR_MS))],
+                               1, decision_close_ms=decision)
 
 
 def test_next_open_requires_exact_strictly_later_boundary() -> None:
@@ -345,9 +353,14 @@ def test_funding_sign_fill_costs_and_frozen_event_order() -> None:
     volume_bars = [_bar((6+i)*c259.HOUR_MS) for i in range(24)]
     fill = c259.make_fill(timestamp_ms=timestamp, phase="SCHEDULED", symbol="ALT", side=-1,
                           quantity=2, reference=110, movement_from=100,
-                          volume_bars=volume_bars, impact_asof_ms=timestamp)
+                          volume_bars=volume_bars)
     assert fill.movement_cash == 20
     assert fill.fee_drag > 0 and fill.slippage_drag > 0 and fill.impact_drag > 0
+    intrabar_bars = [_bar((5+i)*c259.HOUR_MS) for i in range(24)]
+    intrabar = c259.make_fill(timestamp_ms=timestamp, phase="STOP_RANGE", symbol="ALT",
+                              side=-1, quantity=1, reference=95, movement_from=100,
+                              volume_bars=intrabar_bars)
+    assert intrabar.impact_asof_ms == timestamp-c259.HOUR_MS
     phases = [row[1] for row in c259.ordered_events([
         (1, "ENTRY", "A", None), (1, "FUNDING", "A", None),
         (1, "GAP_OR_SCHEDULED", "A", None),
@@ -393,7 +406,8 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
                                               phase="PROTECTION_FAILURE_CLEANUP",
                                               symbol="ALT", timestamp=2*c259.HOUR_MS, side=-1)],
                                     funding_events=[c259.AppliedFunding(
-                                        2*c259.HOUR_MS, .005, c259.HOUR_MS, 100, -.5)],
+                                        c259.FundingEvent(2*c259.HOUR_MS, .005),
+                                        c259.MarkClose(c259.HOUR_MS, 100))],
                                     initial_risk_cash=10,
                                     regime="BTC_ABOVE_OR_ON_EMA200")
     assert failed.incomplete and failed.net_cash < -.5
@@ -467,8 +481,17 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
     missing_volume = replace(base[0].fills[0], volume_rows=base[0].fills[0].volume_rows[:-1])
     with pytest.raises(c259.IncompleteEpisode, match="volume/slippage"):
         c259.metrics([replace(base[0], fills=(missing_volume, base[0].fills[1]))])
-    bad_funding = c259.AppliedFunding(base[0].entry_ms, .001,
-                                     base[0].entry_ms-2*c259.HOUR_MS, 100, -.1)
+    stale_rows = tuple(replace(row, open_ms=row.open_ms-c259.HOUR_MS)
+                       for row in base[0].fills[0].volume_rows)
+    stale_fill = replace(base[0].fills[0], impact_asof_ms=base[0].fills[0].impact_asof_ms-c259.HOUR_MS,
+                         volume_rows=stale_rows)
+    with pytest.raises(c259.IncompleteEpisode, match="volume/slippage"):
+        c259.metrics([replace(base[0], fills=(stale_fill, base[0].fills[1]))])
+    forged_movement = replace(base[0].fills[1], movement_cash=999)
+    with pytest.raises(c259.IncompleteEpisode, match="movement"):
+        c259.metrics([replace(base[0], fills=(base[0].fills[0], forged_movement))])
+    bad_funding = c259.AppliedFunding(c259.FundingEvent(base[0].entry_ms, .001),
+                                     c259.MarkClose(base[0].entry_ms-2*c259.HOUR_MS, 100))
     with pytest.raises(c259.IncompleteEpisode, match="funding"):
         c259.metrics([replace(base[0], funding_events=(bad_funding,))])
     report = c259.metrics(base)
