@@ -267,3 +267,28 @@ def test_off_grid_mandatory_exit_is_retained_unrounded_and_incomplete():
     assert exits and exits[0].reference_price == invalid
     assert Decimal(str(exits[0].reference_price)) % Decimal("0.0001") != 0
     assert replay.incomplete and "INCOMPLETE_PRICE_FILTER_TICK_EXIT" in detail["incomplete_reasons"]
+
+
+def test_missing_interior_btc_hour_does_not_condition_correlation_on_surviving_rows(monkeypatch):
+    source, data = book_fixture()
+    missing = data.start+C.HOUR_MS
+    data.bars["BTCUSDT"].pop(missing)
+    monkeypatch.setattr(E, "_load_fold", lambda *a, **k: data)
+    evidence, report = E._fold_report(source, "wf1", C.TrialLedger(), synthetic=True)
+    alignment = report["exposure_and_correlation"]
+    assert evidence.base.attempts and not evidence.base.incomplete
+    assert alignment["required_canonical_BTC_intervals"] == 220
+    assert alignment["matched_canonical_BTC_intervals"] == 218
+    assert alignment["correlation_intervals"] == 0
+    assert alignment["book_BTC_return_correlation"] is None and alignment["book_BTC_beta"] is None
+    assert not evidence.complete_required_reports and not report["required_report_complete"]
+    assert any(gap.get("open_ms") == missing for gap in report["authority_gaps"])
+
+
+def test_complete_btc_benchmark_uses_every_in_window_interval_including_the_first():
+    source, data = book_fixture()
+    replay, counts = E.replay_book(source, data, 2000, C.TrialLedger(), synthetic=True)
+    report = E._exposure_report(data, replay, counts)
+    assert report["BTC_alignment_complete"]
+    assert report["required_canonical_BTC_intervals"] == report["matched_canonical_BTC_intervals"] == 220
+    assert report["correlation_intervals"] == 220 and not report["BTC_interval_gaps"]

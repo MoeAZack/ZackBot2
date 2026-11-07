@@ -243,15 +243,34 @@ def _economic_slices(rows):
 
 def _exposure_report(data, base, counts):
     book_returns, btc_returns = [], []
+    btc_missing = set()
+    interval_gaps = []
     for prior, current in zip(counts["equities"], counts["equities"][1:]):
         timestamp, equity = current[:2]
         btc = data.bars.get("BTCUSDT", {})
         current_btc, previous_btc = btc.get(timestamp-C.HOUR_MS), btc.get(timestamp-2*C.HOUR_MS)
-        if prior[1] > 0 and current_btc is not None and previous_btc is not None:
+        first_interval = timestamp == data.start+C.HOUR_MS
+        missing = []
+        if current_btc is None:
+            missing.append(timestamp-C.HOUR_MS)
+        if not first_interval and previous_btc is None:
+            missing.append(timestamp-2*C.HOUR_MS)
+        if missing or prior[1] <= 0:
+            btc_missing.update(missing)
+            interval_gaps.append({"interval_start_ms": prior[0], "interval_end_ms": timestamp,
+                                  "missing_BTC_open_ms": missing,
+                                  "nonpositive_book_equity": prior[1] <= 0})
+            book_returns.append(None)
+            btc_returns.append(None)
+        else:
             book_returns.append(equity/prior[1]-1)
-            btc_returns.append(current_btc.close/previous_btc.close-1)
+            # The first benchmark return uses only the first in-window open
+            # and close; no pre-fold BTC close is requested or inferred.
+            reference = current_btc.open if first_interval else previous_btc.close
+            btc_returns.append(current_btc.close/reference-1)
+    alignment_complete = not interval_gaps
     beta = None
-    if len(btc_returns) > 1 and np.var(btc_returns) > 0:
+    if alignment_complete and len(btc_returns) > 1 and np.var(btc_returns) > 0:
         beta = float(np.cov(np.asarray(book_returns), np.asarray(btc_returns), ddof=0)[0, 1]
                      /np.var(btc_returns))
     clusters = {}
@@ -265,7 +284,15 @@ def _exposure_report(data, base, counts):
         "max_same_hour_cluster": max(clusters.values(), default=0),
         "mean_long_short_gross_imbalance": math.fsum(sample[5] for sample in counts["equities"])/len(counts["equities"]),
         "max_long_short_gross_imbalance": max((sample[5] for sample in counts["equities"]), default=0),
-        "book_BTC_return_correlation": _pearson(book_returns, btc_returns),
+        "required_canonical_BTC_intervals": len(book_returns),
+        "matched_canonical_BTC_intervals": len(book_returns)-len(interval_gaps),
+        "correlation_intervals": len(book_returns) if alignment_complete else 0,
+        "BTC_alignment_complete": alignment_complete,
+        "BTC_interval_gaps": interval_gaps,
+        "BTC_authority_gaps": [{"symbol": "BTCUSDT", "stream": "klines",
+            "kind": "MISSING_REQUIRED_CANONICAL_BTC_BAR", "open_ms": timestamp}
+            for timestamp in sorted(btc_missing)],
+        "book_BTC_return_correlation": _pearson(book_returns, btc_returns) if alignment_complete else None,
         "book_BTC_beta": beta,
         "paired_long_short_contribution_correlation": _pearson(
             [row.long_contribution_R for row in base.attempts],
@@ -596,7 +623,7 @@ def _fold_report(source, name, ledger, *, synthetic=False):
     weeks, months = _period_grids(base.attempts, data.start, data.end)
     marks = _portfolio_marks(data, base.attempts)
     exposure = _exposure_report(data, base, counts)
-    report_statistics_defined = all(exposure[key] is not None for key in (
+    report_statistics_defined = exposure["BTC_alignment_complete"] and all(exposure[key] is not None for key in (
         "book_BTC_return_correlation", "book_BTC_beta", "paired_long_short_contribution_correlation"))
     evidence = C.FoldEvidence(name, base, stress, tuple(weeks.values()), tuple(months.values()),
         marks, marks, counts["scheduled"], counts["eligible"], len(base.attempts), counts["zero"],
@@ -605,7 +632,9 @@ def _fold_report(source, name, ledger, *, synthetic=False):
         "window_cairo": [datetime.fromtimestamp(timestamp/1000, ZoneInfo("Africa/Cairo")).isoformat()
                          for timestamp in (data.start, data.end)],
         "weeks_including_zero": weeks, "months_including_zero": months,
-        "authority_gaps": data.gaps, "base_attempts": [asdict(row) for row in base.attempts],
+        "authority_gaps": [*data.gaps, *exposure["BTC_authority_gaps"]],
+        "required_report_complete": report_statistics_defined,
+        "base_attempts": [asdict(row) for row in base.attempts],
         "diagnostic_incomplete_evidence": diagnostic_errors,
         "stress_attempts": [asdict(row) for row in stress_rows],
         "stress_full_book": {"hourly_equity_cash": stress_curve,
