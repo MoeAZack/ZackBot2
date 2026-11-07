@@ -13,6 +13,39 @@ from tools.research import cross_sectional_relative_strength_continuation_c258_s
 from tools.research.authority_v6_runner import _read_record_rows
 
 
+def _read_window_rows(store: Path, record: Mapping, *, new: bool,
+                      start_ms: int, end_ms: int):
+    """Hash complete Vision bytes, then parse economic fields only in-window."""
+    if record.get("source", {}).get("kind") != "binance-vision-archive":
+        return _read_record_rows(store, record, new=new)
+    from tools.research import authority_v6 as V6
+    rel = record["path"]
+    target = V6._safe_store_path(store, rel)
+    raw, published, csv_raw = V6.M.read_archive(str(target), rel)
+    expected = record["raw_sha256" if new else "sha256"]
+    if published != expected or hashlib.sha256(raw).hexdigest() != expected:
+        raise C.IncompleteAuthority("archive source bytes changed")
+    meta = V6.M.archive_meta(rel)
+    header = V6.M.FUNDING_HEADER if meta["series"] == "fundingRate" else V6.M.KLINE_HEADER
+    selected = []
+    previous = None
+    for index, line in enumerate(csv_raw.splitlines()):
+        if index == 0 and line == header:
+            continue
+        # Only the timestamp is inspected outside the requested economic window.
+        try:
+            timestamp = int(line.split(b",", 1)[0])
+        except ValueError as exc:
+            raise C.IncompleteAuthority("invalid archive timestamp") from exc
+        if previous is not None and timestamp <= previous:
+            raise C.IncompleteAuthority("duplicate/unordered source timestamp")
+        previous = timestamp
+        if start_ms <= timestamp < end_ms:
+            selected.append(line)
+    clipped = b"\n".join(selected) + (b"\n" if selected else b"")
+    return meta, V6.M.parse_archive_csv(rel, clipped, meta)
+
+
 @dataclass(frozen=True)
 class SourceRows:
     symbol: str
@@ -131,7 +164,8 @@ class C258ArchiveSource:
             last = record.get("observed_last_ms") if new else record.get("last_open_ms")
             if first is not None and last is not None and (last < start_ms or first >= end_ms):
                 continue
-            _, parsed = _read_record_rows(self._store, record, new=new)
+            _, parsed = _read_window_rows(self._store, record, new=new,
+                                          start_ms=start_ms, end_ms=end_ms)
             digest = record["raw_sha256" if new else "sha256"]
             selected.append((record["path"], digest))
             for item in parsed:
