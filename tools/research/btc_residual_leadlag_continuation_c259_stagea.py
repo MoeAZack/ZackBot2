@@ -290,6 +290,10 @@ def next_open(bars: Sequence[Bar], decision_close_ms: int) -> Bar:
 
 @dataclass(frozen=True)
 class SignalFit:
+    prior_btc_closes: tuple[ClosePrice, ...]
+    prior_alt_closes: tuple[ClosePrice, ...]
+    btc_decision: ClosePrice
+    alt_decision: ClosePrice
     decision_close_ms: int
     btc_decision_price: float
     alt_decision_price: float
@@ -376,7 +380,9 @@ def fit_signal(prior_btc_closes: Sequence[ClosePrice], prior_alt_closes: Sequenc
     window_body = [(btc.close_ms, btc.price, alt.price)
                    for btc, alt in zip(prior_btc_closes, prior_alt_closes)]
     window_identity = _sha(_canon(window_body))
-    return SignalFit(decision_close_ms, btc_decision_price, alt_decision_price,
+    return SignalFit(tuple(prior_btc_closes), tuple(prior_alt_closes),
+                     btc_decision, alt_decision,
+                     decision_close_ms, btc_decision_price, alt_decision_price,
                      prior_btc_closes[0].close_ms, prior_btc_closes[-1].close_ms,
                      window_identity,
                      beta, gamma, se, t, residual_d, forecast, threshold, side, qualifies)
@@ -387,10 +393,15 @@ def select_candidates(rows: Iterable[tuple[str, SignalFit]], side: int, *, decis
     occupied_set = set(occupied)
     materialized = list(rows)
     for _symbol, fit in materialized:
+        recomputed = fit_signal(fit.prior_btc_closes, fit.prior_alt_closes,
+                                btc_decision=fit.btc_decision,
+                                alt_decision=fit.alt_decision)
         if (fit.decision_close_ms != decision_close_ms
                 or fit.window_start_ms != decision_close_ms-721*HOUR_MS
                 or fit.window_end_ms != decision_close_ms-HOUR_MS
-                or len(fit.window_identity_sha256) != 64):
+                or len(fit.window_identity_sha256) != 64
+                or any(ch not in "0123456789abcdef" for ch in fit.window_identity_sha256)
+                or fit != recomputed):
             raise IncompleteAuthority("candidate signal provenance is stale or mismatched")
     eligible = [(symbol, fit) for symbol, fit in materialized
                 if fit.qualifies and fit.side == side and symbol not in occupied_set]
@@ -484,6 +495,12 @@ def impact_drag(quantity: Decimal, reference: Decimal, quote_volume_24h: float) 
 
 @dataclass(frozen=True)
 class SizedPosition:
+    side: int
+    entry: Decimal
+    stop: Decimal
+    filters: Filters
+    side_book_equity: Decimal
+    quote_volume_24h: float
     quantity: Decimal
     initial_risk_cash: Decimal
     requested_risk_cash: Decimal
@@ -516,7 +533,8 @@ def size_position(*, side: int, entry: Decimal, stop: Decimal, filters: Filters,
         risk = quantity * base_loss + impacts
         if (quantity <= filters.max_qty and notional >= filters.min_notional
                 and notional <= side_book_equity * Decimal("0.5") and risk <= requested):
-            return SizedPosition(quantity, risk, requested, notional)
+            return SizedPosition(side, entry, stop, filters, side_book_equity,
+                                 quote_volume_24h, quantity, risk, requested, notional)
         quantity -= filters.step
     return None
 
@@ -621,7 +639,7 @@ def validate_funding_events(events: Sequence[FundingEvent]) -> tuple[FundingEven
 @dataclass(frozen=True)
 class AppliedFunding:
     event: FundingEvent
-    mark: MarkClose
+    mark: PositionMark
 
 
 def causal_quote_volume_24h(bars: Sequence[Bar], impact_asof_ms: int) -> float:
@@ -671,7 +689,11 @@ class ClosedTrade:
     regime: str
     fills: tuple[Fill, ...]
     funding_events: tuple[AppliedFunding, ...]
-    initial_risk_cash: float
+    sizing: SizedPosition
+    entry_bar: Bar
+    exit_bar: Bar
+    stop: float
+    target: float
     incomplete: bool = False
 
     @property
@@ -679,6 +701,10 @@ class ClosedTrade:
         quantity = self.fills[0].quantity
         return math.fsum(funding_cash(self.side, quantity, item.mark.price, item.event.rate)
                          for item in self.funding_events)
+
+    @property
+    def initial_risk_cash(self) -> float:
+        return float(self.sizing.initial_risk_cash)
 
     @property
     def net_cash(self) -> float:
@@ -701,6 +727,13 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
             or not math.isfinite(trade.initial_risk_cash)
             or trade.regime not in {"BTC_ABOVE_OR_ON_EMA200", "BTC_BELOW_EMA200"}):
         raise IncompleteEpisode("invalid closed-trade identity or authority")
+    trade.entry_bar.validate(); trade.exit_bar.validate()
+    recomputed_sizing = size_position(
+        side=trade.sizing.side, entry=trade.sizing.entry, stop=trade.sizing.stop,
+        filters=trade.sizing.filters, side_book_equity=trade.sizing.side_book_equity,
+        quote_volume_24h=trade.sizing.quote_volume_24h)
+    if recomputed_sizing is None or recomputed_sizing != trade.sizing:
+        raise IncompleteEpisode("initial risk is not bound to exact conservative sizing")
     if trade.incomplete:
         entries = [fill for fill in trade.fills if fill.phase == "ENTRY"]
         exits = [fill for fill in trade.fills if fill.phase == "PROTECTION_FAILURE_CLEANUP"]
@@ -740,8 +773,28 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
             raise IncompleteEpisode("fill costs do not recompute from frozen authority")
     if (entry.side != trade.side or exit_fill.side != -trade.side
             or entry.quantity != exit_fill.quantity
+            or Decimal(str(entry.quantity)) != trade.sizing.quantity
+            or trade.sizing.side != trade.side
+            or trade.sizing.entry != Decimal(str(entry.reference))
+            or trade.sizing.stop != Decimal(str(trade.stop))
             or entry.timestamp_ms != trade.entry_ms or exit_fill.timestamp_ms != trade.close_ms):
         raise IncompleteEpisode("closed trade quantity is not conserved to flat")
+    if (trade.entry_bar.open_ms != trade.entry_ms
+            or not math.isclose(trade.entry_bar.open, entry.reference, abs_tol=1e-12)
+            or not (trade.stop < entry.reference < trade.target if trade.side == 1
+                    else trade.target < entry.reference < trade.stop)):
+        raise IncompleteEpisode("entry/protection canonical bar authority mismatch")
+    if not trade.incomplete:
+        scheduled = exit_fill.phase == "SCHEDULED"
+        if scheduled and trade.close_ms != trade.entry_ms+12*HOUR_MS:
+            raise IncompleteEpisode("scheduled exit is not exact first 12h open")
+        expected = exit_reference(side=trade.side, stop=trade.stop, target=trade.target,
+                                  bar=trade.exit_bar, scheduled_due=scheduled)
+        if expected != (exit_fill.phase, exit_fill.reference, exit_fill.timestamp_ms):
+            raise IncompleteEpisode("exit fill is not bound to canonical bar/protection")
+    elif (trade.exit_bar.open_ms != trade.close_ms
+          or not math.isclose(trade.exit_bar.open, exit_fill.reference, abs_tol=1e-12)):
+        raise IncompleteEpisode("cleanup fill is not bound to canonical exit bar")
     expected_movement = trade.side * entry.quantity * (exit_fill.reference-entry.reference)
     if (entry.movement_cash != 0
             or not math.isclose(exit_fill.movement_cash, expected_movement, abs_tol=1e-12)):
@@ -750,12 +803,14 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     validate_funding_events(tuple(item.event for item in trade.funding_events))
     for item in trade.funding_events:
         event, mark = item.event, item.mark
+        validate_position_mark(mark)
         exit_includes_same_boundary = exit_fill.phase not in {"STOP_RANGE", "TARGET_RANGE"}
         exposed = (trade.entry_ms < event.timestamp_ms < trade.close_ms
                    or exit_includes_same_boundary and event.timestamp_ms == trade.close_ms)
         if (event.timestamp_ms in seen_funding or not exposed
                 or event.timestamp_ms % HOUR_MS
-                or mark.close_ms != event.timestamp_ms-HOUR_MS
+                or mark.timestamp_ms != event.timestamp_ms-HOUR_MS
+                or mark.symbol != trade.symbol
                 or mark.price <= 0 or not all(math.isfinite(value) for value in (
                     event.rate, mark.price))):
             raise IncompleteEpisode("funding event identity/cash is invalid")
@@ -788,7 +843,8 @@ class SideBook:
 def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int,
                        cleanup_ms: int, fills: Sequence[Fill],
                        funding_events: Sequence[AppliedFunding],
-                       initial_risk_cash: float, regime: str) -> ClosedTrade:
+                       sizing: SizedPosition, entry_bar: Bar, exit_bar: Bar,
+                       stop: float, target: float, regime: str) -> ClosedTrade:
     entries = [fill for fill in fills if fill.phase == "ENTRY"]
     cleanups = [fill for fill in fills if fill.phase == "PROTECTION_FAILURE_CLEANUP"]
     if (side not in (-1, 1) or cleanup_ms <= entry_ms or len(fills) != 2
@@ -800,7 +856,8 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
             or entry.timestamp_ms != entry_ms or cleanup.timestamp_ms != cleanup_ms):
         raise IncompleteEpisode("protection failure lifecycle is not exactly flat")
     trade = ClosedTrade(attempt_id, side, symbol, entry_ms, cleanup_ms, regime,
-                        tuple(fills), tuple(funding_events), initial_risk_cash, True)
+                        tuple(fills), tuple(funding_events), sizing, entry_bar, exit_bar,
+                        stop, target, True)
     validate_closed_trade(trade)
     return trade
 
@@ -946,6 +1003,26 @@ class PositionMark:
     timestamp_ms: int
     symbol: str
     price: float
+    source_digest: str
+    identity_sha256: str
+
+
+def make_position_mark(*, timestamp_ms: int, symbol: str, price: float,
+                       source_digest: str) -> PositionMark:
+    body = {"timestamp_ms": timestamp_ms, "symbol": symbol, "price": price,
+            "source_digest": source_digest}
+    return PositionMark(timestamp_ms, symbol, price, source_digest, _sha(_canon(body)))
+
+
+def validate_position_mark(mark: PositionMark) -> None:
+    if (not isinstance(mark.timestamp_ms, int) or mark.timestamp_ms % HOUR_MS
+            or not mark.symbol or not math.isfinite(mark.price) or mark.price <= 0
+            or len(mark.source_digest) != 64
+            or any(ch not in "0123456789abcdef" for ch in mark.source_digest)
+            or mark != make_position_mark(timestamp_ms=mark.timestamp_ms, symbol=mark.symbol,
+                                           price=mark.price,
+                                           source_digest=mark.source_digest)):
+        raise IncompleteAuthority("invalid canonical position-mark identity")
 
 
 def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[PositionMark], *,
@@ -956,13 +1033,14 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
     required = {(timestamp, trade.symbol)
                 for trade in trades
                 for timestamp in range(trade.entry_ms, trade.close_ms, HOUR_MS)}
-    supplied: dict[tuple[int, str], float] = {}
+    supplied: dict[tuple[int, str], PositionMark] = {}
     for mark in marks:
+        validate_position_mark(mark)
         key = (mark.timestamp_ms, mark.symbol)
         if (key in supplied or key not in required or not math.isfinite(mark.price)
                 or mark.price <= 0 or mark.timestamp_ms % HOUR_MS):
             raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
-        supplied[key] = mark.price
+        supplied[key] = mark
     if set(supplied) != required:
         raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
     deltas: dict[tuple[int, int], list[float]] = {}
@@ -991,7 +1069,7 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
         if any(key[0] == timestamp for key in required):
             unrealized = math.fsum(
                 trade.side * trade.fills[0].quantity *
-                (supplied[(timestamp, trade.symbol)] - trade.fills[0].reference)
+                (supplied[(timestamp, trade.symbol)].price - trade.fills[0].reference)
                 for trade in trades if trade.entry_ms <= timestamp < trade.close_ms)
             points.append((timestamp, 5, cash+unrealized))
     if not points or points[-1][0] > end_ms:
@@ -1036,6 +1114,11 @@ def _validate_lifecycle(fold: FoldLifecycle) -> None:
         identities.add(trade.attempt_id)
         if fold.name == "development" and trade.entry_ms < 1734134400000:
             raise IncompleteAuthority("pre-filter development trade is forbidden")
+    lifecycle_marks = {(mark.timestamp_ms, mark.symbol): mark for mark in fold.marks}
+    for trade in fold.base + fold.stress:
+        for applied in trade.funding_events:
+            if lifecycle_marks.get((applied.mark.timestamp_ms, applied.mark.symbol)) != applied.mark:
+                raise IncompleteAuthority("funding mark conflicts with lifecycle mark authority")
     stress_same_selection(fold.base, fold.stress)
     base_points = derive_equity_points(fold.base, fold.marks, start_ms=start, end_ms=end)
     stress_points = derive_equity_points(fold.stress, fold.marks, start_ms=start, end_ms=end)
@@ -1157,7 +1240,8 @@ def stress_same_selection(base: Sequence[ClosedTrade], stress: Sequence[ClosedTr
                        fill.reference, fill.movement_cash) for fill in trade.fills)
         funding = tuple(asdict(event).items() for event in trade.funding_events)
         return (trade.attempt_id, trade.side, trade.symbol, trade.entry_ms, trade.close_ms,
-                trade.regime, fills, funding, trade.initial_risk_cash, trade.incomplete)
+                trade.regime, fills, funding, trade.sizing, trade.entry_bar, trade.exit_bar,
+                trade.stop, trade.target, trade.initial_risk_cash, trade.incomplete)
     left = [identity(trade) for trade in base]
     right = [identity(trade) for trade in stress]
     if left != right:
