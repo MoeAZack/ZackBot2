@@ -107,6 +107,49 @@ def _utc_ms(value: str) -> int:
     return int(parsed.timestamp() * 1000)
 
 
+def _validate_filter_authority_rebind_v3(authority: dict, root: Path) -> None:
+    """Prove v3 changes only the PIT identity while preserving v2 filter evidence."""
+    supersedes = authority.get("supersedes")
+    if not isinstance(supersedes, dict) or set(supersedes) != {
+        "path", "byte_sha256", "version", "pit_universe_path",
+        "pit_universe_sha256", "pit_universe_digest",
+    }:
+        raise ArchiveIncomplete("filter authority v3 supersedes binding is invalid")
+    rel = supersedes.get("path")
+    if not isinstance(rel, str) or Path(rel).is_absolute():
+        raise ArchiveIncomplete("filter authority v3 superseded path must be repository-relative")
+    previous_path = (root / rel).resolve()
+    if root != previous_path and root not in previous_path.parents:
+        raise ArchiveIncomplete("filter authority v3 superseded path escapes repository root")
+    try:
+        previous_raw = previous_path.read_bytes()
+        previous = json.loads(previous_raw.decode("utf-8"), parse_constant=lambda value: (
+            _ for _ in ()).throw(ValueError(value)))
+    except (OSError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ArchiveIncomplete(f"filter authority v3 prior authority is unavailable: {exc}") from exc
+    if hashlib.sha256(previous_raw).hexdigest() != supersedes.get("byte_sha256"):
+        raise ArchiveIncomplete("filter authority v3 prior authority checksum mismatch")
+    if (previous.get("authority"), previous.get("version"), previous.get("status"),
+            previous.get("signed_by")) != (
+            "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 2, "FROZEN", "codex"):
+        raise ArchiveIncomplete("filter authority v3 prior authority identity changed")
+    for key in ("version", "pit_universe_path", "pit_universe_sha256", "pit_universe_digest"):
+        if previous.get(key) != supersedes.get(key):
+            raise ArchiveIncomplete("filter authority v3 prior PIT binding changed")
+    if any(authority.get(key) != previous.get(key)
+           for key in ("snapshots", "fold_bindings", "weekly_membership_sha256")):
+        raise ArchiveIncomplete("filter authority v3 changed immutable filter evidence")
+    if authority.get("rebind_scope") != {
+        "pit_identity_only": True,
+        "snapshot_rows_changed": False,
+        "fold_bindings_changed": False,
+        "weekly_membership_changed": False,
+        "market_rows_read": False,
+        "candidate_outcomes_read": False,
+    }:
+        raise ArchiveIncomplete("filter authority v3 scope is not PIT-identity-only")
+
+
 def load_fold_filter_authorities(authority_path: str | Path, expected_sha256: str,
                                  repository_root: str | Path, contract: dict) -> dict[str, FoldFilterAuthority]:
     """Bind causal, pre-fold Binance filter snapshots before any market row read."""
@@ -121,10 +164,15 @@ def load_fold_filter_authorities(authority_path: str | Path, expected_sha256: st
     actual_authority_sha = hashlib.sha256(raw).hexdigest()
     if actual_authority_sha != expected_sha256:
         raise ArchiveIncomplete(f"filter authority checksum mismatch: {actual_authority_sha}")
-    if (authority.get("authority"), authority.get("version"), authority.get("status"),
-            authority.get("signed_by")) != (
-            "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 2, "FROZEN", "codex"):
+    identity = (authority.get("authority"), authority.get("version"), authority.get("status"),
+                authority.get("signed_by"))
+    if identity not in {
+        ("STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 2, "FROZEN", "codex"),
+        ("STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", 3, "FROZEN", "codex"),
+    }:
         raise ArchiveIncomplete("filter authority identity/status changed")
+    if authority.get("version") == 3:
+        _validate_filter_authority_rebind_v3(authority, root)
     data = contract.get("data") or {}
     if (data.get("exchange_filter_authority_sha256") != actual_authority_sha
             or data.get("pit_universe_path") != authority.get("pit_universe_path")
@@ -608,9 +656,7 @@ class RawArchiveAdapter:
             raise ArchiveIncomplete(f"{symbol} {series} {interval}: missing archive month coverage")
         rows: list[list[bytes]] = []
         for record in files:
-            # Refuse before opening a monthly archive that contains forbidden rows.
-            if record["last_open_ms"] >= CUTOFF_MS:
-                raise ArchiveIncomplete(f"{record['path']}: archive crosses frozen cutoff; not read")
+            self._require_pre_cutoff_record(record)
             try:
                 parsed_objects = self.dataset.rows(record)
             except (OSError, M.ManifestError, P.M.ManifestError, P.PITError) as exc:
@@ -646,8 +692,7 @@ class RawArchiveAdapter:
         manifest_gaps = self._interval_gaps(start_ms, end_ms, covered, "missing_manifest")
         rows: list[list[bytes]] = []
         for record in files:
-            if record["last_open_ms"] >= CUTOFF_MS:
-                raise ArchiveIncomplete(f"{record['path']}: archive crosses frozen cutoff; not read")
+            self._require_pre_cutoff_record(record)
             try:
                 parsed_objects = self.dataset.rows(record)
             except (OSError, M.ManifestError, P.M.ManifestError, P.PITError) as exc:
@@ -663,6 +708,19 @@ class RawArchiveAdapter:
         if any(right <= left for left, right in zip(times, times[1:])):
             raise ArchiveIncomplete(f"{symbol} {series} {interval}: rows are not globally strictly increasing")
         return rows, manifest_gaps
+
+    @staticmethod
+    def _require_pre_cutoff_record(record: dict) -> None:
+        """Prove the archive period is wholly pre-cutoff before opening its bytes.
+
+        `last_open_ms` alone is insufficient: an empty or truncated September monthly file could
+        otherwise claim only pre-cutoff rows while its authority path still spans sealed dates.
+        """
+        meta = M.archive_meta(record["path"])
+        last = record.get("last_open_ms")
+        if meta["month_end_ms"] > CUTOFF_MS or (last is not None and last >= CUTOFF_MS):
+            raise ArchiveIncomplete(
+                f"{record['path']}: archive crosses frozen cutoff; not read (period metadata)")
 
     @staticmethod
     def _interval_gaps(start_ms: int, end_ms: int, covered: list[tuple[int, int]],

@@ -1,0 +1,42 @@
+{
+  "format": "zb-ass4h-causal-v3-family-ledger/1",
+  "family": "atr_shock_snapback_4h",
+  "status": "FROZEN_BEFORE_CAUSAL_V3_EVALUATION",
+  "frozen_at": "2026-11-06T15:07:47+02:00",
+  "rule": "Append-only: every distinct side, rule, management, causal context or economic-book identity remains a trial. Prior Stage-A trials are retained without reading their outcomes; rejections and unavailable statistics are never removed.",
+  "trials": [
+    {
+      "trial_id": "atr_shock_snapback_4h_long_stagea_v1",
+      "source_head": "1a24edf49ef6ccaa40867ed930603737364d28ce",
+      "side": "long",
+      "status": "PRIOR_STAGE_A_TRIAL_P_UNAVAILABLE",
+      "raw_p_value": "NOT_COMPUTED_CONSERVATIVE_ONE_FOR_HOLM",
+      "holm_input_p_value": 1.0
+    },
+    {
+      "trial_id": "atr_shock_snapback_4h_short_stagea_v1",
+      "source_head": "1a24edf49ef6ccaa40867ed930603737364d28ce",
+      "side": "short",
+      "status": "PRIOR_STAGE_A_TRIAL_P_UNAVAILABLE",
+      "raw_p_value": "NOT_COMPUTED_CONSERVATIVE_ONE_FOR_HOLM",
+      "holm_input_p_value": 1.0
+    },
+    {
+      "trial_id": "atr_shock_snapback_4h_long_causal_v3",
+      "source_head": "1a24edf49ef6ccaa40867ed930603737364d28ce",
+      "side": "long",
+      "status": "PREREGISTERED_UNEVALUATED",
+      "raw_p_value": null
+    },
+    {
+      "trial_id": "atr_shock_snapback_4h_short_causal_v3",
+      "source_head": "1a24edf49ef6ccaa40867ed930603737364d28ce",
+      "side": "short",
+      "status": "PREREGISTERED_UNEVALUATED",
+      "raw_p_value": null
+    }
+  ],
+  "holm_family_size": 4,
+  "holm_missing_prior_p_value": 1.0,
+  "digest": "a50a8b283716abd1e2b73deca918e49f7a6f59628d6e95e7fe3606fadcb28b99"
+}

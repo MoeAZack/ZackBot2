@@ -289,6 +289,31 @@ def test_cutoff_crossing_archive_is_refused_before_its_bytes_are_read(tmp_path):
         adapter.load_klines("S00", "1h", before, A.CUTOFF_MS)
 
 
+def test_empty_cutoff_crossing_period_is_refused_from_path_metadata_before_read(tmp_path):
+    before = A.CUTOFF_MS - A.HOUR_MS
+    rel = "um/monthly/klines/S00/1h/S00-1h-2026-09.zip"
+    record = _write_archive(tmp_path, rel, [M.KLINE_HEADER.decode()])
+    assert record["last_open_ms"] is None
+    manifest = _manifest([record])
+    universe = _universe(manifest, monday=before)
+    path = tmp_path.joinpath(*rel.split("/"))
+    path.unlink()
+    with pytest.raises(A.ArchiveIncomplete, match="crosses frozen cutoff; not read"):
+        A.RawArchiveAdapter(manifest, universe, tmp_path).load_klines(
+            "S00", "1h", before, A.CUTOFF_MS)
+
+
+def test_precutoff_daily_archive_supplies_final_allowed_day(tmp_path):
+    start = A.CUTOFF_MS - 24 * A.HOUR_MS
+    rel = "um/daily/klines/S00/1h/S00-1h-2026-09-27.zip"
+    record = _write_archive(tmp_path, rel, [_kline(start + i * A.HOUR_MS) for i in range(24)])
+    manifest = _manifest([record])
+    universe = _universe(manifest, monday=start)
+    rows = A.RawArchiveAdapter(manifest, universe, tmp_path).load_klines(
+        "S00", "1h", start, A.CUTOFF_MS)
+    assert len(rows) == 24 and rows[0].open_ms == start and rows[-1].open_ms < A.CUTOFF_MS
+
+
 def test_universe_manifest_binding_and_non_core_symbol_fail_closed(tmp_path):
     manifest, universe = _fixture(tmp_path)
     wrong = dict(universe, manifest_digest="0" * 64)

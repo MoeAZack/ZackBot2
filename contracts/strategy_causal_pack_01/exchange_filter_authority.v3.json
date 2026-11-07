@@ -1,0 +1,68 @@
+{
+  "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY",
+  "version": 3,
+  "status": "FROZEN",
+  "signed_by": "codex",
+  "frozen_at": "2026-11-06T20:52:00+02:00",
+  "purpose": "Rebind the unchanged pre-fold Binance filter snapshots and weekly CORE-20 derivation to the protected zero-gap PIT-v8 authority before any strategy outcome is read.",
+  "source_policy": "Each payload is the raw Binance USD-M GET /fapi/v1/exchangeInfo response preserved by the Internet Archive. The Binance response serverTime and archive capture timestamp must both be strictly earlier than the fold start.",
+  "fold_policy": "For each fold, use the newest listed snapshot whose captured_at and server_time are strictly earlier than fold start, freeze it for the whole fold, and derive filter-eligible CORE-20 cells from the PIT-v8 weekly ranking without changing ranking order.",
+  "filter_policy": "Use PRICE_FILTER.tickSize, MARKET_LOT_SIZE.stepSize/minQty/maxQty and MIN_NOTIONAL.notional exactly as the engine does. Duplicate, missing, non-finite, zero or negative required values are INCOMPLETE.",
+  "identity_effect": "This is an authority-only rebind. Snapshot bytes, fold bindings and derived weekly membership digests are identical to v2; only the protected PIT authority identity changes from v4 to v8.",
+  "known_limitation": "Rules are last-observed at fold start, not a claim that Binance never changed them during the fold. PAPER/testnet admission must independently pass current exchangeInfo parity.",
+  "supersedes": {
+    "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json",
+    "byte_sha256": "9463632b78004b367439b4fa3eae22523ffedf87b920c24cff8f5241d9fea434",
+    "version": 2,
+    "pit_universe_path": "research_evidence/universe/pit-top40-qv30d-v4.json",
+    "pit_universe_sha256": "d7000458b2c6ec848c6a359aa4b011850a3be437d8f22e53701e76927c4d3229",
+    "pit_universe_digest": "485c752226cc6b50a07d3feefa90a4fdc62e256e8d5a033e57d24983bf2cd093"
+  },
+  "rebind_scope": {
+    "pit_identity_only": true,
+    "snapshot_rows_changed": false,
+    "fold_bindings_changed": false,
+    "weekly_membership_changed": false,
+    "market_rows_read": false,
+    "candidate_outcomes_read": false
+  },
+  "pit_universe_path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+  "pit_universe_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+  "pit_universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+  "snapshots": [
+    {
+      "captured_at": "2024-12-13T04:44:48Z",
+      "server_time": "2024-12-13T04:00:07.467Z",
+      "source_url": "https://www.binance.com/fapi/v1/exchangeInfo",
+      "archive_url": "https://web.archive.org/web/20241213044448id_/https://www.binance.com/fapi/v1/exchangeInfo",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20241213T044448Z.json",
+      "sha256": "24496895b0796baa18293a3f849981df7c3f39f56f2bf0e22f20fa67ae58fa69"
+    },
+    {
+      "captured_at": "2026-02-17T04:13:28Z",
+      "server_time": "2026-02-17T04:00:13.648Z",
+      "source_url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "archive_url": "https://web.archive.org/web/20260217041328id_/https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20260217T041328Z.json",
+      "sha256": "fef22b65892ec2254be2850762621b4982ac462c66de31ee9d6c38df61a1c2ac"
+    }
+  ],
+  "fold_bindings": {
+    "wf1": "2024-12-13T04:44:48Z",
+    "wf2": "2024-12-13T04:44:48Z",
+    "wf3": "2026-02-17T04:13:28Z"
+  },
+  "weekly_membership_sha256": {
+    "wf1": "226fd412cbef90ec8fe4233d4f67bb12a2bb8451b19a6fd6d296c24d7673c5e9",
+    "wf2": "4a249f1112e0412256258d7a79182e5ccfb31342508a6a2bb62b628fdcb8789a",
+    "wf3": "6ab6458d914ce787558b8d5fcf071a339e91e2f2312326397e1ade5344f7b77f"
+  },
+  "forbidden": [
+    "changing any snapshot byte, capture time, server time, fold binding or weekly membership digest from v2",
+    "backfilling a symbol from a snapshot captured after its fold starts",
+    "dropping a symbol after reading its candidate outcome",
+    "invented or inferred tick, quantity or notional rules",
+    "current-symbol survivorship filtering",
+    "caller-supplied replacement snapshots or membership"
+  ]
+}

@@ -550,6 +550,7 @@ function Invoke-BuildSteps {
         '--add-data', ([IO.Path]::Combine($src, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json') + ';contracts/factory_f01_impl_01'),
         '--add-data', ([IO.Path]::Combine($src, 'paper_books.py') + ';.'), '--add-data', ([IO.Path]::Combine($src, 'book_ledger.py') + ';.'),
         '--add-data', ([IO.Path]::Combine($src, 'backtest.py') + ';.'),
+        '--add-data', ([IO.Path]::Combine($src, 'candidate_activation.py') + ';.'),
         # ML-PAIR-01 (Codex 6459654266): the pair code_id hashes engine.py + actual_costs.py + every ml_shadow/*.py as
         # packaged; a source missing from the exe makes the identity incomplete and pairing refuses (ml_shadow.pairs).
         '--add-data', ([IO.Path]::Combine($src, 'actual_costs.py') + ';.'),
