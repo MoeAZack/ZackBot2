@@ -83,6 +83,14 @@ def liquidity_ratio_diagnostic(decision_quote_volume,prior_24):
         'ratio':decision_quote_volume/median if median else None,'status':'DEFINED' if median else 'ZERO_BASELINE'}
 
 
+def liquidity_admission(*,decision_quote_volume,preceding_quote_volumes,raw_entry_notional,causal_quote_volume_24h):
+    diagnostic=liquidity_ratio_diagnostic(decision_quote_volume,preceding_quote_volumes)
+    if (type(raw_entry_notional)is not D or not raw_entry_notional.is_finite() or raw_entry_notional<=0
+        or not math.isfinite(causal_quote_volume_24h) or causal_quote_volume_24h<=0):
+        raise ModelIncomplete('C267_INVALID_CAUSAL_LIQUIDITY_TOTAL_OR_NOTIONAL')
+    return diagnostic['eligible_original_gate'] and D(str(causal_quote_volume_24h))>=100*raw_entry_notional
+
+
 @dataclass(frozen=True)
 class ReservedPosition:
     symbol:str

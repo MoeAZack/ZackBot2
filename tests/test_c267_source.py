@@ -125,3 +125,18 @@ def test_published_funding_transition_proof_and_issued_identity_cache(tmp_path):
     assert [v.interval_hours for v in selected]==[8,4] and proof.rows==2
     bad=dict(record,rows=1)
     with pytest.raises(S.SourceIncomplete,match='ALL_RECORD'):S.authenticated_funding_month(tmp_path,bad,START,START+10*H)
+
+
+def test_own_zero_quote_signal_projection_and_full_atr_price_parity():
+    native=[]
+    for i in range(28):
+        width=D('4') if i<3 else D('.5')
+        native.append(S.NativeBar(START+i*H,D(100),D(100)+width,D(100)-width,D(100),D(0) if i%2 else D(10)))
+    projected=tuple(v.signal_bar() for v in native)
+    assert isinstance(projected[1],S.P.Bar) and projected[1].quote_volume==0
+    assert len(S.P.exact_index(projected))==28
+    positive=tuple(S.P.Bar(v.open_ms,v.open,v.high,v.low,v.close,10.) for v in projected)
+    for count in(25,26,28):
+        decision=START+count*H
+        assert S.P.atr24_wilder(projected[:count],decision)==S.P.atr24_wilder(positive[:count],decision)
+    with pytest.raises(S.SourceIncomplete):replace(native[0],quote_volume=D(-1)).signal_bar()

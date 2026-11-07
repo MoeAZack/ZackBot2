@@ -55,6 +55,8 @@ def test_valid_zero_hour_positive_total_exact_all_positive_parity_and_zero_media
         side_book_equity=D(2000),entry_impact_asof_ms=B,entry_volume_rows=mixed,reserve=reserve(amount='2'))
     assert result.quantity==solve(amount='2').quantity and result.initial_risk_cash==solve(amount='2').initial_risk_cash
     assert M.liquidity_ratio_diagnostic(1.,[0.]*24)=={'eligible_original_gate':True,'ratio':None,'status':'ZERO_BASELINE'}
+    assert M.liquidity_admission(decision_quote_volume=1.,preceding_quote_volumes=[0.]*24,
+        raw_entry_notional=D(1),causal_quote_volume_24h=100.)
     with pytest.raises(M.ModelIncomplete,match='ZERO_OR_INVALID'):M.causal_volume_total([replace(r,quote_volume=0.) for r in rows()],B)
 
 

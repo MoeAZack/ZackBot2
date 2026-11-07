@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 import gzip
 import hashlib
+import math
 import re
 from pathlib import Path
 from types import MappingProxyType
@@ -32,6 +33,21 @@ def decimal(value):
 
 
 @dataclass(frozen=True)
+class SignalBar(P.Bar):
+    """Own267 price/ATR projection: observed zero qv is valid, never invented.
+
+    Positive-volume binary64 arithmetic remains original259; its global Bar
+    validator is not changed. Decision and aggregate liquidity gates remain.
+    """
+    def validate(self):
+        if (type(self.open_ms)is not int or self.open_ms%H
+            or any(not math.isfinite(v) or v<=0 for v in(self.open,self.high,self.low,self.close))
+            or not math.isfinite(self.quote_volume) or self.quote_volume<0
+            or not self.low<=min(self.open,self.close)<=max(self.open,self.close)<=self.high):
+            raise SourceIncomplete('C267_INVALID_SIGNAL_PRICE_OR_NONNEGATIVE_QUOTE')
+
+
+@dataclass(frozen=True)
 class NativeBar:
     open_ms:int
     open:Decimal
@@ -51,7 +67,7 @@ class NativeBar:
         # Conversion belongs only to the unchanged binary64 signal/ATR/EMA,
         # never to native PRICE_FILTER checks or Decimal LegSpec references.
         self.validate()
-        result=P.Bar(self.open_ms,*(float(v) for v in (self.open,self.high,self.low,self.close,self.quote_volume)))
+        result=SignalBar(self.open_ms,*(float(v) for v in (self.open,self.high,self.low,self.close,self.quote_volume)))
         result.validate();return result
 
 
