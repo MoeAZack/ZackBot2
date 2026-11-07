@@ -44,6 +44,13 @@ EXPECTED_PATHS = {
     "filter_v4": "contracts/strategy_causal_pack_01/exchange_filter_authority.v4.json",
     "coverage_v4": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v4.json",
 }
+ALL_SPLIT_RANGES = {
+    "development": (1728864000000, 1743465600000),
+    "wf1": (1743465600000, 1761955200000),
+    "wf2": (1761955200000, 1775001600000),
+    "wf3": (1775001600000, 1790553600000),
+    "sealed_holdout": (1790553600000, 1793836800000),
+}
 
 
 class C259Error(RuntimeError):
@@ -276,6 +283,21 @@ def exact_index(bars: Sequence[Bar]) -> dict[int, Bar]:
             raise IncompleteAuthority("duplicate canonical bar")
         result[bar.open_ms] = bar
     return result
+
+
+def _valid_source_digest(value: str) -> bool:
+    return (len(value) == 64
+            and all(character in "0123456789abcdef" for character in value))
+
+
+def atr_tape_digest(*, source_digest: str, split_start_ms: int,
+                    decision_close_ms: int, bars: Sequence[Bar]) -> str:
+    if not _valid_source_digest(source_digest):
+        raise IncompleteAuthority("invalid sealed authority source digest")
+    body = {"source_digest": source_digest, "split_start_ms": split_start_ms,
+            "decision_close_ms": decision_close_ms,
+            "bars": [asdict(bar) for bar in bars]}
+    return _sha(_canon(body))
 
 
 def next_open(bars: Sequence[Bar], decision_close_ms: int) -> Bar:
@@ -643,11 +665,22 @@ class FundingEvent:
     rate: float
 
 
+def funding_tape_digest(*, source_digest: str, symbol: str, split_start_ms: int,
+                        split_end_ms: int, events: Sequence[FundingEvent]) -> str:
+    if not _valid_source_digest(source_digest) or not symbol:
+        raise IncompleteAuthority("invalid sealed funding authority identity")
+    body = {"source_digest": source_digest, "symbol": symbol,
+            "split_start_ms": split_start_ms, "split_end_ms": split_end_ms,
+            "events": [asdict(event) for event in events]}
+    return _sha(_canon(body))
+
+
 def validate_funding_events(events: Sequence[FundingEvent]) -> tuple[FundingEvent, ...]:
     seen: set[int] = set()
     ordered: list[FundingEvent] = []
     for event in sorted(events, key=lambda item: item.timestamp_ms):
         if (not isinstance(event.timestamp_ms, int) or event.timestamp_ms < 0
+                or event.timestamp_ms % HOUR_MS
                 or event.timestamp_ms >= 1793836800000 or event.timestamp_ms in seen
                 or not math.isfinite(event.rate)):
             raise IncompleteAuthority("invalid or duplicate funding event")
@@ -695,8 +728,20 @@ EVENT_PHASE = {"INTRABAR_PRIOR_BOUNDARY": 0, "FUNDING": 1, "GAP_OR_SCHEDULED": 2
                "PROTECTION_FAILURE": 3, "ENTRY": 4, "MARK": 5}
 
 
-def ordered_events(events: Iterable[tuple[int, str, str, object]]) -> list[tuple[int, str, str, object]]:
-    return sorted(events, key=lambda row: (row[0], EVENT_PHASE[row[1]], row[2]))
+def ordered_events(events: Iterable[tuple[int, str, str, str, object]]) \
+        -> list[tuple[int, str, str, str, object]]:
+    materialized = list(events)
+    keys: set[tuple[int, int, str, str]] = set()
+    for timestamp, phase, symbol, attempt_id, _payload in materialized:
+        if (not isinstance(timestamp, int) or timestamp % HOUR_MS or phase not in EVENT_PHASE
+                or not symbol or not attempt_id):
+            raise IncompleteAuthority("invalid immutable event identity")
+        key = (timestamp, EVENT_PHASE[phase], symbol, attempt_id)
+        if key in keys:
+            raise IncompleteAuthority("duplicate immutable event identity")
+        keys.add(key)
+    return sorted(materialized,
+                  key=lambda row: (row[0], EVENT_PHASE[row[1]], row[2], row[3]))
 
 
 @dataclass(frozen=True)
@@ -711,7 +756,12 @@ class ClosedTrade:
     funding_events: tuple[AppliedFunding, ...]
     sizing: SizedPosition
     decision_close_ms: int
+    split_start_ms: int
+    authority_source_digest: str
+    atr_authority_digest: str
     atr_bars: tuple[Bar, ...]
+    funding_authority: tuple[FundingEvent, ...]
+    funding_authority_digest: str
     lifecycle_bars: tuple[Bar, ...]
     entry_bar: Bar
     exit_bar: Bar
@@ -754,6 +804,16 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     if (trade.decision_close_ms != trade.entry_ms-HOUR_MS
             or trade.entry_ms != trade.decision_close_ms+HOUR_MS):
         raise IncompleteEpisode("entry is not the exact next open after ATR decision")
+    split = split_name(trade.decision_close_ms)
+    expected_split_start, split_end = ALL_SPLIT_RANGES[split]
+    if (trade.split_start_ms != expected_split_start
+            or tuple(bar.open_ms for bar in trade.atr_bars)
+            != tuple(range(expected_split_start, trade.decision_close_ms, HOUR_MS))
+            or trade.atr_authority_digest != atr_tape_digest(
+                source_digest=trade.authority_source_digest,
+                split_start_ms=expected_split_start,
+                decision_close_ms=trade.decision_close_ms, bars=trade.atr_bars)):
+        raise IncompleteAuthority("ATR tape is not exact split-bound sealed authority")
     causal_atr = atr24_wilder(trade.atr_bars, trade.decision_close_ms)
     derived_stop, derived_target = protection_prices(
         trade.sizing.entry, Decimal(str(causal_atr)), trade.side, trade.sizing.filters.tick)
@@ -782,6 +842,22 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     if len(trade.fills) != 2 or len(entries) != 1 or len(exits) != 1:
         raise IncompleteEpisode("closed trade is not one exact flat lifecycle")
     entry, exit_fill = entries[0], exits[0]
+    ordered_funding_authority = validate_funding_events(trade.funding_authority)
+    if (tuple(trade.funding_authority) != ordered_funding_authority
+            or any(not expected_split_start <= event.timestamp_ms < split_end
+                   for event in ordered_funding_authority)
+            or trade.funding_authority_digest != funding_tape_digest(
+                source_digest=trade.authority_source_digest, symbol=trade.symbol,
+                split_start_ms=expected_split_start, split_end_ms=split_end,
+                events=ordered_funding_authority)):
+        raise IncompleteAuthority("funding tape is not exact split-bound sealed authority")
+    exit_includes_same_boundary = exit_fill.phase not in {"STOP_RANGE", "TARGET_RANGE"}
+    required_funding = tuple(event for event in ordered_funding_authority
+                             if trade.entry_ms < event.timestamp_ms < trade.close_ms
+                             or exit_includes_same_boundary
+                             and event.timestamp_ms == trade.close_ms)
+    if (tuple(item.event for item in trade.funding_events) != required_funding):
+        raise IncompleteEpisode("applied funding does not exactly cover exposure authority")
     for fill in trade.fills:
         if (fill.symbol != trade.symbol or fill.quantity <= 0 or fill.reference <= 0
                 or not all(math.isfinite(value) for value in (
@@ -871,7 +947,6 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     for item in trade.funding_events:
         event, mark = item.event, item.mark
         validate_position_mark(mark)
-        exit_includes_same_boundary = exit_fill.phase not in {"STOP_RANGE", "TARGET_RANGE"}
         exposed = (trade.entry_ms < event.timestamp_ms < trade.close_ms
                    or exit_includes_same_boundary and event.timestamp_ms == trade.close_ms)
         if (event.timestamp_ms in seen_funding or not exposed
@@ -911,7 +986,10 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
                        cleanup_ms: int, fills: Sequence[Fill],
                        funding_events: Sequence[AppliedFunding],
                        sizing: SizedPosition, decision_close_ms: int,
-                       atr_bars: Sequence[Bar], lifecycle_bars: Sequence[Bar],
+                       split_start_ms: int, authority_source_digest: str,
+                       atr_authority_digest: str, atr_bars: Sequence[Bar],
+                       funding_authority: Sequence[FundingEvent],
+                       funding_authority_digest: str, lifecycle_bars: Sequence[Bar],
                        entry_bar: Bar, exit_bar: Bar,
                        stop: float, target: float, regime: str) -> ClosedTrade:
     entries = [fill for fill in fills if fill.phase == "ENTRY"]
@@ -926,8 +1004,9 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
         raise IncompleteEpisode("protection failure lifecycle is not exactly flat")
     trade = ClosedTrade(attempt_id, side, symbol, entry_ms, cleanup_ms, regime,
                         tuple(fills), tuple(funding_events), sizing, decision_close_ms,
-                        tuple(atr_bars), tuple(lifecycle_bars), entry_bar, exit_bar,
-                        stop, target, True)
+                        split_start_ms, authority_source_digest, atr_authority_digest,
+                        tuple(atr_bars), tuple(funding_authority), funding_authority_digest,
+                        tuple(lifecycle_bars), entry_bar, exit_bar, stop, target, True)
     validate_closed_trade(trade)
     return trade
 
@@ -1113,7 +1192,8 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
         supplied[key] = mark
     if set(supplied) != required:
         raise IncompleteAuthority("missing, extra, duplicate, or invalid lifecycle mark")
-    deltas: dict[tuple[int, int], list[float]] = {}
+    deltas: dict[tuple[int, int], list[tuple[str, str, float]]] = {}
+    event_keys: set[tuple[int, int, str, str]] = set()
     for trade in trades:
         for fill in trade.fills:
             if fill.phase == "ENTRY":
@@ -1122,11 +1202,21 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
                 value = fill.movement_cash-fill.fee_drag-fill.slippage_drag-fill.impact_drag
                 phase = (0 if fill.phase in {"STOP_RANGE", "TARGET_RANGE"}
                          else 3 if fill.phase == "PROTECTION_FAILURE_CLEANUP" else 2)
-            deltas.setdefault((fill.timestamp_ms, phase), []).append(value)
+            key = (fill.timestamp_ms, phase, trade.symbol, trade.attempt_id)
+            if key in event_keys:
+                raise IncompleteAuthority("duplicate immutable event identity")
+            event_keys.add(key)
+            deltas.setdefault((fill.timestamp_ms, phase), []).append(
+                (trade.symbol, trade.attempt_id, value))
         for event in trade.funding_events:
             cash = funding_cash(trade.side, trade.fills[0].quantity,
                                 event.mark.price, event.event.rate)
-            deltas.setdefault((event.event.timestamp_ms, 1), []).append(cash)
+            key = (event.event.timestamp_ms, 1, trade.symbol, trade.attempt_id)
+            if key in event_keys:
+                raise IncompleteAuthority("duplicate immutable event identity")
+            event_keys.add(key)
+            deltas.setdefault((event.event.timestamp_ms, 1), []).append(
+                (trade.symbol, trade.attempt_id, cash))
     cash = capital
     points: list[tuple[int, int, float]] = [(start_ms, 0, capital)]
     timestamps = sorted({timestamp for timestamp, _phase in deltas} | {timestamp for timestamp, _ in required})
@@ -1134,17 +1224,21 @@ def derive_equity_points(trades: Sequence[ClosedTrade], marks: Sequence[Position
         for phase in range(5):
             values = deltas.get((timestamp, phase))
             if values:
-                cash = math.fsum((cash, *values))
+                ordered_values = sorted(values, key=lambda row: (row[0], row[1]))
+                cash = math.fsum((cash, *(row[2] for row in ordered_values)))
                 points.append((timestamp, phase, cash))
         if any(key[0] == timestamp for key in required):
             unrealized = math.fsum(
                 trade.side * trade.fills[0].quantity *
                 (supplied[(timestamp, trade.symbol)].price - trade.fills[0].reference)
-                for trade in trades if trade.entry_ms <= timestamp < trade.close_ms)
+                for trade in sorted(trades, key=lambda item: (item.symbol, item.attempt_id))
+                if trade.entry_ms <= timestamp < trade.close_ms)
             points.append((timestamp, 5, cash+unrealized))
     if not points or points[-1][0] > end_ms:
         raise IncompleteEpisode("lifecycle equity escaped fold")
-    terminal = capital + math.fsum(trade.net_cash for trade in trades)
+    terminal = capital + math.fsum(
+        trade.net_cash for trade in sorted(
+            trades, key=lambda item: (item.close_ms, item.symbol, item.attempt_id)))
     if not math.isclose(cash, terminal, abs_tol=1e-9):
         raise IncompleteEpisode("derived terminal cash does not reconcile")
     return tuple(points)
@@ -1158,12 +1252,8 @@ class FoldLifecycle:
     marks: tuple[PositionMark, ...]
 
 
-FOLD_RANGES = {
-    "development": (1728864000000, 1743465600000),
-    "wf1": (1743465600000, 1761955200000),
-    "wf2": (1761955200000, 1775001600000),
-    "wf3": (1775001600000, 1790553600000),
-}
+FOLD_RANGES = {name: limits for name, limits in ALL_SPLIT_RANGES.items()
+               if name != "sealed_holdout"}
 
 
 def _validate_lifecycle(fold: FoldLifecycle) -> None:
@@ -1311,7 +1401,10 @@ def stress_same_selection(base: Sequence[ClosedTrade], stress: Sequence[ClosedTr
         funding = tuple(asdict(event).items() for event in trade.funding_events)
         return (trade.attempt_id, trade.side, trade.symbol, trade.entry_ms, trade.close_ms,
                 trade.regime, fills, funding, trade.sizing, trade.decision_close_ms,
-                trade.atr_bars, trade.lifecycle_bars, trade.entry_bar, trade.exit_bar,
+                trade.split_start_ms, trade.authority_source_digest,
+                trade.atr_authority_digest, trade.atr_bars, trade.funding_authority,
+                trade.funding_authority_digest, trade.lifecycle_bars,
+                trade.entry_bar, trade.exit_bar,
                 trade.stop, trade.target, trade.initial_risk_cash, trade.incomplete)
     left = [identity(trade) for trade in base]
     right = [identity(trade) for trade in stress]
