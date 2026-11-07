@@ -1,8 +1,8 @@
-"""Synthetic development replay of the single frozen C260 long hypothesis.
+"""Fixed C260 development replay, requiring context-owned source authority.
 
-No production authority, evidence seal, PAPER qualification or runtime adapter
-is installed. All economic decisions use the exact frozen proposal; diagnostics
-run separate books. PACK supplies adverse tick/fill and stop-only path semantics.
+The real CLI has no source override, forward or holdout path. Synthetic fixtures
+remain separate and cannot authorize real reads. No PAPER qualification or
+runtime adapter exists. PACK supplies adverse fill/stop-only path semantics.
 """
 from __future__ import annotations
 
@@ -12,11 +12,13 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_FLOOR
 import json
 import math
+import os
 from pathlib import Path
 
 from tools.research import c260_low_idio_variance as C
+from tools.research import c260_authority as AUTH
 from tools.research import c260_statistics as S
-from tools.research.c260_archive import SyntheticArchive, SourceIncomplete, milliseconds
+from tools.research.c260_archive import DevelopmentArchive, SyntheticArchive, SourceIncomplete, milliseconds
 from tools.research import btc_residual_leadlag_continuation_c259_stagea as X
 
 P = C.PACK
@@ -50,9 +52,10 @@ def _dd(values):
 
 
 class DevelopmentBook:
-    def __init__(self, source: SyntheticArchive, *, capital: int, stress: bool = False):
-        if type(source) is not SyntheticArchive or capital not in (1000, 2000, 3000, 4000):
-            raise C.C260Locked('FIXED_SYNTHETIC_SOURCE_AND_CAPITAL_ONLY')
+    def __init__(self, source, *, capital: int, stress: bool = False):
+        if type(source) not in (SyntheticArchive, DevelopmentArchive) or capital not in (1000, 2000, 3000, 4000):
+            raise C.C260Locked('FIXED_AUTHENTICATED_SOURCE_AND_CAPITAL_ONLY')
+        source._ensure_authority()
         self.source, self.capital, self.stress = source, capital, stress
         self.slippage = 10. if stress else 2.
         self.cash = float(capital)
@@ -286,6 +289,14 @@ class DevelopmentBook:
                 continue
             r = self.source.filters.rules[symbol]
             rule = P.ExchangeRule(**{key: float(r[key]) for key in ('tick', 'step', 'min_qty', 'min_notional', 'max_qty')})
+            try:
+                self._grid(raw.open, rule.tick)
+            except SourceIncomplete:
+                # The pre-read execution clarification distinguishes a known
+                # pre-entry exchange infeasibility from a missing/corrupt
+                # source or an infeasible mandatory exit after exposure.
+                attempt['reason'] = 'ENTRY_PRICE_OFF_TICK'
+                continue
             sized, reason = self._sized(symbol, raw.open, atr, t, rule)
             if sized is None:
                 attempt['reason'] = reason
@@ -375,12 +386,15 @@ class DevelopmentBook:
                 if t % C.DAY_MS == 0:
                     eligible = self.source.eligible(t)
                     wanted = range(t - 721 * H, t, H)
+                    histories = {}
+                    for symbol in eligible:
+                        if symbol != 'BTCUSDT':
+                            rows = self.source.klines(symbol)
+                            histories[symbol] = tuple(rows[x].pack() for x in wanted if x in rows)
                     ranking = C.rank_supplied_closed_cohort(decision_ms=t, fold_start_ms=self.source.start_ms,
                         pit_filter_eligible_symbols=eligible,
                         btc_bars=tuple(btc[x].pack() for x in wanted if x in btc),
-                        bars_by_symbol={symbol: tuple(self.source.klines(symbol)[x].pack()
-                                                     for x in wanted if x in self.source.klines(symbol))
-                                        for symbol in eligible if symbol != 'BTCUSDT'})
+                        bars_by_symbol=histories)
                     pending[ranking.entry_due_ms] = ranking
                     self.attempts.append({'decision_ms': t, 'symbol': None, 'reason': 'DECISION',
                                           'eligible_count': len(eligible), 'ranked_count': len(ranking.ranked)})
@@ -442,14 +456,8 @@ class DevelopmentBook:
                 'daily_net_R': daily_r, 'daily_closed_count': daily_count}
 
 
-def synthetic_development(root: Path) -> dict:
-    source = SyntheticArchive(root)
-    # Only after metadata/schema/checksum authority validation; separate from
-    # production's not-yet-installed common-git-dir candidate identity.
-    identity_path = source.root / '.c260-synthetic-development-spent.json'
-    with identity_path.open('x', encoding='utf-8') as handle:
-        json.dump({'format': 'zb-c260-SYNTHETIC-SPEND/1', 'candidate_id': 260,
-                   'proposal_sha256': C.PREREG_SHA256, 'artifacts': source.digests}, handle, sort_keys=True)
+def _replay_development(source) -> dict:
+    source._ensure_authority()
     primary = DevelopmentBook(source, capital=2000).run()
     stress = DevelopmentBook(source, capital=2000, stress=True).run()
     inference = S.inference((S.DailyPairs('development', tuple(primary['daily_net_R']),
@@ -469,35 +477,86 @@ def synthetic_development(root: Path) -> dict:
     # The forward loader does not exist in this bounded slice. The dev veto is
     # concrete, before any possible forward source read, never a success claim.
     diagnostics = [DevelopmentBook(source, capital=capital).run() for capital in (1000, 3000, 4000)]
-    return {'format': 'zb-c260-SYNTHETIC-DEVELOPMENT-NON-EVIDENCE/1', 'candidate_id': 260,
-            'proposal_sha256': C.PREREG_SHA256, 'source_digests': source.digests,
-            'source_reads': source.source_reads, 'synthetic_only': True,
+    missing = ['forward staged runner and aggregate stitched risk report',
+               'complete controls, attribution, correlation and capacity disclosures']
+    if source.synthetic_only:
+        missing.insert(0, 'production C260 registration/source/code/coverage receipt and persistent identity')
+    verdict = ('DATA_INCOMPLETE' if not gates['data_complete'] else
+               'PASS' if all(gates.values()) else 'REJECT')
+    return {'format': ('zb-c260-SYNTHETIC-DEVELOPMENT-NON-EVIDENCE/1' if source.synthetic_only
+                       else 'zb-c260-development-research/1'), 'candidate_id': 260,
+            'proposal_sha256': C.PREREG_SHA256, 'source_digests': dict(source.digests),
+            'source_reads': source.source_reads, 'synthetic_only': source.synthetic_only,
             'primary': primary, 'stress': stress, 'diagnostic_books': diagnostics,
             'inference': inference, 'drawdown_tier': tier, 'development_gates': gates,
-            'economic_development_verdict': 'PASS' if all(gates.values()) else 'REJECT',
+            'economic_development_verdict': verdict,
             'forward_state': 'PENDING_IMPLEMENTATION' if all(gates.values()) else 'VETOED_BEFORE_FORWARD_READ',
             'report_acceptance_complete': False,
-            'missing_acceptance': ['production C260 registration/source/code/coverage receipt and persistent identity',
-                                   'forward staged runner and aggregate stitched risk report',
-                                   'complete controls, attribution, correlation and capacity disclosures'],
+            'missing_acceptance': missing,
             'execution_authorized': False, 'promotable': False, 'paper_qualified': False,
             'historical_global_variant_total': 'UNKNOWN', 'global_FWER_claimed': False}
+
+
+def synthetic_development(root: Path) -> dict:
+    source = SyntheticArchive(root)
+    # Synthetic namespace only. This receipt cannot substitute for the real
+    # context's common-Git one-shot claim, even if the fixture is renamed.
+    identity_path = source.root / '.c260-synthetic-development-spent.json'
+    with identity_path.open('x', encoding='utf-8') as handle:
+        json.dump({'format': 'zb-c260-SYNTHETIC-SPEND/1', 'candidate_id': 260,
+                   'proposal_sha256': C.PREREG_SHA256, 'artifacts': source.digests}, handle, sort_keys=True)
+    return _replay_development(source)
+
+
+def development() -> dict:
+    """The single fixed real entry: verifier, durable claim, parser, same book."""
+    with AUTH.development_authority() as authority:
+        source = DevelopmentArchive(authority)
+        report = _replay_development(source)
+        report['development_authority'] = {
+            'implementation_head': authority.implementation_head,
+            'receipt_sha256': authority.receipt_sha256,
+            'claim_sha256': authority.claim_sha256,
+            'scope': 'ONE_SHOT_DEVELOPMENT_ONLY_NO_FORWARD_OR_HOLDOUT'}
+        report['development_source_authorized'] = True
+        # The candidate is consumed regardless of export success. Publish the
+        # complete canonical record durably while the same authority is live.
+        canonical = authority.claim_path.with_name('candidate-260-development.report.json')
+        report['canonical_report_path'] = str(canonical)
+        AUTH.validate_issued(authority)
+        with canonical.open('xb') as handle:
+            handle.write(_report_bytes(report))
+            handle.flush()
+            os.fsync(handle.fileno())
+        return report
+
+
+def _report_bytes(report):
+    return (json.dumps(report, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode('utf-8')
+
+
+def _preflight_export(path):
+    # Probe the exact requested target exclusively before consuming the source.
+    # Remove our own empty probe before the verifier's clean-tree check. This
+    # is not a reservation: the canonical claim-sibling report protects against
+    # any later export race/failure without overwriting another result.
+    with path.open('xb'):
+        pass
+    path.unlink()
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('stage', choices=('development',))
     parser.add_argument('--synthetic-root', type=Path)
-    parser.add_argument('--out', type=Path)
+    parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args(argv)
-    if args.synthetic_root is None:
-        C.assert_real_evaluation_authorized()  # before ANY source or identity I/O
-    report = synthetic_development(args.synthetic_root)
-    if args.out is None:
-        parser.error('--out is required for the synthetic report')
-    with args.out.open('x', encoding='utf-8') as handle:
-        json.dump(report, handle, sort_keys=True, allow_nan=False)
-        handle.write('\n')
+    _preflight_export(args.out)
+    report = development() if args.synthetic_root is None else synthetic_development(args.synthetic_root)
+    with args.out.open('xb') as handle:
+        handle.write(_report_bytes(report))
+        handle.flush()
+        os.fsync(handle.fileno())
     return 0
 
 

@@ -14,7 +14,8 @@ import pytest
 
 from tools.research import c260_low_idio_variance as C
 from tools.research import c260_runner as R
-from tools.research.c260_archive import SyntheticArchive, SourceIncomplete, milliseconds
+from tools.research import c260_authority as AUTH
+from tools.research.c260_archive import DevelopmentArchive, SyntheticArchive, SourceIncomplete, milliseconds
 from tools.research import manifest as M
 from tools.research import universe as U
 
@@ -96,8 +97,11 @@ def make_fixture(root):
             'pit_universe_sha256': '0' * 64, 'pit_universe_digest': '1' * 64,
             'snapshots': [{'captured_at': captured, 'server_time': '2024-12-30T00:00:00Z',
                            'path': 'snapshot.json', 'sha256': snapshot_sha}],
-            'fold_bindings': {'development': captured},
-            'weekly_membership_sha256': {'development': hashlib.sha256(M.canonical(core_cells)).hexdigest()}}
+            # Preserve the actual v3 WF-only key shape. C260 must derive the
+            # development snapshot without manufacturing a development cell.
+            'fold_bindings': {fold: captured for fold in ('wf1', 'wf2', 'wf3')},
+            'weekly_membership_sha256': {fold: hashlib.sha256(M.canonical(core_cells)).hexdigest()
+                                         for fold in ('wf1', 'wf2', 'wf3')}}
     prior_sha = write_json(root / 'filters.v2.json', base)
     filters = {**base, 'version': 3, 'pit_universe_path': 'pit.json', 'pit_universe_sha256': pit_sha,
                'pit_universe_digest': pit['digest'],
@@ -128,6 +132,26 @@ def fixture_root(tmp_path_factory):
 @pytest.fixture
 def source(fixture_root):
     return SyntheticArchive(fixture_root)
+
+
+def issue_test_metadata(monkeypatch, *, repository, store, artifacts, common):
+    """Exercise the actual issuer/claim with synthetic authenticated metadata.
+
+    The verifier itself is independently tested with real Git receipts. This
+    seam test substitutes only its metadata result, never an issued capability,
+    acceptance PASS, real store, or original repository identity directory.
+    """
+    monkeypatch.setattr(AUTH, 'ROOT', repository)
+    monkeypatch.setattr(AUTH, '_git', lambda *args: str(common) if args == ('rev-parse', '--git-common-dir')
+                        else pytest.fail('unexpected Git authority call'))
+    monkeypatch.setattr(AUTH, '_authenticate_metadata', lambda: (
+        'a' * 40, 'b' * 64, store, artifacts, START, END))
+
+
+def fixture_artifacts(root):
+    receipt = json.loads((root / 'c260.synthetic.json').read_bytes())
+    return tuple((name, pin['path'], pin['byte_sha256'], (root / pin['path']).read_bytes())
+                 for name, pin in receipt['artifacts'].items())
 
 
 def first_ranking(source, day=31):
@@ -341,11 +365,19 @@ def test_actual_cli_archive_closed_loop_and_single_synthetic_spend(fixture_root,
     assert duplicate.returncode != 0 and 'FileExistsError' in duplicate.stderr
 
 
-def test_real_cli_is_locked_before_files_identity_or_source(monkeypatch):
-    monkeypatch.setattr(Path, 'read_bytes', lambda *a, **k: pytest.fail('unauthorized source/identity I/O'))
-    monkeypatch.setattr(Path, 'open', lambda *a, **k: pytest.fail('unauthorized source/identity I/O'))
-    with pytest.raises(C.C260Locked, match='UNBOUND'):
-        R.main(['development', '--out', 'unused.json'])
+def test_real_cli_missing_receipt_is_locked_before_source_or_claim(monkeypatch, tmp_path):
+    monkeypatch.setattr(AUTH, '_git', lambda *args: '' if args == ('status', '--porcelain') else 'a' * 40)
+    monkeypatch.setattr(AUTH, '_tree', lambda *args: (_ for _ in ()).throw(C.C260Locked('PROTECTED_DOCUMENT_ABSENT')))
+    original = Path.open
+    out = tmp_path / 'unused.json'
+    def guarded(path, *args, **kwargs):
+        if path in (C.PREREG, out):
+            return original(path, *args, **kwargs)
+        pytest.fail('unauthorized source/identity I/O')
+    monkeypatch.setattr(Path, 'open', guarded)
+    with pytest.raises(C.C260Locked, match='PROTECTED_DOCUMENT_ABSENT'):
+        R.main(['development', '--out', str(out)])
+    assert not out.exists()
 
 
 def test_raw_archive_integrity_failure_does_not_become_skip(source):
@@ -437,3 +469,206 @@ def test_causal_entry_mark_must_allow_placeable_stop(source):
     book._admit(ranking, ranking.entry_due_ms)
     assert book.attempts[0]['reason'] == 'PROTECTION_COLLAPSED'
     assert symbol not in book.lots
+
+
+def test_pre_entry_off_tick_skips_in_original_rank_but_exposed_exit_fails(source):
+    ranking = first_ranking(source)
+    symbol = ranking.ranked[0].symbol
+    bars = dict(source.klines(symbol)); row = bars[ranking.entry_due_ms]
+    bars[ranking.entry_due_ms] = replace(row, open=row.open + .005)
+    source._cache[symbol, 'klines'] = MappingProxyType(bars)
+    book = R.DevelopmentBook(source, capital=2000)
+    book._admit(ranking, ranking.entry_due_ms)
+    assert book.attempts[0]['reason'] == 'ENTRY_PRICE_OFF_TICK'
+    assert next(iter(book.lots.values())).original_rank == 2
+    lot = next(iter(book.lots.values()))
+    with pytest.raises(SourceIncomplete, match='FILTER_GRID'):
+        book._close(lot, 100.005, lot.due_ms, 3, 'TIME_72H')
+    assert lot.symbol in book.lots and book.report()['unresolved_exposures']
+
+
+def test_issued_factory_actual_cli_uses_same_checksum_book_and_shared_single_spend(fixture_root, tmp_path, monkeypatch):
+    issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
+                        artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
+    # The production path must never read or relabel a synthetic receipt.
+    original = Path.read_bytes
+    def guarded(path):
+        if path.name == 'c260.synthetic.json':
+            pytest.fail('production path relabeled a fixture receipt')
+        return original(path)
+    monkeypatch.setattr(Path, 'read_bytes', guarded)
+    original_open = Path.open
+    published = []
+    def check_publication(path, *args, **kwargs):
+        if path.name == 'candidate-260-development.report.json':
+            cap, = AUTH._ISSUED.values()
+            AUTH.validate_issued(cap)
+            published.append(path)
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'open', check_publication)
+    out = tmp_path / 'issued-development.json'
+    assert R.main(['development', '--out', str(out)]) == 0
+    report = json.loads(out.read_text())
+    assert not report['synthetic_only'] and report['development_source_authorized']
+    assert report['format'] == 'zb-c260-development-research/1'
+    assert report['development_authority']['implementation_head'] == 'a' * 40
+    assert report['economic_development_verdict'] == 'REJECT'
+    assert report['forward_state'] == 'VETOED_BEFORE_FORWARD_READ'
+    assert report['primary']['data_complete'] and report['primary']['cash_reconciled']
+    assert report['primary']['closed_count'] > 0 and all(row['end_ms'] == END for row in report['source_reads'])
+    assert not report['report_acceptance_complete'] and not report['paper_qualified'] and not report['promotable']
+    assert len(published) == 1 and not AUTH._ISSUED
+    canonical = Path(report['canonical_report_path'])
+    assert canonical == tmp_path / 'common/c260-evaluation/candidate-260-development.report.json'
+    # Opening the canonical record after the context is itself allowed; only
+    # the publication, intercepted above, must happen while authority is live.
+    monkeypatch.setattr(Path, 'open', original_open)
+    assert canonical.read_bytes() == out.read_bytes()
+    with pytest.raises(C.C260Locked, match='ALREADY_SPENT'):
+        R.main(['development', '--out', str(tmp_path / 'duplicate.json')])
+
+
+@pytest.mark.parametrize('fake', [None, True, False, {}, 'fixture'])
+def test_production_factory_requires_actual_issued_object_before_artifact_access(fake, monkeypatch):
+    monkeypatch.setattr(Path, 'read_bytes', lambda *args: pytest.fail('artifact/identity access'))
+    with pytest.raises(C.C260Locked, match='ISSUED'):
+        DevelopmentArchive(fake)
+
+
+def test_issued_source_expiry_copy_scope_and_cache_cannot_reopen(fixture_root, tmp_path, monkeypatch):
+    issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
+                        artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
+    with AUTH.development_authority() as cap:
+        with pytest.raises(C.C260Locked, match='ISSUED'):
+            DevelopmentArchive(replace(cap))
+        source = DevelopmentArchive(cap)
+        assert source.klines('BTCUSDT')
+        with pytest.raises(C.C260Locked, match='FIXED_DEVELOPMENT_SOURCE_RECORD'):
+            source._selected_rows(source.manifest['files'][0], END, END + H)
+        source.end_ms += H
+        with pytest.raises(C.C260Locked, match='SCOPE_CHANGED'):
+            source.klines('BTCUSDT')  # already cached, still must revalidate
+        source.end_ms = END
+    with pytest.raises(C.C260Locked, match='ISSUED'):
+        source.klines('BTCUSDT')
+    with pytest.raises(C.C260Locked, match='ISSUED'):
+        source.eligible(START)
+    with pytest.raises(C.C260Locked, match='ISSUED'):
+        R.DevelopmentBook(source, capital=2000)
+
+
+def test_production_metadata_and_issued_cached_rows_cannot_mutate_or_be_replaced(fixture_root, tmp_path, monkeypatch):
+    issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
+                        artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
+    with AUTH.development_authority() as cap:
+        source = DevelopmentArchive(cap)
+        with pytest.raises(TypeError):
+            source.manifest['files'][0]['sha256'] = '0' * 64
+        with pytest.raises(AttributeError):
+            source.pit['weeks'][0]['books']['crypto']['members'].append('FAKEUSDT')
+        symbol = source.eligible(START)[0]
+        with pytest.raises(TypeError):
+            source.filters.rules[symbol]['tick'] = 1.
+        rows = source.klines('BTCUSDT')
+        with pytest.raises(TypeError):
+            rows[START] = rows[START]
+        from dataclasses import FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
+            rows[START].close = 1.
+        for name in ('manifest', 'pit', 'filters', 'digests', '_cache'):
+            original = getattr(source, name)
+            setattr(source, name, {})
+            with pytest.raises(C.C260Locked, match='METADATA_REPLACED'):
+                source.eligible(START)
+            setattr(source, name, original)
+        source._cache['BTCUSDT', 'klines'] = MappingProxyType({})
+        with pytest.raises(C.C260Locked, match='STREAM_REPLACED'):
+            source.klines('BTCUSDT')
+
+
+@pytest.mark.parametrize('attack', ['existing', 'missing_parent'])
+def test_cli_preflights_export_before_authority_or_one_shot_claim(tmp_path, monkeypatch, attack):
+    out = tmp_path / 'result.json' if attack == 'existing' else tmp_path / 'absent/result.json'
+    if attack == 'existing':
+        out.write_bytes(b'previous record')
+    monkeypatch.setattr(AUTH, 'development_authority', lambda: pytest.fail('claim reached before export preflight'))
+    with pytest.raises(OSError):
+        R.main(['development', '--out', str(out)])
+    if attack == 'existing':
+        assert out.read_bytes() == b'previous record'
+
+
+def test_export_failure_preserves_canonical_record_published_inside_authority(fixture_root, tmp_path, monkeypatch):
+    issue_test_metadata(monkeypatch, repository=fixture_root, store=fixture_root / 'store',
+                        artifacts=fixture_artifacts(fixture_root), common=tmp_path / 'common')
+    # Publication-only failure drill. The full economic replay and its exact
+    # canonical record are exercised separately above; no fake economic PASS.
+    monkeypatch.setattr(R, '_replay_development', lambda source: {
+        'economic_development_verdict': 'NOT_EVALUATED_SYNTHETIC_PUBLICATION_DRILL',
+        'synthetic_only': True, 'report_acceptance_complete': False, 'paper_qualified': False,
+        'promotable': False, 'execution_authorized': False})
+    monkeypatch.setattr(M, 'read_archive', lambda *args: pytest.fail('publication drill read prices'))
+    out = tmp_path / 'export.json'
+    original_open = Path.open
+    attempts = 0
+    def fail_export(path, *args, **kwargs):
+        nonlocal attempts
+        if path == out:
+            attempts += 1
+            if attempts == 2:
+                raise PermissionError('synthetic post-preflight export failure')
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'open', fail_export)
+    with pytest.raises(PermissionError, match='post-preflight'):
+        R.main(['development', '--out', str(out)])
+    canonical = tmp_path / 'common/c260-evaluation/candidate-260-development.report.json'
+    record = json.loads(canonical.read_bytes())
+    assert record['economic_development_verdict'] == 'NOT_EVALUATED_SYNTHETIC_PUBLICATION_DRILL'
+    assert not record['report_acceptance_complete'] and not record['paper_qualified'] and not AUTH._ISSUED
+    with pytest.raises(C.C260Locked, match='ALREADY_SPENT'):
+        with AUTH.development_authority():
+            pytest.fail('export failure refunded the candidate')
+
+
+def test_actual_frozen_v3_wf_only_metadata_derives_development_without_market_or_identity_reads(tmp_path, monkeypatch):
+    repository = C.PREREG.parents[2]
+    proposal = C.load_proposal_metadata()
+    pins = proposal['stage_a_authority_proposal']
+    artifacts = tuple((name, pins[name]['path'], pins[name]['byte_sha256'],
+                       (repository / pins[name]['path']).read_bytes())
+                      for name in ('manifest', 'pit', 'filters', 'coverage'))
+    filters = json.loads(next(raw for name, _, _, raw in artifacts if name == 'filters'))
+    assert set(filters['fold_bindings']) == {'wf1', 'wf2', 'wf3'} and 'development' not in filters['weekly_membership_sha256']
+    store = tmp_path / 'empty-store'; store.mkdir()
+    issue_test_metadata(monkeypatch, repository=repository, store=store, artifacts=artifacts, common=tmp_path / 'common')
+    monkeypatch.setattr(M, 'read_archive', lambda *args: pytest.fail('real archive read'))
+    with AUTH.development_authority() as cap:
+        source = DevelopmentArchive(cap)
+        assert source.filters.captured_at == '2024-12-13T04:44:48Z'
+        expected = next(w for w in reversed(source.pit['weeks']) if w['monday_ms'] <= START)['books']['crypto']['members']
+        assert source.eligible(START) == tuple(s for s in expected if s in source.filters.eligible_symbols)
+        assert source.source_reads == [] and list(store.iterdir()) == []
+
+
+@pytest.mark.parametrize('attack', ['equal_capture', 'future_capture', 'equal_server', 'future_server', 'snapshot_digest'])
+def test_development_filter_snapshot_never_uses_equal_future_or_changed_evidence(fixture_root, tmp_path, monkeypatch, attack):
+    root = tmp_path / 'metadata'; root.mkdir()
+    for path in fixture_root.glob('*.json'):
+        (root / path.name).write_bytes(path.read_bytes())
+    filters = json.loads((root / 'filters.json').read_bytes())
+    previous = json.loads((root / 'filters.v2.json').read_bytes())
+    if attack == 'snapshot_digest':
+        (root / 'snapshot.json').write_bytes(b'changed payload')
+    else:
+        key = 'captured_at' if 'capture' in attack else 'server_time'
+        value = '2025-01-01T00:00:00Z' if attack.startswith('equal') else '2025-01-02T00:00:00Z'
+        for doc in (filters, previous):
+            doc['snapshots'][0][key] = value
+        filters['supersedes']['byte_sha256'] = write_json(root / 'filters.v2.json', previous)
+        digest = write_json(root / 'filters.json', filters)
+        receipt = json.loads((root / 'c260.synthetic.json').read_bytes())
+        receipt['artifacts']['filters']['byte_sha256'] = digest
+        write_json(root / 'c260.synthetic.json', receipt)
+    monkeypatch.setattr(M, 'read_archive', lambda *args: pytest.fail('price read before snapshot validation'))
+    with pytest.raises(SourceIncomplete, match='FILTER_SNAPSHOT_CHECKSUM|NO_STRICTLY_PRE_DEVELOPMENT'):
+        SyntheticArchive(root)

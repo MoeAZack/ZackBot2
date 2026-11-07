@@ -1,8 +1,8 @@
-"""Read-only C260 archive component. Only a synthetic fixture entry is installed.
+"""Read-only fixed C260 development streams behind an issued authority.
 
-The fixture receipt is deliberately not production authority and cannot mint
-sealed evidence. The real CLI must refuse before reaching this module. Artifact
-schemas are the existing manifest/v8 PIT/v3 filters, not a made-up price tape.
+Synthetic fixtures have a separate, permanently non-authorizing constructor.
+The production constructor validates the context-owned durable capability
+before inspecting artifacts, source paths or caches. No forward path exists.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from types import MappingProxyType
 import urllib.parse
 
 from tools.research import c260_low_idio_variance as C
+from tools.research import c260_authority as AUTH
 from tools.research import manifest as M
 from tools.research import strategy_causal_pack_01_archive as A
 from tools.research import universe as U
@@ -44,6 +45,14 @@ def milliseconds(text: str) -> int:
     return A._utc_ms(text)
 
 
+def _freeze(value):
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True)
 class Kline:
     open_ms: int
@@ -64,37 +73,29 @@ class Funding:
     rate: float
 
 
-class SyntheticArchive:
-    """Checksum-bound typed streams, always synthetic and non-authorizing.
+class _Archive:
+    """Shared parser only; subclasses fix the separate authority boundaries."""
 
-    The root is an explicit test fixture directory. No real data root default,
-    caller loader, evaluation seal, protected receipt, or identity override is
-    offered. Only the frozen development window can be loaded in this slice.
-    """
-
-    synthetic_only = True
-
-    def __init__(self, root: Path):
+    def _initialize(self, *, root: Path, store: Path, pins: dict, raws: dict):
+        self._ensure_authority()
         self.root = root.resolve()
-        receipt = strict_json((self.root / 'c260.synthetic.json').read_bytes())
-        if (set(receipt) != {'format', 'candidate_id', 'proposal_sha256', 'artifacts'}
-                or receipt['format'] != 'zb-c260-SYNTHETIC-NON-EVIDENCE/1'
-                or receipt['candidate_id'] != 260 or receipt['proposal_sha256'] != C.PREREG_SHA256
-                or set(receipt['artifacts']) != {'manifest', 'pit', 'filters', 'coverage'}):
-            raise SourceIncomplete('SYNTHETIC_FIXTURE_RECEIPT_REQUIRED')
         C.load_proposal_metadata()
         self.digests = {}
         artifacts = {}
-        for name, pin in receipt['artifacts'].items():
+        if set(pins) != {'manifest', 'pit', 'filters', 'coverage'} or set(raws) != set(pins):
+            raise SourceIncomplete('EXACT_ARTIFACT_SET_REQUIRED')
+        for name, pin in pins.items():
             if set(pin) != {'path', 'byte_sha256'}:
                 raise SourceIncomplete('ARTIFACT_PIN_SHAPE')
-            path = Path(M.contained(str(self.root), pin['path']))
-            raw = path.read_bytes()
+            M.check_rel_path(pin['path'])
+            raw = raws[name]
+            if type(raw) is not bytes:
+                raise SourceIncomplete('IMMUTABLE_AUTHENTICATED_ARTIFACT_BYTES_REQUIRED')
             digest = hashlib.sha256(raw).hexdigest()
             if digest != pin['byte_sha256']:
                 raise SourceIncomplete(f'{name}: ARTIFACT_CHECKSUM')
             self.digests[name] = digest
-            artifacts[name] = strict_json(gzip.decompress(raw) if path.suffix == '.gz' else raw)
+            artifacts[name] = strict_json(gzip.decompress(raw) if pin['path'].endswith('.gz') else raw)
         self.manifest, self.pit = artifacts['manifest'], artifacts['pit']
         M.validate(self.manifest)
         if (self.manifest['loader_version'] != M.ARCHIVE_LOADER
@@ -122,25 +123,98 @@ class SyntheticArchive:
                 or not {('klines', '1h'), ('markPriceKlines', '1h'), ('fundingRate', None)}.issubset(
                     {(row.get('series'), row.get('interval')) for row in coverage.get('required_streams', [])})):
             raise SourceIncomplete('COVERAGE_CONTENT_CROSSBINDING')
-        # Authenticate unchanged CORE20 authority cells as metadata. Its returned
-        # eligibility/rules are applied to ALL PIT members; cells never select us.
-        authority = artifacts['filters']
-        if authority.get('version') != 3:
-            raise SourceIncomplete('FROZEN_V3_FILTER_SCHEMA_REQUIRED')
-        contract = {'data': {'exchange_filter_authority_sha256': self.digests['filters'],
-                            'pit_universe_path': receipt['artifacts']['pit']['path'],
-                            'pit_universe_sha256': self.digests['pit'],
-                            'pit_universe_digest': self.pit['digest']},
-                    'folds': [{'name': 'development', 'start': '2025-01-01T00:00:00Z',
-                               'end': '2025-04-01T00:00:00Z'}]}
-        self.filters = A.load_fold_filter_authorities(
-            self.root / receipt['artifacts']['filters']['path'], self.digests['filters'], self.root, contract
-        )['development']
-        self.store = Path(M.contained(str(self.root), 'store'))
+        self.filters = self._development_filters(artifacts['filters'], pins['pit'])
+        self.store = store.resolve()
         self._cache = {}
+        self._issued_streams = {}
         self.source_reads = []
+        if type(self) is DevelopmentArchive:
+            self.manifest, self.pit, self.digests = map(_freeze, (self.manifest, self.pit, self.digests))
+            self.filters = A.FoldFilterAuthority(
+                self.filters.fold_name, self.filters.authority_sha256, self.filters.snapshot_sha256,
+                self.filters.captured_at, self.filters.eligible_symbols, _freeze(self.filters.rules))
+            self._metadata_binding = (self.manifest, self.pit, self.filters, self.digests, self._cache)
+
+    def _ensure_authority(self):
+        if type(self) is DevelopmentArchive:
+            AUTH.validate_issued(self._authority)
+            cap = self._authority
+            if (hasattr(self, 'start_ms') and (self.start_ms, self.end_ms) != (cap.start_ms, cap.end_ms)
+                    or hasattr(self, 'root') and self.root != cap.repository_root
+                    or hasattr(self, 'store') and self.store != cap.store_root):
+                raise C.C260Locked('C260_ISSUED_SOURCE_SCOPE_CHANGED')
+            if hasattr(self, '_metadata_binding') and any(
+                    actual is not bound for actual, bound in zip(
+                        (self.manifest, self.pit, self.filters, self.digests, self._cache), self._metadata_binding)):
+                raise C.C260Locked('C260_AUTHENTICATED_METADATA_REPLACED')
+        elif type(self) is not SyntheticArchive:
+            raise C.C260Locked('C260_FIXED_ARCHIVE_CONSTRUCTOR_REQUIRED')
+
+    def _development_filters(self, authority, pit_pin):
+        """Apply unchanged v3 policy to C260's fixed development start.
+
+        v3 contains only its original WF/CORE20 metadata. Do not fabricate a
+        development cell or use those CORE20 cells as the trading universe.
+        The protected C260 source implementation binds this exact derivation.
+        """
+        if ((authority.get('authority'), authority.get('version'), authority.get('status'), authority.get('signed_by'))
+                != ('STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY', 3, 'FROZEN', 'codex')):
+            raise SourceIncomplete('FROZEN_V3_FILTER_SCHEMA_REQUIRED')
+        A._validate_filter_authority_rebind_v3(authority, self.root)
+        if (authority.get('pit_universe_path') != pit_pin['path']
+                or authority.get('pit_universe_sha256') != self.digests['pit']
+                or authority.get('pit_universe_digest') != self.pit['digest']):
+            raise SourceIncomplete('FILTER_PIT_CROSSBINDING')
+        captures, seen = [], set()
+        for row in authority.get('snapshots', ()):
+            capture, server = milliseconds(row.get('captured_at')), milliseconds(row.get('server_time'))
+            if capture in seen:
+                raise SourceIncomplete('DUPLICATE_FILTER_CAPTURE')
+            seen.add(capture)
+            if capture < self.start_ms and server < self.start_ms:
+                captures.append((capture, server, row))
+        if not captures:
+            raise SourceIncomplete('NO_STRICTLY_PRE_DEVELOPMENT_FILTER_SNAPSHOT')
+        _, server, chosen = max(captures, key=lambda item: item[0])
+        # Every original evidence payload remains checksum-authenticated.
+        # Parse rules only from the selected causal snapshot, never a future one.
+        payload = None
+        for row in authority['snapshots']:
+            path = Path(M.contained(str(self.root), row['path']))
+            raw = path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != row.get('sha256'):
+                raise SourceIncomplete('FILTER_SNAPSHOT_CHECKSUM')
+            if row is chosen:
+                payload = strict_json(raw)
+        if payload is None or type(payload.get('serverTime')) is not int or payload['serverTime'] != server:
+            raise SourceIncomplete('FILTER_SERVER_TIME_BINDING')
+        try:
+            rules = A.F.rules_from_exchange_info(payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SourceIncomplete('INVALID_EXCHANGE_FILTER_SNAPSHOT') from exc
+        eligible, symbols = set(), set()
+        for row in payload.get('symbols', ()):
+            symbol = row.get('symbol')
+            if type(symbol) is not str or not symbol or symbol in symbols:
+                raise SourceIncomplete('DUPLICATE_OR_INVALID_FILTER_SYMBOL')
+            symbols.add(symbol)
+            if not (row.get('status') == 'TRADING' and row.get('contractType') == 'PERPETUAL'
+                    and row.get('quoteAsset') == 'USDT' and row.get('underlyingType') == 'COIN'):
+                continue
+            filters = row.get('filters')
+            types = [item.get('filterType') for item in filters if isinstance(item, dict)] if isinstance(filters, list) else []
+            if any(types.count(kind) != 1 for kind in ('PRICE_FILTER', 'MARKET_LOT_SIZE', 'MIN_NOTIONAL')) or symbol not in rules:
+                continue
+            if any(not math.isfinite(float(rules[symbol].get(key, math.nan))) or float(rules[symbol][key]) <= 0
+                   for key in ('tick', 'step', 'min_qty', 'min_notional', 'max_qty')):
+                continue
+            eligible.add(symbol)
+        return A.FoldFilterAuthority('development', self.digests['filters'], chosen['sha256'],
+                                     chosen['captured_at'], frozenset(eligible),
+                                     {symbol: dict(rules[symbol]) for symbol in eligible})
 
     def eligible(self, decision_ms: int) -> tuple[str, ...]:
+        self._ensure_authority()
         if not self.start_ms <= decision_ms < self.end_ms:
             raise SourceIncomplete('DEVELOPMENT_ONLY_PIT_ASOF')
         week = max((w for w in self.pit['weeks'] if w['monday_ms'] <= decision_ms),
@@ -156,6 +230,11 @@ class SyntheticArchive:
         has an October calendar end. Actual URL/page bounds and manifest times
         are checked instead. Nonselected OHLC/rate fields are never converted.
         """
+        self._ensure_authority()
+        if type(self) is DevelopmentArchive and (
+                (start, end) != (self._authority.start_ms, self._authority.end_ms)
+                or record not in self.manifest['files']):
+            raise C.C260Locked('C260_FIXED_DEVELOPMENT_SOURCE_RECORD_REQUIRED')
         rel = record['path']
         meta = M.archive_meta(rel)
         path = M.contained(str(self.store), rel)
@@ -222,8 +301,11 @@ class SyntheticArchive:
         return rows, rel.endswith('.zip')
 
     def _stream(self, symbol: str, series: str):
+        self._ensure_authority()
         key = symbol, series
         if key in self._cache:
+            if type(self) is DevelopmentArchive and self._cache[key] is not self._issued_streams.get(key):
+                raise C.C260Locked('C260_AUTHENTICATED_STREAM_REPLACED')
             return self._cache[key]
         start, end = self.start_ms, self.end_ms
         if end > SEALED_START:
@@ -255,6 +337,7 @@ class SyntheticArchive:
         if not converted:
             raise SourceIncomplete(f'MISSING_REQUIRED_STREAM:{symbol}:{series}')
         self._cache[key] = MappingProxyType(dict(sorted(converted.items())))
+        self._issued_streams[key] = self._cache[key]
         return self._cache[key]
 
     def klines(self, symbol: str):
@@ -265,3 +348,42 @@ class SyntheticArchive:
 
     def funding(self, symbol: str):
         return self._stream(symbol, 'fundingRate')
+
+
+class SyntheticArchive(_Archive):
+    """Explicit fixture receipt; permanently synthetic and non-authorizing."""
+
+    synthetic_only = True
+
+    def __init__(self, root: Path):
+        root = root.resolve()
+        receipt = strict_json((root / 'c260.synthetic.json').read_bytes())
+        if (set(receipt) != {'format', 'candidate_id', 'proposal_sha256', 'artifacts'}
+                or receipt['format'] != 'zb-c260-SYNTHETIC-NON-EVIDENCE/1'
+                or receipt['candidate_id'] != 260 or receipt['proposal_sha256'] != C.PREREG_SHA256
+                or set(receipt['artifacts']) != {'manifest', 'pit', 'filters', 'coverage'}):
+            raise SourceIncomplete('SYNTHETIC_FIXTURE_RECEIPT_REQUIRED')
+        raws = {name: Path(M.contained(str(root), pin['path'])).read_bytes()
+                for name, pin in receipt['artifacts'].items()}
+        self._initialize(root=root, store=Path(M.contained(str(root), 'store')),
+                         pins=receipt['artifacts'], raws=raws)
+
+
+class DevelopmentArchive(_Archive):
+    """Fixed real development parser; only an actual issued context can enter."""
+
+    synthetic_only = False
+
+    def __init__(self, authority):
+        AUTH.validate_issued(authority)  # Before reading ANY object field/path.
+        self._authority = authority
+        expected = tuple(map(milliseconds, C.load_proposal_metadata()['windows_half_open_utc']['development']))
+        if (authority.start_ms, authority.end_ms) != expected or authority.end_ms > SEALED_START:
+            raise C.C260Locked('C260_EXACT_DEVELOPMENT_WINDOW_REQUIRED')
+        pins, raws = {}, {}
+        for name, path, digest, raw in authority.artifacts:
+            if name in pins:
+                raise SourceIncomplete('DUPLICATE_AUTHENTICATED_ARTIFACT')
+            pins[name] = {'path': path, 'byte_sha256': digest}
+            raws[name] = raw
+        self._initialize(root=authority.repository_root, store=authority.store_root, pins=pins, raws=raws)
