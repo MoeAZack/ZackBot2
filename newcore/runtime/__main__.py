@@ -64,6 +64,7 @@ def main(argv=None, *, environ=None, out=None, run_hooks=None) -> int:
     run.add_argument('--step-ms', type=int, default=250)
     run.add_argument('--max-steps', type=int, default=None)
     run.add_argument('--stop-file', default=None)
+    run.add_argument('--entry-disable-file', default=None)
     run.add_argument('--status-every', type=int, default=20)
     try:
         args = parser.parse_args(argv)
@@ -111,6 +112,7 @@ def main(argv=None, *, environ=None, out=None, run_hooks=None) -> int:
     try:
         final = paper_run.run_paper(config, marks_path=args.marks, emit=emit, step_ms=args.step_ms,
                                     max_steps=args.max_steps, stop_file=args.stop_file,
+                                    entry_disable_file=args.entry_disable_file,
                                     status_every=args.status_every, **(run_hooks or {}))
     except paper_run.PaperRunError as ex:
         return _refuse(out, ex.code)

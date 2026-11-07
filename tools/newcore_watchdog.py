@@ -2,17 +2,20 @@
 
 ``python tools/newcore_watchdog.py watch --root <dir> -- <run command ...>``
 
-The run command is any NEWCORE run that writes JSON status lines and takes ``--stop-file``, for example
+The run command is any NEWCORE run that writes JSON status lines and takes ``--stop-file`` and
+``--entry-disable-file``, for example
 ``python tools/newcore_testnet_run.py run --config ... --account-file ... --symbols BTCUSDT`` or
 ``python -m newcore.runtime run --config ... --marks ...``.  The watchdog appends ``--stop-file <root>/STOP`` itself.
 
 Policy:
 
-* **Kill switch.** ``kill`` (or creating ``<root>/STOP`` by hand) makes the run stop.  The runtime stops new work
-  and closes; it does not cancel orders, so the protective stops stay resting on the venue.  After a kill the
-  watchdog never restarts.  ``watch`` refuses while the stop file exists, so a kill is never undone silently; remove
-  it with ``watch --clear-stop``.
-* **Restart on crash or hang.** A run that dies with any exit code other than the ones below, or writes no status
+* **Entry kill switch.** ``kill`` creates ``<root>/DISABLE_ENTRIES``. The runtime latches entries off and keeps
+  guards, management, action polling and stop-fill reconciliation running in the same process. Removing the file
+  cannot clear an in-process latch; restarts also inherit a marker that remains present.
+* **Explicit full stop.** ``stop`` or ``<root>/STOP`` shuts the process down. ``watch --clear-stop`` clears only
+  this full-stop marker, never the entry-disable latch.
+* **Restart on crash or hang.** A run that dies with any exit code other than the ones below, or makes no valid,
+  advancing runtime-status progress
   line for ``--stall-s`` seconds (``--startup-grace-s`` before its first status line; it is then terminated), is restarted after a backoff (5 s, doubling, at most
   300 s).  Boot recovery and the REC-02 restore proof make a restart safe; a run that cannot prove its account
   refuses or holds.  At most ``--max-restarts`` restarts per hour; past that the watchdog gives up.
@@ -36,6 +39,7 @@ import sys
 import time
 
 SCHEMA = 'zackbot.newcore.watchdog.v1'
+RUNTIME_STATUS_SCHEMA = 'zackbot.newcore.runtime.paper_status.v1'
 EXIT_OK, EXIT_GAVE_UP, EXIT_HELD, EXIT_USAGE = 0, 1, 3, 64
 NO_RESTART_EXITS = {0: 'stopped', 2: 'refused', 3: 'held', 64: 'usage'}
 # Mirror of newcore.runtime.runtime.CLEARABLE: holds a later confirmed proof clears without a restart.
@@ -57,6 +61,18 @@ def _write_json(path: str, value) -> None:
     os.replace(tmp, path)
 
 
+def _valid_status(value) -> bool:
+    return (type(value) is dict and value.get('schema') == RUNTIME_STATUS_SCHEMA
+            and value.get('status') in ('booted', 'running', 'stopped')
+            and type(value.get('step')) is int and value['step'] >= 0
+            and value.get('environment') in ('paper_sim', 'testnet')
+            and type(value.get('entries_enabled')) is bool
+            and type(value.get('accounts')) is list
+            and all(type(account) is dict and type(account.get('account_id')) is str
+                    and bool(account['account_id']) and type(account.get('holds')) is list
+                    and all(type(hold) is str for hold in account['holds']) for account in value['accounts']))
+
+
 def _last_status(log: str) -> dict | None:
     last = None
     try:
@@ -68,7 +84,7 @@ def _last_status(log: str) -> dict | None:
                         value = json.loads(line)
                     except ValueError:
                         continue
-                    if type(value) is dict and 'status' in value:
+                    if _valid_status(value):
                         last = value
     except OSError:
         return None
@@ -94,7 +110,7 @@ class Watchdog:
                  terminate_grace_s: float = 30.0):
         if not command:
             raise WatchdogError('command_required')
-        if '--stop-file' in command:
+        if '--stop-file' in command or '--entry-disable-file' in command:
             raise WatchdogError('stop_file_is_set_by_the_watchdog')
         if not stall_s > 0 or type(max_restarts) is not int or max_restarts < 0:
             raise WatchdogError('limits_invalid')
@@ -108,6 +124,10 @@ class Watchdog:
     @property
     def stop_file(self) -> str:
         return os.path.join(self.root, 'STOP')
+
+    @property
+    def entry_disable_file(self) -> str:
+        return os.path.join(self.root, 'DISABLE_ENTRIES')
 
     @property
     def state_file(self) -> str:
@@ -136,7 +156,8 @@ class Watchdog:
             kw['creationflags'] = 0x00000200                   # CREATE_NEW_PROCESS_GROUP
         handle = open(log, 'w', encoding='utf-8')
         try:
-            return self._popen([*self.command, '--stop-file', self.stop_file], stdout=handle,
+            return self._popen([*self.command, '--stop-file', self.stop_file,
+                                '--entry-disable-file', self.entry_disable_file], stdout=handle,
                                stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, **kw)
         finally:
             handle.close()
@@ -159,6 +180,7 @@ class Watchdog:
         """Wait for one run.  Returns (how it ended, exit code).  Until its first status line a run gets the
         startup grace (it may fetch candles first); after that, ``stall_s`` of silence is a hang."""
         size, quiet_since, booted = -1, self._mono(), False
+        highest_step, observed = -1, None
         while True:
             code = proc.poll()
             if code is not None:
@@ -170,13 +192,17 @@ class Watchdog:
             except OSError:
                 now_size = size
             if now_size != size:
-                size, quiet_since = now_size, self._mono()
+                size = now_size
                 last = _last_status(log)
                 if last is not None:
-                    booted = True
-                    self._state(**beat, status='running', steps_since_boot=last.get('step'),
-                                last_status=last.get('status'), last_line_wall_ms=int(time.time() * 1000))
-            elif self._mono() - quiet_since >= (self.stall_s if booted else self.startup_grace_s):
+                    if last['step'] > highest_step:
+                        highest_step, quiet_since, booted = last['step'], self._mono(), True
+                    if last != observed:
+                        observed = last
+                        self._state(**beat, status='running', steps_since_boot=last['step'],
+                                    entries_enabled=last['entries_enabled'], last_status=last['status'],
+                                    last_line_wall_ms=int(time.time() * 1000))
+            if self._mono() - quiet_since >= (self.stall_s if booted else self.startup_grace_s):
                 # Hung: write the stop file's effect without leaving it behind, then force it.
                 proc.terminate()
                 try:
@@ -238,8 +264,8 @@ class Watchdog:
         return out
 
 
-def kill(root: str, *, timeout_s: float = 120.0, sleep=time.sleep, monotonic=time.monotonic) -> dict:
-    """The kill switch: create the stop file and wait for the watchdog to record that the run ended."""
+def stop(root: str, *, timeout_s: float = 120.0, sleep=time.sleep, monotonic=time.monotonic) -> dict:
+    """Explicit process shutdown, separate from the entry-only kill latch."""
     root = os.path.abspath(root)
     os.makedirs(root, exist_ok=True)
     with open(os.path.join(root, 'STOP'), 'w', encoding='utf-8') as handle:
@@ -258,6 +284,31 @@ def kill(root: str, *, timeout_s: float = 120.0, sleep=time.sleep, monotonic=tim
     return {'status': 'kill_pending', 'detail': 'stop file written; the run stops on its next step'}
 
 
+def kill(root: str, *, timeout_s: float = 120.0, sleep=time.sleep, monotonic=time.monotonic) -> dict:
+    """Latch new entries off; the child keeps managing and reconciling exposure."""
+    root = os.path.abspath(root)
+    os.makedirs(root, exist_ok=True)
+    with open(os.path.join(root, 'DISABLE_ENTRIES'), 'w', encoding='utf-8') as handle:
+        handle.write('disable entries\n')
+        handle.flush()
+        os.fsync(handle.fileno())
+    deadline = monotonic()+timeout_s
+    while monotonic() < deadline:
+        try:
+            with open(os.path.join(root, 'watchdog.json'), encoding='utf-8') as handle:
+                state = json.load(handle)
+        except (OSError, ValueError):
+            state = None
+        if state is None:
+            return {'status': 'entry_disable_pending', 'detail': 'latch written; no runtime acknowledgement'}
+        if state.get('status') not in ('running', 'backoff'):
+            return {'status': 'entries_disabled', 'watchdog': state}
+        if state.get('entries_enabled') is False:
+            return {'status': 'entries_disabled', 'watchdog': state}
+        sleep(min(0.5, max(0, deadline-monotonic())))
+    return {'status': 'entry_disable_pending', 'detail': 'entry-disable latch written; protection continues'}
+
+
 def status(root: str) -> dict:
     root = os.path.abspath(root)
     try:
@@ -267,6 +318,7 @@ def status(root: str) -> dict:
         state = None
     log = (state or {}).get('log')
     return {'status': 'ok', 'watchdog': state, 'stop_file': os.path.exists(os.path.join(root, 'STOP')),
+            'entries_disabled': os.path.lexists(os.path.join(root, 'DISABLE_ENTRIES')),
             'last': _last_status(log) if log else None}
 
 
@@ -278,7 +330,7 @@ def main(argv=None, *, out=None) -> int:
         cut = argv.index('--')
         argv, command = argv[:cut], argv[cut + 1:]
     parser = argparse.ArgumentParser(prog='tools/newcore_watchdog.py')
-    parser.add_argument('action', choices=('watch', 'kill', 'status'))
+    parser.add_argument('action', choices=('watch', 'kill', 'stop', 'status'))
     parser.add_argument('--root', required=True)
     parser.add_argument('--stall-s', type=float, default=300.0)
     parser.add_argument('--max-restarts', type=int, default=5)
@@ -299,6 +351,8 @@ def main(argv=None, *, out=None) -> int:
                               startup_grace_s=args.startup_grace_s).watch(clear_stop=args.clear_stop)
         elif args.action == 'kill':
             result = kill(args.root, timeout_s=args.timeout_s)
+        elif args.action == 'stop':
+            result = stop(args.root, timeout_s=args.timeout_s)
         else:
             result = status(args.root)
     except WatchdogError as ex:
@@ -314,4 +368,4 @@ if __name__ == '__main__':  # pragma: no cover
     raise SystemExit(main())
 
 
-__all__ = ['Watchdog', 'WatchdogError', 'kill', 'main', 'status', 'sticky_holds', 'CLEARABLE_HOLDS']
+__all__ = ['Watchdog', 'WatchdogError', 'kill', 'stop', 'main', 'status', 'sticky_holds', 'CLEARABLE_HOLDS']

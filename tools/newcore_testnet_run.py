@@ -159,7 +159,8 @@ def _require_journaled_binding(spec, account) -> None:
 
 def run_testnet(config, account_file: str, *, symbols: tuple[str, ...], emit, step_ms: int = 500,
                 max_steps: int | None = None, stop_file: str | None = None, status_every: int = 20,
-                entries_factory=None, environ=None, sender_factory=None, sleep=time.sleep,
+                 entries_factory=None, entry_disable_file: str | None = None,
+                 environ=None, sender_factory=None, sleep=time.sleep,
                 monotonic_clock=_mono_ms, wall_clock=_wall_ms, boot_id: str | None = None) -> dict:
     from newcore.account_context import AccountBudget, AccountContext
     from newcore.runtime import JournalingActionSink, JournalProjection, VenueEvidence
@@ -222,6 +223,7 @@ def run_testnet(config, account_file: str, *, symbols: tuple[str, ...], emit, st
                    monotonic_clock=monotonic_clock, wall_clock=wall_clock)
     attach_views(runtime, views)
     return drive(runtime, config, emit=emit, step_ms=step_ms, max_steps=max_steps, stop_file=stop_file,
+                 entry_disable_file=entry_disable_file,
                  status_every=status_every, sleep=sleep, monotonic_clock=monotonic_clock)
 
 
@@ -240,6 +242,7 @@ def main(argv=None, *, environ=None, out=None, run_hooks=None) -> int:
             cmd.add_argument('--step-ms', type=int, default=500)
             cmd.add_argument('--max-steps', type=int, default=None)
             cmd.add_argument('--stop-file', default=None)
+            cmd.add_argument('--entry-disable-file', default=None)
             cmd.add_argument('--status-every', type=int, default=20)
     try:
         args = parser.parse_args(argv)
@@ -277,6 +280,7 @@ def main(argv=None, *, environ=None, out=None, run_hooks=None) -> int:
 
         final = run_testnet(config, args.account_file, symbols=tuple(s for s in args.symbols.split(',') if s),
                             emit=emit, step_ms=args.step_ms, max_steps=args.max_steps, stop_file=args.stop_file,
+                            entry_disable_file=args.entry_disable_file,
                             status_every=args.status_every, environ=environ, **(run_hooks or {}))
     except TestnetRunError as ex:
         return refuse(ex.code)

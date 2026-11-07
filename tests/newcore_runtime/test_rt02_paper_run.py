@@ -122,6 +122,32 @@ def test_run_without_init_is_refused(tmp_path):
     assert not (tmp_path / 'a1').exists()
 
 
+def test_cli_entry_disable_file_latches_before_boot_and_cannot_be_cleared_by_removing_it(tmp_path):
+    cfg = config_file(tmp_path, entries_enabled=True)
+    assert main(['init-paper', '--config', cfg], environ={}, out=io.StringIO()) == EXIT_OK
+    marks = write_json(tmp_path/'marks.json', {'BTCUSDT': '100'})
+    latch = tmp_path/'DISABLE_ENTRIES'
+    latch.write_text('disable\n', encoding='utf-8')
+    class Source:
+        calls = 0
+        def candidates(self, account_id, now_mono):
+            self.calls += 1
+            return ()
+    source, clock, out = Source(), FakeTime(), io.StringIO()
+    def sleep(seconds):
+        latch.unlink(missing_ok=True)
+        clock.sleep(seconds)
+    hooks = {**clock.hooks(), 'sleep': sleep,
+             'entries_factory': lambda spec, **kwargs: source}
+    result = main(['run', '--config', cfg, '--marks', marks, '--entry-disable-file', str(latch),
+        '--max-steps', '60', '--status-every', '5'], environ={}, out=out, run_hooks=hooks)
+    rows = lines(out)
+    assert result == EXIT_OK and source.calls == 0
+    assert all(row['entries_enabled'] is False for row in rows)
+    assert any(row['status'] == 'running' for row in rows)
+    assert rows[-1]['accounts'][0]['plan'] == 'flat_confirmed'
+
+
 def test_run_with_a_journal_but_no_binding_holds_the_account(tmp_path):
     from newcore.store import create_journal
     cfg = config_file(tmp_path)

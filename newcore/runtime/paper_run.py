@@ -268,7 +268,8 @@ def status_line(snap, step: int, state: str) -> dict:
 
 
 def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: int | None = None,
-              stop_file: str | None = None, status_every: int = 20, sleep=time.sleep,
+              stop_file: str | None = None, entry_disable_file: str | None = None,
+              status_every: int = 20, sleep=time.sleep,
               monotonic_clock=_mono_ms, wall_clock=_wall_ms, boot_id: str | None = None,
               entries_factory=None) -> dict:
     """Run until max_steps, the stop file appears, or KeyboardInterrupt.  Returns the final status line."""
@@ -306,6 +307,7 @@ def run_paper(config, *, marks_path: str, emit, step_ms: int = 250, max_steps: i
             save_book(venue, specs[account_id])
 
     return drive(runtime, config, emit=emit, step_ms=step_ms, max_steps=max_steps, stop_file=stop_file,
+                 entry_disable_file=entry_disable_file,
                  status_every=status_every, sleep=sleep, monotonic_clock=monotonic_clock, before_step=each_step,
                  after_step=after_step, on_close=on_close)
 
@@ -318,11 +320,24 @@ def attach_views(runtime, views: dict) -> None:
 
 
 def drive(runtime, config, *, emit, step_ms: int, max_steps: int | None, stop_file: str | None, status_every: int,
-          sleep, monotonic_clock, before_step=None, after_step=None, on_close=None) -> dict:
+          sleep, monotonic_clock, before_step=None, after_step=None, on_close=None,
+          entry_disable_file: str | None = None) -> dict:
     """Step a booted runtime until max_steps, the stop file or Ctrl-C; then stop NC-05 with grace and close.
 
     Shared by the PAPER run and the testnet launcher (``tools/newcore_testnet_run.py``).  Returns the final status.
     """
+    def latch_entries():
+        if entry_disable_file is None:
+            return
+        try:
+            os.lstat(entry_disable_file)
+        except FileNotFoundError:
+            return
+        except OSError:
+            pass  # uncertain latch state refuses entries; protection keeps running
+        runtime.disable_entries()
+
+    latch_entries()
     step, snap, reason = 0, runtime.snapshot(), 'max_steps'
     emit(status_line(snap, step, 'booted'))
     try:
@@ -330,6 +345,7 @@ def drive(runtime, config, *, emit, step_ms: int, max_steps: int | None, stop_fi
             if stop_file is not None and os.path.exists(stop_file):
                 reason = 'stop_file'
                 break
+            latch_entries()
             if before_step is not None:
                 before_step()
             snap = runtime.step()

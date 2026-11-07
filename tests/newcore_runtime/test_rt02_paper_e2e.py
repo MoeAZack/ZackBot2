@@ -113,6 +113,39 @@ def test_paper_stop_fill_is_journaled_and_the_account_reconciles_flat(paper):
     assert snap.scheduler.ready
 
 
+def test_entry_disable_keeps_management_stop_poll_and_child_fill_reconciliation_running(paper):
+    w, venue, sink, marks = paper()
+    calls = []
+    accept = sink.accept_entry
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return accept(*args, **kwargs)
+    sink.accept_entry = counted
+    class ManagementProbe:
+        calls = 0
+        def evaluations(self, account_id, now_mono):
+            self.calls += 1
+            return ()
+    management = ManagementProbe()
+    w.extra_ports[A]['management'] = management
+    runtime = w.boot()
+    w.settle(lambda s: account_view(s, A).last_plan_status == 'protected_confirmed', advance_ms=5_000)
+    boot_id = runtime.snapshot().boot_id
+    disabled = runtime.disable_entries()
+    count, managed = len(calls), management.calls
+    assert not disabled.entries_enabled
+    marks.price = D('94')
+    assert venue.tick()
+    w.settle(lambda s: 'filled:stop' in sink.snapshot().log, advance_ms=1_000)
+    settled = w.settle(lambda s: account_view(s, A).last_plan_status == 'flat_confirmed'
+                      and account_view(s, A).holds == (), advance_ms=1_000)
+    assert len(calls) == count and management.calls > managed
+    assert runtime.snapshot().boot_id == boot_id and settled.scheduler.ready
+    assert sink.snapshot().lots[0][1] == '0' and sink.snapshot().problems == ()
+    assert runtime._accounts[A].journal.state().intents == ()
+    assert not runtime.snapshot().entries_enabled
+
+
 def test_paper_restart_with_a_saved_book_reconciles_protected(paper, tmp_path):
     w, venue, sink, marks = paper()
     w.boot()

@@ -200,6 +200,8 @@ class Runtime:
                  monotonic_clock: Callable[[], int], wall_clock: Callable[[], int], events: _EventLog):
         self.config, self.boot_id = config, boot_id
         self._mono, self._wall, self._events = monotonic_clock, wall_clock, events
+        self._entries_disabled = threading.Event()
+        self._entry_admission_lock = threading.Lock()
         self._accounts = {row.spec.account_id: row for row in accounts}
         for row in accounts:
             self._bind_sink(row)
@@ -229,6 +231,22 @@ class Runtime:
     def stop(self, deadline_ms: int | None = None) -> RuntimeSnapshot:
         deadline = self._mono() + self.config.stop_grace_ms if deadline_ms is None else deadline_ms
         self._published = self._build(self._scheduler.stop(deadline))
+        return self._published
+
+    def disable_entries(self) -> RuntimeSnapshot:
+        """Latch new admissions off without stopping guards, management or order polling.
+
+        Serialized with accept_entry: after this method returns, an evaluated or
+        in-flight strategy candidate cannot submit a new entry. There is no
+        in-process operation that clears the latch.
+        """
+        with self._entry_admission_lock:
+            first = not self._entries_disabled.is_set()
+            self._entries_disabled.set()
+        if first:
+            for account_id in self._accounts:
+                self._events.record(account_id, 'cycle', 'entries_disabled', self._mono())
+        self._published = self._build(self._scheduler.snapshot())
         return self._published
 
     def close(self) -> None:
@@ -265,7 +283,8 @@ class Runtime:
                     last_plan_status=row.plan_status, last_plan_id=row.plan_id,
                     evidence_generation=row.generation, evidence_pending=row.pending is not None))
         return RuntimeSnapshot(boot_id=self.boot_id, environment=self.config.environment,
-                               entries_enabled=self.config.entries_enabled, scheduler=scheduler,
+                               entries_enabled=self.config.entries_enabled and not self._entries_disabled.is_set(),
+                               scheduler=scheduler,
                                accounts=tuple(rows), events=self._events.rows(),
                                events_dropped=self._events.dropped)
 
@@ -574,7 +593,7 @@ class _Hooks:
 
     def _cycle(self, account_id: str, now_ms: int) -> HookOutcome:
         row, cfg = self._row, self._rt.config
-        if not cfg.entries_enabled:
+        if not cfg.entries_enabled or self._rt._entries_disabled.is_set():
             return HookOutcome.success()
         with row.lock:
             fresh = (not row.holds and row.proof_mono is not None
@@ -598,13 +617,16 @@ class _Hooks:
             if type(decision) is not nc06.ApprovedDecision:
                 self._rt._events.record(account_id, 'cycle', 'entry_refused', now_ms)
                 continue
-            try:
-                if keyed:
-                    accepted = row.ports.actions.accept_entry(account_id, decision, evaluation, key=candidate.key)
-                else:
-                    accepted = row.ports.actions.accept_entry(account_id, decision, evaluation)
-            except Exception:
-                accepted = False
+            with self._rt._entry_admission_lock:
+                if self._rt._entries_disabled.is_set():
+                    return HookOutcome.success()
+                try:
+                    if keyed:
+                        accepted = row.ports.actions.accept_entry(account_id, decision, evaluation, key=candidate.key)
+                    else:
+                        accepted = row.ports.actions.accept_entry(account_id, decision, evaluation)
+                except Exception:
+                    accepted = False
             self._rt._events.record(account_id, 'cycle', 'entry_routed' if accepted is True else 'entry_unrouted',
                                     now_ms)
         return HookOutcome.success()

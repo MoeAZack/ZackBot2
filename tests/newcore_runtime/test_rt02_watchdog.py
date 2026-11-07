@@ -18,6 +18,7 @@ import newcore_watchdog as wd  # noqa: E402
 CHILD = textwrap.dedent('''
     import json, os, sys, time
     plan_file, stop = sys.argv[1], sys.argv[sys.argv.index('--stop-file') + 1]
+    disabled = sys.argv[sys.argv.index('--entry-disable-file') + 1]
     with open(plan_file, encoding='utf-8') as h:
         plans = json.load(h)
     count_file = plan_file + '.count'
@@ -25,8 +26,20 @@ CHILD = textwrap.dedent('''
     with open(count_file, 'w', encoding='utf-8') as h:
         h.write(str(n + 1))
     plan = plans[min(n, len(plans) - 1)]
+    step = 0
     def line(status, holds=()):
-        print(json.dumps({'status': status, 'accounts': [{'account_id': 'a1', 'holds': list(holds)}]}), flush=True)
+        global step
+        if status != 'booted':
+            step = 1 if plan['mode'] == 'cached_status' else step+1
+        print(json.dumps({'schema': 'zackbot.newcore.runtime.paper_status.v1', 'status': status,
+            'step': step, 'environment': 'paper_sim', 'entries_enabled': not os.path.exists(disabled),
+            'accounts': [{'account_id': 'a1', 'holds': list(holds)}]}), flush=True)
+    if plan['mode'] == 'garbage_before_boot':
+        deadline = time.monotonic()+1.5
+        while time.monotonic() < deadline:
+            print(json.dumps({'status': 'running'}), flush=True)
+            time.sleep(0.03)
+        sys.exit(0)
     if plan['mode'] == 'slow_start':
         print(json.dumps({'event': 'starting'}), flush=True)
         time.sleep(plan['delay'])
@@ -36,7 +49,16 @@ CHILD = textwrap.dedent('''
         sys.exit(plan.get('code', 0))
     if plan['mode'] == 'hang':
         time.sleep(60)
+    if plan['mode'] == 'garbage_after_boot':
+        deadline = time.monotonic()+1.5
+        while time.monotonic() < deadline:
+            print('garbage is not a heartbeat', flush=True)
+            time.sleep(0.03)
+        sys.exit(0)
+    deadline = time.monotonic()+1.5 if plan['mode'] == 'cached_status' else float('inf')
     while not os.path.exists(stop):                       # 'serve': run until the stop file
+        if time.monotonic() >= deadline:
+            sys.exit(0)
         line('running')
         time.sleep(0.05)
     line('stopped')
@@ -110,7 +132,7 @@ def test_a_hung_run_is_terminated_and_restarted(tmp_path, child):
                          open(tmp_path / 'root' / 'watchdog.jsonl', encoding='utf-8')]
 
 
-def test_the_kill_switch_stops_the_run_and_nothing_restarts_it(tmp_path, child):
+def test_explicit_full_stop_ends_the_run_and_nothing_restarts_it(tmp_path, child):
     cmd = child({'mode': 'serve'})
     dg = dog(tmp_path, cmd)
     result = {}
@@ -120,7 +142,7 @@ def test_the_kill_switch_stops_the_run_and_nothing_restarts_it(tmp_path, child):
         if wd.status(dg.root)['watchdog'] and wd.status(dg.root)['watchdog'].get('status') == 'running':
             break
         time.sleep(0.01)
-    killed = wd.kill(dg.root, timeout_s=20, sleep=time.sleep)
+    killed = wd.stop(dg.root, timeout_s=20, sleep=time.sleep)
     thread.join(20)
     assert killed['status'] == 'killed' and result['status'] == 'killed' and child.count() == 1
     assert result['last']['status'] == 'stopped'               # the run stopped itself through the stop file
@@ -132,11 +154,14 @@ def test_the_kill_switch_stops_the_run_and_nothing_restarts_it(tmp_path, child):
 def test_clear_stop_starts_again(tmp_path, child):
     os.makedirs(tmp_path / 'root')
     (tmp_path / 'root' / 'STOP').write_text('stop\n', encoding='utf-8')
+    disabled = tmp_path / 'root' / 'DISABLE_ENTRIES'
+    disabled.write_text('disable\n', encoding='utf-8')
     out = dog(tmp_path, child({'mode': 'exit', 'code': 0})).watch(clear_stop=True)
     assert out['status'] == 'stopped' and 'stop_cleared' in events(tmp_path)
+    assert disabled.exists() and out['last']['entries_enabled'] is False
 
 
-def test_a_kill_during_backoff_does_not_restart(tmp_path, child, monkeypatch):
+def test_a_full_stop_during_backoff_does_not_restart(tmp_path, child, monkeypatch):
     monkeypatch.setattr(wd, 'BACKOFF_FIRST_S', 5.0)
     dg = dog(tmp_path, child({'mode': 'exit', 'code': 1}))
     result = {}
@@ -147,7 +172,7 @@ def test_a_kill_during_backoff_does_not_restart(tmp_path, child, monkeypatch):
         if st and st.get('status') == 'backoff':
             break
         time.sleep(0.01)
-    wd.kill(dg.root, timeout_s=20, sleep=time.sleep)
+    wd.stop(dg.root, timeout_s=20, sleep=time.sleep)
     thread.join(20)
     assert result['status'] == 'killed' and child.count() == 1
 
@@ -192,7 +217,7 @@ def test_the_heartbeat_records_restarts_and_steps_and_no_environment(tmp_path, c
         if beat and beat.get('last_status') == 'running':
             break
         time.sleep(0.01)
-    wd.kill(dg.root, timeout_s=20, sleep=time.sleep)
+    wd.stop(dg.root, timeout_s=20, sleep=time.sleep)
     thread.join(20)
     assert beat['restarts'] == 0 and beat['run'] == 1 and 'steps_since_boot' in beat
     for name in os.listdir(dg.root):
@@ -210,3 +235,41 @@ def test_the_run_inherits_the_environment(tmp_path, monkeypatch):
                       "sys.exit(0 if ok else 5)\n", encoding='utf-8')
     out = dog(tmp_path, [sys.executable, str(script)], max_restarts=0).watch()
     assert out['status'] == 'stopped'
+
+
+@pytest.mark.parametrize('mode', ['garbage_before_boot', 'garbage_after_boot', 'cached_status'])
+def test_growing_output_without_valid_progress_still_stalls(tmp_path, child, mode):
+    started = time.monotonic()
+    result = dog(tmp_path, child({'mode': mode}), stall_s=.3, startup_grace_s=.3,
+                 max_restarts=0).watch()
+    assert result['status'] == 'gave_up' and child.count() == 1
+    assert time.monotonic()-started < 5
+    with open(tmp_path/'root'/'watchdog.jsonl', encoding='utf-8') as handle:
+        assert any(json.loads(line).get('how') == 'stalled' for line in handle)
+
+
+def test_entry_kill_latches_without_exiting_or_restarting_the_child(tmp_path, child):
+    dg = dog(tmp_path, child({'mode': 'serve'}))
+    result = {}
+    thread = threading.Thread(target=lambda: result.update(dg.watch()))
+    thread.start()
+    try:
+        for _ in range(500):
+            before = wd.status(dg.root)['watchdog']
+            if before and before.get('last_status') == 'running':
+                break
+            time.sleep(.01)
+        assert before and before.get('entries_enabled') is True
+        disabled = wd.kill(dg.root, timeout_s=5)
+        assert disabled['status'] == 'entries_disabled'
+        time.sleep(.1)
+        after = wd.status(dg.root)
+        assert thread.is_alive() and child.count() == 1
+        assert after['entries_disabled'] and not after['stop_file']
+        assert after['watchdog']['child_pid'] == before['child_pid']
+        assert after['watchdog']['steps_since_boot'] > before['steps_since_boot']
+        assert after['watchdog']['entries_enabled'] is False
+    finally:
+        wd.stop(dg.root, timeout_s=5)
+        thread.join(5)
+    assert not thread.is_alive() and child.count() == 1

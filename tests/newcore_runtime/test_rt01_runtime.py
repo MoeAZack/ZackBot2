@@ -406,6 +406,27 @@ def test_enabled_entries_are_held_while_any_account_is_held(world, fake_nc06):
     assert source.calls == 0 and fake_nc06 == []
 
 
+def test_entry_latch_rejects_a_candidate_that_was_evaluating_when_disabled(world, fake_nc06):
+    entered, release = threading.Event(), threading.Event()
+    class SlowCandidates:
+        def candidates(self, account_id, now_mono):
+            entered.set()
+            release.wait(2)
+            return (FakeEvaluation(),)
+    sink = Sink(answer=True)
+    w = world(entries_enabled=True)
+    w.extra_ports[acct(1)] = {'entries': SlowCandidates(), 'actions': sink}
+    runtime = w.boot()
+    try:
+        w.settle(lambda snapshot: entered.is_set(), advance_ms=1_000)
+        disabled = runtime.disable_entries()
+        assert not disabled.entries_enabled
+    finally:
+        release.set()
+    w.settle(lambda snapshot: bool(fake_nc06), advance_ms=1_000)
+    assert sink.entries == [] and not runtime.snapshot().entries_enabled
+
+
 def test_invalid_candidates_fail_the_cycle_without_calling_risk(world, fake_nc06):
     w = world(entries_enabled=True)
     w.extra_ports[acct(1)] = {'entries': Candidates(['x'])}
