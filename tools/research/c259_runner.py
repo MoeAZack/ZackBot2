@@ -24,7 +24,10 @@ ROOT=Path(__file__).resolve().parents[2]
 RECEIPT_PATH="contracts/strategy_causal_pack_01/c259_authority_pins.v1.json"
 BOUND_CODE=("tools/research/c259_runner.py","tools/research/c259_reporting.py",
     "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
-    "tools/research/run_btc_residual_leadlag_continuation_c259_stagea.py")
+    "tools/research/run_btc_residual_leadlag_continuation_c259_stagea.py",
+    "tools/research/logical_trade_hours.py",
+    "tools/research/authority_v6.py","tools/research/manifest.py","tools/research/universe.py",
+    "contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json")
 
 
 def _strict(raw: bytes, label: str) -> dict:
@@ -81,6 +84,10 @@ def authenticate() -> ProtectedRun:
                 raise E.IncompleteAuthority("imported runtime dependency differs from protected implementation")
     if E.np.__version__!="2.5.3":
         raise E.IncompleteAuthority("frozen C259 bootstrap requires numpy 2.5.3")
+    from tools.research import logical_trade_hours as H
+    try:H.validate_clarification(ROOT)
+    except (OSError,ValueError) as exc:
+        raise E.IncompleteAuthority('historical source clarification changed') from exc
     authority=E.validate_authority_pins(pins,repo=ROOT)
     return ProtectedRun(head,pins,authority,blobs)
 

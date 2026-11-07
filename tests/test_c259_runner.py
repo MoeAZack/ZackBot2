@@ -93,8 +93,8 @@ def checksum_cli(tmp_path_factory,request):
         for rate in returns:
             price*=math.exp(float(rate));closes.append(round(price,8))
         for series in ("klines","markPriceKlines","fundingRate"):
-            token="fundingRate" if series=="fundingRate" else "1h"
-            rel=f"um/monthly/{series}/{symbol}/"+("" if token=="fundingRate" else "1h/")+f"{symbol}-{token}-2025-01.zip"
+            token="fundingRate" if series=="fundingRate" else '1m' if series=='klines' else "1h"
+            rel=f"um/monthly/{series}/{symbol}/"+("" if token=="fundingRate" else token+'/')+f"{symbol}-{token}-2025-01.zip"
             lines=[]
             for hour in range(744):
                 if getattr(request,"param",None)=="exposed_gap" and series=="klines" and symbol!="BTCUSDT" and hour==724:
@@ -110,6 +110,11 @@ def checksum_cli(tmp_path_factory,request):
                     # Poisoned future ranges inside the same calendar archive
                     # may be checksum-hashed but must never be interpreted.
                     close=str(closes[hour]) if hour<739 else "FORBIDDEN_FORWARD_VALUE"
+                    if series=='klines' and hour<739:
+                        for minute in range(60):
+                            t=timestamp+minute*60000
+                            lines.append(f'{t},{open_},{high},{low},{close},{1 if minute==0 else 0},{t+59999},{100000000 if minute==0 else 0},{1 if minute==0 else 0},{1 if minute==0 else 0},{1 if minute==0 else 0},0')
+                        continue
                     lines.append(f"{timestamp},{open_},{high},{low},{close},1,{timestamp+E.HOUR_MS-1},100000000,1,1,1,0")
             output=io.BytesIO()
             with zipfile.ZipFile(output,"w",compression=zipfile.ZIP_DEFLATED) as archive:
@@ -248,7 +253,7 @@ def test_readonly_source_rejects_holdout_and_unbound_loader(checksum_cli):
         source.streams("BTCUSDT","sealed_holdout")
 
 
-@pytest.mark.parametrize("attack",["receipt","implementation","dependency","numpy_version"])
+@pytest.mark.parametrize("attack",["receipt","implementation","dependency","numpy_version","hour_helper","clarification"])
 def test_wrong_protected_receipt_or_runtime_dependency_blocks_before_identity(checksum_cli,monkeypatch,attack):
     repo,store,_,_=checksum_cli
     if attack=="receipt":
@@ -263,7 +268,10 @@ def test_wrong_protected_receipt_or_runtime_dependency_blocks_before_identity(ch
     elif attack=="numpy_version":monkeypatch.setattr(E.np,"__version__","0.0.0")
     else:
         original=E._git
-        target="tools/research/c259_runner.py" if attack=="implementation" else "tools/research/btc_residual_leadlag_continuation_c259_stagea.py"
+        target=({'implementation':'tools/research/c259_runner.py',
+                 'hour_helper':'tools/research/logical_trade_hours.py',
+                 'clarification':'contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json'}
+                .get(attack,'tools/research/btc_residual_leadlag_continuation_c259_stagea.py'))
         def git(root,*args,**kwargs):
             if args==("hash-object","--",target):return "0"*40
             return original(root,*args,**kwargs)

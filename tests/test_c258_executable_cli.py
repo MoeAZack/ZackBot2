@@ -102,13 +102,18 @@ def synthetic_authority(tmp_path_factory):
     records = []
     paths_by_symbol = {}
     def archive(symbol, series, rows):
+        if series=='klines':
+            rows=[[row[0]+minute*60000,*row[1:5],row[5] if minute==0 else 0,
+                   row[0]+minute*60000+59999,row[7] if minute==0 else 0,
+                   row[8] if minute==0 else 0,row[9] if minute==0 else 0,row[10] if minute==0 else 0,row[11]]
+                  for row in rows for minute in range(60)]
         grouped = {}
         for row in rows:
             period = datetime.fromtimestamp(row[0]/1000, timezone.utc).strftime("%Y-%m")
             grouped.setdefault(period, []).append(row)
         for period, rows in grouped.items():
-            interval = "fundingRate" if series == "fundingRate" else "1h"
-            relative = f"um/monthly/{series}/{symbol}/"+("" if series == "fundingRate" else "1h/")+f"{symbol}-{interval}-{period}.zip"
+            interval = "fundingRate" if series == "fundingRate" else '1m' if series=='klines' else "1h"
+            relative = f"um/monthly/{series}/{symbol}/"+("" if series == "fundingRate" else interval+'/')+f"{symbol}-{interval}-{period}.zip"
             buffer = io.BytesIO()
             with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zipped:
                 header = M.FUNDING_HEADER if series == "fundingRate" else M.KLINE_HEADER
@@ -286,14 +291,16 @@ def test_protected_amendment_unlocks_ancestor_outputs_and_binds_frozen_implement
         assert C.validate_authority_pins(pins, root=root)["manifest_v6"]["synthetic_fixture_only"]
         with pytest.raises(C.EvaluationLocked, match="synthetic source"):
             P.authorize_production(root)
-        tampered = deepcopy(amendment)
-        tampered["implementation_blobs"]["tools/research/manifest.py"] = "0"*64
-        write(root/P.AMENDMENT_PATH, C._canonical_bytes(tampered))
-        git(root, "add", P.AMENDMENT_PATH)
-        git(root, "commit", "-m", "hostile changed accepted implementation pin")
-        git(root, "update-ref", C.AUTHORITY_PROTECTED_REF, git(root, "rev-parse", "HEAD"))
-        with pytest.raises(C.EvaluationLocked, match="invalid protected"):
-            P.authorize_production(root)
+        for dependency in ('tools/research/manifest.py','tools/research/logical_trade_hours.py',
+                           'contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json'):
+            tampered = deepcopy(amendment)
+            tampered["implementation_blobs"][dependency] = "0"*64
+            write(root/P.AMENDMENT_PATH, C._canonical_bytes(tampered))
+            git(root, "add", P.AMENDMENT_PATH)
+            git(root, "commit", "-m", "hostile changed accepted implementation pin")
+            git(root, "update-ref", C.AUTHORITY_PROTECTED_REF, git(root, "rev-parse", "HEAD"))
+            with pytest.raises(C.EvaluationLocked, match="invalid protected"):
+                P.authorize_production(root)
         write(root/P.AMENDMENT_PATH, C._canonical_bytes(amendment))
         write(root/contract_path, b"{}")
         git(root, "add", P.AMENDMENT_PATH, contract_path)

@@ -14,6 +14,7 @@ import io
 
 from tools.research import cross_sectional_relative_strength_continuation_c258_stagea as C
 from tools.research.authority_v6_runner import _read_record_rows
+from tools.research import logical_trade_hours as L
 
 
 class VerifiedSourceAbsence(C.IncompleteAuthority):
@@ -118,6 +119,7 @@ class C258ArchiveSource:
 
     def __init__(self, pins: C.AuthorityPins, store: Path, *, root: Path = C.ROOT):
         docs = C.validate_authority_pins(pins, root=root)
+        L.validate_clarification(C.ROOT)
         self._store = Path(store)
         self._root = root
         self._head = pins.protected_head
@@ -208,7 +210,8 @@ class C258ArchiveSource:
         _, boundary = frozen_window(fold)
         found = []
         for record, new in self._records:
-            if (record["symbol"], record["series"], record["interval"]) != (symbol, "klines", "1h"):
+            if record["symbol"] != symbol or L.trade_window(
+                    record, new=new, start_ms=boundary, end_ms=boundary+1) is None:
                 continue
             from tools.research import manifest as M
             meta = M.archive_meta(record["path"])
@@ -218,6 +221,15 @@ class C258ArchiveSource:
             raw = V6._safe_store_path(self._store, record["path"]).read_bytes()
             if hashlib.sha256(raw).hexdigest() != record["raw_sha256" if new else "sha256"]:
                 raise C.IncompleteAuthority("boundary source bytes changed")
+            expected = record["raw_sha256" if new else "sha256"]
+            if record.get('source', {}).get('kind') == 'binance-vision-archive':
+                if Path(str(V6._safe_store_path(self._store, record['path']))+'.ok').read_text().strip() != expected:
+                    raise C.IncompleteAuthority('boundary source checksum sidecar changed')
+                if new:
+                    checksum = Path(str(V6._safe_store_path(self._store, record['path']))+'.CHECKSUM').read_bytes()
+                    if (hashlib.sha256(checksum).hexdigest() != record['source']['checksum_raw_sha256']
+                            or V6.parse_official_checksum(checksum, Path(record['path']).name) != expected):
+                        raise C.IncompleteAuthority('boundary official checksum changed')
             if record["path"].endswith(".zip"):
                 with zipfile.ZipFile(io.BytesIO(raw)) as archive:
                     names = [name for name in archive.namelist() if name.endswith(".csv")]
@@ -296,25 +308,31 @@ class C258ArchiveSource:
             raise C.IncompleteAuthority("unsupported C258 source stream")
         selected = []
         rows: dict[int, tuple] = {}
+        minutes: dict[int, tuple] = {}
         for record, new in self._records:
-            if (record.get("symbol") != symbol or record.get("series") != stream
-                    or (stream != "fundingRate" and record.get("interval") != "1h")):
+            if record.get("symbol") != symbol or record.get("series") != stream:
                 continue
+            window = (L.trade_window(record, new=new, start_ms=start_ms, end_ms=end_ms)
+                      if stream == 'klines' else (start_ms,end_ms)
+                      if stream == 'fundingRate' or record.get('interval') == '1h' else None)
+            if window is None:
+                continue
+            read_start, read_end = window
             # Reject any record that intersects the requested range ambiguously.
             first = record.get("observed_first_ms") if new else record.get("first_open_ms")
             last = record.get("observed_last_ms") if new else record.get("last_open_ms")
-            if first is not None and last is not None and (last < start_ms or first >= end_ms):
+            if first is not None and last is not None and (last < read_start or first >= read_end):
                 continue
             if first is None or last is None:
                 from tools.research import manifest as M
                 period = M.archive_meta(record["path"])
                 period_start = record.get("declared_start_ms", period["month_start_ms"])
                 period_end = record.get("declared_end_ms", period["month_end_ms"])
-                if period_end <= start_ms or period_start >= end_ms:
+                if period_end <= read_start or period_start >= read_end:
                     continue
             try:
                 _, parsed = _read_window_rows(self._store, record, new=new,
-                                              start_ms=start_ms, end_ms=end_ms)
+                                              start_ms=read_start, end_ms=read_end)
             except C.IncompleteAuthority:
                 raise
             except (OSError, ValueError, RuntimeError) as exc:
@@ -328,10 +346,19 @@ class C258ArchiveSource:
                 else:
                     row = tuple(item)
                     stamp = int(row[0])
-                if start_ms <= stamp < end_ms:
-                    if stamp in rows:
+                if read_start <= stamp < read_end:
+                    target = minutes if stream == 'klines' and not new else rows
+                    if stamp in target:
                         raise C.IncompleteAuthority("overlapping active authority timestamps")
-                    rows[stamp] = row
+                    target[stamp] = row
+        if minutes:
+            try:
+                for row in L.exact_hours(minutes[t] for t in sorted(minutes)):
+                    if row[0] in rows:
+                        raise ValueError('overlapping logical source hours')
+                    rows[row[0]] = row
+            except ValueError as exc:
+                raise C.IncompleteAuthority(str(exc)) from exc
         if (not allow_gaps and stream != "fundingRate"
                 and tuple(sorted(rows)) != tuple(range(start_ms, end_ms, C.HOUR_MS))):
             raise C.IncompleteAuthority("missing canonical C258 source candle")

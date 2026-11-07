@@ -1,0 +1,42 @@
+{
+  "format": "zb-c257-c259-hourly-source-correction-proposal/2",
+  "status": "PROPOSAL_ONLY_NOT_EVALUATION_AUTHORITY",
+  "candidate_ids": [
+    257,
+    258,
+    259
+  ],
+  "basis": "v5 metadata census shows no direct trade 1h in eligible development; v6 extension coverage does not establish historical full-PIT hourly coverage",
+  "frozen_economics": "No changes to universe, folds, decisions, entry/exit clocks, prices, risk, fees, slippage, funding, sample or statistical gates",
+  "historical_trade_source": {
+    "before_utc": "2026-09-01T00:00:00Z",
+    "records": "Only checksum-bound active v5 trade klines:1m; never choose between native and derived bars based on availability or outcomes",
+    "logical_bar": "Exactly 60 unique consecutive UTC minutes: first open, maximum high, minimum low, last close, math.fsum quote volume; close_time=open_time+59999 required",
+    "available": "At logical hour open + 1h",
+    "failure": "Any required missing/duplicate/conflicting minute or partial hour remains DATA_INCOMPLETE; no interpolation or native 1h fallback",
+    "execution": "Only logical hourly OHLCV reaches strategy and path logic; minute ordering cannot change stop/target precedence"
+  },
+  "extension_trade_source": {
+    "from_utc": "2026-09-01T00:00:00Z",
+    "records": "Only independently accepted, pinned v6 native trade klines:1h; no fallback to historical sources",
+    "failure": "Missing required exact hourly coordinates fail incomplete"
+  },
+  "other_streams": "Native mark 1h and actual signed funding remain unchanged and independently authenticated",
+  "window_rules": "Preserve each original contract warmup and exact split bounds. No new warmup, universe narrowing, authority shift or sealed-window access",
+  "boundary_open": "Where the original contract explicitly permits fold-end due exit, authenticate only the exact boundary open. For historical minute authority use that exact minute timestamp open, without parsing future high/low/close or requiring the remainder of that hour. This is a separately tested open-only coordinate, not an extra admitted hourly bar",
+  "required_before_read": [
+    "independent pre-read review of exact derivation and metadata coverage by full frozen universe/fold",
+    "hostile synthetic tests for gaps, overlap, partial hours, seam, open-only boundary and future poison",
+    "exact corrected source/dependency closure plus original candidate-specific receipt/claim gates"
+  ],
+  "execution_authorized": false,
+  "market_rows_read": 0,
+  "holdout_authorized": false,
+  "paper_authorized": false,
+  "mainnet_authorized": false,
+  "kind": "EXPLICIT_PRE_READ_SOURCE_DERIVATION_CLARIFICATION_NOT_MECHANICAL_PIN_ONLY",
+  "previous_proposal_sha256": "f706a1ad3049ea2c3423c837b8c0c6fcde0e27dd58b3d5142c3ec2e5ecd15281",
+  "binding": "Preserve original contract bytes and trial ledger; bind this exact clarification digest, independently accepted source/dependency closure, unchanged authority bytes, and actual logical grid evidence in the candidate-specific receipt/report",
+  "row_grid_audit_phase": "Audit actual logical hourly grids only INSIDE the already-issued candidate one-spend capability or a separately independently accepted acquisition authority. Never probe raw rows under metadata-only permission, open a claim to discover a preferred universe, or remove members using future source gaps. Metadata presence is not exact grid proof.",
+  "terminal_cutoff": "Boundary-open policy grants no new timestamp or global cutoff. Preserve the exact existing source/sealed caps (including November5 cutoff). Missing authorized terminal open or funding coverage stays INCOMPLETE; no fetch/read beyond frozen cutoff, invented close, or replacement identity."
+}

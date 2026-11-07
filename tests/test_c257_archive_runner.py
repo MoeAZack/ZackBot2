@@ -41,8 +41,8 @@ def synthetic_archive(tmp_path, monkeypatch):
     for symbol in symbols:
         i = symbols.index(symbol)
         for series in ("klines","markPriceKlines","fundingRate"):
-            token = "fundingRate" if series == "fundingRate" else "1h"
-            rel = f"um/monthly/{series}/{symbol}/"+("" if token == "fundingRate" else "1h/")+f"{symbol}-{token}-2024-12.zip"
+            token = "fundingRate" if series == "fundingRate" else '1m' if series=='klines' else "1h"
+            rel = f"um/monthly/{series}/{symbol}/"+("" if token == "fundingRate" else token+'/')+f"{symbol}-{token}-2024-12.zip"
             rows = []
             for hour in range(-40,24):
                 timestamp = start+hour*S.HOUR_MS
@@ -51,6 +51,11 @@ def synthetic_archive(tmp_path, monkeypatch):
                     row = f"{timestamp},1,{rate}"
                 else:
                     row = f"{timestamp},100,101,99,100,100,{timestamp+S.HOUR_MS-1},1000000,100,1,1,0"
+                if series=='klines':
+                    for minute in range(60):
+                        t=timestamp+minute*60000
+                        rows.append(f'{t},100,101,99,100,{100 if minute==0 else 0},{t+59999},{1000000 if minute==0 else 0},{100 if minute==0 else 0},{1 if minute==0 else 0},{1 if minute==0 else 0},0')
+                    continue
                 rows.append(row)
             # A sealed-boundary row deliberately contains invalid economic data.
             # It must never reach the archive parser, even from a monthly ZIP.
