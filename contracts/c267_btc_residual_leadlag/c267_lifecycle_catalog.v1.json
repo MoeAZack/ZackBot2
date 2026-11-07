@@ -1,0 +1,19 @@
+{
+  "candidate_scope": 267,
+  "coverage": "ONE_OBSERVED_EVENT_NOT_COMPLETE_WORLD",
+  "default_off": true,
+  "execution_authorized": false,
+  "format": "zb-c267-known-lifecycle-catalog/1",
+  "future_kind_rule": "No caller boolean/extra field can upgrade current derived evidence to archived asof/rawHTTP/settlement fill; those require separately pinned independently accepted proof.",
+  "records": [
+    {
+      "contract_identity": "BINANCE_USDM_PERPETUAL_FTMUSDT",
+      "kind": "DERIVED_CURRENT_OFFICIAL_OBSERVATION",
+      "path": "contracts/c267_btc_residual_leadlag/lifecycle/root.browser-derived.current-observation.v1.json",
+      "permissions": "Effective-event entry prohibition only. No original announcement-asof or settlement execution authority.",
+      "sha256": "d8144e94ec63b5e89d8cda7af04338d4b5106aa2bdabe6be591c537037f439e6",
+      "symbol": "FTMUSDT"
+    }
+  ],
+  "unknowns": "No complete-world tradability claim; other symbol/history notice coverage is UNKNOWN. Known-event MODEL scope and unknowns require independent own source acceptance before rows; no silent universe reduction or assumption that archive bars establish permission."
+}

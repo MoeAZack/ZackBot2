@@ -57,5 +57,15 @@ def test_three_lifecycle_clocks_do_not_fabricate_advance_notice_or_settlement():
     assert 'entry>=' in rules['entry_at_or_after_effective_restriction']
     assert 'separately authenticated historical announcement-asof' in rules['pre_effective_horizon']
     assert 'DATA_INCOMPLETE' in rules['existing_exposed_settlement']
-    assert life['metadata_and_pins'] is None and p['lifecycle_source_blocker']['specific_symbol_exclusions'] is False
+    assert life['metadata_and_pins']=={'path':C.CATALOG_PATH,'sha256':C.CATALOG_SHA256}
+    assert p['lifecycle_source_blocker']['specific_symbol_exclusions'] is False
     assert p['future_PAPER_candidate_bounds']['maximum_all_C267_positions_across_both_sides']==2
+
+
+def test_pinned_current_event_does_not_upgrade_publication_date_into_asof_or_fill():
+    ((pin,event),)=C.load_catalog_metadata()
+    assert pin['kind']=='DERIVED_CURRENT_OFFICIAL_OBSERVATION'
+    assert event['effective_no_new_entry_ms']==1736152200000 and event['effective_settlement_ms']==1736154000000
+    assert event['advance_information_available_ms'] is None and not event['original_asof_version_verified']
+    assert event['raw_http_sha256'] is None and event['settlement_price_or_cost_proof'] is None
+    assert event['displayed_publication_timezone']=='UNSPECIFIED_DO_NOT_INFER'

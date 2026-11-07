@@ -7,10 +7,12 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 PARENT_PATH='research_evidence/prereg/btc_residual_leadlag_continuation_c259_stagea.v1.json'
 PARENT_SHA256='1aad55f092c0c308cb901701e2ee8bd3062d1eee9a07e13729673efbf5b17719'
-PROPOSAL_PATH='contracts/c267_btc_residual_leadlag/c267_prereg_proposal.v1.json'
-PROPOSAL_SHA256='ae4385f89e671995ba1c39c0813ae21a417b5b3d581b9c0925b178b650eea525'
-MODEL_PATH='contracts/c267_btc_residual_leadlag/c267_funding_liability_model.v1.json'
-MODEL_SHA256='39b47dacb8c6569c14b8244ebe8ac1ace271d54655b15b894ac5241ce86f29d3'
+PROPOSAL_PATH='contracts/c267_btc_residual_leadlag/c267_prereg_proposal.v2.json'
+PROPOSAL_SHA256='44e6fc7cdb8a55528273c1e65e7488d34d8d3a5a6274725dfec996692e1a646f'
+MODEL_PATH='contracts/c267_btc_residual_leadlag/c267_funding_liability_model.v2.json'
+MODEL_SHA256='5acba50cd2b9b25007087b51bb8d5845daa525188c3f9c0f2c120dbe4e4c4a63'
+CATALOG_PATH='contracts/c267_btc_residual_leadlag/c267_lifecycle_catalog.v1.json'
+CATALOG_SHA256='fa810f782ff3da3dd14b35cd029812aa71f540ef23182df3aca7eb1bf665e1b0'
 EXECUTION_AUTHORIZED=False
 SEEDS={'long_null_seed':267202611071,'long_ci_seed':267202611072,
        'short_null_seed':267202611073,'short_ci_seed':267202611074}
@@ -60,7 +62,8 @@ def validate_metadata(proposal,model,parent):
             raise C267Locked('C267_METADATA_MUST_STAY_LOCKED')
     lifecycle=model['lifecycle_tradability_authority']
     if (lifecycle['required_before_first_row']is not True or lifecycle['authorization_ready']is not False
-        or lifecycle['metadata_and_pins'] is not None or proposal['lifecycle_source_blocker']['bars_present_implies_tradable']is not False):
+        or lifecycle['metadata_and_pins']!={'path':CATALOG_PATH,'sha256':CATALOG_SHA256}
+        or proposal['lifecycle_source_blocker']['bars_present_implies_tradable']is not False):
         raise C267Locked('C267_LIFECYCLE_AUTHORITY_UNBOUND_NOT_BARS_PRESENT_PERMISSION')
 
 
@@ -74,7 +77,29 @@ def load_metadata():
     if proposal['funding_model']!={'path':MODEL_PATH,'sha256':MODEL_SHA256}:
         raise C267Locked('C267_OWN_MODEL_BINDING_DRIFT')
     validate_metadata(proposal,model,parent)
+    load_catalog_metadata()
     return proposal,model
+
+
+def load_catalog_metadata():
+    raw=(ROOT/CATALOG_PATH).read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=CATALOG_SHA256:raise C267Locked('C267_CATALOG_BYTE_DRIFT')
+    catalog=json.loads(raw);records=[]
+    if catalog['candidate_scope']!=267 or catalog['coverage']!='ONE_OBSERVED_EVENT_NOT_COMPLETE_WORLD':
+        raise C267Locked('C267_NO_COMPLETE_WORLD_OR_OTHER_CANDIDATE_GRANT')
+    for pin in catalog['records']:
+        raw=(ROOT/pin['path']).read_bytes()
+        if hashlib.sha256(raw).hexdigest()!=pin['sha256']:raise C267Locked('C267_DERIVED_EVENT_BYTE_DRIFT')
+        event=json.loads(raw)
+        if (pin['kind']!='DERIVED_CURRENT_OFFICIAL_OBSERVATION' or event['symbol']!=pin['symbol']
+            or event['contract_identity']!=pin['contract_identity']
+            or event['raw_http_bytes_preserved']is not False or event['raw_http_sha256'] is not None
+            or event['original_asof_version_verified']is not False or event['advance_information_available_ms'] is not None
+            or event['advance_horizon_veto_authorized']is not False or event['settlement_price_or_cost_proof'] is not None
+            or event['execution_authorized']is not False or event['paper_qualified']is not False):
+            raise C267Locked('C267_DERIVED_EVENT_CANNOT_UPGRADE_ASOF_OR_SETTLEMENT')
+        records.append((pin,event))
+    return tuple(records)
 
 
 def assert_execution_authorized():
