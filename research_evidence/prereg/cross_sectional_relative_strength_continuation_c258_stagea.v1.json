@@ -2,7 +2,7 @@
   "candidate_id": 258,
   "candidate_key": "cross_sectional_relative_strength_continuation_1h",
   "format": "zb-strategy-preregistration/1",
-  "base_commit": "8f63b5e8affd2d23a8c69d6d0185c502951aff78",
+  "base_commit": "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3",
   "frozen_at_cairo": "2026-11-07T02:29:00+02:00",
   "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
   "default_off": true,

@@ -10,8 +10,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "research_evidence/prereg/cross_sectional_relative_strength_continuation_c258_stagea.v1.json"
 PLAN_PATH = ROOT / "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json"
-BASE = "8f63b5e8affd2d23a8c69d6d0185c502951aff78"
-CANONICAL_CONTRACT_SHA256 = "487eaf27ee8c49c16a76c1b792dbef87759524c69cf723af07c3173672a2f658"
+BASE = "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3"
+CANONICAL_CONTRACT_SHA256 = "51085b2c4f4c74a1031465ff02049fae91c33386a2deb599b3fc1b595bcd3c1d"
 EXPECTED_TOP_LEVEL = {
     "candidate_id", "candidate_key", "format", "base_commit", "frozen_at_cairo", "status",
     "default_off", "evaluation_locked", "paper_eligibility", "roadmap_fit", "deferred",
