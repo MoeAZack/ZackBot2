@@ -57,8 +57,11 @@ def _authority_repo(tmp_path: Path, schema_attack: str | None = None,
                     source_records: list[dict] | None = None) -> tuple[Path, c259.AuthorityPins]:
     repo = tmp_path / "authority"
     _run(tmp_path, "git", "clone", "--shared", "--no-checkout", str(c259.ROOT), str(repo))
+    base = c259.load_frozen_contract()["base_commit"]
+    for commit in (base, c259.CONTRACT_HEAD):
+        _run(repo, "git", "fetch", "--no-tags", "--depth=1", str(c259.ROOT), commit)
     # Populate only the index: no market/outcome files need a working-tree copy.
-    _run(repo, "git", "update-ref", "--no-deref", "HEAD", c259.CONTRACT_HEAD)
+    _run(repo, "git", "update-ref", "--no-deref", "HEAD", base)
     _run(repo, "git", "read-tree", c259.CONTRACT_HEAD)
     _run(repo, "git", "config", "user.email", "c259@example.invalid")
     _run(repo, "git", "config", "user.name", "C259 Synthetic")
