@@ -209,7 +209,7 @@ def _computed_digest(value: Mapping[str, object]) -> str:
 def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
                             protected_ref: str = "refs/remotes/origin/master") -> ProtectedAuthority:
     """Validate exact protected Git-tree bytes before any loader can run."""
-    load_frozen_contract()
+    frozen_contract = load_frozen_contract()
     if len(pins.protected_head) != 40 or any(c not in "0123456789abcdef" for c in pins.protected_head):
         raise IncompleteAuthority("invalid protected authority head")
     if _git(repo, "rev-parse", "--verify", f"{pins.protected_head}^{{commit}}") != pins.protected_head:
@@ -217,9 +217,9 @@ def validate_authority_pins(pins: AuthorityPins, *, repo: Path = ROOT,
     if _git(repo, "rev-parse", "--verify", f"{protected_ref}^{{commit}}") != pins.protected_head:
         raise IncompleteAuthority("authority head is not protected ref")
     ancestry = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor",
-                               CONTRACT_HEAD, pins.protected_head], capture_output=True)
+                               frozen_contract["base_commit"], pins.protected_head], capture_output=True)
     if ancestry.returncode:
-        raise IncompleteAuthority("authority head does not descend from C259 contract")
+        raise IncompleteAuthority("authority head does not descend from frozen protected base")
     contract_tree_path = CONTRACT_PATH.relative_to(ROOT).as_posix()
     contract_raw = _tree_bytes(repo, pins.protected_head, contract_tree_path)
     if _sha(contract_raw) != CONTRACT_SHA256:
