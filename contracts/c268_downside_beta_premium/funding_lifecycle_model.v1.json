@@ -1,0 +1,134 @@
+{
+  "StageA_tail": {
+    "cash_applied_offset_ms": 15000,
+    "funding_tail_exclusive_end_offset_ms": 15001,
+    "period_ownership": "Actual close timestamp immutable. ExactEND exit calendar ownership END-1ms within old fold; later funding changes that same row. Do not add outside month/week or another trade.",
+    "scope": "Already actual old-fold legs/retained liabilities only, bounded actual needed tail. Authenticate adjacent-month funding ZIP when relevant, raw-ordered application at fixedEND+15000 never before raw. No ordinary price/mark bar at/afterEND, no new exposure, no next-fold sizing/capital carry, no opportunistic extension. Missing relevant proof =>INCOMPLETE.",
+    "signal_end": "Original DEV/WF END unchanged; due==END exact OPEN-only exit remains permitted. No new position/signals at END."
+  },
+  "StageB_boundary": {
+    "end_exclusive_UTC": "2026-11-05T00:00:00Z",
+    "entry_veto": "Veto any scheduled48h due>=END before exposure, irrespective of hoped-for earlier stop/target. No ENDopen, post-cutoff funding or future price/mark source extension. Allowed canonical due<=END-H leaves at least1h before cutoff for15s liability; unsupported remaining liability stillINCOMPLETE, never zero.",
+    "gates": "Own268 accepted30closed/8symbols/positive95%CI plus all fixed268holdout gates. No inherited259samplegate or new sourcegrant.",
+    "hours": 911,
+    "reset": "Own LONG book; all168return/ATR/liquidity/EMA state reset at01. Excluded00 cannot warm anything.",
+    "start_UTC": "2026-09-28T01:00:00Z"
+  },
+  "accounting": {
+    "drawdown": "Original259 cash PF; marked-equity DD_R normalized by1%starting side capital; closed-realized final trade_R DD by chronological closes. gate_DD=max(marked,closed) in DEV/forward/holdout/stress/PAPER; no266closed-only DEV transplant.",
+    "entry_phase_override": {
+      "candidate_scope": 268,
+      "cash_sequence": "2*admission_ordinal+0 = actual ENTRYcost; 2*admission_ordinal+1 = known ENTRY funding only after actual lot exists. ENTRY key prioritizes this sequence before symbol/attempt.",
+      "ordinal": "Own268 first3 indexed proposals only, original rank preserved. Skipped occupied/infeasible cannot backfill. Earlier actual cost/debit reduces later equity.",
+      "other_phases": "Original UTC/phase/Unicode/attempt ordering unchanged. Old funding phase precedes opens/entries; never append global FUNDING after ENTRY.",
+      "preserve_ranked_causal_admission_sizing": true,
+      "reason": "Prospective root ruling resolves rank-versus-lexical entry accounting ambiguity without symbol-order sizing, virtual cash, re-pairing, new thresholds, cost/gates/windows/seeds or original259 changes.",
+      "report": "Expose admission ordinal, original rank, actual raw/funding/event-attempt identity. Actual partial/protection failure retains all known cash/exposure/liability."
+    },
+    "late_cash": "Retain closed rows until every possible liability/proof resolves. Late cash updates original actual net/R/PF/side-symbol-regime/month and both closed/marked DD exactly once, with actual cash-application clock; never backdate sizing, add a trade or fabricate a new calendar sample.",
+    "ordinary_order": "Finalize prior-bar range exits; reconcile raw-available funding/old liabilities; stop-gap then target-gap then scheduled open exits; protection-failure cleanup; ranked new entries; causal marks. Other phases order Unicode symbol then immutable attemptID. ENTRY ONLY follows accepted admission ordinal, with actual lot ENTRYcost first and its known raw-available debit next, before later-ranked admission equity. No pre-lot cash, future credits or virtual staging."
+  },
+  "adapter_volume_domain_clarification": {
+    "aggregate": "math.fsum24 must be finite and positive. Zero-total preentry IMPACT_INFEASIBLE with no exposure; mandatory exposed zero/missing liquidity INCOMPLETE retains known costs/positions.",
+    "clock": "Exactly24 canonical completed bars for each fill-type impact_asof; no gap/compression/fill-bar volume.",
+    "decision_gate": "Original decision hour positive and >=preceding24 median; median0 is valid. Ratio diagnostic must be null/ZERO_BASELINE, not divide-by-zero or new positive-median gate.",
+    "parity": "All-positive domain must match original259 exact sizing/cost outputs; valid partialzero data does not change any numeric alpha/cost/participation rule.",
+    "per_hour_quote_volume": "Finite NONNEGATIVE, zero is genuine observed data; no invented positive volume.",
+    "source": "Original259 frozen impact/liquidity rule; ROOT pre-read268 ruling before data. Correct own adapter only, leave original259 helper unchanged."
+  },
+  "candidate_scope": 268,
+  "classification": "CONDITIONAL_RESEARCH_CASH_LEDGER_AND_ELIGIBILITY_MODEL_NOT_HISTORICAL_VENUE_OR_PUBLICATION_FACT",
+  "default_off": true,
+  "eligibility": {
+    "boundary_delta": "Explicit NEW268 change to original259 ideal exact-boundary exclusions: possible entry-boundary and prior-range closed liabilities can be debited under this envelope. Do not claim original ideal boundary funding rule remains unchanged.",
+    "cash_sign": "cash=-side_sign*abs(quantity)*raw_causal_mark*raw_signed_rate; LONG+1, SHORT-1. Debit if possibly held. Credit only if definitely held; unresolved positive credit waits for proof and never funds sizing; permanently ambiguous credit withheld/disclosed. Zero remains an actual verified zero, never a missing-event substitution.",
+    "definite": "entry_ms<=slot-15000 AND earliest_possible_exit_ms>=slot+15000, or still-open holding proven through that upper bound; require known boundary>=upper. Earliest range exit, not reported close, controls credit proof.",
+    "envelope_ms": 15000,
+    "exposure": "Entry is exact accepted open; gap/target-gap/scheduled/cleanup exits exact raw open, range exit possible interval=[bar_open,bar_close_boundary]. Preserve earliest and latest possible exit separately; reported range-close timestamp is not definite holding proof.",
+    "possible": "entry_ms<=slot+15000 AND (latest_exit_ms absent OR latest_exit_ms>=slot-15000)."
+  },
+  "execution_authorized": false,
+  "final_qualification": "Actual testnet funding eligibility/fee ledger validation and all original independent source/code/causal/cost/PAPER/live gates remain mandatory. This conditional offline MODEL alone cannot qualify PAPER/live.",
+  "first_actual_admission": {
+    "commit": "Commit observer anchor only after actual accepted quantity/lot exists. Zero-fill skip, infeasible sizing, rejected protection or stale staging commits neither anchor nor cash. A partially accepted/protection-failure lot is actual exposure and must retain its anchor/costs/liabilities.",
+    "no_reset": "Shared per-side symbol history and retained closed liabilities survive reentry; never reset on flatness, side switch, failure or new code head. Independent side books cannot share cash/capacity, while each side keeps its own actual event-attempt allocations.",
+    "stage": "Before first EVER actual symbol admission, inspect all raw-visible typed schema and relevant latest-slot/entry-window collisions; no future row interval/rate access. Stage immutable authenticated anchor and all known possible adverse entry events without observer mutation. Missing anchor/proof/schema is whole-side INCOMPLETE, never rank skip."
+  },
+  "format": "zb-c268-published-funding-eligibility-model/1",
+  "known_entry_risk": {
+    "adverse_reserve_multiplier": 1.0,
+    "cash": "Reserve is an immutable initial-risk denominator component, not a separate cash charge. Actual signed funding applies once only after actual lot exists, including known exact-entry events; no pre-lot debit, double charge or later denominator rewrite.",
+    "original_solve": "Use original259 stressed entry+complete hypothetical stop fee/slippage loss L and original frozen causal24h-volume impact I_entry(q)+I_stop(q). Before the continuous guess replace L by L+A. guess=min(requested_risk/(L+A),0.50*side_equity/E), Decimal floor to step; original monotone step-decrement feasibility checks risk=q*(L+A)+I_entry(q)+I_stop(q), original min/max/notional/gross/1%risk and side-book3% caps. No pair sizing, quantity upsize or favorable parameter search.",
+    "reserve_unit": "A=sum(max(0,side_sign*causal_mark_i*raw_rate_i)) over actual-known raw_i<=entry possibly liable to this prospective entry. No opposite/contingent credit netting."
+  },
+  "lifecycle_tradability_authority": {
+    "authorization_ready": false,
+    "completeness_and_unknown": "Record every known pinned official event plus exact catalog/coverage/unknown scope; do not claim complete world. Missing authenticity for a relevant known restriction or settlement is INCOMPLETE, never zero/silent universe narrowing. Unknown advance visibility cannot trigger a pre-effective horizon veto. Coverage limitations require independent own source-scope acceptance before rows and actual testnet eligibility validation before qualification.",
+    "derived_record_limits": {
+      "advance_available_ms": null,
+      "advance_horizon_veto_allowed": false,
+      "complete_world": false,
+      "historical_effective_event_model_only": true,
+      "original_asof_proven": false,
+      "permitted_kind": "DERIVED_CURRENT_OFFICIAL_OBSERVATION",
+      "raw_HTTP_preserved": false,
+      "scope_authorization_granted": false,
+      "settlement_price_cost_proof": null
+    },
+    "existing_exposure": "An unanticipated relevant restriction/termination cannot be priced by a fictitious last bar or zero payment. Retain known costs/exposure and require authentic executable/settlement evidence under an independently frozen lifecycle rule; otherwise INCOMPLETE, no optimistic liquidation.",
+    "generic_rule": "Use one generic independently accepted official-event SOURCE MODEL for every PIT symbol, preserving all members. Archived OHLCV and once-TRADING snapshots do not prove later entry permission. No FTM hardcode, outcome-selected exclusion, alpha rule or complete-world claim.",
+    "historical_provenance_limit": "Two exact pinned current-derived observations support declared effective-event MODEL only. Displayed publication dates and later wording do not prove historical advance visibility, rawHTTP or settlement execution.",
+    "metadata_and_pins": {
+      "path": "contracts/c268_downside_beta_premium/lifecycle_catalog.v1.json",
+      "sha256": "36940ecbb8485be6c11b1e51b65cd3f4c02bf26f9578739517f9aaf0b0641212"
+    },
+    "notice_reference_is_not_scope_or_coin_exception": true,
+    "proposed_event_fields": [
+      "contract_identity",
+      "symbol",
+      "publisher_notice_id",
+      "original_publisher_URL",
+      "original_publication_time",
+      "version_or_archival_asof_proof",
+      "captured_time",
+      "raw_byte_sha256",
+      "effective_no_new_entry_time",
+      "effective_termination_or_auto_settlement_time",
+      "settlement_rule_and_price_authority_if_exposure_can_remain"
+    ],
+    "required_before_first_row": true,
+    "root_motivating_primary_notice_reference": "https://www.binance.com/en/support/announcement/detail/aec6fcbc84b749eeab6690e6bcac2f3d",
+    "three_clock_rules": {
+      "entry_at_or_after_effective_restriction": "At entry>=the pinned official effective no-new-entry time, refuse new exposure. A current official primary notice can evidence the historical enforcement timestamps as an explicitly DECLARED SOURCE MODEL; this is not a claim that its original wording was cryptographically visible earlier.",
+      "existing_exposed_settlement": "If actual exposure reaches termination, require independently accepted causal settlement execution/price/cost evidence. Otherwise retain costs/exposure and DATA_INCOMPLETE; never invent a bar/last-price/zero settlement or force a favorable earlier exit.",
+      "pre_effective_horizon": "Before effective restriction, veto a fixed48h horizon crossing known termination ONLY when separately authenticated historical announcement-asof/version provenance establishes that advance information was available by entry. Without that proof, never infer future termination knowledge to avoid the trade or alter ranking/holding."
+    }
+  },
+  "lineage": {
+    "first_actual_admission_model_sha256": "4500ae41e3193555aa5784e0379d96ffdc7578c7f46dce2209ad69ca629fe53a",
+    "published_ledger_model_reference_sha256": "4d9a1e5a6c6ccf661a0b8b873ea5d9931538b5cd35244d7894254ef73e5501c4",
+    "reference_only": "Own268 model adopts reviewed267 cash/lifecycle algebra only. No other candidate grant/capability/receipt/claim/economic acceptance transfers.",
+    "reviewed_267_model_sha256": "e333fc5b328bca928eec6e6bfaa496cad1658669d11ad164e66d98dee9433ed9"
+  },
+  "paper_qualified": false,
+  "published_source_proof": {
+    "economic_scope": "Whole required ZIP may be hashed and record coordinates/schema structurally validated, but convert no out-of-cap economic rate, price or mark field. No extra new-fold price or forward/holdout grant.",
+    "initial_implementation": "Monthly ZIP only. Exhaustive REST support remains unimplemented/unclaimed unless separately preregistered exact query/all-pages/terminal proof.",
+    "relevance": "Require proof through all still-possible open or closed liabilities, including jitter upper bound; stop at the actual liable bound when flat. Do not demand later irrelevant months or validate unrelated transitions after all possible exposure.",
+    "required": "Complete authenticated original official monthly funding ZIPs covering every relevant possible actual liability span: exact expected path/calendar/sidecar/SHA256/byte length/all-record schema/calendar/strict raw order/count/first-last validation. First/last alone, local subsets, missing expected month, checksum failure or incomplete provenance are not absence proof.",
+    "semantics": "Completeness MODEL for published history, not exchange omniscience/publication-time/eligibility proof. Preserve every observed interval/delta mismatch as diagnostic with its proof; no missing settlement inferred from interval labels."
+  },
+  "raw_event": {
+    "available_cash": "MODEL cash observation at raw_time, reconciled at the next canonical simulation boundary BEFORE new admissions, never raw>B cash/rates in sizing at B. Retain raw/slot/eligibility/application clocks separately.",
+    "causal_mark": "mark_open=floor(raw_time/H)*H-H; use that native completed1h close, available by mark_open+H<=raw_time. For raw just before a nominal hour, never use the mark completed at the later hour. Declared completed-mark proxy, not actual settlement mark.",
+    "nominal_slot": "Nearest UTC hour only when abs(raw-slot)<=15000ms, an explicit eligibility MODEL, not historical venue fact or mark/cash time.",
+    "raw_time": "Preserve authenticated calc_time/fundingTime integer milliseconds and raw signed rate in immutable eventID=symbol:raw_time. Never backdate, floor or substitute cash time. Unknown/nonfinite schema, unknown native interval, duplicate raw or relevant nominal slots and relevant raw outside15s fail whole side candidate with costs/exposure retained.",
+    "reported_interval": "Native descriptive information only. Do not assert ENDING or STARTING semantics, choose either period to fit, default8h, or impute an event/rate/zero."
+  },
+  "source_authority_bound": false,
+  "status": "LOCKED_CURRENT_EFFECTIVE_EVENT_BOUND_ONLY_SOURCE_AND_CODE_GRANT_ABSENT",
+  "stress": {
+    "funding_multiplier": 1.0,
+    "funding_rule": "IDENTICAL actual natural-sign funding on IDENTICAL admitted primary trades/quantities/frozen initial risk. Original10bp stressed adverse fills, same5bp fees and same causal24h impact. No1.5 adverse/discounted-credit transform or stress re-admission."
+  }
+}

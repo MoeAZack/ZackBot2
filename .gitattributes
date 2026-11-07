@@ -29,3 +29,7 @@ contracts/c267_btc_residual_leadlag/lifecycle/root.web-derived.bnx-current-obser
 contracts/c268_downside_beta_premium/nomination.v1.json -text
 contracts/c268_downside_beta_premium/prereg_review_draft.v1.json -text
 contracts/c268_downside_beta_premium/preregistration.v1.json -text
+contracts/c268_downside_beta_premium/funding_lifecycle_model.v1.json -text
+contracts/c268_downside_beta_premium/initial_source_prefix.v1.json -text
+contracts/c268_downside_beta_premium/lifecycle_catalog.v1.json -text
+contracts/c268_downside_beta_premium/source_model_binding.v1.json -text
