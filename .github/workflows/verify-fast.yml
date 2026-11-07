@@ -49,6 +49,9 @@ jobs:
           git fetch --no-tags --depth=1 origin 27f3eef77a4d10d300a288ef917fc5842170550d
           git cat-file -e '27f3eef77a4d10d300a288ef917fc5842170550d^{commit}'
           git cat-file -e '27f3eef77a4d10d300a288ef917fc5842170550d:research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json'
+          # C258 synthetic authorities parent directly at their immutable protected authority base.
+          git fetch --no-tags --depth=1 origin 6754a336652496952aaab82e42fbe9bd6171430a
+          git cat-file -e '6754a336652496952aaab82e42fbe9bd6171430a^{commit}'
           # C259 hostile fixtures bind frozen content onto the protected preregistration base.
           git fetch --no-tags --depth=1 origin 64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3 82d02b82b774e92ffa374e6ea1be8ba5c0cfb98c
           git cat-file -e '64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3^{commit}'
