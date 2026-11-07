@@ -85,7 +85,10 @@ def _exclusive(path: Path, value: Mapping[str, object]) -> None:
         stream.write(raw); stream.flush(); os.fsync(stream.fileno())
 
 PRODUCTION_LOADER_BOUND = True
-REPORT_REQUIREMENTS_BOUND = False
+# Independent primary runner/report review completed before any real outcomes.
+# The undefined basket diagnostic remains explicitly incomplete/non-promotable;
+# this flag never accepts economic gates or enables PAPER activation.
+REPORT_REQUIREMENTS_BOUND = True
 
 
 def _load_protected_folds(bindings: Bindings, *, store: Path) -> L.ProtectedArchiveLoader:
@@ -104,7 +107,7 @@ def evaluate_once(*, store: Path | None = None, identity_dir: Path | None = None
         raise ProtectedAdapterError(
             "C257_PRODUCTION_LOADER_UNBOUND: protected archive-to-book loader is absent")
     if not REPORT_REQUIREMENTS_BOUND:
-        raise ProtectedAdapterError("C257_REPORT_UNBOUND: complete frozen report definitions are required")
+        raise ProtectedAdapterError("C257_REPORT_UNBOUND: reviewed primary report definitions are required")
     if store is None:
         raise ProtectedAdapterError("checksum-bound archive store is required")
     durable = _identity_directory()

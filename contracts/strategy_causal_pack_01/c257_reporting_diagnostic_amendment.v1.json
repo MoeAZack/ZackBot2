@@ -1,7 +1,7 @@
 {
   "format": "zb-c257-reporting-diagnostic-amendment/1",
   "candidate_id": 257,
-  "status": "DRAFT_REQUIRES_INDEPENDENT_PROTECTED_REVIEW_BEFORE_REAL_ROWS",
+  "status": "PRIMARY_REPORT_REVIEWED_PROTECTED_CI_AND_AUTHORITY_PINS_REQUIRED",
   "authority": "Codex reporting-only ruling, 2026-11-07 Cairo",
   "economic_contract_sha256": "88294e16a44c4e2219284abeb26f4085123b9fd9de0c5120d0a19d5b84a94b54",
   "roadmap_fit": "Complete C257 uncertainty disclosures before protected authority-pinned Stage-A evaluation.",
