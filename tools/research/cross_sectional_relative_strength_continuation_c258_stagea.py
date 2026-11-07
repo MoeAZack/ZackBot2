@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import json
 import math
+import subprocess
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, ROUND_FLOOR, InvalidOperation
 from pathlib import Path
@@ -26,6 +27,7 @@ CONTRACT_SHA256 = "aeacd7fc684be2c6bc406a8f0d4e6ce7007e015d1b8d45a6250b6a587cce3
 PLAN_PATH = ROOT / "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json"
 PLAN_SHA256 = "30080d16132348fabceb91bffe110f43ee33824c4496622f736ee6a6c4d7af60"
 AUTHORITY_ID = "BINANCE-UM-PRECUTOFF-AUTHORITY-V6"
+C258_FROZEN_HEAD = "976adda2653584559a5fc105468a6d422796d3a9"
 HOUR_MS = 3_600_000
 FEE_BPS = 5.0
 BASE_SLIPPAGE_BPS = 2.0
@@ -102,6 +104,7 @@ class ArtifactPin:
 @dataclass(frozen=True)
 class AuthorityPins:
     protected_head: str
+    protected_ref: str
     manifest_v6: ArtifactPin
     pit_v9: ArtifactPin
     filter_v4: ArtifactPin
@@ -141,23 +144,72 @@ def _declared_content_digest(value: Mapping[str, object]) -> str | None:
     return None
 
 
-def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[str, dict]:
+def _recomputed_content_digest(value: Mapping[str, object]) -> str:
+    body = dict(value)
+    digest_keys = [key for key in ("content_digest", "digest") if key in body]
+    if len(digest_keys) != 1 or not isinstance(body[digest_keys[0]], str):
+        raise IncompleteAuthority("authority must declare exactly one top-level content digest")
+    del body[digest_keys[0]]
+    return _sha256_bytes(_canonical_bytes(body))
+
+
+def _git(root: Path, *args: str, binary: bool = False) -> str | bytes:
+    try:
+        result = subprocess.run(["git", *args], cwd=root, check=True, capture_output=True,
+                                text=not binary)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise IncompleteAuthority(f"Git authority resolution failed: {' '.join(args)}") from exc
+    return result.stdout if binary else result.stdout.strip()
+
+
+def _require_binding(doc: Mapping[str, object], key: str, expected: str) -> None:
+    found: list[object] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, Mapping):
+            for child_key, child in value.items():
+                if child_key == key:
+                    found.append(child)
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(doc)
+    if not found or any(value != expected for value in found):
+        raise IncompleteAuthority(f"authority cross-binding mismatch: {key}")
+
+
+def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT,
+                            required_ancestor: str = C258_FROZEN_HEAD) -> dict[str, dict]:
     """Validate all v6 identities before any market-row loader may be called."""
     load_frozen_contract()
     if len(pins.protected_head) != 40 or any(ch not in "0123456789abcdef" for ch in pins.protected_head):
         raise IncompleteAuthority("accepted protected head is not exactly pinned")
+    if not pins.protected_ref.startswith("refs/"):
+        raise IncompleteAuthority("protected ref must be fully qualified")
+    resolved_head = _git(root, "rev-parse", "--verify", f"{pins.protected_head}^{{commit}}")
+    resolved_ref = _git(root, "rev-parse", "--verify", f"{pins.protected_ref}^{{commit}}")
+    if resolved_head != pins.protected_head or resolved_ref != pins.protected_head:
+        raise IncompleteAuthority("protected head/ref exact equality failed")
+    _git(root, "merge-base", "--is-ancestor", required_ancestor, pins.protected_head)
+    for path, expected_hash in ((CONTRACT_PATH.relative_to(ROOT).as_posix(), CONTRACT_SHA256),
+                                (PLAN_PATH.relative_to(ROOT).as_posix(), PLAN_SHA256)):
+        frozen_raw = _git(root, "show", f"{pins.protected_head}:{path}", binary=True)
+        assert isinstance(frozen_raw, bytes)
+        if _sha256_bytes(frozen_raw) != expected_hash:
+            raise IncompleteAuthority(f"protected tree frozen metadata mismatch: {path}")
     decoded: dict[str, dict] = {}
     for name, expected_path in EXPECTED_AUTHORITY_PATHS.items():
         pin = getattr(pins, name)
         pin.validate_shape(expected_path)
-        path = root / pin.path
-        if not path.is_file():
-            raise IncompleteAuthority(f"missing authority-v6 output: {pin.path}")
-        raw = path.read_bytes()
+        raw = _git(root, "show", f"{pins.protected_head}:{pin.path}", binary=True)
+        assert isinstance(raw, bytes)
         if _sha256_bytes(raw) != pin.byte_sha256:
             raise IncompleteAuthority(f"authority-v6 byte mismatch: {pin.path}")
-        doc = _decode_json_bytes(path, raw)
-        if _declared_content_digest(doc) != pin.content_digest:
+        doc = _decode_json_bytes(Path(pin.path), raw)
+        if (_declared_content_digest(doc) != pin.content_digest
+                or _recomputed_content_digest(doc) != pin.content_digest):
             raise IncompleteAuthority(f"authority-v6 content digest mismatch: {pin.path}")
         decoded[name] = doc
     manifest, pit, filters, coverage = (decoded[k] for k in EXPECTED_AUTHORITY_PATHS)
@@ -177,12 +229,23 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[s
                           if isinstance(manifest.get("cutoff"), Mapping) else None)
     if cutoff != "2026-11-05T00:00:00Z":
         raise IncompleteAuthority("manifest-v6 cutoff is not exact and exclusive")
+    for key, expected in (("manifest_v6_byte_sha256", pins.manifest_v6.byte_sha256),
+                          ("manifest_v6_content_digest", pins.manifest_v6.content_digest)):
+        _require_binding(pit, key, expected)
+    for key, expected in (("pit_v9_byte_sha256", pins.pit_v9.byte_sha256),
+                          ("pit_v9_content_digest", pins.pit_v9.content_digest)):
+        _require_binding(filters, key, expected)
+    for name in ("manifest_v6", "pit_v9", "filter_v4"):
+        pin = getattr(pins, name)
+        _require_binding(coverage, f"{name}_byte_sha256", pin.byte_sha256)
+        _require_binding(coverage, f"{name}_content_digest", pin.content_digest)
     return decoded
 
 
-def run_with_authority(pins: AuthorityPins, loader: Callable[[dict[str, dict]], object], *, root: Path = ROOT) -> object:
+def run_with_authority(pins: AuthorityPins, loader: Callable[[dict[str, dict]], object], *,
+                       root: Path = ROOT, required_ancestor: str = C258_FROZEN_HEAD) -> object:
     """The only real-data boundary: pins and schemas pass before loader invocation."""
-    authorities = validate_authority_pins(pins, root=root)
+    authorities = validate_authority_pins(pins, root=root, required_ancestor=required_ancestor)
     return loader(authorities)
 
 
@@ -224,13 +287,14 @@ def exact_index(bars: Sequence[Bar]) -> dict[int, Bar]:
 
 
 def next_open(bars: Sequence[Bar], decision_close_ms: int) -> Bar:
-    """Return the first unique canonical open strictly after a decision close."""
-    candidates = sorted((bar for bar in bars if bar.open_ms > decision_close_ms), key=lambda b: b.open_ms)
-    if not candidates:
-        raise IncompleteAuthority("missing next canonical 1h open")
-    result = candidates[0]
-    result.validate()
-    return result
+    """Return only the exact next boundary; never bridge a missing canonical hour."""
+    if not isinstance(decision_close_ms, int) or decision_close_ms % HOUR_MS:
+        raise IncompleteAuthority("decision close is not a canonical 1h boundary")
+    indexed = exact_index(bars)
+    target = decision_close_ms + HOUR_MS
+    if decision_close_ms not in indexed or target not in indexed:
+        raise IncompleteAuthority("missing exact next canonical 1h open or continuity bar")
+    return indexed[target]
 
 
 def latest_pit_membership(cells: Sequence[Mapping[str, object]], decision_close_ms: int,
@@ -621,33 +685,55 @@ class ClosedAttempt:
     gross_R: float = 0.0
     long_contribution_R: float = 0.0
     short_contribution_R: float = 0.0
+    lifecycle_identity: tuple[tuple[object, ...], ...] = ()
+
+
+def _fill_lifecycle_identity(fills: Sequence[FillCash]) -> tuple[tuple[object, ...], ...]:
+    return tuple((fill.timestamp_ms, fill.symbol, fill.side, repr(fill.quantity),
+                  repr(fill.reference_price), fill.phase) for fill in fills)
+
+
+def _validate_fill_lifecycle(*, fills: Sequence[FillCash], entry_ms: int, close_ms: int,
+                             expected: Mapping[str, tuple[int, Decimal]], atomic_one_leg: bool) -> None:
+    by_symbol: dict[str, list[FillCash]] = {}
+    for fill in fills:
+        by_symbol.setdefault(fill.symbol, []).append(fill)
+    if set(by_symbol) != set(expected):
+        raise IncompleteEpisode("fill symbols do not match the accepted lifecycle")
+    if len(fills) != 2 * len(expected):
+        raise IncompleteEpisode("accepted lifecycle is not fully flat")
+    for symbol, (position_side, accepted_quantity) in expected.items():
+        symbol_fills = by_symbol[symbol]
+        entries = [fill for fill in symbol_fills if fill.phase == "entry"]
+        closes = [fill for fill in symbol_fills if fill.phase in {"exit", "stop", "cleanup"}]
+        if len(entries) != 1 or len(closes) != 1:
+            raise IncompleteEpisode("each accepted leg requires one entry and one complete close")
+        entry, final = entries[0], closes[0]
+        if entry.side != position_side or final.side != -position_side:
+            raise IncompleteEpisode("fill side does not match the accepted leg")
+        if (Decimal(str(entry.quantity)) != accepted_quantity
+                or Decimal(str(final.quantity)) != accepted_quantity):
+            raise IncompleteEpisode("fill quantity does not conserve the accepted quantity")
+        if entry.timestamp_ms != entry_ms:
+            raise IncompleteEpisode("entry timestamp does not match the accepted lifecycle")
+        if final.timestamp_ms <= entry.timestamp_ms:
+            raise IncompleteEpisode("close must occur after the entry")
+    if max(fill.timestamp_ms for fill in fills if fill.phase != "entry") != close_ms:
+        raise IncompleteEpisode("attempt close time is not the final lifecycle fill")
+    if atomic_one_leg and len(expected) != 1:
+        raise IncompleteEpisode("atomic failure must contain exactly one accepted leg")
+    if not atomic_one_leg and len(expected) != 2:
+        raise IncompleteEpisode("normal pair must contain both accepted legs")
 
 
 def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol: str,
                   short_symbol: str, regime: str, fills: Sequence[FillCash], funding_cash: float,
-                  initial_risk_cash: float, atomic_one_leg: bool = False) -> ClosedAttempt:
+                  initial_risk_cash: float, accepted_quantities: Mapping[str, tuple[int, Decimal]],
+                  atomic_one_leg: bool = False) -> ClosedAttempt:
     if not fills or close_ms < entry_ms or not math.isfinite(funding_cash):
         raise IncompleteEpisode("attempt cashflows are incomplete")
-    by_symbol: dict[str, list[FillCash]] = {}
-    for fill in fills:
-        by_symbol.setdefault(fill.symbol, []).append(fill)
-    if atomic_one_leg:
-        if len(fills) != 2 or len(by_symbol) != 1:
-            raise IncompleteEpisode("atomic one-leg row requires exactly one entry and one protected close")
-        phases = [fill.phase for fill in fills]
-        if phases.count("entry") != 1 or not any(phase in {"stop", "cleanup"} for phase in phases):
-            raise IncompleteEpisode("atomic one-leg lifecycle is incomplete")
-        entry_fill = next(fill for fill in fills if fill.phase == "entry")
-        close_fill = next(fill for fill in fills if fill.phase in {"stop", "cleanup"})
-        if close_fill.timestamp_ms <= entry_fill.timestamp_ms:
-            raise IncompleteEpisode("atomic cleanup/stop must be after the entry open")
-    else:
-        if len(fills) != 4 or set(by_symbol) != {long_symbol, short_symbol}:
-            raise IncompleteEpisode("normal pair requires four fills across both legs")
-        for symbol_fills in by_symbol.values():
-            phases = [fill.phase for fill in symbol_fills]
-            if phases.count("entry") != 1 or sum(phase in {"exit", "stop", "cleanup"} for phase in phases) != 1:
-                raise IncompleteEpisode("each normal leg requires one entry and one close")
+    _validate_fill_lifecycle(fills=fills, entry_ms=entry_ms, close_ms=close_ms,
+                             expected=accepted_quantities, atomic_one_leg=atomic_one_leg)
     movement = math.fsum(fill.movement_cash for fill in fills)
     fee = math.fsum(fill.fee_drag for fill in fills)
     slippage = math.fsum(fill.slippage_drag for fill in fills)
@@ -661,7 +747,7 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
     return ClosedAttempt(attempt_id, entry_ms, close_ms, long_symbol, short_symbol, regime,
                          movement, funding_cash, fee, slippage, actual, verdict,
                          initial_risk_cash, verdict / initial_risk_cash, atomic_one_leg, adjustment,
-                         movement / initial_risk_cash)
+                         movement / initial_risk_cash, 0.0, 0.0, _fill_lifecycle_identity(fills))
 
 
 def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expected_short_symbol: str,
@@ -683,7 +769,9 @@ def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expect
     return close_attempt(attempt_id=attempt_id, entry_ms=entry.timestamp_ms, close_ms=final.timestamp_ms,
                          long_symbol=expected_long_symbol, short_symbol=expected_short_symbol,
                          regime=regime, fills=fills, funding_cash=funding_cash,
-                         initial_risk_cash=risk, atomic_one_leg=True)
+                         initial_risk_cash=risk,
+                         accepted_quantities={accepted_leg.symbol: (accepted_leg.side, quantity)},
+                         atomic_one_leg=True)
 
 
 def fixed_exit_open(bars: Sequence[Bar], actual_entry_ms: int) -> Bar:
@@ -695,31 +783,51 @@ def fixed_exit_open(bars: Sequence[Bar], actual_entry_ms: int) -> Bar:
     return candidates[0]
 
 
-def chronological_drawdown(cashflows: Sequence[tuple[int, float]], marks: Sequence[tuple[int, float]],
-                           initial_equity: float) -> tuple[float, int]:
-    """Max marked+realized cash drawdown and recovery duration in event timestamps."""
-    if not math.isfinite(initial_equity) or initial_equity <= 0:
-        raise C258Error("invalid initial equity")
-    events: dict[int, float] = {}
-    for timestamp, delta in cashflows:
-        if not math.isfinite(delta):
-            raise IncompleteEpisode("non-finite cashflow")
-        events[timestamp] = events.get(timestamp, 0.0) + delta
-    mark_map: dict[int, float] = {}
-    for timestamp, unrealized in marks:
-        if not math.isfinite(unrealized) or timestamp in mark_map:
-            raise IncompleteEpisode("invalid/duplicate mark")
-        mark_map[timestamp] = unrealized
-    cash, high, max_dd, high_ts, recovery = initial_equity, initial_equity, 0.0, 0, 0
-    for timestamp in sorted(set(events) | set(mark_map)):
-        cash += events.get(timestamp, 0.0)
-        equity = cash + mark_map.get(timestamp, 0.0)
+DRAW_PHASE_ORDER = {
+    "FUNDING_BEFORE": 0, "MARK_BEFORE_EXIT": 1, "EXIT": 2,
+    "CONSERVATIVE_ADJUSTMENT": 3, "MARK_AFTER_EXIT": 4, "ENTRY": 5,
+    "FUNDING_AT_OPEN": 6, "MARK_END": 7,
+}
+
+
+@dataclass(frozen=True)
+class DrawdownEvent:
+    timestamp_ms: int
+    phase: str
+    sequence: int
+    cashflow_R: float
+    marked_open_R: float
+
+
+def chronological_drawdown(events: Sequence[DrawdownEvent], initial_equity_R: float = 0.0) -> tuple[float, int]:
+    """Marked+realized R drawdown with exact timestamp/phase/sequence ordering."""
+    if not math.isfinite(initial_equity_R):
+        raise C258Error("invalid initial equity R")
+    if not events:
+        raise IncompleteEpisode("drawdown series is empty")
+    keys: set[tuple[int, int, int]] = set()
+    for event in events:
+        if event.phase not in DRAW_PHASE_ORDER:
+            raise IncompleteEpisode("unknown drawdown phase")
+        if not all(math.isfinite(value) for value in (event.cashflow_R, event.marked_open_R)):
+            raise IncompleteEpisode("missing/non-finite drawdown cashflow or mark")
+        key = (event.timestamp_ms, DRAW_PHASE_ORDER[event.phase], event.sequence)
+        if key in keys:
+            raise IncompleteEpisode("duplicate drawdown event identity")
+        keys.add(key)
+    ordered = sorted(events, key=lambda event: (
+        event.timestamp_ms, DRAW_PHASE_ORDER[event.phase], event.sequence))
+    cash = high = initial_equity_R
+    max_dd, high_ts, recovery = 0.0, ordered[0].timestamp_ms, 0
+    for event in ordered:
+        cash += event.cashflow_R
+        equity = cash + event.marked_open_R
         if equity > high:
-            high, high_ts = equity, timestamp
+            high, high_ts = equity, event.timestamp_ms
         else:
             dd = high - equity
             if dd > max_dd:
-                max_dd, recovery = dd, timestamp - high_ts
+                max_dd, recovery = dd, event.timestamp_ms - high_ts
     return max_dd, recovery
 
 
@@ -727,7 +835,7 @@ def profit_factor(values: Sequence[float]) -> float:
     wins = math.fsum(v for v in values if v > 0)
     losses = -math.fsum(v for v in values if v < 0)
     if losses == 0:
-        return math.inf if wins > 0 else math.nan
+        return math.nan
     return wins / losses
 
 
@@ -860,8 +968,8 @@ class FoldEvidence:
     stress: ReplayResult
     weekly_closed_counts_including_zero: tuple[int, ...]
     monthly_net_R_including_zero: tuple[float, ...]
-    max_drawdown_R: float
-    stress_max_drawdown_R: float
+    base_drawdown_events: tuple[DrawdownEvent, ...]
+    stress_drawdown_events: tuple[DrawdownEvent, ...]
     scheduled_decisions: int
     eligible_decisions: int
     admitted_attempts: int
@@ -906,9 +1014,6 @@ def validate_fold_evidence(fold: FoldEvidence) -> None:
         raise C258Error("weekly counts cannot be negative")
     if any(not math.isfinite(value) for value in fold.monthly_net_R_including_zero):
         raise C258Error("monthly R must be finite")
-    numeric = (fold.max_drawdown_R, fold.stress_max_drawdown_R)
-    if any(not math.isfinite(value) or value < 0 for value in numeric):
-        raise C258Error("drawdowns must be finite and nonnegative")
     counts = (fold.scheduled_decisions, fold.eligible_decisions, fold.admitted_attempts,
               fold.zero_trade_decisions, fold.indexed_skips)
     if any(not isinstance(value, int) or value < 0 for value in counts):
@@ -917,8 +1022,12 @@ def validate_fold_evidence(fold: FoldEvidence) -> None:
         raise C258Error("admitted/base attempt count mismatch")
     if fold.base.incomplete or fold.stress.incomplete:
         raise IncompleteEpisode(f"{fold.name} is incomplete")
-    base_ids = [(row.attempt_id, row.entry_ms, row.long_symbol, row.short_symbol) for row in fold.base.attempts]
-    stress_ids = [(row.attempt_id, row.entry_ms, row.long_symbol, row.short_symbol) for row in fold.stress.attempts]
+    if any(not row.lifecycle_identity for row in (*fold.base.attempts, *fold.stress.attempts)):
+        raise IncompleteEpisode("every admitted row requires a complete fill lifecycle identity")
+    base_ids = [(row.attempt_id, row.entry_ms, row.close_ms, row.long_symbol, row.short_symbol,
+                 row.regime, row.lifecycle_identity) for row in fold.base.attempts]
+    stress_ids = [(row.attempt_id, row.entry_ms, row.close_ms, row.long_symbol, row.short_symbol,
+                   row.regime, row.lifecycle_identity) for row in fold.stress.attempts]
     if base_ids != stress_ids:
         raise C258Error("stress replay changed selection/order")
 
@@ -932,11 +1041,21 @@ def _median(values: Sequence[int]) -> float:
 def _max_closed_r_drawdown(attempts: Sequence[ClosedAttempt]) -> float:
     equity = peak = 0.0
     maximum = 0.0
-    for row in sorted(attempts, key=lambda item: (item.entry_ms, item.long_symbol, item.short_symbol)):
+    for row in sorted(attempts, key=lambda item: (
+            item.close_ms, item.entry_ms, item.long_symbol, item.short_symbol)):
         equity += row.verdict_R
         peak = max(peak, equity)
         maximum = max(maximum, peak - equity)
     return maximum
+
+
+def fold_drawdown(fold: FoldEvidence, *, stress: bool = False) -> dict[str, float | int]:
+    attempts = fold.stress.attempts if stress else fold.base.attempts
+    events = fold.stress_drawdown_events if stress else fold.base_drawdown_events
+    marked, recovery = chronological_drawdown(events)
+    closed = _max_closed_r_drawdown(attempts)
+    return {"marked_cashflow_R": marked, "closed_R": closed,
+            "worse_of_R": max(marked, closed), "recovery_ms": recovery}
 
 
 def drawdown_tier(*, net_R: float, max_drawdown_R: float,
@@ -973,7 +1092,7 @@ def development_gate(fold: FoldEvidence) -> dict[str, object]:
         "symbols_gte_12": int(base["symbols"]) >= 12,
         "median_weekly_closed_gte_25": _median(fold.weekly_closed_counts_including_zero) >= 25,
         "stress_mean_R_positive": float(stress["mean_R"]) > 0,
-        "closed_R_drawdown_lte_60": _max_closed_r_drawdown(fold.base.attempts) <= 60,
+        "closed_R_drawdown_lte_60": float(fold_drawdown(fold)["worse_of_R"]) <= 60,
         "complete": fold.complete_required_reports and fold.causal_exchange_impact_atomicity_pass,
     }
     reasons.extend(name for name, passed in checks.items() if not passed)
@@ -1004,8 +1123,8 @@ def forward_gate(folds: Sequence[FoldEvidence], *, bootstrap_resamples: int = 10
         attempts, key=lambda item: (item.entry_ms, item.long_symbol, item.short_symbol))],
         resamples=bootstrap_resamples)
     net_R = float(base["net_R"]); stress_net_R = float(stress["net_R"])
-    max_dd = max(fold.max_drawdown_R for fold in folds)
-    stress_max_dd = max(fold.stress_max_drawdown_R for fold in folds)
+    max_dd = max(float(fold_drawdown(fold)["worse_of_R"]) for fold in folds)
+    stress_max_dd = max(float(fold_drawdown(fold, stress=True)["worse_of_R"]) for fold in folds)
     tier = drawdown_tier(net_R=net_R, max_drawdown_R=max_dd,
                          stress_net_R=stress_net_R, stress_max_drawdown_R=stress_max_dd)
     checks = {

@@ -9,7 +9,8 @@ import gzip
 import hashlib
 import json
 import math
-from dataclasses import replace
+import subprocess
+from dataclasses import fields, replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -36,7 +37,11 @@ def leg(symbol: str, side: int, entry: str, stop: str, *, step: str = "0.001",
 
 def attempt(identifier: str, r_value: float, *, regime: str = "BTC_ABOVE_OR_ON_EMA200") -> C.ClosedAttempt:
     return C.ClosedAttempt(identifier, 1, 2, f"L{identifier}", f"S{identifier}", regime,
-                           r_value, 0, 0, 0, r_value, r_value, 1, r_value, False, 0)
+                           r_value, 0, 0, 0, r_value, r_value, 1, r_value, False, 0,
+                           lifecycle_identity=((1, f"L{identifier}", 1, "1.0", "100.0", "entry"),
+                                               (1, f"S{identifier}", -1, "1.0", "100.0", "entry"),
+                                               (2, f"L{identifier}", -1, "1.0", "101.0", "exit"),
+                                               (2, f"S{identifier}", 1, "1.0", "99.0", "exit")))
 
 
 def test_contract_is_byte_bound_default_off_and_real_loader_is_locked():
@@ -55,36 +60,73 @@ def test_authority_gate_refuses_before_loader_and_checks_every_exact_pin(tmp_pat
         nonlocal called
         called = True
 
-    pins = C.AuthorityPins("a" * 40, *[
+    pins = C.AuthorityPins("e" * 40, "refs/heads/codex/c258-evaluator-prep", *[
         C.ArtifactPin(path, "0" * 64, "1" * 64) for path in C.EXPECTED_AUTHORITY_PATHS.values()
     ])
-    with pytest.raises(C.IncompleteAuthority, match="missing authority-v6 output"):
-        C.run_with_authority(pins, loader, root=tmp_path)
+    with pytest.raises(C.IncompleteAuthority, match="Git authority resolution failed"):
+        C.run_with_authority(pins, loader)
     assert called is False
 
-    docs = {
-        "manifest_v6": {"format": "zb-binance-um-archive-manifest/6", "content_digest": "a" * 64,
-                        "cutoff_exclusive_utc": "2026-11-05T00:00:00Z"},
-        "pit_v9": {"format": "zb-pit-universe/2", "content_digest": "b" * 64},
-        "filter_v4": {"authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", "version": 4,
-                      "content_digest": "c" * 64},
-        "coverage_v4": {"content_digest": "d" * 64, "guaranteed_period_gaps": 0,
-                        "result": "ZERO_GUARANTEED_PERIOD_GAPS"},
-    }
-    generated = []
-    for name, path_string in C.EXPECTED_AUTHORITY_PATHS.items():
+    def materialize(name, body):
+        digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        doc = {**body, "content_digest": digest}
+        path_string = C.EXPECTED_AUTHORITY_PATHS[name]
         path = tmp_path / path_string
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(docs[name], sort_keys=True, separators=(",", ":")).encode()
+        payload = json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()
         raw = gzip.compress(payload, mtime=0) if path.suffix == ".gz" else payload
         path.write_bytes(raw)
-        generated.append(C.ArtifactPin(path_string, hashlib.sha256(raw).hexdigest(), docs[name]["content_digest"]))
-    good = C.AuthorityPins("e" * 40, *generated)
-    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path) == set(docs)
+        return C.ArtifactPin(path_string, hashlib.sha256(raw).hexdigest(), digest)
+
+    manifest = materialize("manifest_v6", {"format": "zb-binance-um-archive-manifest/6",
+                           "cutoff_exclusive_utc": "2026-11-05T00:00:00Z"})
+    pit = materialize("pit_v9", {"format": "zb-pit-universe/2", "bindings": {
+        "manifest_v6_byte_sha256": manifest.byte_sha256,
+        "manifest_v6_content_digest": manifest.content_digest}})
+    filters = materialize("filter_v4", {
+        "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", "version": 4,
+        "bindings": {"pit_v9_byte_sha256": pit.byte_sha256, "pit_v9_content_digest": pit.content_digest}})
+    coverage = materialize("coverage_v4", {
+        "guaranteed_period_gaps": 0, "result": "ZERO_GUARANTEED_PERIOD_GAPS",
+        "bindings": {key: value for name, pin in (("manifest_v6", manifest), ("pit_v9", pit),
+                                                    ("filter_v4", filters))
+                     for key, value in ((f"{name}_byte_sha256", pin.byte_sha256),
+                                        (f"{name}_content_digest", pin.content_digest))}})
+    for source in (C.CONTRACT_PATH, C.PLAN_PATH):
+        destination = tmp_path / source.relative_to(C.ROOT)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "synthetic@example.invalid"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Synthetic Test"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "synthetic authority"], cwd=tmp_path, check=True)
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
+    subprocess.run(["git", "update-ref", "refs/heads/protected-test", head], cwd=tmp_path, check=True)
+    good = C.AuthorityPins(head, "refs/heads/protected-test", manifest, pit, filters, coverage)
+    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path,
+                                required_ancestor=head) == set(C.EXPECTED_AUTHORITY_PATHS)
+    # Working-tree substitution is irrelevant: validation rereads the exact protected tree blob.
+    (tmp_path / coverage.path).write_text("{}", encoding="utf-8")
+    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path,
+                                required_ancestor=head) == set(C.EXPECTED_AUTHORITY_PATHS)
+    subprocess.run(["git", "commit", "--allow-empty", "-qm", "protected ref drift"], cwd=tmp_path, check=True)
+    drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
+    subprocess.run(["git", "update-ref", "refs/heads/protected-test", drift], cwd=tmp_path, check=True)
+    with pytest.raises(C.IncompleteAuthority, match="exact equality"):
+        C.run_with_authority(good, loader, root=tmp_path, required_ancestor=head)
+    assert called is False
+    subprocess.run(["git", "update-ref", "refs/heads/protected-test", head], cwd=tmp_path, check=True)
+    with pytest.raises(C.IncompleteAuthority, match="Git authority resolution failed"):
+        C.run_with_authority(good, loader, root=tmp_path, required_ancestor="f" * 40)
+    assert called is False
+    with pytest.raises(C.IncompleteAuthority, match="cross-binding"):
+        C._require_binding({"bindings": {"manifest_v6_content_digest": "wrong"}},
+                           "manifest_v6_content_digest", manifest.content_digest)
     bad = replace(good, coverage_v4=replace(good.coverage_v4, content_digest="f" * 64))
     called = False
     with pytest.raises(C.IncompleteAuthority, match="content digest mismatch"):
-        C.run_with_authority(bad, loader, root=tmp_path)
+        C.run_with_authority(bad, loader, root=tmp_path, required_ancestor=head)
     assert called is False
 
 
@@ -156,6 +198,15 @@ def test_atr_wilder_is_contiguous_and_ema_resets_on_gap_with_equality_above():
     assert state.ema is None and len(state.closes) == 1
 
 
+def test_next_open_requires_exact_boundary_and_continuity_never_bridges():
+    rows = [C.Bar(i * C.HOUR_MS, 100, 101, 99, 100, 1_000_000) for i in range(4)]
+    assert C.next_open(rows, C.HOUR_MS).open_ms == 2 * C.HOUR_MS
+    with pytest.raises(C.IncompleteAuthority, match="exact next"):
+        C.next_open([rows[0], rows[1], rows[3]], C.HOUR_MS)
+    with pytest.raises(C.IncompleteAuthority, match="canonical"):
+        C.next_open(rows, C.HOUR_MS + 1)
+
+
 def test_decimal_sizing_is_one_percent_equal_notional_floor_only_and_neutral():
     sized = C.size_pair(leg("AAA", 1, "100", "98"), leg("BBB", -1, "50", "51"), book_equity=2000)
     assert sized is not None
@@ -201,7 +252,9 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
     closed = C.close_attempt(attempt_id="a", entry_ms=1, close_ms=2, long_symbol="AAA",
                              short_symbol="BBB", regime="BTC_ABOVE_OR_ON_EMA200",
                              fills=[entry, cleanup], funding_cash=funding,
-                             initial_risk_cash=5, atomic_one_leg=True)
+                             initial_risk_cash=5,
+                             accepted_quantities={"AAA": (1, Decimal("1"))},
+                             atomic_one_leg=True)
     assert closed.actual_net_cash > 0
     assert closed.verdict_net_cash == pytest.approx(-(closed.fee_drag + closed.slippage_drag))
     assert closed.verdict_net_cash <= 0 and closed.conservative_adjustment_cash <= 0
@@ -218,6 +271,42 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
             attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
             accepted_leg=leg("AAA", 1, "100", "98"), quantity=Decimal("1"),
             fills=[entry, same_open], funding_cash=0, regime="BTC_ABOVE_OR_ON_EMA200")
+    partial = replace(cleanup, quantity=0.1)
+    with pytest.raises(C.IncompleteEpisode, match="conserve"):
+        C.account_atomic_one_leg(
+            attempt_id="partial", expected_long_symbol="AAA", expected_short_symbol="BBB",
+            accepted_leg=leg("AAA", 1, "100", "98"), quantity=Decimal("1"),
+            fills=[entry, partial], funding_cash=0, regime="BTC_ABOVE_OR_ON_EMA200")
+
+
+def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
+    fills = [
+        C.make_fill(timestamp_ms=10, symbol="LONG", side=1, quantity=1, reference_price=100,
+                    phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=10, symbol="SHORT", side=-1, quantity=2, reference_price=50,
+                    phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=20, symbol="LONG", side=-1, quantity=1, reference_price=101,
+                    phase="exit", movement_from=100),
+        C.make_fill(timestamp_ms=20, symbol="SHORT", side=1, quantity=2, reference_price=49,
+                    phase="exit", movement_from=50),
+    ]
+    closed = C.close_attempt(
+        attempt_id="normal", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
+        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, funding_cash=0, initial_risk_cash=10,
+        accepted_quantities={"LONG": (1, Decimal("1")), "SHORT": (-1, Decimal("2"))})
+    assert len(closed.lifecycle_identity) == 4
+    with pytest.raises(C.IncompleteEpisode, match="conserve"):
+        C.close_attempt(
+            attempt_id="partial", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
+            regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [replace(fills[2], quantity=0.1), fills[3]],
+            funding_cash=0, initial_risk_cash=10,
+            accepted_quantities={"LONG": (1, Decimal("1")), "SHORT": (-1, Decimal("2"))})
+    with pytest.raises(C.IncompleteEpisode, match="side"):
+        C.close_attempt(
+            attempt_id="wrong-side", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
+            regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [replace(fills[2], side=1), fills[3]],
+            funding_cash=0, initial_risk_cash=10,
+            accepted_quantities={"LONG": (1, Decimal("1")), "SHORT": (-1, Decimal("2"))})
 
 
 def test_open_event_order_funding_boundaries_required_exit_impact_and_book_caps():
@@ -244,10 +333,19 @@ def test_open_event_order_funding_boundaries_required_exit_impact_and_book_caps(
 
 
 def test_chronological_marked_plus_realized_drawdown_includes_conservative_adjustment():
-    # The mark creates a larger intra-trade drawdown than the eventual realized cashflow.
-    dd, recovery = C.chronological_drawdown([(3, 4), (4, -10)], [(1, 0), (2, -20)], 100)
+    events = [
+        C.DrawdownEvent(1, "MARK_END", 0, 0, 0),
+        C.DrawdownEvent(2, "MARK_BEFORE_EXIT", 0, 0, -20),
+        C.DrawdownEvent(2, "EXIT", 0, 4, -4),
+        C.DrawdownEvent(2, "CONSERVATIVE_ADJUSTMENT", 0, -10, 0),
+    ]
+    dd, recovery = C.chronological_drawdown(events)
     assert dd == 20
-    assert recovery == 2
+    assert recovery == 1
+    with pytest.raises(C.IncompleteEpisode, match="missing/non-finite"):
+        C.chronological_drawdown([replace(events[0], marked_open_R=math.nan)])
+    # Same timestamp phases remain distinct; collapsing EXIT+adjustment would miss the +4 interim state.
+    assert C.DRAW_PHASE_ORDER["EXIT"] < C.DRAW_PHASE_ORDER["CONSERVATIVE_ADJUSTMENT"]
 
 
 def test_capital_diagnostics_are_isolated_and_cannot_veto_primary():
@@ -300,10 +398,11 @@ def test_fold_metrics_include_atomic_failures_regimes_and_fail_closed_on_zero_de
     assert math.isinf(zero["max_symbol_concentration"])
     with pytest.raises(C.C258Error, match="undefined"):
         C.fold_metrics([])
+    assert math.isnan(C.profit_factor([0.2, 0.1]))
 
 
 def test_output_identity_binds_every_pin_source_result_and_default_off():
-    pins = C.AuthorityPins("a" * 40, *[
+    pins = C.AuthorityPins("a" * 40, "refs/heads/protected", *[
         C.ArtifactPin(path, str(i) * 64, chr(97 + i) * 64)
         for i, path in enumerate(C.EXPECTED_AUTHORITY_PATHS.values())
     ])
@@ -320,7 +419,9 @@ def test_development_veto_never_opens_forward_and_stress_cannot_change_selection
                       for i in range(10))
     fold = C.FoldEvidence("development", C.ReplayResult(2000, base_rows),
                           C.ReplayResult(2000, base_rows), (10, 10), (0.1, 0.1),
-                          1, 1, 100, 100, 10, 10, 0)
+                          (C.DrawdownEvent(1, "MARK_END", 0, 0, 0),),
+                          (C.DrawdownEvent(1, "MARK_END", 0, 0, 0),),
+                          100, 100, 10, 10, 0)
     result = C.evaluate_stage_a(fold, ())
     assert result["verdict"] == "REJECT_DEVELOPMENT"
     assert result["forward_opened"] is False
@@ -329,6 +430,31 @@ def test_development_veto_never_opens_forward_and_stress_cannot_change_selection
     hostile = replace(fold, stress=C.ReplayResult(2000, (changed,) + base_rows[1:]))
     with pytest.raises(C.C258Error, match="stress replay changed selection"):
         C.validate_fold_evidence(hostile)
+    close_changed = replace(base_rows[0], close_ms=3)
+    hostile_close = replace(fold, stress=C.ReplayResult(2000, (close_changed,) + base_rows[1:]))
+    with pytest.raises(C.C258Error, match="stress replay changed selection"):
+        C.validate_fold_evidence(hostile_close)
+    lifecycle_changed = replace(base_rows[0], lifecycle_identity=base_rows[0].lifecycle_identity[:-1] +
+                                ((3, "L0", -1, "1.0", "102.0", "exit"),))
+    hostile_lifecycle = replace(fold, stress=C.ReplayResult(2000, (lifecycle_changed,) + base_rows[1:]))
+    with pytest.raises(C.C258Error, match="stress replay changed selection"):
+        C.validate_fold_evidence(hostile_lifecycle)
+
+
+def test_gate_derives_worse_of_marked_and_close_time_drawdown_never_accepts_supplied_value():
+    assert "max_drawdown_R" not in {field.name for field in fields(C.FoldEvidence)}
+    rows = tuple(replace(attempt(str(i), 0.1), gross_R=0.2,
+                         long_contribution_R=0.05, short_contribution_R=0.05) for i in range(300))
+    marked = (C.DrawdownEvent(1, "MARK_END", 0, 0, 0),
+              C.DrawdownEvent(2, "MARK_END", 0, 0, -61))
+    fold = C.FoldEvidence(
+        "development", C.ReplayResult(2000, rows), C.ReplayResult(2000, rows),
+        (25, 25), (1, 1), marked, marked, 300, 300, 300, 0, 0)
+    derived = C.fold_drawdown(fold)
+    assert derived["closed_R"] == 0
+    assert derived["marked_cashflow_R"] == 61
+    assert derived["worse_of_R"] == 61
+    assert C.development_gate(fold)["checks"]["closed_R_drawdown_lte_60"] is False
 
 
 def test_drawdown_tiers_and_append_only_trial_ledger_are_frozen():
