@@ -53,6 +53,13 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
     repo = tmp_path / "authority"
     subprocess.run(["git", "clone", "--shared", "--no-checkout", str(ROOT), str(repo)],
                    capture_output=True, check=True)
+    # GitHub Actions checks out a synthetic merge commit shallowly.  The workflow
+    # fetches BASE_COMMIT into the source object store, but a shared clone does not
+    # necessarily advertise that detached object.  Fetch the exact local object
+    # explicitly; this is still offline and keeps the hostile authority repository
+    # anchored to the frozen protected base.
+    subprocess.run(["git", "-C", str(repo), "fetch", "--no-tags", "--depth=1",
+                    str(ROOT), BASE_COMMIT], capture_output=True, check=True)
     _run(repo, "checkout", "--detach", BASE_COMMIT)
     _run(repo, "config", "user.name", "C257 Test")
     _run(repo, "config", "user.email", "c257@example.invalid")
