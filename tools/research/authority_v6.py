@@ -369,6 +369,10 @@ def _vision_resume_index(ledger: Path) -> tuple[dict, dict]:
             checksums[path, attempt] = row
         elif row["decision"] == "PRESENT_CHECKSUM_VERIFIED":
             admitted[path] = (checksums.get((path, attempt)), row)
+    # A later failed/404 attempt must be retried, not hidden by an older
+    # positive. Its intact archive may still qualify after a fresh checksum.
+    admitted = {path: evidence for path, evidence in admitted.items()
+                if evidence[1]["attempt"] == attempts[path]}
     return attempts, admitted
 
 

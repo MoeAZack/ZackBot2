@@ -138,6 +138,23 @@ def test_cache_bytes_count_against_unchanged_total_cap(vision_request, tmp_path)
     assert (tmp_path/'ledger').read_bytes() == before
 
 
+def test_later_404_is_not_hidden_by_older_admitted_positive(vision_request, tmp_path):
+    seed_cache(vision_request, tmp_path)
+    ledger = tmp_path/'ledger'
+    V._append_ledger(ledger, dict(kind='VISION', path=vision_request.path, attempt=1,
+        url=vision_request.url, checksum_url=vision_request.checksum_url, decision='OFFICIAL_404'))
+    before = ledger.read_bytes()
+    calls = []
+    def absent(url):
+        calls.append(url)
+        return 404, b'', url
+    result = acquire(vision_request, tmp_path, absent)
+    assert result['official_404'] == [vision_request.path] and not result['verified']
+    assert calls == [vision_request.checksum_url]
+    assert ledger.read_bytes().startswith(before)
+    assert V._validate_ledger_raw(ledger.read_bytes())[1][-1]['attempt'] == 2
+
+
 def test_invalid_ledger_is_refused_before_cache_or_network(vision_request, tmp_path):
     seed_cache(vision_request, tmp_path)
     (tmp_path/'ledger').write_bytes(b'{"decision":"bad"}')
