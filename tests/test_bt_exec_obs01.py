@@ -1137,10 +1137,16 @@ APPEND_ONLY_BASE = '0944547'
 APPEND_ONLY_DIRS = ('research_evidence/prereg/', 'research_evidence/ledger/', 'research_evidence/runs/',
                     'research_evidence/authorizations/')
 APPEND_ONLY_REGISTRY = 'research_evidence/ledger/REGISTRY.jsonl'
-# Codex 6489143562: FIB-PULLBACK-02's two immutable source manifests, admitted by exact path only (manifests/ itself
-# stays closed to any other new file).
+# Immutable FIB-PULLBACK-02 and accepted pre-cutoff authority manifests/PIT views, admitted by exact path only
+# (their parent directories stay closed to every other new file).
 APPEND_ONLY_EXACT = ('research_evidence/manifests/klines_1h_core20_fib02.json',
-                     'research_evidence/manifests/klines_4h_btc_fib02.json')
+                     'research_evidence/manifests/klines_4h_btc_fib02.json',
+                     'research_evidence/manifests/binance-um-archive-precutoff-daily-v2.json.gz',
+                     'research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v4.json.gz',
+                     'research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz',
+                     'research_evidence/universe/pit-top40-qv30d-precutoff-daily-v5.json',
+                     'research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v7.json',
+                     'research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json')
 
 
 def _baseline_bytes(rel: str) -> bytes:

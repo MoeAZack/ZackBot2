@@ -8,6 +8,7 @@ strategy, runtime, UI, or order-submission behavior.
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import enum
 import hashlib
 from dataclasses import dataclass
@@ -58,6 +59,11 @@ class RefusalCode(enum.StrEnum):
     NO_CAPACITY = 'no_capacity'
     BELOW_MIN_QUANTITY = 'below_min_quantity'
     BELOW_MIN_NOTIONAL = 'below_min_notional'
+    DAILY_LOSS_HALT = 'daily_loss_halt'
+    SYMBOL_SIDE_OCCUPIED = 'symbol_side_occupied'
+    DRAWDOWN_KILL = 'drawdown_kill'
+    STRATEGY_COOLDOWN = 'strategy_cooldown'
+    CANDLE_CLUSTER_LIMIT = 'candle_cluster_limit'
 
 
 class Ceiling(enum.StrEnum):
@@ -79,6 +85,9 @@ class Ceiling(enum.StrEnum):
     VENUE_STEP = 'venue_step'
     VENUE_MIN_QUANTITY = 'venue_min_quantity'
     VENUE_MIN_NOTIONAL = 'venue_min_notional'
+    DAILY_LOSS_BUDGET = 'daily_loss_budget'
+    CORRELATION_SIDE_RISK = 'correlation_side_risk'
+    NET_SIDE_RISK = 'net_side_risk'
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -120,12 +129,53 @@ class OpeningReservation:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ClusterEntry:
+    """One ENTRY already opened (or reserved) in the current candle window."""
+    strategy_id: str
+    symbol: str
+    side: PositionSide
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LossState:
+    """RISK-LOSS-01 loss state, bound to the portfolio generation.
+
+    The caller owns the clock and every latch; the gateway only reads them:
+
+    * Daily: a new ``trading_day`` (and portfolio generation) starts at
+      Africa/Cairo midnight with ``day_start_equity`` recorded then.  The
+      caller persists ``halt_latched`` once :func:`daily_loss_breached` is
+      true, so a later recovery cannot reopen the day.  The gateway checks
+      only the format of ``trading_day``.  PnL values are net of fees and
+      funding; ``unrealized_pnl`` is mark-to-market of open positions.
+    * Drawdown: ``peak_equity`` is the high-water mark.  The caller persists
+      ``drawdown_kill_latched`` once :func:`drawdown_kill_breached` is true and
+      clears it only on an explicit owner resume.
+    * Cooldown: ``paused_strategies`` comes from :func:`strategy_paused`.
+    * Cluster: ``cluster_entries`` lists the ENTRY requests opened or reserved
+      in the current candle window, across all strategies.  The caller bumps
+      the portfolio generation at each window roll.  Tuple order is part of
+      the decision digest, so callers build tuples in a canonical order.
+    """
+    trading_day: str
+    day_start_equity: Decimal
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
+    halt_latched: bool
+    peak_equity: Decimal
+    drawdown_kill_latched: bool
+    paused_strategies: tuple[str, ...]
+    cluster_entries: tuple[ClusterEntry, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class PortfolioRiskSnapshot:
     account_id: str
     generation: int
     fresh: bool
     exposures: tuple[Exposure, ...]
     reservations: tuple[OpeningReservation, ...]
+    loss: LossState
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -149,6 +199,42 @@ class CorrelationCap:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class LossLimits:
+    """RISK-LOSS-01 limits.  1R = ``risk_unit_fraction`` x day-start equity.
+
+    * The daily breaker trips at a loss of ``min(daily_loss_fraction x
+      day_start_equity, daily_loss_r x 1R)``.
+    * Open plus reserved risk-to-stop in one correlation bucket and one
+      direction is capped at ``max_bucket_side_risk_r`` x 1R.
+    * ``one_position_per_symbol_side`` refuses a second strategy/book (or a
+      fresh ENTRY) on a symbol and side that is already held or reserved.
+    * The drawdown kill trips when live equity is ``max_drawdown_fraction``
+      or more below ``peak_equity``; only an owner resume clears its latch.
+    * Net risk-to-stop in the request's direction is capped at
+      ``max_net_side_risk_r`` x 1R: open plus reserved risk on that side,
+      minus only filled opposite positions in the request's correlation
+      bucket.
+    * Per candle window, at most ``max_entries_per_strategy_per_candle``
+      ENTRYs per strategy and ``max_entries_per_side_per_candle`` ENTRYs per
+      direction across all strategies.
+    * :func:`strategy_paused` pauses a strategy for ``cooldown_pause_ms``
+      after ``cooldown_stop_outs`` stop-outs within ``cooldown_window_ms``.
+    """
+    daily_loss_fraction: Decimal
+    daily_loss_r: Decimal
+    risk_unit_fraction: Decimal
+    max_bucket_side_risk_r: Decimal
+    one_position_per_symbol_side: bool
+    max_drawdown_fraction: Decimal
+    max_net_side_risk_r: Decimal
+    max_entries_per_strategy_per_candle: int
+    max_entries_per_side_per_candle: int
+    cooldown_stop_outs: int
+    cooldown_window_ms: int
+    cooldown_pause_ms: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RiskPolicySnapshot:
     policy_id: str
     account_id: str
@@ -167,6 +253,7 @@ class RiskPolicySnapshot:
     allocations: tuple[Allocation, ...]
     correlation_map: tuple[CorrelationAssignment, ...]
     correlation_caps: tuple[CorrelationCap, ...]
+    loss_limits: LossLimits
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -435,6 +522,125 @@ def _valid_reservation(row: object) -> bool:
             and _is_decimal(row.margin, positive=True))
 
 
+def _valid_trading_day(value: object) -> bool:
+    if type(value) is not str or len(value) != 10 or not value.isascii():
+        return False
+    try:
+        return datetime.date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _is_count(value: object) -> bool:
+    return type(value) is int and 0 < value <= 2 ** 31 - 1
+
+
+def _is_ms(value: object) -> bool:
+    return type(value) is int and 0 < value <= 2 ** 63 - 1
+
+
+def _valid_cluster_entry(row: object) -> bool:
+    return (type(row) is ClusterEntry and _is_id(row.strategy_id) and _is_symbol(row.symbol)
+            and type(row.side) is PositionSide)
+
+
+def _valid_daily(row: object) -> bool:
+    return (type(row) is LossState and _valid_trading_day(row.trading_day)
+            and _is_decimal(row.day_start_equity, positive=True)
+            and _is_decimal(row.realized_pnl, signed=True)
+            and _is_decimal(row.unrealized_pnl, signed=True)
+            and type(row.halt_latched) is bool
+            and _is_decimal(row.peak_equity, positive=True)
+            and type(row.drawdown_kill_latched) is bool
+            and type(row.paused_strategies) is tuple
+            and all(_is_id(x) for x in row.paused_strategies)
+            and len(set(row.paused_strategies)) == len(row.paused_strategies)
+            and type(row.cluster_entries) is tuple
+            and all(_valid_cluster_entry(x) for x in row.cluster_entries))
+
+
+def _valid_loss_limits(row: object) -> bool:
+    return (type(row) is LossLimits and _fraction(row.daily_loss_fraction)
+            and _is_decimal(row.daily_loss_r, positive=True)
+            and _fraction(row.risk_unit_fraction)
+            and _is_decimal(row.max_bucket_side_risk_r, positive=True)
+            and type(row.one_position_per_symbol_side) is bool
+            and _fraction(row.max_drawdown_fraction)
+            and _is_decimal(row.max_net_side_risk_r, positive=True)
+            and _is_count(row.max_entries_per_strategy_per_candle)
+            and _is_count(row.max_entries_per_side_per_candle)
+            and _is_count(row.cooldown_stop_outs)
+            and _is_ms(row.cooldown_window_ms) and _is_ms(row.cooldown_pause_ms))
+
+
+def drawdown_kill_breached(limits: object, loss: object, equity: object) -> bool:
+    """True when live ``equity`` is at or past the peak-drawdown kill, or the
+    kill is latched.  Fail-closed on malformed input.  The runtime persists
+    ``drawdown_kill_latched`` and clears it only on an owner resume."""
+    if (not _valid_loss_limits(limits) or not _valid_daily(loss)
+            or not _is_decimal(equity, positive=True)):
+        return True
+    with localcontext() as context:
+        context.prec = 64
+        context.rounding = ROUND_HALF_EVEN
+        try:
+            # A high-water mark below the equity the day started at is stale.
+            peak = max(loss.peak_equity, loss.day_start_equity)
+            return loss.drawdown_kill_latched or peak - equity >= peak * limits.max_drawdown_fraction
+        except DecimalException:
+            return True
+
+
+def strategy_paused(limits: object, stop_out_ms: object, now_ms: object) -> bool:
+    """Loss-streak cooldown for one strategy.
+
+    ``stop_out_ms`` lists the strategy's stop-out times (epoch ms).  The
+    strategy is paused while ``now_ms`` is within ``cooldown_pause_ms`` of the
+    last stop of any ``cooldown_stop_outs`` stops that fall within
+    ``cooldown_window_ms``.  Fail-closed: malformed input or a stop-out
+    timestamped after ``now_ms`` counts as paused.
+    """
+    if (not _valid_loss_limits(limits) or type(stop_out_ms) is not tuple
+            or not all(_is_ms(x) for x in stop_out_ms) or not _is_ms(now_ms)
+            or any(x > now_ms for x in stop_out_ms)):
+        return True
+    times = sorted(stop_out_ms)
+    n = limits.cooldown_stop_outs
+    for index in range(len(times) - n + 1):
+        last = times[index + n - 1]
+        if last - times[index] <= limits.cooldown_window_ms and now_ms - last < limits.cooldown_pause_ms:
+            return True
+    return False
+
+
+def _daily_loss_limit(limits: LossLimits, daily: LossState) -> Decimal:
+    risk_unit = daily.day_start_equity * limits.risk_unit_fraction
+    return min(daily.day_start_equity * limits.daily_loss_fraction,
+               limits.daily_loss_r * risk_unit)
+
+
+def _daily_loss(daily: LossState) -> Decimal:
+    # Profits never widen the day's loss budget.
+    return max(Decimal('0'), -(daily.realized_pnl + daily.unrealized_pnl))
+
+
+def daily_loss_breached(limits: object, daily: object) -> bool:
+    """True when new risk must stay halted for the rest of the trading day.
+
+    Fail-closed: malformed limits or state count as breached.  The runtime
+    persists ``halt_latched`` once this is true.
+    """
+    if not _valid_loss_limits(limits) or not _valid_daily(daily):
+        return True
+    with localcontext() as context:
+        context.prec = 64
+        context.rounding = ROUND_HALF_EVEN
+        try:
+            return daily.halt_latched or _daily_loss(daily) >= _daily_loss_limit(limits, daily)
+        except DecimalException:
+            return True
+
+
 def _shape_reasons(evaluation: object) -> tuple[RefusalCode, ...]:
     if type(evaluation) is not RiskEvaluation:
         return (RefusalCode.INPUT_INVALID,)
@@ -476,6 +682,7 @@ def _shape_reasons(evaluation: object) -> tuple[RefusalCode, ...]:
         and len({(x.strategy_id, x.book_id) for x in policy.allocations}) == len(policy.allocations)
         and len({x.symbol for x in policy.correlation_map}) == len(policy.correlation_map)
         and len({x.bucket for x in policy.correlation_caps}) == len(policy.correlation_caps)
+        and _valid_loss_limits(policy.loss_limits) and _valid_daily(p.loss)
         and _is_id(f.filter_id) and _is_symbol(f.symbol) and _is_generation(f.generation)
         and type(f.fresh) is bool and type(f.verified) is bool
         and _is_decimal(f.step_size, positive=True) and _is_decimal(f.tick_size, positive=True)
@@ -586,6 +793,25 @@ def _base_checks(evaluation: RiskEvaluation) -> tuple[tuple[RefusalCode, ...], A
     cap = caps[0] if len(caps) == 1 else None
     if bucket is not None and cap is None:
         reasons.append(RefusalCode.CORRELATION_CAP_MISSING)
+    limits, loss = policy.loss_limits, p.loss
+    if daily_loss_breached(limits, loss):
+        reasons.append(RefusalCode.DAILY_LOSS_HALT)
+    if drawdown_kill_breached(limits, loss, a.equity):
+        reasons.append(RefusalCode.DRAWDOWN_KILL)
+    if r.strategy_id in loss.paused_strategies:
+        reasons.append(RefusalCode.STRATEGY_COOLDOWN)
+    if r.action is RiskAction.ENTRY and (
+            sum(1 for x in loss.cluster_entries if x.strategy_id == r.strategy_id)
+            >= limits.max_entries_per_strategy_per_candle
+            or sum(1 for x in loss.cluster_entries if x.side is r.side)
+            >= limits.max_entries_per_side_per_candle):
+        reasons.append(RefusalCode.CANDLE_CLUSTER_LIMIT)
+    if limits.one_position_per_symbol_side:
+        holders = {(x.strategy_id, x.book_id) for x in p.exposures + p.reservations
+                   if x.symbol == r.symbol and x.side is r.side}
+        if holders and (r.action is RiskAction.ENTRY
+                        or holders != {(r.strategy_id, r.book_id)}):
+            reasons.append(RefusalCode.SYMBOL_SIDE_OCCUPIED)
     for symbol in {x.symbol for x in p.exposures + p.reservations}:
         existing_assignments = [x.bucket for x in policy.correlation_map if x.symbol == symbol]
         if len(existing_assignments) != 1:
@@ -659,6 +885,34 @@ def _bounds(evaluation: RiskEvaluation, *, controlled: Decimal, allocation: Allo
     return leverage, qbounds, distance
 
 
+def _loss_bounds(evaluation: RiskEvaluation, bucket: str,
+                 distance: Decimal) -> list[tuple[Ceiling, Decimal]]:
+    """RISK-LOSS-01 master-account quantity ceilings (risk-to-stop based)."""
+    p, policy, r = evaluation.portfolio, evaluation.policy, evaluation.request
+    limits, daily = policy.loss_limits, p.loss
+    rows = p.exposures + p.reservations
+    bucket_symbols = {x.symbol for x in policy.correlation_map if x.bucket == bucket}
+    bucket_side_risk = _sum(rows, 'risk', lambda x: x.symbol in bucket_symbols and x.side is r.side)
+    risk_unit = daily.day_start_equity * limits.risk_unit_fraction
+    # Worst case for the day: today's loss so far plus every open position and
+    # in-flight reservation stopping out.  Open risk may overlap unrealized
+    # loss; double counting is the conservative side.
+    committed = _daily_loss(daily) + _sum(rows, 'risk')
+    side_risk = _sum(rows, 'risk', lambda x: x.side is r.side)
+    # Only filled opposite positions in the same correlation bucket offset:
+    # a reservation may never fill, and stops in unrelated buckets can all hit.
+    opposite_risk = _sum(p.exposures, 'risk',
+                         lambda x: x.side is not r.side and x.symbol in bucket_symbols)
+    return [
+        (Ceiling.DAILY_LOSS_BUDGET,
+         _remaining(_daily_loss_limit(limits, daily), committed) / distance),
+        (Ceiling.CORRELATION_SIDE_RISK,
+         _remaining(limits.max_bucket_side_risk_r * risk_unit, bucket_side_risk) / distance),
+        (Ceiling.NET_SIDE_RISK,
+         _remaining(limits.max_net_side_risk_r * risk_unit, side_risk - opposite_risk) / distance),
+    ]
+
+
 def _follower_diagnostics(evaluation: RiskEvaluation, quantity: Decimal, allocation: Allocation,
                           bucket: str, cap: CorrelationCap) -> tuple[FollowerDiagnostic, ...]:
     out: list[FollowerDiagnostic] = []
@@ -729,6 +983,7 @@ def _evaluate(evaluation: object) -> RiskDecision:
     leverage, bounds, distance = _bounds(
         evaluation, controlled=controlled, allocation=allocation,
         bucket=bucket, correlation_cap=correlation_cap)
+    bounds.extend(_loss_bounds(evaluation, bucket, distance))
     candidate = min(value for _name, value in bounds)
     bindings = [name for name, value in bounds if value == candidate]
     if leverage < r.requested_leverage:
@@ -790,8 +1045,9 @@ def authorization_is_current(decision: object, evaluation: object,
 
 __all__ = [
     'AccountRiskSnapshot', 'Allocation', 'ApprovedDecision', 'Ceiling', 'CorrelationAssignment',
-    'CorrelationCap', 'Exposure', 'FollowerDiagnostic', 'FollowerProfile', 'OpeningReservation',
+    'ClusterEntry', 'CorrelationCap', 'Exposure', 'FollowerDiagnostic', 'FollowerProfile', 'LossLimits', 'LossState', 'OpeningReservation',
     'Environment', 'PortfolioRiskSnapshot', 'PositionSide', 'RefusalCode', 'RefusedDecision', 'RiskAction',
     'RiskDecision', 'RiskEvaluation', 'RiskPolicySnapshot', 'RiskRequest', 'VenueRiskFilters',
-    'authorization_is_current', 'evaluate', 'requires_authorization',
+    'authorization_is_current', 'daily_loss_breached', 'drawdown_kill_breached', 'evaluate',
+    'requires_authorization', 'strategy_paused',
 ]

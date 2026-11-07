@@ -212,11 +212,44 @@ def test_reads_are_typed_and_unknown_is_never_empty():
     assert bad.kind is ReadKind.UNKNOWN and bad.value is None
 
 
-def test_combined_open_order_book_fails_closed_without_partial_request():
-    sender = Sender()
+def test_combined_open_order_book_reads_both_routes_without_partial_truth():
+    classic = dict(symbol='BTCUSDT', clientOrderId=CID, orderId=123, positionSide='LONG',
+                   origQty='0.01', executedQty='0.002', reduceOnly=False, closePosition=False,
+                   type='LIMIT', status='NEW', stopPrice='0')
+    algo = dict(symbol='BTCUSDT', clientAlgoId=ALGO_CID, algoId=88, positionSide='LONG',
+                quantity='0.008', executedQty='0', reduceOnly='false', closePosition='true',
+                orderType='STOP_MARKET', algoStatus='WORKING', triggerPrice='58000')
+    sender = Sender(response([classic]), response({'orders': [algo]}))
     out = venue(sender).open_orders('BTCUSDT')
-    assert out.kind is ReadKind.UNKNOWN and out.value is None and out.detail == 'split_route_read'
-    assert sender.requests == []
+    assert out.kind is ReadKind.OK and len(out.value) == 2
+    by_route = {item.ref.route: item for item in out.value}
+    assert by_route['classic'].qty == D('0.008') and not by_route['classic'].reduce
+    assert by_route['algo'].qty == D('0.008') and by_route['algo'].reduce
+    assert by_route['algo'].stop_price == D('58000')
+    assert [request.url.rsplit('/', 1)[-1] for request in sender.requests] == ['openOrders', 'openAlgoOrders']
+
+
+def test_combined_open_order_book_never_returns_classic_partial_when_algo_read_fails():
+    classic = dict(symbol='BTCUSDT', clientOrderId=CID, orderId=123, positionSide='LONG',
+                   origQty='0.01', executedQty='0', reduceOnly=False, closePosition=False,
+                   type='LIMIT', status='NEW', stopPrice='0')
+    sender = Sender(response([classic]), TimeoutError())
+    out = venue(sender).open_orders('BTCUSDT')
+    assert out.kind is ReadKind.UNKNOWN and out.value is None and out.detail == 'timeout'
+    assert len(sender.requests) == 2
+
+
+def test_combined_open_order_book_rejects_symbol_echo_and_duplicate_route_ids():
+    wrong = dict(symbol='ETHUSDT', clientOrderId=CID, orderId=123, positionSide='LONG',
+                 origQty='0.01', executedQty='0', reduceOnly=False, closePosition=False,
+                 type='LIMIT', status='NEW', stopPrice='0')
+    out = venue(Sender(response([wrong]), response([]))).open_orders('BTCUSDT')
+    assert out.kind is ReadKind.UNKNOWN and out.detail == 'echo_mismatch'
+
+    first = dict(wrong, symbol='BTCUSDT')
+    duplicate = dict(first)
+    out = venue(Sender(response([first, duplicate]), response([]))).open_orders('BTCUSDT')
+    assert out.kind is ReadKind.UNKNOWN and out.detail == 'duplicate_cid'
 
 
 def test_duplicate_fill_row_fails_closed():

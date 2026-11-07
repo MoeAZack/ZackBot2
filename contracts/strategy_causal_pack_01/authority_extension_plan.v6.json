@@ -1,0 +1,248 @@
+{
+  "format": "zb-binance-usdm-authority-extension-plan/1",
+  "authority_id": "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
+  "version": 6,
+  "status": "FROZEN_METADATA_ONLY_NOT_ACQUIRED",
+  "frozen_at_cairo": "2026-11-07T01:50:15+02:00",
+  "protected_base_commit": "6754a336652496952aaab82e42fbe9bd6171430a",
+  "roadmap_fit": "Fresh-candidate causal authority extension through the sealed 2026-11-05 exclusive cutoff",
+  "scope": {
+    "metadata_only": true,
+    "network_or_download_performed": false,
+    "archive_or_api_market_rows_read": false,
+    "strategy_identity_created": false,
+    "candidate_signal_or_outcome_evaluated": false,
+    "evaluator_or_runner_authorized": false,
+    "paper_or_mainnet_authority": false
+  },
+  "cutoff": {
+    "exclusive_utc": "2026-11-05T00:00:00Z",
+    "exclusive_ms": 1793836800000,
+    "rule": "Every admitted file, response and row must have its complete declared and observed event/open/close period strictly before the exclusive cutoff. A file or response that contains, declares or can contain any instant at or after the cutoff is forbidden in full; it may not be cropped.",
+    "forbidden_monthly_periods": ["2026-11"],
+    "forbidden_daily_dates": ["2026-11-05"]
+  },
+  "base_authorities": {
+    "manifest_v5": {
+      "path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+      "byte_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+      "content_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8",
+      "last_funding_nominal_time": "2026-09-27T20:00:00Z",
+      "last_1h_kline_and_mark_open": "2026-09-27T23:00:00Z"
+    },
+    "pit_v8": {
+      "path": "research_evidence/universe/pit-top40-qv30d-precutoff-monthly-rest-v8.json",
+      "byte_sha256": "3fc2c1696a4f9ac753a140394e6ca6ba723a9364046dbb94bcb6310c48b68d41",
+      "content_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+      "last_weekly_cell": "2026-09-28T00:00:00Z"
+    },
+    "filter_v3": {
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json",
+      "byte_sha256": "e11b42efe63accc6a4546ac29507356fb53cdcc88c403aec031ffa48b27f1ba9",
+      "snapshot_captures": ["2024-12-13T04:44:48Z", "2026-02-17T04:13:28Z"]
+    },
+    "instrument_classes_v1": {
+      "path": "research_evidence/universe/instrument-classes-v1.json",
+      "byte_sha256": "b5d3858e3b090f8e6b8a3769a23ba409949f6edfeeefe896baf4bc5d3d7f6198",
+      "content_digest": "48a9d32c4299495d0c58b175755d8ebdab562f8e18a05196a7f361fb6a986845"
+    }
+  },
+  "allowed_sources": {
+    "binance_vision": {
+      "scheme_host": "https://data.binance.vision",
+      "product_root": "/data/futures/um",
+      "artifact_rule": "Only an exact allowlisted .zip path and its same-basename .CHECKSUM path are allowed. Directory listing, current/latest aliases, mirrors, third-party archives and redirects to a different host or path are forbidden.",
+      "checksum_rule": "The official .CHECKSUM must contain exactly one lowercase SHA-256 token bound to the exact zip basename. Verify the downloaded zip bytes before opening it; missing, malformed, duplicate or mismatched checksum fails closed. Preserve both raw bytes and their SHA-256 in the future manifest build ledger."
+    },
+    "binance_usdm_funding_api": {
+      "scheme_host_path": "https://fapi.binance.com/fapi/v1/fundingRate",
+      "method": "GET",
+      "authentication": "none",
+      "purpose": "Only the residual 2026-11-01 through 2026-11-04 funding interval after the two admitted monthly archives",
+      "required_query_keys_exactly": ["symbol", "startTime", "endTime", "limit"],
+      "limit": 1000,
+      "first_start_ms": 1793491200000,
+      "last_end_ms": 1793836799999,
+      "pagination": "For one explicit allowlisted symbol, the first request starts at 2026-11-01T00:00:00Z; each next startTime is the preceding page's last fundingTime plus one millisecond; endTime is always 2026-11-04T23:59:59.999Z; stop on an empty or short page. Duplicate timestamps, non-monotonic pages, a changed symbol, an omitted bound or any extra query key fail closed.",
+      "response_rule": "Preserve every raw response byte string and SHA-256 before parsing. Every row must match the requested symbol and have fundingTime in the inclusive request bounds and strictly before the global cutoff. Empty responses are explicit incomplete authority; never synthesize zero, proxy or cadence rows."
+    },
+    "forbidden_sources": [
+      "authenticated account endpoints",
+      "current exchange or websocket market data",
+      "Binance spot, COIN-M or options archives",
+      "REST klines, mark-price klines or ticker endpoints",
+      "third-party, cached, mirrored or operator-supplied market rows"
+    ]
+  },
+  "acquisition_sequence": [
+    {
+      "step": 1,
+      "id": "PIT_DAILY_SEED",
+      "before_any_other_new_market_download": true,
+      "datasets": [
+        {
+          "series": "klines",
+          "interval": "1d",
+          "cadence": "monthly",
+          "periods": ["2026-09", "2026-10"],
+          "path_template": "/data/futures/um/monthly/klines/{symbol}/1d/{symbol}-1d-{period}.zip"
+        },
+        {
+          "series": "klines",
+          "interval": "1d",
+          "cadence": "daily",
+          "dates": ["2026-11-01"],
+          "path_template": "/data/futures/um/daily/klines/{symbol}/1d/{symbol}-1d-{date}.zip"
+        }
+      ],
+      "symbol_allowlist_rule": "The sorted exact symbol union already present in PIT-v8 and instrument-classes-v1. No current exchange listing, archive-presence survivor filter or post-cutoff symbol discovery may add or remove a symbol.",
+      "completion_gate": "All allowlisted 1d paths have an explicit PRESENT_CHECKSUM_VERIFIED, OFFICIAL_404 or CHECKSUM_FAILURE record before PIT-v9 generation. Absence is recorded, never silently dropped."
+    },
+    {
+      "step": 2,
+      "id": "GENERATE_PIT_V9_FIRST_PASS",
+      "inputs": ["base_authorities.pit_v8", "base_authorities.instrument_classes_v1", "step:PIT_DAILY_SEED"],
+      "output": "outputs.pit_v9",
+      "new_weekly_cells": [
+        "2026-10-05T00:00:00Z",
+        "2026-10-12T00:00:00Z",
+        "2026-10-19T00:00:00Z",
+        "2026-10-26T00:00:00Z",
+        "2026-11-02T00:00:00Z"
+      ],
+      "rule": "Copy every PIT-v8 cell and its rule object byte-semantically unchanged. Generate only the five listed Monday cells using the same PIT-v8 rule: separate asset-class books; exact decimal sum of quote_volume for all 30 complete 1d opens in [cell-30d,cell-1d], each available by cell; minimum listing age 30d; complete-window fail-closed; non-ASCII addressability veto; score descending then symbol ascending; top 40 per book. No return, strategy, future listing or outcome input is permitted."
+    },
+    {
+      "step": 3,
+      "id": "PIT_UNION_INTRADAY_AUTHORITY",
+      "symbol_allowlist_rule": "Sorted union of symbols appearing in any PIT-v9 weekly book cell through 2026-11-02, plus symbols required to audit an explicit PIT-v9 gap/veto. The union is frozen before these downloads.",
+      "datasets": [
+        {
+          "series": "klines",
+          "interval": "1h",
+          "cadence": "monthly_then_daily",
+          "monthly_periods": ["2026-09", "2026-10"],
+          "daily_dates": ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04"]
+        },
+        {
+          "series": "markPriceKlines",
+          "interval": "1h",
+          "cadence": "monthly_then_daily",
+          "monthly_periods": ["2026-09", "2026-10"],
+          "daily_dates": ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04"]
+        },
+        {
+          "series": "fundingRate",
+          "interval": null,
+          "cadence": "monthly_then_bounded_api",
+          "monthly_periods": ["2026-09", "2026-10"],
+          "api_dates": ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04"]
+        }
+      ],
+      "vision_path_templates": {
+        "klines": "/data/futures/um/{cadence}/klines/{symbol}/{interval}/{symbol}-{interval}-{period_or_date}.zip",
+        "markPriceKlines": "/data/futures/um/{cadence}/markPriceKlines/{symbol}/{interval}/{symbol}-{interval}-{period_or_date}.zip",
+        "fundingRate": "/data/futures/um/monthly/fundingRate/{symbol}/{symbol}-fundingRate-{period}.zip"
+      },
+      "precedence": "For a stream/symbol/timestamp, a checksum-verified Vision archive row is authoritative. The bounded funding API is allowed only after 2026-11-01T00:00:00Z and must not overwrite or duplicate an admitted archive timestamp. Any conflicting duplicate fails the whole authority build."
+    },
+    {
+      "step": 4,
+      "id": "BUILD_MANIFEST_V6",
+      "inputs": ["base_authorities.manifest_v5", "step:PIT_DAILY_SEED", "step:PIT_UNION_INTRADAY_AUTHORITY"],
+      "output": "outputs.manifest_v6",
+      "rule": "Retain checksum-bound v5 records unchanged and append only allowlisted, checksum-verified artifacts/responses. Sort deterministically by series, interval (null first), symbol, first timestamp, source path. Record source URL/path, source cadence, requested bounds, declared bounds, observed first/last timestamps, row count, raw byte SHA-256 and parsed-content digest. Reject rather than crop any cross-cutoff artifact, response or row."
+    },
+    {
+      "step": 5,
+      "id": "REGENERATE_PIT_V9_FINAL",
+      "inputs": ["outputs.manifest_v6", "base_authorities.pit_v8", "base_authorities.instrument_classes_v1"],
+      "output": "outputs.pit_v9",
+      "rule": "Regenerate from the exact frozen inputs and require semantic identity with the first-pass PIT-v9 cells. Only its manifest binding/content digest may be finalized. A membership, ranking, score, veto or symbol difference fails closed."
+    },
+    {
+      "step": 6,
+      "id": "REBIND_FILTER_V4",
+      "inputs": ["base_authorities.filter_v3", "outputs.pit_v9"],
+      "output": "outputs.filter_v4",
+      "rule": "Copy both filter snapshot payload bindings and filter semantics unchanged; rebind only PIT identity and regenerate deterministic weekly eligible-membership hashes. Never fetch current exchangeInfo.",
+      "fold_bindings": {
+        "development_eligible_segment": "2024-12-13T04:44:48Z",
+        "wf1": "2024-12-13T04:44:48Z",
+        "wf2": "2024-12-13T04:44:48Z",
+        "wf3": "2026-02-17T04:13:28Z",
+        "sealed_holdout": "2026-02-17T04:13:28Z"
+      }
+    },
+    {
+      "step": 7,
+      "id": "BUILD_COVERAGE_V4",
+      "inputs": ["outputs.manifest_v6", "outputs.pit_v9", "outputs.filter_v4"],
+      "output": "outputs.coverage_v4",
+      "required_streams": ["klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null"],
+      "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+      "rule": "Enumerate every required PIT/fold/symbol/time grid through but excluding the cutoff. Record every gap by stream, symbol and interval. Any missing required row, checksum, manifest binding, causal mark or actual funding cadence is an explicit gap; no interpolation, forward fill, proxy funding or assumed zero is allowed."
+    }
+  ],
+  "pit_v9_generation": {
+    "algorithm_id": "PIT-TOP40-QV30D-V9",
+    "determinism": "All timestamps are UTC integer milliseconds, quote volume is parsed as exact decimal, symbol sorting is Unicode code-point ascending, JSON keys are sorted, separators are comma/colon, UTF-8 has no BOM, and no wall-clock/current API/filesystem ordering enters output.",
+    "immutable_rule_source": "base_authorities.pit_v8.rule",
+    "allowed_new_data": "Only checksum-verified allowlisted 1d klines in PIT_DAILY_SEED",
+    "forbidden_inputs": ["1h returns", "mark prices", "funding", "strategy signals", "candidate outcomes", "current exchangeInfo", "post-cutoff rows"]
+  },
+  "walk_forward_splits": {
+    "source": "C256 frozen preregistration; copied unchanged",
+    "development_test_range": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_filter_eligible_segment": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "forward_folds": [
+      "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+      "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+      "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+    ],
+    "sealed_holdout": "2026-09-28T00:00:00Z/2026-11-05T00:00:00Z",
+    "boundary_rule": "Cutoff extension does not change, optimize or rescue a split. The sealed holdout remains unreadable to development or contract work."
+  },
+  "outputs": {
+    "manifest_v6": {
+      "path": "research_evidence/manifests/binance-um-archive-precutoff-v6.json.gz",
+      "format": "zb-binance-um-archive-manifest/6",
+      "deterministic_gzip_mtime": 0,
+      "status_before_future_build": "ABSENT_EXPECTED"
+    },
+    "pit_v9": {
+      "path": "research_evidence/universe/pit-top40-qv30d-precutoff-v9.json",
+      "format": "zb-pit-universe/2",
+      "last_weekly_cell": "2026-11-02T00:00:00Z",
+      "status_before_future_build": "ABSENT_EXPECTED"
+    },
+    "filter_v4": {
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v4.json",
+      "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY",
+      "version": 4,
+      "status_before_future_build": "ABSENT_EXPECTED"
+    },
+    "coverage_v4": {
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v4.json",
+      "format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
+      "required_guaranteed_period_gaps": 0,
+      "status_before_future_build": "ABSENT_EXPECTED"
+    }
+  },
+  "serialization_and_identity": {
+    "content_digest_rule": "For each JSON output, compute SHA-256 over its deterministic canonical JSON with the top-level digest field omitted; then insert that digest and serialize canonically. For manifest gzip, byte_sha256 is over gzip bytes produced with mtime=0 and no original filename.",
+    "ledger_rule": "The future builder records every attempted allowlisted path/request, source status, checksum decision, byte hash, parser/schema decision and cutoff decision before producing outputs. Failures remain in the acquisition ledger and are never erased by a retry.",
+    "protected_merge_rule": "No output becomes evaluation authority until this frozen plan, the future builder, exact generated bytes and hostile tests receive independent review and merge to protected master."
+  },
+  "forbidden": [
+    "creating or selecting a strategy candidate while acquiring authority",
+    "reading returns, signals, P&L, evaluator output or identity ledgers",
+    "using a November monthly file and cropping it at the cutoff",
+    "using any date at or after 2026-11-05",
+    "using current listings or archive availability as a survivor filter",
+    "substituting zero, proxy or interpolated funding, bars, marks or filters",
+    "changing C256 split boundaries, filter snapshots or PIT-v8 ranking rules",
+    "authorizing PAPER, testnet or mainnet execution"
+  ],
+  "deferred": "all downloads, API calls, parsing of market rows, output generation, candidate identities, evaluators, outcomes, promotion and PAPER activation"
+}

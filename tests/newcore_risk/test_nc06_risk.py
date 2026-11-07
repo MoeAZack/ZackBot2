@@ -15,9 +15,11 @@ from newcore.risk import (
     Ceiling,
     CorrelationAssignment,
     CorrelationCap,
+    LossState,
     Environment,
     Exposure,
     FollowerProfile,
+    LossLimits,
     OpeningReservation,
     PortfolioRiskSnapshot,
     PositionSide,
@@ -52,6 +54,27 @@ def allocation(**changes):
     return dataclasses.replace(row, **changes)
 
 
+# NC-06 fixtures keep the RISK-LOSS-01 limits non-binding so these tests keep
+# exercising the original ceilings; tests/newcore_risk/test_risk_loss01.py owns
+# the loss-limit behavior.
+def loss_limits(**changes):
+    row = LossLimits(daily_loss_fraction=D('1'), daily_loss_r=D('1000'),
+                     risk_unit_fraction=D('.01'), max_bucket_side_risk_r=D('1000'),
+                     max_drawdown_fraction=D('1'), max_net_side_risk_r=D('1000'),
+                     max_entries_per_strategy_per_candle=1000, max_entries_per_side_per_candle=1000,
+                     cooldown_stop_outs=1000, cooldown_window_ms=1, cooldown_pause_ms=1,
+                     one_position_per_symbol_side=True)
+    return dataclasses.replace(row, **changes)
+
+
+def daily(**changes):
+    row = LossState(trading_day='2026-11-05', day_start_equity=D('10000'),
+                         realized_pnl=D('0'), unrealized_pnl=D('0'), halt_latched=False,
+                         peak_equity=D('10000'), drawdown_kill_latched=False,
+                         paused_strategies=(), cluster_entries=())
+    return dataclasses.replace(row, **changes)
+
+
 def policy(**changes):
     row = RiskPolicySnapshot(
         policy_id='policy-v1', account_id=ACCOUNT, environment=Environment.TESTNET,
@@ -66,8 +89,14 @@ def policy(**changes):
                          CorrelationAssignment(symbol='SOLUSDT', bucket='other-sol')),
         correlation_caps=(CorrelationCap(bucket='crypto-major', exposure_fraction=D('.75')),
                           CorrelationCap(bucket='other-eth', exposure_fraction=D('1')),
-                          CorrelationCap(bucket='other-sol', exposure_fraction=D('1'))))
+                          CorrelationCap(bucket='other-sol', exposure_fraction=D('1'))),
+        loss_limits=loss_limits())
     return dataclasses.replace(row, **changes)
+
+
+# Policy with RISK-LOSS-01 one-position-per-symbol-side switched off, so the
+# original same-symbol-side ceilings stay reachable in these NC-06 tests.
+SHARED_SIDE = policy(loss_limits=loss_limits(one_position_per_symbol_side=False))
 
 
 def filters(**changes):
@@ -106,7 +135,8 @@ def reservation(*, request_id=None, auth=None, symbol='BTCUSDT', side=PositionSi
 
 def portfolio(*, exposures=(), reservations=(), **changes):
     row = PortfolioRiskSnapshot(account_id=ACCOUNT, generation=11, fresh=True,
-                                exposures=tuple(exposures), reservations=tuple(reservations))
+                                exposures=tuple(exposures), reservations=tuple(reservations),
+                                loss=daily())
     return dataclasses.replace(row, **changes)
 
 
@@ -302,7 +332,7 @@ def test_rounded_plan_refuses_below_minimums_and_filter_contradictions():
     (evaluation(r=request(requested_risk=D('50'))), D('10'), Ceiling.REQUESTED_RISK),
     (evaluation(pol=policy(max_trade_risk_fraction=D('.01'))), D('10'), Ceiling.TRADE_RISK),
     (evaluation(p=portfolio(exposures=(exposure(risk='950'),))), D('10'), Ceiling.PORTFOLIO_RISK),
-    (evaluation(p=portfolio(exposures=(exposure(symbol='BTCUSDT', risk='450'),))),
+    (evaluation(p=portfolio(exposures=(exposure(symbol='BTCUSDT', risk='450'),)), pol=SHARED_SIDE),
      D('10'), Ceiling.SYMBOL_SIDE_RISK),
     (evaluation(p=portfolio(exposures=(exposure(strategy='strategy-a', book='book-a', risk='450'),))),
      D('10'), Ceiling.ALLOCATION_RISK),
@@ -316,7 +346,7 @@ def test_rounded_plan_refuses_below_minimums_and_filter_contradictions():
     (evaluation(p=portfolio(exposures=(exposure(notional='4500'),))), D('5'), Ceiling.ACCOUNT_NET),
     (evaluation(p=portfolio(exposures=(exposure(symbol='BTCUSDT', side=PositionSide.SHORT,
                                                 notional='2000'),))), D('5'), Ceiling.SYMBOL),
-    (evaluation(p=portfolio(exposures=(exposure(symbol='BTCUSDT', notional='2000'),))),
+    (evaluation(p=portfolio(exposures=(exposure(symbol='BTCUSDT', notional='2000'),)), pol=SHARED_SIDE),
      D('5'), Ceiling.SYMBOL_SIDE),
     (evaluation(
         p=portfolio(exposures=(exposure(symbol='ETHUSDT', notional='3250'),)),
@@ -369,7 +399,7 @@ def test_adds_and_inflight_reservations_use_complete_post_action_risk():
 
 def test_inflight_margin_is_reserved_before_new_authorization():
     held = dataclasses.replace(reservation(), margin=D('4900'))
-    result = approved(evaluation(p=portfolio(reservations=(held,))))
+    result = approved(evaluation(p=portfolio(reservations=(held,)), pol=SHARED_SIDE))
     assert result.quantity == D('5')
     assert Ceiling.AVAILABLE_MARGIN in result.bindings
 

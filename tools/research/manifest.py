@@ -15,8 +15,9 @@ logical store name (default `repo` = the repository checkout), never a machine-s
 
 Two loaders share the schema (RES-01 R1):
   `zb-local-csv/1`           `<SYMBOL>_<interval>.csv` with header `t,o,h,l,c,v` (the legacy survivor-only store).
-  `zb-binance-vision-zip/1`  a `data.binance.vision` UM monthly mirror `um/monthly/<series>/<SYMBOL>/[<interval>/]
-                             <SYMBOL>-<interval|fundingRate>-YYYY-MM.zip`, each zip beside a `.ok` sidecar holding the
+  `zb-binance-vision-zip/1`  a `data.binance.vision` UM monthly/daily mirror
+                             `um/{monthly,daily}/<series>/<SYMBOL>/[<interval>/]
+                             <SYMBOL>-<interval|fundingRate>-{YYYY-MM,YYYY-MM-DD}.zip`, each zip beside a `.ok` sidecar holding the
                              SHA-256 published in the archive's `.CHECKSUM`. Every zip is re-hashed and must equal its
                              sidecar; it must hold exactly the one expected CSV, whose schema (column count, optional
                              Binance header, 13-digit ms times inside the file's month, interval alignment, close_time =
@@ -40,13 +41,14 @@ import argparse
 import gzip
 import hashlib
 import json
+import math
 import os
 import re
 import sys
 import urllib.parse
 import zipfile
 from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 FORMAT = 'zb-data-manifest/1'
 LOADER_VERSION = 'zb-local-csv/1'
@@ -72,11 +74,19 @@ ARCHIVE_LOADER = 'zb-binance-vision-zip/1'
 ARCHIVE_RULE = 'klines, markPriceKlines: open_ms + interval_ms; fundingRate: calc_time'
 ARCHIVE_ROOT = 'binance_um'
 ARCHIVE_KIND = 'binance-vision-archive'
+FUNDING_API_KIND = 'binance-funding-history-api'
+KLINE_API_KIND = 'binance-kline-history-api'
+FUNDING_API_HOST = 'fapi.binance.com'
 ARCHIVE_URL = 'https://data.binance.vision/data/futures/'   # + the store-relative path (um/monthly/...)
 ARCHIVE_FILE_KEYS = FILE_KEYS | {'series'}
 SERIES = ('klines', 'markPriceKlines', 'fundingRate')
 # Binance lists a few non-ASCII perps (e.g. CJK-named memecoins): any non-ASCII char is allowed in the symbol.
-ZIP_RE = re.compile(r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-(' + '|'.join(INTERVALS) + r'|fundingRate)-(\d{4})-(\d{2})\.zip$')
+ZIP_RE = re.compile(r'^((?:[A-Z0-9]|[^\x00-\x7f])+)-(' + '|'.join(INTERVALS)
+                    + r'|fundingRate)-(\d{4})-(\d{2})(?:-(\d{2}))?\.zip$')
+FUNDING_API_RE = re.compile(
+    r'^([A-Z0-9]+)-fundingRate-(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})-p(\d{3})\.json$')
+KLINE_API_RE = re.compile(
+    r'^([A-Z0-9]+)-(' + '|'.join(INTERVALS) + r')-(\d{13})-(\d{13})-p(\d{3})\.json$')
 KLINE_HEADER = (b'open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,'
                 b'taker_buy_quote_volume,ignore')
 FUNDING_HEADER = b'calc_time,funding_interval_hours,last_funding_rate'
@@ -158,20 +168,61 @@ def archive_url(rel: str) -> str:
 
 
 def archive_meta(rel: str) -> dict:
-    """Series/symbol/interval/month of a store-relative archive path; raises unless the layout is exact."""
+    """Series/symbol/interval/period of a store-relative monthly or daily archive path."""
     parts = check_rel_path(rel).split('/')
+    api = FUNDING_API_RE.match(parts[-1])
+    if api:
+        if len(parts) != 5 or parts[:3] != ['um', 'api', 'fundingRate'] or parts[3] != api.group(1):
+            raise ManifestError(f'{rel}: invalid bounded funding API authority path')
+        try:
+            start_dt = datetime.strptime(api.group(2), '%Y-%m-%d').replace(tzinfo=timezone.utc)
+            end_dt = datetime.strptime(api.group(3), '%Y-%m-%d').replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError as exc:
+            raise ManifestError(f'{rel}: invalid funding API authority period') from exc
+        if start_dt >= end_dt:
+            raise ManifestError(f'{rel}: invalid funding API authority period')
+        return {'series': 'fundingRate', 'symbol': api.group(1), 'interval': None,
+                'month_start_ms': int(start_dt.timestamp() * 1000),
+                'month_end_ms': int(end_dt.timestamp() * 1000)}
+    kline_api = KLINE_API_RE.match(parts[-1])
+    if kline_api:
+        series = parts[2] if len(parts) > 2 else None
+        if (len(parts) != 6 or parts[:2] != ['um', 'api'] or series not in ('klines', 'markPriceKlines')
+                or parts[3] != kline_api.group(1) or parts[4] != kline_api.group(2)):
+            raise ManifestError(f'{rel}: invalid bounded kline API authority path')
+        start, end = int(kline_api.group(3)), int(kline_api.group(4))
+        step = INTERVALS[kline_api.group(2)]
+        if start >= end or start % step or end % step:
+            raise ManifestError(f'{rel}: invalid or unaligned kline API authority period')
+        return {'series': series, 'symbol': kline_api.group(1), 'interval': kline_api.group(2),
+                'month_start_ms': start, 'month_end_ms': end}
     m = ZIP_RE.match(parts[-1])
-    ok = bool(m) and len(parts) >= 5 and parts[:2] == ['um', 'monthly'] and parts[2] in SERIES and parts[3] == m.group(1)
+    frequency = parts[1] if len(parts) > 1 else None
+    ok = (bool(m) and len(parts) >= 5 and parts[0] == 'um' and frequency in ('monthly', 'daily')
+          and parts[2] in SERIES and parts[3] == m.group(1))
     funding = ok and parts[2] == 'fundingRate'
     if ok:
         ok = (len(parts) == 5 and m.group(2) == 'fundingRate') if funding else \
              (len(parts) == 6 and parts[4] == m.group(2) and m.group(2) in INTERVALS)
-    if not ok or not 1 <= int(m.group(4)) <= 12:
-        raise ManifestError(f'{rel}: not um/monthly/<series>/<SYMBOL>/[<interval>/]<SYMBOL>-<interval>-YYYY-MM.zip')
+    day = int(m.group(5)) if m and m.group(5) is not None else None
+    if (not ok or not 1 <= int(m.group(4)) <= 12
+            or (frequency == 'monthly') != (day is None)):
+        raise ManifestError(
+            f'{rel}: not um/{{monthly,daily}}/<series>/<SYMBOL>/[<interval>/]'
+            '<SYMBOL>-<interval>-{YYYY-MM,YYYY-MM-DD}.zip')
     y, mo = int(m.group(3)), int(m.group(4))
-    start = int(datetime(y, mo, 1, tzinfo=timezone.utc).timestamp() * 1000)
-    end = int(datetime(y + mo // 12, mo % 12 + 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    try:
+        start_dt = datetime(y, mo, day or 1, tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ManifestError(f'{rel}: invalid archive period') from exc
+    start = int(start_dt.timestamp() * 1000)
+    if day is None:
+        end_dt = datetime(y + mo // 12, mo % 12 + 1, 1, tzinfo=timezone.utc)
+    else:
+        end_dt = start_dt + timedelta(days=1)
+    end = int(end_dt.timestamp() * 1000)
     return {'series': parts[2], 'symbol': m.group(1), 'interval': None if funding else m.group(2),
+            # The historical key names remain for compatibility; for a daily archive they delimit its UTC day.
             'month_start_ms': start, 'month_end_ms': end}
 
 
@@ -196,7 +247,7 @@ def parse_archive_csv(rel: str, data: bytes, meta: dict) -> list[list[bytes]]:
         raise ManifestError(f'{rel}: non-numeric time/volume field ({e})')
     lo, hi = meta['month_start_ms'], meta['month_end_ms']
     if any(not lo <= x < hi for x in t):
-        raise ManifestError(f'{rel}: a row time lies outside the file month (or is not in ms)')
+        raise ManifestError(f'{rel}: a row time lies outside the file period (or is not in ms)')
     if any(b <= a for a, b in zip(t, t[1:])):
         raise ManifestError(f'{rel}: rows must be strictly increasing by time (unordered or duplicate row)')
     if not funding:
@@ -234,6 +285,197 @@ def read_archive(abs_path: str, rel_path: str) -> tuple[bytes, str, bytes]:
         raise ManifestError(f'{rel_path}: bad zip ({e})')
 
 
+def _funding_api_url(url: str, meta: dict) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        query = urllib.parse.parse_qs(parsed.query, strict_parsing=True)
+        if any(len(values) != 1 for values in query.values()):
+            return False
+        start = int(query['startTime'][0]); end = int(query['endTime'][0]); limit = int(query['limit'][0])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return (parsed.scheme == 'https' and parsed.netloc == FUNDING_API_HOST
+            and parsed.path == '/fapi/v1/fundingRate' and set(query) == {'symbol', 'startTime', 'endTime', 'limit'}
+            and query['symbol'] == [meta['symbol']] and limit == 1000
+            and meta['month_start_ms'] <= start <= end < meta['month_end_ms'])
+
+
+def _kline_api_url(url: str, meta: dict) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+        if len(pairs) != len({key for key, _ in pairs}):
+            return False
+        query = dict(pairs)
+        start, end, limit = int(query['startTime']), int(query['endTime']), int(query['limit'])
+    except (KeyError, TypeError, ValueError):
+        return False
+    endpoint = '/fapi/v1/klines' if meta['series'] == 'klines' else '/fapi/v1/markPriceKlines'
+    return (parsed.scheme == 'https' and parsed.netloc == FUNDING_API_HOST and parsed.path == endpoint
+            and set(query) == {'symbol', 'interval', 'startTime', 'endTime', 'limit'}
+            and query['symbol'] == meta['symbol'] and query['interval'] == meta['interval'] and limit == 1500
+            and meta['month_start_ms'] <= start <= end < meta['month_end_ms']
+            and start % INTERVALS[meta['interval']] == 0)
+
+
+def parse_kline_api(rel: str, raw: bytes, meta: dict) -> list[list]:
+    try:
+        rows = json.loads(raw.decode('utf-8'), parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ManifestError(f'{rel}: kline API response is not strict UTF-8 JSON') from exc
+    if not isinstance(rows, list):
+        raise ManifestError(f'{rel}: kline API response must be an array')
+    step, times = INTERVALS[meta['interval']], []
+    for row in rows:
+        if (not isinstance(row, list) or len(row) != 12 or type(row[0]) is not int or type(row[6]) is not int
+                or any(not isinstance(row[i], str) for i in (1, 2, 3, 4, 5, 7, 9, 10))
+                or type(row[8]) is not int):
+            raise ManifestError(f'{rel}: malformed 12-column kline API row')
+        try:
+            values = [float(row[i]) for i in (1, 2, 3, 4, 5, 7, 9, 10)]
+        except ValueError as exc:
+            raise ManifestError(f'{rel}: malformed kline API numeric field') from exc
+        if (not all(math.isfinite(value) for value in values) or row[0] % step
+                or row[6] != row[0] + step - 1
+                or not meta['month_start_ms'] <= row[0] < meta['month_end_ms']):
+            raise ManifestError(f'{rel}: kline API row is outside/alignment-invalid for authority period')
+        times.append(row[0])
+    if any(right - left != step for left, right in zip(times, times[1:])):
+        raise ManifestError(f'{rel}: kline API rows must be a strict contiguous interval grid')
+    return rows
+
+
+def read_kline_api(abs_path: str, rel_path: str, source: dict) -> tuple[bytes, list[list]]:
+    meta = archive_meta(rel_path)
+    # The path is parsed and bounded before any response or sidecar byte is opened.
+    if meta['month_end_ms'] > 1_790_553_600_000:
+        raise ManifestError(f'{rel_path}: kline API authority crosses frozen cutoff; not read')
+    with open(abs_path, 'rb') as fh:
+        raw = fh.read()
+    try:
+        with open(abs_path + '.ok', 'rt', encoding='ascii') as fh:
+            expected = fh.read().strip()
+        with open(abs_path + '.provenance.json', 'rb') as fh:
+            provenance_raw = fh.read()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ManifestError(f'{rel_path}: kline API checksum/provenance sidecar missing') from exc
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected or actual != source.get('archive_checksum'):
+        raise ManifestError(f'{rel_path}: kline API raw response checksum mismatch')
+    if hashlib.sha256(provenance_raw).hexdigest() != source.get('provenance_sha256'):
+        raise ManifestError(f'{rel_path}: kline API provenance checksum mismatch')
+    provenance = json.loads(provenance_raw)
+    if (provenance.get('url') != source.get('url') or provenance.get('response_sha256') != actual
+            or not isinstance(provenance.get('accessed_cairo'), str)
+            or type(provenance.get('server_time_ms')) is not int or not _kline_api_url(source.get('url'), meta)):
+        raise ManifestError(f'{rel_path}: kline API provenance/bounds binding mismatch')
+    rows = parse_kline_api(rel_path, raw, meta)
+    times = [row[0] for row in rows]
+    params = provenance.get('params', {})
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(source['url']).query)
+    expected_params = {'symbol': query['symbol'][0], 'interval': query['interval'][0],
+                       'startTime': int(query['startTime'][0]), 'endTime': int(query['endTime'][0]),
+                       'limit': int(query['limit'][0])}
+    if (provenance.get('rows') != len(rows) or provenance.get('first_open_ms') != (times[0] if times else None)
+            or provenance.get('last_open_ms') != (times[-1] if times else None)
+            or params != expected_params
+            or (times and times[0] != params.get('startTime'))
+            or provenance.get('terminal_page') != (len(rows) < 1500)):
+        raise ManifestError(f'{rel_path}: kline API pagination/count provenance mismatch')
+    return raw, rows
+
+
+def scan_kline_api(abs_path: str, rel_path: str) -> dict:
+    meta = archive_meta(rel_path)
+    with open(abs_path + '.provenance.json', 'rb') as fh:
+        provenance_raw = fh.read()
+    provenance = json.loads(provenance_raw)
+    source = {'kind': KLINE_API_KIND, 'url': provenance.get('url'),
+              'archive_checksum': provenance.get('response_sha256'),
+              'provenance_path': rel_path + '.provenance.json',
+              'provenance_sha256': hashlib.sha256(provenance_raw).hexdigest()}
+    raw, rows = read_kline_api(abs_path, rel_path, source)
+    times = [row[0] for row in rows]
+    return {'path': rel_path, 'series': meta['series'], 'symbol': meta['symbol'], 'interval': meta['interval'],
+            'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'rows': len(rows),
+            'first_open_ms': times[0] if times else None, 'last_open_ms': times[-1] if times else None,
+            'source': source}
+
+
+def parse_funding_api(rel: str, raw: bytes, meta: dict) -> list[dict]:
+    try:
+        rows = json.loads(raw.decode('utf-8'), parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ManifestError(f'{rel}: funding API response is not strict UTF-8 JSON') from exc
+    if not isinstance(rows, list):
+        raise ManifestError(f'{rel}: funding API response must be an array')
+    times = []
+    for row in rows:
+        if (not isinstance(row, dict) or row.get('symbol') != meta['symbol']
+                or type(row.get('fundingTime')) is not int or not isinstance(row.get('fundingRate'), str)):
+            raise ManifestError(f'{rel}: malformed funding API row')
+        try:
+            rate = float(row['fundingRate'])
+        except ValueError as exc:
+            raise ManifestError(f'{rel}: malformed funding API rate') from exc
+        if not math.isfinite(rate) or not meta['month_start_ms'] <= row['fundingTime'] < meta['month_end_ms']:
+            raise ManifestError(f'{rel}: funding API row outside authority period')
+        times.append(row['fundingTime'])
+    if any(right <= left for left, right in zip(times, times[1:])):
+        raise ManifestError(f'{rel}: funding API rows must be strictly increasing')
+    return rows
+
+
+def read_funding_api(abs_path: str, rel_path: str, source: dict) -> tuple[bytes, list[dict]]:
+    with open(abs_path, 'rb') as fh:
+        raw = fh.read()
+    try:
+        with open(abs_path + '.ok', 'rt', encoding='ascii') as fh:
+            expected = fh.read().strip()
+        with open(abs_path + '.provenance.json', 'rb') as fh:
+            provenance_raw = fh.read()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ManifestError(f'{rel_path}: funding API checksum/provenance sidecar missing') from exc
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected or actual != source.get('archive_checksum'):
+        raise ManifestError(f'{rel_path}: funding API raw response checksum mismatch')
+    if hashlib.sha256(provenance_raw).hexdigest() != source.get('provenance_sha256'):
+        raise ManifestError(f'{rel_path}: funding API provenance checksum mismatch')
+    provenance = json.loads(provenance_raw)
+    if (provenance.get('url') != source.get('url') or provenance.get('response_sha256') != actual
+            or not isinstance(provenance.get('accessed_cairo'), str)
+            or type(provenance.get('server_time_ms')) is not int):
+        raise ManifestError(f'{rel_path}: funding API provenance binding mismatch')
+    meta = archive_meta(rel_path)
+    if not _funding_api_url(source.get('url'), meta):
+        raise ManifestError(f'{rel_path}: funding API URL is not exactly bounded')
+    rows = parse_funding_api(rel_path, raw, meta)
+    first = rows[0]['fundingTime'] if rows else None
+    last = rows[-1]['fundingTime'] if rows else None
+    if (provenance.get('rows') != len(rows) or provenance.get('first_funding_time_ms') != first
+            or provenance.get('last_funding_time_ms') != last
+            or provenance.get('terminal_page') != (len(rows) < 1000)):
+        raise ManifestError(f'{rel_path}: funding API pagination/count provenance mismatch')
+    return raw, rows
+
+
+def scan_funding_api(abs_path: str, rel_path: str) -> dict:
+    meta = archive_meta(rel_path)
+    with open(abs_path + '.provenance.json', 'rb') as fh:
+        provenance_raw = fh.read()
+    provenance = json.loads(provenance_raw)
+    source = {'kind': FUNDING_API_KIND, 'url': provenance.get('url'),
+              'archive_checksum': provenance.get('response_sha256'),
+              'provenance_path': rel_path + '.provenance.json',
+              'provenance_sha256': hashlib.sha256(provenance_raw).hexdigest()}
+    raw, rows = read_funding_api(abs_path, rel_path, source)
+    times = [row['fundingTime'] for row in rows]
+    return {'path': rel_path, 'series': 'fundingRate', 'symbol': meta['symbol'], 'interval': None,
+            'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'rows': len(rows),
+            'first_open_ms': times[0] if times else None, 'last_open_ms': times[-1] if times else None,
+            'source': source}
+
+
 def scan_archive(abs_path: str, rel_path: str) -> dict:
     meta = archive_meta(rel_path)
     raw, published, data = read_archive(abs_path, rel_path)
@@ -246,7 +488,9 @@ def scan_archive(abs_path: str, rel_path: str) -> dict:
 
 def _scan_job(job):
     loader, abs_path, rel = job
-    return (scan_archive if loader == ARCHIVE_LOADER else scan_file)(abs_path, rel)
+    return (scan_funding_api if loader == ARCHIVE_LOADER and '/api/fundingRate/' in rel else
+            scan_kline_api if loader == ARCHIVE_LOADER and '/api/' in rel and rel.endswith('.json') else
+            scan_archive if loader == ARCHIVE_LOADER else scan_file)(abs_path, rel)
 
 
 def _scan_all(jobs, workers: int) -> list[dict]:
@@ -320,9 +564,18 @@ def validate(m: dict) -> None:
             need(all(f[k] == meta[k] for k in ('series', 'symbol', 'interval')),
                  f'{p}: series/symbol/interval disagree with the path')
             s = f['source']
-            need(isinstance(s, dict) and s.get('kind') == ARCHIVE_KIND and s.get('url') == archive_url(p)
-                 and s.get('archive_checksum') == f['sha256'],
-                 f'{p}: archive source must be {ARCHIVE_KIND} at {ARCHIVE_URL}<path> with checksum == sha256')
+            if isinstance(s, dict) and s.get('kind') in (FUNDING_API_KIND, KLINE_API_KIND):
+                need(set(s) == {'kind', 'url', 'archive_checksum', 'provenance_path', 'provenance_sha256'}
+                     and s.get('archive_checksum') == f['sha256']
+                     and ((_funding_api_url(s.get('url'), meta) if s.get('kind') == FUNDING_API_KIND
+                           else _kline_api_url(s.get('url'), meta)))
+                     and s.get('provenance_path') == p + '.provenance.json'
+                     and isinstance(s.get('provenance_sha256'), str) and HEX64.match(s['provenance_sha256']),
+                     f'{p}: funding API source/provenance is not exactly bounded and checksum-bound')
+            else:
+                need(isinstance(s, dict) and s.get('kind') == ARCHIVE_KIND and s.get('url') == archive_url(p)
+                     and s.get('archive_checksum') == f['sha256'],
+                     f'{p}: archive source must be {ARCHIVE_KIND} at {ARCHIVE_URL}<path> with checksum == sha256')
         else:
             mm = NAME_RE.match(os.path.basename(p))
             need(mm and mm.group(1) == f['symbol'] and mm.group(2) == f['interval'],
@@ -336,7 +589,10 @@ def validate(m: dict) -> None:
         else:
             need(f['first_open_ms'] is None and f['last_open_ms'] is None, f'{p}: no rows means null open times')
         s = f['source']
-        need(isinstance(s, dict) and set(s) == {'kind', 'url', 'archive_checksum'} and isinstance(s['kind'], str)
+        allowed_source_keys = ({'kind', 'url', 'archive_checksum', 'provenance_path', 'provenance_sha256'}
+                               if isinstance(s, dict) and s.get('kind') in (FUNDING_API_KIND, KLINE_API_KIND)
+                               else {'kind', 'url', 'archive_checksum'})
+        need(isinstance(s, dict) and set(s) == allowed_source_keys and isinstance(s['kind'], str)
              and s['kind'] and (s['url'] is None or isinstance(s['url'], str))
              and (s['archive_checksum'] is None or (isinstance(s['archive_checksum'], str)
                                                     and HEX64.match(s['archive_checksum']))),

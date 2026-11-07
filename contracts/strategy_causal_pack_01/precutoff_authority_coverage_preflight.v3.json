@@ -1,0 +1,84 @@
+{
+ "digest": "43734e67a4bafeb7c7b29bb857cb7b8e6d04d2f47c7aedc87ac7bed275157ada",
+ "folds": [
+  {
+   "fold": "wf1",
+   "gaps": [],
+   "guaranteed_period_gaps": 0
+  },
+  {
+   "fold": "wf2",
+   "gaps": [],
+   "guaranteed_period_gaps": 0
+  },
+  {
+   "fold": "wf3",
+   "gaps": [],
+   "guaranteed_period_gaps": 0
+  }
+ ],
+ "format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
+ "guaranteed_period_gaps": 0,
+ "guaranteed_period_gaps_by_stream": {
+  "fundingRate:None": 0,
+  "klines:1h": 0,
+  "klines:4h": 0,
+  "markPriceKlines:1h": 0
+ },
+ "interpretation": "period gaps are guaranteed missing authority; funding/grid gaps make a candidate incomplete only when its frozen rules require that stream/exposure. The 1h candidate remains pre-run incomplete where its signal bars have no authority.",
+ "manifest_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8",
+ "mode": "authority metadata/grid only; no candidate signal or economic outcome evaluated",
+ "pit_universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+ "required_streams": [
+  {
+   "interval": "4h",
+   "series": "klines"
+  },
+  {
+   "interval": "1h",
+   "series": "markPriceKlines"
+  },
+  {
+   "interval": null,
+   "series": "fundingRate"
+  },
+  {
+   "interval": "1h",
+   "series": "klines"
+  }
+ ],
+ "wf3_september": {
+  "active_symbols": [
+   "1000PEPEUSDT",
+   "ACEUSDT",
+   "ADAUSDT",
+   "AKEUSDT",
+   "ARBUSDT",
+   "BLESSUSDT",
+   "BNBUSDT",
+   "BTCUSDT",
+   "BTRUSDT",
+   "CYSUSDT",
+   "DOGEUSDT",
+   "ENAUSDT",
+   "ETHUSDT",
+   "HYPEUSDT",
+   "LINKUSDT",
+   "LSKUSDT",
+   "NEARUSDT",
+   "PUMPUSDT",
+   "SOLUSDT",
+   "SUIUSDT",
+   "TRUMPUSDT",
+   "TUTUSDT",
+   "UNIUSDT",
+   "USELESSUSDT",
+   "WLDUSDT",
+   "XRPUSDT",
+   "ZECUSDT"
+  ],
+  "daily_grid_checks": 1620,
+  "daily_grid_missing": [],
+  "funding_incomplete_symbols": []
+ }
+}
