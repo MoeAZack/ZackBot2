@@ -51,7 +51,10 @@ def authenticate_before_loader() -> Bindings:
     head, protected = _git("rev-parse", "HEAD"), _git("rev-parse", "--verify", f"{PROTECTED_REF}^{{commit}}")
     if head != protected or re.fullmatch(r"[0-9a-f]{40}", head) is None or _git("status", "--porcelain"):
         raise ProtectedAdapterError("evaluation requires clean HEAD equal to hard-bound protected ref")
-    _ancestor(SUCCESSOR_HEAD, head); _ancestor(PROTECTED_PLAN_COMMIT, head)
+    # Protected integration may squash the feature history. The immutable
+    # successor below still supplies the exact scaffold comparison; only the
+    # protected plan base must be an ancestor of the accepted implementation.
+    _ancestor(PROTECTED_PLAN_COMMIT, head)
     path = "research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json"
     scaffold = G._strict_json(G._tree_bytes(ROOT, SUCCESSOR_HEAD, path), "C257 frozen scaffold")
     amended = G._strict_json(G._tree_bytes(ROOT, head, path), "C257 protected amendment")

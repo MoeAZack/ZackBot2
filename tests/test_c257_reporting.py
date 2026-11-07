@@ -99,6 +99,23 @@ def test_incomplete_report_gate_precedes_any_identity_or_archive_access(monkeypa
     assert list(tmp_path.iterdir())==[]
 
 
+def test_protected_authentication_uses_base_lineage_and_keeps_missing_pin_lock(monkeypatch):
+    original_git = A._git
+    head = original_git("rev-parse", "HEAD")
+    def git(*args):
+        if args == ("status", "--porcelain"):
+            return ""
+        if args == ("rev-parse", "--verify", f"{A.PROTECTED_REF}^{{commit}}"):
+            return head
+        return original_git(*args)
+    ancestry = []
+    monkeypatch.setattr(A, "_git", git)
+    monkeypatch.setattr(A, "_ancestor", lambda base, target: ancestry.append((base, target)))
+    with pytest.raises(A.ProtectedAdapterError):
+        A.authenticate_before_loader()
+    assert ancestry == [(A.PROTECTED_PLAN_COMMIT, head)]
+
+
 def test_empty_book_is_reported_as_rejection_without_invented_statistics(monkeypatch):
     monkeypatch.setattr(S,"frozen_splits",lambda:{"development":(0,24*S.HOUR_MS,False)})
     raw=E.SealedEvidence("development",Decimal(1000),(),())
