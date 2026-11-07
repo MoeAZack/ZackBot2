@@ -956,9 +956,44 @@ def _pin_mismatches(pins, sha_of):
     return sorted(path for path, want in pins.items() if sha_of(path) != want)
 
 
+IDENTITY_AMENDMENT = 'manifest_unicode_identity_amendment.v1.json'
+IDENTITY_AMENDMENT_SHA256 = '48061b749be930c3e74393ec07bc2ea0d011372a0d78d89cdfd72af2f6d0748d'
+
+
+def _draft_identity_amendment():
+    with open(os.path.join(CONTRACT_DIR, IDENTITY_AMENDMENT), 'rb') as handle:
+        raw = handle.read().replace(b'\r\n', b'\n')
+    assert hashlib.sha256(raw).hexdigest() == IDENTITY_AMENDMENT_SHA256
+    amendment = json.loads(raw)
+    with open(JS, 'rb') as handle:
+        assert hashlib.sha256(handle.read().replace(b'\r\n', b'\n')).hexdigest() == amendment['base_contract_sha256']
+    assert C['status'] == 'DRAFT' and C['signed_by'] is None and C['frozen_at'] is None
+    assert amendment['scope'] == 'UNSIGNED_DRAFT_CODE_IDENTITY_ONLY_NO_ADMISSION_OR_EXECUTION_AUTHORITY'
+    assert amendment['execution_authorized'] is False and amendment['data_read_authorized'] is False
+    assert set(amendment['replacements']) == {'tools/research/manifest.py'}
+    return amendment
+
+
 def _code_pins():
     ci = C['code_identity']
-    return ci, {k: v for k, v in ci['pinned_files'].items() if not k.startswith('_')}
+    pins = {k: v for k, v in ci['pinned_files'].items() if not k.startswith('_')}
+    for path, replacement in _draft_identity_amendment()['replacements'].items():
+        assert pins[path] == replacement['old_sha256']
+        pins[path] = replacement['new_sha256']
+    return ci, pins
+
+
+def test_draft_identity_supplement_preserves_canonical_and_original_contract():
+    import ast
+    amendment = _draft_identity_amendment()
+    reference = amendment['unchanged_reference_function']
+    with open(os.path.join(ROOT, reference['path']), encoding='utf-8') as handle:
+        text = handle.read()
+    function = next(node for node in ast.parse(text).body
+                    if isinstance(node, ast.FunctionDef) and node.name == reference['function'])
+    assert hashlib.sha256(ast.get_source_segment(text, function).encode()).hexdigest() == reference['source_sha256']
+    assert amendment['preserved_original_contract'] is True
+    assert amendment['all_other_code_pins_unchanged'] is True
 
 
 def test_code_pins_match_checked_out_content():

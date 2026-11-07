@@ -1,0 +1,27 @@
+{
+  "format": "oi-loader-draft-code-identity-amendment/1",
+  "contract": "OI-LOADER-01",
+  "scope": "UNSIGNED_DRAFT_CODE_IDENTITY_ONLY_NO_ADMISSION_OR_EXECUTION_AUTHORITY",
+  "base_contract_sha256": "e1b51c7b718348200912a00d5ec0602620f788ee76f0af32e0366d82ad389d89",
+  "pre_amendment_protected_source_head": "4f27e13b228df7d71dcefcba64d9478eb6e045b9",
+  "original_contract_citation_preserved": "93642d833ef0c45a3d4c143c4938f4a810421308",
+  "reviewed_manifest_source_head": "92872ba2dfd94ec5ed7cd965e59f3872164dd1b7",
+  "replacements": {
+    "tools/research/manifest.py": {
+      "old_sha256": "f49e23fd83911459bc2bddece4051f6c1a6765294471ac62e35bd62bfef9dd42",
+      "new_sha256": "1c527768a5e3d9d0cc79fc01ac8e575bfa582e738370562fe3973eafffdc0fb1"
+    }
+  },
+  "unchanged_reference_function": {
+    "path": "tools/research/manifest.py",
+    "function": "canonical",
+    "source_sha256": "d2849ad77792c8bfb7285c88f34149d3ec67c96dff29a7ed273be0a04c1e7f1d"
+  },
+  "change_scope": "Only FUNDING_API_RE changes versus protected base4f27e13. Every other manifest AST node and referenced canonical function is unchanged; OI code/schema/predicate/bounds/decisions are unchanged.",
+  "citation_limit": "The existing draft manifest pin matches protected4f27e13, not its older93642d8 citation. Preserve the original contract bytes/history; this supplement explicitly identifies the actual pre-amendment source.",
+  "preserved_original_contract": true,
+  "all_other_code_pins_unchanged": true,
+  "signed_by": null,
+  "execution_authorized": false,
+  "data_read_authorized": false
+}
