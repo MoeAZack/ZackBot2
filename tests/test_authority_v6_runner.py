@@ -103,6 +103,27 @@ class OfflineBackend:
                 "guaranteed_period_gaps": self.gaps, "gaps": gaps}
 
 
+class PoisoningBackend(OfflineBackend):
+    def __init__(self, ledger, *, after, raw):
+        super().__init__()
+        self.ledger = ledger
+        self.after = after
+        self.raw = raw
+
+    def build_first_pass(self, seed_paths, provisional_digest):
+        result = super().build_first_pass(seed_paths, provisional_digest)
+        if self.after == "first-pass":
+            self.ledger.write_bytes(self.raw)
+        return result
+
+    def acquire_vision(self, requests, *, max_total_bytes, phase, pit_v9=None):
+        result = super().acquire_vision(
+            requests, max_total_bytes=max_total_bytes, phase=phase, pit_v9=pit_v9)
+        if self.after == "intraday" and phase == "intraday":
+            self.ledger.write_bytes(self.raw)
+        return result
+
+
 def test_one_command_orders_full_vertical_and_publishes_only_zero_gap(tmp_path):
     backend, emitted = OfflineBackend(), []
     result = R.run(_config(tmp_path), backend=backend, emit=emitted.append)
@@ -219,6 +240,38 @@ def test_semantically_malformed_ledger_fails_before_any_acquisition(tmp_path, ra
     with pytest.raises(V6.AuthorityV6Error):
         R.run(config, backend=backend, emit=lambda _: None)
     assert not any(step.startswith("acquire-") for step in backend.steps)
+
+
+@pytest.mark.parametrize("raw", [
+    b"{}\n",
+    b'{"kind":"VISION","path":"new.zip","attempt":1,"decision":"CHECKSUM_FETCH_FAILED"}\n',
+])
+def test_ledger_poisoned_after_first_pass_blocks_intraday_and_later_effects(tmp_path, raw):
+    config = _config(tmp_path)
+    backend = PoisoningBackend(config.ledger, after="first-pass", raw=raw)
+    with pytest.raises(V6.AuthorityV6Error):
+        R.run(config, backend=backend, emit=lambda _: None)
+    assert not any(step.startswith("acquire-intraday") for step in backend.steps)
+    assert not any(step.startswith("funding") for step in backend.steps)
+    assert "manifest" not in backend.steps
+    assert not (tmp_path / R.CURRENT_POINTER_REL).exists()
+
+
+@pytest.mark.parametrize("raw", [
+    b"{}\n",
+    (b'{"kind":"VISION","path":"new.zip","attempt":0,'
+     b'"decision":"VISION_PARSER_SCHEMA_CUTOFF_ACCEPTED",'
+     b'"acquisition_record_sha256":"' + b"0" * 64 + b'","acquisition_attempt":0}\n'),
+])
+def test_ledger_poisoned_after_intraday_blocks_funding_and_publication(tmp_path, raw):
+    config = _config(tmp_path)
+    backend = PoisoningBackend(config.ledger, after="intraday", raw=raw)
+    with pytest.raises(V6.AuthorityV6Error):
+        R.run(config, backend=backend, emit=lambda _: None)
+    assert "acquire-intraday:202" in backend.steps
+    assert not any(step.startswith("funding") for step in backend.steps)
+    assert "manifest" not in backend.steps
+    assert not (tmp_path / R.CURRENT_POINTER_REL).exists()
 
 
 def test_wrong_plan_confirmation_refuses_before_acquisition(tmp_path):

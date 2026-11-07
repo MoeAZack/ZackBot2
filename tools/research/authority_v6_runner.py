@@ -380,6 +380,7 @@ def run(config: RunConfig, *, backend=None, emit=print) -> dict:
     }
     emit(json.dumps(plan_notice, sort_keys=True))
 
+    _strict_ledger_preflight(config.ledger)
     seed_result = backend.acquire_vision(
         seed_requests, max_total_bytes=config.max_seed_bytes, phase="seed")
     seed_paths = _complete_vision(seed_result, seed_requests, "daily seed")
@@ -393,15 +394,19 @@ def run(config: RunConfig, *, backend=None, emit=print) -> dict:
     intraday_requests = tuple(backend.intraday_requests(intraday_symbols))
     if any(request.symbol not in set(intraday_symbols) for request in intraday_requests):
         raise RunnerError("intraday request escaped the exact PIT-v9 symbol set")
+    _strict_ledger_preflight(config.ledger)
     intraday_result = backend.acquire_vision(
         intraday_requests, max_total_bytes=config.max_intraday_bytes,
         phase="intraday", pit_v9=first_pass)
     intraday_paths = _complete_vision(intraday_result, intraday_requests, "intraday")
+    _strict_ledger_preflight(config.ledger)
     backend.capture_funding(intraday_symbols, first_pass)
     funding_paths = tuple(backend.funding_paths(intraday_symbols))
 
+    _strict_ledger_preflight(config.ledger)
     manifest = backend.build_manifest(
         tuple(sorted(set(seed_paths + intraday_paths + funding_paths))), first_pass)
+    _strict_ledger_preflight(config.ledger)
     pit_v9 = backend.replay_pit(first_pass, manifest)
     filter_v4 = backend.build_filter(pit_v9)
     coverage_v4 = backend.build_coverage(manifest, pit_v9, filter_v4)
@@ -410,6 +415,7 @@ def run(config: RunConfig, *, backend=None, emit=print) -> dict:
             or coverage_v4.get("gaps") != []):
         raise RunnerError("coverage-v4 did not prove ZERO_GUARANTEED_PERIOD_GAPS")
 
+    _strict_ledger_preflight(config.ledger)
     artifacts = {"manifest_v6": manifest, "pit_v9": pit_v9,
                  "filter_v4": filter_v4, "coverage_v4": coverage_v4}
     publication_root.mkdir(parents=True, exist_ok=True)
