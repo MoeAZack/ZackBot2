@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 IMPORTED_ROOT = ROOT
 RECEIPT = 'contracts/c260_low_idio_variance/c260_development_authority.v1.json'
 DOCUMENTS = {
+    'contracts/c260_low_idio_variance/c260_hourly_source_derivation.v1.json': 'a5c877ee079ab7008f362aac7be476e0f0a513181f8deb462b74f428e79dea98',
     'contracts/c260_low_idio_variance/c260_registration_amendment.v1.json': 'b00f4657610f8d458c41b636afe3f4e78da0deae5760c94fd354f596f39d8a27',
     'contracts/c260_low_idio_variance/c260_prior_metadata_census.v1.json': 'cdf4c2e4b2ef23ed626abfc78ade7efdcc99f087e18b59c2f8d4fcfe5e560a34',
     'contracts/c260_low_idio_variance/c260_execution_clarification.v1.json': 'c260dc85e7e55a87eadca89c299e5c928dffdf7232341f3f81d8aa50bcc5d788',

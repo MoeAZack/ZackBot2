@@ -1,0 +1,40 @@
+{
+  "format": "zb-c260-pre-read-hourly-source-derivation/1",
+  "candidate_id": 260,
+  "kind": "PRE_READ_SOURCE_DERIVATION_AMENDMENT_NOT_MECHANICAL_PINNING",
+  "status": "PENDING_EXACT_CODE_REVIEW_AND_PROTECTED_ACCEPTANCE",
+  "original_proposal_sha256": "8b14aa5ebb554728462d759c35eae215220855b7933f5f069adbeb0d1a262d48",
+  "manifest_path": "research_evidence/manifests/binance-um-archive-precutoff-monthly-rest-v5.json.gz",
+  "manifest_byte_sha256": "3de00d9a9961d04938e71cd58fb042c28bfeea48519d91d8fbac2d12da99987a",
+  "finding": "Before any C260 market row or economic identity was opened, a manifest/stat-only preflight found no direct trade klines:1h in the development window. Existing v3 required-stream labels and zero guaranteed period gaps did not prove actual hourly trade-bar presence. The earlier source-readiness assumption was wrong; the pending final merge was stopped before activation or a real evaluation spend.",
+  "logical_trade_stream": "klines:1h",
+  "physical_trade_stream": "klines:1m from the exact unchanged v5 manifest and explicit original store",
+  "precedence": "Always derive development trade candles from the bound 1m stream. Never choose between native and derived data by symbol, hour, availability, performance or a caller flag. Native markPriceKlines:1h and actual fundingRate remain unchanged.",
+  "window": "Only 2025-01-01T00:00:00Z inclusive through 2025-04-01T00:00:00Z exclusive. The existing C260 rule rejects admission with due>=fold end; no extra boundary-open or later economic row is authorized.",
+  "authentication": "Verify original archive bytes, published sidecar, manifest byte digest/length and timestamp envelope before economic parsing. Parse only authorized clipped rows with the existing strict 1m schema; never parse a later period to manufacture coverage.",
+  "grouping": "For each canonical UTC hour h require exactly 60 unique minute opens h+k*60000 for integer k=0..59, with each native minute close_time=open+59999 and valid original OHLC/volume/count fields. Reject off-grid, duplicate, missing, malformed or partial minute groups as DATA_INCOMPLETE; no interpolation, carry-forward, survivor removal or partial-hour bar.",
+  "aggregation": {
+    "timestamp": "Logical open=h; logical close=h+3600000-1; completed availability=h+3600000.",
+    "open": "First minute open, converted to binary64 once by the validated source parser.",
+    "high": "Maximum of all 60 validated binary64 minute highs.",
+    "low": "Minimum of all 60 validated binary64 minute lows.",
+    "close": "Last minute close.",
+    "quote_volume": "math.fsum of the 60 validated binary64 minute quote volumes in chronological minute order.",
+    "representation": "Expose only the existing typed Kline OHLC/quote-volume subset. This is an explicitly derived logical stream, not a claim that a native hourly ZIP was present or that unused native hourly fields were obtained."
+  },
+  "execution_information_boundary": "The strategy consumes only these logical hourly bars. Do not expose minute order, minute returns or within-hour stop/target chronology to ranking, ATR, sizing, fills or management. Preserve the frozen coarse hourly stop ambiguity/path, decision/next-open clocks, due-open ordering, signed funding phases and causal marks.",
+  "metadata_presence_check": {
+    "method": "Exact frozen metadata hashes plus file/path stat only; no market/archive payload or identity was opened.",
+    "eligible_PIT_member_superset_including_BTC": 63,
+    "minute_archives": 189,
+    "minute_rows_declared_by_manifest": 8164800,
+    "expected_minutes_for_superset": "63*90*1440=8164800",
+    "missing_raw_or_sidecar_paths": 0,
+    "limitation": "These counts establish only the observed metadata/cache presence. Actual row-level completeness and integrity must pass inside the issued one-shot development context; this is not economic evidence or an independent row audit."
+  },
+  "provenance": "Retain every consumed original 1m archive path/hash and this exact derivation document hash in the canonical report, alongside the unchanged v5 artifact identities. Independent review must distinguish raw-source verification from arithmetic-only checks.",
+  "unchanged": "The logical 1h hypothesis, full PIT/filter eligibility, ranking, side, 2ATR/72h lifecycle, costs, risk/capital books, statistical/economic gates and all forward/holdout prohibitions remain unchanged. No C260 outcome comparison, tuning, extra hypothesis or authority to read forward/holdout is introduced. Original proposal and preceding amendments remain permanently preserved.",
+  "execution_authorized": false,
+  "paper_or_live_authority_granted": false,
+  "promotable": false
+}
