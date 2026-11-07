@@ -51,21 +51,40 @@ def accepted_pair(long_symbol="LONG", short_symbol="SHORT", long_qty="1", short_
     return C.AcceptedPair(long_leg, short_leg, sized)
 
 
+def fill_bar_authority(fills):
+    result = {}
+    for fill in fills:
+        rows = result.setdefault(fill.symbol, {})
+        prior_ms = fill.timestamp_ms - C.HOUR_MS
+        rows.setdefault(prior_ms, C.Bar(prior_ms, 100, 110, 90, 100,
+                                       fill.prior_quote_volume))
+        rows[fill.timestamp_ms] = C.Bar(fill.timestamp_ms, fill.reference_price,
+                                        max(fill.reference_price, 110),
+                                        min(fill.reference_price, 90), fill.reference_price,
+                                        fill.prior_quote_volume)
+    for rows in result.values():
+        first, last = min(rows), max(rows)
+        for timestamp in range(first, last+C.HOUR_MS, C.HOUR_MS):
+            rows.setdefault(timestamp, C.Bar(timestamp, 100, 110, 90, 100, 1_000_000_000.0))
+    return {symbol: tuple(rows[key] for key in sorted(rows)) for symbol, rows in result.items()}
+
+
 def attempt(identifier: str, r_value: float, *, regime: str = "BTC_ABOVE_OR_ON_EMA200") -> C.ClosedAttempt:
     long_symbol, short_symbol = f"L{identifier}", f"S{identifier}"
     fills = [
-        C.make_fill(timestamp_ms=0, symbol=long_symbol, side=1, quantity=1,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol=long_symbol, side=1, quantity=1,
                     reference_price=100, phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=0, symbol=short_symbol, side=-1, quantity=1,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol=short_symbol, side=-1, quantity=1,
                     reference_price=100, phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=C.HOUR_MS, symbol=long_symbol, side=-1, quantity=1,
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol=long_symbol, side=-1, quantity=1,
                     reference_price=100 + 0.7 * r_value, phase="exit", movement_from=100),
-        C.make_fill(timestamp_ms=C.HOUR_MS, symbol=short_symbol, side=1, quantity=1,
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol=short_symbol, side=1, quantity=1,
                     reference_price=100 - 0.3 * r_value, phase="exit", movement_from=100),
     ]
-    return C.close_attempt(attempt_id=identifier, entry_ms=0, close_ms=C.HOUR_MS,
+    return C.close_attempt(attempt_id=identifier, entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
                            long_symbol=long_symbol, short_symbol=short_symbol, regime=regime,
-                           fills=fills, accepted_pair=accepted_pair(long_symbol, short_symbol,
+                           fills=fills, symbol_bars=fill_bar_authority(fills),
+                           accepted_pair=accepted_pair(long_symbol, short_symbol,
                                                                    stop_delta="0.1"))
 
 
@@ -123,6 +142,13 @@ def test_authority_api_has_no_caller_ref_or_ancestry_controls_and_schema_decoys_
                               "wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z",
                               "wf3": "2026-02-17T04:13:28Z",
                               "sealed_holdout": "2026-02-17T04:13:28Z"}})
+    with pytest.raises(C.IncompleteAuthority, match="exactly cover"):
+        C._validate_full_authority_schema({"weekly_cells": cells + [{
+            "monday_ms": cells[-1]["monday_ms"] + 7*24*C.HOUR_MS, "symbols": ["DECOY"]}]}, {
+            "fold_bindings": {"development_eligible_segment": "2024-12-13T04:44:48Z",
+                              "wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z",
+                              "wf3": "2026-02-17T04:13:28Z",
+                              "sealed_holdout": "2026-02-17T04:13:28Z"}})
 
     def materialize(name, body):
         digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -152,12 +178,14 @@ def test_authority_api_has_no_caller_ref_or_ancestry_controls_and_schema_decoys_
     coverage = materialize("coverage_v4", {
         "format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
         "required_result": "ZERO_GUARANTEED_PERIOD_GAPS", "gaps": [],
-        "required_streams": [{"series": "klines", "interval": "1h"},
+        "required_streams": [{"series": "klines", "interval": "1d"},
+                             {"series": "klines", "interval": "1h"},
                              {"series": "markPriceKlines", "interval": "1h"},
                              {"series": "fundingRate", "interval": None}],
+        "coverage_start_ms": 1728864000000, "cutoff_exclusive_ms": 1793836800000,
         "guaranteed_period_gaps": 0, "result": "ZERO_GUARANTEED_PERIOD_GAPS",
         "guaranteed_period_gaps_by_stream": {stream: 0 for stream in
-            ("klines:1h", "markPriceKlines:1h", "fundingRate:null")},
+            ("klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null")},
         "bindings": {key: value for name, pin in (("manifest_v6", manifest), ("pit_v9", pit),
                                                     ("filter_v4", filters))
                      for key, value in ((f"{name}_byte_sha256", pin.byte_sha256),
@@ -206,15 +234,19 @@ def test_authority_coverage_and_manifest_decoys_fail_exact_schema():
     coverage = {"format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
                 "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
                 "result": "ZERO_GUARANTEED_PERIOD_GAPS", "gaps": [],
-                "required_streams": [{"series": "klines", "interval": "1h"},
+                "required_streams": [{"series": "klines", "interval": "1d"},
+                                     {"series": "klines", "interval": "1h"},
                                      {"series": "markPriceKlines", "interval": "1h"},
                                      {"series": "fundingRate", "interval": None}],
+                "coverage_start_ms": 1728864000000, "cutoff_exclusive_ms": 1793836800000,
                 "guaranteed_period_gaps": 0,
                 "guaranteed_period_gaps_by_stream": {stream: 0 for stream in
-                    ("klines:1h", "markPriceKlines:1h", "fundingRate:null")}}
+                    ("klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null")}}
     C._validate_coverage_and_manifest(manifest, coverage)
     for hostile in (replace_dict(coverage, required_result="PASS"),
                     replace_dict(coverage, gaps=[{"decoy": True}]),
+                    replace_dict(coverage, required_streams=coverage["required_streams"] + [
+                        {"series": "klines", "interval": "4h"}]),
                     replace_dict(coverage, guaranteed_period_gaps_by_stream={"klines:1h": 0})):
         with pytest.raises(C.IncompleteAuthority, match="ZERO_GUARANTEED"):
             C._validate_coverage_and_manifest(manifest, hostile)
@@ -342,9 +374,10 @@ def test_stop_gap_precedes_range_fixed_exit_and_impact_never_uses_fill_bar_volum
 
 
 def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
-    entry = C.make_fill(timestamp_ms=1, symbol="AAA", side=1, quantity=1, reference_price=100,
+    entry_ms, close_ms = 8 * C.HOUR_MS, 9 * C.HOUR_MS
+    entry = C.make_fill(timestamp_ms=entry_ms, symbol="AAA", side=1, quantity=1, reference_price=100,
                         phase="entry", movement_from=None)
-    cleanup = C.make_fill(timestamp_ms=2, symbol="AAA", side=-1, quantity=1, reference_price=120,
+    cleanup = C.make_fill(timestamp_ms=close_ms, symbol="AAA", side=-1, quantity=1, reference_price=120,
                           phase="cleanup", movement_from=100)
     assert entry.fee_drag >= 0 and entry.slippage_drag >= 0
     assert cleanup.movement_cash == 20
@@ -353,12 +386,15 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
     stressed = C.signed_funding_cash(position_side=1, quantity=1, causal_mark=110,
                                      funding_rate=-0.001, stress=True)
     assert stressed == pytest.approx(funding / 1.5)
-    fp = C.FundingPoint("AAA", 1, -0.001)
-    closed = C.close_attempt(attempt_id="a", entry_ms=1, close_ms=2, long_symbol="AAA",
+    fp = C.FundingPoint("AAA", entry_ms, -0.001)
+    bars = fill_bar_authority([entry, cleanup])
+    closed = C.close_attempt(attempt_id="a", entry_ms=entry_ms, close_ms=close_ms, long_symbol="AAA",
                              short_symbol="BBB", regime="BTC_ABOVE_OR_ON_EMA200",
-                             fills=[entry, cleanup], accepted_atomic_leg=leg("AAA", 1, "100", "98"),
+                             fills=[entry, cleanup], symbol_bars=bars,
+                             accepted_atomic_leg=leg("AAA", 1, "100", "98"),
                              funding_points=[fp], funding_authority=[fp],
-                             funding_marks={"AAA": [C.MarkClose(0, 110)]}, atomic_one_leg=True)
+                             funding_marks={"AAA": [C.MarkClose(entry_ms-C.HOUR_MS, 110)]},
+                             atomic_one_leg=True)
     assert closed.actual_net_cash > 0
     assert closed.verdict_net_cash == pytest.approx(-(closed.fee_drag + closed.slippage_drag))
     assert closed.verdict_net_cash <= 0 and closed.conservative_adjustment_cash <= 0
@@ -367,54 +403,63 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
     atomic = C.account_atomic_one_leg(
         attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
         accepted_leg=leg("AAA", 1, "100", "98"),
-        fills=[entry, cleanup], funding_points=[fp], funding_authority=[fp],
-        funding_marks={"AAA": [C.MarkClose(0, 110)]},
+        fills=[entry, cleanup], symbol_bars=bars, funding_points=[fp], funding_authority=[fp],
+        funding_marks={"AAA": [C.MarkClose(entry_ms-C.HOUR_MS, 110)]},
         regime="BTC_ABOVE_OR_ON_EMA200")
     assert atomic.atomic_one_leg_loss and atomic.initial_risk_cash > 2
-    same_open = replace(cleanup, timestamp_ms=1)
+    same_open = replace(cleanup, timestamp_ms=entry_ms)
     with pytest.raises(C.IncompleteEpisode, match="after the entry"):
         C.account_atomic_one_leg(
             attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
             accepted_leg=leg("AAA", 1, "100", "98"),
-            fills=[entry, same_open], regime="BTC_ABOVE_OR_ON_EMA200")
-    partial = C.make_fill(timestamp_ms=2, symbol="AAA", side=-1, quantity=0.1,
+            fills=[entry, same_open], symbol_bars=fill_bar_authority([entry, same_open]),
+            regime="BTC_ABOVE_OR_ON_EMA200")
+    partial = C.make_fill(timestamp_ms=close_ms, symbol="AAA", side=-1, quantity=0.1,
                           reference_price=120, phase="cleanup", movement_from=100)
     with pytest.raises(C.IncompleteEpisode, match="conserve"):
         C.account_atomic_one_leg(
             attempt_id="partial", expected_long_symbol="AAA", expected_short_symbol="BBB",
             accepted_leg=leg("AAA", 1, "100", "98"),
-            fills=[entry, partial], regime="BTC_ABOVE_OR_ON_EMA200")
+            fills=[entry, partial], symbol_bars=fill_bar_authority([entry, partial]),
+            funding_points=[fp], funding_authority=[fp],
+            funding_marks={"AAA": [C.MarkClose(entry_ms-C.HOUR_MS, 110)]},
+            regime="BTC_ABOVE_OR_ON_EMA200")
 
 
 def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
     fills = [
-        C.make_fill(timestamp_ms=10, symbol="LONG", side=1, quantity=1, reference_price=100,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=10, symbol="SHORT", side=-1, quantity=2, reference_price=50,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=-1, quantity=2, reference_price=50,
                     phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=20, symbol="LONG", side=-1, quantity=1, reference_price=101,
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=1, reference_price=101,
                     phase="exit", movement_from=100),
-        C.make_fill(timestamp_ms=20, symbol="SHORT", side=1, quantity=2, reference_price=49,
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="SHORT", side=1, quantity=2, reference_price=49,
                     phase="exit", movement_from=50),
     ]
     closed = C.close_attempt(
-        attempt_id="normal", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
-        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills,
+        attempt_id="normal", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+        long_symbol="LONG", short_symbol="SHORT",
+        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, symbol_bars=fill_bar_authority(fills),
         accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     assert len(closed.lifecycle_identity) == 4
     with pytest.raises(C.IncompleteEpisode, match="conserve"):
-        partial_long = C.make_fill(timestamp_ms=20, symbol="LONG", side=-1, quantity=0.1,
+        partial_long = C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=0.1,
                                    reference_price=101, phase="exit", movement_from=100)
         C.close_attempt(
-            attempt_id="partial", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
+            attempt_id="partial", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+            long_symbol="LONG", short_symbol="SHORT",
             regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [partial_long, fills[3]],
+            symbol_bars=fill_bar_authority(fills[:2] + [partial_long, fills[3]]),
             accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     with pytest.raises(C.IncompleteEpisode, match="side"):
-        wrong_side = C.make_fill(timestamp_ms=20, symbol="LONG", side=1, quantity=1,
+        wrong_side = C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=1, quantity=1,
                                  reference_price=101, phase="exit", movement_from=100)
         C.close_attempt(
-            attempt_id="wrong-side", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
+            attempt_id="wrong-side", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+            long_symbol="LONG", short_symbol="SHORT",
             regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [wrong_side, fills[3]],
+            symbol_bars=fill_bar_authority(fills[:2] + [wrong_side, fills[3]]),
             accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     with pytest.raises(C.IncompleteEpisode, match="declared pair"):
         C.account_atomic_one_leg(
@@ -422,26 +467,27 @@ def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
             accepted_leg=leg("DECOY", 1, "100", "98"),
             fills=[replace(fills[0], symbol="DECOY"),
                    replace(fills[2], symbol="DECOY", phase="cleanup")],
+            symbol_bars=fill_bar_authority([replace(fills[0], symbol="DECOY"),
+                                            replace(fills[2], symbol="DECOY", phase="cleanup")]),
             regime="BTC_ABOVE_OR_ON_EMA200")
     assert "accepted_quantities" not in inspect.signature(C.close_attempt).parameters
 
 
 def test_fill_funding_and_risk_economics_are_derived_and_hostile_rows_fail():
+    entry_ms, close_ms = C.HOUR_MS, 2*C.HOUR_MS
     fills = [
-        C.make_fill(timestamp_ms=1, symbol="LONG", side=1, quantity=1, reference_price=100,
+        C.make_fill(timestamp_ms=entry_ms, symbol="LONG", side=1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None, prior_quote_volume=1_000_000),
-        C.make_fill(timestamp_ms=1, symbol="SHORT", side=-1, quantity=1, reference_price=100,
+        C.make_fill(timestamp_ms=entry_ms, symbol="SHORT", side=-1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None, prior_quote_volume=1_000_000),
-        C.make_fill(timestamp_ms=20, symbol="LONG", side=-1, quantity=1, reference_price=101,
+        C.make_fill(timestamp_ms=close_ms, symbol="LONG", side=-1, quantity=1, reference_price=101,
                     phase="exit", movement_from=100, prior_quote_volume=1_000_000),
-        C.make_fill(timestamp_ms=20, symbol="SHORT", side=1, quantity=1, reference_price=99,
+        C.make_fill(timestamp_ms=close_ms, symbol="SHORT", side=1, quantity=1, reference_price=99,
                     phase="exit", movement_from=100, prior_quote_volume=1_000_000),
     ]
-    point = C.FundingPoint("LONG", 10, 0.001)
-    kwargs = dict(attempt_id="derived", entry_ms=1, close_ms=20, long_symbol="LONG",
+    kwargs = dict(attempt_id="derived", entry_ms=entry_ms, close_ms=close_ms, long_symbol="LONG",
                   short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200", fills=fills,
-                  accepted_pair=accepted_pair(), funding_points=[point], funding_authority=[point],
-                  funding_marks={"LONG": [C.MarkClose(9, 100)]})
+                  symbol_bars=fill_bar_authority(fills), accepted_pair=accepted_pair())
     base = C.close_attempt(**kwargs)
     stress = C.close_attempt(**kwargs, stress=True)
     assert base.fee_drag > 0 and stress.fee_drag > 0
@@ -451,17 +497,10 @@ def test_fill_funding_and_risk_economics_are_derived_and_hostile_rows_fail():
     assert stress.slippage_drag == pytest.approx(base.slippage_drag * 5)
     assert stress.fills[0].execution_price > base.fills[0].execution_price
     assert stress.fills[2].execution_price < base.fills[2].execution_price
-    assert stress.funding_events[0].timestamp_ms == base.funding_events[0].timestamp_ms == 10
-    assert stress.funding_events[0].symbol == base.funding_events[0].symbol == "LONG"
-
     with pytest.raises(C.IncompleteEpisode, match="caller-supplied fill economics"):
         C.close_attempt(**{**kwargs, "fills": [replace(fills[0], fee_drag=0), *fills[1:]]})
-    with pytest.raises(C.IncompleteEpisode, match="duplicate funding"):
-        C.close_attempt(**{**kwargs, "funding_points": [point, point]})
-    with pytest.raises(C.IncompleteEpisode, match="exactly bound"):
-        C.close_attempt(**{**kwargs, "funding_points": [replace(point, rate=0.002)]})
     with pytest.raises(C.IncompleteEpisode, match="impact cap"):
-        C.make_fill(timestamp_ms=1, symbol="LONG", side=1, quantity=10,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=1, quantity=10,
                     reference_price=100, phase="entry", movement_from=None,
                     prior_quote_volume=100_000)
     tiny = accepted_pair()
@@ -470,15 +509,71 @@ def test_fill_funding_and_risk_economics_are_derived_and_hostile_rows_fail():
         C.close_attempt(**{**kwargs, "accepted_pair": tiny})
 
 
+def test_bar_derived_stop_and_complete_canonical_funding_schedule_are_mandatory():
+    entry_ms, close_ms = 7*C.HOUR_MS, 13*C.HOUR_MS
+    fills = [
+        C.make_fill(timestamp_ms=entry_ms, symbol="LONG", side=1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=entry_ms, symbol="SHORT", side=-1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=close_ms, symbol="LONG", side=-1, quantity=1,
+                    reference_price=101, phase="exit", movement_from=100),
+        C.make_fill(timestamp_ms=close_ms, symbol="SHORT", side=1, quantity=1,
+                    reference_price=99, phase="exit", movement_from=100),
+    ]
+    bars = fill_bar_authority(fills)
+    settlement = 8*C.HOUR_MS
+    funding = [C.FundingPoint(symbol, settlement, rate)
+               for symbol, rate in (("LONG", .001), ("SHORT", -.001))]
+    marks = {symbol: [C.MarkClose(settlement-C.HOUR_MS, 100)]
+             for symbol in ("LONG", "SHORT")}
+    kwargs = dict(attempt_id="funding", entry_ms=entry_ms, close_ms=close_ms,
+                  long_symbol="LONG", short_symbol="SHORT",
+                  regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, symbol_bars=bars,
+                  accepted_pair=accepted_pair(), funding_points=funding,
+                  funding_authority=funding, funding_marks=marks)
+    row = C.close_attempt(**kwargs)
+    assert {(event.symbol, event.timestamp_ms) for event in row.funding_events} == {
+        ("LONG", settlement), ("SHORT", settlement)}
+    with pytest.raises(C.IncompleteEpisode, match="8h exposure settlements"):
+        C.close_attempt(**{**kwargs, "funding_authority": funding[:-1],
+                           "funding_points": funding[:-1]})
+    extra = C.FundingPoint("LONG", 16*C.HOUR_MS, .001)
+    with pytest.raises(C.IncompleteEpisode, match="8h exposure settlements"):
+        C.close_attempt(**{**kwargs, "funding_authority": funding + [extra],
+                           "funding_points": funding + [extra]})
+    stale = {**marks, "LONG": [C.MarkClose(settlement-7*C.HOUR_MS, 100)]}
+    with pytest.raises(C.IncompleteAuthority, match="missing or stale"):
+        C.close_attempt(**{**kwargs, "funding_marks": stale})
+
+    stop_entry = C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=1, quantity=1,
+                             reference_price=100, phase="entry", movement_from=None)
+    forged_stop = C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
+                              reference_price=1000, phase="stop", movement_from=100)
+    with pytest.raises(C.IncompleteEpisode, match="frozen reference|reference/impact"):
+        C.account_atomic_one_leg(
+            attempt_id="forged-stop", expected_long_symbol="LONG", expected_short_symbol="SHORT",
+            accepted_leg=leg("LONG", 1, "100", "98"), fills=[stop_entry, forged_stop],
+            symbol_bars=fill_bar_authority([stop_entry, forged_stop]),
+            regime="BTC_ABOVE_OR_ON_EMA200")
+    bad_bars = {symbol: list(rows) for symbol, rows in fill_bar_authority(fills).items()}
+    prior_index = next(i for i, bar in enumerate(bad_bars["LONG"])
+                       if bar.open_ms == entry_ms-C.HOUR_MS)
+    bad_bars["LONG"][prior_index] = replace(bad_bars["LONG"][prior_index], quote_volume=123)
+    with pytest.raises(C.IncompleteEpisode, match="reference/impact|impact cap"):
+        C.close_attempt(**{**kwargs, "symbol_bars": bad_bars})
+
+
 def test_open_event_order_funding_boundaries_required_exit_impact_and_book_caps():
     assert C.OPEN_EVENT_ORDER[0] == "FUNDING_STRICTLY_BEFORE_OPEN"
     assert C.OPEN_EVENT_ORDER[-1] == "FUNDING_AT_OPEN"
     assert C.funding_belongs_to_exposure(nominal_time_ms=10, entry_open_ms=10, exit_open_ms=20)
     assert not C.funding_belongs_to_exposure(nominal_time_ms=20, entry_open_ms=10, exit_open_ms=20)
-    marks = [C.MarkClose(9, 99), C.MarkClose(10, 100)]
-    assert C.causal_mark_strictly_before(marks, 10).price == 99
+    event = 10*C.HOUR_MS
+    marks = [C.MarkClose(event-C.HOUR_MS, 99), C.MarkClose(event, 100)]
+    assert C.causal_mark_strictly_before(marks, event).price == 99
     with pytest.raises(C.IncompleteAuthority, match="duplicate"):
-        C.causal_mark_strictly_before(marks + [C.MarkClose(9, 98)], 10)
+        C.causal_mark_strictly_before(marks + [C.MarkClose(event-C.HOUR_MS, 98)], event)
     multiplier, incomplete = C.required_exit_impact(10, 100, 500_000)
     assert multiplier == pytest.approx(2.0) and incomplete is True
     assert not C.entry_impact_feasible(10, 100, 500_000)
@@ -584,19 +679,19 @@ def test_fold_metrics_include_atomic_failures_regimes_and_fail_closed_on_zero_de
 
 def test_leg_cashflows_and_symbol_concentration_use_actual_attribution_not_half_split():
     fills = [
-        C.make_fill(timestamp_ms=0, symbol="LONG", side=1, quantity=1, reference_price=100,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=0, symbol="SHORT", side=-1, quantity=1, reference_price=100,
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=-1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
                     reference_price=109, phase="exit", movement_from=100),
-        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
                     reference_price=99, phase="exit", movement_from=100),
     ]
     row = C.close_attempt(
-        attempt_id="asymmetric", entry_ms=0, close_ms=C.HOUR_MS,
+        attempt_id="asymmetric", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
         long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
-        fills=fills, accepted_pair=accepted_pair())
+        fills=fills, symbol_bars=fill_bar_authority(fills), accepted_pair=accepted_pair())
     assert row.long_contribution_R > row.short_contribution_R
     assert math.fsum(leg.net_R for leg in row.legs) == pytest.approx(row.verdict_R)
     metrics = C.fold_metrics([row])
@@ -631,9 +726,9 @@ def test_development_veto_never_opens_forward_and_stress_cannot_change_selection
     hostile = replace(fold, stress=C.ReplayResult(2000, (changed,) + stress_rows[1:]))
     with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile)
-    close_changed = replace(base_rows[0], close_ms=2 * C.HOUR_MS)
+    close_changed = replace(base_rows[0], close_ms=3 * C.HOUR_MS)
     hostile_close = replace(fold, stress=C.ReplayResult(2000, (close_changed,) + stress_rows[1:]))
-    with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
+    with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection|not mechanically derived"):
         C.validate_fold_evidence(hostile_close)
     lifecycle_changed = replace(base_rows[0], lifecycle_identity=base_rows[0].lifecycle_identity[:-1] +
                                 ((2 * C.HOUR_MS, "L0", -1, "1.0", "102.0", "exit"),))

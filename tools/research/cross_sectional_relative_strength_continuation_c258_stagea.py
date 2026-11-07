@@ -204,9 +204,8 @@ def _validate_full_authority_schema(pit: Mapping[str, object], filters: Mapping[
         if not isinstance(symbols, list) or not symbols or not all(isinstance(s, str) and s for s in symbols):
             raise IncompleteAuthority("PIT-v9 weekly cell has no nonempty crypto membership")
         observed.append(int(cell["monday_ms"]))
-    expected_cells = set(_expected_weekly_cells())
-    if (len(observed) != len(set(observed)) or not expected_cells <= set(observed)
-            or max(observed) != max(expected_cells)):
+    expected_cells = _expected_weekly_cells()
+    if tuple(observed) != expected_cells:
         raise IncompleteAuthority("PIT-v9 weekly cells do not exactly cover frozen windows")
     expected_bindings = {
         "development_eligible_segment": "2024-12-13T04:44:48Z",
@@ -221,16 +220,19 @@ def _validate_full_authority_schema(pit: Mapping[str, object], filters: Mapping[
 
 def _validate_coverage_and_manifest(manifest: Mapping[str, object],
                                     coverage: Mapping[str, object]) -> None:
-    required_streams = [{"series": "klines", "interval": "1h"},
+    required_streams = [{"series": "klines", "interval": "1d"},
+                        {"series": "klines", "interval": "1h"},
                         {"series": "markPriceKlines", "interval": "1h"},
                         {"series": "fundingRate", "interval": None}]
-    coverage_streams = {"klines:1h", "markPriceKlines:1h", "fundingRate:null"}
+    coverage_streams = {"klines:1d", "klines:1h", "markPriceKlines:1h", "fundingRate:null"}
     if (coverage.get("format") != "zb-strategy-causal-pack-01-authority-coverage-preflight/1"
             or coverage.get("required_result") != "ZERO_GUARANTEED_PERIOD_GAPS"
             or coverage.get("result") != "ZERO_GUARANTEED_PERIOD_GAPS"
             or coverage.get("required_streams") != required_streams
             or coverage.get("gaps") != []
             or coverage.get("guaranteed_period_gaps") != 0
+            or coverage.get("coverage_start_ms") != 1728864000000
+            or coverage.get("cutoff_exclusive_ms") != 1793836800000
             or coverage.get("guaranteed_period_gaps_by_stream")
             != {stream: 0 for stream in coverage_streams}):
         raise IncompleteAuthority("coverage-v4 is not ZERO_GUARANTEED_PERIOD_GAPS")
@@ -286,13 +288,26 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[s
     for key, expected in (("manifest_v6_byte_sha256", pins.manifest_v6.byte_sha256),
                           ("manifest_v6_content_digest", pins.manifest_v6.content_digest)):
         _require_binding(pit, key, expected)
+    if pit.get("bindings") != {
+            "manifest_v6_byte_sha256": pins.manifest_v6.byte_sha256,
+            "manifest_v6_content_digest": pins.manifest_v6.content_digest}:
+        raise IncompleteAuthority("PIT-v9 exact manifest cross-bindings mismatch")
     for key, expected in (("pit_v9_byte_sha256", pins.pit_v9.byte_sha256),
                           ("pit_v9_content_digest", pins.pit_v9.content_digest)):
         _require_binding(filters, key, expected)
+    if filters.get("bindings") != {
+            "pit_v9_byte_sha256": pins.pit_v9.byte_sha256,
+            "pit_v9_content_digest": pins.pit_v9.content_digest}:
+        raise IncompleteAuthority("filter-v4 exact PIT cross-bindings mismatch")
     for name in ("manifest_v6", "pit_v9", "filter_v4"):
         pin = getattr(pins, name)
         _require_binding(coverage, f"{name}_byte_sha256", pin.byte_sha256)
         _require_binding(coverage, f"{name}_content_digest", pin.content_digest)
+    expected_coverage_bindings = {key: value for name in ("manifest_v6", "pit_v9", "filter_v4")
+        for key, value in ((f"{name}_byte_sha256", getattr(pins, name).byte_sha256),
+                           (f"{name}_content_digest", getattr(pins, name).content_digest))}
+    if coverage.get("bindings") != expected_coverage_bindings:
+        raise IncompleteAuthority("coverage-v4 exact cross-bindings mismatch")
     return decoded
 
 
@@ -701,6 +716,48 @@ def _rederive_fill(fill: FillCash, *, stress: bool) -> FillCash:
                      prior_quote_volume=fill.prior_quote_volume, stress=True)
 
 
+def _derive_fill_from_bar_authority(fill: FillCash, *, leg: LegSpec,
+                                    bars: Sequence[Bar], stress: bool) -> FillCash:
+    """Bind every raw reference and impact input to exact timestamped causal bars."""
+    index = exact_index(bars)
+    bar = index.get(fill.timestamp_ms)
+    prior = index.get(fill.timestamp_ms - HOUR_MS)
+    if bar is None or prior is None:
+        raise IncompleteAuthority("fill is missing exact bar or strict-prior volume authority")
+    if fill.phase == "entry":
+        reference, movement_from = bar.open, None
+    elif fill.phase in {"exit", "cleanup"}:
+        reference, movement_from = bar.open, float(leg.entry_reference)
+    else:
+        frozen_stop = float(leg.stop_reference)
+        if leg.side == 1:
+            reference = min(frozen_stop, bar.open) if bar.open <= frozen_stop else (
+                frozen_stop if bar.low <= frozen_stop else math.nan)
+        else:
+            reference = max(frozen_stop, bar.open) if bar.open >= frozen_stop else (
+                frozen_stop if bar.high >= frozen_stop else math.nan)
+        if not math.isfinite(reference):
+            raise IncompleteEpisode("stop fill is not supported by frozen protection bar")
+        movement_from = float(leg.entry_reference)
+    if fill.reference_price != reference or fill.movement_from != movement_from:
+        raise IncompleteEpisode("fill reference/impact is not exact frozen bar authority")
+    base = make_fill(timestamp_ms=fill.timestamp_ms, symbol=fill.symbol, side=fill.side,
+                     quantity=fill.quantity, reference_price=reference, phase=fill.phase,
+                     movement_from=movement_from, prior_quote_volume=prior.quote_volume,
+                     stress=False)
+    if (fill.execution_price, fill.movement_cash, fill.fee_drag, fill.slippage_drag,
+            fill.impact_incomplete, fill.stress) != (
+            base.execution_price, base.movement_cash, base.fee_drag, base.slippage_drag,
+            base.impact_incomplete, False):
+        raise IncompleteEpisode("caller-supplied fill economics do not match frozen derivation")
+    if not stress:
+        return base
+    return make_fill(timestamp_ms=fill.timestamp_ms, symbol=fill.symbol, side=fill.side,
+                     quantity=fill.quantity, reference_price=reference, phase=fill.phase,
+                     movement_from=movement_from, prior_quote_volume=prior.quote_volume,
+                     stress=True)
+
+
 def impact_ratio(quantity: float, reference_price: float, prior_quote_volume: float) -> float:
     if not all(math.isfinite(v) and v > 0 for v in (quantity, reference_price, prior_quote_volume)):
         raise IncompleteAuthority("impact authority is missing/non-positive")
@@ -765,7 +822,10 @@ def causal_mark_strictly_before(marks: Sequence[MarkClose], event_ms: int) -> Ma
             eligible.append(mark)
     if not eligible:
         raise IncompleteAuthority("missing causal mark strictly before event")
-    return max(eligible, key=lambda mark: mark.close_ms)
+    result = max(eligible, key=lambda mark: mark.close_ms)
+    if result.close_ms != event_ms - HOUR_MS:
+        raise IncompleteAuthority("strict-prior causal mark timestamp is missing or stale")
+    return result
 
 
 def funding_belongs_to_exposure(*, nominal_time_ms: int, entry_open_ms: int, exit_open_ms: int) -> bool:
@@ -825,6 +885,12 @@ def derive_funding_events(*, funding_points: Sequence["FundingPoint"],
         if key in authority or not math.isfinite(row.rate):
             raise IncompleteAuthority("duplicate or invalid funding authority")
         authority[key] = row.rate
+    eight_hours = 8 * HOUR_MS
+    first = ((entry_ms + eight_hours - 1) // eight_hours) * eight_hours
+    required = {(symbol, timestamp) for symbol in position_sides
+                for timestamp in range(first, close_ms, eight_hours)}
+    if set(authority) != required:
+        raise IncompleteEpisode("funding authority does not exactly cover canonical 8h exposure settlements")
     seen: set[tuple[str, int]] = set()
     events = []
     for row in funding_points:
@@ -840,8 +906,6 @@ def derive_funding_events(*, funding_points: Sequence["FundingPoint"],
                                    quantity=float(quantities[row.symbol]), causal_mark=mark.price,
                                    funding_rate=row.rate, stress=stress)
         events.append(FundingCashEvent(row.nominal_time_ms, row.symbol, cash))
-    required = {key for key in authority
-                if key[0] in position_sides and entry_ms <= key[1] < close_ms}
     if seen != required:
         raise IncompleteEpisode("funding rows do not exactly cover exposure authority")
     return tuple(events)
@@ -929,6 +993,7 @@ def _validate_fill_lifecycle(*, fills: Sequence[FillCash], entry_ms: int, close_
 
 def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol: str,
                   short_symbol: str, regime: str, fills: Sequence[FillCash],
+                  symbol_bars: Mapping[str, Sequence[Bar]],
                   accepted_pair: AcceptedPair | None = None,
                   accepted_atomic_leg: LegSpec | None = None,
                   funding_points: Sequence["FundingPoint"] = (),
@@ -938,7 +1003,6 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
                   atomic_one_leg: bool = False) -> ClosedAttempt:
     if not fills or close_ms < entry_ms:
         raise IncompleteEpisode("attempt cashflows are incomplete")
-    fills = tuple(_rederive_fill(fill, stress=stress) for fill in fills)
     present_symbols = {fill.symbol for fill in fills}
     pair_sides = {long_symbol: 1, short_symbol: -1}
     if atomic_one_leg:
@@ -947,6 +1011,25 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
         declared_sides = {symbol: pair_sides[symbol] for symbol in present_symbols}
     else:
         declared_sides = pair_sides
+    if set(symbol_bars) != set(declared_sides):
+        raise IncompleteAuthority("fill bar authority symbols do not match accepted lifecycle")
+    required_bar_times = set(range(entry_ms-HOUR_MS, close_ms+HOUR_MS, HOUR_MS))
+    for symbol, bars in symbol_bars.items():
+        available = set(exact_index(bars))
+        if not required_bar_times <= available:
+            raise IncompleteAuthority(f"{symbol} lifecycle bar authority is missing/compressed")
+    if atomic_one_leg:
+        if accepted_atomic_leg is None:
+            raise IncompleteEpisode("atomic lifecycle requires accepted LegSpec")
+        legs_by_symbol = {accepted_atomic_leg.symbol: accepted_atomic_leg}
+    else:
+        if accepted_pair is None:
+            raise IncompleteEpisode("normal lifecycle requires accepted pair")
+        legs_by_symbol = {accepted_pair.long.symbol: accepted_pair.long,
+                          accepted_pair.short.symbol: accepted_pair.short}
+    fills = tuple(_derive_fill_from_bar_authority(
+        fill, leg=legs_by_symbol[fill.symbol], bars=symbol_bars[fill.symbol], stress=stress)
+        for fill in fills)
     accepted = _validate_fill_lifecycle(fills=fills, entry_ms=entry_ms, close_ms=close_ms,
                                         declared_sides=declared_sides, atomic_one_leg=atomic_one_leg)
     if atomic_one_leg:
@@ -1026,6 +1109,7 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
 
 def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expected_short_symbol: str,
                            accepted_leg: LegSpec, fills: Sequence[FillCash],
+                           symbol_bars: Mapping[str, Sequence[Bar]],
                            funding_points: Sequence["FundingPoint"] = (),
                            funding_authority: Sequence["FundingPoint"] = (),
                            funding_marks: Mapping[str, Sequence[MarkClose]] = {},
@@ -1037,6 +1121,8 @@ def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expect
     final = next((fill for fill in fills if fill.phase in {"stop", "cleanup"}), None)
     if entry is None or final is None or entry.symbol != accepted_leg.symbol or final.symbol != accepted_leg.symbol:
         raise IncompleteEpisode("atomic fills do not match the accepted leg")
+    if final.timestamp_ms <= entry.timestamp_ms:
+        raise IncompleteEpisode("atomic cleanup/stop must occur after the entry")
     declared_side = 1 if accepted_leg.symbol == expected_long_symbol else (
         -1 if accepted_leg.symbol == expected_short_symbol else 0)
     if declared_side == 0 or accepted_leg.side != declared_side:
@@ -1048,7 +1134,8 @@ def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expect
             raise IncompleteEpisode("short atomic stop was filled favorably below its frozen reference")
     return close_attempt(attempt_id=attempt_id, entry_ms=entry.timestamp_ms, close_ms=final.timestamp_ms,
                          long_symbol=expected_long_symbol, short_symbol=expected_short_symbol,
-                         regime=regime, fills=fills, accepted_atomic_leg=accepted_leg,
+                         regime=regime, fills=fills, symbol_bars=symbol_bars,
+                         accepted_atomic_leg=accepted_leg,
                          funding_points=funding_points, funding_authority=funding_authority,
                          funding_marks=funding_marks, stress=stress,
                          atomic_one_leg=True)
