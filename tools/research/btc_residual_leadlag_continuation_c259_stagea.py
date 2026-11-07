@@ -494,12 +494,34 @@ def impact_drag(quantity: Decimal, reference: Decimal, quote_volume_24h: float) 
 
 
 @dataclass(frozen=True)
+class VolumePoint:
+    open_ms: int
+    quote_volume: float
+
+
+def _volume_rows_total(rows: Sequence[VolumePoint], impact_asof_ms: int) -> float:
+    expected = tuple(range(impact_asof_ms-24*HOUR_MS, impact_asof_ms, HOUR_MS))
+    if (not isinstance(impact_asof_ms, int) or impact_asof_ms % HOUR_MS
+            or len(rows) != 24
+            or tuple(row.open_ms for row in rows) != expected
+            or not all(math.isfinite(row.quote_volume) and row.quote_volume > 0
+                       for row in rows)):
+        raise IncompleteAuthority("volume rows are not exact contiguous causal authority")
+    total = math.fsum(row.quote_volume for row in rows)
+    if not math.isfinite(total) or total <= 0:
+        raise IncompleteAuthority("causal quote volume is invalid")
+    return total
+
+
+@dataclass(frozen=True)
 class SizedPosition:
     side: int
     entry: Decimal
     stop: Decimal
     filters: Filters
     side_book_equity: Decimal
+    entry_impact_asof_ms: int
+    entry_volume_rows: tuple[VolumePoint, ...]
     quote_volume_24h: float
     quantity: Decimal
     initial_risk_cash: Decimal
@@ -508,10 +530,13 @@ class SizedPosition:
 
 
 def size_position(*, side: int, entry: Decimal, stop: Decimal, filters: Filters,
-                  side_book_equity: Decimal, quote_volume_24h: float) -> SizedPosition | None:
+                  side_book_equity: Decimal, entry_impact_asof_ms: int,
+                  entry_volume_rows: Sequence[VolumePoint]) -> SizedPosition | None:
     if side not in (-1, 1) or entry <= 0 or stop <= 0 or side_book_equity <= 0 \
             or filters.step <= 0 or filters.tick <= 0:
         raise C259Error("invalid sizing authority")
+    volume_rows = tuple(entry_volume_rows)
+    quote_volume_24h = _volume_rows_total(volume_rows, entry_impact_asof_ms)
     requested = side_book_equity * Decimal("0.01")
     fee = Decimal(str(FEE_BPS / 10_000))
     stress_slip = Decimal(str(STRESS_SLIPPAGE_BPS / 10_000))
@@ -534,15 +559,10 @@ def size_position(*, side: int, entry: Decimal, stop: Decimal, filters: Filters,
         if (quantity <= filters.max_qty and notional >= filters.min_notional
                 and notional <= side_book_equity * Decimal("0.5") and risk <= requested):
             return SizedPosition(side, entry, stop, filters, side_book_equity,
-                                 quote_volume_24h, quantity, risk, requested, notional)
+                                 entry_impact_asof_ms, volume_rows, quote_volume_24h,
+                                 quantity, risk, requested, notional)
         quantity -= filters.step
     return None
-
-
-@dataclass(frozen=True)
-class VolumePoint:
-    open_ms: int
-    quote_volume: float
 
 
 @dataclass(frozen=True)
@@ -690,6 +710,9 @@ class ClosedTrade:
     fills: tuple[Fill, ...]
     funding_events: tuple[AppliedFunding, ...]
     sizing: SizedPosition
+    decision_close_ms: int
+    atr_bars: tuple[Bar, ...]
+    lifecycle_bars: tuple[Bar, ...]
     entry_bar: Bar
     exit_bar: Bar
     stop: float
@@ -728,10 +751,25 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
             or trade.regime not in {"BTC_ABOVE_OR_ON_EMA200", "BTC_BELOW_EMA200"}):
         raise IncompleteEpisode("invalid closed-trade identity or authority")
     trade.entry_bar.validate(); trade.exit_bar.validate()
+    if (trade.decision_close_ms != trade.entry_ms-HOUR_MS
+            or trade.entry_ms != trade.decision_close_ms+HOUR_MS):
+        raise IncompleteEpisode("entry is not the exact next open after ATR decision")
+    causal_atr = atr24_wilder(trade.atr_bars, trade.decision_close_ms)
+    derived_stop, derived_target = protection_prices(
+        trade.sizing.entry, Decimal(str(causal_atr)), trade.side, trade.sizing.filters.tick)
+    if (trade.sizing.stop != derived_stop
+            or Decimal(str(trade.stop)) != derived_stop
+            or Decimal(str(trade.target)) != derived_target):
+        raise IncompleteEpisode("stop/target are not derived from exact ATR/tick authority")
+    sizing_volume = _volume_rows_total(trade.sizing.entry_volume_rows,
+                                       trade.sizing.entry_impact_asof_ms)
+    if trade.sizing.quote_volume_24h != sizing_volume:
+        raise IncompleteEpisode("sizing impact volume is not the exact 24-row fsum")
     recomputed_sizing = size_position(
         side=trade.sizing.side, entry=trade.sizing.entry, stop=trade.sizing.stop,
         filters=trade.sizing.filters, side_book_equity=trade.sizing.side_book_equity,
-        quote_volume_24h=trade.sizing.quote_volume_24h)
+        entry_impact_asof_ms=trade.sizing.entry_impact_asof_ms,
+        entry_volume_rows=trade.sizing.entry_volume_rows)
     if recomputed_sizing is None or recomputed_sizing != trade.sizing:
         raise IncompleteEpisode("initial risk is not bound to exact conservative sizing")
     if trade.incomplete:
@@ -779,20 +817,49 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
             or trade.sizing.stop != Decimal(str(trade.stop))
             or entry.timestamp_ms != trade.entry_ms or exit_fill.timestamp_ms != trade.close_ms):
         raise IncompleteEpisode("closed trade quantity is not conserved to flat")
+    if (trade.sizing.entry_impact_asof_ms != entry.impact_asof_ms
+            or trade.sizing.entry_volume_rows != entry.volume_rows
+            or trade.sizing.quote_volume_24h != math.fsum(
+                row.quote_volume for row in entry.volume_rows)):
+        raise IncompleteEpisode("sizing impact authority differs from exact entry fill rows")
+    lifecycle = tuple(trade.lifecycle_bars)
+    if (not lifecycle or lifecycle[0].open_ms != trade.entry_ms
+            or tuple(bar.open_ms for bar in lifecycle)
+            != tuple(range(trade.entry_ms,
+                           trade.entry_ms+len(lifecycle)*HOUR_MS, HOUR_MS))):
+        raise IncompleteAuthority("lifecycle bar tape is missing/compressed")
+    for bar in lifecycle:
+        bar.validate()
     if (trade.entry_bar.open_ms != trade.entry_ms
+            or trade.entry_bar != lifecycle[0]
             or not math.isclose(trade.entry_bar.open, entry.reference, abs_tol=1e-12)
             or not (trade.stop < entry.reference < trade.target if trade.side == 1
                     else trade.target < entry.reference < trade.stop)):
         raise IncompleteEpisode("entry/protection canonical bar authority mismatch")
     if not trade.incomplete:
-        scheduled = exit_fill.phase == "SCHEDULED"
-        if scheduled and trade.close_ms != trade.entry_ms+12*HOUR_MS:
-            raise IncompleteEpisode("scheduled exit is not exact first 12h open")
-        expected = exit_reference(side=trade.side, stop=trade.stop, target=trade.target,
-                                  bar=trade.exit_bar, scheduled_due=scheduled)
+        expected = None
+        source_bar = None
+        for bar in lifecycle:
+            candidate = exit_reference(
+                side=trade.side, stop=float(derived_stop), target=float(derived_target), bar=bar,
+                scheduled_due=bar.open_ms >= trade.entry_ms+12*HOUR_MS)
+            if candidate is not None:
+                expected, source_bar = candidate, bar
+                break
+        if expected is None or source_bar is None:
+            raise IncompleteEpisode("lifecycle has no mandatory frozen exit")
+        required_tape = tuple(range(trade.entry_ms, source_bar.open_ms+HOUR_MS, HOUR_MS))
+        if tuple(bar.open_ms for bar in lifecycle) != required_tape:
+            raise IncompleteAuthority("lifecycle bar tape is missing, extra, or post-exit")
+        if trade.exit_bar != source_bar:
+            raise IncompleteEpisode("exit bar is not the first derived lifecycle authority")
         if expected != (exit_fill.phase, exit_fill.reference, exit_fill.timestamp_ms):
             raise IncompleteEpisode("exit fill is not bound to canonical bar/protection")
     elif (trade.exit_bar.open_ms != trade.close_ms
+          or trade.close_ms != trade.entry_ms+HOUR_MS
+          or trade.exit_bar != lifecycle[-1]
+          or tuple(bar.open_ms for bar in lifecycle)
+          != tuple(range(trade.entry_ms, trade.close_ms+HOUR_MS, HOUR_MS))
           or not math.isclose(trade.exit_bar.open, exit_fill.reference, abs_tol=1e-12)):
         raise IncompleteEpisode("cleanup fill is not bound to canonical exit bar")
     expected_movement = trade.side * entry.quantity * (exit_fill.reference-entry.reference)
@@ -843,7 +910,9 @@ class SideBook:
 def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int,
                        cleanup_ms: int, fills: Sequence[Fill],
                        funding_events: Sequence[AppliedFunding],
-                       sizing: SizedPosition, entry_bar: Bar, exit_bar: Bar,
+                       sizing: SizedPosition, decision_close_ms: int,
+                       atr_bars: Sequence[Bar], lifecycle_bars: Sequence[Bar],
+                       entry_bar: Bar, exit_bar: Bar,
                        stop: float, target: float, regime: str) -> ClosedTrade:
     entries = [fill for fill in fills if fill.phase == "ENTRY"]
     cleanups = [fill for fill in fills if fill.phase == "PROTECTION_FAILURE_CLEANUP"]
@@ -856,7 +925,8 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
             or entry.timestamp_ms != entry_ms or cleanup.timestamp_ms != cleanup_ms):
         raise IncompleteEpisode("protection failure lifecycle is not exactly flat")
     trade = ClosedTrade(attempt_id, side, symbol, entry_ms, cleanup_ms, regime,
-                        tuple(fills), tuple(funding_events), sizing, entry_bar, exit_bar,
+                        tuple(fills), tuple(funding_events), sizing, decision_close_ms,
+                        tuple(atr_bars), tuple(lifecycle_bars), entry_bar, exit_bar,
                         stop, target, True)
     validate_closed_trade(trade)
     return trade
@@ -1240,7 +1310,8 @@ def stress_same_selection(base: Sequence[ClosedTrade], stress: Sequence[ClosedTr
                        fill.reference, fill.movement_cash) for fill in trade.fills)
         funding = tuple(asdict(event).items() for event in trade.funding_events)
         return (trade.attempt_id, trade.side, trade.symbol, trade.entry_ms, trade.close_ms,
-                trade.regime, fills, funding, trade.sizing, trade.entry_bar, trade.exit_bar,
+                trade.regime, fills, funding, trade.sizing, trade.decision_close_ms,
+                trade.atr_bars, trade.lifecycle_bars, trade.entry_bar, trade.exit_bar,
                 trade.stop, trade.target, trade.initial_risk_cash, trade.incomplete)
     left = [identity(trade) for trade in base]
     right = [identity(trade) for trade in stress]
