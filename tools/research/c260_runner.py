@@ -462,6 +462,7 @@ class DevelopmentBook:
 
 def _replay_development(source) -> dict:
     source._ensure_authority()
+    hourly_document = 'contracts/c260_low_idio_variance/c260_hourly_source_derivation.v1.json'
     primary = DevelopmentBook(source, capital=2000).run()
     stress = DevelopmentBook(source, capital=2000, stress=True).run()
     inference = S.inference((S.DailyPairs('development', tuple(primary['daily_net_R']),
@@ -493,6 +494,8 @@ def _replay_development(source) -> dict:
             'source_reads': source.source_reads, 'synthetic_only': source.synthetic_only,
             'trade_bar_derivation': ('SYNTHETIC_NATIVE_1H_COMPONENT_FIXTURE' if source.synthetic_only
                                      else TRADE_BAR_DERIVATION),
+            'hourly_source_derivation': (None if source.synthetic_only else {
+                'path': hourly_document, 'byte_sha256': AUTH.DOCUMENTS[hourly_document]}),
             'period_coverage_is_not_native_trade_1h_proof': True,
             'primary': primary, 'stress': stress, 'diagnostic_books': diagnostics,
             'inference': inference, 'drawdown_tier': tier, 'development_gates': gates,

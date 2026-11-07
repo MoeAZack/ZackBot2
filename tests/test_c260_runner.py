@@ -352,6 +352,30 @@ def test_production_minute_derivation_excludes_april_poison_before_source_read(t
         assert bars[END - H].quote_volume == 60. and len(opened) == 1
 
 
+def test_report_explicitly_pins_hourly_document_only_for_production_type(tmp_path, monkeypatch):
+    # Report-provenance-only drill: no economic rows or pretend PASS. Full
+    # replay/publication and source derivation are proved by the existing CLI.
+    native = make_fixture(tmp_path / 'native', hours=1, members=('ALT00USDT', 'BTCUSDT'))
+    minute = make_fixture(tmp_path / 'minute', hours=1, members=('ALT00USDT', 'BTCUSDT'), trade_interval='1m')
+    monkeypatch.setattr(R.DevelopmentBook, 'run', lambda book: {
+        **book.report(), 'data_complete': False, 'failures': ['SYNTHETIC_METADATA_DRILL_NO_ROWS']})
+    monkeypatch.setattr(M, 'read_archive', lambda *args: pytest.fail('provenance drill read prices'))
+    synthetic = R._replay_development(SyntheticArchive(native))
+    assert synthetic['hourly_source_derivation'] is None
+    assert synthetic['trade_bar_derivation'] == 'SYNTHETIC_NATIVE_1H_COMPONENT_FIXTURE'
+    issue_test_metadata(monkeypatch, repository=minute, store=minute / 'store',
+                        artifacts=fixture_artifacts(minute), common=tmp_path / 'common')
+    with AUTH.development_authority() as cap:
+        report = R._replay_development(DevelopmentArchive(cap))
+    rel = 'contracts/c260_low_idio_variance/c260_hourly_source_derivation.v1.json'
+    digest = hashlib.sha256((C.PREREG.parents[2] / rel).read_bytes()).hexdigest()
+    assert report['hourly_source_derivation'] == {'path': rel, 'byte_sha256': digest}
+    assert digest == AUTH.DOCUMENTS[rel]
+    assert report['trade_bar_derivation'] == 'C260_DEV_TRADE_1M_EXACT60_TO_1H_V1'
+    assert report['economic_development_verdict'] == 'DATA_INCOMPLETE'
+    assert not report['paper_qualified'] and not report['promotable']
+
+
 def first_ranking(source, day=31):
     d = START + day * C.DAY_MS
     wanted = range(d - 721 * H, d, H)
