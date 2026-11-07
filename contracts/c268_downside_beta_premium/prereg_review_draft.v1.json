@@ -1,0 +1,160 @@
+{
+  "DEFERRED": [
+    "Implementation",
+    "actual rows/outcomes/claims",
+    "source grant",
+    "parameter grid",
+    "engine/runtime",
+    "PAPER/mainnet activation"
+  ],
+  "ROADMAP FIT": "Next fixed materially distinct cost-aware candidate after independent267kernel gate; enabling metadata only.",
+  "candidate_id": 268,
+  "default_off": true,
+  "drafted_cairo": "2026-11-07T16:11:12.607321+02:00",
+  "execution_authorized": false,
+  "fixed_science_clarification": {
+    "block_length_trades": 21,
+    "ci_seed": 26820261108,
+    "global_FWER_claimed": false,
+    "largest_null_exceedance_count_passing": 2,
+    "minimum_plusone_p": "1/20001",
+    "null_seed": 26820261107,
+    "numerical_note": "With exactly20000draws, only null exceedance counts0,1,2 can meet.05/268. Disclose coarse MonteCarlo tail; do not add draws/change seeds or replace this screen with nominalCI.",
+    "p_screen": ".05/268",
+    "resamples": 20000
+  },
+  "format": "c268-fixed-preregistration-review-draft/1",
+  "forward_authorized": false,
+  "holdout_authorized": false,
+  "immutable_nomination": {
+    "all_signal_execution_risk_cost_windows_gates_statistical_rules_unchanged": true,
+    "commit": "42bdac16283b581de1aa247ace7ff83d81c20010",
+    "path": "docs/reviews/c268_downside_beta_premium.nomination.v1.json",
+    "sha256": "749bb0dd1b7c1b438e38ce3cb158947fc6b868decf34da9aec31914e87e7f080"
+  },
+  "mechanism_risk": {
+    "base_round_trip_bps": 14,
+    "equity_paper_headline_annual_premium": "approximately6percent",
+    "meaning": "Approximately3.3bp/48h is smaller than14bpbase and30bpstress before impact/funding. This is only a simple linear scale comparison of the cited EQUITY annual estimate; it is NOT a crypto expectation, a48h prediction, evidence the chosen estimator works, or a reason to alter fixed parameters. The entire trade may have negative gross expectancy; one untouched preregistered test can reject it.",
+    "no_parameter_tuning_or_gate_weakening": true,
+    "paper": "Ang, Chen, Xing: Downside Risk, NBER working paper11824; equity evidence",
+    "primary_source": "https://www.nber.org/papers/w11824",
+    "simple_48h_basis_points": "3.287671232876712328767123288",
+    "stress_round_trip_bps": 30
+  },
+  "paper_qualified": false,
+  "preregistered_specification": {
+    "DEFERRED": [
+      "Implementation",
+      "source acquisition or grant",
+      "claim/outcome/holdout reads",
+      "alternative parameters/sides",
+      "current candidate repair",
+      "mainnet"
+    ],
+    "ROADMAP FIT": "One materially distinct hourly candidate to keep costed strategy economics active after spent/incomplete predecessors; no engine work.",
+    "candidate_id_tentative": 268,
+    "candidate_key": "conditional_downside_beta_premium_long_1h",
+    "default_off": true,
+    "execution_authorized": false,
+    "fixed_execution_risk": {
+      "ATR": "Wilder24 from the entire available contiguous split prefix, seed first24 true ranges; decision completed bar included once; zero/nonfinite ATR cannot enter.",
+      "costs": "5bp taker per actual fill,2bp base adverse slip,10bp stress adverse slip. Original25924completed-hour qv/1%participation/sqrt-impact model, frozen entry-volume hypothetical-stop risk; actual fill-type causal exit volume. Stopdistance>=5*14bp roundtrip; mandatory missing/zero-liquidity exit remains INCOMPLETE with exposure/costs. Stress identical primary admissions/qty/frozen risk and identical signed funding, no2661.5funding transform.",
+      "holding": "Full close at first canonical open T>=actual_entry+48h, or earlier fixed2ATR stop or2R target; stop wins same-bar ties. No trailing, partial, signal exit, reset/reentry trick, DCA or pyramid.",
+      "protection": "Original259 single-leg toward-entry tick rounding: LONG stop ceil(E-2ATR), D=E-stop>0, target floor(E+2D), both viable, stop placed before accepted exposure. Exact prior-gap/range handling and failure-cost retention; no favorable gap improvement.",
+      "risk": "One isolatedUSD2000 primary LONG book, max3actual positions,1%requested equity risk each,3%aggregate initial risk,0.5xsingle gross,1.5xaggregate gross. Exact Decimal floor-only largest permitted original259 sizing solve including actual-known entry debit reserve1.0, fees/slip/impact; no credit netting. One live lot per symbol. Independent1000/3000/4000 diagnostic books cannot veto/rescue/select the primary."
+    },
+    "fixed_signal": {
+      "decision_entry_clock": "At canonical UTC opens T whose UTC hour is00,06,12,18, use only completed bars with native close_time<T. Rank before reading the raw exactT entry reference. No future row or current incomplete bar.",
+      "formula_order": "For ordered pairs (x_j=BTCreturn,y_j=altreturn), j=1..168, compute mx=fsum(x)/168,my=fsum(y)/168. all_xx=fsum((x-mx)^2),all_xy=fsum((x-mx)*(y-my)); beta_all=all_xy/all_xx. Let D={j:x_j<mx}, strict equality excluded. Require len(D)>=48. Compute mdx=fsum(x_D)/len(D),mdy=fsum(y_D)/len(D), down_xx=fsum((x_D-mdx)^2),down_xy=fsum((x_D-mdx)*(y_D-mdy)); beta_down=down_xy/down_xx. Score=beta_down-beta_all. Require finite moments, all_xx>0,down_xx>0,beta_down>0,score>0. IEEEbinary64 with math.fsum in that order.",
+      "history": "Exactly168 paired log close returns per symbol, requiring169 consecutive closes wholly inside the split. Earliest possible entry is the first fixed clock after the169-bar availability point; no prior-window warmup.",
+      "inputs": "Checksum-bound canonical1h completed OHLCV for BTCUSDT and PIT/filter-eligible alts; native1h marks and native published funding for costs only. BTC cannot be traded.",
+      "no_additional_filters": "No momentum, return sign, price level, current crash, regime, volume-attention, age, funding or basis alpha filter. Original exchange/causal liquidity/risk checks remain mandatory.",
+      "ranking": "At least16 valid fitted PIT/filter symbols; sort score descending then symbol ascending. Freeze first3 indexed proposals. Occupied or infeasible indexed proposals are skipped without replacement. Each admitted symbol LONG only; never choose the opposite direction from data."
+    },
+    "fixed_windows": {
+      "development": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+      "development_filter_eligible": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+      "forward_folds": [
+        "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+        "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+        "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+      ],
+      "new_sealed_holdout": "2026-09-28T01:00:00Z/2026-11-05T00:00:00Z"
+    },
+    "format": "c268-independent-metadata-nomination/1",
+    "novelty": {
+      "dedup_scope": "Current frozen preregistration metadata, registration family names, historical preregistration filenames and targeted all-ref metadata text search for downside/upside/conditional beta, coskew and co-crash. Exact closest C54/C57/C67 frozen metadata read. No evaluation/packet/claim/holdout files opened; incidental historical commentary embedded in prereg prose is excluded from nomination reasoning.",
+      "distinctions": [
+        "C67 SHORT requires contemporaneous BTC lower-tail shock and target negative return, uses conditional binary co-exceedance and12h management. C268 neither inverts that rule nor selects on its outcomes: it uses continuous conditional covariance excess, no current crash trigger, LONG risk-premium holding48h.",
+        "C57 uses own-symbol downside/upside squared-return ratio plus a positive rebound hour; C268 conditions joint BTC/alt covariance and has no rebound trigger.",
+        "C54 fades a contemporaneous extreme residual; C259/267 follows estimated lagged BTC impulses; C268 neither forms a residual shock nor uses a lag regression.",
+        "C258/266 pairs24h momentum ranks; C260 ranks low idiosyncratic variance; C265 uses unsigned volume attention; C268 uses none of those ranking variables or pairs.",
+        "C257 funding shock, mark-basis, skew and volume-pressure registrations do not supply this signal. Funding is a cost only."
+      ],
+      "global_novelty_or_trial_completeness_claimed": false,
+      "hypothesis": "Investors may require compensation for bearing additional downside-market sensitivity beyond ordinary BTC beta. Test LONG exposure to the largest positive conditional downside-beta excess, with no current return/volume/impulse direction trigger. This is a conjecture in crypto, not established profitability.",
+      "nearest_registered_metadata": {
+        "research_evidence/prereg/btc_beta_residual_c54_stagea.md": {
+          "commit": "3f9a92e6",
+          "sha256": "e28c7259f887dad7431088bec8e0a333f265ced5bbe0716054eb489ffee232a0"
+        },
+        "research_evidence/prereg/downside_semivariance_c57_stagea.md": {
+          "commit": "e8394d08",
+          "sha256": "08778e737e70c48ce5665047793f885722afd26777f566b54ae95bac901d0c1e"
+        },
+        "research_evidence/prereg/lower_tail_dependence_c67_stagea.md": {
+          "commit": "5ad084ea",
+          "sha256": "2259fae7a4a05059e2a7bebb6760af8635cac24dc1ef842f6188a5f50e6449d7"
+        }
+      },
+      "primary_rationale_source": "https://www.nber.org/papers/w11824",
+      "source_limit": "Equity downside-risk evidence motivates the mechanism only. It does not establish crypto predictability, this168h estimator,48h horizon, parameter values, funding treatment, cost survival or independence."
+    },
+    "opportunity_bounds_only": {
+      "cost_feasibility": "The motivating equity risk-premium paper does not promise enough short-horizon compensation to exceed14/30bp roundtrip plusimpact/funding. This is a material preread scientific risk, no claimededge or frequency, and no thresholdgrid.",
+      "development": "108filter-eligible calendar days allow at most162 ordinary full48h closes with max3 continuously occupied positions; earlyexitscanincrease. Thus120possible, not forecast. Symbolcount/turnover/eligibility/edge unknown.",
+      "holdout": "911h minus169h return warmup, then next fixed6hUTCclock gives firstpossible entry2026-10-05T06:00Z (09:00Cairo);738h remain,15complete48h cycles*3=45ordinarycloses possible underdue<END.30is arithmeticallyfeasible, not power evidence."
+    },
+    "paper_qualified": false,
+    "proposed_gates": {
+      "DDtiers": "<=15R standard;15<DD<=30 requires netR/DD>=1.5;30<DD<=60 requires netR/DD>=2 andstressnetR/stressDD>=1 and futurePAPERrisk<=min(.5,15/DD);>60reject. DD=max(marked,closed).",
+      "aggregate_forward": "Require meanR>.03,PF>1.10,>=300closed/>=12symbols,median>=12perUTCmonth inclzeros,>=2of3folds positive netR,worstfoldmeanR>-.05,>55%positive intersectingmonths,>=30closes/meanR>-.03 in EACH BTCEMA200regime,stressmeanR>0/PF>1.02,stationary20k one-sidedp<=.05/268,no symbol>25%sumabs(symbolnetR),original259 DDtiers,all source/exchange/protection/parity/report gates. No perlabel/month newpositive rescue/filter.",
+      "development": "Reject incomplete/integrity failures, nonpositive gross/net expectancy, PF<=1.05,<120closed,<8symbols,median<8closed per intersecting UTCmonth includingzeros,nonpositive identicalset stressmeanR,or max(marked,chronologicalclosed)DD>60R. DEV20k inference diagnostic only; no strongqualification from DEV.",
+      "final_paper": "Only independent forward+holdout/source/executable acceptance, same causal runtime filters/protection/restart/rollback, isolated book and actualtestnet funding/eligibility ledger; bounded original259canary0.25R/max2/max.50R,then>=50measuredcloses/>=14Cairodays/netmean>0/PF>1.05/no safetybreak. No current activation.",
+      "new_holdout": "Prospective NEW268 numeric proposal, not inherited authority: >=30complete closed/>=8symbols,netR>0/meanR>0/PF>1.05,20k95%CI lower>0,stressnetR>0/PF>1.02,original259DDtiers,source/lifecycle/cost/protection/parity/report complete. One independently spent exacthead, never tuned.",
+      "report": "Complete decision/zero/skip/failure/count ledger; gross/netcash+R,fees/slip/impact/funding,all concurrentphaseequity/cashclosedDD,sourcegaps,monthly/weekly/regime/symbol contributions,coefficientdistribution,BTCbeta/correlation,isolateddiagnostics,base/stress same-setproof,bootstrap inputs/results,trialledger,lifecycle coverage/misuse restrictions. Any unavailable crossstrategycomparison explicitUNAVAILABLE/no inventedzero and separate finalcohort readiness.",
+      "statistics": "One promotable primaryLONG; mean aftercostR ordered entrytime then symbol; stationary20000/21tradePCG64 C-order(B,n,2),mathfsum,linearquantile,inclusiveplusonep. Proposed268nullseed26820261107/CIseed26820261108; no oldseed reuse, no selection across variants. HistoricalglobalvariantcountUNKNOWN; .05/268 is a numbered-family screen, not globalFWER claim."
+    },
+    "root_decisions_before_prereg": [
+      "Accept mechanism as materially distinct versus C67 co-crash SHORT and C57 ownsemivariance rebound; this nomination does not reverse their observed results.",
+      "Accept exact168h/48h/3indexedLONG specification and newholdout30/8/CIpositive proposal or reject nomination BEFORErows; no tuning grid.",
+      "Freeze complete own268registration/doc/code/source/lifecycle/claim scopes and receipt; no borrowed candidate grant."
+    ],
+    "source_and_lifecycle": {
+      "boundaries": "All splits reset estimators/books/regime/liquidity; no crossfold capital. New268StageA retains exactEND open-only flatten permission and fixed funding-only old-liability tail throughEND+15000 inclusive if independently granted. Holdout starts01UTC after legacy boundary, no excludedhour warmup. StageB pre-entry veto due>=END; noENDopen extension or postcutoff funding grant. Missing terminal liability proof remains INCOMPLETE.",
+      "funding": "Only after separate root acceptance, bind the prospective267 self-contained published-ledger/raw-available/collision/plusminus15s/first-ever-staging/closed-liability MODEL as an explicit268 assumption. Natural LONGcash=-qty*causalmark*rawrate; known possible entrydebits reserve1.0, no contingent credits in equity; same funding base/stress. This is no inherited267/266 grant.",
+      "lifecycle": "Generic accepted three-clock catalog/source kinds apply to every PIT contract. Current-derived enforcement model only at/after effective ban, no earlier horizon veto without genuine asof proof; unknown actual settlement fill/price/cost INCOMPLETE, no last-bar fiction. ONE_EVENT catalog is not complete world. Source-kind/coverage acceptance and actualtestnet eligibility remain separate prerequisites.",
+      "source": "Protected#331 exact60 native1m->logical1h before2026-09-01; separately accepted/pinned v6 native1h afterward. Native Decimal OHLCV preserved to explicit signal float projection. No source availability fallback, symbol removal, time compression or minute-order execution. Required gap/schema/hash/overlap failure is INCOMPLETE, not benign skip."
+    },
+    "source_authority_bound": false,
+    "status": "NOMINATION_ONLY_ROOT_SELECTS_AND_PREREGISTERS"
+  },
+  "required_root_review_items": [
+    "Accept exact unchanged nominal specification and explicitly new268holdout30/8/CIpositive gates before rows.",
+    "Freeze own metadata/model/code/source/lifecycle/claim receipt closure after independent acceptance; no evaluated data/future-source borrowing.",
+    "Keep all original trials visible; this is one newLONG primary and nomination progress is not an economic PASS."
+  ],
+  "root_decision_scope": "Root selected exactly one prospective fixed DEV preregistration/test after267purekernel gate. This draft does not accept its own source, implementation, identity, thresholds or actual economic run.",
+  "source_and_execution_gates": {
+    "independent_implementation_receipt": null,
+    "lifecycle_scope": "Root must independently accept generic268sourcekind/catalog/coverage and actual-exposure settlement evidence. Derived-current effective-only event records cannot confer earlier notice visibility or settlement price/cost. No borrowed267or266 authority.",
+    "no_economic_rows_before_own_exact_accepted_receipt": true,
+    "own_claim": null,
+    "own_protected_source_pins": null,
+    "own_source_catalog": null,
+    "root_preregistration_acceptance": null
+  },
+  "source_authority_bound": false,
+  "status": "SELECTED_FIXED_NOMINATION_AWAITING_ROOT_PREREGISTRATION_REVIEW"
+}

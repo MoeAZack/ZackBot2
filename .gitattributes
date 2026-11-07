@@ -24,3 +24,8 @@ research_evidence/prereg/breakout_pyramid_falsify.v1.amendment_*.json -text
 contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json -text
 contracts/c267_btc_residual_leadlag/lifecycle/root.browser-derived.current-observation.v1.json -text
 contracts/c267_btc_residual_leadlag/lifecycle/root.web-derived.bnx-current-observation.v1.json -text
+
+# C268 accepted metadata: preserve exact hashed bytes on Windows checkouts.
+contracts/c268_downside_beta_premium/nomination.v1.json -text
+contracts/c268_downside_beta_premium/prereg_review_draft.v1.json -text
+contracts/c268_downside_beta_premium/preregistration.v1.json -text
