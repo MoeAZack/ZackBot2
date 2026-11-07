@@ -111,3 +111,26 @@ def test_checksum_archive_clips_sealed_values_before_schema_parse(tmp_path):
     target.write_bytes(raw+b"changed")
     with pytest.raises(Exception, match="SHA-256"):
         S._read_window_rows(tmp_path, record, new=False, start_ms=lo, end_ms=hi)
+
+
+def test_typed_source_preserves_mark_close_and_declared_funding_cadence(monkeypatch):
+    archive = source(monkeypatch, [])
+    lo, _ = S.frozen_window("wf1")
+    kline = (lo, "10", "11", "9", "10.5", "1", lo+S.C.HOUR_MS-1, "1000", 1, "1", "1", "0")
+    tapes = {"klines": (kline,), "markPriceKlines": (kline,),
+             "fundingRate": ((lo, "4", "0.001"), (lo+4*S.C.HOUR_MS, "-0.002"))}
+    def load(**kwargs):
+        return S.SourceRows("BTCUSDT", kwargs["stream"], "wf1", lo,
+                            lo+8*S.C.HOUR_MS, tapes[kwargs["stream"]], (("bound", "a"*64),))
+    monkeypatch.setattr(archive, "load", load)
+    kwargs = dict(symbol="BTCUSDT", fold="wf1", start_ms=lo, end_ms=lo+8*S.C.HOUR_MS)
+    assert archive.candles(**kwargs)[0].quote_volume == 1000
+    assert archive.marks(**kwargs)[0].close_ms == lo+S.C.HOUR_MS-1
+    assert archive.funding(**kwargs) == (
+        S.FundingObservation(lo, .001, 4), S.FundingObservation(lo+4*S.C.HOUR_MS, -.002, None))
+    tapes["fundingRate"] = ((lo, "0", "0.001"),)
+    with pytest.raises(S.C.IncompleteAuthority, match="interval"):
+        archive.funding(**kwargs)
+    tapes["markPriceKlines"] = ((lo, "10", "11", "9", "nan", "1", lo+S.C.HOUR_MS-1, "0", 1, "1", "1", "0"),)
+    with pytest.raises(S.C.IncompleteAuthority, match="mark price"):
+        archive.marks(**kwargs)
