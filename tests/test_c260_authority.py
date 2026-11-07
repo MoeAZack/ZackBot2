@@ -2,6 +2,7 @@
 from dataclasses import replace
 import hashlib
 import json
+import subprocess
 
 import pytest
 
@@ -93,3 +94,73 @@ def test_authority_parser_rejects_ambiguous_and_nonfinite_json():
     for raw in (b'{"candidate_id":260,"candidate_id":261}', b'{"number":NaN}', b'[]'):
         with pytest.raises(A.C.C260Locked):
             A._strict(raw)
+
+
+@pytest.fixture
+def protected_metadata_repo(tmp_path, monkeypatch):
+    """Real isolated Git/ref/receipt path; only existing authority metadata.
+
+    The archive store is empty. No market file, economic packet or original
+    repository identity directory is accessed by this fixture.
+    """
+    original = A.ROOT
+    root, store = tmp_path / 'repo', tmp_path / 'empty-store'
+    store.mkdir()
+    def git(*args):
+        result = subprocess.run(['git', '-C', str(root), *args], capture_output=True, check=True)
+        return result.stdout.decode().strip()
+    subprocess.run(['git', 'clone', '--shared', '--sparse', str(original), str(root)], check=True, capture_output=True)
+    git('sparse-checkout', 'set', '--no-cone', '/contracts/c260_low_idio_variance/')
+    git('config', 'user.name', 'Synthetic C260 authority test')
+    git('config', 'user.email', 'synthetic@example.invalid')
+    accepted = git('rev-parse', 'HEAD')
+    proposal = A.C.load_proposal_metadata()
+    receipt = {'format': 'zb-c260-development-authority/1', 'candidate_id': 260,
+        'proposal_sha256': A.C.PREREG_SHA256, 'documents': A.DOCUMENTS,
+        'authority': {name: proposal['stage_a_authority_proposal'][name]
+                      for name in ('manifest', 'pit', 'filters', 'coverage')},
+        'accepted_implementation_head': accepted,
+        'research_tree_oid': git('rev-parse', f'{accepted}:tools/research'),
+        'feasibility_blob_oid': git('rev-parse', f'{accepted}:feasibility.py'),
+        'store_root': str(store), 'independent_review': {'reviewer': 'SYNTHETIC_ONLY',
+            'reference': 'synthetic metadata fixture; no real run or acceptance',
+            'verdict': 'PASS_EXACT_CODE_SOURCE_AND_PREREAD_RULES'},
+        'scope': 'ONE_SHOT_DEVELOPMENT_ONLY_NO_FORWARD_OR_HOLDOUT', 'default_off': True}
+    path = root / A.RECEIPT
+    path.write_bytes(A._canonical(receipt))
+    git('add', A.RECEIPT)
+    git('commit', '-qm', 'Synthetic metadata-only authorization')
+    git('update-ref', 'refs/remotes/origin/master', git('rev-parse', 'HEAD'))
+    monkeypatch.setattr(A, 'ROOT', root)
+    return root, store, receipt, git
+
+
+def test_actual_protected_metadata_authentication_then_one_spend_without_price_reads(protected_metadata_repo):
+    root, store, _, _ = protected_metadata_repo
+    with A.development_authority() as authority:
+        A.validate_issued(authority)
+        assert authority.repository_root == root.resolve() and authority.store_root == store.resolve()
+        assert {item[0] for item in authority.artifacts} == {'manifest', 'pit', 'filters', 'coverage'}
+        assert all(hashlib.sha256(item[3]).hexdigest() == item[2] for item in authority.artifacts)
+        assert authority.end_ms < 1790553600000
+        assert list(store.iterdir()) == []
+    with pytest.raises(A.C.C260Locked, match='ALREADY_SPENT'):
+        with A.development_authority():
+            pytest.fail('same real Git capability consumed twice')
+
+
+@pytest.mark.parametrize('attack', ['scope', 'code', 'source', 'review'])
+def test_actual_protected_bad_receipts_fail_before_claim(protected_metadata_repo, attack):
+    root, _, receipt, git = protected_metadata_repo
+    if attack == 'scope': receipt['scope'] = 'FORWARD_AND_HOLDOUT'
+    if attack == 'code': receipt['research_tree_oid'] = '0' * 40
+    if attack == 'source': receipt['authority']['manifest']['byte_sha256'] = '0' * 64
+    if attack == 'review': receipt['independent_review']['verdict'] = 'SELF_ACCEPTED'
+    (root / A.RECEIPT).write_bytes(A._canonical(receipt))
+    git('add', A.RECEIPT)
+    git('commit', '-qm', 'Synthetic invalid authorization')
+    git('update-ref', 'refs/remotes/origin/master', git('rev-parse', 'HEAD'))
+    with pytest.raises(A.C.C260Locked):
+        with A.development_authority():
+            pytest.fail('invalid authority opened source')
+    assert not (root / '.git/c260-evaluation').exists()
