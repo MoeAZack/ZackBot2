@@ -356,7 +356,7 @@ def test_ranked_same_side_infeasible_candidate_advances_without_cross_side_subst
 
 
 @pytest.mark.parametrize("checksum_cli",["exposed_gap"],indirect=True)
-def test_real_checksum_gap_after_acceptance_retains_exposure_and_blocks_forward(checksum_cli,capsys):
+def test_static_whole_hour_gap_fails_before_admission_without_invented_costs(checksum_cli,capsys):
     _,store,_,_=checksum_cli
     assert CLI.main(["--evaluate","--store",str(store)])==0
     packet=json.loads(capsys.readouterr().out)
@@ -364,6 +364,41 @@ def test_real_checksum_gap_after_acceptance_retains_exposure_and_blocks_forward(
     assert result["verdict"]=="DATA_INCOMPLETE_DEVELOPMENT"
     assert not result["forward_opened"]
     report=result["primary_development"]
+    assert not report['partial_exposed_episodes_retained']
+    assert not any(row.get('accepted_quantity') for row in report['authority_failures'])
+    assert any('missing entire internal' in row['reason'] for row in report['authority_failures'])
+
+
+def test_real_checksum_gap_after_acceptance_retains_exposure_and_blocks_forward(checksum_cli,capsys,monkeypatch,tmp_path):
+    _,store,start,_=checksum_cli
+    # Complete checksum-bound streams pass source validation. Only a later
+    # boundary lookup fails, after real synthetic entry fills were created.
+    # This preserves the exposed-failure path independently of pre-entry gaps.
+    monkeypatch.setattr(R,'_identity_directory',lambda:tmp_path/'synthetic-exposed-claim')
+    entered=set();failed=[]
+    original_fill=E.make_fill
+    def make_fill(**kwargs):
+        fill=original_fill(**kwargs)
+        if kwargs['phase']=='ENTRY':entered.add((kwargs['symbol'],kwargs['timestamp_ms']))
+        return fill
+    original_maps=R._stream_maps
+    class MissingAfterEntry(dict):
+        def get(self,t,default=None):
+            if t==start+724*E.HOUR_MS and entered:
+                failed.append(t)
+                return None
+            return super().get(t,default)
+    def stream_maps(stream):
+        bars,marks=original_maps(stream)
+        return MissingAfterEntry(bars),marks
+    monkeypatch.setattr(E,'make_fill',make_fill)
+    monkeypatch.setattr(R,'_stream_maps',stream_maps)
+    assert CLI.main(['--evaluate','--store',str(store)])==0
+    packet=json.loads(capsys.readouterr().out)
+    result=packet['result']['sides'][E.SIDES[1]]
+    assert entered and failed and result['verdict']=='DATA_INCOMPLETE_DEVELOPMENT'
+    assert not result['forward_opened']
+    report=result['primary_development']
     assert report["partial_exposed_episodes_retained"]
     assert not report["all_accepted_exposure_economics_defined"]
     failure=next(row for row in report["authority_failures"] if row.get("accepted_quantity"))
