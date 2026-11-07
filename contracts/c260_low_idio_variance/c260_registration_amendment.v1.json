@@ -1,0 +1,32 @@
+{
+  "candidate_id": 260,
+  "execution_authorized": false,
+  "format": "zb-c260-pre-read-registration-amendment/1",
+  "independent_pre_read_policy_review": "Sol reviewed the research-only policy before these exact bytes: UNKNOWN global count may permit exploratory development with explicit incompleteness, a bound census, preserved known attempts and no global FWER or untouched-global-holdout claim. Exact artifact review remains pending.",
+  "inference": "Keep the frozen one-cell p<=0.05/260 numbered-family screen unchanged and explicitly NON-GLOBAL-FWER. UNKNOWN is not zero, complete multiplicity accounting, an untouched global holdout, or evidence of confirmatory significance. Stage-A survival alone is not qualification.",
+  "kind": "PRE_READ_ADMINISTRATIVE_CONTRACT_AMENDMENT_NOT_MECHANICAL_PINNING",
+  "prior_metadata_census_byte_sha256": "cdf4c2e4b2ef23ed626abfc78ade7efdcc99f087e18b59c2f8d4fcfe5e560a34",
+  "prior_metadata_census_path": "contracts/c260_low_idio_variance/c260_prior_metadata_census.v1.json",
+  "promotable": false,
+  "proposal_byte_sha256": "8b14aa5ebb554728462d759c35eae215220855b7933f5f069adbeb0d1a262d48",
+  "proposal_path": "contracts/c260_low_idio_variance/c260_prereg_proposal.v1.json",
+  "replacement": {
+    "exact_census_hash_and_scope_required": true,
+    "exploratory_stage_a_permitted_after_other_source_code_registration_gates": true,
+    "family_index_or_registry_line_count_must_not_substitute_for_trial_count": true,
+    "historical_global_trial_count": "UNKNOWN",
+    "historical_trial_registry_complete": false,
+    "known_prior_spends_failures_and_incomplete_attempts_must_be_preserved": true,
+    "paper_or_live_authority_granted": false,
+    "sealed_holdout_authority_granted": false
+  },
+  "replacement_scope": [
+    "trial_accounting.protected_prior_trial_count",
+    "trial_accounting.protected_prior_trial_ledger_sha256",
+    "trial_accounting.unlock_requires_exact_prior_count_and_ledger_digest",
+    "report_and_acceptance.before_real_reads (prior-count requirement only)"
+  ],
+  "status": "PENDING_EXACT_BYTE_INDEPENDENT_REVIEW_AND_PROTECTED_ACCEPTANCE",
+  "timing": "Written before any C260 market row, development/forward/holdout result or evaluation identity is opened. Frozen original proposal bytes remain preserved.",
+  "unchanged": "All signal, side, universe, ranking, cost, exchange, book, risk, funding, bootstrap, sample, PF, CI, p-screen, drawdown, development-veto, forward and sealed-window rules remain byte-for-byte the frozen proposal. One protected C260 source/code receipt and persistent one-use identity remain required before any source rows. Independent report/holdout and installed-protection acceptance remain required before a qualified PAPER claim."
+}

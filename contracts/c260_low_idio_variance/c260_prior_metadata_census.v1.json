@@ -1,0 +1,423 @@
+{
+  "bound_metadata_file_count": 101,
+  "candidate_or_variant_count_inferred_from_files": false,
+  "format": "zb-c260-pre-read-metadata-census/1",
+  "global_historical_trial_count": "UNKNOWN",
+  "global_trial_registry_complete": false,
+  "limits": "This scoped tree inventory does not recover every historical branch, adaptive choice, parameter variant or attempted run. Existing tracked files include authority and implementation contracts as well as preregistrations. File count is neither a candidate count nor a trial count. Preserve all discoverable prior failures, incomplete attempts and spend records; do not erase or reclassify them.",
+  "market_or_outcome_payloads_opened": false,
+  "metadata_files": [
+    {
+      "git_blob_sha1": "9ec441381438670e39869f2c63a6e8bbebf1bf96",
+      "path": "contracts/ai_scan_03/AI_SCAN_03_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "5d6cdd996926308be1e387333166a946958b449b",
+      "path": "contracts/ai_scan_03/ai_scan_03_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "86c3d1929044e0fc881646bb1b4fdac097ce1dba",
+      "path": "contracts/ai_scan_04/AI_SCAN_04_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "3db3a4630c6422eed1d0536a3a62e15e02863d6e",
+      "path": "contracts/ai_scan_04/ai_scan_04_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "ed2894727c4ed14bd0ade58167192cc0a7f744cf",
+      "path": "contracts/atr_shock_snapback_4h_causal_v3/ATR_SHOCK_SNAPBACK_4H_CAUSAL_V3.md"
+    },
+    {
+      "git_blob_sha1": "7e2b1b8add9f488f254a47f6a571c74f5e7d47b0",
+      "path": "contracts/atr_shock_snapback_4h_causal_v3/atr_shock_snapback_4h_causal_v3_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "15c430cb865b4bef1c9ad0ed97da5ac358dc02d6",
+      "path": "contracts/atr_shock_snapback_4h_causal_v3/atr_shock_snapback_4h_family.v1.json"
+    },
+    {
+      "git_blob_sha1": "81f1cece17ddfb75ea824446031479cf1d903410",
+      "path": "contracts/atr_shock_snapback_4h_causal_v4/atr_shock_snapback_4h_causal_v4_rebind.v1.json"
+    },
+    {
+      "git_blob_sha1": "7711256c9a1b47366a71cde854de7dc09c184b9b",
+      "path": "contracts/cand_evict_ack_01/CAND_EVICT_ACK_01_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "865890c79a27763d96087ead847f8422280decdc",
+      "path": "contracts/cand_evict_ack_01/cand_evict_ack_01_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "9c06f3b86626ff885015ed217064d73ee895d1bf",
+      "path": "contracts/cand_evict_ack_01/pin_amendment.v1.json"
+    },
+    {
+      "git_blob_sha1": "b4b7ad97d146fea3b8a7d763c80b47ceaa04645c",
+      "path": "contracts/causal_v4_runner_rebind/causal_v4_runner_rebind.v1.json"
+    },
+    {
+      "git_blob_sha1": "93459268a58267f620f1957f29fed5c6b2bfce3b",
+      "path": "contracts/factory_f01_impl_01/COHORT_PACK.md"
+    },
+    {
+      "git_blob_sha1": "1283b3de126a862af1451d25dc419221971abd9c",
+      "path": "contracts/factory_f01_impl_01/cohort_manifest.v1.json"
+    },
+    {
+      "git_blob_sha1": "3a561497432f5833eb8532719b9e67045c1d6192",
+      "path": "contracts/factory_f01_impl_01/pin_amendment.v1.json"
+    },
+    {
+      "git_blob_sha1": "1d1f0129403059e4dd029b70e972c4e5fd0b0898",
+      "path": "contracts/factory_f01_parity_01/FACTORY_F01_PARITY_01_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "17e07359e2de2372220bd6162c8b39ee39ebf6b0",
+      "path": "contracts/factory_f01_parity_01/factory_f01_parity_01_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "5c0cfa7664207d998184157ee3f441b4625540d4",
+      "path": "contracts/factory_f01f02_family/FACTORY_F01F02_FAMILY_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "b0d2672ff161990301675071b8170bb679652c98",
+      "path": "contracts/factory_f01f02_family/factory_f01f02_family_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "a68d964df93e0d01791d0bc2e451ee7fc9d3c25d",
+      "path": "contracts/factory_f01f02_repro/FACTORY_F01F02_REPRO_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "76902000fb50188e0e80260178f6ff6ac29d4656",
+      "path": "contracts/factory_f01f02_repro/factory_f01f02_repro_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "7f9cc6455b2aa1fca87c7678e132e855ddd681f4",
+      "path": "contracts/ml_train_01/ML_TRAIN_01_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "21bc1ef98ddbc77f750b781941cf97271ee7b28a",
+      "path": "contracts/ml_train_01/ml_train_01_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "2ba6e383b6b317916637f108b97f1b8d9688e439",
+      "path": "contracts/oi_loader_01/OI_LOADER_01_CONTRACT.md"
+    },
+    {
+      "git_blob_sha1": "facc18cfd78699375023e750a38a83774e96a0c8",
+      "path": "contracts/oi_loader_01/oi_loader_01_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "059d7b95cf30dc9ef33cbf211e423280d28c4f0a",
+      "path": "contracts/rank_breadth_reversal_4h_short_causal_v3/RANK_BREADTH_REVERSAL_4H_SHORT_CAUSAL_V3.md"
+    },
+    {
+      "git_blob_sha1": "05cc87cfd99f5020669b34342e3fbb526a8e3ed5",
+      "path": "contracts/rank_breadth_reversal_4h_short_causal_v3/rank_breadth_reversal_4h_family.v1.json"
+    },
+    {
+      "git_blob_sha1": "2325ed100a2cc02be2361cff67cf3e7ef76b91a9",
+      "path": "contracts/rank_breadth_reversal_4h_short_causal_v3/rank_breadth_reversal_4h_short_causal_v3_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "778e654c0e06379a4a84ce15e79180ff7b31d9a0",
+      "path": "contracts/rank_breadth_reversal_4h_short_causal_v4/rank_breadth_reversal_4h_short_causal_v4_rebind.v1.json"
+    },
+    {
+      "git_blob_sha1": "6629c677b7213f6d13ff0375def263f0e80ea1df",
+      "path": "contracts/strategy_causal_pack_01/STRATEGY_CAUSAL_PACK_01.md"
+    },
+    {
+      "git_blob_sha1": "dac032963cdf98c4c6cacc67d422df33ec56e1c1",
+      "path": "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json"
+    },
+    {
+      "git_blob_sha1": "83818054c4ee137f5620d81043aa7c3b9b7ffbb8",
+      "path": "contracts/strategy_causal_pack_01/c257_reporting_diagnostic_amendment.v1.json"
+    },
+    {
+      "git_blob_sha1": "dba4207821b594ae5c3fafd55eb78263f22232e6",
+      "path": "contracts/strategy_causal_pack_01/c257_successor_adapter_prep.v1.json"
+    },
+    {
+      "git_blob_sha1": "d5f763d072afcae12cbe4c6aa60fe92e3a6f2612",
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v2.json"
+    },
+    {
+      "git_blob_sha1": "cb288d8f59430fb0070cc0c9ed6a0089296259d7",
+      "path": "contracts/strategy_causal_pack_01/exchange_filter_authority.v3.json"
+    },
+    {
+      "git_blob_sha1": "57af13cd3d86297551f31b26ef70f85519e84376",
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v1.json"
+    },
+    {
+      "git_blob_sha1": "ecfaab5721c9ef1f12bda390a3da086dc2573891",
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v2.json"
+    },
+    {
+      "git_blob_sha1": "f50b496bc9be9c09b7525fbe5d2a8b7160a658b8",
+      "path": "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v3.json"
+    },
+    {
+      "git_blob_sha1": "331a4b48ae3b86ea56a94807ce1d52069a54526f",
+      "path": "contracts/strategy_causal_pack_01/precutoff_daily_archive_amendment.v1.json"
+    },
+    {
+      "git_blob_sha1": "89ff71b2d0642c7b65dbc111300c5efaef17247b",
+      "path": "contracts/strategy_causal_pack_01/precutoff_daily_authority_plan.v1.json"
+    },
+    {
+      "git_blob_sha1": "311e3d5abd9716c72d124e98078a7727e22c81e5",
+      "path": "contracts/strategy_causal_pack_01/precutoff_funding_authority_summary.v1.json"
+    },
+    {
+      "git_blob_sha1": "d5bf70b249d72789c45018cd0093085150be45fd",
+      "path": "contracts/strategy_causal_pack_01/precutoff_kline_gap_plan.v1.json"
+    },
+    {
+      "git_blob_sha1": "188899d321fe460926fd445ee9f72f19d525f266",
+      "path": "contracts/strategy_causal_pack_01/strategy_causal_pack_01_contract.v1.json"
+    },
+    {
+      "git_blob_sha1": "4f62c67cb9f12079d1e816eda8b375df08ab75ee",
+      "path": "contracts/strategy_causal_pack_01_causal_v4/strategy_causal_pack_01_causal_v4_rebind.v1.json"
+    },
+    {
+      "git_blob_sha1": "7dfe95d8448c3b8bbfa989e17a3c7723bc0c3eb9",
+      "path": "research_evidence/breadth_prereg/RUNBOOK.md"
+    },
+    {
+      "git_blob_sha1": "3af08733c588bb716603a5a5ba04ade2c691ed89",
+      "path": "research_evidence/breadth_prereg/breadth_static40.v1.json"
+    },
+    {
+      "git_blob_sha1": "051884c4346d44c20b02a380b7a4440c9f49b570",
+      "path": "research_evidence/ledger/REGISTRY.jsonl"
+    },
+    {
+      "git_blob_sha1": "57d8acf8cbe97fbde85de8e4c5d6c2b0f9c21090",
+      "path": "research_evidence/prereg/aggressor_flow_absorption_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "e2e0a3b39ec70c95f080f2f96d6cc244de04fd48",
+      "path": "research_evidence/prereg/atr_shock_snapback_4h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "fde43e3852699dd5a25dfa9d7e43c61ec5b1c862",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20241213T044448Z.json"
+    },
+    {
+      "git_blob_sha1": "5bc5fadd77095d9e9a3ee1f4745a1e77a9f13547",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20260217T041328Z.json"
+    },
+    {
+      "git_blob_sha1": "ece7c35db0d9313e815ad4ed70b79811ad85332c",
+      "path": "research_evidence/prereg/binance-um-exchangeinfo-mainnet-raw-20261011T151658Z.json"
+    },
+    {
+      "git_blob_sha1": "91270f81c4f2f8091cd336ccdc9b4947b27567cc",
+      "path": "research_evidence/prereg/breakout_pyramid_falsify.v1.amendment_dev_end_20260901.json"
+    },
+    {
+      "git_blob_sha1": "2b73a23ab05640983aa6e9f1439ea852479084c4",
+      "path": "research_evidence/prereg/breakout_pyramid_falsify.v1.json"
+    },
+    {
+      "git_blob_sha1": "660b97e9009a9a5cf49901173946a479cc409bcc",
+      "path": "research_evidence/prereg/btc_orderflow_leadlag_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "55bd32014b9c5222afa7767d1d214ff9011ff072",
+      "path": "research_evidence/prereg/btc_residual_leadlag_continuation_c259_stagea.v1.json"
+    },
+    {
+      "git_blob_sha1": "818e12c77a0cb790b9020ccf7b0b3deda0b50750",
+      "path": "research_evidence/prereg/carry01_cash_and_carry.v1.json"
+    },
+    {
+      "git_blob_sha1": "3efc7754f43bfdc346f08c698f59f09af9ad4af0",
+      "path": "research_evidence/prereg/core10_fundgap_g3_report.v1.json"
+    },
+    {
+      "git_blob_sha1": "22d94af4647cdc7166b092e2f6e2bff3ab11a76b",
+      "path": "research_evidence/prereg/core10_fundgap_g4_report.v1.json"
+    },
+    {
+      "git_blob_sha1": "8bae38869d0fe52028a73c331f95a76bfc805dae",
+      "path": "research_evidence/prereg/core10_fundgap_report.v1.json"
+    },
+    {
+      "git_blob_sha1": "9a53d059dbca9ed895e43b5fcd161c8aae12aba2",
+      "path": "research_evidence/prereg/core10_gapfill_plan.v1.json"
+    },
+    {
+      "git_blob_sha1": "1ef3ffb7dadd5a84ce4070e18da41595dbb01ea7",
+      "path": "research_evidence/prereg/core10_gapfill_report.v1.json"
+    },
+    {
+      "git_blob_sha1": "607c6cd29ce781238667dd39e1c809d41b9900e2",
+      "path": "research_evidence/prereg/cross_sectional_relative_strength_continuation_c258_stagea.v1.json"
+    },
+    {
+      "git_blob_sha1": "b20618ceca4cf352332a707172eaa6d46b024337",
+      "path": "research_evidence/prereg/daily_range_participation_c30_stagea.md"
+    },
+    {
+      "git_blob_sha1": "820c47a0ade1d6a9f0ccf11dbb57192048164121",
+      "path": "research_evidence/prereg/directional_sign_entropy_c42_stagea.md"
+    },
+    {
+      "git_blob_sha1": "197b49d0082ac7a2eb0e025f1b4a428cf8c9828e",
+      "path": "research_evidence/prereg/ema_mom_long_h4_stagea.md"
+    },
+    {
+      "git_blob_sha1": "1169956dcd8c9a2ac92ff6866c71ff0e0151bb0e",
+      "path": "research_evidence/prereg/ema_spread_expansion_c39_stagea.md"
+    },
+    {
+      "git_blob_sha1": "6d62fc02ffe97eb8e4d003c21671277cecf2d6a3",
+      "path": "research_evidence/prereg/ema_st_short_c29_stagea.md"
+    },
+    {
+      "git_blob_sha1": "121ecf568724e5cbc81a0e7af4225bf2b474fe77",
+      "path": "research_evidence/prereg/exp_mom_short_c27_stagea.md"
+    },
+    {
+      "git_blob_sha1": "55fe22806c911774ec4c1278c18bc5ac35fca600",
+      "path": "research_evidence/prereg/exp_trend_long_h3_stagea.md"
+    },
+    {
+      "git_blob_sha1": "5f743df1ba18dfc37fd9c99c3bfd7d396bc8f054",
+      "path": "research_evidence/prereg/fib_pullback_01.md"
+    },
+    {
+      "git_blob_sha1": "81a3ee2016ddde67bd8adbd6da69dc04350e6e9d",
+      "path": "research_evidence/prereg/fib_pullback_02.md"
+    },
+    {
+      "git_blob_sha1": "6a0fe432305d464f77adffee114eb03c88a3d08a",
+      "path": "research_evidence/prereg/funding_carry_xsec.v1.json"
+    },
+    {
+      "git_blob_sha1": "7c2be17b0fbeea06b154f680f67f2b03a3f1860a",
+      "path": "research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json"
+    },
+    {
+      "git_blob_sha1": "136d759930590e2390bd28429f19bcfab92f1554",
+      "path": "research_evidence/prereg/illiquidity_impact_reversion_c31_stagea.md"
+    },
+    {
+      "git_blob_sha1": "a21be4835e7bce6edccf6712930d0dedb59cf67f",
+      "path": "research_evidence/prereg/inside_bar_breakout_c32_stagea.md"
+    },
+    {
+      "git_blob_sha1": "c098c11b60b093bf6f3b0a851856aa153df2918f",
+      "path": "research_evidence/prereg/keltner_lower_reclaim_c37_stagea.md"
+    },
+    {
+      "git_blob_sha1": "eee64a664be1b7a99a7f00f4700f2cc7e0739187",
+      "path": "research_evidence/prereg/large_trade_impulse_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "0592c547c72c65b658ac59bee891e022d04b483b",
+      "path": "research_evidence/prereg/mark_price_dislocation_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "fa6fb4433dece94ab523b2055bd9fb9f3f70b9e3",
+      "path": "research_evidence/prereg/mfi_oversold_recovery_c36_stagea.md"
+    },
+    {
+      "git_blob_sha1": "f9a73d50b6c29c96a820c5a4dcbd319201026bd9",
+      "path": "research_evidence/prereg/obv_lead_breakout_c35_stagea.md"
+    },
+    {
+      "git_blob_sha1": "1f927858840b3349bc4ed79ccaedb5c3d9460b1b",
+      "path": "research_evidence/prereg/pullback_rsi_short_h1_stagea.md"
+    },
+    {
+      "git_blob_sha1": "33a806c3a38bd4eb6ef15f3d07573b8b1dfc9eac",
+      "path": "research_evidence/prereg/r4_gate.json"
+    },
+    {
+      "git_blob_sha1": "430ffe95be8eb9fa4c6295f6813a9b6ea633c578",
+      "path": "research_evidence/prereg/r4_gate_short.json"
+    },
+    {
+      "git_blob_sha1": "8509c9a70ab447d87ebdb39c5a4378b13a769077",
+      "path": "research_evidence/prereg/range_overlap_acceptance_c43_stagea.md"
+    },
+    {
+      "git_blob_sha1": "37866a53afad353b41c1a6854728aa02317111b7",
+      "path": "research_evidence/prereg/rank_breadth_reversal_4h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "990fabc37e53a350493eb59a83d30de406318442",
+      "path": "research_evidence/prereg/realized_skew_valuation_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "c5eabe91c5e45afd9a40c61d63dc3fa3dc3d5cca",
+      "path": "research_evidence/prereg/return_autocorr_persistence_c40_stagea.md"
+    },
+    {
+      "git_blob_sha1": "bb174cced78605f40fcd5612bdb78d99436953bb",
+      "path": "research_evidence/prereg/rip_sell_dca_c28_stagea.md"
+    },
+    {
+      "git_blob_sha1": "9e746ff77b7738492a451b82733f6fb2cb7201ba",
+      "path": "research_evidence/prereg/rotation_long_h2_stagea.md"
+    },
+    {
+      "git_blob_sha1": "8144b9b0989d81b955fd5d55c88d4a78f2d84a99",
+      "path": "research_evidence/prereg/rsi_lower_low_divergence_c33_stagea.md"
+    },
+    {
+      "git_blob_sha1": "a424ab526fb963efc5f2de421ce5822a79634b91",
+      "path": "research_evidence/prereg/session_inventory_unwind_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "129f4f4e3bfa136cfa1b310c79af8eb3268c41cf",
+      "path": "research_evidence/prereg/state_persistence_c44_stagea.md"
+    },
+    {
+      "git_blob_sha1": "e644afef9ec97a1b4edd0c0907d1e7c2a40806a9",
+      "path": "research_evidence/prereg/three_bar_exhaustion_reversal_c34_stagea.md"
+    },
+    {
+      "git_blob_sha1": "e9906799ab00669af1a899ddede5fea039c34e1c",
+      "path": "research_evidence/prereg/transient_jump_dislocation_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "7e53a8e21c3b8a97074f686dc31f202b7178881c",
+      "path": "research_evidence/prereg/trend_ema_mom.v1.json"
+    },
+    {
+      "git_blob_sha1": "6f515350e7ff83d38aaf177c941af70c928da2bd",
+      "path": "research_evidence/prereg/trend_ema_mom_short.v1.json"
+    },
+    {
+      "git_blob_sha1": "048db3da988f0d11adaa3c30a6ed922786d596d2",
+      "path": "research_evidence/prereg/volatility_acceleration_c41_stagea.md"
+    },
+    {
+      "git_blob_sha1": "cad1d98560ca05d922e487f4b2f1134e16d40a8f",
+      "path": "research_evidence/prereg/volume_pressure_inventory_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "77a3339874f5560d56b4c4b3ef2b331304f80645",
+      "path": "research_evidence/prereg/weekend_liquidity_premium_1h_stagea.md"
+    },
+    {
+      "git_blob_sha1": "d48bdcbc92e47337b8f0bee70ee796abb9a8230c",
+      "path": "research_evidence/prereg/williams_r_recovery_c38_stagea.md"
+    }
+  ],
+  "method": "Complete tracked path/blob inventory for the stated tree/scope using git ls-tree only. File payloads and economic fields were not read.",
+  "scope": [
+    "contracts/**",
+    "research_evidence/prereg/**",
+    "research_evidence/breadth_prereg/**",
+    "research_evidence/ledger/REGISTRY.jsonl"
+  ],
+  "source_tree_head": "5283fec18b73efdba9c051cf725cd6a2f434a020"
+}
