@@ -355,6 +355,18 @@ class Bar:
             raise IncompleteAuthority("invalid OHLC")
 
 
+@dataclass(frozen=True)
+class BoundaryOpen:
+    """Only the exact split-end open; no following range or volume is observable."""
+
+    open_ms: int
+    open: float
+
+    def validate(self) -> None:
+        if self.open_ms % HOUR_MS or not math.isfinite(self.open) or self.open <= 0:
+            raise IncompleteAuthority("invalid split-boundary open")
+
+
 def exact_index(bars: Sequence[Bar]) -> dict[int, Bar]:
     result: dict[int, Bar] = {}
     for bar in bars:
@@ -785,7 +797,7 @@ def causal_quote_volume_24h(bars: Sequence[Bar], impact_asof_ms: int) -> float:
     return math.fsum(index[timestamp].quote_volume for timestamp in required)
 
 
-def exit_reference(*, side: int, stop: float, target: float, bar: Bar,
+def exit_reference(*, side: int, stop: float, target: float, bar: Bar | BoundaryOpen,
                    scheduled_due: bool) -> tuple[str, float, int] | None:
     bar.validate()
     close_ms = bar.open_ms + HOUR_MS
@@ -795,6 +807,8 @@ def exit_reference(*, side: int, stop: float, target: float, bar: Bar,
         return "TARGET_GAP", target, bar.open_ms
     if scheduled_due:
         return "SCHEDULED", bar.open, bar.open_ms
+    if isinstance(bar, BoundaryOpen):
+        return None
     stop_touch = bar.low <= stop if side == 1 else bar.high >= stop
     target_touch = bar.high >= target if side == 1 else bar.low <= target
     if stop_touch:
@@ -843,9 +857,9 @@ class ClosedTrade:
     atr_bars: tuple[Bar, ...]
     funding_authority: tuple[FundingEvent, ...]
     funding_authority_digest: str
-    lifecycle_bars: tuple[Bar, ...]
+    lifecycle_bars: tuple[Bar | BoundaryOpen, ...]
     entry_bar: Bar
-    exit_bar: Bar
+    exit_bar: Bar | BoundaryOpen
     stop: float
     target: float
     incomplete: bool = False
@@ -936,7 +950,9 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
     entry, exit_fill = entries[0], exits[0]
     ordered_funding_authority = validate_funding_events(trade.funding_authority)
     if (tuple(trade.funding_authority) != ordered_funding_authority
-            or any(not expected_split_start <= event.timestamp_ms < split_end
+            or any(not (expected_split_start <= event.timestamp_ms < split_end
+                        or event.timestamp_ms == split_end == trade.close_ms
+                        and exit_fill.phase not in {"STOP_RANGE", "TARGET_RANGE"})
                    for event in ordered_funding_authority)
             or trade.funding_authority_digest != seal.funding_digest
             or trade.funding_authority_digest != funding_tape_digest(
@@ -1006,6 +1022,10 @@ def validate_closed_trade(trade: ClosedTrade) -> None:
         raise IncompleteAuthority("lifecycle bar tape is missing/compressed")
     for bar in lifecycle:
         bar.validate()
+        if isinstance(bar, BoundaryOpen) and (
+                bar.open_ms != split_end or bar is not lifecycle[-1]
+                or trade.close_ms != split_end):
+            raise IncompleteAuthority("open-only evidence is not the exact split boundary")
     if (_stream_digest(trade.authority_source_digest,
                        f"lifecycle:{trade.symbol}", lifecycle)
             != seal.lifecycle_digest):
@@ -1100,7 +1120,7 @@ def protection_failure(*, attempt_id: str, side: int, symbol: str, entry_ms: int
                        source_seal: ProtectedSourceSeal,
                        atr_authority_digest: str, atr_bars: Sequence[Bar],
                        funding_authority: Sequence[FundingEvent],
-                       funding_authority_digest: str, lifecycle_bars: Sequence[Bar],
+                       funding_authority_digest: str, lifecycle_bars: Sequence[Bar | BoundaryOpen],
                        entry_bar: Bar, exit_bar: Bar,
                        stop: float, target: float, regime: str) -> ClosedTrade:
     entries = [fill for fill in fills if fill.phase == "ENTRY"]
@@ -1309,8 +1329,17 @@ class ProtectedSourceArchive:
                         if isinstance(record, Mapping))
         if len(records) != len(active) + len(extension):
             raise IncompleteAuthority("manifest source record is malformed")
+        # Actual v5 records carry path/interval but no explicit series key.
+        for record in records:
+            if "series" not in record:
+                parts = str(record.get("path", "")).replace("\\", "/").split("/")
+                matches = {part for part in parts
+                           if part in {"klines", "markPriceKlines", "fundingRate"}}
+                if len(matches) != 1:
+                    raise IncompleteAuthority("v5 source path does not identify one stream")
+                record["series"] = matches.pop()
         self._records = records
-        self._cache: dict[str, tuple[dict[int, Bar], dict[int, PositionMark],
+        self._cache: dict[tuple[str, int, int, bool], tuple[dict[int, Bar | BoundaryOpen], dict[int, PositionMark],
                                      tuple[FundingEvent, ...]]] = {}
         self._capability = capability
 
@@ -1338,7 +1367,7 @@ class ProtectedSourceArchive:
                     rows = rows[1:]
                 return rows
             payload = gzip.decompress(raw) if path.endswith(".gz") else raw
-            value = json.loads(payload.decode("utf-8"))
+            value = json.loads(payload.decode("utf-8"), parse_float=str, parse_int=str)
             if not isinstance(value, list):
                 raise IncompleteAuthority("API source is not a row list")
             return list(value)
@@ -1348,26 +1377,46 @@ class ProtectedSourceArchive:
                 raise
             raise IncompleteAuthority("checksum-bound source bytes are unparsable") from exc
 
-    def _load_symbol(self, symbol: str) -> tuple[dict[int, Bar], dict[int, PositionMark],
-                                                  tuple[FundingEvent, ...]]:
-        if symbol in self._cache:
-            return self._cache[symbol]
-        bars: dict[int, Bar] = {}
+    @staticmethod
+    def _record_bounds(record: Mapping[str, object]) -> tuple[int, int] | None:
+        if record.get("rows") == 0:
+            return None
+        start, end = record.get("declared_start_ms"), record.get("declared_end_ms")
+        if not isinstance(start, int) or not isinstance(end, int):
+            start = record.get("first_open_ms", record.get("observed_first_ms"))
+            last = record.get("last_open_ms", record.get("observed_last_ms"))
+            end = last+1 if isinstance(last, int) else None
+        if not isinstance(start, int) or not isinstance(end, int) or start >= end:
+            raise IncompleteAuthority("protected source lacks valid period bounds")
+        return start, end
+
+    def _load_symbol(self, symbol: str, start_ms: int, end_ms: int, *,
+                     boundary_open: bool = False) -> tuple[
+                         dict[int, Bar | BoundaryOpen], dict[int, PositionMark],
+                         tuple[FundingEvent, ...]]:
+        key = symbol, start_ms, end_ms, boundary_open
+        if key in self._cache:
+            return self._cache[key]
+        bars: dict[int, Bar | BoundaryOpen] = {}
         marks: dict[int, PositionMark] = {}
         funding: dict[int, FundingEvent] = {}
         relevant = [record for record in self._records if record.get("symbol") == symbol
                     and (record.get("series"), record.get("interval")) in {
                         ("klines", "1h"), ("markPriceKlines", "1h"),
                         ("fundingRate", None)}]
-        if not relevant:
-            raise IncompleteAuthority(f"no protected source records for {symbol}")
         if {(record.get("series"), record.get("interval")) for record in relevant} != {
                 ("klines", "1h"), ("markPriceKlines", "1h"), ("fundingRate", None)}:
             raise IncompleteAuthority("protected source lacks a required stream")
         for record in sorted(relevant, key=lambda row: str(row.get("path", ""))):
+            series = record.get("series")
+            bounds = self._record_bounds(record)
+            # Disjoint files are rejected by metadata before any bytes are opened.
+            upper = end_ms+1 if boundary_open and series in {"klines", "fundingRate"} else end_ms
+            if bounds is None or bounds[1] <= start_ms or bounds[0] >= upper:
+                continue
             path = record.get("path")
             expected = record.get("raw_sha256", record.get("sha256"))
-            if (not isinstance(path, str) or not _valid_source_digest(str(expected))):
+            if not isinstance(path, str) or not _valid_source_digest(str(expected)):
                 raise IncompleteAuthority("manifest source record lacks byte identity")
             try:
                 raw = self._safe_path(path).read_bytes()
@@ -1376,15 +1425,21 @@ class ProtectedSourceArchive:
             if _sha(raw) != expected:
                 raise IncompleteAuthority(f"protected source byte mismatch: {path}")
             for row in self._rows(raw, path):
-                series = record.get("series")
                 try:
+                    timestamp = int(row["fundingTime"] if isinstance(row, Mapping) else row[0])
+                    if not start_ms <= timestamp < upper:
+                        continue
+                    # Only timestamps are interpreted before this split clip.
+                    # The allowed end-boundary open does not expose its range.
                     if series in {"klines", "markPriceKlines"}:
-                        if not isinstance(row, list) or len(row) < 8:
-                            raise ValueError("short kline row")
-                        timestamp = int(row[0])
+                        if not isinstance(row, list):
+                            raise ValueError("invalid kline row")
                         if series == "klines":
-                            value = Bar(timestamp, float(row[1]), float(row[2]),
-                                        float(row[3]), float(row[4]), float(row[7]))
+                            if timestamp == end_ms:
+                                value = BoundaryOpen(timestamp, float(row[1]))
+                            else:
+                                value = Bar(timestamp, float(row[1]), float(row[2]),
+                                            float(row[3]), float(row[4]), float(row[7]))
                             value.validate()
                             if timestamp in bars:
                                 raise IncompleteAuthority("duplicate protected kline timestamp")
@@ -1397,26 +1452,20 @@ class ProtectedSourceArchive:
                                 raise IncompleteAuthority("duplicate protected mark timestamp")
                             marks[timestamp] = value
                     elif series == "fundingRate":
-                        if isinstance(row, Mapping):
-                            timestamp, rate = int(row["fundingTime"]), float(row["fundingRate"])
-                        elif isinstance(row, list) and len(row) >= 3:
-                            timestamp, rate = int(row[0]), float(row[2])
-                        else:
-                            raise ValueError("short funding row")
-                        event = FundingEvent(timestamp, rate)
+                        rate = float(row["fundingRate"] if isinstance(row, Mapping) else row[2])
                         if timestamp in funding:
                             raise IncompleteAuthority("duplicate protected funding timestamp")
-                        funding[timestamp] = event
-                except (KeyError, TypeError, ValueError) as exc:
+                        funding[timestamp] = FundingEvent(timestamp, rate)
+                except (KeyError, IndexError, TypeError, ValueError) as exc:
                     raise IncompleteAuthority(f"invalid protected source row: {path}") from exc
         result = bars, marks, tuple(funding[key] for key in sorted(funding))
-        self._cache[symbol] = result
+        self._cache[key] = result
         return result
 
     def seal_trade(self, *, attempt_id: str, symbol: str, entry_ms: int, close_ms: int,
                    split_start_ms: int, split_end_ms: int, atr_bars: Sequence[Bar],
                    funding_authority: Sequence[FundingEvent],
-                   lifecycle_bars: Sequence[Bar], fills: Sequence[Fill],
+                   lifecycle_bars: Sequence[Bar | BoundaryOpen], fills: Sequence[Fill],
                    funding_marks: Sequence[PositionMark],
                    lifecycle_marks: Sequence[PositionMark]) -> ProtectedSourceSeal:
         if (type(self) is not ProtectedSourceArchive
@@ -1429,7 +1478,10 @@ class ProtectedSourceArchive:
                 or entry_ms % HOUR_MS or close_ms % HOUR_MS
                 or close_ms > split_end_ms or len(fills) != 2):
             raise IncompleteAuthority("source episode bounds are invalid")
-        bars, marks, funding = self._load_symbol(symbol)
+        range_exit = fills[-1].phase in {"STOP_RANGE", "TARGET_RANGE"}
+        boundary_open = close_ms == split_end_ms and not range_exit
+        bars, marks, funding = self._load_symbol(
+            symbol, split_start_ms, split_end_ms, boundary_open=boundary_open)
         def require_rows(rows: Mapping[int, object], timestamps: Iterable[int]) -> tuple:
             try:
                 return tuple(rows[timestamp] for timestamp in timestamps)
@@ -1437,9 +1489,11 @@ class ProtectedSourceArchive:
                 raise IncompleteAuthority("checksum-verified source stream has a gap") from exc
 
         expected_atr = require_rows(bars, range(split_start_ms, entry_ms-HOUR_MS, HOUR_MS))
-        expected_lifecycle = require_rows(bars, range(entry_ms, close_ms+HOUR_MS, HOUR_MS))
+        expected_lifecycle = require_rows(bars, range(
+            entry_ms, close_ms if range_exit else close_ms+HOUR_MS, HOUR_MS))
         expected_funding = tuple(event for event in funding
-                                 if split_start_ms <= event.timestamp_ms < split_end_ms)
+                                 if split_start_ms <= event.timestamp_ms < split_end_ms
+                                 or boundary_open and event.timestamp_ms == split_end_ms)
         exit_includes_boundary = fills[-1].phase not in {"STOP_RANGE", "TARGET_RANGE"}
         exposed_funding = tuple(event for event in expected_funding
                                 if entry_ms < event.timestamp_ms < close_ms
