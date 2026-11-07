@@ -296,6 +296,20 @@ def test_authority_validates_protected_tree_before_loader(tmp_path: Path) -> Non
     assert len(calls) == 1 and set(calls[0]) == set(c259.EXPECTED_PATHS)
 
 
+def test_protected_squash_binds_frozen_content_without_feature_branch_ancestry(tmp_path: Path) -> None:
+    repo, pins = _authority_repo(tmp_path)
+    tree = _run(repo, "git", "rev-parse", f"{pins.protected_head}^{{tree}}")
+    base = c259.load_frozen_contract()["base_commit"]
+    head = _run(repo, "git", "commit-tree", tree, "-p", base, "-m", "protected squash fixture")
+    _run(repo, "git", "update-ref", "refs/remotes/origin/master", head)
+    feature_ancestry = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", c259.CONTRACT_HEAD, head],
+        capture_output=True)
+    assert feature_ancestry.returncode == 1
+    authority = c259.validate_authority_pins(replace(pins, protected_head=head), repo=repo)
+    assert set(authority) == set(c259.EXPECTED_PATHS)
+
+
 @pytest.mark.parametrize("funding_format", ["zip", "api_json"])
 @pytest.mark.parametrize("split_end_exit", [False, True])
 def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
