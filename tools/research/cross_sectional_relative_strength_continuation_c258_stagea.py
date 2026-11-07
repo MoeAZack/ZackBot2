@@ -32,7 +32,6 @@ C258_FROZEN_HEAD = "976adda2653584559a5fc105468a6d422796d3a9"
 AUTHORITY_PROTECTED_REF = "refs/heads/master"
 AUTHORITY_EXPECTED_ANCESTORS = (
     "6754a336652496952aaab82e42fbe9bd6171430a",  # authority-v6 protected base
-    C258_FROZEN_HEAD,  # frozen C258 registration
 )
 HOUR_MS = 3_600_000
 FEE_BPS = 5.0
@@ -457,7 +456,17 @@ def true_ranges_through(bars: Sequence[Bar], decision_close_ms: int) -> tuple[fl
 
 
 def atr24_wilder(bars: Sequence[Bar], decision_close_ms: int) -> float:
-    ranges = true_ranges_through(bars, decision_close_ms)
+    index = exact_index(bars)
+    segment = []
+    timestamp = decision_close_ms-HOUR_MS
+    while timestamp in index:
+        segment.append(index[timestamp])
+        timestamp -= HOUR_MS
+    segment.reverse()
+    if len(segment) < 25:
+        raise IncompleteAuthority("ATR24 requires a contiguous 25-bar segment through decision")
+    ranges = tuple(max(cur.high-prev.close, prev.close-cur.low, cur.high-cur.low)
+                   for prev, cur in zip(segment, segment[1:]))
     atr = math.fsum(ranges[:24]) / 24
     for value in ranges[24:]:
         atr = ((23 * atr) + value) / 24
@@ -931,7 +940,8 @@ class MarkClose:
     price: float
 
 
-def causal_mark_strictly_before(marks: Sequence[MarkClose], event_ms: int) -> MarkClose:
+def causal_mark_strictly_before(marks: Sequence[MarkClose], event_ms: int, *,
+                               actual_close_time: bool = False) -> MarkClose:
     seen: set[int] = set()
     eligible = []
     for mark in marks:
@@ -945,7 +955,7 @@ def causal_mark_strictly_before(marks: Sequence[MarkClose], event_ms: int) -> Ma
     if not eligible:
         raise IncompleteAuthority("missing causal mark strictly before event")
     result = max(eligible, key=lambda mark: mark.close_ms)
-    if result.close_ms != event_ms - HOUR_MS:
+    if result.close_ms != event_ms - (1 if actual_close_time else HOUR_MS):
         raise IncompleteAuthority("strict-prior causal mark timestamp is missing or stale")
     return result
 
@@ -1000,7 +1010,10 @@ def derive_funding_events(*, funding_points: Sequence["FundingPoint"],
                           funding_authority: Sequence["FundingPoint"],
                           symbol_marks: Mapping[str, Sequence[MarkClose]],
                           position_sides: Mapping[str, int], quantities: Mapping[str, Decimal],
-                          entry_ms: int, close_ms: int, stress: bool) -> tuple[FundingCashEvent, ...]:
+                          entry_ms: int, close_ms: int, stress: bool,
+                          exhaustive_source_tape: bool = False,
+                          actual_mark_closes: bool = False,
+                          leg_exit_times: Mapping[str, int] | None = None) -> tuple[FundingCashEvent, ...]:
     authority: dict[tuple[str, int], float] = {}
     for row in funding_authority:
         key = (row.symbol, row.nominal_time_ms)
@@ -1009,8 +1022,13 @@ def derive_funding_events(*, funding_points: Sequence["FundingPoint"],
         authority[key] = row.rate
     eight_hours = 8 * HOUR_MS
     first = ((entry_ms + eight_hours - 1) // eight_hours) * eight_hours
-    required = {(symbol, timestamp) for symbol in position_sides
-                for timestamp in range(first, close_ms, eight_hours)}
+    exits = leg_exit_times or {symbol: close_ms for symbol in position_sides}
+    required = (set(authority) if exhaustive_source_tape else
+                {(symbol, timestamp) for symbol in position_sides
+                 for timestamp in range(first, exits[symbol], eight_hours)})
+    if any(symbol not in position_sides or not entry_ms <= timestamp < exits[symbol]
+           for symbol, timestamp in required):
+        raise IncompleteEpisode("funding authority escapes exact per-leg exposure")
     if set(authority) != required:
         raise IncompleteEpisode("funding authority does not exactly cover canonical 8h exposure settlements")
     seen: set[tuple[str, int]] = set()
@@ -1020,10 +1038,11 @@ def derive_funding_events(*, funding_points: Sequence["FundingPoint"],
         if key in seen:
             raise IncompleteEpisode("duplicate funding row")
         seen.add(key)
-        if (row.symbol not in position_sides or not entry_ms <= row.nominal_time_ms < close_ms
+        if (row.symbol not in position_sides or not entry_ms <= row.nominal_time_ms < exits[row.symbol]
                 or key not in authority or authority[key] != row.rate):
             raise IncompleteEpisode("funding row is not exactly bound to exposure authority")
-        mark = causal_mark_strictly_before(symbol_marks.get(row.symbol, ()), row.nominal_time_ms)
+        mark = causal_mark_strictly_before(symbol_marks.get(row.symbol, ()), row.nominal_time_ms,
+                                          actual_close_time=actual_mark_closes)
         cash = signed_funding_cash(position_side=position_sides[row.symbol],
                                    quantity=float(quantities[row.symbol]), causal_mark=mark.price,
                                    funding_rate=row.rate, stress=stress)
@@ -1121,6 +1140,8 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
                   funding_points: Sequence["FundingPoint"] = (),
                   funding_authority: Sequence["FundingPoint"] = (),
                   funding_marks: Mapping[str, Sequence[MarkClose]] = {},
+                  exhaustive_source_tape: bool = False,
+                  actual_mark_closes: bool = False,
                   stress: bool = False,
                   atomic_one_leg: bool = False) -> ClosedAttempt:
     if not fills or close_ms < entry_ms:
@@ -1206,7 +1227,9 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
     funding_events = derive_funding_events(
         funding_points=funding_points, funding_authority=funding_authority,
         symbol_marks=funding_marks, position_sides=declared_sides, quantities=accepted,
-        entry_ms=entry_ms, close_ms=close_ms, stress=stress)
+        entry_ms=entry_ms, close_ms=close_ms, stress=stress,
+        exhaustive_source_tape=exhaustive_source_tape, actual_mark_closes=actual_mark_closes,
+        leg_exit_times={event.symbol: event.timestamp_ms for event in expected_finals})
     funding_cash = math.fsum(event.cash for event in funding_events)
     movement = math.fsum(fill.movement_cash for fill in fills)
     fee = math.fsum(fill.fee_drag for fill in fills)

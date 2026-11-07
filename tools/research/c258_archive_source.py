@@ -18,7 +18,28 @@ def _read_window_rows(store: Path, record: Mapping, *, new: bool,
                       start_ms: int, end_ms: int):
     """Hash complete Vision bytes, then parse economic fields only in-window."""
     if record.get("source", {}).get("kind") != "binance-vision-archive":
-        return _read_record_rows(store, record, new=new)
+        from tools.research import authority_v6 as V6
+        # Synthetic unit seams retain their explicit non-archive reader. Actual
+        # JSON sources are hash-bound and timestamp-clipped before conversion.
+        if not str(record.get("path", "")).endswith(".json"):
+            return _read_record_rows(store, record, new=new)
+        rel = record["path"]
+        raw = V6._safe_store_path(store, rel).read_bytes()
+        expected = record["raw_sha256" if new else "sha256"]
+        if hashlib.sha256(raw).hexdigest() != expected:
+            raise C.IncompleteAuthority("archive source bytes changed")
+        meta = V6.M.archive_meta(rel)
+        payload = json.loads(raw, parse_float=str, parse_int=str)
+        if not isinstance(payload, list):
+            raise C.IncompleteAuthority("API source is not a row list")
+        selected = []
+        for row in payload:
+            timestamp = int(row["fundingTime"] if isinstance(row, Mapping) else row[0])
+            if start_ms <= timestamp < end_ms:
+                if isinstance(row, Mapping):
+                    row = {**row, "fundingTime": timestamp}
+                selected.append(row)
+        return meta, selected
     from tools.research import authority_v6 as V6
     rel = record["path"]
     target = V6._safe_store_path(store, rel)
@@ -98,6 +119,20 @@ class C258ArchiveSource:
         paths = [record["path"] for record, _ in self._records]
         if len(paths) != len(set(paths)):
             raise C.IncompleteAuthority("duplicate active archive path")
+        from tools.research import manifest as M
+        normalized = []
+        for original, new in self._records:
+            record = dict(original)
+            if not new and any(key not in record for key in ("symbol", "series", "interval")):
+                # v5 FILE_KEYS deliberately omit series/symbol aliases in some
+                # producers. Resolve the exact frozen archive path, not a guess.
+                meta = M.archive_meta(record["path"])
+                for key in ("symbol", "series", "interval"):
+                    if key in record and record[key] != meta[key]:
+                        raise C.IncompleteAuthority("v5 path/record identity mismatch")
+                    record[key] = meta[key]
+            normalized.append((record, new))
+        self._records = tuple(normalized)
 
     def membership_and_filters(self, *, fold: str, decision_ms: int
                                ) -> tuple[tuple[str, ...], dict[str, tuple[C.Filters, Decimal]]]:

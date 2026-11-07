@@ -134,3 +134,39 @@ def test_typed_source_preserves_mark_close_and_declared_funding_cadence(monkeypa
     tapes["markPriceKlines"] = ((lo, "10", "11", "9", "nan", "1", lo+S.C.HOUR_MS-1, "0", 1, "1", "1", "0"),)
     with pytest.raises(S.C.IncompleteAuthority, match="mark price"):
         archive.marks(**kwargs)
+
+
+def test_real_v5_path_supplies_omitted_stream_symbol_interval(monkeypatch):
+    lo, _ = S.frozen_window("wf1")
+    path = "um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-04.zip"
+    archive = source(monkeypatch, [{"path": path, "sha256": "a"*64,
+        "first_open_ms": lo, "last_open_ms": lo}])
+    def read(store, record, **kwargs):
+        assert (record["symbol"], record["series"], record["interval"]) == (
+            "BTCUSDT", "klines", "1h")
+        return {}, [(lo, "1")]
+    monkeypatch.setattr(S, "_read_window_rows", read)
+    assert archive.load(symbol="BTCUSDT", stream="klines", fold="wf1",
+                        start_ms=lo, end_ms=lo+S.C.HOUR_MS).rows == ((lo, "1"),)
+
+
+def test_variable_exhaustive_funding_uses_actual_mark_close_and_leg_exit():
+    C = S.C
+    points = [C.FundingPoint("L", C.HOUR_MS, .001),
+              C.FundingPoint("S", C.HOUR_MS, -.001),
+              C.FundingPoint("S", 4*C.HOUR_MS, .002)]
+    marks = {symbol: [C.MarkClose(t*C.HOUR_MS-1, 100) for t in (1, 4)]
+             for symbol in ("L", "S")}
+    kwargs = dict(funding_points=points, funding_authority=points, symbol_marks=marks,
+        position_sides={"L": 1, "S": -1}, quantities={"L": S.Decimal(1), "S": S.Decimal(1)},
+        entry_ms=C.HOUR_MS, close_ms=6*C.HOUR_MS, stress=False,
+        exhaustive_source_tape=True, actual_mark_closes=True,
+        leg_exit_times={"L": 2*C.HOUR_MS, "S": 6*C.HOUR_MS})
+    events = C.derive_funding_events(**kwargs)
+    assert [(event.symbol, event.timestamp_ms) for event in events] == [
+        ("L", C.HOUR_MS), ("S", C.HOUR_MS), ("S", 4*C.HOUR_MS)]
+    with pytest.raises(C.IncompleteEpisode, match="exactly cover"):
+        C.derive_funding_events(**{**kwargs, "funding_points": points[:-1]})
+    with pytest.raises(C.IncompleteAuthority, match="stale"):
+        C.derive_funding_events(**{**kwargs, "symbol_marks": {
+            **marks, "L": [C.MarkClose(0, 100)]}})
