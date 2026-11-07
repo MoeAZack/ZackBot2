@@ -84,6 +84,31 @@ def test_atomic_one_leg_is_protected_and_next_open_only():
     final=E.derive_lifecycle((leg,),{"L":bars()},atomic_failure=True)
     assert final[0].phase == "atomic_cleanup" and final[0].timestamp_ms == 26*S.HOUR_MS
 
+
+def test_frozen_ambiguity_policy_keeps_due_bar_stop_first():
+    finals=E.derive_lifecycle(legs(),{"L":bars(touch_long_at=33),"S":bars()})
+    assert finals[0].phase=="stop" and finals[0].timestamp_ms==34*S.HOUR_MS
+
+
+def test_new_admission_keeps_prior_unrealized_profit_in_marked_drawdown():
+    sizing=S.ExactPairSizing(D(1),D(1),D(97),D(103),D(200),D(7),D("0.35"))
+    long=tuple(replace(bar,open=114,high=115,low=113,close=114)
+               if bar.open_ms>=26*S.HOUR_MS else bar for bar in bars())
+    first=E.close_attempt(attempt_id="profit",legs=legs(),bars={"L":long,"S":bars()},
+        points=full_funding_tape(legs()),marks=(),sizing=sizing)
+    later=tuple(replace(leg,symbol="C" if leg.position_side==1 else "D",
+                       funding_authority_start_ms=35*S.HOUR_MS,
+                       funding_authority_end_ms=36*S.HOUR_MS,settlement_anchor_ms=35*S.HOUR_MS)
+                for leg in legs(entry_hour=27))
+    extended=bars()+(replace(bars()[-1],open_ms=36*S.HOUR_MS),)
+    second=E.close_attempt(attempt_id="later",legs=later,bars={"C":extended,"D":extended},
+        points=tuple(E.FundingPoint(leg.symbol,35*S.HOUR_MS,35*S.HOUR_MS+S.FUNDING_DELAY_MS,D(0))
+                     for leg in later),marks=(),sizing=sizing)
+    marks=tuple(E.MarkClose(symbol,h*S.HOUR_MS,D(114 if symbol=="L" and h>=26 else 100))
+                for symbol,begin,end in (("L",25,33),("S",25,33),("C",27,35),("D",27,35))
+                for h in range(begin,end))
+    assert E.marked_cashflow_drawdown((first,second),marks)<D("0.1")
+
 def test_funding_is_unique_immediate_prior_and_boundary_ordered():
     base=legs(); plans=(replace(base[0],settlement_anchor_ms=base[0].entry_ms,
                                funding_authority_start_ms=base[0].entry_ms,
@@ -114,17 +139,17 @@ def test_fill_costs_are_derived_and_stress_cannot_improve():
     assert base.movement == D(5) and base.fee > 0 and base.slippage > 0
     assert stress.slippage > base.slippage and stress.execution < base.execution
 
-def test_impact_uses_exact_phase_relative_prior_24h_and_is_charged_once():
+def test_impact_uses_exact_phase_relative_prior_1h_and_is_charged_once():
     plan=legs()[0]; fill=E.DerivedFill(33*S.HOUR_MS,"L",-1,D(1),D(105),"exit",33*S.HOUR_MS)
     thin=tuple(replace(row,quote_volume=1) for row in bars())
     cash=E.account_fill(fill,plan,thin,stress=False)
     assert cash.impact > 0 and cash.slippage > 0
     assert cash.execution == fill.reference-(cash.slippage+cash.impact)/fill.quantity
-    missing=tuple(row for row in thin if row.open_ms != 10*S.HOUR_MS)
+    missing=tuple(row for row in thin if row.open_ms not in (24*S.HOUR_MS,32*S.HOUR_MS))
     incomplete=E.account_fill(fill,plan,missing,stress=False)
     assert incomplete.impact_failure == "INCOMPLETE_IMPACT_AUTHORITY"
     entry=E.DerivedFill(plan.entry_ms,"L",1,D(1),D(100),"entry",plan.entry_ms)
-    with pytest.raises(S.IncompleteAuthority,match="prior-24h"):
+    with pytest.raises(S.IncompleteAuthority,match="prior-1h"):
         E.account_fill(entry,plan,missing,stress=False)
 
 def test_close_derives_conserved_fills_and_risk_from_exact_sizing():
@@ -146,7 +171,7 @@ def test_no_loss_profit_factor_and_missing_marks_fail_closed():
     sizing=S.ExactPairSizing(D(1),D(1),D(97),D(103),D(200),D(7),D("0.35"))
     row=E.close_attempt(attempt_id="a",legs=legs(),bars={"L":bars(),"S":bars()},
                         points=full_funding_tape(legs()),marks=(),sizing=sizing)
-    with pytest.raises(S.IncompleteAuthority,match="marked exposure"):
+    with pytest.raises(S.IncompleteAuthority,match="mark authority"):
         E.marked_cashflow_drawdown((row,),())
 
 def test_pcg64_bootstrap_is_reproducible_and_frozen():
@@ -163,6 +188,7 @@ def test_authority_failure_happens_before_loader_or_identity(monkeypatch,tmp_pat
 
 def test_unbound_production_loader_blocks_before_identity(monkeypatch,tmp_path):
     monkeypatch.setattr(A,"authenticate_before_loader",lambda: A.Bindings("f"*40,"b"*64,{},{}))
+    monkeypatch.setattr(A,"PRODUCTION_LOADER_BOUND",False)
     with pytest.raises(A.ProtectedAdapterError,match="PRODUCTION_LOADER_UNBOUND"):
         A.evaluate_once(identity_dir=tmp_path)
     assert list(tmp_path.iterdir()) == []
@@ -176,7 +202,7 @@ def test_exact_next_open_and_frozen_fold_enum_reject_bridging_and_custom_range()
     with pytest.raises(S.IncompleteAuthority,match="next canonical"):
         E._exact_entry_bar(broken,24*S.HOUR_MS)
     with pytest.raises(E.EvaluatorError,match="frozen fold"):
-        E.derive_evaluation(E.SealedEvidence("custom",(),()))
+        E.derive_evaluation(E.SealedEvidence("custom",D(1000),(),()))
 
 def test_locked_cli_is_default_off(capsys):
     assert CLI.main(["--validate-locked"]) == 0

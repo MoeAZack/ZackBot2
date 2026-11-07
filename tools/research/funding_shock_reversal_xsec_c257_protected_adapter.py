@@ -7,6 +7,9 @@ from typing import Mapping
 from tools.research import c257_successor_guard as G
 from tools.research import funding_shock_reversal_xsec_c257_evaluator as E
 from tools.research import funding_shock_reversal_xsec_c257_stagea as S
+from tools.research import c257_archive_loader as L
+from tools.research import authority_v6 as V
+from decimal import Decimal
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTECTED_REF = "refs/remotes/origin/master"
@@ -17,7 +20,9 @@ BOUND_CODE = (
  "tools/research/funding_shock_reversal_xsec_c257_stagea.py",
  "tools/research/funding_shock_reversal_xsec_c257_evaluator.py",
  "tools/research/funding_shock_reversal_xsec_c257_protected_adapter.py",
- "tools/research/run_funding_shock_reversal_xsec_c257_protected.py")
+ "tools/research/run_funding_shock_reversal_xsec_c257_protected.py",
+ "tools/research/c257_archive_loader.py", "tools/research/authority_v6.py",
+ "tools/research/manifest.py", "tools/research/universe.py")
 
 class ProtectedAdapterError(RuntimeError): pass
 
@@ -52,6 +57,9 @@ def authenticate_before_loader() -> Bindings:
     try:
         G.verify_pin_amendment(scaffold, amended, repo=ROOT)
         G._resolve_c256(amended, ROOT)
+        pit_pin = amended["authority_v6"]["output_pins"]["pit_v9"]
+        pit = G._parse_output("pit_v9", G._tree_bytes(ROOT, head, pit_pin["path"]))
+        V._validate_pit_v9_prefix(pit, ROOT)
     except G.C257GuardError as exc:
         raise ProtectedAdapterError(str(exc)) from exc
     blobs: dict[str, str] = {}
@@ -72,48 +80,64 @@ def _exclusive(path: Path, value: Mapping[str, object]) -> None:
     with os.fdopen(fd, "wb") as stream:
         stream.write(raw); stream.flush(); os.fsync(stream.fileno())
 
-PRODUCTION_LOADER_BOUND = False
+PRODUCTION_LOADER_BOUND = True
+REPORT_REQUIREMENTS_BOUND = False
 
 
-def _load_protected_folds(bindings: Bindings) -> tuple[E.SealedEvidence, tuple[E.SealedEvidence, ...]]:
-    """Reserved seam for the reviewed archive->book loader.
-
-    The calculator must not be activated by injecting caller-created typed
-    packets.  A later protected commit must implement this function by reading
-    the checksum-bound authority-v6 archive bytes and deriving the four frozen
-    books.  Until then no identity or outcome access is permitted.
-    """
-    raise ProtectedAdapterError(
-        "C257_PRODUCTION_LOADER_UNBOUND: protected archive-to-book loader is absent")
+def _load_protected_folds(bindings: Bindings, *, store: Path) -> L.ProtectedArchiveLoader:
+    return L.ProtectedArchiveLoader(root=ROOT, store=store,
+        pins=bindings.successor["authority_v6"]["output_pins"])
 
 
-def evaluate_once(*, identity_dir: Path) -> Mapping[str, object]:
+def _identity_directory() -> Path:
+    common = Path(_git("rev-parse", "--git-common-dir"))
+    return ((ROOT/common) if not common.is_absolute() else common).resolve()/"c257-evaluation"
+
+
+def evaluate_once(*, store: Path | None = None, identity_dir: Path | None = None) -> Mapping[str, object]:
     bindings = authenticate_before_loader()  # must precede loader and identity
     if not PRODUCTION_LOADER_BOUND:
         raise ProtectedAdapterError(
             "C257_PRODUCTION_LOADER_UNBOUND: protected archive-to-book loader is absent")
+    if not REPORT_REQUIREMENTS_BOUND:
+        raise ProtectedAdapterError("C257_REPORT_UNBOUND: complete frozen report definitions are required")
+    if store is None:
+        raise ProtectedAdapterError("checksum-bound archive store is required")
+    durable = _identity_directory()
+    if identity_dir is not None and identity_dir.resolve() != durable.resolve():
+        raise ProtectedAdapterError("evaluation identity directory is fixed across all worktrees")
+    identity_dir = durable
     identity = hashlib.sha256(json.dumps({"candidate_id": 257, "bindings": bindings.digest},
         sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    claim = identity_dir / f"candidate-257-{identity}.claim.json"
+    claim = identity_dir / "candidate-257.claim.json"
     try:
         _exclusive(claim, {"state":"RESERVED","candidate_id":257,"identity":identity,"head":bindings.head})
     except FileExistsError as exc:
         raise ProtectedAdapterError("candidate-257 evaluation identity is already consumed") from exc
     try:
-        raw, forwards = _load_protected_folds(bindings)
-        if (not isinstance(raw, E.SealedEvidence) or raw.fold != "development"
-                or tuple(item.fold for item in forwards) != ("wf1", "wf2", "wf3")):
-            raise ProtectedAdapterError("protected loader returned wrong frozen fold books")
-        dev_packet = E.evaluate(raw)
-        if dev_packet["verdict"] != "DEVELOPMENT_SURVIVOR":
-            packet = dict(E.evaluate_stage_a(raw, ()))
+        loader = _load_protected_folds(bindings, store=store)
+        capitals = S.load_frozen_contract()["position_and_portfolio"]["capital_simulations_usd"]
+        developments = {str(capital): loader.load_fold("development", Decimal(capital)) for capital in capitals}
+        dev_packets = {key: dict(E.evaluate(raw)) for key,raw in developments.items()}
+        passed = all(packet["verdict"] == "DEVELOPMENT_SURVIVOR" for packet in dev_packets.values())
+        if not passed:
+            packet = {"candidate_id":257,"verdict":"REJECT_DEVELOPMENT","forward_opened":False,
+                      "capital_simulations":dev_packets,"default_off":True,"paper_testnet_only":True}
         else:
-            packet = dict(E.evaluate_stage_a(raw,tuple(forwards)))
+            loader.permit_forward_after_development()
+            capital_results = {key: dict(E.evaluate_stage_a(raw, tuple(
+                loader.load_fold(fold, Decimal(key)) for fold in ("wf1","wf2","wf3"))))
+                for key,raw in developments.items()}
+            packet = {"candidate_id":257,"verdict":"PASS_STAGE_A" if all(
+                item["verdict"] == "PASS_STAGE_A" for item in capital_results.values()) else "REJECT_FORWARD",
+                "capital_simulations":capital_results,"forward_opened":True,
+                "default_off":True,"paper_testnet_only":True}
         packet["promotable"] = False
         packet["integrity"] = {"bindings_digest": bindings.digest,
             "evaluation_identity": identity, "git_head": bindings.head}
         packet["output_identity_sha256"] = hashlib.sha256(json.dumps(packet,sort_keys=True,
             separators=(",", ":")).encode()).hexdigest()
+        _exclusive(identity_dir/"candidate-257.report.json", packet)
         _exclusive(claim.with_suffix(".completed.json"), {"state":"COMPLETED","identity":identity,
             "packet_sha256":hashlib.sha256(json.dumps(packet,sort_keys=True,separators=(",", ":")).encode()).hexdigest()})
         return packet

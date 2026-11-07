@@ -64,7 +64,13 @@ def load_frozen_contract() -> dict:
         from tools.research import c257_successor_guard as guard
         successor = guard._strict_json(SUCCESSOR_PATH.read_bytes(), "C257 successor")
         prep = guard._strict_json(PREP_PATH.read_bytes(), "C257 prep")
-        guard.validate_scaffold(successor, prep, repo=ROOT)
+        if successor.get("status") == "FROZEN_AUTHORITY_PINNED_NOT_EVALUATED":
+            scaffold = guard._strict_json(guard._tree_bytes(ROOT,
+                "27f3eef77a4d10d300a288ef917fc5842170550d", SUCCESSOR_PATH.relative_to(ROOT).as_posix()),
+                "C257 original scaffold")
+            guard.verify_pin_amendment(scaffold, successor, repo=ROOT)
+        else:
+            guard.validate_scaffold(successor, prep, repo=ROOT)
         return guard._resolve_c256(successor, ROOT)
     except Exception as exc:
         if isinstance(exc, IncompleteAuthority):

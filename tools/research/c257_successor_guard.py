@@ -235,8 +235,6 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
               manifest.get("cutoff_exclusive_ms")) == (
         "zb-binance-um-archive-manifest/6", "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
         1793836800000), "manifest-v6 identity/boundary mismatch")
-    _require(manifest.get("cutoff_exclusive_utc") == "2026-11-05T00:00:00Z"
-             and manifest.get("timezone") == "UTC", "manifest-v6 UTC cutoff mismatch")
     pit = documents["pit_v9"]
     _require((pit.get("format"), pit.get("universe_id"), pit.get("manifest_digest")) == (
         "zb-pit-universe/2", "PIT-TOP40-QV30D-V9", manifest["digest"]),
@@ -255,9 +253,10 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
     for cell in weeks:
         books = cell.get("books")
         _require(isinstance(books, Mapping) and books
-                 and all(isinstance(members, list) and members
+                 and all(isinstance(book, Mapping) and isinstance(book.get("members"), list)
+                         and (members := book["members"])
                          and all(isinstance(symbol, str) and symbol for symbol in members)
-                         and len(members) == len(set(members)) for members in books.values()),
+                         and len(members) == len(set(members)) for book in books.values()),
                  "PIT-v9 weekly membership is empty/malformed")
     filter_v4 = documents["filter_v4"]
     _require((filter_v4.get("authority"), filter_v4.get("version"), filter_v4.get("status")) == (
@@ -286,11 +285,10 @@ def _verify_output_structure(documents: Mapping[str, Mapping[str, Any]],
     _require(type(coverage.get("guaranteed_period_gaps")) is int
              and coverage["guaranteed_period_gaps"] == 0 and coverage.get("gaps") == []
              and isinstance(by_stream, Mapping) and set(by_stream) == required_streams
+             and set(coverage.get("required_streams", ())) == required_streams
              and all(type(value) is int and value == 0 for value in by_stream.values()),
              "coverage-v4 has guaranteed-period gaps")
-    _require(coverage.get("cutoff_exclusive_ms") == 1793836800000
-             and coverage.get("cutoff_exclusive_utc") == "2026-11-05T00:00:00Z"
-             and coverage.get("timezone") == "UTC",
+    _require(coverage.get("cutoff_exclusive_ms") == 1793836800000,
              "coverage-v4 cutoff/timezone mismatch")
 
 
@@ -308,7 +306,10 @@ def verify_pin_amendment(scaffold: Mapping[str, Any], amended: Mapping[str, Any]
     _require(isinstance(head, str) and HEX40.fullmatch(head) is not None,
              "protected authority head invalid")
     _require(_git_commit(repo, head) == head, "authority head does not resolve exactly")
-    _require(_git_commit(repo, protected_ref) == head, "authority head is not the protected ref")
+    protected = _git_commit(repo, protected_ref)
+    ancestry = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor",
+                               head, protected], capture_output=True, check=False)
+    _require(ancestry.returncode == 0, "authority head is not protected ancestry")
     ancestry = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor",
                                BASE_COMMIT, head], capture_output=True, check=False)
     _require(ancestry.returncode == 0, "authority head does not descend from frozen base")

@@ -71,13 +71,13 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         "format": "zb-binance-um-archive-manifest/6",
         "authority_id": "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
         "cutoff_exclusive_ms": 1793836800000,
-        "cutoff_exclusive_utc": "2026-11-05T00:00:00Z", "timezone": "UTC",
+        "active_base_files_v5": [],
         "files_v6": [],
     })
     manifest_raw = gzip.compress(_canonical(manifest), mtime=0)
     cursor, end, weeks = datetime(2024,10,14,tzinfo=timezone.utc), datetime(2026,11,2,tzinfo=timezone.utc), []
     while cursor <= end:
-        weeks.append({"monday_ms": int(cursor.timestamp()*1000), "books": {"crypto": ["AAAUSDT"]}})
+        weeks.append({"monday_ms": int(cursor.timestamp()*1000), "books": {"crypto": {"members":["AAAUSDT"]}}})
         cursor += timedelta(days=7)
     pit = _with_digest({
         "format": "zb-pit-universe/2", "universe_id": "PIT-TOP40-QV30D-V9",
@@ -103,8 +103,8 @@ def _authority_repo(tmp_path: Path, *, coverage_gaps: int = 0,
         "authority_version": 4, "manifest_digest": manifest["digest"],
         "pit_universe_digest": pit["digest"], "filter_authority_digest": filter_v4["digest"],
         "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
-        "cutoff_exclusive_ms":1793836800000,"cutoff_exclusive_utc":"2026-11-05T00:00:00Z",
-        "timezone":"UTC",
+        "cutoff_exclusive_ms":1793836800000,
+        "required_streams": list(streams),
         "guaranteed_period_gaps_by_stream": streams,
         "guaranteed_period_gaps": coverage_gaps,
         "gaps": ([{"stream": "klines:1h", "synthetic": True}] if coverage_gaps else []),
@@ -233,7 +233,7 @@ def test_real_but_unprotected_head_is_rejected(tmp_path: Path) -> None:
     repo, head, pins = _authority_repo(tmp_path)
     _run(repo, "update-ref", "refs/remotes/origin/master", BASE_COMMIT)
     scaffold = _load(SUCCESSOR_PATH)
-    with pytest.raises(C257GuardError, match="not the protected ref"):
+    with pytest.raises(C257GuardError, match="not protected ancestry"):
         verify_pin_amendment(scaffold, _amend(scaffold, head, pins), repo=repo)
 
 
