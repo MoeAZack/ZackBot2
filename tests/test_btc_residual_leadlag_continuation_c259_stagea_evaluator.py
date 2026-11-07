@@ -107,7 +107,7 @@ def _fill(*, movement: float = 0, fee: float = 0, slip: float = 0,
           phase: str = "TEST", quantity: float = 1, symbol: str = "ALTUSDT",
           slippage_bps: float = c259.BASE_SLIPPAGE_BPS,
           reference: float = 100) -> c259.Fill:
-    asof = timestamp
+    asof = timestamp-c259.HOUR_MS if phase in {"STOP_RANGE", "TARGET_RANGE"} else timestamp
     rows = tuple(c259.VolumePoint(asof-(24-i)*c259.HOUR_MS, 1_000_000)
                  for i in range(24))
     execution = reference*(1+side*slippage_bps/10_000)
@@ -120,21 +120,40 @@ def _fill(*, movement: float = 0, fee: float = 0, slip: float = 0,
                      computed_impact if impact == 0 else impact, slippage_bps, asof, rows)
 
 
+def _volume_rows(asof: int, volume: float = 1_000_000) -> tuple[c259.VolumePoint, ...]:
+    return tuple(c259.VolumePoint(timestamp, volume)
+                 for timestamp in range(asof-24*c259.HOUR_MS, asof, c259.HOUR_MS))
+
+
+def _atr_bars(decision_close_ms: int) -> tuple[c259.Bar, ...]:
+    return tuple(_bar(timestamp, 100, 101, 99, 100)
+                 for timestamp in range(decision_close_ms-25*c259.HOUR_MS,
+                                        decision_close_ms, c259.HOUR_MS))
+
+
 def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
            cash: float, regime: str = "BTC_ABOVE_OR_ON_EMA200",
            incomplete: bool = False) -> c259.ClosedTrade:
-    stop, target = ((Decimal("96"), 108.0) if side == 1 else (Decimal("104"), 92.0))
+    decision = entry-c259.HOUR_MS
+    atr_bars = _atr_bars(decision)
+    stop, target_decimal = c259.protection_prices(
+        Decimal("100"), Decimal(str(c259.atr24_wilder(atr_bars, decision))), side,
+        Decimal("0.01"))
+    target = float(target_decimal)
     filters = c259.Filters(Decimal("0.01"), Decimal("0.001"), Decimal("0.001"),
                            Decimal("100"), Decimal("5"))
     sizing = c259.size_position(side=side, entry=Decimal("100"), stop=stop,
                                 filters=filters, side_book_equity=Decimal("2000"),
-                                quote_volume_24h=24_000_000)
+                                entry_impact_asof_ms=entry,
+                                entry_volume_rows=_volume_rows(entry))
     assert sizing is not None
     quantity = float(sizing.quantity)
     exit_reference = 100+cash/(side*quantity)
-    entry_bar = _bar(entry, 100, 101, 99, 100)
-    exit_bar = _bar(close, exit_reference, exit_reference+1, exit_reference-1,
-                    exit_reference)
+    lifecycle = tuple(_bar(timestamp, 100, 101, 99, 100)
+                      for timestamp in range(entry, close+c259.HOUR_MS, c259.HOUR_MS))
+    lifecycle = lifecycle[:-1] + (_bar(close, exit_reference, exit_reference+1,
+                                        exit_reference-1, exit_reference),)
+    entry_bar, exit_bar = lifecycle[0], lifecycle[-1]
     return c259.ClosedTrade(attempt, side, symbol, entry, close, regime,
                             (_fill(side=side, timestamp=entry, phase="ENTRY", symbol=symbol,
                                    quantity=quantity),
@@ -142,7 +161,8 @@ def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
                                    phase=("PROTECTION_FAILURE_CLEANUP" if incomplete
                                           else "SCHEDULED"), symbol=symbol,
                                    reference=exit_reference, quantity=quantity)),
-                            (), sizing, entry_bar, exit_bar, float(stop), target, incomplete)
+                            (), sizing, decision, atr_bars, lifecycle, entry_bar, exit_bar,
+                            float(stop), target, incomplete)
 
 
 def _stress_trade(trade: c259.ClosedTrade) -> c259.ClosedTrade:
@@ -337,7 +357,9 @@ def test_sizing_is_decimal_floor_only_and_enforces_caps_and_impact() -> None:
                            Decimal("100"), Decimal("5"))
     sized = c259.size_position(side=1, entry=Decimal("100"), stop=Decimal("96"),
                                filters=filters, side_book_equity=Decimal("2000"),
-                               quote_volume_24h=10_000_000)
+                               entry_impact_asof_ms=25*c259.HOUR_MS,
+                               entry_volume_rows=_volume_rows(25*c259.HOUR_MS,
+                                                              10_000_000/24))
     assert sized is not None
     assert sized.quantity % filters.step == 0
     assert sized.initial_risk_cash <= Decimal("20")
@@ -345,7 +367,9 @@ def test_sizing_is_decimal_floor_only_and_enforces_caps_and_impact() -> None:
     assert c259.size_position(side=1, entry=Decimal("100"), stop=Decimal("99.99"),
                               filters=replace(filters, min_notional=Decimal("5000")),
                               side_book_equity=Decimal("2000"),
-                              quote_volume_24h=1000) is None
+                              entry_impact_asof_ms=25*c259.HOUR_MS,
+                              entry_volume_rows=_volume_rows(25*c259.HOUR_MS,
+                                                             1000/24)) is None
     with pytest.raises(c259.IncompleteEpisode):
         c259.impact_drag(Decimal("2"), Decimal("100"), 10_000)
 
@@ -381,6 +405,55 @@ def test_exit_order_gap_cap_collision_and_schedule(side: int, bar: c259.Bar,
     assert c259.exit_reference(side=side, stop=95 if side == 1 else 105,
                                target=110 if side == 1 else 90, bar=bar,
                                scheduled_due=scheduled) == expected
+
+
+def test_closed_trade_replays_full_tape_protection_and_earliest_exit() -> None:
+    entry = 30*c259.HOUR_MS
+    scheduled = _trade("scheduled", 1, "ALT", entry, entry+12*c259.HOUR_MS, 1)
+    assert c259.metrics((scheduled,))["closed"] == 1
+    quantity = float(scheduled.sizing.quantity)
+
+    target_ms = entry+2*c259.HOUR_MS
+    target_bar = _bar(target_ms, 109, 110, 107, 109)
+    target_fill = _fill(movement=quantity*8, side=-1, timestamp=target_ms,
+                        phase="TARGET_GAP", symbol="ALT", reference=108,
+                        quantity=quantity)
+    target_trade = replace(
+        scheduled, attempt_id="target-gap", close_ms=target_ms,
+        fills=(scheduled.fills[0], target_fill),
+        lifecycle_bars=scheduled.lifecycle_bars[:2]+(target_bar,), exit_bar=target_bar)
+    assert c259.metrics((target_trade,))["closed"] == 1
+    boundary_funding = c259.AppliedFunding(
+        c259.FundingEvent(target_ms, .001), _mark(target_ms-c259.HOUR_MS, "ALT"))
+    assert c259.metrics((replace(target_trade, funding_events=(boundary_funding,)),))[
+        "closed"] == 1
+
+    collision_open = entry+2*c259.HOUR_MS
+    collision_bar = _bar(collision_open, 100, 109, 95, 100)
+    stop_fill = _fill(movement=-quantity*4, side=-1,
+                      timestamp=collision_open+c259.HOUR_MS, phase="STOP_RANGE",
+                      symbol="ALT", reference=96, quantity=quantity)
+    collision_trade = replace(
+        scheduled, attempt_id="collision-stop", close_ms=collision_open+c259.HOUR_MS,
+        fills=(scheduled.fills[0], stop_fill),
+        lifecycle_bars=scheduled.lifecycle_bars[:2]+(collision_bar,),
+        exit_bar=collision_bar)
+    assert c259.metrics((collision_trade,))["closed"] == 1
+    range_boundary_funding = c259.AppliedFunding(
+        c259.FundingEvent(collision_trade.close_ms, .001),
+        _mark(collision_trade.close_ms-c259.HOUR_MS, "ALT"))
+    with pytest.raises(c259.IncompleteEpisode, match="funding"):
+        c259.metrics((replace(collision_trade,
+                              funding_events=(range_boundary_funding,)),))
+
+    with pytest.raises(c259.IncompleteEpisode, match="stop/target"):
+        c259.metrics((replace(scheduled, target=999999),))
+    with pytest.raises(c259.IncompleteAuthority, match="missing"):
+        c259.metrics((replace(scheduled, lifecycle_bars=(
+            scheduled.lifecycle_bars[0], scheduled.lifecycle_bars[-1])),))
+    forged_volume = replace(scheduled.sizing, quote_volume_24h=1_000_000_000)
+    with pytest.raises(c259.IncompleteEpisode, match="24-row fsum"):
+        c259.metrics((replace(scheduled, sizing=forged_volume),))
 
 
 def test_funding_sign_fill_costs_and_frozen_event_order() -> None:
@@ -432,7 +505,8 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
                            Decimal("100"), Decimal("5"))
     sized = c259.size_position(side=1, entry=Decimal("100"), stop=Decimal("96"),
                                filters=filters, side_book_equity=Decimal("2000"),
-                               quote_volume_24h=24_000_000)
+                               entry_impact_asof_ms=c259.HOUR_MS,
+                               entry_volume_rows=_volume_rows(c259.HOUR_MS))
     assert sized is not None
     long_book, short_book = c259.SideBook(Decimal("2000")), c259.SideBook(Decimal("2000"))
     long_book.admit("ALT", sized)
@@ -441,8 +515,11 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
         long_book.admit(symbol, sized)
     assert not long_book.can_admit("D", sized)
     quantity = float(sized.quantity)
+    decision = 0
+    atr_bars = _atr_bars(decision)
     entry_bar = _bar(c259.HOUR_MS, 100, 101, 99, 100)
     exit_bar = _bar(2*c259.HOUR_MS, 100, 101, 99, 100)
+    lifecycle = (entry_bar, exit_bar)
     failed = c259.protection_failure(attempt_id="x", side=1, symbol="ALT",
                                     entry_ms=c259.HOUR_MS, cleanup_ms=2*c259.HOUR_MS, fills=[
                                         _fill(phase="ENTRY", symbol="ALT",
@@ -453,7 +530,9 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
                                     funding_events=[c259.AppliedFunding(
                                         c259.FundingEvent(2*c259.HOUR_MS, .005),
                                         _mark(c259.HOUR_MS, "ALT", 100))],
-                                    sizing=sized, entry_bar=entry_bar, exit_bar=exit_bar,
+                                    sizing=sized, decision_close_ms=decision,
+                                    atr_bars=atr_bars, lifecycle_bars=lifecycle,
+                                    entry_bar=entry_bar, exit_bar=exit_bar,
                                     stop=96, target=108,
                                     regime="BTC_ABOVE_OR_ON_EMA200")
     assert failed.incomplete and failed.net_cash < -.5
@@ -465,12 +544,16 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
                                     _fill(phase="PROTECTION_FAILURE_CLEANUP", symbol="ALT",
                                           timestamp=2*c259.HOUR_MS, side=-1,
                                           quantity=quantity/2)],
-                                funding_events=[], sizing=sized, entry_bar=entry_bar,
+                                funding_events=[], sizing=sized, decision_close_ms=decision,
+                                atr_bars=atr_bars, lifecycle_bars=lifecycle,
+                                entry_bar=entry_bar,
                                 exit_bar=exit_bar, stop=96, target=108,
                                 regime="BTC_ABOVE_OR_ON_EMA200")
     with pytest.raises(c259.IncompleteEpisode):
         c259.protection_failure(attempt_id="x", side=1, symbol="ALT", entry_ms=1,
                                 cleanup_ms=1, fills=[], funding_events=[], sizing=sized,
+                                decision_close_ms=decision, atr_bars=atr_bars,
+                                lifecycle_bars=lifecycle,
                                 entry_bar=entry_bar, exit_bar=exit_bar, stop=96, target=108,
                                 regime="BTC_ABOVE_OR_ON_EMA200")
 
@@ -548,7 +631,7 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
     with pytest.raises(c259.IncompleteEpisode, match="initial risk"):
         c259.metrics([replace(base[0], sizing=forged_risk)])
     early = _trade("early", 1, "EARLY", c259.HOUR_MS, 2*c259.HOUR_MS, 1)
-    with pytest.raises(c259.IncompleteEpisode, match="12h"):
+    with pytest.raises(c259.IncompleteEpisode, match="mandatory"):
         c259.metrics([early])
     gap = _trade("gap", 1, "GAP", c259.HOUR_MS, 13*c259.HOUR_MS, -1)
     forged_gap_fill = _fill(movement=-float(gap.sizing.quantity)*5, side=-1,
@@ -556,7 +639,7 @@ def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
                             reference=95.0, quantity=float(gap.sizing.quantity))
     forged_gap = replace(gap, fills=(gap.fills[0], forged_gap_fill),
                          exit_bar=_bar(gap.close_ms, 96, 101, 94, 96))
-    with pytest.raises(c259.IncompleteEpisode, match="canonical bar/protection"):
+    with pytest.raises(c259.IncompleteEpisode, match="lifecycle authority|canonical bar/protection"):
         c259.metrics([forged_gap])
     report = c259.metrics(base)
     assert report["closed"] == 2 and report["profit_factor"] > 1.5
