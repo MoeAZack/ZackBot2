@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Mapping
+from decimal import Decimal
+import hashlib
+import json
 
 from tools.research import cross_sectional_relative_strength_continuation_c258_stagea as C
 from tools.research.authority_v6_runner import _read_record_rows
@@ -44,6 +47,8 @@ class C258ArchiveSource:
     def __init__(self, pins: C.AuthorityPins, store: Path, *, root: Path = C.ROOT):
         docs = C.validate_authority_pins(pins, root=root)
         self._store = Path(store)
+        self._root = root
+        self._head = pins.protected_head
         self._manifest = docs["manifest_v6"]
         self._pit = docs["pit_v9"]
         self._filters = docs["filter_v4"]
@@ -52,6 +57,60 @@ class C258ArchiveSource:
         paths = [record["path"] for record, _ in self._records]
         if len(paths) != len(set(paths)):
             raise C.IncompleteAuthority("duplicate active archive path")
+
+    def membership_and_filters(self, *, fold: str, decision_ms: int
+                               ) -> tuple[tuple[str, ...], dict[str, tuple[C.Filters, Decimal]]]:
+        """Derive membership from the frozen PIT order and raw pre-fold snapshot."""
+        lo, hi = frozen_window(fold)
+        if not lo <= decision_ms < hi:
+            raise C.IncompleteAuthority("membership decision escapes frozen fold")
+        binding = "development_eligible_segment" if fold == "development" else fold
+        capture = self._filters["fold_bindings"][binding]
+        matches = [row for row in self._filters["snapshots"] if row["captured_at"] == capture]
+        if len(matches) != 1:
+            raise C.IncompleteAuthority("ambiguous frozen filter capture")
+        snapshot = matches[0]
+        if fold != "development" and (_ms(capture) >= lo or _ms(snapshot["server_time"]) >= lo):
+            raise C.IncompleteAuthority("filter snapshot is not pre-fold")
+        if decision_ms <= max(_ms(capture), _ms(snapshot["server_time"])):
+            return (), {}
+        raw = C._git(self._root, "show", f"{self._head}:{snapshot['path']}", binary=True)
+        if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != snapshot["sha256"]:
+            raise C.IncompleteAuthority("protected filter snapshot bytes changed")
+        payload = json.loads(raw)
+        from tools.research import authority_v6 as V6
+        eligible = V6._snapshot_eligible(payload)
+        weeks = [week for week in self._pit["weeks"] if week["monday_ms"] <= decision_ms]
+        if not weeks:
+            raise C.IncompleteAuthority("missing causal PIT cell")
+        monday = max(week["monday_ms"] for week in weeks)
+        selected = [week for week in weeks if week["monday_ms"] == monday]
+        if len(selected) != 1:
+            raise C.IncompleteAuthority("duplicate causal PIT cell")
+        ranked = selected[0]["books"]["crypto"]["members"]
+        if len(ranked) != len(set(ranked)):
+            raise C.IncompleteAuthority("duplicate PIT member")
+        members = tuple(symbol for symbol in ranked if symbol in eligible)
+        by_symbol = {}
+        for row in payload["symbols"]:
+            symbol = row["symbol"]
+            if symbol not in members:
+                continue
+            if symbol in by_symbol:
+                raise C.IncompleteAuthority("duplicate snapshot symbol")
+            rules = {rule["filterType"]: rule for rule in row["filters"]}
+            if len(rules) != len(row["filters"]):
+                raise C.IncompleteAuthority("duplicate exchange filter")
+            lot = rules["MARKET_LOT_SIZE"]
+            filters = C.Filters(Decimal(lot["stepSize"]), Decimal(lot["minQty"]),
+                                Decimal(lot["maxQty"]), Decimal(str(
+                                    rules["MIN_NOTIONAL"].get("notional", rules["MIN_NOTIONAL"].get("minNotional")))))
+            filters.validate()
+            tick = Decimal(rules["PRICE_FILTER"]["tickSize"])
+            if not tick.is_finite() or tick <= 0:
+                raise C.IncompleteAuthority("invalid price tick")
+            by_symbol[symbol] = (filters, tick)
+        return members, by_symbol
 
     def load(self, *, symbol: str, stream: str, fold: str,
              start_ms: int, end_ms: int) -> SourceRows:
