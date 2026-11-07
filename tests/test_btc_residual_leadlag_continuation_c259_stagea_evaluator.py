@@ -37,7 +37,7 @@ def _write_document(repo: Path, relative: str, document: dict, *, compressed: bo
     return raw
 
 
-def _authority_repo(tmp_path: Path) -> tuple[Path, c259.AuthorityPins]:
+def _authority_repo(tmp_path: Path, schema_attack: str | None = None) -> tuple[Path, c259.AuthorityPins]:
     repo = tmp_path / "authority"
     _run(tmp_path, "git", "clone", "--shared", str(c259.ROOT), str(repo))
     _run(repo, "git", "checkout", "--detach", c259.CONTRACT_HEAD)
@@ -45,17 +45,29 @@ def _authority_repo(tmp_path: Path) -> tuple[Path, c259.AuthorityPins]:
     _run(repo, "git", "config", "user.name", "C259 Synthetic")
 
     manifest = {"format": "zb-binance-um-archive-manifest/6",
-                "cutoff_exclusive_utc": "2026-11-05T00:00:00Z"}
+                "cutoff_exclusive_utc": "2026-11-05T00:00:00Z",
+                "cutoff_exclusive_ms": 1793836800000}
+    if schema_attack == "conflicting_cutoff":
+        manifest["cutoff_exclusive_ms"] = 1793836800001
     manifest_raw = _write_document(repo, c259.EXPECTED_PATHS["manifest_v6"], manifest,
                                    compressed=True)
     pit = {"format": "zb-pit-universe/2", "manifest_digest": manifest["digest"],
-           "cells": [{"monday_ms": 1, "symbols": ["ETHUSDT"]}]}
+           "cells": [{"monday_ms": 1793577600000, "symbols": ["ETHUSDT"]}]}
+    if schema_attack == "empty_pit":
+        pit["cells"] = []
     pit_raw = _write_document(repo, c259.EXPECTED_PATHS["pit_v9"], pit)
     filters = {"authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY",
                "version": 4, "pit_universe_sha256": hashlib.sha256(pit_raw).hexdigest(),
-               "pit_universe_digest": pit["digest"]}
+               "pit_universe_digest": pit["digest"], "fold_bindings": {
+                   "development_eligible_segment": "2024-12-13T04:44:48Z",
+                   "wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z",
+                   "wf3": "2026-02-17T04:13:28Z",
+                   "sealed_holdout": "2026-02-17T04:13:28Z"}}
+    if schema_attack == "missing_folds":
+        filters.pop("fold_bindings")
     filter_raw = _write_document(repo, c259.EXPECTED_PATHS["filter_v4"], filters)
-    coverage = {"required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+    coverage = {"format": "zb-strategy-causal-pack-01-authority-coverage-preflight/1",
+                "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
                 "guaranteed_period_gaps": 0, "gaps": [],
                 "manifest_digest": manifest["digest"], "pit_universe_digest": pit["digest"],
                 "filter_authority_digest": filters["digest"]}
@@ -81,15 +93,19 @@ def _bar(open_ms: int, open_: float = 100, high: float = 102, low: float = 98,
 
 
 def _fill(*, movement: float = 0, fee: float = 0, slip: float = 0,
-          impact: float = 0, side: int = 1, timestamp: int = 1) -> c259.Fill:
-    return c259.Fill(timestamp, "TEST", "ALTUSDT", side, 1, 100, movement, fee, slip, impact)
+          impact: float = 0, side: int = 1, timestamp: int = 1,
+          phase: str = "TEST", quantity: float = 1, symbol: str = "ALTUSDT") -> c259.Fill:
+    return c259.Fill(timestamp, phase, symbol, side, quantity, 100, movement, fee, slip, impact)
 
 
 def _trade(attempt: str, side: int, symbol: str, entry: int, close: int,
            cash: float, risk: float = 10, regime: str = "BTC_ABOVE_OR_ON_EMA200",
            incomplete: bool = False) -> c259.ClosedTrade:
     return c259.ClosedTrade(attempt, side, symbol, entry, close, regime,
-                            (_fill(movement=cash, side=-side, timestamp=close),), 0, risk,
+                            (_fill(side=side, timestamp=entry, phase="ENTRY", symbol=symbol),
+                             _fill(movement=cash, side=-side, timestamp=close,
+                                   phase=("PROTECTION_FAILURE_CLEANUP" if incomplete
+                                          else "SCHEDULED"), symbol=symbol)), 0, risk,
                             incomplete)
 
 
@@ -106,6 +122,19 @@ def test_authority_validates_protected_tree_before_loader(tmp_path: Path) -> Non
     assert c259.run_with_authority(pins, lambda docs: calls.append(docs) or "loaded",
                                    repo=repo) == "loaded"
     assert len(calls) == 1 and set(calls[0]) == set(c259.EXPECTED_PATHS)
+
+
+@pytest.mark.parametrize("attack", ["conflicting_cutoff", "empty_pit", "missing_folds"])
+def test_authority_full_schema_hostile_mutations_fail_before_loader(tmp_path: Path,
+                                                                   attack: str) -> None:
+    repo, pins = _authority_repo(tmp_path, attack)
+    called = False
+    def loader(_docs: object) -> None:
+        nonlocal called
+        called = True
+    with pytest.raises(c259.IncompleteAuthority):
+        c259.run_with_authority(pins, loader, repo=repo)
+    assert called is False
 
 
 @pytest.mark.parametrize("attack", ["invented_head", "wrong_byte", "wrong_content",
@@ -146,14 +175,37 @@ def test_signal_uses_prior_window_only_and_unconsumed_residual() -> None:
     noise = list(rng.normal(0, .00001, 720))
     alt = [1.3 * btc[i] + (0.35 * btc[i - 1] if i else 0) + noise[i]
            for i in range(720)]
-    first = c259.fit_signal(btc, alt, btc_d=0.01, alt_d=0.013)
-    second = c259.fit_signal(btc, alt, btc_d=0.02, alt_d=0.026)
+    decision = 1000 * c259.HOUR_MS
+    def prices(returns: list[float]) -> list[c259.ClosePrice]:
+        values = [100.0]
+        for value in returns:
+            values.append(values[-1] * math.exp(value))
+        return [c259.ClosePrice(decision-(721-i)*c259.HOUR_MS, price)
+                for i, price in enumerate(values)]
+    btc_prices, alt_prices = prices(btc), prices(alt)
+    first = c259.fit_signal(btc_prices, alt_prices, decision_close_ms=decision,
+                            btc_decision_price=btc_prices[-1].price*math.exp(.01),
+                            alt_decision_price=alt_prices[-1].price*math.exp(.013))
+    second = c259.fit_signal(btc_prices, alt_prices, decision_close_ms=decision,
+                             btc_decision_price=btc_prices[-1].price*math.exp(.02),
+                             alt_decision_price=alt_prices[-1].price*math.exp(.026))
     assert first.beta0 == second.beta0 and first.gamma == second.gamma
     assert first.gamma >= 0.10 and first.t_gamma >= 2 and first.side == 1 and first.qualifies
     assert second.side == 1 and second.qualifies
-    consumed = c259.fit_signal(btc, alt, btc_d=0.01,
-                               alt_d=first.beta0 * 0.01 + first.forecast)
+    consumed = c259.fit_signal(
+        btc_prices, alt_prices, decision_close_ms=decision,
+        btc_decision_price=btc_prices[-1].price*math.exp(.01),
+        alt_decision_price=alt_prices[-1].price *
+        math.exp(first.beta0 * 0.01 + first.forecast))
     assert consumed.qualifies is False
+    with pytest.raises(c259.IncompleteAuthority, match="contiguous prior"):
+        broken = btc_prices[:-1] + [replace(btc_prices[-1], close_ms=btc_prices[-1].close_ms+1)]
+        c259.fit_signal(broken, alt_prices, decision_close_ms=decision,
+                        btc_decision_price=101, alt_decision_price=101)
+    with pytest.raises(c259.IncompleteAuthority, match="non-positive"):
+        broken = btc_prices[:-1] + [replace(btc_prices[-1], price=0)]
+        c259.fit_signal(broken, alt_prices, decision_close_ms=decision,
+                        btc_decision_price=101, alt_decision_price=101)
 
 
 def test_signal_sides_are_separate_and_candidate_order_is_deterministic() -> None:
@@ -184,6 +236,8 @@ def test_atr_is_contiguous_and_protection_rounds_toward_entry() -> None:
     gapped = [_bar(i*c259.HOUR_MS) for i in range(26) if i != 12]
     with pytest.raises(c259.IncompleteAuthority, match="ATR gap"):
         c259.atr24_wilder(gapped, 26*c259.HOUR_MS)
+    with pytest.raises(c259.C259Error, match="collapsed"):
+        c259.protection_prices(Decimal("100.01"), Decimal("0.001"), 1, Decimal("1"))
 
 
 def test_sizing_is_decimal_floor_only_and_enforces_caps_and_impact() -> None:
@@ -253,6 +307,27 @@ def test_funding_sign_fill_costs_and_frozen_event_order() -> None:
                       "ENTRY", "MARK"]
 
 
+def test_causal_marks_funding_and_fill_volume_fail_on_duplicates_or_gaps() -> None:
+    event = 30 * c259.HOUR_MS
+    marks = [c259.MarkClose(event-c259.HOUR_MS, 100), c259.MarkClose(event, 999)]
+    assert c259.causal_mark_before(marks, event).price == 100
+    with pytest.raises(c259.IncompleteAuthority, match="missing/compressed"):
+        c259.causal_mark_before([c259.MarkClose(event-2*c259.HOUR_MS, 100)], event)
+    with pytest.raises(c259.IncompleteAuthority, match="duplicate"):
+        c259.causal_mark_before(marks + [marks[0]], event)
+    assert len(c259.validate_funding_events([
+        c259.FundingEvent(event, .001), c259.FundingEvent(event+1, -.001)])) == 2
+    with pytest.raises(c259.IncompleteAuthority, match="duplicate funding"):
+        c259.validate_funding_events([c259.FundingEvent(event, 0),
+                                      c259.FundingEvent(event, .001)])
+    bars = [_bar((6+i)*c259.HOUR_MS, volume=100+i) for i in range(24)]
+    assert c259.causal_quote_volume_24h(bars, event) == sum(100+i for i in range(24))
+    with pytest.raises(c259.IncompleteAuthority, match="missing/compressed"):
+        c259.causal_quote_volume_24h(bars[:-1], event)
+    with pytest.raises(c259.IncompleteAuthority, match="duplicate"):
+        c259.causal_quote_volume_24h(bars + [bars[-1]], event)
+
+
 def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
     sized = c259.SizedPosition(Decimal("1"), Decimal("10"), Decimal("10"), Decimal("500"))
     long_book, short_book = c259.SideBook(Decimal("2000")), c259.SideBook(Decimal("2000"))
@@ -261,11 +336,25 @@ def test_side_books_are_isolated_and_protection_failure_is_retained() -> None:
     for symbol in ("B", "C"):
         long_book.admit(symbol, sized)
     assert not long_book.can_admit("D", sized)
-    failed = c259.protection_failure(attempt_id="x", side=1, symbol="ALT", entry_ms=1,
-                                    cleanup_ms=2, fills=[_fill(fee=1, slip=2, impact=3)],
+    failed = c259.protection_failure(attempt_id="x", side=1, symbol="ALT",
+                                    entry_ms=c259.HOUR_MS, cleanup_ms=2*c259.HOUR_MS, fills=[
+                                        _fill(fee=1, slip=2, impact=3, phase="ENTRY",
+                                              symbol="ALT", timestamp=c259.HOUR_MS, side=1),
+                                        _fill(fee=1, slip=2, impact=3,
+                                              phase="PROTECTION_FAILURE_CLEANUP",
+                                              symbol="ALT", timestamp=2*c259.HOUR_MS, side=-1)],
                                     funding=-.5, initial_risk_cash=10,
                                     regime="BTC_ABOVE_OR_ON_EMA200")
-    assert failed.incomplete and failed.net_cash == pytest.approx(-6.5)
+    assert failed.incomplete and failed.net_cash == pytest.approx(-12.5)
+    with pytest.raises(c259.IncompleteEpisode, match="exactly flat"):
+        c259.protection_failure(attempt_id="x", side=1, symbol="ALT",
+                                entry_ms=c259.HOUR_MS, cleanup_ms=2*c259.HOUR_MS, fills=[
+                                    _fill(phase="ENTRY", symbol="ALT", timestamp=c259.HOUR_MS,
+                                          side=1, quantity=1),
+                                    _fill(phase="PROTECTION_FAILURE_CLEANUP", symbol="ALT",
+                                          timestamp=2*c259.HOUR_MS, side=-1, quantity=.1)],
+                                funding=0, initial_risk_cash=10,
+                                regime="BTC_ABOVE_OR_ON_EMA200")
     with pytest.raises(c259.IncompleteEpisode):
         c259.protection_failure(attempt_id="x", side=1, symbol="ALT", entry_ms=1,
                                 cleanup_ms=1, fills=[], funding=0, initial_risk_cash=10,
@@ -276,12 +365,14 @@ def test_chronological_marked_drawdown_and_realized_order_are_not_entry_order() 
     # Marked equity falls $100 from a $2,050 peak; close-time realized fall is 2R.
     marked_dd = c259.marked_equity_drawdown_R([(1, 0, 2050), (2, 0, 1950),
                                                 (3, 0, 2000)], 2000)
-    trades = [_trade("late-entry", 1, "A", 10, 20, -20),
-              _trade("early-entry", 1, "B", 1, 10, 10)]
+    trades = [_trade("late-entry", 1, "A", 10*c259.HOUR_MS, 20*c259.HOUR_MS, -20),
+              _trade("early-entry", 1, "B", c259.HOUR_MS, 10*c259.HOUR_MS, 10)]
     realized_dd = c259.closed_realized_drawdown_R(trades)
     assert marked_dd == pytest.approx(5) and realized_dd == pytest.approx(2)
     assert c259.gate_drawdown_R(marked_drawdown_R=marked_dd,
                                realized_drawdown_R=realized_dd) == marked_dd
+    with pytest.raises(c259.IncompleteAuthority, match="phase ordered"):
+        c259.marked_equity_drawdown_R([(2, 0, 2000), (1, 0, 1990)], 2000)
 
 
 def test_split_boundaries_and_regime_state_reset() -> None:
@@ -295,23 +386,41 @@ def test_split_boundaries_and_regime_state_reset() -> None:
 
 
 def test_metrics_stress_identity_forward_gates_and_drawdown_tiers() -> None:
-    base = [_trade("a", 1, "A", 1, 2, 2), _trade("b", 1, "B", 3, 4, -1)]
-    stress = [_trade("a", 1, "A", 1, 2, 1), _trade("b", 1, "B", 3, 4, -2)]
+    base = [_trade("a", 1, "A", c259.HOUR_MS, 2*c259.HOUR_MS, 2),
+            _trade("b", 1, "B", 3*c259.HOUR_MS, 4*c259.HOUR_MS, -1)]
+    stress = [replace(trade, fills=tuple(replace(fill, fee_drag=fill.fee_drag + .1)
+                                              for fill in trade.fills)) for trade in base]
     c259.stress_same_selection(base, stress)
     with pytest.raises(c259.C259Error, match="changed admitted"):
         c259.stress_same_selection(base, stress[:-1])
+    with pytest.raises(c259.C259Error, match="changed admitted"):
+        c259.stress_same_selection(base, [replace(stress[0], close_ms=3*c259.HOUR_MS), stress[1]])
+    with pytest.raises(c259.C259Error, match="changed admitted"):
+        changed_fill = replace(stress[0].fills[0], quantity=2)
+        c259.stress_same_selection(base, [replace(stress[0], fills=(changed_fill,)), stress[1]])
     report = c259.metrics(base)
     assert report["closed"] == 2 and report["profit_factor"] == pytest.approx(2)
-    passing = {"mean_R": .04, "profit_factor": 1.2, "closed": 300, "symbols": 12,
-               "median_monthly_closes": 12, "positive_folds": 2,
-               "worst_fold_mean_R": -.04, "positive_month_fraction": .56,
-               "min_regime_closes": 30, "worst_regime_mean_R": -.02,
-               "stress_mean_R": .01, "stress_profit_factor": 1.03,
-               "p_value": c259.MULTIPLICITY_ALPHA, "max_symbol_concentration": .25,
-               "drawdown_pass": True, "incomplete": False}
-    assert c259.forward_gate(passing) == (True, ())
-    assert c259.forward_gate({**passing, "p_value": c259.MULTIPLICITY_ALPHA + 1e-12}) \
-        == (False, ("multiplicity",))
+    with pytest.raises(c259.C259Error, match="wf1/wf2/wf3"):
+        c259.forward_gate([])
+    folds = []
+    for name, (start, _end) in c259.FOLD_RANGES.items():
+        if name == "development":
+            continue
+        trade = _trade(name, 1, f"{name}USDT", start+c259.HOUR_MS,
+                       start+2*c259.HOUR_MS, 1)
+        stressed = replace(trade, fills=tuple(replace(fill, fee_drag=.05)
+                                               for fill in trade.fills))
+        folds.append(c259.FoldLifecycle(name, (trade,), (stressed,),
+                                       ((start, 0, 2000), (start+2*c259.HOUR_MS, 0, 2001)),
+                                       ((start, 0, 2000), (start+2*c259.HOUR_MS, 0, 2000.9))))
+    derived = c259.forward_gate(folds, bootstrap_resamples=25)
+    assert derived["pass"] is False and derived["base"]["closed"] == 3
+    assert "sample" in derived["failures"] and "monthly_frequency" in derived["failures"]
+    broken_terminal = replace(folds[0], base_equity_points=(
+        folds[0].base_equity_points[0],
+        (folds[0].base_equity_points[-1][0], 0, 9999)))
+    with pytest.raises(c259.IncompleteEpisode, match="reconcile"):
+        c259.forward_gate([broken_terminal, *folds[1:]], bootstrap_resamples=25)
     assert c259.drawdown_tier(50, 20, 20, 10)["pass"]
     assert not c259.drawdown_tier(100, 61, 100, 20)["pass"]
 
@@ -335,3 +444,5 @@ def test_bootstrap_exact_draws_resolution_and_immutable_identity(tmp_path: Path)
     assert identity["default_off"] and identity["paper_testnet_only"]
     assert identity["sealed_holdout_opened"] is False
     assert identity["output_identity_sha256"] != mutated["output_identity_sha256"]
+    with pytest.raises(c259.C259Error, match="side"):
+        c259.bootstrap_stats(values, side=0, resamples=10)
