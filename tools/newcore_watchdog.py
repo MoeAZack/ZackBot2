@@ -58,7 +58,17 @@ def _write_json(path: str, value) -> None:
     tmp = path + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as handle:
         json.dump(value, handle, sort_keys=True)
-    os.replace(tmp, path)
+    # A short-lived Windows reader can deny delete-sharing on the old status
+    # file. Keep publication atomic and retry that transient lock, rather than
+    # letting a concurrent status/kill read terminate the watchdog thread.
+    for attempt in range(10):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.01 * (attempt + 1))
 
 
 def _valid_status(value) -> bool:

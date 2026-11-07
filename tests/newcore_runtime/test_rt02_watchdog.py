@@ -15,6 +15,42 @@ sys.path.insert(0, os.path.join(ROOT, 'tools'))
 
 import newcore_watchdog as wd  # noqa: E402
 
+
+def test_status_publication_retries_a_transient_windows_reader_lock(tmp_path, monkeypatch):
+    target = tmp_path / 'watchdog.json'
+    target.write_text('{"old":true}', encoding='utf-8')
+    replace = wd.os.replace
+    attempts = []
+
+    def reader_lock(source, destination):
+        attempts.append((source, destination))
+        if len(attempts) <= 2:
+            assert json.loads(target.read_text(encoding='utf-8')) == {'old': True}
+            raise PermissionError('temporary Windows reader lock')
+        return replace(source, destination)
+
+    monkeypatch.setattr(wd.os, 'replace', reader_lock)
+    wd._write_json(str(target), {'new': True})
+    assert len(attempts) == 3
+    assert json.loads(target.read_text(encoding='utf-8')) == {'new': True}
+    assert not (tmp_path / 'watchdog.json.tmp').exists()
+
+
+def test_status_publication_does_not_hide_a_persistent_permission_failure(tmp_path, monkeypatch):
+    target = tmp_path / 'watchdog.json'
+    target.write_text('{"old":true}', encoding='utf-8')
+    attempts = []
+
+    def denied(source, destination):
+        attempts.append((source, destination))
+        raise PermissionError('persistent Windows reader lock')
+
+    monkeypatch.setattr(wd.os, 'replace', denied)
+    with pytest.raises(PermissionError):
+        wd._write_json(str(target), {'new': True})
+    assert len(attempts) == 10
+    assert json.loads(target.read_text(encoding='utf-8')) == {'old': True}
+
 CHILD = textwrap.dedent('''
     import json, os, sys, time
     plan_file, stop = sys.argv[1], sys.argv[sys.argv.index('--stop-file') + 1]
