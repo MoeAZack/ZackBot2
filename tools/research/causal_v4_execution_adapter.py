@@ -316,8 +316,9 @@ def _verified_v4_packet(path: Path, *, profile: dict, contract_digest: str,
             # candidate_id field.  Its top-level candidate id is already covered
             # by the packet checksum, evaluation identity and completed claim.
             # Accept that legacy omission, but never accept a conflicting value.
-            or (integrity.get("candidate_id") is not None
-                and integrity.get("candidate_id") != value.get("candidate_id"))
+            or (integrity.get("candidate_id") != value.get("candidate_id")
+                and not (expected_format == "zackbot.atr-shock-snapback-4h-causal-v4/1"
+                         and "candidate_id" not in integrity))
             or integrity.get("contract_sha256") != contract_digest
             or integrity.get("evaluation_identity") != expected_identity
             or integrity.get("causal_v4_overlay_sha256") != profile["overlay_byte_sha256"]

@@ -373,6 +373,22 @@ def test_atr_packet_accepts_legacy_missing_redundant_integrity_candidate_but_not
             source_contract=source, overlay=overlay, expected_head=TEST_HEAD)
 
 
+def test_pack_packet_never_accepts_missing_integrity_candidate(tmp_path):
+    profile = _profile("pack"); candidate = profile["candidate_ids"][0]
+    path = _fake_packet(tmp_path, "pack", candidate)
+    value = json.loads(path.read_text())
+    value["integrity"].pop("candidate_id")
+    path.write_text(json.dumps(value)); _resign_packet(path, tmp_path / "ids")
+    overlay, source, digest = A.validate_overlay(ROOT, profile)
+    with pytest.raises(A.AdapterError, match="identity/authority mismatch"):
+        A._verified_v4_packet(
+            path, profile=profile, contract_digest=digest,
+            candidate_ids=tuple(profile["candidate_ids"]),
+            expected_format="zackbot.strategy-causal-pack-01/4",
+            identity_dir=tmp_path / "ids", authority=overlay["authority_artifacts"],
+            source_contract=source, overlay=overlay, expected_head=TEST_HEAD)
+
+
 def test_pack_assembly_builds_five_way_append_only_holm(tmp_path):
     ids = _profile()["candidate_ids"]
     paths = [_fake_packet(tmp_path, "pack", candidate, raw_p=.01 + i * .02)
