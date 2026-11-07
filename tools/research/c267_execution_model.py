@@ -231,7 +231,10 @@ class SideCash:
         ids={e.attempt_id for e in self.events}
         grouped=sum((self.exact_components(identifier) for identifier in ids),Fraction(0))
         independently_recomputed=self._exact(v for event in self.events for v in event.components)
-        return {'component_identity_reconciled':grouped==self._cumulative==independently_recomputed and len(self.events)==len(self._ids),
+        by_attempt={}
+        for event in self.events:by_attempt[event.attempt_id]=by_attempt.get(event.attempt_id,Fraction(0))+self._exact(event.components)
+        return {'component_identity_reconciled':grouped==self._cumulative==independently_recomputed
+                and by_attempt==self._per_attempt and len(self.events)==len(self._ids),
             'expected_component_total_reconciled':None if expected_components is None else self._exact(expected_components)==self.exact_components(),
             'source_binding_checked':expected_components is not None,
             'exact_cash':self.settled_cash_exact,

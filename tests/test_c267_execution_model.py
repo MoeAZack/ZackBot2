@@ -158,3 +158,13 @@ def test_cached_exact_prefix_is_constant_work_but_report_reaudits_missing_compon
     monkeypatch.setattr(ledger,'_exact',original)
     ledger._events[0]=replace(event,components=(-.05,))
     assert ledger.reconciliation()['component_identity_reconciled'] is False
+
+
+def test_balanced_per_attempt_cash_drift_cannot_hide_behind_same_global_total():
+    ledger=M.SideCash(1);ledger.append(cash_event('a',components=(-1.,)))
+    ledger.append(cash_event('b',time=B+H,phase='SCHEDULED',components=(-2.,)))
+    before=ledger.settled_cash
+    ledger._per_attempt['a']+=M.Fraction(D('1e-9'))
+    ledger._per_attempt['b']-=M.Fraction(D('1e-9'))
+    assert ledger.settled_cash==before
+    assert ledger.reconciliation()['component_identity_reconciled'] is False
