@@ -1,0 +1,138 @@
+{
+  "format": "c270-denominator-expiry-nomination/1",
+  "candidate_id": 270,
+  "status": "PROSPECTIVE_NOMINATION_ROOT_SELECTED_NO_SOURCE_GRANT",
+  "default_off": true,
+  "source_granted": false,
+  "economic_or_paper_acceptance": false,
+  "roadmap_fit": "Owner requires at least10 distinct economically tested strategies. One new price-only rolling-display salience hypothesis; own preregistration before any own rows. Root is acceptance/integration authority.",
+  "root_selection": "Parent root handoff: Root selects denominator-expiry salience as NEXT C270; fixed native-hour indexing,25h full-reset feature warmup, own270 seeds. No outcome access granted.",
+  "hypothesis": "Predictable removal of an old negative hourly return from the rolling24h display raises perceived performance and attracts buying, even without new information. Test only this LONG mechanism; no short inversion, comparison grid or threshold tuning.",
+  "primary_source": {
+    "title": "Pure Momentum in Cryptocurrency Markets",
+    "authors": [
+      "Cesare Fracassi",
+      "Shimon Kogan"
+    ],
+    "url": "https://cesare-fracassi.github.io/files/pdf/Research/Fracassi_Lee_Kogan_2025.pdf.pdf",
+    "mechanism": "Predictable changes in displayed24h returns arise when old returns leave the moving reference window. The reported effect dissipates within4h.",
+    "critical_cost_warning": "The paper explicitly reports its hourly-rebalanced strategy becomes unprofitable after commissions and impact. Published gross effects do not establish C270 crypto-perpetual profitability. Four-hour hold is fixed from mechanism horizon, not chosen from our data."
+  },
+  "signal": {
+    "notation": "H=3600000ms. C_u is close of native/logical1h bar whose OPEN timestamp is u. B is actual prospective entry open. All used bars must be fully completed before B.",
+    "current_display": "log(C_(B-H)/C_(B-25H))",
+    "outgoing_next_hour_return": "log(C_(B-24H)/C_(B-25H))",
+    "score": "-log(C_(B-24H)/C_(B-25H))",
+    "entry_clock_utc": [
+      0,
+      6,
+      12,
+      18
+    ],
+    "eligibility": "Finite positive source closes, exact25 consecutive completed bars B-25H..B-H, score>=0.005, valid causal full-prefixWilderATR24 and all original single-leg source/risk/cost/lifecycle gates. No BTCUSDT. No momentum, fresh-price move, volume-surprise or fitted-beta gate.",
+    "selection": "Rank eligible descending score then ascending fullUnicode symbol; freeze at most3 indexed proposals without replacement. No min16fits requirement. Ineligible, occupied or infeasible indexed proposal is skipped, never replaced. One LONG cell.",
+    "score_is_not_forecast": "Score is a predictable DISPLAY-return change, NOT a forecast of actual trade return. Never feed score into original259 forecast>=2cost admission."
+  },
+  "execution": {
+    "entry": "Current B raw native/logical1h OPEN after completed-only signal; source exact open/tick validation, no samebar close/futurehigh/low/volume.",
+    "holding_hours": 4,
+    "stop": "2 times causal full-prefixWilderATR24, original259 toward-entry tick rounding. R initially includes all original fee/slip/impact/knownadversefunding reserve costs.",
+    "target": "2R original frozen reference target; never favorable gap windfall above target.",
+    "atr": "True ranges require previous close; seed with first24 validTR from25bars, recurse across ENTIRE subsequent contiguous causal in-window prefix. Do not reseed from rolling25bars at each decision.",
+    "ordering": "Reuse accepted267/268 single-leg chronology: prior completed range stops/targets, raw-available funding and withheld-credit proof, current-open gap/due/cleanup, fixed rank-order admissions with actual cost/debit equity, remaining phases. Stop before target for unresolved samebar tie. Due open precedes currenthour range.",
+    "same_open_cash": "ENTRY ordinal2o entryfillcost /2o+1 actual-known entryfunding only AFTER actual lot exists; no virtual reservation/prelot cash.",
+    "split_boundary": "StageA permitted exact ENDopen flatten remains original single-leg behavior; only exactOPEN reference read. Own declared old-liability funding tail END..END+15000inclusive at fixedterminal accounting END+15000 under source proof, no price/signal extension. New holdout due>=END pre-entry veto, no ENDopen or postEND source extension."
+  },
+  "risk_and_costs": {
+    "primary_capital_usd": 2000,
+    "side": "LONG_ONLY",
+    "requested_initial_equity_risk": 0.01,
+    "max_positions": 3,
+    "aggregate_initial_risk_fraction": 0.03,
+    "single_gross_multiple": 0.5,
+    "aggregate_gross_multiple": 1.5,
+    "sizing": "Original259 Decimal floor/decrement largest permitted quantity, executedfee notional, stopminNotional, natural knownentryadversefunding reserve1.0/no credit netting; source-bound exact filters. One live lot/symbol.",
+    "fee_bps_per_fill": 5,
+    "base_slippage_bps_per_fill": 2,
+    "stress_slippage_bps_per_fill": 10,
+    "reference_roundtrip_bps_base": 14,
+    "reference_roundtrip_bps_stress": 30,
+    "admission_stopdistance": "2ATR reference stop distance must cover >=5*0.0014*referenceprice. This is the only alpha-independent cost-distance hurdle, not a forecast-return test.",
+    "impact": "Original259 exact completed prior24h quote-volume1% cap and mandatory-exit behavior. Legitimate zerohours allowed in positive aggregate; missing/zero mandatory exit authority remains INCOMPLETE. Never infer favorable liquidity.",
+    "stress": "Mechanical identical admitted attempts/qty/initialrisk, fee5/slip10 and SAME natural signed funding1.0. No stress resizing/reselection or1.5 C266 funding transform.",
+    "funding_lifecycle": "Own explicitly bound accepted published-complete ledger/rawavailability/15secondeligibility/first-ever-actualsymbolanchor/closedtail/once/perattemptsign model and generic3clock lifecycle catalog. Source-model assumptions remain conditional, not historical venue certainty. Unknown settlementexecutionproof =>INCOMPLETE; no fake fill or specialcase exclusion."
+  },
+  "windows": {
+    "development": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_filter_eligible": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "pre_filter_policy": "Retain original unavailable/filter scheduled counts; no new admission or authority waiver. For conservative opportunity arithmetic use25h warmup only afterDec14.",
+    "forward": [
+      "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+      "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+      "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+    ],
+    "new_holdout": "2026-09-28T01:00:00Z/2026-11-05T00:00:00Z",
+    "full_reset": "EACH window book/capital/positions/featurehistory reset. Exactly25h completed in-window bars before first possible signal, then fixed6h grid. No prior-window featurewarmup for C270; excluded holdout00hour is not warmup. No relabelled old window."
+  },
+  "source": {
+    "fixed_policy": "Pre2026-09-01 authenticated activev5 exact60minute=>logical1h, fromSep1 only independently pinned v6native1h. Existing requiredgaps/initialpartialprefix rules unchanged. No granularity fallback, coin dropping or new feed.",
+    "inputs": "Only source OHLCV, native marks, actual published funding tape, full orderedPIT and exact filters; no OI, social, news, spot or orderbook signal.",
+    "grants": "Own source/code/prereg/receipt/claim required. Current270 no grant/receipt; original257unspent preserved. Forward coverage/pins are separate technical gates, not availability claims."
+  },
+  "proposed_economic_gates": {
+    "development": "Same accepted268 future-nomination template: integritycomplete, gross/net expectancy>0, cashPF>1.05,>=120closed/>=8symbols, median>=8closed/intersectingUTCmonth includingzeros, identical-set stressmeanR>0, max(markedcashDD/(1%startcapital),chronologicalclosedR-DD)<=60R. DEV20k inference diagnostic only.",
+    "aggregate_forward": "Freeze SAME accepted268 template: meanR>.03,PF>1.10,>=300closed/>=12symbols,median>=12closed/intersectingUTCmonth inclzeros,>=2/3foldpositive, worstfoldmeanR>-.05,>55%positive months,>=30closed/meanR>-.03 eachBTCEMA200regime,stressmeanR>0/PF>1.02,stationary20k one-sidedp<=.05/270, no symbol>25%sumabs(symbolnetR), original259DDtiers/source/exchange/protection/parity/report gates.",
+    "new_holdout": "Own prospective numeric proposal same268template:>=30closed/>=8symbols,netR/meanR>0,PF>1.05,20k95%CI low>0,stressnetR>0/PF>1.02,original259DDtiers and complete source/lifecycle/cost/protection/parity/report. No newpositive-everylabel gate.",
+    "bootstrap": "20,000 stationary bootstrap draws/21-attempt expectedblocks, fixedPCG64 C-order(B,n,2), original259 fsum/centering/linearCI/inclusiveplusonep, own27020261107CI and27020261108null seeds. No seed/MC/horizon search.",
+    "multiplicity": "One own candidate270 cell; numbered .05/270 screen only, global historical trial count UNKNOWN/incomplete registry. Retain all priorfailed/spent trials, no globalFWER claim.",
+    "report": "All scheduled/zero/skip/failed decisions, cost/funding/sourceevents, both actual cash andR, samples/months/regimes/symbols, unresolved/unknownmarks, phaseDD, BTCalignment/corr/beta, same-setstress and trial ledger. Undefined requiredstats/sourceintegrity failclosed. Optional isolated1000/3000/4000 diagnostics cannot select/veto/rescue primary.",
+    "paper": "No nomination/dev result qualifies PAPER; independent forward+holdout/runtime/protection/testnet-feeledger evidence required. DefaultOFF."
+  },
+  "opportunity_arithmetic": {
+    "holdout_hours": 911.0,
+    "holdout": {
+      "first_entry_utc": "2026-09-29T06:00:00+00:00",
+      "last_entry_utc": "2026-11-04T18:00:00+00:00",
+      "decision_opportunities": 147,
+      "maximum_indexed_proposals": 441,
+      "opportunities_are_not_predicted_admissions_or_power": true
+    },
+    "development": {
+      "first_entry_utc": "2024-12-15T06:00:00+00:00",
+      "last_entry_utc": "2025-03-31T18:00:00+00:00",
+      "decision_opportunities": 427,
+      "maximum_indexed_proposals": 1281,
+      "opportunities_are_not_predicted_admissions_or_power": true
+    },
+    "interpretation": "4hhold shorter than6hclock means ordinary due closes can free all3positions before nextdecision. Stated maximum is not predicted turnover, symboldiversity, gatepower or edge."
+  },
+  "dedup": {
+    "closest": [
+      {
+        "id": "C95",
+        "difference": "MannWhitney recent24 vs prior72 returns and trendfilters; does not isolate mechanically outgoing displayed-return component."
+      },
+      {
+        "id": "C53",
+        "difference": "Learned28same-hour returns at nextUTCbucket; C270 learns no hour drift."
+      },
+      {
+        "id": "C258/C266",
+        "difference": "Cross-sectional realized relative strength pairedmomentum; C270 outgoingoldreturn rather than recentreturn strength."
+      },
+      {
+        "id": "C269",
+        "difference": "Price-location quotevolume overhead supply, no rolling-display reference mechanism."
+      }
+    ],
+    "scope": "312unique discoverable historical preregistration metadata blobs scanned for exact mechanism terms; targeted closest definitions read. No outcome/claimcontents/holdout/data opened. Global catalogue is not exhaustive world; no statisticalindependence claimed.",
+    "claim_existence": "OriginalC257sharedGit c257-evaluation namespace absent, observedexistenceonly; no270claim created/read."
+  },
+  "deferred": [
+    "Actual source/economics/claims/holdout/PAPER",
+    "Funding-shock successor separatepublicationmodel",
+    "Minuteclock openingflow unavailable underv6native1h, excludedfromexecutablelist",
+    "Any tuning/sideinversion/currentcandidate rescue",
+    "Broadmethodology/enginework"
+  ]
+}

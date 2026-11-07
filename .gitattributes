@@ -39,3 +39,5 @@ contracts/c269_overhead_notional/funding_lifecycle_model.v1.json -text
 contracts/c269_overhead_notional/lifecycle_catalog.v1.json -text
 contracts/c269_overhead_notional/initial_source_prefix.v1.json -text
 contracts/c269_overhead_notional/source_model_binding.v1.json -text
+contracts/c270_denominator_expiry/nomination.v1.json -text
+contracts/c270_denominator_expiry/preregistration.v1.json -text

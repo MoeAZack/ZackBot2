@@ -1,0 +1,31 @@
+{
+  "DEFERRED": "Allactualrows/claims/receipt until independent source/code review; forward/holdout/PAPER/mainnet.",
+  "ROADMAP FIT": "One fixedLONG economic trial, no engine work.",
+  "accepted_rules": "All nomination signal/execution/risk/cost/funding/source/windows/statistics/gates, subject only to explicit root preread clarification below. No grid/mirror/16fit or forecastreturn predicate.",
+  "candidate_id": 270,
+  "candidate_key": "denominator_expiry_salience_long_1h",
+  "default_off": true,
+  "execution_authorized": false,
+  "format": "zb-c270-fixed-preregistration/1",
+  "forward_authorized": false,
+  "holdout_authorized": false,
+  "new_primary_trials": 1,
+  "nomination": {
+    "path": "contracts/c270_denominator_expiry/nomination.v1.json",
+    "sha256": "771ccd907bd26d0d65467e907f1fc1a4df23891bc25ee676fb11efd80d6cbc21"
+  },
+  "own_claim": null,
+  "own_receipt": null,
+  "paper_qualified": false,
+  "primary_side": 1,
+  "root_decision": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-6709659078",
+  "root_preread_clarifications": {
+    "actual_first_eligible_development_clock": "2024-12-14T00:00:00Z",
+    "ci_seed": 27020261107,
+    "conservative_opportunity_table_is_not_an_extra_filter_warmup": true,
+    "feature_ATR_EMA_reset": "WINDOW_START_NO_PREVIOUS_FOLD_WARMUP",
+    "filter_eligible_development_start": "2024-12-14T00:00:00Z",
+    "null_seed": 27020261108
+  },
+  "source_authority_bound": false
+}
