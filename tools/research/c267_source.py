@@ -27,7 +27,8 @@ class SourceIncomplete(P.IncompleteAuthority):pass
 
 
 def decimal(value):
-    result=Decimal(value.decode('ascii') if isinstance(value,bytes) else str(value))
+    try:result=Decimal(value.decode('ascii') if isinstance(value,bytes) else str(value))
+    except (ArithmeticError,UnicodeError,ValueError) as exc:raise SourceIncomplete('C267_INVALID_NATIVE_DECIMAL') from exc
     if not result.is_finite():raise SourceIncomplete('C267_NONFINITE_NATIVE_DECIMAL')
     return result
 

@@ -262,4 +262,5 @@ class SideBook:
             self.snapshot(self.source.end_ms+K.ENVELOPE_MS,'TERMINAL_OLD_LIABILITY_ACCOUNTING')
         except (S.C.C267Locked,S.SourceIncomplete,K.ModelIncomplete,E.C259Error,OSError,ValueError,KeyError) as exc:
             self.complete=False;self.failures.append(str(exc))
+        if base is not None:self.decisions=list(base.decisions)
         return self
