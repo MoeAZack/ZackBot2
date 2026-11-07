@@ -74,6 +74,10 @@ jobs:
           # C257 hostile-tree tests clone this exact protected baseline from the local checkout.
           git fetch --no-tags --depth=1 origin a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8
           git cat-file -e 'a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8^{commit}'
+          # Protected C257 authentication resolves this immutable original scaffold, including after squash merges.
+          git fetch --no-tags --depth=1 origin 27f3eef77a4d10d300a288ef917fc5842170550d
+          git cat-file -e '27f3eef77a4d10d300a288ef917fc5842170550d^{commit}'
+          git cat-file -e '27f3eef77a4d10d300a288ef917fc5842170550d:research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json'
           # C259 hostile fixtures bind frozen content onto the protected preregistration base.
           git fetch --no-tags --depth=1 origin 64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3 82d02b82b774e92ffa374e6ea1be8ba5c0cfb98c
           git cat-file -e '64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3^{commit}'
