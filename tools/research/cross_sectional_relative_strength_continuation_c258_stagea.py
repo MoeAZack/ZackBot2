@@ -13,7 +13,8 @@ import hashlib
 import json
 import math
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_FLOOR, InvalidOperation
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -28,6 +29,11 @@ PLAN_PATH = ROOT / "contracts/strategy_causal_pack_01/authority_extension_plan.v
 PLAN_SHA256 = "30080d16132348fabceb91bffe110f43ee33824c4496622f736ee6a6c4d7af60"
 AUTHORITY_ID = "BINANCE-UM-PRECUTOFF-AUTHORITY-V6"
 C258_FROZEN_HEAD = "976adda2653584559a5fc105468a6d422796d3a9"
+AUTHORITY_PROTECTED_REF = "refs/heads/master"
+AUTHORITY_EXPECTED_ANCESTORS = (
+    "6754a336652496952aaab82e42fbe9bd6171430a",  # authority-v6 protected base
+    C258_FROZEN_HEAD,  # frozen C258 registration
+)
 HOUR_MS = 3_600_000
 FEE_BPS = 5.0
 BASE_SLIPPAGE_BPS = 2.0
@@ -104,7 +110,6 @@ class ArtifactPin:
 @dataclass(frozen=True)
 class AuthorityPins:
     protected_head: str
-    protected_ref: str
     manifest_v6: ArtifactPin
     pit_v9: ArtifactPin
     filter_v4: ArtifactPin
@@ -180,19 +185,51 @@ def _require_binding(doc: Mapping[str, object], key: str, expected: str) -> None
         raise IncompleteAuthority(f"authority cross-binding mismatch: {key}")
 
 
-def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT,
-                            required_ancestor: str = C258_FROZEN_HEAD) -> dict[str, dict]:
+def _expected_weekly_cells() -> tuple[int, ...]:
+    start = int(datetime(2024, 10, 14, tzinfo=timezone.utc).timestamp() * 1000)
+    end = int(datetime(2026, 11, 2, tzinfo=timezone.utc).timestamp() * 1000)
+    return tuple(range(start, end + 1, 7 * 24 * HOUR_MS))
+
+
+def _validate_full_authority_schema(pit: Mapping[str, object], filters: Mapping[str, object]) -> None:
+    cells = pit.get("weekly_cells", pit.get("cells"))
+    if not isinstance(cells, list) or not cells:
+        raise IncompleteAuthority("PIT-v9 weekly cells are absent/empty")
+    observed: list[int] = []
+    for cell in cells:
+        if not isinstance(cell, Mapping) or not isinstance(cell.get("monday_ms"), int):
+            raise IncompleteAuthority("malformed PIT-v9 weekly cell")
+        books = cell.get("books")
+        symbols = books.get("crypto") if isinstance(books, Mapping) else cell.get("symbols")
+        if not isinstance(symbols, list) or not symbols or not all(isinstance(s, str) and s for s in symbols):
+            raise IncompleteAuthority("PIT-v9 weekly cell has no nonempty crypto membership")
+        observed.append(int(cell["monday_ms"]))
+    expected_cells = set(_expected_weekly_cells())
+    if (len(observed) != len(set(observed)) or not expected_cells <= set(observed)
+            or max(observed) != max(expected_cells)):
+        raise IncompleteAuthority("PIT-v9 weekly cells do not exactly cover frozen windows")
+    expected_bindings = {
+        "development_eligible_segment": "2024-12-13T04:44:48Z",
+        "wf1": "2024-12-13T04:44:48Z",
+        "wf2": "2024-12-13T04:44:48Z",
+        "wf3": "2026-02-17T04:13:28Z",
+        "sealed_holdout": "2026-02-17T04:13:28Z",
+    }
+    if filters.get("fold_bindings") != expected_bindings:
+        raise IncompleteAuthority("filter-v4 fold bindings are not exact")
+
+
+def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT) -> dict[str, dict]:
     """Validate all v6 identities before any market-row loader may be called."""
     load_frozen_contract()
     if len(pins.protected_head) != 40 or any(ch not in "0123456789abcdef" for ch in pins.protected_head):
         raise IncompleteAuthority("accepted protected head is not exactly pinned")
-    if not pins.protected_ref.startswith("refs/"):
-        raise IncompleteAuthority("protected ref must be fully qualified")
     resolved_head = _git(root, "rev-parse", "--verify", f"{pins.protected_head}^{{commit}}")
-    resolved_ref = _git(root, "rev-parse", "--verify", f"{pins.protected_ref}^{{commit}}")
+    resolved_ref = _git(root, "rev-parse", "--verify", f"{AUTHORITY_PROTECTED_REF}^{{commit}}")
     if resolved_head != pins.protected_head or resolved_ref != pins.protected_head:
         raise IncompleteAuthority("protected head/ref exact equality failed")
-    _git(root, "merge-base", "--is-ancestor", required_ancestor, pins.protected_head)
+    for ancestor in AUTHORITY_EXPECTED_ANCESTORS:
+        _git(root, "merge-base", "--is-ancestor", ancestor, pins.protected_head)
     for path, expected_hash in ((CONTRACT_PATH.relative_to(ROOT).as_posix(), CONTRACT_SHA256),
                                 (PLAN_PATH.relative_to(ROOT).as_posix(), PLAN_SHA256)):
         frozen_raw = _git(root, "show", f"{pins.protected_head}:{path}", binary=True)
@@ -229,6 +266,7 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT,
                           if isinstance(manifest.get("cutoff"), Mapping) else None)
     if cutoff != "2026-11-05T00:00:00Z":
         raise IncompleteAuthority("manifest-v6 cutoff is not exact and exclusive")
+    _validate_full_authority_schema(pit, filters)
     for key, expected in (("manifest_v6_byte_sha256", pins.manifest_v6.byte_sha256),
                           ("manifest_v6_content_digest", pins.manifest_v6.content_digest)):
         _require_binding(pit, key, expected)
@@ -243,9 +281,9 @@ def validate_authority_pins(pins: AuthorityPins, *, root: Path = ROOT,
 
 
 def run_with_authority(pins: AuthorityPins, loader: Callable[[dict[str, dict]], object], *,
-                       root: Path = ROOT, required_ancestor: str = C258_FROZEN_HEAD) -> object:
+                       root: Path = ROOT) -> object:
     """The only real-data boundary: pins and schemas pass before loader invocation."""
-    authorities = validate_authority_pins(pins, root=root, required_ancestor=required_ancestor)
+    authorities = validate_authority_pins(pins, root=root)
     return loader(authorities)
 
 
@@ -686,6 +724,54 @@ class ClosedAttempt:
     long_contribution_R: float = 0.0
     short_contribution_R: float = 0.0
     lifecycle_identity: tuple[tuple[object, ...], ...] = ()
+    fills: tuple[FillCash, ...] = ()
+    funding_events: tuple["FundingCashEvent", ...] = ()
+    legs: tuple["LegResult", ...] = ()
+    derivation_identity_sha256: str = ""
+
+
+@dataclass(frozen=True)
+class FundingCashEvent:
+    timestamp_ms: int
+    symbol: str
+    cash: float
+
+
+@dataclass(frozen=True)
+class LegResult:
+    symbol: str
+    position_side: int
+    quantity: float
+    movement_cash: float
+    funding_cash: float
+    fee_drag: float
+    slippage_drag: float
+    net_cash: float
+    net_R: float
+
+
+def attempt_derivation_digest(row: ClosedAttempt) -> str:
+    payload = {
+        "attempt_id": row.attempt_id, "entry_ms": row.entry_ms, "close_ms": row.close_ms,
+        "long_symbol": row.long_symbol, "short_symbol": row.short_symbol, "regime": row.regime,
+        "movement_cash": row.movement_cash, "funding_cash": row.funding_cash,
+        "fee_drag": row.fee_drag, "slippage_drag": row.slippage_drag,
+        "actual_net_cash": row.actual_net_cash, "verdict_net_cash": row.verdict_net_cash,
+        "initial_risk_cash": row.initial_risk_cash, "verdict_R": row.verdict_R,
+        "atomic_one_leg_loss": row.atomic_one_leg_loss,
+        "conservative_adjustment_cash": row.conservative_adjustment_cash,
+        "gross_R": row.gross_R, "long_contribution_R": row.long_contribution_R,
+        "short_contribution_R": row.short_contribution_R,
+        "lifecycle_identity": row.lifecycle_identity,
+        "fills": [asdict(fill) for fill in row.fills],
+        "funding_events": [asdict(event) for event in row.funding_events],
+        "legs": [asdict(leg) for leg in row.legs],
+    }
+    return _sha256_bytes(_canonical_bytes(payload))
+
+
+def bind_attempt_derivation(row: ClosedAttempt) -> ClosedAttempt:
+    return replace(row, derivation_identity_sha256=attempt_derivation_digest(row))
 
 
 def _fill_lifecycle_identity(fills: Sequence[FillCash]) -> tuple[tuple[object, ...], ...]:
@@ -694,15 +780,16 @@ def _fill_lifecycle_identity(fills: Sequence[FillCash]) -> tuple[tuple[object, .
 
 
 def _validate_fill_lifecycle(*, fills: Sequence[FillCash], entry_ms: int, close_ms: int,
-                             expected: Mapping[str, tuple[int, Decimal]], atomic_one_leg: bool) -> None:
+                             declared_sides: Mapping[str, int], atomic_one_leg: bool) -> dict[str, Decimal]:
     by_symbol: dict[str, list[FillCash]] = {}
     for fill in fills:
         by_symbol.setdefault(fill.symbol, []).append(fill)
-    if set(by_symbol) != set(expected):
+    if set(by_symbol) != set(declared_sides):
         raise IncompleteEpisode("fill symbols do not match the accepted lifecycle")
-    if len(fills) != 2 * len(expected):
+    if len(fills) != 2 * len(declared_sides):
         raise IncompleteEpisode("accepted lifecycle is not fully flat")
-    for symbol, (position_side, accepted_quantity) in expected.items():
+    accepted: dict[str, Decimal] = {}
+    for symbol, position_side in declared_sides.items():
         symbol_fills = by_symbol[symbol]
         entries = [fill for fill in symbol_fills if fill.phase == "entry"]
         closes = [fill for fill in symbol_fills if fill.phase in {"exit", "stop", "cleanup"}]
@@ -711,29 +798,44 @@ def _validate_fill_lifecycle(*, fills: Sequence[FillCash], entry_ms: int, close_
         entry, final = entries[0], closes[0]
         if entry.side != position_side or final.side != -position_side:
             raise IncompleteEpisode("fill side does not match the accepted leg")
-        if (Decimal(str(entry.quantity)) != accepted_quantity
-                or Decimal(str(final.quantity)) != accepted_quantity):
+        accepted_quantity = Decimal(str(entry.quantity))
+        if accepted_quantity <= 0 or Decimal(str(final.quantity)) != accepted_quantity:
             raise IncompleteEpisode("fill quantity does not conserve the accepted quantity")
+        accepted[symbol] = accepted_quantity
         if entry.timestamp_ms != entry_ms:
             raise IncompleteEpisode("entry timestamp does not match the accepted lifecycle")
         if final.timestamp_ms <= entry.timestamp_ms:
             raise IncompleteEpisode("close must occur after the entry")
     if max(fill.timestamp_ms for fill in fills if fill.phase != "entry") != close_ms:
         raise IncompleteEpisode("attempt close time is not the final lifecycle fill")
-    if atomic_one_leg and len(expected) != 1:
+    if atomic_one_leg and len(declared_sides) != 1:
         raise IncompleteEpisode("atomic failure must contain exactly one accepted leg")
-    if not atomic_one_leg and len(expected) != 2:
+    if not atomic_one_leg and len(declared_sides) != 2:
         raise IncompleteEpisode("normal pair must contain both accepted legs")
+    return accepted
 
 
 def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol: str,
-                  short_symbol: str, regime: str, fills: Sequence[FillCash], funding_cash: float,
-                  initial_risk_cash: float, accepted_quantities: Mapping[str, tuple[int, Decimal]],
+                  short_symbol: str, regime: str, fills: Sequence[FillCash],
+                  funding_events: Sequence[FundingCashEvent],
+                  initial_risk_cash: float,
                   atomic_one_leg: bool = False) -> ClosedAttempt:
-    if not fills or close_ms < entry_ms or not math.isfinite(funding_cash):
+    if not fills or close_ms < entry_ms:
         raise IncompleteEpisode("attempt cashflows are incomplete")
-    _validate_fill_lifecycle(fills=fills, entry_ms=entry_ms, close_ms=close_ms,
-                             expected=accepted_quantities, atomic_one_leg=atomic_one_leg)
+    present_symbols = {fill.symbol for fill in fills}
+    pair_sides = {long_symbol: 1, short_symbol: -1}
+    if atomic_one_leg:
+        if len(present_symbols) != 1 or not present_symbols <= set(pair_sides):
+            raise IncompleteEpisode("atomic accepted leg is not one declared pair symbol")
+        declared_sides = {symbol: pair_sides[symbol] for symbol in present_symbols}
+    else:
+        declared_sides = pair_sides
+    accepted = _validate_fill_lifecycle(fills=fills, entry_ms=entry_ms, close_ms=close_ms,
+                                        declared_sides=declared_sides, atomic_one_leg=atomic_one_leg)
+    if any(event.symbol not in declared_sides or not entry_ms <= event.timestamp_ms < close_ms
+           or not math.isfinite(event.cash) for event in funding_events):
+        raise IncompleteEpisode("funding event is outside the accepted lifecycle")
+    funding_cash = math.fsum(event.cash for event in funding_events)
     movement = math.fsum(fill.movement_cash for fill in fills)
     fee = math.fsum(fill.fee_drag for fill in fills)
     slippage = math.fsum(fill.slippage_drag for fill in fills)
@@ -744,23 +846,54 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
         raise IncompleteEpisode("initial risk must be finite and positive")
     if min(fee, slippage) < 0 or (atomic_one_leg and (verdict > 0 or adjustment > 1e-12)):
         raise IncompleteEpisode("atomic verdict or drag sign violated")
-    return ClosedAttempt(attempt_id, entry_ms, close_ms, long_symbol, short_symbol, regime,
+    funding_events = tuple(funding_events)
+    leg_rows = []
+    for symbol, position_side in declared_sides.items():
+        symbol_fills = [fill for fill in fills if fill.symbol == symbol]
+        leg_movement = math.fsum(fill.movement_cash for fill in symbol_fills)
+        leg_fee = math.fsum(fill.fee_drag for fill in symbol_fills)
+        leg_slippage = math.fsum(fill.slippage_drag for fill in symbol_fills)
+        leg_funding = math.fsum(event.cash for event in funding_events if event.symbol == symbol)
+        leg_net = leg_movement + leg_funding - leg_fee - leg_slippage
+        leg_rows.append(LegResult(symbol, position_side, float(accepted[symbol]), leg_movement,
+                                  leg_funding, leg_fee, leg_slippage, leg_net,
+                                  leg_net / initial_risk_cash))
+    if not math.isclose(math.fsum(leg.net_cash for leg in leg_rows), actual, rel_tol=0, abs_tol=1e-12):
+        raise IncompleteEpisode("pair actual total is not exact fsum of leg cashflows")
+    if atomic_one_leg:
+        leg = leg_rows[0]
+        adjusted = leg.net_cash + adjustment
+        leg_rows[0] = LegResult(leg.symbol, leg.position_side, leg.quantity, leg.movement_cash,
+                                leg.funding_cash, leg.fee_drag, leg.slippage_drag,
+                                adjusted, adjusted / initial_risk_cash)
+    if not math.isclose(math.fsum(leg.net_cash for leg in leg_rows), verdict, rel_tol=0, abs_tol=1e-12):
+        raise IncompleteEpisode("pair verdict is not exact fsum of leg cashflows")
+    contributions = {leg.symbol: leg.net_R for leg in leg_rows}
+    row = ClosedAttempt(attempt_id, entry_ms, close_ms, long_symbol, short_symbol, regime,
                          movement, funding_cash, fee, slippage, actual, verdict,
                          initial_risk_cash, verdict / initial_risk_cash, atomic_one_leg, adjustment,
-                         movement / initial_risk_cash, 0.0, 0.0, _fill_lifecycle_identity(fills))
+                         movement / initial_risk_cash, contributions.get(long_symbol, 0.0),
+                         contributions.get(short_symbol, 0.0), _fill_lifecycle_identity(fills),
+                         tuple(fills), funding_events, tuple(leg_rows))
+    return bind_attempt_derivation(row)
 
 
 def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expected_short_symbol: str,
-                           accepted_leg: LegSpec, quantity: Decimal, fills: Sequence[FillCash],
-                           funding_cash: float, regime: str) -> ClosedAttempt:
+                           accepted_leg: LegSpec, fills: Sequence[FillCash],
+                           funding_events: Sequence[FundingCashEvent], regime: str) -> ClosedAttempt:
     accepted_leg.validate()
-    if quantity <= 0 or len(fills) != 2:
+    if len(fills) != 2:
         raise IncompleteEpisode("atomic accepted quantity/lifecycle is incomplete")
-    risk = float(quantity * stressed_loss_per_unit(accepted_leg))
     entry = next((fill for fill in fills if fill.phase == "entry"), None)
     final = next((fill for fill in fills if fill.phase in {"stop", "cleanup"}), None)
     if entry is None or final is None or entry.symbol != accepted_leg.symbol or final.symbol != accepted_leg.symbol:
         raise IncompleteEpisode("atomic fills do not match the accepted leg")
+    declared_side = 1 if accepted_leg.symbol == expected_long_symbol else (
+        -1 if accepted_leg.symbol == expected_short_symbol else 0)
+    if declared_side == 0 or accepted_leg.side != declared_side:
+        raise IncompleteEpisode("atomic leg symbol/side is not one declared pair leg")
+    quantity = Decimal(str(entry.quantity))
+    risk = float(quantity * stressed_loss_per_unit(accepted_leg))
     if final.phase == "stop":
         if accepted_leg.side == 1 and final.reference_price > float(accepted_leg.stop_reference):
             raise IncompleteEpisode("long atomic stop was filled favorably above its frozen reference")
@@ -768,19 +901,60 @@ def account_atomic_one_leg(*, attempt_id: str, expected_long_symbol: str, expect
             raise IncompleteEpisode("short atomic stop was filled favorably below its frozen reference")
     return close_attempt(attempt_id=attempt_id, entry_ms=entry.timestamp_ms, close_ms=final.timestamp_ms,
                          long_symbol=expected_long_symbol, short_symbol=expected_short_symbol,
-                         regime=regime, fills=fills, funding_cash=funding_cash,
+                         regime=regime, fills=fills, funding_events=funding_events,
                          initial_risk_cash=risk,
-                         accepted_quantities={accepted_leg.symbol: (accepted_leg.side, quantity)},
                          atomic_one_leg=True)
 
 
-def fixed_exit_open(bars: Sequence[Bar], actual_entry_ms: int) -> Bar:
-    candidates = sorted((bar for bar in bars if bar.open_ms >= actual_entry_ms + 6 * HOUR_MS),
-                        key=lambda bar: bar.open_ms)
-    if not candidates:
-        raise IncompleteEpisode("missing six-hour fixed-exit open")
-    candidates[0].validate()
-    return candidates[0]
+@dataclass(frozen=True)
+class FundingPoint:
+    symbol: str
+    nominal_time_ms: int
+    rate: float
+
+
+def validate_exposure_authority(*, symbol_bars: Mapping[str, Sequence[Bar]],
+                                symbol_marks: Mapping[str, Sequence[MarkClose]],
+                                funding_points: Sequence[FundingPoint],
+                                entry_ms: int, exit_ms: int) -> None:
+    if exit_ms <= entry_ms or any(value % HOUR_MS for value in (entry_ms, exit_ms)):
+        raise IncompleteEpisode("exposure boundaries are not canonical")
+    symbols = set(symbol_bars)
+    if not symbols or set(symbol_marks) != symbols:
+        raise IncompleteEpisode("bar/mark exposure symbols differ")
+    bar_grid = set(range(entry_ms, exit_ms + HOUR_MS, HOUR_MS))
+    mark_grid = set(range(entry_ms - HOUR_MS, exit_ms, HOUR_MS))
+    for symbol in symbols:
+        indexed_bars = exact_index(symbol_bars[symbol])
+        bar_times = {timestamp for timestamp in indexed_bars if entry_ms <= timestamp <= exit_ms}
+        selected_marks = [mark for mark in symbol_marks[symbol]
+                          if entry_ms - HOUR_MS <= mark.close_ms < exit_ms]
+        mark_times = {mark.close_ms for mark in selected_marks}
+        if (len(mark_times) != len(selected_marks)
+                or any(not math.isfinite(mark.price) or mark.price <= 0 for mark in selected_marks)):
+            raise IncompleteEpisode("duplicate/non-finite mark authority across exposure")
+        if bar_times != bar_grid or mark_times != mark_grid:
+            raise IncompleteEpisode("exposure bar/mark authority is not contiguous")
+    eight_hours = 8 * HOUR_MS
+    first_funding = ((entry_ms + eight_hours - 1) // eight_hours) * eight_hours
+    expected = {(symbol, timestamp) for symbol in symbols
+                for timestamp in range(first_funding, exit_ms, eight_hours)}
+    selected_funding = [row for row in funding_points if entry_ms <= row.nominal_time_ms < exit_ms]
+    observed = {(row.symbol, row.nominal_time_ms) for row in selected_funding}
+    if (len(observed) != len(selected_funding) or any(not math.isfinite(row.rate) for row in funding_points)
+            or observed != expected):
+        raise IncompleteEpisode("funding authority is incomplete across exposure")
+
+
+def fixed_exit_open(bars: Sequence[Bar], actual_entry_ms: int, *, marks: Sequence[MarkClose],
+                    funding_points: Sequence[FundingPoint], symbol: str) -> Bar:
+    target = actual_entry_ms + 6 * HOUR_MS
+    validate_exposure_authority(symbol_bars={symbol: bars}, symbol_marks={symbol: marks},
+                                funding_points=funding_points, entry_ms=actual_entry_ms, exit_ms=target)
+    indexed = exact_index(bars)
+    if target not in indexed:
+        raise IncompleteEpisode("missing exact six-hour fixed-exit open")
+    return indexed[target]
 
 
 DRAW_PHASE_ORDER = {
@@ -797,6 +971,95 @@ class DrawdownEvent:
     sequence: int
     cashflow_R: float
     marked_open_R: float
+
+
+@dataclass(frozen=True)
+class PortfolioMark:
+    timestamp_ms: int
+    symbol: str
+    price: float
+
+
+def derive_drawdown_events(attempts: Sequence[ClosedAttempt], marks: Sequence[PortfolioMark]) -> tuple[DrawdownEvent, ...]:
+    """Derive ordered R cashflows and open-position marks from accepted lifecycles."""
+    if not attempts:
+        raise IncompleteEpisode("mark-only/no-entry drawdown stream is forbidden")
+    mark_index: dict[tuple[int, str], float] = {}
+    for mark in marks:
+        key = (mark.timestamp_ms, mark.symbol)
+        if key in mark_index or not math.isfinite(mark.price) or mark.price <= 0:
+            raise IncompleteEpisode("duplicate/non-finite causal portfolio mark")
+        mark_index[key] = mark.price
+    actions: list[tuple[int, int, str, ClosedAttempt, object]] = []
+    required_marks: set[tuple[int, str]] = set()
+    for attempt in attempts:
+        if not attempt.fills or not attempt.legs:
+            raise IncompleteEpisode("accepted attempt lacks entry/close-derived legs")
+        for leg in attempt.legs:
+            for timestamp in range(attempt.entry_ms, attempt.close_ms + HOUR_MS, HOUR_MS):
+                required_marks.add((timestamp, leg.symbol))
+        for fill in attempt.fills:
+            phase = "ENTRY" if fill.phase == "entry" else "EXIT"
+            actions.append((fill.timestamp_ms, DRAW_PHASE_ORDER[phase], phase, attempt, fill))
+        for funding in attempt.funding_events:
+            phase = "FUNDING_AT_OPEN" if funding.timestamp_ms == attempt.entry_ms else "FUNDING_BEFORE"
+            actions.append((funding.timestamp_ms, DRAW_PHASE_ORDER[phase], phase, attempt, funding))
+        if attempt.conservative_adjustment_cash:
+            actions.append((attempt.close_ms, DRAW_PHASE_ORDER["CONSERVATIVE_ADJUSTMENT"],
+                            "CONSERVATIVE_ADJUSTMENT", attempt, attempt.conservative_adjustment_cash))
+    if not required_marks <= set(mark_index):
+        raise IncompleteEpisode("missing causal marks across accepted exposure")
+    positions: dict[str, tuple[int, float, float, float]] = {}
+    events: list[DrawdownEvent] = []
+    sequence_by_key: dict[tuple[int, str], int] = {}
+
+    def marked_R(timestamp: int) -> float:
+        return math.fsum(side * quantity * (mark_index[(timestamp, symbol)] - entry_reference) / risk
+                         for symbol, (side, quantity, entry_reference, risk) in positions.items())
+
+    for timestamp, _, phase, attempt, payload in sorted(
+            actions, key=lambda row: (row[0], row[1], row[3].attempt_id,
+                                      getattr(row[4], "symbol", ""))):
+        cashflow_R = 0.0
+        if isinstance(payload, FillCash):
+            cashflow_R = (payload.movement_cash - payload.fee_drag - payload.slippage_drag) / attempt.initial_risk_cash
+            if payload.phase == "entry":
+                if payload.symbol in positions:
+                    raise IncompleteEpisode("overlapping symbol position in drawdown derivation")
+                position_side = 1 if payload.symbol == attempt.long_symbol else -1
+                positions[payload.symbol] = (position_side, payload.quantity,
+                                             payload.reference_price, attempt.initial_risk_cash)
+            else:
+                if payload.symbol not in positions:
+                    raise IncompleteEpisode("close without derived open position")
+                del positions[payload.symbol]
+        elif isinstance(payload, FundingCashEvent):
+            if payload.symbol not in positions:
+                raise IncompleteEpisode("funding without derived open position")
+            cashflow_R = payload.cash / attempt.initial_risk_cash
+        else:
+            cashflow_R = float(payload) / attempt.initial_risk_cash
+        key = (timestamp, phase)
+        sequence = sequence_by_key.get(key, 0)
+        sequence_by_key[key] = sequence + 1
+        events.append(DrawdownEvent(timestamp, phase, sequence, cashflow_R, marked_R(timestamp)))
+    # Add mark-only hourly observations so intra-exposure drawdown cannot disappear.
+    action_times = {event.timestamp_ms for event in events}
+    for timestamp in sorted({timestamp for timestamp, _ in required_marks} - action_times):
+        # Replaying positions for arbitrary intermediate hours is intentionally avoided:
+        # derive them from the immutable attempt intervals and legs.
+        open_legs = [(attempt, leg) for attempt in attempts for leg in attempt.legs
+                     if attempt.entry_ms <= timestamp < attempt.close_ms]
+        value = math.fsum(leg.position_side * leg.quantity
+                          * (mark_index[(timestamp, leg.symbol)]
+                             - next(fill.reference_price for fill in attempt.fills
+                                    if fill.symbol == leg.symbol and fill.phase == "entry"))
+                          / attempt.initial_risk_cash for attempt, leg in open_legs)
+        events.append(DrawdownEvent(timestamp, "MARK_END", 0, 0.0, value))
+    if positions:
+        raise IncompleteEpisode("drawdown lifecycle did not finish flat")
+    return tuple(sorted(events, key=lambda event: (
+        event.timestamp_ms, DRAW_PHASE_ORDER[event.phase], event.sequence)))
 
 
 def chronological_drawdown(events: Sequence[DrawdownEvent], initial_equity_R: float = 0.0) -> tuple[float, int]:
@@ -942,8 +1205,11 @@ def fold_metrics(attempts: Sequence[ClosedAttempt]) -> dict[str, object]:
     symbol_net: dict[str, float] = {}
     regime: dict[str, list[float]] = {}
     for row in ordered:
-        symbol_net[row.long_symbol] = symbol_net.get(row.long_symbol, 0.0) + row.verdict_R / 2
-        symbol_net[row.short_symbol] = symbol_net.get(row.short_symbol, 0.0) + row.verdict_R / 2
+        if not row.legs or not math.isclose(math.fsum(leg.net_R for leg in row.legs),
+                                            row.verdict_R, rel_tol=0, abs_tol=1e-12):
+            raise IncompleteEpisode("symbol contributions are not exact derived leg R")
+        for leg in row.legs:
+            symbol_net[leg.symbol] = symbol_net.get(leg.symbol, 0.0) + leg.net_R
         regime.setdefault(row.regime, []).append(row.verdict_R)
     denominator = math.fsum(abs(v) for v in symbol_net.values())
     concentration = math.inf if denominator == 0 else max(abs(v) for v in symbol_net.values()) / denominator
@@ -968,8 +1234,8 @@ class FoldEvidence:
     stress: ReplayResult
     weekly_closed_counts_including_zero: tuple[int, ...]
     monthly_net_R_including_zero: tuple[float, ...]
-    base_drawdown_events: tuple[DrawdownEvent, ...]
-    stress_drawdown_events: tuple[DrawdownEvent, ...]
+    base_marks: tuple[PortfolioMark, ...]
+    stress_marks: tuple[PortfolioMark, ...]
     scheduled_decisions: int
     eligible_decisions: int
     admitted_attempts: int
@@ -1024,12 +1290,47 @@ def validate_fold_evidence(fold: FoldEvidence) -> None:
         raise IncompleteEpisode(f"{fold.name} is incomplete")
     if any(not row.lifecycle_identity for row in (*fold.base.attempts, *fold.stress.attempts)):
         raise IncompleteEpisode("every admitted row requires a complete fill lifecycle identity")
+    for row in (*fold.base.attempts, *fold.stress.attempts):
+        movement = math.fsum(fill.movement_cash for fill in row.fills)
+        fee = math.fsum(fill.fee_drag for fill in row.fills)
+        slippage = math.fsum(fill.slippage_drag for fill in row.fills)
+        funding = math.fsum(event.cash for event in row.funding_events)
+        actual = movement + funding - fee - slippage
+        verdict = min(actual, -(row.fee_drag + row.slippage_drag)) if row.atomic_one_leg_loss else actual
+        if (row.derivation_identity_sha256 != attempt_derivation_digest(row)
+                or not math.isclose(movement, row.movement_cash, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(fee, row.fee_drag, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(slippage, row.slippage_drag, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(funding, row.funding_cash, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(actual, row.actual_net_cash, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(verdict, row.verdict_net_cash, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(row.verdict_R, verdict / row.initial_risk_cash,
+                                    rel_tol=0, abs_tol=1e-12)
+                or _fill_lifecycle_identity(row.fills) != row.lifecycle_identity
+                or not math.isclose(math.fsum(leg.net_R for leg in row.legs), row.verdict_R,
+                                    rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(math.fsum(leg.net_R for leg in row.legs
+                                              if leg.symbol == row.long_symbol),
+                                    row.long_contribution_R, rel_tol=0, abs_tol=1e-12)
+                or not math.isclose(math.fsum(leg.net_R for leg in row.legs
+                                              if leg.symbol == row.short_symbol),
+                                    row.short_contribution_R, rel_tol=0, abs_tol=1e-12)):
+            raise IncompleteEpisode("attempt stress/accounting derivation identity mismatch")
     base_ids = [(row.attempt_id, row.entry_ms, row.close_ms, row.long_symbol, row.short_symbol,
-                 row.regime, row.lifecycle_identity) for row in fold.base.attempts]
+                 row.regime, row.atomic_one_leg_loss, row.initial_risk_cash, row.lifecycle_identity,
+                 tuple((event.timestamp_ms, event.symbol) for event in row.funding_events))
+                for row in fold.base.attempts]
     stress_ids = [(row.attempt_id, row.entry_ms, row.close_ms, row.long_symbol, row.short_symbol,
-                   row.regime, row.lifecycle_identity) for row in fold.stress.attempts]
+                   row.regime, row.atomic_one_leg_loss, row.initial_risk_cash, row.lifecycle_identity,
+                   tuple((event.timestamp_ms, event.symbol) for event in row.funding_events))
+                  for row in fold.stress.attempts]
     if base_ids != stress_ids:
         raise C258Error("stress replay changed selection/order")
+    for base_row, stress_row in zip(fold.base.attempts, fold.stress.attempts):
+        for base_event, stress_event in zip(base_row.funding_events, stress_row.funding_events):
+            expected = base_event.cash * 1.5 if base_event.cash < 0 else base_event.cash / 1.5
+            if not math.isclose(stress_event.cash, expected, rel_tol=0, abs_tol=1e-12):
+                raise IncompleteEpisode("stress funding cash is not mechanically derived")
 
 
 def _median(values: Sequence[int]) -> float:
@@ -1051,7 +1352,8 @@ def _max_closed_r_drawdown(attempts: Sequence[ClosedAttempt]) -> float:
 
 def fold_drawdown(fold: FoldEvidence, *, stress: bool = False) -> dict[str, float | int]:
     attempts = fold.stress.attempts if stress else fold.base.attempts
-    events = fold.stress_drawdown_events if stress else fold.base_drawdown_events
+    marks = fold.stress_marks if stress else fold.base_marks
+    events = derive_drawdown_events(attempts, marks)
     marked, recovery = chronological_drawdown(events)
     closed = _max_closed_r_drawdown(attempts)
     return {"marked_cashflow_R": marked, "closed_R": closed,

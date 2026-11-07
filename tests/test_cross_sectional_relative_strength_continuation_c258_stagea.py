@@ -9,6 +9,7 @@ import gzip
 import hashlib
 import json
 import math
+import inspect
 import subprocess
 from dataclasses import fields, replace
 from decimal import Decimal
@@ -36,12 +37,30 @@ def leg(symbol: str, side: int, entry: str, stop: str, *, step: str = "0.001",
 
 
 def attempt(identifier: str, r_value: float, *, regime: str = "BTC_ABOVE_OR_ON_EMA200") -> C.ClosedAttempt:
-    return C.ClosedAttempt(identifier, 1, 2, f"L{identifier}", f"S{identifier}", regime,
+    long_symbol, short_symbol = f"L{identifier}", f"S{identifier}"
+    fills = (
+        C.FillCash(0, long_symbol, 1, 1, 100, 100, 0, 0, 0, "entry"),
+        C.FillCash(0, short_symbol, -1, 1, 100, 100, 0, 0, 0, "entry"),
+        C.FillCash(C.HOUR_MS, long_symbol, -1, 1, 100 + 0.7 * r_value, 100 + 0.7 * r_value,
+                   0.7 * r_value, 0, 0, "exit"),
+        C.FillCash(C.HOUR_MS, short_symbol, 1, 1, 100 - 0.3 * r_value, 100 - 0.3 * r_value,
+                   0.3 * r_value, 0, 0, "exit"),
+    )
+    legs = (C.LegResult(long_symbol, 1, 1, 0.7 * r_value, 0, 0, 0,
+                        0.7 * r_value, 0.7 * r_value),
+            C.LegResult(short_symbol, -1, 1, 0.3 * r_value, 0, 0, 0,
+                        0.3 * r_value, 0.3 * r_value))
+    return C.bind_attempt_derivation(C.ClosedAttempt(identifier, 0, C.HOUR_MS, long_symbol, short_symbol, regime,
                            r_value, 0, 0, 0, r_value, r_value, 1, r_value, False, 0,
-                           lifecycle_identity=((1, f"L{identifier}", 1, "1.0", "100.0", "entry"),
-                                               (1, f"S{identifier}", -1, "1.0", "100.0", "entry"),
-                                               (2, f"L{identifier}", -1, "1.0", "101.0", "exit"),
-                                               (2, f"S{identifier}", 1, "1.0", "99.0", "exit")))
+                           r_value, 0.7 * r_value, 0.3 * r_value,
+                           C._fill_lifecycle_identity(fills), fills, (), legs))
+
+
+def marks_for_attempts(rows, *, long_price=100.0, short_price=100.0):
+    return tuple(C.PortfolioMark(timestamp, leg.symbol,
+                                 long_price if leg.position_side == 1 else short_price)
+                 for row in rows for leg in row.legs
+                 for timestamp in (row.entry_ms, row.close_ms))
 
 
 def test_contract_is_byte_bound_default_off_and_real_loader_is_locked():
@@ -60,12 +79,37 @@ def test_authority_gate_refuses_before_loader_and_checks_every_exact_pin(tmp_pat
         nonlocal called
         called = True
 
-    pins = C.AuthorityPins("e" * 40, "refs/heads/codex/c258-evaluator-prep", *[
+    pins = C.AuthorityPins("e" * 40, *[
         C.ArtifactPin(path, "0" * 64, "1" * 64) for path in C.EXPECTED_AUTHORITY_PATHS.values()
     ])
     with pytest.raises(C.IncompleteAuthority, match="Git authority resolution failed"):
         C.run_with_authority(pins, loader)
     assert called is False
+
+
+def test_authority_api_has_no_caller_ref_or_ancestry_controls_and_schema_decoys_fail(tmp_path, monkeypatch):
+    called = False
+
+    def loader(_):
+        nonlocal called
+        called = True
+
+    parameters = inspect.signature(C.run_with_authority).parameters
+    assert "required_ancestor" not in parameters and "protected_ref" not in parameters
+    assert "protected_ref" not in {field.name for field in fields(C.AuthorityPins)}
+    with pytest.raises(C.IncompleteAuthority, match="absent/empty"):
+        C._validate_full_authority_schema({"weekly_cells": []}, {"fold_bindings": {}})
+    cells = [{"monday_ms": timestamp, "symbols": ["AAAUSDT"]}
+             for timestamp in C._expected_weekly_cells()]
+    with pytest.raises(C.IncompleteAuthority, match="fold bindings"):
+        C._validate_full_authority_schema({"weekly_cells": cells}, {
+            "fold_bindings": {"wf1": "decoy"}})
+    with pytest.raises(C.IncompleteAuthority, match="exactly cover"):
+        C._validate_full_authority_schema({"weekly_cells": cells[:-1]}, {
+            "fold_bindings": {"development_eligible_segment": "2024-12-13T04:44:48Z",
+                              "wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z",
+                              "wf3": "2026-02-17T04:13:28Z",
+                              "sealed_holdout": "2026-02-17T04:13:28Z"}})
 
     def materialize(name, body):
         digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -80,11 +124,16 @@ def test_authority_gate_refuses_before_loader_and_checks_every_exact_pin(tmp_pat
 
     manifest = materialize("manifest_v6", {"format": "zb-binance-um-archive-manifest/6",
                            "cutoff_exclusive_utc": "2026-11-05T00:00:00Z"})
-    pit = materialize("pit_v9", {"format": "zb-pit-universe/2", "bindings": {
+    pit = materialize("pit_v9", {"format": "zb-pit-universe/2",
+        "weekly_cells": [{"monday_ms": timestamp, "symbols": ["AAAUSDT"]}
+                         for timestamp in C._expected_weekly_cells()], "bindings": {
         "manifest_v6_byte_sha256": manifest.byte_sha256,
         "manifest_v6_content_digest": manifest.content_digest}})
     filters = materialize("filter_v4", {
         "authority": "STRATEGY-CAUSAL-PACK-01-EXCHANGE-FILTER-AUTHORITY", "version": 4,
+        "fold_bindings": {"development_eligible_segment": "2024-12-13T04:44:48Z",
+                          "wf1": "2024-12-13T04:44:48Z", "wf2": "2024-12-13T04:44:48Z",
+                          "wf3": "2026-02-17T04:13:28Z", "sealed_holdout": "2026-02-17T04:13:28Z"},
         "bindings": {"pit_v9_byte_sha256": pit.byte_sha256, "pit_v9_content_digest": pit.content_digest}})
     coverage = materialize("coverage_v4", {
         "guaranteed_period_gaps": 0, "result": "ZERO_GUARANTEED_PERIOD_GAPS",
@@ -102,23 +151,22 @@ def test_authority_gate_refuses_before_loader_and_checks_every_exact_pin(tmp_pat
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-qm", "synthetic authority"], cwd=tmp_path, check=True)
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
-    subprocess.run(["git", "update-ref", "refs/heads/protected-test", head], cwd=tmp_path, check=True)
-    good = C.AuthorityPins(head, "refs/heads/protected-test", manifest, pit, filters, coverage)
-    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path,
-                                required_ancestor=head) == set(C.EXPECTED_AUTHORITY_PATHS)
+    monkeypatch.setattr(C, "AUTHORITY_EXPECTED_ANCESTORS", (head,))
+    monkeypatch.setattr(C, "AUTHORITY_PROTECTED_REF", "refs/heads/master")
+    good = C.AuthorityPins(head, manifest, pit, filters, coverage)
+    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path) == set(C.EXPECTED_AUTHORITY_PATHS)
     # Working-tree substitution is irrelevant: validation rereads the exact protected tree blob.
     (tmp_path / coverage.path).write_text("{}", encoding="utf-8")
-    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path,
-                                required_ancestor=head) == set(C.EXPECTED_AUTHORITY_PATHS)
+    assert C.run_with_authority(good, lambda authorities: set(authorities), root=tmp_path) == set(C.EXPECTED_AUTHORITY_PATHS)
     subprocess.run(["git", "commit", "--allow-empty", "-qm", "protected ref drift"], cwd=tmp_path, check=True)
     drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
-    subprocess.run(["git", "update-ref", "refs/heads/protected-test", drift], cwd=tmp_path, check=True)
     with pytest.raises(C.IncompleteAuthority, match="exact equality"):
-        C.run_with_authority(good, loader, root=tmp_path, required_ancestor=head)
+        C.run_with_authority(good, loader, root=tmp_path)
     assert called is False
-    subprocess.run(["git", "update-ref", "refs/heads/protected-test", head], cwd=tmp_path, check=True)
+    subprocess.run(["git", "update-ref", "refs/heads/master", head], cwd=tmp_path, check=True)
     with pytest.raises(C.IncompleteAuthority, match="Git authority resolution failed"):
-        C.run_with_authority(good, loader, root=tmp_path, required_ancestor="f" * 40)
+        monkeypatch.setattr(C, "AUTHORITY_EXPECTED_ANCESTORS", ("f" * 40,))
+        C.run_with_authority(good, loader, root=tmp_path)
     assert called is False
     with pytest.raises(C.IncompleteAuthority, match="cross-binding"):
         C._require_binding({"bindings": {"manifest_v6_content_digest": "wrong"}},
@@ -126,7 +174,8 @@ def test_authority_gate_refuses_before_loader_and_checks_every_exact_pin(tmp_pat
     bad = replace(good, coverage_v4=replace(good.coverage_v4, content_digest="f" * 64))
     called = False
     with pytest.raises(C.IncompleteAuthority, match="content digest mismatch"):
-        C.run_with_authority(bad, loader, root=tmp_path, required_ancestor=head)
+        monkeypatch.setattr(C, "AUTHORITY_EXPECTED_ANCESTORS", (head,))
+        C.run_with_authority(bad, loader, root=tmp_path)
     assert called is False
 
 
@@ -231,7 +280,17 @@ def test_stop_gap_precedes_range_fixed_exit_and_impact_never_uses_fill_bar_volum
     touch = C.Bar(7 * C.HOUR_MS, 100, 103, 95, 99, 1_000_000)
     assert C.stop_reference(position_side=1, entry_reference=100, atr24=2, bar=touch) == 96
     rows = [C.Bar(i * C.HOUR_MS, 100, 101, 99, 100, 1_000_000) for i in range(8)]
-    assert C.fixed_exit_open(rows, C.HOUR_MS).open_ms == 7 * C.HOUR_MS
+    marks = [C.MarkClose(i * C.HOUR_MS, 100) for i in range(7)]
+    assert C.fixed_exit_open(rows, C.HOUR_MS, marks=marks, funding_points=[],
+                             symbol="AAA").open_ms == 7 * C.HOUR_MS
+    bridged = [rows[0], rows[1], *rows[3:], C.Bar(20 * C.HOUR_MS, 100, 101, 99, 100, 1_000_000)]
+    with pytest.raises(C.IncompleteEpisode, match="contiguous"):
+        C.fixed_exit_open(bridged, C.HOUR_MS, marks=marks, funding_points=[], symbol="AAA")
+    long_rows = [C.Bar(i * C.HOUR_MS, 100, 101, 99, 100, 1_000_000) for i in range(7, 14)]
+    long_marks = [C.MarkClose(i * C.HOUR_MS, 100) for i in range(6, 13)]
+    with pytest.raises(C.IncompleteEpisode, match="funding authority"):
+        C.fixed_exit_open(long_rows, 7 * C.HOUR_MS, marks=long_marks,
+                          funding_points=[], symbol="AAA")
     assert C.impact_ratio(1, 100, 200_000) == pytest.approx(0.0005)
     with pytest.raises(C.IncompleteAuthority, match="impact authority"):
         C.impact_ratio(1, 100, 0)
@@ -251,9 +310,9 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
     assert stressed == pytest.approx(funding / 1.5)
     closed = C.close_attempt(attempt_id="a", entry_ms=1, close_ms=2, long_symbol="AAA",
                              short_symbol="BBB", regime="BTC_ABOVE_OR_ON_EMA200",
-                             fills=[entry, cleanup], funding_cash=funding,
+                             fills=[entry, cleanup],
+                             funding_events=[C.FundingCashEvent(1, "AAA", funding)],
                              initial_risk_cash=5,
-                             accepted_quantities={"AAA": (1, Decimal("1"))},
                              atomic_one_leg=True)
     assert closed.actual_net_cash > 0
     assert closed.verdict_net_cash == pytest.approx(-(closed.fee_drag + closed.slippage_drag))
@@ -262,21 +321,22 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
 
     atomic = C.account_atomic_one_leg(
         attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
-        accepted_leg=leg("AAA", 1, "100", "98"), quantity=Decimal("1"),
-        fills=[entry, cleanup], funding_cash=funding, regime="BTC_ABOVE_OR_ON_EMA200")
+        accepted_leg=leg("AAA", 1, "100", "98"),
+        fills=[entry, cleanup], funding_events=[C.FundingCashEvent(1, "AAA", funding)],
+        regime="BTC_ABOVE_OR_ON_EMA200")
     assert atomic.atomic_one_leg_loss and atomic.initial_risk_cash > 2
     same_open = replace(cleanup, timestamp_ms=1)
     with pytest.raises(C.IncompleteEpisode, match="after the entry"):
         C.account_atomic_one_leg(
             attempt_id="atomic", expected_long_symbol="AAA", expected_short_symbol="BBB",
-            accepted_leg=leg("AAA", 1, "100", "98"), quantity=Decimal("1"),
-            fills=[entry, same_open], funding_cash=0, regime="BTC_ABOVE_OR_ON_EMA200")
+            accepted_leg=leg("AAA", 1, "100", "98"),
+            fills=[entry, same_open], funding_events=[], regime="BTC_ABOVE_OR_ON_EMA200")
     partial = replace(cleanup, quantity=0.1)
     with pytest.raises(C.IncompleteEpisode, match="conserve"):
         C.account_atomic_one_leg(
             attempt_id="partial", expected_long_symbol="AAA", expected_short_symbol="BBB",
-            accepted_leg=leg("AAA", 1, "100", "98"), quantity=Decimal("1"),
-            fills=[entry, partial], funding_cash=0, regime="BTC_ABOVE_OR_ON_EMA200")
+            accepted_leg=leg("AAA", 1, "100", "98"),
+            fills=[entry, partial], funding_events=[], regime="BTC_ABOVE_OR_ON_EMA200")
 
 
 def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
@@ -292,21 +352,26 @@ def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
     ]
     closed = C.close_attempt(
         attempt_id="normal", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
-        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, funding_cash=0, initial_risk_cash=10,
-        accepted_quantities={"LONG": (1, Decimal("1")), "SHORT": (-1, Decimal("2"))})
+        regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, funding_events=[], initial_risk_cash=10)
     assert len(closed.lifecycle_identity) == 4
     with pytest.raises(C.IncompleteEpisode, match="conserve"):
         C.close_attempt(
             attempt_id="partial", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
             regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [replace(fills[2], quantity=0.1), fills[3]],
-            funding_cash=0, initial_risk_cash=10,
-            accepted_quantities={"LONG": (1, Decimal("1")), "SHORT": (-1, Decimal("2"))})
+            funding_events=[], initial_risk_cash=10)
     with pytest.raises(C.IncompleteEpisode, match="side"):
         C.close_attempt(
             attempt_id="wrong-side", entry_ms=10, close_ms=20, long_symbol="LONG", short_symbol="SHORT",
             regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [replace(fills[2], side=1), fills[3]],
-            funding_cash=0, initial_risk_cash=10,
-            accepted_quantities={"LONG": (1, Decimal("1")), "SHORT": (-1, Decimal("2"))})
+            funding_events=[], initial_risk_cash=10)
+    with pytest.raises(C.IncompleteEpisode, match="declared pair"):
+        C.account_atomic_one_leg(
+            attempt_id="decoy-leg", expected_long_symbol="LONG", expected_short_symbol="SHORT",
+            accepted_leg=leg("DECOY", 1, "100", "98"),
+            fills=[replace(fills[0], symbol="DECOY"),
+                   replace(fills[2], symbol="DECOY", phase="cleanup")],
+            funding_events=[], regime="BTC_ABOVE_OR_ON_EMA200")
+    assert "accepted_quantities" not in inspect.signature(C.close_attempt).parameters
 
 
 def test_open_event_order_funding_boundaries_required_exit_impact_and_book_caps():
@@ -346,6 +411,20 @@ def test_chronological_marked_plus_realized_drawdown_includes_conservative_adjus
         C.chronological_drawdown([replace(events[0], marked_open_R=math.nan)])
     # Same timestamp phases remain distinct; collapsing EXIT+adjustment would miss the +4 interim state.
     assert C.DRAW_PHASE_ORDER["EXIT"] < C.DRAW_PHASE_ORDER["CONSERVATIVE_ADJUSTMENT"]
+
+
+def test_drawdown_is_derived_from_accepted_fills_positions_and_marks_not_mark_only_claims():
+    row = attempt("derived", 0.2)
+    marks = marks_for_attempts((row,))
+    derived = C.derive_drawdown_events((row,), marks)
+    assert any(event.phase == "ENTRY" for event in derived)
+    assert any(event.phase == "EXIT" for event in derived)
+    with pytest.raises(C.IncompleteEpisode, match="mark-only"):
+        C.derive_drawdown_events((), marks)
+    with pytest.raises(C.IncompleteEpisode, match="missing causal marks"):
+        C.derive_drawdown_events((row,), marks[:-1])
+    with pytest.raises(C.IncompleteEpisode, match="finish flat"):
+        C.derive_drawdown_events((replace(row, fills=row.fills[:2]),), marks)
 
 
 def test_capital_diagnostics_are_isolated_and_cannot_veto_primary():
@@ -401,8 +480,26 @@ def test_fold_metrics_include_atomic_failures_regimes_and_fail_closed_on_zero_de
     assert math.isnan(C.profit_factor([0.2, 0.1]))
 
 
+def test_leg_cashflows_and_symbol_concentration_use_actual_attribution_not_half_split():
+    fills = [
+        C.FillCash(0, "LONG", 1, 1, 100, 100, 0, 0, 0, "entry"),
+        C.FillCash(0, "SHORT", -1, 1, 100, 100, 0, 0, 0, "entry"),
+        C.FillCash(C.HOUR_MS, "LONG", -1, 1, 109, 109, 9, 0, 0, "exit"),
+        C.FillCash(C.HOUR_MS, "SHORT", 1, 1, 99, 99, 1, 0, 0, "exit"),
+    ]
+    row = C.close_attempt(
+        attempt_id="asymmetric", entry_ms=0, close_ms=C.HOUR_MS,
+        long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
+        fills=fills, funding_events=[], initial_risk_cash=10)
+    assert row.long_contribution_R == pytest.approx(0.9)
+    assert row.short_contribution_R == pytest.approx(0.1)
+    assert math.fsum(leg.net_R for leg in row.legs) == pytest.approx(row.verdict_R)
+    metrics = C.fold_metrics([row])
+    assert metrics["max_symbol_concentration"] == pytest.approx(0.9)
+
+
 def test_output_identity_binds_every_pin_source_result_and_default_off():
-    pins = C.AuthorityPins("a" * 40, "refs/heads/protected", *[
+    pins = C.AuthorityPins("a" * 40, *[
         C.ArtifactPin(path, str(i) * 64, chr(97 + i) * 64)
         for i, path in enumerate(C.EXPECTED_AUTHORITY_PATHS.values())
     ])
@@ -414,13 +511,11 @@ def test_output_identity_binds_every_pin_source_result_and_default_off():
 
 
 def test_development_veto_never_opens_forward_and_stress_cannot_change_selection():
-    base_rows = tuple(replace(attempt(str(i), 0.01), gross_R=0.02,
-                              long_contribution_R=0.005, short_contribution_R=0.005)
+    base_rows = tuple(C.bind_attempt_derivation(replace(attempt(str(i), 0.01), gross_R=0.02))
                       for i in range(10))
     fold = C.FoldEvidence("development", C.ReplayResult(2000, base_rows),
                           C.ReplayResult(2000, base_rows), (10, 10), (0.1, 0.1),
-                          (C.DrawdownEvent(1, "MARK_END", 0, 0, 0),),
-                          (C.DrawdownEvent(1, "MARK_END", 0, 0, 0),),
+                          marks_for_attempts(base_rows), marks_for_attempts(base_rows),
                           100, 100, 10, 10, 0)
     result = C.evaluate_stage_a(fold, ())
     assert result["verdict"] == "REJECT_DEVELOPMENT"
@@ -428,25 +523,65 @@ def test_development_veto_never_opens_forward_and_stress_cannot_change_selection
 
     changed = replace(base_rows[0], attempt_id="changed")
     hostile = replace(fold, stress=C.ReplayResult(2000, (changed,) + base_rows[1:]))
-    with pytest.raises(C.C258Error, match="stress replay changed selection"):
+    with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile)
-    close_changed = replace(base_rows[0], close_ms=3)
+    close_changed = replace(base_rows[0], close_ms=2 * C.HOUR_MS)
     hostile_close = replace(fold, stress=C.ReplayResult(2000, (close_changed,) + base_rows[1:]))
-    with pytest.raises(C.C258Error, match="stress replay changed selection"):
+    with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile_close)
     lifecycle_changed = replace(base_rows[0], lifecycle_identity=base_rows[0].lifecycle_identity[:-1] +
-                                ((3, "L0", -1, "1.0", "102.0", "exit"),))
+                                ((2 * C.HOUR_MS, "L0", -1, "1.0", "102.0", "exit"),))
     hostile_lifecycle = replace(fold, stress=C.ReplayResult(2000, (lifecycle_changed,) + base_rows[1:]))
-    with pytest.raises(C.C258Error, match="stress replay changed selection"):
+    with pytest.raises(C.C258Error, match="derivation identity mismatch|stress replay changed selection"):
         C.validate_fold_evidence(hostile_lifecycle)
+
+    funding = C.FundingCashEvent(C.HOUR_MS // 2, base_rows[0].long_symbol, 0.01)
+    funded = C.bind_attempt_derivation(replace(base_rows[0], funding_cash=0.01, actual_net_cash=0.02,
+                     verdict_net_cash=0.02, verdict_R=0.02,
+                     funding_events=(funding,),
+                     long_contribution_R=0.017, short_contribution_R=0.003,
+                     legs=(replace(base_rows[0].legs[0], funding_cash=0.01,
+                                   net_cash=0.017, net_R=0.017),
+                           replace(base_rows[0].legs[1], net_cash=0.003, net_R=0.003))))
+    stress_cash = 0.01 / 1.5
+    stress_funded = C.bind_attempt_derivation(replace(funded, funding_cash=stress_cash,
+                            actual_net_cash=0.01 + stress_cash,
+                            verdict_net_cash=0.01 + stress_cash,
+                            verdict_R=0.01 + stress_cash,
+                            funding_events=(replace(funding, cash=stress_cash),),
+                            long_contribution_R=0.007 + stress_cash,
+                            legs=(replace(funded.legs[0], funding_cash=stress_cash,
+                                          net_cash=0.007 + stress_cash,
+                                          net_R=0.007 + stress_cash), funded.legs[1])))
+    funded_fold = replace(fold, base=C.ReplayResult(2000, (funded,) + base_rows[1:]),
+                          stress=C.ReplayResult(2000, (stress_funded,) + base_rows[1:]))
+    C.validate_fold_evidence(funded_fold)
+    bad_funding = C.bind_attempt_derivation(replace(stress_funded, funding_cash=0.02,
+                          actual_net_cash=0.03, verdict_net_cash=0.03, verdict_R=0.03,
+                          funding_events=(replace(funding, cash=0.02),),
+                          long_contribution_R=0.027,
+                          legs=(replace(stress_funded.legs[0], funding_cash=0.02,
+                                        net_cash=0.027, net_R=0.027), stress_funded.legs[1])))
+    with pytest.raises(C.IncompleteEpisode, match="mechanically derived|derivation identity"):
+        C.validate_fold_evidence(replace(funded_fold,
+            stress=C.ReplayResult(2000, (bad_funding,) + base_rows[1:])))
+    for hostile_row in (replace(stress_funded, initial_risk_cash=2),
+                        replace(stress_funded, verdict_R=999),
+                        replace(stress_funded, atomic_one_leg_loss=True),
+                        replace(stress_funded, fills=(replace(stress_funded.fills[0], fee_drag=1),)
+                                                     + stress_funded.fills[1:])):
+        with pytest.raises((C.IncompleteEpisode, C.C258Error)):
+            C.validate_fold_evidence(replace(funded_fold,
+                stress=C.ReplayResult(2000, (hostile_row,) + base_rows[1:])))
 
 
 def test_gate_derives_worse_of_marked_and_close_time_drawdown_never_accepts_supplied_value():
     assert "max_drawdown_R" not in {field.name for field in fields(C.FoldEvidence)}
-    rows = tuple(replace(attempt(str(i), 0.1), gross_R=0.2,
-                         long_contribution_R=0.05, short_contribution_R=0.05) for i in range(300))
-    marked = (C.DrawdownEvent(1, "MARK_END", 0, 0, 0),
-              C.DrawdownEvent(2, "MARK_END", 0, 0, -61))
+    rows = tuple(C.bind_attempt_derivation(replace(attempt(str(i), 0.1), gross_R=0.2))
+                 for i in range(300))
+    marked = tuple(C.PortfolioMark(mark.timestamp_ms, mark.symbol,
+                                  39 if mark.symbol == "L0" else 100)
+                   for mark in marks_for_attempts(rows))
     fold = C.FoldEvidence(
         "development", C.ReplayResult(2000, rows), C.ReplayResult(2000, rows),
         (25, 25), (1, 1), marked, marked, 300, 300, 300, 0, 0)
