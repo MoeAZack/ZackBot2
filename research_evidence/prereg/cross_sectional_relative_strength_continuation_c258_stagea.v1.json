@@ -1,0 +1,209 @@
+{
+  "candidate_id": 258,
+  "candidate_key": "cross_sectional_relative_strength_continuation_1h",
+  "format": "zb-strategy-preregistration/1",
+  "base_commit": "8f63b5e8affd2d23a8c69d6d0185c502951aff78",
+  "frozen_at_cairo": "2026-11-07T02:29:00+02:00",
+  "status": "FROZEN_NOT_EVALUATED_RESEARCH_ONLY",
+  "default_off": true,
+  "evaluation_locked": true,
+  "paper_eligibility": "BLOCK_UNTIL_INDEPENDENT_OOS_PASS",
+  "roadmap_fit": "Fresh frequent-strategy conveyor candidate complementary to C257 funding-shock reversal; contract and hostile tests only.",
+  "deferred": [
+    "evaluator or runner implementation",
+    "market-row, outcome, result-packet or sealed-holdout access",
+    "parameter tuning, side selection or subgroup rescue",
+    "PAPER or testnet activation",
+    "mainnet"
+  ],
+  "hypothesis": "Large 24-hour relative moves across liquid Binance USD-M perpetuals persist for six more hours because information and forced-flow propagation are gradual; a dollar-neutral long-leader/short-laggard book can capture that continuation after four-fill costs, signed funding and exchange constraints.",
+  "selection_provenance": {
+    "chosen_without_outcomes": true,
+    "metadata_sources_only": [
+      "docs/newcore/research/STRATEGY_RESEARCH_BOARD_2026-10-23.md",
+      "research_evidence/prereg filenames and frozen preregistration metadata",
+      "contracts metadata"
+    ],
+    "queue_basis": "The frozen strategy board explicitly names cross-sectional relative-strength continuation as an uninstantiated frequent hypothesis after the prior registered families.",
+    "duplicate_search": "Before freeze, metadata-only case-insensitive searches for cross-sectional, relative-strength, residual-momentum and momentum-cross found no preregistration, numbered candidate contract or result packet for this hypothesis.",
+    "not_holdout_rescue": "No C258 market row, return, signal, identity, outcome, result packet or sealed-holdout artifact was opened. Rules were not inferred from any C257 result or from the 2026-09-28/2026-11-05 sealed holdout.",
+    "economic_distinction": {
+      "from_c257": "C257 reverses discrete funding-surprise tails after settlements. C258 follows completed-price relative strength each hour and never uses funding to form or rank a signal.",
+      "from_rotation_long_h2": "H2 is 4h, long-only, ranks 30-day risk-adjusted return, requires EMA50 and exits on rank/EMA. C258 is an inseparable market-neutral 1h pair, ranks robust 24h relative return, has no EMA or signal exit and holds six hours.",
+      "from_rank_breadth_reversal": "RBR trades reversal after breadth crowding with RSI/candle/volume confirmation. C258 is continuation, uses no breadth threshold, RSI, candle color or volume signal, and pairs opposite tails.",
+      "from_time_series_momentum": "Existing EMA/time-series cells decide each symbol from its own trend. C258 requires a simultaneous point-in-time cross-section and trades only relative leaders against relative laggards."
+    }
+  },
+  "authority": {
+    "plan_path": "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json",
+    "plan_sha256": "30080d16132348fabceb91bffe110f43ee33824c4496622f736ee6a6c4d7af60",
+    "plan_authority_id": "BINANCE-UM-PRECUTOFF-AUTHORITY-V6",
+    "plan_status_required_at_freeze": "FROZEN_METADATA_ONLY_NOT_ACQUIRED",
+    "required_future_outputs": [
+      "research_evidence/manifests/binance-um-archive-precutoff-v6.json.gz",
+      "research_evidence/universe/pit-top40-qv30d-precutoff-v9.json",
+      "contracts/strategy_causal_pack_01/exchange_filter_authority.v4.json",
+      "contracts/strategy_causal_pack_01/precutoff_authority_coverage_preflight.v4.json"
+    ],
+    "required_streams": [
+      "klines:1h",
+      "markPriceKlines:1h",
+      "fundingRate:null"
+    ],
+    "future_pin_rule": "After all four authority-v6 outputs independently pass and protected-merge, and before any market or outcome read, one mechanical amendment may add their exact byte hashes/content digests and the accepted protected head. It may change no hypothesis, signal, side, universe rule, execution, risk, cost, split, gate, multiplicity or PAPER term. Any other change creates a new numbered candidate.",
+    "pre_market_gate": "Validate the authority-v6 plan byte hash, output byte hashes/content digests, cutoff-exclusive rule, PIT-v9 weekly cells, filter-v4 fold bindings and coverage-v4 ZERO_GUARANTEED_PERIOD_GAPS before opening any 1h bar, mark or funding row. Missing or mismatched authority refuses the run.",
+    "membership": "At each completed 1h decision close d, use the PIT-v9 crypto book from the greatest weekly Monday cell with monday_ms<=d, preserving artifact order, then apply the checksum-bound filter-v4 snapshot frozen for that fold. Current membership, archive availability, union-of-fold membership, survivor filtering and future cells are forbidden.",
+    "availability": "Use only completed 1h klines, causal mark closes and funding rows available by the event being processed. Exact timestamps inner-join; never forward-fill, backfill, interpolate, synthesize zero funding or bridge a missing canonical bar.",
+    "cutoff_exclusive": "2026-11-05T00:00:00Z"
+  },
+  "splits": {
+    "development": "2024-10-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "development_filter_eligible": "2024-12-14T00:00:00Z/2025-04-01T00:00:00Z",
+    "forward_folds": [
+      "2025-04-01T00:00:00Z/2025-10-01T00:00:00Z",
+      "2025-10-01T00:00:00Z/2026-04-01T00:00:00Z",
+      "2026-04-01T00:00:00Z/2026-09-28T00:00:00Z"
+    ],
+    "sealed_holdout": "2026-09-28T00:00:00Z/2026-11-05T00:00:00Z",
+    "holdout_policy": "SEALED_AND_UNAVAILABLE_TO_STAGE_A",
+    "boundary_rule": "Every development/fold window starts flat. No position, statistic, decision, fill or funding attribution crosses a boundary. Prior rows may warm the fixed 24-bar statistic but cannot contribute P&L.",
+    "one_shot_rule": "Development can only reject C258. A development survivor runs unchanged through all three forward folds once. No threshold, side, symbol, regime, holding period, stop, pair count, cost or capital slice may be tuned or rescued; the sealed holdout remains closed."
+  },
+  "signal": {
+    "timeframe": "1h",
+    "decision_clock": "At every completed canonical 1h candle close d, after all inputs for d are causally available, form one cross-section. Decisions at d can fill only at the next available canonical 1h open.",
+    "effective_set": "PIT/filter-eligible symbols with finite contiguous completed closes at d and d-24h and at least 24 completed true ranges ending at d. Require at least 16 effective symbols; otherwise record a zero-trade decision.",
+    "return_24h": "r24=close_d/close_d_minus_24h-1 using exact canonical timestamps; compressed time or the nearest available earlier candle is forbidden.",
+    "robust_score": "m=median(r24 over the effective set); mad=median(abs(r24-m)); scale=1.4826*mad; z=(r24-m)/scale. Non-positive or non-finite scale makes the decision zero-trade.",
+    "tails": {
+      "long": "z>=+1.5",
+      "short": "z<=-1.5",
+      "rationale": "A fixed robust 1.5-scale cross-sectional tail is an ex-ante material-relative-move definition; it was not selected from C258 outcomes."
+    },
+    "ordering": "Long candidates sort by z descending then symbol ascending. Short candidates sort by z ascending then symbol ascending.",
+    "pairing": "Pair rank i long with rank i short for i=1..3. Require both tails. An unavailable, occupied or infeasible member causes indexed pair i to be skipped; never re-pair, backfill or promote an unpaired member. Continue independently to i+1.",
+    "weights": "Each admitted pair is 50% long and 50% short gross at actual rounded entry notionals. No beta, volatility, outcome or symbol weighting is fit.",
+    "duplicate_rule": "A symbol may occur once per decision and cannot open another C258 leg while already held by C258."
+  },
+  "execution": {
+    "entry": "Both legs enter atomically at the first available 1h open strictly after decision close d. Same-candle close, same-candle open and partial one-leg admission are forbidden.",
+    "fixed_exit": "Both legs exit at the first available 1h open whose open_time is at least six hours after actual entry. No signal exit, target, partial, trailing stop, pyramiding or DCA.",
+    "atr": "ATR24 uses completed causal 1h bars through d with true_range=max(high-low,abs(high-previous_close),abs(low-previous_close)) and Wilder RMA alpha=1/24, seeded by the first 24 valid true ranges inside the contiguous segment.",
+    "protective_stop": "Each leg receives a reduce-only stop two frozen ATR24 values from its raw entry reference price. Gap/open is checked before range touch. A long gap stop uses min(stop,bar_open), a short gap stop uses max(stop,bar_open); a non-gap range touch uses stop. Stops never embed slippage. If one leg stops, its mate remains protected and is flattened at the next available 1h open; if both stop in one bar, both fills are booked independently.",
+    "ambiguity": "When a stop and fixed exit can occur in the same unresolved bar, the stop wins. Missing next-open or exposure-lifecycle authority makes the whole candidate INCOMPLETE, never a favorable inferred fill or dropped episode.",
+    "atomic_failure": "If exactly one entry leg is accepted or the second leg is uncertain, keep the accepted leg protected and flatten it at the following available 1h open, never at the same open. Book all movement, fees, slippage and funding in C258 results.",
+    "exchange_rules": "Apply frozen point-in-time PRICE_FILTER, MARKET_LOT_SIZE, MIN_NOTIONAL and maximum quantity to every entry and exit. Floor quantity; never round up or substitute current exchangeInfo."
+  },
+  "risk": {
+    "pair_risk": "Size the two rounded legs down until aggregate modeled loss from simultaneous two-ATR stops plus stressed fees and stressed explicit adverse slippage on both entries and both stop exits is <=1R. Slippage is charged exactly once and is not embedded in reference-price movement.",
+    "max_concurrent_pairs": 3,
+    "max_open_risk_r": 3.0,
+    "max_pair_gross_leverage": 0.5,
+    "max_aggregate_gross_leverage": 1.5,
+    "capital_simulations_usd": [1000, 2000, 3000, 4000],
+    "feasibility": "A pair must pass exchange rounding and the impact cap for both legs at every reported capital. Failure skips the indexed pair before entry and is reported.",
+    "correlation_disclosure": "Report long/short gross imbalance, pair and book return correlations, BTC beta, same-hour cluster size and strategy-level overlap with C257. Dollar neutrality is not claimed to remove common crypto beta or crash correlation."
+  },
+  "costs": {
+    "taker_fee_bps_per_fill_per_leg": 5.0,
+    "adverse_slippage_bps_per_fill_per_leg": 2.0,
+    "stress_adverse_slippage_bps_per_fill_per_leg": 10.0,
+    "fills_per_pair_round_trip": 4,
+    "base_reference_round_trip_bps_of_initial_gross": 14.0,
+    "stress_reference_round_trip_bps_of_initial_gross": 30.0,
+    "pnl_rule": "Movement P&L uses raw reference entry/exit prices. For buys execution_price=reference_price*(1+slippage_bps/10000); for sells execution_price=reference_price*(1-slippage_bps/10000). Subtract abs(quantity)*abs(execution_price-reference_price) exactly once as slippage and abs(quantity*execution_price)*fee_bps/10000 exactly once as fees. Never compute movement from execution price and subtract slippage again.",
+    "funding": "At every settlement during exposure, book funding_pnl=-side_sign*abs(quantity)*causal_mark_price*funding_rate, with side_sign=+1 long and -1 short. Use the last verified 1h mark close strictly before nominal_time. An entry at the same timestamp precedes funding and includes it; an open exit precedes same-timestamp funding and excludes it; no debit or credit may be omitted.",
+    "impact": "For every proposed fill use the latest completed 1h quote-volume bar strictly before the fill. impact_ratio=abs(quantity*reference_price)/prior_quote_volume. Entry is infeasible above 0.10% or when authority is missing/non-positive. Required protective exits always execute; above-cap exits scale adverse slippage by max(1,impact_ratio/0.001) and make the fold INCOMPLETE_IMPACT_LIMIT.",
+    "stress": "Re-run the causal book with 5bp taker and 10bp adverse slippage per fill. Multiply negative funding debits by 1.5 and divide positive funding credits by 1.5; stress never improves a fill, changes selection or flips a funding sign."
+  },
+  "gates": {
+    "development_reject_if_any": [
+      "pre-cost gross expectancy<=0",
+      "mean after-cost net R<=0",
+      "profit factor<=1.05",
+      "fewer than 300 closed paired attempts",
+      "fewer than 12 distinct traded symbols",
+      "median fewer than 25 closed pairs per UTC week including zero weeks",
+      "stress-cost mean net R<=0",
+      "max closed-R drawdown>60R",
+      "any missing causal authority or incomplete exposed episode"
+    ],
+    "forward_pass_all_required": [
+      "aggregate mean after-cost net R>0.03",
+      "aggregate profit factor>1.10",
+      "at least 1000 closed paired attempts across at least 16 symbols",
+      "median at least 30 closed pairs per UTC week including zero weeks",
+      "at least 2 of 3 forward folds have positive net R",
+      "worst forward-fold mean net R>-0.05",
+      "long-leg and short-leg standalone net contributions are each non-negative",
+      "at least 55% of UTC calendar months have positive net R; zero-trade months remain in the denominator",
+      "at least 100 closes in each BTC-above/on-EMA200 and BTC-below-EMA200 decision regime, and each regime mean net R>-0.03",
+      "stress-cost aggregate mean net R>0 and profit factor>1.02",
+      "stationary-block-bootstrap one-sided performance p-value<=0.05/258",
+      "no symbol contributes more than 25% of sum(abs(symbol net R)); a zero denominator fails",
+      "the frozen drawdown disclosure tier passes",
+      "all exchange, impact, atomicity, causal-parity and required-report checks pass"
+    ],
+    "drawdown_tiers": {
+      "standard": "max drawdown<=15R",
+      "elevated": "15R<max drawdown<=30R and total net R/max drawdown>=1.5",
+      "high": "30R<max drawdown<=60R, total net R/max drawdown>=2.0, stress net R/stress max drawdown>=1.0, and future PAPER pair-risk multiplier<=min(0.5,15/max_drawdown_R)",
+      "reject": "max drawdown>60R"
+    },
+    "undefined_statistics": "FAIL_CLOSED",
+    "required_report": [
+      "paired and leg closes, scheduled/eligible/admitted/skipped/zero-trade decisions",
+      "net R, mean R, PF, win rate, max drawdown, recovery duration and return/drawdown ratio",
+      "gross R, fee drag, slippage drag, signed funding and impact failures",
+      "fold, week, month, side, symbol, regime and capital-simulation breakdowns",
+      "frequency, exposure, occupancy, correlation, BTC beta and C257 strategy overlap",
+      "base and stressed full-book results, bootstrap interval/p-value, authority gaps and full trial ledger"
+    ]
+  },
+  "statistics": {
+    "ordered_unit": "closed paired attempt ordered by entry timestamp then long symbol then short symbol",
+    "statistic": "mean after-cost net R per closed paired attempt",
+    "method": "Politis-Romano stationary bootstrap",
+    "expected_block_length_attempts": 21,
+    "resamples": 10000,
+    "seed": 25820261107,
+    "p_value": "Center ordered net-R observations by their observed mean; (1+count(null bootstrap mean>=observed mean))/(resamples+1).",
+    "confidence_interval": "two-sided percentile 95% interval from the uncentered stationary-bootstrap distribution"
+  },
+  "multiplicity": {
+    "numbered_candidate_family": 258,
+    "candidate_familywise_alpha_ceiling": 0.0001937984496124031,
+    "promotable_primary_count": 1,
+    "promotable_primary": "the combined inseparable long-leader/short-laggard paired book only",
+    "diagnostics_only": [
+      "long-leg standalone attribution",
+      "short-leg standalone attribution",
+      "sign-flipped pairs",
+      "seeded random eligible pairs",
+      "capital and regime slices"
+    ],
+    "ledger_rule": "Append every scheduled decision, zero-trade cross-section, indexed pair skip, attempt, atomic failure, base/stress row and rejection. Prior candidates and rejected families remain counted; diagnostics cannot be selected as alternatives.",
+    "no_rescue": "A side, symbol, regime, month, fold, capital slice, baseline or diagnostic cannot rescue the single primary. Any rule change is a new numbered candidate."
+  },
+  "paper_admission": {
+    "default_off": true,
+    "paper_testnet_only": true,
+    "prerequisites": [
+      "all forward gates pass on one exact clean protected head",
+      "independent exact-head reproduction passes with byte-bound authorities",
+      "runtime causal-parity, exchange-filter, stop-protection and rollback drills pass",
+      "isolated C258 book and immutable cohort evidence are ready"
+    ],
+    "bounded_canary": "Start at 0.25R aggregate pair risk, maximum three pairs and 0.75R total C258 open risk. High-drawdown tier applies the stricter frozen multiplier. No mainnet authority.",
+    "paper_transfer_gate": "At least 100 complete measured paired closes over at least 14 Cairo days, positive actual-cost mean net R and PF>1.05, no unprotected lot, no cost-incomplete ranked close, no risk/protection breach, and measured direction consistent with historical OOS. PAPER cannot rescue a historical failure.",
+    "rollback": "Any unknown account state, protection failure, authority drift, incomplete costs or causal mismatch disables new C258 entries immediately while existing testnet exposure remains protected and managed."
+  },
+  "falsification": [
+    "Reject at development on any development gate failure; do not open forward folds.",
+    "Reject after the one-shot forward run on any final gate failure; do not tune, subset, rescue or inspect the sealed holdout.",
+    "Reject if profitability disappears after realistic fees, adverse slippage, signed funding, exchange rounding or stress.",
+    "Reject if either leg supplies all economics or if common-market correlation defeats the disclosed pair-risk ceiling.",
+    "Reject any run that uses future membership, current filters, compressed time, fill-bar volume, missing authority substitution or a favorable inferred fill.",
+    "A rejection is final for C258 and immediately advances the next preregistered family."
+  ]
+}
