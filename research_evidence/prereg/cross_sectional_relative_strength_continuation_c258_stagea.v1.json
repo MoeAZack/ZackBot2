@@ -91,11 +91,23 @@
     "atr": "ATR24 uses completed causal 1h bars through d with true_range=max(high-low,abs(high-previous_close),abs(low-previous_close)) and Wilder RMA alpha=1/24, seeded by the first 24 valid true ranges inside the contiguous segment.",
     "protective_stop": "Each leg receives a reduce-only stop two frozen ATR24 values from its raw entry reference price. Gap/open is checked before range touch. A long gap stop uses min(stop,bar_open), a short gap stop uses max(stop,bar_open); a non-gap range touch uses stop. Stops never embed slippage. If one leg stops, its mate remains protected and is flattened at the next available 1h open; if both stop in one bar, both fills are booked independently.",
     "ambiguity": "When a stop and fixed exit can occur in the same unresolved bar, the stop wins. Missing next-open or exposure-lifecycle authority makes the whole candidate INCOMPLETE, never a favorable inferred fill or dropped episode.",
-    "atomic_failure": "If exactly one entry leg is accepted or the second leg is uncertain, keep the accepted leg protected and flatten it at the following available 1h open, never at the same open. Book all movement, fees, slippage and funding in C258 results.",
+    "atomic_failure": "If exactly one entry leg is accepted or the second leg is uncertain, create exactly one ATOMIC_ONE_LEG_LOSS closed-attempt row under the original pair attempt_id. Keep the accepted leg protected by its frozen 2ATR stop and flatten it at the following available 1h open, never at the same open; a stop touched first wins. Record every raw-reference movement cashflow, fee, explicit slippage and signed funding item. actual_net_cash is their exact sum. verdict_net_cash=min(actual_net_cash,-(sum(fee_cash)+sum(explicit_slippage_cash))) so favorable movement or funding cannot let an atomic execution defect rescue C258. At the final stop/cleanup fill timestamp append atomic_penalty_cash=verdict_net_cash-actual_net_cash (always <=0) after the actual fill cashflows; verdict cashflow drawdown uses actual event cashflows plus this penalty and therefore sums exactly to verdict_net_cash. atomic_initial_risk_cash is the accepted leg's raw reference-price loss from entry to its frozen stop plus stressed fee and explicit-slippage cash on that actual entry and one complete stop/cleanup exit, all exactly once; it must be finite and positive. atomic_trade_R=verdict_net_cash/atomic_initial_risk_cash. This row is included without exception in closed-pair sample count, net/mean R, PF, cashflow and marked drawdown, week/month/fold/side/symbol/regime attribution, bootstrap, concentration, stress replay and every development, forward and PAPER transfer gate. Zero accepted legs is a pre-entry indexed skip, not an economic row. Missing protection, cleanup, mark, funding or fill authority makes the entire candidate INCOMPLETE and cannot exclude the row.",
     "exchange_rules": "Apply frozen point-in-time PRICE_FILTER, MARKET_LOT_SIZE, MIN_NOTIONAL and maximum quantity to every entry and exit. Floor quantity; never round up or substitute current exchangeInfo."
   },
+  "sizing": {
+    "primary_capital_usd": 2000,
+    "diagnostic_capitals_usd": [1000, 3000, 4000],
+    "capital_selection_rule": "Only the complete 2000 USD replay can pass or reject economic, sample, frequency, regime, drawdown, inference and PAPER-admission gates. The 1000/3000/4000 USD replays are feasibility diagnostics and cannot rescue, replace, average with or select the primary.",
+    "book_equity": "Each replay starts with settled_cash_equity equal to its declared capital and no positions. At an entry open t: process funding_time<t; mark every existing leg with the latest verified 1h mark close whose close_time<t; execute due exits/cleanup; then book_equity=settled_cash_equity+sum(side_sign*qty*(causal_mark-raw_entry_reference_price)) over remaining legs. Same-open proposed legs contribute nothing before admission. Missing or non-positive equity/mark is INCOMPLETE.",
+    "r_cash": "R_cash_at_attempt=0.01*book_equity frozen immediately before that indexed pair attempt. requested_pair_risk_cash=1.0*R_cash_at_attempt. Each admitted normal pair stores immutable initial_pair_risk_cash equal to its actual rounded aggregate modeled simultaneous-stop loss; trade_R=pair verdict_net_cash/initial_pair_risk_cash. The value must be finite and positive.",
+    "continuous_start": "For each leg j, loss_per_unit_j=abs(raw_entry_reference_price_j-stop_reference_price_j)+stressed_entry_fee_per_unit_j+stressed_entry_slippage_per_unit_j+stressed_stop_fee_per_unit_j+stressed_stop_slippage_per_unit_j. loss_rate_per_raw_notional_j=loss_per_unit_j/raw_entry_reference_price_j. equal_raw_notional_start=min(0.25*book_equity,requested_pair_risk_cash/(loss_rate_per_raw_notional_long+loss_rate_per_raw_notional_short)). continuous_qty_j=equal_raw_notional_start/raw_entry_reference_price_j. Every denominator must be finite and positive.",
+    "step_floor_and_search": "For each leg independently set q0_j=floor(continuous_qty_j/stepSize_j)*stepSize_j using exact Decimal arithmetic. Validate minQty, maxQty and minNotional without rounding up. Starting only from (q0_long,q0_short), repeatedly compute raw notionals. If neutrality fails, decrement exactly one MARKET_LOT_SIZE step from the larger-notional leg; if notionals are exactly equal choose no decrement because neutrality already passes. Never increase a leg, change the pair, search upward or branch. After every decrement revalidate quantity/notional/filter bounds. Stop at the first passing pair; if a decrement would violate a bound, after 100000 decrements, or no passing state remains, record PAIR_SIZE_INFEASIBLE and skip before entry.",
+    "neutrality": "A rounded pair passes only when abs(long_raw_notional-short_raw_notional)/max(long_raw_notional,short_raw_notional)<=0.01. Raw notional=quantity*raw entry reference price before adverse slippage. The first passing state from the frozen decrement order is final; no alternative tie-break, closest-match optimization or caller override exists.",
+    "post_rounding_checks": "At the first neutrality-passing state recompute aggregate stressed simultaneous-stop loss from both raw stop moves and all four stressed fee/slippage fills exactly once. Require 0<initial_pair_risk_cash<=requested_pair_risk_cash, pair gross<=0.5*book_equity, and existing_remaining_stressed_stop_loss+initial_pair_risk_cash<=0.03*book_equity. If a post-rounding check fails, decrement the larger-raw-notional leg one step; on exact raw-notional equality decrement the leg whose symbol sorts lexicographically later, then return to the neutrality check. Apply the same bound/infeasible rules and never increase. Existing remaining loss is recomputed from current quantities to frozen stops plus stressed required-exit costs.",
+    "primary_gate": "All headline R, frequency, PF, drawdown, bootstrap and promotion values come only from the 2000 USD primary replay using this exact sizing algorithm."
+  },
   "risk": {
-    "pair_risk": "Size the two rounded legs down until aggregate modeled loss from simultaneous two-ATR stops plus stressed fees and stressed explicit adverse slippage on both entries and both stop exits is <=1R. Slippage is charged exactly once and is not embedded in reference-price movement.",
+    "pair_risk": "The sizing section defines requested and actual pair risk mechanically. Slippage is charged exactly once and is not embedded in reference-price movement.",
     "max_concurrent_pairs": 3,
     "max_open_risk_r": 3.0,
     "max_pair_gross_leverage": 0.5,
@@ -103,6 +115,13 @@
     "capital_simulations_usd": [1000, 2000, 3000, 4000],
     "feasibility": "A pair must pass exchange rounding and the impact cap for both legs at every reported capital. Failure skips the indexed pair before entry and is reported.",
     "correlation_disclosure": "Report long/short gross imbalance, pair and book return correlations, BTC beta, same-hour cluster size and strategy-level overlap with C257. Dollar neutrality is not claimed to remove common crypto beta or crash correlation."
+  },
+  "regime": {
+    "stream": "BTCUSDT 1h klines from the exact authority-v6 manifest, independent of whether BTCUSDT is in the current C258 PIT trading membership. Current/websocket/REST BTC data and another symbol are forbidden.",
+    "fold_reset_and_warmup": "Reset at each development or forward-fold start. Use only contiguous canonical BTCUSDT 1h closes inside that same window. The first 199 completed closes are warm-up and no C258 entry may be admitted. Seed EMA200 at the 200th completed close as math.fsum(the first 200 binary64 closes)/200. A missing/non-finite close breaks contiguity, discards the seed and requires 200 new contiguous closes before another admission.",
+    "ema_formula": "After the seed candle, EMA200_d=(2/201)*close_d+(199/201)*EMA200_previous, evaluated in IEEE-754 binary64 in that written operation order. The decision candle close is included once; no future or same-open value enters.",
+    "as_of": "At C258 decision close d, require the BTCUSDT candle with exact close timestamp d and the EMA200 value computed through d only. close_d>=EMA200_d is BTC_ABOVE_OR_ON_EMA200; close_d<EMA200_d is BTC_BELOW_EMA200. Equality belongs only to ABOVE_OR_ON. A pair decision lacking this exact causal label is zero-trade; an admitted row lacking or changing the label makes the candidate INCOMPLETE.",
+    "boundary": "No EMA seed or state crosses development/fold boundaries. Regime attribution is frozen at the pair's entry decision and every normal or atomic-failure row keeps that label through close."
   },
   "costs": {
     "taker_fee_bps_per_fill_per_leg": 5.0,
@@ -136,8 +155,8 @@
       "at least 2 of 3 forward folds have positive net R",
       "worst forward-fold mean net R>-0.05",
       "long-leg and short-leg standalone net contributions are each non-negative",
-      "at least 55% of UTC calendar months have positive net R; zero-trade months remain in the denominator",
-      "at least 100 closes in each BTC-above/on-EMA200 and BTC-below-EMA200 decision regime, and each regime mean net R>-0.03",
+      "strictly more than 55% of UTC calendar months intersecting the three folds have positive primary-replay net R; every intersecting zero-trade month remains in the denominator and atomic-failure rows remain included",
+      "at least 100 primary-replay closed attempts including atomic-failure rows in each frozen BTC_ABOVE_OR_ON_EMA200 and BTC_BELOW_EMA200 entry-decision regime, and each regime mean verdict R>-0.03",
       "stress-cost aggregate mean net R>0 and profit factor>1.02",
       "stationary-block-bootstrap one-sided performance p-value<=0.05/258",
       "no symbol contributes more than 25% of sum(abs(symbol net R)); a zero denominator fails",
@@ -163,12 +182,15 @@
   "statistics": {
     "ordered_unit": "closed paired attempt ordered by entry timestamp then long symbol then short symbol",
     "statistic": "mean after-cost net R per closed paired attempt",
-    "method": "Politis-Romano stationary bootstrap",
+    "method": "Politis-Romano stationary bootstrap with a frozen fixed-draw implementation",
     "expected_block_length_attempts": 21,
     "resamples": 10000,
-    "seed": 25820261107,
-    "p_value": "Center ordered net-R observations by their observed mean; (1+count(null bootstrap mean>=observed mean))/(resamples+1).",
-    "confidence_interval": "two-sided percentile 95% interval from the uncentered stationary-bootstrap distribution"
+    "prng": "numpy 2.5.3 numpy.random.Generator(numpy.random.PCG64(seed)); Generator.random(size=(resamples,n,2),dtype=float64) in C order. PCG64, not PCG64DXSM or default_rng substitution, is mandatory.",
+    "fixed_draw_stationary_resample": "For each replicate b and ordered observation position j consume exactly two pre-drawn float64 uniforms u_restart=data[b,j,0] and u_index=data[b,j,1]. At j=0 set index=floor(u_index*n) and ignore u_restart. At j>0, if u_restart<1/21 set index=floor(u_index*n), else set index=(previous_index+1)%n while still consuming u_index. Copy ordered verdict_R[index]. Thus each distribution consumes exactly resamples*n*2 uniforms and has output length n; n=0 fails closed.",
+    "null_seed": 25820261107,
+    "ci_seed": 25820261108,
+    "p_value": "Observed T=math.fsum(verdict_R)/n. Center each verdict_R by subtracting T, run exactly 10000 fixed-draw replicates with null_seed, compute each replicate mean with math.fsum/n, and report (1+count(T_star>=T))/(10000+1), inclusive upper tail.",
+    "confidence_interval": "Run exactly 10000 uncentered fixed-draw replicates with ci_seed. Compute each mean with math.fsum/n; report numpy.quantile(method='linear') at 0.025 and 0.975. Atomic-failure verdict_R observations are ordinary ordered observations in both distributions."
   },
   "multiplicity": {
     "numbered_candidate_family": 258,
