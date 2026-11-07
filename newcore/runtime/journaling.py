@@ -25,6 +25,9 @@ Protection, after a fill:
   NC-04 cannot admit, flattens the lot at market (``exit.stop_failed``) and raises the sticky ``protection_failed``.
 * A market order (entry or close) answered KNOWN is journaled WORKING and raises ``order_unresolved``: its executed
   quantity is not known, so nothing is built on it until the reconcile query path resolves it.
+* A full management close leaves the reduce-only stop working. Only a confirmed flat result starts its durable
+  cancellation. New entries then require a fresh REC-02 acknowledgement of the exact terminal journal sequence;
+  partial/unknown close or cancellation evidence keeps the account held.
 
 Entries are accepted only with a strategy ``DecisionKey`` (journal rule G4), only when nothing else is in flight and
 no problem is active, and only when NC-04 admits the entry, the algo protect and the fail-safe close.
@@ -106,6 +109,7 @@ class _Order:
     deadline_mono: int
     state: IntentState = IntentState.SUBMITTED
     stop_price: Decimal | None = None                 # an entry's NC-06 stop, used for its lot's first protect
+    cancelling: bool = False                         # a cancel of this existing intent, never a second submission
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +156,8 @@ class JournalingActionSink:
         self._triggered: dict[str, list] = {}       # intent_id -> [child exchange order id, fill reads without a full fill]
         self._next_query_mono: int | None = None
         self._query_seq = 0
+        self._entry_reconcile_after: int | None = None
+        self._reconciled_sequence: int | None = None
 
     # ------------------------------------------------------------------------------------------------ wiring
     def bind(self, binding: SinkBinding, monotonic_clock: Callable[[], int]) -> None:
@@ -203,6 +209,14 @@ class JournalingActionSink:
                 # An open lot with no live stop (for example a crash between the fill and its protect).
                 self._problems.add(SinkProblem.PROTECTION_FAILED)
                 self._note('recovered_unprotected_lot')
+            if lot.quantity == 0 and any(o.intent.owner_id == lot.lot_id for o in self._watched.values()):
+                # A crash after the close fill, before cancelling its stop. Do
+                # not reuse this symbol's exposure while the orphan is live.
+                self._problems.add(SinkProblem.RECOVERED_LIVE_INTENTS)
+                self._note('recovered_orphan_stop')
+        if any(intent.purpose is Purpose.CLOSE and final is not None
+               for intent, state, sent, final in intents.values()):
+            self._entry_reconcile_after = self._b.journal.last_sequence()
         if SinkProblem.RECOVERED_LIVE_INTENTS in self._problems:
             self._note('recovered_live_intents')
 
@@ -331,6 +345,43 @@ class JournalingActionSink:
                                                 stop_price=None, at_ms=at_ms)
         return self._send(decision, intent, action, 'classic')
 
+    def _cancel_flat_protection(self, lot: _Lot, at_ms: int) -> None:
+        """Only a journal-confirmed flat lot may lose its working protection.
+
+        The original intent's CANCELLING step is durable before NC-04 work.
+        An unreadable/rejected cancel never means the stop ended: HOLD until
+        reconciliation, with no new entry or second cancel submission.
+        """
+        for order in tuple(self._watched.values()):
+            if order.intent.owner_id != lot.lot_id:
+                continue
+            ref = OrderRef(symbol=order.intent.symbol, client_id=order.intent.client_order_id, route=order.route)
+            if not _admissible(Action.PROTECT, Operation.CANCEL, ref):
+                self._problems.add(SinkProblem.ORDER_UNRESOLVED)
+                self._note('cancel_route_unverified')
+                return
+            try:
+                self._step(order, IntentState.CANCELLING, max(at_ms, order.intent.created_at_ms))
+            except Exception:
+                self._problems.add(SinkProblem.ORDER_JOURNAL_FAILED)
+                return
+            self._watched.pop(order.intent.intent_id, None)
+            self._queries.pop(order.intent.intent_id, None)     # discard older read answers, not a cancel proof
+            self._triggered.pop(order.intent.intent_id, None)
+            order.cancelling = True
+            now = self._now_mono()
+            order.work_id = 'can-' + order.intent.intent_id
+            order.deadline_mono = now + 2 * self._b.order_deadline_ms
+            self._pending[order.work_id] = order
+            work = VenueWork(work_id=order.work_id, action=Action.PROTECT, operation=Operation.CANCEL,
+                             payload=ref, enqueued_at_ms=now, deadline_ms=now + self._b.order_deadline_ms)
+            try:
+                self._b.submit(work)
+            except Exception:
+                self._unresolved(order, Lookup.UNREADABLE)
+                return
+            self._note('sent:cancel_protect:' + order.route)
+
     def _fail_protection(self, lot: _Lot, at_ms: int) -> None:
         """Protection could not be placed: flatten the lot at market and hold the account."""
         self._problems.add(SinkProblem.PROTECTION_FAILED)
@@ -341,12 +392,32 @@ class JournalingActionSink:
     def _lot_busy(self, lot_id: str) -> bool:
         return any(o.intent.owner_id == lot_id for o in self._pending.values())
 
+    def acknowledge_reconciliation(self, sequence: int) -> bool:
+        """Runtime-only seam after a fresh REC-02 proof of this exact journal.
+
+        A cached/older proof cannot clear the post-close barrier. Keep its
+        sequence until admission, so any intervening mutation invalidates it.
+        Sticky problems and unfinished stop cleanup never clear here.
+        """
+        with self._lock:
+            if (self._b is None or type(sequence) is not int or self._problems or self._pending
+                    or sequence != self._b.journal.last_sequence()
+                    or (self._entry_reconcile_after is not None and sequence < self._entry_reconcile_after)
+                    or any(self._lots[o.intent.owner_id].quantity == 0 for o in self._watched.values())):
+                return False
+            self._reconciled_sequence = sequence
+            return True
+
     # ------------------------------------------------------------------------------------------------ ActionSink
     def accept_entry(self, account_id, decision, evaluation, key: DecisionKey | None = None) -> bool:
         from newcore import risk as nc06
         with self._lock:
             b = self._b
             if b is None or account_id != b.account_id or self._problems:
+                return False
+            if (self._entry_reconcile_after is not None
+                    and self._reconciled_sequence != b.journal.last_sequence()):
+                self._note('post_close_reconciliation_required')
                 return False
             if type(decision) is not nc06.ApprovedDecision or type(evaluation) is not nc06.RiskEvaluation:
                 return False
@@ -384,7 +455,10 @@ class JournalingActionSink:
                               reason=ReasonCode.ENTRY_SIGNAL, authority=Authority.STRATEGY, key=key, evidence=(),
                               symbol=key.symbol, side=side, subject_id=None, detail=_ascii_id(request.request_id)[:160],
                               intents=(intent,), policy_version=self._policy)
-            return self._send(record, intent, Action.ENTER, 'classic', stop_price=stop)
+            accepted = self._send(record, intent, Action.ENTER, 'classic', stop_price=stop)
+            if accepted:
+                self._entry_reconcile_after = None
+            return accepted
 
     def accept_management(self, account_id, plan) -> bool:
         with self._lock:
@@ -410,9 +484,10 @@ class JournalingActionSink:
                     steps.append(('protect', route, action))
                 elif type(action) in (CloseAction, FlattenRequired):
                     flat = type(action) is FlattenRequired
-                    if lot.last_protect is not None and lot.last_protect[2] is None:
-                        return False              # a live stop would outlive the close: needs the cancel path first
-                    if not 0 < action.quantity <= lot.quantity:
+                    # Full exits preserve the reduce-only stop until their
+                    # actual close result is durably known. Partial targets
+                    # require the separate NC-07 REDUCE lifecycle.
+                    if action.quantity != lot.quantity:
                         return False
                     if not self._probe(Action.FLATTEN if flat else Action.CLOSE, Purpose.CLOSE, 'classic',
                                        lot.symbol, lot.side, action.quantity):
@@ -556,6 +631,10 @@ class JournalingActionSink:
             self._unresolved(order, Lookup.NOT_FOUND)      # over-filled, or never fully filled: hold for reconcile
 
     def _journal_stop_final(self, order: _Order, exchange_order_id, status, executed, avg, observed_at_ms) -> None:
+        lot = self._lots.get(order.intent.owner_id)
+        if lot is not None and executed is not None and executed > lot.quantity:
+            self._unresolved(order, Lookup.UNREADABLE)
+            return
         self._watched.pop(order.intent.intent_id, None)
         # Stamped with the venue's observation time (never before the intent), so it does not run ahead of the
         # evidence REC-02 is about to fold.
@@ -604,10 +683,19 @@ class JournalingActionSink:
 
     def _fold(self, order: _Order, work: WorkResult) -> None:
         outcome = work.value if work.state is WorkState.COMPLETED else None
-        if type(outcome) is not OrderOutcome or outcome.ref.client_id != order.intent.client_order_id:
+        expected_ref = OrderRef(symbol=order.intent.symbol, client_id=order.intent.client_order_id, route=order.route)
+        if type(outcome) is not OrderOutcome or outcome.ref != expected_ref:
             self._unresolved(order)
             return
         kind = outcome.kind
+        if order.cancelling and kind is not OutcomeKind.FINAL:
+            self._unresolved(order, Lookup.NOT_FOUND if kind is OutcomeKind.NOT_FOUND else Lookup.UNREADABLE)
+            return
+        lot = self._lots.get(order.intent.owner_id)
+        if (kind is OutcomeKind.FINAL and lot is not None and outcome.executed_qty is not None
+                and outcome.executed_qty > lot.quantity):
+            self._unresolved(order, Lookup.UNREADABLE)
+            return
         if kind is OutcomeKind.NOT_FOUND:
             self._unresolved(order, Lookup.NOT_FOUND)
             return
@@ -684,9 +772,24 @@ class JournalingActionSink:
                 route = self._next_protect_route(lot) if order.state is IntentState.REJECTED else None
                 if route is None or not self._protect(lot, route, at):
                     self._fail_protection(lot, at)
+            if order.cancelling:
+                self._entry_reconcile_after = self._b.journal.last_sequence()
             return
         if executed > 0:
             lot.quantity = max(Decimal('0'), lot.quantity - executed)
+        if it.purpose is Purpose.CLOSE:
+            if lot.quantity == 0:
+                self._cancel_flat_protection(lot, at)
+                self._entry_reconcile_after = self._b.journal.last_sequence()
+            elif executed > 0:
+                # A final partial close is not a full exit. Keep the original
+                # reduce-only stop and HOLD instead of guessing another order.
+                self._problems.add(SinkProblem.ORDER_UNRESOLVED)
+                self._note('partial_close_requires_reconciliation')
+                if lot.last_protect is None or lot.last_protect[2] is not None:
+                    route = self._next_protect_route(lot)
+                    if route is None or not self._protect(lot, route, at):
+                        self._problems.add(SinkProblem.PROTECTION_FAILED)
 
     # ------------------------------------------------------------------------------------------------ view
     def snapshot(self) -> SinkSnapshot:

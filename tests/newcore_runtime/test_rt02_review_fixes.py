@@ -44,9 +44,11 @@ def test_F2_close_leaves_resting_stop_and_stops_exceed_position(h):
     _, decision = h.enter()
     h.drive()
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
-    assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is False   # the stop still rests
+    assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is True
     h.drive()
-    assert h.enter(key=KEY2)[0] is True
+    # This scripted venue has no cancel answer: the retained orphan stop must
+    # block all new exposure, instead of silently attaching to a later entry.
+    assert h.enter(key=KEY2)[0] is False
     h.drive()
     working_stop_qty = sum(q for p, q, s in states(h).values() if p == 'protect' and s == 'working')
     open_qty = sum(D(q) for _, q in h.sink.snapshot().lots)

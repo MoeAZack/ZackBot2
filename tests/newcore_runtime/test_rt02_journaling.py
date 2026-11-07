@@ -408,14 +408,14 @@ def _exit_plan(lot_id, qty):
     return plan
 
 
-def test_management_close_is_refused_while_the_stop_rests(h):
+def test_management_close_is_durable_while_the_stop_still_protects(h):
     _, decision = h.enter()
     h.drive()
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
     seq = h.journal.last_sequence()
-    # Review F2: a close would leave the resting stop larger than the position; it needs the cancel path first.
-    assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is False
-    assert h.journal.last_sequence() == seq
+    assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is True
+    assert h.journal.last_sequence() == seq + 3
+    assert len(h.sink._watched) == 1                         # never cancel before the close fill
 
 
 def test_management_close_is_journaled_and_sent_once_no_stop_rests(h):
@@ -423,6 +423,7 @@ def test_management_close_is_journaled_and_sent_once_no_stop_rests(h):
     h.drive()
     lot = K.derive_lot_id(A, K.derive_intent_id(A, KEY))
     h.sink._lots[lot].last_protect = ('algo', True, IntentState.CANCELLED)   # as after a (future) cancel path
+    h.sink._watched.clear()                                 # the venue has confirmed that stop ended
     before = len(h.venue.calls)
     assert h.sink.accept_management(A, _exit_plan(lot, decision.quantity)) is True
     assert h.kinds()[-3:] == [('decision', 'close'), ('intent', 'close', 'classic'), ('state', 'submitted')]

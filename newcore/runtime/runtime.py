@@ -167,6 +167,7 @@ class _Account:
         self.pending: _Pending | None = None
         self.last_refresh_mono: int | None = None
         self.proof_mono: int | None = None
+        self.proof_sequence: int | None = None
         self.plan_status: str | None = None
         self.plan_id: str | None = None
         self.restore_proven = False
@@ -299,6 +300,10 @@ class Runtime:
                              submit=lambda work: self._submit(account_id, work), result=row.ports.context.result,
                              cancel=row.ports.context.cancel, wall_clock=self._wall,
                              order_deadline_ms=self.config.evidence_deadline_ms), self._mono)
+            acknowledge = getattr(row.ports.actions, 'acknowledge_reconciliation', None)
+            if (callable(acknowledge) and row.proof_sequence is not None
+                    and row.journal.last_sequence() == row.proof_sequence):
+                acknowledge(row.proof_sequence)
         except Exception:
             row.holds.add(HoldCode.SINK_UNBOUND)
             row.proof_mono = None
@@ -365,6 +370,7 @@ def _fold(config: RuntimeConfig, row: _Account, results: tuple[WorkResult, ...],
     """Turn completed evidence into a REC-02 proof.  Returns the hold it caused, or None when confirmed."""
     if any(type(r) is not WorkResult or r.state is not WorkState.COMPLETED for r in results):
         return HoldCode.EVIDENCE_UNAVAILABLE
+    sequence = row.journal.last_sequence()
     durable, hold = _load_durable(config, row)
     if hold is not None:
         return hold
@@ -380,9 +386,21 @@ def _fold(config: RuntimeConfig, row: _Account, results: tuple[WorkResult, ...],
     except Exception:
         return HoldCode.RECONCILE_ERROR
     confirmed = plan.status in (PlanStatus.FLAT_CONFIRMED, PlanStatus.PROTECTED_CONFIRMED)
+    if row.journal.last_sequence() != sequence:
+        with row.lock:
+            row.proof_mono, row.proof_sequence = None, None
+        return HoldCode.RECONCILE_HOLD
+    acknowledge = getattr(row.ports.actions, 'acknowledge_reconciliation', None)
+    if confirmed and durable.portfolio_generation == sequence and callable(acknowledge):
+        acknowledge(sequence)
+        if row.journal.last_sequence() != sequence:
+            with row.lock:
+                row.proof_mono, row.proof_sequence = None, None
+            return HoldCode.RECONCILE_HOLD
     with row.lock:
         row.plan_status, row.plan_id = plan.status.value, plan.reconciliation_id
         row.proof_mono = now_mono if confirmed else None
+        row.proof_sequence = sequence if confirmed and durable.portfolio_generation == sequence else None
     return None if confirmed else HoldCode.RECONCILE_HOLD
 
 
