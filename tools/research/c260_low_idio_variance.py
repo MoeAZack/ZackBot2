@@ -20,7 +20,7 @@ HOUR_MS = 3_600_000
 DAY_MS = 24 * HOUR_MS
 RETURNS = 720
 PREREG = Path(__file__).resolve().parents[2] / 'contracts/c260_low_idio_variance/c260_prereg_proposal.v1.json'
-PREREG_SHA256 = '6740d3fdce4a604609febf5045844328beeb2183feee74f4c4b7d8d96b86ba7f'
+PREREG_SHA256 = '8b14aa5ebb554728462d759c35eae215220855b7933f5f069adbeb0d1a262d48'
 REUSED_EXECUTION_SHA256 = 'a0242ce5def9aa3c64b18f2554616e25d242c96d037d81f0362ae07505d4537f'
 
 
