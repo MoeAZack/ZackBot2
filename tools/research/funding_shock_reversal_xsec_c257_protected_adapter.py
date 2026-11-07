@@ -23,6 +23,8 @@ BOUND_CODE = (
  "tools/research/run_funding_shock_reversal_xsec_c257_protected.py",
  "tools/research/c257_archive_loader.py", "tools/research/authority_v6.py",
  "tools/research/manifest.py", "tools/research/universe.py", "tools/research/c257_reporting.py",
+ "tools/research/logical_trade_hours.py",
+ "contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json",
  "contracts/strategy_causal_pack_01/c257_reporting_diagnostic_amendment.v1.json")
 
 class ProtectedAdapterError(RuntimeError): pass
@@ -72,6 +74,10 @@ def authenticate_before_loader() -> Bindings:
         if oid != local or re.fullmatch(r"[0-9a-f]{40}", oid) is None:
             raise ProtectedAdapterError(f"protected tree blob differs for {item}")
         blobs[item] = oid
+    from tools.research import logical_trade_hours as H
+    try:H.validate_clarification(ROOT)
+    except (OSError,ValueError) as exc:
+        raise ProtectedAdapterError('historical source clarification changed') from exc
     digest = hashlib.sha256(json.dumps({"head": head, "blobs": blobs,
         "authority": amended["authority_v6"], "candidate": 257}, sort_keys=True,
         separators=(",", ":")).encode()).hexdigest()

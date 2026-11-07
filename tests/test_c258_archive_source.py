@@ -10,6 +10,11 @@ import pytest
 from tools.research import c258_archive_source as S
 
 
+def minute_tape(lo,hours=1):
+    return [(t,1.,2.,.5,1.,1.,t+59999,1.,1,1.,1.,'0')
+            for t in range(lo,lo+hours*S.C.HOUR_MS,60000)]
+
+
 def source(monkeypatch, records):
     monkeypatch.setattr(S.C, "validate_authority_pins", lambda *a, **k: {
         "manifest_v6": {"active_base_files_v5": records, "files_v6": []},
@@ -37,17 +42,17 @@ def test_unknown_or_sealed_fold_refuses_before_archive_open(monkeypatch, fold):
 def test_exact_contiguous_rows_and_overlap_refusal(monkeypatch):
     lo, _ = S.frozen_window("wf1")
     record = {"path": "bound", "sha256": "a"*64, "symbol": "BTCUSDT",
-              "series": "klines", "interval": "1h", "first_open_ms": lo,
-              "last_open_ms": lo+S.C.HOUR_MS}
+              "series": "klines", "interval": "1m", "first_open_ms": lo,
+              "last_open_ms": lo+2*S.C.HOUR_MS-60000}
     archive = source(monkeypatch, [record])
-    tape = [(lo, 1), (lo+S.C.HOUR_MS, 2)]
+    tape = minute_tape(lo,2)
     monkeypatch.setattr(S, "_read_record_rows", lambda *a, **k: ({}, tape))
     result = archive.load(symbol="BTCUSDT", stream="klines", fold="wf1",
                           start_ms=lo, end_ms=lo+2*S.C.HOUR_MS)
-    assert result.rows == tuple(tape)
+    assert len(result.rows)==2 and [row[0] for row in result.rows]==[lo,lo+S.C.HOUR_MS]
     assert result.records == (("bound", "a"*64),)
     tape.pop()
-    with pytest.raises(S.C.IncompleteAuthority, match="missing canonical"):
+    with pytest.raises(S.C.IncompleteAuthority, match="missing|partial"):
         archive.load(symbol="BTCUSDT", stream="klines", fold="wf1",
                      start_ms=lo, end_ms=lo+2*S.C.HOUR_MS)
     tape.append(tape[0])
@@ -138,16 +143,16 @@ def test_typed_source_preserves_mark_close_and_declared_funding_cadence(monkeypa
 
 def test_real_v5_path_supplies_omitted_stream_symbol_interval(monkeypatch):
     lo, _ = S.frozen_window("wf1")
-    path = "um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-04.zip"
+    path = "um/monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2025-04.zip"
     archive = source(monkeypatch, [{"path": path, "sha256": "a"*64,
         "first_open_ms": lo, "last_open_ms": lo}])
     def read(store, record, **kwargs):
         assert (record["symbol"], record["series"], record["interval"]) == (
-            "BTCUSDT", "klines", "1h")
-        return {}, [(lo, "1")]
+            "BTCUSDT", "klines", "1m")
+        return {}, minute_tape(lo)
     monkeypatch.setattr(S, "_read_window_rows", read)
     assert archive.load(symbol="BTCUSDT", stream="klines", fold="wf1",
-                        start_ms=lo, end_ms=lo+S.C.HOUR_MS).rows == ((lo, "1"),)
+                        start_ms=lo, end_ms=lo+S.C.HOUR_MS).rows[0][7] == 60.
 
 
 def test_variable_exhaustive_funding_uses_actual_mark_close_and_leg_exit():
@@ -200,7 +205,22 @@ def test_actual_boundary_zip_opens_only_time_and_open_not_sealed_range(tmp_path,
     target.parent.mkdir(parents=True)
     target.write_bytes(raw)
     archive = source(monkeypatch, [{"path": relative, "sha256": hashlib.sha256(raw).hexdigest()}])
+    archive._records=tuple(({**record,'raw_sha256':record['sha256']},True) for record,_ in archive._records)
     archive._store = tmp_path
     opened = archive.boundary_open(symbol="BTCUSDT", fold="wf3")
     assert opened == S.C.OpenBar(boundary, 100)
     assert not hasattr(opened, "high") and not hasattr(opened, "quote_volume")
+
+
+def test_historical_fold_end_requires_only_exact_minute_open_not_future_hour(tmp_path,monkeypatch):
+    _,boundary=S.frozen_window('wf1')
+    relative='um/monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2025-10.zip'
+    buffer=io.BytesIO()
+    with zipfile.ZipFile(buffer,'w') as archive:
+        archive.writestr('boundary.csv',f'{boundary},100,FORBIDDEN_HIGH,FORBIDDEN_CLOSE\n'
+                         f'{boundary+60000},FORBIDDEN_FUTURE_OPEN,FORBIDDEN_RANGE\n')
+    raw=buffer.getvalue();target=tmp_path/relative
+    target.parent.mkdir(parents=True);target.write_bytes(raw)
+    archive=source(monkeypatch,[{'path':relative,'sha256':hashlib.sha256(raw).hexdigest()}])
+    archive._store=tmp_path
+    assert archive.boundary_open(symbol='BTCUSDT',fold='wf1')==S.C.OpenBar(boundary,100.)

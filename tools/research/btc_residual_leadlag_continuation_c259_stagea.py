@@ -1363,7 +1363,8 @@ class ProtectedSourceArchive:
         extension = manifest.get("files_v6", ())
         if not isinstance(active, list) or not isinstance(extension, list):
             raise IncompleteAuthority("manifest source record sets are malformed")
-        records = tuple(dict(record) for record in (*active, *extension)
+        records = tuple({**record, '_logical_new_source':index >= len(active)}
+                        for index,record in enumerate((*active, *extension))
                         if isinstance(record, Mapping))
         if len(records) != len(active) + len(extension):
             raise IncompleteAuthority("manifest source record is malformed")
@@ -1380,6 +1381,8 @@ class ProtectedSourceArchive:
                     raise IncompleteAuthority("source coordinates differ from bound path")
                 record[name]=coordinates[name]
         self._records = records
+        from tools.research import logical_trade_hours as H
+        H.validate_clarification(ROOT)
         self._cache: dict[tuple[str, int, int, bool], tuple[dict[int, Bar | BoundaryOpen], dict[int, PositionMark],
                                      tuple[FundingEvent, ...]]] = {}
         self._capability = capability
@@ -1462,19 +1465,26 @@ class ProtectedSourceArchive:
         bars: dict[int, Bar | BoundaryOpen] = {}
         marks: dict[int, PositionMark] = {}
         funding: dict[int, FundingEvent] = {}
+        from tools.research import logical_trade_hours as H
+        minutes: dict[int, object] = {}
         relevant = [record for record in self._records if record.get("symbol") == symbol
-                    and (record.get("series"), record.get("interval")) in {
-                        ("klines", "1h"), ("markPriceKlines", "1h"),
-                        ("fundingRate", None)}]
-        if {(record.get("series"), record.get("interval")) for record in relevant} != {
-                ("klines", "1h"), ("markPriceKlines", "1h"), ("fundingRate", None)}:
+                    and ((record.get('series') == 'klines' and H.trade_window(record,
+                          new=record['_logical_new_source'], start_ms=start_ms,
+                          end_ms=end_ms+int(boundary_open)) is not None)
+                         or (record.get('series'),record.get('interval')) in {
+                             ('markPriceKlines','1h'),('fundingRate',None)})]
+        if {record.get("series") for record in relevant} != {'klines','markPriceKlines','fundingRate'}:
             raise IncompleteAuthority("protected source lacks a required stream")
         for record in sorted(relevant, key=lambda row: str(row.get("path", ""))):
             series = record.get("series")
             bounds = self._record_bounds(record)
             # Disjoint files are rejected by metadata before any bytes are opened.
             upper = end_ms+1 if boundary_open and series in {"klines", "fundingRate"} else end_ms
-            if bounds is None or bounds[1] <= start_ms or bounds[0] >= upper:
+            lower = start_ms
+            if series == 'klines':
+                lower,upper = H.trade_window(record, new=record['_logical_new_source'],
+                                             start_ms=lower,end_ms=upper)
+            if bounds is None or bounds[1] <= lower or bounds[0] >= upper:
                 continue
             path = record.get("path")
             expected = record.get("raw_sha256", record.get("sha256"))
@@ -1486,10 +1496,26 @@ class ProtectedSourceArchive:
                 raise IncompleteAuthority(f"missing protected source bytes: {path}") from exc
             if _sha(raw) != expected:
                 raise IncompleteAuthority(f"protected source byte mismatch: {path}")
+            if series == 'klines':
+                source = record.get('source',{})
+                target = self._safe_path(path)
+                try:
+                    if (source.get('archive_checksum') != expected
+                            or Path(str(target)+'.ok').read_text().strip() != expected
+                            or len(raw) != record.get('raw_bytes',record.get('bytes',len(raw)))):
+                        raise IncompleteAuthority('protected trade checksum/size mismatch')
+                    if record['_logical_new_source']:
+                        from tools.research import authority_v6 as V
+                        checksum = Path(str(target)+'.CHECKSUM').read_bytes()
+                        if (_sha(checksum) != source['checksum_raw_sha256']
+                                or V.parse_official_checksum(checksum,target.name) != expected):
+                            raise IncompleteAuthority('protected official trade checksum mismatch')
+                except (OSError,KeyError) as exc:
+                    raise IncompleteAuthority('protected trade source sidecar missing') from exc
             for row in self._rows(raw, path):
                 try:
                     timestamp = int(row["fundingTime"] if isinstance(row, Mapping) else row[0])
-                    if not start_ms <= timestamp < upper:
+                    if not lower <= timestamp < upper:
                         continue
                     # Only timestamps are interpreted before this split clip.
                     # The allowed end-boundary open does not expose its range.
@@ -1499,7 +1525,14 @@ class ProtectedSourceArchive:
                         if series == "klines":
                             if timestamp == end_ms:
                                 value = BoundaryOpen(timestamp, float(row[1]))
+                            elif not record['_logical_new_source']:
+                                if timestamp in minutes:
+                                    raise IncompleteAuthority('duplicate protected minute timestamp')
+                                minutes[timestamp] = row
+                                continue
                             else:
+                                if timestamp % HOUR_MS or int(row[6]) != timestamp+HOUR_MS-1:
+                                    raise ValueError('noncanonical native hourly trade close')
                                 value = Bar(timestamp, float(row[1]), float(row[2]),
                                             float(row[3]), float(row[4]), float(row[7]))
                             value.validate()
@@ -1520,6 +1553,15 @@ class ProtectedSourceArchive:
                         funding[timestamp] = FundingEvent(timestamp, rate)
                 except (KeyError, IndexError, TypeError, ValueError) as exc:
                     raise IncompleteAuthority(f"invalid protected source row: {path}") from exc
+        try:
+            for row in H.exact_hours(minutes[t] for t in sorted(minutes)):
+                if row[0] in bars:
+                    raise ValueError('overlapping protected logical hour')
+                value = Bar(row[0],*(float(row[i]) for i in (1,2,3,4,7)))
+                value.validate()
+                bars[row[0]] = value
+        except ValueError as exc:
+            raise IncompleteAuthority(str(exc)) from exc
         result = bars, marks, tuple(funding[key] for key in sorted(funding))
         self._cache[key] = result
         return result

@@ -53,6 +53,20 @@ def _zip_csv(name: str, rows: list[list[object]]) -> bytes:
     return buffer.getvalue()
 
 
+def _minute_rows(rows):
+    result=[]
+    for row in rows:
+        try:float(row[2]);float(row[4])
+        except (ValueError,IndexError):
+            result.append(row);continue
+        for minute in range(60):
+            t=row[0]+minute*60000
+            result.append([t,*row[1:5],row[5] if minute==0 else 0,t+59999,
+                           row[7] if minute==0 else 0,row[8] if minute==0 else 0,
+                           row[9] if minute==0 else 0,row[10] if minute==0 else 0,row[11]])
+    return result
+
+
 def _authority_repo(tmp_path: Path, schema_attack: str | None = None,
                     source_records: list[dict] | None = None) -> tuple[Path, c259.AuthorityPins]:
     repo = tmp_path / "authority"
@@ -350,6 +364,13 @@ def test_wf3_end_still_exposes_only_flatten_open_and_due_funding(tmp_path, monke
         records.append({"path": path, "symbol": "ALT", "series": series,
             "interval": None if series == "fundingRate" else "1h", "raw_sha256": c259._sha(raw),
             "declared_start_ms": end-c259.HOUR_MS, "declared_end_ms": end+2*c259.HOUR_MS})
+        records[-1]['_logical_new_source']=True
+        if series=='klines':
+            digest=c259._sha(raw)
+            checksum=f'{digest}  {path}\n'.encode()
+            (tmp_path/(path+'.ok')).write_text(digest)
+            (tmp_path/(path+'.CHECKSUM')).write_bytes(checksum)
+            records[-1]['source']={'archive_checksum':digest,'checksum_raw_sha256':c259._sha(checksum)}
     monkeypatch.setattr(SOURCE_ARCHIVE, "_records", records)
     monkeypatch.setattr(SOURCE_ARCHIVE, "_cache", {})
     monkeypatch.setattr(SOURCE_ARCHIVE, "_safe_path", lambda path: tmp_path/path)
@@ -407,7 +428,7 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
     for rows in (kline_rows, mark_rows):
         rows.append([split_end+c259.HOUR_MS]+["FORBIDDEN_FORWARD_ECONOMICS"]*11)
     payloads = {
-        "um/monthly/klines/ALT/1h/ALT-1h-test.zip": _zip_csv("klines.csv", kline_rows),
+        "um/monthly/klines/ALT/1m/ALT-1m-test.zip": _zip_csv("klines.csv", _minute_rows(kline_rows)),
         "um/monthly/markPriceKlines/ALT/1h/ALT-1h-test.zip": _zip_csv(
             "marks.csv", mark_rows),
         "um/monthly/fundingRate/ALT/ALT-fundingRate-test.zip": _zip_csv(
@@ -421,7 +442,7 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
     records = []
     for path, raw in payloads.items():
         if "/klines/" in path:
-            series, interval = "klines", "1h"
+            series, interval = "klines", "1m"
         elif "/markPriceKlines/" in path:
             series, interval = "markPriceKlines", "1h"
         else:
@@ -431,6 +452,7 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
         if series == "klines":
             records.append({"path": path, "interval": interval, "symbol": symbol,
                             "sha256": hashlib.sha256(raw).hexdigest(),
+                            'source':{'archive_checksum':hashlib.sha256(raw).hexdigest()},
                             "first_open_ms": timestamps[0],
                             "last_open_ms": split_end+c259.HOUR_MS})
         else:
@@ -449,6 +471,8 @@ def test_protected_source_loader_rejects_omit_mutate_and_cross_source(
         target = store / Path(*path.split("/"))
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(raw)
+        if '/klines/' in path:
+            Path(str(target)+'.ok').write_text(hashlib.sha256(raw).hexdigest())
     authority = c259.validate_authority_pins(pins, repo=repo)
     archive = authority.open_source(store)
     bars = tuple(_bar(timestamp, 100, 101, 99, 100)

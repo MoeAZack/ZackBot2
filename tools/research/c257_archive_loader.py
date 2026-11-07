@@ -18,6 +18,7 @@ from tools.research import c257_successor_guard as G
 from tools.research import funding_shock_reversal_xsec_c257_evaluator as E
 from tools.research import funding_shock_reversal_xsec_c257_stagea as S
 from tools.research import manifest as M
+from tools.research import logical_trade_hours as H
 
 
 class ArchiveLoaderError(S.IncompleteAuthority):
@@ -56,6 +57,7 @@ class ProtectedArchiveLoader:
             if documents[name]["digest"] != pin["content_digest"]:
                 raise ArchiveLoaderError("authority output content checksum changed")
         G._verify_output_structure(documents, hashes)
+        H.validate_clarification(G.ROOT)
         self.manifest = documents["manifest_v6"]
         self.pit = documents["pit_v9"]
         self.filters = documents["filter_v4"]
@@ -212,24 +214,40 @@ class ProtectedArchiveLoader:
         read_symbols = symbols | {"BTCUSDT"}
         warm = start-32*8*S.HOUR_MS
         tables: dict[tuple[str, str], dict[int, object]] = {}
+        minutes: dict[str, dict[int, object]] = {}
         for new, records in ((False, self.manifest["active_base_files_v5"]),
                              (True, self.manifest["files_v6"])):
             for record in records:
                 meta = M.archive_meta(record["path"])
                 stream, symbol = meta["series"], meta["symbol"]
-                if symbol not in read_symbols or (stream, meta["interval"]) not in (
-                        ("klines", "1h"), ("markPriceKlines", "1h"), ("fundingRate", None)):
+                if symbol not in read_symbols:
                     continue
+                window = (H.trade_window(meta, new=new, start_ms=warm, end_ms=end)
+                          if stream == 'klines' else (warm,end)
+                          if (stream,meta['interval']) in {('markPriceKlines','1h'),('fundingRate',None)} else None)
+                if window is None:
+                    continue
+                read_start,read_end = window
                 if symbol not in symbols and stream != "klines":
                     continue
-                if meta["month_start_ms"] >= end or meta["month_end_ms"] <= warm:
+                if meta["month_start_ms"] >= read_end or meta["month_end_ms"] <= read_start:
                     continue
-                target = tables.setdefault((symbol, stream), {})
-                for row in self._source_rows(record, warm, end, new=new):
+                target = (minutes.setdefault(symbol,{}) if stream=='klines' and not new
+                          else tables.setdefault((symbol, stream), {}))
+                for row in self._source_rows(record, read_start, read_end, new=new):
                     timestamp = int(row["fundingTime"] if isinstance(row, Mapping) else row[0])
                     if timestamp in target:
                         raise ArchiveLoaderError("duplicate source timestamp in active authority")
                     target[timestamp] = row
+        for symbol, rows in minutes.items():
+            target = tables.setdefault((symbol,'klines'),{})
+            try:
+                for row in H.exact_hours(rows[t] for t in sorted(rows)):
+                    if row[0] in target:
+                        raise ValueError('overlapping logical hourly authority')
+                    target[row[0]] = row
+            except ValueError as exc:
+                raise ArchiveLoaderError(str(exc)) from exc
         bars, marks, funding, funding_rates = {}, {}, {}, {}
         for symbol in read_symbols:
             bars[symbol] = tuple(S.HourBar(t, *(_number(row[i]) for i in (1,2,3,4,7)))

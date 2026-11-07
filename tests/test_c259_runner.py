@@ -93,8 +93,8 @@ def checksum_cli(tmp_path_factory,request):
         for rate in returns:
             price*=math.exp(float(rate));closes.append(round(price,8))
         for series in ("klines","markPriceKlines","fundingRate"):
-            token="fundingRate" if series=="fundingRate" else "1h"
-            rel=f"um/monthly/{series}/{symbol}/"+("" if token=="fundingRate" else "1h/")+f"{symbol}-{token}-2025-01.zip"
+            token="fundingRate" if series=="fundingRate" else '1m' if series=='klines' else "1h"
+            rel=f"um/monthly/{series}/{symbol}/"+("" if token=="fundingRate" else token+'/')+f"{symbol}-{token}-2025-01.zip"
             lines=[]
             for hour in range(744):
                 if getattr(request,"param",None)=="exposed_gap" and series=="klines" and symbol!="BTCUSDT" and hour==724:
@@ -110,6 +110,11 @@ def checksum_cli(tmp_path_factory,request):
                     # Poisoned future ranges inside the same calendar archive
                     # may be checksum-hashed but must never be interpreted.
                     close=str(closes[hour]) if hour<739 else "FORBIDDEN_FORWARD_VALUE"
+                    if series=='klines' and hour<739:
+                        for minute in range(60):
+                            t=timestamp+minute*60000
+                            lines.append(f'{t},{open_},{high},{low},{close},{1 if minute==0 else 0},{t+59999},{100000000 if minute==0 else 0},{1 if minute==0 else 0},{1 if minute==0 else 0},{1 if minute==0 else 0},0')
+                        continue
                     lines.append(f"{timestamp},{open_},{high},{low},{close},1,{timestamp+E.HOUR_MS-1},100000000,1,1,1,0")
             output=io.BytesIO()
             with zipfile.ZipFile(output,"w",compression=zipfile.ZIP_DEFLATED) as archive:
@@ -248,7 +253,7 @@ def test_readonly_source_rejects_holdout_and_unbound_loader(checksum_cli):
         source.streams("BTCUSDT","sealed_holdout")
 
 
-@pytest.mark.parametrize("attack",["receipt","implementation","dependency","numpy_version"])
+@pytest.mark.parametrize("attack",["receipt","implementation","dependency","numpy_version","hour_helper","clarification"])
 def test_wrong_protected_receipt_or_runtime_dependency_blocks_before_identity(checksum_cli,monkeypatch,attack):
     repo,store,_,_=checksum_cli
     if attack=="receipt":
@@ -263,7 +268,10 @@ def test_wrong_protected_receipt_or_runtime_dependency_blocks_before_identity(ch
     elif attack=="numpy_version":monkeypatch.setattr(E.np,"__version__","0.0.0")
     else:
         original=E._git
-        target="tools/research/c259_runner.py" if attack=="implementation" else "tools/research/btc_residual_leadlag_continuation_c259_stagea.py"
+        target=({'implementation':'tools/research/c259_runner.py',
+                 'hour_helper':'tools/research/logical_trade_hours.py',
+                 'clarification':'contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json'}
+                .get(attack,'tools/research/btc_residual_leadlag_continuation_c259_stagea.py'))
         def git(root,*args,**kwargs):
             if args==("hash-object","--",target):return "0"*40
             return original(root,*args,**kwargs)
@@ -348,7 +356,7 @@ def test_ranked_same_side_infeasible_candidate_advances_without_cross_side_subst
 
 
 @pytest.mark.parametrize("checksum_cli",["exposed_gap"],indirect=True)
-def test_real_checksum_gap_after_acceptance_retains_exposure_and_blocks_forward(checksum_cli,capsys):
+def test_static_whole_hour_gap_fails_before_admission_without_invented_costs(checksum_cli,capsys):
     _,store,_,_=checksum_cli
     assert CLI.main(["--evaluate","--store",str(store)])==0
     packet=json.loads(capsys.readouterr().out)
@@ -356,6 +364,41 @@ def test_real_checksum_gap_after_acceptance_retains_exposure_and_blocks_forward(
     assert result["verdict"]=="DATA_INCOMPLETE_DEVELOPMENT"
     assert not result["forward_opened"]
     report=result["primary_development"]
+    assert not report['partial_exposed_episodes_retained']
+    assert not any(row.get('accepted_quantity') for row in report['authority_failures'])
+    assert any('missing entire internal' in row['reason'] for row in report['authority_failures'])
+
+
+def test_real_checksum_gap_after_acceptance_retains_exposure_and_blocks_forward(checksum_cli,capsys,monkeypatch,tmp_path):
+    _,store,start,_=checksum_cli
+    # Complete checksum-bound streams pass source validation. Only a later
+    # boundary lookup fails, after real synthetic entry fills were created.
+    # This preserves the exposed-failure path independently of pre-entry gaps.
+    monkeypatch.setattr(R,'_identity_directory',lambda:tmp_path/'synthetic-exposed-claim')
+    entered=set();failed=[]
+    original_fill=E.make_fill
+    def make_fill(**kwargs):
+        fill=original_fill(**kwargs)
+        if kwargs['phase']=='ENTRY':entered.add((kwargs['symbol'],kwargs['timestamp_ms']))
+        return fill
+    original_maps=R._stream_maps
+    class MissingAfterEntry(dict):
+        def get(self,t,default=None):
+            if t==start+724*E.HOUR_MS and entered:
+                failed.append(t)
+                return None
+            return super().get(t,default)
+    def stream_maps(stream):
+        bars,marks=original_maps(stream)
+        return MissingAfterEntry(bars),marks
+    monkeypatch.setattr(E,'make_fill',make_fill)
+    monkeypatch.setattr(R,'_stream_maps',stream_maps)
+    assert CLI.main(['--evaluate','--store',str(store)])==0
+    packet=json.loads(capsys.readouterr().out)
+    result=packet['result']['sides'][E.SIDES[1]]
+    assert entered and failed and result['verdict']=='DATA_INCOMPLETE_DEVELOPMENT'
+    assert not result['forward_opened']
+    report=result['primary_development']
     assert report["partial_exposed_episodes_retained"]
     assert not report["all_accepted_exposure_economics_defined"]
     failure=next(row for row in report["authority_failures"] if row.get("accepted_quantity"))

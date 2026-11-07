@@ -14,6 +14,8 @@ IMPLEMENTATION_PATHS = (
     "tools/research/run_cross_sectional_relative_strength_continuation_c258_stagea.py",
     "tools/research/authority_v6.py", "tools/research/authority_v6_runner.py",
     "tools/research/manifest.py", "tools/research/universe.py",
+    "tools/research/logical_trade_hours.py",
+    "contracts/strategy_causal_pack_01/c257_259_hourly_source_correction.v2.json",
 )
 
 
@@ -65,6 +67,8 @@ def protected_amendment(root: Path, *, verify_local_code: bool = True):
                                   or C._git(root, "status", "--porcelain")):
             raise ValueError("real evaluation requires clean exact protected HEAD")
         evidence = doc["independent_acceptance"]
+        from tools.research import logical_trade_hours as H
+        H.validate_clarification(C.ROOT)
         evidence_path = evidence["path"]
         if Path(evidence_path).is_absolute() or ".." in Path(evidence_path).parts:
             raise ValueError("invalid acceptance evidence path")
