@@ -1,0 +1,33 @@
+{
+  "format": "zb-c257-successor-adapter-prep/1",
+  "candidate_id": 257,
+  "status": "PREP_ONLY_FAIL_CLOSED",
+  "base_commit": "a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8",
+  "successor_contract_path": "research_evidence/prereg/funding_shock_reversal_xsec_c257_successor.v1.json",
+  "guard_path": "tools/research/c257_successor_guard.py",
+  "evaluator": null,
+  "adapter": null,
+  "evaluation_cli": null,
+  "allowed_cli": ["--verify-scaffold"],
+  "required_authority_outputs": ["manifest_v6", "pit_v9", "filter_v4", "coverage_v4"],
+  "required_authority_pin_fields": ["path", "byte_sha256", "content_digest"],
+  "required_coverage_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+  "required_independent_reviews": [
+    "authority-v6 builder and exact output bytes",
+    "C257 mechanical authority-pin amendment",
+    "future evaluator and adapter exact head",
+    "future economic result and PAPER admission"
+  ],
+  "capability_policy": {
+    "network": "DENY",
+    "market_files": "DENY",
+    "holdout": "DENY",
+    "outcome_store": "DENY",
+    "evaluation_claim": "DENY",
+    "paper": "DENY",
+    "mainnet": "DENY"
+  },
+  "failure_policy": "Any absent/malformed pin, unexpected contract mutation, authority mismatch, non-zero coverage gap, missing review or implemented evaluation path fails closed before opening a market file or creating an identity.",
+  "roadmap_fit": "Prestage only the fail-closed verification seam needed to turn the exact C256 economics into C257 after authority-v6 is protected and exact-pinned.",
+  "deferred": "All data access, evaluation, claims, outcomes, PAPER/testnet activation and mainnet."
+}

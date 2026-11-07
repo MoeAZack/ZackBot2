@@ -1,0 +1,91 @@
+{
+  "format": "zb-strategy-successor-preregistration/1",
+  "candidate_id": 257,
+  "candidate_key": "funding_shock_reversal_xsec_8h",
+  "base_commit": "a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8",
+  "frozen_at_cairo": "2026-11-07T03:16:49+02:00",
+  "status": "FROZEN_SUCCESSOR_SCAFFOLD_AUTHORITY_PINS_ABSENT",
+  "default_off": true,
+  "evaluation_locked": true,
+  "paper_eligibility": "BLOCK_UNTIL_AUTHORITY_V6_EXACT_PIN_AND_INDEPENDENT_OOS_PASS",
+  "roadmap_fit": "First fresh numbered successor after C256 was rejected before any market or outcome read solely because frozen authority-v5 did not cover its sealed holdout.",
+  "c256_terminal_pre_market_rejection": {
+    "contract_commit": "6cc7148a453be054f5c02ecf1eecc8369fcfc533",
+    "contract_path": "research_evidence/prereg/funding_shock_reversal_xsec_c256_stagea.v1.json",
+    "contract_byte_sha256": "88294e16a44c4e2219284abeb26f4085123b9fd9de0c5120d0a19d5b84a94b54",
+    "contract_git_blob_oid": "1a12852c5d77ddb3c946f068c4c23bda88cf7ac9",
+    "contract_pr": "https://github.com/MoeAZack/ZackBot2/pull/312",
+    "runner_pr": "https://github.com/MoeAZack/ZackBot2/pull/313",
+    "adapter_pr": "https://github.com/MoeAZack/ZackBot2/pull/315",
+    "verdict_comment": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-6698732923",
+    "reason": "Frozen manifest-v5 ended before the sealed holdout and PIT-v8 authority expired one week into it.",
+    "market_rows_read": 0,
+    "holdout_rows_read": 0,
+    "outcomes_read": 0,
+    "evaluation_identities_created": 0,
+    "tuning_or_rescue_permitted": false
+  },
+  "economic_inheritance": {
+    "source": "The exact C256 contract bytes identified above are the sole economic specification. C257 adds no alternative parameter, diagnostic promotion path or economic overlay.",
+    "unchanged_sections": [
+      "hypothesis",
+      "economic_distinction",
+      "walk_forward",
+      "funding_surprise",
+      "selection_and_pairing",
+      "execution",
+      "position_and_portfolio",
+      "costs",
+      "gates",
+      "bootstrap_specification",
+      "expected_test_count",
+      "trial_budget",
+      "multiplicity",
+      "falsification"
+    ],
+    "exact_rule": "Every value in every unchanged section is inherited byte-semantically from the exact C256 contract. Signal, thresholds, side construction, pairing, execution, risk, costs, split boundaries, gates, multiplicity and PAPER terms may not change.",
+    "multiplicity_rule": "Retain C256's already-frozen 0.05/256 ceiling unchanged; C257 may not use its new number to relax that gate.",
+    "multiplicity_primary_count": 1,
+    "multiplicity_alpha_ceiling": 0.0001953125,
+    "identity_rule": "candidate_id=257 is an audit-ledger identity only. It does not alter inherited economics or revive C256.",
+    "no_c256_rescue": "C256 remains terminally DATA-INCOMPLETE. No C256 outcome may be created, inspected, inferred or used to select, tune, reject or rescue C257."
+  },
+  "authority_v6": {
+    "plan_path": "contracts/strategy_causal_pack_01/authority_extension_plan.v6.json",
+    "plan_byte_sha256": "30080d16132348fabceb91bffe110f43ee33824c4496622f736ee6a6c4d7af60",
+    "protected_plan_commit": "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3",
+    "required_result": "ZERO_GUARANTEED_PERIOD_GAPS",
+    "protected_authority_head": null,
+    "output_pins": {
+      "manifest_v6": null,
+      "pit_v9": null,
+      "filter_v4": null,
+      "coverage_v4": null
+    },
+    "mechanical_amendment_rule": "After all four authority-v6 outputs and their builder are independently reviewed and protected-merged, one amendment may replace only protected_authority_head, the four null output_pins, and status. Each pin must contain the plan-declared path plus exact byte_sha256 and content_digest from protected bytes. Any other change creates a new numbered family.",
+    "forbidden_before_pin": [
+      "market-row access",
+      "holdout access",
+      "candidate outcome access",
+      "evaluation identity creation",
+      "evaluator activation",
+      "PAPER or testnet activation"
+    ]
+  },
+  "evaluation_preconditions": [
+    "all four authority-v6 output pins are non-null and exact",
+    "coverage_v4 reports zero guaranteed-period gaps",
+    "the authority builder and exact output bytes are on protected master",
+    "the mechanical pin amendment receives independent review",
+    "a separately byte-bound evaluator and adapter receive independent review",
+    "the candidate remains default-OFF until independent out-of-sample evidence passes"
+  ],
+  "deferred": [
+    "authority-v6 acquisition and output generation",
+    "mechanical output-pin amendment",
+    "evaluator implementation or activation",
+    "market, holdout, outcome or identity access",
+    "PAPER or testnet canary",
+    "mainnet"
+  ]
+}
