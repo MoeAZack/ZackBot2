@@ -717,7 +717,8 @@ def _rederive_fill(fill: FillCash, *, stress: bool) -> FillCash:
 
 
 def _derive_fill_from_bar_authority(fill: FillCash, *, leg: LegSpec,
-                                    bars: Sequence[Bar], stress: bool) -> FillCash:
+                                    bars: Sequence[Bar], stress: bool,
+                                    final_event: "_DerivedFinal | None" = None) -> FillCash:
     """Bind every raw reference and impact input to exact timestamped causal bars."""
     index = exact_index(bars)
     bar = index.get(fill.timestamp_ms)
@@ -726,8 +727,8 @@ def _derive_fill_from_bar_authority(fill: FillCash, *, leg: LegSpec,
         raise IncompleteAuthority("fill is missing exact bar or strict-prior volume authority")
     if fill.phase == "entry":
         reference, movement_from = bar.open, None
-    elif fill.phase in {"exit", "cleanup"}:
-        reference, movement_from = bar.open, float(leg.entry_reference)
+    elif final_event is not None:
+        reference, movement_from = final_event.reference, float(leg.entry_reference)
     else:
         frozen_stop = float(leg.stop_reference)
         if leg.side == 1:
@@ -756,6 +757,84 @@ def _derive_fill_from_bar_authority(fill: FillCash, *, leg: LegSpec,
                      quantity=fill.quantity, reference_price=reference, phase=fill.phase,
                      movement_from=movement_from, prior_quote_volume=prior.quote_volume,
                      stress=True)
+
+
+@dataclass(frozen=True)
+class _DerivedFinal:
+    symbol: str
+    timestamp_ms: int
+    phase: str
+    side: int
+    quantity: Decimal
+    reference: float
+    source_open_ms: int
+    stop_kind: str | None
+
+
+def _first_leg_event(*, leg: LegSpec, quantity: Decimal, bars: Sequence[Bar],
+                     entry_ms: int, due_ms: int) -> _DerivedFinal:
+    index = exact_index(bars)
+    stop = float(leg.stop_reference)
+    for open_ms in range(entry_ms, due_ms + HOUR_MS, HOUR_MS):
+        bar = index.get(open_ms)
+        if bar is None:
+            raise IncompleteAuthority("lifecycle tape is missing a canonical event bar")
+        gap = bar.open <= stop if leg.side == 1 else bar.open >= stop
+        touch = bar.low <= stop if leg.side == 1 else bar.high >= stop
+        if gap:
+            reference = min(stop, bar.open) if leg.side == 1 else max(stop, bar.open)
+            return _DerivedFinal(leg.symbol, open_ms, "stop", -leg.side, quantity,
+                                 reference, open_ms, "gap")
+        if touch:
+            return _DerivedFinal(leg.symbol, open_ms + HOUR_MS, "stop", -leg.side,
+                                 quantity, stop, open_ms, "range")
+        if open_ms == due_ms:
+            return _DerivedFinal(leg.symbol, due_ms, "exit", -leg.side, quantity,
+                                 bar.open, open_ms, None)
+    raise IncompleteEpisode("no mandatory lifecycle event was derived")
+
+
+def _derive_final_events(*, legs: Mapping[str, LegSpec], quantities: Mapping[str, Decimal],
+                         symbol_bars: Mapping[str, Sequence[Bar]], entry_ms: int,
+                         atomic_one_leg: bool) -> tuple[_DerivedFinal, ...]:
+    due_ms = entry_ms + (HOUR_MS if atomic_one_leg else 6 * HOUR_MS)
+    events = {symbol: _first_leg_event(leg=leg, quantity=quantities[symbol],
+                                      bars=symbol_bars[symbol], entry_ms=entry_ms, due_ms=due_ms)
+              for symbol, leg in legs.items()}
+    if atomic_one_leg:
+        event = next(iter(events.values()))
+        if event.phase == "stop":
+            return (event,)
+        bar = exact_index(symbol_bars[event.symbol])[due_ms]
+        return (_DerivedFinal(event.symbol, due_ms, "cleanup", event.side, event.quantity,
+                              bar.open, due_ms, None),)
+    first_stop = min((event for event in events.values() if event.phase == "stop"),
+                     key=lambda event: (event.source_open_ms, event.symbol), default=None)
+    if first_stop is None:
+        return tuple(events[symbol] for symbol in sorted(events))
+    same_bar_stops = [event for event in events.values()
+                      if event.phase == "stop" and event.source_open_ms == first_stop.source_open_ms]
+    if len(same_bar_stops) == len(events):
+        return tuple(sorted(same_bar_stops, key=lambda event: event.symbol))
+    cleanup_ms = first_stop.source_open_ms + HOUR_MS
+    finals = [first_stop]
+    for symbol, event in events.items():
+        if symbol == first_stop.symbol:
+            continue
+        if (event.phase == "stop" and event.source_open_ms == first_stop.source_open_ms):
+            finals.append(event)
+            continue
+        # At the cleanup boundary a stop gap is processed before the mate cleanup.
+        if (event.phase == "stop" and event.stop_kind == "gap"
+                and event.source_open_ms == cleanup_ms):
+            finals.append(event)
+            continue
+        bar = exact_index(symbol_bars[symbol]).get(cleanup_ms)
+        if bar is None:
+            raise IncompleteAuthority("mate cleanup is missing the exact next canonical open")
+        finals.append(_DerivedFinal(symbol, cleanup_ms, "cleanup", -legs[symbol].side,
+                                    quantities[symbol], bar.open, cleanup_ms, None))
+    return tuple(sorted(finals, key=lambda event: event.symbol))
 
 
 def impact_ratio(quantity: float, reference_price: float, prior_quote_volume: float) -> float:
@@ -1013,11 +1092,6 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
         declared_sides = pair_sides
     if set(symbol_bars) != set(declared_sides):
         raise IncompleteAuthority("fill bar authority symbols do not match accepted lifecycle")
-    required_bar_times = set(range(entry_ms-HOUR_MS, close_ms+HOUR_MS, HOUR_MS))
-    for symbol, bars in symbol_bars.items():
-        available = set(exact_index(bars))
-        if not required_bar_times <= available:
-            raise IncompleteAuthority(f"{symbol} lifecycle bar authority is missing/compressed")
     if atomic_one_leg:
         if accepted_atomic_leg is None:
             raise IncompleteEpisode("atomic lifecycle requires accepted LegSpec")
@@ -1027,8 +1101,34 @@ def close_attempt(*, attempt_id: str, entry_ms: int, close_ms: int, long_symbol:
             raise IncompleteEpisode("normal lifecycle requires accepted pair")
         legs_by_symbol = {accepted_pair.long.symbol: accepted_pair.long,
                           accepted_pair.short.symbol: accepted_pair.short}
+    entry_fills = [fill for fill in fills if fill.phase == "entry"]
+    if (len(entry_fills) != len(legs_by_symbol)
+            or {fill.symbol for fill in entry_fills} != set(legs_by_symbol)
+            or any(fill.timestamp_ms != entry_ms or fill.quantity <= 0 for fill in entry_fills)):
+        raise IncompleteEpisode("submitted lifecycle entries are not exact")
+    proposed_quantities = {fill.symbol: Decimal(str(fill.quantity)) for fill in entry_fills}
+    authority_end = entry_ms + (2 if atomic_one_leg else 7) * HOUR_MS
+    required_bar_times = set(range(entry_ms-HOUR_MS, authority_end+HOUR_MS, HOUR_MS))
+    for symbol, bars in symbol_bars.items():
+        available = set(exact_index(bars))
+        if not required_bar_times <= available:
+            raise IncompleteAuthority(f"{symbol} lifecycle bar authority is missing/compressed")
+    expected_finals = _derive_final_events(
+        legs=legs_by_symbol, quantities=proposed_quantities, symbol_bars=symbol_bars,
+        entry_ms=entry_ms, atomic_one_leg=atomic_one_leg)
+    submitted_finals = [fill for fill in fills if fill.phase != "entry"]
+    expected_identity = {(event.symbol, event.timestamp_ms, event.phase, event.side,
+                          float(event.quantity), event.reference) for event in expected_finals}
+    submitted_identity = {(fill.symbol, fill.timestamp_ms, fill.phase, fill.side,
+                           fill.quantity, fill.reference_price) for fill in submitted_finals}
+    derived_close_ms = max(event.timestamp_ms for event in expected_finals)
+    if (len(submitted_finals) != len(expected_finals) or submitted_identity != expected_identity
+            or close_ms != derived_close_ms):
+        raise IncompleteEpisode("submitted fills do not match deterministic lifecycle replay")
+    finals_by_symbol = {event.symbol: event for event in expected_finals}
     fills = tuple(_derive_fill_from_bar_authority(
-        fill, leg=legs_by_symbol[fill.symbol], bars=symbol_bars[fill.symbol], stress=stress)
+        fill, leg=legs_by_symbol[fill.symbol], bars=symbol_bars[fill.symbol], stress=stress,
+        final_event=None if fill.phase == "entry" else finals_by_symbol[fill.symbol])
         for fill in fills)
     accepted = _validate_fill_lifecycle(fills=fills, entry_ms=entry_ms, close_ms=close_ms,
                                         declared_sides=declared_sides, atomic_one_leg=atomic_one_leg)

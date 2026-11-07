@@ -52,20 +52,24 @@ def accepted_pair(long_symbol="LONG", short_symbol="SHORT", long_qty="1", short_
 
 
 def fill_bar_authority(fills):
+    baselines = {fill.symbol: fill.reference_price for fill in fills if fill.phase == "entry"}
     result = {}
     for fill in fills:
         rows = result.setdefault(fill.symbol, {})
         prior_ms = fill.timestamp_ms - C.HOUR_MS
-        rows.setdefault(prior_ms, C.Bar(prior_ms, 100, 110, 90, 100,
-                                       fill.prior_quote_volume))
+        baseline = baselines[fill.symbol]
+        rows.setdefault(prior_ms, C.Bar(prior_ms, baseline, baseline + .01,
+                                       baseline - .01, baseline, fill.prior_quote_volume))
         rows[fill.timestamp_ms] = C.Bar(fill.timestamp_ms, fill.reference_price,
-                                        max(fill.reference_price, 110),
-                                        min(fill.reference_price, 90), fill.reference_price,
+                                        fill.reference_price + .01,
+                                        max(.0001, fill.reference_price - .01), fill.reference_price,
                                         fill.prior_quote_volume)
-    for rows in result.values():
-        first, last = min(rows), max(rows)
+    for symbol, rows in result.items():
+        baseline = baselines[symbol]
+        first, last = min(rows), max(max(rows), min(rows)+8*C.HOUR_MS)
         for timestamp in range(first, last+C.HOUR_MS, C.HOUR_MS):
-            rows.setdefault(timestamp, C.Bar(timestamp, 100, 110, 90, 100, 1_000_000_000.0))
+            rows.setdefault(timestamp, C.Bar(timestamp, baseline, baseline+.01,
+                                              baseline-.01, baseline, 1_000_000_000.0))
     return {symbol: tuple(rows[key] for key in sorted(rows)) for symbol, rows in result.items()}
 
 
@@ -76,12 +80,12 @@ def attempt(identifier: str, r_value: float, *, regime: str = "BTC_ABOVE_OR_ON_E
                     reference_price=100, phase="entry", movement_from=None),
         C.make_fill(timestamp_ms=C.HOUR_MS, symbol=short_symbol, side=-1, quantity=1,
                     reference_price=100, phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol=long_symbol, side=-1, quantity=1,
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol=long_symbol, side=-1, quantity=1,
                     reference_price=100 + 0.7 * r_value, phase="exit", movement_from=100),
-        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol=short_symbol, side=1, quantity=1,
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol=short_symbol, side=1, quantity=1,
                     reference_price=100 - 0.3 * r_value, phase="exit", movement_from=100),
     ]
-    return C.close_attempt(attempt_id=identifier, entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+    return C.close_attempt(attempt_id=identifier, entry_ms=C.HOUR_MS, close_ms=7*C.HOUR_MS,
                            long_symbol=long_symbol, short_symbol=short_symbol, regime=regime,
                            fills=fills, symbol_bars=fill_bar_authority(fills),
                            accepted_pair=accepted_pair(long_symbol, short_symbol,
@@ -92,7 +96,7 @@ def marks_for_attempts(rows, *, long_price=100.0, short_price=100.0):
     return tuple(C.PortfolioMark(timestamp, leg.symbol,
                                  long_price if leg.position_side == 1 else short_price)
                  for row in rows for leg in row.legs
-                 for timestamp in (row.entry_ms, row.close_ms))
+                 for timestamp in range(row.entry_ms, row.close_ms + C.HOUR_MS, C.HOUR_MS))
 
 
 def test_contract_is_byte_bound_default_off_and_real_loader_is_locked():
@@ -416,7 +420,7 @@ def test_cost_signs_funding_and_atomic_one_leg_verdict_cannot_be_rescued():
             regime="BTC_ABOVE_OR_ON_EMA200")
     partial = C.make_fill(timestamp_ms=close_ms, symbol="AAA", side=-1, quantity=0.1,
                           reference_price=120, phase="cleanup", movement_from=100)
-    with pytest.raises(C.IncompleteEpisode, match="conserve"):
+    with pytest.raises(C.IncompleteEpisode, match="conserve|deterministic lifecycle"):
         C.account_atomic_one_leg(
             attempt_id="partial", expected_long_symbol="AAA", expected_short_symbol="BBB",
             accepted_leg=leg("AAA", 1, "100", "98"),
@@ -432,31 +436,31 @@ def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
                     phase="entry", movement_from=None),
         C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=-1, quantity=2, reference_price=50,
                     phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=1, reference_price=101,
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="LONG", side=-1, quantity=1, reference_price=101,
                     phase="exit", movement_from=100),
-        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="SHORT", side=1, quantity=2, reference_price=49,
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="SHORT", side=1, quantity=2, reference_price=49,
                     phase="exit", movement_from=50),
     ]
     closed = C.close_attempt(
-        attempt_id="normal", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+        attempt_id="normal", entry_ms=C.HOUR_MS, close_ms=7*C.HOUR_MS,
         long_symbol="LONG", short_symbol="SHORT",
         regime="BTC_ABOVE_OR_ON_EMA200", fills=fills, symbol_bars=fill_bar_authority(fills),
         accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
     assert len(closed.lifecycle_identity) == 4
-    with pytest.raises(C.IncompleteEpisode, match="conserve"):
-        partial_long = C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=0.1,
+    with pytest.raises(C.IncompleteEpisode, match="conserve|deterministic lifecycle"):
+        partial_long = C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="LONG", side=-1, quantity=0.1,
                                    reference_price=101, phase="exit", movement_from=100)
         C.close_attempt(
-            attempt_id="partial", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+            attempt_id="partial", entry_ms=C.HOUR_MS, close_ms=7*C.HOUR_MS,
             long_symbol="LONG", short_symbol="SHORT",
             regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [partial_long, fills[3]],
             symbol_bars=fill_bar_authority(fills[:2] + [partial_long, fills[3]]),
             accepted_pair=accepted_pair(short_qty="2", short_entry="50"))
-    with pytest.raises(C.IncompleteEpisode, match="side"):
-        wrong_side = C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=1, quantity=1,
+    with pytest.raises(C.IncompleteEpisode, match="side|deterministic lifecycle"):
+        wrong_side = C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="LONG", side=1, quantity=1,
                                  reference_price=101, phase="exit", movement_from=100)
         C.close_attempt(
-            attempt_id="wrong-side", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+            attempt_id="wrong-side", entry_ms=C.HOUR_MS, close_ms=7*C.HOUR_MS,
             long_symbol="LONG", short_symbol="SHORT",
             regime="BTC_ABOVE_OR_ON_EMA200", fills=fills[:2] + [wrong_side, fills[3]],
             symbol_bars=fill_bar_authority(fills[:2] + [wrong_side, fills[3]]),
@@ -473,8 +477,93 @@ def test_normal_pair_binds_exact_sides_quantities_and_full_flat_lifecycle():
     assert "accepted_quantities" not in inspect.signature(C.close_attempt).parameters
 
 
+def test_lifecycle_replay_derives_first_stop_and_immediate_mate_cleanup():
+    entry_ms = C.HOUR_MS
+    stop_ms = 4 * C.HOUR_MS
+    pair = accepted_pair(stop_delta="2")
+
+    def bars(symbol, *, stop_touch=False, due_open=100.0):
+        rows = []
+        for timestamp in range(0, 9 * C.HOUR_MS, C.HOUR_MS):
+            open_price = due_open if timestamp == 7 * C.HOUR_MS else 100.0
+            low = 97.0 if stop_touch and timestamp == 3 * C.HOUR_MS else open_price - .01
+            rows.append(C.Bar(timestamp, open_price, open_price + .01, low,
+                              open_price, 1_000_000_000.0))
+        return tuple(rows)
+
+    authority = {"LONG": bars("LONG", stop_touch=True),
+                 "SHORT": bars("SHORT", due_open=95.0)}
+    entries = [
+        C.make_fill(timestamp_ms=entry_ms, symbol="LONG", side=1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=entry_ms, symbol="SHORT", side=-1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+    ]
+    stop = C.make_fill(timestamp_ms=stop_ms, symbol="LONG", side=-1, quantity=1,
+                       reference_price=98, phase="stop", movement_from=100)
+    cleanup = C.make_fill(timestamp_ms=stop_ms, symbol="SHORT", side=1, quantity=1,
+                          reference_price=100, phase="cleanup", movement_from=100)
+    closed = C.close_attempt(
+        attempt_id="derived-stop-cleanup", entry_ms=entry_ms, close_ms=stop_ms,
+        long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
+        fills=entries + [stop, cleanup], symbol_bars=authority, accepted_pair=pair)
+    assert {(fill.symbol, fill.phase, fill.timestamp_ms) for fill in closed.fills} == {
+        ("LONG", "entry", entry_ms), ("SHORT", "entry", entry_ms),
+        ("LONG", "stop", stop_ms), ("SHORT", "cleanup", stop_ms)}
+
+    later_profit = C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="SHORT", side=1,
+                               quantity=1, reference_price=95, phase="exit",
+                               movement_from=100)
+    with pytest.raises(C.IncompleteEpisode, match="deterministic lifecycle"):
+        C.close_attempt(
+            attempt_id="later-profit", entry_ms=entry_ms, close_ms=7*C.HOUR_MS,
+            long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
+            fills=entries + [stop, later_profit], symbol_bars=authority, accepted_pair=pair)
+
+    late_cleanup = C.make_fill(timestamp_ms=5*C.HOUR_MS, symbol="SHORT", side=1,
+                               quantity=1, reference_price=100, phase="cleanup",
+                               movement_from=100)
+    with pytest.raises(C.IncompleteEpisode, match="deterministic lifecycle"):
+        C.close_attempt(
+            attempt_id="late-cleanup", entry_ms=entry_ms, close_ms=5*C.HOUR_MS,
+            long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
+            fills=entries + [stop, late_cleanup], symbol_bars=authority, accepted_pair=pair)
+
+
+def test_lifecycle_replay_rejects_ordinary_one_hour_exit_and_accepts_due_open():
+    pair = accepted_pair(stop_delta="2")
+    due_fills = [
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="LONG", side=1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=-1, quantity=1,
+                    reference_price=100, phase="entry", movement_from=None),
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
+                    reference_price=101, phase="exit", movement_from=100),
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
+                    reference_price=99, phase="exit", movement_from=100),
+    ]
+    authority = fill_bar_authority(due_fills)
+    closed = C.close_attempt(
+        attempt_id="due-open", entry_ms=C.HOUR_MS, close_ms=7*C.HOUR_MS,
+        long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
+        fills=due_fills, symbol_bars=authority, accepted_pair=pair)
+    assert closed.close_ms == 7*C.HOUR_MS
+
+    early_fills = due_fills[:2] + [
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
+                    reference_price=100, phase="exit", movement_from=100),
+        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
+                    reference_price=100, phase="exit", movement_from=100),
+    ]
+    with pytest.raises(C.IncompleteEpisode, match="deterministic lifecycle"):
+        C.close_attempt(
+            attempt_id="one-hour-exit", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+            long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
+            fills=early_fills, symbol_bars=authority, accepted_pair=pair)
+
+
 def test_fill_funding_and_risk_economics_are_derived_and_hostile_rows_fail():
-    entry_ms, close_ms = C.HOUR_MS, 2*C.HOUR_MS
+    entry_ms, close_ms = C.HOUR_MS, 7*C.HOUR_MS
     fills = [
         C.make_fill(timestamp_ms=entry_ms, symbol="LONG", side=1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None, prior_quote_volume=1_000_000),
@@ -683,13 +772,13 @@ def test_leg_cashflows_and_symbol_concentration_use_actual_attribution_not_half_
                     phase="entry", movement_from=None),
         C.make_fill(timestamp_ms=C.HOUR_MS, symbol="SHORT", side=-1, quantity=1, reference_price=100,
                     phase="entry", movement_from=None),
-        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="LONG", side=-1, quantity=1,
                     reference_price=109, phase="exit", movement_from=100),
-        C.make_fill(timestamp_ms=2*C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
+        C.make_fill(timestamp_ms=7*C.HOUR_MS, symbol="SHORT", side=1, quantity=1,
                     reference_price=99, phase="exit", movement_from=100),
     ]
     row = C.close_attempt(
-        attempt_id="asymmetric", entry_ms=C.HOUR_MS, close_ms=2*C.HOUR_MS,
+        attempt_id="asymmetric", entry_ms=C.HOUR_MS, close_ms=7*C.HOUR_MS,
         long_symbol="LONG", short_symbol="SHORT", regime="BTC_ABOVE_OR_ON_EMA200",
         fills=fills, symbol_bars=fill_bar_authority(fills), accepted_pair=accepted_pair())
     assert row.long_contribution_R > row.short_contribution_R
