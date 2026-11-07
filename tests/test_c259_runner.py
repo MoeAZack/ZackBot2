@@ -19,6 +19,9 @@ from tools.research import c259_runner as R
 from tools.research import c259_reporting as Q
 from tools.research import run_btc_residual_leadlag_continuation_c259_stagea as CLI
 
+SOURCE_ROOT=R.ROOT
+FROZEN_BASE=E.load_frozen_contract()["base_commit"]
+
 
 def _git(repo,*args):
     return subprocess.check_output(["git","-C",str(repo),*args],stderr=subprocess.PIPE).decode().strip()
@@ -29,17 +32,46 @@ def _document(value):
     return E._canon(value)
 
 
-@pytest.fixture(scope="module")
-def checksum_cli(tmp_path_factory,request):
-    fixture=tmp_path_factory.mktemp("c259-checksum-cli")
-    repo,store=fixture/"repo",fixture/"store"
-    subprocess.run(["git","clone","--shared","--no-checkout",str(R.ROOT),str(repo)],check=True,capture_output=True)
+def _shallow_ci_source(directory):
+    """Only CI HEAD plus the two exact workflow-fetched fixture objects.
+
+    No deep refs or history from the developer checkout enter the source.
+    Fetched objects are not assumed to survive a clone of this shallow repo.
+    """
+    directory.mkdir()
+    _git(directory,"init","-q")
+    _git(directory,"fetch","--no-tags","--depth=1",str(SOURCE_ROOT),"HEAD")
+    _git(directory,"update-ref","refs/heads/ci-head",_git(directory,"rev-parse","FETCH_HEAD"))
+    _git(directory,"symbolic-ref","HEAD","refs/heads/ci-head")
+    _git(directory,"fetch","--no-tags","--depth=1",str(SOURCE_ROOT),FROZEN_BASE,E.CONTRACT_HEAD)
+    assert _git(directory,"rev-parse","--is-shallow-repository")=="true"
+    return directory
+
+
+def _initialize_fixture_clone(repo,source):
+    subprocess.run(["git","clone","--shared","--no-checkout",str(source),str(repo)],
+                   check=True,capture_output=True)
+    # A shared clone of a shallow source need not retain unreferenced fetched
+    # trees. Fetch both exact objects in the fixture itself, before checkout.
+    _git(repo,"fetch","--no-tags","--depth=1",str(source),FROZEN_BASE,E.CONTRACT_HEAD)
     _git(repo,"config","core.autocrlf","false")
     sparse=[*R.BOUND_CODE,R.RECEIPT_PATH,*E.EXPECTED_PATHS.values(),
             E.CONTRACT_PATH.relative_to(E.ROOT).as_posix(),E.PLAN_PATH.relative_to(E.ROOT).as_posix(),"snapshot.json"]
     _git(repo,"config","core.sparseCheckout","true")
     (repo/".git/info/sparse-checkout").write_text("\n".join("/"+path for path in sparse)+"\n",encoding="utf-8")
     _git(repo,"checkout","--detach",E.CONTRACT_HEAD)
+    # The contract's tree is immutable, but its pre-squash ancestry is not
+    # present in CI. Generated authority commits descend directly from the
+    # exact protected base while retaining that contract tree/index.
+    _git(repo,"update-ref","--no-deref","HEAD",FROZEN_BASE)
+
+
+@pytest.fixture(scope="module")
+def checksum_cli(tmp_path_factory,request):
+    fixture=tmp_path_factory.mktemp("c259-checksum-cli")
+    repo,store=fixture/"repo",fixture/"store"
+    source=_shallow_ci_source(fixture/"shallow-ci-source")
+    _initialize_fixture_clone(repo,source)
     _git(repo,"config","user.name","C259 synthetic")
     _git(repo,"config","user.email","c259@example.invalid")
     for path in R.BOUND_CODE:
@@ -143,6 +175,29 @@ def checksum_cli(tmp_path_factory,request):
     patch.setattr(E,"FOLD_RANGES",{key:value for key,value in ranges.items() if key!="sealed_holdout"})
     yield repo,store,start,end
     patch.undo()
+
+
+def test_fixture_fetches_exact_trees_and_binds_base_without_incidental_deep_refs(tmp_path):
+    source=_shallow_ci_source(tmp_path/"source")
+    assert _git(source,"for-each-ref","--format=%(refname)")=="refs/heads/ci-head"
+    _git(source,"cat-file","-e",f"{E.CONTRACT_HEAD}^{{commit}}")
+    _git(source,"cat-file","-e",f"{FROZEN_BASE}^{{commit}}")
+    # Knowing both objects is insufficient to prove an ancestry path through
+    # missing shallow parents. This is the actual CI graph, not a deep clone.
+    lineage=subprocess.run(["git","-C",str(source),"merge-base","--is-ancestor",FROZEN_BASE,"HEAD"],capture_output=True)
+    assert lineage.returncode==1
+    repo=tmp_path/"fixture"
+    _initialize_fixture_clone(repo,source)
+    assert _git(repo,"rev-parse","--is-shallow-repository")=="true"
+    assert _git(repo,"rev-parse","HEAD")==FROZEN_BASE
+    contract=E.CONTRACT_PATH.relative_to(E.ROOT).as_posix()
+    assert E._sha((repo/contract).read_bytes())==E.CONTRACT_SHA256
+    assert _git(repo,"rev-parse",f":{contract}")==_git(repo,"rev-parse",f"{E.CONTRACT_HEAD}:{contract}")
+    _git(repo,"config","user.name","C259 shallow regression")
+    _git(repo,"config","user.email","c259-shallow@example.invalid")
+    _git(repo,"commit","--allow-empty","-m","synthetic contract tree on exact protected base")
+    assert _git(repo,"rev-parse","HEAD^")==FROZEN_BASE
+    _git(repo,"merge-base","--is-ancestor",FROZEN_BASE,"HEAD")
 
 
 def test_cli_checksum_archives_to_isolated_primary_and_diagnostic_reports(checksum_cli,monkeypatch,capsys):
