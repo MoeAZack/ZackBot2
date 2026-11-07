@@ -22,6 +22,10 @@ ELIGIBLE=S.CORE.milliseconds('2024-12-14T00:00:00Z')
 @pytest.fixture(scope='module')
 def native_fixture(tmp_path_factory):
     root=make_fixture(tmp_path_factory.mktemp('c267-SYNTHETIC-source'),hours=3,trade_interval='1m')
+    return adapt_metadata(root)
+
+
+def adapt_metadata(root):
     snapshot=json.loads((root/'snapshot.json').read_bytes());snapshot['serverTime']=S.CORE.milliseconds('2024-12-13T00:00:00Z')
     snapshot_sha=write_json(root/'snapshot.json',snapshot)
     base=json.loads((root/'filters.v2.json').read_bytes())
