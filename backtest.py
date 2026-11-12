@@ -361,7 +361,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
         if RR['btc_breaker'] and i <= breaker_until: return 'btc_breaker'
         return None
 
-    def ratchet(m, p, atr):
+    def ratchet(m, p, atr, tick=0.0):
         """Stop tightening from the best price reached so far (breakeven trigger, chandelier trail, trailing TP, runner).
         Called at the end of every path leg; a stop raised here can only be hit by a LATER leg of the path."""
         sd = p['side']; RUN = m.get('runner'); TTP = m.get('ttp')
@@ -370,8 +370,10 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             p['stop'] = tighten(p['avg'])
         if m.get('trail_atr'):                               # chandelier from the best price
             p['stop'] = tighten(p['best'] - sd * m['trail_atr'] * atr)
-        lvl = S.prot_level(m.get('prot'), sd, p['e0'], p['avg'], p['R'], p['best'], atr)   # C-BRKPROT-v1 (default OFF)
-        if lvl is not None: p['stop'] = tighten(lvl)
+        PR = m.get('prot')                                   # C-BRKPROT-v1 (default OFF): the engine's level AND step rule
+        if PR:
+            p['stop'] = S.prot_tighten(PR, p['stop'], S.prot_level(PR, sd, p['e0'], p['avg'], p['R'], p['best'], atr, FEE, SLIP),
+                                       sd, atr, tick)
         if TTP and p['R'] > 0 and sd * (p['best'] - p['e0']) / p['R'] >= TTP.get('at_r', 2.0):
             p['stop'] = tighten(p['best'] * (1 - sd * TTP.get('dev_pct', 3.0) / 100))   # trailing take-profit
         if RUN and p['R'] > 0:                               # runner: breakeven first, then lock profit in steps
@@ -507,7 +509,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             p['best'] = max(p['best'], b_) if sd == 1 else min(p['best'], b_)
             # stops ratchet after each LEG of the path (a zero-length leg too, e.g. open == high), not at the bare open:
             # a trail moved only by the fresh ATR (atr[i-1]) takes effect after the first leg, as before FBL-BT01
-            if k: ratchet(m, p, atr)
+            if k: ratchet(m, p, atr, RULES[s].get('tick') or 0.0)
         return False
 
     for i in idx:
