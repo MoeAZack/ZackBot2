@@ -1,0 +1,19 @@
+{
+  "review_head": "ee808bdd3a1bdecc74b524a8a6c4574dcc7f4247",
+  "independent_core17_count": 1431,
+  "reference_count": 1431,
+  "matched": 1431,
+  "missing": 0,
+  "extra": 0,
+  "raw_short_flag_disagreements": 0,
+  "raw_exit_flag_disagreements": 0,
+  "stageA_canonical_core17_eligible_signals": 174,
+  "stageA_canonical_legacy9_eligible_signals": 95,
+  "stageA_shared9_signal_symmetric_difference_due_only_to_rank_universe": 27,
+  "stageA_raw_signal_comparison_not_trade_count_or_pnl": true,
+  "legacy9_note": "Actual oldpacket ranking universe, not claimed exact oldprice/portfolio reproduction",
+  "qualification": "No independent economic admission/return reproduction; parity establishes frozen signal implementation only",
+  "full_author_prepare_count": 1431,
+  "full_prepare_missing": 0,
+  "full_prepare_extra": 0
+}

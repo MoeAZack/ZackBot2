@@ -1,0 +1,20 @@
+{
+  "review_head": "ee808bdd3a1bdecc74b524a8a6c4574dcc7f4247",
+  "RBR_WIDE": "REJECTED_FOR_PAPER_PROMOTION",
+  "core17_signals": 1431,
+  "missing": 0,
+  "extra": 0,
+  "causal_v3_identity": "NO_STANDALONE_ECONOMIC_RUN_FOUND_IN_AUDITED_RECORDS",
+  "causal_v4_identity": "EVALUATED_FAILED_GATES",
+  "v4_run_head": "6754a336652496952aaab82e42fbe9bd6171430a",
+  "v4_eval_identity": "e4ab67b460b30af1f4919df4c68e7e77023c1e65adb68da33ffb0f3ba9de12ef",
+  "v4_closes": 294,
+  "v4_net_R": -35.567,
+  "StageA_actual_universe_count": 9,
+  "StageA_requested_universe_count": 20,
+  "StageA_max_pos": 4,
+  "new_control_universe_count": 17,
+  "new_max_global_positions": 1,
+  "pnl_gap": "NOT_CAUSALLY_ATTRIBUTED; runs not apples-to-apples; signal parity does not prove monetary attribution",
+  "account_changes": false
+}

@@ -1,0 +1,326 @@
+{
+  "v3": {
+    "candidate_id": "rank_breadth_reversal_4h_short_causal_v3",
+    "contract_sha256": "0226f225d157a51b595e5893105d9054fb8f1b9e7abc8ad166ad1688c158e997",
+    "evaluation": "No economic run located; absence not proven",
+    "evidence": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-6688747229"
+  },
+  "v4": {
+    "candidate_id": "rank_breadth_reversal_4h_short_causal_v4",
+    "head": "6754a336652496952aaab82e42fbe9bd6171430a",
+    "path": "C:\\Dev\\ZackBot2_data\\causal_v4_runs\\6754a336652496952aaab82e42fbe9bd6171430a\\rbr-short.packet.json",
+    "raw_sha256": "dc1f1b989e02b830e7f41bf0c3a960ecc3f3e75fb8716a78d39cbe379ed6e067",
+    "embedded_packet_sha256": "b175e86e430c19579f71e170ed3fc2d310a80c2197aa39fcf61cb027d832077f",
+    "evaluation_identity": "e4ab67b460b30af1f4919df4c68e7e77023c1e65adb68da33ffb0f3ba9de12ef",
+    "overlay_sha256": "22f042f658a8b7fcd6701743f9094a020b7e621f6dfc463b6514c3d390139bdc",
+    "manifest_digest": "30c345c1261f3fe0d48bf4defc448c9139a073aecb2eee4155ecca1e4b64f1a8",
+    "universe_digest": "48f99b4309ff286f5541bd51199e42d4144dcc38e9dda7aa5bc3520b4d244bcd",
+    "status": "FAILED_GATES",
+    "promotable": false,
+    "report": {
+      "trade_count": 294,
+      "net_r": -35.56700707699671,
+      "mean_r": -0.12097621454760786,
+      "profit_factor": 0.754831870359918,
+      "max_dd_r": 29.883421241408463,
+      "incomplete_rows": 0,
+      "cost_stress_full_replay": {
+        "1.0": {
+          "final_equity": {
+            "wf1": 376.69212994114446,
+            "wf2": 521.683632297856,
+            "wf3": 440.2263679336743
+          },
+          "fold_net_r": {
+            "wf1": -27.70304305542719,
+            "wf2": 5.0401447346739605,
+            "wf3": -12.904108756243483
+          },
+          "mean_r": -0.12097621454760786,
+          "net_r": -35.56700707699671,
+          "trade_count": 294
+        },
+        "1.5": {
+          "final_equity": {
+            "wf1": 369.7778311326866,
+            "wf2": 514.2317019011715,
+            "wf3": 436.36546238080047
+          },
+          "fold_net_r": {
+            "wf1": -29.782636830017005,
+            "wf2": 3.585443510647859,
+            "wf3": -13.783843863672248
+          },
+          "mean_r": -0.13598992239129726,
+          "net_r": -39.981037183041394,
+          "trade_count": 294
+        },
+        "2.0": {
+          "final_equity": {
+            "wf1": 363.0462538772357,
+            "wf2": 507.40268609662064,
+            "wf3": 434.2914970651924
+          },
+          "fold_net_r": {
+            "wf1": -31.786911883195888,
+            "wf2": 2.235612857127066,
+            "wf3": -14.597249432116799
+          },
+          "mean_r": -0.15016513081015517,
+          "net_r": -44.14854845818562,
+          "trade_count": 294
+        }
+      }
+    },
+    "folds": [
+      {
+        "name": "wf1",
+        "count": 137,
+        "net_r": -27.70304305542719
+      },
+      {
+        "name": "wf2",
+        "count": 76,
+        "net_r": 5.0401447346739605
+      },
+      {
+        "name": "wf3",
+        "count": 81,
+        "net_r": -12.904108756243483
+      }
+    ],
+    "evidence": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-6699064340"
+  },
+  "stage_a": {
+    "path": "C:\\Dev\\ZackBot_cowork_data\\rbr4h_stagea\\rbr-short-dev.json",
+    "raw_sha256": "a42d5f76ad0dbfd923ae0e95a6d5917bc670b5a14a7fc6596716776a75edb79e",
+    "embedded_packet_sha256": "ff5cc80468610804236a06ac57cbaa737936509ba04d73c41335ede65bf0c28f",
+    "head": "646ecc79612351d090fe36c02b6e4b2fdba2753d",
+    "window": {
+      "bars": 1014,
+      "end": "2025-04-01T00:00:00Z",
+      "end_exclusive": true,
+      "guard": "pit_run.rex_window",
+      "sealed_cutoff": "2026-09-28T00:00:00Z",
+      "start": "2024-10-14T00:00:00Z",
+      "tf": "4h"
+    },
+    "requested_symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "ZECUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "NEARUSDT",
+      "HYPEUSDT",
+      "DOGEUSDT",
+      "UNIUSDT",
+      "SUIUSDT",
+      "QNTUSDT",
+      "BNBUSDT",
+      "LSKUSDT",
+      "ENAUSDT",
+      "1000PEPEUSDT",
+      "WLDUSDT",
+      "PUMPUSDT",
+      "ADAUSDT",
+      "AVAXUSDT",
+      "LINKUSDT"
+    ],
+    "run_symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "ZECUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "NEARUSDT",
+      "DOGEUSDT",
+      "UNIUSDT",
+      "SUIUSDT"
+    ],
+    "incomplete_symbols": [
+      "1000PEPEUSDT",
+      "ADAUSDT",
+      "AVAXUSDT",
+      "BNBUSDT",
+      "ENAUSDT",
+      "HYPEUSDT",
+      "LINKUSDT",
+      "LSKUSDT",
+      "PUMPUSDT",
+      "QNTUSDT",
+      "WLDUSDT"
+    ],
+    "max_pos": 4,
+    "aggregate": {
+      "exits": {
+        "signal": 22,
+        "stop": 38,
+        "time": 7,
+        "tp": 9
+      },
+      "fee_share": 0.180062,
+      "fee_share_note": null,
+      "fees": 7.166298,
+      "fees_over_abs_gross": 0.021766,
+      "funding": -2.48177,
+      "giveback_r_mean": 0.736287,
+      "gross": 39.798985,
+      "gross_loss": 146.752057,
+      "gross_win": 181.866514,
+      "longs": 0,
+      "mae_r_mean": 0.816414,
+      "max_dd_equity": -0.087229,
+      "max_dd_r": 7.960604,
+      "mfe_r_mean": 0.826008,
+      "pf": 1.239277,
+      "pnl": 35.114457,
+      "r_mean": 0.096393,
+      "r_sum": 7.325882,
+      "shorts": 76,
+      "trades": 76,
+      "win_rate": 0.592105,
+      "wins": 45
+    },
+    "definitions": {
+      "fee_share": "fees / gross (None if gross <= 0)",
+      "funding": "gross - fees - net (the bar-loop funding charge)",
+      "giveback_r": "mfe_r - realised R",
+      "gross": "price P&L after slippage, before fees and funding",
+      "mae_r": "APPROXIMATE: worst bar extreme over [entry bar, exit bar] vs entry, in stop-distance R (exit bar may include movement after the exit)",
+      "max_dd_equity": "max drawdown of the bar equity curve (fraction)",
+      "max_dd_r": "max drawdown of cumulative trade R in exit order",
+      "mfe_r": "best price on the backtest path (p.best) vs entry, in stop-distance R",
+      "regime": "BTCUSDT close vs 4h EMA200 on the last closed candle before the entry fill"
+    },
+    "manifest_digest": "54912d9d2bf6e6fc45bc75c0553f0bd867e877972beeb3452785937379baf1e7",
+    "universe_digest": "1c06c18d2fc82413b740260f0051a9f8286e9b0cb87d7d9614a2f88d78393fce",
+    "cache_files": {
+      "1000PEPEUSDT": {
+        "dir": "cache",
+        "file": "1000PEPEUSDT_4h.csv",
+        "missing_file": true
+      },
+      "ADAUSDT": {
+        "dir": "cache",
+        "file": "ADAUSDT_4h.csv",
+        "missing_file": true
+      },
+      "AVAXUSDT": {
+        "dir": "cache",
+        "file": "AVAXUSDT_4h.csv",
+        "missing_file": true
+      },
+      "BNBUSDT": {
+        "dir": "cache",
+        "file": "BNBUSDT_4h.csv",
+        "missing_file": true
+      },
+      "BTCUSDT": {
+        "bytes": 340772,
+        "dir": "cache",
+        "file": "BTCUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9"
+      },
+      "DOGEUSDT": {
+        "bytes": 343925,
+        "dir": "cache",
+        "file": "DOGEUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "e6a2f2fcc88cd1b8d3aff63f9ae36a9bb33f75e41b1fd3872401f0cc9411c53a"
+      },
+      "ENAUSDT": {
+        "dir": "cache",
+        "file": "ENAUSDT_4h.csv",
+        "missing_file": true
+      },
+      "ETHUSDT": {
+        "bytes": 341937,
+        "dir": "cache",
+        "file": "ETHUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "4dcd3502009cb5f485404e9c82e39f953c95b2ec0a3a5635e13ac26a0338bb86"
+      },
+      "HYPEUSDT": {
+        "bytes": 204324,
+        "dir": "cache",
+        "file": "HYPEUSDT_4h.csv",
+        "rows": 2914,
+        "sha256": "a9c96e11bd815368c31bf0499ace222a36ec418096a35806897578bc595cde67"
+      },
+      "LINKUSDT": {
+        "dir": "cache",
+        "file": "LINKUSDT_4h.csv",
+        "missing_file": true
+      },
+      "LSKUSDT": {
+        "dir": "cache",
+        "file": "LSKUSDT_4h.csv",
+        "missing_file": true
+      },
+      "NEARUSDT": {
+        "bytes": 287134,
+        "dir": "cache",
+        "file": "NEARUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "b3587ec1e9d262fb12ac692d52026c1b06cdaaa84da9ee547b50b2583ced82b4"
+      },
+      "PUMPUSDT": {
+        "dir": "cache",
+        "file": "PUMPUSDT_4h.csv",
+        "missing_file": true
+      },
+      "QNTUSDT": {
+        "dir": "cache",
+        "file": "QNTUSDT_4h.csv",
+        "missing_file": true
+      },
+      "SOLUSDT": {
+        "bytes": 311783,
+        "dir": "cache",
+        "file": "SOLUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "1ad0f6960f9cd8fbcdb4883f8a8d7abba02c355093e32f293a95265cca35ac0e"
+      },
+      "SUIUSDT": {
+        "bytes": 318609,
+        "dir": "cache",
+        "file": "SUIUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "1dd46be48c2994f26a24cf55ecd7746fcbc50bad7cb87ca0758537ac1746fb7b"
+      },
+      "UNIUSDT": {
+        "bytes": 287268,
+        "dir": "cache",
+        "file": "UNIUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "c914f0580b1f47386c91563849ded9252a5b44d8fe849e5080299be4ec2187c9"
+      },
+      "WLDUSDT": {
+        "dir": "cache",
+        "file": "WLDUSDT_4h.csv",
+        "missing_file": true
+      },
+      "XRPUSDT": {
+        "bytes": 322458,
+        "dir": "cache",
+        "file": "XRPUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "ada4e1fe0412c81ca656001ce6425e886fda0442a6289ce65ff8d86326d6202e"
+      },
+      "ZECUSDT": {
+        "bytes": 304198,
+        "dir": "cache",
+        "file": "ZECUSDT_4h.csv",
+        "rows": 4504,
+        "sha256": "6c5599b32f38770916a4a9a752435eca0b51cf69c941fdd9469f03bad9a790b2"
+      }
+    },
+    "runner_sha256": {
+      "run_breadth_candidate.py": "dad619aaf2df00fd79ce9a2ca2d4848f298b745920fe7f6c56898e7b4f6922f2",
+      "run_vwaprev_candidate.py": "c2f43564cc1da4cd79e12253ece82d10b3f82c1ecdbbc11aeafa80202060d23e"
+    }
+  },
+  "comparison": "Stage-A gross includes slippage; funding is gross minus fees minus net, so negative funding is a credit. No matched ablation establishes the cause of the Stage-A versus new control gap."
+}

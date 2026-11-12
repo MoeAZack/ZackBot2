@@ -1,0 +1,24 @@
+{
+  "code_sha256": "f425f24e2258fff89e525cc9c5162060f973d1ee4e9889d3c62ab6d835408c8d",
+  "input_sha256": {
+    "BTCUSDT": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+    "ETHUSDT": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+    "ZECUSDT": "d0a4228eededeb898852ef7365de3a83ab97e777ec354e85a54646800a0476a3",
+    "SOLUSDT": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+    "XRPUSDT": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+    "NEARUSDT": "8a0f42bb8e3c29ed2322b4b59af89b529979c7c8954feadf8f45b7ce6331ac18",
+    "DOGEUSDT": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+    "UNIUSDT": "68f9c3c021fc3b9f3fd5fb4f3d5e0dfb16f3637f46e21810d630f536aae6d697",
+    "SUIUSDT": "2589a5179d1501cc96a17301de93729ccdc06620404459aa6acdd77c06788e8e",
+    "QNTUSDT": "7e09a8ff536e3b79ea9f1294c5655dfa1a055a9e1af333c8b6d895b515d80ab1",
+    "BNBUSDT": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+    "ENAUSDT": "a5502e783174a5f30396333e6c4d2a137b4c79aad9b4c5c5e962bd3519b2b178",
+    "1000PEPEUSDT": "7990e613a14a0d9a0265d841ef484e443eff304dfcb1969119f36dfa0b38f4dd",
+    "WLDUSDT": "0ec8429c44371e815d8359ff9d50da55dc7c483d66941c125f6989a73ff105ba",
+    "ADAUSDT": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+    "AVAXUSDT": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+    "LINKUSDT": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d"
+  },
+  "source_head": "ee808bdd3a1bdecc74b524a8a6c4574dcc7f4247",
+  "role": "own full math and eligibility before frozen signal reference import; no economic admission reproduction"
+}
