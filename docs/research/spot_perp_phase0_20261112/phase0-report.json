@@ -1,0 +1,281 @@
+{
+  "manifest_sha256": "ea6b1deef10cd89b007c6542eb7b3a2cbb898c8e24543639ed917207755d8668",
+  "archives": [
+    {
+      "symbol": "BTCUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-12.zip.CHECKSUM",
+      "rest_hours_utc": [
+        "2024-12-01T00:00:00Z",
+        "2024-12-16T12:00:00Z",
+        "2024-12-31T23:00:00Z"
+      ],
+      "archive_sha256": "dfec812f73a84257b195cbdaed34d020fa77e845625c061c13bd6a60e7ef9372",
+      "checksum_file_sha256": "b8ed8ba0d52a240ed5bd2ffe49f1d7671b8a59210096b4b1c9c74ddeabe29417",
+      "expected_sha256": "dfec812f73a84257b195cbdaed34d020fa77e845625c061c13bd6a60e7ef9372",
+      "checksum_match": true,
+      "members": [
+        "BTCUSDT-1h-2024-12.csv"
+      ],
+      "rows": 744,
+      "valid_unique": 744,
+      "expected_hours": 744,
+      "missing_hours": 0,
+      "unexpected_hours": 0,
+      "errors": [],
+      "error_count": 0,
+      "first_raw": "1733011200000",
+      "last_raw": "1735686000000",
+      "native_join": {
+        "path": "F:\\ZackBot2_data\\C1H-NATIVE-DATA-20261112\\inputs\\cohort9_1h\\BTCUSDT.csv",
+        "sha256": "060ed29b21dfc5037fc2c82d5ccb43bb90b405ab6058bc40f43fb54c3f5fd669",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "canonical_join": {
+        "path": "F:\\ZackBot2_data\\C1H-20261112\\inputs\\cohort9_1h\\BTCUSDT.csv",
+        "sha256": "d042c3a67534cce6464d0deb13c5c8eb93fac2e5b911058b7d2a9134bde741b9",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "rest_checks": [
+        {
+          "hour_utc": "2024-12-01T00:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1733011200000&endTime=1733014799999&limit=1",
+          "response_sha256": "08732597a6cccdfc740b3c6eea31dfff9d65547d5f82d740f82ca6f2826e1981",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2024-12-16T12:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1734350400000&endTime=1734353999999&limit=1",
+          "response_sha256": "8e5668efe7513c70eec72324f83000a28966ada4aa75c91f45840ed05f665561",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2024-12-31T23:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1735686000000&endTime=1735689599999&limit=1",
+          "response_sha256": "3525bf1ffd9ff450c4e2c2719dc0c6cf4f370bbbfe1d544146a40792f3e96648",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        }
+      ]
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-01.zip.CHECKSUM",
+      "rest_hours_utc": [
+        "2025-01-01T00:00:00Z",
+        "2025-01-16T12:00:00Z",
+        "2025-01-31T23:00:00Z"
+      ],
+      "archive_sha256": "e7f2aaa5396a8062a57ab29ce9fab2d76b2c84ec58815d4ab7b3fe16f78c7118",
+      "checksum_file_sha256": "271a45ec61a89a526c1ddf6f9f90e4fd61a974a24bf3faea1354ffb061dc3702",
+      "expected_sha256": "e7f2aaa5396a8062a57ab29ce9fab2d76b2c84ec58815d4ab7b3fe16f78c7118",
+      "checksum_match": true,
+      "members": [
+        "BTCUSDT-1h-2025-01.csv"
+      ],
+      "rows": 744,
+      "valid_unique": 744,
+      "expected_hours": 744,
+      "missing_hours": 0,
+      "unexpected_hours": 0,
+      "errors": [],
+      "error_count": 0,
+      "first_raw": "1735689600000000",
+      "last_raw": "1738364400000000",
+      "native_join": {
+        "path": "F:\\ZackBot2_data\\C1H-NATIVE-DATA-20261112\\inputs\\cohort9_1h\\BTCUSDT.csv",
+        "sha256": "060ed29b21dfc5037fc2c82d5ccb43bb90b405ab6058bc40f43fb54c3f5fd669",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "canonical_join": {
+        "path": "F:\\ZackBot2_data\\C1H-20261112\\inputs\\cohort9_1h\\BTCUSDT.csv",
+        "sha256": "d042c3a67534cce6464d0deb13c5c8eb93fac2e5b911058b7d2a9134bde741b9",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "rest_checks": [
+        {
+          "hour_utc": "2025-01-01T00:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1735689600000&endTime=1735693199999&limit=1",
+          "response_sha256": "f1fcc0ed9f846c9620e00ae27b70162679846f452f5b5e1c919a97129fa0dbb3",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2025-01-16T12:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1737028800000&endTime=1737032399999&limit=1",
+          "response_sha256": "f408af4d421e350249afd5c389f659bedafc45a457bfa799a8a5efd4117ac72a",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2025-01-31T23:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1738364400000&endTime=1738367999999&limit=1",
+          "response_sha256": "83f5ee7e020027028f0f78dc586c5bcdee4c31e3818ecb1f5eacdfd940de2144",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        }
+      ]
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-12.zip.CHECKSUM",
+      "rest_hours_utc": [
+        "2024-12-01T00:00:00Z",
+        "2024-12-16T12:00:00Z",
+        "2024-12-31T23:00:00Z"
+      ],
+      "archive_sha256": "84312b7dc2b5c903853c78d94f587ef1d24b7960d7bd95f5bfe3afc3db006203",
+      "checksum_file_sha256": "be5c5fe21108db44f2beb89d918865da84ace2cbc4dd09539bd0a74f67683011",
+      "expected_sha256": "84312b7dc2b5c903853c78d94f587ef1d24b7960d7bd95f5bfe3afc3db006203",
+      "checksum_match": true,
+      "members": [
+        "ETHUSDT-1h-2024-12.csv"
+      ],
+      "rows": 744,
+      "valid_unique": 744,
+      "expected_hours": 744,
+      "missing_hours": 0,
+      "unexpected_hours": 0,
+      "errors": [],
+      "error_count": 0,
+      "first_raw": "1733011200000",
+      "last_raw": "1735686000000",
+      "native_join": {
+        "path": "F:\\ZackBot2_data\\C1H-NATIVE-DATA-20261112\\inputs\\cohort9_1h\\ETHUSDT.csv",
+        "sha256": "5805cb654b41a6810d3489a5c524406e0f3ada0fa0915f9976bc3fc5ecaa2a2b",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "canonical_join": {
+        "path": "F:\\ZackBot2_data\\C1H-20261112\\inputs\\cohort9_1h\\ETHUSDT.csv",
+        "sha256": "d9685cad29f6d62a0499eaa00afd766516c52dcae301814eb9d8940b634ccdad",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "rest_checks": [
+        {
+          "hour_utc": "2024-12-01T00:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1h&startTime=1733011200000&endTime=1733014799999&limit=1",
+          "response_sha256": "30b8bb791ea6957088abb5357af0bfe1a4843e1e33b3ef8b50c008fd79cfb752",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2024-12-16T12:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1h&startTime=1734350400000&endTime=1734353999999&limit=1",
+          "response_sha256": "e653be898c1c27b1137f9aec9342f8d9c9f09f38ee2566dcad514b0dd39a1abe",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2024-12-31T23:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1h&startTime=1735686000000&endTime=1735689599999&limit=1",
+          "response_sha256": "3abc2f7d23ecf4cc7bc68f0e6d2fa962d84dcf182b3c80926a42c4659ae2928b",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        }
+      ]
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-01.zip.CHECKSUM",
+      "rest_hours_utc": [
+        "2025-01-01T00:00:00Z",
+        "2025-01-16T12:00:00Z",
+        "2025-01-31T23:00:00Z"
+      ],
+      "archive_sha256": "f7350a6f3b51de466a0db52ba890cf296d4faeb6e84811b9606f87ad39ccf3ec",
+      "checksum_file_sha256": "f93543c374c179556a56019f23e1c0070fb0dcbdca1734a22d1fcd92e8a28fb3",
+      "expected_sha256": "f7350a6f3b51de466a0db52ba890cf296d4faeb6e84811b9606f87ad39ccf3ec",
+      "checksum_match": true,
+      "members": [
+        "ETHUSDT-1h-2025-01.csv"
+      ],
+      "rows": 744,
+      "valid_unique": 744,
+      "expected_hours": 744,
+      "missing_hours": 0,
+      "unexpected_hours": 0,
+      "errors": [],
+      "error_count": 0,
+      "first_raw": "1735689600000000",
+      "last_raw": "1738364400000000",
+      "native_join": {
+        "path": "F:\\ZackBot2_data\\C1H-NATIVE-DATA-20261112\\inputs\\cohort9_1h\\ETHUSDT.csv",
+        "sha256": "5805cb654b41a6810d3489a5c524406e0f3ada0fa0915f9976bc3fc5ecaa2a2b",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "canonical_join": {
+        "path": "F:\\ZackBot2_data\\C1H-20261112\\inputs\\cohort9_1h\\ETHUSDT.csv",
+        "sha256": "d9685cad29f6d62a0499eaa00afd766516c52dcae301814eb9d8940b634ccdad",
+        "futures_unique_hours": 744,
+        "matched_hours": 744,
+        "spot_without_futures": 0,
+        "futures_without_spot": 0
+      },
+      "rest_checks": [
+        {
+          "hour_utc": "2025-01-01T00:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1h&startTime=1735689600000&endTime=1735693199999&limit=1",
+          "response_sha256": "6eb0812f7314e104d3ff7f355bd00632bb87c34597189279d1cd066607b437e7",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2025-01-16T12:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1h&startTime=1737028800000&endTime=1737032399999&limit=1",
+          "response_sha256": "0a6ee9bac09b9bb63a3cda4b3ae7a7e0be820f2c4030db44ddfb2ae7792e44f2",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        },
+        {
+          "hour_utc": "2025-01-31T23:00:00Z",
+          "url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1h&startTime=1738364400000&endTime=1738367999999&limit=1",
+          "response_sha256": "f19ee661b3c2148c7e6dbcd2ebf52d00015e11e11751a2cf9ef16ce32097fd16",
+          "rows": 1,
+          "status": "MATCH",
+          "different_indices": []
+        }
+      ]
+    }
+  ]
+}

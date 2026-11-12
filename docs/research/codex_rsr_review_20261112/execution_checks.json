@@ -1,0 +1,52 @@
+[
+  {
+    "side": 1,
+    "case": "time",
+    "pass": true
+  },
+  {
+    "side": 1,
+    "case": "stop_first",
+    "pass": true
+  },
+  {
+    "side": 1,
+    "case": "gap",
+    "pass": true
+  },
+  {
+    "side": 1,
+    "case": "target",
+    "pass": true
+  },
+  {
+    "side": 1,
+    "case": "terminal",
+    "pass": true
+  },
+  {
+    "side": -1,
+    "case": "time",
+    "pass": true
+  },
+  {
+    "side": -1,
+    "case": "stop_first",
+    "pass": true
+  },
+  {
+    "side": -1,
+    "case": "gap",
+    "pass": true
+  },
+  {
+    "side": -1,
+    "case": "target",
+    "pass": true
+  },
+  {
+    "side": -1,
+    "case": "terminal",
+    "pass": true
+  }
+]

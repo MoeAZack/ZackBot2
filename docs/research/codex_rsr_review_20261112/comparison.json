@@ -1,0 +1,11 @@
+{
+  "scope": "Signal math comparison with shared independently constructed D01 eligibility and hourly return panels; does not independently compare reference loader or eligibility",
+  "t0": "2022-08-26T06:00:00+00:00",
+  "t1": "2026-10-04T04:00:00+00:00",
+  "independent_count": 11719,
+  "reference_count": 11719,
+  "independent_only_count": 0,
+  "reference_only_count": 0,
+  "independent_only_sample": [],
+  "reference_only_sample": []
+}

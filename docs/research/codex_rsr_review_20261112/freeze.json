@@ -1,0 +1,18 @@
+{
+  "source_sha256": "a07adff91f38380d55c78cfcf831a1445337aa7772cf8c74d7e2d2b254c98d1d",
+  "reference_sha256": "eb0bde8e7901a8dd48464bd98d6bc166b15422271a072083e50c8c909690380a",
+  "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "comparator_sha256": "654bab3bc54c998497293bd0fbc5ab46626fd3578a944515ab2251dd398deeaa",
+  "entries_sha256": "277d85875d0af49dc138d7d86836e1ac07d051c5feb9589d55b03cd2529250ec",
+  "tests": [
+    "future_prefix",
+    "own_exclusion",
+    "affine_intercept",
+    "zero_variance",
+    "insufficient_history",
+    "missing_hour",
+    "prior_sigma",
+    "eight_others",
+    "D01_complete_days"
+  ]
+}
