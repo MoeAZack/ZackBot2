@@ -1,0 +1,77 @@
+{
+  "at_cairo": "2026-11-12T16:40:05.345522+02:00",
+  "reviewed_head": "b10e52d040bd30790a623ac1472934bacc0752c4",
+  "kind": "independent operator rerun of Claude implementation, not independent signal implementation",
+  "fields_exact_match": [
+    "all",
+    "early_consumed",
+    "later_consumed",
+    "cost15_R_median",
+    "closedR15_maxdd",
+    "closes_per_week",
+    "turnover_fallback_trades",
+    "paper_eligible"
+  ],
+  "data_sha256": {
+    "AVAXUSDT_1h.csv": "0a151f1c3383a0535fb5296e7f8da695ac0b00c9c86537241eda306f7a707ca1",
+    "BNBUSDT_1h.csv": "52d287320443bb8e835da669f128e1215daf44b008d0144c68b58f81941f2f85",
+    "BTCUSDT_1h.csv": "05717edafd19982d332ae85dfe00e4e588457ab2f59474644b25a0379761e368",
+    "DOGEUSDT_1h.csv": "1ff2d7dc5cef172afe8c503c56b191c7a8c020a2c95bbc88bb25c1c064a82a70",
+    "ETHUSDT_1h.csv": "86b2d57897601f5a530a929c2d094f448641a6bfec0fa2e33084f4d7f9734a9c",
+    "LINKUSDT_1h.csv": "9536ea5dea36e345aa41e7419ec3be3aedc7c2bb580327bd4437407f4c8bda5d",
+    "SOLUSDT_1h.csv": "53ef0e063a65eb27471fed665d73bd01610cfef3a379b4799f7723088148ee30",
+    "XRPUSDT_1h.csv": "88840ca8ca6e03a39fb81e42372854ef88d00715195093a8879d88b4c130bfbc"
+  },
+  "result": {
+    "all": {
+      "n": 865,
+      "win": 39.3,
+      "pnl": 217.75,
+      "long_n": 438,
+      "short_n": 427,
+      "long_pnl": 73.74,
+      "short_pnl": 144.01,
+      "expR_7bp": 0.0326,
+      "pnl_7bp": 217.75,
+      "expR_15bp": -0.0368,
+      "pnl_15bp": -286.2,
+      "expR_23bp": -0.1063,
+      "pnl_23bp": -790.15
+    },
+    "early_consumed": {
+      "n": 504,
+      "win": 40.5,
+      "pnl": 290.42,
+      "long_n": 259,
+      "short_n": 245,
+      "long_pnl": 162.23,
+      "short_pnl": 128.19,
+      "expR_7bp": 0.0716,
+      "pnl_7bp": 290.42,
+      "expR_15bp": 0.0022,
+      "pnl_15bp": 2.78,
+      "expR_23bp": -0.0672,
+      "pnl_23bp": -284.85
+    },
+    "later_consumed": {
+      "n": 361,
+      "win": 37.7,
+      "pnl": -72.67,
+      "long_n": 179,
+      "short_n": 182,
+      "long_pnl": -88.49,
+      "short_pnl": 15.82,
+      "expR_7bp": -0.0218,
+      "pnl_7bp": -72.67,
+      "expR_15bp": -0.0914,
+      "pnl_15bp": -288.98,
+      "expR_23bp": -0.161,
+      "pnl_23bp": -505.3
+    },
+    "cost15_R_median": 0.1133,
+    "closedR15_maxdd": 46.29,
+    "closes_per_week": 4.04,
+    "turnover_fallback_trades": 0,
+    "paper_eligible": false
+  }
+}

@@ -1,0 +1,18 @@
+batch,trial,promotion_verdict,shadow_disposition,count_only_revision,revision_note
+CP3,X1,REJECTED,PARKED,False,
+CP3,X2,REJECTED,FORWARD_ONLY_LOW_CONFIDENCE proposed; not accepted for PAPER,False,
+CP3,X3,REJECTED,PARKED,False,
+CP3,X4,REJECTED,PARKED,False,
+CP3,X5,REJECTED,PARKED,False,
+CP3,X6,REJECTED,PARKED,False,
+CP3,Y1,REJECTED,PARKED,True,count-only draft retained separately; no return evaluated in draft
+CP3,Y2,REJECTED,FORWARD_ONLY_LOW_CONFIDENCE proposed; not accepted for PAPER,False,
+CP3,Y3,REJECTED,PARKED,False,
+CP3,Y4,REJECTED,PARKED,False,
+CP4,Z1,REJECTED,PARKED,True,count-only draft retained separately; no return evaluated in draft
+CP4,Z2,REJECTED,PARKED,False,
+CP4,Z3,REJECTED,PARKED,False,
+CP4,Z4,REJECTED,PARKED,False,
+CP4,Z5,REJECTED,PARKED,False,
+CP3,Y1-draft,SUPERSEDED_COUNT_ONLY_DESIGN,NOT_RETURN_TESTED,True,EMA50 to EMA200 after count-only inspection
+CP4,Z1-draft,SUPERSEDED_COUNT_ONLY_DESIGN,NOT_RETURN_TESTED,True,volume threshold1.0x to1.5x after count-only inspection
