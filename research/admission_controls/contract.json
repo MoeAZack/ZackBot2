@@ -1,0 +1,67 @@
+{
+ "study": "ADMISSION-CONTROLS (H5, EMA-long alone at actual capacity)",
+ "go": "PR #337 6835533713",
+ "kind": "bounded dependent diagnostic on consumedDEV; no promotion label, no DD threshold",
+ "reuse": "research/basket_old3_h5 @347c4b71 (basket.py 7c8507b0: definitions, data/rules hashes, START/END, fixed_sizing, build_lots identity, target_cash_events, replay)",
+ "sleeves": {
+  "H5": "h5_volume_impulse_long_1h long 1h 3ATR/4R/48 bars max_pos 1",
+  "EMA": "ema_st long 4h native 2.5ATR + signal exits max_pos 2",
+  "mgmt_override": {}
+ },
+ "native": {
+  "start": 4000,
+  "share": 1,
+  "risk_usd": 8,
+  "cap": 3333.33,
+  "max_lev": 10,
+  "daily_halt": 0.03,
+  "risk_rules": {
+   "open_risk_cap": {
+    "mode": "enforce",
+    "pct": 2.5
+   }
+  },
+  "funding": "native cadence",
+  "symbols": "coin-priority list"
+ },
+ "orders": {
+  "alpha": [
+   "ADAUSDT",
+   "AVAXUSDT",
+   "BNBUSDT",
+   "BTCUSDT",
+   "DOGEUSDT",
+   "ETHUSDT",
+   "LINKUSDT",
+   "SOLUSDT",
+   "XRPUSDT"
+  ],
+  "cohort": [
+   "BTCUSDT",
+   "ETHUSDT",
+   "XRPUSDT",
+   "SOLUSDT",
+   "DOGEUSDT",
+   "BNBUSDT",
+   "ADAUSDT",
+   "LINKUSDT",
+   "AVAXUSDT"
+  ]
+ },
+ "cases": 24,
+ "costs": [
+  7,
+  15,
+  23
+ ],
+ "paths": [
+  "path",
+  "worst"
+ ],
+ "parity": {
+  "guard_rerun": "same case with guards off; differing entries reported",
+  "nonparity": "basket.replay on the native lots; any refusal flagged NONPARITY, not repaired",
+  "overlay_compare": "alpha order vs basket seed-0 records for the sleeve: newly admitted / missed lot ids"
+ },
+ "note": "native time conventions kept (entry at bar open, exit cash at exit-bar end); elapsed holds reported; BEAR/HOT path attribution deferred"
+}
