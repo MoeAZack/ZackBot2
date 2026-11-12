@@ -1,0 +1,51 @@
+{
+ "kind": "coverage",
+ "inputs_through": "2026-11-12 20:00:00",
+ "T": "2026-11-12 22:00:00",
+ "status_1h": "COMPLETE",
+ "gaps_1h": {},
+ "status_4h": "COMPLETE",
+ "gaps_4h": {},
+ "warmup_1h": {
+  "ADAUSDT": 316,
+  "AVAXUSDT": 316,
+  "BNBUSDT": 316,
+  "BTCUSDT": 316,
+  "DOGEUSDT": 316,
+  "ETHUSDT": 316,
+  "LINKUSDT": 316,
+  "SOLUSDT": 316,
+  "XRPUSDT": 316
+ },
+ "warmup_4h": {
+  "ADAUSDT": 4572,
+  "AVAXUSDT": 4572,
+  "BNBUSDT": 4572,
+  "BTCUSDT": 4572,
+  "DOGEUSDT": 4572,
+  "ETHUSDT": 4572,
+  "LINKUSDT": 4572,
+  "SOLUSDT": 4572,
+  "XRPUSDT": 4572
+ },
+ "input_files_sha256": {
+  "ADAUSDT-1h.json": "80ade73bc311a1014f7b6b3eb308aae13eb9bafb6ef95255e811e093370a5dfb",
+  "ADAUSDT-4h.json": "91b6fa6e502404b807a27f80cda21e24fc4cb76e40c0e64636c579912321f04a",
+  "AVAXUSDT-1h.json": "296b91ac41bb4a7f52006b589b21ccfa5262008d64f1e318a189baff3b56ddf9",
+  "AVAXUSDT-4h.json": "4b7b9c20fa70039f1b61807444f6c3bcb50589508bf2cef2487fa5b8c279bc8e",
+  "BNBUSDT-1h.json": "009987de57896f9a9d0f8b57750163315fbe5f6983dfa22901d13c80a1609e7b",
+  "BNBUSDT-4h.json": "3e37dde4e0ac5124f54aeeec0f8778cec361a745922fa3f63fdcffbaef864751",
+  "BTCUSDT-1h.json": "607f1f0ec5a9bd6f55ffe1b47631b99dc22bb1dd5a7fe1cb3127118378a470f1",
+  "BTCUSDT-4h.json": "42decb4a5ac0bf81cff75b995a35cafe9249340f8e103967d7f66101a123b4fe",
+  "DOGEUSDT-1h.json": "47c012b06b9405d8ab8864420a1748063d7ebdb15be5840bd6efd88a9837be8d",
+  "DOGEUSDT-4h.json": "6edf853312676dd4226b74b245693b71f666faae22ca46e0677f25f529675c0e",
+  "ETHUSDT-1h.json": "edbb89b7ba664f992e72ce296d7c4329225d4210d79e73f5d482084f8795e092",
+  "ETHUSDT-4h.json": "b5a56a3f81934b7d7b81806dd2c8c6a490faf60e250826f469b1618b26764f9a",
+  "LINKUSDT-1h.json": "64d134316c6b2d1cdfb18461c37832a05c5cab25404534cc7986ab9fca4383cc",
+  "LINKUSDT-4h.json": "3c1eb7f055aa7668aeea63d239aefe51fd1a9ba0cb136db2036f02ccbac76950",
+  "SOLUSDT-1h.json": "b30db3b317a9925fc4d2f4dffc2f5fb8b761cc98bec8f13edd8cb5d560d0067b",
+  "SOLUSDT-4h.json": "14c97e92b00410b23b197150483b93bd2dbc244ee43e990ded5bb9b9cdfce008",
+  "XRPUSDT-1h.json": "f90227b6a5438264f3cbb4711aa1a1c9c0ea130b506357522d9dec06c1642ef0",
+  "XRPUSDT-4h.json": "80da44757058f5aeb8160e843bc0d6b58fb5acb5fff4eea70799cc72792ce055"
+ }
+}
