@@ -1,0 +1,83 @@
+{
+  "source": "frozen research/newstrat_cp2.py and strategies.py at b75fa28b; pure stdlib reproduction with existing independent_n6.py and SHA-verified frozen candle files",
+  "time_alignment": "decision candle open UTC; original candidate CSV is next-candle entry timestamp",
+  "n_candles": 10499,
+  "counts_full": {
+    "label": "full_frozen_vs_independent_min199",
+    "ours": 1265,
+    "frozen": 1156,
+    "intersection": 1147,
+    "ours_only": 118,
+    "frozen_only": 9,
+    "ours_only_removed_by_close_ema": 118,
+    "ours_with_close": 1147
+  },
+  "counts_after_warmup220": {
+    "label": "common_after_warmup220_exclude_final",
+    "ours": 1260,
+    "frozen": 1142,
+    "intersection": 1142,
+    "ours_only": 118,
+    "frozen_only": 0,
+    "ours_only_removed_by_close_ema": 118,
+    "ours_with_close": 1142
+  },
+  "frozen_full_raw": {
+    "frozen": 1156,
+    "frozen_no_close": 1275,
+    "frozen_first_219": 14
+  },
+  "examples_ours_not_frozen": [
+    [
+      "DOGEUSDT",
+      "2022-04-21T08:00:00+00:00",
+      1
+    ],
+    [
+      "LINKUSDT",
+      "2022-06-10T16:00:00+00:00",
+      -1
+    ],
+    [
+      "BNBUSDT",
+      "2022-06-28T16:00:00+00:00",
+      -1
+    ],
+    [
+      "XRPUSDT",
+      "2022-10-25T12:00:00+00:00",
+      1
+    ],
+    [
+      "LINKUSDT",
+      "2022-11-28T00:00:00+00:00",
+      -1
+    ],
+    [
+      "DOGEUSDT",
+      "2022-12-13T08:00:00+00:00",
+      1
+    ],
+    [
+      "XRPUSDT",
+      "2022-12-27T16:00:00+00:00",
+      -1
+    ],
+    [
+      "AVAXUSDT",
+      "2023-02-15T08:00:00+00:00",
+      1
+    ],
+    [
+      "BNBUSDT",
+      "2023-02-15T08:00:00+00:00",
+      1
+    ],
+    [
+      "LINKUSDT",
+      "2023-02-15T08:00:00+00:00",
+      1
+    ]
+  ],
+  "status": "FORWARD_ONLY"
+}

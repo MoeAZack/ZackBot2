@@ -1,0 +1,14 @@
+{
+  "frozen_source_head": "b75fa28bdd4786688659bee13f4047c92f91aa12",
+  "independent_prior_head": "a3095360e38e71035b82339a0284852a154831b3",
+  "alignment": "next-candle entry open UTC; raw signals are not fills",
+  "raw_corrected": 1142,
+  "ledger_rows": 405,
+  "ledger_unique": 405,
+  "matched": 405,
+  "ledger_missing": 0,
+  "raw_extra": 737,
+  "input_hashes_verified": true,
+  "ledger_sha256": "b22843a2aef77d9240106326605622576a1ce9b8198edb80d9390f3c955eca47",
+  "status": "FORWARD_ONLY"
+}
