@@ -1,0 +1,1768 @@
+{
+  "id": "H5-WIDE-D01",
+  "source_manifest_sha256": "bc15c895823bed0aacbf9869774e1500ce4ac4827432dae597fbe2c91fd687a8",
+  "prereg_sha256": "622635c784e3fc9e37401623dad9f0c5dadeb3b2386d5a305b7cbd6416ba5174",
+  "authority": "Original frozen dataset with objective REST replacement of placeholder and immediate neighbors for each symbol. No July warmup added; same per-symbol starts and row counts. Binance checksum-verified daily archives for October supplement monthly archives.",
+  "symbols": {
+    "ADAUSDT": {
+      "source_csv_sha256": "a86ceae84343c52cc2812a1d922cca299ebcd99770223bf1ebf3dbb94af72600",
+      "csv_sha256": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ADAUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.34300",
+            "h": "0.34560",
+            "l": "0.34220",
+            "c": "0.34480",
+            "v": "9161737",
+            "qv": "3152361.83980"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.34250",
+            "h": "0.34390",
+            "l": "0.34250",
+            "c": "0.34300",
+            "v": "3216592",
+            "qv": "1104888.98680"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ADAUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "1f05fe5a0ae2fdb970a64085265ff896fdd667775eb9edf4838ccaddd6cf1bc6",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ADAUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "c9c8c47a51cea235cbbcb4f812ec006a5d267a781758942da15a886bac52dbbd"
+    },
+    "AVAXUSDT": {
+      "source_csv_sha256": "12ba25c32800df0b719639e3afff3fa51857e649467645f346b807bd96b32afb",
+      "csv_sha256": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\AVAXUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "25.9900",
+            "h": "26.2340",
+            "l": "25.9560",
+            "c": "26.2320",
+            "v": "139036",
+            "qv": "3626241.4610"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "25.9610",
+            "h": "25.9990",
+            "l": "25.9100",
+            "c": "25.9890",
+            "v": "26456",
+            "qv": "686868.3450"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "4b1229fa61da22d3407e1f3bf1b0ddb848a6c7ea46320e275fef6b38de22dcab",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\AVAXUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "8082aa0c6e1fdab6bd97d2bdc5053f37266cefe7e5a79e5013b83fccef05d80f"
+    },
+    "BNBUSDT": {
+      "source_csv_sha256": "78ae8443125f1a112369a7fa8c0f773e85c777fb4ccc8c56fba68c9497cd78e5",
+      "csv_sha256": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\BNBUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "598.660",
+            "h": "602.420",
+            "l": "598.400",
+            "c": "601.340",
+            "v": "31806.67",
+            "qv": "19106664.96820"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "598.290",
+            "h": "598.860",
+            "l": "598.290",
+            "c": "598.660",
+            "v": "2122.69",
+            "qv": "1270702.05010"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "713cd9ff2eb3a815388d433190f6ae7c206081a62ee624cd2450ac5d2a4d7e0c",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\BNBUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "5f5475af13b859189591ac3d09819c842aaaea6f7d5387ff3489979ce5d751ea"
+    },
+    "BTCUSDT": {
+      "source_csv_sha256": "55f0112a943c1311aef8032f500567df15af7cacde596908455db52f6fcab40e",
+      "csv_sha256": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\BTCUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "69650.00",
+            "h": "69776.80",
+            "l": "69480.30",
+            "c": "69770.20",
+            "v": "3992.340",
+            "qv": "278100132.91630"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "69623.00",
+            "h": "69766.20",
+            "l": "69603.10",
+            "c": "69650.00",
+            "v": "1395.290",
+            "qv": "97216942.77100"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "df0340bb263e7d45c1927e4fb717f56b43e0170c3f0b15baea64102b05d9db44",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\BTCUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "3dc47e684b88cdf255c57022e01c8db8a23fabd9b87e4361c44c1dce1c0ef5a7"
+    },
+    "DOGEUSDT": {
+      "source_csv_sha256": "046e530717ec06a0eef34860c31038926c4225e8a857d37424409dcdc0ac36d4",
+      "csv_sha256": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\DOGEUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.159290",
+            "h": "0.160950",
+            "l": "0.158010",
+            "c": "0.160780",
+            "v": "351845654",
+            "qv": "56050787.660430"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.157940",
+            "h": "0.159640",
+            "l": "0.157880",
+            "c": "0.159300",
+            "v": "161600026",
+            "qv": "25651159.509170"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "ad93928bee55ebb7d6018859c4f0d64a24ab23576d01f2266fc91d2c21989b58",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\DOGEUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "2ceea6cf44852359fb782087e19d3bb7b5ccbbd6512de23d4572b0d744b3c73e"
+    },
+    "ETHUSDT": {
+      "source_csv_sha256": "7d6123cbac9b42a87af6536bf06b66c15b35714a6549c2693652d419fefc58fd",
+      "csv_sha256": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ETHUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "2518.92",
+            "h": "2550.00",
+            "l": "2516.54",
+            "c": "2543.70",
+            "v": "142679.794",
+            "qv": "361731925.26645"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "2515.96",
+            "h": "2520.00",
+            "l": "2514.54",
+            "c": "2518.92",
+            "v": "16286.043",
+            "qv": "40995382.83058"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "e91275c9187f18a1ffdff3d22b63e40d6abb9b086b1f38289cd46675bd70968b",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ETHUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "050cf01098cac429d8f8b902ad457fdbed98624cb0d5e43aab90656fe8bce545"
+    },
+    "LINKUSDT": {
+      "source_csv_sha256": "3e24d303299fa92002e47f2c44eb146cc5a250264728fa1ec994175760932b32",
+      "csv_sha256": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\LINKUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "11.039",
+            "h": "11.150",
+            "l": "11.014",
+            "c": "11.145",
+            "v": "278357.74",
+            "qv": "3083561.80794"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "11.047",
+            "h": "11.064",
+            "l": "10.998",
+            "c": "11.038",
+            "v": "119090.35",
+            "qv": "1313371.57499"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "ed36ec5b61bc30b2a60d78c12ffe29f5d6b142c55c62c2c02447c88c37b131d3",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\LINKUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "4578abbcfab6e178667b5aef29797233a42e1c2455f75b2bd905bf23c5940e21"
+    },
+    "SOLUSDT": {
+      "source_csv_sha256": "70709e021fd5830194b8d831c0bac72248de7feef2e096043ebf5eb28e727ace",
+      "csv_sha256": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\SOLUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "176.5600",
+            "h": "177.8800",
+            "l": "176.2200",
+            "c": "177.5200",
+            "v": "234903",
+            "qv": "41627074.7840"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "176.5500",
+            "h": "176.9100",
+            "l": "176.3100",
+            "c": "176.5500",
+            "v": "68445",
+            "qv": "12089255.7690"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "91d7225ea910878a2f87f6fdc5e46714afe29e883608ada5627aabaac138904d",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\SOLUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "79a3aaa52a309c8eeb10ad5da18a8eaa5a3923e67c3838a6acb2f068c40991d2"
+    },
+    "XRPUSDT": {
+      "source_csv_sha256": "98d7dfd1aec79e0b25f5e55d125e8bda9941df5af6716ca66ff5d9f348f85107",
+      "csv_sha256": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\XRPUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.5172",
+            "h": "0.5192",
+            "l": "0.5160",
+            "c": "0.5191",
+            "v": "9275089.7",
+            "qv": "4801903.00720"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.5182",
+            "h": "0.5187",
+            "l": "0.5170",
+            "c": "0.5172",
+            "v": "3124340.9",
+            "qv": "1617722.80397"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "d425575db4d186946c666d47e36c3c352eaba439205e28852051521a8efce2e9",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\XRPUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "86ecb90fb45bdc924eadb76f6ae2119f7eeb30d3eb741bc5471f3b89cb32a7f7"
+    },
+    "1000PEPEUSDT": {
+      "source_csv_sha256": "e481ee965ab75bc18195259462a2c6fd09c70990181119a18448d087fdebbf2a",
+      "csv_sha256": "7990e613a14a0d9a0265d841ef484e443eff304dfcb1969119f36dfa0b38f4dd",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\1000PEPEUSDT_1h.csv",
+      "first_utc": "2023-05-05 16:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 29941,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.0089904",
+            "h": "0.0093284",
+            "l": "0.0089853",
+            "c": "0.0093045",
+            "v": "5747415805",
+            "qv": "52838513.8253462"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.0089722",
+            "h": "0.0089934",
+            "l": "0.0089465",
+            "c": "0.0089908",
+            "v": "597522649",
+            "qv": "5363456.7047525"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=1000PEPEUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "f6bae62925f7736c43f2a55675737985176ab82240ac5945590216ad249a07fd",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\1000PEPEUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "29087e3cc72551ec6b918ca5dac5a47aca9000dc8e50492b395735884f69fcde"
+    },
+    "AAVEUSDT": {
+      "source_csv_sha256": "3b167e055bc26399ad7b4b7f79e3714c435c048252f632205e4bcaeeea2b55f3",
+      "csv_sha256": "03cb0f857f1a100a9b8436f26f5a09559f7a30c3df7b68aa329e47d929264af7",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\AAVEUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "150.930",
+            "h": "151.460",
+            "l": "150.780",
+            "c": "151.200",
+            "v": "15560.9",
+            "qv": "2351850.4730"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "150.240",
+            "h": "151.140",
+            "l": "150.240",
+            "c": "150.960",
+            "v": "6346.7",
+            "qv": "955862.5670"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AAVEUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "d55c8e97151ed9d1438050babebec572a0ad4da8053e33b356b724f5e72ca475",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\AAVEUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "ebf660036d2e340a9a6b9e7d910ff8b13af2268e3663fd97090911638ab5680a"
+    },
+    "APTUSDT": {
+      "source_csv_sha256": "3a5c939a566a08905248d7c1321b41baa2ddbd5d5bb6a503d54d96dbbd7bb617",
+      "csv_sha256": "fe731739140a1c72edef8e94de774cd1c6de19c374ab64175df3faa6de0ec44d",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\APTUSDT_1h.csv",
+      "first_utc": "2022-10-19 02:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 34707,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "9.14680",
+            "h": "9.24700",
+            "l": "9.11630",
+            "c": "9.23600",
+            "v": "435656.4",
+            "qv": "3996456.774660"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "9.11960",
+            "h": "9.15420",
+            "l": "9.10560",
+            "c": "9.14680",
+            "v": "170670.9",
+            "qv": "1559017.466670"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=APTUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "1b74c6ac8c5c083ad9a511489b92424d46c5b81470138a8a7c2b1a8ee2f09c80",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\APTUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "78e002bea80855c7d5ed56cceb0307396ca9682548ca088ab4aeb96056a1f6da"
+    },
+    "ARBUSDT": {
+      "source_csv_sha256": "af9be0bbe8992874944215fecde4d6b580bd32a9ceb1b55505d2bbe6436bebf8",
+      "csv_sha256": "06d3606a23cf8837490ed268ad381e170fb70bbd01f71cad62e2590f7ac8de53",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ARBUSDT_1h.csv",
+      "first_utc": "2023-03-23 15:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 30974,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.517400",
+            "h": "0.522900",
+            "l": "0.516100",
+            "c": "0.522800",
+            "v": "4185913.0",
+            "qv": "2173491.6239600"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.516800",
+            "h": "0.517600",
+            "l": "0.515600",
+            "c": "0.517500",
+            "v": "1306954.6",
+            "qv": "675282.2255500"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ARBUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "249c6bbe1be84cddda0cb511dcecf0448552dc3910b6d71196d74f4b19011cd1",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ARBUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "119b4bce7c732741e349c13e69d9a92b1c9bf710d574d1a43d31f81881eb0b84"
+    },
+    "ARKUSDT": {
+      "source_csv_sha256": "abae9524b2c1fcc4bb7b80e865ed8683c8b3899427e62562e5d2b1b84c50ed4a",
+      "csv_sha256": "857acc5d85c4cd50a5bbeb7a2faf14803d7e34e9884562a576607d8e78977173",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ARKUSDT_1h.csv",
+      "first_utc": "2023-09-19 16:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 26653,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.5054000",
+            "h": "0.5099000",
+            "l": "0.5042000",
+            "c": "0.5098000",
+            "v": "476214",
+            "qv": "241458.0564000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.5065000",
+            "h": "0.5071000",
+            "l": "0.5049000",
+            "c": "0.5054000",
+            "v": "74258",
+            "qv": "37561.9285000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ARKUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "eab50965edce2d0bf00478cae3135a8989c3b43ca0d3fe42f2c130bbe7e88c52",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ARKUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "fd8b7fd246cd6e2b5a10bbb61a019ad8bf7ddc2abd3d175f339e6a4a5cfc1ca2"
+    },
+    "BCHUSDT": {
+      "source_csv_sha256": "9e595f87bb08c9e954b6339514919e96927f7304f98b90a4bf1fc8cce90c4733",
+      "csv_sha256": "bfe4da7c097125e495d2729c1e3a5b78d68970792e973402029b1794f885918b",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\BCHUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "364.10",
+            "h": "365.00",
+            "l": "362.96",
+            "c": "364.59",
+            "v": "7192.898",
+            "qv": "2620373.53779"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "362.13",
+            "h": "364.19",
+            "l": "362.13",
+            "c": "364.10",
+            "v": "1517.225",
+            "qv": "551263.13623"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BCHUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "f23ae0535ac6c3cf7f2901d12a39cfaa53e8a17a7c4cc78a8fb205eeccdf88eb",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\BCHUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "37d9765f2914b972116a7bb831b0d131738fb4c13c15849497a9d3d7fb04d1e1"
+    },
+    "DOTUSDT": {
+      "source_csv_sha256": "0b1d7a917d9a042de74e03dce9e546f1bd313a30ffc71ea4d45044128b148778",
+      "csv_sha256": "31d53fa913fac775bc76d7a6d54167e7c65722c85455c9072797031b2e94629a",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\DOTUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "4.084",
+            "h": "4.109",
+            "l": "4.070",
+            "c": "4.104",
+            "v": "461522.8",
+            "qv": "1888754.9538"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "4.078",
+            "h": "4.085",
+            "l": "4.071",
+            "c": "4.084",
+            "v": "109083.2",
+            "qv": "444847.2923"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOTUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "b892df12d5708b0e2f62961f4046cbc9a22a5a295a695f1618c5b06cfd73ff38",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\DOTUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "38c9afb68bf7dd63049a59704678fbce2575b557cb4eb747ed4e01da57c9e38d"
+    },
+    "ENAUSDT": {
+      "source_csv_sha256": "117f97b08e5113d371d4793e8c0bb7f310c9e6219e24b95db72674e3e6fda635",
+      "csv_sha256": "a5502e783174a5f30396333e6c4d2a137b4c79aad9b4c5c5e962bd3519b2b178",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ENAUSDT_1h.csv",
+      "first_utc": "2024-04-02 12:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 21953,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.3494000",
+            "h": "0.3609000",
+            "l": "0.3493000",
+            "c": "0.3608000",
+            "v": "13085884",
+            "qv": "4650081.4375000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.3517000",
+            "h": "0.3529000",
+            "l": "0.3480000",
+            "c": "0.3494000",
+            "v": "4088179",
+            "qv": "1433198.7742000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ENAUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "9f6b2348e0b8cb7bb4700e2ed10fc900ee8a8d6bb63aab2a6940808de0ae8ab6",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ENAUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "26ec3bd933aeee250a5c83ebc14a468397a2cb70aabaf664e975b702d0353916"
+    },
+    "ENJUSDT": {
+      "source_csv_sha256": "8b33a3c7a6fa81c376d8e13ef4667f1a2c539752300ffcd4ab34c097cce101fd",
+      "csv_sha256": "3347c592f8b874b4317459e3f6e0c66069f9004f09759398681d4b9c1059c6a3",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ENJUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.14385",
+            "h": "0.14642",
+            "l": "0.14357",
+            "c": "0.14632",
+            "v": "1370312",
+            "qv": "198862.13132"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.14392",
+            "h": "0.14419",
+            "l": "0.14344",
+            "c": "0.14387",
+            "v": "199086",
+            "qv": "28639.80227"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ENJUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "3f188f9b3be4d9abc990d944e41742ba0a22de8bb6c69f59bff0bce127953a88",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ENJUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "cb4b38120327df942e5b5c09e1b7ae1aa8f5b8c1af6b9137c752aa73fd881f9a"
+    },
+    "ETCUSDT": {
+      "source_csv_sha256": "4d05e5dfcde3fe0b66dac2d7b2f111865754e5b758062db2871f481bc7150273",
+      "csv_sha256": "af77d19e87587303271345533c1b72a01a1a9dafac4847ac98c693da30d27f87",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ETCUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "18.729",
+            "h": "18.875",
+            "l": "18.693",
+            "c": "18.872",
+            "v": "130951.24",
+            "qv": "2461037.33912"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "18.731",
+            "h": "18.744",
+            "l": "18.701",
+            "c": "18.729",
+            "v": "9089.77",
+            "qv": "170177.31019"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETCUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "839b577f1af25591d20d92ef497103b13a57ffa1107f754e32725da46048079a",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ETCUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "ff7f26462d4fa4b853a00d4a27241739a01f804433babdefb0ae8a3ef6abc2cf"
+    },
+    "FETUSDT": {
+      "source_csv_sha256": "bc0a523b6b5f7cede0214bb1b42b4043390e434c5c30b0baeb32241595b43a71",
+      "csv_sha256": "54dfb08138ad67a28573f30b964b64939329877d40e8b4ca1bc53bbcbce471b5",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\FETUSDT_1h.csv",
+      "first_utc": "2023-01-17 02:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 32547,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "1.2468000",
+            "h": "1.2723000",
+            "l": "1.2413000",
+            "c": "1.2723000",
+            "v": "2253702",
+            "qv": "2834374.2886000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "1.2449000",
+            "h": "1.2475000",
+            "l": "1.2420000",
+            "c": "1.2466000",
+            "v": "322558",
+            "qv": "401561.6940000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=FETUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "33321628c378f807e02b3257eb2a49a5f57054b48f12496e765e3aca28fcf602",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\FETUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "fec171e1020ba684874bd9679b44a43bb44cc31c11eb4a53ee4a8bdaf1f6d021"
+    },
+    "FILUSDT": {
+      "source_csv_sha256": "fd821902c4fba440022326270c51ed1de30c59ffafeb7b7cd49b90ef06bf46f2",
+      "csv_sha256": "d3377caf8019b8345f7254f07a1e850c49ed486a2da77fbf3636d11fe1222bed",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\FILUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "3.591",
+            "h": "3.630",
+            "l": "3.582",
+            "c": "3.630",
+            "v": "418978.8",
+            "qv": "1511544.9853"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "3.582",
+            "h": "3.592",
+            "l": "3.579",
+            "c": "3.590",
+            "v": "128042.6",
+            "qv": "459193.1799"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=FILUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "4d8dbf7c53178e5248beace5d6ae803588b60831f689317d3df94270f2fa4cd8",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\FILUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "45a0f09fc0fd9e9a7d5557ad046afcbee48feccd88bea326cca5942ab315719f"
+    },
+    "GALAUSDT": {
+      "source_csv_sha256": "5cf82e39be137b1006bab2dca378e52071e6a5d73af5131e8ffd3d7e043843bd",
+      "csv_sha256": "979da8645427657fe9bed5d109788f735f346e7a6d11125b72d9a7219b0d15ef",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\GALAUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.02025",
+            "h": "0.02073",
+            "l": "0.02023",
+            "c": "0.02072",
+            "v": "97119292",
+            "qv": "1991214.40046"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.02030",
+            "h": "0.02033",
+            "l": "0.02023",
+            "c": "0.02025",
+            "v": "14473093",
+            "qv": "293386.33195"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=GALAUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "56d874b536bd4c2feea11055968bc7abb9b332e6deb4dcc6c6324e002924716f",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\GALAUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "910b4dedd1d7c68636b4c11761d28431993fcdbc8ef3d070913bbacff8ff5408"
+    },
+    "INJUSDT": {
+      "source_csv_sha256": "f4e0ae2f3e60bcec3215eb79c4bb83b59b3313b154b575fb8e987a1738694ab8",
+      "csv_sha256": "32044c7e6e0428656eb63fbc0d8a1890a18963f8e824cb96988dbe23440c27ca",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\INJUSDT_1h.csv",
+      "first_utc": "2022-08-17 02:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36219,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "18.847000",
+            "h": "19.228000",
+            "l": "18.846000",
+            "c": "19.222000",
+            "v": "151186.4",
+            "qv": "2877463.2403000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "18.813000",
+            "h": "18.860000",
+            "l": "18.781000",
+            "c": "18.847000",
+            "v": "21234.4",
+            "qv": "399859.8092000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=INJUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "da0aaf429a9cb07c1d8cccf72752b0502ce081189d2b58b07cbac1e49117de05",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\INJUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "5e7e81eefa5248c76d95e10d80a1afcf601a6a5733bf0951de5d4a51a0c8f154"
+    },
+    "LTCUSDT": {
+      "source_csv_sha256": "2b65eb1a468d13d7fded0fa2d41431b5e79a7d9b9943de41dfde73923698cdfd",
+      "csv_sha256": "a791e0730fecbf97488891cd4aecb1067298a6f0b5fc92074631b5b38a797b79",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\LTCUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "70.46",
+            "h": "70.88",
+            "l": "70.28",
+            "c": "70.76",
+            "v": "24680.084",
+            "qv": "1742875.23054"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "70.49",
+            "h": "70.59",
+            "l": "70.44",
+            "c": "70.46",
+            "v": "6554.941",
+            "qv": "462235.26791"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LTCUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "bcf610615873d67d770bcbd97e3ef043ab913b7ed7a2d74e6b1a14e76173361d",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\LTCUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "15da3edb90aa639e22e60ce64fa3963204e13eb1d4d6e6848353844490279754"
+    },
+    "MANAUSDT": {
+      "source_csv_sha256": "71e5cee20b43dec2ffdc4522e16e550890798fb3866536ed9dea4e24539c96cf",
+      "csv_sha256": "1a04d44ed60804c1b88e0f535573e085d5c402aa2e5f3cedcf186b0ea7ede013",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\MANAUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.2944",
+            "h": "0.2974",
+            "l": "0.2933",
+            "c": "0.2972",
+            "v": "1890455",
+            "qv": "558092.9440"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.2948",
+            "h": "0.2950",
+            "l": "0.2937",
+            "c": "0.2944",
+            "v": "306451",
+            "qv": "90209.1409"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=MANAUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "37d8e3eb63262e9e038fccf777ed25d69f70116eeec29e4f0242612d4ac12668",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\MANAUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "4ba6fa55acb7cbe2e73593e08a03f6a655dc970845f90e89b8445ed8b70418e5"
+    },
+    "MOVRUSDT": {
+      "source_csv_sha256": "afa062ae004b62bb25be3b14bcc6e5043e493dbc0e63ff239749b6cd9d115134",
+      "csv_sha256": "529344c17019a81ebaeb18b45d866062a9140784c9803c6662e5d05749fcb47b",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\MOVRUSDT_1h.csv",
+      "first_utc": "2023-12-26 12:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 24305,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "9.509000",
+            "h": "9.603000",
+            "l": "9.484000",
+            "c": "9.603000",
+            "v": "11152.28",
+            "qv": "106464.61590000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "9.538000",
+            "h": "9.544000",
+            "l": "9.491000",
+            "c": "9.513000",
+            "v": "3080.37",
+            "qv": "29321.13898000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=MOVRUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "87c9cbc5e1369c17532f7f2bd42c5ca056c795c1bd35789fd9cbed7edaec280a",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\MOVRUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "5b6220cff4771e816cf16bfe6a7036e887871abd56ebfd61b51bf170db200af0"
+    },
+    "NEARUSDT": {
+      "source_csv_sha256": "fe36dac29544f8974db0c34dc6db64bf5fc37c37c33d76a35654667af7108faf",
+      "csv_sha256": "8a0f42bb8e3c29ed2322b4b59af89b529979c7c8954feadf8f45b7ce6331ac18",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\NEARUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "4.2500",
+            "h": "4.3080",
+            "l": "4.2380",
+            "c": "4.3070",
+            "v": "556407",
+            "qv": "2377987.3500"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "4.2420",
+            "h": "4.2540",
+            "l": "4.2370",
+            "c": "4.2500",
+            "v": "265620",
+            "qv": "1127684.0420"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=NEARUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "4b3c2a6ab5311387c2c602ed673203c94af8e0baa641cbab22992e1b51a17722",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\NEARUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "4a9d0d2a74b0e9de28d07e19d4f8cd34f882deab1756117666f4117f7bb42387"
+    },
+    "ONDOUSDT": {
+      "source_csv_sha256": "00a1a75670bfbe409010f7c6e0a6e78345747948af74156e7dc84d2c89a942d8",
+      "csv_sha256": "f8d44a5cec458cf0a523351bb5ac0ab86be7f221b1513f8f77136be5335d9519",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ONDOUSDT_1h.csv",
+      "first_utc": "2024-01-20 13:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 23704,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.6617000",
+            "h": "0.6754000",
+            "l": "0.6586000",
+            "c": "0.6754000",
+            "v": "2690764.0",
+            "qv": "1793565.51255000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.6617000",
+            "h": "0.6631000",
+            "l": "0.6605000",
+            "c": "0.6618000",
+            "v": "697913.2",
+            "qv": "462000.94294000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ONDOUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "73a0b422bf3608be4e998bd4a2d10391965dd421b1fdf276a2b02bc15d9f6134",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ONDOUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "9b53f88fefc051edde38c95841da18e81470bae5284830579f307e0e8557771a"
+    },
+    "ONEUSDT": {
+      "source_csv_sha256": "e539c48755a01141b8dabd059a1fa23871bc204559724fe2dab75192b85381a6",
+      "csv_sha256": "7930c233e92066fbc68bec4bfe12efe0a030d5d7127d9abf75c316053b43f2dc",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ONEUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.01212",
+            "h": "0.01242",
+            "l": "0.01209",
+            "c": "0.01238",
+            "v": "30010869",
+            "qv": "367644.46042"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.01209",
+            "h": "0.01213",
+            "l": "0.01207",
+            "c": "0.01211",
+            "v": "2741609",
+            "qv": "33187.28427"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ONEUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "225334c46209364aed8b28c50a13c011f89975295d884d2ff8e30319bd4941e0",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ONEUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "913248546a89e7dcb986c9aa7cbea62962a8fa94173c0f44bef570bd46eb4b26"
+    },
+    "QNTUSDT": {
+      "source_csv_sha256": "5fbf63a4a206d0ea6c727da389bd1306d1967d931f5c781c34aadd9f61d98dff",
+      "csv_sha256": "7e09a8ff536e3b79ea9f1294c5655dfa1a055a9e1af333c8b6d895b515d80ab1",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\QNTUSDT_1h.csv",
+      "first_utc": "2022-10-20 02:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 34683,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "60.460000",
+            "h": "61.390000",
+            "l": "60.440000",
+            "c": "61.340000",
+            "v": "2347.4",
+            "qv": "142742.3430000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "60.340000",
+            "h": "60.500000",
+            "l": "60.320000",
+            "c": "60.450000",
+            "v": "936.8",
+            "qv": "56596.0220000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=QNTUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "18f9aedd399b7395669c817f3450e6ca027ea9d818f367fd87e605b650c90b76",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\QNTUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "bd4ee24280b6ad8e3123f8bb1a7328c32d28ba627f3a30d692af39999d72a55e"
+    },
+    "SANDUSDT": {
+      "source_csv_sha256": "68349b278c6f6e207ebde3d948dea8fbc0235936f5b58b93627ff27c49a43a4c",
+      "csv_sha256": "c5e57c3e3f7f4add6142c8a7eaae20a39cf70eb39f5049c567b89dd2ec9afbdb",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\SANDUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.25050",
+            "h": "0.25300",
+            "l": "0.24970",
+            "c": "0.25290",
+            "v": "2049811",
+            "qv": "515272.75330"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.25010",
+            "h": "0.25060",
+            "l": "0.24970",
+            "c": "0.25060",
+            "v": "536552",
+            "qv": "134282.87030"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SANDUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "10da8da78321f1292489b26bf11dd9308d488ddd8d4328e7df03349502914714",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\SANDUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "17823775fa6fa7e37c39d9efdf8eb9ac83c35b99bc214cb2aa52d3ff149013cb"
+    },
+    "STRKUSDT": {
+      "source_csv_sha256": "43f43ef095ca9bbba2b895a7f88a3c1a5021a318d4f3bd4ef392bfb507d3efa4",
+      "csv_sha256": "b708e6de63f0f02292e99aeb436ead6b481d25a2572d243fb350c0940358f5c4",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\STRKUSDT_1h.csv",
+      "first_utc": "2024-02-20 17:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 22956,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.3744000",
+            "h": "0.3788000",
+            "l": "0.3729000",
+            "c": "0.3787000",
+            "v": "1884776.8",
+            "qv": "709144.74242000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.3744000",
+            "h": "0.3748000",
+            "l": "0.3729000",
+            "c": "0.3745000",
+            "v": "492401.6",
+            "qv": "184127.50670000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=STRKUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "5335f59df93d0b82dbec7af7dcda90c6abff853282c9432f0c01227955525969",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\STRKUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "fb272e666e1b592cf22f7704b316c53596a3514cfe7d7e148a07a8cb367a2809"
+    },
+    "SUIUSDT": {
+      "source_csv_sha256": "1ed39ede4eba29bbedaf1daea32c77c4755376fa7db203e802e2b69bf254ac08",
+      "csv_sha256": "2589a5179d1501cc96a17301de93729ccdc06620404459aa6acdd77c06788e8e",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\SUIUSDT_1h.csv",
+      "first_utc": "2023-05-03 16:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 29989,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "1.711600",
+            "h": "1.723700",
+            "l": "1.699200",
+            "c": "1.722900",
+            "v": "8596128.2",
+            "qv": "14705414.3530500"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "1.711900",
+            "h": "1.722400",
+            "l": "1.703600",
+            "c": "1.711500",
+            "v": "4132200.1",
+            "qv": "7075609.7390800"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SUIUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "37706c22f07d4658d6ebe3db1fe6a7b13c904f3e62ccbf2839711b70f380225c",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\SUIUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "c91a34ce3fdf7112a221caf647b95dcb8b7ac0570ac041bb15389c4fb2bfa997"
+    },
+    "SUPERUSDT": {
+      "source_csv_sha256": "246f8334ca58d3f03673e156b7c0ecd0ae6117ad486639f5b0994fc4ea8fb725",
+      "csv_sha256": "eb4a35d2ae785df6e8d8bc3a870ba187be7f05ee5b0d308e7ce7248a70c219f8",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\SUPERUSDT_1h.csv",
+      "first_utc": "2023-11-26 13:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 25024,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "1.2110000",
+            "h": "1.2147000",
+            "l": "1.2022000",
+            "c": "1.2084000",
+            "v": "650320",
+            "qv": "785565.4123000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "1.2135000",
+            "h": "1.2171000",
+            "l": "1.2087000",
+            "c": "1.2112000",
+            "v": "180380",
+            "qv": "218694.3443000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SUPERUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "40dec89e9964265a44571d8f8f613de87a13bbd9d7145e6b2bbf92cb6093af1f",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\SUPERUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "bf446f0e49978177b1ab6ccb20f69438890a9de29503a12fa98fc03699826dcb"
+    },
+    "TAOUSDT": {
+      "source_csv_sha256": "f871a360575393276c8bde9bec40e8e5a9f96d4afaacc0209c86a01c548ec34f",
+      "csv_sha256": "4dd1b88f803b6ce745e9546aa90560dfad9fabf3dfc346bebe22de2053501eea",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\TAOUSDT_1h.csv",
+      "first_utc": "2024-04-11 14:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 21735,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "509.57",
+            "h": "518.44",
+            "l": "506.12",
+            "c": "515.00",
+            "v": "8849.591",
+            "qv": "4542775.54568"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "512.66",
+            "h": "513.38",
+            "l": "508.18",
+            "c": "509.57",
+            "v": "2758.885",
+            "qv": "1405369.64714"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=TAOUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "8b8e6ff5c85d5cddd8c50d74d88f3d66cd7f1e857667434e9b8f6e04177526ea",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\TAOUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "3b5058d90d423b95c39629af29724ccbe84f11d91b9ed2a0ab3cc78da3446e29"
+    },
+    "UNIUSDT": {
+      "source_csv_sha256": "4dfec782de85a89e61697bbd6ebeea7b562cc6ca063c944a8ee2ef8d6ef36b5b",
+      "csv_sha256": "68f9c3c021fc3b9f3fd5fb4f3d5e0dfb16f3637f46e21810d630f536aae6d697",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\UNIUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "7.6420",
+            "h": "7.7110",
+            "l": "7.6190",
+            "c": "7.6580",
+            "v": "228603",
+            "qv": "1752920.3230"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "7.6410",
+            "h": "7.6590",
+            "l": "7.6320",
+            "c": "7.6400",
+            "v": "52686",
+            "qv": "402744.3270"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=UNIUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "67ac63935427f38c8dd6b781fa0f7544271c01dd6242e877019cc454426805e3",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\UNIUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "7349929c4517a65874c804da651ec5626476b84bea663eafa2b77636e367c857"
+    },
+    "WLDUSDT": {
+      "source_csv_sha256": "4c9dd60ad24a4a1bb1b526353444f0e34a5543c65647917fc7c8323b49822e8f",
+      "csv_sha256": "0ec8429c44371e815d8359ff9d50da55dc7c483d66941c125f6989a73ff105ba",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\WLDUSDT_1h.csv",
+      "first_utc": "2023-07-24 12:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 28025,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "2.0008000",
+            "h": "2.0468000",
+            "l": "1.9900000",
+            "c": "2.0428000",
+            "v": "5513807",
+            "qv": "11141379.6940000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "2.0002000",
+            "h": "2.0066000",
+            "l": "1.9914000",
+            "c": "2.0008000",
+            "v": "754748",
+            "qv": "1507699.8750000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=WLDUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "32230a556699b6fa5f63a0bf3dda66f984f599d4435721ada48e96c7ac14121b",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\WLDUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "cadd2f2bbe1b0f2fdc82a91827a010b1b8157c582b59895fcf5de948893aab36"
+    },
+    "XLMUSDT": {
+      "source_csv_sha256": "dd826ff6641a2e2b8344b95bae70bb0d066f1f261ac29bba9f991ee76733e78b",
+      "csv_sha256": "99549218010e1a2d9592cd22508cad4df4388884a2de05f4772c44cc5f3977a1",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\XLMUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "0.09363",
+            "h": "0.09421",
+            "l": "0.09340",
+            "c": "0.09421",
+            "v": "3650456",
+            "qv": "342314.80205"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "0.09372",
+            "h": "0.09381",
+            "l": "0.09361",
+            "c": "0.09364",
+            "v": "808783",
+            "qv": "75772.56554"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XLMUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "a735cc749283ecdb179054b35bf2ea42948282eb32cf6a1baa835a5caa581c9c",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\XLMUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "92d736452268fe1ec7304dcbfe9d5235e7cc1f43382d880a0b7a52fa7c664099"
+    },
+    "ZECUSDT": {
+      "source_csv_sha256": "fe8372d29a010b98db0ff378c5e470171a4f1925db14ef39a202d5929244c430",
+      "csv_sha256": "d0a4228eededeb898852ef7365de3a83ab97e777ec354e85a54646800a0476a3",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ZECUSDT_1h.csv",
+      "first_utc": "2022-08-01 00:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 36605,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "38.09",
+            "h": "38.68",
+            "l": "38.04",
+            "c": "38.59",
+            "v": "40457.586",
+            "qv": "1550769.91499"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "38.21",
+            "h": "38.37",
+            "l": "38.08",
+            "c": "38.09",
+            "v": "9301.793",
+            "qv": "355495.32643"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ZECUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "ccca3de8e06953a3450dbd17ae34f5b69309dd9218cb8ca375062a7303ae3bf3",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ZECUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "04a8ffe459bb6cb11971b0acfcd66ef588ce72899de2e17c2a0e63cb035c9ecf"
+    },
+    "ZROUSDT": {
+      "source_csv_sha256": "7f4f62de3ec01603f76e9a1f1afa769481071c0be6e9f4aae33f5d24044eaaa9",
+      "csv_sha256": "595ac28302f8eb886d0843e866a1309551d0b229c06ce1dc2c1de9a9270bd884",
+      "file": "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean\\ZROUSDT_1h.csv",
+      "first_utc": "2024-06-20 14:00",
+      "last_utc": "2026-10-04 04:00",
+      "rows": 20055,
+      "reconciled_times_ms": [
+        1730142000000,
+        1730145600000,
+        1730149200000
+      ],
+      "changed": [
+        {
+          "t": 1730149200000,
+          "before": {
+            "t": "1730149200000",
+            "o": "3.3974000",
+            "h": "3.4784000",
+            "l": "3.3916000",
+            "c": "3.4759000",
+            "v": "433392.3",
+            "qv": "1489385.51051000"
+          },
+          "after": {
+            "t": "1730149200000",
+            "o": "3.3898000",
+            "h": "3.4000000",
+            "l": "3.3858000",
+            "c": "3.3974000",
+            "v": "75305.8",
+            "qv": "255492.09425000"
+          }
+        }
+      ],
+      "requests": [
+        {
+          "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ZROUSDT&interval=1h&startTime=1730142000000&endTime=1730152799999&limit=3",
+          "sha256": "b3785995d2f259b6894bf704ece7c84f36df0af1cf808ca1ba3bbcdea97d80bd",
+          "file": "F:\\ZackBot2_data\\H5-WIDE-DATA-20261112\\rest_responses\\ZROUSDT-1730142000000-1730149200000.json"
+        }
+      ],
+      "changes_sha256": "e6beb32d317955cc17a9542d5f2da66af8a3db8866bda3382e49c3d6155803fb"
+    }
+  }
+}
