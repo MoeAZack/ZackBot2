@@ -1,0 +1,25 @@
+{
+  "freeze_utc": "2026-11-12T15:33:06.354776+00:00",
+  "candidate": "FS1 perpetual/perpetual market neutral normalized funding spread; correlated 24h and 72h variants",
+  "universe": [
+    "ADAUSDT",
+    "AVAXUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "data": "reuse native funding and aligned official mark-bar proxy files from FUNDING-CANDIDATES-20261112; canonical price manifest 99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "period": "2022-08-26 06:00 UTC through 2026-10-04 05:00 UTC; split 2025-01-01; all consumed development",
+  "signal": "each closed hourly decision select highest and lowest published settled rates normalized per 8h by each event time minus previous event time; select eligible coins only, deterministic alphabetical ties; short highest and long lowest if highest positive and spread >=0.001; one pair global; no future rates",
+  "availability": "funding event timestamp plus at least one fully closed 1h candle; enter next open",
+  "exit": "fixed original pair; exit next joint open following closed hour known normalized pair spread <=0, close-marked theoretical basket price PnL <= -8 or >=16 dollars, or after 24/72 elapsed hours; terminal mark at last joint close. Close-based thresholds and next-open fills can gap beyond risk; thresholds are not exchange protection",
+  "size": "equal target notionals, lesser of $3333.3333 aggregate and $8/(3*ATRshort/short reference price + 3*ATRlong/long reference price); floor each leg separately by current filter; reject below minima; exposure imbalance reported",
+  "cost": "2bp adverse slippage plus 5/13/21bp fees each leg each side; native signed actual settlement rate times reported mark or historical mark-bar proxy; stress additional adverse 1bp per 8h per leg using held hourly closes",
+  "eligibility": "prior 30 complete UTC days median qv >=$10m and 720 consecutive hours, both coins, current exchange filters proxy",
+  "accounting": "one global pair per variant, $4000 initial capital, Cairo day net realized cash halt -120 dollars, entry fees booked entry day; hourly marked drawdown and underwater duration; report residual price PnL and funding separately",
+  "limitations": "survivorship nine coins; timestamp latency assumed not proven; old marks proxy; no actual exchange-protection; partial intrahour or stale gaps excluded/terminal, never live ready; left-censored prior rates cannot initiate before observed predecessor"
+}

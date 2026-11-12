@@ -1,0 +1,686 @@
+{
+  "P2.0_cost7": {
+    "all": {
+      "trades": 1294,
+      "net_R": -204.677,
+      "mean_R": -0.1582,
+      "PF": 0.681,
+      "drawdown_R": 214.137,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 204,
+          "net_R": -3.56,
+          "mean_R": -0.0174
+        },
+        "ETH/BTC": {
+          "n": 379,
+          "net_R": -92.208,
+          "mean_R": -0.2433
+        },
+        "LINK/UNI": {
+          "n": 208,
+          "net_R": -30.032,
+          "mean_R": -0.1444
+        },
+        "LTC/BCH": {
+          "n": 231,
+          "net_R": -21.073,
+          "mean_R": -0.0912
+        },
+        "SOL/ETH": {
+          "n": 272,
+          "net_R": -57.805,
+          "mean_R": -0.2125
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -201.117,
+      "trades_per_month": 26.47
+    },
+    "early": {
+      "trades": 751,
+      "net_R": -128.508,
+      "mean_R": -0.1711,
+      "PF": 0.666,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 108,
+          "net_R": 1.396,
+          "mean_R": 0.0129
+        },
+        "ETH/BTC": {
+          "n": 220,
+          "net_R": -66.454,
+          "mean_R": -0.3021
+        },
+        "LINK/UNI": {
+          "n": 128,
+          "net_R": -20.091,
+          "mean_R": -0.157
+        },
+        "LTC/BCH": {
+          "n": 149,
+          "net_R": -11.484,
+          "mean_R": -0.0771
+        },
+        "SOL/ETH": {
+          "n": 146,
+          "net_R": -31.875,
+          "mean_R": -0.2183
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -129.904,
+      "trades_per_month": 26.77
+    },
+    "later": {
+      "trades": 543,
+      "net_R": -76.168,
+      "mean_R": -0.1403,
+      "PF": 0.704,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 96,
+          "net_R": -4.955,
+          "mean_R": -0.0516
+        },
+        "ETH/BTC": {
+          "n": 159,
+          "net_R": -25.754,
+          "mean_R": -0.162
+        },
+        "LINK/UNI": {
+          "n": 80,
+          "net_R": -9.941,
+          "mean_R": -0.1243
+        },
+        "LTC/BCH": {
+          "n": 82,
+          "net_R": -9.588,
+          "mean_R": -0.1169
+        },
+        "SOL/ETH": {
+          "n": 126,
+          "net_R": -25.93,
+          "mean_R": -0.2058
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -71.213,
+      "trades_per_month": 26.11
+    },
+    "skips": 3
+  },
+  "P2.0_cost15": {
+    "all": {
+      "trades": 1320,
+      "net_R": -383.488,
+      "mean_R": -0.2905,
+      "PF": 0.488,
+      "drawdown_R": 389.287,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 202,
+          "net_R": -24.825,
+          "mean_R": -0.1229
+        },
+        "ETH/BTC": {
+          "n": 385,
+          "net_R": -154.826,
+          "mean_R": -0.4021
+        },
+        "LINK/UNI": {
+          "n": 223,
+          "net_R": -56.108,
+          "mean_R": -0.2516
+        },
+        "LTC/BCH": {
+          "n": 236,
+          "net_R": -48.14,
+          "mean_R": -0.204
+        },
+        "SOL/ETH": {
+          "n": 274,
+          "net_R": -99.589,
+          "mean_R": -0.3635
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -358.663,
+      "trades_per_month": 27.0
+    },
+    "early": {
+      "trades": 769,
+      "net_R": -233.031,
+      "mean_R": -0.303,
+      "PF": 0.481,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 108,
+          "net_R": -8.514,
+          "mean_R": -0.0788
+        },
+        "ETH/BTC": {
+          "n": 224,
+          "net_R": -102.441,
+          "mean_R": -0.4573
+        },
+        "LINK/UNI": {
+          "n": 137,
+          "net_R": -33.448,
+          "mean_R": -0.2441
+        },
+        "LTC/BCH": {
+          "n": 151,
+          "net_R": -30.52,
+          "mean_R": -0.2021
+        },
+        "SOL/ETH": {
+          "n": 149,
+          "net_R": -58.109,
+          "mean_R": -0.39
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -224.517,
+      "trades_per_month": 27.41
+    },
+    "later": {
+      "trades": 551,
+      "net_R": -150.457,
+      "mean_R": -0.2731,
+      "PF": 0.498,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 94,
+          "net_R": -16.311,
+          "mean_R": -0.1735
+        },
+        "ETH/BTC": {
+          "n": 161,
+          "net_R": -52.385,
+          "mean_R": -0.3254
+        },
+        "LINK/UNI": {
+          "n": 86,
+          "net_R": -22.66,
+          "mean_R": -0.2635
+        },
+        "LTC/BCH": {
+          "n": 85,
+          "net_R": -17.62,
+          "mean_R": -0.2073
+        },
+        "SOL/ETH": {
+          "n": 125,
+          "net_R": -41.48,
+          "mean_R": -0.3318
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -134.146,
+      "trades_per_month": 26.49
+    },
+    "skips": 0
+  },
+  "P2.0_cost23": {
+    "all": {
+      "trades": 1350,
+      "net_R": -564.763,
+      "mean_R": -0.4183,
+      "PF": 0.349,
+      "drawdown_R": 565.769,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 207,
+          "net_R": -50.403,
+          "mean_R": -0.2435
+        },
+        "ETH/BTC": {
+          "n": 405,
+          "net_R": -224.346,
+          "mean_R": -0.5539
+        },
+        "LINK/UNI": {
+          "n": 222,
+          "net_R": -80.806,
+          "mean_R": -0.364
+        },
+        "LTC/BCH": {
+          "n": 241,
+          "net_R": -73.841,
+          "mean_R": -0.3064
+        },
+        "SOL/ETH": {
+          "n": 275,
+          "net_R": -135.368,
+          "mean_R": -0.4922
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -514.36,
+      "trades_per_month": 27.61
+    },
+    "early": {
+      "trades": 785,
+      "net_R": -339.657,
+      "mean_R": -0.4327,
+      "PF": 0.345,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 112,
+          "net_R": -22.272,
+          "mean_R": -0.1989
+        },
+        "ETH/BTC": {
+          "n": 231,
+          "net_R": -140.097,
+          "mean_R": -0.6065
+        },
+        "LINK/UNI": {
+          "n": 137,
+          "net_R": -49.249,
+          "mean_R": -0.3595
+        },
+        "LTC/BCH": {
+          "n": 155,
+          "net_R": -49.227,
+          "mean_R": -0.3176
+        },
+        "SOL/ETH": {
+          "n": 150,
+          "net_R": -78.812,
+          "mean_R": -0.5254
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -317.385,
+      "trades_per_month": 27.98
+    },
+    "later": {
+      "trades": 565,
+      "net_R": -225.107,
+      "mean_R": -0.3984,
+      "PF": 0.355,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 95,
+          "net_R": -28.132,
+          "mean_R": -0.2961
+        },
+        "ETH/BTC": {
+          "n": 174,
+          "net_R": -84.249,
+          "mean_R": -0.4842
+        },
+        "LINK/UNI": {
+          "n": 85,
+          "net_R": -31.557,
+          "mean_R": -0.3713
+        },
+        "LTC/BCH": {
+          "n": 86,
+          "net_R": -24.614,
+          "mean_R": -0.2862
+        },
+        "SOL/ETH": {
+          "n": 125,
+          "net_R": -56.556,
+          "mean_R": -0.4524
+        }
+      },
+      "best": "LTC/BCH",
+      "ex_best_net_R": -200.493,
+      "trades_per_month": 27.17
+    },
+    "skips": 0
+  },
+  "P2.5_cost7": {
+    "all": {
+      "trades": 1136,
+      "net_R": -230.843,
+      "mean_R": -0.2032,
+      "PF": 0.672,
+      "drawdown_R": 237.913,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 207,
+          "net_R": -8.03,
+          "mean_R": -0.0388
+        },
+        "ETH/BTC": {
+          "n": 280,
+          "net_R": -81.582,
+          "mean_R": -0.2914
+        },
+        "LINK/UNI": {
+          "n": 202,
+          "net_R": -63.276,
+          "mean_R": -0.3132
+        },
+        "LTC/BCH": {
+          "n": 207,
+          "net_R": -35.143,
+          "mean_R": -0.1698
+        },
+        "SOL/ETH": {
+          "n": 240,
+          "net_R": -42.814,
+          "mean_R": -0.1784
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -222.814,
+      "trades_per_month": 23.24
+    },
+    "early": {
+      "trades": 658,
+      "net_R": -128.162,
+      "mean_R": -0.1948,
+      "PF": 0.692,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 108,
+          "net_R": -3.582,
+          "mean_R": -0.0332
+        },
+        "ETH/BTC": {
+          "n": 165,
+          "net_R": -50.487,
+          "mean_R": -0.306
+        },
+        "LINK/UNI": {
+          "n": 124,
+          "net_R": -29.162,
+          "mean_R": -0.2352
+        },
+        "LTC/BCH": {
+          "n": 134,
+          "net_R": -23.686,
+          "mean_R": -0.1768
+        },
+        "SOL/ETH": {
+          "n": 127,
+          "net_R": -21.245,
+          "mean_R": -0.1673
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -124.58,
+      "trades_per_month": 23.45
+    },
+    "later": {
+      "trades": 478,
+      "net_R": -102.681,
+      "mean_R": -0.2148,
+      "PF": 0.644,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 99,
+          "net_R": -4.448,
+          "mean_R": -0.0449
+        },
+        "ETH/BTC": {
+          "n": 115,
+          "net_R": -31.094,
+          "mean_R": -0.2704
+        },
+        "LINK/UNI": {
+          "n": 78,
+          "net_R": -34.114,
+          "mean_R": -0.4374
+        },
+        "LTC/BCH": {
+          "n": 73,
+          "net_R": -11.457,
+          "mean_R": -0.1569
+        },
+        "SOL/ETH": {
+          "n": 113,
+          "net_R": -21.569,
+          "mean_R": -0.1909
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -98.233,
+      "trades_per_month": 22.98
+    },
+    "skips": 0
+  },
+  "P2.5_cost15": {
+    "all": {
+      "trades": 1169,
+      "net_R": -411.923,
+      "mean_R": -0.3524,
+      "PF": 0.499,
+      "drawdown_R": 412.023,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 213,
+          "net_R": -38.102,
+          "mean_R": -0.1789
+        },
+        "ETH/BTC": {
+          "n": 294,
+          "net_R": -139.013,
+          "mean_R": -0.4728
+        },
+        "LINK/UNI": {
+          "n": 215,
+          "net_R": -95.06,
+          "mean_R": -0.4421
+        },
+        "LTC/BCH": {
+          "n": 206,
+          "net_R": -62.837,
+          "mean_R": -0.305
+        },
+        "SOL/ETH": {
+          "n": 241,
+          "net_R": -76.911,
+          "mean_R": -0.3191
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -373.821,
+      "trades_per_month": 23.91
+    },
+    "early": {
+      "trades": 677,
+      "net_R": -229.595,
+      "mean_R": -0.3391,
+      "PF": 0.523,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 114,
+          "net_R": -18.724,
+          "mean_R": -0.1642
+        },
+        "ETH/BTC": {
+          "n": 178,
+          "net_R": -83.216,
+          "mean_R": -0.4675
+        },
+        "LINK/UNI": {
+          "n": 129,
+          "net_R": -49.209,
+          "mean_R": -0.3815
+        },
+        "LTC/BCH": {
+          "n": 132,
+          "net_R": -41.269,
+          "mean_R": -0.3126
+        },
+        "SOL/ETH": {
+          "n": 124,
+          "net_R": -37.178,
+          "mean_R": -0.2998
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -210.872,
+      "trades_per_month": 24.13
+    },
+    "later": {
+      "trades": 492,
+      "net_R": -182.328,
+      "mean_R": -0.3706,
+      "PF": 0.465,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 99,
+          "net_R": -19.378,
+          "mean_R": -0.1957
+        },
+        "ETH/BTC": {
+          "n": 116,
+          "net_R": -55.797,
+          "mean_R": -0.481
+        },
+        "LINK/UNI": {
+          "n": 86,
+          "net_R": -45.85,
+          "mean_R": -0.5331
+        },
+        "LTC/BCH": {
+          "n": 74,
+          "net_R": -21.568,
+          "mean_R": -0.2915
+        },
+        "SOL/ETH": {
+          "n": 117,
+          "net_R": -39.734,
+          "mean_R": -0.3396
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -162.949,
+      "trades_per_month": 23.66
+    },
+    "skips": 0
+  },
+  "P2.5_cost23": {
+    "all": {
+      "trades": 1192,
+      "net_R": -592.077,
+      "mean_R": -0.4967,
+      "PF": 0.371,
+      "drawdown_R": 592.117,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 212,
+          "net_R": -65.962,
+          "mean_R": -0.3111
+        },
+        "ETH/BTC": {
+          "n": 297,
+          "net_R": -192.046,
+          "mean_R": -0.6466
+        },
+        "LINK/UNI": {
+          "n": 225,
+          "net_R": -126.204,
+          "mean_R": -0.5609
+        },
+        "LTC/BCH": {
+          "n": 208,
+          "net_R": -90.149,
+          "mean_R": -0.4334
+        },
+        "SOL/ETH": {
+          "n": 250,
+          "net_R": -117.715,
+          "mean_R": -0.4709
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -526.114,
+      "trades_per_month": 24.38
+    },
+    "early": {
+      "trades": 689,
+      "net_R": -339.452,
+      "mean_R": -0.4927,
+      "PF": 0.387,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 112,
+          "net_R": -36.631,
+          "mean_R": -0.3271
+        },
+        "ETH/BTC": {
+          "n": 174,
+          "net_R": -113.933,
+          "mean_R": -0.6548
+        },
+        "LINK/UNI": {
+          "n": 138,
+          "net_R": -69.455,
+          "mean_R": -0.5033
+        },
+        "LTC/BCH": {
+          "n": 132,
+          "net_R": -58.229,
+          "mean_R": -0.4411
+        },
+        "SOL/ETH": {
+          "n": 133,
+          "net_R": -61.203,
+          "mean_R": -0.4602
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -302.82,
+      "trades_per_month": 24.56
+    },
+    "later": {
+      "trades": 503,
+      "net_R": -252.625,
+      "mean_R": -0.5022,
+      "PF": 0.347,
+      "drawdown_R": null,
+      "per_pair": {
+        "DOT/ADA": {
+          "n": 100,
+          "net_R": -29.331,
+          "mean_R": -0.2933
+        },
+        "ETH/BTC": {
+          "n": 123,
+          "net_R": -78.113,
+          "mean_R": -0.6351
+        },
+        "LINK/UNI": {
+          "n": 87,
+          "net_R": -56.749,
+          "mean_R": -0.6523
+        },
+        "LTC/BCH": {
+          "n": 76,
+          "net_R": -31.92,
+          "mean_R": -0.42
+        },
+        "SOL/ETH": {
+          "n": 117,
+          "net_R": -56.513,
+          "mean_R": -0.483
+        }
+      },
+      "best": "DOT/ADA",
+      "ex_best_net_R": -223.294,
+      "trades_per_month": 24.19
+    },
+    "skips": 0
+  }
+}

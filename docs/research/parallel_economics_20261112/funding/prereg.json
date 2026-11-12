@@ -1,0 +1,24 @@
+{
+  "frozen_utc": "2026-11-12T15:24:39.915921+00:00",
+  "universe": [
+    "ADAUSDT",
+    "AVAXUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "SOLUSDT",
+    "XRPUSDT"
+  ],
+  "period": "2022-08-26T06:00:00Z to 2026-10-04T05:00:00Z",
+  "split": "2025-01-01 consumed DEV, no sealed holdout",
+  "signal": "first crossing abs published settled funding >= 0.0003 versus preceding settlement; reversal negative long positive short or continuation positive long negative short conditioned EMA50 > EMA200 for long, reverse for short",
+  "publication": "settlement timestamp plus first fully closed hourly candle; fill next open; no anticipation",
+  "exit": "3 ATR, 2R, 24 hours; stop wins collision; adverse gaps; single global position per candidate; deterministic alphabetic tie",
+  "risk": "$8 per trade, $4000 capital, $3333.3333 notional cap, floor to current exchange filters proxy",
+  "cost": "2bp adverse slippage and 5/13/21bp fees per side, native funding at settlements while position open and +1bp per 8h adverse stress",
+  "eligibility": "prior 30 complete UTC days median qv >= $10m and 720 continuous hours",
+  "daily_halt": "Cairo day net cash <= -120, entry fees booked at entry",
+  "limitations": "funding timestamp is settlement time, conservative availability assumption; current filters not historical"
+}

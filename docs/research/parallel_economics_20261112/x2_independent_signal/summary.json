@@ -1,0 +1,13 @@
+{
+  "independent_count": 11952,
+  "reference_count": 11952,
+  "matched": 11952,
+  "missing": 0,
+  "extra": 0,
+  "long": 3545,
+  "short": 8407,
+  "symbol_count": 39,
+  "prefix_checks": "39 symbols first1200 closed4h bars orfullavailable",
+  "agg_parity": "all39 complete4h timestamp/OHLC exact",
+  "limitations": "same frozen input data; independently constructed math, shared reference signal used only forcomparison; excludesBTCcontext; no outcomes"
+}

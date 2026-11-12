@@ -1,0 +1,47 @@
+{
+  "created_utc": "2026-11-12T15:30:16.406587+00:00",
+  "status": "BOTH PARKED: negative consumed-development economics, no independent qualification",
+  "candidates": [
+    "FC1 funding-crowding reversal",
+    "FC2 funding-crowding continuation"
+  ],
+  "prereg_sha256": "c782dd66643525ceef672fdb314b9f3f2c371cee8afe0d04c3e49b84c932e5ce",
+  "amendment_sha256": "49bb33485f1d6729b14a21d70f04eb9277fc3fe767b0b719aa0dba41afa78de5",
+  "results_sha256": "251e5e4c4f7590e09d5e9caaeb69b251d1b3271a21ec0edf29695d7aa4a73503",
+  "marked_drawdown_sha256": "2d6a66d1261c302219de1ae10e50838ae89805a916fa93463c83c3c9ce434555",
+  "price_manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "exchange_info_sha256": "9707ba2b8eee928d6d28be4222c2dce8bd9ba7e78b7b82ab594232ccb412fa30",
+  "funding_source": "https://fapi.binance.com/fapi/v1/fundingRate",
+  "mark_source": "https://fapi.binance.com/fapi/v1/markPriceKlines",
+  "download_utc": {
+    "ADAUSDT.json": "2026-11-12T15:24:59.130333+00:00",
+    "ADAUSDT_mark8h.json": "2026-11-12T15:27:31.214278+00:00",
+    "AVAXUSDT.json": "2026-11-12T15:25:03.610419+00:00",
+    "AVAXUSDT_mark8h.json": "2026-11-12T15:27:32.485460+00:00",
+    "BNBUSDT.json": "2026-11-12T15:25:08.137867+00:00",
+    "BNBUSDT_mark8h.json": "2026-11-12T15:27:33.355521+00:00",
+    "BTCUSDT.json": "2026-11-12T15:25:12.759369+00:00",
+    "BTCUSDT_mark8h.json": "2026-11-12T15:27:34.609269+00:00",
+    "DOGEUSDT.json": "2026-11-12T15:25:17.610535+00:00",
+    "DOGEUSDT_mark8h.json": "2026-11-12T15:27:35.841831+00:00",
+    "ETHUSDT.json": "2026-11-12T15:25:22.034012+00:00",
+    "ETHUSDT_mark8h.json": "2026-11-12T15:27:37.133345+00:00",
+    "LINKUSDT.json": "2026-11-12T15:25:26.421889+00:00",
+    "LINKUSDT_mark8h.json": "2026-11-12T15:27:38.400864+00:00",
+    "SOLUSDT.json": "2026-11-12T15:25:30.972809+00:00",
+    "SOLUSDT_mark8h.json": "2026-11-12T15:27:39.254708+00:00",
+    "XRPUSDT.json": "2026-11-12T15:25:36.429552+00:00",
+    "XRPUSDT_mark8h.json": "2026-11-12T15:27:40.119261+00:00"
+  },
+  "publication_time": "fundingTime is settlement time, not independently evidenced publication time; conservative next fully closed hourly bar assumed",
+  "previous_attempt": "First data load failed because REST omits markPrice for older settlements; stopped before economics, froze amendment, obtained official mark-bar proxies",
+  "limitations": [
+    "Publication lag assumption is unverified and results are not eligible as independent acceptance evidence.",
+    "Native settlement rates used; old mark-price bar opens are proxies for missing settlement marks, SOL up to 6h old; cannot claim exact native amounts.",
+    "Intrabar exit and settlement ordering at same hourly boundary is uncertain; no settlement counted at exit timestamp.",
+    "Current exchange filters proxy, not point-in-time historical filters.",
+    "No sealed holdout and full dataset is consumed development.",
+    "Single execution owner; tests are not independent validation.",
+    "Drawdown marked hourly, not tick-level."
+  ]
+}

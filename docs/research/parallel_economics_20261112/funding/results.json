@@ -1,0 +1,1209 @@
+{
+  "audit": {
+    "ADAUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "4938ed7f73edc9ca0702b7605f3c67441e0e93dc020bba51abd406909c57f076",
+      "price_sha256": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "e964a4c5b8f432e47acd3cf3a47ed7835beb069f1b29e3db64c00246794d71b2",
+      "raw_crossings_eligible": 58
+    },
+    "AVAXUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "c997cd936c9d80c8abd42ddcd0fc6943ac6e3914c3be28e0ccfe083083e69517",
+      "price_sha256": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "074940b159c067290b91dd0d605996f884834d102a27a4763f88fac2486194c3",
+      "raw_crossings_eligible": 114
+    },
+    "BNBUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "8216eab88d06dd4a85f2c25f0d470d91ac0e41b89aa314355bb9c8b8ab9b9090",
+      "price_sha256": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "b9f7d15e26e9aa082c588d8675a029232b0829166cc56f883bf104ae16c82c9f",
+      "raw_crossings_eligible": 158
+    },
+    "BTCUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "2860337c0bedb732181c36df125d60683338bcec94558182cf464c7064fc9554",
+      "price_sha256": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "8e107918665d26ab8b5e2311579927f2e087b8f89a8911628419dce7e0eef8a8",
+      "raw_crossings_eligible": 28
+    },
+    "DOGEUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "9d23e382b9c3eda4a807ab5038f6cc4ab37a28ee2076a1a620bf8451479fcc59",
+      "price_sha256": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "f193e3138a4362d4d9f102fc95c9fb1acb18fee8d0b4278c7d77b16967732946",
+      "raw_crossings_eligible": 52
+    },
+    "ETHUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "208cd459c5edc04e34c4ab6e41797f4591a662bb8443dd36f3025e545a0ee48e",
+      "price_sha256": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "b4ea70ff69237a105f1de51a5de5df8dead7fbe1150e8ad31ae2fe3ff807715f",
+      "raw_crossings_eligible": 44
+    },
+    "LINKUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "9b22fd72e079983c115c460939a245d98422211107729f11529e7cdf8523e7d5",
+      "price_sha256": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "037231850cf4334c449629246e4ad1199c7aa08429e75e770be5d56e381b79c4",
+      "raw_crossings_eligible": 31
+    },
+    "SOLUSDT": {
+      "rows": 4744,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4642,
+        "2.0": 98,
+        "4.0": 3
+      },
+      "sha256": "79a86019ca62e339c0b09fc9b3fed5df2f0fb6711cb1969043a7d9ff3a81ae55",
+      "price_sha256": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+      "proxy_marks": 1537,
+      "max_proxy_lag_hours": 6.0000044444444445,
+      "mark8h_sha256": "6e0372007ee06b919631fbdf91586417a50638e1e28864bcaa039f2b1dbb416e",
+      "raw_crossings_eligible": 108
+    },
+    "XRPUSDT": {
+      "rows": 4669,
+      "first": "2022-07-01 00:00:00.001000",
+      "last": "2026-10-04 00:00:00",
+      "interval_hours_counts": {
+        "8.0": 4668
+      },
+      "sha256": "15f13525db0badb0689d38e3f36702245f39ad1b14b473c6411c0f2505c7017f",
+      "price_sha256": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+      "proxy_marks": 1462,
+      "max_proxy_lag_hours": 8.055555555555556e-06,
+      "mark8h_sha256": "010d7aba6dd37f5a551c620fd8233e31a97e402f30c4b7941f7484ee1192b9d9",
+      "raw_crossings_eligible": 65
+    }
+  },
+  "results": {
+    "FC1_7bp_stress0": {
+      "all": {
+        "n": 327,
+        "pnl": -160.8597404716582,
+        "mean_R_budget": -0.06149072647999167,
+        "win_rate": 0.4709480122324159,
+        "funding_pnl": 42.32998317247106,
+        "trades_per_week": 1.5270180120080055,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -29.47644483210729,
+          "AVAXUSDT": -19.924137475888607,
+          "BNBUSDT": -141.68677620917023,
+          "BTCUSDT": -24.228054698073706,
+          "DOGEUSDT": 3.4362718225926905,
+          "ETHUSDT": -40.541789842683144,
+          "LINKUSDT": 9.381348667228101,
+          "SOLUSDT": 35.57708104576543,
+          "XRPUSDT": 46.60276105067861
+        },
+        "exit_reasons": {
+          "time": 196,
+          "stop": 110,
+          "target": 21
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -207.46250152233677,
+        "realized_max_drawdown": 279.2497532761222
+      },
+      "early_consumed_dev": {
+        "n": 261,
+        "pnl": -115.04824546198006,
+        "mean_R_budget": -0.055099734416657116,
+        "win_rate": 0.47509578544061304,
+        "funding_pnl": 37.697963280212605,
+        "trades_per_week": 1.218812541694463,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -20.321093750727595,
+          "AVAXUSDT": -21.713249370037616,
+          "BNBUSDT": -99.35926749057809,
+          "BTCUSDT": -24.228054698073706,
+          "DOGEUSDT": 3.4362718225926905,
+          "ETHUSDT": -32.18993604092276,
+          "LINKUSDT": 9.381348667228101,
+          "SOLUSDT": 44.88942968675062,
+          "XRPUSDT": 25.056305711788315
+        },
+        "exit_reasons": {
+          "time": 159,
+          "stop": 85,
+          "target": 17
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -159.93767514873068,
+        "realized_max_drawdown": 216.28401288122248
+      },
+      "later_consumed_dev": {
+        "n": 66,
+        "pnl": -45.8114950096781,
+        "mean_R_budget": -0.08676419509408731,
+        "win_rate": 0.45454545454545453,
+        "funding_pnl": 4.632019892258458,
+        "trades_per_week": 0.30820547031354234,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -9.155351081379694,
+          "AVAXUSDT": 1.7891118941490092,
+          "BNBUSDT": -42.327508718592156,
+          "ETHUSDT": -8.351853801760381,
+          "SOLUSDT": -9.312348640985183,
+          "XRPUSDT": 21.546455338890297
+        },
+        "exit_reasons": {
+          "time": 37,
+          "stop": 25,
+          "target": 4
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -67.35795034856841,
+        "realized_max_drawdown": 78.77387085560184
+      },
+      "refused": {
+        "occupied": 331
+      }
+    },
+    "FC1_7bp_stress1": {
+      "all": {
+        "n": 327,
+        "pnl": -180.19073509853317,
+        "mean_R_budget": -0.06888025041992858,
+        "win_rate": 0.4648318042813456,
+        "funding_pnl": 42.32998317247106,
+        "trades_per_week": 1.5270180120080055,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -31.46120559085729,
+          "AVAXUSDT": -23.420938638388606,
+          "BNBUSDT": -150.51260191042024,
+          "BTCUSDT": -24.81955244057371,
+          "DOGEUSDT": 2.8399366292176893,
+          "ETHUSDT": -40.95570162155814,
+          "LINKUSDT": 9.0777671549781,
+          "SOLUSDT": 33.559778637140425,
+          "XRPUSDT": 45.50178268192862
+        },
+        "exit_reasons": {
+          "time": 196,
+          "stop": 110,
+          "target": 21
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -225.69251778046174,
+        "realized_max_drawdown": 290.43046125975707
+      },
+      "early_consumed_dev": {
+        "n": 261,
+        "pnl": -130.47366887810506,
+        "mean_R_budget": -0.062487389309437286,
+        "win_rate": 0.47126436781609193,
+        "funding_pnl": 37.697963280212605,
+        "trades_per_week": 1.218812541694463,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -22.128816448227596,
+          "AVAXUSDT": -23.991058432537613,
+          "BNBUSDT": -106.24805968932809,
+          "BTCUSDT": -24.81955244057371,
+          "DOGEUSDT": 2.8399366292176893,
+          "ETHUSDT": -32.53786943479776,
+          "LINKUSDT": 9.0777671549781,
+          "SOLUSDT": 43.28900681937561,
+          "XRPUSDT": 24.044976963788315
+        },
+        "exit_reasons": {
+          "time": 159,
+          "stop": 85,
+          "target": 17
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -173.76267569748066,
+        "realized_max_drawdown": 225.79841678809743
+      },
+      "later_consumed_dev": {
+        "n": 66,
+        "pnl": -49.71706622042808,
+        "mean_R_budget": -0.09416111026596227,
+        "win_rate": 0.4393939393939394,
+        "funding_pnl": 4.632019892258458,
+        "trades_per_week": 0.30820547031354234,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -9.332389142629692,
+          "AVAXUSDT": 0.5701197941490115,
+          "BNBUSDT": -44.26454222109215,
+          "ETHUSDT": -8.41783218676038,
+          "SOLUSDT": -9.729228182235182,
+          "XRPUSDT": 21.4568057181403
+        },
+        "exit_reasons": {
+          "time": 37,
+          "stop": 25,
+          "target": 4
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -71.1738719385684,
+        "realized_max_drawdown": 80.17542214536192
+      },
+      "refused": {
+        "occupied": 331
+      }
+    },
+    "FC1_15bp_stress0": {
+      "all": {
+        "n": 327,
+        "pnl": -292.1138567167827,
+        "mean_R_budget": -0.11166431831681296,
+        "win_rate": 0.4434250764525994,
+        "funding_pnl": 42.32998317247106,
+        "trades_per_week": 1.5270180120080055,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -43.136704920406096,
+          "AVAXUSDT": -41.521771511535974,
+          "BNBUSDT": -203.73503912364995,
+          "BTCUSDT": -28.65354469094931,
+          "DOGEUSDT": -0.5785288153971884,
+          "ETHUSDT": -43.76704529735905,
+          "LINKUSDT": 7.651285663328499,
+          "SOLUSDT": 22.3379539276237,
+          "XRPUSDT": 39.289538051562694
+        },
+        "exit_reasons": {
+          "time": 196,
+          "stop": 110,
+          "target": 21
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -331.4033947683454,
+        "realized_max_drawdown": 363.50874843035234
+      },
+      "early_consumed_dev": {
+        "n": 261,
+        "pnl": -219.04513243003348,
+        "mean_R_budget": -0.10490667261974783,
+        "win_rate": 0.4444444444444444,
+        "funding_pnl": 37.697963280212605,
+        "trades_per_week": 1.218812541694463,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -32.927889727001826,
+          "AVAXUSDT": -35.206754711879576,
+          "BNBUSDT": -146.8794265465392,
+          "BTCUSDT": -28.65354469094931,
+          "DOGEUSDT": -0.5785288153971884,
+          "ETHUSDT": -34.92539632640242,
+          "LINKUSDT": 7.651285663328499,
+          "SOLUSDT": 34.107014657074906,
+          "XRPUSDT": 18.368108067732646
+        },
+        "exit_reasons": {
+          "time": 159,
+          "stop": 85,
+          "target": 17
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -253.1521470871084,
+        "realized_max_drawdown": 282.7368634572719
+      },
+      "later_consumed_dev": {
+        "n": 66,
+        "pnl": -73.06872428674917,
+        "mean_R_budget": -0.1383877353915704,
+        "win_rate": 0.4393939393939394,
+        "funding_pnl": 4.632019892258458,
+        "trades_per_week": 0.30820547031354234,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -10.208815193404273,
+          "AVAXUSDT": -6.315016799656391,
+          "BNBUSDT": -56.855612577110726,
+          "ETHUSDT": -8.841648970956632,
+          "SOLUSDT": -11.769060729451205,
+          "XRPUSDT": 20.921429983830045
+        },
+        "exit_reasons": {
+          "time": 37,
+          "stop": 25,
+          "target": 4
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -93.99015427057924,
+        "realized_max_drawdown": 95.16859035654728
+      },
+      "refused": {
+        "occupied": 331
+      }
+    },
+    "FC1_15bp_stress1": {
+      "all": {
+        "n": 327,
+        "pnl": -311.44485134365766,
+        "mean_R_budget": -0.11905384225674986,
+        "win_rate": 0.44036697247706424,
+        "funding_pnl": 42.32998317247106,
+        "trades_per_week": 1.5270180120080055,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -45.121465679156096,
+          "AVAXUSDT": -45.01857267403597,
+          "BNBUSDT": -212.56086482489994,
+          "BTCUSDT": -29.24504243344931,
+          "DOGEUSDT": -1.1748640087721895,
+          "ETHUSDT": -44.18095707623405,
+          "LINKUSDT": 7.347704151078499,
+          "SOLUSDT": 20.320651518998698,
+          "XRPUSDT": 38.188559682812695
+        },
+        "exit_reasons": {
+          "time": 196,
+          "stop": 110,
+          "target": 21
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -349.6334110264703,
+        "realized_max_drawdown": 377.8825342257271
+      },
+      "early_consumed_dev": {
+        "n": 261,
+        "pnl": -234.4705558461585,
+        "mean_R_budget": -0.11229432751252802,
+        "win_rate": 0.44061302681992337,
+        "funding_pnl": 37.697963280212605,
+        "trades_per_week": 1.218812541694463,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -34.735612424501824,
+          "AVAXUSDT": -37.48456377437958,
+          "BNBUSDT": -153.7682187452892,
+          "BTCUSDT": -29.24504243344931,
+          "DOGEUSDT": -1.1748640087721895,
+          "ETHUSDT": -35.27332972027742,
+          "LINKUSDT": 7.347704151078499,
+          "SOLUSDT": 32.506591789699904,
+          "XRPUSDT": 17.356779319732645
+        },
+        "exit_reasons": {
+          "time": 159,
+          "stop": 85,
+          "target": 17
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -266.9771476358584,
+        "realized_max_drawdown": 293.1804178236469
+      },
+      "later_consumed_dev": {
+        "n": 66,
+        "pnl": -76.97429549749918,
+        "mean_R_budget": -0.14578465056344542,
+        "win_rate": 0.4393939393939394,
+        "funding_pnl": 4.632019892258458,
+        "trades_per_week": 0.30820547031354234,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -10.385853254654274,
+          "AVAXUSDT": -7.534008899656394,
+          "BNBUSDT": -58.792646079610726,
+          "ETHUSDT": -8.907627355956631,
+          "SOLUSDT": -12.185940270701202,
+          "XRPUSDT": 20.831780363080046
+        },
+        "exit_reasons": {
+          "time": 37,
+          "stop": 25,
+          "target": 4
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -97.80607586057923,
+        "realized_max_drawdown": 98.83406899854737
+      },
+      "refused": {
+        "occupied": 331
+      }
+    },
+    "FC1_23bp_stress0": {
+      "all": {
+        "n": 327,
+        "pnl": -423.3679729619072,
+        "mean_R_budget": -0.16183791015363425,
+        "win_rate": 0.42507645259938837,
+        "funding_pnl": 42.32998317247106,
+        "trades_per_week": 1.5270180120080055,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -56.796965008704916,
+          "AVAXUSDT": -63.11940554718334,
+          "BNBUSDT": -265.78330203812965,
+          "BTCUSDT": -33.0790346838249,
+          "DOGEUSDT": -4.593329453387069,
+          "ETHUSDT": -46.99230075203496,
+          "LINKUSDT": 5.921222659428901,
+          "SOLUSDT": 9.098826809481961,
+          "XRPUSDT": 31.976315052446772
+        },
+        "exit_reasons": {
+          "time": 196,
+          "stop": 110,
+          "target": 21
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -455.34428801435394,
+        "realized_max_drawdown": 463.11816047837135
+      },
+      "early_consumed_dev": {
+        "n": 261,
+        "pnl": -323.0420193980869,
+        "mean_R_budget": -0.15471361082283855,
+        "win_rate": 0.42911877394636017,
+        "funding_pnl": 37.697963280212605,
+        "trades_per_week": 1.218812541694463,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -45.53468570327606,
+          "AVAXUSDT": -48.70026005372155,
+          "BNBUSDT": -194.39958560250034,
+          "BTCUSDT": -33.0790346838249,
+          "DOGEUSDT": -4.593329453387069,
+          "ETHUSDT": -37.660856611882075,
+          "LINKUSDT": 5.921222659428901,
+          "SOLUSDT": 23.324599627399188,
+          "XRPUSDT": 11.679910423676976
+        },
+        "exit_reasons": {
+          "time": 159,
+          "stop": 85,
+          "target": 17
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -346.3666190254861,
+        "realized_max_drawdown": 355.1214579756862
+      },
+      "later_consumed_dev": {
+        "n": 66,
+        "pnl": -100.32595356382026,
+        "mean_R_budget": -0.19001127568905352,
+        "win_rate": 0.4090909090909091,
+        "funding_pnl": 4.632019892258458,
+        "trades_per_week": 0.30820547031354234,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -11.262279305428855,
+          "AVAXUSDT": -14.419145493461789,
+          "BNBUSDT": -71.38371643562931,
+          "ETHUSDT": -9.331444140152884,
+          "SOLUSDT": -14.225772817917226,
+          "XRPUSDT": 20.296404628769796
+        },
+        "exit_reasons": {
+          "time": 37,
+          "stop": 25,
+          "target": 4
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -120.62235819259006,
+        "realized_max_drawdown": 120.98198280891681
+      },
+      "refused": {
+        "occupied": 331
+      }
+    },
+    "FC1_23bp_stress1": {
+      "all": {
+        "n": 327,
+        "pnl": -442.6989675887822,
+        "mean_R_budget": -0.16922743409357116,
+        "win_rate": 0.42507645259938837,
+        "funding_pnl": 42.32998317247106,
+        "trades_per_week": 1.5270180120080055,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -58.78172576745491,
+          "AVAXUSDT": -66.61620670968334,
+          "BNBUSDT": -274.60912773937963,
+          "BTCUSDT": -33.670532426324904,
+          "DOGEUSDT": -5.18966464676207,
+          "ETHUSDT": -47.406212530909954,
+          "LINKUSDT": 5.617641147178899,
+          "SOLUSDT": 7.08152440085696,
+          "XRPUSDT": 30.875336683696773
+        },
+        "exit_reasons": {
+          "time": 196,
+          "stop": 110,
+          "target": 21
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -473.5743042724789,
+        "realized_max_drawdown": 477.56989470439464
+      },
+      "early_consumed_dev": {
+        "n": 261,
+        "pnl": -338.46744281421184,
+        "mean_R_budget": -0.1621012657156187,
+        "win_rate": 0.42911877394636017,
+        "funding_pnl": 37.697963280212605,
+        "trades_per_week": 1.218812541694463,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -47.34240840077605,
+          "AVAXUSDT": -50.97806911622155,
+          "BNBUSDT": -201.28837780125033,
+          "BTCUSDT": -33.670532426324904,
+          "DOGEUSDT": -5.18966464676207,
+          "ETHUSDT": -38.00879000575707,
+          "LINKUSDT": 5.617641147178899,
+          "SOLUSDT": 21.724176760024186,
+          "XRPUSDT": 10.668581675676975
+        },
+        "exit_reasons": {
+          "time": 159,
+          "stop": 85,
+          "target": 17
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -360.19161957423614,
+        "realized_max_drawdown": 365.64296077270956
+      },
+      "later_consumed_dev": {
+        "n": 66,
+        "pnl": -104.23152477457027,
+        "mean_R_budget": -0.19740819086092856,
+        "win_rate": 0.4090909090909091,
+        "funding_pnl": 4.632019892258458,
+        "trades_per_week": 0.30820547031354234,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -11.439317366678853,
+          "AVAXUSDT": -15.63813759346179,
+          "BNBUSDT": -73.32074993812931,
+          "ETHUSDT": -9.397422525152884,
+          "SOLUSDT": -14.642652359167228,
+          "XRPUSDT": 20.206755008019798
+        },
+        "exit_reasons": {
+          "time": 37,
+          "stop": 25,
+          "target": 4
+        },
+        "best_coin": "XRPUSDT",
+        "excluding_best_coin_pnl": -124.43827978259007,
+        "realized_max_drawdown": 124.64746145091684
+      },
+      "refused": {
+        "occupied": 331
+      }
+    },
+    "FC2_7bp_stress0": {
+      "all": {
+        "n": 248,
+        "pnl": -131.96759619656137,
+        "mean_R_budget": -0.06651592550229908,
+        "win_rate": 0.4274193548387097,
+        "funding_pnl": -29.72341602530767,
+        "trades_per_week": 1.1581054036024017,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": 1.1586260829704587,
+          "AVAXUSDT": -51.27601521655593,
+          "BNBUSDT": -28.05758059282056,
+          "BTCUSDT": 6.743154935753763,
+          "DOGEUSDT": -11.939453305963342,
+          "ETHUSDT": 5.320672300494994,
+          "LINKUSDT": -19.3075974681673,
+          "SOLUSDT": -12.055388911563496,
+          "XRPUSDT": -22.554014020709946
+        },
+        "exit_reasons": {
+          "time": 153,
+          "stop": 73,
+          "target": 22
+        },
+        "best_coin": "BTCUSDT",
+        "excluding_best_coin_pnl": -138.71075113231512,
+        "realized_max_drawdown": 131.96759619656135
+      },
+      "early_consumed_dev": {
+        "n": 204,
+        "pnl": -103.88112024842842,
+        "mean_R_budget": -0.06365264721104683,
+        "win_rate": 0.43137254901960786,
+        "funding_pnl": -26.732877349824903,
+        "trades_per_week": 0.95263509006004,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": 1.6469465155037906,
+          "AVAXUSDT": -57.08127583014938,
+          "BNBUSDT": -14.139969002774116,
+          "BTCUSDT": 6.743154935753763,
+          "DOGEUSDT": -11.939453305963342,
+          "ETHUSDT": 13.670437454667937,
+          "LINKUSDT": -19.3075974681673,
+          "SOLUSDT": -18.351861319131984,
+          "XRPUSDT": -5.121502228167766
+        },
+        "exit_reasons": {
+          "time": 122,
+          "stop": 62,
+          "target": 20
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -117.55155770309636,
+        "realized_max_drawdown": 112.29896058182425
+      },
+      "later_consumed_dev": {
+        "n": 44,
+        "pnl": -28.086475948132968,
+        "mean_R_budget": -0.07979112485265048,
+        "win_rate": 0.4090909090909091,
+        "funding_pnl": -2.99053867548277,
+        "trades_per_week": 0.2054703135423616,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -0.4883204325333319,
+          "AVAXUSDT": 5.805260613593447,
+          "BNBUSDT": -13.917611590046446,
+          "ETHUSDT": -8.349765154172944,
+          "SOLUSDT": 6.296472407568489,
+          "XRPUSDT": -17.43251179254218
+        },
+        "exit_reasons": {
+          "time": 31,
+          "stop": 11,
+          "target": 2
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -34.38294835570146,
+        "realized_max_drawdown": 45.90795653374771
+      },
+      "refused": {
+        "occupied": 260
+      }
+    },
+    "FC2_7bp_stress1": {
+      "all": {
+        "n": 248,
+        "pnl": -145.32320269568635,
+        "mean_R_budget": -0.07324758200387417,
+        "win_rate": 0.42338709677419356,
+        "funding_pnl": -29.72341602530767,
+        "trades_per_week": 1.1581054036024017,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -0.15134605827954073,
+          "AVAXUSDT": -54.108856279055935,
+          "BNBUSDT": -32.631539169070564,
+          "BTCUSDT": 6.217000185753762,
+          "DOGEUSDT": -12.548514720838341,
+          "ETHUSDT": 4.806386800744997,
+          "LINKUSDT": -19.5189133497923,
+          "SOLUSDT": -13.785084929063494,
+          "XRPUSDT": -23.60233517608495
+        },
+        "exit_reasons": {
+          "time": 153,
+          "stop": 73,
+          "target": 22
+        },
+        "best_coin": "BTCUSDT",
+        "excluding_best_coin_pnl": -151.5402028814401,
+        "realized_max_drawdown": 145.32320269568652
+      },
+      "early_consumed_dev": {
+        "n": 204,
+        "pnl": -114.60095858517842,
+        "mean_R_budget": -0.07022117560366324,
+        "win_rate": 0.4264705882352941,
+        "funding_pnl": -26.732877349824903,
+        "trades_per_week": 0.95263509006004,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": 0.5049955080037911,
+          "AVAXUSDT": -59.18918590514938,
+          "BNBUSDT": -17.430505132774115,
+          "BTCUSDT": 6.217000185753762,
+          "DOGEUSDT": -12.548514720838341,
+          "ETHUSDT": 13.164051556792941,
+          "LINKUSDT": -19.5189133497923,
+          "SOLUSDT": -19.703263827881983,
+          "XRPUSDT": -6.096622899292767
+        },
+        "exit_reasons": {
+          "time": 122,
+          "stop": 62,
+          "target": 20
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -127.76501014197136,
+        "realized_max_drawdown": 117.03455659294924
+      },
+      "later_consumed_dev": {
+        "n": 44,
+        "pnl": -30.72224411050796,
+        "mean_R_budget": -0.08727910258667033,
+        "win_rate": 0.4090909090909091,
+        "funding_pnl": -2.99053867548277,
+        "trades_per_week": 0.2054703135423616,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -0.6563415662833318,
+          "AVAXUSDT": 5.080329626093447,
+          "BNBUSDT": -15.201034036296445,
+          "ETHUSDT": -8.357664756047944,
+          "SOLUSDT": 5.918178898818489,
+          "XRPUSDT": -17.50571227679218
+        },
+        "exit_reasons": {
+          "time": 31,
+          "stop": 11,
+          "target": 2
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -36.640423009326454,
+        "realized_max_drawdown": 47.7910651598727
+      },
+      "refused": {
+        "occupied": 260
+      }
+    },
+    "FC2_15bp_stress0": {
+      "all": {
+        "n": 248,
+        "pnl": -220.82402727371345,
+        "mean_R_budget": -0.11130243310167008,
+        "win_rate": 0.3951612903225806,
+        "funding_pnl": -29.72341602530767,
+        "trades_per_week": 1.1581054036024017,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -8.251666951484278,
+          "AVAXUSDT": -69.22775097033943,
+          "BNBUSDT": -57.54054236376553,
+          "BTCUSDT": 1.646657454392071,
+          "DOGEUSDT": -16.065017683703097,
+          "ETHUSDT": 1.417150535052004,
+          "LINKUSDT": -20.72554319524533,
+          "SOLUSDT": -22.77611866803028,
+          "XRPUSDT": -29.30119543058954
+        },
+        "exit_reasons": {
+          "time": 153,
+          "stop": 73,
+          "target": 22
+        },
+        "best_coin": "BTCUSDT",
+        "excluding_best_coin_pnl": -222.4706847281055,
+        "realized_max_drawdown": 220.8240272737133
+      },
+      "early_consumed_dev": {
+        "n": 204,
+        "pnl": -176.1790384000085,
+        "mean_R_budget": -0.10795284215686796,
+        "win_rate": 0.4068627450980392,
+        "funding_pnl": -26.732877349824903,
+        "trades_per_week": 0.95263509006004,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -6.870495221446947,
+          "AVAXUSDT": -70.96274035235157,
+          "BNBUSDT": -35.41624670642887,
+          "BTCUSDT": 1.646657454392071,
+          "DOGEUSDT": -16.065017683703097,
+          "ETHUSDT": 10.269367051267265,
+          "LINKUSDT": -20.72554319524533,
+          "SOLUSDT": -26.81551905695776,
+          "XRPUSDT": -11.239500689534244
+        },
+        "exit_reasons": {
+          "time": 122,
+          "stop": 62,
+          "target": 20
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -186.44840545127573,
+        "realized_max_drawdown": 176.17903840000838
+      },
+      "later_consumed_dev": {
+        "n": 44,
+        "pnl": -44.64498887370493,
+        "mean_R_budget": -0.12683235475484356,
+        "win_rate": 0.3409090909090909,
+        "funding_pnl": -2.99053867548277,
+        "trades_per_week": 0.2054703135423616,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -1.381171730037332,
+          "AVAXUSDT": 1.7349893820121403,
+          "BNBUSDT": -22.124295657336663,
+          "ETHUSDT": -8.852216516215261,
+          "SOLUSDT": 4.039400388927479,
+          "XRPUSDT": -18.061694741055298
+        },
+        "exit_reasons": {
+          "time": 31,
+          "stop": 11,
+          "target": 2
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -48.6843892626324,
+        "realized_max_drawdown": 58.11639606447022
+      },
+      "refused": {
+        "occupied": 260
+      }
+    },
+    "FC2_15bp_stress1": {
+      "all": {
+        "n": 248,
+        "pnl": -234.17963377283837,
+        "mean_R_budget": -0.11803408960324514,
+        "win_rate": 0.3870967741935484,
+        "funding_pnl": -29.72341602530767,
+        "trades_per_week": 1.1581054036024017,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -9.561639092734278,
+          "AVAXUSDT": -72.06059203283944,
+          "BNBUSDT": -62.11450094001553,
+          "BTCUSDT": 1.120502704392072,
+          "DOGEUSDT": -16.6740790985781,
+          "ETHUSDT": 0.9028650353020069,
+          "LINKUSDT": -20.936859076870327,
+          "SOLUSDT": -24.50581468553028,
+          "XRPUSDT": -30.34951658596454
+        },
+        "exit_reasons": {
+          "time": 153,
+          "stop": 73,
+          "target": 22
+        },
+        "best_coin": "BTCUSDT",
+        "excluding_best_coin_pnl": -235.30013647723047,
+        "realized_max_drawdown": 234.17963377283843
+      },
+      "early_consumed_dev": {
+        "n": 204,
+        "pnl": -186.8988767367585,
+        "mean_R_budget": -0.11452137054948437,
+        "win_rate": 0.39705882352941174,
+        "funding_pnl": -26.732877349824903,
+        "trades_per_week": 0.95263509006004,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -8.012446228946947,
+          "AVAXUSDT": -73.07065042735157,
+          "BNBUSDT": -38.70678283642887,
+          "BTCUSDT": 1.120502704392072,
+          "DOGEUSDT": -16.6740790985781,
+          "ETHUSDT": 9.762981153392268,
+          "LINKUSDT": -20.936859076870327,
+          "SOLUSDT": -28.16692156570776,
+          "XRPUSDT": -12.214621360659242
+        },
+        "exit_reasons": {
+          "time": 122,
+          "stop": 62,
+          "target": 20
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -196.66185789015074,
+        "realized_max_drawdown": 186.89887673675852
+      },
+      "later_consumed_dev": {
+        "n": 44,
+        "pnl": -47.28075703607993,
+        "mean_R_budget": -0.13432033248886344,
+        "win_rate": 0.3409090909090909,
+        "funding_pnl": -2.99053867548277,
+        "trades_per_week": 0.2054703135423616,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -1.549192863787332,
+          "AVAXUSDT": 1.010058394512141,
+          "BNBUSDT": -23.407718103586664,
+          "ETHUSDT": -8.86011611809026,
+          "SOLUSDT": 3.6611068801774813,
+          "XRPUSDT": -18.134895225305296
+        },
+        "exit_reasons": {
+          "time": 31,
+          "stop": 11,
+          "target": 2
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -50.94186391625742,
+        "realized_max_drawdown": 59.999504690595224
+      },
+      "refused": {
+        "occupied": 260
+      }
+    },
+    "FC2_23bp_stress0": {
+      "all": {
+        "n": 248,
+        "pnl": -309.6804583508655,
+        "mean_R_budget": -0.15608894070104107,
+        "win_rate": 0.375,
+        "funding_pnl": -29.72341602530767,
+        "trades_per_week": 1.1581054036024017,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -17.661959985939014,
+          "AVAXUSDT": -87.17948672412292,
+          "BNBUSDT": -87.0235041347105,
+          "BTCUSDT": -3.4498400269696203,
+          "DOGEUSDT": -20.190582061442857,
+          "ETHUSDT": -2.4863712303909864,
+          "LINKUSDT": -22.143488922323357,
+          "SOLUSDT": -33.49684842449707,
+          "XRPUSDT": -36.04837684046914
+        },
+        "exit_reasons": {
+          "time": 153,
+          "stop": 73,
+          "target": 22
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -307.1940871204745,
+        "realized_max_drawdown": 309.68045835086536
+      },
+      "early_consumed_dev": {
+        "n": 204,
+        "pnl": -248.47695655158861,
+        "mean_R_budget": -0.15225303710268911,
+        "win_rate": 0.38235294117647056,
+        "funding_pnl": -26.732877349824903,
+        "trades_per_week": 0.95263509006004,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -15.387936958397681,
+          "AVAXUSDT": -84.84420487455377,
+          "BNBUSDT": -56.69252441008362,
+          "BTCUSDT": -3.4498400269696203,
+          "DOGEUSDT": -20.190582061442857,
+          "ETHUSDT": 6.868296647866593,
+          "LINKUSDT": -22.143488922323357,
+          "SOLUSDT": -35.27917679478354,
+          "XRPUSDT": -17.357499150900722
+        },
+        "exit_reasons": {
+          "time": 122,
+          "stop": 62,
+          "target": 20
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -255.34525319945521,
+        "realized_max_drawdown": 248.47695655158853
+      },
+      "later_consumed_dev": {
+        "n": 44,
+        "pnl": -61.20350179927689,
+        "mean_R_budget": -0.17387358465703662,
+        "win_rate": 0.3409090909090909,
+        "funding_pnl": -2.99053867548277,
+        "trades_per_week": 0.2054703135423616,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -2.274023027541332,
+          "AVAXUSDT": -2.3352818495691645,
+          "BNBUSDT": -30.330979724626882,
+          "ETHUSDT": -9.35466787825758,
+          "SOLUSDT": 1.7823283702864732,
+          "XRPUSDT": -18.690877689568413
+        },
+        "exit_reasons": {
+          "time": 31,
+          "stop": 11,
+          "target": 2
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -62.985830169563364,
+        "realized_max_drawdown": 70.32483559519275
+      },
+      "refused": {
+        "occupied": 260
+      }
+    },
+    "FC2_23bp_stress1": {
+      "all": {
+        "n": 248,
+        "pnl": -323.03606484999045,
+        "mean_R_budget": -0.16282059720261616,
+        "win_rate": 0.3709677419354839,
+        "funding_pnl": -29.72341602530767,
+        "trades_per_week": 1.1581054036024017,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -18.971932127189014,
+          "AVAXUSDT": -90.01232778662292,
+          "BNBUSDT": -91.5974627109605,
+          "BTCUSDT": -3.9759947769696176,
+          "DOGEUSDT": -20.79964347631786,
+          "ETHUSDT": -3.0006567301409843,
+          "LINKUSDT": -22.354804803948355,
+          "SOLUSDT": -35.22654444199707,
+          "XRPUSDT": -37.09669799584414
+        },
+        "exit_reasons": {
+          "time": 153,
+          "stop": 73,
+          "target": 22
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -320.0354081198495,
+        "realized_max_drawdown": 323.03606484999034
+      },
+      "early_consumed_dev": {
+        "n": 204,
+        "pnl": -259.19679488833856,
+        "mean_R_budget": -0.1588215654953055,
+        "win_rate": 0.37745098039215685,
+        "funding_pnl": -26.732877349824903,
+        "trades_per_week": 0.95263509006004,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999955672702066,
+        "per_symbol": {
+          "ADAUSDT": -16.529887965897682,
+          "AVAXUSDT": -86.95211494955376,
+          "BNBUSDT": -59.98306054008362,
+          "BTCUSDT": -3.9759947769696176,
+          "DOGEUSDT": -20.79964347631786,
+          "ETHUSDT": 6.361910749991595,
+          "LINKUSDT": -22.354804803948355,
+          "SOLUSDT": -36.630579303533544,
+          "XRPUSDT": -18.33261982202572
+        },
+        "exit_reasons": {
+          "time": 122,
+          "stop": 62,
+          "target": 20
+        },
+        "best_coin": "ETHUSDT",
+        "excluding_best_coin_pnl": -265.55870563833014,
+        "realized_max_drawdown": 259.1967948883385
+      },
+      "later_consumed_dev": {
+        "n": 44,
+        "pnl": -63.83926996165191,
+        "mean_R_budget": -0.18136156239105655,
+        "win_rate": 0.3409090909090909,
+        "funding_pnl": -2.99053867548277,
+        "trades_per_week": 0.2054703135423616,
+        "median_holding_hours": 24.0,
+        "max_risk": 7.999166954970786,
+        "per_symbol": {
+          "ADAUSDT": -2.4420441612913324,
+          "AVAXUSDT": -3.060212837069169,
+          "BNBUSDT": -31.614402170876883,
+          "ETHUSDT": -9.36256748013258,
+          "SOLUSDT": 1.4040348615364717,
+          "XRPUSDT": -18.764078173818415
+        },
+        "exit_reasons": {
+          "time": 31,
+          "stop": 11,
+          "target": 2
+        },
+        "best_coin": "SOLUSDT",
+        "excluding_best_coin_pnl": -65.24330482318838,
+        "realized_max_drawdown": 72.20794422131776
+      },
+      "refused": {
+        "occupied": 260
+      }
+    }
+  },
+  "limitations": [
+    "Realized-only drawdown; marked-to-market drawdown not yet computed.",
+    "All history is consumed development, not independent validation.",
+    "REST fundingTime is settlement timestamp; publication latency not independently proven.",
+    "Hourly stop/target collisions use stop first; funding uses Binance reported settlement mark where supplied and earlier mark-candle-open proxy otherwise.",
+    "Funding stress is one adverse bp per eight hours, using each held hourly close."
+  ]
+}

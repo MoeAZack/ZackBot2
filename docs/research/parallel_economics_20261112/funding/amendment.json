@@ -1,0 +1,5 @@
+{
+  "frozen_utc": "2026-11-12T15:27:58.149844+00:00",
+  "amendment": "Binance fundingRate REST returns empty markPrice for older records. Before any economic outcomes: use public historical markPriceKlines 8h open at or before settlement as price proxy for missing marks. Native funding rates and signs remain authoritative; no exact settlement funding amount claim. Any non-8h settlement uses latest prior mark-price-bar open, whose lag is audited. Preserve direct markPrice where present. Stress adds adverse 1bp per 8 held hours using hourly close, for both directions. Report base and stress separately.",
+  "strategy_parameters": "unchanged"
+}

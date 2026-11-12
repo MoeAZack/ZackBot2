@@ -1,0 +1,74 @@
+{
+  "FC1_7bp_stress0": {
+    "marked_max_drawdown_usd": 287.03845875121874,
+    "marked_max_drawdown_pct_initial": 7.175961468780469,
+    "longest_underwater_days": 1067.4166666666667,
+    "ending_pnl": -160.85974047165823
+  },
+  "FC1_7bp_stress1": {
+    "marked_max_drawdown_usd": 296.9818505795936,
+    "marked_max_drawdown_pct_initial": 7.424546264489839,
+    "longest_underwater_days": 1067.4166666666667,
+    "ending_pnl": -180.19073509853297
+  },
+  "FC1_15bp_stress0": {
+    "marked_max_drawdown_usd": 368.8517226329356,
+    "marked_max_drawdown_pct_initial": 9.22129306582339,
+    "longest_underwater_days": 1251.625,
+    "ending_pnl": -292.11385671678283
+  },
+  "FC1_15bp_stress1": {
+    "marked_max_drawdown_usd": 383.19413595956036,
+    "marked_max_drawdown_pct_initial": 9.579853398989009,
+    "longest_underwater_days": 1251.625,
+    "ending_pnl": -311.44485134365766
+  },
+  "FC1_23bp_stress0": {
+    "marked_max_drawdown_usd": 468.2589975435946,
+    "marked_max_drawdown_pct_initial": 11.706474938589865,
+    "longest_underwater_days": 1251.625,
+    "ending_pnl": -423.3679729619072
+  },
+  "FC1_23bp_stress1": {
+    "marked_max_drawdown_usd": 482.60141087021987,
+    "marked_max_drawdown_pct_initial": 12.065035271755496,
+    "longest_underwater_days": 1251.625,
+    "ending_pnl": -442.6989675887825
+  },
+  "FC2_7bp_stress0": {
+    "marked_max_drawdown_usd": 136.1235817879834,
+    "marked_max_drawdown_pct_initial": 3.403089544699585,
+    "longest_underwater_days": 1492.0416666666667,
+    "ending_pnl": -131.96759619656132
+  },
+  "FC2_7bp_stress1": {
+    "marked_max_drawdown_usd": 149.46662517960857,
+    "marked_max_drawdown_pct_initial": 3.736665629490214,
+    "longest_underwater_days": 1492.0416666666667,
+    "ending_pnl": -145.32320269568652
+  },
+  "FC2_15bp_stress0": {
+    "marked_max_drawdown_usd": 224.67821797625538,
+    "marked_max_drawdown_pct_initial": 5.616955449406385,
+    "longest_underwater_days": 1492.0416666666667,
+    "ending_pnl": -220.8240272737133
+  },
+  "FC2_15bp_stress1": {
+    "marked_max_drawdown_usd": 238.02126136788053,
+    "marked_max_drawdown_pct_initial": 5.950531534197013,
+    "longest_underwater_days": 1492.0416666666667,
+    "ending_pnl": -234.17963377283843
+  },
+  "FC2_23bp_stress0": {
+    "marked_max_drawdown_usd": 313.2328541645275,
+    "marked_max_drawdown_pct_initial": 7.830821354113188,
+    "longest_underwater_days": 1492.0416666666667,
+    "ending_pnl": -309.6804583508654
+  },
+  "FC2_23bp_stress1": {
+    "marked_max_drawdown_usd": 326.5758975561525,
+    "marked_max_drawdown_pct_initial": 8.164397438903812,
+    "longest_underwater_days": 1492.0416666666667,
+    "ending_pnl": -323.03606484999034
+  }
+}
