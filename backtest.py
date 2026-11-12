@@ -9,6 +9,7 @@ Costs: taker fee + slippage per side, funding cost on every open position.
 import numpy as np
 import pandas as pd
 import strategies as S
+import prot as PROT
 import feasibility as F
 
 FEE, SLIP, FUND_PER_BAR = 0.0005, 0.0002, 0.00005
@@ -372,7 +373,7 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
             p['stop'] = tighten(p['best'] - sd * m['trail_atr'] * atr)
         PR = m.get('prot')                                   # C-BRKPROT-v1 (default OFF): the engine's level AND step rule
         if PR:
-            p['stop'] = S.prot_tighten(PR, p['stop'], S.prot_level(PR, sd, p['e0'], p['avg'], p['R'], p['best'], atr, FEE, SLIP),
+            p['stop'] = PROT.prot_tighten(PR, p['stop'], PROT.prot_level(PR, sd, p['e0'], p['avg'], p['R'], p['best'], atr, FEE, SLIP),
                                        sd, atr, tick)
         if TTP and p['R'] > 0 and sd * (p['best'] - p['e0']) / p['R'] >= TTP.get('at_r', 2.0):
             p['stop'] = tighten(p['best'] * (1 - sd * TTP.get('dev_pct', 3.0) / 100))   # trailing take-profit

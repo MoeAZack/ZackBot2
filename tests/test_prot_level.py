@@ -6,7 +6,7 @@ import pytest
 
 import app
 import backtest as BT
-import strategies as S
+import prot as PROT
 import strategy_shadow as SSH
 
 P = dict(at_r=1.0, trail_atr=2.0)
@@ -16,15 +16,15 @@ P = dict(at_r=1.0, trail_atr=2.0)
 def test_nothing_before_activation(side):
     e0, R, atr = 100.0, 4.0, 2.0
     best = e0 + side * 0.999 * R                             # just short of +1R: no breakeven and no trail
-    assert S.prot_level(P, side, e0, e0, R, best, atr) is None
+    assert PROT.prot_level(P, side, e0, e0, R, best, atr) is None
 
 
 @pytest.mark.parametrize('side', [1, -1])
 def test_breakeven_at_activation_is_beyond_entry(side):
     e0, R, atr = 100.0, 4.0, 2.0
     best = e0 + side * R                                     # exactly +1R; trail = best - side*4 = e0 -> BE (costs) is tighter
-    lvl = S.prot_level(P, side, e0, e0, R, best, atr)
-    assert lvl == pytest.approx(e0 * (1 + side * S.prot_buf(side, S.PROT_FEE, S.PROT_SLIP)))
+    lvl = PROT.prot_level(P, side, e0, e0, R, best, atr)
+    assert lvl == pytest.approx(e0 * (1 + side * PROT.prot_buf(side, PROT.PROT_FEE, PROT.PROT_SLIP)))
     assert side * (lvl - e0) > 0
 
 
@@ -32,14 +32,14 @@ def test_breakeven_at_activation_is_beyond_entry(side):
 def test_trail_takes_over_when_tighter(side):
     e0, R, atr = 100.0, 4.0, 2.0
     best = e0 + side * 3 * R
-    assert S.prot_level(P, side, e0, e0, R, best, atr) == pytest.approx(best - side * 2.0 * atr)
+    assert PROT.prot_level(P, side, e0, e0, R, best, atr) == pytest.approx(best - side * 2.0 * atr)
 
 
 def test_buf_override_and_default_off():
-    assert S.prot_level(None, 1, 100, 100, 4, 120, 2) is None
-    assert S.prot_level({}, 1, 100, 100, 4, 120, 2) is None
-    assert S.prot_level(dict(at_r=1.0, buf=0.0), 1, 100, 100, 4, 104, None) == pytest.approx(100.0)
-    assert (S.PROT_FEE, S.PROT_SLIP) == (BT.FEE, BT.SLIP)    # shared default = backtest cost model
+    assert PROT.prot_level(None, 1, 100, 100, 4, 120, 2) is None
+    assert PROT.prot_level({}, 1, 100, 100, 4, 120, 2) is None
+    assert PROT.prot_level(dict(at_r=1.0, buf=0.0), 1, 100, 100, 4, 104, None) == pytest.approx(100.0)
+    assert (PROT.PROT_FEE, PROT.PROT_SLIP) == (BT.FEE, BT.SLIP)    # shared default = backtest cost model
 
 
 # ---------------------------------------------------------------- fill-level: the net result of a breakeven exit
@@ -57,23 +57,23 @@ def test_breakeven_exit_nets_zero_after_costs(side, scenario):
     entry and exit, no separate slip); the default uses the backtest FEE/SLIP. The stopped breakeven exit nets exactly 0."""
     avg, R, q = 2124.61, 72.69, 0.22
     prot = dict(at_r=1.0, **scenario)                         # no trail: isolate the breakeven level
-    lvl = S.prot_level(prot, side, avg, avg, R, avg + side * R, None)
+    lvl = PROT.prot_level(prot, side, avg, avg, R, avg + side * R, None)
     fee, slip = (scenario['cost'], 0.0) if scenario else (BT.FEE, BT.SLIP)
     net = _net_at_stop(side, avg, lvl, q, fee, slip)
     assert abs(net) < 1e-9 * avg * q, net
-    under = S.prot_level(dict(prot, buf=S.prot_buf(side, fee, slip) * 0.9), side, avg, avg, R, avg + side * R, None)
+    under = PROT.prot_level(dict(prot, buf=PROT.prot_buf(side, fee, slip) * 0.9), side, avg, avg, R, avg + side * R, None)
     assert _net_at_stop(side, avg, under, q, fee, slip) < 0   # a smaller buffer would lose money: the buffer is needed
 
 
 def test_min_step_rule():
     pr = dict(P)
-    assert S.prot_tighten(pr, 100.0, 100.19, 1, 2.0) == 100.0                      # under 0.1 ATR -> stays
-    assert S.prot_tighten(pr, 100.0, 100.21, 1, 2.0) == 100.21
-    assert S.prot_tighten(pr, 100.0, 99.79, -1, 2.0) == 99.79
-    assert S.prot_tighten(pr, 100.0, 100.6, 1, 2.0, tick=0.5) == 101.0              # rounded UP to the tick for a LONG
-    assert S.prot_tighten(pr, 100.0, 99.4, -1, 2.0, tick=0.5) == 99.0               # and DOWN for a SHORT
-    assert S.prot_tighten(pr, 99.0, 100.4, 1, 2.0, tick=1.5) == 99.0               # improvement must exceed the tick
-    assert S.prot_tighten(dict(at_r=1), 100.0, 100.11, 1, 2.0) == 100.11            # no trail: 0.05 ATR step
+    assert PROT.prot_tighten(pr, 100.0, 100.19, 1, 2.0) == 100.0                      # under 0.1 ATR -> stays
+    assert PROT.prot_tighten(pr, 100.0, 100.21, 1, 2.0) == 100.21
+    assert PROT.prot_tighten(pr, 100.0, 99.79, -1, 2.0) == 99.79
+    assert PROT.prot_tighten(pr, 100.0, 100.6, 1, 2.0, tick=0.5) == 101.0              # rounded UP to the tick for a LONG
+    assert PROT.prot_tighten(pr, 100.0, 99.4, -1, 2.0, tick=0.5) == 99.0               # and DOWN for a SHORT
+    assert PROT.prot_tighten(pr, 99.0, 100.4, 1, 2.0, tick=1.5) == 99.0               # improvement must exceed the tick
+    assert PROT.prot_tighten(dict(at_r=1), 100.0, 100.11, 1, 2.0) == 100.11            # no trail: 0.05 ATR step
 
 
 def test_settings_accept_prot_and_shadow_flags_it():
@@ -132,7 +132,7 @@ def test_engine_moves_nothing_before_1R_then_fee_breakeven_then_trail(side):
     e.trade.mark['BTCUSDT'] = e0 + sd * 0.9 * R; e.manage(e.trade.marks())
     assert lot['stop'] == stop0                                  # +0.9R: nothing moves, not even the trail
     e.trade.mark['BTCUSDT'] = e0 + sd * 1.0 * R; e.manage(e.trade.marks())
-    be = lot['avg'] * (1 + sd * S.prot_buf(sd, S.PROT_FEE, S.PROT_SLIP))
+    be = lot['avg'] * (1 + sd * PROT.prot_buf(sd, PROT.PROT_FEE, PROT.PROT_SLIP))
     assert sd * (lot['stop'] - lot['avg']) > 0 and sd * (lot['stop'] - be) >= -1e-6 * e0   # at least fee-adjusted breakeven
     e.trade.mark['BTCUSDT'] = e0 + sd * 4.0 * R; e.manage(e.trade.marks())
     assert lot['stop'] == pytest.approx(lot['best'] - sd * 2.0 * lot['atr_now'], rel=1e-3)   # trail took over
@@ -156,8 +156,8 @@ def test_paired_replay_small_steps_and_retracement_engine_equals_backtest_rule(s
     for m in path:
         e.trade.mark['BTCUSDT'] = m; e.manage(e.trade.marks())
         best = max(best, m) if sd == 1 else min(best, m)
-        lvl = S.prot_level(P, sd, e0, lot['avg'], R, best, atr, BT.FEE, BT.SLIP)
-        sim = S.prot_tighten(P, sim, lvl, sd, atr, tick)
+        lvl = PROT.prot_level(P, sd, e0, lot['avg'], R, best, atr, BT.FEE, BT.SLIP)
+        sim = PROT.prot_tighten(P, sim, lvl, sd, atr, tick)
         if lvl is not None: naive = max(naive, lvl) if sd == 1 else min(naive, lvl)
         assert lot['stop'] == pytest.approx(sim, rel=1e-9), (m, lot['stop'], sim)
     assert sd * (naive - sim) > 0                             # the small steps were really held back in both

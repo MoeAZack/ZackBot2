@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
+import prot as PROT
 import trade_audit as TA
 import paper_books as PB
 import candidates as CD
@@ -5491,9 +5492,9 @@ class Engine:
                         cands.append(lot['avg'])
                     if g.get('trail_atr'):
                         cands.append(lot['best'] - sd * g['trail_atr'] * lot['atr_now'])
-                    lvl = S.prot_level(g.get('prot'), sd, lot['e0'], lot['avg'], lot['R'], lot['best'], lot.get('atr_now'),
-                                       FEE_EST, S.PROT_SLIP)
-                    if lvl is not None: cands.append(S.prot_round(lvl, sd, tick))   # C-BRKPROT-v1 (default OFF): = backtest.run
+                    lvl = PROT.prot_level(g.get('prot'), sd, lot['e0'], lot['avg'], lot['R'], lot['best'], lot.get('atr_now'),
+                                       FEE_EST, PROT.PROT_SLIP)
+                    if lvl is not None: cands.append(PROT.prot_round(lvl, sd, tick))   # C-BRKPROT-v1 (default OFF): = backtest.run
                     ttp = g.get('ttp')
                     if ttp and lot['R'] > 0 and sd * (lot['best'] - lot['e0']) / lot['R'] >= ttp.get('at_r', 2.0):
                         cands.append(lot['best'] * (1 - sd * ttp.get('dev_pct', 3.0) / 100))   # trailing take-profit
