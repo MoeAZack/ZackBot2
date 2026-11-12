@@ -1,0 +1,24 @@
+{
+  "csv_count_original": 24,
+  "csv_count_A1": 24,
+  "all_csv_git_blobs_identical": true,
+  "normalized_json_equal": true,
+  "gap_counters": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "original_head": "ac2304e11e8cf76493bb51be6d3bc969a73a0c46",
+  "a1_result_head": "cf96da5904d94c3df67dc0c1efbf89c17884e94f"
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "side": 1,
+    "gap": true,
+    "exit_reference": 94.0,
+    "exit_time": "2025-03-03 04:00:00",
+    "cash_identity": true,
+    "funding_charged_once": true
+  },
+  {
+    "side": 1,
+    "gap": false,
+    "exit_reference": 95.0,
+    "exit_time": "2025-03-03 04:15:00",
+    "cash_identity": true,
+    "funding_charged_once": true
+  },
+  {
+    "side": -1,
+    "gap": true,
+    "exit_reference": 106.0,
+    "exit_time": "2025-03-03 04:00:00",
+    "cash_identity": true,
+    "funding_charged_once": true
+  },
+  {
+    "side": -1,
+    "gap": false,
+    "exit_reference": 105.0,
+    "exit_time": "2025-03-03 04:15:00",
+    "cash_identity": true,
+    "funding_charged_once": true
+  }
+]
