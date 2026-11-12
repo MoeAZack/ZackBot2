@@ -1,0 +1,27 @@
+{
+  "oracle_head": "3e09a7961c1a69561cfe93f22f38f77e144358db",
+  "oracle_sha256": "8cde9fb8de856cb1efd275c0aacd389f7808c4b69054fd46d4f1766a9c8b1fae",
+  "independent_signal_count": 17,
+  "reference_count": 17,
+  "matched": 17,
+  "missing": 0,
+  "extra": 0,
+  "imports_candidate": false,
+  "cash_checks": {
+    "7": {
+      "lots": 16,
+      "max_abs_error": 8.881784197001252e-16,
+      "mismatches": []
+    },
+    "15": {
+      "lots": 16,
+      "max_abs_error": 8.881784197001252e-16,
+      "mismatches": []
+    },
+    "23": {
+      "lots": 16,
+      "max_abs_error": 1.7763568394002505e-15,
+      "mismatches": []
+    }
+  }
+}
