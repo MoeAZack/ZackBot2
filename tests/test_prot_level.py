@@ -164,3 +164,66 @@ def test_paired_replay_small_steps_and_retracement_engine_equals_backtest_rule(s
     back = (sim + naive) / 2                                  # retrace between the stepped and the naive stop
     e.trade.mark['BTCUSDT'] = back; e.manage(e.trade.marks())
     assert key in e.state['lots'] and sd * (back - sim) > 0  # engine still open; the shared rule's stop is not hit either
+
+
+# ---------------------------------------------------------------- Codex #333 re-review: prot is the ONLY stop mover
+def test_prot_conflicts_lists_other_active_stop_movers():
+    assert PROT.prot_conflicts({'prot': P}) == []
+    assert PROT.prot_conflicts({'be_r': 1, 'trail_atr': 2}) == []                      # no prot: legacy untouched
+    assert PROT.prot_conflicts({'prot': P, 'be_r': 1, 'runner': {'be_r': 2}}) == ['be_r', 'runner']
+    assert PROT.prot_conflicts({'prot': P, 'trail_atr': 0, 'be_r': 0, 'ttp': {}}) == []   # 0 / {} = switched off
+
+
+@pytest.mark.parametrize('extra', [dict(be_r=1), dict(trail_atr=2), dict(runner=dict(be_r=2, step_r=1, gap_r=0.5)),
+                                   dict(ttp=dict(at_r=2, dev_pct=3))])
+def test_settings_refuse_prot_mixed_with_another_stop_mover(extra):
+    sl = dict(id='P', key='exp_breakout', share=.5, risk=.02, max_pos=2, mgmt={'prot': dict(P), **extra})
+    with pytest.raises(ValueError, match='prot'):
+        app.validate_sleeve(sl, 0)
+    with pytest.raises(ValueError, match='prot'):
+        BT.run(BT.Book(_raw()), [dict(key='exp_breakout', share=1.0, risk=.02, max_pos=1, mgmt=sl['mgmt'],
+                                      symbols=['BTCUSDT'])], start=1000.0)
+
+
+def test_settings_check_the_strategy_defaults_too():
+    """hot_coin / bear_breakdown trail by default: prot is refused unless the slot switches that trail off."""
+    base = dict(id='H', key='hot_coin', share=.5, risk=.02, max_pos=2)
+    with pytest.raises(ValueError, match='trail_atr'):
+        app.validate_sleeve(dict(base, mgmt={'prot': dict(P)}), 0)
+    ok = app.validate_sleeve(dict(base, mgmt={'prot': dict(P), 'trail_atr': 0}), 0)
+    assert ok['mgmt']['prot'] == {'at_r': 1.0, 'trail_atr': 2.0}
+    assert app.validate_sleeve(dict(base, key='exp_breakout', mgmt={'prot': dict(P)}), 0)['mgmt']['prot']
+
+
+def _engine_stops(mgmt, side, path_r):
+    import test_safety as TS
+    e, _ = TS.mk_engine()
+    sl = dict(TS.SL, sides='both', mgmt=mgmt); e.S['SLEEVES'] = [sl]
+    assert e.open_lot(sl, 'BTCUSDT', side, TS.SG, None, e.equity())
+    lot = next(iter(e.state['lots'].values()))
+    sd, e0, R, atr = (1 if side == 'LONG' else -1), lot['e0'], lot['R'], lot['atr_now']
+    out = []
+    for x in path_r:
+        e.trade.mark['BTCUSDT'] = e0 + sd * x(R, atr); e.manage(e.trade.marks())
+        out.append(lot['stop'])
+    return out
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+@pytest.mark.parametrize('legacy', [dict(be_r=0.5), dict(runner=dict(be_r=0.5, step_r=0.5, gap_r=0.25))])
+def test_engine_never_half_applies_prot_next_to_another_mover(side, legacy):
+    """Hand-edited settings that bypass validation: the engine ignores prot entirely, so the legacy rule keeps its own
+    0.05 ATR step - including BEFORE prot's +1R activation, where an inactive prot trail must not raise the threshold.
+    Small 0.07 ATR improvements are exactly the case Codex named."""
+    path = [lambda R, a: 0.5 * R] + [lambda R, a, j=j: 0.5 * R + j * 0.07 * a for j in range(1, 8)] + [lambda R, a: 1.5 * R]
+    base = _engine_stops({'stop_atr': 2.0, **legacy}, side, path)
+    mixed = _engine_stops({'stop_atr': 2.0, **legacy, 'prot': dict(at_r=1.0, trail_atr=0.3)}, side, path)
+    assert mixed == base
+
+
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_prot_alone_preactivation_engine_and_backtest_rule_both_hold(side):
+    """Pre +1R the prot-only engine moves nothing even on many small improvements, and neither does the shared rule."""
+    path = [lambda R, a, j=j: j * 0.07 * a for j in range(1, 10)]
+    stops = _engine_stops({'stop_atr': 2.0, 'prot': dict(P)}, side, path)
+    assert len(set(stops)) == 1

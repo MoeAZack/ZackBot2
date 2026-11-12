@@ -45,6 +45,18 @@ def prot_round(lvl, side, tick):
     return round(n * tick, 12)
 
 
+PROT_EXCLUSIVE = ('be_r', 'trail_atr', 'runner', 'ttp')
+
+
+def prot_conflicts(mgmt):
+    """Other stop movers that are switched on next to 'prot' in an EFFECTIVE management dict (strategy defaults + the
+    slot's overrides). The engine moves its stop once for the best of all candidates with one min-step, while the backtest
+    tightens each rule on its own; mixing them would make runtime and replay disagree, so 'prot' must be the only stop
+    mover. 0 / None / {} switch a rule off (e.g. trail_atr=0 on bear_breakdown / hot_coin, whose defaults trail)."""
+    if not (mgmt or {}).get('prot'): return []
+    return [k for k in PROT_EXCLUSIVE if mgmt.get(k)]
+
+
 def prot_tighten(prot, stop, lvl, side, atr, tick=0.0):
     """The engine's stop-move rule, shared: move only when the improvement exceeds max(min_step, tick), min_step =
     0.1 ATR with a trail (0.05 ATR without). Below that the stop stays where it is (backtest and runtime alike)."""

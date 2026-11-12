@@ -178,6 +178,8 @@ def run(book, sleeves, start=500.0, max_lev=10.0, daily_halt=0.08, t0=None, t1=N
     for sl in sleeves:
         st = S.STRATEGIES[sl['key']]
         m = S.merge_mgmt(sl['key'], sl.get('mgmt'))
+        if PROT.prot_conflicts(m):                       # same refusal as the settings: prot must be the only stop mover
+            raise ValueError(f"{sl['key']}: prot cannot be combined with {PROT.prot_conflicts(m)}")
         sides = sl.get('sides', st['sides'])
         syms = [s for s in sl.get('symbols', syms_all) if s in syms_all]
         sigs = {s: book.raw_sig(sl['key'], s, sl.get('params')) for s in syms}

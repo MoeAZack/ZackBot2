@@ -5492,7 +5492,8 @@ class Engine:
                         cands.append(lot['avg'])
                     if g.get('trail_atr'):
                         cands.append(lot['best'] - sd * g['trail_atr'] * lot['atr_now'])
-                    lvl = PROT.prot_level(g.get('prot'), sd, lot['e0'], lot['avg'], lot['R'], lot['best'], lot.get('atr_now'),
+                    pg = None if PROT.prot_conflicts(g) else g.get('prot')   # refused by settings; never half-apply it
+                    lvl = PROT.prot_level(pg, sd, lot['e0'], lot['avg'], lot['R'], lot['best'], lot.get('atr_now'),
                                        FEE_EST, PROT.PROT_SLIP)
                     if lvl is not None: cands.append(PROT.prot_round(lvl, sd, tick))   # C-BRKPROT-v1 (default OFF): = backtest.run
                     ttp = g.get('ttp')
@@ -5507,7 +5508,7 @@ class Engine:
                         if lock > 0: cands.append(lot['e0'] + sd * lock * lot['R'])
                     if cands:
                         tgt = max(cands) if sd == 1 else min(cands)
-                        trails = g.get('trail_atr') or (g.get('prot') or {}).get('trail_atr')
+                        trails = g.get('trail_atr') or (pg or {}).get('trail_atr')
                         min_step = (0.1 if trails and not run else 0.05) * lot.get('atr_now', lot['R'])
                         if sd * (tgt - lot['stop']) > max(min_step, tick):
                             if sd * (m - tgt) <= 0:                # price already back through the level the stop should be at

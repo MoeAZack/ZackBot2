@@ -71,6 +71,7 @@ def configure_logging(data=None):
 log = logging.getLogger('zackbot')
 
 import strategies as S          # noqa: E402
+import prot as PROT             # noqa: E402
 import backtest as BT           # noqa: E402
 from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc, UNVERIFIED_BT01   # noqa: E402
 from binance_client import Futures, MAINNET   # noqa: E402
@@ -1582,6 +1583,8 @@ def validate_sleeve(sl, i, allow_research=False):
                enabled=bool(sl.get('enabled', True)), share=_num(sl['share'], 0.001, 1, 'capital share'), risk=_num(sl['risk'], 0.0005, 0.25, 'risk per trade'),
                max_pos=int(_num(sl['max_pos'], 1, 20, 'max positions')), symbols=clean_symbols(sl.get('symbols', 'all')),
                sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=clean_mgmt(sl.get('mgmt') or {}), tf=sl.get('tf') or S.STRATEGIES[sl['key']].get('tf', '4h'))
+    bad = PROT.prot_conflicts(S.merge_mgmt(sl['key'], out['mgmt']))
+    if bad: raise ValueError('profit protection (prot) cannot be combined with ' + ', '.join(bad) + ' - set them to 0 / remove them')
     if sl.get('hours'): out['hours'] = sorted({int(_num(h, 0, 23, 'hour')) for h in sl['hours']})
     if sl.get('when') not in (None, 'any'):
         if sl['when'] not in ('bull', 'bear', 'range'): raise ValueError('market filter must be any, bull, bear or range')
