@@ -1,0 +1,76 @@
+{
+  "id": "C1H-DIRECTION-CONTROL-20261112",
+  "frozen_cairo": "2026-11-12T13:18:42.844702+02:00",
+  "source_head": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+  "source_sha256": {
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+    "prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+  },
+  "data_manifest_sha256": "1831a33fc0f885b8372b4d368cbf73674095373bcbe7ed60d01c9e6d2733d411",
+  "exchange_rules_sha256": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af",
+  "rules": [
+    {
+      "signal": "Original frozenH5volumeimpulse",
+      "stop_atr": 3,
+      "tp_r": 4,
+      "max_bars": 48,
+      "sides": [
+        "long",
+        "short"
+      ],
+      "protection": "fixedstop/target/timeonly"
+    }
+  ],
+  "protection_common": {
+    "be_r": 0,
+    "trail_atr": 0,
+    "prot": null
+  },
+  "candidate_module_sha256": "8677d4af3091f6734d45e6a58c5a03dd420fffefcb5f5700ef1779b6ab2d3fd3",
+  "costs_per_executed_side_bps": [
+    7,
+    15,
+    23
+  ],
+  "scenarios": [
+    "path",
+    "worst"
+  ],
+  "gross_diagnostic": {
+    "fee_slip_funding": 0,
+    "path": "path"
+  },
+  "funding_proxy": {
+    "both_sides_charged_per_hour": 1.25e-05,
+    "native_funding": false
+  },
+  "capital": 4000,
+  "share_per_sleeve": 0.08333333333333333,
+  "risk_fraction_of_share": 0.024,
+  "initial_risk_usd": 8,
+  "max_positions_per_sleeve": 1,
+  "daily_halt": 0.03,
+  "max_leverage": 10,
+  "risk_model_limit": "unchanged BT.run compounds equity-based risk, initial$8 not fixed live$8; candidate activation requires actual account-fit check",
+  "no_holdout_claim": "ALL historical data consumed DEV; 2025 split and chronological halfyears are diagnostic stability checks, not fresh sealed holdout",
+  "trial_accounting": "six additional frozen configurations in previously researched families, not six independently novel families; all outcomes retained; no parameter changes based on results",
+  "priority_order": "cohort9 worst15 all six first, then cost/path ladders; long8 secondary",
+  "economics_screen": {
+    "min_closed_total": 100,
+    "min_closed_each_pre_post_2025": 30,
+    "mean_R_15_positive_each_split": true,
+    "mean_R_23_positive_overall": true,
+    "worst15_positive_overall": true,
+    "exclude_best_coin_mean_R15_positive": true,
+    "positive_complete_halfyear_fraction15": ">=0.5",
+    "minimum_closed_per_calendar_week": 2,
+    "drawdown": "report R/%/duration and label; no blanket DD rejection",
+    "frequency_basket_target": "at least5 closes/week after shared-account caps; solo frequency is not additive proof"
+  },
+  "activation": "No auto qualification from historical screen; independent signal/execution/cost parity, native-or-explicitstress funding, account4 fixedrisk/minimum sizing, shared-basket interaction, protective stop/rollback testnet gates; no account1-3 action",
+  "runtime_actions": "NONE; isolated research only",
+  "original_signal_module_sha256": "9b8516ef3a98bd83fb591ac751ae263a69c49f7bc7d5ea712741d4d3c4b038fc",
+  "selection_disclosure": "Post-selection consumedDEV directional diagnosis of H5stop3ATR/target4R/max48h: first grid cell positive15bp onboth histories observed13:16. Freeze LONG-only andSHORT-only as2additional dependent controls before viewing/running their separate economics. Not an untouched independent discovery. Allfailuresremainvisible."
+}

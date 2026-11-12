@@ -1,0 +1,3 @@
+# Post-selection direction controls
+
+Frozen12Nov2026 13:18Cairo, before running either directional policy. The selected cell is H5volumeimpulse stop3ATR,target4R,max48bars, fixed exits/noPROT. It was the first exit-grid cell observed positive at15bp onbothhistories: nine+.0293R/long+.0027R, but fails23bp. This is a documented selected consumedDEV follow-up, NOT independent discovery or holdout validation. Long-only andshort-only will be actually re-simulated (not a subset of the both-side filled ledger), preserving slot competition and equity-based sizing.2configurations x2datasets x7cost/path/gross cases=28cases. Queued after3crossasset42cases, maintains2lowpriorityworkers. Everyresult retained; noautomaticaccountactivation.

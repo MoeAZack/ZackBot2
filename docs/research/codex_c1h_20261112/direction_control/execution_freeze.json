@@ -1,0 +1,12 @@
+{
+  "at_cairo": "2026-11-12T13:18:42.844702+02:00",
+  "workers": 2,
+  "cases": 28,
+  "code_sha256": {
+    "run_case.py": "7134b8cc26dc88a05116a4932cdf2adff44f280a0b87d46610a42b0b216ca4b9",
+    "summarize.py": "e1d632c9ffe95c2a91508636510b84410bd9213693dcaa7d6bad89b1b77bf685",
+    "matrix.py": "01950fe0be372aa782fac1bc5e7a48ccf199fa6fa6aedae77896a7379413a895",
+    "hourly_candidates.py": "8677d4af3091f6734d45e6a58c5a03dd420fffefcb5f5700ef1779b6ab2d3fd3",
+    "preregistration.json": "959693e42e721f995c326fe0fffb713c917974a5026f8e2ca1c47007e9f9ce62"
+  }
+}
