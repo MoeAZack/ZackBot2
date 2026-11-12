@@ -1,0 +1,8 @@
+{
+  "source_sha256": "ccc01ffa2c09ebd45185eee047f21685bc0356a9c05084421c462894130d1354",
+  "native_lots_sha256": "e7e156b66a78d4521d881488c8c10c38e69175b78bacb9cf85c32b9ca1530e2c",
+  "matched_rows": 18,
+  "max_abs_metric_error": 9.094947017729282e-13,
+  "mismatches": [],
+  "author_replay_imported": false
+}
