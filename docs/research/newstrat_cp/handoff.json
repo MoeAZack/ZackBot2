@@ -1,0 +1,202 @@
+{
+ "cp_n6_btc_lead_catchup_4h.path": {
+  "reconciliation": {
+   "trades": 405,
+   "fills": 1019,
+   "fills_on_closed_trades": 1019,
+   "open_at_end_positions": [],
+   "trades_without_fills": 0,
+   "entries_per_trade_max": 1,
+   "entry_exit_qty_mismatches": 0,
+   "turnover_fallback_needed": false,
+   "duplicate_trade_keys": 0
+  },
+  "mark_to_market_maxdd_R_7bp": 17.0,
+  "drawdown": {
+   "7bp": {
+    "closed_trade_maxdd_R": 15.6,
+    "net_pnl_usd": 643.55
+   },
+   "15bp": {
+    "closed_trade_maxdd_R": 18.3,
+    "net_pnl_usd": 365.1
+   },
+   "23bp": {
+    "closed_trade_maxdd_R": 22.7,
+    "net_pnl_usd": 86.65
+   }
+  },
+  "funding": {
+   "x0": {
+    "n": 405,
+    "end_equity": 4764.23,
+    "expR_15bp": 0.0713
+   },
+   "x1": {
+    "n": 405,
+    "end_equity": 4643.55,
+    "expR_15bp": 0.0554
+   },
+   "x2": {
+    "n": 405,
+    "end_equity": 4525.62,
+    "expR_15bp": 0.0395
+   },
+   "x3": {
+    "n": 405,
+    "end_equity": 4400.71,
+    "expR_15bp": 0.0222
+   }
+  }
+ },
+ "cp_n6_btc_lead_catchup_4h.worst": {
+  "reconciliation": {
+   "trades": 412,
+   "fills": 1037,
+   "fills_on_closed_trades": 1037,
+   "open_at_end_positions": [],
+   "trades_without_fills": 0,
+   "entries_per_trade_max": 1,
+   "entry_exit_qty_mismatches": 0,
+   "turnover_fallback_needed": false,
+   "duplicate_trade_keys": 0
+  },
+  "mark_to_market_maxdd_R_7bp": 19.7,
+  "drawdown": {
+   "7bp": {
+    "closed_trade_maxdd_R": 18.7,
+    "net_pnl_usd": 308.71
+   },
+   "15bp": {
+    "closed_trade_maxdd_R": 23.2,
+    "net_pnl_usd": 33.94
+   },
+   "23bp": {
+    "closed_trade_maxdd_R": 27.6,
+    "net_pnl_usd": -240.84
+   }
+  },
+  "funding": {
+   "x0": {
+    "n": 412,
+    "end_equity": 4419.78,
+    "expR_15bp": 0.0232
+   },
+   "x1": {
+    "n": 412,
+    "end_equity": 4308.71,
+    "expR_15bp": 0.0078
+   },
+   "x2": {
+    "n": 412,
+    "end_equity": 4193.68,
+    "expR_15bp": -0.0087
+   },
+   "x3": {
+    "n": 412,
+    "end_equity": 4088.3,
+    "expR_15bp": -0.0241
+   }
+  }
+ },
+ "cp_n8_squeeze_breakdown_short_4h.path": {
+  "reconciliation": {
+   "trades": 156,
+   "fills": 396,
+   "fills_on_closed_trades": 396,
+   "open_at_end_positions": [],
+   "trades_without_fills": 0,
+   "entries_per_trade_max": 1,
+   "entry_exit_qty_mismatches": 0,
+   "turnover_fallback_needed": false,
+   "duplicate_trade_keys": 0
+  },
+  "mark_to_market_maxdd_R_7bp": 8.5,
+  "drawdown": {
+   "7bp": {
+    "closed_trade_maxdd_R": 7.7,
+    "net_pnl_usd": 251.9
+   },
+   "15bp": {
+    "closed_trade_maxdd_R": 8.5,
+    "net_pnl_usd": 127.61
+   },
+   "23bp": {
+    "closed_trade_maxdd_R": 10.2,
+    "net_pnl_usd": 3.32
+   }
+  },
+  "funding": {
+   "x0": {
+    "n": 156,
+    "end_equity": 4295.76,
+    "expR_15bp": 0.0696
+   },
+   "x1": {
+    "n": 156,
+    "end_equity": 4251.9,
+    "expR_15bp": 0.0531
+   },
+   "x2": {
+    "n": 156,
+    "end_equity": 4206.76,
+    "expR_15bp": 0.036
+   },
+   "x3": {
+    "n": 156,
+    "end_equity": 4163.32,
+    "expR_15bp": 0.0193
+   }
+  }
+ },
+ "cp_n8_squeeze_breakdown_short_4h.worst": {
+  "reconciliation": {
+   "trades": 165,
+   "fills": 418,
+   "fills_on_closed_trades": 418,
+   "open_at_end_positions": [],
+   "trades_without_fills": 0,
+   "entries_per_trade_max": 1,
+   "entry_exit_qty_mismatches": 0,
+   "turnover_fallback_needed": false,
+   "duplicate_trade_keys": 0
+  },
+  "mark_to_market_maxdd_R_7bp": 11.2,
+  "drawdown": {
+   "7bp": {
+    "closed_trade_maxdd_R": 9.3,
+    "net_pnl_usd": 59.73
+   },
+   "15bp": {
+    "closed_trade_maxdd_R": 11.3,
+    "net_pnl_usd": -69.03
+   },
+   "23bp": {
+    "closed_trade_maxdd_R": 13.8,
+    "net_pnl_usd": -197.79
+   }
+  },
+  "funding": {
+   "x0": {
+    "n": 165,
+    "end_equity": 4103.26,
+    "expR_15bp": -0.0071
+   },
+   "x1": {
+    "n": 165,
+    "end_equity": 4059.73,
+    "expR_15bp": -0.0233
+   },
+   "x2": {
+    "n": 165,
+    "end_equity": 4016.39,
+    "expR_15bp": -0.0396
+   },
+   "x3": {
+    "n": 165,
+    "end_equity": 3974.98,
+    "expR_15bp": -0.0553
+   }
+  }
+ }
+}
