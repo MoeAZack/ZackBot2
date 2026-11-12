@@ -1,0 +1,246 @@
+{
+  "source_head": "8f83494b",
+  "freeze_sha256": "389c466e3eca3fa99d0a477c7a87306536179602921b21d4bd46b1a01b395824",
+  "source_pins": {
+    "research/fwd_books/books.py": {
+      "sha256": "d3de8870241470a208008627312a108d3b6f30a0d39dfca3890b53ae706cb23e",
+      "matches": true
+    },
+    "research/fwd_books/run_books.py": {
+      "sha256": "147669aec219928e7b156618fb1ab60ef800d6ca88627e025526727013758730",
+      "matches": true
+    },
+    "research/fwd_books/test_books.py": {
+      "sha256": "675f3ce05c1b77afef6b22d32ee57055ca650a41cd53a9d38b5fb86e34c33f57",
+      "matches": true
+    },
+    "research/admission_controls/controls.py": {
+      "sha256": "0159b13e0a602c31e37d9213c7e033e855d22f79f3e02333d5aef1cf3ee43c0c",
+      "matches": true
+    },
+    "research/basket_old3_h5/basket.py": {
+      "sha256": "7c8507b09667b33d1d5536ab4302b436146621fe5c2d7f23c38fcd00b7519415",
+      "matches": true
+    },
+    "research/basket_old3_h5/h5_hourly_long_pr338.py": {
+      "sha256": "8573dd81b39558f55d29682223568d7f72d61e9b25eaa5f072f81dc94139f128",
+      "matches": true
+    },
+    "backtest.py": {
+      "sha256": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+      "matches": true
+    },
+    "strategies.py": {
+      "sha256": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+      "matches": true
+    },
+    "feasibility.py": {
+      "sha256": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+      "matches": true
+    },
+    "prot.py": {
+      "sha256": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+      "matches": true
+    }
+  },
+  "coins": {
+    "ADAUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "80ade73bc311a1014f7b6b3eb308aae13eb9bafb6ef95255e811e093370a5dfb",
+        "4h": "91b6fa6e502404b807a27f80cda21e24fc4cb76e40c0e64636c579912321f04a"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "AVAXUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "296b91ac41bb4a7f52006b589b21ccfa5262008d64f1e318a189baff3b56ddf9",
+        "4h": "4b7b9c20fa70039f1b61807444f6c3bcb50589508bf2cef2487fa5b8c279bc8e"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "BNBUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "009987de57896f9a9d0f8b57750163315fbe5f6983dfa22901d13c80a1609e7b",
+        "4h": "3e37dde4e0ac5124f54aeeec0f8778cec361a745922fa3f63fdcffbaef864751"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "BTCUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "607f1f0ec5a9bd6f55ffe1b47631b99dc22bb1dd5a7fe1cb3127118378a470f1",
+        "4h": "42decb4a5ac0bf81cff75b995a35cafe9249340f8e103967d7f66101a123b4fe"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "DOGEUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "47c012b06b9405d8ab8864420a1748063d7ebdb15be5840bd6efd88a9837be8d",
+        "4h": "6edf853312676dd4226b74b245693b71f666faae22ca46e0677f25f529675c0e"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "ETHUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "edbb89b7ba664f992e72ce296d7c4329225d4210d79e73f5d482084f8795e092",
+        "4h": "b5a56a3f81934b7d7b81806dd2c8c6a490faf60e250826f469b1618b26764f9a"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "LINKUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "64d134316c6b2d1cdfb18461c37832a05c5cab25404534cc7986ab9fca4383cc",
+        "4h": "3c1eb7f055aa7668aeea63d239aefe51fd1a9ba0cb136db2036f02ccbac76950"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "SOLUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "b30db3b317a9925fc4d2f4dffc2f5fb8b761cc98bec8f13edd8cb5d560d0067b",
+        "4h": "14c97e92b00410b23b197150483b93bd2dbc244ee43e990ded5bb9b9cdfce008"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    },
+    "XRPUSDT": {
+      "canonical_pin": true,
+      "input_hashes": {
+        "1h": "f90227b6a5438264f3cbb4711aa1a1c9c0ea130b506357522d9dec06c1642ef0",
+        "4h": "80da44757058f5aeb8160e843bc0d6b58fb5acb5fff4eea70799cc72792ce055"
+      },
+      "overlap4h": 29,
+      "overlap_mismatch": 0,
+      "fwd1h_4h_groups": 79,
+      "fwd1h_4h_mismatch": 0,
+      "coverage_end_ms": 1794513600000,
+      "gaps1h": 0,
+      "gaps4h": 0,
+      "duplicates": [
+        0,
+        0
+      ],
+      "ordered": [
+        true,
+        true
+      ]
+    }
+  }
+}

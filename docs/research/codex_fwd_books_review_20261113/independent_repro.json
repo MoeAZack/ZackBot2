@@ -1,0 +1,58 @@
+{
+  "pre_T_signal_only": {
+    "H5": {
+      "diagnostic_signals": 0,
+      "admissions": []
+    },
+    "EMA": {
+      "diagnostic_signals": 0,
+      "admissions": []
+    }
+  },
+  "reversed_coverage": "COMPLETE",
+  "duplicate_coverage": "COMPLETE",
+  "h5_files": {
+    "ADAUSDT-1h.json": {
+      "cursor_hash_matches": true,
+      "last_open": "2026-11-12 18:00:00"
+    },
+    "AVAXUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "BNBUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "BTCUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "DOGEUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "ETHUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "LINKUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "SOLUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    },
+    "XRPUSDT-1h.json": {
+      "cursor_hash_matches": false,
+      "last_open": "2026-11-12 19:00:00"
+    }
+  },
+  "h5_heartbeat": {
+    "utc": "2026-11-12T21:58:59.439750+00:00",
+    "status": "ERROR",
+    "error": "RuntimeError: cursor_data_changed"
+  },
+  "h5_previous_summary_hash_matches": true
+}
