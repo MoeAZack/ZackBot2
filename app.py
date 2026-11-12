@@ -1439,6 +1439,7 @@ MG_NUM = dict(stop_atr=(0.3, 20), trail_atr=(0.3, 20), be_r=(0.1, 50), tp1_r=(0.
 MG_SUB = dict(pyramid=dict(n=(0, 10), step_r=(0.1, 20), frac=(0.05, 5)),
               dca=dict(n=(0, 8), step_atr=(0.1, 20), scale=(0.1, 3), tp_atr=(0.1, 20), stop_atr=(0.1, 30)),
               ttp=dict(at_r=(0.2, 50), dev_pct=(0.1, 50)),
+              prot=dict(at_r=(0.1, 50), trail_atr=(0.3, 20), buf=(0.0, 0.02)),   # C-BRKPROT-v1 (default OFF)
               runner=dict(be_r=(0.1, 100), step_r=(0.1, 100), gap_r=(0.1, 100), giveback=(0.05, 1), gb_from=(0.1, 100), dca_frac=(0.05, 1), trend_exit=(0, 1)))
 
 

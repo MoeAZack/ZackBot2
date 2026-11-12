@@ -565,6 +565,26 @@ SUB_DEFAULTS = dict(pyramid=dict(n=1, step_r=1.5, frac=0.5),
                     ttp=dict(at_r=2.0, dev_pct=3.0), runner={})
 
 
+PROT_BUF = 2 * 0.0005 + 0.0002   # C-BRKPROT-v1 default breakeven buffer: entry fee + exit fee + exit slippage (fraction of avg)
+
+
+def prot_level(prot, side, e0, avg, R, best, atr):
+    """C-BRKPROT-v1 protective stop candidate, shared by backtest.run and the engine (one rule, two callers).
+
+    prot = {'at_r', 'trail_atr', 'buf'} (management key 'prot', default OFF). side +1 LONG / -1 SHORT. Returns None until the
+    best price reached is at least at_r x R in favour (nothing moves before activation, not even the trail). From then on:
+    the tighter of the fee-adjusted breakeven avg x (1 + side x buf) and, if trail_atr, best - side x trail_atr x atr.
+    The caller applies it tighten-only, so the stop never loosens."""
+    if not prot or not R or R <= 0: return None
+    if side * (best - e0) < prot.get('at_r', 1.0) * R: return None
+    lvl = avg * (1 + side * prot.get('buf', PROT_BUF))
+    k = prot.get('trail_atr')
+    if k and atr and atr == atr:
+        tr = best - side * k * atr
+        lvl = max(lvl, tr) if side == 1 else min(lvl, tr)
+    return lvl
+
+
 def merge_mgmt(key, override=None):
     """Effective management settings of a slot: strategy defaults + the slot's overrides, merged one level DEEP for the
     nested blocks (pyramid / dca / ttp / runner). A partial override such as {'dca': {'n': 4}} keeps every other dca
