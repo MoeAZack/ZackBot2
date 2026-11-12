@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import strategies as S
+import prot as PROT
 import trade_audit as TA
 import paper_books as PB
 import candidates as CD
@@ -5491,6 +5492,10 @@ class Engine:
                         cands.append(lot['avg'])
                     if g.get('trail_atr'):
                         cands.append(lot['best'] - sd * g['trail_atr'] * lot['atr_now'])
+                    pg = None if PROT.prot_conflicts(g) else g.get('prot')   # refused by settings; never half-apply it
+                    lvl = PROT.prot_level(pg, sd, lot['e0'], lot['avg'], lot['R'], lot['best'], lot.get('atr_now'),
+                                       FEE_EST, PROT.PROT_SLIP)
+                    if lvl is not None: cands.append(PROT.prot_round(lvl, sd, tick))   # C-BRKPROT-v1 (default OFF): = backtest.run
                     ttp = g.get('ttp')
                     if ttp and lot['R'] > 0 and sd * (lot['best'] - lot['e0']) / lot['R'] >= ttp.get('at_r', 2.0):
                         cands.append(lot['best'] * (1 - sd * ttp.get('dev_pct', 3.0) / 100))   # trailing take-profit
@@ -5503,7 +5508,8 @@ class Engine:
                         if lock > 0: cands.append(lot['e0'] + sd * lock * lot['R'])
                     if cands:
                         tgt = max(cands) if sd == 1 else min(cands)
-                        min_step = (0.1 if g.get('trail_atr') and not run else 0.05) * lot.get('atr_now', lot['R'])
+                        trails = g.get('trail_atr') or (pg or {}).get('trail_atr')
+                        min_step = (0.1 if trails and not run else 0.05) * lot.get('atr_now', lot['R'])
                         if sd * (tgt - lot['stop']) > max(min_step, tick):
                             if sd * (m - tgt) <= 0:                # price already back through the level the stop should be at
                                 log.info(f"{lot['symbol']} [{lot['sleeve']}] price {m} already through protective level {tgt:.6g} - closing")
@@ -5944,6 +5950,9 @@ class Engine:
             lvl = e0 + sd * g['be_r'] * R; steps.append(f"stop moves to breakeven once price reaches {p(lvl)} (+{g['be_r']:g}R)")
             nxt = nxt or f'breakeven trigger at {p(lvl)}'
         if g.get('trail_atr'): steps.append(f"trailing stop {g['trail_atr']:g} ATR behind the best price")
+        pr = g.get('prot')
+        if pr: steps.append(f"at +{pr.get('at_r', 1.0):g}R the stop moves to breakeven after fees"
+                            + (f", then trails {pr['trail_atr']:g} ATR behind the best price" if pr.get('trail_atr') else ''))
         if g.get('ttp'): steps.append(f"trailing take-profit from +{g['ttp'].get('at_r', 2):g}R, closes on a {g['ttp'].get('dev_pct', 3):g}% pull-back")
         run = g.get('runner')
         if run: steps.append(f"runner: breakeven at +{run.get('be_r', 2):g}R, then the stop locks {run.get('gap_r', 1):g}R behind every new {run.get('step_r', 1):g}R")

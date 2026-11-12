@@ -71,6 +71,7 @@ def configure_logging(data=None):
 log = logging.getLogger('zackbot')
 
 import strategies as S          # noqa: E402
+import prot as PROT             # noqa: E402
 import backtest as BT           # noqa: E402
 from engine import Engine, PRESETS, TOP40, CORE8, TF_SEC, MANUAL_MAX_RISK, save_json, next_reset_utc, UNVERIFIED_BT01   # noqa: E402
 from binance_client import Futures, MAINNET   # noqa: E402
@@ -1439,6 +1440,7 @@ MG_NUM = dict(stop_atr=(0.3, 20), trail_atr=(0.3, 20), be_r=(0.1, 50), tp1_r=(0.
 MG_SUB = dict(pyramid=dict(n=(0, 10), step_r=(0.1, 20), frac=(0.05, 5)),
               dca=dict(n=(0, 8), step_atr=(0.1, 20), scale=(0.1, 3), tp_atr=(0.1, 20), stop_atr=(0.1, 30)),
               ttp=dict(at_r=(0.2, 50), dev_pct=(0.1, 50)),
+              prot=dict(at_r=(0.1, 50), trail_atr=(0.3, 20), buf=(0.0, 0.02), cost=(0.0, 0.01)),   # C-BRKPROT-v1 (default OFF)
               runner=dict(be_r=(0.1, 100), step_r=(0.1, 100), gap_r=(0.1, 100), giveback=(0.05, 1), gb_from=(0.1, 100), dca_frac=(0.05, 1), trend_exit=(0, 1)))
 
 
@@ -1581,6 +1583,8 @@ def validate_sleeve(sl, i, allow_research=False):
                enabled=bool(sl.get('enabled', True)), share=_num(sl['share'], 0.001, 1, 'capital share'), risk=_num(sl['risk'], 0.0005, 0.25, 'risk per trade'),
                max_pos=int(_num(sl['max_pos'], 1, 20, 'max positions')), symbols=clean_symbols(sl.get('symbols', 'all')),
                sides=sl.get('sides') or S.STRATEGIES[sl['key']]['sides'], mgmt=clean_mgmt(sl.get('mgmt') or {}), tf=sl.get('tf') or S.STRATEGIES[sl['key']].get('tf', '4h'))
+    bad = PROT.prot_conflicts(S.merge_mgmt(sl['key'], out['mgmt']))
+    if bad: raise ValueError('profit protection (prot) cannot be combined with ' + ', '.join(bad) + ' - set them to 0 / remove them')
     if sl.get('hours'): out['hours'] = sorted({int(_num(h, 0, 23, 'hour')) for h in sl['hours']})
     if sl.get('when') not in (None, 'any'):
         if sl['when'] not in ('bull', 'bear', 'range'): raise ValueError('market filter must be any, bull, bear or range')

@@ -47,7 +47,7 @@ MANAGEMENT = 'research-primitives-v1'
 START = 2000.0
 MIN_N = 20
 MAX_REF_LAG_S = 300                  # decision mark observed at most this long after the decision close
-UNSUPPORTED = ('runner', 'ttp', 'tps', 'trail_entry')
+UNSUPPORTED = ('runner', 'ttp', 'tps', 'trail_entry', 'prot')
 FUNDING_GRID_S = 8 * 3600              # Binance USD-M default settlement grid (00/08/16 UTC): exposure across it needs a record
 MODEL_V1 = dict(version=MODEL_VERSION, management=MANAGEMENT, fee_rate=0.0005, adverse_slippage_bps=2.0,
                 entry_reference='observed_post_close_mark')
