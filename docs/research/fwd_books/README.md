@@ -10,3 +10,13 @@ Contract: Codex FORWARD EVIDENCE GO, PR #337 6836143114; owner GO #219 683630657
 - Reporting gap (stated, not worked around): no scheduler was added. A row exists only when someone runs `run_books.py` on the FWD-01 files (they refresh every 4h). Rows are deterministic, so a late run gives the same row.
 - Mutation check: 7 of 8 key-line mutants killed. The survivor (coverage counting a not-yet-closed bar) is equivalent here, because the evaluator already trims 4h inputs to closed bars.
 - Hypothetical bar replay at 7/15/23 bp and 1 bp/8h funding. Not exchange fills, stop evidence or live parity. No accounts, keys, workers, schedulers or activation.
+
+## Amendment A1 (input-order guard; T and economics unchanged)
+
+Codex review #337 6837147057 found that a reversed or duplicated file from a single source still passed coverage, because coverage compared timestamps as a set and the loader sorted them. A1 (`research/fwd_books/freeze_amendment_a1.json`, sha 44530793) closes that:
+- Each source's timestamps must now be strictly increasing in file order. This is checked before any merge, in coverage, and in the public loader.
+- Any violation makes the row INCOMPLETE and names the coin, the timeframe and the offending time. A matching overlap between two different sources is still accepted.
+- Two hostile-input tests were added; all 8 tests pass, including under the CP1252 shim. All 5 mutants of the new lines were killed.
+- A1 was written at 22:05 UTC, after T. At that point no input after T existed: the FWD-01 files ran only to 20:00 UTC. The pre-T coverage check, rerun under A1 on the same files, is still COMPLETE.
+
+**Who produces the rows:** Claude, in the project thread, runs `run_books.py` by hand once each FWD-01 refresh lands. The first run is after the 2026-11-13 00:00 UTC refresh. Each row is posted on PR #337. No scheduler or worker exists for this.

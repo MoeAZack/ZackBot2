@@ -62,9 +62,22 @@ def klines_frame(rows, step):
 VOL_RTOL = 1e-6      # volumes may differ by float summation (1h->4h) only; prices must match exactly
 
 
+def order_problem(d):
+    """None if timestamps are strictly increasing (hence unique) in the order given; else the first offending bar.
+    Amendment A1 (Codex review #337 6837147057): a source is never sorted or de-duplicated to hide a defect."""
+    t = pd.to_datetime(pd.Series(d.t)).reset_index(drop=True)
+    for i in range(1, len(t)):
+        if t[i] <= t[i - 1]:
+            return dict(kind='duplicate' if t[i] == t[i - 1] else 'out_of_order', at=str(t[i]), previous=str(t[i - 1]), row=i)
+    return None
+
+
 def merge_sources(frames):
     """Union of frames in precedence order (earlier wins on duplicate bars). Duplicate bars must match exactly on o,h,l,c
     and within VOL_RTOL on v,qv; otherwise ValueError('input_conflict ...'). Never repairs a disagreement."""
+    for i, f in enumerate(frames):
+        bad = order_problem(f)
+        if bad: raise ValueError(f"order_violation source {i} {bad['kind']} at {bad['at']}")
     fs = [f[['t', 'o', 'h', 'l', 'c', 'v', 'qv']].assign(_src=i) for i, f in enumerate(frames) if len(f)]
     d = pd.concat(fs, ignore_index=True).sort_values(['t', '_src'], kind='mergesort')
     first = d.drop_duplicates('t', keep='first').set_index('t')
@@ -85,6 +98,9 @@ def coverage(raw, W0, T, boundary, step, first_scored):
     detail = {}
     for s in K.COINS:
         d = raw.get(s)
+        bad = None if d is None else order_problem(d)
+        if bad:
+            detail[s] = dict(order_violation=bad); continue
         have = set() if d is None else set(d.t[(d.t >= W0) & (d.t + step <= boundary)])
         miss = [h for h in need if h not in have]
         warm = sum(1 for h in have if h < first_scored)

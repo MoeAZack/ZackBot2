@@ -124,6 +124,65 @@ def test_row_is_prefix_stable_and_reconciles():
     assert a['input_sha256'] != b['input_sha256'] and set(a['input_sha256']) == set(b['input_sha256'])
 
 
+def test_a1_same_source_reversed_or_duplicate_input_is_incomplete():
+    raw1, raw4 = data()
+    rev = {s: d.copy() for s, d in raw1.items()}; rev['ETHUSDT'] = rev['ETHUSDT'].iloc[::-1].reset_index(drop=True)
+    dup = {s: d.copy() for s, d in raw1.items()}
+    dup['SOLUSDT'] = pd.concat([dup['SOLUSDT'].iloc[:50], dup['SOLUSDT'].iloc[49:]], ignore_index=True)
+    r4 = {s: d.copy() for s, d in raw4.items()}; r4['XRPUSDT'] = r4['XRPUSDT'].iloc[[1, 0] + list(range(2, len(r4['XRPUSDT'])))]
+    with Synth([], []):
+        a, ra = ev(rev, raw4, T + 8 * H1); b, _ = ev(dup, raw4, T + 8 * H1); c, _ = ev(raw1, r4, T + 8 * H1)
+    assert a['status'] == 'INCOMPLETE' and ra == {} and a['coverage']['1h']['ETHUSDT']['order_violation']['kind'] == 'out_of_order'
+    assert b['status'] == 'INCOMPLETE' and b['coverage']['1h']['SOLUSDT']['order_violation'] == dict(
+        kind='duplicate', at=str(W0 + 49 * H1), previous=str(W0 + 49 * H1), row=50)
+    assert c['status'] == 'INCOMPLETE' and c['coverage']['4h']['XRPUSDT']['order_violation']['kind'] == 'out_of_order'
+    for bad in (raw1['BTCUSDT'].iloc[::-1], pd.concat([raw1['BTCUSDT'].iloc[:3], raw1['BTCUSDT'].iloc[2:]])):
+        try: FB.merge_sources([raw1['BTCUSDT'], bad]); assert False
+        except ValueError as e: assert 'order_violation source 1' in str(e)
+    assert len(FB.merge_sources([raw1['BTCUSDT'].iloc[:30], raw1['BTCUSDT'].iloc[20:]])) == len(raw1['BTCUSDT'])
+
+
+def test_a1_public_loader_reports_hostile_files_incomplete(tmp=None):
+    import json, tempfile, hashlib
+    import run_books as RB
+    tmp = tmp or tempfile.mkdtemp()
+    can = os.path.join(tmp, 'canon'); os.makedirs(os.path.join(can, 'inputs', 'cohort9_1h'))
+    t1 = pd.date_range('2026-08-01', K.END - H1, freq='h'); man = {}
+    for s in K.COINS:
+        p = os.path.join(can, 'inputs', 'cohort9_1h', f'{s}.csv')
+        pd.DataFrame(dict(t=[x.value // 10**6 for x in t1], o=100.0, h=101.0, l=99.0, c=100.0, v=1.0, qv=100.0)).to_csv(p, index=False)
+        man[s] = dict(input_sha256=hashlib.sha256(open(p, 'rb').read()).hexdigest())
+    json.dump({'cohort9_1h': man}, open(os.path.join(can, 'input_manifest.json'), 'w', encoding='utf-8'))
+    json.dump(RULES, open(os.path.join(can, 'exchange_rules.json'), 'w', encoding='utf-8'))
+    def kl(ts, step):
+        ms = int(step / pd.Timedelta(milliseconds=1))
+        return [[int(t.value // 10**6), '100', '101', '99', '100', str(1.0 * ms / 3600000), int(t.value // 10**6) + ms - 1,
+                 str(100.0 * ms / 3600000), 0, 0, 0, 0] for t in ts]
+    fwd = os.path.join(tmp, 'fwd'); os.makedirs(fwd)
+    h1 = pd.date_range('2026-10-30 16:00', T - H1, freq='h'); h4 = pd.date_range('2026-09-23 04:00', T.floor('4h') - H4, freq='4h')
+    for s in K.COINS:
+        a1, a4 = kl(h1, H1), kl(h4, H4)
+        if s == 'DOGEUSDT': a1 = a1[:10] + a1[9:]                        # duplicate 1h row, same source
+        if s == 'LINKUSDT': a4 = a4[::-1]                                 # reversed 4h source
+        json.dump(a1, open(os.path.join(fwd, f'{s}-1h.json'), 'w', encoding='utf-8'))
+        json.dump(a4, open(os.path.join(fwd, f'{s}-4h.json'), 'w', encoding='utf-8'))
+    fz = os.path.join(tmp, 'freeze.json')
+    json.dump(dict(T_utc=str(T), W0_1h_utc='2026-10-30 16:00:00', W0_4h_utc='2026-08-01 00:00:00', source_sha256={},
+                   canonical=dict(manifest_sha256=FB.sha(os.path.join(can, 'input_manifest.json')),
+                                  rules_sha256=FB.sha(os.path.join(can, 'exchange_rules.json')))), open(fz, 'w', encoding='utf-8'))
+    open(os.path.join(tmp, 'freeze.sha256'), 'w', encoding='utf-8').write(FB.sha(fz))
+    res = RB.main(fz, can, fwd, os.path.join(tmp, 'out'), coverage_only=True)
+    assert res['status'] == 'INCOMPLETE' and list(res['order_violations']) == ['4h|LINKUSDT']
+    assert res['order_violations']['4h|LINKUSDT']['kind'] == 'out_of_order'
+    json.dump(kl(h4, H4), open(os.path.join(fwd, 'LINKUSDT-4h.json'), 'w', encoding='utf-8'))
+    res = RB.main(fz, can, fwd, os.path.join(tmp, 'out'), coverage_only=True)
+    assert res['status_1h'] == 'INCOMPLETE' and res['gaps_1h']['DOGEUSDT']['order_violation']['kind'] == 'duplicate'
+    assert res['status_4h'] == 'COMPLETE' and list(res['gaps_1h']) == ['DOGEUSDT'], (res['gaps_4h'], list(res['gaps_1h']))
+    json.dump(kl(h1, H1), open(os.path.join(fwd, 'DOGEUSDT-1h.json'), 'w', encoding='utf-8'))
+    res = RB.main(fz, can, fwd, os.path.join(tmp, 'out'), coverage_only=True)
+    assert res['status_1h'] == res['status_4h'] == 'COMPLETE'                # valid cross-source overlap preserved
+
+
 if __name__ == '__main__':
     for k, f in sorted(globals().items()):
         if k.startswith('test_'): f(); print('PASS', k)
