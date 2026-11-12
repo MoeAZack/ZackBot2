@@ -1,0 +1,94 @@
+{
+ "id": "MPE-01",
+ "status": "FROZEN before any MPE-01 signal count or outcome",
+ "approval": "Codex #219 6829646500 / PR #337 6829651990; moe 2026-11-12 18:40 Cairo (thread)",
+ "nature": "execution-cost hypothesis on the frozen X2 signal (original8); NOT a new independent alpha; does not rewrite X2-WIDE FAILED; research only; no engine/runtime/UI/key/account change; all results exploratory",
+ "signal": {
+  "source": "research/x2wide/run_x2wide.py imported unchanged",
+  "source_sha256": "8251f9b34d3eef1b1847ecce4141903df7de363155938407fb369168f27cfad7",
+  "x2_module_sha256": "929cb91e95d9ca796a531b0dd8f8ca697f91ba00edc0448508411a7f45207c77",
+  "coins": [
+   "ADAUSDT",
+   "AVAXUSDT",
+   "BNBUSDT",
+   "DOGEUSDT",
+   "ETHUSDT",
+   "LINKUSDT",
+   "SOLUSDT",
+   "XRPUSDT"
+  ],
+  "context": "BTCUSDT (signal context only)",
+  "built_from": "canonical 1h -> complete UTC 4h bins; D01 PIT liquidity at the decision's last 1h bar",
+  "canonical_1h": {
+   "dir": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean",
+   "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95"
+  }
+ },
+ "execution_data": {
+  "dir": "C:/Dev/ZackBot_cowork_data/edge01_20261023/cache_15m (byte-identical to C:/Dev/paper-backup-20261105/candles_15m_research)",
+  "sha256": {
+   "ADAUSDT": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+   "AVAXUSDT": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+   "BNBUSDT": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+   "BTCUSDT": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+   "DOGEUSDT": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+   "ETHUSDT": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+   "LINKUSDT": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+   "SOLUSDT": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+   "XRPUSDT": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6"
+  },
+  "coverage": "2024-10-11 17:00 .. 2026-09-27 23:45 UTC, 68764 contiguous 15m bars per coin, 0 gaps/dups",
+  "vs_canonical_1h": "17191 hours per coin compared: opens all equal; H/L/C/volume equal except the same 4 hours on all 9 coins (2024-10-28 20:00, 21:00; 2025-01-14 13:00, 15:00 UTC) where Binance's own 15m and 1h klines disagree; kept as-is, lots touching them counted ('anomaly_hour_lots'); see data_quality.json",
+  "fetch": "none"
+ },
+ "window": {
+  "decisions_from": "2024-10-11 20:00 UTC",
+  "decisions_to": "2026-09-27 20:00 UTC",
+  "split": "2025-10-01 UTC on entry time; both halves consumedDEV; no sealed holdout"
+ },
+ "maker_arm": {
+  "limit": "signal 4h close -0.25 ATR4h (long, floor tick) / +0.25 ATR4h (short, ceil tick)",
+  "post": "decision + 15 min (one full 15m bar latency)",
+  "postonly": "reject if the post bar OPEN is at/through the limit",
+  "work": "4 x 15m bars from post, then expire (60 min)",
+  "fill": "trade THROUGH limit by >= 2 ticks AND bar base volume >= 100 x qty; touch never fills; fill at limit, no slippage",
+  "fill_bar": "stop may hit (exit at stop at bar close); no partial/target/breakeven in the fill bar",
+  "slot": "a working order reserves the max-1 slot until fill or expiry; post-only reject or refusal tries the next tie candidate; an unfilled order does not"
+ },
+ "taker_control": "market at the post-bar OPEN + 2 bp slip; same clock, dist, sizing, exits; entry bar managed normally (X2 convention)",
+ "exits": "unchanged X2: stop 2.5 ATR4h from entry fill, half at +1R (floor step, min checks), BE from the next management bar, 3R target, time cap first bar close >= post + 120 h; adverse open beyond stop -> exit at open",
+ "paths": {
+  "m15": "15m management bars (primary)",
+  "worst": "UTC 4h bins of 15m bars, stop-first (diagnostic)"
+ },
+ "costs_assumptions": {
+  "maker_base": "entry 2 bp fee + 2 bp cash queue/adverse-selection penalty; exits 5 bp fee + 2 bp slip",
+  "taker_base": "entry and exits 5 bp fee + 2 bp slip",
+  "stress": "+8 / +16 bp fee on EVERY executed side",
+  "alltaker": "maker fills charged 5 bp taker fee + 2 bp penalty",
+  "funding": "stress proxy 1 bp/8h on qty x every held 15m close (1 bp/32 per bar) incl. fill and exit bars, cost on both sides"
+ },
+ "portfolio": {
+  "risk_usd": 8.0,
+  "notional_cap": 3333.33,
+  "filters": "current testnet snapshot (step, min_qty, min_notional, tick)",
+  "max_positions_global": 1,
+  "tie_orders": 40,
+  "daily_halt": "Cairo-day net cash <= -$120 (Africa/Cairo IANA)",
+  "terminal_open": "marked at last 15m close with exit costs, excluded from closes"
+ },
+ "readout": {
+  "primary": "m15 path, base costs, 40-order medians: maker vs taker meanR, closes, early/later, fill rate; plus portfolio-free signal-level table (taker R on maker filled / unfilled / rejected signals = adverse-selection check)",
+  "gates": "none for promotion: all exploratory. Any positive needs independent execution/data checks and actual bounded testnet maker-fill/protection evidence before ANY account-4 activation. X2-WIDE-style gate booleans are not computed.",
+  "no_search": "no side, coin, offset, latency, expiry, volume-multiple or tick search"
+ },
+ "tests": "research/mpe01/test_run_mpe01.py (17 hostile tests; 11 key-line mutants all killed (3 needed added regression tests))",
+ "limitations": [
+  "15m OHLCV has no order book/queue; 2-tick-through + 100x volume is a proxy, not a fill guarantee",
+  "penalty and fees are assumptions",
+  "no tick rounding of stop/targets",
+  "current exchange filters",
+  "survivor coins; original8 was consumed by earlier X2/H5 work",
+  "funding proxy, not native signed funding"
+ ]
+}
