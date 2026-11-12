@@ -1,0 +1,14 @@
+{
+  "id": "SPOTFLOW-D01",
+  "status": "REJECT_PROVISIONAL_PENDING_INDEPENDENT_PARITY",
+  "trial_count": 1,
+  "frozen_ledger_sha256_receipt": "552f1a003373db02784a07e861ef71def58788a408f3ea6829181ac1dda992d7",
+  "result_sha256": "fe130222ae66259489523f714b4be7c5d463a5aae6b060d5378a95d77424afdc",
+  "causal_15bp_median_R": -0.4016,
+  "causal_15bp_median_closed_trades": 16,
+  "early_closed_order0": 2,
+  "later_closed_order0": 14,
+  "worst_15bp_median_R": -0.424,
+  "gate_pass": false,
+  "policy": "Do not tune, rerun, promote or erase the trial. Independent validation before final disposition. No account/runtime action."
+}

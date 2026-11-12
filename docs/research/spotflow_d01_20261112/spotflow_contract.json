@@ -1,0 +1,16 @@
+{
+  "id": "SPOTFLOW-D01",
+  "study": "One research-only alpha trial, consumed DEV; no parameter search, side or coin rescue; phase 0 was data feasibility only",
+  "universe": ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT", "DOGEUSDT", "BNBUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT"],
+  "spot_source": "Binance official monthly 1h September 2024 through September 2026, exact 225 archive manifest and checksum validation",
+  "perp_flow": "C1H-NATIVE-DATA-20261112/inputs/cohort9_1h, qv and tbqv",
+  "price_source": "canonical h5_wide_d01_20261112 clean 1h, point-in-time D01 price and eligibility; matched spot and native timestamps",
+  "window": {"first_signal_hour_utc": "2024-10-11T17:00:00Z", "last_signal_hour_utc": "2026-09-27T23:00:00Z", "split_trade_entry_utc": "2025-10-01T00:00:00Z", "note": "both segments consumed DEV; no untouched holdout"},
+  "eligibility": "Spot and canonical futures each require prior 30 complete UTC days with median daily qv >= 10000000 and at least 720 consecutive valid hourly bars. Current native futures flow is required but has no separate historical volume gate. No missing-value forward fill; zero current qv or invalid current taker fields skips.",
+  "signal": "On closed bar t, I=2*tbqv/qv-1. Long when spot I >= 0.2 and perp I <= -0.2 and log(close_t/close_t-3) <= -ATR14_t/close_t. Short when spot I <= -0.2 and perp I >= 0.2 and log(close_t/close_t-3) >= ATR14_t/close_t. Exact strict inclusive flow thresholds are evaluated by cross-products 5*tbqv >= 3*qv and 5*tbqv <= 2*qv; no epsilon. Skip when abs(BTC log(close_t/close_t-3)) >= 0.015. Four consecutive close observations required for each 3h return.",
+  "atr": "Exact reviewed D01 indicator: TR=max(high-low, abs(high-prevclose), abs(low-prevclose)); pandas ewm alpha=1/14 adjust=False, initial first TR; no separate ATR seeding method.",
+  "execution": "Next 1h canonical open, only within fixed window; no price bar after Sep 27 23:00 UTC; last-bar entries refused and last-bar terminal marks close at Sep 28 00:00 UTC. Risk $8, notional cap $3333.33, current testnet filters, 3x signal ATR stop, 2R target, 12h cap, no partial or BE. One global position; 40 fixed alphabetical/seeded tie orders; Cairo day -$120 realized cash halt; gap stop at adverse open. 2bp adverse slip plus 5/13/21bp fee per fill gives 7/15/23bp per executed side; 1bp/8h funding stress proxy both sides; 1h causal and UTC 4h stop-first worst diagnostic. Terminal open marked and excluded from closed count. Reviewed RSR lot execution and X2 simulator imported unchanged.",
+  "gates": "RSR gates on 40 orders: median closes >=100, order0 early/later >=30 each, median R15 >0 each period, median overall R23 >0, median ex-best-coin R15 >0, p10 order R15 >0 and median worst-path R15 >0; no activation follows a pass.",
+  "pre_economic_gate": "Freeze contract, data validation, all source, reviewed harness and synthetic tests by hash before signal counts or outcomes. Require complete verified inputs, all synthetic tests pass, 2 workers max. Independent review required before acceptance.",
+  "limitations": "Fixed survivor universe, current filters, hourly bars, funding stress proxy, no tick rounding or proof of live execution; strategy economic screen only, no account or runtime action."
+}

@@ -1,0 +1,30 @@
+{
+  "purpose": "frozen before signal counts and economic outcomes",
+  "sha256": {
+    "spotflow_signals.py": "6eb1303b86b04b580f45e35f746f465468bc4866a55c3c7c727898182c2e7ffa",
+    "test_spotflow_signals.py": "8c031de8fa58cf86277f9a8567f39ca9358b7a12f80e25a5610e8bffd7f5760d",
+    "spotflow_run.py": "442021493be5f95143780dd5aa858765733aec90f7df9050bf7eae845eb6cd6b",
+    "spotflow_validate.py": "82fd2a64d22d3f64e9ce96e6a0002e4ec0b84be4f3b4ce941d1caf949a45866f",
+    "spotflow_contract.json": "a64757e346a10d789a03385077e5bef26c6f48c87cdfca98d02e061658906390",
+    "data_manifest_frozen.json": "e1a60f14cdaaa7e520a2d9bfe7100eea67ae0a2890603490f31983b334054815",
+    "data_validation.json": "ed674fefcb3784d68882166884d9d1839a79ef844549ce441920d537b1c86183",
+    "synthetic-tests.log": "f2d06912b595e291b186909ba8aced7e721d60cd20089c0acddba12094f9c73c",
+    "harness/data/exchange_rules_testnet.json": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af",
+    "harness/feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+    "harness/prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+    "harness/research/h5wide/h5_hourly_long_master.py": "8573dd81b39558f55d29682223568d7f72d61e9b25eaa5f072f81dc94139f128",
+    "harness/research/h5wide_d01/run_d01_v3.py": "2c3985688956daa97719d369592e235300b87760f1e3a095f09070369221f84a",
+    "harness/research/rsr1h/run_rsr1h.py": "eb0bde8e7901a8dd48464bd98d6bc166b15422271a072083e50c8c909690380a",
+    "harness/research/rsr1h/test_run_rsr1h.py": "979dd3aa15eaf4c1ac0ab9e76afa14cefd82a255f006e0111e538d7205038b9b",
+    "harness/research/x2wide/newstrat_cp3_46ece2b7.py": "929cb91e95d9ca796a531b0dd8f8ca697f91ba00edc0448508411a7f45207c77",
+    "harness/research/x2wide/parity_speedpatch.py": "7f358f10efe72510071dc25b26a8aa8dc9b31a05bfe3e57605d447c0508295bf",
+    "harness/research/x2wide/run_x2wide.frozen-de27.py": "2b506eb56ed42a73926144c03ac2367383aee7728804e8f6a12644417b166a19",
+    "harness/research/x2wide/run_x2wide.py": "8251f9b34d3eef1b1847ecce4141903df7de363155938407fb369168f27cfad7",
+    "harness/research/x2wide/test_run_x2wide.frozen-de27.py": "71a490c2bbd970e97496105f0ac0a67884c7b6359caa8480f8fd24bf13857c05",
+    "harness/research/x2wide/test_run_x2wide.py": "77bdb96c85130847dfcf9dccbe24d55a120084eb1cd4d602c186c0d02c1cf548",
+    "harness/strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "trial_ledger.json": "393fcba60f20c4eace588dc784c6326458ada16247d42339c9d99ac4ca54394e"
+  },
+  "synthetic_test": "23 passed",
+  "trial_count": 1
+}

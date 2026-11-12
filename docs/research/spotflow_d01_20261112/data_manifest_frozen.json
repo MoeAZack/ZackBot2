@@ -1,0 +1,1417 @@
+{
+  "id": "SPOTFLOW-D01",
+  "purpose": "data-stage only; no feature selection, counts or outcomes",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "SOLUSDT",
+    "DOGEUSDT",
+    "BNBUSDT",
+    "ADAUSDT",
+    "LINKUSDT",
+    "AVAXUSDT"
+  ],
+  "months": [
+    "2024-09",
+    "2024-10",
+    "2024-11",
+    "2024-12",
+    "2025-01",
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05",
+    "2025-06",
+    "2025-07",
+    "2025-08",
+    "2025-09",
+    "2025-10",
+    "2025-11",
+    "2025-12",
+    "2026-01",
+    "2026-02",
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+  ],
+  "entries": [
+    {
+      "symbol": "BTCUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1h/XRPUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1h/SOLUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1h/DOGEUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1h/BNBUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1h/ADAUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "LINKUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1h/LINKUSDT-1h-2026-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2024-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2024-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2024-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2024-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2024-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-09.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-10",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-10.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-10.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-11.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-11.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2025-12",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-12.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2025-12.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-01",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-01.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-02",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-02.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-02.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-03",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-03.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-03.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-04",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-04.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-04.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-05.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-05.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-06",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-06.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-06.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-07",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-07.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-07.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-08.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-08.zip.CHECKSUM"
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "month": "2026-09",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-09.zip",
+      "checksum_url": "https://data.binance.vision/data/spot/monthly/klines/AVAXUSDT/1h/AVAXUSDT-1h-2026-09.zip.CHECKSUM"
+    }
+  ],
+  "official_format": "https://github.com/binance/binance-public-data",
+  "timestamp_units": "spot through 2024 milliseconds; since 2025 microseconds",
+  "window_utc": [
+    "2024-10-11T17:00:00Z",
+    "2026-09-27T23:00:00Z"
+  ],
+  "download_policy": "up to four TLS-verified workers, 0.25s between requests per worker, stop on 418/429/403, no unlisted archives",
+  "reuse": "phase0 BTC/ETH Dec2024 Jan2025 only; verify checksum before use",
+  "field_mapping": [
+    "open_time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "base_volume",
+    "close_time",
+    "quote_volume",
+    "trades",
+    "taker_buy_base",
+    "taker_buy_quote",
+    "ignore"
+  ],
+  "execution_rule": "no economic read until contract, source and synthetic tests all frozen and reviewed"
+}

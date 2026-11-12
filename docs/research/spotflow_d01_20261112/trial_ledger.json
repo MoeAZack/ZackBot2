@@ -1,0 +1,9 @@
+{
+  "id": "SPOTFLOW-D01",
+  "trial_count": 1,
+  "state": "FROZEN_PRE_OUTCOME",
+  "contract_sha256": "a64757e346a10d789a03385077e5bef26c6f48c87cdfca98d02e061658906390",
+  "data_validation_sha256": "ed674fefcb3784d68882166884d9d1839a79ef844549ce441920d537b1c86183",
+  "multiple_testing": "single new trial; no grids or post-outcome side/coin rescue",
+  "caveat": "native futures flow and canonical prices have two differing field hours per symbol, disclosed before outcomes"
+}
