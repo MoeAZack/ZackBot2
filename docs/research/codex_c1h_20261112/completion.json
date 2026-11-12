@@ -1,0 +1,11 @@
+{
+  "status": "COMPLETE",
+  "at_cairo": "2026-11-12T12:50:15.562138+02:00",
+  "total": 84,
+  "done": 84,
+  "failed": [],
+  "elapsed_s": 122.2,
+  "summary_exit": 0,
+  "summary_output": "Completed cases: 84. Descriptive summary only; no qualification assessed.",
+  "summary_error": ""
+}
