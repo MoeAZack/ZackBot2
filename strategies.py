@@ -541,6 +541,11 @@ def build_context(dfs, btc_key='BTCUSDT'):
     """Cross-sectional data for rotation / regime strategies, aligned by candle time (coins may have different history)."""
     btc = dfs[btc_key].set_index('t')
     btc_down = (btc.c < btc.e200)
+    # NEWSTRAT-CP N6: BTC's first close through its prior 20-candle high / low (same-timeframe candles, closed only)
+    _bh = btc.hh20 if 'hh20' in btc else btc.h.rolling(20).max().shift()
+    _bl = btc.ll20 if 'll20' in btc else btc.l.rolling(20).min().shift()
+    btc_brk_up = ((btc.c > _bh) & (btc.c.shift() <= _bh.shift())).fillna(False)
+    btc_brk_dn = ((btc.c < _bl) & (btc.c.shift() >= _bl.shift())).fillna(False)
     ra = pd.DataFrame({s: pd.Series((d.ret180 / (d.c.pct_change().rolling(180).std() * np.sqrt(180))).values, index=d.t)
                        for s, d in dfs.items()})
     rank = ra.rank(axis=1, ascending=False)
@@ -552,6 +557,8 @@ def build_context(dfs, btc_key='BTCUSDT'):
     for s, d in dfs.items():
         t = d.t
         out[s] = dict(btc_down=btc_down.reindex(t).fillna(False).astype(bool).values,
+                      btc_brk_up=btc_brk_up.reindex(t).fillna(False).astype(bool).values,
+                      btc_brk_dn=btc_brk_dn.reindex(t).fillna(False).astype(bool).values,
                       rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
@@ -1630,4 +1637,46 @@ STRATEGIES['fib_pullback_02'] = dict(
          'a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a '
          '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
     mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)
+
+
+# ------------------------------------------------------------------ NEWSTRAT-CP wave 2 survivors (research_only, default-OFF)
+# Frozen at research/newstrat_cp2.py (b75fa28b) before any run; definitions copied unchanged, parity-tested.
+
+def sig_btc_lead_catchup_4h(d, p, ctx):
+    """CP-N6: on the candle where BTC first closes through its prior 20-candle high (low), go long (short) a
+    trend-aligned alt that has NOT yet broken its own 20-candle extreme. BTC itself is excluded by the sleeve."""
+    bu = pd.Series(np.asarray(ctx.get('btc_brk_up', np.zeros(len(d), bool)), bool), index=d.index)
+    bd = pd.Series(np.asarray(ctx.get('btc_brk_dn', np.zeros(len(d), bool)), bool), index=d.index)
+    le = bu & (d.c < d.hh20) & (d.c > d.e50) & (d.e50 > d.e200)
+    se = bd & (d.c > d.ll20) & (d.c < d.e50) & (d.e50 < d.e200)
+    z = pd.Series(False, index=d.index)
+    return dict(le=X(le), se=X(se), lx=z, sx=z)
+
+
+STRATEGIES['btc_lead_catchup_4h'] = dict(
+    name='[RESEARCH] CP-N6 BTC-lead alt catch-up 4h', style='cross_asset_diffusion', fn=sig_btc_lead_catchup_4h,
+    sides='both', tf='4h', research_only=True, params={}, exclude_symbols=['BTCUSDT'],
+    desc='RESEARCH-ONLY (NEWSTRAT-CP N6): BTC closes through its prior 20-candle high/low; enter alts aligned with their '
+         'EMA50/EMA200 trend that have not broken their own 20-candle extreme yet. 2 ATR stop, half off at +1R, rest to '
+         'breakeven, 3R target, 30 candles. Run without BTCUSDT.',
+    mgmt=dict(stop_atr=2.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=3.0, max_bars=30),
+)
+
+
+def sig_squeeze_breakdown_short_4h(d, p, ctx):
+    """CP-N8: prior-candle Bollinger width in its lowest 10% (120 candles), then a close below both the lower band and
+    the prior 20-candle low, below EMA200, while BTC is below its EMA200."""
+    bd = pd.Series(ctx['btc_down'], index=d.index).astype(bool)
+    se = bd & (d.c < d.e200) & (d.bbw_pct.shift() <= p['sq_pct']) & (d.c < d.bbl) & (d.c < d.ll20)
+    z = pd.Series(False, index=d.index)
+    return dict(le=z, se=X(se), lx=z, sx=z)
+
+
+STRATEGIES['squeeze_breakdown_short_4h'] = dict(
+    name='[RESEARCH] CP-N8 Squeeze breakdown short 4h', style='breakout', fn=sig_squeeze_breakdown_short_4h,
+    sides='short', tf='4h', research_only=True, params=dict(sq_pct=0.10),
+    desc='RESEARCH-ONLY (NEWSTRAT-CP N8): a Bollinger squeeze resolved downward through the 20-candle low while BTC is '
+         'below its EMA200. Forward-ledger only: failed the worst-path check.',
+    mgmt=dict(stop_atr=2.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=3.0, max_bars=30),
 )

@@ -75,6 +75,8 @@ def main(key, out, scen='path'):
     if len(tr) and np.isnan(tt).any():           # fallback: pro-rate the total turnover by risk
         tot = sum(abs(f['ref'] * f['qty']) for f in log)
         w = (tr.pnl / tr.R).abs(); tt = (w / w.sum() * tot).values
+    if len(tr):
+        tr['turnover'] = tt; tr['risk_usd'] = (tr.pnl / tr.R).abs()
     dd_usd = float((cv.cummax() - cv).max()) if len(cv) else 0.0
     res = dict(key=key, tf=tf, scenario=scen, symbols=SYMS, bars=len(T), first=str(T[0]), last=str(T[-1]),
                end_equity=round(float(cv.iloc[-1]), 2), maxdd_usd=round(dd_usd, 2), maxdd_R=round(dd_usd / BASE_R, 1),

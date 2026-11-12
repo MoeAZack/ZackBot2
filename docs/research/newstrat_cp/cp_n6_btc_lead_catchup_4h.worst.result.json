@@ -1,0 +1,84 @@
+{
+ "key": "cp_n6_btc_lead_catchup_4h",
+ "tf": "4h",
+ "scenario": "worst",
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "DOGEUSDT",
+  "BNBUSDT",
+  "LINKUSDT",
+  "AVAXUSDT"
+ ],
+ "bars": 10499,
+ "first": "2021-12-19 08:00:00",
+ "last": "2026-10-04 00:00:00",
+ "end_equity": 4308.71,
+ "maxdd_usd": 315.62,
+ "maxdd_R": 19.7,
+ "feasibility": {
+  "attempts": 412,
+  "executed": 412,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 412,
+  "win": 54.6,
+  "pnl": 308.71,
+  "long_n": 228,
+  "short_n": 184,
+  "long_pnl": 97.76,
+  "short_pnl": 210.95,
+  "expR_7bp": 0.0481,
+  "pnl_7bp": 308.71,
+  "expR_15bp": 0.0078,
+  "pnl_15bp": 33.94,
+  "expR_23bp": -0.0326,
+  "pnl_23bp": -240.84
+ },
+ "dev": {
+  "n": 253,
+  "win": 54.2,
+  "pnl": 174.57,
+  "long_n": 143,
+  "short_n": 110,
+  "long_pnl": 197.44,
+  "short_pnl": -22.88,
+  "expR_7bp": 0.045,
+  "pnl_7bp": 174.57,
+  "expR_15bp": 0.0058,
+  "pnl_15bp": 14.68,
+  "expR_23bp": -0.0335,
+  "pnl_23bp": -145.2
+ },
+ "holdout": {
+  "n": 159,
+  "win": 55.3,
+  "pnl": 134.15,
+  "long_n": 85,
+  "short_n": 74,
+  "long_pnl": -99.68,
+  "short_pnl": 233.83,
+  "expR_7bp": 0.053,
+  "pnl_7bp": 134.15,
+  "expR_15bp": 0.0109,
+  "pnl_15bp": 19.25,
+  "expR_23bp": -0.0311,
+  "pnl_23bp": -95.64
+ },
+ "why": {
+  "stop": 290,
+  "time": 73,
+  "tp": 49
+ },
+ "code_sha256": {
+  "newstrat_cp.py": "38090704b68587a5cff220516412f773e73494bb12acd60ec142539c98eb2c96",
+  "newstrat_cp2.py": "3d60d6bfa9495bd4052c972bd2230622cc599d93563bc68752647aac7592349b",
+  "backtest.py": "d9d4856429c62a0a78a6141f5e8897ad4123812190a64f99ed7be002782a3025",
+  "strategies.py": "1e4c0fd4fd121a0d93b7e46b50c08b2bb51a5c3bbe1f44a76683a5e39efd1a10"
+ },
+ "dd_label": "Elevated",
+ "paper_eligible": true
+}
