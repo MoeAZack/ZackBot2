@@ -1,0 +1,31 @@
+{
+  "source": "worst/end-of-exitbar primary",
+  "outlier": {
+    "uniqueid": "ema_st_L|XRPUSDT|1|2024-11-06T12:00:00+00:00",
+    "sleeve": "ema_st_L",
+    "symbol": "XRPUSDT",
+    "side": 1,
+    "entry_utc": "2024-11-06T12:00:00+00:00",
+    "exit_utc": "2024-12-10T00:00:00+00:00",
+    "status": "admitted",
+    "reason": NaN,
+    "normal_risk": 16.0,
+    "entry_risk": 16.0,
+    "joined_other": false,
+    "net_R_at_cost": 70.86398310726447,
+    "net_realized": 1133.8237297162316,
+    "exit_equity": 4609.429798451209,
+    "funding_debit": 0.0,
+    "funding_settlements": 100,
+    "net_R_after_funding": 70.86398310726447
+  },
+  "admitted_in_baseline": false,
+  "baseline_return_pct": -27.42363228188125,
+  "refuse_return_pct": 5.345997275051695,
+  "spread_pp": 32.76962955693295,
+  "direct_outlier_pp": 28.345593242905792,
+  "outlier_direct_share_of_spread": 0.8649958399334063,
+  "drop_specific_trade_refuse_return_pct": -20.16536757012979,
+  "drop_all_2024_entries_baseline_return_pct": -24.24973427291597,
+  "drop_all_2024_entries_refuse_return_pct": -22.650762637034028
+}

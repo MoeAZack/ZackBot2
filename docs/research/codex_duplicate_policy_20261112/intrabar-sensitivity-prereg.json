@@ -1,0 +1,10 @@
+{
+  "created_cairo": "2026-11-12T11:39:38.712635+02:00",
+  "reason": "Owner report says adverse intrabar path without exact pessimistic argument; primary worst differs from reported4h returns. Compare unchanged BT standard path independently; do not choosewinningmode orreplaceprimary.",
+  "modes": [
+    "worst primary retained",
+    "path standardOHLC sensitivity"
+  ],
+  "no_runtimechanges": true,
+  "script_sha256": "0d1c9736733f6259152d3a0a1ecc2a3e96c75701bca459804bcc5ea84707e627"
+}

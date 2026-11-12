@@ -1,0 +1,262 @@
+{
+  "head": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+  "created_cairo": "2026-11-12T11:26:33.123720+02:00",
+  "source_sha256": {
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+    "prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+  },
+  "receipts": [
+    {
+      "symbol": "BTCUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\BTCUSDT_15m.csv",
+      "sha256": "78596bc43123fdda13650d78524f79966801c31ed8384dd4bf83586da944d6e3",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "BTCUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\BTCUSDT_4h.csv",
+      "sha256": "469420592551c251ed5e48edc4e9e3568ee4a40b185adfcb423cf6d33024848d",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "ETHUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\ETHUSDT_15m.csv",
+      "sha256": "476730a8ce348de694614841da2916e76479feef6df3d960e0f3324bc7b90125",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "ETHUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\ETHUSDT_4h.csv",
+      "sha256": "d250487771d802728edddf778079cb790f9975ad55d635cdde7ea906576425b8",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "XRPUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\XRPUSDT_15m.csv",
+      "sha256": "76afecd4973695f69713979e335a3330a534bf0b2304365f7360532916f4d3c6",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "XRPUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\XRPUSDT_4h.csv",
+      "sha256": "68b6e8ebd302d5606f5c4b62eeb3045e4fd36996ed334a5dbbe9c7c8d740b1f6",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "SOLUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\SOLUSDT_15m.csv",
+      "sha256": "7f0cb86a52a75e143a50dc662d0da857bbe5c783f235ebb64c72161d0a6423bd",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "SOLUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\SOLUSDT_4h.csv",
+      "sha256": "f726dfd5adb3f29c240058b0417c2793d1738b91fb2feeedf23ac9928ad939a3",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\DOGEUSDT_15m.csv",
+      "sha256": "a95ef9911e5465c21e9feaa47d45f9b74d7947e3e586eeeebd348adbbb83089d",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\DOGEUSDT_4h.csv",
+      "sha256": "aac668cc4e4f5210a54923bf4280b43816572d27c65fae63d9af3dd96e5112a2",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "BNBUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\BNBUSDT_15m.csv",
+      "sha256": "374b1853cb135260d1395366b906c2468603bac8c0667cb4f9c83a710649b492",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "BNBUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\BNBUSDT_4h.csv",
+      "sha256": "a54474e67eab0a26222a63851c9e443e7ad5c07f807abc44bc28601e026d9d2b",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "ADAUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\ADAUSDT_15m.csv",
+      "sha256": "4830b92195cbde1bc603f49fc5f0df529342b52d9d5912db16da93d5b5a59561",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "LINKUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\LINKUSDT_15m.csv",
+      "sha256": "7e09791c3427cb8ed5bc6e42f18c1d54636b6194b49bb50980ac41205207c1f3",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "LINKUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\LINKUSDT_4h.csv",
+      "sha256": "669a6c7af684cccd5c08bdfd6c621423c609dbf3437ad208eac23f57d6418484",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "tf": "15m",
+      "path": "C:\\Dev\\paper-backup-20261105\\candles_15m_research\\AVAXUSDT_15m.csv",
+      "sha256": "57ca6976dac87a33749498120e96b14b05061e46ad991923b8521747fcc9d18c",
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "rows": 68764,
+      "native_qv": true
+    },
+    {
+      "symbol": "AVAXUSDT",
+      "tf": "long4h",
+      "path": "C:\\Dev\\ZackBot2_newstrat\\data_long\\4h\\AVAXUSDT_4h.csv",
+      "sha256": "96e34b44cd53f137625c7cb7ccd42f67905cd978291a44904386b631782cd1ba",
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "rows": 10462,
+      "qv": false
+    }
+  ],
+  "coverage": {
+    "short15": {
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "XRPUSDT",
+        "SOLUSDT",
+        "DOGEUSDT",
+        "BNBUSDT",
+        "ADAUSDT",
+        "LINKUSDT",
+        "AVAXUSDT"
+      ],
+      "rows": 68764,
+      "first": "2024-10-11 17:00:00",
+      "last": "2026-09-27 23:45:00",
+      "missing_common_grid": 0
+    },
+    "short4": {
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "XRPUSDT",
+        "SOLUSDT",
+        "DOGEUSDT",
+        "BNBUSDT",
+        "ADAUSDT",
+        "LINKUSDT",
+        "AVAXUSDT"
+      ],
+      "rows": 4297,
+      "first": "2024-10-11 20:00:00",
+      "last": "2026-09-27 20:00:00",
+      "missing_common_grid": 0
+    },
+    "long4": {
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "XRPUSDT",
+        "SOLUSDT",
+        "DOGEUSDT",
+        "BNBUSDT",
+        "LINKUSDT",
+        "AVAXUSDT"
+      ],
+      "rows": 10462,
+      "first": "2021-12-19 08:00:00",
+      "last": "2026-09-27 20:00:00",
+      "missing_common_grid": 0
+    }
+  },
+  "window": "consumedDEV only; end2026-09-28UTC exclusive; no holdout tuning",
+  "qv": "native15m quote volume summed only complete16-candle4h bars; long4h lacksqv soexp_vwaprev excluded, never zero-filled",
+  "candidate_generation": {
+    "start_equity": 1000000000.0,
+    "risk_fraction": 1e-06,
+    "max_pos": "all symbols",
+    "daily_halt": 1.0,
+    "max_lev": 10,
+    "fees_per_side": [
+      0,
+      0.0007,
+      0.0015,
+      0.0023
+    ],
+    "slip": 0.0,
+    "funding": 0.0,
+    "exchange_rules": "legacy floors only; per-lot R tape, not a filter qualification",
+    "intrabar": "worst",
+    "warmup": 220,
+    "stop_guard": "requirecompletecurve; rejectgeneratorcapitalearlytermination"
+  },
+  "overlay_primary": "fixed8or16 risk; cap2.5%cash equity; Cairorealizeddailyhalt3%; 10%closedDDreportedNOTenforced; exit assumedendofexitbar; savedslorder",
+  "sensitivities": [
+    "exitbaropentimestamps vsprimaryclose",
+    "percentageequityratherthanfixedrisk",
+    "both-side3bp/8hentry-notionalfundingstressbookedatclose"
+  ],
+  "default": "RESEARCH_ONLY_DEFAULT_OFF_NO_ACCOUNT_CHANGES"
+}

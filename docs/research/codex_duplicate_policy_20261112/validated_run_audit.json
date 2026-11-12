@@ -1,0 +1,8 @@
+{
+  "pass": true,
+  "case_count": 328,
+  "fresh_hash_pinned_runs": true,
+  "cost_units": "bp per executed side/fill, NOT roundtrip",
+  "tape_model": "fixed standalone preselected trades; not full policy-dependent event simulation",
+  "generator_provenance": "tape_provenance_validation.json"
+}

@@ -1,0 +1,14 @@
+Independent closed-trade shared-account overlay
+
+CSV required columns: uniqueid,sleeve,symbol,side,entry_utc,exit_utc,net_R_at_cost. Side is +1 or -1. Times must include UTC offset; exit must follow entry. Unique IDs and sleeve order are required. Extra CSV fields are ignored. One file is one account simulation; never concatenate accounts. Symbols must use consistent naming.
+
+Example: python overlay_sim.py candidates.csv --sleeve-order acct1,acct2,acct3,acct4 --policy B --budget-multiple 1.5 --risk-mode fixed --output result.json
+
+Policies baseline, A, B; risk-mode fixed uses initial capital (default 4000), equity uses current closed equity. Each row may specify risk_fraction (default 0.004) and max_positions (default 2). Supply 0.002 and 1 explicitly for every account-4 sleeve; no sleeve-name inference is performed. Keep values consistent across rows of each sleeve. B budgets are relative to each incoming sleeve normal risk and existing same-symbol same-side entry risk; entry risk is held through exit. B resizing precedes the aggregate 2.5% of current closed equity cap, which rejects rather than resizing. Baseline and A use full risk. Exit-first is the default half-open interval; --tie entry-first provides sensitivity. Candidate exit time construction must be chosen by caller; this program does not infer candle boundaries. Same-time events use saved sleeve order, symbol and ID.
+
+Daily realized losses use Cairo IANA local days and day-start closed equity. Exit events continue under halts. 10% drawdown first hit is reported and NOT enforced. All drawdowns, capital and cap calculations use CLOSED equity: no intrabar or mark-to-market data is available. The JSON contains entry decisions, reasons, risk, realized results, closed equity curve, Cairo-year contribution and Cairo ISO-week close results. For year/outlier exclusion, filter input and rerun; do not subtract realized outputs because portfolio admissions are path-dependent. Funding must already be included in net_R_at_cost if required.
+
+Run tests: python -m unittest -v test_overlay
+
+Funding sensitivity: --funding-stress-bps-per8h N defaults to 0 (off). When N > 0, every candidate must provide positive finite initial_notional_per_risk: initial notional in dollars divided by initial risk in dollars. The proxy charges N basis points on fixed entry notional for both longs and shorts at each UTC 00:00/08:00/16:00 settlement with entry <= settlement < exit. No partial reductions or mark-price changes are assumed. The full debit is booked at close, so its effect on daily halts, equity, sizing and admissions differs from periodic settlement booking. Do not count this again if net_R_at_cost already includes the same funding. Records include funding_debit, funding_settlements and net_R_after_funding; joined_other_average_R and nonjoined_other_average_R include the stress debit. To obtain gross-R means, rerun with fee-zero candidate net_R_at_cost and stress off.
+
