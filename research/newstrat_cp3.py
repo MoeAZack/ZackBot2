@@ -158,3 +158,96 @@ CANDIDATES = {
 def register():
     for k, v in CANDIDATES.items():
         S.STRATEGIES[k] = dict(v, desc=v['name'])
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Wave 3b, FROZEN 2026-11-12 after the wave-3a results were known (only CP-X2, alt/BTC relative strength, came close).
+# Deliberately different families, all cross-asset; none is a retune of X1-X6. Same gate, same runner.
+#
+# CP-Y1 xs_leader_pullback_4h   both   top-2 (bottom-2) of 8 by 7-day return, BTC on the same side of EMA200, RSI pullback ends
+#                                      (pre-run design fix: trend filter EMA200, not EMA50; the EMA50 draft fired ~2x per coin
+#                                      in 5 years by construction. Only signal counts were seen, no results.)
+# CP-Y2 breadth_thrust_1d       both   share of the 8 coins above their 20d EMA swings from <=25% to >=75% within 5 days
+#                                      (Zweig-style thrust); each coin already above its EMA20 is bought; mirror for shorts
+# CP-Y3 weekly_rel_mom_1d       both   every Monday: long if the 28-day return is > 0 and beats BTC's, short if < 0 and
+#                                      trails BTC's; held at most one week
+# CP-Y4 vol_feedback_short_1d   short  BTC below its 200d EMA; the coin's 7-day realised volatility first rises above
+#                                      the 80th percentile of its last 90 days while it closes below EMA20
+# ---------------------------------------------------------------------------------------------------------------------
+
+def _panel_series(d, frame):
+    s = _sym(d)
+    t = pd.to_datetime(d.t)
+    return pd.Series(frame[s].reindex(t).values, index=d.index) if s else pd.Series(np.nan, index=d.index)
+
+
+def sig_xs_leader_pullback(d, p, ctx):
+    c = PANEL['c']
+    r = c / c.shift(p['look']) - 1
+    n = r.notna().sum(axis=1)
+    top = _panel_series(d, r.rank(axis=1, ascending=False))
+    bot = _panel_series(d, r.rank(axis=1, ascending=True))
+    ok = pd.Series(n.reindex(pd.to_datetime(d.t)).values, index=d.index) >= p['min_n']
+    bull = _btc(d, 'c') > _btc(d, 'e200')
+    le = ok & bull & (top <= 2) & S.xup(d.rsi14, pd.Series(p['rsi_lo'], index=d.index)) & (d.c > d.e200)
+    se = ok & ~bull & (bot <= 2) & S.xup(-d.rsi14, pd.Series(-p['rsi_hi'], index=d.index)) & (d.c < d.e200)
+    z = pd.Series(False, index=d.index)
+    return dict(le=S.X(le), se=S.X(se), lx=z, sx=z)
+
+
+def sig_breadth_thrust(d, p, ctx):
+    c = PANEL['c']
+    above = (c > c.ewm(span=20, adjust=False, min_periods=20).mean()).where(c.notna())
+    br = above.sum(axis=1) / c.notna().sum(axis=1).replace(0, np.nan)
+    up = (br >= p['hi']) & (br.rolling(p['win']).min().shift() <= p['lo'])
+    dn = (br <= p['lo']) & (br.rolling(p['win']).max().shift() >= p['hi'])
+    up = up & ~up.shift().fillna(False).astype(bool); dn = dn & ~dn.shift().fillna(False).astype(bool)
+    t = pd.to_datetime(d.t)
+    u = pd.Series(up.reindex(t).fillna(False).values, index=d.index)
+    w = pd.Series(dn.reindex(t).fillna(False).values, index=d.index)
+    le = u & (d.c > d.e21)
+    se = w & (d.c < d.e21)
+    z = pd.Series(False, index=d.index)
+    return dict(le=S.X(le), se=S.X(se), lx=z, sx=z)
+
+
+def sig_weekly_rel_mom(d, p, ctx):
+    t = pd.to_datetime(d.t)
+    mon = pd.Series((t.dt.dayofweek == 0).values, index=d.index)
+    r = d.c / d.c.shift(p['look']) - 1
+    bc = _btc(d, 'c'); br = bc / bc.shift(p['look']) - 1
+    le = mon & (r > 0) & (r > br)
+    se = mon & (r < 0) & (r < br)
+    z = pd.Series(False, index=d.index)
+    return dict(le=S.X(le), se=S.X(se), lx=z, sx=z)
+
+
+def sig_vol_feedback_short(d, p, ctx):
+    lr = np.log(d.c).diff()
+    rv = lr.rolling(7).std()
+    thr = rv.rolling(90).quantile(p['q']).shift()
+    hot = rv > thr
+    bear = _btc(d, 'c') < _btc(d, 'e200')
+    se = bear & hot & ~hot.shift().fillna(False).astype(bool) & (d.c < d.e21)
+    z = pd.Series(False, index=d.index)
+    return dict(le=z, se=S.X(se), lx=z, sx=z)
+
+
+CANDIDATES.update({
+    'cp_y1_xs_leader_pullback_4h': dict(
+        name='[RESEARCH] CP-Y1 Cross-sectional leader pullback 4h', style='relative_strength', fn=sig_xs_leader_pullback,
+        sides='both', tf='4h', research_only=True, params=dict(look=42, min_n=6, rsi_lo=40.0, rsi_hi=60.0),
+        mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=30, **PROTECT)),
+    'cp_y2_breadth_thrust_1d': dict(
+        name='[RESEARCH] CP-Y2 Breadth thrust daily', style='breadth', fn=sig_breadth_thrust, sides='both', tf='1d',
+        research_only=True, params=dict(lo=0.25, hi=0.75, win=5),
+        mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=20, **PROTECT)),
+    'cp_y3_weekly_rel_mom_1d': dict(
+        name='[RESEARCH] CP-Y3 Weekly relative momentum daily', style='momentum', fn=sig_weekly_rel_mom, sides='both',
+        tf='1d', research_only=True, params=dict(look=28), exclude=['BTCUSDT'],
+        mgmt=dict(stop_atr=3.0, tp_r=5.0, max_bars=7, **PROTECT)),
+    'cp_y4_vol_feedback_short_1d': dict(
+        name='[RESEARCH] CP-Y4 Volatility-feedback short daily', style='volatility', fn=sig_vol_feedback_short,
+        sides='short', tf='1d', research_only=True, params=dict(q=0.80),
+        mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=15, **PROTECT)),
+})
