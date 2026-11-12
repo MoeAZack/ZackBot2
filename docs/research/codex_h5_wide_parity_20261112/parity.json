@@ -1,0 +1,64 @@
+{
+  "review_head": "eb4d108ff820fb269ddd59622e5855b438165b3c",
+  "independent_evidence_head": "7d4618852492ca0df254cc8091e335ceaf35385c",
+  "canonical_manifest": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "arms": {
+    "original9": {
+      "matched": 502,
+      "missing_from_independent": 0,
+      "extra_independent": 0,
+      "terminal_open_not_closed": 1,
+      "max_abs_field_difference": {
+        "qty": 1.1368683772161603e-13,
+        "e": 0.0,
+        "x": 4.3655745685100555e-11,
+        "risk": 9.414691248821327e-14,
+        "fund": 1.1102230246251565e-16,
+        "pnl": 2.0250467969162855e-13,
+        "R_budget": 2.531308496145357e-14
+      },
+      "max_cash_reprice_error": 4.511946372076636e-13,
+      "max_fill_error": 2.9103830456733704e-11,
+      "max_canonical_funding_reprice_error": 2.220446049250313e-16,
+      "all_stop_risk_le8": true
+    },
+    "extra31": {
+      "matched": 678,
+      "missing_from_independent": 0,
+      "extra_independent": 0,
+      "terminal_open_not_closed": 1,
+      "max_abs_field_difference": {
+        "qty": 2.2737367544323206e-13,
+        "e": 0.0,
+        "x": 1.1368683772161603e-13,
+        "risk": 4.3520742565306136e-14,
+        "fund": 1.1102230246251565e-16,
+        "pnl": 8.881784197001252e-14,
+        "R_budget": 1.0658141036401503e-14
+      },
+      "max_cash_reprice_error": 4.439115741661226e-12,
+      "max_fill_error": 5.684341886080802e-14,
+      "max_canonical_funding_reprice_error": 1.942890293094024e-16,
+      "all_stop_risk_le8": true
+    },
+    "union40": {
+      "matched": 720,
+      "missing_from_independent": 0,
+      "extra_independent": 0,
+      "terminal_open_not_closed": 1,
+      "max_abs_field_difference": {
+        "qty": 2.2737367544323206e-13,
+        "e": 0.0,
+        "x": 7.275957614183426e-12,
+        "risk": 9.414691248821327e-14,
+        "fund": 1.1102230246251565e-16,
+        "pnl": 1.9895196601282805e-13,
+        "R_budget": 2.4868995751603507e-14
+      },
+      "max_cash_reprice_error": 2.1085355683680973e-11,
+      "max_fill_error": 1.4551915228366852e-11,
+      "max_canonical_funding_reprice_error": 2.220446049250313e-16,
+      "all_stop_risk_le8": true
+    }
+  }
+}

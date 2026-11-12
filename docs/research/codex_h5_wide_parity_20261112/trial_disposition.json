@@ -1,0 +1,16 @@
+{
+  "candidate": "H5 unchanged wideruniverse transfer",
+  "result_head": "eb4d108ff820fb269ddd59622e5855b438165b3c",
+  "runner_head": "90080a1b6dc0e299ed23cd03acea2b23d7cdb4db",
+  "extra31": "REJECTED_ECONOMICS",
+  "union40": "REJECTED_ECONOMICS",
+  "original9": "UNCHANGED_LOW_CONFIDENCE_PAPER_PROBE",
+  "v1": "WITHDRAWN_RUNNER_DEFECTS",
+  "v2": "NO_OUTCOMES",
+  "v3": "CANONICAL_CORRECTED_NEGATIVE_EXPANSION",
+  "trial_accounting": "oneH5transferexperiment with3arms; expansionsnotindependentalphas; originalhypothesisselectedDEV",
+  "CP5_V1": "REJECTED",
+  "CP5_V2": "REJECTED",
+  "next": "X2-WIDE approvedresearchonly; freezecontract/codebeforecounts/outcomes",
+  "accounts_changed": false
+}
