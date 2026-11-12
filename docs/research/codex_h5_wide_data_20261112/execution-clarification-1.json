@@ -1,0 +1,11 @@
+{
+  "id": "H5-WIDE-D01-execution-clarification-1",
+  "purpose": "Technical accounting clarification only; no signal/parameter/universe/split changes. Preserve withdrawn/prior independent outputs.",
+  "input_policy": "Original August-start dataset preserved; canonical copy objectively reconciles all40 symbols three hours around1730145600000 against public REST. No July extension in primary rerun; July data supplemental only.",
+  "entry": "Decision candle close, next consecutive hour open; exit-before-entry at equal boundary; max1 globally; stale missing next hour refused.",
+  "costs": "Entry fill ref*(1+0.0002), exit fill ref*(1-0.0002); fee5/13/21bp actualfillnotional; entryfee cashbooked entry Cairo day; exitgross/exitfee/fundingat declared modeledexit day.",
+  "funding": "Conservative stress proxy: 0.0001/8 * qty * hourly close for EACH held hourly candle including final stop/target/time candle; not native funding or actual intrabar funding.",
+  "exit_timestamp": "OHLC intrabar stop/target exact time unknown: book at candle CLOSE for replay day/tie order. Adverse OPEN gap books known candle OPEN. Timecap at first complete candle close reaching48elapsedhours. Terminal open reserves slot, includes liquidation reserve mark, not closed trade.",
+  "reporting": "Actualquantized stopriskR plus fixed8budgetR; no fabricatedfixed8 if roundeddown. FullcalendarMTM/underwater tofinalbarclose inclusive; funding assumptions distinct fromnative.",
+  "next": "Freeze corrected runner/input hashes before outcomes; independent order0 original9/extra31 first, then 40orders full3cost/3arms. No account changes/no activation."
+}

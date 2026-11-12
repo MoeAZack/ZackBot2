@@ -1,0 +1,282 @@
+{
+  "ADAUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "a86ceae84343c52cc2812a1d922cca299ebcd99770223bf1ebf3dbb94af72600",
+    "errors": 0
+  },
+  "AVAXUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "12ba25c32800df0b719639e3afff3fa51857e649467645f346b807bd96b32afb",
+    "errors": 0
+  },
+  "BNBUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "78ae8443125f1a112369a7fa8c0f773e85c777fb4ccc8c56fba68c9497cd78e5",
+    "errors": 0
+  },
+  "BTCUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "55f0112a943c1311aef8032f500567df15af7cacde596908455db52f6fcab40e",
+    "errors": 0
+  },
+  "DOGEUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "046e530717ec06a0eef34860c31038926c4225e8a857d37424409dcdc0ac36d4",
+    "errors": 0
+  },
+  "ETHUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "7d6123cbac9b42a87af6536bf06b66c15b35714a6549c2693652d419fefc58fd",
+    "errors": 0
+  },
+  "LINKUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "3e24d303299fa92002e47f2c44eb146cc5a250264728fa1ec994175760932b32",
+    "errors": 0
+  },
+  "SOLUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "70709e021fd5830194b8d831c0bac72248de7feef2e096043ebf5eb28e727ace",
+    "errors": 0
+  },
+  "XRPUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "98d7dfd1aec79e0b25f5e55d125e8bda9941df5af6716ca66ff5d9f348f85107",
+    "errors": 0
+  },
+  "1000PEPEUSDT": {
+    "rows": 29941,
+    "first": "2023-05-05 16:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "e481ee965ab75bc18195259462a2c6fd09c70990181119a18448d087fdebbf2a",
+    "errors": 0
+  },
+  "AAVEUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "3b167e055bc26399ad7b4b7f79e3714c435c048252f632205e4bcaeeea2b55f3",
+    "errors": 0
+  },
+  "APTUSDT": {
+    "rows": 34707,
+    "first": "2022-10-19 02:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "3a5c939a566a08905248d7c1321b41baa2ddbd5d5bb6a503d54d96dbbd7bb617",
+    "errors": 0
+  },
+  "ARBUSDT": {
+    "rows": 30974,
+    "first": "2023-03-23 15:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "af9be0bbe8992874944215fecde4d6b580bd32a9ceb1b55505d2bbe6436bebf8",
+    "errors": 0
+  },
+  "ARKUSDT": {
+    "rows": 26653,
+    "first": "2023-09-19 16:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "abae9524b2c1fcc4bb7b80e865ed8683c8b3899427e62562e5d2b1b84c50ed4a",
+    "errors": 0
+  },
+  "BCHUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "9e595f87bb08c9e954b6339514919e96927f7304f98b90a4bf1fc8cce90c4733",
+    "errors": 0
+  },
+  "DOTUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "0b1d7a917d9a042de74e03dce9e546f1bd313a30ffc71ea4d45044128b148778",
+    "errors": 0
+  },
+  "ENAUSDT": {
+    "rows": 21953,
+    "first": "2024-04-02 12:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "117f97b08e5113d371d4793e8c0bb7f310c9e6219e24b95db72674e3e6fda635",
+    "errors": 0
+  },
+  "ENJUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "8b33a3c7a6fa81c376d8e13ef4667f1a2c539752300ffcd4ab34c097cce101fd",
+    "errors": 0
+  },
+  "ETCUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "4d05e5dfcde3fe0b66dac2d7b2f111865754e5b758062db2871f481bc7150273",
+    "errors": 0
+  },
+  "FETUSDT": {
+    "rows": 32547,
+    "first": "2023-01-17 02:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "bc0a523b6b5f7cede0214bb1b42b4043390e434c5c30b0baeb32241595b43a71",
+    "errors": 0
+  },
+  "FILUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "fd821902c4fba440022326270c51ed1de30c59ffafeb7b7cd49b90ef06bf46f2",
+    "errors": 0
+  },
+  "GALAUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "5cf82e39be137b1006bab2dca378e52071e6a5d73af5131e8ffd3d7e043843bd",
+    "errors": 0
+  },
+  "INJUSDT": {
+    "rows": 36219,
+    "first": "2022-08-17 02:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "f4e0ae2f3e60bcec3215eb79c4bb83b59b3313b154b575fb8e987a1738694ab8",
+    "errors": 0
+  },
+  "LTCUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "2b65eb1a468d13d7fded0fa2d41431b5e79a7d9b9943de41dfde73923698cdfd",
+    "errors": 0
+  },
+  "MANAUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "71e5cee20b43dec2ffdc4522e16e550890798fb3866536ed9dea4e24539c96cf",
+    "errors": 0
+  },
+  "MOVRUSDT": {
+    "rows": 24305,
+    "first": "2023-12-26 12:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "afa062ae004b62bb25be3b14bcc6e5043e493dbc0e63ff239749b6cd9d115134",
+    "errors": 0
+  },
+  "NEARUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "fe36dac29544f8974db0c34dc6db64bf5fc37c37c33d76a35654667af7108faf",
+    "errors": 0
+  },
+  "ONDOUSDT": {
+    "rows": 23704,
+    "first": "2024-01-20 13:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "00a1a75670bfbe409010f7c6e0a6e78345747948af74156e7dc84d2c89a942d8",
+    "errors": 0
+  },
+  "ONEUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "e539c48755a01141b8dabd059a1fa23871bc204559724fe2dab75192b85381a6",
+    "errors": 0
+  },
+  "QNTUSDT": {
+    "rows": 34683,
+    "first": "2022-10-20 02:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "5fbf63a4a206d0ea6c727da389bd1306d1967d931f5c781c34aadd9f61d98dff",
+    "errors": 0
+  },
+  "SANDUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "68349b278c6f6e207ebde3d948dea8fbc0235936f5b58b93627ff27c49a43a4c",
+    "errors": 0
+  },
+  "STRKUSDT": {
+    "rows": 22956,
+    "first": "2024-02-20 17:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "43f43ef095ca9bbba2b895a7f88a3c1a5021a318d4f3bd4ef392bfb507d3efa4",
+    "errors": 0
+  },
+  "SUIUSDT": {
+    "rows": 29989,
+    "first": "2023-05-03 16:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "1ed39ede4eba29bbedaf1daea32c77c4755376fa7db203e802e2b69bf254ac08",
+    "errors": 0
+  },
+  "SUPERUSDT": {
+    "rows": 25024,
+    "first": "2023-11-26 13:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "246f8334ca58d3f03673e156b7c0ecd0ae6117ad486639f5b0994fc4ea8fb725",
+    "errors": 0
+  },
+  "TAOUSDT": {
+    "rows": 21735,
+    "first": "2024-04-11 14:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "f871a360575393276c8bde9bec40e8e5a9f96d4afaacc0209c86a01c548ec34f",
+    "errors": 0
+  },
+  "UNIUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "4dfec782de85a89e61697bbd6ebeea7b562cc6ca063c944a8ee2ef8d6ef36b5b",
+    "errors": 0
+  },
+  "WLDUSDT": {
+    "rows": 28025,
+    "first": "2023-07-24 12:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "4c9dd60ad24a4a1bb1b526353444f0e34a5543c65647917fc7c8323b49822e8f",
+    "errors": 0
+  },
+  "XLMUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "dd826ff6641a2e2b8344b95bae70bb0d066f1f261ac29bba9f991ee76733e78b",
+    "errors": 0
+  },
+  "ZECUSDT": {
+    "rows": 36605,
+    "first": "2022-08-01 00:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "fe8372d29a010b98db0ff378c5e470171a4f1925db14ef39a202d5929244c430",
+    "errors": 0
+  },
+  "ZROUSDT": {
+    "rows": 20055,
+    "first": "2024-06-20 14:00",
+    "last": "2026-10-04 04:00",
+    "sha256": "7f4f62de3ec01603f76e9a1f1afa769481071c0be6e9f4aae33f5d24044eaaa9",
+    "errors": 0
+  }
+}

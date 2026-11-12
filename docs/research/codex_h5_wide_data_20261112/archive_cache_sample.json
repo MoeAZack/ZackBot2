@@ -1,0 +1,22 @@
+{
+  "BTCUSDT-1h-2024-10.zip": {
+    "new_sha256": "e3dcb9fe9d70fea19dfbdc5294044da69b9061c6f7411e99468825fac1ce8d61",
+    "cache_sha256": "e3dcb9fe9d70fea19dfbdc5294044da69b9061c6f7411e99468825fac1ce8d61",
+    "equal": true
+  },
+  "ETHUSDT-1h-2023-06.zip": {
+    "new_sha256": "fe108dc555560ded46bb0807d0c2e0bc7722900213a96e4e86bf355f84fbcafa",
+    "cache_sha256": "fe108dc555560ded46bb0807d0c2e0bc7722900213a96e4e86bf355f84fbcafa",
+    "equal": true
+  },
+  "ADAUSDT-1h-2025-01.zip": {
+    "new_sha256": "27fb80bcc9c164ae67ce8bf2084c748d4c28d956083e1cfe61c0d9f803ce0ee7",
+    "cache_sha256": "27fb80bcc9c164ae67ce8bf2084c748d4c28d956083e1cfe61c0d9f803ce0ee7",
+    "equal": true
+  },
+  "SOLUSDT-1h-2022-08.zip": {
+    "new_sha256": "971ab9bee4ad830767c285d3af6df5357af1bfa2ddb084fa49596cf9b5276036",
+    "cache_sha256": "971ab9bee4ad830767c285d3af6df5357af1bfa2ddb084fa49596cf9b5276036",
+    "equal": true
+  }
+}
