@@ -1,0 +1,30 @@
+{
+  "purpose": "source data feasibility only; no PnL or strategy signal/parameter counts",
+  "source": "USD-M daily aggregate trades",
+  "official_reference": "https://github.com/binance/binance-public-data",
+  "date_utc": "2026-09-01",
+  "files": [
+    {
+      "symbol": "BTCUSDT",
+      "url": "https://data.binance.vision/data/futures/um/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-09-01.zip",
+      "checksum_url": "https://data.binance.vision/data/futures/um/daily/aggTrades/BTCUSDT/BTCUSDT-aggTrades-2026-09-01.zip.CHECKSUM"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "url": "https://data.binance.vision/data/futures/um/daily/aggTrades/ETHUSDT/ETHUSDT-aggTrades-2026-09-01.zip",
+      "checksum_url": "https://data.binance.vision/data/futures/um/daily/aggTrades/ETHUSDT/ETHUSDT-aggTrades-2026-09-01.zip.CHECKSUM"
+    }
+  ],
+  "download_cap_bytes": 100000000,
+  "policy": "HEAD both first; stop if sum exceeds cap or length missing; stream downloads with shared byte cap; verify official SHA256; stream parse compressed CSV; no credentials",
+  "schema": [
+    "agg_trade_id",
+    "price",
+    "quantity",
+    "first_trade_id",
+    "last_trade_id",
+    "timestamp_ms",
+    "buyer_is_maker"
+  ],
+  "known_limitation": "aggregated fills are not individual trades or a complete order book; missing data or sequence uncertainty blocks authority"
+}
