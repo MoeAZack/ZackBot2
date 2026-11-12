@@ -1,0 +1,16 @@
+{
+  "independent_signal_count": 1319,
+  "status_counts": {
+    "unfilled": 709,
+    "filled": 490,
+    "postonly_cross": 120
+  },
+  "gap_fill_count": 0,
+  "code_sha256": "ce2c06ba6daab90249977fb62bb159f4ecfc97c14da10adf6364dc5ec925a21e",
+  "imports_author_code": false,
+  "compared_head": "ac2304e11e8cf76493bb51be6d3bc969a73a0c46",
+  "matched_keys": 1319,
+  "missing_keys": 0,
+  "extra_keys": 0,
+  "classification_mismatches": 0
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "side": 1,
+    "entry": 99.5,
+    "stop": 94.5,
+    "fillbar_open": 93.5,
+    "returned_exit_reference": 94.5,
+    "why": "stop_fillbar",
+    "returned_pnl": -8.169972380000004,
+    "minimum_gap_loss_understatement_before_exit_costs": 1.6
+  },
+  {
+    "side": -1,
+    "entry": 100.5,
+    "stop": 105.5,
+    "fillbar_open": 106.5,
+    "returned_exit_reference": 105.5,
+    "why": "stop_fillbar",
+    "returned_pnl": -8.183029380000006,
+    "minimum_gap_loss_understatement_before_exit_costs": 1.6
+  }
+]
