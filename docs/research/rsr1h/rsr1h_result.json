@@ -1,0 +1,5556 @@
+{
+ "contract": "RSR-1H",
+ "runner_sha256": "eb0bde8e7901a8dd48464bd98d6bc166b15422271a072083e50c8c909690380a",
+ "contract_sha256": "65597aec399d28859cf7f3074cc5c4936e7c16363156029e8cf14541e84c374c",
+ "harness_sha256": "8251f9b34d3eef1b1847ecce4141903df7de363155938407fb369168f27cfad7",
+ "input_sha256": {
+  "ADAUSDT": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+  "AVAXUSDT": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+  "BNBUSDT": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+  "BTCUSDT": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+  "DOGEUSDT": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+  "ETHUSDT": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+  "LINKUSDT": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
+  "SOLUSDT": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+  "XRPUSDT": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+  "1000PEPEUSDT": "7990e613a14a0d9a0265d841ef484e443eff304dfcb1969119f36dfa0b38f4dd",
+  "AAVEUSDT": "03cb0f857f1a100a9b8436f26f5a09559f7a30c3df7b68aa329e47d929264af7",
+  "APTUSDT": "fe731739140a1c72edef8e94de774cd1c6de19c374ab64175df3faa6de0ec44d",
+  "ARBUSDT": "06d3606a23cf8837490ed268ad381e170fb70bbd01f71cad62e2590f7ac8de53",
+  "ARKUSDT": "857acc5d85c4cd50a5bbeb7a2faf14803d7e34e9884562a576607d8e78977173",
+  "BCHUSDT": "bfe4da7c097125e495d2729c1e3a5b78d68970792e973402029b1794f885918b",
+  "DOTUSDT": "31d53fa913fac775bc76d7a6d54167e7c65722c85455c9072797031b2e94629a",
+  "ENAUSDT": "a5502e783174a5f30396333e6c4d2a137b4c79aad9b4c5c5e962bd3519b2b178",
+  "ENJUSDT": "3347c592f8b874b4317459e3f6e0c66069f9004f09759398681d4b9c1059c6a3",
+  "ETCUSDT": "af77d19e87587303271345533c1b72a01a1a9dafac4847ac98c693da30d27f87",
+  "FETUSDT": "54dfb08138ad67a28573f30b964b64939329877d40e8b4ca1bc53bbcbce471b5",
+  "FILUSDT": "d3377caf8019b8345f7254f07a1e850c49ed486a2da77fbf3636d11fe1222bed",
+  "GALAUSDT": "979da8645427657fe9bed5d109788f735f346e7a6d11125b72d9a7219b0d15ef",
+  "INJUSDT": "32044c7e6e0428656eb63fbc0d8a1890a18963f8e824cb96988dbe23440c27ca",
+  "LTCUSDT": "a791e0730fecbf97488891cd4aecb1067298a6f0b5fc92074631b5b38a797b79",
+  "MANAUSDT": "1a04d44ed60804c1b88e0f535573e085d5c402aa2e5f3cedcf186b0ea7ede013",
+  "MOVRUSDT": "529344c17019a81ebaeb18b45d866062a9140784c9803c6662e5d05749fcb47b",
+  "NEARUSDT": "8a0f42bb8e3c29ed2322b4b59af89b529979c7c8954feadf8f45b7ce6331ac18",
+  "ONDOUSDT": "f8d44a5cec458cf0a523351bb5ac0ab86be7f221b1513f8f77136be5335d9519",
+  "ONEUSDT": "7930c233e92066fbc68bec4bfe12efe0a030d5d7127d9abf75c316053b43f2dc",
+  "QNTUSDT": "7e09a8ff536e3b79ea9f1294c5655dfa1a055a9e1af333c8b6d895b515d80ab1",
+  "SANDUSDT": "c5e57c3e3f7f4add6142c8a7eaae20a39cf70eb39f5049c567b89dd2ec9afbdb",
+  "STRKUSDT": "b708e6de63f0f02292e99aeb436ead6b481d25a2572d243fb350c0940358f5c4",
+  "SUIUSDT": "2589a5179d1501cc96a17301de93729ccdc06620404459aa6acdd77c06788e8e",
+  "SUPERUSDT": "eb4a35d2ae785df6e8d8bc3a870ba187be7f05ee5b0d308e7ce7248a70c219f8",
+  "TAOUSDT": "4dd1b88f803b6ce745e9546aa90560dfad9fabf3dfc346bebe22de2053501eea",
+  "UNIUSDT": "68f9c3c021fc3b9f3fd5fb4f3d5e0dfb16f3637f46e21810d630f536aae6d697",
+  "WLDUSDT": "0ec8429c44371e815d8359ff9d50da55dc7c483d66941c125f6989a73ff105ba",
+  "XLMUSDT": "99549218010e1a2d9592cd22508cad4df4388884a2de05f4772c44cc5f3977a1",
+  "ZECUSDT": "d0a4228eededeb898852ef7365de3a83ab97e777ec354e85a54646800a0476a3",
+  "ZROUSDT": "595ac28302f8eb886d0843e866a1309551d0b229c06ce1dc2c1de9a9270bd884"
+ },
+ "calendar_weeks": 214.27,
+ "signal_counts": {
+  "ADAUSDT": {
+   "long": 114,
+   "short": 267
+  },
+  "AVAXUSDT": {
+   "long": 90,
+   "short": 287
+  },
+  "BNBUSDT": {
+   "long": 113,
+   "short": 306
+  },
+  "BTCUSDT": {
+   "long": 100,
+   "short": 107
+  },
+  "DOGEUSDT": {
+   "long": 81,
+   "short": 381
+  },
+  "ETHUSDT": {
+   "long": 96,
+   "short": 111
+  },
+  "LINKUSDT": {
+   "long": 68,
+   "short": 263
+  },
+  "SOLUSDT": {
+   "long": 81,
+   "short": 243
+  },
+  "XRPUSDT": {
+   "long": 83,
+   "short": 338
+  },
+  "1000PEPEUSDT": {
+   "long": 65,
+   "short": 268
+  },
+  "AAVEUSDT": {
+   "long": 119,
+   "short": 275
+  },
+  "APTUSDT": {
+   "long": 75,
+   "short": 290
+  },
+  "ARBUSDT": {
+   "long": 70,
+   "short": 239
+  },
+  "ARKUSDT": {
+   "long": 31,
+   "short": 120
+  },
+  "BCHUSDT": {
+   "long": 107,
+   "short": 290
+  },
+  "DOTUSDT": {
+   "long": 80,
+   "short": 246
+  },
+  "ENAUSDT": {
+   "long": 49,
+   "short": 147
+  },
+  "ENJUSDT": {
+   "long": 41,
+   "short": 148
+  },
+  "ETCUSDT": {
+   "long": 54,
+   "short": 280
+  },
+  "FETUSDT": {
+   "long": 73,
+   "short": 231
+  },
+  "FILUSDT": {
+   "long": 66,
+   "short": 331
+  },
+  "GALAUSDT": {
+   "long": 74,
+   "short": 264
+  },
+  "INJUSDT": {
+   "long": 78,
+   "short": 268
+  },
+  "LTCUSDT": {
+   "long": 103,
+   "short": 229
+  },
+  "MANAUSDT": {
+   "long": 65,
+   "short": 254
+  },
+  "MOVRUSDT": {
+   "long": 18,
+   "short": 38
+  },
+  "NEARUSDT": {
+   "long": 92,
+   "short": 245
+  },
+  "ONDOUSDT": {
+   "long": 65,
+   "short": 173
+  },
+  "ONEUSDT": {
+   "long": 29,
+   "short": 106
+  },
+  "QNTUSDT": {
+   "long": 17,
+   "short": 61
+  },
+  "SANDUSDT": {
+   "long": 72,
+   "short": 256
+  },
+  "STRKUSDT": {
+   "long": 44,
+   "short": 120
+  },
+  "SUIUSDT": {
+   "long": 73,
+   "short": 211
+  },
+  "SUPERUSDT": {
+   "long": 20,
+   "short": 89
+  },
+  "TAOUSDT": {
+   "long": 50,
+   "short": 156
+  },
+  "UNIUSDT": {
+   "long": 125,
+   "short": 268
+  },
+  "WLDUSDT": {
+   "long": 59,
+   "short": 295
+  },
+  "XLMUSDT": {
+   "long": 73,
+   "short": 310
+  },
+  "ZECUSDT": {
+   "long": 77,
+   "short": 221
+  },
+  "ZROUSDT": {
+   "long": 48,
+   "short": 149
+  }
+ },
+ "arms": {
+  "union40": {
+   "eligible_weeks": 213.6,
+   "paths": {
+    "causal": {
+     "7bp": {
+      "order0": {
+       "n": 2314,
+       "skips": {},
+       "closes": 2313,
+       "terminal_open": 1,
+       "terminal_mtm": 1.67,
+       "closes_per_cal_week": 10.795,
+       "closes_per_elig_week": 10.829,
+       "meanR_budget": -0.0351,
+       "meanR_actual": -0.036,
+       "sumR_budget": -81.18,
+       "early_n": 1341,
+       "later_n": 972,
+       "early_meanR": -0.061,
+       "later_meanR": 0.0006,
+       "exbest_meanR": -0.04,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 90,
+         "sumR": -18.03,
+         "early_sumR": -7.97,
+         "later_sumR": -10.06
+        },
+        "UNIUSDT": {
+         "n": 63,
+         "sumR": -13.4,
+         "early_sumR": 2.2,
+         "later_sumR": -15.6
+        },
+        "FETUSDT": {
+         "n": 64,
+         "sumR": -11.7,
+         "early_sumR": -3.26,
+         "later_sumR": -8.44
+        },
+        "LINKUSDT": {
+         "n": 54,
+         "sumR": -11.17,
+         "early_sumR": -4.14,
+         "later_sumR": -7.04
+        },
+        "AVAXUSDT": {
+         "n": 105,
+         "sumR": -10.32,
+         "early_sumR": -15.14,
+         "later_sumR": 4.82
+        },
+        "BCHUSDT": {
+         "n": 112,
+         "sumR": -9.51,
+         "early_sumR": -3.18,
+         "later_sumR": -6.33
+        },
+        "LTCUSDT": {
+         "n": 74,
+         "sumR": -9.51,
+         "early_sumR": -9.2,
+         "later_sumR": -0.31
+        },
+        "ETCUSDT": {
+         "n": 56,
+         "sumR": -7.38,
+         "early_sumR": -0.92,
+         "later_sumR": -6.46
+        },
+        "SUPERUSDT": {
+         "n": 21,
+         "sumR": -5.19,
+         "early_sumR": -4.51,
+         "later_sumR": -0.69
+        },
+        "ARBUSDT": {
+         "n": 80,
+         "sumR": -4.51,
+         "early_sumR": -2.8,
+         "later_sumR": -1.71
+        },
+        "FILUSDT": {
+         "n": 78,
+         "sumR": -4.45,
+         "early_sumR": -3.89,
+         "later_sumR": -0.56
+        },
+        "XLMUSDT": {
+         "n": 54,
+         "sumR": -4.06,
+         "early_sumR": 0.78,
+         "later_sumR": -4.84
+        },
+        "ZECUSDT": {
+         "n": 41,
+         "sumR": -3.78,
+         "early_sumR": 0.71,
+         "later_sumR": -4.48
+        },
+        "ETHUSDT": {
+         "n": 33,
+         "sumR": -2.9,
+         "early_sumR": -2.29,
+         "later_sumR": -0.61
+        },
+        "MANAUSDT": {
+         "n": 56,
+         "sumR": -2.48,
+         "early_sumR": -5.51,
+         "later_sumR": 3.03
+        },
+        "ONDOUSDT": {
+         "n": 42,
+         "sumR": -2.22,
+         "early_sumR": -4.56,
+         "later_sumR": 2.34
+        },
+        "SOLUSDT": {
+         "n": 46,
+         "sumR": -2.17,
+         "early_sumR": -4.99,
+         "later_sumR": 2.82
+        },
+        "QNTUSDT": {
+         "n": 20,
+         "sumR": -1.82,
+         "early_sumR": -1.48,
+         "later_sumR": -0.34
+        },
+        "MOVRUSDT": {
+         "n": 10,
+         "sumR": -1.44,
+         "early_sumR": -1.44,
+         "later_sumR": 0.0
+        },
+        "SUIUSDT": {
+         "n": 52,
+         "sumR": -1.32,
+         "early_sumR": -3.29,
+         "later_sumR": 1.96
+        },
+        "ENAUSDT": {
+         "n": 37,
+         "sumR": -0.8,
+         "early_sumR": -2.24,
+         "later_sumR": 1.44
+        },
+        "STRKUSDT": {
+         "n": 28,
+         "sumR": -0.43,
+         "early_sumR": -0.8,
+         "later_sumR": 0.37
+        },
+        "ADAUSDT": {
+         "n": 95,
+         "sumR": -0.33,
+         "early_sumR": -4.79,
+         "later_sumR": 4.46
+        },
+        "ONEUSDT": {
+         "n": 27,
+         "sumR": 0.09,
+         "early_sumR": 0.33,
+         "later_sumR": -0.24
+        },
+        "ARKUSDT": {
+         "n": 38,
+         "sumR": 0.42,
+         "early_sumR": 1.42,
+         "later_sumR": -1.0
+        },
+        "DOGEUSDT": {
+         "n": 76,
+         "sumR": 0.52,
+         "early_sumR": 1.7,
+         "later_sumR": -1.18
+        },
+        "WLDUSDT": {
+         "n": 58,
+         "sumR": 0.55,
+         "early_sumR": 2.26,
+         "later_sumR": -1.71
+        },
+        "DOTUSDT": {
+         "n": 60,
+         "sumR": 0.99,
+         "early_sumR": -0.82,
+         "later_sumR": 1.81
+        },
+        "NEARUSDT": {
+         "n": 71,
+         "sumR": 1.2,
+         "early_sumR": 0.53,
+         "later_sumR": 0.67
+        },
+        "XRPUSDT": {
+         "n": 49,
+         "sumR": 1.83,
+         "early_sumR": 1.04,
+         "later_sumR": 0.79
+        },
+        "1000PEPEUSDT": {
+         "n": 82,
+         "sumR": 1.87,
+         "early_sumR": -4.17,
+         "later_sumR": 6.04
+        },
+        "APTUSDT": {
+         "n": 89,
+         "sumR": 1.96,
+         "early_sumR": -7.31,
+         "later_sumR": 9.27
+        },
+        "BTCUSDT": {
+         "n": 35,
+         "sumR": 2.59,
+         "early_sumR": 0.98,
+         "later_sumR": 1.61
+        },
+        "GALAUSDT": {
+         "n": 79,
+         "sumR": 3.13,
+         "early_sumR": 0.03,
+         "later_sumR": 3.1
+        },
+        "SANDUSDT": {
+         "n": 48,
+         "sumR": 3.19,
+         "early_sumR": 0.21,
+         "later_sumR": 2.98
+        },
+        "TAOUSDT": {
+         "n": 38,
+         "sumR": 3.43,
+         "early_sumR": 0.7,
+         "later_sumR": 2.73
+        },
+        "AAVEUSDT": {
+         "n": 101,
+         "sumR": 3.89,
+         "early_sumR": 1.65,
+         "later_sumR": 2.24
+        },
+        "ENJUSDT": {
+         "n": 46,
+         "sumR": 5.69,
+         "early_sumR": 2.72,
+         "later_sumR": 2.97
+        },
+        "ZROUSDT": {
+         "n": 37,
+         "sumR": 7.83,
+         "early_sumR": 1.08,
+         "later_sumR": 6.75
+        },
+        "INJUSDT": {
+         "n": 68,
+         "sumR": 8.56,
+         "early_sumR": -1.45,
+         "later_sumR": 10.0
+        }
+       },
+       "closedR_maxdd": 100.91,
+       "marked_dd_usd": 812.6,
+       "marked_dd_R": 101.57,
+       "longest_underwater_days": 1480.2,
+       "final_marked_usd": -647.8,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0076,
+        "slippage": 0.0098,
+        "fees": 0.0244,
+        "funding": 0.0031
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9935
+       },
+       "why": {
+        "time": 1686,
+        "stop": 567,
+        "target": 60,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 1786,
+         "meanR": -0.0399
+        },
+        "long": {
+         "n": 527,
+         "meanR": -0.019
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2321.5,
+        "p10": 2311.9,
+        "p90": 2330.0,
+        "min": 2304.0,
+        "max": 2338.0
+       },
+       "closes_per_cal_week": {
+        "median": 10.8345,
+        "p10": 10.7895,
+        "p90": 10.874,
+        "min": 10.753,
+        "max": 10.911
+       },
+       "closes_per_elig_week": {
+        "median": 10.8685,
+        "p10": 10.8235,
+        "p90": 10.908,
+        "min": 10.786,
+        "max": 10.946
+       },
+       "meanR_budget": {
+        "median": -0.0365,
+        "p10": -0.0429,
+        "p90": -0.0291,
+        "min": -0.0448,
+        "max": -0.0248
+       },
+       "meanR_actual": {
+        "median": -0.0373,
+        "p10": -0.0436,
+        "p90": -0.0296,
+        "min": -0.0455,
+        "max": -0.0255
+       },
+       "early_meanR": {
+        "median": -0.0572,
+        "p10": -0.0651,
+        "p90": -0.0468,
+        "min": -0.0678,
+        "max": -0.0393
+       },
+       "later_meanR": {
+        "median": -0.0086,
+        "p10": -0.0227,
+        "p90": 0.0007,
+        "min": -0.0245,
+        "max": 0.0055
+       },
+       "exbest_meanR": {
+        "median": -0.0439,
+        "p10": -0.0493,
+        "p90": -0.0344,
+        "min": -0.0508,
+        "max": -0.0301
+       },
+       "closedR_maxdd": {
+        "median": 97.635,
+        "p10": 84.529,
+        "p90": 109.936,
+        "min": 74.92,
+        "max": 117.14
+       },
+       "marked_dd_R": {
+        "median": 98.145,
+        "p10": 85.112,
+        "p90": 110.516,
+        "min": 75.48,
+        "max": 117.39
+       },
+       "longest_underwater_days": {
+        "median": 1480.2,
+        "p10": 1480.2,
+        "p90": 1480.2,
+        "min": 1480.2,
+        "max": 1480.2
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "15bp": {
+      "order0": {
+       "n": 2314,
+       "skips": {},
+       "closes": 2313,
+       "terminal_open": 1,
+       "terminal_mtm": 0.76,
+       "closes_per_cal_week": 10.795,
+       "closes_per_elig_week": 10.829,
+       "meanR_budget": -0.0741,
+       "meanR_actual": -0.0752,
+       "sumR_budget": -171.48,
+       "early_n": 1341,
+       "later_n": 972,
+       "early_meanR": -0.1004,
+       "later_meanR": -0.0379,
+       "exbest_meanR": -0.0784,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 90,
+         "sumR": -23.97,
+         "early_sumR": -11.26,
+         "later_sumR": -12.71
+        },
+        "UNIUSDT": {
+         "n": 63,
+         "sumR": -15.67,
+         "early_sumR": 1.09,
+         "later_sumR": -16.76
+        },
+        "AVAXUSDT": {
+         "n": 105,
+         "sumR": -14.54,
+         "early_sumR": -17.44,
+         "later_sumR": 2.9
+        },
+        "BCHUSDT": {
+         "n": 112,
+         "sumR": -14.29,
+         "early_sumR": -6.02,
+         "later_sumR": -8.27
+        },
+        "FETUSDT": {
+         "n": 64,
+         "sumR": -13.83,
+         "early_sumR": -4.29,
+         "later_sumR": -9.54
+        },
+        "LTCUSDT": {
+         "n": 74,
+         "sumR": -13.28,
+         "early_sumR": -11.67,
+         "later_sumR": -1.61
+        },
+        "LINKUSDT": {
+         "n": 54,
+         "sumR": -13.22,
+         "early_sumR": -5.35,
+         "later_sumR": -7.87
+        },
+        "ETCUSDT": {
+         "n": 56,
+         "sumR": -9.76,
+         "early_sumR": -2.29,
+         "later_sumR": -7.47
+        },
+        "ARBUSDT": {
+         "n": 80,
+         "sumR": -7.45,
+         "early_sumR": -4.27,
+         "later_sumR": -3.18
+        },
+        "FILUSDT": {
+         "n": 78,
+         "sumR": -7.41,
+         "early_sumR": -5.65,
+         "later_sumR": -1.75
+        },
+        "XLMUSDT": {
+         "n": 54,
+         "sumR": -6.45,
+         "early_sumR": -0.46,
+         "later_sumR": -5.99
+        },
+        "SUPERUSDT": {
+         "n": 21,
+         "sumR": -5.7,
+         "early_sumR": -4.84,
+         "later_sumR": -0.85
+        },
+        "ZECUSDT": {
+         "n": 41,
+         "sumR": -5.27,
+         "early_sumR": -0.25,
+         "later_sumR": -5.01
+        },
+        "MANAUSDT": {
+         "n": 56,
+         "sumR": -4.86,
+         "early_sumR": -7.13,
+         "later_sumR": 2.27
+        },
+        "ETHUSDT": {
+         "n": 33,
+         "sumR": -4.76,
+         "early_sumR": -3.31,
+         "later_sumR": -1.45
+        },
+        "SOLUSDT": {
+         "n": 46,
+         "sumR": -4.34,
+         "early_sumR": -6.19,
+         "later_sumR": 1.85
+        },
+        "ADAUSDT": {
+         "n": 95,
+         "sumR": -4.3,
+         "early_sumR": -7.45,
+         "later_sumR": 3.15
+        },
+        "ONDOUSDT": {
+         "n": 42,
+         "sumR": -3.43,
+         "early_sumR": -4.92,
+         "later_sumR": 1.49
+        },
+        "SUIUSDT": {
+         "n": 52,
+         "sumR": -2.92,
+         "early_sumR": -4.09,
+         "later_sumR": 1.17
+        },
+        "DOGEUSDT": {
+         "n": 76,
+         "sumR": -2.64,
+         "early_sumR": -0.68,
+         "later_sumR": -1.96
+        },
+        "QNTUSDT": {
+         "n": 20,
+         "sumR": -2.55,
+         "early_sumR": -2.02,
+         "later_sumR": -0.52
+        },
+        "DOTUSDT": {
+         "n": 60,
+         "sumR": -2.11,
+         "early_sumR": -3.23,
+         "later_sumR": 1.12
+        },
+        "ENAUSDT": {
+         "n": 37,
+         "sumR": -1.72,
+         "early_sumR": -2.43,
+         "later_sumR": 0.71
+        },
+        "MOVRUSDT": {
+         "n": 10,
+         "sumR": -1.68,
+         "early_sumR": -1.68,
+         "later_sumR": 0.0
+        },
+        "NEARUSDT": {
+         "n": 71,
+         "sumR": -1.28,
+         "early_sumR": -0.97,
+         "later_sumR": -0.32
+        },
+        "STRKUSDT": {
+         "n": 28,
+         "sumR": -1.25,
+         "early_sumR": -0.92,
+         "later_sumR": -0.33
+        },
+        "WLDUSDT": {
+         "n": 58,
+         "sumR": -0.92,
+         "early_sumR": 1.62,
+         "later_sumR": -2.54
+        },
+        "APTUSDT": {
+         "n": 89,
+         "sumR": -0.84,
+         "early_sumR": -8.82,
+         "later_sumR": 7.98
+        },
+        "ONEUSDT": {
+         "n": 27,
+         "sumR": -0.74,
+         "early_sumR": -0.47,
+         "later_sumR": -0.27
+        },
+        "XRPUSDT": {
+         "n": 49,
+         "sumR": -0.74,
+         "early_sumR": -0.57,
+         "later_sumR": -0.17
+        },
+        "ARKUSDT": {
+         "n": 38,
+         "sumR": -0.56,
+         "early_sumR": 0.62,
+         "later_sumR": -1.18
+        },
+        "1000PEPEUSDT": {
+         "n": 82,
+         "sumR": -0.37,
+         "early_sumR": -5.5,
+         "later_sumR": 5.12
+        },
+        "BTCUSDT": {
+         "n": 35,
+         "sumR": 0.01,
+         "early_sumR": -0.43,
+         "later_sumR": 0.44
+        },
+        "AAVEUSDT": {
+         "n": 101,
+         "sumR": 0.04,
+         "early_sumR": -0.58,
+         "later_sumR": 0.62
+        },
+        "GALAUSDT": {
+         "n": 79,
+         "sumR": 0.58,
+         "early_sumR": -1.91,
+         "later_sumR": 2.49
+        },
+        "SANDUSDT": {
+         "n": 48,
+         "sumR": 1.27,
+         "early_sumR": -0.97,
+         "later_sumR": 2.24
+        },
+        "TAOUSDT": {
+         "n": 38,
+         "sumR": 2.35,
+         "early_sumR": 0.52,
+         "later_sumR": 1.83
+        },
+        "ENJUSDT": {
+         "n": 46,
+         "sumR": 3.96,
+         "early_sumR": 1.16,
+         "later_sumR": 2.81
+        },
+        "INJUSDT": {
+         "n": 68,
+         "sumR": 6.29,
+         "early_sumR": -2.6,
+         "later_sumR": 8.89
+        },
+        "ZROUSDT": {
+         "n": 37,
+         "sumR": 6.88,
+         "early_sumR": 0.98,
+         "later_sumR": 5.9
+        }
+       },
+       "closedR_maxdd": 174.33,
+       "marked_dd_usd": 1399.33,
+       "marked_dd_R": 174.92,
+       "longest_underwater_days": 1480.2,
+       "final_marked_usd": -1371.12,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0076,
+        "slippage": 0.0098,
+        "fees": 0.0634,
+        "funding": 0.0031
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9935
+       },
+       "why": {
+        "time": 1686,
+        "stop": 567,
+        "target": 60,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 1786,
+         "meanR": -0.0787
+        },
+        "long": {
+         "n": 527,
+         "meanR": -0.0586
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2321.5,
+        "p10": 2311.9,
+        "p90": 2330.0,
+        "min": 2304.0,
+        "max": 2338.0
+       },
+       "closes_per_cal_week": {
+        "median": 10.8345,
+        "p10": 10.7895,
+        "p90": 10.874,
+        "min": 10.753,
+        "max": 10.911
+       },
+       "closes_per_elig_week": {
+        "median": 10.8685,
+        "p10": 10.8235,
+        "p90": 10.908,
+        "min": 10.786,
+        "max": 10.946
+       },
+       "meanR_budget": {
+        "median": -0.0752,
+        "p10": -0.0819,
+        "p90": -0.0679,
+        "min": -0.0836,
+        "max": -0.0635
+       },
+       "meanR_actual": {
+        "median": -0.0761,
+        "p10": -0.0828,
+        "p90": -0.0687,
+        "min": -0.0845,
+        "max": -0.0643
+       },
+       "early_meanR": {
+        "median": -0.0965,
+        "p10": -0.1044,
+        "p90": -0.086,
+        "min": -0.1072,
+        "max": -0.0785
+       },
+       "later_meanR": {
+        "median": -0.0465,
+        "p10": -0.0609,
+        "p90": -0.0377,
+        "min": -0.0629,
+        "max": -0.0324
+       },
+       "exbest_meanR": {
+        "median": -0.0824,
+        "p10": -0.0875,
+        "p90": -0.0735,
+        "min": -0.0898,
+        "max": -0.0688
+       },
+       "closedR_maxdd": {
+        "median": 177.105,
+        "p10": 160.13,
+        "p90": 192.946,
+        "min": 149.78,
+        "max": 197.06
+       },
+       "marked_dd_R": {
+        "median": 177.515,
+        "p10": 160.37,
+        "p90": 193.527,
+        "min": 150.0,
+        "max": 197.29
+       },
+       "longest_underwater_days": {
+        "median": 1480.2,
+        "p10": 1480.2,
+        "p90": 1480.2,
+        "min": 1480.2,
+        "max": 1480.2
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "23bp": {
+      "order0": {
+       "n": 2314,
+       "skips": {},
+       "closes": 2313,
+       "terminal_open": 1,
+       "terminal_mtm": -0.14,
+       "closes_per_cal_week": 10.795,
+       "closes_per_elig_week": 10.829,
+       "meanR_budget": -0.1132,
+       "meanR_actual": -0.1145,
+       "sumR_budget": -261.79,
+       "early_n": 1341,
+       "later_n": 972,
+       "early_meanR": -0.1399,
+       "later_meanR": -0.0763,
+       "exbest_meanR": -0.1176,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 90,
+         "sumR": -29.91,
+         "early_sumR": -14.55,
+         "later_sumR": -15.36
+        },
+        "BCHUSDT": {
+         "n": 112,
+         "sumR": -19.07,
+         "early_sumR": -8.87,
+         "later_sumR": -10.2
+        },
+        "AVAXUSDT": {
+         "n": 105,
+         "sumR": -18.75,
+         "early_sumR": -19.74,
+         "later_sumR": 0.99
+        },
+        "UNIUSDT": {
+         "n": 63,
+         "sumR": -17.93,
+         "early_sumR": -0.01,
+         "later_sumR": -17.91
+        },
+        "LTCUSDT": {
+         "n": 74,
+         "sumR": -17.06,
+         "early_sumR": -14.15,
+         "later_sumR": -2.92
+        },
+        "FETUSDT": {
+         "n": 64,
+         "sumR": -15.96,
+         "early_sumR": -5.32,
+         "later_sumR": -10.64
+        },
+        "LINKUSDT": {
+         "n": 54,
+         "sumR": -15.27,
+         "early_sumR": -6.56,
+         "later_sumR": -8.71
+        },
+        "ETCUSDT": {
+         "n": 56,
+         "sumR": -12.13,
+         "early_sumR": -3.65,
+         "later_sumR": -8.48
+        },
+        "ARBUSDT": {
+         "n": 80,
+         "sumR": -10.4,
+         "early_sumR": -5.75,
+         "later_sumR": -4.65
+        },
+        "FILUSDT": {
+         "n": 78,
+         "sumR": -10.37,
+         "early_sumR": -7.41,
+         "later_sumR": -2.95
+        },
+        "XLMUSDT": {
+         "n": 54,
+         "sumR": -8.84,
+         "early_sumR": -1.69,
+         "later_sumR": -7.14
+        },
+        "ADAUSDT": {
+         "n": 95,
+         "sumR": -8.28,
+         "early_sumR": -10.11,
+         "later_sumR": 1.83
+        },
+        "MANAUSDT": {
+         "n": 56,
+         "sumR": -7.24,
+         "early_sumR": -8.75,
+         "later_sumR": 1.51
+        },
+        "ZECUSDT": {
+         "n": 41,
+         "sumR": -6.75,
+         "early_sumR": -1.21,
+         "later_sumR": -5.54
+        },
+        "ETHUSDT": {
+         "n": 33,
+         "sumR": -6.62,
+         "early_sumR": -4.33,
+         "later_sumR": -2.28
+        },
+        "SOLUSDT": {
+         "n": 46,
+         "sumR": -6.51,
+         "early_sumR": -7.39,
+         "later_sumR": 0.88
+        },
+        "SUPERUSDT": {
+         "n": 21,
+         "sumR": -6.2,
+         "early_sumR": -5.18,
+         "later_sumR": -1.02
+        },
+        "DOGEUSDT": {
+         "n": 76,
+         "sumR": -5.81,
+         "early_sumR": -3.07,
+         "later_sumR": -2.74
+        },
+        "DOTUSDT": {
+         "n": 60,
+         "sumR": -5.21,
+         "early_sumR": -5.64,
+         "later_sumR": 0.43
+        },
+        "ONDOUSDT": {
+         "n": 42,
+         "sumR": -4.64,
+         "early_sumR": -5.28,
+         "later_sumR": 0.64
+        },
+        "SUIUSDT": {
+         "n": 52,
+         "sumR": -4.51,
+         "early_sumR": -4.89,
+         "later_sumR": 0.38
+        },
+        "AAVEUSDT": {
+         "n": 101,
+         "sumR": -3.81,
+         "early_sumR": -2.8,
+         "later_sumR": -1.01
+        },
+        "NEARUSDT": {
+         "n": 71,
+         "sumR": -3.77,
+         "early_sumR": -2.46,
+         "later_sumR": -1.31
+        },
+        "APTUSDT": {
+         "n": 89,
+         "sumR": -3.64,
+         "early_sumR": -10.33,
+         "later_sumR": 6.7
+        },
+        "XRPUSDT": {
+         "n": 49,
+         "sumR": -3.3,
+         "early_sumR": -2.18,
+         "later_sumR": -1.13
+        },
+        "QNTUSDT": {
+         "n": 20,
+         "sumR": -3.27,
+         "early_sumR": -2.57,
+         "later_sumR": -0.7
+        },
+        "ENAUSDT": {
+         "n": 37,
+         "sumR": -2.65,
+         "early_sumR": -2.63,
+         "later_sumR": -0.02
+        },
+        "1000PEPEUSDT": {
+         "n": 82,
+         "sumR": -2.62,
+         "early_sumR": -6.83,
+         "later_sumR": 4.21
+        },
+        "BTCUSDT": {
+         "n": 35,
+         "sumR": -2.58,
+         "early_sumR": -1.85,
+         "later_sumR": -0.73
+        },
+        "WLDUSDT": {
+         "n": 58,
+         "sumR": -2.39,
+         "early_sumR": 0.98,
+         "later_sumR": -3.37
+        },
+        "STRKUSDT": {
+         "n": 28,
+         "sumR": -2.07,
+         "early_sumR": -1.03,
+         "later_sumR": -1.04
+        },
+        "GALAUSDT": {
+         "n": 79,
+         "sumR": -1.98,
+         "early_sumR": -3.85,
+         "later_sumR": 1.87
+        },
+        "MOVRUSDT": {
+         "n": 10,
+         "sumR": -1.93,
+         "early_sumR": -1.93,
+         "later_sumR": 0.0
+        },
+        "ONEUSDT": {
+         "n": 27,
+         "sumR": -1.57,
+         "early_sumR": -1.27,
+         "later_sumR": -0.3
+        },
+        "ARKUSDT": {
+         "n": 38,
+         "sumR": -1.54,
+         "early_sumR": -0.19,
+         "later_sumR": -1.35
+        },
+        "SANDUSDT": {
+         "n": 48,
+         "sumR": -0.65,
+         "early_sumR": -2.16,
+         "later_sumR": 1.51
+        },
+        "TAOUSDT": {
+         "n": 38,
+         "sumR": 1.26,
+         "early_sumR": 0.33,
+         "later_sumR": 0.93
+        },
+        "ENJUSDT": {
+         "n": 46,
+         "sumR": 2.23,
+         "early_sumR": -0.41,
+         "later_sumR": 2.64
+        },
+        "INJUSDT": {
+         "n": 68,
+         "sumR": 4.02,
+         "early_sumR": -3.76,
+         "later_sumR": 7.78
+        },
+        "ZROUSDT": {
+         "n": 37,
+         "sumR": 5.93,
+         "early_sumR": 0.89,
+         "later_sumR": 5.04
+        }
+       },
+       "closedR_maxdd": 264.42,
+       "marked_dd_usd": 2120.89,
+       "marked_dd_R": 265.11,
+       "longest_underwater_days": 1480.2,
+       "final_marked_usd": -2094.43,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0076,
+        "slippage": 0.0098,
+        "fees": 0.1025,
+        "funding": 0.0031
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9935
+       },
+       "why": {
+        "time": 1686,
+        "stop": 567,
+        "target": 60,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 1786,
+         "meanR": -0.1176
+        },
+        "long": {
+         "n": 527,
+         "meanR": -0.0982
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2321.5,
+        "p10": 2311.9,
+        "p90": 2330.0,
+        "min": 2304.0,
+        "max": 2338.0
+       },
+       "closes_per_cal_week": {
+        "median": 10.8345,
+        "p10": 10.7895,
+        "p90": 10.874,
+        "min": 10.753,
+        "max": 10.911
+       },
+       "closes_per_elig_week": {
+        "median": 10.8685,
+        "p10": 10.8235,
+        "p90": 10.908,
+        "min": 10.786,
+        "max": 10.946
+       },
+       "meanR_budget": {
+        "median": -0.1135,
+        "p10": -0.1208,
+        "p90": -0.1064,
+        "min": -0.1224,
+        "max": -0.1021
+       },
+       "meanR_actual": {
+        "median": -0.1147,
+        "p10": -0.1219,
+        "p90": -0.1075,
+        "min": -0.1235,
+        "max": -0.1032
+       },
+       "early_meanR": {
+        "median": -0.1357,
+        "p10": -0.1437,
+        "p90": -0.1253,
+        "min": -0.1465,
+        "max": -0.1178
+       },
+       "later_meanR": {
+        "median": -0.0846,
+        "p10": -0.0991,
+        "p90": -0.076,
+        "min": -0.1012,
+        "max": -0.0699
+       },
+       "exbest_meanR": {
+        "median": -0.1213,
+        "p10": -0.1265,
+        "p90": -0.1123,
+        "min": -0.1287,
+        "max": -0.1075
+       },
+       "closedR_maxdd": {
+        "median": 266.465,
+        "p10": 249.123,
+        "p90": 283.589,
+        "min": 239.14,
+        "max": 287.05
+       },
+       "marked_dd_R": {
+        "median": 266.695,
+        "p10": 249.399,
+        "p90": 283.81,
+        "min": 239.36,
+        "max": 287.28
+       },
+       "longest_underwater_days": {
+        "median": 1480.2,
+        "p10": 1480.2,
+        "p90": 1480.2,
+        "min": 1480.2,
+        "max": 1480.2
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     }
+    },
+    "worst": {
+     "7bp": {
+      "order0": {
+       "n": 2108,
+       "skips": {},
+       "closes": 2108,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 9.838,
+       "closes_per_elig_week": 9.869,
+       "meanR_budget": -0.041,
+       "meanR_actual": -0.042,
+       "sumR_budget": -86.43,
+       "early_n": 1222,
+       "later_n": 886,
+       "early_meanR": -0.0533,
+       "later_meanR": -0.0241,
+       "exbest_meanR": -0.0453,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 81,
+         "sumR": -14.38,
+         "early_sumR": -7.32,
+         "later_sumR": -7.06
+        },
+        "LINKUSDT": {
+         "n": 52,
+         "sumR": -13.81,
+         "early_sumR": -7.74,
+         "later_sumR": -6.07
+        },
+        "UNIUSDT": {
+         "n": 59,
+         "sumR": -12.26,
+         "early_sumR": 0.45,
+         "later_sumR": -12.71
+        },
+        "GALAUSDT": {
+         "n": 69,
+         "sumR": -8.24,
+         "early_sumR": -6.97,
+         "later_sumR": -1.26
+        },
+        "FETUSDT": {
+         "n": 67,
+         "sumR": -6.96,
+         "early_sumR": -1.4,
+         "later_sumR": -5.56
+        },
+        "ETHUSDT": {
+         "n": 29,
+         "sumR": -6.41,
+         "early_sumR": -4.53,
+         "later_sumR": -1.87
+        },
+        "AVAXUSDT": {
+         "n": 87,
+         "sumR": -6.27,
+         "early_sumR": -8.46,
+         "later_sumR": 2.2
+        },
+        "ETCUSDT": {
+         "n": 57,
+         "sumR": -5.83,
+         "early_sumR": -3.76,
+         "later_sumR": -2.07
+        },
+        "1000PEPEUSDT": {
+         "n": 69,
+         "sumR": -5.52,
+         "early_sumR": -5.51,
+         "later_sumR": -0.01
+        },
+        "BCHUSDT": {
+         "n": 98,
+         "sumR": -4.86,
+         "early_sumR": -0.92,
+         "later_sumR": -3.95
+        },
+        "SUPERUSDT": {
+         "n": 18,
+         "sumR": -4.57,
+         "early_sumR": -4.39,
+         "later_sumR": -0.19
+        },
+        "WLDUSDT": {
+         "n": 57,
+         "sumR": -4.5,
+         "early_sumR": -2.96,
+         "later_sumR": -1.54
+        },
+        "ENAUSDT": {
+         "n": 34,
+         "sumR": -4.46,
+         "early_sumR": -1.77,
+         "later_sumR": -2.69
+        },
+        "SOLUSDT": {
+         "n": 47,
+         "sumR": -4.26,
+         "early_sumR": -3.77,
+         "later_sumR": -0.49
+        },
+        "LTCUSDT": {
+         "n": 58,
+         "sumR": -4.1,
+         "early_sumR": -3.28,
+         "later_sumR": -0.82
+        },
+        "AAVEUSDT": {
+         "n": 93,
+         "sumR": -3.96,
+         "early_sumR": -5.43,
+         "later_sumR": 1.47
+        },
+        "XLMUSDT": {
+         "n": 43,
+         "sumR": -3.94,
+         "early_sumR": -0.06,
+         "later_sumR": -3.88
+        },
+        "ARBUSDT": {
+         "n": 59,
+         "sumR": -3.81,
+         "early_sumR": -0.52,
+         "later_sumR": -3.3
+        },
+        "ZECUSDT": {
+         "n": 38,
+         "sumR": -3.68,
+         "early_sumR": 1.73,
+         "later_sumR": -5.41
+        },
+        "STRKUSDT": {
+         "n": 25,
+         "sumR": -2.97,
+         "early_sumR": -0.71,
+         "later_sumR": -2.26
+        },
+        "ONDOUSDT": {
+         "n": 40,
+         "sumR": -1.28,
+         "early_sumR": -2.69,
+         "later_sumR": 1.42
+        },
+        "FILUSDT": {
+         "n": 81,
+         "sumR": -1.17,
+         "early_sumR": -2.13,
+         "later_sumR": 0.96
+        },
+        "DOGEUSDT": {
+         "n": 71,
+         "sumR": -0.86,
+         "early_sumR": 2.5,
+         "later_sumR": -3.36
+        },
+        "QNTUSDT": {
+         "n": 17,
+         "sumR": -0.59,
+         "early_sumR": -0.58,
+         "later_sumR": -0.01
+        },
+        "ARKUSDT": {
+         "n": 34,
+         "sumR": -0.17,
+         "early_sumR": -1.21,
+         "later_sumR": 1.04
+        },
+        "SANDUSDT": {
+         "n": 50,
+         "sumR": 0.19,
+         "early_sumR": -0.15,
+         "later_sumR": 0.34
+        },
+        "NEARUSDT": {
+         "n": 60,
+         "sumR": 0.48,
+         "early_sumR": 1.18,
+         "later_sumR": -0.7
+        },
+        "TAOUSDT": {
+         "n": 34,
+         "sumR": 0.51,
+         "early_sumR": 1.19,
+         "later_sumR": -0.68
+        },
+        "MOVRUSDT": {
+         "n": 8,
+         "sumR": 1.9,
+         "early_sumR": 1.9,
+         "later_sumR": 0.0
+        },
+        "ENJUSDT": {
+         "n": 37,
+         "sumR": 2.35,
+         "early_sumR": -0.95,
+         "later_sumR": 3.3
+        },
+        "BTCUSDT": {
+         "n": 37,
+         "sumR": 2.41,
+         "early_sumR": -0.48,
+         "later_sumR": 2.89
+        },
+        "ONEUSDT": {
+         "n": 17,
+         "sumR": 2.71,
+         "early_sumR": 2.71,
+         "later_sumR": 0.0
+        },
+        "SUIUSDT": {
+         "n": 50,
+         "sumR": 3.08,
+         "early_sumR": 0.08,
+         "later_sumR": 3.0
+        },
+        "INJUSDT": {
+         "n": 63,
+         "sumR": 3.13,
+         "early_sumR": -1.19,
+         "later_sumR": 4.31
+        },
+        "ZROUSDT": {
+         "n": 37,
+         "sumR": 3.24,
+         "early_sumR": -0.47,
+         "later_sumR": 3.71
+        },
+        "ADAUSDT": {
+         "n": 86,
+         "sumR": 3.31,
+         "early_sumR": -0.3,
+         "later_sumR": 3.61
+        },
+        "APTUSDT": {
+         "n": 86,
+         "sumR": 3.7,
+         "early_sumR": -5.63,
+         "later_sumR": 9.33
+        },
+        "MANAUSDT": {
+         "n": 51,
+         "sumR": 4.24,
+         "early_sumR": 2.41,
+         "later_sumR": 1.83
+        },
+        "XRPUSDT": {
+         "n": 55,
+         "sumR": 4.5,
+         "early_sumR": 3.41,
+         "later_sumR": 1.08
+        },
+        "DOTUSDT": {
+         "n": 54,
+         "sumR": 6.7,
+         "early_sumR": 2.64,
+         "later_sumR": 4.06
+        }
+       },
+       "closedR_maxdd": 89.52,
+       "marked_dd_usd": 717.86,
+       "marked_dd_R": 89.73,
+       "longest_underwater_days": 1480.2,
+       "final_marked_usd": -691.41,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0129,
+        "slippage": 0.0098,
+        "fees": 0.0246,
+        "funding": 0.0035
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9934
+       },
+       "why": {
+        "time": 1499,
+        "stop": 546,
+        "target": 63
+       },
+       "by_side": {
+        "short": {
+         "n": 1609,
+         "meanR": -0.0417
+        },
+        "long": {
+         "n": 499,
+         "meanR": -0.0386
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2105.0,
+        "p10": 2099.9,
+        "p90": 2110.1,
+        "min": 2093.0,
+        "max": 2120.0
+       },
+       "closes_per_cal_week": {
+        "median": 9.824,
+        "p10": 9.8005,
+        "p90": 9.8475,
+        "min": 9.768,
+        "max": 9.894
+       },
+       "closes_per_elig_week": {
+        "median": 9.855,
+        "p10": 9.8306,
+        "p90": 9.8785,
+        "min": 9.799,
+        "max": 9.925
+       },
+       "meanR_budget": {
+        "median": -0.0242,
+        "p10": -0.0315,
+        "p90": -0.0182,
+        "min": -0.041,
+        "max": -0.0144
+       },
+       "meanR_actual": {
+        "median": -0.0251,
+        "p10": -0.0324,
+        "p90": -0.0188,
+        "min": -0.042,
+        "max": -0.0151
+       },
+       "early_meanR": {
+        "median": -0.0342,
+        "p10": -0.0454,
+        "p90": -0.0265,
+        "min": -0.0533,
+        "max": -0.0238
+       },
+       "later_meanR": {
+        "median": -0.0094,
+        "p10": -0.0241,
+        "p90": 0.001,
+        "min": -0.0342,
+        "max": 0.0081
+       },
+       "exbest_meanR": {
+        "median": -0.0295,
+        "p10": -0.0362,
+        "p90": -0.0233,
+        "min": -0.0453,
+        "max": -0.02
+       },
+       "closedR_maxdd": {
+        "median": 62.45,
+        "p10": 48.157,
+        "p90": 75.003,
+        "min": 42.96,
+        "max": 89.52
+       },
+       "marked_dd_R": {
+        "median": 62.74,
+        "p10": 48.31,
+        "p90": 75.222,
+        "min": 42.96,
+        "max": 89.73
+       },
+       "longest_underwater_days": {
+        "median": 1480.2,
+        "p10": 1117.38,
+        "p90": 1480.2,
+        "min": 1108.2,
+        "max": 1480.2
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "15bp": {
+      "order0": {
+       "n": 2108,
+       "skips": {},
+       "closes": 2108,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 9.838,
+       "closes_per_elig_week": 9.869,
+       "meanR_budget": -0.0803,
+       "meanR_actual": -0.0815,
+       "sumR_budget": -169.26,
+       "early_n": 1222,
+       "later_n": 886,
+       "early_meanR": -0.0929,
+       "later_meanR": -0.0628,
+       "exbest_meanR": -0.0843,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 81,
+         "sumR": -19.79,
+         "early_sumR": -10.27,
+         "later_sumR": -9.52
+        },
+        "LINKUSDT": {
+         "n": 52,
+         "sumR": -15.74,
+         "early_sumR": -8.86,
+         "later_sumR": -6.87
+        },
+        "UNIUSDT": {
+         "n": 59,
+         "sumR": -14.41,
+         "early_sumR": -0.64,
+         "later_sumR": -13.78
+        },
+        "GALAUSDT": {
+         "n": 69,
+         "sumR": -10.52,
+         "early_sumR": -8.65,
+         "later_sumR": -1.87
+        },
+        "AVAXUSDT": {
+         "n": 87,
+         "sumR": -9.8,
+         "early_sumR": -10.22,
+         "later_sumR": 0.42
+        },
+        "BCHUSDT": {
+         "n": 98,
+         "sumR": -9.2,
+         "early_sumR": -3.45,
+         "later_sumR": -5.75
+        },
+        "FETUSDT": {
+         "n": 67,
+         "sumR": -9.11,
+         "early_sumR": -2.42,
+         "later_sumR": -6.7
+        },
+        "ETCUSDT": {
+         "n": 57,
+         "sumR": -8.4,
+         "early_sumR": -5.37,
+         "later_sumR": -3.03
+        },
+        "ETHUSDT": {
+         "n": 29,
+         "sumR": -8.06,
+         "early_sumR": -5.53,
+         "later_sumR": -2.53
+        },
+        "AAVEUSDT": {
+         "n": 93,
+         "sumR": -7.43,
+         "early_sumR": -7.36,
+         "later_sumR": -0.07
+        },
+        "1000PEPEUSDT": {
+         "n": 69,
+         "sumR": -7.38,
+         "early_sumR": -6.51,
+         "later_sumR": -0.87
+        },
+        "LTCUSDT": {
+         "n": 58,
+         "sumR": -6.96,
+         "early_sumR": -5.01,
+         "later_sumR": -1.95
+        },
+        "SOLUSDT": {
+         "n": 47,
+         "sumR": -6.47,
+         "early_sumR": -5.15,
+         "later_sumR": -1.32
+        },
+        "ARBUSDT": {
+         "n": 59,
+         "sumR": -6.03,
+         "early_sumR": -1.73,
+         "later_sumR": -4.31
+        },
+        "WLDUSDT": {
+         "n": 57,
+         "sumR": -5.95,
+         "early_sumR": -3.6,
+         "later_sumR": -2.35
+        },
+        "XLMUSDT": {
+         "n": 43,
+         "sumR": -5.93,
+         "early_sumR": -1.22,
+         "later_sumR": -4.71
+        },
+        "ENAUSDT": {
+         "n": 34,
+         "sumR": -5.3,
+         "early_sumR": -1.96,
+         "later_sumR": -3.34
+        },
+        "ZECUSDT": {
+         "n": 38,
+         "sumR": -5.11,
+         "early_sumR": 0.73,
+         "later_sumR": -5.85
+        },
+        "SUPERUSDT": {
+         "n": 18,
+         "sumR": -5.0,
+         "early_sumR": -4.67,
+         "later_sumR": -0.33
+        },
+        "FILUSDT": {
+         "n": 81,
+         "sumR": -4.36,
+         "early_sumR": -4.04,
+         "later_sumR": -0.32
+        },
+        "DOGEUSDT": {
+         "n": 71,
+         "sumR": -3.72,
+         "early_sumR": 0.41,
+         "later_sumR": -4.13
+        },
+        "STRKUSDT": {
+         "n": 25,
+         "sumR": -3.7,
+         "early_sumR": -0.79,
+         "later_sumR": -2.91
+        },
+        "ONDOUSDT": {
+         "n": 40,
+         "sumR": -2.44,
+         "early_sumR": -3.04,
+         "later_sumR": 0.61
+        },
+        "SANDUSDT": {
+         "n": 50,
+         "sumR": -1.81,
+         "early_sumR": -1.53,
+         "later_sumR": -0.28
+        },
+        "NEARUSDT": {
+         "n": 60,
+         "sumR": -1.68,
+         "early_sumR": -0.07,
+         "later_sumR": -1.6
+        },
+        "QNTUSDT": {
+         "n": 17,
+         "sumR": -1.2,
+         "early_sumR": -1.02,
+         "later_sumR": -0.17
+        },
+        "ARKUSDT": {
+         "n": 34,
+         "sumR": -1.0,
+         "early_sumR": -1.96,
+         "later_sumR": 0.97
+        },
+        "BTCUSDT": {
+         "n": 37,
+         "sumR": -0.6,
+         "early_sumR": -1.99,
+         "later_sumR": 1.4
+        },
+        "TAOUSDT": {
+         "n": 34,
+         "sumR": -0.53,
+         "early_sumR": 1.05,
+         "later_sumR": -1.58
+        },
+        "ADAUSDT": {
+         "n": 86,
+         "sumR": -0.27,
+         "early_sumR": -2.67,
+         "later_sumR": 2.39
+        },
+        "ENJUSDT": {
+         "n": 37,
+         "sumR": 0.97,
+         "early_sumR": -2.18,
+         "later_sumR": 3.15
+        },
+        "INJUSDT": {
+         "n": 63,
+         "sumR": 1.01,
+         "early_sumR": -2.38,
+         "later_sumR": 3.39
+        },
+        "APTUSDT": {
+         "n": 86,
+         "sumR": 1.01,
+         "early_sumR": -7.12,
+         "later_sumR": 8.13
+        },
+        "SUIUSDT": {
+         "n": 50,
+         "sumR": 1.57,
+         "early_sumR": -0.8,
+         "later_sumR": 2.37
+        },
+        "MOVRUSDT": {
+         "n": 8,
+         "sumR": 1.69,
+         "early_sumR": 1.69,
+         "later_sumR": 0.0
+        },
+        "XRPUSDT": {
+         "n": 55,
+         "sumR": 1.79,
+         "early_sumR": 1.44,
+         "later_sumR": 0.34
+        },
+        "ONEUSDT": {
+         "n": 17,
+         "sumR": 2.2,
+         "early_sumR": 2.2,
+         "later_sumR": 0.0
+        },
+        "MANAUSDT": {
+         "n": 51,
+         "sumR": 2.21,
+         "early_sumR": 1.07,
+         "later_sumR": 1.13
+        },
+        "ZROUSDT": {
+         "n": 37,
+         "sumR": 2.24,
+         "early_sumR": -0.64,
+         "later_sumR": 2.88
+        },
+        "DOTUSDT": {
+         "n": 54,
+         "sumR": 3.94,
+         "early_sumR": 0.65,
+         "later_sumR": 3.29
+        }
+       },
+       "closedR_maxdd": 172.17,
+       "marked_dd_usd": 1379.1,
+       "marked_dd_R": 172.39,
+       "longest_underwater_days": 1480.2,
+       "final_marked_usd": -1354.09,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0129,
+        "slippage": 0.0098,
+        "fees": 0.0639,
+        "funding": 0.0035
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9934
+       },
+       "why": {
+        "time": 1499,
+        "stop": 546,
+        "target": 63
+       },
+       "by_side": {
+        "short": {
+         "n": 1609,
+         "meanR": -0.081
+        },
+        "long": {
+         "n": 499,
+         "meanR": -0.0779
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2105.0,
+        "p10": 2099.9,
+        "p90": 2110.1,
+        "min": 2093.0,
+        "max": 2120.0
+       },
+       "closes_per_cal_week": {
+        "median": 9.824,
+        "p10": 9.8005,
+        "p90": 9.8475,
+        "min": 9.768,
+        "max": 9.894
+       },
+       "closes_per_elig_week": {
+        "median": 9.855,
+        "p10": 9.8306,
+        "p90": 9.8785,
+        "min": 9.799,
+        "max": 9.925
+       },
+       "meanR_budget": {
+        "median": -0.063,
+        "p10": -0.0707,
+        "p90": -0.0567,
+        "min": -0.0803,
+        "max": -0.0532
+       },
+       "meanR_actual": {
+        "median": -0.0641,
+        "p10": -0.0717,
+        "p90": -0.0575,
+        "min": -0.0815,
+        "max": -0.0541
+       },
+       "early_meanR": {
+        "median": -0.074,
+        "p10": -0.0854,
+        "p90": -0.066,
+        "min": -0.0929,
+        "max": -0.0633
+       },
+       "later_meanR": {
+        "median": -0.0478,
+        "p10": -0.0628,
+        "p90": -0.0371,
+        "min": -0.0732,
+        "max": -0.0298
+       },
+       "exbest_meanR": {
+        "median": -0.0685,
+        "p10": -0.0754,
+        "p90": -0.0622,
+        "min": -0.0843,
+        "max": -0.059
+       },
+       "closedR_maxdd": {
+        "median": 135.495,
+        "p10": 122.118,
+        "p90": 151.366,
+        "min": 114.05,
+        "max": 172.17
+       },
+       "marked_dd_R": {
+        "median": 135.705,
+        "p10": 122.338,
+        "p90": 151.577,
+        "min": 114.26,
+        "max": 172.39
+       },
+       "longest_underwater_days": {
+        "median": 1480.2,
+        "p10": 1480.2,
+        "p90": 1480.2,
+        "min": 1480.2,
+        "max": 1480.2
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "23bp": {
+      "order0": {
+       "n": 2108,
+       "skips": {},
+       "closes": 2108,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 9.838,
+       "closes_per_elig_week": 9.869,
+       "meanR_budget": -0.1196,
+       "meanR_actual": -0.121,
+       "sumR_budget": -252.1,
+       "early_n": 1222,
+       "later_n": 886,
+       "early_meanR": -0.1326,
+       "later_meanR": -0.1016,
+       "exbest_meanR": -0.1214,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 81,
+         "sumR": -25.2,
+         "early_sumR": -13.22,
+         "later_sumR": -11.98
+        },
+        "LINKUSDT": {
+         "n": 52,
+         "sumR": -17.66,
+         "early_sumR": -9.98,
+         "later_sumR": -7.68
+        },
+        "UNIUSDT": {
+         "n": 59,
+         "sumR": -16.57,
+         "early_sumR": -1.72,
+         "later_sumR": -14.85
+        },
+        "BCHUSDT": {
+         "n": 98,
+         "sumR": -13.53,
+         "early_sumR": -5.98,
+         "later_sumR": -7.56
+        },
+        "AVAXUSDT": {
+         "n": 87,
+         "sumR": -13.33,
+         "early_sumR": -11.97,
+         "later_sumR": -1.36
+        },
+        "GALAUSDT": {
+         "n": 69,
+         "sumR": -12.8,
+         "early_sumR": -10.33,
+         "later_sumR": -2.47
+        },
+        "FETUSDT": {
+         "n": 67,
+         "sumR": -11.27,
+         "early_sumR": -3.44,
+         "later_sumR": -7.83
+        },
+        "ETCUSDT": {
+         "n": 57,
+         "sumR": -10.97,
+         "early_sumR": -6.99,
+         "later_sumR": -3.99
+        },
+        "AAVEUSDT": {
+         "n": 93,
+         "sumR": -10.9,
+         "early_sumR": -9.29,
+         "later_sumR": -1.61
+        },
+        "LTCUSDT": {
+         "n": 58,
+         "sumR": -9.83,
+         "early_sumR": -6.74,
+         "later_sumR": -3.09
+        },
+        "ETHUSDT": {
+         "n": 29,
+         "sumR": -9.71,
+         "early_sumR": -6.53,
+         "later_sumR": -3.18
+        },
+        "1000PEPEUSDT": {
+         "n": 69,
+         "sumR": -9.24,
+         "early_sumR": -7.5,
+         "later_sumR": -1.74
+        },
+        "SOLUSDT": {
+         "n": 47,
+         "sumR": -8.67,
+         "early_sumR": -6.53,
+         "later_sumR": -2.14
+        },
+        "ARBUSDT": {
+         "n": 59,
+         "sumR": -8.25,
+         "early_sumR": -2.94,
+         "later_sumR": -5.32
+        },
+        "XLMUSDT": {
+         "n": 43,
+         "sumR": -7.92,
+         "early_sumR": -2.39,
+         "later_sumR": -5.53
+        },
+        "FILUSDT": {
+         "n": 81,
+         "sumR": -7.55,
+         "early_sumR": -5.94,
+         "later_sumR": -1.61
+        },
+        "WLDUSDT": {
+         "n": 57,
+         "sumR": -7.39,
+         "early_sumR": -4.24,
+         "later_sumR": -3.15
+        },
+        "DOGEUSDT": {
+         "n": 71,
+         "sumR": -6.58,
+         "early_sumR": -1.68,
+         "later_sumR": -4.9
+        },
+        "ZECUSDT": {
+         "n": 38,
+         "sumR": -6.54,
+         "early_sumR": -0.26,
+         "later_sumR": -6.28
+        },
+        "ENAUSDT": {
+         "n": 34,
+         "sumR": -6.13,
+         "early_sumR": -2.14,
+         "later_sumR": -3.99
+        },
+        "SUPERUSDT": {
+         "n": 18,
+         "sumR": -5.42,
+         "early_sumR": -4.96,
+         "later_sumR": -0.47
+        },
+        "STRKUSDT": {
+         "n": 25,
+         "sumR": -4.43,
+         "early_sumR": -0.87,
+         "later_sumR": -3.56
+        },
+        "ADAUSDT": {
+         "n": 86,
+         "sumR": -3.86,
+         "early_sumR": -5.03,
+         "later_sumR": 1.17
+        },
+        "NEARUSDT": {
+         "n": 60,
+         "sumR": -3.83,
+         "early_sumR": -1.33,
+         "later_sumR": -2.5
+        },
+        "SANDUSDT": {
+         "n": 50,
+         "sumR": -3.8,
+         "early_sumR": -2.91,
+         "later_sumR": -0.89
+        },
+        "BTCUSDT": {
+         "n": 37,
+         "sumR": -3.6,
+         "early_sumR": -3.51,
+         "later_sumR": -0.09
+        },
+        "ONDOUSDT": {
+         "n": 40,
+         "sumR": -3.6,
+         "early_sumR": -3.39,
+         "later_sumR": -0.21
+        },
+        "ARKUSDT": {
+         "n": 34,
+         "sumR": -1.83,
+         "early_sumR": -2.72,
+         "later_sumR": 0.89
+        },
+        "QNTUSDT": {
+         "n": 17,
+         "sumR": -1.8,
+         "early_sumR": -1.46,
+         "later_sumR": -0.34
+        },
+        "APTUSDT": {
+         "n": 86,
+         "sumR": -1.68,
+         "early_sumR": -8.6,
+         "later_sumR": 6.92
+        },
+        "TAOUSDT": {
+         "n": 34,
+         "sumR": -1.57,
+         "early_sumR": 0.9,
+         "later_sumR": -2.47
+        },
+        "INJUSDT": {
+         "n": 63,
+         "sumR": -1.11,
+         "early_sumR": -3.57,
+         "later_sumR": 2.46
+        },
+        "XRPUSDT": {
+         "n": 55,
+         "sumR": -0.92,
+         "early_sumR": -0.53,
+         "later_sumR": -0.39
+        },
+        "ENJUSDT": {
+         "n": 37,
+         "sumR": -0.41,
+         "early_sumR": -3.4,
+         "later_sumR": 3.0
+        },
+        "SUIUSDT": {
+         "n": 50,
+         "sumR": 0.06,
+         "early_sumR": -1.67,
+         "later_sumR": 1.73
+        },
+        "MANAUSDT": {
+         "n": 51,
+         "sumR": 0.18,
+         "early_sumR": -0.26,
+         "later_sumR": 0.44
+        },
+        "DOTUSDT": {
+         "n": 54,
+         "sumR": 1.18,
+         "early_sumR": -1.34,
+         "later_sumR": 2.52
+        },
+        "ZROUSDT": {
+         "n": 37,
+         "sumR": 1.24,
+         "early_sumR": -0.8,
+         "later_sumR": 2.04
+        },
+        "MOVRUSDT": {
+         "n": 8,
+         "sumR": 1.48,
+         "early_sumR": 1.48,
+         "later_sumR": 0.0
+        },
+        "ONEUSDT": {
+         "n": 17,
+         "sumR": 1.69,
+         "early_sumR": 1.69,
+         "later_sumR": 0.0
+        }
+       },
+       "closedR_maxdd": 254.83,
+       "marked_dd_usd": 2040.33,
+       "marked_dd_R": 255.04,
+       "longest_underwater_days": 1480.2,
+       "final_marked_usd": -2016.77,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0129,
+        "slippage": 0.0098,
+        "fees": 0.1032,
+        "funding": 0.0035
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9934
+       },
+       "why": {
+        "time": 1499,
+        "stop": 546,
+        "target": 63
+       },
+       "by_side": {
+        "short": {
+         "n": 1609,
+         "meanR": -0.1203
+        },
+        "long": {
+         "n": 499,
+         "meanR": -0.1171
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2105.0,
+        "p10": 2099.9,
+        "p90": 2110.1,
+        "min": 2093.0,
+        "max": 2120.0
+       },
+       "closes_per_cal_week": {
+        "median": 9.824,
+        "p10": 9.8005,
+        "p90": 9.8475,
+        "min": 9.768,
+        "max": 9.894
+       },
+       "closes_per_elig_week": {
+        "median": 9.855,
+        "p10": 9.8306,
+        "p90": 9.8785,
+        "min": 9.799,
+        "max": 9.925
+       },
+       "meanR_budget": {
+        "median": -0.1018,
+        "p10": -0.1098,
+        "p90": -0.0952,
+        "min": -0.1196,
+        "max": -0.092
+       },
+       "meanR_actual": {
+        "median": -0.1031,
+        "p10": -0.1111,
+        "p90": -0.0962,
+        "min": -0.121,
+        "max": -0.0932
+       },
+       "early_meanR": {
+        "median": -0.1135,
+        "p10": -0.1253,
+        "p90": -0.1054,
+        "min": -0.1326,
+        "max": -0.1026
+       },
+       "later_meanR": {
+        "median": -0.0862,
+        "p10": -0.1016,
+        "p90": -0.0752,
+        "min": -0.1123,
+        "max": -0.0677
+       },
+       "exbest_meanR": {
+        "median": -0.1063,
+        "p10": -0.1131,
+        "p90": -0.1011,
+        "min": -0.1214,
+        "max": -0.0981
+       },
+       "closedR_maxdd": {
+        "median": 217.465,
+        "p10": 203.064,
+        "p90": 233.572,
+        "min": 195.12,
+        "max": 254.83
+       },
+       "marked_dd_R": {
+        "median": 217.68,
+        "p10": 203.283,
+        "p90": 233.782,
+        "min": 195.33,
+        "max": 255.04
+       },
+       "longest_underwater_days": {
+        "median": 1480.2,
+        "p10": 1480.2,
+        "p90": 1480.2,
+        "min": 1480.2,
+        "max": 1480.2
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     }
+    }
+   },
+   "gates": {
+    "closes_ge_100": true,
+    "each_period_ge_30": true,
+    "R15_early_pos": false,
+    "R15_later_pos": false,
+    "R23_overall_pos": false,
+    "exbest15_pos": false,
+    "p10_R15_pos": false,
+    "worst_path_R15_pos": false,
+    "PASS": false
+   }
+  },
+  "original9": {
+   "eligible_weeks": 213.6,
+   "paths": {
+    "causal": {
+     "7bp": {
+      "order0": {
+       "n": 1202,
+       "skips": {},
+       "closes": 1201,
+       "terminal_open": 1,
+       "terminal_mtm": 1.67,
+       "closes_per_cal_week": 5.605,
+       "closes_per_elig_week": 5.623,
+       "meanR_budget": -0.0853,
+       "meanR_actual": -0.0857,
+       "sumR_budget": -102.45,
+       "early_n": 729,
+       "later_n": 472,
+       "early_meanR": -0.1,
+       "later_meanR": -0.0626,
+       "exbest_meanR": -0.09,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 174,
+         "sumR": -28.23,
+         "early_sumR": -23.45,
+         "later_sumR": -4.78
+        },
+        "LINKUSDT": {
+         "n": 112,
+         "sumR": -17.46,
+         "early_sumR": -4.75,
+         "later_sumR": -12.71
+        },
+        "XRPUSDT": {
+         "n": 152,
+         "sumR": -15.22,
+         "early_sumR": -9.08,
+         "later_sumR": -6.13
+        },
+        "ADAUSDT": {
+         "n": 168,
+         "sumR": -14.43,
+         "early_sumR": -7.31,
+         "later_sumR": -7.12
+        },
+        "DOGEUSDT": {
+         "n": 165,
+         "sumR": -10.16,
+         "early_sumR": -7.43,
+         "later_sumR": -2.73
+        },
+        "AVAXUSDT": {
+         "n": 160,
+         "sumR": -7.02,
+         "early_sumR": -10.03,
+         "later_sumR": 3.01
+        },
+        "SOLUSDT": {
+         "n": 112,
+         "sumR": -4.84,
+         "early_sumR": -4.71,
+         "later_sumR": -0.12
+        },
+        "BTCUSDT": {
+         "n": 83,
+         "sumR": -4.02,
+         "early_sumR": -1.6,
+         "later_sumR": -2.41
+        },
+        "ETHUSDT": {
+         "n": 75,
+         "sumR": -1.09,
+         "early_sumR": -4.53,
+         "later_sumR": 3.44
+        }
+       },
+       "closedR_maxdd": 104.72,
+       "marked_dd_usd": 840.15,
+       "marked_dd_R": 105.02,
+       "longest_underwater_days": 1478.8,
+       "final_marked_usd": -817.97,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0502,
+        "slippage": 0.0125,
+        "fees": 0.0312,
+        "funding": 0.0039
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9918
+       },
+       "why": {
+        "time": 855,
+        "stop": 313,
+        "target": 33,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 906,
+         "meanR": -0.0982
+        },
+        "long": {
+         "n": 295,
+         "meanR": -0.0458
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1200.0,
+        "p10": 1196.9,
+        "p90": 1202.1,
+        "min": 1195.0,
+        "max": 1206.0
+       },
+       "closes_per_cal_week": {
+        "median": 5.6,
+        "p10": 5.5856,
+        "p90": 5.6104,
+        "min": 5.577,
+        "max": 5.628
+       },
+       "closes_per_elig_week": {
+        "median": 5.618,
+        "p10": 5.6035,
+        "p90": 5.6275,
+        "min": 5.595,
+        "max": 5.646
+       },
+       "meanR_budget": {
+        "median": -0.0823,
+        "p10": -0.0866,
+        "p90": -0.0776,
+        "min": -0.0972,
+        "max": -0.073
+       },
+       "meanR_actual": {
+        "median": -0.0828,
+        "p10": -0.087,
+        "p90": -0.0782,
+        "min": -0.0979,
+        "max": -0.0736
+       },
+       "early_meanR": {
+        "median": -0.0927,
+        "p10": -0.0985,
+        "p90": -0.0869,
+        "min": -0.1078,
+        "max": -0.085
+       },
+       "later_meanR": {
+        "median": -0.0678,
+        "p10": -0.0774,
+        "p90": -0.0553,
+        "min": -0.0808,
+        "max": -0.0492
+       },
+       "exbest_meanR": {
+        "median": -0.0865,
+        "p10": -0.0912,
+        "p90": -0.0817,
+        "min": -0.0999,
+        "max": -0.0779
+       },
+       "closedR_maxdd": {
+        "median": 100.98,
+        "p10": 94.979,
+        "p90": 106.385,
+        "min": 89.61,
+        "max": 119.27
+       },
+       "marked_dd_R": {
+        "median": 101.28,
+        "p10": 95.279,
+        "p90": 106.676,
+        "min": 89.91,
+        "max": 119.57
+       },
+       "longest_underwater_days": {
+        "median": 1478.8,
+        "p10": 1478.8,
+        "p90": 1478.8,
+        "min": 1478.8,
+        "max": 1478.8
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "15bp": {
+      "order0": {
+       "n": 1202,
+       "skips": {},
+       "closes": 1201,
+       "terminal_open": 1,
+       "terminal_mtm": 0.76,
+       "closes_per_cal_week": 5.605,
+       "closes_per_elig_week": 5.623,
+       "meanR_budget": -0.1352,
+       "meanR_actual": -0.136,
+       "sumR_budget": -162.41,
+       "early_n": 729,
+       "later_n": 472,
+       "early_meanR": -0.1479,
+       "later_meanR": -0.1157,
+       "exbest_meanR": -0.1396,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 174,
+         "sumR": -40.44,
+         "early_sumR": -29.51,
+         "later_sumR": -10.93
+        },
+        "XRPUSDT": {
+         "n": 152,
+         "sumR": -22.83,
+         "early_sumR": -13.91,
+         "later_sumR": -8.91
+        },
+        "LINKUSDT": {
+         "n": 112,
+         "sumR": -22.06,
+         "early_sumR": -7.59,
+         "later_sumR": -14.47
+        },
+        "ADAUSDT": {
+         "n": 168,
+         "sumR": -21.72,
+         "early_sumR": -11.99,
+         "later_sumR": -9.73
+        },
+        "DOGEUSDT": {
+         "n": 165,
+         "sumR": -16.72,
+         "early_sumR": -11.65,
+         "later_sumR": -5.07
+        },
+        "AVAXUSDT": {
+         "n": 160,
+         "sumR": -13.56,
+         "early_sumR": -13.34,
+         "later_sumR": -0.21
+        },
+        "BTCUSDT": {
+         "n": 83,
+         "sumR": -10.34,
+         "early_sumR": -5.21,
+         "later_sumR": -5.13
+        },
+        "SOLUSDT": {
+         "n": 112,
+         "sumR": -9.48,
+         "early_sumR": -7.77,
+         "later_sumR": -1.72
+        },
+        "ETHUSDT": {
+         "n": 75,
+         "sumR": -5.26,
+         "early_sumR": -6.82,
+         "later_sumR": 1.55
+        }
+       },
+       "closedR_maxdd": 164.58,
+       "marked_dd_usd": 1319.67,
+       "marked_dd_R": 164.96,
+       "longest_underwater_days": 1478.8,
+       "final_marked_usd": -1298.52,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0502,
+        "slippage": 0.0125,
+        "fees": 0.0811,
+        "funding": 0.0039
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9918
+       },
+       "why": {
+        "time": 855,
+        "stop": 313,
+        "target": 33,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 906,
+         "meanR": -0.1476
+        },
+        "long": {
+         "n": 295,
+         "meanR": -0.0972
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1200.0,
+        "p10": 1196.9,
+        "p90": 1202.1,
+        "min": 1195.0,
+        "max": 1206.0
+       },
+       "closes_per_cal_week": {
+        "median": 5.6,
+        "p10": 5.5856,
+        "p90": 5.6104,
+        "min": 5.577,
+        "max": 5.628
+       },
+       "closes_per_elig_week": {
+        "median": 5.618,
+        "p10": 5.6035,
+        "p90": 5.6275,
+        "min": 5.595,
+        "max": 5.646
+       },
+       "meanR_budget": {
+        "median": -0.1318,
+        "p10": -0.1357,
+        "p90": -0.1271,
+        "min": -0.1472,
+        "max": -0.1228
+       },
+       "meanR_actual": {
+        "median": -0.1327,
+        "p10": -0.1365,
+        "p90": -0.128,
+        "min": -0.1483,
+        "max": -0.1238
+       },
+       "early_meanR": {
+        "median": -0.1398,
+        "p10": -0.1456,
+        "p90": -0.1334,
+        "min": -0.1556,
+        "max": -0.132
+       },
+       "later_meanR": {
+        "median": -0.1208,
+        "p10": -0.1301,
+        "p90": -0.1082,
+        "min": -0.1344,
+        "max": -0.1025
+       },
+       "exbest_meanR": {
+        "median": -0.1359,
+        "p10": -0.1404,
+        "p90": -0.1302,
+        "min": -0.1483,
+        "max": -0.1245
+       },
+       "closedR_maxdd": {
+        "median": 160.48,
+        "p10": 154.223,
+        "p90": 165.423,
+        "min": 149.08,
+        "max": 179.42
+       },
+       "marked_dd_R": {
+        "median": 160.865,
+        "p10": 154.613,
+        "p90": 165.803,
+        "min": 149.46,
+        "max": 179.8
+       },
+       "longest_underwater_days": {
+        "median": 1478.8,
+        "p10": 1478.8,
+        "p90": 1478.8,
+        "min": 1478.8,
+        "max": 1478.8
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "23bp": {
+      "order0": {
+       "n": 1202,
+       "skips": {},
+       "closes": 1201,
+       "terminal_open": 1,
+       "terminal_mtm": -0.14,
+       "closes_per_cal_week": 5.605,
+       "closes_per_elig_week": 5.623,
+       "meanR_budget": -0.1852,
+       "meanR_actual": -0.1864,
+       "sumR_budget": -222.37,
+       "early_n": 729,
+       "later_n": 472,
+       "early_meanR": -0.1957,
+       "later_meanR": -0.1688,
+       "exbest_meanR": -0.1891,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 174,
+         "sumR": -52.65,
+         "early_sumR": -35.57,
+         "later_sumR": -17.07
+        },
+        "XRPUSDT": {
+         "n": 152,
+         "sumR": -30.44,
+         "early_sumR": -18.74,
+         "later_sumR": -11.69
+        },
+        "ADAUSDT": {
+         "n": 168,
+         "sumR": -29.01,
+         "early_sumR": -16.67,
+         "later_sumR": -12.34
+        },
+        "LINKUSDT": {
+         "n": 112,
+         "sumR": -26.67,
+         "early_sumR": -10.43,
+         "later_sumR": -16.24
+        },
+        "DOGEUSDT": {
+         "n": 165,
+         "sumR": -23.28,
+         "early_sumR": -15.87,
+         "later_sumR": -7.41
+        },
+        "AVAXUSDT": {
+         "n": 160,
+         "sumR": -20.1,
+         "early_sumR": -16.66,
+         "later_sumR": -3.44
+        },
+        "BTCUSDT": {
+         "n": 83,
+         "sumR": -16.66,
+         "early_sumR": -8.82,
+         "later_sumR": -7.84
+        },
+        "SOLUSDT": {
+         "n": 112,
+         "sumR": -14.13,
+         "early_sumR": -10.82,
+         "later_sumR": -3.31
+        },
+        "ETHUSDT": {
+         "n": 75,
+         "sumR": -9.44,
+         "early_sumR": -9.1,
+         "later_sumR": -0.34
+        }
+       },
+       "closedR_maxdd": 224.43,
+       "marked_dd_usd": 1799.22,
+       "marked_dd_R": 224.9,
+       "longest_underwater_days": 1481.6,
+       "final_marked_usd": -1779.08,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0502,
+        "slippage": 0.0125,
+        "fees": 0.131,
+        "funding": 0.0039
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9918
+       },
+       "why": {
+        "time": 855,
+        "stop": 313,
+        "target": 33,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 906,
+         "meanR": -0.1971
+        },
+        "long": {
+         "n": 295,
+         "meanR": -0.1485
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1200.0,
+        "p10": 1196.9,
+        "p90": 1202.1,
+        "min": 1195.0,
+        "max": 1206.0
+       },
+       "closes_per_cal_week": {
+        "median": 5.6,
+        "p10": 5.5856,
+        "p90": 5.6104,
+        "min": 5.577,
+        "max": 5.628
+       },
+       "closes_per_elig_week": {
+        "median": 5.618,
+        "p10": 5.6035,
+        "p90": 5.6275,
+        "min": 5.595,
+        "max": 5.646
+       },
+       "meanR_budget": {
+        "median": -0.1815,
+        "p10": -0.1854,
+        "p90": -0.1764,
+        "min": -0.1973,
+        "max": -0.1721
+       },
+       "meanR_actual": {
+        "median": -0.1828,
+        "p10": -0.1866,
+        "p90": -0.1778,
+        "min": -0.1987,
+        "max": -0.1734
+       },
+       "early_meanR": {
+        "median": -0.1867,
+        "p10": -0.1926,
+        "p90": -0.1808,
+        "min": -0.2034,
+        "max": -0.179
+       },
+       "later_meanR": {
+        "median": -0.1739,
+        "p10": -0.1829,
+        "p90": -0.1611,
+        "min": -0.1879,
+        "max": -0.1558
+       },
+       "exbest_meanR": {
+        "median": -0.185,
+        "p10": -0.1897,
+        "p90": -0.1783,
+        "min": -0.1967,
+        "max": -0.1739
+       },
+       "closedR_maxdd": {
+        "median": 219.73,
+        "p10": 213.234,
+        "p90": 224.721,
+        "min": 208.28,
+        "max": 239.57
+       },
+       "marked_dd_R": {
+        "median": 220.2,
+        "p10": 213.704,
+        "p90": 225.191,
+        "min": 208.75,
+        "max": 240.04
+       },
+       "longest_underwater_days": {
+        "median": 1481.6,
+        "p10": 1481.6,
+        "p90": 1481.6,
+        "min": 1481.6,
+        "max": 1481.6
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     }
+    },
+    "worst": {
+     "7bp": {
+      "order0": {
+       "n": 1117,
+       "skips": {},
+       "closes": 1116,
+       "terminal_open": 1,
+       "terminal_mtm": 1.67,
+       "closes_per_cal_week": 5.208,
+       "closes_per_elig_week": 5.225,
+       "meanR_budget": -0.0588,
+       "meanR_actual": -0.0587,
+       "sumR_budget": -65.59,
+       "early_n": 671,
+       "later_n": 445,
+       "early_meanR": -0.0731,
+       "later_meanR": -0.0372,
+       "exbest_meanR": -0.0702,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 156,
+         "sumR": -18.58,
+         "early_sumR": -16.4,
+         "later_sumR": -2.18
+        },
+        "LINKUSDT": {
+         "n": 107,
+         "sumR": -16.44,
+         "early_sumR": -7.19,
+         "later_sumR": -9.25
+        },
+        "XRPUSDT": {
+         "n": 146,
+         "sumR": -14.08,
+         "early_sumR": -4.44,
+         "later_sumR": -9.64
+        },
+        "ADAUSDT": {
+         "n": 160,
+         "sumR": -11.25,
+         "early_sumR": -5.88,
+         "later_sumR": -5.37
+        },
+        "DOGEUSDT": {
+         "n": 141,
+         "sumR": -4.16,
+         "early_sumR": -0.1,
+         "later_sumR": -4.06
+        },
+        "BTCUSDT": {
+         "n": 74,
+         "sumR": -3.69,
+         "early_sumR": -5.85,
+         "later_sumR": 2.16
+        },
+        "ETHUSDT": {
+         "n": 73,
+         "sumR": -1.21,
+         "early_sumR": -6.9,
+         "later_sumR": 5.68
+        },
+        "SOLUSDT": {
+         "n": 106,
+         "sumR": 1.83,
+         "early_sumR": 1.6,
+         "later_sumR": 0.23
+        },
+        "AVAXUSDT": {
+         "n": 153,
+         "sumR": 1.99,
+         "early_sumR": -3.88,
+         "later_sumR": 5.88
+        }
+       },
+       "closedR_maxdd": 67.78,
+       "marked_dd_usd": 544.15,
+       "marked_dd_R": 68.02,
+       "longest_underwater_days": 1481.5,
+       "final_marked_usd": -523.06,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0231,
+        "slippage": 0.0125,
+        "fees": 0.0312,
+        "funding": 0.0045
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9916
+       },
+       "why": {
+        "time": 783,
+        "stop": 296,
+        "target": 37,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 828,
+         "meanR": -0.0659
+        },
+        "long": {
+         "n": 288,
+         "meanR": -0.0382
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1114.0,
+        "p10": 1111.0,
+        "p90": 1117.0,
+        "min": 1109.0,
+        "max": 1118.0
+       },
+       "closes_per_cal_week": {
+        "median": 5.199,
+        "p10": 5.185,
+        "p90": 5.213,
+        "min": 5.176,
+        "max": 5.218
+       },
+       "closes_per_elig_week": {
+        "median": 5.215,
+        "p10": 5.201,
+        "p90": 5.229,
+        "min": 5.192,
+        "max": 5.234
+       },
+       "meanR_budget": {
+        "median": -0.0576,
+        "p10": -0.0624,
+        "p90": -0.0507,
+        "min": -0.0675,
+        "max": -0.0479
+       },
+       "meanR_actual": {
+        "median": -0.0576,
+        "p10": -0.0623,
+        "p90": -0.0505,
+        "min": -0.0675,
+        "max": -0.0479
+       },
+       "early_meanR": {
+        "median": -0.069,
+        "p10": -0.0738,
+        "p90": -0.0635,
+        "min": -0.0801,
+        "max": -0.0589
+       },
+       "later_meanR": {
+        "median": -0.0408,
+        "p10": -0.0491,
+        "p90": -0.0273,
+        "min": -0.0529,
+        "max": -0.0232
+       },
+       "exbest_meanR": {
+        "median": -0.0683,
+        "p10": -0.0731,
+        "p90": -0.0622,
+        "min": -0.0766,
+        "max": -0.0555
+       },
+       "closedR_maxdd": {
+        "median": 66.335,
+        "p10": 58.339,
+        "p90": 71.798,
+        "min": 55.46,
+        "max": 77.56
+       },
+       "marked_dd_R": {
+        "median": 66.575,
+        "p10": 58.579,
+        "p90": 72.038,
+        "min": 55.7,
+        "max": 77.8
+       },
+       "longest_underwater_days": {
+        "median": 1481.5,
+        "p10": 1481.5,
+        "p90": 1481.5,
+        "min": 1481.5,
+        "max": 1481.5
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "15bp": {
+      "order0": {
+       "n": 1117,
+       "skips": {},
+       "closes": 1116,
+       "terminal_open": 1,
+       "terminal_mtm": 0.76,
+       "closes_per_cal_week": 5.208,
+       "closes_per_elig_week": 5.225,
+       "meanR_budget": -0.1087,
+       "meanR_actual": -0.1091,
+       "sumR_budget": -121.36,
+       "early_n": 671,
+       "later_n": 445,
+       "early_meanR": -0.1211,
+       "later_meanR": -0.0901,
+       "exbest_meanR": -0.1175,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 156,
+         "sumR": -29.6,
+         "early_sumR": -21.8,
+         "later_sumR": -7.8
+        },
+        "XRPUSDT": {
+         "n": 146,
+         "sumR": -21.31,
+         "early_sumR": -9.13,
+         "later_sumR": -12.18
+        },
+        "LINKUSDT": {
+         "n": 107,
+         "sumR": -20.94,
+         "early_sumR": -10.0,
+         "later_sumR": -10.93
+        },
+        "ADAUSDT": {
+         "n": 160,
+         "sumR": -18.21,
+         "early_sumR": -10.35,
+         "later_sumR": -7.86
+        },
+        "DOGEUSDT": {
+         "n": 141,
+         "sumR": -9.88,
+         "early_sumR": -3.67,
+         "later_sumR": -6.2
+        },
+        "BTCUSDT": {
+         "n": 74,
+         "sumR": -9.35,
+         "early_sumR": -8.91,
+         "later_sumR": -0.44
+        },
+        "ETHUSDT": {
+         "n": 73,
+         "sumR": -5.28,
+         "early_sumR": -9.18,
+         "later_sumR": 3.9
+        },
+        "AVAXUSDT": {
+         "n": 153,
+         "sumR": -4.15,
+         "early_sumR": -7.04,
+         "later_sumR": 2.89
+        },
+        "SOLUSDT": {
+         "n": 106,
+         "sumR": -2.64,
+         "early_sumR": -1.19,
+         "later_sumR": -1.45
+        }
+       },
+       "closedR_maxdd": 123.45,
+       "marked_dd_usd": 990.41,
+       "marked_dd_R": 123.8,
+       "longest_underwater_days": 1481.5,
+       "final_marked_usd": -970.1,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0231,
+        "slippage": 0.0125,
+        "fees": 0.0812,
+        "funding": 0.0045
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9916
+       },
+       "why": {
+        "time": 783,
+        "stop": 296,
+        "target": 37,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 828,
+         "meanR": -0.1157
+        },
+        "long": {
+         "n": 288,
+         "meanR": -0.0887
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1114.0,
+        "p10": 1111.0,
+        "p90": 1117.0,
+        "min": 1109.0,
+        "max": 1118.0
+       },
+       "closes_per_cal_week": {
+        "median": 5.199,
+        "p10": 5.185,
+        "p90": 5.213,
+        "min": 5.176,
+        "max": 5.218
+       },
+       "closes_per_elig_week": {
+        "median": 5.215,
+        "p10": 5.201,
+        "p90": 5.229,
+        "min": 5.192,
+        "max": 5.234
+       },
+       "meanR_budget": {
+        "median": -0.1072,
+        "p10": -0.1119,
+        "p90": -0.1005,
+        "min": -0.1175,
+        "max": -0.0971
+       },
+       "meanR_actual": {
+        "median": -0.1076,
+        "p10": -0.1123,
+        "p90": -0.1007,
+        "min": -0.1179,
+        "max": -0.0974
+       },
+       "early_meanR": {
+        "median": -0.1169,
+        "p10": -0.1212,
+        "p90": -0.1112,
+        "min": -0.1282,
+        "max": -0.1067
+       },
+       "later_meanR": {
+        "median": -0.0935,
+        "p10": -0.1017,
+        "p90": -0.0798,
+        "min": -0.1055,
+        "max": -0.0763
+       },
+       "exbest_meanR": {
+        "median": -0.1172,
+        "p10": -0.1236,
+        "p90": -0.1125,
+        "min": -0.1275,
+        "max": -0.1057
+       },
+       "closedR_maxdd": {
+        "median": 121.41,
+        "p10": 113.477,
+        "p90": 126.876,
+        "min": 109.96,
+        "max": 133.36
+       },
+       "marked_dd_R": {
+        "median": 121.765,
+        "p10": 113.828,
+        "p90": 127.236,
+        "min": 110.31,
+        "max": 133.72
+       },
+       "longest_underwater_days": {
+        "median": 1481.5,
+        "p10": 1481.5,
+        "p90": 1481.5,
+        "min": 1481.5,
+        "max": 1481.5
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "23bp": {
+      "order0": {
+       "n": 1117,
+       "skips": {},
+       "closes": 1116,
+       "terminal_open": 1,
+       "terminal_mtm": -0.14,
+       "closes_per_cal_week": 5.208,
+       "closes_per_elig_week": 5.225,
+       "meanR_budget": -0.1587,
+       "meanR_actual": -0.1595,
+       "sumR_budget": -177.13,
+       "early_n": 671,
+       "later_n": 445,
+       "early_meanR": -0.1692,
+       "later_meanR": -0.1429,
+       "exbest_meanR": -0.1683,
+       "by_coin": {
+        "BNBUSDT": {
+         "n": 156,
+         "sumR": -40.62,
+         "early_sumR": -27.21,
+         "later_sumR": -13.41
+        },
+        "XRPUSDT": {
+         "n": 146,
+         "sumR": -28.54,
+         "early_sumR": -13.82,
+         "later_sumR": -14.72
+        },
+        "LINKUSDT": {
+         "n": 107,
+         "sumR": -25.44,
+         "early_sumR": -12.81,
+         "later_sumR": -12.62
+        },
+        "ADAUSDT": {
+         "n": 160,
+         "sumR": -25.17,
+         "early_sumR": -14.83,
+         "later_sumR": -10.34
+        },
+        "DOGEUSDT": {
+         "n": 141,
+         "sumR": -15.6,
+         "early_sumR": -7.25,
+         "later_sumR": -8.35
+        },
+        "BTCUSDT": {
+         "n": 74,
+         "sumR": -15.01,
+         "early_sumR": -11.96,
+         "later_sumR": -3.05
+        },
+        "AVAXUSDT": {
+         "n": 153,
+         "sumR": -10.29,
+         "early_sumR": -10.19,
+         "later_sumR": -0.1
+        },
+        "ETHUSDT": {
+         "n": 73,
+         "sumR": -9.35,
+         "early_sumR": -11.47,
+         "later_sumR": 2.12
+        },
+        "SOLUSDT": {
+         "n": 106,
+         "sumR": -7.11,
+         "early_sumR": -3.97,
+         "later_sumR": -3.14
+        }
+       },
+       "closedR_maxdd": 179.11,
+       "marked_dd_usd": 1436.67,
+       "marked_dd_R": 179.58,
+       "longest_underwater_days": 1481.5,
+       "final_marked_usd": -1417.15,
+       "decomp_R_per_trade": {
+        "gross_after_slip": -0.0231,
+        "slippage": 0.0125,
+        "fees": 0.1312,
+        "funding": 0.0045
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9916
+       },
+       "why": {
+        "time": 783,
+        "stop": 296,
+        "target": 37,
+        "TERMINAL_OPEN": 1
+       },
+       "by_side": {
+        "short": {
+         "n": 828,
+         "meanR": -0.1655
+        },
+        "long": {
+         "n": 288,
+         "meanR": -0.1391
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1114.0,
+        "p10": 1111.0,
+        "p90": 1117.0,
+        "min": 1109.0,
+        "max": 1118.0
+       },
+       "closes_per_cal_week": {
+        "median": 5.199,
+        "p10": 5.185,
+        "p90": 5.213,
+        "min": 5.176,
+        "max": 5.218
+       },
+       "closes_per_elig_week": {
+        "median": 5.215,
+        "p10": 5.201,
+        "p90": 5.229,
+        "min": 5.192,
+        "max": 5.234
+       },
+       "meanR_budget": {
+        "median": -0.1569,
+        "p10": -0.1615,
+        "p90": -0.1502,
+        "min": -0.1676,
+        "max": -0.1462
+       },
+       "meanR_actual": {
+        "median": -0.1577,
+        "p10": -0.1622,
+        "p90": -0.151,
+        "min": -0.1684,
+        "max": -0.147
+       },
+       "early_meanR": {
+        "median": -0.1644,
+        "p10": -0.1693,
+        "p90": -0.1588,
+        "min": -0.1763,
+        "max": -0.1545
+       },
+       "later_meanR": {
+        "median": -0.1462,
+        "p10": -0.1547,
+        "p90": -0.1326,
+        "min": -0.1583,
+        "max": -0.1294
+       },
+       "exbest_meanR": {
+        "median": -0.1676,
+        "p10": -0.1748,
+        "p90": -0.1612,
+        "min": -0.1784,
+        "max": -0.1558
+       },
+       "closedR_maxdd": {
+        "median": 176.805,
+        "p10": 168.616,
+        "p90": 181.962,
+        "min": 164.46,
+        "max": 189.16
+       },
+       "marked_dd_R": {
+        "median": 177.275,
+        "p10": 169.086,
+        "p90": 182.432,
+        "min": 164.93,
+        "max": 189.63
+       },
+       "longest_underwater_days": {
+        "median": 1481.5,
+        "p10": 1481.5,
+        "p90": 1481.5,
+        "min": 1481.5,
+        "max": 1481.5
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     }
+    }
+   },
+   "gates": {
+    "closes_ge_100": true,
+    "each_period_ge_30": true,
+    "R15_early_pos": false,
+    "R15_later_pos": false,
+    "R23_overall_pos": false,
+    "exbest15_pos": false,
+    "p10_R15_pos": false,
+    "worst_path_R15_pos": false,
+    "PASS": false
+   }
+  },
+  "extra31": {
+   "eligible_weeks": 213.6,
+   "paths": {
+    "causal": {
+     "7bp": {
+      "order0": {
+       "n": 2084,
+       "skips": {},
+       "closes": 2084,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 9.726,
+       "closes_per_elig_week": 9.756,
+       "meanR_budget": -0.0126,
+       "meanR_actual": -0.0131,
+       "sumR_budget": -26.18,
+       "early_n": 1192,
+       "later_n": 892,
+       "early_meanR": -0.0262,
+       "later_meanR": 0.0056,
+       "exbest_meanR": -0.0205,
+       "by_coin": {
+        "UNIUSDT": {
+         "n": 79,
+         "sumR": -17.95,
+         "early_sumR": -2.19,
+         "later_sumR": -15.76
+        },
+        "LTCUSDT": {
+         "n": 87,
+         "sumR": -13.68,
+         "early_sumR": -12.81,
+         "later_sumR": -0.87
+        },
+        "ZECUSDT": {
+         "n": 62,
+         "sumR": -8.17,
+         "early_sumR": 0.43,
+         "later_sumR": -8.6
+        },
+        "FETUSDT": {
+         "n": 74,
+         "sumR": -7.69,
+         "early_sumR": -0.25,
+         "later_sumR": -7.45
+        },
+        "ETCUSDT": {
+         "n": 73,
+         "sumR": -7.49,
+         "early_sumR": -0.65,
+         "later_sumR": -6.83
+        },
+        "ONDOUSDT": {
+         "n": 48,
+         "sumR": -7.2,
+         "early_sumR": -5.19,
+         "later_sumR": -2.01
+        },
+        "BCHUSDT": {
+         "n": 125,
+         "sumR": -5.84,
+         "early_sumR": -1.25,
+         "later_sumR": -4.58
+        },
+        "XLMUSDT": {
+         "n": 74,
+         "sumR": -4.05,
+         "early_sumR": 1.74,
+         "later_sumR": -5.78
+        },
+        "SUPERUSDT": {
+         "n": 19,
+         "sumR": -3.3,
+         "early_sumR": -2.62,
+         "later_sumR": -0.69
+        },
+        "STRKUSDT": {
+         "n": 38,
+         "sumR": -2.89,
+         "early_sumR": -1.72,
+         "later_sumR": -1.17
+        },
+        "1000PEPEUSDT": {
+         "n": 98,
+         "sumR": -2.64,
+         "early_sumR": -4.56,
+         "later_sumR": 1.91
+        },
+        "QNTUSDT": {
+         "n": 24,
+         "sumR": -2.31,
+         "early_sumR": -1.22,
+         "later_sumR": -1.08
+        },
+        "AAVEUSDT": {
+         "n": 115,
+         "sumR": -1.94,
+         "early_sumR": -4.34,
+         "later_sumR": 2.4
+        },
+        "MOVRUSDT": {
+         "n": 10,
+         "sumR": -1.76,
+         "early_sumR": -1.76,
+         "later_sumR": 0.0
+        },
+        "ARBUSDT": {
+         "n": 87,
+         "sumR": -1.39,
+         "early_sumR": -3.23,
+         "later_sumR": 1.84
+        },
+        "MANAUSDT": {
+         "n": 72,
+         "sumR": -0.54,
+         "early_sumR": -2.32,
+         "later_sumR": 1.78
+        },
+        "ONEUSDT": {
+         "n": 31,
+         "sumR": -0.41,
+         "early_sumR": -0.17,
+         "later_sumR": -0.24
+        },
+        "APTUSDT": {
+         "n": 101,
+         "sumR": -0.3,
+         "early_sumR": -6.8,
+         "later_sumR": 6.5
+        },
+        "FILUSDT": {
+         "n": 102,
+         "sumR": -0.05,
+         "early_sumR": -2.21,
+         "later_sumR": 2.16
+        },
+        "ENAUSDT": {
+         "n": 46,
+         "sumR": 0.54,
+         "early_sumR": -1.4,
+         "later_sumR": 1.94
+        },
+        "WLDUSDT": {
+         "n": 72,
+         "sumR": 2.48,
+         "early_sumR": 4.05,
+         "later_sumR": -1.57
+        },
+        "NEARUSDT": {
+         "n": 80,
+         "sumR": 2.57,
+         "early_sumR": 1.66,
+         "later_sumR": 0.91
+        },
+        "DOTUSDT": {
+         "n": 78,
+         "sumR": 3.09,
+         "early_sumR": 1.04,
+         "later_sumR": 2.04
+        },
+        "SUIUSDT": {
+         "n": 69,
+         "sumR": 3.79,
+         "early_sumR": -1.94,
+         "later_sumR": 5.73
+        },
+        "ARKUSDT": {
+         "n": 43,
+         "sumR": 4.32,
+         "early_sumR": 3.34,
+         "later_sumR": 0.98
+        },
+        "ENJUSDT": {
+         "n": 60,
+         "sumR": 4.84,
+         "early_sumR": 0.31,
+         "later_sumR": 4.53
+        },
+        "SANDUSDT": {
+         "n": 52,
+         "sumR": 4.95,
+         "early_sumR": 2.77,
+         "later_sumR": 2.18
+        },
+        "TAOUSDT": {
+         "n": 41,
+         "sumR": 5.76,
+         "early_sumR": 0.97,
+         "later_sumR": 4.79
+        },
+        "GALAUSDT": {
+         "n": 93,
+         "sumR": 8.11,
+         "early_sumR": 4.62,
+         "later_sumR": 3.49
+        },
+        "ZROUSDT": {
+         "n": 45,
+         "sumR": 8.27,
+         "early_sumR": 0.81,
+         "later_sumR": 7.46
+        },
+        "INJUSDT": {
+         "n": 86,
+         "sumR": 14.7,
+         "early_sumR": 3.72,
+         "later_sumR": 10.98
+        }
+       },
+       "closedR_maxdd": 51.64,
+       "marked_dd_usd": 416.3,
+       "marked_dd_R": 52.04,
+       "longest_underwater_days": 1398.3,
+       "final_marked_usd": -209.43,
+       "decomp_R_per_trade": {
+        "gross_after_slip": 0.0126,
+        "slippage": 0.0089,
+        "fees": 0.0223,
+        "funding": 0.0028
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9946
+       },
+       "why": {
+        "time": 1535,
+        "stop": 493,
+        "target": 56
+       },
+       "by_side": {
+        "short": {
+         "n": 1605,
+         "meanR": -0.0073
+        },
+        "long": {
+         "n": 479,
+         "meanR": -0.03
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2089.0,
+        "p10": 2083.0,
+        "p90": 2092.0,
+        "min": 2077.0,
+        "max": 2099.0
+       },
+       "closes_per_cal_week": {
+        "median": 9.749,
+        "p10": 9.721,
+        "p90": 9.763,
+        "min": 9.693,
+        "max": 9.796
+       },
+       "closes_per_elig_week": {
+        "median": 9.78,
+        "p10": 9.752,
+        "p90": 9.794,
+        "min": 9.724,
+        "max": 9.827
+       },
+       "meanR_budget": {
+        "median": -0.0146,
+        "p10": -0.0213,
+        "p90": -0.0088,
+        "min": -0.0252,
+        "max": -0.0057
+       },
+       "meanR_actual": {
+        "median": -0.0151,
+        "p10": -0.0218,
+        "p90": -0.0092,
+        "min": -0.0258,
+        "max": -0.0062
+       },
+       "early_meanR": {
+        "median": -0.0259,
+        "p10": -0.0322,
+        "p90": -0.0176,
+        "min": -0.0351,
+        "max": -0.0125
+       },
+       "later_meanR": {
+        "median": -0.0008,
+        "p10": -0.0101,
+        "p90": 0.0068,
+        "min": -0.014,
+        "max": 0.0107
+       },
+       "exbest_meanR": {
+        "median": -0.023,
+        "p10": -0.0288,
+        "p90": -0.016,
+        "min": -0.032,
+        "max": -0.0136
+       },
+       "closedR_maxdd": {
+        "median": 50.83,
+        "p10": 42.107,
+        "p90": 58.774,
+        "min": 34.54,
+        "max": 67.78
+       },
+       "marked_dd_R": {
+        "median": 51.24,
+        "p10": 42.512,
+        "p90": 59.037,
+        "min": 34.92,
+        "max": 68.16
+       },
+       "longest_underwater_days": {
+        "median": 1397.8,
+        "p10": 1397.8,
+        "p90": 1399.71,
+        "min": 1397.8,
+        "max": 1412.4
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "15bp": {
+      "order0": {
+       "n": 2084,
+       "skips": {},
+       "closes": 2084,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 9.726,
+       "closes_per_elig_week": 9.756,
+       "meanR_budget": -0.0483,
+       "meanR_actual": -0.049,
+       "sumR_budget": -100.62,
+       "early_n": 1192,
+       "later_n": 892,
+       "early_meanR": -0.0628,
+       "later_meanR": -0.0288,
+       "exbest_meanR": -0.0563,
+       "by_coin": {
+        "UNIUSDT": {
+         "n": 79,
+         "sumR": -20.99,
+         "early_sumR": -3.78,
+         "later_sumR": -17.2
+        },
+        "LTCUSDT": {
+         "n": 87,
+         "sumR": -18.14,
+         "early_sumR": -15.75,
+         "later_sumR": -2.39
+        },
+        "BCHUSDT": {
+         "n": 125,
+         "sumR": -11.02,
+         "early_sumR": -4.4,
+         "later_sumR": -6.62
+        },
+        "ETCUSDT": {
+         "n": 73,
+         "sumR": -10.59,
+         "early_sumR": -2.44,
+         "later_sumR": -8.15
+        },
+        "ZECUSDT": {
+         "n": 62,
+         "sumR": -10.33,
+         "early_sumR": -1.03,
+         "later_sumR": -9.3
+        },
+        "FETUSDT": {
+         "n": 74,
+         "sumR": -10.17,
+         "early_sumR": -1.46,
+         "later_sumR": -8.71
+        },
+        "ONDOUSDT": {
+         "n": 48,
+         "sumR": -8.62,
+         "early_sumR": -5.57,
+         "later_sumR": -3.04
+        },
+        "XLMUSDT": {
+         "n": 74,
+         "sumR": -7.18,
+         "early_sumR": 0.05,
+         "later_sumR": -7.23
+        },
+        "AAVEUSDT": {
+         "n": 115,
+         "sumR": -6.16,
+         "early_sumR": -6.7,
+         "later_sumR": 0.54
+        },
+        "1000PEPEUSDT": {
+         "n": 98,
+         "sumR": -5.43,
+         "early_sumR": -6.12,
+         "later_sumR": 0.7
+        },
+        "ARBUSDT": {
+         "n": 87,
+         "sumR": -4.71,
+         "early_sumR": -5.07,
+         "later_sumR": 0.36
+        },
+        "STRKUSDT": {
+         "n": 38,
+         "sumR": -3.96,
+         "early_sumR": -1.87,
+         "later_sumR": -2.09
+        },
+        "FILUSDT": {
+         "n": 102,
+         "sumR": -3.95,
+         "early_sumR": -4.47,
+         "later_sumR": 0.51
+        },
+        "SUPERUSDT": {
+         "n": 19,
+         "sumR": -3.76,
+         "early_sumR": -2.9,
+         "later_sumR": -0.85
+        },
+        "APTUSDT": {
+         "n": 101,
+         "sumR": -3.56,
+         "early_sumR": -8.77,
+         "later_sumR": 5.21
+        },
+        "MANAUSDT": {
+         "n": 72,
+         "sumR": -3.52,
+         "early_sumR": -4.39,
+         "later_sumR": 0.87
+        },
+        "QNTUSDT": {
+         "n": 24,
+         "sumR": -3.18,
+         "early_sumR": -1.81,
+         "later_sumR": -1.38
+        },
+        "MOVRUSDT": {
+         "n": 10,
+         "sumR": -1.99,
+         "early_sumR": -1.99,
+         "later_sumR": 0.0
+        },
+        "ONEUSDT": {
+         "n": 31,
+         "sumR": -1.36,
+         "early_sumR": -1.09,
+         "later_sumR": -0.27
+        },
+        "DOTUSDT": {
+         "n": 78,
+         "sumR": -0.81,
+         "early_sumR": -1.86,
+         "later_sumR": 1.05
+        },
+        "ENAUSDT": {
+         "n": 46,
+         "sumR": -0.64,
+         "early_sumR": -1.64,
+         "later_sumR": 1.0
+        },
+        "NEARUSDT": {
+         "n": 80,
+         "sumR": -0.25,
+         "early_sumR": -0.2,
+         "later_sumR": -0.05
+        },
+        "WLDUSDT": {
+         "n": 72,
+         "sumR": 0.66,
+         "early_sumR": 3.33,
+         "later_sumR": -2.67
+        },
+        "SUIUSDT": {
+         "n": 69,
+         "sumR": 1.65,
+         "early_sumR": -3.11,
+         "later_sumR": 4.75
+        },
+        "ENJUSDT": {
+         "n": 60,
+         "sumR": 2.65,
+         "early_sumR": -1.69,
+         "later_sumR": 4.35
+        },
+        "SANDUSDT": {
+         "n": 52,
+         "sumR": 2.85,
+         "early_sumR": 1.49,
+         "later_sumR": 1.36
+        },
+        "ARKUSDT": {
+         "n": 43,
+         "sumR": 3.17,
+         "early_sumR": 2.4,
+         "later_sumR": 0.77
+        },
+        "TAOUSDT": {
+         "n": 41,
+         "sumR": 4.63,
+         "early_sumR": 0.79,
+         "later_sumR": 3.84
+        },
+        "GALAUSDT": {
+         "n": 93,
+         "sumR": 5.12,
+         "early_sumR": 2.28,
+         "later_sumR": 2.85
+        },
+        "ZROUSDT": {
+         "n": 45,
+         "sumR": 7.07,
+         "early_sumR": 0.65,
+         "later_sumR": 6.42
+        },
+        "INJUSDT": {
+         "n": 86,
+         "sumR": 11.9,
+         "early_sumR": 2.23,
+         "later_sumR": 9.66
+        }
+       },
+       "closedR_maxdd": 105.84,
+       "marked_dd_usd": 848.51,
+       "marked_dd_R": 106.06,
+       "longest_underwater_days": 1398.3,
+       "final_marked_usd": -804.98,
+       "decomp_R_per_trade": {
+        "gross_after_slip": 0.0126,
+        "slippage": 0.0089,
+        "fees": 0.058,
+        "funding": 0.0028
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9946
+       },
+       "why": {
+        "time": 1535,
+        "stop": 493,
+        "target": 56
+       },
+       "by_side": {
+        "short": {
+         "n": 1605,
+         "meanR": -0.0428
+        },
+        "long": {
+         "n": 479,
+         "meanR": -0.0667
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2089.0,
+        "p10": 2083.0,
+        "p90": 2092.0,
+        "min": 2077.0,
+        "max": 2099.0
+       },
+       "closes_per_cal_week": {
+        "median": 9.749,
+        "p10": 9.721,
+        "p90": 9.763,
+        "min": 9.693,
+        "max": 9.796
+       },
+       "closes_per_elig_week": {
+        "median": 9.78,
+        "p10": 9.752,
+        "p90": 9.794,
+        "min": 9.724,
+        "max": 9.827
+       },
+       "meanR_budget": {
+        "median": -0.0501,
+        "p10": -0.057,
+        "p90": -0.0444,
+        "min": -0.0611,
+        "max": -0.0413
+       },
+       "meanR_actual": {
+        "median": -0.0508,
+        "p10": -0.0576,
+        "p90": -0.045,
+        "min": -0.0617,
+        "max": -0.0419
+       },
+       "early_meanR": {
+        "median": -0.0626,
+        "p10": -0.069,
+        "p90": -0.0542,
+        "min": -0.0719,
+        "max": -0.0492
+       },
+       "later_meanR": {
+        "median": -0.0349,
+        "p10": -0.044,
+        "p90": -0.0273,
+        "min": -0.0482,
+        "max": -0.0233
+       },
+       "exbest_meanR": {
+        "median": -0.0587,
+        "p10": -0.0645,
+        "p90": -0.0518,
+        "min": -0.068,
+        "max": -0.0494
+       },
+       "closedR_maxdd": {
+        "median": 109.825,
+        "p10": 97.568,
+        "p90": 121.786,
+        "min": 91.48,
+        "max": 130.31
+       },
+       "marked_dd_R": {
+        "median": 110.005,
+        "p10": 97.723,
+        "p90": 121.959,
+        "min": 91.63,
+        "max": 130.46
+       },
+       "longest_underwater_days": {
+        "median": 1398.3,
+        "p10": 1397.8,
+        "p90": 1478.1,
+        "min": 1397.8,
+        "max": 1478.1
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "23bp": {
+      "order0": {
+       "n": 2084,
+       "skips": {},
+       "closes": 2084,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 9.726,
+       "closes_per_elig_week": 9.756,
+       "meanR_budget": -0.084,
+       "meanR_actual": -0.0849,
+       "sumR_budget": -175.07,
+       "early_n": 1192,
+       "later_n": 892,
+       "early_meanR": -0.0995,
+       "later_meanR": -0.0632,
+       "exbest_meanR": -0.0922,
+       "by_coin": {
+        "UNIUSDT": {
+         "n": 79,
+         "sumR": -24.02,
+         "early_sumR": -5.38,
+         "later_sumR": -18.64
+        },
+        "LTCUSDT": {
+         "n": 87,
+         "sumR": -22.6,
+         "early_sumR": -18.69,
+         "later_sumR": -3.92
+        },
+        "BCHUSDT": {
+         "n": 125,
+         "sumR": -16.2,
+         "early_sumR": -7.55,
+         "later_sumR": -8.65
+        },
+        "ETCUSDT": {
+         "n": 73,
+         "sumR": -13.69,
+         "early_sumR": -4.22,
+         "later_sumR": -9.47
+        },
+        "FETUSDT": {
+         "n": 74,
+         "sumR": -12.64,
+         "early_sumR": -2.67,
+         "later_sumR": -9.97
+        },
+        "ZECUSDT": {
+         "n": 62,
+         "sumR": -12.48,
+         "early_sumR": -2.5,
+         "later_sumR": -9.99
+        },
+        "AAVEUSDT": {
+         "n": 115,
+         "sumR": -10.38,
+         "early_sumR": -9.06,
+         "later_sumR": -1.32
+        },
+        "XLMUSDT": {
+         "n": 74,
+         "sumR": -10.3,
+         "early_sumR": -1.63,
+         "later_sumR": -8.67
+        },
+        "ONDOUSDT": {
+         "n": 48,
+         "sumR": -10.04,
+         "early_sumR": -5.96,
+         "later_sumR": -4.08
+        },
+        "1000PEPEUSDT": {
+         "n": 98,
+         "sumR": -8.22,
+         "early_sumR": -7.69,
+         "later_sumR": -0.52
+        },
+        "ARBUSDT": {
+         "n": 87,
+         "sumR": -8.03,
+         "early_sumR": -6.92,
+         "later_sumR": -1.11
+        },
+        "FILUSDT": {
+         "n": 102,
+         "sumR": -7.85,
+         "early_sumR": -6.72,
+         "later_sumR": -1.14
+        },
+        "APTUSDT": {
+         "n": 101,
+         "sumR": -6.82,
+         "early_sumR": -10.74,
+         "later_sumR": 3.91
+        },
+        "MANAUSDT": {
+         "n": 72,
+         "sumR": -6.5,
+         "early_sumR": -6.46,
+         "later_sumR": -0.04
+        },
+        "STRKUSDT": {
+         "n": 38,
+         "sumR": -5.03,
+         "early_sumR": -2.03,
+         "later_sumR": -3.01
+        },
+        "DOTUSDT": {
+         "n": 78,
+         "sumR": -4.7,
+         "early_sumR": -4.76,
+         "later_sumR": 0.06
+        },
+        "SUPERUSDT": {
+         "n": 19,
+         "sumR": -4.22,
+         "early_sumR": -3.19,
+         "later_sumR": -1.02
+        },
+        "QNTUSDT": {
+         "n": 24,
+         "sumR": -4.06,
+         "early_sumR": -2.39,
+         "later_sumR": -1.67
+        },
+        "NEARUSDT": {
+         "n": 80,
+         "sumR": -3.07,
+         "early_sumR": -2.05,
+         "later_sumR": -1.02
+        },
+        "ONEUSDT": {
+         "n": 31,
+         "sumR": -2.32,
+         "early_sumR": -2.02,
+         "later_sumR": -0.3
+        },
+        "MOVRUSDT": {
+         "n": 10,
+         "sumR": -2.22,
+         "early_sumR": -2.22,
+         "later_sumR": 0.0
+        },
+        "ENAUSDT": {
+         "n": 46,
+         "sumR": -1.83,
+         "early_sumR": -1.89,
+         "later_sumR": 0.06
+        },
+        "WLDUSDT": {
+         "n": 72,
+         "sumR": -1.16,
+         "early_sumR": 2.62,
+         "later_sumR": -3.77
+        },
+        "SUIUSDT": {
+         "n": 69,
+         "sumR": -0.5,
+         "early_sumR": -4.28,
+         "later_sumR": 3.78
+        },
+        "ENJUSDT": {
+         "n": 60,
+         "sumR": 0.46,
+         "early_sumR": -3.7,
+         "later_sumR": 4.17
+        },
+        "SANDUSDT": {
+         "n": 52,
+         "sumR": 0.75,
+         "early_sumR": 0.21,
+         "later_sumR": 0.54
+        },
+        "ARKUSDT": {
+         "n": 43,
+         "sumR": 2.03,
+         "early_sumR": 1.46,
+         "later_sumR": 0.56
+        },
+        "GALAUSDT": {
+         "n": 93,
+         "sumR": 2.14,
+         "early_sumR": -0.06,
+         "later_sumR": 2.2
+        },
+        "TAOUSDT": {
+         "n": 41,
+         "sumR": 3.49,
+         "early_sumR": 0.61,
+         "later_sumR": 2.89
+        },
+        "ZROUSDT": {
+         "n": 45,
+         "sumR": 5.86,
+         "early_sumR": 0.48,
+         "later_sumR": 5.38
+        },
+        "INJUSDT": {
+         "n": 86,
+         "sumR": 9.09,
+         "early_sumR": 0.75,
+         "later_sumR": 8.34
+        }
+       },
+       "closedR_maxdd": 177.1,
+       "marked_dd_usd": 1418.04,
+       "marked_dd_R": 177.25,
+       "longest_underwater_days": 1478.1,
+       "final_marked_usd": -1400.53,
+       "decomp_R_per_trade": {
+        "gross_after_slip": 0.0126,
+        "slippage": 0.0089,
+        "fees": 0.0938,
+        "funding": 0.0028
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9946
+       },
+       "why": {
+        "time": 1535,
+        "stop": 493,
+        "target": 56
+       },
+       "by_side": {
+        "short": {
+         "n": 1605,
+         "meanR": -0.0782
+        },
+        "long": {
+         "n": 479,
+         "meanR": -0.1034
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 2089.0,
+        "p10": 2083.0,
+        "p90": 2092.0,
+        "min": 2077.0,
+        "max": 2099.0
+       },
+       "closes_per_cal_week": {
+        "median": 9.749,
+        "p10": 9.721,
+        "p90": 9.763,
+        "min": 9.693,
+        "max": 9.796
+       },
+       "closes_per_elig_week": {
+        "median": 9.78,
+        "p10": 9.752,
+        "p90": 9.794,
+        "min": 9.724,
+        "max": 9.827
+       },
+       "meanR_budget": {
+        "median": -0.0858,
+        "p10": -0.0926,
+        "p90": -0.0802,
+        "min": -0.0969,
+        "max": -0.0769
+       },
+       "meanR_actual": {
+        "median": -0.0867,
+        "p10": -0.0935,
+        "p90": -0.0809,
+        "min": -0.0977,
+        "max": -0.0777
+       },
+       "early_meanR": {
+        "median": -0.0994,
+        "p10": -0.1058,
+        "p90": -0.0908,
+        "min": -0.1086,
+        "max": -0.0858
+       },
+       "later_meanR": {
+        "median": -0.069,
+        "p10": -0.078,
+        "p90": -0.0613,
+        "min": -0.0824,
+        "max": -0.0573
+       },
+       "exbest_meanR": {
+        "median": -0.094,
+        "p10": -0.1001,
+        "p90": -0.0876,
+        "min": -0.1039,
+        "max": -0.085
+       },
+       "closedR_maxdd": {
+        "median": 181.305,
+        "p10": 170.436,
+        "p90": 196.044,
+        "min": 164.12,
+        "max": 204.98
+       },
+       "marked_dd_R": {
+        "median": 181.49,
+        "p10": 170.566,
+        "p90": 196.194,
+        "min": 164.34,
+        "max": 205.13
+       },
+       "longest_underwater_days": {
+        "median": 1478.1,
+        "p10": 1403.6,
+        "p90": 1478.1,
+        "min": 1403.6,
+        "max": 1478.1
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     }
+    },
+    "worst": {
+     "7bp": {
+      "order0": {
+       "n": 1884,
+       "skips": {},
+       "closes": 1884,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 8.792,
+       "closes_per_elig_week": 8.82,
+       "meanR_budget": -0.0114,
+       "meanR_actual": -0.0122,
+       "sumR_budget": -21.45,
+       "early_n": 1076,
+       "later_n": 808,
+       "early_meanR": -0.0205,
+       "later_meanR": 0.0007,
+       "exbest_meanR": -0.0172,
+       "by_coin": {
+        "UNIUSDT": {
+         "n": 73,
+         "sumR": -13.02,
+         "early_sumR": -3.25,
+         "later_sumR": -9.77
+        },
+        "ZECUSDT": {
+         "n": 61,
+         "sumR": -9.64,
+         "early_sumR": 0.36,
+         "later_sumR": -10.0
+        },
+        "ETCUSDT": {
+         "n": 72,
+         "sumR": -9.21,
+         "early_sumR": -1.75,
+         "later_sumR": -7.46
+        },
+        "GALAUSDT": {
+         "n": 81,
+         "sumR": -6.1,
+         "early_sumR": -5.44,
+         "later_sumR": -0.66
+        },
+        "LTCUSDT": {
+         "n": 76,
+         "sumR": -5.29,
+         "early_sumR": -6.43,
+         "later_sumR": 1.14
+        },
+        "SUPERUSDT": {
+         "n": 17,
+         "sumR": -3.95,
+         "early_sumR": -3.76,
+         "later_sumR": -0.19
+        },
+        "ARBUSDT": {
+         "n": 74,
+         "sumR": -3.86,
+         "early_sumR": -1.99,
+         "later_sumR": -1.87
+        },
+        "WLDUSDT": {
+         "n": 69,
+         "sumR": -3.68,
+         "early_sumR": -0.48,
+         "later_sumR": -3.2
+        },
+        "1000PEPEUSDT": {
+         "n": 86,
+         "sumR": -3.36,
+         "early_sumR": -3.13,
+         "later_sumR": -0.22
+        },
+        "ONDOUSDT": {
+         "n": 43,
+         "sumR": -2.68,
+         "early_sumR": -3.86,
+         "later_sumR": 1.18
+        },
+        "AAVEUSDT": {
+         "n": 111,
+         "sumR": -2.45,
+         "early_sumR": -6.83,
+         "later_sumR": 4.38
+        },
+        "ENAUSDT": {
+         "n": 41,
+         "sumR": -2.38,
+         "early_sumR": 0.15,
+         "later_sumR": -2.52
+        },
+        "STRKUSDT": {
+         "n": 34,
+         "sumR": -1.59,
+         "early_sumR": 1.08,
+         "later_sumR": -2.67
+        },
+        "QNTUSDT": {
+         "n": 24,
+         "sumR": -1.38,
+         "early_sumR": -0.62,
+         "later_sumR": -0.76
+        },
+        "XLMUSDT": {
+         "n": 61,
+         "sumR": -1.32,
+         "early_sumR": 1.35,
+         "later_sumR": -2.67
+        },
+        "FILUSDT": {
+         "n": 99,
+         "sumR": -0.49,
+         "early_sumR": -1.52,
+         "later_sumR": 1.03
+        },
+        "APTUSDT": {
+         "n": 94,
+         "sumR": -0.27,
+         "early_sumR": -6.49,
+         "later_sumR": 6.22
+        },
+        "ENJUSDT": {
+         "n": 50,
+         "sumR": 0.45,
+         "early_sumR": -3.45,
+         "later_sumR": 3.9
+        },
+        "ARKUSDT": {
+         "n": 38,
+         "sumR": 1.03,
+         "early_sumR": -0.14,
+         "later_sumR": 1.17
+        },
+        "SANDUSDT": {
+         "n": 54,
+         "sumR": 1.07,
+         "early_sumR": 1.62,
+         "later_sumR": -0.55
+        },
+        "TAOUSDT": {
+         "n": 34,
+         "sumR": 1.23,
+         "early_sumR": 0.42,
+         "later_sumR": 0.81
+        },
+        "FETUSDT": {
+         "n": 72,
+         "sumR": 1.53,
+         "early_sumR": 5.06,
+         "later_sumR": -3.53
+        },
+        "MANAUSDT": {
+         "n": 58,
+         "sumR": 1.56,
+         "early_sumR": 0.15,
+         "later_sumR": 1.41
+        },
+        "MOVRUSDT": {
+         "n": 8,
+         "sumR": 1.77,
+         "early_sumR": 1.77,
+         "later_sumR": 0.0
+        },
+        "BCHUSDT": {
+         "n": 113,
+         "sumR": 3.33,
+         "early_sumR": 5.03,
+         "later_sumR": -1.7
+        },
+        "ONEUSDT": {
+         "n": 20,
+         "sumR": 3.88,
+         "early_sumR": 3.88,
+         "later_sumR": 0.0
+        },
+        "DOTUSDT": {
+         "n": 68,
+         "sumR": 4.45,
+         "early_sumR": -0.23,
+         "later_sumR": 4.68
+        },
+        "ZROUSDT": {
+         "n": 42,
+         "sumR": 5.3,
+         "early_sumR": -0.71,
+         "later_sumR": 6.0
+        },
+        "SUIUSDT": {
+         "n": 60,
+         "sumR": 6.97,
+         "early_sumR": 1.89,
+         "later_sumR": 5.08
+        },
+        "NEARUSDT": {
+         "n": 72,
+         "sumR": 7.12,
+         "early_sumR": 4.16,
+         "later_sumR": 2.96
+        },
+        "INJUSDT": {
+         "n": 79,
+         "sumR": 9.53,
+         "early_sumR": 1.13,
+         "later_sumR": 8.4
+        }
+       },
+       "closedR_maxdd": 43.39,
+       "marked_dd_usd": 348.88,
+       "marked_dd_R": 43.61,
+       "longest_underwater_days": 1397.7,
+       "final_marked_usd": -171.61,
+       "decomp_R_per_trade": {
+        "gross_after_slip": 0.0143,
+        "slippage": 0.009,
+        "fees": 0.0224,
+        "funding": 0.0032
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9943
+       },
+       "why": {
+        "time": 1364,
+        "stop": 461,
+        "target": 59
+       },
+       "by_side": {
+        "short": {
+         "n": 1434,
+         "meanR": -0.014
+        },
+        "long": {
+         "n": 450,
+         "meanR": -0.003
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1880.0,
+        "p10": 1874.9,
+        "p90": 1885.1,
+        "min": 1873.0,
+        "max": 1893.0
+       },
+       "closes_per_cal_week": {
+        "median": 8.774,
+        "p10": 8.7496,
+        "p90": 8.7975,
+        "min": 8.741,
+        "max": 8.834
+       },
+       "closes_per_elig_week": {
+        "median": 8.801,
+        "p10": 8.7775,
+        "p90": 8.8255,
+        "min": 8.769,
+        "max": 8.862
+       },
+       "meanR_budget": {
+        "median": -0.0052,
+        "p10": -0.0143,
+        "p90": 0.002,
+        "min": -0.0161,
+        "max": 0.0056
+       },
+       "meanR_actual": {
+        "median": -0.0058,
+        "p10": -0.015,
+        "p90": 0.0013,
+        "min": -0.0169,
+        "max": 0.0049
+       },
+       "early_meanR": {
+        "median": -0.0108,
+        "p10": -0.0207,
+        "p90": -0.0021,
+        "min": -0.0272,
+        "max": 0.0005
+       },
+       "later_meanR": {
+        "median": 0.0018,
+        "p10": -0.0096,
+        "p90": 0.0132,
+        "min": -0.0176,
+        "max": 0.0184
+       },
+       "exbest_meanR": {
+        "median": -0.0124,
+        "p10": -0.0195,
+        "p90": -0.0049,
+        "min": -0.0227,
+        "max": 0.0003
+       },
+       "closedR_maxdd": {
+        "median": 34.085,
+        "p10": 27.146,
+        "p90": 43.497,
+        "min": 22.52,
+        "max": 49.08
+       },
+       "marked_dd_R": {
+        "median": 34.185,
+        "p10": 27.444,
+        "p90": 43.751,
+        "min": 22.77,
+        "max": 49.3
+       },
+       "longest_underwater_days": {
+        "median": 1237.3,
+        "p10": 618.89,
+        "p90": 1478.0,
+        "min": 350.2,
+        "max": 1478.0
+       }
+      },
+      "share_orders_meanR_pos": 0.125
+     },
+     "15bp": {
+      "order0": {
+       "n": 1884,
+       "skips": {},
+       "closes": 1884,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 8.792,
+       "closes_per_elig_week": 8.82,
+       "meanR_budget": -0.0473,
+       "meanR_actual": -0.0482,
+       "sumR_budget": -89.07,
+       "early_n": 1076,
+       "later_n": 808,
+       "early_meanR": -0.0573,
+       "later_meanR": -0.034,
+       "exbest_meanR": -0.0532,
+       "by_coin": {
+        "UNIUSDT": {
+         "n": 73,
+         "sumR": -15.89,
+         "early_sumR": -4.81,
+         "later_sumR": -11.07
+        },
+        "ETCUSDT": {
+         "n": 72,
+         "sumR": -12.26,
+         "early_sumR": -3.6,
+         "later_sumR": -8.67
+        },
+        "ZECUSDT": {
+         "n": 61,
+         "sumR": -11.81,
+         "early_sumR": -1.21,
+         "later_sumR": -10.59
+        },
+        "LTCUSDT": {
+         "n": 76,
+         "sumR": -9.1,
+         "early_sumR": -8.9,
+         "later_sumR": -0.2
+        },
+        "GALAUSDT": {
+         "n": 81,
+         "sumR": -8.7,
+         "early_sumR": -7.39,
+         "later_sumR": -1.31
+        },
+        "ARBUSDT": {
+         "n": 74,
+         "sumR": -6.7,
+         "early_sumR": -3.61,
+         "later_sumR": -3.09
+        },
+        "AAVEUSDT": {
+         "n": 111,
+         "sumR": -6.5,
+         "early_sumR": -9.12,
+         "later_sumR": 2.62
+        },
+        "1000PEPEUSDT": {
+         "n": 86,
+         "sumR": -5.7,
+         "early_sumR": -4.32,
+         "later_sumR": -1.39
+        },
+        "WLDUSDT": {
+         "n": 69,
+         "sumR": -5.42,
+         "early_sumR": -1.19,
+         "later_sumR": -4.23
+        },
+        "FILUSDT": {
+         "n": 99,
+         "sumR": -4.36,
+         "early_sumR": -3.77,
+         "later_sumR": -0.6
+        },
+        "SUPERUSDT": {
+         "n": 17,
+         "sumR": -4.35,
+         "early_sumR": -4.02,
+         "later_sumR": -0.33
+        },
+        "XLMUSDT": {
+         "n": 61,
+         "sumR": -4.18,
+         "early_sumR": -0.52,
+         "later_sumR": -3.66
+        },
+        "ONDOUSDT": {
+         "n": 43,
+         "sumR": -3.92,
+         "early_sumR": -4.18,
+         "later_sumR": 0.25
+        },
+        "ENAUSDT": {
+         "n": 41,
+         "sumR": -3.44,
+         "early_sumR": -0.07,
+         "later_sumR": -3.37
+        },
+        "APTUSDT": {
+         "n": 94,
+         "sumR": -3.29,
+         "early_sumR": -8.33,
+         "later_sumR": 5.03
+        },
+        "STRKUSDT": {
+         "n": 34,
+         "sumR": -2.55,
+         "early_sumR": 0.93,
+         "later_sumR": -3.49
+        },
+        "QNTUSDT": {
+         "n": 24,
+         "sumR": -2.25,
+         "early_sumR": -1.22,
+         "later_sumR": -1.03
+        },
+        "BCHUSDT": {
+         "n": 113,
+         "sumR": -1.47,
+         "early_sumR": 2.42,
+         "later_sumR": -3.88
+        },
+        "ENJUSDT": {
+         "n": 50,
+         "sumR": -1.41,
+         "early_sumR": -5.11,
+         "later_sumR": 3.69
+        },
+        "SANDUSDT": {
+         "n": 54,
+         "sumR": -1.12,
+         "early_sumR": 0.16,
+         "later_sumR": -1.28
+        },
+        "FETUSDT": {
+         "n": 72,
+         "sumR": -0.87,
+         "early_sumR": 3.83,
+         "later_sumR": -4.7
+        },
+        "MANAUSDT": {
+         "n": 58,
+         "sumR": -0.83,
+         "early_sumR": -1.49,
+         "later_sumR": 0.66
+        },
+        "ARKUSDT": {
+         "n": 38,
+         "sumR": 0.12,
+         "early_sumR": -0.97,
+         "later_sumR": 1.09
+        },
+        "TAOUSDT": {
+         "n": 34,
+         "sumR": 0.22,
+         "early_sumR": 0.31,
+         "later_sumR": -0.08
+        },
+        "DOTUSDT": {
+         "n": 68,
+         "sumR": 1.07,
+         "early_sumR": -2.55,
+         "later_sumR": 3.62
+        },
+        "MOVRUSDT": {
+         "n": 8,
+         "sumR": 1.56,
+         "early_sumR": 1.56,
+         "later_sumR": 0.0
+        },
+        "ONEUSDT": {
+         "n": 20,
+         "sumR": 3.25,
+         "early_sumR": 3.25,
+         "later_sumR": 0.0
+        },
+        "ZROUSDT": {
+         "n": 42,
+         "sumR": 4.18,
+         "early_sumR": -0.87,
+         "later_sumR": 5.06
+        },
+        "NEARUSDT": {
+         "n": 72,
+         "sumR": 4.6,
+         "early_sumR": 2.58,
+         "later_sumR": 2.03
+        },
+        "SUIUSDT": {
+         "n": 60,
+         "sumR": 5.09,
+         "early_sumR": 0.89,
+         "later_sumR": 4.2
+        },
+        "INJUSDT": {
+         "n": 79,
+         "sumR": 6.97,
+         "early_sumR": -0.3,
+         "later_sumR": 7.27
+        }
+       },
+       "closedR_maxdd": 91.69,
+       "marked_dd_usd": 735.27,
+       "marked_dd_R": 91.91,
+       "longest_underwater_days": 1397.7,
+       "final_marked_usd": -712.55,
+       "decomp_R_per_trade": {
+        "gross_after_slip": 0.0143,
+        "slippage": 0.009,
+        "fees": 0.0583,
+        "funding": 0.0032
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9943
+       },
+       "why": {
+        "time": 1364,
+        "stop": 461,
+        "target": 59
+       },
+       "by_side": {
+        "short": {
+         "n": 1434,
+         "meanR": -0.05
+        },
+        "long": {
+         "n": 450,
+         "meanR": -0.0387
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1880.0,
+        "p10": 1874.9,
+        "p90": 1885.1,
+        "min": 1873.0,
+        "max": 1893.0
+       },
+       "closes_per_cal_week": {
+        "median": 8.774,
+        "p10": 8.7496,
+        "p90": 8.7975,
+        "min": 8.741,
+        "max": 8.834
+       },
+       "closes_per_elig_week": {
+        "median": 8.801,
+        "p10": 8.7775,
+        "p90": 8.8255,
+        "min": 8.769,
+        "max": 8.862
+       },
+       "meanR_budget": {
+        "median": -0.041,
+        "p10": -0.0502,
+        "p90": -0.0337,
+        "min": -0.0523,
+        "max": -0.0304
+       },
+       "meanR_actual": {
+        "median": -0.0417,
+        "p10": -0.051,
+        "p90": -0.0345,
+        "min": -0.0533,
+        "max": -0.0312
+       },
+       "early_meanR": {
+        "median": -0.0476,
+        "p10": -0.0574,
+        "p90": -0.0389,
+        "min": -0.0643,
+        "max": -0.0367
+       },
+       "later_meanR": {
+        "median": -0.0327,
+        "p10": -0.0445,
+        "p90": -0.0214,
+        "min": -0.0524,
+        "max": -0.0162
+       },
+       "exbest_meanR": {
+        "median": -0.0483,
+        "p10": -0.0554,
+        "p90": -0.0411,
+        "min": -0.0586,
+        "max": -0.0357
+       },
+       "closedR_maxdd": {
+        "median": 78.785,
+        "p10": 69.33,
+        "p90": 96.142,
+        "min": 59.39,
+        "max": 99.94
+       },
+       "marked_dd_R": {
+        "median": 78.865,
+        "p10": 69.379,
+        "p90": 96.191,
+        "min": 59.44,
+        "max": 99.99
+       },
+       "longest_underwater_days": {
+        "median": 1478.0,
+        "p10": 1397.7,
+        "p90": 1478.0,
+        "min": 1397.7,
+        "max": 1478.0
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     },
+     "23bp": {
+      "order0": {
+       "n": 1884,
+       "skips": {},
+       "closes": 1884,
+       "terminal_open": 0,
+       "terminal_mtm": 0.0,
+       "closes_per_cal_week": 8.792,
+       "closes_per_elig_week": 8.82,
+       "meanR_budget": -0.0832,
+       "meanR_actual": -0.0843,
+       "sumR_budget": -156.69,
+       "early_n": 1076,
+       "later_n": 808,
+       "early_meanR": -0.094,
+       "later_meanR": -0.0687,
+       "exbest_meanR": -0.0893,
+       "by_coin": {
+        "UNIUSDT": {
+         "n": 73,
+         "sumR": -18.75,
+         "early_sumR": -6.37,
+         "later_sumR": -12.37
+        },
+        "ETCUSDT": {
+         "n": 72,
+         "sumR": -15.32,
+         "early_sumR": -5.45,
+         "later_sumR": -9.87
+        },
+        "ZECUSDT": {
+         "n": 61,
+         "sumR": -13.97,
+         "early_sumR": -2.78,
+         "later_sumR": -11.19
+        },
+        "LTCUSDT": {
+         "n": 76,
+         "sumR": -12.91,
+         "early_sumR": -11.37,
+         "later_sumR": -1.54
+        },
+        "GALAUSDT": {
+         "n": 81,
+         "sumR": -11.3,
+         "early_sumR": -9.34,
+         "later_sumR": -1.96
+        },
+        "AAVEUSDT": {
+         "n": 111,
+         "sumR": -10.55,
+         "early_sumR": -11.4,
+         "later_sumR": 0.85
+        },
+        "ARBUSDT": {
+         "n": 74,
+         "sumR": -9.54,
+         "early_sumR": -5.23,
+         "later_sumR": -4.32
+        },
+        "FILUSDT": {
+         "n": 99,
+         "sumR": -8.24,
+         "early_sumR": -6.02,
+         "later_sumR": -2.22
+        },
+        "1000PEPEUSDT": {
+         "n": 86,
+         "sumR": -8.05,
+         "early_sumR": -5.5,
+         "later_sumR": -2.55
+        },
+        "WLDUSDT": {
+         "n": 69,
+         "sumR": -7.15,
+         "early_sumR": -1.9,
+         "later_sumR": -5.25
+        },
+        "XLMUSDT": {
+         "n": 61,
+         "sumR": -7.03,
+         "early_sumR": -2.39,
+         "later_sumR": -4.64
+        },
+        "APTUSDT": {
+         "n": 94,
+         "sumR": -6.31,
+         "early_sumR": -10.17,
+         "later_sumR": 3.85
+        },
+        "BCHUSDT": {
+         "n": 113,
+         "sumR": -6.26,
+         "early_sumR": -0.2,
+         "later_sumR": -6.06
+        },
+        "ONDOUSDT": {
+         "n": 43,
+         "sumR": -5.17,
+         "early_sumR": -4.49,
+         "later_sumR": -0.68
+        },
+        "SUPERUSDT": {
+         "n": 17,
+         "sumR": -4.76,
+         "early_sumR": -4.28,
+         "later_sumR": -0.47
+        },
+        "ENAUSDT": {
+         "n": 41,
+         "sumR": -4.51,
+         "early_sumR": -0.29,
+         "later_sumR": -4.22
+        },
+        "STRKUSDT": {
+         "n": 34,
+         "sumR": -3.52,
+         "early_sumR": 0.78,
+         "later_sumR": -4.3
+        },
+        "SANDUSDT": {
+         "n": 54,
+         "sumR": -3.3,
+         "early_sumR": -1.29,
+         "later_sumR": -2.01
+        },
+        "ENJUSDT": {
+         "n": 50,
+         "sumR": -3.28,
+         "early_sumR": -6.76,
+         "later_sumR": 3.48
+        },
+        "FETUSDT": {
+         "n": 72,
+         "sumR": -3.28,
+         "early_sumR": 2.6,
+         "later_sumR": -5.88
+        },
+        "MANAUSDT": {
+         "n": 58,
+         "sumR": -3.23,
+         "early_sumR": -3.13,
+         "later_sumR": -0.1
+        },
+        "QNTUSDT": {
+         "n": 24,
+         "sumR": -3.12,
+         "early_sumR": -1.82,
+         "later_sumR": -1.3
+        },
+        "DOTUSDT": {
+         "n": 68,
+         "sumR": -2.31,
+         "early_sumR": -4.87,
+         "later_sumR": 2.57
+        },
+        "ARKUSDT": {
+         "n": 38,
+         "sumR": -0.79,
+         "early_sumR": -1.8,
+         "later_sumR": 1.01
+        },
+        "TAOUSDT": {
+         "n": 34,
+         "sumR": -0.78,
+         "early_sumR": 0.19,
+         "later_sumR": -0.97
+        },
+        "MOVRUSDT": {
+         "n": 8,
+         "sumR": 1.36,
+         "early_sumR": 1.36,
+         "later_sumR": 0.0
+        },
+        "NEARUSDT": {
+         "n": 72,
+         "sumR": 2.08,
+         "early_sumR": 0.99,
+         "later_sumR": 1.09
+        },
+        "ONEUSDT": {
+         "n": 20,
+         "sumR": 2.61,
+         "early_sumR": 2.61,
+         "later_sumR": 0.0
+        },
+        "ZROUSDT": {
+         "n": 42,
+         "sumR": 3.07,
+         "early_sumR": -1.04,
+         "later_sumR": 4.11
+        },
+        "SUIUSDT": {
+         "n": 60,
+         "sumR": 3.22,
+         "early_sumR": -0.11,
+         "later_sumR": 3.33
+        },
+        "INJUSDT": {
+         "n": 79,
+         "sumR": 4.41,
+         "early_sumR": -1.73,
+         "later_sumR": 6.14
+        }
+       },
+       "closedR_maxdd": 158.33,
+       "marked_dd_usd": 1266.97,
+       "marked_dd_R": 158.37,
+       "longest_underwater_days": 1478.0,
+       "final_marked_usd": -1253.49,
+       "decomp_R_per_trade": {
+        "gross_after_slip": 0.0143,
+        "slippage": 0.009,
+        "fees": 0.0942,
+        "funding": 0.0032
+       },
+       "risk_usd": {
+        "max": 8.0,
+        "median": 7.9943
+       },
+       "why": {
+        "time": 1364,
+        "stop": 461,
+        "target": 59
+       },
+       "by_side": {
+        "short": {
+         "n": 1434,
+         "meanR": -0.0859
+        },
+        "long": {
+         "n": 450,
+         "meanR": -0.0745
+        }
+       },
+       "partials": 0,
+       "order": 0
+      },
+      "across_orders": {
+       "closes": {
+        "median": 1880.0,
+        "p10": 1874.9,
+        "p90": 1885.1,
+        "min": 1873.0,
+        "max": 1893.0
+       },
+       "closes_per_cal_week": {
+        "median": 8.774,
+        "p10": 8.7496,
+        "p90": 8.7975,
+        "min": 8.741,
+        "max": 8.834
+       },
+       "closes_per_elig_week": {
+        "median": 8.801,
+        "p10": 8.7775,
+        "p90": 8.8255,
+        "min": 8.769,
+        "max": 8.862
+       },
+       "meanR_budget": {
+        "median": -0.0767,
+        "p10": -0.0859,
+        "p90": -0.0694,
+        "min": -0.0886,
+        "max": -0.0663
+       },
+       "meanR_actual": {
+        "median": -0.0776,
+        "p10": -0.0869,
+        "p90": -0.0704,
+        "min": -0.0897,
+        "max": -0.0673
+       },
+       "early_meanR": {
+        "median": -0.0844,
+        "p10": -0.0941,
+        "p90": -0.0757,
+        "min": -0.1013,
+        "max": -0.0739
+       },
+       "later_meanR": {
+        "median": -0.0672,
+        "p10": -0.0792,
+        "p90": -0.0561,
+        "min": -0.0872,
+        "max": -0.0508
+       },
+       "exbest_meanR": {
+        "median": -0.0842,
+        "p10": -0.0917,
+        "p90": -0.0772,
+        "min": -0.0946,
+        "max": -0.0717
+       },
+       "closedR_maxdd": {
+        "median": 145.73,
+        "p10": 131.66,
+        "p90": 163.176,
+        "min": 126.16,
+        "max": 167.55
+       },
+       "marked_dd_R": {
+        "median": 145.77,
+        "p10": 131.7,
+        "p90": 163.216,
+        "min": 126.21,
+        "max": 167.59
+       },
+       "longest_underwater_days": {
+        "median": 1478.0,
+        "p10": 1478.0,
+        "p90": 1478.0,
+        "min": 1478.0,
+        "max": 1478.0
+       }
+      },
+      "share_orders_meanR_pos": 0.0
+     }
+    }
+   },
+   "gates": {
+    "closes_ge_100": true,
+    "each_period_ge_30": true,
+    "R15_early_pos": false,
+    "R15_later_pos": false,
+    "R23_overall_pos": false,
+    "exbest15_pos": false,
+    "p10_R15_pos": false,
+    "worst_path_R15_pos": false,
+    "PASS": false
+   }
+  }
+ }
+}
