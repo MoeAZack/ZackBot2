@@ -1,0 +1,110 @@
+{
+ "key": "h5wide_codex_h5_long_1h",
+ "tf": "1h",
+ "scenario": "worst",
+ "symbols": [
+  "1000PEPEUSDT",
+  "ENAUSDT",
+  "HYPEUSDT",
+  "LSKUSDT",
+  "NEARUSDT",
+  "PUMPUSDT",
+  "QNTUSDT",
+  "SUIUSDT",
+  "UNIUSDT",
+  "WLDUSDT",
+  "ZECUSDT"
+ ],
+ "bars": 10673,
+ "first": "2025-07-10 07:00:00",
+ "last": "2026-09-27 23:00:00",
+ "end_equity": 4434.4,
+ "maxdd_usd": 113.9,
+ "maxdd_R": 14.2,
+ "feasibility": {
+  "attempts": 184,
+  "executed": 184,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 184,
+  "win": 41.8,
+  "pnl": 434.4,
+  "long_n": 184,
+  "short_n": 0,
+  "long_pnl": 434.4,
+  "short_pnl": 0.0,
+  "expR_7bp": 0.283,
+  "pnl_7bp": 434.4,
+  "expR_15bp": 0.2486,
+  "pnl_15bp": 381.66,
+  "expR_23bp": 0.2142,
+  "pnl_23bp": 328.92
+ },
+ "early_consumed": {
+  "n": 31,
+  "win": 54.8,
+  "pnl": 168.59,
+  "long_n": 31,
+  "short_n": 0,
+  "long_pnl": 168.59,
+  "short_pnl": 0.0,
+  "expR_7bp": 0.6696,
+  "pnl_7bp": 168.59,
+  "expR_15bp": 0.6356,
+  "pnl_15bp": 160.05,
+  "expR_23bp": 0.6015,
+  "pnl_23bp": 151.51
+ },
+ "later_consumed": {
+  "n": 153,
+  "win": 39.2,
+  "pnl": 265.81,
+  "long_n": 153,
+  "short_n": 0,
+  "long_pnl": 265.81,
+  "short_pnl": 0.0,
+  "expR_7bp": 0.2047,
+  "pnl_7bp": 265.81,
+  "expR_15bp": 0.1702,
+  "pnl_15bp": 221.61,
+  "expR_23bp": 0.1358,
+  "pnl_23bp": 177.41
+ },
+ "why": {
+  "stop": 85,
+  "time": 81,
+  "tp": 18
+ },
+ "code_sha256": {
+  "newstrat_cp4.py": "4f5541ac3f231f0755b94e36d9d376701f3f7b240d0301b9f41b3a9036321d5f",
+  "newstrat_cp4_run.py": "4e55e0e55e318175d7dc83cb818838a76d12bafdb6a561ba8afecef97a438c08",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+ },
+ "dd_label": "Standard",
+ "cost15_R_median": 0.0608,
+ "sumR15_by_coin": {
+  "1000PEPEUSDT": -8.21,
+  "ENAUSDT": -3.74,
+  "SUIUSDT": -0.69,
+  "WLDUSDT": 1.65,
+  "QNTUSDT": 3.22,
+  "UNIUSDT": 3.27,
+  "ZECUSDT": 4.9,
+  "HYPEUSDT": 6.74,
+  "LSKUSDT": 12.13,
+  "NEARUSDT": 12.46,
+  "PUMPUSDT": 14.04
+ },
+ "expR15_wo_best_coin": 0.1854,
+ "sumR15_by_year": {
+  "2025": 19.26,
+  "2026": 26.49
+ },
+ "top5_share": 0.433,
+ "closedR15_maxdd": 15.55,
+ "closes_per_week": 2.9,
+ "turnover_fallback_trades": 0,
+ "paper_eligible": true
+}

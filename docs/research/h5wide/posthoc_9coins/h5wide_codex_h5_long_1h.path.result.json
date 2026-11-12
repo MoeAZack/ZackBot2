@@ -1,0 +1,107 @@
+{
+ "key": "h5wide_codex_h5_long_1h",
+ "tf": "1h",
+ "scenario": "path",
+ "symbols": [
+  "1000PEPEUSDT",
+  "ENAUSDT",
+  "LSKUSDT",
+  "NEARUSDT",
+  "QNTUSDT",
+  "SUIUSDT",
+  "UNIUSDT",
+  "WLDUSDT",
+  "ZECUSDT"
+ ],
+ "bars": 17356,
+ "first": "2024-10-04 20:00:00",
+ "last": "2026-09-27 23:00:00",
+ "end_equity": 4249.98,
+ "maxdd_usd": 156.53,
+ "maxdd_R": 19.6,
+ "feasibility": {
+  "attempts": 266,
+  "executed": 266,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 265,
+  "win": 37.7,
+  "pnl": 252.75,
+  "long_n": 265,
+  "short_n": 0,
+  "long_pnl": 252.75,
+  "short_pnl": 0.0,
+  "expR_7bp": 0.1181,
+  "pnl_7bp": 252.75,
+  "expR_15bp": 0.0839,
+  "pnl_15bp": 179.42,
+  "expR_23bp": 0.0496,
+  "pnl_23bp": 106.09
+ },
+ "early_consumed": {
+  "n": 129,
+  "win": 36.4,
+  "pnl": 57.33,
+  "long_n": 129,
+  "short_n": 0,
+  "long_pnl": 57.33,
+  "short_pnl": 0.0,
+  "expR_7bp": 0.0577,
+  "pnl_7bp": 57.33,
+  "expR_15bp": 0.0246,
+  "pnl_15bp": 23.29,
+  "expR_23bp": -0.0084,
+  "pnl_23bp": -10.74
+ },
+ "later_consumed": {
+  "n": 136,
+  "win": 39.0,
+  "pnl": 195.42,
+  "long_n": 136,
+  "short_n": 0,
+  "long_pnl": 195.42,
+  "short_pnl": 0.0,
+  "expR_7bp": 0.1755,
+  "pnl_7bp": 195.42,
+  "expR_15bp": 0.14,
+  "pnl_15bp": 156.13,
+  "expR_23bp": 0.1046,
+  "pnl_23bp": 116.84
+ },
+ "why": {
+  "stop": 141,
+  "time": 102,
+  "tp": 22
+ },
+ "code_sha256": {
+  "newstrat_cp4.py": "4f5541ac3f231f0755b94e36d9d376701f3f7b240d0301b9f41b3a9036321d5f",
+  "newstrat_cp4_run.py": "4e55e0e55e318175d7dc83cb818838a76d12bafdb6a561ba8afecef97a438c08",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+ },
+ "dd_label": "Elevated",
+ "cost15_R_median": 0.0599,
+ "sumR15_by_coin": {
+  "WLDUSDT": -3.94,
+  "SUIUSDT": -3.17,
+  "ENAUSDT": -2.73,
+  "UNIUSDT": -2.64,
+  "QNTUSDT": 0.39,
+  "1000PEPEUSDT": 2.18,
+  "LSKUSDT": 7.0,
+  "ZECUSDT": 9.2,
+  "NEARUSDT": 15.95
+ },
+ "expR15_wo_best_coin": 0.0271,
+ "sumR15_by_year": {
+  "2024": 3.7,
+  "2025": -0.82,
+  "2026": 19.34
+ },
+ "top5_share": 0.891,
+ "closedR15_maxdd": 19.37,
+ "closes_per_week": 2.57,
+ "turnover_fallback_trades": 0,
+ "paper_eligible": true
+}
