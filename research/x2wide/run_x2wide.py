@@ -98,6 +98,11 @@ STOP_ATR_MULT = MG['stop_atr']
 def mgmt_bars(a, j0, mode):
     """Management bars from 1h index j0: lists of 1h indices (causal: one each; worst: 4h UTC bins)."""
     n = len(a['t'])
+    # Speed patch (no rule change; parity-checked against de27e871): a lot always exits by the first bar whose close is
+    # >= entry + 120 h, so stop the list after the complete 4h bin holding the first 1h bar at or after entry + 128 h.
+    k = int(np.searchsorted(a['t'], a['t'][j0] + (MAX_HOURS + 8) * HOUR))
+    if k < n:
+        n = min(n, int(np.searchsorted(a['t'], pd.Timestamp(a['t'][k]).floor('4h').to_datetime64() + H4)))
     if mode == 'causal': return [[j] for j in range(j0, n)]
     key = pd.to_datetime(a['t'][j0:]).floor('4h').values
     out, cur = [], [j0]

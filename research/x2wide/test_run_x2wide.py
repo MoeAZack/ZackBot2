@@ -212,6 +212,39 @@ def test_prepare_respects_eligibility_and_window():
     assert dec2 == []
 
 
+
+def _old_mgmt_bars(a, j0, mode):                                       # de27e871 version (full remaining history)
+    n = len(a['t'])
+    if mode == 'causal': return [[j] for j in range(j0, n)]
+    key = pd.to_datetime(a['t'][j0:]).floor('4h').values
+    out, cur = [], [j0]
+    for j in range(j0 + 1, n):
+        if key[j - j0] == key[j - j0 - 1]: cur.append(j)
+        else: out.append(cur); cur = [j]
+    out.append(cur)
+    return out
+
+
+def test_speed_patch_parity_with_gaps_and_paths():
+    rng = np.random.default_rng(7)
+    for case in range(150):
+        n = 400; a = mk(n)
+        c = 100 * np.exp(np.cumsum(rng.normal(0, 0.001, n))); o = np.r_[100.0, c[:-1]]
+        a['o'], a['c'] = o, c; a['h'] = np.maximum(o, c) * 1.002; a['l'] = np.minimum(o, c) * 0.998
+        g0 = int(rng.integers(100, 140)); g1 = g0 + int(rng.integers(1, 40))   # a data gap near the 120 h deadline
+        keep = np.r_[0:g0, g1:n]
+        for k in ('t', 'o', 'h', 'l', 'c', 'elig'): a[k] = a[k][keep]
+        for mode in ('causal', 'worst'):
+            for side in (1, -1):
+                new = X.run_lot(a, 3, side, 1.5, 15, mode)
+                saved = X.mgmt_bars; X.mgmt_bars = _old_mgmt_bars
+                try: old = X.run_lot(a, 3, side, 1.5, 15, mode)
+                finally: X.mgmt_bars = saved
+                for k in ('why', 't_out', 'pnl', 'fund', 'fees', 'gross', 'q_final'):
+                    assert old[k] == new[k], (case, mode, side, k)
+                assert old['marks'] == new['marks']
+
+
 if __name__ == '__main__':
     fs = [v for k, v in sorted(globals().items()) if k.startswith('test_')]
     for f in fs: f(); print('PASS', f.__name__)
