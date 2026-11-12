@@ -23,7 +23,7 @@ Worst path is identical to path for both sleeves at every cost (no intrabar stop
 ## Parity and checks
 - Native identity (fills cash - native funding == trade P&L) held for every closed lot; max entry risk $8.00; no exchange skips; no partials (neither sleeve has tp1).
 - Guards: rerunning every case with the halt and open-risk guard off changed **0** entries; native rule blocks 0. NONPARITY: the target replay refused **0** native lots in all 24 cases.
-- Native vs target funding (closed lots, 15bp alpha): H5 28.28 vs 28.44; EMA 25.18 vs 26.38 (4h cadence vs hourly proxy).
+- Native vs target funding: see the erratum below. On the same closed-lot denominator they agree to $0.001; the earlier 25.18 vs 26.38 EMA gap was target all-lot vs native closed-only, not cadence.
 - Elapsed holds: H5 median 35 h, max 49 h (48 native bars + exit-bar end convention); EMA median 68-74 h, max 448 h.
 
 ## Versus the basket order-0 overlay (alpha order, same cost/path)
@@ -31,3 +31,16 @@ Worst path is identical to path for both sleeves at every cost (no intrabar stop
 - H5: 209 admitted here vs 203 in the overlay; 183 in common, **26 newly admitted, 20 missed**. Economics close: 15bp +$158 here vs +$151 overlay.
 
 No promotion label, no DD threshold. A positive consumedDEV control does not authorize activation or count as a new strategy; Integration decides any forward-evidence step. BEAR/HOT path attribution remains deferred.
+
+## Erratum (reporting clarification, no rerun; Codex review #337 6836143114)
+
+`Net $ (terminal)` = cash growth + open mark. Cash growth includes fees and funding already paid on still-open lots, so it is not closed-trade P&L. `funding_usd` in controls.csv covers all admitted lots (target ledger); `native_funding_closed` covers closed lots only. Full per-case breakdown from the existing record receipts: `results/controls_erratum.csv` (all 24 cases). Native open-lot funding is not in the retained receipts and is left blank rather than recomputed.
+
+| Sleeve | Order | Cost | Admitted / closed / open | Terminal net $ | Cash growth $ | Open mark $ | Closed-trade P&L $ | Target funding closed / open / all $ | Native funding closed $ |
+|---|---|---|---|---|---|---|---|---|---|
+| EMA | alpha | 15 | 73 / 71 / 2 | 195.149 | 105.532 | 89.617 | 107.191 | 25.174 / 1.207 / 26.381 | 25.176 |
+| EMA | cohort | 15 | 72 / 70 / 2 | 197.886 | 108.269 | 89.617 | 109.928 | 25.635 / 1.207 / 26.841 | 25.635 |
+| H5 | alpha | 15 | 209 / 208 / 1 | 158.087 | 157.802 | 0.285 | 159.017 | 28.279 / 0.162 / 28.440 | 28.279 |
+| H5 | cohort | 15 | 207 / 206 / 1 | 168.990 | 172.780 | -3.790 | 174.216 | 29.192 / 0.191 / 29.383 | 29.192 |
+
+EMA has two open lots per case (four only when the two order cases are added together). Identities checked for all 24 cases: closed-trade P&L + open-lot costs paid = cash growth; cash growth + open mark = terminal net. Worst path rows equal path rows.
