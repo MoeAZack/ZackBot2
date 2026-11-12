@@ -1,0 +1,114 @@
+{
+  "id": "C1H-EXIT-CONTROL-20261112",
+  "frozen_cairo": "2026-11-12T12:52:09.173525+02:00",
+  "source_head": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+  "source_sha256": {
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+    "prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+  },
+  "data_manifest_sha256": "1831a33fc0f885b8372b4d368cbf73674095373bcbe7ed60d01c9e6d2733d411",
+  "exchange_rules_sha256": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af",
+  "rules": [
+    {
+      "id": "H1",
+      "name": "EMA trend pullback resumption",
+      "rule": "EMA50>EMA200 and EMA200>lag24; prior close below EMA20 and prior low<=EMA20; current close above EMA20 and prior high; mirror short",
+      "stop_atr": 2,
+      "tp_r": 3,
+      "max_bars": 24
+    },
+    {
+      "id": "H2",
+      "name": "Compressed range breakout",
+      "rule": "prior12 high-low<=4 priorATR; close first crosses prior12 extreme; volume>=1.25 prior24 median; EMA50/200 aligned; mirror",
+      "stop_atr": 2,
+      "tp_r": 3,
+      "max_bars": 24
+    },
+    {
+      "id": "H3",
+      "name": "Flat-market Keltner reclaim",
+      "rule": "ADX<20; abs(EMA50-lag24)/ATR<1; close reclaims EMA50-2ATR after previous close below its band; mirror upper",
+      "stop_atr": 2,
+      "tp_r": 2,
+      "max_bars": 12
+    },
+    {
+      "id": "H4",
+      "name": "RSI2 trend reset",
+      "rule": "EMA50/200 aligned and close beyond EMA200; previous3 RSI2 min<10 and current cross above30; mirror max>90 cross below70",
+      "stop_atr": 2,
+      "tp_r": 2.5,
+      "max_bars": 18
+    },
+    {
+      "id": "H5",
+      "name": "Volume impulse continuation",
+      "rule": "body 1..3ATR; volume>=2 prior24 median; bullish close upper20% with EMA50>200, mirror short",
+      "stop_atr": 2.5,
+      "tp_r": 3,
+      "max_bars": 24
+    },
+    {
+      "id": "H6",
+      "name": "BTC-relative momentum",
+      "rule": "alt24hreturn-BTC24hreturn>.01; EMA50>200, close>EMA50, first close through prior6 high, volume>=1.25 prior24 median; mirror; BTCexcluded",
+      "stop_atr": 2,
+      "tp_r": 3,
+      "max_bars": 24
+    }
+  ],
+  "protection_common": {
+    "be_r": 0,
+    "trail_atr": 0,
+    "prot": null
+  },
+  "candidate_module_sha256": "76a9020cc3a509ee04aa7dbfa483e26d39a663daa577a3bddaf0e00c7148210f",
+  "costs_per_executed_side_bps": [
+    7,
+    15,
+    23
+  ],
+  "scenarios": [
+    "path",
+    "worst"
+  ],
+  "gross_diagnostic": {
+    "fee_slip_funding": 0,
+    "path": "path"
+  },
+  "funding_proxy": {
+    "both_sides_charged_per_hour": 1.25e-05,
+    "native_funding": false
+  },
+  "capital": 4000,
+  "share_per_sleeve": 0.08333333333333333,
+  "risk_fraction_of_share": 0.024,
+  "initial_risk_usd": 8,
+  "max_positions_per_sleeve": 1,
+  "daily_halt": 0.03,
+  "max_leverage": 10,
+  "risk_model_limit": "unchanged BT.run compounds equity-based risk, initial$8 not fixed live$8; candidate activation requires actual account-fit check",
+  "no_holdout_claim": "ALL historical data consumed DEV; 2025 split and chronological halfyears are diagnostic stability checks, not fresh sealed holdout",
+  "trial_accounting": "six additional frozen configurations in previously researched families, not six independently novel families; all outcomes retained; no parameter changes based on results",
+  "priority_order": "cohort9 worst15 all six first, then cost/path ladders; long8 secondary",
+  "economics_screen": {
+    "min_closed_total": 100,
+    "min_closed_each_pre_post_2025": 30,
+    "mean_R_15_positive_each_split": true,
+    "mean_R_23_positive_overall": true,
+    "worst15_positive_overall": true,
+    "exclude_best_coin_mean_R15_positive": true,
+    "positive_complete_halfyear_fraction15": ">=0.5",
+    "minimum_closed_per_calendar_week": 2,
+    "drawdown": "report R/%/duration and label; no blanket DD rejection",
+    "frequency_basket_target": "at least5 closes/week after shared-account caps; solo frequency is not additive proof"
+  },
+  "activation": "No auto qualification from historical screen; independent signal/execution/cost parity, native-or-explicitstress funding, account4 fixedrisk/minimum sizing, shared-basket interaction, protective stop/rollback testnet gates; no account1-3 action",
+  "runtime_actions": "NONE; isolated research only",
+  "diagnostic_only": "Matched exit-management ablation after original C1H failed. Same frozen entries and stop distances/targets/maxbars; disable prot entirely, no BE/trail. This is DEV diagnosis/variant trial, NOT holdout validation or an independently discovered alpha.",
+  "original_prereg_sha256": "7ead57d83d4e0dc4d69c1a9c151c58950176c6027a6c09b1b04550be8dd8b473",
+  "original_candidate_module_sha256": "9b8516ef3a98bd83fb591ac751ae263a69c49f7bc7d5ea712741d4d3c4b038fc"
+}
