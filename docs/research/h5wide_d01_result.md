@@ -1,3 +1,5 @@
+**WITHDRAWN (runner v1 defects, see docs/research/h5wide_d01/WITHDRAWN.md).**
+
 # H5-WIDE-D01 result: unchanged H5 does not transfer to 31 new coins (2026-11-12)
 
 Contract: Codex prereg `622635c7…` (evidence `5b768545`). Runner `research/h5wide_d01/run_d01.py` (sha256 `e415c8bb…`), frozen
