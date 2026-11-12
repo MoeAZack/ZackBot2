@@ -1,0 +1,10 @@
+# Admission-controls independent review
+Source freeze29d76073 to result47bf0731 changes only report/results files; source unchanged. We independently drove the native frozen347c4b71 engine at actual capacity with our own fixed8 sizing wrapper and reused our separately authored cash ledger. No author controls/case_report/replay imports. Same pinned9canonical input hashes and rules; no accounts/runtime/keys/activation changes.
+
+Scope: 15bp alpha H5 and EMA-long, normal/worst (four cases), plus four guard-off native reruns. All reported scalar metrics match within2.85e-13.558closed-lot accounting checks across these duplicated-path cases maxerror3.56e-15.0guard-changed entries,0cash-ledger refusals. Source strategy implementation/native engine shared; not independent alpha rules or all24case rerun.
+
+Overlay ID comparison against prior independently reproduced seed0 records: H5 209vs203,183common,26new/20missed, exactlist match bothpaths. EMA73vs73 allcommon,noextra/missing. AllIDs in independent_proof.json.
+
+15bp alpha: H5 terminal marked profit158.086865USD =157.801676cash growth +0.285189open mark,208closed/209admitted. EMA195.149110=105.532444cash growth+89.616666open mark,71closed/73admitted. Cash growth includes open-position entry fees/funding; it is not identical to closed-trade PnL. EMA two open lots per case, not four simultaneous positions. Native-vs-target funding captions must compare closed with closed/all with all; reported target funding_usd includes open lots.
+
+Integration: research-only prospective evidence for existing H5 and EMA-long, no new trading activation and no robust-profitability/mainnet label. H5 23bp concentration/early-period weakness and EMA lowfrequency/openmark/small sample remain material. Future source/data/priority/risk/clock receipt freezes before first unseen rows; reuse adequate existing forward evidence, no parameter/coin/risk change or duplicate worker. Funding/guard agreement in these cases does not prove general guard-policy parity.
