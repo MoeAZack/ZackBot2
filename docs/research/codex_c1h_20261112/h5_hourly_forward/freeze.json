@@ -1,0 +1,78 @@
+{
+  "id": "H5-HOURLY-FWD-20261112",
+  "head": "5c95508fbc1765705da8698aa1824f5cdf0c3a29",
+  "base_head": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+  "frozen_server_ms": 1794488031086,
+  "t0_ms": 1794488400000,
+  "t0_cairo": "2026-11-12T15:00:00+02:00",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "XRPUSDT",
+    "SOLUSDT",
+    "DOGEUSDT",
+    "BNBUSDT",
+    "ADAUSDT",
+    "LINKUSDT",
+    "AVAXUSDT"
+  ],
+  "capital_per_arm": 4000,
+  "initial_risk_per_sleeve": 8,
+  "cost_bps_per_executed_side": [
+    7,
+    15,
+    23
+  ],
+  "funding": "1bp/8h stress proxy both sides, not native funding",
+  "fill_model": "hypothetical solo research book; no claim of live parity or independent P&L",
+  "arms": [
+    {
+      "id": "H5_LONG_SOLO",
+      "tf": "1h",
+      "sleeves": [
+        {
+          "key": "h5_volume_impulse_long_1h",
+          "share": 0.08333333333333333,
+          "risk": 0.024,
+          "max_pos": 1,
+          "sides": "long",
+          "symbols": [
+            "BTCUSDT",
+            "ETHUSDT",
+            "XRPUSDT",
+            "SOLUSDT",
+            "DOGEUSDT",
+            "BNBUSDT",
+            "ADAUSDT",
+            "LINKUSDT",
+            "AVAXUSDT"
+          ],
+          "mgmt": {
+            "stop_atr": 3,
+            "tp_r": 4,
+            "max_bars": 48,
+            "be_r": 0,
+            "trail_atr": 0
+          }
+        }
+      ]
+    }
+  ],
+  "source_sha256": {
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+    "prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "h5_hourly_long.py": "d6b28a448d47412f892e60b41f40f8c19f4020c08a63a7c9a8d6cc51ff2a9948"
+  },
+  "immutable_sha256": {
+    "forward.py": "c7afbf5b7c1fed585e0b85924d41dc9a13a293fa26a639546e58c6cca7a0c2fa",
+    "prepare_h5_forward.py": "502fd0f9dc472aead9b2bb381421de49c6702925580408e289428e4944bd5504",
+    "testnet-rules.json": "70af7d342c4a27937ef71c46f0e78f34dc703186d008e3a868971eef1ece3460",
+    "source/backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "source/feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+    "source/prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+    "source/strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "source/h5_hourly_long.py": "d6b28a448d47412f892e60b41f40f8c19f4020c08a63a7c9a8d6cc51ff2a9948"
+  }
+}
