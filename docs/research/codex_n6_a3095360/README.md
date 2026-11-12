@@ -7,3 +7,5 @@ Primary interpretation was frozen before comparison: first BTC breakout event, a
 Raw signals are not filled trades. Extras may be blocked by an existing lot, the two-position cap, same-candle candidate ordering, exits or sizing. The separate occupancy diagnostic CONDITIONS ON the reference ledger and is not an independent portfolio simulation:169 extras fall strictly inside a same-coin held interval,202 inside a full-capacity interval,459 on entry/exit boundaries,25 are not explained by that simple occupancy diagnostic. Do not claim executed-entry parity or reproduced profitability.
 
 No P&L rerun, no fresh strategy qualification, no holdout tuning. Prior after-cost ex-SOL evidence is negative: N6 stays FORWARD_ONLY regardless of this signal check. Freeze, inputs/spec/reference/script SHA256 values and exact tuple CSVs are included.
+
+Git may normalize Python source line endings. `frozen_independent_n6.py.gz` preserves the exact original implementation bytes; its decompressed SHA256 equals `freeze.json` script_sha256. This distinguishes operational byte provenance from Git text normalization.
