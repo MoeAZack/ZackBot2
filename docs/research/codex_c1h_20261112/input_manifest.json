@@ -1,0 +1,142 @@
+{
+  "cohort9_1h": {
+    "BTCUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\BTCUSDT.csv",
+      "source_sha256": "c86e452b6d28ae15c60c38db9c15d6e7e38510706396a137998fd8ca65c4c562",
+      "input_sha256": "d042c3a67534cce6464d0deb13c5c8eb93fac2e5b911058b7d2a9134bde741b9",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "ETHUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\ETHUSDT.csv",
+      "source_sha256": "42cf7973bf8fd34d492eb6f51df746c64dcd0360d2130edd4a4ffe8e5e4c7128",
+      "input_sha256": "d9685cad29f6d62a0499eaa00afd766516c52dcae301814eb9d8940b634ccdad",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "XRPUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\XRPUSDT.csv",
+      "source_sha256": "fec33fc683afd55b3a9b6f29cef39ac951a5eab364404f6ddfd3afeb14f2d6e8",
+      "input_sha256": "5c96797f0d14865c77822bd20d3d56bdca29e2483d5dbcbdab9d0468c5903165",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "SOLUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\SOLUSDT.csv",
+      "source_sha256": "48c7d740ab57e7fa279d4d660f25a9d35c80e8705da3a1d71aa0f8b8c9691a88",
+      "input_sha256": "a0508e2ce6dc4399f342808fd576e2e7ddbaadca8ae0800a3c28e20f5aabdcec",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "DOGEUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\DOGEUSDT.csv",
+      "source_sha256": "8a48db470a4f23f61af389f129412efed58ee5b28107772cd6deba3ab54f1116",
+      "input_sha256": "ca2e878cd6161187d010961ddbd8f88eb355c86556c163ad10784f611f596062",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "BNBUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\BNBUSDT.csv",
+      "source_sha256": "dc057fde446c4165d8aea32a6eb3aa319e4c301b5fd821e3ce92aa56a2a834a5",
+      "input_sha256": "929e93f49edbb038f40c99ddd18f3371d1bcb686c7baa89137df5662b5d53049",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "ADAUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\ADAUSDT.csv",
+      "source_sha256": "7f44c6e58cacb827ed3999e146854f7c7d42f130937000e28ad215643dcfdeae",
+      "input_sha256": "e143d618d3da3d460a75ecbdbb13e0b8515db4ee5e2e3f10944dee28a4b216b8",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "LINKUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\LINKUSDT.csv",
+      "source_sha256": "eb2d296c4b94e72f0da5de0ab129f3f5647750cb230fd59c02a1525a35d75a4e",
+      "input_sha256": "f38ec176f1fd6aae30952b74c0bfeebb7667f7498a86d3b024a139447cdbd7be",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    },
+    "AVAXUSDT": {
+      "source": "F:\\ZackBot2_data\\DUP-COIN-SIDE-INDEPENDENT-20261112\\inputs\\short15\\AVAXUSDT.csv",
+      "source_sha256": "00ecc1fa211ec3ee7cac120329ae7589d8c1bc814703aeacc6d229bd7096de51",
+      "input_sha256": "8560a1a345c13526c60df60b49416544c650b3c0ea7fdc92a83e37c1f597f653",
+      "rows": 17191,
+      "first_candle_utc": "2024-10-11T17:00:00",
+      "last_candle_utc": "2026-09-27T23:00:00"
+    }
+  },
+  "long8_1h": {
+    "BTCUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\BTCUSDT_1h.csv",
+      "source_sha256": "05717edafd19982d332ae85dfe00e4e588457ab2f59474644b25a0379761e368",
+      "input_sha256": "05717edafd19982d332ae85dfe00e4e588457ab2f59474644b25a0379761e368",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "ETHUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\ETHUSDT_1h.csv",
+      "source_sha256": "86b2d57897601f5a530a929c2d094f448641a6bfec0fa2e33084f4d7f9734a9c",
+      "input_sha256": "86b2d57897601f5a530a929c2d094f448641a6bfec0fa2e33084f4d7f9734a9c",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "XRPUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\XRPUSDT_1h.csv",
+      "source_sha256": "88840ca8ca6e03a39fb81e42372854ef88d00715195093a8879d88b4c130bfbc",
+      "input_sha256": "88840ca8ca6e03a39fb81e42372854ef88d00715195093a8879d88b4c130bfbc",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "SOLUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\SOLUSDT_1h.csv",
+      "source_sha256": "53ef0e063a65eb27471fed665d73bd01610cfef3a379b4799f7723088148ee30",
+      "input_sha256": "53ef0e063a65eb27471fed665d73bd01610cfef3a379b4799f7723088148ee30",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "DOGEUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\DOGEUSDT_1h.csv",
+      "source_sha256": "1ff2d7dc5cef172afe8c503c56b191c7a8c020a2c95bbc88bb25c1c064a82a70",
+      "input_sha256": "1ff2d7dc5cef172afe8c503c56b191c7a8c020a2c95bbc88bb25c1c064a82a70",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "BNBUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\BNBUSDT_1h.csv",
+      "source_sha256": "52d287320443bb8e835da669f128e1215daf44b008d0144c68b58f81941f2f85",
+      "input_sha256": "52d287320443bb8e835da669f128e1215daf44b008d0144c68b58f81941f2f85",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "LINKUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\LINKUSDT_1h.csv",
+      "source_sha256": "9536ea5dea36e345aa41e7419ec3be3aedc7c2bb580327bd4437407f4c8bda5d",
+      "input_sha256": "9536ea5dea36e345aa41e7419ec3be3aedc7c2bb580327bd4437407f4c8bda5d",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    },
+    "AVAXUSDT": {
+      "source": "C:\\Dev\\ZackBot2_newstrat\\data_long\\1h\\AVAXUSDT_1h.csv",
+      "source_sha256": "0a151f1c3383a0535fb5296e7f8da695ac0b00c9c86537241eda306f7a707ca1",
+      "input_sha256": "0a151f1c3383a0535fb5296e7f8da695ac0b00c9c86537241eda306f7a707ca1",
+      "rows": 35999,
+      "first_candle_utc": "2022-08-26T06:00:00",
+      "last_candle_utc": "2026-10-04T04:00:00"
+    }
+  }
+}

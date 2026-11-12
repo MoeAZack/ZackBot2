@@ -1,0 +1,11 @@
+# C1H: six fixed hourly replacement configurations
+
+Frozen12Nov2026 12:43 Cairo before economic runs. Registration-interface amendment recorded before execution; no signal/mgmt changes. Model source7b5beecb, unchanged backtest.run. Six configurations, all long/short, previously researched general families, not six independently new discoveries. Every trial/outcome retained. No account/runtime changes.
+
+H1 EMA pullback resumption; H2 compressed-range breakout; H3 flat-market Keltner reclaim; H4 RSI2 trend reset; H5 volume impulse continuation; H6 BTC-relative momentum (BTC excluded). Common protected stop: +1R activation,2ATR trail; base stop/target/time rules frozen in preregistration.
+
+Matrix:9cohort coins17191complete hourly bars Oct2024–Sep2026, plus8coin35999bar longerAug2022–Oct2026 history(noADA longfile). Cost scenarios0gross/no funding diagnostic plus7/15/23bp PER EXECUTED SIDE, normal/adverse paths, funded cases charge .01%/8h both sides as stress proxy.84cases,2low-priority workers. Exact executed fills/qty reconciled with no turnover fallback. $4000,share1/12,risk.024(initial$8),max1position/sleeve,3%dailyhalt,2.5%openrisk,10xmaxlev,testnetfilter snapshot.
+
+All historical data is consumedDEV/survivor universe.2025split is not a fresh holdout. No native-funding or point-in-time-universe qualification. Unchanged backtester compounds equity-based risk, unlike fixed live$8; actual account-fit and shared-basket execution must be independently checked before activation. DD is measured/reported, not an automatic veto for an otherwise economic-positive elevated-risk candidate. Frequency floor2closes/week per candidate is a research screen; basket goal>=5/week must be tested jointly, not inferred by adding solo frequencies.
+
+Code/input/spec SHA256s are frozen and each case has fingerprints. Exact source files remain locally under C1H/source from master7b5. Inputs/raw results/logs retained under F:/ZackBot2_data/C1H-20261112; only small code/manifests and eventual summary are published. No production registry entry/installer/mainnet action.
