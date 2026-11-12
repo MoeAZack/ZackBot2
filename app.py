@@ -1084,7 +1084,7 @@ class App:
                     e.next_cycle = {tf: datetime.fromtimestamp((math.floor(now / TF_SEC[tf]) + 1) * TF_SEC[tf] + 15, timezone.utc).isoformat(timespec='seconds') for tf in tfs}
                     self.loop_ok = time.time()
             except Exception as ex:
-                log.error(f'main loop: {ex}')
+                log.error(loop_error_text(ex))
                 time.sleep(20)
             time.sleep(2)
 
@@ -1430,6 +1430,13 @@ class H(BaseHTTPRequestHandler):
             log.warning(f'panel action rejected: {e}'); self._json(dict(ok=False, error=str(e)), 400)
         except Exception as e:
             log.error('panel action failed: ' + traceback.format_exc()); self._json(dict(ok=False, error=str(e)), 400)
+
+
+def loop_error_text(ex):
+    """Main-loop failure line: the exception TYPE and a short traceback, never just str(ex) (an empty message logged
+    'ERROR main loop: ' with nothing to diagnose on 2026-11-10, cohort CH-20261108T041924Z-424560d6)."""
+    tb = ''.join(traceback.format_exception(type(ex), ex, ex.__traceback__, limit=8)).rstrip()
+    return f'main loop: {type(ex).__name__}: {ex!s}' + chr(10) + tb
 
 
 # ------------------------------------------------------------------ request validation
