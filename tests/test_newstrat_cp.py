@@ -15,6 +15,14 @@ def _raw(n=2500):
             for s in SYMS}
 
 
+@pytest.fixture(autouse=True)
+def _restore_registry():
+    """The research keys are registered into the shared STRATEGIES dict; remove them so later tests see the shipped registry."""
+    before = dict(S.STRATEGIES)
+    yield
+    S.STRATEGIES.clear(); S.STRATEGIES.update(before)
+
+
 @pytest.fixture(scope='module')
 def book():
     raw = _raw(); N2.register(); N2.set_btc(raw['BTCUSDT'])
