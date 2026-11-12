@@ -1,0 +1,9 @@
+{
+  "status": "CANONICAL_DATA_FROZEN",
+  "at_cairo": "2026-11-12T14:06:58.345953+02:00",
+  "dataset_files": 17,
+  "manifest_sha256": "c11ed2566727c38d0d9236d7290a01aabb4a53a0f3b15388ea8fed7ba8909351",
+  "unresolved_source_conflicts": 0,
+  "earlier_manifest_sha256": "c11ed2566727c38d0d9236d7290a01aabb4a53a0f3b15388ea8fed7ba8909351",
+  "full_conflict_resolution_sha256": "c4f88fbd35c7a927f2e27c38ede67de9a655d0b34fbbfe85cbfdf24a1e358ffd"
+}

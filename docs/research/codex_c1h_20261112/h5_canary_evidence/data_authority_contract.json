@@ -1,0 +1,11 @@
+{
+  "frozen_cairo": "2026-11-12T14:01:08.248864+02:00",
+  "authority_rule": "Published checksum-verified official monthly archives as baseline; EVERY zero-volume/flat-OHLC anomaly and its immediately neighboring hours is reconciled with current public futures REST klines, all fields replaced by returned REST records, no selection by P&L. Preserve archives, response bytes, URLs, before/after and hashes. No missing REST fallback.",
+  "source_manifest_sha256": "4fdcbf065344afca33b8932d1f0e73f4dcd88e14cd6e0b6b8af4e58a41caa4da",
+  "no_candidate_parameter_change": true,
+  "pre_economic_conflict_rule_amendment": {
+    "at_cairo": "2026-11-12T14:06:41.005048+02:00",
+    "rule": "Resolve EVERY OHLCV disagreement over rtol1e-8/atol1e-8 between checksum archives and original frozen research data via same current public futures REST endpoint, irrespective of signal, trade, P&L or which source it favors. Preserve all responses and replacements. No candidate/economic rerun occurred before this amendment.",
+    "requests": 61
+  }
+}

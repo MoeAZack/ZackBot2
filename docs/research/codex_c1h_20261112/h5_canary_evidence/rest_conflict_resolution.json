@@ -1,0 +1,2822 @@
+{
+  "requests": [
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ADAUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ADAUSDT-20241028T200000-conflict.json",
+      "sha256": "eaf548ff534eac2ec431d02772b01a4d67d4911383744fb9b74be8d98f5d5dd8"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ADAUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ADAUSDT-20241028T210000-conflict.json",
+      "sha256": "eb8f608b9f519d17df43aa96a70dfca7e6d6a9528d77486c70e6b6e93b52122c"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ADAUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ADAUSDT-20250114T130000-conflict.json",
+      "sha256": "8c2c82c316f8548f005620816e2e15efa40171f76fd1f7db9e42bcd117011e80"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ADAUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ADAUSDT-20250114T150000-conflict.json",
+      "sha256": "8c3d3a7cbf8ca0ee2faecdb4f482eafb666a0d734ba49b38d20bcd3011d6d5e7"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\AVAXUSDT-20240327T120000-conflict.json",
+      "sha256": "5232adfa755af71a49f9fd1beb94acc1dd0214bbf8510c7b6e4baa710bdd4e0b"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\AVAXUSDT-20240328T110000-conflict.json",
+      "sha256": "16263afc73ce3e2eaac2bd0dc78b9d659243abf1960e7ca6b9917252c725b7bf"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\AVAXUSDT-20241028T200000-conflict.json",
+      "sha256": "3196005b38581c05fcd1a1ee387c389b055edb5804c4ed586a99a9d0baf07e02"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\AVAXUSDT-20241028T210000-conflict.json",
+      "sha256": "84740b3276cc8f43e618626e3abb8c57e8c8d4b3a11137191a9fbbcf00773412"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\AVAXUSDT-20250114T130000-conflict.json",
+      "sha256": "ff0f46d8cbcf36d39f53e677c93d14f5e3edea6a598790ab9fce725e48c64612"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=AVAXUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\AVAXUSDT-20250114T150000-conflict.json",
+      "sha256": "035851536fc4e812a598ca0ed590dc707ea281ea0069d77ab506aaa785c936b4"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1699628400000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BNBUSDT-20231110T150000-conflict.json",
+      "sha256": "54ac93ee50bc3aac530d63a7196abeec1fb2cb3c7249b5cec399bbe2a5154bb3"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BNBUSDT-20240328T110000-conflict.json",
+      "sha256": "953ae4de6bc8c40555dd4c1dde72a3e73d8260a8fb4a7454e6e7a6a3bdcecc85"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BNBUSDT-20241028T200000-conflict.json",
+      "sha256": "3bd93c6c14b21e8760305f780ad23922422cacc811ce9eae7b9b1daef27e1c86"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BNBUSDT-20241028T210000-conflict.json",
+      "sha256": "35325515b046067d572ae02fd3a2b0cf9de097e2743e7781ac8fecec3ab7ffde"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BNBUSDT-20250114T130000-conflict.json",
+      "sha256": "4c3c378cf72a54b3ece7aa78f6a08a052bc5af993a72beedc4ebf73e7ddc2a4f"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BNBUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BNBUSDT-20250114T150000-conflict.json",
+      "sha256": "eb2a1b20bc4b1097c85cf497ea50225c7c16d92d7fdbc9e9840a0e629d97b1cd"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20240327T120000-conflict.json",
+      "sha256": "063304abbd684425d4528e8054f7d1574b78c927f30734e2f70c4d9420c323e4"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1711620000000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20240328T100000-conflict.json",
+      "sha256": "be220ebc0d0600cbb75e1b71959c3a281182c78fb96f734913e902ca46499f4f"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20240328T110000-conflict.json",
+      "sha256": "18637bbc21beac92ba2948e929c7b3f28fa3c65e12a2a9b81ba9862785ded295"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1711627200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20240328T120000-conflict.json",
+      "sha256": "60419c4d69f33af9fb4b53e63767b9ef23a20ddab8f8bd9bc6e6c30e98125443"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20241028T200000-conflict.json",
+      "sha256": "5190ad1acb6968c28a6cd6017502e3a0ef0dee2a5f6e73787e2431890e932fe7"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20241028T210000-conflict.json",
+      "sha256": "7a37f7ee0ad1d4f627d708fcfb17b4ca3bd6ba7211680e6fa178704a3075b97b"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20250114T130000-conflict.json",
+      "sha256": "051a8eaf231a8a514146c24651611184d2ba98034b4922e4569489f6de1b1e40"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\BTCUSDT-20250114T150000-conflict.json",
+      "sha256": "ca21c2843985824efa96640cbd8ae150f6cc02dae76aba5d403198f17791fb4b"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20240327T120000-conflict.json",
+      "sha256": "125a8211ff6673738cbeab80196a7269e5429351a710cad43b30d85f7ae89cb5"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1711620000000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20240328T100000-conflict.json",
+      "sha256": "7421a40093871f34cd3f0aad5c751836cd405cb9b0b3de0936bdc7715156c561"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20240328T110000-conflict.json",
+      "sha256": "4b25dcced2dd4832006ee15f3b1c75125b49fb9d5e448f78440f69deacc868d0"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1711627200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20240328T120000-conflict.json",
+      "sha256": "2e3ac623a6c758f46828176d032ead53904000535ca594c1684afe19cea3fd24"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20241028T200000-conflict.json",
+      "sha256": "b24c65197cddaff17f708e4b06c6008c28d33e1df90386731ffd0c6ee5ac9a5c"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20241028T210000-conflict.json",
+      "sha256": "4f0b578da1c4ab1022df27d11b8c6707aaf3e4d4984b5159b338e173689bb9c1"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20250114T130000-conflict.json",
+      "sha256": "452d6ff37b45ae032475e4df52c28c438d41d2632dab3e15d2764740e8ee641f"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=DOGEUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\DOGEUSDT-20250114T150000-conflict.json",
+      "sha256": "3470af32c5e7bc53ee2ff915e81c95afdd348927ed6423ed8ea1b6516f234c70"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20240327T120000-conflict.json",
+      "sha256": "f42de7e9f552effc7308e27f5e67893ebfe1cdaaec2d248e0e5ef5c784915de1"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20240328T110000-conflict.json",
+      "sha256": "9ad813ca62afc4b0a11669acf4d8acc902c08254ebae9f077f15707c4e782bf6"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1711627200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20240328T120000-conflict.json",
+      "sha256": "28332b4e44d3d7dec30ba959d4f3749b9b68e99f1c4ecea069fe2febd6b01b03"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20241028T200000-conflict.json",
+      "sha256": "3558d7518fe94c1c2e89a9c1573c69018df655dd52a538a30e25a6bc7c92fc31"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20241028T210000-conflict.json",
+      "sha256": "7d94a1bde0ef558691ae5c8323bde52e8e5053dec50c93a38fd835ed112d234d"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20250114T130000-conflict.json",
+      "sha256": "1b745de5de0248e7fd4622e86854d82ec0710e52111c55fccc46e9ef311b5390"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\ETHUSDT-20250114T150000-conflict.json",
+      "sha256": "96c4ff17d85a02133425e2a9a7d173c05e51a4b6f2e7979266dcff3548f2502e"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20240327T120000-conflict.json",
+      "sha256": "7dd7d7c524645f34423fba2de4c6edd0fd858c00aaf868a18394de1ba591f198"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1711620000000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20240328T100000-conflict.json",
+      "sha256": "0b5d4d94d89409e3a7d40bfb64e2c0a7667a409d89fb7581fcba6db00fb31c43"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20240328T110000-conflict.json",
+      "sha256": "2b082216a9c4c8b26ac740f3d8942803586e364449d594f626c4b32fd06ce8c3"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20241028T200000-conflict.json",
+      "sha256": "408b872f0c37df3ea5b1e19cfdabdc47b13abed62d91ab13595aa27a741ff6d1"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20241028T210000-conflict.json",
+      "sha256": "061d038bb999e97c82d21335affc235f34ca95e5ab1c3487cd2dc0c300521e30"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20250114T130000-conflict.json",
+      "sha256": "cccaae08477f7cd1494163387ab9bb66ba985661a1e46eb791aa79e605a93365"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\LINKUSDT-20250114T150000-conflict.json",
+      "sha256": "bde6c6c2539b28f084fcca5a96002ae37c6b91eb6caa4193139a70d03e6ee206"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20240327T120000-conflict.json",
+      "sha256": "c5c199c45aa4c8bd405746e0694e2eb2bb1a7f486ac1809af47424c69eeaad43"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1711620000000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20240328T100000-conflict.json",
+      "sha256": "3d5de6f843df19d7e563b2d6c38dfa5459434471f80cb7a5fb5000e7fac6834a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20240328T110000-conflict.json",
+      "sha256": "43520bc3874b809d42b6f9405a51fce772aa89f2de6a1c77b85aef67c92674f3"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20241028T200000-conflict.json",
+      "sha256": "776a8c0e86995956db7c571a4c444c3a37f18d4f71320f904499ad9719793be2"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20241028T210000-conflict.json",
+      "sha256": "b4f081a6100afc8190a54d838c6cefff2376761c4927e87986d9cc4ca345ec4a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20250114T130000-conflict.json",
+      "sha256": "5bb2d267d544011c0dbc58a62733f3a29e7fa60d7a64532b2bef6703d353a672"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\SOLUSDT-20250114T150000-conflict.json",
+      "sha256": "3744db5dc5181c31ac5b96b5153a80f2c94992cdc7c97d743e823740343ab9d9"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1699959600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20231114T110000-conflict.json",
+      "sha256": "4433b78e1a87e0859ec9053d5c8e8f34d4a9cba024bd8c23af4b550eeda6a49a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1711540800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20240327T120000-conflict.json",
+      "sha256": "dd73695ca2fdc2a3388284e7809fdfba469e9651875fc9072e7d2d41d5e4b377"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1711620000000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20240328T100000-conflict.json",
+      "sha256": "cbd39de26adf1dd3d2d889d6a384b51858c2ebdab27674953918f2ebf9fddc1f"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1711623600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20240328T110000-conflict.json",
+      "sha256": "2155c052bd88225636e73dc67c54ee214de72e24e72813b04c84808c1a1303f7"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1730145600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20241028T200000-conflict.json",
+      "sha256": "e2badd1d7371235dc9b5d47121f55be17acd740ae033ff51547a70a54d130d9f"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1730149200000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20241028T210000-conflict.json",
+      "sha256": "81472c26a53d3c3b1260bb80be4dbbe99f59be5499e1aa0bbe026556527fafe8"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1736859600000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20250114T130000-conflict.json",
+      "sha256": "1236b95f249c866db52be6249c7a6185ab620fc68d40d512af1463e2c0744d3b"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?symbol=XRPUSDT&interval=1h&startTime=1736866800000&limit=1",
+      "response_file": "F:\\ZackBot2_data\\C1H-VENUE-RECHECK-20261112\\rest_responses\\XRPUSDT-20250114T150000-conflict.json",
+      "sha256": "0705b72570d8d75dfd88919d6a8cba9d609100bd46bfaedb2567f4a9b9b57dca"
+    }
+  ],
+  "rows_reconciled": [
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ADAUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 0.3422,
+        "h": 0.3437,
+        "l": 0.341,
+        "c": 0.3426,
+        "v": 8652225.0,
+        "qv": 2961455.8454,
+        "trades": 10150.0,
+        "tbqv": 1454480.8273,
+        "tbv": 4249564.0
+      },
+      "canonical_rest": {
+        "o": "0.34220",
+        "h": "0.34370",
+        "l": "0.34100",
+        "c": "0.34260",
+        "v": "8652225",
+        "qv": "2961455.84540",
+        "trades": 10150,
+        "tbqv": "1454480.82730",
+        "tbv": "4249564"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ADAUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 0.3425,
+        "h": 0.3439,
+        "l": 0.3425,
+        "c": 0.343,
+        "v": 3216592.0,
+        "qv": 1104888.9868,
+        "trades": 3737.0,
+        "tbqv": 590458.4419,
+        "tbv": 1718690.0
+      },
+      "canonical_rest": {
+        "o": "0.34250",
+        "h": "0.34390",
+        "l": "0.34250",
+        "c": "0.34300",
+        "v": "3216592",
+        "qv": "1104888.98680",
+        "trades": 3737,
+        "tbqv": "590458.44190",
+        "tbv": "1718690"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ADAUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 0.9593,
+        "h": 0.9781,
+        "l": 0.9551,
+        "c": 0.9714,
+        "v": 50501454.0,
+        "qv": 48909959.6284,
+        "trades": 75484.0,
+        "tbqv": 25397471.1344,
+        "tbv": 26219972.0
+      },
+      "canonical_rest": {
+        "o": "0.95930",
+        "h": "0.97810",
+        "l": "0.95510",
+        "c": "0.97140",
+        "v": "55269178",
+        "qv": "53553204.64810",
+        "trades": 81313,
+        "tbqv": "27827806.18010",
+        "tbv": "28716001"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ADAUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 0.9769,
+        "h": 0.9905,
+        "l": 0.9769,
+        "c": 0.9814,
+        "v": 29615899.0,
+        "qv": 29164872.9333,
+        "trades": 57963.0,
+        "tbqv": 15363138.7812,
+        "tbv": 15601266.0
+      },
+      "canonical_rest": {
+        "o": "0.97690",
+        "h": "0.99050",
+        "l": "0.97480",
+        "c": "0.98140",
+        "v": "31880402",
+        "qv": "31378818.60510",
+        "trades": 62434,
+        "tbqv": "16823441.04580",
+        "tbv": "17094637"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 25.855,
+        "h": 26.014,
+        "l": 25.824,
+        "c": 25.997,
+        "v": 135334.0,
+        "qv": 3507813.846,
+        "trades": 9973.0,
+        "tbqv": 2001750.591,
+        "tbv": 77217.0
+      },
+      "canonical_rest": {
+        "o": "25.8550",
+        "h": "26.0140",
+        "l": "25.8240",
+        "c": "25.9970",
+        "v": "135334",
+        "qv": "3507813.8460",
+        "trades": 9973,
+        "tbqv": "2001750.5910",
+        "tbv": "77217"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 25.961,
+        "h": 25.999,
+        "l": 25.91,
+        "c": 25.989,
+        "v": 26456.0,
+        "qv": 686868.345,
+        "trades": 2528.0,
+        "tbqv": 376541.474,
+        "tbv": 14503.0
+      },
+      "canonical_rest": {
+        "o": "25.9610",
+        "h": "25.9990",
+        "l": "25.9100",
+        "c": "25.9890",
+        "v": "26456",
+        "qv": "686868.3450",
+        "trades": 2528,
+        "tbqv": "376541.4740",
+        "tbv": "14503"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 35.706,
+        "h": 36.366,
+        "l": 35.642,
+        "c": 36.149,
+        "v": 413049.0,
+        "qv": 14894825.935,
+        "trades": 41122.0,
+        "tbqv": 7851942.323,
+        "tbv": 217750.0
+      },
+      "canonical_rest": {
+        "o": "35.7060",
+        "h": "36.3660",
+        "l": "35.6420",
+        "c": "36.1490",
+        "v": "445202",
+        "qv": "16058141.5970",
+        "trades": 43639,
+        "tbqv": "8403276.1810",
+        "tbv": "232986"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 36.125,
+        "h": 36.392,
+        "l": 36.125,
+        "c": 36.172,
+        "v": 181696.0,
+        "qv": 6592258.829,
+        "trades": 28383.0,
+        "tbqv": 2955698.782,
+        "tbv": 81462.0
+      },
+      "canonical_rest": {
+        "o": "36.1250",
+        "h": "36.3920",
+        "l": "36.0810",
+        "c": "36.1720",
+        "v": "191159",
+        "qv": "6934292.9230",
+        "trades": 30388,
+        "tbqv": "3151038.9690",
+        "tbv": "86865"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 596.57,
+        "h": 599.26,
+        "l": 596.46,
+        "c": 598.17,
+        "v": 25872.69,
+        "qv": 15465466.351,
+        "trades": 25774.0,
+        "tbqv": 7460476.7528,
+        "tbv": 12479.11
+      },
+      "canonical_rest": {
+        "o": "596.570",
+        "h": "599.260",
+        "l": "596.460",
+        "c": "598.170",
+        "v": "25872.69",
+        "qv": "15465466.35100",
+        "trades": 25774,
+        "tbqv": "7460476.75280",
+        "tbv": "12479.11"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 598.29,
+        "h": 598.86,
+        "l": 598.29,
+        "c": 598.66,
+        "v": 2122.69,
+        "qv": 1270702.0501,
+        "trades": 3767.0,
+        "tbqv": 777825.6739,
+        "tbv": 1299.34
+      },
+      "canonical_rest": {
+        "o": "598.290",
+        "h": "598.860",
+        "l": "598.290",
+        "c": "598.660",
+        "v": "2122.69",
+        "qv": "1270702.05010",
+        "trades": 3767,
+        "tbqv": "777825.67390",
+        "tbv": "1299.34"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 692.84,
+        "h": 698.8,
+        "l": 692.3,
+        "c": 697.1,
+        "v": 55171.18,
+        "qv": 38416476.2569,
+        "trades": 56509.0,
+        "tbqv": 18356146.3769,
+        "tbv": 26365.92
+      },
+      "canonical_rest": {
+        "o": "692.840",
+        "h": "698.800",
+        "l": "692.300",
+        "c": "697.100",
+        "v": "59286.71",
+        "qv": "41279385.77670",
+        "trades": 59782,
+        "tbqv": "19564259.66130",
+        "tbv": "28102.89"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 694.93,
+        "h": 696.9,
+        "l": 694.84,
+        "c": 694.91,
+        "v": 11911.75,
+        "qv": 8288608.151,
+        "trades": 28535.0,
+        "tbqv": 4784878.5567,
+        "tbv": 6876.97
+      },
+      "canonical_rest": {
+        "o": "694.930",
+        "h": "696.900",
+        "l": "694.580",
+        "c": "694.910",
+        "v": "13025.20",
+        "qv": "9062459.78100",
+        "trades": 30475,
+        "tbqv": "5334448.39700",
+        "tbv": "7667.69"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 69605.8,
+        "h": 69691.1,
+        "l": 69389.0,
+        "c": 69500.0,
+        "v": 5536.706,
+        "qv": 384850459.0395,
+        "trades": 77957.0,
+        "tbqv": 202434171.1806,
+        "tbv": 2912.252
+      },
+      "canonical_rest": {
+        "o": "69605.80",
+        "h": "69691.10",
+        "l": "69389.00",
+        "c": "69500.00",
+        "v": "5536.706",
+        "qv": "384850459.03950",
+        "trades": 77957,
+        "tbqv": "202434171.18060",
+        "tbv": "2912.252"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 69623.0,
+        "h": 69766.2,
+        "l": 69603.1,
+        "c": 69650.0,
+        "v": 1395.29,
+        "qv": 97216942.771,
+        "trades": 22739.0,
+        "tbqv": 52155314.6732,
+        "tbv": 748.539
+      },
+      "canonical_rest": {
+        "o": "69623.00",
+        "h": "69766.20",
+        "l": "69603.10",
+        "c": "69650.00",
+        "v": "1395.290",
+        "qv": "97216942.77100",
+        "trades": 22739,
+        "tbqv": "52155314.67320",
+        "tbv": "748.539"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 95953.5,
+        "h": 97250.0,
+        "l": 95715.8,
+        "c": 96295.4,
+        "v": 19827.845,
+        "qv": 1913159306.4834,
+        "trades": 325608.0,
+        "tbqv": 1021053299.1965,
+        "tbv": 10579.056
+      },
+      "canonical_rest": {
+        "o": "95953.50",
+        "h": "97250.00",
+        "l": "95715.80",
+        "c": "96295.40",
+        "v": "21800.976",
+        "qv": "2104178720.67870",
+        "trades": 352070,
+        "tbqv": "1104779731.22440",
+        "tbv": "11443.855"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 96249.0,
+        "h": 96939.0,
+        "l": 96249.0,
+        "c": 96416.7,
+        "v": 11293.454,
+        "qv": 1090879404.3291,
+        "trades": 243884.0,
+        "tbqv": 539335396.3854,
+        "tbv": 5583.341
+      },
+      "canonical_rest": {
+        "o": "96249.00",
+        "h": "96939.00",
+        "l": "96139.20",
+        "c": "96416.70",
+        "v": "11916.819",
+        "qv": "1150885263.90740",
+        "trades": 261302,
+        "tbqv": "574977397.09810",
+        "tbv": "5953.601"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 0.15836,
+        "h": 0.15931,
+        "l": 0.15654,
+        "c": 0.15699,
+        "v": 550917800.0,
+        "qv": 86775006.99678,
+        "trades": 119344.0,
+        "tbqv": 43786482.71591,
+        "tbv": 278010346.0
+      },
+      "canonical_rest": {
+        "o": "0.158360",
+        "h": "0.159310",
+        "l": "0.156540",
+        "c": "0.156990",
+        "v": "550917800",
+        "qv": "86775006.996780",
+        "trades": 119344,
+        "tbqv": "43786482.715910",
+        "tbv": "278010346"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 0.15794,
+        "h": 0.15964,
+        "l": 0.15788,
+        "c": 0.1593,
+        "v": 161600026.0,
+        "qv": 25651159.50917,
+        "trades": 34930.0,
+        "tbqv": 13641355.0613,
+        "tbv": 85931573.0
+      },
+      "canonical_rest": {
+        "o": "0.157940",
+        "h": "0.159640",
+        "l": "0.157880",
+        "c": "0.159300",
+        "v": "161600026",
+        "qv": "25651159.509170",
+        "trades": 34930,
+        "tbqv": "13641355.061300",
+        "tbv": "85931573"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 0.34667,
+        "h": 0.35351,
+        "l": 0.34571,
+        "c": 0.34993,
+        "v": 404744686.0,
+        "qv": 141674101.4669,
+        "trades": 191680.0,
+        "tbqv": 75450252.72224,
+        "tbv": 215482356.0
+      },
+      "canonical_rest": {
+        "o": "0.346670",
+        "h": "0.353510",
+        "l": "0.345710",
+        "c": "0.349930",
+        "v": "435381729",
+        "qv": "152434064.225570",
+        "trades": 205525,
+        "tbqv": "80971441.146750",
+        "tbv": "231202123"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 0.35063,
+        "h": 0.35379,
+        "l": 0.35063,
+        "c": 0.35286,
+        "v": 198328511.0,
+        "qv": 69908827.05164,
+        "trades": 136589.0,
+        "tbqv": 35835028.57641,
+        "tbv": 101654618.0
+      },
+      "canonical_rest": {
+        "o": "0.350630",
+        "h": "0.353790",
+        "l": "0.350120",
+        "c": "0.352860",
+        "v": "209343242",
+        "qv": "73772121.318950",
+        "trades": 145367,
+        "tbqv": "38580728.563120",
+        "tbv": "109482992"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 2505.93,
+        "h": 2516.49,
+        "l": 2504.13,
+        "c": 2516.41,
+        "v": 47283.244,
+        "qv": 118707131.60361,
+        "trades": 61637.0,
+        "tbqv": 76746106.62568,
+        "tbv": 30567.553
+      },
+      "canonical_rest": {
+        "o": "2505.93",
+        "h": "2516.49",
+        "l": "2504.13",
+        "c": "2516.41",
+        "v": "47283.244",
+        "qv": "118707131.60361",
+        "trades": 61637,
+        "tbqv": "76746106.62568",
+        "tbv": "30567.553"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 2515.96,
+        "h": 2520.0,
+        "l": 2514.54,
+        "c": 2518.92,
+        "v": 16286.043,
+        "qv": 40995382.83058,
+        "trades": 16917.0,
+        "tbqv": 24110548.75032,
+        "tbv": 9579.553
+      },
+      "canonical_rest": {
+        "o": "2515.96",
+        "h": "2520.00",
+        "l": "2514.54",
+        "c": "2518.92",
+        "v": "16286.043",
+        "qv": "40995382.83058",
+        "trades": 16917,
+        "tbqv": "24110548.75032",
+        "tbv": "9579.553"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 3182.4,
+        "h": 3232.31,
+        "l": 3177.23,
+        "c": 3207.11,
+        "v": 251774.366,
+        "qv": 807530576.34721,
+        "trades": 313701.0,
+        "tbqv": 424755491.04637,
+        "tbv": 132437.564
+      },
+      "canonical_rest": {
+        "o": "3182.40",
+        "h": "3232.31",
+        "l": "3177.23",
+        "c": "3207.11",
+        "v": "269375.016",
+        "qv": "864209018.13910",
+        "trades": 334113,
+        "tbqv": "451794944.08991",
+        "tbv": "140834.276"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 3190.73,
+        "h": 3214.99,
+        "l": 3190.31,
+        "c": 3197.87,
+        "v": 112153.816,
+        "qv": 359321994.12512,
+        "trades": 217334.0,
+        "tbqv": 179335571.76836,
+        "tbv": 55974.539
+      },
+      "canonical_rest": {
+        "o": "3190.73",
+        "h": "3214.99",
+        "l": "3186.00",
+        "c": "3197.87",
+        "v": "120200.917",
+        "qv": "385003530.72324",
+        "trades": 233687,
+        "tbqv": "195179651.76152",
+        "tbv": "60937.765"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 10.995,
+        "h": 11.043,
+        "l": 10.964,
+        "c": 11.031,
+        "v": 345074.47,
+        "qv": 3799234.85512,
+        "trades": 9038.0,
+        "tbqv": 1660983.59594,
+        "tbv": 150871.47
+      },
+      "canonical_rest": {
+        "o": "10.995",
+        "h": "11.043",
+        "l": "10.964",
+        "c": "11.031",
+        "v": "345074.47",
+        "qv": "3799234.85512",
+        "trades": 9038,
+        "tbqv": "1660983.59594",
+        "tbv": "150871.47"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 11.047,
+        "h": 11.064,
+        "l": 10.998,
+        "c": 11.038,
+        "v": 119090.35,
+        "qv": 1313371.57499,
+        "trades": 3621.0,
+        "tbqv": 639613.43464,
+        "tbv": 58001.93
+      },
+      "canonical_rest": {
+        "o": "11.047",
+        "h": "11.064",
+        "l": "10.998",
+        "c": "11.038",
+        "v": "119090.35",
+        "qv": "1313371.57499",
+        "trades": 3621,
+        "tbqv": "639613.43464",
+        "tbv": "58001.93"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 19.828,
+        "h": 20.224,
+        "l": 19.784,
+        "c": 20.122,
+        "v": 1139829.53,
+        "qv": 22846753.376,
+        "trades": 57360.0,
+        "tbqv": 11691736.3042,
+        "tbv": 583168.97
+      },
+      "canonical_rest": {
+        "o": "19.828",
+        "h": "20.224",
+        "l": "19.784",
+        "c": "20.122",
+        "v": "1243979.98",
+        "qv": "24939252.92957",
+        "trades": 61941,
+        "tbqv": "12549102.50070",
+        "tbv": "625843.31"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 20.109,
+        "h": 20.336,
+        "l": 20.109,
+        "c": 20.14,
+        "v": 688948.77,
+        "qv": 13933165.41158,
+        "trades": 34946.0,
+        "tbqv": 6457968.96126,
+        "tbv": 319215.37
+      },
+      "canonical_rest": {
+        "o": "20.109",
+        "h": "20.336",
+        "l": "20.090",
+        "c": "20.140",
+        "v": "726317.48",
+        "qv": "14685376.81726",
+        "trades": 37450,
+        "tbqv": "6922323.21911",
+        "tbv": "342282.51"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 176.35,
+        "h": 176.55,
+        "l": 175.63,
+        "c": 176.31,
+        "v": 281143.0,
+        "qv": 49498217.883,
+        "trades": 30107.0,
+        "tbqv": 23160643.895,
+        "tbv": 131539.0
+      },
+      "canonical_rest": {
+        "o": "176.3500",
+        "h": "176.5500",
+        "l": "175.6300",
+        "c": "176.3100",
+        "v": "281143",
+        "qv": "49498217.8830",
+        "trades": 30107,
+        "tbqv": "23160643.8950",
+        "tbv": "131539"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 176.55,
+        "h": 176.91,
+        "l": 176.31,
+        "c": 176.55,
+        "v": 68445.0,
+        "qv": 12089255.769,
+        "trades": 7963.0,
+        "tbqv": 5677414.441,
+        "tbv": 32140.0
+      },
+      "canonical_rest": {
+        "o": "176.5500",
+        "h": "176.9100",
+        "l": "176.3100",
+        "c": "176.5500",
+        "v": "68445",
+        "qv": "12089255.7690",
+        "trades": 7963,
+        "tbqv": "5677414.4410",
+        "tbv": "32140"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 186.01,
+        "h": 188.81,
+        "l": 185.53,
+        "c": 187.96,
+        "v": 912061.0,
+        "qv": 170791302.101,
+        "trades": 96887.0,
+        "tbqv": 92553281.346,
+        "tbv": 494150.0
+      },
+      "canonical_rest": {
+        "o": "186.0100",
+        "h": "188.8100",
+        "l": "185.5300",
+        "c": "187.9600",
+        "v": "964165",
+        "qv": "180573215.9010",
+        "trades": 102715,
+        "tbqv": "96484667.1960",
+        "tbv": "515086"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 187.11,
+        "h": 188.56,
+        "l": 186.69,
+        "c": 186.74,
+        "v": 419621.0,
+        "qv": 78736528.805,
+        "trades": 55366.0,
+        "tbqv": 41388044.01,
+        "tbv": 220555.0
+      },
+      "canonical_rest": {
+        "o": "187.1100",
+        "h": "188.5600",
+        "l": "186.6900",
+        "c": "186.7400",
+        "v": "454888",
+        "qv": "85338828.3150",
+        "trades": 59573,
+        "tbqv": "44595652.5000",
+        "tbv": "237685"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 0.5174,
+        "h": 0.5192,
+        "l": 0.517,
+        "c": 0.5185,
+        "v": 9686296.5,
+        "qv": 5018035.81503,
+        "trades": 11086.0,
+        "tbqv": 2386968.6908,
+        "tbv": 4606808.4
+      },
+      "canonical_rest": {
+        "o": "0.5174",
+        "h": "0.5192",
+        "l": "0.5170",
+        "c": "0.5185",
+        "v": "9686296.5",
+        "qv": "5018035.81503",
+        "trades": 11086,
+        "tbqv": "2386968.69080",
+        "tbv": "4606808.4"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 0.5182,
+        "h": 0.5187,
+        "l": 0.517,
+        "c": 0.5172,
+        "v": 3124340.9,
+        "qv": 1617722.80397,
+        "trades": 4204.0,
+        "tbqv": 915553.00088,
+        "tbv": 1768061.3
+      },
+      "canonical_rest": {
+        "o": "0.5182",
+        "h": "0.5187",
+        "l": "0.5170",
+        "c": "0.5172",
+        "v": "3124340.9",
+        "qv": "1617722.80397",
+        "trades": 4204,
+        "tbqv": "915553.00088",
+        "tbv": "1768061.3"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 2.5528,
+        "h": 2.5856,
+        "l": 2.5465,
+        "c": 2.5647,
+        "v": 79360013.3,
+        "qv": 203943667.74789,
+        "trades": 180524.0,
+        "tbqv": 109251108.60348,
+        "tbv": 42495630.8
+      },
+      "canonical_rest": {
+        "o": "2.5528",
+        "h": "2.5856",
+        "l": "2.5465",
+        "c": "2.5647",
+        "v": "87127412.9",
+        "qv": "223935061.65818",
+        "trades": 195180,
+        "tbqv": "119215684.73867",
+        "tbv": "46366796.2"
+      }
+    },
+    {
+      "dataset": "cohort9_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 2.5712,
+        "h": 2.5905,
+        "l": 2.5666,
+        "c": 2.5782,
+        "v": 34957140.6,
+        "qv": 90159750.12486,
+        "trades": 116633.0,
+        "tbqv": 41284014.09682,
+        "tbv": 16004485.8
+      },
+      "canonical_rest": {
+        "o": "2.5712",
+        "h": "2.5905",
+        "l": "2.5666",
+        "c": "2.5782",
+        "v": "37268872.3",
+        "qv": "96109496.12092",
+        "trades": 125033,
+        "tbqv": "43484375.12419",
+        "tbv": "16859433.1"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 55.052,
+        "h": 55.285,
+        "l": 54.251,
+        "c": 54.421,
+        "v": 678755.0,
+        "qv": 37127661.818,
+        "trades": 67045.0,
+        "tbqv": 17973393.963,
+        "tbv": 328559.0
+      },
+      "canonical_rest": {
+        "o": "55.0520",
+        "h": "55.2850",
+        "l": "54.2510",
+        "c": "54.4210",
+        "v": "626816",
+        "qv": "34289200.5640",
+        "trades": 61022,
+        "tbqv": "16475435.6320",
+        "tbv": "301151"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 54.346,
+        "h": 54.636,
+        "l": 54.077,
+        "c": 54.39,
+        "v": 240838.0,
+        "qv": 13083977.297,
+        "trades": 30790.0,
+        "tbqv": 6232918.507,
+        "tbv": 114690.0
+      },
+      "canonical_rest": {
+        "o": "54.3460",
+        "h": "54.6360",
+        "l": "54.0770",
+        "c": "54.3900",
+        "v": "235332",
+        "qv": "12785353.6730",
+        "trades": 30010,
+        "tbqv": "6085945.7680",
+        "tbv": "111980"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 25.855,
+        "h": 26.014,
+        "l": 25.824,
+        "c": 25.997,
+        "v": 135334.0,
+        "qv": 3507813.846,
+        "trades": 9973.0,
+        "tbqv": 2001750.591,
+        "tbv": 77217.0
+      },
+      "canonical_rest": {
+        "o": "25.8550",
+        "h": "26.0140",
+        "l": "25.8240",
+        "c": "25.9970",
+        "v": "135334",
+        "qv": "3507813.8460",
+        "trades": 9973,
+        "tbqv": "2001750.5910",
+        "tbv": "77217"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 25.961,
+        "h": 25.999,
+        "l": 25.91,
+        "c": 25.989,
+        "v": 26456.0,
+        "qv": 686868.345,
+        "trades": 2528.0,
+        "tbqv": 376541.474,
+        "tbv": 14503.0
+      },
+      "canonical_rest": {
+        "o": "25.9610",
+        "h": "25.9990",
+        "l": "25.9100",
+        "c": "25.9890",
+        "v": "26456",
+        "qv": "686868.3450",
+        "trades": 2528,
+        "tbqv": "376541.4740",
+        "tbv": "14503"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 35.706,
+        "h": 36.366,
+        "l": 35.642,
+        "c": 36.149,
+        "v": 413049.0,
+        "qv": 14894825.935,
+        "trades": 41122.0,
+        "tbqv": 7851942.323,
+        "tbv": 217750.0
+      },
+      "canonical_rest": {
+        "o": "35.7060",
+        "h": "36.3660",
+        "l": "35.6420",
+        "c": "36.1490",
+        "v": "445202",
+        "qv": "16058141.5970",
+        "trades": 43639,
+        "tbqv": "8403276.1810",
+        "tbv": "232986"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "AVAXUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 36.125,
+        "h": 36.392,
+        "l": 36.125,
+        "c": 36.172,
+        "v": 181696.0,
+        "qv": 6592258.829,
+        "trades": 28383.0,
+        "tbqv": 2955698.782,
+        "tbv": 81462.0
+      },
+      "canonical_rest": {
+        "o": "36.1250",
+        "h": "36.3920",
+        "l": "36.0810",
+        "c": "36.1720",
+        "v": "191159",
+        "qv": "6934292.9230",
+        "trades": 30388,
+        "tbqv": "3151038.9690",
+        "tbv": "86865"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2023-11-10 15:00:00",
+      "previous": {
+        "o": 249.43,
+        "h": 250.49,
+        "l": 248.05,
+        "c": 249.93,
+        "v": 107978.68,
+        "qv": 26917447.0029,
+        "trades": 44573.0,
+        "tbqv": 10430659.2258,
+        "tbv": 41828.18
+      },
+      "canonical_rest": {
+        "o": "249.430",
+        "h": "249.780",
+        "l": "248.050",
+        "c": "249.050",
+        "v": "107978.68",
+        "qv": "26917447.00290",
+        "trades": 44573,
+        "tbqv": "10430659.22580",
+        "tbv": "41828.18"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 587.39,
+        "h": 588.82,
+        "l": 585.61,
+        "c": 587.78,
+        "v": 31251.04,
+        "qv": 18358619.1156,
+        "trades": 35989.0,
+        "tbqv": 9274152.6378,
+        "tbv": 15785.56
+      },
+      "canonical_rest": {
+        "o": "587.390",
+        "h": "588.820",
+        "l": "585.610",
+        "c": "587.780",
+        "v": "30655.84",
+        "qv": "18009151.76900",
+        "trades": 35254,
+        "tbqv": "9066706.93840",
+        "tbv": "15432.22"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 596.57,
+        "h": 599.26,
+        "l": 596.46,
+        "c": 598.17,
+        "v": 25872.69,
+        "qv": 15465466.351,
+        "trades": 25774.0,
+        "tbqv": 7460476.7528,
+        "tbv": 12479.11
+      },
+      "canonical_rest": {
+        "o": "596.570",
+        "h": "599.260",
+        "l": "596.460",
+        "c": "598.170",
+        "v": "25872.69",
+        "qv": "15465466.35100",
+        "trades": 25774,
+        "tbqv": "7460476.75280",
+        "tbv": "12479.11"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 598.29,
+        "h": 598.86,
+        "l": 598.29,
+        "c": 598.66,
+        "v": 2122.69,
+        "qv": 1270702.0501,
+        "trades": 3767.0,
+        "tbqv": 777825.6739,
+        "tbv": 1299.34
+      },
+      "canonical_rest": {
+        "o": "598.290",
+        "h": "598.860",
+        "l": "598.290",
+        "c": "598.660",
+        "v": "2122.69",
+        "qv": "1270702.05010",
+        "trades": 3767,
+        "tbqv": "777825.67390",
+        "tbv": "1299.34"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 692.84,
+        "h": 698.8,
+        "l": 692.3,
+        "c": 697.1,
+        "v": 55171.18,
+        "qv": 38416476.2569,
+        "trades": 56509.0,
+        "tbqv": 18356146.3769,
+        "tbv": 26365.92
+      },
+      "canonical_rest": {
+        "o": "692.840",
+        "h": "698.800",
+        "l": "692.300",
+        "c": "697.100",
+        "v": "59286.71",
+        "qv": "41279385.77670",
+        "trades": 59782,
+        "tbqv": "19564259.66130",
+        "tbv": "28102.89"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BNBUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 694.93,
+        "h": 696.9,
+        "l": 694.84,
+        "c": 694.91,
+        "v": 11911.75,
+        "qv": 8288608.151,
+        "trades": 28535.0,
+        "tbqv": 4784878.5567,
+        "tbv": 6876.97
+      },
+      "canonical_rest": {
+        "o": "694.930",
+        "h": "696.900",
+        "l": "694.580",
+        "c": "694.910",
+        "v": "13025.20",
+        "qv": "9062459.78100",
+        "trades": 30475,
+        "tbqv": "5334448.39700",
+        "tbv": "7667.69"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 70290.2,
+        "h": 70430.0,
+        "l": 70055.5,
+        "c": 70255.3,
+        "v": 6892.046,
+        "qv": 483979301.9832,
+        "trades": 112061.0,
+        "tbqv": 219196337.3086,
+        "tbv": 3121.353
+      },
+      "canonical_rest": {
+        "o": "70290.20",
+        "h": "70430.00",
+        "l": "70055.50",
+        "c": "70255.30",
+        "v": "6420.832",
+        "qv": "450864388.54000",
+        "trades": 102114,
+        "tbqv": "202850455.74610",
+        "tbv": "2888.772"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-03-28 10:00:00",
+      "previous": {
+        "o": 70623.0,
+        "h": 70925.6,
+        "l": 70385.4,
+        "c": 70864.4,
+        "v": 9639.887,
+        "qv": 680697892.7353,
+        "trades": 147840.0,
+        "tbqv": 364485023.8953,
+        "tbv": 5160.14
+      },
+      "canonical_rest": {
+        "o": "70623.00",
+        "h": "70925.60",
+        "l": "70385.40",
+        "c": "70864.40",
+        "v": "9639.750",
+        "qv": "680688215.62940",
+        "trades": 147833,
+        "tbqv": "364484105.62860",
+        "tbv": "5160.127"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 70864.4,
+        "h": 71050.0,
+        "l": 70575.2,
+        "c": 70707.7,
+        "v": 9650.567,
+        "qv": 683492665.16306,
+        "trades": 157118.0,
+        "tbqv": 323805719.21406,
+        "tbv": 4571.356
+      },
+      "canonical_rest": {
+        "o": "70864.40",
+        "h": "71050.00",
+        "l": "70575.20",
+        "c": "70707.70",
+        "v": "9422.384",
+        "qv": "667366423.95416",
+        "trades": 153369,
+        "tbqv": "311091088.09576",
+        "tbv": "4391.445"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-03-28 12:00:00",
+      "previous": {
+        "o": 70707.7,
+        "h": 70935.9,
+        "l": 70411.0,
+        "c": 70902.8,
+        "v": 9942.337,
+        "qv": 702068305.19444,
+        "trades": 171883.0,
+        "tbqv": 360374468.822,
+        "tbv": 5102.476
+      },
+      "canonical_rest": {
+        "o": "70707.70",
+        "h": "70935.90",
+        "l": "70411.00",
+        "c": "70902.80",
+        "v": "9942.254",
+        "qv": "702062443.82524",
+        "trades": 171879,
+        "tbqv": "360374115.72700",
+        "tbv": "5102.471"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 69605.8,
+        "h": 69691.1,
+        "l": 69389.0,
+        "c": 69500.0,
+        "v": 5536.706,
+        "qv": 384850459.0395,
+        "trades": 77957.0,
+        "tbqv": 202434171.1806,
+        "tbv": 2912.252
+      },
+      "canonical_rest": {
+        "o": "69605.80",
+        "h": "69691.10",
+        "l": "69389.00",
+        "c": "69500.00",
+        "v": "5536.706",
+        "qv": "384850459.03950",
+        "trades": 77957,
+        "tbqv": "202434171.18060",
+        "tbv": "2912.252"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 69623.0,
+        "h": 69766.2,
+        "l": 69603.1,
+        "c": 69650.0,
+        "v": 1395.29,
+        "qv": 97216942.771,
+        "trades": 22739.0,
+        "tbqv": 52155314.6732,
+        "tbv": 748.539
+      },
+      "canonical_rest": {
+        "o": "69623.00",
+        "h": "69766.20",
+        "l": "69603.10",
+        "c": "69650.00",
+        "v": "1395.290",
+        "qv": "97216942.77100",
+        "trades": 22739,
+        "tbqv": "52155314.67320",
+        "tbv": "748.539"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 95953.5,
+        "h": 97250.0,
+        "l": 95715.8,
+        "c": 96295.4,
+        "v": 19827.845,
+        "qv": 1913159306.4834,
+        "trades": 325608.0,
+        "tbqv": 1021053299.1965,
+        "tbv": 10579.056
+      },
+      "canonical_rest": {
+        "o": "95953.50",
+        "h": "97250.00",
+        "l": "95715.80",
+        "c": "96295.40",
+        "v": "21800.976",
+        "qv": "2104178720.67870",
+        "trades": 352070,
+        "tbqv": "1104779731.22440",
+        "tbv": "11443.855"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "BTCUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 96249.0,
+        "h": 96939.0,
+        "l": 96249.0,
+        "c": 96416.7,
+        "v": 11293.454,
+        "qv": 1090879404.3291,
+        "trades": 243884.0,
+        "tbqv": 539335396.3854,
+        "tbv": 5583.341
+      },
+      "canonical_rest": {
+        "o": "96249.00",
+        "h": "96939.00",
+        "l": "96139.20",
+        "c": "96416.70",
+        "v": "11916.819",
+        "qv": "1150885263.90740",
+        "trades": 261302,
+        "tbqv": "574977397.09810",
+        "tbv": "5953.601"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 0.18677,
+        "h": 0.18924,
+        "l": 0.186,
+        "c": 0.18765,
+        "v": 697704825.0,
+        "qv": 130850436.73928,
+        "trades": 280488.0,
+        "tbqv": 61991227.96236,
+        "tbv": 330477667.0
+      },
+      "canonical_rest": {
+        "o": "0.186770",
+        "h": "0.189240",
+        "l": "0.186000",
+        "c": "0.187650",
+        "v": "633325273",
+        "qv": "118760319.166610",
+        "trades": 257821,
+        "tbqv": "55328843.963080",
+        "tbv": "295021821"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-03-28 10:00:00",
+      "previous": {
+        "o": 0.20221,
+        "h": 0.22094,
+        "l": 0.20218,
+        "c": 0.21525,
+        "v": 2069255033.0,
+        "qv": 438604926.29887,
+        "trades": 922139.0,
+        "tbqv": 234068244.38566,
+        "tbv": 1105373113.0
+      },
+      "canonical_rest": {
+        "o": "0.202210",
+        "h": "0.220940",
+        "l": "0.202180",
+        "c": "0.215250",
+        "v": "2068924229",
+        "qv": "438534472.368010",
+        "trades": 921756,
+        "tbqv": "233998171.367480",
+        "tbv": "1105044098"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 0.21523,
+        "h": 0.21795,
+        "l": 0.21112,
+        "c": 0.21741,
+        "v": 1507573934.0,
+        "qv": 324091412.67968,
+        "trades": 527928.0,
+        "tbqv": 161461337.34026,
+        "tbv": 750833648.0
+      },
+      "canonical_rest": {
+        "o": "0.215230",
+        "h": "0.217950",
+        "l": "0.211120",
+        "c": "0.217410",
+        "v": "1457349923",
+        "qv": "313239552.002860",
+        "trades": 509805,
+        "tbqv": "155395920.013030",
+        "tbv": "722762152"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-03-28 12:00:00",
+      "previous": {
+        "o": 0.21741,
+        "h": 0.22575,
+        "l": 0.21544,
+        "c": 0.21763,
+        "v": 2327336552.0,
+        "qv": 512612417.96356,
+        "trades": 891537.0,
+        "tbqv": 254284827.59589,
+        "tbv": 1154052191.0
+      },
+      "canonical_rest": {
+        "o": "0.217410",
+        "h": "0.225750",
+        "l": "0.215440",
+        "c": "0.217630",
+        "v": "2327251270",
+        "qv": "512593593.018160",
+        "trades": 891502,
+        "tbqv": "254281548.294690",
+        "tbv": "1154037335"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 0.15836,
+        "h": 0.15931,
+        "l": 0.15654,
+        "c": 0.15699,
+        "v": 550917800.0,
+        "qv": 86775006.99678,
+        "trades": 119344.0,
+        "tbqv": 43786482.71591,
+        "tbv": 278010346.0
+      },
+      "canonical_rest": {
+        "o": "0.158360",
+        "h": "0.159310",
+        "l": "0.156540",
+        "c": "0.156990",
+        "v": "550917800",
+        "qv": "86775006.996780",
+        "trades": 119344,
+        "tbqv": "43786482.715910",
+        "tbv": "278010346"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 0.15794,
+        "h": 0.15964,
+        "l": 0.15788,
+        "c": 0.1593,
+        "v": 161600026.0,
+        "qv": 25651159.50917,
+        "trades": 34930.0,
+        "tbqv": 13641355.0613,
+        "tbv": 85931573.0
+      },
+      "canonical_rest": {
+        "o": "0.157940",
+        "h": "0.159640",
+        "l": "0.157880",
+        "c": "0.159300",
+        "v": "161600026",
+        "qv": "25651159.509170",
+        "trades": 34930,
+        "tbqv": "13641355.061300",
+        "tbv": "85931573"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 0.34667,
+        "h": 0.35351,
+        "l": 0.34571,
+        "c": 0.34993,
+        "v": 404744686.0,
+        "qv": 141674101.4669,
+        "trades": 191680.0,
+        "tbqv": 75450252.72224,
+        "tbv": 215482356.0
+      },
+      "canonical_rest": {
+        "o": "0.346670",
+        "h": "0.353510",
+        "l": "0.345710",
+        "c": "0.349930",
+        "v": "435381729",
+        "qv": "152434064.225570",
+        "trades": 205525,
+        "tbqv": "80971441.146750",
+        "tbv": "231202123"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "DOGEUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 0.35063,
+        "h": 0.35379,
+        "l": 0.35063,
+        "c": 0.35286,
+        "v": 198328511.0,
+        "qv": 69908827.05164,
+        "trades": 136589.0,
+        "tbqv": 35835028.57641,
+        "tbv": 101654618.0
+      },
+      "canonical_rest": {
+        "o": "0.350630",
+        "h": "0.353790",
+        "l": "0.350120",
+        "c": "0.352860",
+        "v": "209343242",
+        "qv": "73772121.318950",
+        "trades": 145367,
+        "tbqv": "38580728.563120",
+        "tbv": "109482992"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 3588.89,
+        "h": 3599.0,
+        "l": 3570.0,
+        "c": 3584.38,
+        "v": 60688.338,
+        "qv": 217479713.19586,
+        "trades": 126135.0,
+        "tbqv": 105957626.88754,
+        "tbv": 29562.355
+      },
+      "canonical_rest": {
+        "o": "3588.89",
+        "h": "3599.00",
+        "l": "3570.00",
+        "c": "3584.38",
+        "v": "56926.557",
+        "qv": "203993648.42402",
+        "trades": 117044,
+        "tbqv": "98286475.41577",
+        "tbv": "27422.768"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 3593.09,
+        "h": 3597.51,
+        "l": 3573.35,
+        "c": 3583.25,
+        "v": 67468.606,
+        "qv": 241976304.33496,
+        "trades": 155921.0,
+        "tbqv": 120179516.56414,
+        "tbv": 33503.633
+      },
+      "canonical_rest": {
+        "o": "3593.09",
+        "h": "3597.51",
+        "l": "3573.35",
+        "c": "3583.25",
+        "v": "65418.602",
+        "qv": "234637905.42834",
+        "trades": 151731,
+        "tbqv": "115178234.05881",
+        "tbv": "32106.385"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-03-28 12:00:00",
+      "previous": {
+        "o": 3583.24,
+        "h": 3596.13,
+        "l": 3558.15,
+        "c": 3580.32,
+        "v": 110103.152,
+        "qv": 393606929.81215,
+        "trades": 200980.0,
+        "tbqv": 189171164.42923,
+        "tbv": 52912.104
+      },
+      "canonical_rest": {
+        "o": "3583.24",
+        "h": "3596.13",
+        "l": "3558.15",
+        "c": "3580.32",
+        "v": "110101.810",
+        "qv": "393602132.46893",
+        "trades": 200973,
+        "tbqv": "189170492.37059",
+        "tbv": "52911.916"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 2505.93,
+        "h": 2516.49,
+        "l": 2504.13,
+        "c": 2516.41,
+        "v": 47283.244,
+        "qv": 118707131.60361,
+        "trades": 61637.0,
+        "tbqv": 76746106.62568,
+        "tbv": 30567.553
+      },
+      "canonical_rest": {
+        "o": "2505.93",
+        "h": "2516.49",
+        "l": "2504.13",
+        "c": "2516.41",
+        "v": "47283.244",
+        "qv": "118707131.60361",
+        "trades": 61637,
+        "tbqv": "76746106.62568",
+        "tbv": "30567.553"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 2515.96,
+        "h": 2520.0,
+        "l": 2514.54,
+        "c": 2518.92,
+        "v": 16286.043,
+        "qv": 40995382.83058,
+        "trades": 16917.0,
+        "tbqv": 24110548.75032,
+        "tbv": 9579.553
+      },
+      "canonical_rest": {
+        "o": "2515.96",
+        "h": "2520.00",
+        "l": "2514.54",
+        "c": "2518.92",
+        "v": "16286.043",
+        "qv": "40995382.83058",
+        "trades": 16917,
+        "tbqv": "24110548.75032",
+        "tbv": "9579.553"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 3182.4,
+        "h": 3232.31,
+        "l": 3177.23,
+        "c": 3207.11,
+        "v": 251774.366,
+        "qv": 807530576.34721,
+        "trades": 313701.0,
+        "tbqv": 424755491.04637,
+        "tbv": 132437.564
+      },
+      "canonical_rest": {
+        "o": "3182.40",
+        "h": "3232.31",
+        "l": "3177.23",
+        "c": "3207.11",
+        "v": "269375.016",
+        "qv": "864209018.13910",
+        "trades": 334113,
+        "tbqv": "451794944.08991",
+        "tbv": "140834.276"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "ETHUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 3190.73,
+        "h": 3214.99,
+        "l": 3190.31,
+        "c": 3197.87,
+        "v": 112153.816,
+        "qv": 359321994.12512,
+        "trades": 217334.0,
+        "tbqv": 179335571.76836,
+        "tbv": 55974.539
+      },
+      "canonical_rest": {
+        "o": "3190.73",
+        "h": "3214.99",
+        "l": "3186.00",
+        "c": "3197.87",
+        "v": "120200.917",
+        "qv": "385003530.72324",
+        "trades": 233687,
+        "tbqv": "195179651.76152",
+        "tbv": "60937.765"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 19.742,
+        "h": 19.818,
+        "l": 19.66,
+        "c": 19.727,
+        "v": 432681.22,
+        "qv": 8540135.54559,
+        "trades": 21784.0,
+        "tbqv": 4004732.76347,
+        "tbv": 202890.33
+      },
+      "canonical_rest": {
+        "o": "19.742",
+        "h": "19.818",
+        "l": "19.660",
+        "c": "19.727",
+        "v": "399999.59",
+        "qv": "7894767.12079",
+        "trades": 20035,
+        "tbqv": "3698756.16478",
+        "tbv": "187393.13"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-03-28 10:00:00",
+      "previous": {
+        "o": 19.752,
+        "h": 19.793,
+        "l": 19.552,
+        "c": 19.602,
+        "v": 537020.48,
+        "qv": 10551314.28485,
+        "trades": 23212.0,
+        "tbqv": 4647457.11019,
+        "tbv": 236567.57
+      },
+      "canonical_rest": {
+        "o": "19.752",
+        "h": "19.793",
+        "l": "19.552",
+        "c": "19.602",
+        "v": "537020.30",
+        "qv": "10551310.75541",
+        "trades": 23211,
+        "tbqv": "4647457.11019",
+        "tbv": "236567.57"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 19.603,
+        "h": 19.679,
+        "l": 19.522,
+        "c": 19.614,
+        "v": 428829.08,
+        "qv": 8404033.63379,
+        "trades": 22462.0,
+        "tbqv": 4313105.92826,
+        "tbv": 220050.14
+      },
+      "canonical_rest": {
+        "o": "19.603",
+        "h": "19.679",
+        "l": "19.523",
+        "c": "19.614",
+        "v": "420662.36",
+        "qv": "8244422.41749",
+        "trades": 21940,
+        "tbqv": "4185149.34101",
+        "tbv": "213502.94"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 10.995,
+        "h": 11.043,
+        "l": 10.964,
+        "c": 11.031,
+        "v": 345074.47,
+        "qv": 3799234.85512,
+        "trades": 9038.0,
+        "tbqv": 1660983.59594,
+        "tbv": 150871.47
+      },
+      "canonical_rest": {
+        "o": "10.995",
+        "h": "11.043",
+        "l": "10.964",
+        "c": "11.031",
+        "v": "345074.47",
+        "qv": "3799234.85512",
+        "trades": 9038,
+        "tbqv": "1660983.59594",
+        "tbv": "150871.47"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 11.047,
+        "h": 11.064,
+        "l": 10.998,
+        "c": 11.038,
+        "v": 119090.35,
+        "qv": 1313371.57499,
+        "trades": 3621.0,
+        "tbqv": 639613.43464,
+        "tbv": 58001.93
+      },
+      "canonical_rest": {
+        "o": "11.047",
+        "h": "11.064",
+        "l": "10.998",
+        "c": "11.038",
+        "v": "119090.35",
+        "qv": "1313371.57499",
+        "trades": 3621,
+        "tbqv": "639613.43464",
+        "tbv": "58001.93"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 19.828,
+        "h": 20.224,
+        "l": 19.784,
+        "c": 20.122,
+        "v": 1139829.53,
+        "qv": 22846753.376,
+        "trades": 57360.0,
+        "tbqv": 11691736.3042,
+        "tbv": 583168.97
+      },
+      "canonical_rest": {
+        "o": "19.828",
+        "h": "20.224",
+        "l": "19.784",
+        "c": "20.122",
+        "v": "1243979.98",
+        "qv": "24939252.92957",
+        "trades": 61941,
+        "tbqv": "12549102.50070",
+        "tbv": "625843.31"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "LINKUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 20.109,
+        "h": 20.336,
+        "l": 20.109,
+        "c": 20.14,
+        "v": 688948.77,
+        "qv": 13933165.41158,
+        "trades": 34946.0,
+        "tbqv": 6457968.96126,
+        "tbv": 319215.37
+      },
+      "canonical_rest": {
+        "o": "20.109",
+        "h": "20.336",
+        "l": "20.090",
+        "c": "20.140",
+        "v": "726317.48",
+        "qv": "14685376.81726",
+        "trades": 37450,
+        "tbqv": "6922323.21911",
+        "tbv": "342282.51"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 188.688,
+        "h": 188.872,
+        "l": 186.419,
+        "c": 187.29,
+        "v": 583556.0,
+        "qv": 109411546.102,
+        "trades": 77239.0,
+        "tbqv": 50680539.324,
+        "tbv": 270331.0
+      },
+      "canonical_rest": {
+        "o": "188.6880",
+        "h": "188.8720",
+        "l": "186.4190",
+        "c": "187.2900",
+        "v": "545666",
+        "qv": "102309038.3310",
+        "trades": 71764,
+        "tbqv": "46837612.0090",
+        "tbv": "249830"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-03-28 10:00:00",
+      "previous": {
+        "o": 187.669,
+        "h": 187.777,
+        "l": 185.666,
+        "c": 186.635,
+        "v": 494310.0,
+        "qv": 92191373.457,
+        "trades": 70274.0,
+        "tbqv": 44210791.911,
+        "tbv": 237064.0
+      },
+      "canonical_rest": {
+        "o": "187.6690",
+        "h": "187.7770",
+        "l": "185.6660",
+        "c": "186.6350",
+        "v": "494307",
+        "qv": "92190814.1820",
+        "trades": 70273,
+        "tbqv": "44210232.6360",
+        "tbv": "237061"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 186.635,
+        "h": 187.294,
+        "l": 184.819,
+        "c": 185.563,
+        "v": 582749.0,
+        "qv": 108359093.144,
+        "trades": 80005.0,
+        "tbqv": 53126800.342,
+        "tbv": 285670.0
+      },
+      "canonical_rest": {
+        "o": "186.6350",
+        "h": "187.2940",
+        "l": "184.8190",
+        "c": "185.5630",
+        "v": "567037",
+        "qv": "105449290.5450",
+        "trades": 77891,
+        "tbqv": "51166103.7260",
+        "tbv": "275083"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 176.35,
+        "h": 176.55,
+        "l": 175.63,
+        "c": 176.31,
+        "v": 281143.0,
+        "qv": 49498217.883,
+        "trades": 30107.0,
+        "tbqv": 23160643.895,
+        "tbv": 131539.0
+      },
+      "canonical_rest": {
+        "o": "176.3500",
+        "h": "176.5500",
+        "l": "175.6300",
+        "c": "176.3100",
+        "v": "281143",
+        "qv": "49498217.8830",
+        "trades": 30107,
+        "tbqv": "23160643.8950",
+        "tbv": "131539"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 176.55,
+        "h": 176.91,
+        "l": 176.31,
+        "c": 176.55,
+        "v": 68445.0,
+        "qv": 12089255.769,
+        "trades": 7963.0,
+        "tbqv": 5677414.441,
+        "tbv": 32140.0
+      },
+      "canonical_rest": {
+        "o": "176.5500",
+        "h": "176.9100",
+        "l": "176.3100",
+        "c": "176.5500",
+        "v": "68445",
+        "qv": "12089255.7690",
+        "trades": 7963,
+        "tbqv": "5677414.4410",
+        "tbv": "32140"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 186.01,
+        "h": 188.81,
+        "l": 185.53,
+        "c": 187.96,
+        "v": 912061.0,
+        "qv": 170791302.101,
+        "trades": 96887.0,
+        "tbqv": 92553281.346,
+        "tbv": 494150.0
+      },
+      "canonical_rest": {
+        "o": "186.0100",
+        "h": "188.8100",
+        "l": "185.5300",
+        "c": "187.9600",
+        "v": "964165",
+        "qv": "180573215.9010",
+        "trades": 102715,
+        "tbqv": "96484667.1960",
+        "tbv": "515086"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "SOLUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 187.11,
+        "h": 188.56,
+        "l": 186.69,
+        "c": 186.74,
+        "v": 419621.0,
+        "qv": 78736528.805,
+        "trades": 55366.0,
+        "tbqv": 41388044.01,
+        "tbv": 220555.0
+      },
+      "canonical_rest": {
+        "o": "187.1100",
+        "h": "188.5600",
+        "l": "186.6900",
+        "c": "186.7400",
+        "v": "454888",
+        "qv": "85338828.3150",
+        "trades": 59573,
+        "tbqv": "44595652.5000",
+        "tbv": "237685"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2023-11-14 11:00:00",
+      "previous": {
+        "o": 0.6552,
+        "h": 0.6556,
+        "l": 0.6474,
+        "c": 0.6508,
+        "v": 62032915.1,
+        "qv": 51332637.23413,
+        "trades": 95312.0,
+        "tbqv": 21496999.26064,
+        "tbv": 33020819.0
+      },
+      "canonical_rest": {
+        "o": "0.6552",
+        "h": "0.6556",
+        "l": "0.6474",
+        "c": "0.6508",
+        "v": "78865067.9",
+        "qv": "51332637.23413",
+        "trades": 95312,
+        "tbqv": "21496999.26064",
+        "tbv": "33020819"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-03-27 12:00:00",
+      "previous": {
+        "o": 0.6228,
+        "h": 0.6242,
+        "l": 0.6204,
+        "c": 0.6223,
+        "v": 35024002.4,
+        "qv": 21798795.24719,
+        "trades": 32715.0,
+        "tbqv": 10964320.40336,
+        "tbv": 17612114.8
+      },
+      "canonical_rest": {
+        "o": "0.6228",
+        "h": "0.6242",
+        "l": "0.6204",
+        "c": "0.6223",
+        "v": "32131036.8",
+        "qv": "19996753.91259",
+        "trades": 29888,
+        "tbqv": "10023026.22762",
+        "tbv": "16101070.7"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-03-28 10:00:00",
+      "previous": {
+        "o": 0.6245,
+        "h": 0.6245,
+        "l": 0.6193,
+        "c": 0.6245,
+        "v": 49339844.2,
+        "qv": 30677090.23087,
+        "trades": 46881.0,
+        "tbqv": 14960003.7193,
+        "tbv": 24058255.6
+      },
+      "canonical_rest": {
+        "o": "0.6245",
+        "h": "0.6245",
+        "l": "0.6193",
+        "c": "0.6245",
+        "v": "49339842.7",
+        "qv": "30677089.30012",
+        "trades": 46880,
+        "tbqv": "14960002.78855",
+        "tbv": "24058254.1"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-03-28 11:00:00",
+      "previous": {
+        "o": 0.6244,
+        "h": 0.6246,
+        "l": 0.6207,
+        "c": 0.6221,
+        "v": 29421845.2,
+        "qv": 18318384.57985,
+        "trades": 40260.0,
+        "tbqv": 8085141.24683,
+        "tbv": 12984926.9
+      },
+      "canonical_rest": {
+        "o": "0.6244",
+        "h": "0.6246",
+        "l": "0.6207",
+        "c": "0.6221",
+        "v": "29002001.3",
+        "qv": "18057400.61189",
+        "trades": 39539,
+        "tbqv": "7953151.07589",
+        "tbv": "12772605.8"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-10-28 20:00:00",
+      "previous": {
+        "o": 0.5174,
+        "h": 0.5192,
+        "l": 0.517,
+        "c": 0.5185,
+        "v": 9686296.5,
+        "qv": 5018035.81503,
+        "trades": 11086.0,
+        "tbqv": 2386968.6908,
+        "tbv": 4606808.4
+      },
+      "canonical_rest": {
+        "o": "0.5174",
+        "h": "0.5192",
+        "l": "0.5170",
+        "c": "0.5185",
+        "v": "9686296.5",
+        "qv": "5018035.81503",
+        "trades": 11086,
+        "tbqv": "2386968.69080",
+        "tbv": "4606808.4"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2024-10-28 21:00:00",
+      "previous": {
+        "o": 0.5182,
+        "h": 0.5187,
+        "l": 0.517,
+        "c": 0.5172,
+        "v": 3124340.9,
+        "qv": 1617722.80397,
+        "trades": 4204.0,
+        "tbqv": 915553.00088,
+        "tbv": 1768061.3
+      },
+      "canonical_rest": {
+        "o": "0.5182",
+        "h": "0.5187",
+        "l": "0.5170",
+        "c": "0.5172",
+        "v": "3124340.9",
+        "qv": "1617722.80397",
+        "trades": 4204,
+        "tbqv": "915553.00088",
+        "tbv": "1768061.3"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2025-01-14 13:00:00",
+      "previous": {
+        "o": 2.5528,
+        "h": 2.5856,
+        "l": 2.5465,
+        "c": 2.5647,
+        "v": 79360013.3,
+        "qv": 203943667.74789,
+        "trades": 180524.0,
+        "tbqv": 109251108.60348,
+        "tbv": 42495630.8
+      },
+      "canonical_rest": {
+        "o": "2.5528",
+        "h": "2.5856",
+        "l": "2.5465",
+        "c": "2.5647",
+        "v": "87127412.9",
+        "qv": "223935061.65818",
+        "trades": 195180,
+        "tbqv": "119215684.73867",
+        "tbv": "46366796.2"
+      }
+    },
+    {
+      "dataset": "long8_1h",
+      "symbol": "XRPUSDT",
+      "time_utc": "2025-01-14 15:00:00",
+      "previous": {
+        "o": 2.5712,
+        "h": 2.5905,
+        "l": 2.5666,
+        "c": 2.5782,
+        "v": 34957140.6,
+        "qv": 90159750.12486,
+        "trades": 116633.0,
+        "tbqv": 41284014.09682,
+        "tbv": 16004485.8
+      },
+      "canonical_rest": {
+        "o": "2.5712",
+        "h": "2.5905",
+        "l": "2.5666",
+        "c": "2.5782",
+        "v": "37268872.3",
+        "qv": "96109496.12092",
+        "trades": 125033,
+        "tbqv": "43484375.12419",
+        "tbv": "16859433.1"
+      }
+    }
+  ]
+}
