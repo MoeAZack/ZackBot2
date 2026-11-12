@@ -14,7 +14,7 @@ import json, sys, glob, os, hashlib
 import numpy as np, pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import backtest as BT, strategies as S, newstrat_cp as N
+import backtest as BT, strategies as S, newstrat_cp as N, newstrat_cp2 as N2
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYMS = ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'DOGEUSDT', 'BNBUSDT', 'LINKUSDT', 'AVAXUSDT']
@@ -51,14 +51,16 @@ def period_stats(tr, mask, turn_by_trade):
 
 
 def main(key, out, scen='path'):
-    N.register()
+    N.register(); N2.register()
     st = S.STRATEGIES[key]
     tf = st['tf']
     bar_h = {'1h': 1, '4h': 4, '1d': 24}[tf]
-    book = BT.Book(load(tf))
+    raw = load(tf)
+    if key in N2.CANDIDATES: N2.set_btc(raw['BTCUSDT'])
+    book = BT.Book(raw)
     rules = json.load(open(os.path.join(ROOT, 'data', 'exchange_rules_testnet.json'), encoding='utf-8'))
     log = []
-    tr, cv = BT.run(book, [dict(key=key, share=1.0, risk=RISK, max_pos=2)], start=START, max_lev=10, daily_halt=0.08,
+    tr, cv = BT.run(book, [dict(key=key, share=1.0, risk=RISK, max_pos=2, symbols=[x for x in SYMS if x not in st.get('exclude', [])])], start=START, max_lev=10, daily_halt=0.08,
                     warmup=60 if tf == '1d' else 220, fund_per_bar=0.00005 * bar_h / 4, pessimistic=scen,
                     exchange_rules=rules, fill_log=log)
     T = pd.to_datetime(book.t.values)
@@ -82,7 +84,7 @@ def main(key, out, scen='path'):
                holdout=period_stats(tr, (tr.t_in >= SPLIT).values, tt) if len(tr) else dict(n=0),
                why=tr.why.value_counts().to_dict() if len(tr) else {},
                code_sha256={n: hashlib.sha256(open(os.path.join(ROOT, p), 'rb').read()).hexdigest()
-                            for n, p in (('newstrat_cp.py', 'research/newstrat_cp.py'), ('backtest.py', 'backtest.py'),
+                            for n, p in (('newstrat_cp.py', 'research/newstrat_cp.py'), ('newstrat_cp2.py', 'research/newstrat_cp2.py'), ('backtest.py', 'backtest.py'),
                                          ('strategies.py', 'strategies.py'))})
     a, dv, ho = res['all'], res['dev'], res['holdout']
     res['dd_label'] = ('Standard' if res['maxdd_R'] <= 15 else 'Elevated' if res['maxdd_R'] <= 30 else
