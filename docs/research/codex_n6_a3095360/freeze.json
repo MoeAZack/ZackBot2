@@ -1,0 +1,24 @@
+{
+  "head": "a3095360e38e71035b82339a0284852a154831b3",
+  "signal_source": "owner written rule + docs/research/newstrat_cp_result.md; no implementation import/read",
+  "script_sha256": "e3ac573a29a9a016fec6bdde8c61cc244dce131d1d6e3ecff23bfe4e14640f5d",
+  "inputs_sha256": {
+    "BTCUSDT": "469420592551c251ed5e48edc4e9e3568ee4a40b185adfcb423cf6d33024848d",
+    "ETHUSDT": "d250487771d802728edddf778079cb790f9975ad55d635cdde7ea906576425b8",
+    "XRPUSDT": "68b6e8ebd302d5606f5c4b62eeb3045e4fd36996ed334a5dbbe9c7c8d740b1f6",
+    "SOLUSDT": "f726dfd5adb3f29c240058b0417c2793d1738b91fb2feeedf23ac9928ad939a3",
+    "DOGEUSDT": "aac668cc4e4f5210a54923bf4280b43816572d27c65fae63d9af3dd96e5112a2",
+    "BNBUSDT": "a54474e67eab0a26222a63851c9e443e7ad5c07f807abc44bc28601e026d9d2b",
+    "LINKUSDT": "669a6c7af684cccd5c08bdfd6c621423c609dbf3437ad208eac23f57d6418484",
+    "AVAXUSDT": "96e34b44cd53f137625c7cb7ccd42f67905cd978291a44904386b631782cd1ba"
+  },
+  "reference_sha256": "b22843a2aef77d9240106326605622576a1ce9b8198edb80d9390f3c955eca47",
+  "spec_sha256": "84d03a7fc5d4bb5284ddd2862c33763169b636e41ee0e2a4ece8b734194f3a79",
+  "primary": "strict FIRST breakout event: close through prior20 high/low; previous breakout-condition false; alt strictly inside BOTH previous20 extremes; EMA50/200 aligned, seeded firstclose; BTCexcluded",
+  "diagnostics": [
+    "directional inside only, still first event",
+    "continuous breakout condition, directional inside only (no first-event requirement)"
+  ],
+  "alignment": "signal uses closed candle i; candidate next-open entry at candle i+1. Ledger t_in is entry-open, not decision-open. Common8-symbol contiguous grid; warmup220 matches documented setup. No execution/cap/exit code replay.",
+  "qualification": "FORWARD_ONLY regardless; no P&L rerun and no holdout tuning"
+}

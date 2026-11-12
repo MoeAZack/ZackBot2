@@ -1,0 +1,47 @@
+{
+  "head": "a3095360e38e71035b82339a0284852a154831b3",
+  "freeze_sha256": "5fc8a663e6996142905bda9e6da65eb5b8b13b55e0dc0b67262aa75b76da7e52",
+  "results": [
+    {
+      "interpretation": "PRIMARY_FIRST_INSIDE_RANGE",
+      "reference_unique": 405,
+      "reference_rows": 405,
+      "candidate_entries": 1260,
+      "matched": 405,
+      "missing": 0,
+      "extra": 855,
+      "BTC_candidates": 0,
+      "first": "2021-12-19T08:00:00+00:00",
+      "last": "2026-10-04T00:00:00+00:00",
+      "bars": 10499
+    },
+    {
+      "interpretation": "DIAGNOSTIC_FIRST_DIRECTIONAL",
+      "reference_unique": 405,
+      "reference_rows": 405,
+      "candidate_entries": 1260,
+      "matched": 405,
+      "missing": 0,
+      "extra": 855,
+      "BTC_candidates": 0,
+      "first": "2021-12-19T08:00:00+00:00",
+      "last": "2026-10-04T00:00:00+00:00",
+      "bars": 10499
+    },
+    {
+      "interpretation": "DIAGNOSTIC_CONTINUOUS_DIRECTIONAL",
+      "reference_unique": 405,
+      "reference_rows": 405,
+      "candidate_entries": 1706,
+      "matched": 405,
+      "missing": 0,
+      "extra": 1301,
+      "BTC_candidates": 0,
+      "first": "2021-12-19T08:00:00+00:00",
+      "last": "2026-10-04T00:00:00+00:00",
+      "bars": 10499
+    }
+  ],
+  "reference_duplicate_rows": 0,
+  "conclusion": "Report primary literally; diagnostics expose FIRST/inside semantics. Raw signal extras are not execution parity failures by themselves; filled ledger excludes signals while held or capacity-constrained. Missing reference entries are a rule discrepancy. No independent execution or profitability parity claimed. N6 remains FORWARD_ONLY, ex-SOL evidence negative."
+}

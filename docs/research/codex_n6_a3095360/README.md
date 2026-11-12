@@ -1,0 +1,9 @@
+# Independent N6 signal review
+
+Target PR #334 at a3095360e38e71035b82339a0284852a154831b3. No Claude implementation, strategies, indicator, backtest or evaluator imports. Standard-library CSV, iterative EMA and prior-20 rolling extremes only. The frozen source is independent_n6.py; tests run with `python -m unittest -v test_independent_n6` from this evidence folder. Input path defaults to the owner PC checkout C:/Dev/ZackBot2_newstrat; relocate that one path if reproducing elsewhere, retaining the recorded input hashes.
+
+Primary interpretation was frozen before comparison: first BTC breakout event, aligned alt EMA50/EMA200, alt still strictly inside its prior20 range, BTC excluded; entry-open timestamp is next candle after the signal-close. On the documented 10499-bar eight-coin grid: **405 matched, 0 missing, 855 extra raw candidate entries** versus405 unique filled ledger entries. There are1260 candidates and no BTC candidates. The seven synthetic tests pass. Both the primary and predeclared directional-inside diagnostic give identical counts; continuous-breakout diagnostic gives1706 candidates (405/0/1301). All variants retained; none selected after results.
+
+Raw signals are not filled trades. Extras may be blocked by an existing lot, the two-position cap, same-candle candidate ordering, exits or sizing. The separate occupancy diagnostic CONDITIONS ON the reference ledger and is not an independent portfolio simulation:169 extras fall strictly inside a same-coin held interval,202 inside a full-capacity interval,459 on entry/exit boundaries,25 are not explained by that simple occupancy diagnostic. Do not claim executed-entry parity or reproduced profitability.
+
+No P&L rerun, no fresh strategy qualification, no holdout tuning. Prior after-cost ex-SOL evidence is negative: N6 stays FORWARD_ONLY regardless of this signal check. Freeze, inputs/spec/reference/script SHA256 values and exact tuple CSVs are included.
