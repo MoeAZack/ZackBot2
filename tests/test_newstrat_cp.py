@@ -1,4 +1,4 @@
-"""NEWSTRAT-CP N6 / N8: registry definitions match the frozen research definitions, are causal, and stay research-only."""
+"""NEWSTRAT-CP N6 / N8 (research module only; strategies.py stays byte-pinned): frozen definitions are causal and research-only."""
 import os, sys
 import numpy as np, pandas as pd, pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,27 +21,10 @@ def book():
     return BT.Book(raw)
 
 
-@pytest.mark.parametrize('live,frozen', PAIRS)
-def test_signals_match_frozen_research_definition(book, live, frozen):
-    for s in SYMS[1:]:
-        a, b = book.raw_sig(live, s), book.raw_sig(frozen, s)
-        for k in ('le', 'se', 'lx', 'sx'):
-            assert np.array_equal(a[k], b[k]), (live, s, k)
-    assert sum(int(book.raw_sig(live, s)['le'].sum() + book.raw_sig(live, s)['se'].sum()) for s in SYMS[1:]) > 0
-
-
-@pytest.mark.parametrize('live,frozen', PAIRS)
-def test_backtest_trades_match_frozen(book, live, frozen):
-    syms = SYMS[1:]
-    a, _ = BT.run(book, [dict(key=live, share=1.0, risk=0.004, max_pos=2, symbols=syms)], start=4000)
-    b, _ = BT.run(book, [dict(key=frozen, share=1.0, risk=0.004, max_pos=2, symbols=syms)], start=4000)
-    assert len(a) > 0
-    pd.testing.assert_frame_equal(a.drop(columns='sleeve'), b.drop(columns='sleeve'))
-
-
-@pytest.mark.parametrize('live', [p[0] for p in PAIRS])
+@pytest.mark.parametrize('live', [p[1] for p in PAIRS])
 def test_causal_truncation_does_not_change_past_signals(live):
-    full = BT.Book(_raw(1500)); cut = BT.Book({s: d.iloc[:1200] for s, d in _raw(1500).items()})
+    raw = _raw(1500); N2.register(); N2.set_btc(raw['BTCUSDT'])
+    full = BT.Book(raw); N2.set_btc(raw['BTCUSDT'].iloc[:1200]); cut = BT.Book({s: d.iloc[:1200] for s, d in _raw(1500).items()})
     for s in SYMS[1:]:
         a, b = full.raw_sig(live, s), cut.raw_sig(live, s)
         for k in ('le', 'se'):
@@ -49,11 +32,11 @@ def test_causal_truncation_does_not_change_past_signals(live):
 
 
 def test_research_only_and_sides():
-    assert S.STRATEGIES['btc_lead_catchup_4h']['research_only'] and S.STRATEGIES['btc_lead_catchup_4h']['sides'] == 'both'
-    assert S.STRATEGIES['squeeze_breakdown_short_4h']['research_only'] and S.STRATEGIES['squeeze_breakdown_short_4h']['sides'] == 'short'
+    N2.register()
+    assert S.STRATEGIES['cp_n6_btc_lead_catchup_4h']['research_only'] and S.STRATEGIES['cp_n6_btc_lead_catchup_4h']['sides'] == 'both'
+    assert S.STRATEGIES['cp_n8_squeeze_breakdown_short_4h']['research_only'] and S.STRATEGIES['cp_n8_squeeze_breakdown_short_4h']['sides'] == 'short'
 
 
-def test_btc_lead_without_context_never_signals():
-    d = S.indicators(_raw(600)['ETHUSDT'])
-    g = S.signals('btc_lead_catchup_4h', d, dict(btc_down=np.zeros(len(d), bool)), mask_sides=False)
-    assert not g['le'].any() and not g['se'].any()
+def test_not_in_shipped_registry():
+    src = open(os.path.join(ROOT, 'strategies.py'), encoding='utf-8').read()
+    assert 'cp_n' not in src and 'btc_lead_catchup' not in src and 'squeeze_breakdown_short' not in src

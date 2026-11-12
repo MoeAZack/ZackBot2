@@ -46,5 +46,9 @@ ledger arm only.
 **Lessons.** The 1h ideas were negative even at 7 bp: no gross edge, not only costs. Wide-stop 4h ideas that ride
 cross-asset information did best.
 
-Registry keys (strategies.py): `btc_lead_catchup_4h` (run without BTCUSDT), `squeeze_breakdown_short_4h`. Parity with
-the frozen research definitions, causality and research_only status are tested in `tests/test_newstrat_cp.py`.
+Registry: **not added to strategies.py.** `strategies.py` is byte-pinned by
+`tests/test_causal_v4_runner_rebind.py`, and with PAPER on hold no live registry entry is needed. N6/N8 live only in
+`research/newstrat_cp2.py` (frozen keys `cp_n6_btc_lead_catchup_4h`, `cp_n8_squeeze_breakdown_short_4h`) for FWD-01
+replay. Promoting either to the engine later is its own ticket: two registry entries plus `btc_brk_up`/`btc_brk_dn` in
+`build_context`, and a pin update that Codex has to approve. Tests: `tests/test_newstrat_cp.py` (causality, research_only,
+absence from the shipped registry).
