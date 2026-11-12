@@ -263,6 +263,7 @@ def test_counting_needs_usable_unique_ids_and_both_times_after_start(measured):
 
 def test_manual_entries_never_consult_the_canary(f01, monkeypatch):
     e, _ = f01
+    now_at(monkeypatch, NOW)  # keep the frozen-start refusal independent of the wall clock
     e.S[FC.CANARY_KEY] = cfg(start=NOW + timedelta(days=9))
     assert e._rules_block(slot(e, F01), 'BTCUSDT', 'LONG', manual=True) is None
     assert 'before the frozen start' in e._rules_block(slot(e, F01), 'BTCUSDT', 'LONG')
