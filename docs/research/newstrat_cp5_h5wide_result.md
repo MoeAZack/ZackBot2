@@ -10,7 +10,7 @@ consumedDEV; none is a holdout. Turnover fallback trades: 0 everywhere. Fixed ex
 | V1 | Value-area re-entry (80% rule) | 6.2 | 780/-0.112 | 557/-0.219 | -0.091 | -0.156 | -0.222 | 11% | 220R | REJECT |
 | V2 | Walk-forward hour-of-day seasonality | 16.0 | 1490/-0.048 | 1927/-0.102 | -0.018 | -0.078 | -0.139 | 11% | 289R | REJECT |
 
-## H5-WIDE (frozen at `f3a9abae`): merged H5 long module, unchanged, on 11 coins outside its selection universe
+## H5-WIDE PILOT (separate pilot, frozen at `f3a9abae` before its run and BEFORE Codex's wider contract 5b768545 existed; that contract did not preregister these outcomes): merged H5 long module, unchanged, on 11 coins outside its selection universe. Sizing: BT.run compounding risk from an initial $8 (0.002 of equity), not fixed $8; max 1 position for the sleeve. These 11 symbols are now consumed for H5.
 Coins: 1000PEPE ENA HYPE LSK NEAR PUMP QNT SUI UNI WLD ZEC (owner PC `candles_1h_fib02`, input hashes in
 `research/h5wide/input_sha256.txt`). Split at 2025-10-01. Caveat: the coin list was assembled for earlier research, so it is
 a survivor set.
