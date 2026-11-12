@@ -1,0 +1,42 @@
+{
+  "id": "C1H-XASSET-20261112",
+  "rules_frozen_cairo": "2026-11-12T13:06:35.049735+02:00",
+  "rule_definitions": [
+    {
+      "id": "U1",
+      "name": "Cross-sectional24h momentum",
+      "rule": "AtUTCcandle-open hours divisibleby4, compute24hreturn acrossall availablealts, demean crosssectionmedian; one largestabsresidual, alphabeticaltie; longresidual>=.02 andclose>EMA50>EMA200,shortmirror<=-.02; winnerchosenbeforefilters",
+      "mgmt": {
+        "stop_atr": 3,
+        "tp_r": 3,
+        "max_bars": 12
+      }
+    },
+    {
+      "id": "U2",
+      "name": "BTC residualfade",
+      "rule": "AtUTC4hourdecision, alt24hreturn minusBTC24hreturn; one maxabsresidual,tiealphabetical; requireabsBTC6hreturn<.02;long residual<=-.03 andRSI14<35 andclose>open;short residual>=.03 andRSI14>65 andclose<open; choosewinnerbeforefilters",
+      "mgmt": {
+        "stop_atr": 3,
+        "tp_r": 2,
+        "max_bars": 12
+      }
+    },
+    {
+      "id": "U3",
+      "name": "BTC volume-lead altcatchup",
+      "rule": "BTCfirstclosedcrossprior12high/low,vol>=1.5prior24median;altstrictlyinsideownprior12range andclose>EMA50>EMA200forlong,mirrorforshort;BTCexcluded",
+      "mgmt": {
+        "stop_atr": 3,
+        "tp_r": 3,
+        "max_bars": 24
+      }
+    }
+  ],
+  "protection": "fixed initial stop/target/time exit only;BE0trail0noPROT",
+  "context": "Fixed survivoruniverse8/9coin;tradealts7/8only,BTCcontext; allranksrow-causal,currentclosedbar;requirescompletealignedpanel,failclosedmissingBTC; nofillfuture/rankoverwholehistory",
+  "history": "allconsumedDEV, notfreshholdout; newconfigurations inpreviouslyresearchedfamilies, count3moretrials; noperformanceobservedbeforefreeze",
+  "costs": "direct7/15/23bp per executed side, gross0andno funding; normal/worst verification, fundingstress.01%/8hbothsides",
+  "model": "accepted7b5 unchangedBT.run; initial$8compounds; max1sleeve;3%dailyhalt2.5%openrisk; noaccountchange",
+  "gate": "sameoriginalC1Hscreen, everyattemptretained, DDreportednotautomaticveto, independentvalidationbeforeruntimeactivation"
+}
