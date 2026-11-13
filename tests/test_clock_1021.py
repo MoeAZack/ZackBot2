@@ -197,6 +197,7 @@ def test_engine_raises_one_keyed_clock_alert_when_stop_and_close_are_refused():
     lot = next(iter(e.state['lots'].values()))
     e.manage(e.trade.marks())
     assert lot['stop_id'] and not lot['stop_dirty']                       # restored on the next pass
+    assert not e.health['incidents']['clock-1021']['open']                # review F1: the clock incident closes again
 
 
 def test_engine_clock_alert_ignores_other_errors():
@@ -236,3 +237,43 @@ def test_persistent_busy_answer_still_ends_after_the_normal_retries():
     with pytest.raises(BC.BinanceError):
         c._req('GET', '/fapi/v2/account', signed=True, critical=True)   # no outage circuit: full budget
     assert len(calls) == 4
+
+
+def test_clock_retries_stop_at_the_deadline(monkeypatch):
+    """Review F2: a slow network must not stretch the clock retries of one protective call without bound."""
+    t = [0.0]
+    monkeypatch.setattr(BC.time, 'monotonic', lambda: t[0])
+    c, calls, _ = client([R1021_WINDOW] * 5)
+    real_once = c._once
+    def slow_once(*a, **k):
+        t[0] += BC.CLOCK_DEADLINE_S / 2 + 1; return real_once(*a, **k)
+    c._once = slow_once
+    with pytest.raises(BC.ClockRejected):
+        c.close('ADAUSDT', 'LONG', '1')
+    assert len(calls) == 3 < 1 + BC.CLOCK_RETRIES                           # 3rd refusal is past the deadline
+
+
+def test_clock_retry_sync_uses_the_short_timeout():
+    c, _, syncs = client([R1021_WINDOW, Resp(200, {'orderId': 1})])
+    c.stop('ADAUSDT', 'LONG', '1', '0.1')
+    assert syncs == [BC.CLOCK_SYNC_TIMEOUT_S] * 2
+
+
+def test_sync_drops_a_sample_where_the_clock_stepped_back(monkeypatch):
+    """Review F3: a backward OS clock step mid-sample must not win as the 'fastest' sample."""
+    ts = iter([100.0, 100.05, 200.0, 195.0])                                # sample 2: clock stepped back 5 s
+    monkeypatch.setattr(BC.time, 'time', lambda: next(ts, 195.0))
+    answers = iter([100_025 + 7, 999_999_999])
+    c, _, _ = client([], server_time=lambda: next(answers))
+    c.sync_time(samples=2)
+    assert c.offset == 7
+
+
+def test_sync_with_only_backward_samples_keeps_the_offset(monkeypatch):
+    ts = iter([100.0, 99.0])
+    monkeypatch.setattr(BC.time, 'time', lambda: next(ts, 99.0))
+    c, _, _ = client([])
+    c.offset = 42
+    with pytest.raises(ValueError):
+        c.sync_time()
+    assert c.offset == 42

@@ -4143,6 +4143,8 @@ class Engine:
         old = lot.get('stop_id')
         lot['stop_id'], lot['stop'], lot['stop_dirty'], lot['last_order_t'] = new, new_stop, False, time.time()
         lot['stop_confirmed_t'] = lot['stop_placed_t'] = self.clock()      # AUD-04: Binance accepted it (id known) - re-verified
+        if (self.health.get('incidents', {}).get('clock-1021') or {}).get('open'):   # CLOCK-1021: a stop got through again
+            self.resolve('clock-1021', 'Binance accepts the request time again (a stop was placed)')
         lot['stop_miss'] = 0; lot.pop('stop_miss_t', None); lot.pop('stop_miss_why', None)   # on the open-order list shortly,
         self._stopv_due(lot['symbol'], max(lot['stop_placed_t'] + STOP_SETTLE_S,               # floored so a stop trailing
                                            self._stopv_last.get(lot['symbol'], -1e18) + STOP_ACTION_MIN_S))  # every pass is

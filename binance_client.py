@@ -188,6 +188,8 @@ CLOCK_RETRIES = 3
 CLOCK_RW_STEPS = (10000, 20000, 30000)         # recvWindow for clock retry 1, 2, 3 (never below the client's own)
 CLOCK_AHEAD_BACK_MS = 1000                     # Binance refuses a timestamp more than 1000 ms ahead of its clock
 SYNC_EVERY_S, SYNC_RETRY_S = 300, 30           # periodic offset refresh before a signed request; retry gap after a failed one
+CLOCK_DEADLINE_S = 20                          # no further clock retry once this long has passed since the first -1021
+CLOCK_SYNC_TIMEOUT_S = 3                       # per /time sample during a clock retry (a slow network must not stall a stop)
 
 
 def is_transient(e):
@@ -285,10 +287,12 @@ class Futures:
             t0 = time.time()
             st = self.s.get(self.base + '/fapi/v1/time', timeout=timeout).json()['serverTime']
             t1 = time.time()
+            if t1 < t0: continue                      # the local clock stepped back mid-sample: its offset is wrong
             if isinstance(st, bool) or not isinstance(st, (int, float)) or not math.isfinite(st) or st <= 0:
                 raise ValueError(f'serverTime: unusable value {st!r}')
             rtt = max(0.0, (t1 - t0) * 1000)
             if best is None or rtt < best[0]: best = (rtt, int(st) - int(round((t0 + t1) * 500)))
+        if best is None: raise ValueError('server time: no usable sample (local clock moved backwards)')
         self.offset = best[1]
         self.__dict__['_synced_at'] = time.time()
         self.__dict__['_sync_rtt_ms'] = round(best[0])
@@ -376,14 +380,15 @@ class Futures:
             if code == -1021 and signed:                # CLOCK-1021: refused on its timestamp, never executed -> safe to re-sign
                 d = self.__dict__
                 d['_n1021'] = d.get('_n1021', 0) + 1
-                if clock_try >= clock_max:
+                if not clock_try: clock_t0 = time.monotonic()
+                if clock_try >= clock_max or time.monotonic() - clock_t0 > CLOCK_DEADLINE_S:
                     d['_n1021_fail'] = d.get('_n1021_fail', 0) + 1
                     self.health.ok()                    # Binance answered: not an outage
                     msg = data.get('msg') if isinstance(data, dict) else ''
                     raise ClockRejected(-1021, f'{msg} (after {clock_try} resync retr{"y" if clock_try == 1 else "ies"}, '
                                                f'offset {self.offset} ms, recvWindow {rw or self.rw} ms)')
                 clock_try += 1
-                self._resync(2, 5)
+                self._resync(2, CLOCK_SYNC_TIMEOUT_S)
                 if not adds_risk:
                     rw = max(int(self.rw), CLOCK_RW_STEPS[min(clock_try, len(CLOCK_RW_STEPS)) - 1])
                     if 'ahead' in str((data or {}).get('msg', '')).lower(): back_ms += CLOCK_AHEAD_BACK_MS
