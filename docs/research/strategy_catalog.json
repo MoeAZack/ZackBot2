@@ -30844,6 +30844,30 @@
           "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
           "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation",
           "relationship": "Historical transfer diagnostic of related registry rule; not this arm's frozen prospective result"
+        },
+        {
+          "id": "EXTRA31_POSTHOC_MP_20261113",
+          "result_head": "45fe30bcc8ea7b4ae1e5d3d66f7f3d1d73523b3f",
+          "review_head": "faa09c5664122d845db21f2eec98afd84123cf18",
+          "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849655138",
+          "label": "TIER2_SELECTED_CONSUMED_SYMBOL_DIAGNOSTIC / APPROX_FIXED_RISK",
+          "independent_scope": "Trend max1/3/5 and CP-Y2 max3/5 raw/eligible signals; all4693 order0 primary/worst closed trades. Other orders arithmetic only.",
+          "bear_decision": "No new/expanded allocation from path-fragile evidence; existing OLD3 unchanged",
+          "CPY2_runtime": "Not ready: daily support, causal panel and PAPER/true-book admission integration needed",
+          "EX13": {
+            "account": 4,
+            "port": 8768,
+            "key": "exp_trend",
+            "classification": "wider-coin test of an existing arm, not new strategy",
+            "owner_approved": true,
+            "applied_cairo": "2026-11-13T11:40:24+02:00",
+            "max_pos": 3,
+            "universe": "explicit extra31",
+            "settings_before_sha256": "c2c7335a76eb485b251a5223ad021c830ee77baab5c67576235e60be13f88904",
+            "settings_after_sha256": "1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a",
+            "first_manual_cycle_verified": true,
+            "natural_1400_Cairo_cycle": "PENDING actual close; do not substitute manual cycle"
+          }
         }
       ]
     },
@@ -42115,6 +42139,30 @@
       "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
       "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
       "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation"
+    },
+    {
+      "id": "EXTRA31_POSTHOC_MP_20261113",
+      "result_head": "45fe30bcc8ea7b4ae1e5d3d66f7f3d1d73523b3f",
+      "review_head": "faa09c5664122d845db21f2eec98afd84123cf18",
+      "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849655138",
+      "label": "TIER2_SELECTED_CONSUMED_SYMBOL_DIAGNOSTIC / APPROX_FIXED_RISK",
+      "independent_scope": "Trend max1/3/5 and CP-Y2 max3/5 raw/eligible signals; all4693 order0 primary/worst closed trades. Other orders arithmetic only.",
+      "bear_decision": "No new/expanded allocation from path-fragile evidence; existing OLD3 unchanged",
+      "CPY2_runtime": "Not ready: daily support, causal panel and PAPER/true-book admission integration needed",
+      "EX13": {
+        "account": 4,
+        "port": 8768,
+        "key": "exp_trend",
+        "classification": "wider-coin test of an existing arm, not new strategy",
+        "owner_approved": true,
+        "applied_cairo": "2026-11-13T11:40:24+02:00",
+        "max_pos": 3,
+        "universe": "explicit extra31",
+        "settings_before_sha256": "c2c7335a76eb485b251a5223ad021c830ee77baab5c67576235e60be13f88904",
+        "settings_after_sha256": "1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a",
+        "first_manual_cycle_verified": true,
+        "natural_1400_Cairo_cycle": "PENDING actual close; do not substitute manual cycle"
+      }
     }
   ]
 }
