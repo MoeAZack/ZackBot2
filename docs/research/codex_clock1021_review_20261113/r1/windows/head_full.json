@@ -1,0 +1,190 @@
+{
+  "level": "full",
+  "started": "2026-11-13T19:26:48+02:00",
+  "timezone": "Africa/Cairo",
+  "steps": [
+    {
+      "name": "static: every .py file compiles",
+      "status": "passed",
+      "seconds": 6.4,
+      "files": 552,
+      "errors": []
+    },
+    {
+      "name": "static: no private files or key-like strings in the tree",
+      "status": "passed",
+      "seconds": 2.6,
+      "forbidden": [],
+      "key_like": []
+    },
+    {
+      "name": "dataset: every file matches DATA_MANIFEST.json",
+      "status": "passed",
+      "seconds": 0.5,
+      "files": 64,
+      "missing": [],
+      "changed": []
+    },
+    {
+      "name": "tests (all)",
+      "status": "FAILED",
+      "seconds": 3601.2,
+      "counts": {
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0
+      },
+      "failed": [],
+      "why": [
+        "..............................."
+      ]
+    },
+    {
+      "name": "replay 1: MOM pyramid + DCA + Squeeze",
+      "status": "passed",
+      "seconds": 486.7,
+      "matched": 133,
+      "matched_pct": 100.0,
+      "median_abs_dR": 0.015,
+      "p95_abs_dR": 0.11,
+      "return_gap_pp": 1.97,
+      "dd_gap_pp": 0.22,
+      "position_mismatches": "{}",
+      "why": null
+    },
+    {
+      "name": "replay 2: breakout + bear shorts + Donchian",
+      "status": "passed",
+      "seconds": 1798.5,
+      "matched": 300,
+      "matched_pct": 99.7,
+      "median_abs_dR": 0.019,
+      "p95_abs_dR": 0.072,
+      "return_gap_pp": 1.8,
+      "dd_gap_pp": 1.33,
+      "position_mismatches": "{}",
+      "why": null
+    },
+    {
+      "name": "UI harness (all tabs x 3 widths, flows, API failures)",
+      "status": "FAILED",
+      "seconds": 62.2,
+      "seeds": "replay 1 (this run)",
+      "checks_passed": 46,
+      "checks_total": 47,
+      "evidence": "..\\head_r1_full\\ui\\ui_baseline\\summary.json",
+      "failed": [
+        "FAIL browser section ran without exceptions  [d or updated.       \u2551"
+      ]
+    },
+    {
+      "name": "installer buildcheck",
+      "status": "FAILED",
+      "seconds": 3771.5,
+      "build_id": "20261113-210614",
+      "exe_sha256": null,
+      "log": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\head_r1_appdata\\ZackBot\\build_check.log",
+      "why": [
+        "[2/8] Preparing the private build environment (pinned versions only)...",
+        "[3/8] Checking the build libraries...",
+        "[4/8] Running the safety tests..."
+      ]
+    }
+  ],
+  "host": {
+    "os": "Windows-11-10.0.26220-SP0",
+    "python": "3.12.10",
+    "machine": "AMD64",
+    "ci": false
+  },
+  "git": {
+    "commit": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": []
+  },
+  "dependencies": {
+    "pyinstaller": "6.22.3",
+    "pyinstaller-hooks-contrib": "2026.8",
+    "altgraph": "0.17.5",
+    "pefile": "2024.8.26",
+    "pywin32-ctypes": "0.2.3",
+    "packaging": "26.3",
+    "setuptools": "84.0.0",
+    "requests": "2.34.2",
+    "charset_normalizer": "3.4.9",
+    "idna": "3.18",
+    "urllib3": "2.7.0",
+    "certifi": "2026.6.17",
+    "pandas": "3.0.6",
+    "numpy": "2.5.3",
+    "python-dateutil": "2.9.0.post0",
+    "six": "1.17.0",
+    "tzdata": "2026.5",
+    "pytest": "9.1.1",
+    "pytest-xdist": "3.8.0",
+    "execnet": "2.1.2",
+    "playwright": "1.64.0"
+  },
+  "build_id": "dev",
+  "dataset": {
+    "manifest_sha256": "fba8747976a58e7534fbb928904f17b62c73fc4a4f7eec2d2c044f1f649aa982",
+    "files": 64,
+    "missing": [],
+    "changed": []
+  },
+  "tests": {
+    "tests (all)": {
+      "tests": 0,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 0
+    }
+  },
+  "replays": {
+    "replay 1: MOM pyramid + DCA + Squeeze": {
+      "matched": 133,
+      "matched_pct": 100.0,
+      "median_abs_dR": 0.015,
+      "p95_abs_dR": 0.11,
+      "return_gap_pp": 1.97,
+      "dd_gap_pp": 0.22,
+      "position_mismatches": "{}",
+      "gate": "PASS",
+      "steps": 24,
+      "strict": true
+    },
+    "replay 2: breakout + bear shorts + Donchian": {
+      "matched": 300,
+      "matched_pct": 99.7,
+      "median_abs_dR": 0.019,
+      "p95_abs_dR": 0.072,
+      "return_gap_pp": 1.8,
+      "dd_gap_pp": 1.33,
+      "position_mismatches": "{}",
+      "gate": "PASS",
+      "steps": 24,
+      "strict": true
+    }
+  },
+  "ui": {
+    "seeds": "replay 1 (this run)",
+    "checks_passed": 46,
+    "checks_total": 47,
+    "evidence": "..\\head_r1_full\\ui\\ui_baseline\\summary.json",
+    "failed": [
+      "FAIL browser section ran without exceptions  [d or updated.       \u2551"
+    ]
+  },
+  "finished": "2026-11-13T22:08:58+02:00",
+  "passed": false,
+  "failed_steps": [
+    "tests (all)",
+    "UI harness (all tabs x 3 widths, flows, API failures)",
+    "installer buildcheck"
+  ],
+  "raw_source_sha256": "66c93ca6cdccb5a5d291fb03d382435f2dbc5b78fb24c503de260aa99bcb9f4a"
+}

@@ -1,0 +1,64 @@
+{
+  "level": "ui-retry",
+  "started": "2026-11-13T21:22:14+02:00",
+  "timezone": "Africa/Cairo",
+  "steps": [
+    {
+      "name": "UI harness (all tabs x 3 widths, flows, API failures)",
+      "status": "passed",
+      "seconds": 215.7,
+      "seeds": "replay 1 (this run)",
+      "checks_passed": 173,
+      "checks_total": 173,
+      "evidence": "..\\head_r1_ui_retry\\ui\\ui_baseline\\summary.json",
+      "failed": []
+    }
+  ],
+  "host": {
+    "os": "Windows-11-10.0.26220-SP0",
+    "python": "3.12.10",
+    "machine": "AMD64",
+    "ci": false
+  },
+  "git": {
+    "commit": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": []
+  },
+  "dependencies": {
+    "pyinstaller": "6.22.3",
+    "pyinstaller-hooks-contrib": "2026.8",
+    "altgraph": "0.17.5",
+    "pefile": "2024.8.26",
+    "pywin32-ctypes": "0.2.3",
+    "packaging": "26.3",
+    "setuptools": "84.0.0",
+    "requests": "2.34.2",
+    "charset_normalizer": "3.4.9",
+    "idna": "3.18",
+    "urllib3": "2.7.0",
+    "certifi": "2026.6.17",
+    "pandas": "3.0.6",
+    "numpy": "2.5.3",
+    "python-dateutil": "2.9.0.post0",
+    "six": "1.17.0",
+    "tzdata": "2026.5",
+    "pytest": "9.1.1",
+    "pytest-xdist": "3.8.0",
+    "execnet": "2.1.2",
+    "playwright": "1.56.0"
+  },
+  "scope": "UI-only environment retest, not a full-gate PASS or replacement of original summary",
+  "ui": {
+    "seeds": "replay 1 (this run)",
+    "checks_passed": 173,
+    "checks_total": 173,
+    "evidence": "..\\head_r1_ui_retry\\ui\\ui_baseline\\summary.json",
+    "failed": []
+  },
+  "finished": "2026-11-13T21:25:50+02:00",
+  "passed": true,
+  "failed_steps": [],
+  "raw_source_sha256": "426d69ad9d21d240e544ab5d64c1e150225d9d235f5bfc3aa256ec36763349cb"
+}
