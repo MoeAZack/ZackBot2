@@ -1,0 +1,231 @@
+{
+  "head": {
+    "commit": {
+      "commit": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+      "branch": "HEAD",
+      "dirty": false,
+      "dirty_files": []
+    },
+    "started": "2026-11-13T19:26:48+02:00",
+    "finished": "2026-11-13T22:08:58+02:00",
+    "passed": false,
+    "tests": {
+      "tests (all)": {
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0
+      }
+    },
+    "steps": [
+      {
+        "name": "static: every .py file compiles",
+        "status": "passed",
+        "seconds": 6.4
+      },
+      {
+        "name": "static: no private files or key-like strings in the tree",
+        "status": "passed",
+        "seconds": 2.6
+      },
+      {
+        "name": "dataset: every file matches DATA_MANIFEST.json",
+        "status": "passed",
+        "seconds": 0.5
+      },
+      {
+        "name": "tests (all)",
+        "status": "FAILED",
+        "seconds": 3601.2,
+        "why": [
+          "..............................."
+        ],
+        "counts": {
+          "tests": 0,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "passed": 0
+        }
+      },
+      {
+        "name": "replay 1: MOM pyramid + DCA + Squeeze",
+        "status": "passed",
+        "seconds": 486.7,
+        "why": null
+      },
+      {
+        "name": "replay 2: breakout + bear shorts + Donchian",
+        "status": "passed",
+        "seconds": 1798.5,
+        "why": null
+      },
+      {
+        "name": "UI harness (all tabs x 3 widths, flows, API failures)",
+        "status": "FAILED",
+        "seconds": 62.2
+      },
+      {
+        "name": "installer buildcheck",
+        "status": "FAILED",
+        "seconds": 3771.5,
+        "why": [
+          "[2/8] Preparing the private build environment (pinned versions only)...",
+          "[3/8] Checking the build libraries...",
+          "[4/8] Running the safety tests..."
+        ]
+      }
+    ],
+    "failure_ids": [],
+    "summary_sha256": "66c93ca6cdccb5a5d291fb03d382435f2dbc5b78fb24c503de260aa99bcb9f4a",
+    "junit_sha256": null,
+    "test_comparison_complete": false,
+    "host": {
+      "os": "Windows-11-10.0.26220-SP0",
+      "python": "3.12.10",
+      "machine": "AMD64",
+      "ci": false
+    },
+    "dependencies": {
+      "pyinstaller": "6.22.3",
+      "pyinstaller-hooks-contrib": "2026.8",
+      "altgraph": "0.17.5",
+      "pefile": "2024.8.26",
+      "pywin32-ctypes": "0.2.3",
+      "packaging": "26.3",
+      "setuptools": "84.0.0",
+      "requests": "2.34.2",
+      "charset_normalizer": "3.4.9",
+      "idna": "3.18",
+      "urllib3": "2.7.0",
+      "certifi": "2026.6.17",
+      "pandas": "3.0.6",
+      "numpy": "2.5.3",
+      "python-dateutil": "2.9.0.post0",
+      "six": "1.17.0",
+      "tzdata": "2026.5",
+      "pytest": "9.1.1",
+      "pytest-xdist": "3.8.0",
+      "execnet": "2.1.2",
+      "playwright": "1.64.0"
+    }
+  },
+  "base": {
+    "commit": {
+      "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+      "branch": "HEAD",
+      "dirty": false,
+      "dirty_files": []
+    },
+    "started": "2026-11-13T22:08:58+02:00",
+    "finished": "2026-11-14T00:47:41+02:00",
+    "passed": false,
+    "tests": {
+      "tests (all)": {
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0
+      }
+    },
+    "steps": [
+      {
+        "name": "static: every .py file compiles",
+        "status": "passed",
+        "seconds": 7.4
+      },
+      {
+        "name": "static: no private files or key-like strings in the tree",
+        "status": "passed",
+        "seconds": 2.9
+      },
+      {
+        "name": "dataset: every file matches DATA_MANIFEST.json",
+        "status": "passed",
+        "seconds": 0.7
+      },
+      {
+        "name": "tests (all)",
+        "status": "FAILED",
+        "seconds": 3600.1,
+        "why": [
+          "................................................................"
+        ],
+        "counts": {
+          "tests": 0,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "passed": 0
+        }
+      },
+      {
+        "name": "replay 1: MOM pyramid + DCA + Squeeze",
+        "status": "passed",
+        "seconds": 446.9,
+        "why": null
+      },
+      {
+        "name": "replay 2: breakout + bear shorts + Donchian",
+        "status": "passed",
+        "seconds": 1781.6,
+        "why": null
+      },
+      {
+        "name": "UI harness (all tabs x 3 widths, flows, API failures)",
+        "status": "FAILED",
+        "seconds": 61.6
+      },
+      {
+        "name": "installer buildcheck",
+        "status": "FAILED",
+        "seconds": 3619.4,
+        "why": [
+          "[2/8] Preparing the private build environment (pinned versions only)...",
+          "[3/8] Checking the build libraries...",
+          "[4/8] Running the safety tests..."
+        ]
+      }
+    ],
+    "failure_ids": [],
+    "summary_sha256": "987ef3a474c4c0c63adb5bfa03e5cdc6b3bc1326eb873f445d8645c01642629f",
+    "junit_sha256": null,
+    "test_comparison_complete": false,
+    "host": {
+      "os": "Windows-11-10.0.26220-SP0",
+      "python": "3.12.10",
+      "machine": "AMD64",
+      "ci": false
+    },
+    "dependencies": {
+      "pyinstaller": "6.22.3",
+      "pyinstaller-hooks-contrib": "2026.8",
+      "altgraph": "0.17.5",
+      "pefile": "2024.8.26",
+      "pywin32-ctypes": "0.2.3",
+      "packaging": "26.3",
+      "setuptools": "84.0.0",
+      "requests": "2.34.2",
+      "charset_normalizer": "3.4.9",
+      "idna": "3.18",
+      "urllib3": "2.7.0",
+      "certifi": "2026.6.17",
+      "pandas": "3.0.6",
+      "numpy": "2.5.3",
+      "python-dateutil": "2.9.0.post0",
+      "six": "1.17.0",
+      "tzdata": "2026.5",
+      "pytest": "9.1.1",
+      "pytest-xdist": "3.8.0",
+      "execnet": "2.1.2",
+      "playwright": "1.64.0"
+    }
+  },
+  "head_only": null,
+  "base_only": null,
+  "failure_id_multisets_identical": null,
+  "comparison_status": "INCONCLUSIVE",
+  "note": "An identical failure set does not make a failing full gate PASS. Missing JUnit makes test comparison inconclusive."
+}

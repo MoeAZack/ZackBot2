@@ -1,0 +1,12 @@
+{
+  "head_r1": {
+    "commit": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+    "clean_at_end": true,
+    "status_lines": []
+  },
+  "base": {
+    "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+    "clean_at_end": true,
+    "status_lines": []
+  }
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "head_r1",
+    "head": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+    "started_cairo": "2026-11-13T19:26:48.029225+02:00",
+    "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\head_r1_appdata",
+    "no_install": true,
+    "exit_code": 1,
+    "finished_cairo": "2026-11-13T22:08:58.462020+02:00"
+  },
+  {
+    "name": "base",
+    "head": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+    "started_cairo": "2026-11-13T22:08:58.575877+02:00",
+    "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\base_appdata",
+    "no_install": true,
+    "exit_code": 1,
+    "finished_cairo": "2026-11-14T00:47:41.113290+02:00"
+  }
+]
