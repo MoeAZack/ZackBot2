@@ -1,0 +1,447 @@
+{
+  "head": "45fe30bcc8ea7b4ae1e5d3d66f7f3d1d73523b3f",
+  "cp_source": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+  "independent_base_source_sha256": "b2e5946e6f59b439ee2ad30fc7bb4186d60a4f34ddea627c411b12801ff05d37",
+  "signals": {
+    "exp_trend_mp1": {
+      "matched": 1542,
+      "missing": 0,
+      "extra": 0,
+      "eligible": 1320,
+      "raw": 1542
+    },
+    "exp_trend_mp3": {
+      "matched": 1542,
+      "missing": 0,
+      "extra": 0,
+      "eligible": 1320,
+      "raw": 1542
+    },
+    "exp_trend_mp5": {
+      "matched": 1542,
+      "missing": 0,
+      "extra": 0,
+      "eligible": 1320,
+      "raw": 1542
+    },
+    "cp_y2_breadth_thrust_1d_mp3": {
+      "matched": 1779,
+      "missing": 0,
+      "extra": 0,
+      "eligible": 1504,
+      "raw": 1779
+    },
+    "cp_y2_breadth_thrust_1d_mp5": {
+      "matched": 1779,
+      "missing": 0,
+      "extra": 0,
+      "eligible": 1504,
+      "raw": 1779
+    }
+  },
+  "cases": {
+    "exp_trend_mp1_path": {
+      "closed_own": 323,
+      "closed_reference": 323,
+      "matched": 323,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 3.552713678800501e-15,
+        "pnl15": 3.552713678800501e-15,
+        "pnl23": 3.552713678800501e-15,
+        "turnover": 5.684341886080802e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [],
+      "max_concurrent": 1,
+      "closed_net15_usd": 304.4558253287111,
+      "partial_fill_count": 0,
+      "distinct_entry_timestamps": 323,
+      "early_entry_timestamps": 177,
+      "later_entry_timestamps": 146
+    },
+    "exp_trend_mp1_worst": {
+      "closed_own": 323,
+      "closed_reference": 323,
+      "matched": 323,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 3.552713678800501e-15,
+        "pnl15": 3.552713678800501e-15,
+        "pnl23": 3.552713678800501e-15,
+        "turnover": 5.684341886080802e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [],
+      "max_concurrent": 1,
+      "closed_net15_usd": 304.4558253287111,
+      "partial_fill_count": 0,
+      "distinct_entry_timestamps": 323,
+      "early_entry_timestamps": 177,
+      "later_entry_timestamps": 146
+    },
+    "exp_trend_mp3_path": {
+      "closed_own": 750,
+      "closed_reference": 750,
+      "matched": 750,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 3.552713678800501e-15,
+        "pnl15": 3.552713678800501e-15,
+        "pnl23": 3.552713678800501e-15,
+        "turnover": 5.684341886080802e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [],
+      "max_concurrent": 3,
+      "closed_net15_usd": 513.8485574594083,
+      "partial_fill_count": 0,
+      "distinct_entry_timestamps": 679,
+      "early_entry_timestamps": 391,
+      "later_entry_timestamps": 288
+    },
+    "exp_trend_mp3_worst": {
+      "closed_own": 750,
+      "closed_reference": 750,
+      "matched": 750,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 3.552713678800501e-15,
+        "pnl15": 3.552713678800501e-15,
+        "pnl23": 3.552713678800501e-15,
+        "turnover": 5.684341886080802e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [],
+      "max_concurrent": 3,
+      "closed_net15_usd": 513.8485574594083,
+      "partial_fill_count": 0,
+      "distinct_entry_timestamps": 679,
+      "early_entry_timestamps": 391,
+      "later_entry_timestamps": 288
+    },
+    "exp_trend_mp5_path": {
+      "closed_own": 977,
+      "closed_reference": 977,
+      "matched": 977,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 3.552713678800501e-15,
+        "pnl15": 3.552713678800501e-15,
+        "pnl23": 3.552713678800501e-15,
+        "turnover": 5.684341886080802e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [],
+      "max_concurrent": 5,
+      "closed_net15_usd": 667.35071207371,
+      "partial_fill_count": 0,
+      "distinct_entry_timestamps": 823,
+      "early_entry_timestamps": 467,
+      "later_entry_timestamps": 356
+    },
+    "exp_trend_mp5_worst": {
+      "closed_own": 977,
+      "closed_reference": 977,
+      "matched": 977,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 3.552713678800501e-15,
+        "pnl15": 3.552713678800501e-15,
+        "pnl23": 3.552713678800501e-15,
+        "turnover": 5.684341886080802e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [],
+      "max_concurrent": 5,
+      "closed_net15_usd": 667.35071207371,
+      "partial_fill_count": 0,
+      "distinct_entry_timestamps": 823,
+      "early_entry_timestamps": 467,
+      "later_entry_timestamps": 356
+    },
+    "cp_y2_breadth_thrust_1d_mp3_path": {
+      "closed_own": 112,
+      "closed_reference": 112,
+      "matched": 112,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 1.7763568394002505e-15,
+        "pnl15": 1.7763568394002505e-15,
+        "pnl23": 1.7763568394002505e-15,
+        "turnover": 2.842170943040401e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [
+        {
+          "sym": "1000PEPEUSDT",
+          "qty": 6341.0,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.0043078,
+          "marked_pnl7": 8.225591117227067,
+          "marked_pnl15": 8.167435349047322,
+          "marked_pnl23": 8.109279580867579,
+          "liquidation_pnl15": 8.126464440923304,
+          "liquidation_pnl23": 8.04645606490356,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "AAVEUSDT",
+          "qty": 0.2,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 181.42,
+          "marked_pnl7": 12.37647629841838,
+          "marked_pnl15": 12.333741239101709,
+          "marked_pnl23": 12.29100617978504,
+          "liquidation_pnl15": 12.27931886750171,
+          "liquidation_pnl23": 12.20755660818504,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "APTUSDT",
+          "qty": 37.8,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.8031,
+          "marked_pnl7": 11.5544891902019,
+          "marked_pnl15": 11.497047026026035,
+          "marked_pnl23": 11.439604861850167,
+          "liquidation_pnl15": 11.451514291744036,
+          "liquidation_pnl23": 11.369786383568169,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        }
+      ],
+      "max_concurrent": 3,
+      "closed_net15_usd": 163.95001766622764,
+      "partial_fill_count": 46,
+      "distinct_entry_timestamps": 46,
+      "early_entry_timestamps": 27,
+      "later_entry_timestamps": 19
+    },
+    "cp_y2_breadth_thrust_1d_mp3_worst": {
+      "closed_own": 113,
+      "closed_reference": 113,
+      "matched": 113,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 1.7763568394002505e-15,
+        "pnl15": 1.7763568394002505e-15,
+        "pnl23": 1.7763568394002505e-15,
+        "turnover": 2.842170943040401e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [
+        {
+          "sym": "1000PEPEUSDT",
+          "qty": 6341.0,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.0043078,
+          "marked_pnl7": 8.225591117227067,
+          "marked_pnl15": 8.167435349047322,
+          "marked_pnl23": 8.109279580867579,
+          "liquidation_pnl15": 8.126464440923304,
+          "liquidation_pnl23": 8.04645606490356,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "AAVEUSDT",
+          "qty": 0.2,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 181.42,
+          "marked_pnl7": 12.37647629841838,
+          "marked_pnl15": 12.333741239101709,
+          "marked_pnl23": 12.29100617978504,
+          "liquidation_pnl15": 12.27931886750171,
+          "liquidation_pnl23": 12.20755660818504,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        }
+      ],
+      "max_concurrent": 3,
+      "closed_net15_usd": 119.79720352329323,
+      "partial_fill_count": 46,
+      "distinct_entry_timestamps": 47,
+      "early_entry_timestamps": 27,
+      "later_entry_timestamps": 20
+    },
+    "cp_y2_breadth_thrust_1d_mp5_path": {
+      "closed_own": 183,
+      "closed_reference": 183,
+      "matched": 183,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 1.7763568394002505e-15,
+        "pnl15": 1.7763568394002505e-15,
+        "pnl23": 1.7763568394002505e-15,
+        "turnover": 2.842170943040401e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [
+        {
+          "sym": "1000PEPEUSDT",
+          "qty": 6341.0,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.0043078,
+          "marked_pnl7": 8.225591117227067,
+          "marked_pnl15": 8.167435349047322,
+          "marked_pnl23": 8.109279580867579,
+          "liquidation_pnl15": 8.126464440923304,
+          "liquidation_pnl23": 8.04645606490356,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "AAVEUSDT",
+          "qty": 0.2,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 181.42,
+          "marked_pnl7": 12.37647629841838,
+          "marked_pnl15": 12.333741239101709,
+          "marked_pnl23": 12.29100617978504,
+          "liquidation_pnl15": 12.27931886750171,
+          "liquidation_pnl23": 12.20755660818504,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "APTUSDT",
+          "qty": 37.8,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.8031,
+          "marked_pnl7": 11.5544891902019,
+          "marked_pnl15": 11.497047026026035,
+          "marked_pnl23": 11.439604861850167,
+          "liquidation_pnl15": 11.451514291744036,
+          "liquidation_pnl23": 11.369786383568169,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "ARBUSDT",
+          "qty": 93.9,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.20121,
+          "marked_pnl7": 6.118686717496769,
+          "marked_pnl15": 6.075558431647662,
+          "marked_pnl23": 6.032430145798554,
+          "liquidation_pnl15": 6.047219892509562,
+          "liquidation_pnl23": 5.988976711460455,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "DOTUSDT",
+          "qty": 21.3,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 1.1849,
+          "marked_pnl7": 6.012651508593527,
+          "marked_pnl15": 5.954482789099238,
+          "marked_pnl23": 5.89631406960495,
+          "liquidation_pnl15": 5.916627757936239,
+          "liquidation_pnl23": 5.83826834244195,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        }
+      ],
+      "max_concurrent": 5,
+      "closed_net15_usd": 166.91728225281454,
+      "partial_fill_count": 73,
+      "distinct_entry_timestamps": 48,
+      "early_entry_timestamps": 29,
+      "later_entry_timestamps": 19
+    },
+    "cp_y2_breadth_thrust_1d_mp5_worst": {
+      "closed_own": 185,
+      "closed_reference": 185,
+      "matched": 185,
+      "missing": 0,
+      "extra": 0,
+      "ordered_set_equal": true,
+      "errors": {
+        "pnl7": 1.7763568394002505e-15,
+        "pnl15": 1.7763568394002505e-15,
+        "pnl23": 1.7763568394002505e-15,
+        "turnover": 2.842170943040401e-14
+      },
+      "missing_examples": [],
+      "extra_examples": [],
+      "terminal_open_lots": [
+        {
+          "sym": "1000PEPEUSDT",
+          "qty": 6341.0,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 0.0043078,
+          "marked_pnl7": 8.225591117227067,
+          "marked_pnl15": 8.167435349047322,
+          "marked_pnl23": 8.109279580867579,
+          "liquidation_pnl15": 8.126464440923304,
+          "liquidation_pnl23": 8.04645606490356,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "AAVEUSDT",
+          "qty": 0.2,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 181.42,
+          "marked_pnl7": 12.37647629841838,
+          "marked_pnl15": 12.333741239101709,
+          "marked_pnl23": 12.29100617978504,
+          "liquidation_pnl15": 12.27931886750171,
+          "liquidation_pnl23": 12.20755660818504,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        },
+        {
+          "sym": "DOTUSDT",
+          "qty": 21.3,
+          "t_in": "2026-09-18 00:00:00",
+          "side": 1,
+          "mark": 1.1849,
+          "marked_pnl7": 6.012651508593527,
+          "marked_pnl15": 5.954482789099238,
+          "marked_pnl23": 5.89631406960495,
+          "liquidation_pnl15": 5.916627757936239,
+          "liquidation_pnl23": 5.83826834244195,
+          "note": "Cumulative lot PnL includes realized partials and remaining open mark; not just unrealized PnL."
+        }
+      ],
+      "max_concurrent": 5,
+      "closed_net15_usd": 110.18493705705485,
+      "partial_fill_count": 73,
+      "distinct_entry_timestamps": 49,
+      "early_entry_timestamps": 29,
+      "later_entry_timestamps": 20
+    }
+  }
+}

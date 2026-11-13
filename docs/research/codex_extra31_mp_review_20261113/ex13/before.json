@@ -1,0 +1,333 @@
+{
+  "captured_cairo": "2026-11-13T11:40:04.269256+02:00",
+  "settings_sha256": "c2c7335a76eb485b251a5223ad021c830ee77baab5c67576235e60be13f88904",
+  "panel_mode": "PAPER",
+  "session_owner_pid": 35112,
+  "registered_management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+  },
+  "settings": {
+    "SLEEVES": [
+      {
+        "id": "EX01",
+        "key": "exp_vwaprev",
+        "name": "[TESTNET EXP] VWAP Rev L/S",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "4h"
+      },
+      {
+        "id": "EX02",
+        "key": "exp_range",
+        "name": "[TESTNET EXP] Range L/S",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "4h"
+      },
+      {
+        "id": "EX03",
+        "key": "exp_mom_short",
+        "name": "[TESTNET EXP] Mom Short (dump)",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "short",
+        "mgmt": {},
+        "tf": "4h"
+      },
+      {
+        "id": "EX04",
+        "key": "h5_volume_impulse_long_1h",
+        "name": "[PAPER CANARY] H5 volume impulse long 1h",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "long",
+        "mgmt": {},
+        "tf": "1h"
+      },
+      {
+        "id": "EX05",
+        "key": "exp_structure",
+        "name": "[TESTNET EXP] Structure L/S",
+        "enabled": false,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "15m"
+      },
+      {
+        "id": "EX06",
+        "key": "range_scalp",
+        "name": "[PAPER EXP] Range scalp L/S 15m",
+        "enabled": false,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "15m"
+      },
+      {
+        "id": "EX07",
+        "key": "failed_breakout_scalp",
+        "name": "[PAPER EXP] Failed breakout L/S 15m",
+        "enabled": false,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "15m"
+      },
+      {
+        "id": "EX08",
+        "key": "momentum_burst_scalp",
+        "name": "[PAPER EXP] Momentum burst L/S 15m",
+        "enabled": false,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "15m"
+      },
+      {
+        "id": "EX09",
+        "key": "quick_bank_runner",
+        "name": "[PAPER EXP] Quick bank + runner L/S 15m",
+        "enabled": false,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "both",
+        "mgmt": {},
+        "tf": "15m"
+      },
+      {
+        "id": "EX10",
+        "key": "ema_mom",
+        "name": "EMA cross + Momentum",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "long",
+        "mgmt": {},
+        "tf": "4h"
+      },
+      {
+        "id": "EX11",
+        "key": "donchian_ens",
+        "name": "Donchian ensemble (20/55/100)",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "long",
+        "mgmt": {},
+        "tf": "4h"
+      },
+      {
+        "id": "EX12",
+        "key": "squeeze_tp",
+        "name": "Squeeze breakout + partial TP",
+        "enabled": true,
+        "share": 0.08333333333333333,
+        "risk": 0.024,
+        "max_pos": 1,
+        "symbols": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "XRPUSDT",
+          "SOLUSDT",
+          "DOGEUSDT",
+          "BNBUSDT",
+          "ADAUSDT",
+          "LINKUSDT",
+          "AVAXUSDT"
+        ],
+        "sides": "long",
+        "mgmt": {},
+        "tf": "4h"
+      }
+    ],
+    "UNIVERSE": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "SOLUSDT",
+      "DOGEUSDT",
+      "BNBUSDT",
+      "ADAUSDT",
+      "LINKUSDT",
+      "AVAXUSDT"
+    ],
+    "SYMBOLS_ON": {
+      "BTCUSDT": true,
+      "ETHUSDT": true,
+      "XRPUSDT": true,
+      "SOLUSDT": true,
+      "DOGEUSDT": true,
+      "BNBUSDT": true,
+      "ADAUSDT": true,
+      "LINKUSDT": true,
+      "AVAXUSDT": true
+    },
+    "RISK_RULES": {
+      "open_risk_cap": {
+        "mode": "enforce",
+        "pct": 2.5
+      }
+    },
+    "CAPITAL_CAP": 4000.0,
+    "PRESET": "custom",
+    "ENTRIES_PAUSED": false,
+    "MAX_LEVERAGE": 10,
+    "PAPER_BOOKS": false,
+    "TRUE_BOOKS": false
+  },
+  "last_cycle": {
+    "15m": "2026-11-13T09:30+00:00",
+    "4h": "2026-11-13T08:04+00:00",
+    "1h": "2026-11-13T09:00+00:00"
+  },
+  "signals_time": "2026-11-13T09:30:23+00:00",
+  "label": "wider-coin test of an existing arm",
+  "bot_log_byte_offset": 30819
+}

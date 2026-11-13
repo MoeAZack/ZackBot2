@@ -1,0 +1,23 @@
+{
+  "captured_cairo": "2026-11-13T11:42:06.128026+02:00",
+  "accounts1_3_config_hashes_unchanged": {
+    "cohort_launch_20261108": {
+      "settings.json": true,
+      "install.json": true,
+      "cohort.json": true
+    },
+    "OLD3-account2": {
+      "settings.json": true,
+      "install.json": true,
+      "cohort.json": true
+    },
+    "ACCOUNT3-breakeven": {
+      "settings.json": true,
+      "install.json": true,
+      "cohort.json": true
+    }
+  },
+  "EX13_entry_signals_long": 0,
+  "EX13_entry_signals_short": 0,
+  "no_restart_session_pid": 35112
+}

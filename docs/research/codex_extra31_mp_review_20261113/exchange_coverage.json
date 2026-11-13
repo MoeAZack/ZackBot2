@@ -1,0 +1,942 @@
+{
+  "url": "https://testnet.binancefuture.com/fapi/v1/exchangeInfo",
+  "final_url": "https://testnet.binancefuture.com/fapi/v1/exchangeInfo",
+  "fetched_utc": "2026-11-13T09:27:11.813196+00:00",
+  "sha256": "35d24dec9dd9e757f69dab9940d2ff4e3319f80f91f87e57a069baef9c4e5cb4",
+  "present": 31,
+  "trading": 31,
+  "rows": [
+    {
+      "symbol": "1000PEPEUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "stepSize": "1",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1",
+          "maxQty": "10000000"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.0000001",
+          "minPrice": "0.0000001",
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "200"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "AAVEUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "minQty": "0.1",
+          "stepSize": "0.1",
+          "maxQty": "10000000"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000000",
+          "stepSize": "0.1",
+          "minQty": "0.1",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.010",
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "38702",
+          "minPrice": "4.340"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "APTUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "minQty": "0.1",
+          "maxQty": "1000000",
+          "stepSize": "0.1"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "0.1",
+          "stepSize": "0.1",
+          "maxQty": "1000000"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.00010",
+          "minPrice": "0.00100",
+          "maxPrice": "20000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "ARBUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "1000000",
+          "stepSize": "0.1",
+          "minQty": "0.1",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "0.1",
+          "maxQty": "1000000",
+          "minQty": "0.1"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.000100",
+          "minPrice": "0.000100",
+          "maxPrice": "2000"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "ARKUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "3",
+          "stepSize": "3",
+          "maxQty": "3333",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "1000000"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.0001000",
+          "maxPrice": "200",
+          "minPrice": "0.0001000",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "BCHUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "0.001",
+          "filterType": "LOT_SIZE",
+          "maxQty": "10000",
+          "stepSize": "0.001"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000",
+          "stepSize": "0.001",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "0.001"
+        },
+        "PRICE_FILTER": {
+          "minPrice": "13.93",
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.01",
+          "maxPrice": "100000"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "DOTUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "1000000",
+          "minQty": "0.1",
+          "stepSize": "0.1",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "minQty": "0.1",
+          "stepSize": "0.1",
+          "maxQty": "1000000",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "200",
+          "minPrice": "0.000100",
+          "tickSize": "0.000100",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "ENAUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "maxQty": "1000000",
+          "stepSize": "1",
+          "minQty": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1",
+          "maxQty": "100000"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "200",
+          "tickSize": "0.0001000",
+          "minPrice": "0.0010000",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "ENJUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1",
+          "maxQty": "10000000"
+        },
+        "MARKET_LOT_SIZE": {
+          "stepSize": "1",
+          "minQty": "1",
+          "filterType": "MARKET_LOT_SIZE",
+          "maxQty": "10000000"
+        },
+        "PRICE_FILTER": {
+          "minPrice": "0.00001",
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.00001",
+          "maxPrice": "153"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "ETCUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "maxQty": "100000",
+          "minQty": "0.01",
+          "stepSize": "0.01"
+        },
+        "MARKET_LOT_SIZE": {
+          "minQty": "0.01",
+          "maxQty": "100000",
+          "stepSize": "0.01",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "100000",
+          "minPrice": "0.001",
+          "tickSize": "0.001"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "FETUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "maxQty": "10000000",
+          "stepSize": "1",
+          "minQty": "1"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.0001000",
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "200",
+          "minPrice": "0.0001000"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "FILUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "maxQty": "10000000",
+          "minQty": "0.1",
+          "stepSize": "0.1"
+        },
+        "MARKET_LOT_SIZE": {
+          "stepSize": "0.1",
+          "minQty": "0.1",
+          "maxQty": "10000000",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.000100",
+          "filterType": "PRICE_FILTER",
+          "minPrice": "0.000100",
+          "maxPrice": "10000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "GALAUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "1",
+          "stepSize": "1",
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000000",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1"
+        },
+        "PRICE_FILTER": {
+          "minPrice": "0.0000010",
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.0000010",
+          "maxPrice": "200"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "INJUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "0.1",
+          "maxQty": "1000000",
+          "minQty": "0.1",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "minQty": "0.1",
+          "maxQty": "1000000",
+          "stepSize": "0.1",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "2000",
+          "minPrice": "0.0010000",
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.0010000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "LTCUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "0.001",
+          "filterType": "LOT_SIZE",
+          "maxQty": "10000",
+          "stepSize": "0.001"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "0.001",
+          "stepSize": "0.001"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "100000",
+          "tickSize": "0.01",
+          "minPrice": "3.61",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "MANAUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "1",
+          "filterType": "LOT_SIZE",
+          "maxQty": "1000000",
+          "minQty": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "stepSize": "1",
+          "filterType": "MARKET_LOT_SIZE",
+          "maxQty": "1000000",
+          "minQty": "1"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.0000100",
+          "maxPrice": "200",
+          "minPrice": "0.0000100"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "MOVRUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "100000",
+          "filterType": "LOT_SIZE",
+          "stepSize": "0.01",
+          "minQty": "0.01"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "0.01",
+          "minQty": "0.01",
+          "maxQty": "10000"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "5000",
+          "minPrice": "0.001000",
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.001000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "NEARUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "1",
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE",
+          "stepSize": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000000",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "minPrice": "0.0480",
+          "maxPrice": "1000",
+          "tickSize": "0.0010"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "ONDOUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "1000000"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1",
+          "maxQty": "250000",
+          "stepSize": "1"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "minPrice": "0.0001000",
+          "maxPrice": "200",
+          "tickSize": "0.0001000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "ONEUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "minQty": "1",
+          "maxQty": "10000000",
+          "stepSize": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "stepSize": "1",
+          "maxQty": "10000000",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.0000010",
+          "filterType": "PRICE_FILTER",
+          "minPrice": "0.0000010",
+          "maxPrice": "200"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "QNTUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "0.1",
+          "maxQty": "1000000",
+          "minQty": "0.1",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "minQty": "0.1",
+          "filterType": "MARKET_LOT_SIZE",
+          "maxQty": "1000000",
+          "stepSize": "0.1"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "2000",
+          "tickSize": "0.010000",
+          "minPrice": "0.010000",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "SANDUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "10000000",
+          "stepSize": "1",
+          "filterType": "LOT_SIZE",
+          "minQty": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "10000000"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "20000",
+          "tickSize": "0.00001",
+          "filterType": "PRICE_FILTER",
+          "minPrice": "0.00500"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "STRKUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "1000000",
+          "filterType": "LOT_SIZE",
+          "stepSize": "0.1",
+          "minQty": "0.1"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "30000",
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "0.1",
+          "minQty": "0.1"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.0001000",
+          "filterType": "PRICE_FILTER",
+          "minPrice": "0.0001000",
+          "maxPrice": "2000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "SUIUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "0.1",
+          "minQty": "0.1",
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000000",
+          "minQty": "0.1",
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "0.1"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "2000",
+          "tickSize": "0.000100",
+          "minPrice": "0.000100"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "SUPERUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "1",
+          "maxQty": "1000000",
+          "stepSize": "1",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "100000"
+        },
+        "PRICE_FILTER": {
+          "minPrice": "0.0001000",
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "200",
+          "tickSize": "0.0001000"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "TAOUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "minQty": "0.001",
+          "filterType": "LOT_SIZE",
+          "maxQty": "300",
+          "stepSize": "0.001"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "0.001",
+          "stepSize": "0.001"
+        },
+        "PRICE_FILTER": {
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.01",
+          "minPrice": "0.01",
+          "maxPrice": "100000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "UNIUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000000",
+          "filterType": "MARKET_LOT_SIZE",
+          "minQty": "1",
+          "stepSize": "1"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "2684",
+          "minPrice": "0.0010",
+          "tickSize": "0.0010",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    },
+    {
+      "symbol": "WLDUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "10000000",
+          "filterType": "LOT_SIZE"
+        },
+        "MARKET_LOT_SIZE": {
+          "stepSize": "1",
+          "minQty": "1",
+          "maxQty": "1000000",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "minPrice": "0.0001000",
+          "tickSize": "0.0001000",
+          "filterType": "PRICE_FILTER",
+          "maxPrice": "200"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "XLMUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "filterType": "LOT_SIZE",
+          "maxQty": "10000000",
+          "stepSize": "1",
+          "minQty": "1"
+        },
+        "MARKET_LOT_SIZE": {
+          "maxQty": "10000000",
+          "minQty": "1",
+          "filterType": "MARKET_LOT_SIZE",
+          "stepSize": "1"
+        },
+        "PRICE_FILTER": {
+          "minPrice": "0.00648",
+          "filterType": "PRICE_FILTER",
+          "tickSize": "0.00001",
+          "maxPrice": "20000"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "ZECUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "maxQty": "10000",
+          "stepSize": "0.001",
+          "filterType": "LOT_SIZE",
+          "minQty": "0.001"
+        },
+        "MARKET_LOT_SIZE": {
+          "minQty": "0.001",
+          "maxQty": "10000",
+          "stepSize": "0.001",
+          "filterType": "MARKET_LOT_SIZE"
+        },
+        "PRICE_FILTER": {
+          "maxPrice": "100000",
+          "filterType": "PRICE_FILTER",
+          "minPrice": "2.85",
+          "tickSize": "0.01"
+        },
+        "MIN_NOTIONAL": {
+          "notional": "5",
+          "filterType": "MIN_NOTIONAL"
+        }
+      }
+    },
+    {
+      "symbol": "ZROUSDT",
+      "present": true,
+      "status": "TRADING",
+      "contractType": "PERPETUAL",
+      "filters": {
+        "LOT_SIZE": {
+          "stepSize": "0.1",
+          "filterType": "LOT_SIZE",
+          "minQty": "0.1",
+          "maxQty": "1000000"
+        },
+        "MARKET_LOT_SIZE": {
+          "minQty": "0.1",
+          "stepSize": "0.1",
+          "filterType": "MARKET_LOT_SIZE",
+          "maxQty": "30000"
+        },
+        "PRICE_FILTER": {
+          "tickSize": "0.0001000",
+          "minPrice": "0.0010000",
+          "maxPrice": "2000",
+          "filterType": "PRICE_FILTER"
+        },
+        "MIN_NOTIONAL": {
+          "filterType": "MIN_NOTIONAL",
+          "notional": "5"
+        }
+      }
+    }
+  ],
+  "authentication": "None: public endpoint only; no credential or account read.",
+  "fetched_cairo": "2026-11-13T11:27:11.813196+02:00"
+}

@@ -1,0 +1,6 @@
+2026-11-13 10:03:25,980 WARNING stop update ADAUSDT [EX01] failed: -1021: Timestamp for this request is outside of the recvWindow. - previous stop kept
+2026-11-13 10:03:25,980 ERROR STOP FAILED ADAUSDT - closing for safety
+2026-11-13 10:03:47,060 WARNING ADAUSDT: stop AND safety close failed (-1021: Timestamp for this request is outside of the recvWindow.) - kept as unprotected, retrying every few seconds
+2026-11-13 10:05:40,246 INFO ADAUSDT [EX01] stop restored
+2026-11-13 10:05:40,357 WARNING ADAUSDT entry fill has no exchange price - its P&L stays INCOMPLETE (fill_px_missing)
+2026-11-13 10:05:40,358 WARNING RISK-FILL ADAUSDT LONG [EX01] fill 0: planned None measured None USDT (Nonex) -> unmeasured (risk_unmeasured)

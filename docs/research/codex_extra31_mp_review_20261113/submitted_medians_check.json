@@ -1,0 +1,314 @@
+{
+  "exp_trend_mp3_path": {
+    "medians": {
+      "n": 746.0,
+      "meanR15": 0.09545074394353237,
+      "meanR23": 0.07062556527129256,
+      "meanR15_early": 0.10996709127992052,
+      "meanR15_late": 0.07861192375393439,
+      "meanR15_ex_best": 0.07516663185056588
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "exp_trend_mp3_worst": {
+    "medians": {
+      "n": 746.0,
+      "meanR15": 0.09545074394353237,
+      "meanR23": 0.07062556527129256,
+      "meanR15_early": 0.10996709127992052,
+      "meanR15_late": 0.07861192375393439,
+      "meanR15_ex_best": 0.07516663185056588
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "exp_trend_mp5_path": {
+    "medians": {
+      "n": 978.0,
+      "meanR15": 0.08411038216913708,
+      "meanR23": 0.059115341273141886,
+      "meanR15_early": 0.09226062010458608,
+      "meanR15_late": 0.07522088787230932,
+      "meanR15_ex_best": 0.06575755964346047
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "exp_trend_mp5_worst": {
+    "medians": {
+      "n": 978.0,
+      "meanR15": 0.08411038216913708,
+      "meanR23": 0.059115341273141886,
+      "meanR15_early": 0.09226062010458608,
+      "meanR15_late": 0.07522088787230932,
+      "meanR15_ex_best": 0.06575755964346047
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_y2_breadth_thrust_1d_mp3_path": {
+    "medians": {
+      "n": 110.5,
+      "meanR15": 0.16068083775043646,
+      "meanR23": 0.1507655576967919,
+      "meanR15_early": 0.1698093300918304,
+      "meanR15_late": 0.20556634539176077,
+      "meanR15_ex_best": 0.11933725919165816
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_y2_breadth_thrust_1d_mp3_worst": {
+    "medians": {
+      "n": 112.0,
+      "meanR15": 0.13642439059076758,
+      "meanR23": 0.12676000403904897,
+      "meanR15_early": 0.13518268962241375,
+      "meanR15_late": 0.18447622282129145,
+      "meanR15_ex_best": 0.09647015446695625
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_y2_breadth_thrust_1d_mp5_path": {
+    "medians": {
+      "n": 185.0,
+      "meanR15": 0.16441725257966122,
+      "meanR23": 0.1553360648170093,
+      "meanR15_early": 0.1425823584254931,
+      "meanR15_late": 0.2132123434500071,
+      "meanR15_ex_best": 0.13851489505316053
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_y2_breadth_thrust_1d_mp5_worst": {
+    "medians": {
+      "n": 187.0,
+      "meanR15": 0.13006861056477134,
+      "meanR23": 0.12089893912112223,
+      "meanR15_early": 0.10715106266401507,
+      "meanR15_late": 0.18295265033610447,
+      "meanR15_ex_best": 0.10605645455921013
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "bear_breakdown_mp3_path": {
+    "medians": {
+      "n": 527.0,
+      "meanR15": 0.08308410368710063,
+      "meanR23": 0.052976389261602544,
+      "meanR15_early": 0.027870989796337384,
+      "meanR15_late": 0.14050909888684718,
+      "meanR15_ex_best": 0.04991175432569262
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "bear_breakdown_mp3_worst": {
+    "medians": {
+      "n": 587.0,
+      "meanR15": -0.017214208158443683,
+      "meanR23": -0.047606551127137214,
+      "meanR15_early": -0.06574453857249371,
+      "meanR15_late": 0.04036338272962883,
+      "meanR15_ex_best": -0.03921391057540543
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "bear_breakdown_mp5_path": {
+    "medians": {
+      "n": 811.0,
+      "meanR15": 0.07634660720600786,
+      "meanR23": 0.0460960721299044,
+      "meanR15_early": 0.02188991700398657,
+      "meanR15_late": 0.13871991544986398,
+      "meanR15_ex_best": 0.057885956351499665
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "bear_breakdown_mp5_worst": {
+    "medians": {
+      "n": 908.0,
+      "meanR15": -0.02603251905670175,
+      "meanR23": -0.05565948630722699,
+      "meanR15_early": -0.07678488318343193,
+      "meanR15_late": 0.027032598351571555,
+      "meanR15_ex_best": -0.04251265008887184
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "ema_st_panel_mp3_path": {
+    "medians": {
+      "n": 358.5,
+      "meanR15": 0.1386843663784853,
+      "meanR23": 0.11515858627527858,
+      "meanR15_early": 0.19020280649370408,
+      "meanR15_late": 0.01755778358301354,
+      "meanR15_ex_best": 0.030840066946980913
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "ema_st_panel_mp3_worst": {
+    "medians": {
+      "n": 358.5,
+      "meanR15": 0.1386843663784853,
+      "meanR23": 0.11515858627527858,
+      "meanR15_early": 0.19020280649370408,
+      "meanR15_late": 0.01755778358301354,
+      "meanR15_ex_best": 0.030840066946980913
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "ema_st_panel_mp5_path": {
+    "medians": {
+      "n": 489.0,
+      "meanR15": 0.30990342250526304,
+      "meanR23": 0.2852534593471413,
+      "meanR15_early": 0.5864134808726582,
+      "meanR15_late": -0.046938545363249234,
+      "meanR15_ex_best": 0.10996258036067172
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "ema_st_panel_mp5_worst": {
+    "medians": {
+      "n": 489.0,
+      "meanR15": 0.30990342250526304,
+      "meanR23": 0.2852534593471413,
+      "meanR15_early": 0.5864134808726582,
+      "meanR15_late": -0.046938545363249234,
+      "meanR15_ex_best": 0.10996258036067172
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "rotation_mp3_path": {
+    "medians": {
+      "n": 1507.5,
+      "meanR15": 0.0008312246005861576,
+      "meanR23": -0.016816356708462862,
+      "meanR15_early": -0.0012852293311592195,
+      "meanR15_late": 0.0051023504823453775,
+      "meanR15_ex_best": -0.017446590245660754
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "rotation_mp3_worst": {
+    "medians": {
+      "n": 1507.5,
+      "meanR15": 0.0008312246005861576,
+      "meanR23": -0.016816356708462862,
+      "meanR15_early": -0.0012852293311592195,
+      "meanR15_late": 0.0051023504823453775,
+      "meanR15_ex_best": -0.017446590245660754
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "rotation_mp5_path": {
+    "medians": {
+      "n": 1993.5,
+      "meanR15": 0.051812483673457255,
+      "meanR23": 0.0338013563229254,
+      "meanR15_early": 0.0909367224328741,
+      "meanR15_late": -0.0037907956274897047,
+      "meanR15_ex_best": 0.01585486325422946
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "rotation_mp5_worst": {
+    "medians": {
+      "n": 1993.5,
+      "meanR15": 0.051812483673457255,
+      "meanR23": 0.0338013563229254,
+      "meanR15_early": 0.0909367224328741,
+      "meanR15_late": -0.0037907956274897047,
+      "meanR15_ex_best": 0.01585486325422946
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_n3_turtle_daily_mp3_path": {
+    "medians": {
+      "n": 186.5,
+      "meanR15": 0.11133142116905664,
+      "meanR23": 0.09993512793854756,
+      "meanR15_early": 0.24789152735551612,
+      "meanR15_late": -0.03340322020847212,
+      "meanR15_ex_best": 0.007141406060934587
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_n3_turtle_daily_mp3_worst": {
+    "medians": {
+      "n": 186.5,
+      "meanR15": 0.11133142116905664,
+      "meanR23": 0.09993512793854756,
+      "meanR15_early": 0.24789152735551612,
+      "meanR15_late": -0.03340322020847212,
+      "meanR15_ex_best": 0.007141406060934587
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_n3_turtle_daily_mp5_path": {
+    "medians": {
+      "n": 303.5,
+      "meanR15": 0.14486989983952742,
+      "meanR23": 0.13317635591772534,
+      "meanR15_early": 0.2546537055035267,
+      "meanR15_late": -0.03437472445369657,
+      "meanR15_ex_best": 0.03742474666318367
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  },
+  "cp_n3_turtle_daily_mp5_worst": {
+    "medians": {
+      "n": 303.5,
+      "meanR15": 0.14486989983952742,
+      "meanR23": 0.13317635591772534,
+      "meanR15_early": 0.2546537055035267,
+      "meanR15_late": -0.03437472445369657,
+      "meanR15_ex_best": 0.03742474666318367
+    },
+    "orders": 40,
+    "arithmetic_matches": true,
+    "independent_admission_scope": "order0 only for exp_trend and CP-Y2; no other-order simulation"
+  }
+}

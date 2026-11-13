@@ -1,0 +1,35 @@
+{
+  "captured_cairo": "2026-11-13T11:47:04.029513+02:00",
+  "mode": "PAPER",
+  "ADA_current_lots": [
+    {
+      "sleeve": "EX02",
+      "symbol": "ADAUSDT",
+      "side": "LONG",
+      "qty": 1334.0,
+      "avg": 0.1702,
+      "opened": "2026-11-12T16:00:44+00:00",
+      "stop": 0.1642,
+      "protected": true,
+      "stop_state": "confirmed",
+      "stop_age_s": 61.8,
+      "stop_note": null
+    },
+    {
+      "sleeve": "EX01",
+      "symbol": "ADAUSDT",
+      "side": "LONG",
+      "qty": 1232.0,
+      "avg": 0.1702,
+      "opened": "2026-11-13T08:02:54+00:00",
+      "stop": 0.1637,
+      "protected": true,
+      "stop_state": "confirmed",
+      "stop_age_s": 61.8,
+      "stop_note": null
+    }
+  ],
+  "EX01_ADA_closed_history": [],
+  "error_now": null,
+  "no_mutation": true
+}
