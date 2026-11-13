@@ -46,6 +46,7 @@ MODEL_VERSION = 'shadow-model-v1'
 MANAGEMENT = 'research-primitives-v1'
 START = 2000.0
 MIN_N = 20
+CAPITAL_LADDER = (1000.0, 2000.0, 3000.0, 4000.0)
 MAX_REF_LAG_S = 300                  # decision mark observed at most this long after the decision close
 UNSUPPORTED = ('runner', 'ttp', 'tps', 'trail_entry', 'prot')
 FUNDING_GRID_S = 8 * 3600              # Binance USD-M default settlement grid (00/08/16 UTC): exposure across it needs a record
@@ -238,6 +239,18 @@ class ShadowBook:
 
     def mark_incomplete(self, instance_id, reason):
         return self._record('incomplete', instance_id=instance_id, reason=str(reason))
+
+    def mark_gap(self, reason):
+        """Fail-closed observer-wide gap.
+
+        Unlike ordinary records, the in-memory taint is set *before* the durable append.  If the
+        ledger itself is the failing component, the current process must not continue reporting
+        complete coverage merely because the gap record could not be written.
+        """
+        reason = str(reason)[:160]
+        with self._lock:
+            if reason not in self.gaps: self.gaps.append(reason)
+            return self._record('gap', reason=reason)
 
     # ------------------------------------------------------------------ reducer
     def _register(self, rec):
@@ -561,6 +574,11 @@ class ShadowBook:
         elif rec['reason'] not in inst['incomplete']: inst['incomplete'].append(rec['reason'])
         return dict(seq=self.seq)
 
+    def _a_gap(self, rec):
+        reason = str(rec.get('reason') or 'unknown_gap')[:160]
+        if reason not in self.gaps: self.gaps.append(reason)
+        return dict(seq=self.seq)
+
     # ------------------------------------------------------------------ read side
     def _unreal(self, ep):
         return ep['sd'] * (ep['last'] - ep['avg']) * ep['qty'] if ep['status'] == 'open' else 0.0
@@ -670,3 +688,147 @@ class ShadowBook:
                 r['rank'] = rk.get(r['instance_id'])
             return dict(model=dict(self.model, hash=self.model_hash), min_n=self.min_n, cohort_id=self.cohort_id,
                         coverage=dict(complete=not self._all_gaps(), gaps=self._all_gaps()), strategies=rows)
+
+
+def _capital_values(capitals):
+    """Validated, ordered capital ladder."""
+    if not isinstance(capitals, (list, tuple)) or not capitals or len(capitals) > 12:
+        raise ValueError('capital ladder must contain 1-12 values')
+    vals = []
+    for raw in capitals:
+        if isinstance(raw, bool): raise ValueError('capital ladder values must be numbers')
+        try: value = float(raw)
+        except (TypeError, ValueError): raise ValueError('capital ladder values must be numbers') from None
+        if value != value or not 100.0 <= value <= 10_000_000.0:
+            raise ValueError('capital ladder values must be between 100 and 10000000')
+        vals.append(value)
+    if vals != sorted(set(vals)):
+        raise ValueError('capital ladder values must be unique and ascending')
+    return vals
+
+
+def _capital_view(book, capital):
+    doc, snap = book.compute(), book.snapshot()
+    by_iid = {}
+    for ep in snap['episodes'].values():
+        g = by_iid.setdefault(ep.get('instance_id'), dict(exchange_rejected=0, executable=0))
+        if str(ep.get('exit_reason') or '').startswith('exchange_filter:'): g['exchange_rejected'] += 1
+        if ep.get('status') in ('open', 'closed'): g['executable'] += 1
+    rows = []
+    for row in doc['strategies']:
+        x = by_iid.get(row['instance_id'], {})
+        rows.append({k: row.get(k) for k in ('instance_id', 'key', 'episodes', 'closed', 'open', 'held', 'realized',
+                    'fees', 'funding', 'roi', 'max_dd', 'net_r', 'avg_r', 'expectancy', 'win_rate', 'pf',
+                    'turnover', 'complete', 'rankable', 'rank')} | {
+                        'executable': int(x.get('executable', 0)),
+                        'exchange_rejected': int(x.get('exchange_rejected', 0)),
+                    })
+    eps = list(snap['episodes'].values())
+    return dict(capital=capital, observed=len(eps),
+                executable=sum(1 for e in eps if e.get('status') in ('open', 'closed')),
+                exchange_rejected=sum(1 for e in eps if str(e.get('exit_reason') or '').startswith('exchange_filter:')),
+                coverage=dict(complete=doc['coverage']['complete'], gaps=doc['coverage']['gaps']), strategies=rows)
+
+
+def _capital_doc(cohort_id, values, views, source, prospective):
+    return dict(available=True, mode='isolated_strategy_capital_parity', order_authority=False,
+                portfolio_pnl=False, prospective=bool(prospective), cohort_id=str(cohort_id), source=str(source),
+                capitals=list(values),
+                note=('Each strategy is replayed independently at the stated total-capital assumption. Results are not '
+                      'summed; shared portfolio allocation and same-coin collisions require the mainnet allocator.'),
+                views=views)
+
+
+def capital_ladder(path, cohort_id, model, capitals=CAPITAL_LADDER, min_n=MIN_N):
+    """Read-only capital-parity views over one immutable strategy-shadow input stream.
+
+    Each value is a separate normalized *strategy* account.  Replaying the exact same causal signal/bar/funding/rules
+    records means exchange step size, minimum quantity and minimum notional can change which episodes are executable as
+    capital changes.  This intentionally does not sum isolated strategies into a pretend portfolio: shared-capital
+    allocation and strategy collisions remain a separate mainnet allocator decision.
+
+    The source ledger is never written.  ShadowBook only appends through its public on_* methods; construction and
+    compute are replay/read operations.
+    """
+    vals = _capital_values(capitals)
+    views = [_capital_view(ShadowBook(path, cohort_id, dict(model), start=capital, min_n=min_n), capital)
+             for capital in vals]
+    return _capital_doc(cohort_id, vals, views, os.path.basename(str(path)), prospective=False)
+
+
+class CapitalShadowLadder:
+    """Prospective durable fan-out: the same inputs are written to isolated books at every capital level."""
+    observer_id = 'capital_shadow_ladder'
+
+    def __init__(self, directory, cohort_id, model, capitals=CAPITAL_LADDER, min_n=MIN_N):
+        self.directory, self.cohort_id, self.model = str(directory), str(cohort_id), dict(model)
+        self.capitals, self.min_n = _capital_values(capitals), int(min_n)
+        self._lock, self._cache = threading.RLock(), None
+        os.makedirs(self.directory, exist_ok=True)
+        self.books = {capital: ShadowBook(os.path.join(self.directory, f'capital-{int(capital)}.jsonl'),
+                                         self.cohort_id, dict(self.model), start=capital, min_n=self.min_n)
+                      for capital in self.capitals}
+        self._pending = os.path.join(self.directory, '.fanout-pending.json')
+        if os.path.exists(self._pending):
+            try:
+                with open(self._pending, 'r', encoding='utf-8') as fh: pending = json.load(fh)
+                targets = set(float(x) for x in pending.get('capitals', self.capitals))
+                method = str(pending.get('method') or 'unknown')
+            except Exception:
+                targets, method = set(self.capitals), 'unknown'
+            for capital, book in self.books.items():
+                if capital in targets:
+                    try: book.mark_gap(f'capital_fanout_interrupted:{method}')
+                    except Exception: pass
+
+    def _pending_write(self, method, capitals):
+        """Write-ahead intent makes an interrupted/failed fan-out detectable after restart."""
+        tmp = self._pending + '.tmp'
+        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(_cj(dict(method=str(method), capitals=list(capitals))) + '\n')
+            fh.flush(); os.fsync(fh.fileno())
+        os.replace(tmp, self._pending)
+
+    def _all(self, method, *args, **kwargs):
+        out, failed = {}, []
+        with self._lock:
+            self._pending_write(method, self.capitals)
+            for capital, book in self.books.items():
+                try:
+                    out[capital] = getattr(book, method)(*args, **kwargs)
+                except Exception as ex:                              # every later book must still receive the input
+                    reason = f'capital_fanout:{method}:{type(ex).__name__}'
+                    try: book.mark_gap(reason)                        # fail closed in the affected durable ledger
+                    except Exception: pass                           # mark_gap still taints memory before its append
+                    failed.append((capital, reason))
+            if failed:
+                try: self._pending_write(method, [c for c, _ in failed])
+                except Exception: pass                               # the original all-target intent remains conservative
+            else:
+                try: os.remove(self._pending)
+                except FileNotFoundError: pass
+            self._cache = None
+        if failed:
+            raise RuntimeError('capital shadow fanout failed: ' + ','.join(str(int(c)) for c, _ in failed))
+        return out
+
+    def on_signal(self, *args, **kwargs): return self._all('on_signal', *args, **kwargs)
+    def on_candidate(self, *args, **kwargs): return self._all('on_candidate', *args, **kwargs)
+    def on_bar(self, *args, **kwargs): return self._all('on_bar', *args, **kwargs)
+    def on_funding(self, *args, **kwargs): return self._all('on_funding', *args, **kwargs)
+    def on_cadence(self, *args, **kwargs): return self._all('on_cadence', *args, **kwargs)
+    def complete_cycle(self, *args, **kwargs): return self._all('complete_cycle', *args, **kwargs)
+
+    def symbols_with_positions(self):
+        return sorted({ep['symbol'] for book in self.books.values() for ep in book.snapshot()['episodes'].values()
+                       if ep.get('qty_hist')})
+
+    def compute(self):
+        with self._lock:
+            revision = tuple((capital, self.books[capital].seq) for capital in self.capitals)
+            if self._cache is not None and self._cache[0] == revision: return self._cache[1]
+            doc = _capital_doc(self.cohort_id, self.capitals,
+                               [_capital_view(self.books[capital], capital) for capital in self.capitals],
+                               os.path.basename(self.directory), prospective=True)
+            self._cache = (revision, doc)
+            return doc

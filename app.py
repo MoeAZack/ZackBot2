@@ -1380,6 +1380,7 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/status': return self._json(APP.snapshot())
             if p == '/api/meta': return self._json(APP.meta())
             if p == '/api/preflight': return self._json(APP.preflight())
+            if p == '/api/capital-shadow': return self._json(APP.engine.capital_shadow_status())  # read-only, cached
             if p == '/api/true_books/compare': return self._json(APP.engine.true_books_compare())   # TRUE-BOOK comparison (read-only)
             if p == '/api/audit_summary':     # T05a: read-only trade-audit summary (cached; no engine lock held)
                 e = APP.engine

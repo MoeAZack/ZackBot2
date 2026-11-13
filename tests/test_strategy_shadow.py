@@ -49,6 +49,77 @@ def ep(b, rec):
 E0 = 100.0 * (1 + SLIP)                                    # long entry at the observed mark + 2 bps
 
 
+# ------------------------------------------------------------------ capital-parity ladder (read-only derived views)
+def test_capital_ladder_replays_exact_inputs_and_exchange_filters_without_writing(tmp_path):
+    b = book(tmp_path)
+    sl = dict(slot(), risk=0.0005)
+    b.on_signal(slot=sl, symbol='BTCUSDT', side='LONG',
+                signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+                mark=dict(time=iso(), price=100, source='premiumIndex'),
+                live_decision=dict(status='taken', reason=''),
+                rule=dict(step=0.01, min_qty=0.01, min_notional=40.0))
+    bar(b, 10, o=100, h=101, l=99.5, c=100.5, sig=dict(lx=True, sx=False))
+    before = open(b.path, 'rb').read()
+
+    out = SSH.capital_ladder(b.path, 'C1', dict(SSH.MODEL_V1), (1000, 2000, 3000, 4000))
+
+    assert out['capitals'] == [1000.0, 2000.0, 3000.0, 4000.0]
+    assert out['order_authority'] is False and out['portfolio_pnl'] is False
+    assert out['views'][0]['executable'] == 0 and out['views'][0]['exchange_rejected'] == 1
+    assert [x['executable'] for x in out['views'][1:]] == [1, 1, 1]
+    assert [x['exchange_rejected'] for x in out['views'][1:]] == [0, 0, 0]
+    assert open(b.path, 'rb').read() == before
+
+
+def test_prospective_capital_ladder_is_durable_and_keeps_books_isolated(tmp_path):
+    d = tmp_path / 'capital'
+    ladder = SSH.CapitalShadowLadder(d, 'C1', dict(SSH.MODEL_V1), (1000, 2000, 3000, 4000))
+    sl = dict(slot(), risk=0.0005)
+    kw = dict(slot=sl, symbol='BTCUSDT', side='LONG',
+              signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+              mark=dict(time=iso(), price=100, source='premiumIndex'),
+              live_decision=dict(status='taken', reason=''),
+              rule=dict(step=0.01, min_qty=0.01, min_notional=40.0))
+    ladder.on_signal(**kw)
+    ladder.on_bar(tf='4h', bars={'BTCUSDT': dict(time=iso(10), o=100, h=101, l=99.5, c=100.5, atr=2)},
+                  signals={SSH.identity(sl)[0]: {'BTCUSDT': dict(lx=True, sx=False)}})
+    first = ladder.compute()
+    assert first['prospective'] and first['views'][0]['exchange_rejected'] == 1
+    assert [v['executable'] for v in first['views'][1:]] == [1, 1, 1]
+    assert sorted(p.name for p in d.glob('*.jsonl')) == ['capital-1000.jsonl', 'capital-2000.jsonl',
+                                                         'capital-3000.jsonl', 'capital-4000.jsonl']
+
+    again = SSH.CapitalShadowLadder(d, 'C1', dict(SSH.MODEL_V1), (1000, 2000, 3000, 4000))
+    assert again.compute() == first
+
+
+def test_capital_fanout_failure_marks_only_that_book_and_still_feeds_later_books(tmp_path, monkeypatch):
+    ladder = SSH.CapitalShadowLadder(tmp_path / 'capital', 'C1', dict(SSH.MODEL_V1))
+    sl = slot()
+    ladder.on_signal(slot=sl, symbol='BTCUSDT', side='LONG',
+                     signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+                     mark=dict(time=iso(), price=100, source='premiumIndex'),
+                     live_decision=dict(status='taken', reason=''), rule=None)
+    bad = ladder.books[3000.0]
+    monkeypatch.setattr(bad, 'on_bar', lambda *a, **k: (_ for _ in ()).throw(OSError('one book failed')))
+    with pytest.raises(RuntimeError, match='3000'):
+        ladder.on_bar(tf='4h', bars={'BTCUSDT': dict(time=iso(10), o=100, h=101, l=99.5, c=100.5, atr=2)},
+                      signals={SSH.identity(sl)[0]: {'BTCUSDT': dict(lx=True, sx=False)}})
+
+    assert ladder.books[4000.0].compute()['strategies'][0]['closed'] == 1       # later book was still fed
+    damaged = ladder.books[3000.0].snapshot()['coverage']
+    assert not damaged['complete'] and 'capital_fanout:on_bar:OSError' in damaged['gaps']
+    assert ladder.books[1000.0].snapshot()['coverage']['complete']
+    assert ladder.books[2000.0].snapshot()['coverage']['complete']
+
+
+@pytest.mark.parametrize('values', [[], [1000, 1000], [2000, 1000], [True], [99], [float('nan')]])
+def test_capital_ladder_rejects_ambiguous_values(tmp_path, values):
+    b = book(tmp_path)
+    with pytest.raises(ValueError):
+        SSH.capital_ladder(b.path, 'C1', dict(SSH.MODEL_V1), values)
+
+
 # ------------------------------------------------------------------ exit parity (backtest.walk_path semantics)
 def test_stop_first_when_the_opens_stop_is_inside_the_candle(tmp_path):
     b = book(tmp_path); r = enter(b, slot(tp_r=1.0))
@@ -261,6 +332,9 @@ def test_observer_on_off_identical_trading_and_records_every_candidate(tmp_path,
     assert {(x['symbol'], x['live_decision']['status']) for x in eps} >= {('BTCUSDT', 'taken'), ('ETHUSDT', 'skipped')}
     assert all(x['entry_ref_time'] == FIXED.isoformat() for x in eps if x['status'] != 'incomplete')
     assert b.snapshot()['coverage']['records'] >= 3
+    cap = e1.capital_shadow_status()
+    assert cap['available'] and cap['prospective'] and cap['capitals'] == [1000.0, 2000.0, 3000.0, 4000.0]
+    assert len(list((tmp_path / 'on' / e1.CAPITAL_SHADOW_DIR / 'CH-AB').glob('*.jsonl'))) == 4
 
 
 @pytest.mark.parametrize('mode', ['boom', 'disk'])
@@ -278,6 +352,40 @@ def test_observer_is_paper_only_and_off_by_default(tmp_path):
     e.state['cohort'] = dict(id='CH')
     e.live = True
     assert e._shadow_book() is None
+
+
+def test_capital_status_is_read_only_does_not_construct_writers_and_is_cached(tmp_path):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-READ')
+    assert not e.capital_shadow_status()['available']
+    assert not hasattr(e, '_capital_shadow') and not os.path.exists(tmp_path / e.CAPITAL_SHADOW_DIR)
+
+    ladder = e._capital_shadow_ladder()                         # engine-thread construction in production
+    first = e.capital_shadow_status()
+    assert first['available'] and e.capital_shadow_status() is first
+    e._capital_shadow_failed = True
+    e._shadow_bar('4h', {}, {})
+    assert e._capital_shadow_failed                              # bar cannot erase a failure from the same cycle
+    e._shadow_cycle('4h', {'BTCUSDT': frame(100.0)})
+    assert not hasattr(e, '_capital_shadow_failed')              # cycle consumes/clears the fail-closed state
+
+
+def test_capital_dead_book_is_tainted_in_memory_and_restart_detects_pending_fanout(tmp_path, monkeypatch):
+    root = tmp_path / 'capital'
+    ladder = SSH.CapitalShadowLadder(root, 'CH-DEAD', dict(SSH.MODEL_V1))
+    dead = ladder.books[3000.0]
+    original = dead._append
+    monkeypatch.setattr(dead, '_append', lambda rec: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(RuntimeError, match='3000'):
+        ladder.on_bar(tf='4h', bars={'BTCUSDT': dict(time=iso(), o=100, h=101, l=99, c=100, atr=2)}, signals={})
+    assert not dead.snapshot()['coverage']['complete']
+    assert any('capital_fanout:on_bar:OSError' in x for x in dead.snapshot()['coverage']['gaps'])
+    monkeypatch.setattr(dead, '_append', original)
+    restarted = SSH.CapitalShadowLadder(root, 'CH-DEAD', dict(SSH.MODEL_V1))
+    assert not restarted.books[3000.0].snapshot()['coverage']['complete']
+    assert any('capital_fanout_interrupted:on_bar' in x
+               for x in restarted.books[3000.0].snapshot()['coverage']['gaps'])
 
 
 # ------------------------------------------------------------------ review round 1 regressions (one per finding)
@@ -492,6 +600,24 @@ def test_r1_app_flushes_queued_candidates_while_flat():
 # ------------------------------------------------------------------ testnet funding timeline (shadow_funding.py) + engine feed
 import market_data as MD                                   # noqa: E402
 import shadow_funding as SF                                # noqa: E402
+
+
+def test_capital_funding_failure_never_marks_the_primary_observer_failed(tmp_path, monkeypatch):
+    e, _ = mk_engine(str(tmp_path))
+    e.S['STRATEGY_SHADOW'] = True
+    e.state['cohort'] = dict(id='CH-CAP-FUND')
+    ladder = e._capital_shadow_ladder()
+    ladder.on_signal(slot=slot(), symbol='BTCUSDT', side='LONG',
+                     signal=dict(time=iso(), close=100, atr=2, le=True, se=False, lx=False, sx=False),
+                     mark=dict(time=iso(), price=100, source='premiumIndex'),
+                     live_decision=dict(status='taken', reason=''), rule=None)
+    monkeypatch.setattr(SF, 'cadence_s', lambda *a: 8 * 3600)
+    monkeypatch.setattr(ladder, 'on_cadence', lambda *a, **k: (_ for _ in ()).throw(OSError('capital only')))
+
+    e._shadow_funding_feed(ladder)
+
+    assert e.health['strategy_shadow']['capital_errors'] == 1
+    assert not hasattr(e, '_shadow_failed')
 
 
 class FakeTestnet:
