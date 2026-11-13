@@ -87,3 +87,16 @@ The failure can recur. Both stop placement and emergency closing depend on signe
 
 DEFERRED: additional capacity/parameter searches, CP-Y2 integration, account2 changes, timestamp repairs, new schedulers and mainnet.
 LANES: Integration records independent economics and the owner-approved EX13 receipt; Evidence observes the requested natural close and retains the ADA diagnosis; Build's exact-fixed companion remains a separate bounded research task. No daily-row dependency.
+
+
+## Natural-close addendum — completed at 14:03 Cairo
+
+The requested **14:00 Cairo (12:00 UTC)** observation is now complete. Account 4's successful 4h receipt is **14:01:52 Cairo (12:01:52 UTC)**. All 31 EX13 symbols have valid positive close/ATR and computed signals for the new candle opened **10:00 Cairo (08:00 UTC)**, closed at 14:00 Cairo. There are **zero long signals, zero short signals, zero entries and zero EX13 refusals**. No candle-fetch or strategy-cycle error was logged in this close window.
+
+The first panel status read timed out while the trading cycle was busy; the read-only retry succeeded after completion. A caller-aborted status response appears in bot.log. This is disclosed separately from strategy/candle errors; no restart, setting, clock, order or stop change was performed to obtain the receipt.
+
+Settings remain SHA256 1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a. The other 12 sleeves, 2.5% risk cap and CAPITAL_CAP 4000 are unchanged. Accounts 1–3 settings/install/cohort hashes still match their pre-work values. EX13 stays enabled as the owner approved.
+
+At **14:03 Cairo**, both ADA longs are still open and reported protected/confirmed by the bot's exchange verifier: EX01 1,232 at stop 0.1637 and EX02 1,334 at stop 0.1642, confirmation age about 65 seconds. There is no EX01 ADA closed-history row. The earlier safety close did not succeed; protection was later restored as already diagnosed. No timestamp/fill-accounting fix was made, and the recurrence limitation remains.
+
+The bounded read-only observer has completed and exited. No recurring task or scheduler change was created. Detailed receipts are ex13/close_1200Z_verification.json, close_1200Z_checks.json, close_1200Z_log.txt and ada_after_1200Z_snapshot.json.

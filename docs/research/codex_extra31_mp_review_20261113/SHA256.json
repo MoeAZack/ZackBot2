@@ -25,12 +25,16 @@
   "independent_mp_review.py": "301026d00cc5e52e59c04ed0bb1d2a6e7a9eada6bc8e604abb9bb911cb1fff37",
   "independent_sieve_review.py": "b2e5946e6f59b439ee2ad30fc7bb4186d60a4f34ddea627c411b12801ff05d37",
   "public_exchange_info.json.gz": "9b4667a57951d5a98baaa6090189787cf845cc2adf2e0cff047e12fe09e2a6f0",
-  "REPORT.md": "2758d438d98fdf0ddd46bfb3af7238cd5ba412e38999cff3a267f8c7bd35ac9d",
+  "REPORT.md": "e0863b01edbcbb9aaf9f0e1a0cafdfed45567bc07382080079de29e4f47d5af3",
   "submitted_medians_check.json": "bea8a5a9a63c77f2098fb6b3e83b52385bd654f15e46f5cd5047020ab7507b6e",
+  "ex13/ada_after_1200Z_snapshot.json": "32b228fb317dc0c4cba72903b369e76f3b7f610e1016db850572d3449ced8541",
   "ex13/ada_incident_log.txt": "811cedac56ce2d771c0880d6d13101833dcf9fbc14ab57835089fd1d6387d01c",
   "ex13/ada_readonly_snapshot.json": "9644279e9b76200880e722176b2e222e70c251873e2c102b3a69b178a23a89b5",
   "ex13/applied.json": "0203026825c27bb2c6907a2c4c2e7d0f0fa7bb7f1a27132a563c11bee183e0b4",
   "ex13/before.json": "08b41a49e46975e58ff443d436edca5c9e6b65989dc837e3ce71c987f9db698c",
   "ex13/boundary_verification.json": "54be88682625509363cd32979b44883c48db013a2b0383130c7fa468650a70fb",
+  "ex13/close_1200Z_checks.json": "2fc1d3e919fefb0319cde5b9b71eb84aeadb46cef44f779b3302042568ec47de",
+  "ex13/close_1200Z_log.txt": "e1d3375795f5f705aa973ad2f5bf0f71f1dcc938e2db288579e2c6819978cbac",
+  "ex13/close_1200Z_verification.json": "2483c07a68ed3c4949e2a7f39e256dbb420c194a8413699c65d761bf1d87962b",
   "ex13/verification.json": "13ba8aaa029e5d978477df753041ee9e1dbecb5f6bff8aa8e831bbe362d4179f"
 }

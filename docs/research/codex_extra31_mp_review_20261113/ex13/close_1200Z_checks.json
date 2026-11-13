@@ -1,0 +1,26 @@
+{
+  "captured_cairo": "2026-11-13T14:03:02.594549+02:00",
+  "valid_close_atr_31": true,
+  "cycle_or_candle_errors": [],
+  "other12_identical": true,
+  "risk_cap_unchanged": true,
+  "capital_cap": 4000,
+  "accounts1_3_unchanged": {
+    "cohort_launch_20261108": {
+      "settings.json": true,
+      "install.json": true,
+      "cohort.json": true
+    },
+    "OLD3-account2": {
+      "settings.json": true,
+      "install.json": true,
+      "cohort.json": true
+    },
+    "ACCOUNT3-breakeven": {
+      "settings.json": true,
+      "install.json": true,
+      "cohort.json": true
+    }
+  },
+  "panel_read_timeout": "First status request timed out during cycle; read-only retry succeeded after cycle completion. No bot restart or fix."
+}

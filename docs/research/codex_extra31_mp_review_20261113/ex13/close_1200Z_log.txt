@@ -1,0 +1,4 @@
+2026-11-13 14:00:18,337 INFO --- 15m cycle (candle close) | equity 4000.00 ---
+2026-11-13 14:00:34,292 INFO --- 1h cycle (candle close) | equity 4000.00 ---
+2026-11-13 14:00:56,575 INFO --- 4h cycle (candle close) | equity 4000.00 ---
+2026-11-13 14:01:52,061 ERROR GET /api/status: [WinError 10053] An established connection was aborted by the software in your host machine
