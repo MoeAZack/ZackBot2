@@ -548,6 +548,8 @@ def build_context(dfs, btc_key='BTCUSDT'):
     r7 = r42.rank(axis=1, ascending=False)
     r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
     breadth7 = (r42 > 0).sum(axis=1) / r7n.replace(0, np.nan)
+    # DAILY-TF-01: the closes themselves (time x symbol, one shared read-only frame) for panel strategies' own cross-section
+    panel_c = pd.DataFrame({s: pd.Series(d.c.values, index=pd.to_datetime(d.t)) for s, d in dfs.items()}).sort_index()
     out = {}
     for s, d in dfs.items():
         t = d.t
@@ -556,7 +558,7 @@ def build_context(dfs, btc_key='BTCUSDT'):
                       rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
                       rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
                       breadth7=pd.Series(breadth7.reindex(t).values, index=d.index),
-                      n_symbols=len(dfs))
+                      n_symbols=len(dfs), panel_c=panel_c)
     return out
 
 

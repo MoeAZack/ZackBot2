@@ -13,7 +13,8 @@ BOOKS = (
                                                 'pullback_rsi', 'rotation', 'hot_coin', 'exp_mom_short'})),
     ('B4_BREAKOUT', 'Breakout / structure', frozenset({'breakout_pyramid', 'squeeze_tp', 'bear_breakdown',
                                                        'exp_breakout', 'exp_structure'})),
-    ('B5_DISCOVERY', 'Discovery / new research', frozenset({'dca_dip', 'exp_rip_sell_dca'})),
+    ('B5_DISCOVERY', 'Discovery / new research', frozenset({'dca_dip', 'exp_rip_sell_dca',
+                                                           'cp_y2_breadth_thrust_1d'})),   # DAILY-TF-01 canary
 )
 IDS = tuple(x[0] for x in BOOKS)
 

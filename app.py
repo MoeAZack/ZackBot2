@@ -1602,7 +1602,12 @@ def validate_sleeve(sl, i, allow_research=False):
         k = sl['kelly'] if isinstance(sl['kelly'], dict) else {}
         out['kelly'] = dict(frac=_num(k.get('frac', 0.5), 0.05, 1, 'Kelly fraction'), min=_num(k.get('min', 0.25), 0.05, 2, 'Kelly min'), max=_num(k.get('max', 2.0), 0.5, 4, 'Kelly max'))
     if out['sides'] not in ('long', 'short', 'both'): raise ValueError('direction must be long/short/both')
-    if out['tf'] not in TF_SEC: raise ValueError('timeframe must be 15m, 1h or 4h')
+    if out['tf'] not in TF_SEC: raise ValueError('timeframe must be 15m, 1h, 4h or 1d')
+    panel = S.STRATEGIES[sl['key']].get('panel_symbols')          # DAILY-TF-01: a panel strategy trades only its frozen panel
+    if panel and (not isinstance(out['symbols'], list) or not out['symbols'] or set(out['symbols']) - set(panel)):
+        raise ValueError(f"{sl['key']}: coins must be an explicit list from its frozen panel ({len(panel)} coins)")
+    if panel and out['tf'] != S.STRATEGIES[sl['key']].get('tf'):
+        raise ValueError(f"{sl['key']}: timeframe is fixed at {S.STRATEGIES[sl['key']].get('tf')}")
     return out
 
 
@@ -1789,6 +1794,9 @@ def handle(path, b):
                    universe=[s for s in (b.get('universe') or e.S['UNIVERSE']) if isinstance(s, str) and SYM.match(s)][:80])
         if not isinstance(b.get('sleeves'), list) or not b['sleeves']: raise ValueError('no strategies to test')
         req['sleeves'] = [validate_sleeve(x, i, allow_research=True) for i, x in enumerate(b['sleeves'][:MAX_SLEEVES])]
+        if any((S.STRATEGIES.get(x['key']) or {}).get('panel_symbols') for x in req['sleeves']):   # DAILY-TF-01
+            raise ValueError('cross-sectional panel strategies (breadth thrust) are not supported in the app backtest - '
+                             'its candle book does not rebuild the slot panel; use the research runner')
         if b.get('run_options'): req['run_options'] = LAB._validate_run_options(b['run_options'])
         JOBS[jid] = dict(id=jid, status='queued')
         try: enqueue(run_backtest_job, jid, req)
