@@ -30866,7 +30866,17 @@
             "settings_before_sha256": "c2c7335a76eb485b251a5223ad021c830ee77baab5c67576235e60be13f88904",
             "settings_after_sha256": "1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a",
             "first_manual_cycle_verified": true,
-            "natural_1400_Cairo_cycle": "PENDING actual close; do not substitute manual cycle"
+            "natural_1400_Cairo_cycle": {
+              "status": "VERIFIED",
+              "success_cairo": "2026-11-13T14:01:52+02:00",
+              "symbols_evaluated": 31,
+              "entry_signals": 0,
+              "entries": 0,
+              "refusals": 0,
+              "candle_strategy_errors": 0,
+              "receipt_head": "0e86bc8896dde938bb6958eefb1335a7c684ea05",
+              "receipt_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6852333264"
+            }
           }
         }
       ]
@@ -42161,7 +42171,17 @@
         "settings_before_sha256": "c2c7335a76eb485b251a5223ad021c830ee77baab5c67576235e60be13f88904",
         "settings_after_sha256": "1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a",
         "first_manual_cycle_verified": true,
-        "natural_1400_Cairo_cycle": "PENDING actual close; do not substitute manual cycle"
+        "natural_1400_Cairo_cycle": {
+          "status": "VERIFIED",
+          "success_cairo": "2026-11-13T14:01:52+02:00",
+          "symbols_evaluated": 31,
+          "entry_signals": 0,
+          "entries": 0,
+          "refusals": 0,
+          "candle_strategy_errors": 0,
+          "receipt_head": "0e86bc8896dde938bb6958eefb1335a7c684ea05",
+          "receipt_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6852333264"
+        }
       }
     }
   ]
