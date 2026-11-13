@@ -1,0 +1,160 @@
+{
+  "pfx1h": {
+    "freeze_sha256": "8c7cd6bd386258dc0740b7b49827cda795b4023151aa8b9e61bee6a0936845e1",
+    "matched_source_input_pins": 456,
+    "causal_cash_checks": [
+      {
+        "bp": 7,
+        "index": 0,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-11 20:00:00",
+        "exit": "2024-10-12 02:00:00",
+        "reason": "stop",
+        "max_abs_error": 3.552713678800501e-14
+      },
+      {
+        "bp": 7,
+        "index": 1,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-12 02:00:00",
+        "exit": "2024-10-12 14:00:00",
+        "reason": "time",
+        "max_abs_error": 4.440892098500626e-16
+      },
+      {
+        "bp": 7,
+        "index": 3,
+        "sym": "BTCUSDT",
+        "side": 1,
+        "entry": "2024-10-13 02:00:00",
+        "exit": "2024-10-13 14:00:00",
+        "reason": "time",
+        "max_abs_error": 7.275957614183426e-12
+      },
+      {
+        "bp": 7,
+        "index": 28,
+        "sym": "ADAUSDT",
+        "side": -1,
+        "entry": "2024-10-31 11:00:00",
+        "exit": "2024-10-31 19:00:00",
+        "reason": "target",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 7,
+        "index": 963,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2026-09-27 08:00:00",
+        "exit": "2026-09-27 20:00:00",
+        "reason": "time",
+        "max_abs_error": 5.551115123125783e-17
+      },
+      {
+        "bp": 15,
+        "index": 0,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-11 20:00:00",
+        "exit": "2024-10-12 02:00:00",
+        "reason": "stop",
+        "max_abs_error": 3.552713678800501e-14
+      },
+      {
+        "bp": 15,
+        "index": 1,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-12 02:00:00",
+        "exit": "2024-10-12 14:00:00",
+        "reason": "time",
+        "max_abs_error": 4.440892098500626e-16
+      },
+      {
+        "bp": 15,
+        "index": 3,
+        "sym": "BTCUSDT",
+        "side": 1,
+        "entry": "2024-10-13 02:00:00",
+        "exit": "2024-10-13 14:00:00",
+        "reason": "time",
+        "max_abs_error": 7.275957614183426e-12
+      },
+      {
+        "bp": 15,
+        "index": 28,
+        "sym": "ADAUSDT",
+        "side": -1,
+        "entry": "2024-10-31 11:00:00",
+        "exit": "2024-10-31 19:00:00",
+        "reason": "target",
+        "max_abs_error": 3.469446951953614e-18
+      },
+      {
+        "bp": 15,
+        "index": 963,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2026-09-27 08:00:00",
+        "exit": "2026-09-27 20:00:00",
+        "reason": "time",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 23,
+        "index": 0,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-11 20:00:00",
+        "exit": "2024-10-12 02:00:00",
+        "reason": "stop",
+        "max_abs_error": 3.552713678800501e-14
+      },
+      {
+        "bp": 23,
+        "index": 1,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-12 02:00:00",
+        "exit": "2024-10-12 14:00:00",
+        "reason": "time",
+        "max_abs_error": 4.440892098500626e-16
+      },
+      {
+        "bp": 23,
+        "index": 3,
+        "sym": "BTCUSDT",
+        "side": 1,
+        "entry": "2024-10-13 02:00:00",
+        "exit": "2024-10-13 14:00:00",
+        "reason": "time",
+        "max_abs_error": 7.275957614183426e-12
+      },
+      {
+        "bp": 23,
+        "index": 28,
+        "sym": "ADAUSDT",
+        "side": -1,
+        "entry": "2024-10-31 11:00:00",
+        "exit": "2024-10-31 19:00:00",
+        "reason": "target",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 23,
+        "index": 963,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2026-09-27 08:00:00",
+        "exit": "2026-09-27 20:00:00",
+        "reason": "time",
+        "max_abs_error": 2.7755575615628914e-17
+      }
+    ],
+    "max_abs_error": 7.275957614183426e-12,
+    "scope": "selected order0 causal lots across all3costs; mirrored sides and available stop/target/time/terminal reasons; no4h diagnostic or whole40order independent portfolio rerun"
+  }
+}

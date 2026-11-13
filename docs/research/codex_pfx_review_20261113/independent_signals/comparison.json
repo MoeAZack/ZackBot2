@@ -1,0 +1,76 @@
+{
+  "packet_head": "1dc684f3c743081c439caf0f45bd952f46e990a5",
+  "freeze_sha256": "8c7cd6bd386258dc0740b7b49827cda795b4023151aa8b9e61bee6a0936845e1",
+  "raw_csv_sha256": "ae77ea61a9f83f51cbafcbf570b6a69d4e59fba7a59b6c657bbbb24f012ac98a",
+  "zip_count": 216,
+  "checks": {
+    "ADAUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 561
+    },
+    "AVAXUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 482
+    },
+    "BNBUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 420
+    },
+    "BTCUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 585
+    },
+    "DOGEUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 689
+    },
+    "ETHUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 701
+    },
+    "LINKUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 490
+    },
+    "SOLUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 615
+    },
+    "XRPUSDT": {
+      "zip_count": 24,
+      "rows": 17496,
+      "missing_hours": 24,
+      "signals": 506
+    }
+  },
+  "own_count": 5049,
+  "reference_count": 5049,
+  "matched": 5049,
+  "missing_count": 0,
+  "extra_count": 0,
+  "missing": [],
+  "extra": [],
+  "comparison": {
+    "scheduled_fill": 0,
+    "discrepancy_window": 0,
+    "dist_abs_gt_1e-12": 0,
+    "max_dist_abs": 9.094947017729282e-13
+  },
+  "scope": "Independent signal reconstruction only; no economic runs. ZIP checksums and frozen futures hashes verified; no interpolation."
+}
