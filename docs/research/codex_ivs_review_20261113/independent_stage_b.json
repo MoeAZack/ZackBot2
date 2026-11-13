@@ -1,0 +1,61 @@
+{
+  "head": "544a33d29d83ea988631e0d918e1697d4d63e932",
+  "hourly_sha256": "b9f16e54324e771e45dbdae2b23c05beef8f61db74d086b7d8e329ec928339f6",
+  "hour_table_rows": 17376,
+  "hour_table_criteria_match": true,
+  "valid_hours": 16837,
+  "low_count_hours_in_available_files": 35,
+  "stale_or_absent_last_in_available_files": 31,
+  "window_valid_V": 16652,
+  "window_valid_z": 15976,
+  "shock_hours": 230,
+  "raw_tuples": 826,
+  "matched": 826,
+  "missing": 0,
+  "extra": 0,
+  "refused": [],
+  "distinct_fill_times": 153,
+  "calendar_weeks": 102.32142857142857,
+  "upper_bound_per_week": 1.4952879581151832,
+  "FREQUENCY_FAIL": true,
+  "per_coin": {
+    "ADAUSDT": {
+      "long": 58,
+      "short": 27
+    },
+    "AVAXUSDT": {
+      "long": 63,
+      "short": 22
+    },
+    "BNBUSDT": {
+      "long": 66,
+      "short": 28
+    },
+    "BTCUSDT": {
+      "long": 69,
+      "short": 44
+    },
+    "DOGEUSDT": {
+      "long": 61,
+      "short": 32
+    },
+    "ETHUSDT": {
+      "long": 66,
+      "short": 29
+    },
+    "LINKUSDT": {
+      "long": 62,
+      "short": 22
+    },
+    "SOLUSDT": {
+      "long": 58,
+      "short": 30
+    },
+    "XRPUSDT": {
+      "long": 64,
+      "short": 25
+    }
+  },
+  "max_stop_distance_error": 4.547473508864641e-13,
+  "scope": "all provided hourly rows validated structurally and quality recomputed; raw ZIP reaggregation separate independent lane pending; independent full StageB signals/no economics"
+}
