@@ -1,0 +1,6242 @@
+{
+ "contract": "EXTRA31-SCREEN",
+ "count": 291,
+ "strategies": [
+  {
+   "key": "ema_st",
+   "name": "EMA cross + Supertrend",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5
+   },
+   "params": {},
+   "desc": "EMA20 crosses EMA50 above EMA200 with Supertrend(10,3) confirming. Was slot A of the first bot.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "ema_mom",
+   "name": "EMA cross + Momentum",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5
+   },
+   "params": {},
+   "desc": "Same cross, only when 7d and 30d returns are positive. Was slot B of the first bot.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "donchian_ens",
+   "name": "Donchian ensemble (20/55/100)",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "trail_atr": 4.0
+   },
+   "params": {},
+   "desc": "Research-backed trend model: enters when 2 of 3 breakout channels agree, exits on 20-candle low.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "breakout_pyramid",
+   "name": "Breakout + pyramiding",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "trail_atr": 3.0,
+    "pyramid": {
+     "n": 2,
+     "step_r": 1.0,
+     "frac": 0.5
+    }
+   },
+   "params": {},
+   "desc": "20-candle breakout in an uptrend, adds 2 more units every +1R, chandelier trail 3 ATR.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "squeeze_tp",
+   "name": "Squeeze breakout + partial TP",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp1_r": 1.5,
+    "tp1_frac": 0.5,
+    "be_r": 1.5,
+    "trail_atr": 3.0
+   },
+   "params": {},
+   "desc": "Bollinger squeeze breakout; takes 50% at 1.5R, moves stop to breakeven, trails the rest.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "pullback_rsi",
+   "name": "Trend pullback (RSI) + scale-out",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0,
+    "tp_r": 3.0,
+    "max_bars": 60
+   },
+   "params": {},
+   "desc": "Buys RSI dips in an uptrend like many lead traders; 50% off at 1R, breakeven, rest at 3R.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "dca_dip",
+   "name": "DCA dip buyer (safety orders)",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "dca": {
+     "n": 3,
+     "step_atr": 1.0,
+     "scale": 1.5,
+     "tp_atr": 1.0,
+     "stop_atr": 2.0
+    },
+    "max_bars": 60
+   },
+   "params": {},
+   "desc": "3Commas-style: buys a stretched dip, up to 3 safety orders (1.5x each, 1 ATR apart), basket TP +1 ATR, hard basket stop.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "bear_breakdown",
+   "name": "Bear-market breakdown (shorts)",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "trail_atr": 3.0
+   },
+   "params": {},
+   "desc": "Shorts 20-candle breakdowns only while BTC is below its EMA200; exits on 10-candle high.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "rotation",
+   "name": "Momentum rotation (top 5)",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0
+   },
+   "params": {
+    "k": 5
+   },
+   "desc": "Holds the 5 strongest coins by 30-day risk-adjusted momentum above their EMA50; rotates as ranks change.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "hot_coin",
+   "name": "Hot-coin momentum chase",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "trail_atr": 2.5,
+    "tp1_r": 2.0,
+    "tp1_frac": 0.5
+   },
+   "params": {},
+   "desc": "Lead-trader style: top-3 7-day movers breaking out on a volume surge; tight trail.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_trend",
+   "name": "[TESTNET EXP] Trend L/S",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / testnet-only: EMA20/50 cross on the EMA200 side with 7d+30d momentum agreeing (trend_ema_mom.v1), mirrored for shorts. Stop 2.5 ATR, target 3R, exit on cross-back or momentum loss, 180-candle time cap. 4h.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_range",
+   "name": "[TESTNET EXP] Range L/S",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "max_bars": 30
+   },
+   "params": {
+    "k": 2.0
+   },
+   "desc": "EXPERIMENTAL / testnet-only: RANGE-EXIT-01 v0. 42-candle VWAP (typical price x volume), ATR = 14-candle mean true range, z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 candles; short mi",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_breakout",
+   "name": "[TESTNET EXP] Breakout L/S",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 3.0,
+    "max_bars": 60
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / testnet-only: first close above the prior 20-candle high (long) or below the prior 20-candle low (short). Stop 2 ATR, target 3R, exit on a close through the opposite 10-candle channel, 60-candle cap. 4h.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_scalp",
+   "name": "[TESTNET EXP] Scalp L/S 15m",
+   "tf": "15m",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 1.5,
+    "max_bars": 16
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / testnet-only: with EMA20 above EMA50, a candle that dips to EMA20 and closes back above it (long); mirrored for shorts. Tight stop 1 ATR, target 1.5R, exit when EMA20/50 flips, 16-candle (4h) cap. Run on 15m.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "NO_DATA_15M"
+  },
+  {
+   "key": "exp_structure",
+   "name": "[TESTNET EXP] Structure L/S",
+   "tf": "15m",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / testnet-only: first close through the latest confirmed 3-candle swing in the EMA50/200 direction. Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure or regime-flip exit, 24",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "NO_DATA_15M"
+  },
+  {
+   "key": "exp_mom_short",
+   "name": "[TESTNET EXP] Mom Short (dump)",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "trail_atr": 2.5,
+    "tp1_r": 2.0,
+    "tp1_frac": 0.5
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / testnet-only: short-only mirror of Hot-coin momentum chase. Bottom-3 7-day movers breaking below the prior 20-candle low and EMA50 on a volume surge (> 1.5x the 42-candle average). Stop 2 ATR above, half off at 2R, 2.5 ATR tr",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_rip_sell_dca",
+   "name": "[TESTNET EXP] Rip-sell DCA S",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "dca": {
+     "n": 3,
+     "step_atr": 1.0,
+     "scale": 1.5,
+     "tp_atr": 1.0,
+     "stop_atr": 2.0
+    },
+    "max_bars": 60
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / testnet-only: UNVERIFIED DCA / martingale basket (never backtested). Short-only mirror of DCA dip buyer: with EMA50 below EMA200, sells the first close > 1.5 ATR above EMA20; up to 3 safety orders 1 ATR apart ABOVE (1.5x each",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_vwaprev",
+   "name": "[TESTNET EXP] VWAP Rev L/S",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "max_bars": 30
+   },
+   "params": {
+    "n": 42,
+    "k": 2.0,
+    "rg": 1.0
+   },
+   "desc": "EXPERIMENTAL / testnet-only: VWAPREV = range_vwap_rev.v1 X1 (RANGE-EXIT-01). VWAP42 from quote volume / volume, ATR = TR-SMA14, z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 candles; s",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "range_scalp",
+   "name": "[PAPER EXP] Range scalp L/S 15m",
+   "tf": "15m",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.25,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / PAPER-only scalp: confirmed 32-candle range (ADX < 20, 2-6 ATR wide, no close > 0.5 ATR outside it in the last 32 candles). Long from the bottom quarter on a bullish candle, short from the top quarter on a bearish one. Exit a",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "NO_DATA_15M"
+  },
+  {
+   "key": "failed_breakout_scalp",
+   "name": "[PAPER EXP] Failed breakout L/S 15m",
+   "tf": "15m",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / PAPER-only scalp: a close back inside a 20-candle range after a break of at most 3 candles. Short after a failed upside break, long after a failed downside break. Stop just beyond the break extreme (+0.1 ATR, min 0.5 ATR), ta",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "NO_DATA_15M"
+  },
+  {
+   "key": "momentum_burst_scalp",
+   "name": "[PAPER EXP] Momentum burst L/S 15m",
+   "tf": "15m",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 4
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / PAPER-only scalp: impulse candle (range and volume >= 2x their 20-candle averages, close in the outer quarter) in its own direction; skipped unless the 1.5 ATR stop is >= 3x the round-trip fee + slippage. Stop 1.5 ATR, target",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "NO_DATA_15M"
+  },
+  {
+   "key": "quick_bank_runner",
+   "name": "[PAPER EXP] Quick bank + runner L/S 15m",
+   "tf": "15m",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp1_r": 0.8,
+    "tp1_frac": 0.7,
+    "be_r": 0.8,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {},
+   "desc": "EXPERIMENTAL / PAPER-only scalp: EMA9 pullback in an EMA20/50 trend. Banks 70% at 0.8R and moves the stop to breakeven; the 30% runner targets 2R, exits on an EMA20/50 flip or after 12 candles (3h). Stop 1 ATR.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "NO_DATA_15M"
+  },
+  {
+   "key": "rank_breadth_reversal_4h",
+   "name": "[RESEARCH] Rank-breadth reversal 4h",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 18
+   },
+   "params": {
+    "rank_frac": 0.2,
+    "breadth_low": 0.35,
+    "breadth_high": 0.65,
+    "rsi_low": 30.0,
+    "rsi_high": 70.0,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Fade 7-day cross-sectional extremes only during broad same-direction crowding.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "SKIPPED_ALREADY_TESTED"
+  },
+  {
+   "key": "atr_shock_snapback_4h",
+   "name": "[RESEARCH] ATR shock snapback 4h",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp1_r": 0.8,
+    "tp1_frac": 0.5,
+    "be_r": 0.8,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "shock_atr": 1.5,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "One-bar 1.5 ATR counter-trend shock followed by a midpoint reclaim inside EMA50/200 trend.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "session_inventory_unwind_1h",
+   "name": "[RESEARCH] Session inventory unwind 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp1_r": 0.8,
+    "tp1_frac": 0.5,
+    "be_r": 0.8,
+    "tp_r": 1.5,
+    "max_bars": 6
+   },
+   "params": {
+    "hours": [
+     8,
+     16
+    ],
+    "displacement_atr": 1.5,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Fade an eight-hour displacement only after reversal at 08:00/16:00 UTC handoff candles.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "volume_pressure_inventory_1h",
+   "name": "[RESEARCH] Volume-pressure inventory 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "decision_hour": 0,
+    "window": 48,
+    "imbalance": 0.1,
+    "max_displacement_atr": 1.0,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Daily signed-volume pressure after a 48h price-absorption window.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "realized_skew_valuation_1h",
+   "name": "[RESEARCH] Realized-skew valuation 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "decision_hour": 0,
+    "window": 168,
+    "skew_threshold": 0.75,
+    "cost_multiple": 5.0
+   },
+   "desc": "Daily fade of extreme seven-day hourly-return skew.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "mark_price_dislocation_1h",
+   "name": "[RESEARCH] Mark-price dislocation 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 8
+   },
+   "params": {
+    "hours": [
+     0,
+     4,
+     8,
+     12,
+     16,
+     20
+    ],
+    "basis_threshold": 0.0008,
+    "cost_multiple": 5.0
+   },
+   "desc": "Fade fixed-time contract-close deviations from independently archived Binance mark price.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "weekend_liquidity_premium_1h",
+   "name": "[RESEARCH] Weekend liquidity premium 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 2.5,
+    "max_bars": 24
+   },
+   "params": {
+    "boundaries": [
+     [
+      4,
+      23
+     ],
+     [
+      6,
+      23
+     ]
+    ],
+    "cost_multiple": 5.0
+   },
+   "desc": "Separate long/short cells at fixed UTC weekend open and close transitions.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "transient_jump_dislocation_1h",
+   "name": "[RESEARCH] Transient jump dislocation 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 8
+   },
+   "params": {
+    "jump_threshold": 0.006,
+    "max_retention": 0.5,
+    "participation": 2.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Fade a high-participation 1m jump not retained by its completed hour.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "aggressor_flow_absorption_1h",
+   "name": "[RESEARCH] Aggressor-flow absorption 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 8
+   },
+   "params": {
+    "imbalance_threshold": 0.2,
+    "max_hour_move": 0.004,
+    "cost_multiple": 5.0
+   },
+   "desc": "Fade extreme verified hourly taker imbalance when price progress is muted.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "btc_orderflow_leadlag_1h",
+   "name": "[RESEARCH] BTC order-flow lead-lag 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "btc_imbalance": 0.15,
+    "btc_move": 0.006,
+    "target_lag_band": 0.002,
+    "cost_multiple": 5.0
+   },
+   "desc": "Follow verified BTC aggressor-flow impulses only in locally lagging targets.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "large_trade_impulse_1h",
+   "name": "[RESEARCH] Large-trade impulse 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "notional_multiple": 2.0,
+    "move_threshold": 0.006,
+    "baseline_hours": 168,
+    "cost_multiple": 5.0
+   },
+   "desc": "Follow a large directional hour only when average archived trade notional is anomalous.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "pullback_rsi_short_h1",
+   "name": "[RESEARCH] Pullback RSI short H1",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0,
+    "tp_r": 3.0,
+    "max_bars": 60
+   },
+   "params": {},
+   "desc": "Queued H1: RSI recovery from overbought inside a completed 4h downtrend.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "rotation_long_h2",
+   "name": "[RESEARCH] Rotation long H2",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0
+   },
+   "params": {
+    "k": 5
+   },
+   "desc": "Queued H2: top-five 30-day risk-adjusted momentum above EMA50.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_trend_long_h3",
+   "name": "[RESEARCH] Experimental trend long H3",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+   },
+   "params": {},
+   "desc": "Queued H3: EMA20/50 bullish cross above EMA200 with positive 7d and 30d momentum.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "ema_mom_long_h4",
+   "name": "[RESEARCH] EMA momentum long H4",
+   "tf": "4h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5
+   },
+   "params": {},
+   "desc": "Queued H4: EMA20/50 bullish cross above EMA200 with positive 7d and 30d momentum; original stop-only management.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "exp_mom_short_c27",
+   "name": "[RESEARCH] Cold-coin momentum short C27",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": "C27",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "trail_atr": 2.5,
+    "tp1_r": 2.0,
+    "tp1_frac": 0.5
+   },
+   "params": {},
+   "desc": "Candidate 27: bottom-three 7d mover breaks the prior 20-bar low below EMA50 on >1.5x volume.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "rip_sell_dca_c28",
+   "name": "[RESEARCH] Rip-sell DCA short C28",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": "C28",
+   "mgmt": {
+    "dca": {
+     "n": 3,
+     "step_atr": 1.0,
+     "scale": 1.5,
+     "tp_atr": 1.0,
+     "stop_atr": 2.0
+    },
+    "max_bars": 60
+   },
+   "params": {},
+   "desc": "Candidate 28: downtrend rip >1.5 ATR above EMA20 with frozen short DCA basket management.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "ema_st_short_c29",
+   "name": "[RESEARCH] EMA-supertrend short C29",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": "C29",
+   "mgmt": {
+    "stop_atr": 2.5
+   },
+   "params": {},
+   "desc": "Candidate 29: EMA20/50 bearish cross below EMA200 with Supertrend bearish confirmation.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "daily_range_participation_long_1h",
+   "name": "[RESEARCH] Daily-range participation long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C30",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "trail_atr": 3.0,
+    "max_bars": 24
+   },
+   "params": {
+    "channel": 24,
+    "volume_window": 48,
+    "volume_multiple": 1.5,
+    "close_location": 0.75
+   },
+   "desc": "Candidate 30: completed 1h close above prior 24h high, EMA50>EMA200, top-quartile close and >=1.5x median volume.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "illiquidity_impact_reversion_long_1h",
+   "name": "[RESEARCH] Illiquidity-impact reversion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C31",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 1.5,
+    "max_bars": 8
+   },
+   "params": {
+    "window": 168,
+    "impact_multiple": 3.0,
+    "shock_atr": 1.5,
+    "volume_floor_quantile": 0.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 31: fade downside 1h shocks when absolute return per quote-volume is >=3x its trailing median.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "inside_bar_breakout_long_1h",
+   "name": "[RESEARCH] Inside-bar breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C32",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "mother_atr": 1.25,
+    "inside_ratio": 0.7,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 32: confirm a breakout after one inside-bar contraction within an expanded mother bar.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "rsi_lower_low_divergence_long_1h",
+   "name": "[RESEARCH] RSI lower-low divergence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C33",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "window": 48,
+    "separation": 4,
+    "divergence_points": 8.0,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 33: price makes a fresh 48h low while RSI stays at least eight points above its prior-window low.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_bar_exhaustion_reversal_long_1h",
+   "name": "[RESEARCH] Three-bar exhaustion reversal long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C34",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "streak": 3,
+    "drop_atr": 1.5,
+    "volume_window": 48,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 34: three descending red bars lose >=1.5 ATR before a bullish close above the prior high.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "obv_lead_breakout_long_1h",
+   "name": "[RESEARCH] OBV lead breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C35",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 35: cumulative signed quote-volume makes a 48h high before price does, above EMA50.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "mfi_oversold_recovery_long_1h",
+   "name": "[RESEARCH] MFI oversold recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C36",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "window": 14,
+    "oversold": 20.0,
+    "exit_level": 60.0,
+    "volume_window": 48,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 36: 14-bar Money Flow Index crosses above 20 with liquidity and cost admission.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "keltner_lower_reclaim_long_1h",
+   "name": "[RESEARCH] Keltner lower reclaim long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C37",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "ema_window": 20,
+    "band_atr": 2.0,
+    "volume_window": 48,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 37: bullish close reclaims the EMA20 minus 2 ATR lower channel.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "williams_r_recovery_long_1h",
+   "name": "[RESEARCH] Williams %R recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C38",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "window": 14,
+    "oversold": -80.0,
+    "exit_level": -20.0,
+    "volume_window": 48,
+    "volume_floor": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 38: Williams %R(14) crosses above -80 with liquidity and cost admission.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "ema_spread_expansion_long_1h",
+   "name": "[RESEARCH] EMA spread expansion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C39",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "compression_window": 12,
+    "compression_atr": 0.25,
+    "expansion_atr": 0.5,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 39: EMA20/EMA50 spread expands above 0.5 ATR after recent <=0.25 ATR convergence.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "return_autocorr_persistence_long_1h",
+   "name": "[RESEARCH] Return-autocorrelation persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C40",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "autocorr_window": 24,
+    "autocorr_min": 0.15,
+    "impulse_atr": 0.35,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "trend_lag": 8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 40: follow an upside impulse only while lag-1 return autocorrelation is positive.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "volatility_acceleration_long_1h",
+   "name": "[RESEARCH] Volatility acceleration long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C41",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "fast_tr": 6,
+    "slow_tr": 48,
+    "ratio_min": 1.2,
+    "body_fraction": 0.25,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "trend_lag": 8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 41: follow bullish participation when 6h true range exceeds 1.2x the prior 48h baseline.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "directional_sign_entropy_long_1h",
+   "name": "[RESEARCH] Directional sign entropy long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C42",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "window": 24,
+    "entropy_max": 0.9,
+    "positive_share_min": 0.625,
+    "impulse_atr": 0.2,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 42: follow bullish dominance when 24h binary return-sign entropy is <=0.90.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "range_overlap_acceptance_long_1h",
+   "name": "[RESEARCH] Range-overlap acceptance long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C43",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "overlap_window": 12,
+    "overlap_min": 0.55,
+    "breakout_window": 24,
+    "acceptance_atr": 0.1,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 43: dense 12h candle-range overlap followed by two closes accepted above a prior 24h edge.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "state_persistence_long_1h",
+   "name": "[RESEARCH] Empirical bull-state persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C44",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "state_bars": 6,
+    "state_atr": 1.0,
+    "transition_window": 120,
+    "min_bull_origins": 20,
+    "persistence_min": 0.6,
+    "persistence_exit": 0.5,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 44: enter a normalized bullish six-hour state when prior bull-to-bull persistence is >=60%.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "fib_pullback",
+   "name": "[RESEARCH] Fibonacci pullback L/S",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "params": {
+    "left": 3,
+    "right": 3,
+    "min_impulse_atr": 4.0,
+    "zone_lo": 0.382,
+    "trigger": 0.5,
+    "zone_hi": 0.618,
+    "invalid": 0.786
+   },
+   "desc": "RESEARCH-ONLY: confirmed 3/3 swings, trend-qualified 0.382-0.618 retracement, 0.5 reclaim entry and 0.786 structural invalidation. Long/short mirrored; excluded from PAPER until historical, walk-forward and untouched-holdout gates pass.",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "fib_pullback_02",
+   "name": "[RESEARCH] Fibonacci pullback v2 L/S 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "params": {
+    "left": 2,
+    "right": 2,
+    "min_impulse_atr": 3.0,
+    "zone_lo": 0.382,
+    "trigger": 0.5,
+    "zone_hi": 0.618,
+    "invalid": 0.786,
+    "body_atr": 0.35,
+    "vol_median_bars": 20
+   },
+   "desc": "RESEARCH-ONLY (FIB-PULLBACK-02): 1h, confirmed 2/2 swings, impulse >= 3 ATR with aligned EMA50/EMA200, armed by a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a >= 0.35 ATR body and ",
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "plan": "RUN"
+  },
+  {
+   "key": "equal_high_breakout_long_1h",
+   "name": "[RESEARCH] Equal-high cluster breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C45",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "resistance_window": 24,
+    "tolerance_atr": 0.25,
+    "min_touches": 2,
+    "min_separation": 3,
+    "breakout_atr": 0.1,
+    "volume_window": 48,
+    "volume_multiple": 1.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 45: buffered breakout above two separated near-equal highs in the prior 24 completed bars.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "equal_low_breakdown_short_1h",
+   "name": "[RESEARCH] Equal-low cluster breakdown short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C46",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "support_window": 24,
+    "tolerance_atr": 0.25,
+    "min_touches": 2,
+    "min_separation": 3,
+    "breakdown_atr": 0.1,
+    "volume_window": 48,
+    "volume_multiple": 1.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 46: buffered breakdown below two separated near-equal lows in the prior 24 completed bars.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "outside_bar_expansion_long_1h",
+   "name": "[RESEARCH] Outside-bar expansion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C47",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "range_atr": 1.25,
+    "close_location": 0.75,
+    "volume_window": 48,
+    "volume_multiple": 1.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 47: ATR-expanded outside bar engulfs the prior range and accepts above its high in an EMA50/200 uptrend.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "outside_bar_breakdown_short_1h",
+   "name": "[RESEARCH] Outside-bar breakdown short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C48",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "range_atr": 1.25,
+    "close_location": 0.25,
+    "volume_window": 48,
+    "volume_multiple": 1.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 48: ATR-expanded outside bar engulfs the prior range and accepts below its low in an EMA50/200 downtrend.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "inside_bar_breakdown_short_1h",
+   "name": "[RESEARCH] Inside-bar breakdown short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C49",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 16
+   },
+   "params": {
+    "mother_atr": 1.25,
+    "inside_ratio": 0.7,
+    "volume_window": 48,
+    "volume_multiple": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 49: confirm a breakdown after one inside-bar contraction within an expanded mother bar.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "hourly_volume_surprise_long_1h",
+   "name": "[RESEARCH] Same-hour volume surprise long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C50",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "season_days": 14,
+    "volume_multiple": 2.0,
+    "impulse_atr": 0.75,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 50: follow a 0.75 ATR upside impulse only when quote volume is >=2x the prior 14 same-UTC-hour median.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "realized_kurtosis_risk_short_1h",
+   "name": "[RESEARCH] Realized-kurtosis risk short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C51",
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 2.5,
+    "max_bars": 24
+   },
+   "params": {
+    "decision_hour": 0,
+    "window": 168,
+    "excess_kurtosis": 5.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 51: daily short when trailing seven-day hourly returns have excess kurtosis >=5.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "volume_return_leadlag_long_1h",
+   "name": "[RESEARCH] Volume-return lead-lag long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C52",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 8
+   },
+   "params": {
+    "window": 72,
+    "correlation": 0.25,
+    "volume_jump": 1.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 52: follow a 1.5x quote-volume jump only when lagged volume changes predicted next-hour returns over 72h.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "hour_of_day_drift_long_1h",
+   "name": "[RESEARCH] Learned hour-of-day drift long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C53",
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 1
+   },
+   "params": {
+    "season_days": 28,
+    "expected_return": 0.002,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 53: hold the next hour when its prior 28 same-UTC-hour returns average at least +20 bp.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "btc_beta_residual_reversion_long_1h",
+   "name": "[RESEARCH] BTC-beta residual reversion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C54",
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 4
+   },
+   "params": {
+    "beta_window": 336,
+    "residual_window": 168,
+    "residual_z": -2.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 54: fade a <=-2.5 sigma hourly residual after a prior-only 14-day BTC-beta fit.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "wick_imbalance_pressure_long_1h",
+   "name": "[RESEARCH] Wick-imbalance pressure long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C55",
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 8
+   },
+   "params": {
+    "window": 12,
+    "pressure": 0.2,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 55: buy a bullish close after 12h average normalized lower-minus-upper wick pressure >=0.20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "regression_trend_quality_long_1h",
+   "name": "[RESEARCH] Regression trend-quality long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C56",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "slope_t": 3.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 56: follow a positive 48h log-price OLS slope only when its t-statistic is at least 3.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "downside_semivariance_rebound_long_1h",
+   "name": "[RESEARCH] Downside-semivariance rebound long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C57",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "downside_ratio": 2.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 57: buy a positive hour when seven-day downside semivariance is at least 2x upside semivariance.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "drawdown_duration_recovery_long_1h",
+   "name": "[RESEARCH] Drawdown-duration recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C58",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "high_window": 168,
+    "min_age": 48,
+    "drawdown": -0.1,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 58: EMA20 reclaim after >=48h underwater and a prior >=10% drawdown from the seven-day high.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cross_sectional_low_vol_long_1h",
+   "name": "[RESEARCH] Cross-sectional low-volatility long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C59",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "select_k": 5,
+    "exit_rank": 8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 59: hold the five lowest trailing-seven-day realized-volatility members of the research pack.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "volatility_clustering_downside_short_1h",
+   "name": "[RESEARCH] Volatility-clustering downside short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C60",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "min_corr": 0.2,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 60: short negative hours in a negative 24h path when 168h squared-return lag-1 correlation >=0.20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "intrabar_churn_reversion_long_1h",
+   "name": "[RESEARCH] Intrabar-churn reversion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C61",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "ratio": 2.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 61: fade a negative hour below EMA20 when 168h Parkinson variance is >=2x close variance.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cusum_downshift_short_1h",
+   "name": "[RESEARCH] CUSUM downshift short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C62",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "vol_window": 48,
+    "threshold": 4.0,
+    "reference": 0.1,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 62: short a one-sided CUSUM alarm after standardized negative returns cross -4.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "multiscale_roughness_reversion_long_1h",
+   "name": "[RESEARCH] Multiscale-roughness reversion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C63",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "horizon": 24,
+    "max_h": 0.4,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 63: fade a negative hour below EMA20 when the 1h-to-24h variance-scaling exponent is <=0.40.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "leverage_effect_downside_short_1h",
+   "name": "[RESEARCH] Leverage-effect downside short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C64",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "max_corr": -0.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 64: short a negative hour in a negative 24h path when return/variance-change correlation <=-0.25.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ou_half_life_reversion_long_1h",
+   "name": "[RESEARCH] OU half-life reversion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C65",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "entry_z": -2.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 65: buy a recovering <=-2z log-price displacement when estimated OU half-life is 2-24 hours.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "jump_variation_downside_short_1h",
+   "name": "[RESEARCH] Jump-variation downside short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C66",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "min_jump_share": 0.25,
+    "exit_jump_share": 0.1,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 66: short downside when trailing seven-day RV-minus-bipower jump share is at least 25%.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "lower_tail_dependence_short_1h",
+   "name": "[RESEARCH] Lower-tail dependence short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": "C67",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 12
+   },
+   "params": {
+    "window": 336,
+    "quantile": 0.1,
+    "min_tail_dependence": 0.4,
+    "exit_tail_dependence": 0.2,
+    "min_btc_exceedances": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 67: short BTC tail shocks when prior empirical lower-tail dependence is at least 40%.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "round_number_breakout_long_1h",
+   "name": "[RESEARCH] Round-number breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C68",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 68: buy a positive-24h upside breach of the next one-tenth-decade decimal price barrier.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "price_recurrence_discovery_long_1h",
+   "name": "[RESEARCH] Price-recurrence discovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C69",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "radius_atr": 0.5,
+    "max_density": 0.05,
+    "exit_density": 0.2,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 69: buy positive price discovery when <=5% of prior 168 closes lie within 0.5 current ATR.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "low_frequency_power_long_1h",
+   "name": "[RESEARCH] Low-frequency return-power long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C70",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "low_bins": 7,
+    "min_share": 0.15,
+    "exit_share": 0.1,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 70: buy positive drift when the first seven FFT bins contain at least 15% of 168h return power.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "volume_concentration_continuation_long_1h",
+   "name": "[RESEARCH] Volume-concentration continuation long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C71",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 24,
+    "min_hhi": 2.0,
+    "exit_hhi": 1.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 71: buy positive drift when normalized 24h quote-volume HHI is at least 2.0.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "hill_tail_recovery_long_1h",
+   "name": "[RESEARCH] Hill downside-tail recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C72",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "tail_k": 12,
+    "max_entry_alpha": 3.0,
+    "exit_alpha": 5.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 72: buy a positive recovery below EMA20 when the 168h downside Hill exponent is at most 3.0.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "trimmed_return_recovery_long_1h",
+   "name": "[RESEARCH] Trimmed-return dislocation recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C73",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 24,
+    "trim_each_tail": 4,
+    "max_raw_sum": -0.03,
+    "min_trimmed_mean": 0.0001,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 73: buy recovery when the 24h log return is <=-3% but its four-per-tail trimmed mean stays positive.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "mass_index_recovery_long_1h",
+   "name": "[RESEARCH] Mass-index range-bulge recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C74",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "ema_span": 9,
+    "sum_window": 25,
+    "min_mass": 27.0,
+    "exit_mass": 25.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 74: buy a positive recovery below EMA20 while the 9/9/25 Mass Index is at least 27.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "turning_point_persistence_long_1h",
+   "name": "[RESEARCH] Turning-point persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C75",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "max_entry_rate": 0.5,
+    "exit_rate": 0.6666666666666666,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 75: follow positive drift when at most half of 46 interior points in 48 closes are local extrema.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "aroon_recency_long_1h",
+   "name": "[RESEARCH] Aroon extreme-recency long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C76",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 25,
+    "min_oscillator": 70.0,
+    "exit_oscillator": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 76: follow positive drift when 25h Aroon-up minus Aroon-down is at least 70.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "vortex_movement_long_1h",
+   "name": "[RESEARCH] Vortex cross-range movement long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C77",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "min_oscillator": 0.2,
+    "exit_oscillator": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 77: follow positive drift when 14h VI+ minus VI- is at least 0.20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "omega_payoff_persistence_long_1h",
+   "name": "[RESEARCH] Omega payoff-persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C78",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "min_omega": 1.5,
+    "exit_omega": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 78: follow positive drift when 48h zero-threshold Omega ratio is at least 1.50.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "choppiness_persistence_long_1h",
+   "name": "[RESEARCH] Choppiness-index persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C79",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "max_entry": 38.2,
+    "exit_level": 61.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 79: follow positive drift when the 14h Choppiness Index is at most 38.2.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "positive_jump_excitation_long_1h",
+   "name": "[RESEARCH] Positive-jump excitation long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C80",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "event_atr": 0.75,
+    "half_life": 6.0,
+    "min_intensity": 0.2,
+    "exit_intensity": 0.1,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 80: follow positive drift when ATR-sized upside jump arrivals cluster.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "return_concentration_persistence_long_1h",
+   "name": "[RESEARCH] Diffuse-return persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C81",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 24,
+    "max_entry": 0.08,
+    "exit_level": 0.15,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 81: follow positive drift when absolute returns are broadly distributed through 24h.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "iqr_compression_breakout_long_1h",
+   "name": "[RESEARCH] Return-IQR compression breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C82",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 24,
+    "baseline": 96,
+    "max_ratio": 0.6,
+    "impulse_atr": 0.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 82: follow an upside impulse released from a compressed 24h return IQR.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ulcer_resilience_long_1h",
+   "name": "[RESEARCH] Ulcer-resilience long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C83",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "max_entry": 0.03,
+    "exit_level": 0.05,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 83: follow positive drift while 48h RMS drawdown severity remains shallow.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "directional_change_overshoot_long_1h",
+   "name": "[RESEARCH] Directional-change overshoot long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C84",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "threshold_atr": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 84: follow the overshoot after an upward one-ATR directional-change event.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "lz_sign_complexity_long_1h",
+   "name": "[RESEARCH] LZ sign-complexity long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C85",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 32,
+    "max_entry": 1.4,
+    "exit_level": 1.65,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 85: follow positive drift when 32h return-sign ordering has low LZ78 complexity.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "volatility_stability_long_1h",
+   "name": "[RESEARCH] Volatility-stability long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C86",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "max_entry": 0.5,
+    "exit_level": 0.8,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 86: follow positive drift when six-hour realized volatility has low 48h variation.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "boundary_crossing_persistence_long_1h",
+   "name": "[RESEARCH] EMA boundary-crossing persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C87",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "max_entry": 0.1,
+    "exit_level": 0.25,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 87: follow positive drift when 48h EMA20 boundary-crossing intensity is low.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "kendall_monotonicity_long_1h",
+   "name": "[RESEARCH] Kendall-monotonicity long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C88",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 24,
+    "min_entry": 0.7,
+    "exit_level": 0.3,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 88: follow positive drift when 24h log-price Kendall tau-a is at least 0.70.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "time_reversal_asymmetry_long_1h",
+   "name": "[RESEARCH] Time-reversal asymmetry long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C89",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "min_entry": 0.1,
+    "exit_level": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 89: follow positive drift with positive standardized third-order return asymmetry.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "sample_entropy_long_1h",
+   "name": "[RESEARCH] Sample-entropy long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C90",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "template_length": 2,
+    "tolerance": 0.2,
+    "max_entry": 0.8,
+    "exit_level": 1.2,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 90: follow positive drift when 48h magnitude-aware Sample Entropy is at most 0.80.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "corwin_schultz_spread_long_1h",
+   "name": "[RESEARCH] Corwin-Schultz tight-spread long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C91",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 24,
+    "max_entry": 0.003,
+    "exit_level": 0.006,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 91: follow positive drift when the 24h median OHLC-implied spread is at most 30bp.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "robust_location_reversion_long_1h",
+   "name": "[RESEARCH] Robust-location reversion long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C92",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 48,
+    "max_entry": -2.5,
+    "exit_level": -0.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 92: reverse from a 48h log-price median/MAD z-score at or below -2.5.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ar2_forecast_long_1h",
+   "name": "[RESEARCH] AR(2) forecast long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C93",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 168,
+    "min_entry": 0.25,
+    "exit_level": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 93: follow positive drift when a 168h causal AR(2) forecasts at least 0.25 sigma.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "record_high_intensity_long_1h",
+   "name": "[RESEARCH] Closing-record intensity long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C94",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "record_lookback": 24,
+    "window": 48,
+    "min_entry": 0.1,
+    "exit_level": 0.02,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 94: follow positive drift when at least 10% of 48h bars set a strict 24h closing record.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "return_rank_shift_long_1h",
+   "name": "[RESEARCH] Return rank-shift long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C95",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "recent": 24,
+    "baseline": 72,
+    "min_entry": 0.6,
+    "exit_level": 0.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 95: follow positive drift when recent 24h returns dominate the prior 72h sample at 60%.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "parabolic_sar_flip_long_1h",
+   "name": "[RESEARCH] Parabolic SAR bullish flip long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C96",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "af_step": 0.02,
+    "af_max": 0.2,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 96: follow a causal Wilder Parabolic SAR bearish-to-bullish flip above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ichimoku_cloud_cross_long_1h",
+   "name": "[RESEARCH] Causal Ichimoku cloud cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C97",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "conversion": 9,
+    "base": 26,
+    "span": 52,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 97: bullish 9/26 range-midpoint cross above a positive causal 26/52 cloud.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "relative_vigor_cross_long_1h",
+   "name": "[RESEARCH] Relative Vigor bullish cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C98",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 98: classic 10h Relative Vigor Index bullish signal cross above zero and EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ultimate_oscillator_cross_long_1h",
+   "name": "[RESEARCH] Ultimate Oscillator bullish cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C99",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 7,
+    "medium": 14,
+    "slow": 28,
+    "level": 50.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 99: classic gap-aware 7/14/28 Ultimate Oscillator cross above 50 and EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "demarker_recovery_long_1h",
+   "name": "[RESEARCH] DeMarker oversold recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C100",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "entry": 0.3,
+    "exit": 0.7,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 100: classic DeMarker(14) recovery above 0.30 with 0.70 exit and EMA20 filter.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "kalman_innovation_recovery_long_1h",
+   "name": "[RESEARCH] Kalman innovation recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C101",
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 8
+   },
+   "params": {
+    "process_var": 2.5e-05,
+    "observation_var": 0.0004,
+    "shock": -2.0,
+    "recovery": -1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 101: recover from a <=-2 sigma local-level innovation to >-1 while below EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "elder_ray_pullback_long_1h",
+   "name": "[RESEARCH] Elder Ray improving-bear-power long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C102",
+   "mgmt": {
+    "stop_atr": 1.5,
+    "tp_r": 1.5,
+    "max_bars": 12
+   },
+   "params": {
+    "ema_span": 13,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 102: rising EMA13, positive bull power, and two increases in still-negative bear power.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "negative_volume_index_long_1h",
+   "name": "[RESEARCH] Negative Volume Index crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C103",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "ema_span": 255,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 103: low-volume-only price accumulation crosses above its 255h EMA with price above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "trix_zero_cross_long_1h",
+   "name": "[RESEARCH] TRIX zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C104",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "span": 15,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 104: conventional TRIX(15) crosses above zero with price above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "heikin_ashi_flip_long_1h",
+   "name": "[RESEARCH] Heikin-Ashi state flip long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C105",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 105: recursive Heikin-Ashi state flips bearish to bullish while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "fisher_zero_cross_long_1h",
+   "name": "[RESEARCH] Fisher transform zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C106",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 106: conventional Ehlers Fisher(10) crosses above zero with price above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "coppock_zero_cross_long_1h",
+   "name": "[RESEARCH] Coppock zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C107",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "roc_slow": 14,
+    "roc_fast": 11,
+    "wma": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 107: conventional Coppock 14/11 ROC sum smoothed by WMA10 crosses above zero above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "schaff_cycle_long_1h",
+   "name": "[RESEARCH] Schaff Trend Cycle long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C108",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 23,
+    "slow": 50,
+    "cycle": 10,
+    "alpha": 0.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 108: conventional 23/50/10 Schaff cycle crosses 25 above EMA20; exit on downward 75 cross.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "dpo_zero_cross_long_1h",
+   "name": "[RESEARCH] Detrended-price zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C109",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 20,
+    "displacement": 11,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 109: DPO(20) against the conventional 11-bar-displaced SMA crosses above zero above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "frama_cross_long_1h",
+   "name": "[RESEARCH] FRAMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C110",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 16,
+    "alpha_floor": 0.01,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 110: close crosses above a conventional FRAMA(16) path-dimension adaptive baseline above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "vhf_trend_onset_long_1h",
+   "name": "[RESEARCH] VHF trend-onset long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C111",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 28,
+    "enter": 0.4,
+    "exit": 0.2,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 111: VHF(28) crosses above 0.40 above EMA20; exits below 0.20 or EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cog_zero_cross_long_1h",
+   "name": "[RESEARCH] Center-of-Gravity zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C112",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 112: conventional Ehlers median-price COG(10) crosses above zero above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "relative_volatility_long_1h",
+   "name": "[RESEARCH] Relative Volatility Index long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C113",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "std_window": 10,
+    "smooth": 14,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 113: directional close-volatility RVI(10,14) crosses above 50 above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cfo_zero_cross_long_1h",
+   "name": "[RESEARCH] Chande Forecast Oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C114",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 14,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 114: CFO(14) normalized rolling-regression endpoint residual crosses above zero above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "random_walk_index_long_1h",
+   "name": "[RESEARCH] Random Walk Index long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C115",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "max_period": 14,
+    "threshold": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 115: max 2-14 bar RWI-high crosses 1, dominates RWI-low, and close is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "laguerre_rsi_long_1h",
+   "name": "[RESEARCH] Laguerre RSI long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C116",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "gamma": 0.5,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 116: four-stage Laguerre RSI(gamma=.5) crosses above .5 above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "kama_cross_long_1h",
+   "name": "[RESEARCH] Kaufman adaptive crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C117",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "er_window": 10,
+    "fast": 2,
+    "slow": 30,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 117: close crosses above conventional KAMA(10,2,30) while above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "trend_intensity_long_1h",
+   "name": "[RESEARCH] Trend Intensity Index long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C118",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "mean_window": 60,
+    "sum_window": 30,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 118: conventional TII(60,30) crosses above 50 while close is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cti_trend_long_1h",
+   "name": "[RESEARCH] Correlation Trend Indicator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C119",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 20,
+    "enter": 0.5,
+    "exit": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 119: rolling price-time CTI(20) crosses above +0.5 above EMA20; exits at zero.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "hurst_persistence_long_1h",
+   "name": "[RESEARCH] Hurst R/S persistence long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C120",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 64,
+    "enter": 0.6,
+    "exit": 0.5,
+    "drift_bars": 24,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 120: rolling 64-bar Hurst R/S crosses .60 with positive 24h drift above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "smi_zero_cross_long_1h",
+   "name": "[RESEARCH] Stochastic Momentum Index long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C121",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "range_window": 14,
+    "smooth1": 3,
+    "smooth2": 3,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 121: conventional SMI(14,3,3) crosses above zero while close is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "projection_oscillator_long_1h",
+   "name": "[RESEARCH] Projection Oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C122",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 14,
+    "threshold": 50.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 122: close crosses above the midpoint of 14-bar projected high/low regression envelopes above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "mcginley_cross_long_1h",
+   "name": "[RESEARCH] McGinley Dynamic crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C123",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "period": 14,
+    "constant": 0.6,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 123: close crosses above conventional McGinley Dynamic(14,0.6) while above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ease_of_movement_long_1h",
+   "name": "[RESEARCH] Ease of Movement zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C124",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 124: conventional 14h Ease of Movement crosses above zero while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cci_recovery_long_1h",
+   "name": "[RESEARCH] CCI oversold recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C125",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 20,
+    "oversold": -100.0,
+    "target": 100.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 125: conventional CCI(20) crosses above -100 from oversold below EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "tsi_cross_long_1h",
+   "name": "[RESEARCH] True Strength Index crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C126",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "long_span": 25,
+    "short_span": 13,
+    "signal_span": 7,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 126: conventional TSI(25,13) crosses above its 7h signal while positive and above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "force_index_long_1h",
+   "name": "[RESEARCH] Force Index zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C127",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "span": 13,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 127: conventional 13h Elder Force Index crosses above zero while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "chaikin_money_flow_long_1h",
+   "name": "[RESEARCH] Chaikin Money Flow zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C128",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 128: conventional 20h Chaikin Money Flow crosses above zero while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "hull_ma_cross_long_1h",
+   "name": "[RESEARCH] Hull Moving Average crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C129",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 129: close crosses above a rising conventional HMA(20) while above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cmo_cross_long_1h",
+   "name": "[RESEARCH] Chande Momentum Oscillator crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C130",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 130: conventional CMO(14) crosses above zero while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "klinger_volume_long_1h",
+   "name": "[RESEARCH] Klinger Volume Oscillator crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C131",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 34,
+    "slow": 55,
+    "signal": 13,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 131: conventional KVO(34,55) crosses above its signal(13) while positive and price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "awesome_oscillator_long_1h",
+   "name": "[RESEARCH] Awesome Oscillator zero-cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C132",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 5,
+    "slow": 34,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 132: conventional AO SMA5-minus-SMA34 of median price crosses above zero while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "connors_rsi_recovery_long_1h",
+   "name": "[RESEARCH] Connors RSI oversold-recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C133",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "price_rsi": 3,
+    "streak_rsi": 2,
+    "rank_window": 100,
+    "entry": 10.0,
+    "exit": 70.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 133: conventional CRSI(3,2,100) recovers above 10 while price is above EMA200; exit at 70.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "kst_cross_long_1h",
+   "name": "[RESEARCH] Know Sure Thing crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C134",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 134: standard KST crosses above its 9-bar signal while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "alligator_alignment_long_1h",
+   "name": "[RESEARCH] Williams Alligator alignment long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C135",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 135: standard causal jaw/teeth/lips lines first align bullish with close above lips.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "pvt_cross_long_1h",
+   "name": "[RESEARCH] Price Volume Trend crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C136",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "signal_span": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 136: conventional PVT crosses above EMA20 of PVT while price is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ravi_trend_long_1h",
+   "name": "[RESEARCH] RAVI trend long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 7,
+    "slow": 65,
+    "threshold": 3.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C170 conventional RAVI(7,65) crossing 3% with bullish SMA ordering above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "gann_hilo_long_1h",
+   "name": "[RESEARCH] Gann HiLo Activator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": "C138",
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 3,
+    "cost_multiple": 5.0
+   },
+   "desc": "Candidate 138: causal standard three-bar Gann HiLo state switches bullish.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "pgo_long_1h",
+   "name": "[RESEARCH] Pretty Good Oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "threshold": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C139 PGO14 crosses zero above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "psychological_line_long_1h",
+   "name": "[RESEARCH] Psychological Line long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 12,
+    "threshold": 50.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C140 PSY12 crosses above 50 while close is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "relative_momentum_index_long_1h",
+   "name": "[RESEARCH] Relative Momentum Index long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "momentum": 5,
+    "smooth": 20,
+    "threshold": 50.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C141 conventional RMI(5,20) crosses above 50 while close is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "stochastic_rsi_recovery_long_1h",
+   "name": "[RESEARCH] Stochastic RSI recovery long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "rsi_window": 14,
+    "stoch_window": 14,
+    "entry": 20.0,
+    "exit": 80.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C142 conventional StochRSI(14,14) recovers above 20 over EMA200 and exits at 80.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "chaikin_oscillator_long_1h",
+   "name": "[RESEARCH] Chaikin Oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 3,
+    "slow": 10,
+    "threshold": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C143 conventional Chaikin Oscillator EMA3-minus-EMA10 of ADL crosses above zero over EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "volume_zone_oscillator_long_1h",
+   "name": "[RESEARCH] Volume Zone Oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 14,
+    "threshold": 0.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C144 conventional VZO14 crosses above zero while close is above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "positive_volume_index_long_1h",
+   "name": "[RESEARCH] Positive Volume Index long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "ema_span": 255,
+    "cost_multiple": 5.0
+   },
+   "desc": "C145 conventional PVI crosses above its 255h EMA with price above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "percentage_volume_oscillator_long_1h",
+   "name": "[RESEARCH] Percentage Volume Oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "fast": 12,
+    "slow": 26,
+    "signal": 9,
+    "cost_multiple": 5.0
+   },
+   "desc": "C146 conventional PVO(12,26,9) bullish signal crossover above zero with price above EMA20.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "elder_impulse_long_1h",
+   "name": "[RESEARCH] Elder Impulse System long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "ema_span": 13,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "cost_multiple": 5.0
+   },
+   "desc": "C147 conventional Elder Impulse turns green when EMA13 and MACD histogram both rise above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "chande_kroll_breakout_long_1h",
+   "name": "[RESEARCH] Chande Kroll Stop breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "atr_window": 10,
+    "stop_window": 9,
+    "multiplier": 1.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C148 conventional CKS(10,1,9) close crosses above upper stop over EMA20 and exits below lower stop.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "vidya_crossover_long_1h",
+   "name": "[RESEARCH] VIDYA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 14,
+    "momentum": 9,
+    "cost_multiple": 5.0
+   },
+   "desc": "C149 conventional VIDYA(14,CMO9) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "alma_crossover_long_1h",
+   "name": "[RESEARCH] ALMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 9,
+    "offset": 0.85,
+    "sigma": 6.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C150 conventional ALMA(9,.85,6) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "dema_crossover_long_1h",
+   "name": "[RESEARCH] DEMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C151 conventional DEMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "tema_crossover_long_1h",
+   "name": "[RESEARCH] TEMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C152 conventional TEMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "zlema_crossover_long_1h",
+   "name": "[RESEARCH] ZLEMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C153 conventional ZLEMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "wma_crossover_long_1h",
+   "name": "[RESEARCH] WMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "window": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C154 conventional linear WMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "smma_crossover_long_1h",
+   "name": "[RESEARCH] SMMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C155 conventional Wilder SMMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "sma_crossover_long_1h",
+   "name": "[RESEARCH] SMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C156 conventional SMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "tma_crossover_long_1h",
+   "name": "[RESEARCH] TMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C157 conventional TMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "lsma_crossover_long_1h",
+   "name": "[RESEARCH] LSMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C158 conventional LSMA(20) endpoint crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "vwma_crossover_long_1h",
+   "name": "[RESEARCH] VWMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C159 conventional VWMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "gma_crossover_long_1h",
+   "name": "[RESEARCH] GMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C160 conventional GMA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ma_envelope_breakout_long_1h",
+   "name": "[RESEARCH] MA envelope breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "envelope": 0.025,
+    "cost_multiple": 5.0
+   },
+   "desc": "C161 conventional SMA20 +2.5% envelope breakout above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "standard_error_band_breakout_long_1h",
+   "name": "[RESEARCH] Standard Error Band breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "multiplier": 2.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C162 LSMA20 +2 residual standard errors breakout above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "raff_channel_breakout_long_1h",
+   "name": "[RESEARCH] Raff Regression Channel breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C163 breakout of prior 20-bar Raff regression channel above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "starc_band_breakout_long_1h",
+   "name": "[RESEARCH] STARC Band breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "ma_length": 6,
+    "atr_length": 15,
+    "multiplier": 2.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C164 conventional STARC(6,15,2) upper-band breakout above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "acceleration_band_breakout_long_1h",
+   "name": "[RESEARCH] Acceleration Band breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "factor": 4.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C165 conventional Headley Acceleration Bands(20,4) upper-band breakout above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "sine_wma_crossover_long_1h",
+   "name": "[RESEARCH] Sine WMA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C166 conventional sine-weighted MA(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "median_ma_crossover_long_1h",
+   "name": "[RESEARCH] Median MA crossover long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C167 conventional rolling median(20) price crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "fractal_chaos_breakout_long_1h",
+   "name": "[RESEARCH] Fractal Chaos Bands breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "left": 2,
+    "right": 2,
+    "cost_multiple": 5.0
+   },
+   "desc": "C168 conventional confirmed 2/2 Fractal Chaos upper-band breakout above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cog_oscillator_long_1h",
+   "name": "[RESEARCH] Center of Gravity oscillator long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C169 conventional Ehlers COG(10) crossing its one-bar trigger above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "pfe_trend_long_1h",
+   "name": "[RESEARCH] Polarized Fractal Efficiency long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 10,
+    "smoothing": 5,
+    "cost_multiple": 5.0
+   },
+   "desc": "C171 conventional smoothed PFE(10,5) positive crossover above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "gmma_ribbon_long_1h",
+   "name": "[RESEARCH] GMMA ribbon long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "short_periods": [
+     3,
+     5,
+     8,
+     10,
+     12,
+     15
+    ],
+    "long_periods": [
+     30,
+     35,
+     40,
+     45,
+     50,
+     60
+    ],
+    "cost_multiple": 5.0
+   },
+   "desc": "C172 canonical Guppy short EMA ribbon fully above long EMA ribbon and EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ssl_channel_long_1h",
+   "name": "[RESEARCH] SSL Channel long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C173 conventional SSL Channel(10) bullish state flip above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "chandelier_breakout_long_1h",
+   "name": "[RESEARCH] Chandelier Exit breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "length": 22,
+    "multiplier": 3.0,
+    "cost_multiple": 5.0
+   },
+   "desc": "C174 canonical Chandelier Exit(22,3) short-stop upside crossing above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "inertia_long_1h",
+   "name": "[RESEARCH] Dorsey Inertia long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "std_window": 10,
+    "rvi_smooth": 14,
+    "regression": 20,
+    "cost_multiple": 5.0
+   },
+   "desc": "C175 conventional RVI(10,14) linear-regression(20) Inertia crossing 50 above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "nr7_breakout_long_1h",
+   "name": "[RESEARCH] NR7 breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "setup_length": 7,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C176 conventional next-bar breakout above a Narrow Range 7 setup and EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "floor_pivot_breakout_long_1h",
+   "name": "[RESEARCH] Classic floor-pivot breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "cost_multiple": 5.0
+   },
+   "desc": "C177 prior-UTC-day classic R1 breakout above EMA200 with pivot exit.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "darvas_breakout_long_1h",
+   "name": "[RESEARCH] Darvas Box breakout long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "lookback": 20,
+    "confirmation": 3,
+    "cost_multiple": 5.0
+   },
+   "desc": "C178 confirmed three-bar Darvas box after a new 20-bar high, above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_line_break_long_1h",
+   "name": "[RESEARCH] Three-Line Break long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "reversal_lines": 3,
+    "cost_multiple": 5.0
+   },
+   "desc": "C179 conventional close-only Three-Line Break bullish reversal above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_white_soldiers_long_1h",
+   "name": "[RESEARCH] Three White Soldiers long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C180 conventional three advancing bullish real bodies above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_hammer_long_1h",
+   "name": "[RESEARCH] Bullish Hammer long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C181 classical bullish hammer geometry above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_engulfing_long_1h",
+   "name": "[RESEARCH] Bullish Engulfing long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C182 conventional bullish real-body engulfing pattern above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_engulfing_short_1h",
+   "name": "[RESEARCH] Bearish Engulfing short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C183 conventional bearish real-body engulfing pattern below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "piercing_line_long_1h",
+   "name": "[RESEARCH] Piercing Line long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C184 conventional Piercing Line partial body recovery above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "dark_cloud_cover_short_1h",
+   "name": "[RESEARCH] Dark Cloud Cover short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C185 conventional Dark Cloud Cover partial body reversal below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_harami_long_1h",
+   "name": "[RESEARCH] Bullish Harami long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C186 conventional bullish real-body Harami above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_harami_short_1h",
+   "name": "[RESEARCH] Bearish Harami short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C187 conventional bearish real-body Harami below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "tweezer_bottom_long_1h",
+   "name": "[RESEARCH] Tweezer Bottom long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "low_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C188 conventional adjacent equal-low Tweezer Bottom above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "tweezer_top_short_1h",
+   "name": "[RESEARCH] Tweezer Top short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "high_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C189 conventional adjacent equal-high Tweezer Top below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "shooting_star_short_1h",
+   "name": "[RESEARCH] Shooting Star short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C190 classical bearish Shooting Star geometry below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "inverted_hammer_long_1h",
+   "name": "[RESEARCH] Inverted Hammer long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C191 classical bullish Inverted Hammer geometry above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "hanging_man_short_1h",
+   "name": "[RESEARCH] Hanging Man short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C192 classical bearish Hanging Man geometry below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_marubozu_long_1h",
+   "name": "[RESEARCH] Bullish Marubozu long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_ratio": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C193 classical bullish Marubozu geometry above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_marubozu_short_1h",
+   "name": "[RESEARCH] Bearish Marubozu short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_ratio": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C194 classical bearish Marubozu geometry below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "rising_three_methods_long_1h",
+   "name": "[RESEARCH] Rising Three Methods long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C195 conventional five-candle contained-pullback continuation above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "falling_three_methods_short_1h",
+   "name": "[RESEARCH] Falling Three Methods short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C196 conventional five-candle contained-rally continuation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_belt_hold_long_1h",
+   "name": "[RESEARCH] Bullish Belt Hold long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_ratio": 0.1,
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C197 conventional bullish opening-side shaven candle above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_belt_hold_short_1h",
+   "name": "[RESEARCH] Bearish Belt Hold short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_ratio": 0.1,
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C198 conventional bearish opening-side shaven candle below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_kicker_long_1h",
+   "name": "[RESEARCH] Bullish Kicker long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C199 conventional bullish gap-through-body Kicker above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_kicker_short_1h",
+   "name": "[RESEARCH] Bearish Kicker short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C200 conventional bearish gap-through-body Kicker below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_separating_lines_long_1h",
+   "name": "[RESEARCH] Bullish Separating Lines long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "open_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C201 conventional matched-open bullish continuation above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_separating_lines_short_1h",
+   "name": "[RESEARCH] Bearish Separating Lines short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "open_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C202 conventional matched-open bearish continuation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "matching_low_long_1h",
+   "name": "[RESEARCH] Matching Low long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C203 conventional adjacent matched bearish closes above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "matching_high_short_1h",
+   "name": "[RESEARCH] Matching High short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C204 conventional adjacent matched bullish closes below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "homing_pigeon_long_1h",
+   "name": "[RESEARCH] Homing Pigeon long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C205 conventional nested bearish-body reversal above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "descending_hawk_short_1h",
+   "name": "[RESEARCH] Descending Hawk short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C206 conventional nested bullish-body reversal below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "stick_sandwich_long_1h",
+   "name": "[RESEARCH] Stick Sandwich long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C207 conventional three-candle matched-close support reversal above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_inside_up_long_1h",
+   "name": "[RESEARCH] Three Inside Up long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C208 conventional Harami-core bullish confirmation above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_inside_down_short_1h",
+   "name": "[RESEARCH] Three Inside Down short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C209 conventional Harami-core bearish confirmation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_outside_up_long_1h",
+   "name": "[RESEARCH] Three Outside Up long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C210 conventional bullish engulfing-plus-confirmation above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_outside_down_short_1h",
+   "name": "[RESEARCH] Three Outside Down short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C211 conventional bearish engulfing-plus-confirmation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "morning_star_long_1h",
+   "name": "[RESEARCH] Morning Star long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "star_body_ratio": 0.3,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C212 conventional gap-relaxed Morning Star recovery above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "evening_star_short_1h",
+   "name": "[RESEARCH] Evening Star short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "star_body_ratio": 0.3,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C213 conventional gap-relaxed Evening Star reversal below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_black_crows_short_1h",
+   "name": "[RESEARCH] Three Black Crows short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C214 conventional three declining bearish real bodies below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "dragonfly_doji_long_1h",
+   "name": "[RESEARCH] Dragonfly Doji long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.1,
+    "upper_fraction": 0.1,
+    "lower_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C215 conventional Dragonfly Doji rejection geometry above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "gravestone_doji_short_1h",
+   "name": "[RESEARCH] Gravestone Doji short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.1,
+    "lower_fraction": 0.1,
+    "upper_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C216 conventional Gravestone Doji rejection geometry below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_counterattack_long_1h",
+   "name": "[RESEARCH] Bullish Counterattack long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C217 conventional bullish Counterattack matched-close reversal above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_counterattack_short_1h",
+   "name": "[RESEARCH] Bearish Counterattack short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C218 conventional bearish Counterattack matched-close reversal below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "on_neck_short_1h",
+   "name": "[RESEARCH] On-Neck short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C219 conventional gap-relaxed On-Neck bearish continuation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "thrusting_line_short_1h",
+   "name": "[RESEARCH] Thrusting Line short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C220 conventional gap-relaxed Thrusting Line bearish continuation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "in_neck_short_1h",
+   "name": "[RESEARCH] In-Neck short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "close_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C221 conventional gap-relaxed In-Neck bearish continuation below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "long_legged_doji_long_1h",
+   "name": "[RESEARCH] Long-Legged Doji long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.1,
+    "shadow_fraction": 0.35,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C222 conventional Long-Legged Doji trend-continuation long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "long_legged_doji_short_1h",
+   "name": "[RESEARCH] Long-Legged Doji short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.1,
+    "shadow_fraction": 0.35,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C223 fixed Long-Legged Doji trend-continuation short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "ladder_bottom_long_1h",
+   "name": "[RESEARCH] Ladder Bottom long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C224 conventional gap-relaxed Ladder Bottom reversal above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "advance_block_short_1h",
+   "name": "[RESEARCH] Advance Block short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C225 conventional Advance Block weakening-recovery short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "deliberation_short_1h",
+   "name": "[RESEARCH] Deliberation short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "third_body_ratio": 0.5,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C226 conventional gap-relaxed Deliberation weakening-recovery short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "three_stars_south_long_1h",
+   "name": "[RESEARCH] Three Stars in the South long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "third_body_ratio": 0.5,
+    "shadow_body_ratio": 0.25,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C227 conventional Three Stars in the South contraction-reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "unique_three_river_long_1h",
+   "name": "[RESEARCH] Unique Three River long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "second_body_ratio": 0.5,
+    "third_body_ratio": 0.5,
+    "lower_shadow_ratio": 1.0,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C228 gap-relaxed Unique Three River bottom-reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "concealing_baby_swallow_long_1h",
+   "name": "[RESEARCH] Concealing Baby Swallow long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_body_ratio": 0.25,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C229 gap-relaxed Concealing Baby Swallow exhaustion-reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "mat_hold_long_1h",
+   "name": "[RESEARCH] Mat Hold long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "retracement_body_ratio": 0.5,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C230 gap-relaxed Mat Hold elevated-pullback continuation long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_breakaway_long_1h",
+   "name": "[RESEARCH] Bullish Breakaway long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C231 gap-relaxed bullish Breakaway exhaustion-reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_breakaway_short_1h",
+   "name": "[RESEARCH] Bearish Breakaway short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C232 gap-relaxed bearish Breakaway exhaustion-reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "upside_gap_two_crows_short_1h",
+   "name": "[RESEARCH] Upside Gap Two Crows short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C233 gap-relaxed Upside Gap Two Crows reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "two_crows_short_1h",
+   "name": "[RESEARCH] Two Crows short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C234 gap-relaxed Two Crows reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "identical_three_crows_short_1h",
+   "name": "[RESEARCH] Identical Three Crows short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "open_tolerance_atr": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C235 conventional Identical Three Crows continuation short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_three_line_strike_long_1h",
+   "name": "[RESEARCH] Bullish Three-Line Strike long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C236 gap-relaxed bullish Three-Line Strike continuation long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_three_line_strike_short_1h",
+   "name": "[RESEARCH] Bearish Three-Line Strike short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C237 gap-relaxed bearish Three-Line Strike continuation short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_closing_marubozu_long_1h",
+   "name": "[RESEARCH] Bullish Closing Marubozu long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_ratio": 0.1,
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C238 conventional bullish closing-side shaven candle above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_closing_marubozu_short_1h",
+   "name": "[RESEARCH] Bearish Closing Marubozu short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "shadow_ratio": 0.1,
+    "body_fraction": 0.6,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C239 conventional bearish closing-side shaven candle below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_harami_cross_long_1h",
+   "name": "[RESEARCH] Bullish Harami Cross long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C240 conventional bullish Harami Cross reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_harami_cross_short_1h",
+   "name": "[RESEARCH] Bearish Harami Cross short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C241 conventional bearish Harami Cross reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_spinning_top_long_1h",
+   "name": "[RESEARCH] Bullish Spinning Top long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.3,
+    "shadow_body_multiple": 1.0,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C242 conventional bullish Spinning Top continuation long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_spinning_top_short_1h",
+   "name": "[RESEARCH] Bearish Spinning Top short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.3,
+    "shadow_body_multiple": 1.0,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C243 conventional bearish Spinning Top continuation short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "morning_doji_star_long_1h",
+   "name": "[RESEARCH] Morning Doji Star long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C244 gap-relaxed Morning Doji Star reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "evening_doji_star_short_1h",
+   "name": "[RESEARCH] Evening Doji Star short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C245 gap-relaxed Evening Doji Star reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_tristar_long_1h",
+   "name": "[RESEARCH] Bullish Tri-Star long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C246 gap-relaxed bullish Tri-Star reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_tristar_short_1h",
+   "name": "[RESEARCH] Bearish Tri-Star short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C247 gap-relaxed bearish Tri-Star reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_abandoned_baby_long_1h",
+   "name": "[RESEARCH] Bullish Abandoned Baby long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C248 strict true-gap Bullish Abandoned Baby reversal long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bearish_abandoned_baby_short_1h",
+   "name": "[RESEARCH] Bearish Abandoned Baby short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "doji_fraction": 0.1,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C249 strict true-gap Bearish Abandoned Baby reversal short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "upside_tasuki_gap_long_1h",
+   "name": "[RESEARCH] Upside Tasuki Gap long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C250 strict true-gap Upside Tasuki continuation long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "downside_tasuki_gap_short_1h",
+   "name": "[RESEARCH] Downside Tasuki Gap short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C251 strict true-gap Downside Tasuki continuation short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "upside_gap_side_by_side_white_long_1h",
+   "name": "[RESEARCH] Upside Gap Side-by-Side White Lines long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "open_tolerance_atr": 0.1,
+    "body_ratio_min": 0.8,
+    "body_ratio_max": 1.2,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C252 strict true-gap Upside Side-by-Side White Lines continuation long above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "downside_gap_side_by_side_white_short_1h",
+   "name": "[RESEARCH] Downside Gap Side-by-Side White Lines short 1h",
+   "tf": "1h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "open_tolerance_atr": 0.1,
+    "body_ratio_min": 0.8,
+    "body_ratio_max": 1.2,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C253 strict true-gap Downside Side-by-Side White Lines continuation short below EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "bullish_long_line_long_1h",
+   "name": "[RESEARCH] Bullish Long Line long 1h",
+   "tf": "1h",
+   "sides": "long",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "body_fraction": 0.8,
+    "exit_length": 10,
+    "cost_multiple": 5.0
+   },
+   "desc": "C254 conventional dominant-body Bullish Long Line continuation above EMA200.",
+   "source": "c254",
+   "commit": "f7a1265b197fd226a62287fec352287b6926bdb3",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n1_fvg_continuation_1h",
+   "name": "[RESEARCH] CP-N1 FVG continuation 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 2.5,
+    "max_bars": 48,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "disp_atr": 1.0,
+    "gap_atr": 0.25,
+    "win": 12,
+    "buf_atr": 0.25,
+    "min_atr": 0.5
+   },
+   "desc": "[RESEARCH] CP-N1 FVG continuation 1h",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n2_liquidity_sweep_reversal_1h",
+   "name": "[RESEARCH] CP-N2 Liquidity sweep reversal 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 24,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "look": 24,
+    "poke_atr": 0.1,
+    "wick": 0.5,
+    "vol_mult": 1.5,
+    "rsi_hi": 60,
+    "rsi_lo": 40,
+    "buf_atr": 0.1,
+    "min_atr": 0.5
+   },
+   "desc": "[RESEARCH] CP-N2 Liquidity sweep reversal 1h",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n3_turtle_daily",
+   "name": "[RESEARCH] CP-N3 Turtle 20/10 daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 50.0,
+    "max_bars": 120,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "entry": 20,
+    "exit": 10
+   },
+   "desc": "[RESEARCH] CP-N3 Turtle 20/10 daily",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n4_session_orb_1h",
+   "name": "[RESEARCH] CP-N4 Asia-range session breakout 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 16,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "asia_end": 8,
+    "last_hour": 16,
+    "flat_hour": 23,
+    "w_min": 1.5,
+    "w_max": 6.0,
+    "clear_atr": 0.1,
+    "min_atr": 0.5
+   },
+   "desc": "[RESEARCH] CP-N4 Asia-range session breakout 1h",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n5_flag_continuation_1h",
+   "name": "[RESEARCH] CP-N5 Flag continuation 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 3.0,
+    "max_bars": 36,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "flag": 8,
+    "impulse": 12,
+    "tight_atr": 2.5,
+    "imp_atr": 3.0,
+    "buf_atr": 0.1,
+    "min_atr": 0.5
+   },
+   "desc": "[RESEARCH] CP-N5 Flag continuation 1h",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n6_btc_lead_catchup_4h",
+   "name": "[RESEARCH] CP-N6 BTC-lead alt catch-up 4h",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 3.0,
+    "max_bars": 30,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {},
+   "desc": "[RESEARCH] CP-N6 BTC-lead alt catch-up 4h",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n7_capitulation_reversal_1d",
+   "name": "[RESEARCH] CP-N7 Capitulation / blow-off reversal daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 10,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "range_atr": 2.0,
+    "vol_mult": 2.0,
+    "buf_atr": 0.25
+   },
+   "desc": "[RESEARCH] CP-N7 Capitulation / blow-off reversal daily",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_n8_squeeze_breakdown_short_4h",
+   "name": "[RESEARCH] CP-N8 Squeeze breakdown short 4h",
+   "tf": "4h",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 3.0,
+    "max_bars": 30,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "sq_pct": 0.1
+   },
+   "desc": "[RESEARCH] CP-N8 Squeeze breakdown short 4h",
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_x1_xs_laggard_short_1d",
+   "name": "[RESEARCH] CP-X1 Cross-sectional laggard short daily",
+   "tf": "1d",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 20,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "look": 28,
+    "bottom": 2,
+    "min_n": 6
+   },
+   "desc": "[RESEARCH] CP-X1 Cross-sectional laggard short daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_x2_alt_btc_ratio_break_4h",
+   "name": "[RESEARCH] CP-X2 Alt/BTC ratio breakout 4h",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 30,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "n": 60
+   },
+   "desc": "[RESEARCH] CP-X2 Alt/BTC ratio breakout 4h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "SKIPPED_ALREADY_TESTED"
+  },
+  {
+   "key": "cp_x3_wide_range_cont_1d",
+   "name": "[RESEARCH] CP-X3 Wide-range day continuation daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.0,
+    "tp_r": 3.0,
+    "max_bars": 10,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "range_atr": 1.8,
+    "edge": 0.2
+   },
+   "desc": "[RESEARCH] CP-X3 Wide-range day continuation daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_x4_break_retest_4h",
+   "name": "[RESEARCH] CP-X4 Breakout-retest 4h",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 3.0,
+    "max_bars": 30,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "win": 12,
+    "tol_atr": 0.25,
+    "buf_atr": 0.5,
+    "min_atr": 1.5
+   },
+   "desc": "[RESEARCH] CP-X4 Breakout-retest 4h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_x5_nr7_break_1d",
+   "name": "[RESEARCH] CP-X5 NR7 breakout daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 1.0,
+    "tp_r": 3.0,
+    "max_bars": 10,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "min_atr": 1.0
+   },
+   "desc": "[RESEARCH] CP-X5 NR7 breakout daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_x6_anchor180_break_1d",
+   "name": "[RESEARCH] CP-X6 180-day extreme breakout daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 4.0,
+    "max_bars": 30,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "n": 180
+   },
+   "desc": "[RESEARCH] CP-X6 180-day extreme breakout daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_y1_xs_leader_pullback_4h",
+   "name": "[RESEARCH] CP-Y1 Cross-sectional leader pullback 4h",
+   "tf": "4h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 30,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "look": 42,
+    "min_n": 6,
+    "rsi_lo": 40.0,
+    "rsi_hi": 60.0
+   },
+   "desc": "[RESEARCH] CP-Y1 Cross-sectional leader pullback 4h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_y2_breadth_thrust_1d",
+   "name": "[RESEARCH] CP-Y2 Breadth thrust daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 20,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "lo": 0.25,
+    "hi": 0.75,
+    "win": 5
+   },
+   "desc": "[RESEARCH] CP-Y2 Breadth thrust daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_y3_weekly_rel_mom_1d",
+   "name": "[RESEARCH] CP-Y3 Weekly relative momentum daily",
+   "tf": "1d",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 5.0,
+    "max_bars": 7,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "look": 28
+   },
+   "desc": "[RESEARCH] CP-Y3 Weekly relative momentum daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_y4_vol_feedback_short_1d",
+   "name": "[RESEARCH] CP-Y4 Volatility-feedback short daily",
+   "tf": "1d",
+   "sides": "short",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 15,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "q": 0.8
+   },
+   "desc": "[RESEARCH] CP-Y4 Volatility-feedback short daily",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_z1_lowvol_impulse_fade_1h",
+   "name": "[RESEARCH] CP-Z1 Low-volume impulse fade 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 2.0,
+    "max_bars": 24,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "lo_atr": 1.5,
+    "hi_atr": 4.0,
+    "vol_mult": 1.5
+   },
+   "desc": "[RESEARCH] CP-Z1 Low-volume impulse fade 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_z2_trend_tstat_1h",
+   "name": "[RESEARCH] CP-Z2 Regression t-stat trend 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 4.0,
+    "max_bars": 48,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "n": 48,
+    "k": 4.0
+   },
+   "desc": "[RESEARCH] CP-Z2 Regression t-stat trend 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_z3_ichimoku_cloud_1h",
+   "name": "[RESEARCH] CP-Z3 Ichimoku cloud breakout 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 4.0,
+    "max_bars": 48,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {},
+   "desc": "[RESEARCH] CP-Z3 Ichimoku cloud breakout 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_z4_psar_adx_1h",
+   "name": "[RESEARCH] CP-Z4 Parabolic SAR flip with ADX 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 3.0,
+    "max_bars": 36,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "step": 0.02,
+    "max": 0.2,
+    "adx": 25.0
+   },
+   "desc": "[RESEARCH] CP-Z4 Parabolic SAR flip with ADX 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_z5_daily_tsmom_1h",
+   "name": "[RESEARCH] CP-Z5 Daily time-series momentum on 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 4.0,
+    "max_bars": 24,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {},
+   "desc": "[RESEARCH] CP-Z5 Daily time-series momentum on 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_v1_value_area_reentry_1h",
+   "name": "[RESEARCH] CP-V1 Value-area re-entry (80% rule) 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 2.0,
+    "max_bars": 24,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "bins": 24,
+    "frac": 0.7
+   },
+   "desc": "[RESEARCH] CP-V1 Value-area re-entry (80% rule) 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  },
+  {
+   "key": "cp_v2_hour_seasonality_1h",
+   "name": "[RESEARCH] CP-V2 Walk-forward hour-of-day seasonality 1h",
+   "tf": "1h",
+   "sides": "both",
+   "candidate": null,
+   "mgmt": {
+    "stop_atr": 3.0,
+    "tp_r": 50.0,
+    "max_bars": 6,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "hold": 6,
+    "min_n": 200,
+    "t": 2.5
+   },
+   "desc": "[RESEARCH] CP-V2 Walk-forward hour-of-day seasonality 1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "plan": "RUN"
+  }
+ ]
+}
