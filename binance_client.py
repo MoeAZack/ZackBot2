@@ -12,6 +12,13 @@ class BinanceError(Exception):
         self.code, self.msg = code, msg
 
 
+class ClockRejected(BinanceError):
+    """CLOCK-1021: Binance kept refusing a signed request's timestamp (-1021) after the client resynced its server-time
+    offset and re-signed (and, for a request that does not add risk, widened recvWindow). The request was REJECTED, never
+    executed: callers treat it as a definitive failure (it is a BinanceError with code -1021), and the engine raises a
+    clock alert from it."""
+
+
 def testnet_faults(base, kind):
     """T03c exceptional-path canary: symbols for which a controlled testnet failure of `kind` is injected, from the env
     flag ZB_TESTNET_FAULTS="lev_refuse:SOLUSDT,lev_refuse:ETHUSDT". Always empty unless `base` is exactly TESTNET, so the
@@ -171,6 +178,16 @@ class ExchangeHealth:
 ALGO_UNSUPPORTED = (-5000, -1404, -404)    # endpoint unknown here: -5000 "Path ..., Method GET is invalid" / plain 404
 TRANSIENT = (-1001, -1003, -1006, -1007, -1008, -1015)      # disconnected / rate limit / timeout / server busy
 SAFE_METHODS = ('GET', 'DELETE')
+# CLOCK-1021 (13 Nov 2026 account-4 ADA incident: -1021 refused the stop AND the safety close, one resync each was not
+# enough). A -1021 answer means Binance refused the request on its timestamp BEFORE acting on it, so re-signing and sending
+# again is safe for every method (POST included). Clock retries have their own budget (they never use up the network /
+# busy retries). A request that adds risk (an entry) gets ONE resync retry at the normal recvWindow; every other signed
+# request (stops, closes, cancels, reads) gets up to CLOCK_RETRIES, each after a resync, with recvWindow widened step by step
+# (a late but valid protective order beats none) and the timestamp moved back 1 s per "ahead of the server" answer.
+CLOCK_RETRIES = 3
+CLOCK_RW_STEPS = (10000, 20000, 30000)         # recvWindow for clock retry 1, 2, 3 (never below the client's own)
+CLOCK_AHEAD_BACK_MS = 1000                     # Binance refuses a timestamp more than 1000 ms ahead of its clock
+SYNC_EVERY_S, SYNC_RETRY_S = 300, 30           # periodic offset refresh before a signed request; retry gap after a failed one
 
 
 def is_transient(e):
@@ -241,6 +258,7 @@ class Futures:
         self.s = self._new_session()
         self.offset = 0
         self.last_ok = 0.0
+        self.__dict__['_synced_at'] = 0.0              # CLOCK-1021: no good sync yet -> refreshed before the first signed call
         try: self.sync_time()
         except Exception: pass
 
@@ -257,15 +275,48 @@ class Futures:
         if h is None: h = self.__dict__['_health'] = ExchangeHealth()
         return h
 
-    def sync_time(self):
-        st = self.s.get(self.base + '/fapi/v1/time', timeout=10).json()['serverTime']
-        self.offset = st - int(time.time() * 1000)
+    def sync_time(self, samples=1, timeout=10):
+        """Server-time offset (ms) = Binance time minus the local clock. CLOCK-1021: the local time is taken at the MIDDLE
+        of the round trip (not after it, which put the offset a whole response delay too low), and with samples > 1 the
+        sample with the shortest round trip wins (the least delay-distorted one). Raises if no sample is usable; the
+        previous offset is then kept."""
+        best = None
+        for _ in range(max(1, int(samples))):
+            t0 = time.time()
+            st = self.s.get(self.base + '/fapi/v1/time', timeout=timeout).json()['serverTime']
+            t1 = time.time()
+            if isinstance(st, bool) or not isinstance(st, (int, float)) or not math.isfinite(st) or st <= 0:
+                raise ValueError(f'serverTime: unusable value {st!r}')
+            rtt = max(0.0, (t1 - t0) * 1000)
+            if best is None or rtt < best[0]: best = (rtt, int(st) - int(round((t0 + t1) * 500)))
+        self.offset = best[1]
+        self.__dict__['_synced_at'] = time.time()
+        self.__dict__['_sync_rtt_ms'] = round(best[0])
 
-    def _once(self, method, url, params, signed, sess=None, timeout=15):
+    def _resync(self, samples, timeout):
+        """Best-effort resync: True on success; a failure is recorded and never raised (the caller still retries)."""
+        try:
+            self.sync_time(samples=samples, timeout=timeout); return True
+        except Exception as ex:
+            self.__dict__['_sync_fail'] = f'{type(ex).__name__}: {scrub(str(ex))[:120]}'
+            if '_synced_at' in self.__dict__:          # periodic refresh: try again after SYNC_RETRY_S, not on every call
+                self.__dict__['_synced_at'] = time.time() - SYNC_EVERY_S + SYNC_RETRY_S
+            return False
+
+    def clock_status(self):
+        """CLOCK-1021: what the engine shows in a clock alert (no secrets): offset, last round trip, sync age, -1021 counts."""
+        d = self.__dict__
+        at = d.get('_synced_at')
+        return dict(offset_ms=getattr(self, 'offset', None), rtt_ms=d.get('_sync_rtt_ms'),
+                    sync_age_s=(round(time.time() - at) if at else None), recv_window_ms=getattr(self, 'rw', None),
+                    rejects_1021=d.get('_n1021', 0), recovered_1021=d.get('_n1021_ok', 0),
+                    exhausted_1021=d.get('_n1021_fail', 0), last_sync_error=d.get('_sync_fail'))
+
+    def _once(self, method, url, params, signed, sess=None, timeout=15, rw=None, back_ms=0):
         p = dict(params)
         if signed:                                   # re-signed on every attempt (fresh timestamp)
-            p['timestamp'] = int(time.time() * 1000) + self.offset
-            p['recvWindow'] = self.rw
+            p['timestamp'] = int(time.time() * 1000) + self.offset - int(back_ms)
+            p['recvWindow'] = int(rw or self.rw)
             q = urllib.parse.urlencode(p)
             p['signature'] = hmac.new(self.secret, q.encode(), hashlib.sha256).hexdigest()
         r = (sess or self.s).request(method, url, params=p, timeout=timeout)
@@ -285,9 +336,11 @@ class Futures:
         if 'until' not in w: w['until'] = now + cfg[0]
         return now < w['until']
 
-    def _req(self, method, path, params=None, signed=False, retry=None, critical=False):
+    def _req(self, method, path, params=None, signed=False, retry=None, critical=False, adds_risk=False):
         """GET/DELETE are retried on network errors, rate limits and server errors (with backoff and Retry-After).
-        POST is never blindly retried: order placement goes through _order(), which confirms by client order id."""
+        POST is never blindly retried: order placement goes through _order(), which confirms by client order id.
+        CLOCK-1021: a -1021 (timestamp / recvWindow) refusal is resynced and re-signed on its own budget (see CLOCK_RETRIES;
+        adds_risk=True, an entry, gets one plain retry); a refusal left after that raises ClockRejected."""
         params = {k: v for k, v in (params or {}).items() if v is not None}
         retry = (method in SAFE_METHODS) if retry is None else retry
         url = self.base + path
@@ -296,25 +349,45 @@ class Futures:
             wait = self.health.admit_read()
             if wait is not None:
                 raise ExchangeUnavailable(f'Binance outage: status check {path} not sent (waiting for the next probe)', wait)
-        for attempt in range(4 if retry else 2):
-            last = attempt == (3 if retry else 1)
+        at = self.__dict__.get('_synced_at')
+        if signed and at is not None and time.time() - at > SYNC_EVERY_S:
+            self._resync(1, 3)                           # CLOCK-1021: keep the offset fresh (best effort, short timeout)
+        n_try = 4 if retry else 2
+        attempt, clock_try, rw, back_ms = 0, 0, None, 0
+        clock_max = 1 if adds_risk else CLOCK_RETRIES
+        while True:
+            last = attempt == n_try - 1
             try:
                 if read and self._injected_read_outage(path):     # T05b canary: inert unless TESTNET + the env flag
                     r, data = _InjectedBusy(), {'code': -1007, 'msg': 'injected testnet read outage (ZB_TESTNET_FAULTS)'}
                 else:
-                    r, data = self._once(method, url, params, signed)
+                    widen = dict(rw=rw, back_ms=back_ms) if (rw or back_ms) else {}   # only on a clock retry
+                    r, data = self._once(method, url, params, signed, **widen)
             except requests.RequestException as ex:
                 self.health.fail(f'{method} {path}: {type(ex).__name__}', read=read)
                 if not retry or last or (read and self.health.state == 'outage'): raise _scrubbed(ex) from None
-                time.sleep(min(8, 0.5 * 2 ** attempt + random.random())); continue
+                time.sleep(min(8, 0.5 * 2 ** attempt + random.random())); attempt += 1; continue
             code = data.get('code') if isinstance(data, dict) else None
             if isinstance(code, str):                   # algo endpoints answer {"code":"200","msg":"success"}
                 try: code = int(code)
                 except ValueError: pass
             if isinstance(data, dict) and str(data.get('msg', '')).lower() == 'success' and code in (200, '200'):
                 code = 200
-            if code == -1021 and not last:              # clock drift: resync and re-sign (safe, request was rejected)
-                self.sync_time(); continue
+            if code == -1021 and signed:                # CLOCK-1021: refused on its timestamp, never executed -> safe to re-sign
+                d = self.__dict__
+                d['_n1021'] = d.get('_n1021', 0) + 1
+                if clock_try >= clock_max:
+                    d['_n1021_fail'] = d.get('_n1021_fail', 0) + 1
+                    self.health.ok()                    # Binance answered: not an outage
+                    msg = data.get('msg') if isinstance(data, dict) else ''
+                    raise ClockRejected(-1021, f'{msg} (after {clock_try} resync retr{"y" if clock_try == 1 else "ies"}, '
+                                               f'offset {self.offset} ms, recvWindow {rw or self.rw} ms)')
+                clock_try += 1
+                self._resync(2, 5)
+                if not adds_risk:
+                    rw = max(int(self.rw), CLOCK_RW_STEPS[min(clock_try, len(CLOCK_RW_STEPS)) - 1])
+                    if 'ahead' in str((data or {}).get('msg', '')).lower(): back_ms += CLOCK_AHEAD_BACK_MS
+                continue
             busy = r.status_code in (418, 429) or r.status_code >= 500 or code in TRANSIENT
             if busy:
                 ra = retry_after(r.headers)
@@ -327,11 +400,13 @@ class Futures:
                         raise AmbiguousOrder(f'HTTP {r.status_code} on {path}')
                     raise BinanceError(code or -r.status_code, data.get('msg') if isinstance(data, dict) else f'HTTP {r.status_code}')
                 wait = ra or min(8, 0.5 * 2 ** attempt + random.random())
-                time.sleep(min(wait, 30)); continue
+                time.sleep(min(wait, 30)); attempt += 1; continue
             self.health.ok()                             # Binance answered (even a business error proves it is up)
             if isinstance(data, dict) and code not in (None, 0, 200):
                 raise BinanceError(code, data.get('msg'))
             self.last_ok = time.time()
+            if clock_try:
+                self.__dict__['_n1021_ok'] = self.__dict__.get('_n1021_ok', 0) + 1
             return data
 
     def get_order(self, symbol, cid):
@@ -420,14 +495,15 @@ class Futures:
             if e.code == -2013: return None
             raise
 
-    def _order(self, params):
+    def _order(self, params, adds_risk=False):
         """Idempotent order placement: a client order id is attached; on a timeout / 5xx the order is looked up
         by that id instead of being re-sent, so a lost response can never create a second position.
         A MARKET order that cannot be confirmed as filled raises AmbiguousOrder (tag = its client id)."""
         params = dict(params); params.setdefault('newClientOrderId', new_cid())
         cid, tag = params['newClientOrderId'], f"c:{params['newClientOrderId']}"
+        risk = dict(adds_risk=True) if adds_risk else {}       # CLOCK-1021: an entry gets one plain -1021 retry only
         try:
-            return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
+            return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False, **risk)
         except (requests.RequestException, AmbiguousOrder) as first:
             for i in range(4):
                 time.sleep(1 + i)
@@ -437,7 +513,7 @@ class Futures:
                     continue
                 if o is None:                                   # never reached Binance -> safe to send once more
                     try:
-                        return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False)
+                        return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False, **risk)
                     except (requests.RequestException, AmbiguousOrder) as e:
                         raise AmbiguousOrder(f'order {cid} resend unconfirmed: {e}', tag)
                 if params.get('type') == 'MARKET' and o.get('status') not in FINAL_STATUS:
@@ -602,7 +678,7 @@ class Futures:
     def open(self, symbol, pos_side, qty, cid=None):
         side = 'BUY' if pos_side == 'LONG' else 'SELL'
         return self._order(self._cid(dict(symbol=symbol, side=side, positionSide=pos_side, type='MARKET', quantity=qty,
-                                          newOrderRespType='RESULT'), cid))
+                                          newOrderRespType='RESULT'), cid), adds_risk=True)
 
     def close(self, symbol, pos_side, qty, cid=None):
         side = 'SELL' if pos_side == 'LONG' else 'BUY'

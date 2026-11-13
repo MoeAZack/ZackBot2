@@ -3996,6 +3996,26 @@ class Engine:
         return rec.get('outcome') in ('filled', 'partial') and bool(rec.get('qty_fill'))
 
     # ------------------------------------------------------------ order helpers
+    CLOCK_NOTIFY_S = 600             # CLOCK-1021: at most one phone alert per 10 min (the Recent Activity incident counts all)
+
+    def _clock_alert(self, where, e):
+        """CLOCK-1021: Binance refused a request's timestamp (-1021) even after the client's resync retries. Raised as ONE
+        keyed incident ('clock-1021') with the client's clock facts (offset, round trip, sync age - no secrets), plus a phone
+        alert at most every CLOCK_NOTIFY_S, so a PC clock / network-delay problem is named as such, not as a random stop
+        failure. Returns True when `e` was such a refusal."""
+        if getattr(e, 'code', None) != -1021: return False
+        try: cs = self.trade.clock_status()
+        except Exception: cs = {}
+        facts = ', '.join(f'{k} {cs[k]}' for k in ('offset_ms', 'rtt_ms', 'sync_age_s', 'recv_window_ms') if cs.get(k) is not None)
+        self.err(f"Binance refused the request time (-1021) at {where} even after resyncing the clock"
+                 f"{' (' + facts + ')' if facts else ''} - check the PC clock (Windows time sync) and network delay",
+                 key='clock-1021')
+        now = time.time()
+        if now - getattr(self, '_clock_notified', 0.0) >= self.CLOCK_NOTIFY_S:
+            self._clock_notified = now
+            self.notify(f"⏱ Binance is refusing the bot's request time (-1021) at {where}. Check the PC clock / network delay.")
+        return True
+
     def err(self, msg, key=None):
         """Recent Activity entry. T05b: a repeat of an OPEN incident (same key; default = the exact message) updates that
         one entry in place (latest text, count, first time) instead of adding a new line. Known floods pass a key."""
@@ -4112,6 +4132,7 @@ class Engine:
             if e.code == -2021:          # stop would trigger immediately: price is already through it -> close now
                 log.warning(f"{lot['symbol']} [{lot['sleeve']}] stop {new_stop} already crossed - closing at market")
                 lot['force_close'] = True
+            self._clock_alert(f"stop {lot['symbol']} [{lot['sleeve']}]", e)
             lot['stop_dirty'] = True
             self.err(f"stop update {lot['symbol']} [{lot['sleeve']}] failed: {e} - previous stop kept")
             return False
@@ -7674,6 +7695,7 @@ class Engine:
                 self.close_lot(key, 'stop_failed', px)
                 self.last_skip = 'stop order failed - trade closed again'; return False
             except Exception as e:
+                self._clock_alert(f'safety close {sym}', e)
                 self.err(f'{sym}: stop AND safety close failed ({e}) - kept as unprotected, retrying every few seconds')
                 self.notify(f'🆘 {side} {sym} has NO stop on Binance (stop and close both failed). The bot keeps retrying - check it.')
                 return True
@@ -7986,7 +8008,7 @@ class Engine:
         try:
             o = self.trade._order(dict(symbol=sym, side='BUY' if rec['side'] == 'LONG' else 'SELL', positionSide=rec['side'], type='LIMIT',
                                        timeInForce='GTX', quantity=self._fmt(rem, r['step']), price=self._fmt(self._rd(px, r['tick']), r['tick']),
-                                       newClientOrderId=cid, newOrderRespType='RESULT'))
+                                       newClientOrderId=cid, newOrderRespType='RESULT'), adds_risk=True)   # CLOCK-1021
             log.info(f"MAKER entry {sym} {rec['side']} {rem} @ {px} (try {rec['n']})")
             if o and o.get('status') in ('EXPIRED', 'REJECTED', 'CANCELED', 'FILLED'): self._maker_done_order(rec, o)
         except AmbiguousOrder as e:
