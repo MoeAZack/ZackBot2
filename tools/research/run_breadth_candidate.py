@@ -52,6 +52,7 @@ import pandas as pd                                                             
 import backtest as BT                                                                       # noqa: E402
 import strategies as ST                                                                     # noqa: E402
 import run_vwaprev_candidate as VC                                                          # noqa: E402
+import edge02_signals as E2                                                                  # noqa: E402
 
 FORMAT = 'zb-breadth-candidate/1'
 EVIDENCE_CLASS = 'candidate-runtime'
@@ -90,17 +91,34 @@ def _sha(path) -> str:
 
 def runner_digest() -> dict:
     return {'run_breadth_candidate.py': _sha(os.path.abspath(__file__)),
-            'run_vwaprev_candidate.py': _sha(os.path.abspath(VC.__file__))}
+            'run_vwaprev_candidate.py': _sha(os.path.abspath(VC.__file__)),
+            'edge02_signals.py': _sha(os.path.abspath(E2.__file__))}
 
 
 # ------------------------------------------------------------------ arguments
 def check_key(key) -> dict:
-    if key not in ST.STRATEGIES:
+    if key in E2.CANDIDATES:
+        st = E2.CANDIDATES[key]
+    elif key in ST.STRATEGIES:
+        st = ST.STRATEGIES[key]
+    else:
         raise RunnerError(f'breadth candidate: unknown strategy key {key!r}')
-    tf = ST.STRATEGIES[key].get('tf', '4h')
+    tf = st.get('tf', '4h')
     if tf not in TFS:
         raise RunnerError(f'BLOCKED: no {tf} cache ({key} runs on {tf}; cached timeframes: {sorted(TFS)})')
-    return ST.STRATEGIES[key]
+    return st
+
+
+def merge_mgmt(key, override=None) -> dict:
+    """The app merge rule, also for research-only keys that are intentionally absent from the runtime registry."""
+    base = check_key(key).get('mgmt') or {}
+    out = dict(base)
+    for k, v in (override or {}).items():
+        if k in ST.SUB_DEFAULTS and isinstance(v, dict):
+            out[k] = {**ST.SUB_DEFAULTS[k], **(base.get(k) or {}), **v}
+        else:
+            out[k] = v
+    return out
 
 
 def build_mgmt(mode, custom=None, key=None) -> dict:
@@ -137,7 +155,7 @@ def build_mgmt(mode, custom=None, key=None) -> dict:
 
 def mgmt_check(key, mg) -> dict:
     """Every default mgmt field the override does not name is carried unchanged into the merged sleeve mgmt."""
-    base, merged = ST.merge_mgmt(key, {}), ST.merge_mgmt(key, mg)
+    base, merged = merge_mgmt(key, {}), merge_mgmt(key, mg)
     kept = {k: base[k] for k in base if k not in mg}
     if any(merged.get(k) != v for k, v in kept.items()) or any(merged.get(k) != v for k, v in mg.items()):
         raise RunnerError('breadth candidate: merged mgmt lost a default or an override; aborted')
@@ -220,28 +238,48 @@ class FeeProbe:
     __mul__ = __rmul__
 
 
-def sleeve(key, side, symbols, mgmt, risk, max_pos) -> dict:
+def sleeve(key, side, symbols, mgmt, risk, max_pos, *, when='any', reentry_lock=False) -> dict:
     return dict(key=key, share=1.0, risk=float(risk), max_pos=int(max_pos), id='S1', sides=side, mgmt=dict(mgmt),
-                symbols=list(symbols), hours=None, vol_max_pct=None, kelly=None)
+                symbols=list(symbols), hours=None, vol_max_pct=None, kelly=None, when=when,
+                reentry_lock=bool(reentry_lock))
 
 
-def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos, tf_sec=TF_SEC):
+def resolve_when(strat, side, when=None) -> str:
+    if when is not None and when not in ('any', 'bull', 'bear', 'range'):
+        raise RunnerError('breadth candidate: --when must be any, bull, bear or range')
+    frozen = (strat.get('when_by_side') or {}).get(side)
+    if frozen and when is not None and when != frozen:
+        raise RunnerError(f'breadth candidate: {side} side has frozen when={frozen}, not {when}')
+    return frozen or when or 'any'
+
+
+def simulate(raw, key, side, symbols, mgmt, lo, hi, *, start, max_lev, daily_halt, risk, max_pos, tf_sec=TF_SEC,
+             when='any', reentry_lock=False):
     book = BT.Book(raw)
     if len(book.t) and _ms(book.t).max() >= hi:
         raise RunnerError('breadth candidate: the book holds a candle at / after END; aborted')
     if book.gaps:
         raise RunnerError(f'breadth candidate: book gaps {book.gaps} after completeness screening; aborted')
     n_before = int((_ms(book.t) < lo).sum())
-    cfg = [sleeve(key, side, [s for s in symbols if s in raw], mgmt, risk, max_pos)]
+    cfg = [sleeve(key, side, [s for s in symbols if s in raw], mgmt, risk, max_pos,
+                  when=when, reentry_lock=reentry_lock)]
     probe = FeeProbe(FEE_VALUE)
     old = BT.FEE
     BT.FEE = probe
+    prior = ST.STRATEGIES.get(key)
+    if key in E2.CANDIDATES:
+        ST.STRATEGIES[key] = E2.CANDIDATES[key]
     try:
         tr, cv = BT.run(book, cfg, start=float(start), max_lev=float(max_lev), daily_halt=float(daily_halt),
                         warmup=n_before, t0=np.datetime64(lo, 'ms'), t1=np.datetime64(hi, 'ms'),
                         fund_per_bar=BT.FUND_PER_BAR * tf_sec / 14400, exchange_rules=None)
     finally:
         BT.FEE = old
+        if key in E2.CANDIDATES:
+            if prior is None:
+                ST.STRATEGIES.pop(key, None)
+            else:
+                ST.STRATEGIES[key] = prior
     return tr, cv, book, probe.pos
 
 
@@ -341,11 +379,12 @@ def curve_dd(cv) -> float | None:
 
 # ------------------------------------------------------------------ the run
 def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = 'defaults', custom=None, tier=None,
-        symbols=None, regime_cache=None, cache_extra=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
+        symbols=None, regime_cache=None, cache_extra=None, when=None, repo: str = VC.ROOT, plan=None, start=APP_DEFAULTS['start'], max_lev=APP_DEFAULTS['max_lev'],
         daily_halt=APP_DEFAULTS['daily_halt'], risk=APP_DEFAULTS['risk'], max_pos=APP_DEFAULTS['max_pos']) -> dict:
     strat = check_key(key)
     if side not in SIDES:
         raise RunnerError('breadth candidate: --side must be long or short')
+    when = resolve_when(strat, side, when)
     mg = build_mgmt(mgmt_mode, custom, key)
     mcheck = mgmt_check(key, mg)
     tf = strat.get('tf', '4h')
@@ -400,7 +439,8 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
     reg = btc_regime_frame(b4)
     run_syms = [s for s in syms if s in raw]
     tr, cv, book, pos = simulate(raw, key, side, run_syms, mg, lo, hi, start=start, max_lev=max_lev,
-                                 daily_halt=daily_halt, risk=risk, max_pos=max_pos, tf_sec=tf_ms // 1000)
+                                 daily_halt=daily_halt, risk=risk, max_pos=max_pos, tf_sec=tf_ms // 1000,
+                                 when=when, reentry_lock=bool(strat.get('reentry_lock')))
     n_sig = emitted(book, key, side, run_syms, lo, hi)
     if len(tr) and (tr.side != SIDES[side]).any():
         raise RunnerError('breadth candidate: a trade on the filtered-out side; aborted')
@@ -448,9 +488,11 @@ def run(*, cache: str, window, out: str, key: str, side: str, mgmt_mode: str = '
                      'params': dict(strat.get('params') or {}), 'mgmt_mode': mgmt_mode, 'mgmt_override': mg,
                      'mgmt_check': mcheck,
                      'mgmt_source': PROFIT_CAPTURE_SOURCE if mgmt_mode == 'profit_capture' else None,
-                     'mgmt': ST.merge_mgmt(key, mg), 'reentry_lock': bool(strat.get('reentry_lock'))},
+                     'mgmt': merge_mgmt(key, mg), 'reentry_lock': bool(strat.get('reentry_lock')),
+                     'research_only': bool(strat.get('research_only')), 'when': when},
         'side': side,
-        'sleeve': sleeve(key, side, run_syms, mg, risk, max_pos),
+        'sleeve': sleeve(key, side, run_syms, mg, risk, max_pos, when=when,
+                         reentry_lock=bool(strat.get('reentry_lock'))),
         'account': {'start': float(start), 'max_lev': float(max_lev), 'daily_halt': float(daily_halt)},
         'costs': {'fee_taker': FEE_VALUE, 'slip': BT.SLIP, 'fund_per_bar': BT.FUND_PER_BAR * (tf_ms // 1000) / 14400,
                   'entry_order': 'market (taker)',
@@ -490,6 +532,8 @@ def main(argv=None) -> int:
     g.add_argument('--symbols')
     ap.add_argument('--key', required=True)
     ap.add_argument('--side', required=True, choices=tuple(SIDES))
+    ap.add_argument('--when', choices=('any', 'bull', 'bear', 'range'), default=None,
+                    help='exact sleeve regime; EDGE-02 research keys enforce their frozen side-specific value')
     ap.add_argument('--mgmt', default='defaults', choices=('defaults', 'profit_capture', 'custom'))
     ap.add_argument('--cache-extra', default=None, help='a second cache dir read only for symbols --cache lacks')
     ap.add_argument('--regime-cache', default=None, help='the 4h cache dir (BTC regime split); required for non-4h keys')
@@ -502,6 +546,7 @@ def main(argv=None) -> int:
     try:
         pkt = run(cache=a.cache, window=a.window, out=a.out, key=a.key, side=a.side, mgmt_mode=a.mgmt,
                   custom={k: getattr(a, k) for k in CUSTOM}, tier=a.tier, regime_cache=a.regime_cache, cache_extra=a.cache_extra,
+                  when=a.when,
                   symbols=a.symbols.split(',') if a.symbols else None, **{k: getattr(a, k) for k in APP_DEFAULTS})
     except RunnerError as e:
         print(f'REFUSED: {e}', file=sys.stderr)
