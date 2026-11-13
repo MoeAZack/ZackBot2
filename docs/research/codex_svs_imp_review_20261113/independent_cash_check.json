@@ -1,0 +1,288 @@
+{
+  "svs1h": {
+    "freeze_sha256": "bea8f49ca746722a46f7057740f128c84e7f3e9c39d44600af7ddd56be8aee83",
+    "matched_source_input_pins": 251,
+    "causal_cash_checks": [
+      {
+        "bp": 7,
+        "index": 0,
+        "sym": "BNBUSDT",
+        "side": 1,
+        "entry": "2024-10-15 13:00:00",
+        "exit": "2024-10-15 15:00:00",
+        "reason": "stop",
+        "max_abs_error": 5.551115123125783e-17
+      },
+      {
+        "bp": 7,
+        "index": 2,
+        "sym": "XRPUSDT",
+        "side": -1,
+        "entry": "2024-10-23 09:00:00",
+        "exit": "2024-10-23 21:00:00",
+        "reason": "time",
+        "max_abs_error": 1.1102230246251565e-16
+      },
+      {
+        "bp": 7,
+        "index": 14,
+        "sym": "BNBUSDT",
+        "side": 1,
+        "entry": "2024-11-23 03:00:00",
+        "exit": "2024-11-23 15:00:00",
+        "reason": "target",
+        "max_abs_error": 3.552713678800501e-15
+      },
+      {
+        "bp": 7,
+        "index": 203,
+        "sym": "LINKUSDT",
+        "side": 1,
+        "entry": "2026-09-25 10:00:00",
+        "exit": "2026-09-25 22:00:00",
+        "reason": "time",
+        "max_abs_error": 1.7763568394002505e-15
+      },
+      {
+        "bp": 15,
+        "index": 0,
+        "sym": "BNBUSDT",
+        "side": 1,
+        "entry": "2024-10-15 13:00:00",
+        "exit": "2024-10-15 15:00:00",
+        "reason": "stop",
+        "max_abs_error": 1.7763568394002505e-15
+      },
+      {
+        "bp": 15,
+        "index": 2,
+        "sym": "XRPUSDT",
+        "side": -1,
+        "entry": "2024-10-23 09:00:00",
+        "exit": "2024-10-23 21:00:00",
+        "reason": "time",
+        "max_abs_error": 2.7755575615628914e-17
+      },
+      {
+        "bp": 15,
+        "index": 14,
+        "sym": "BNBUSDT",
+        "side": 1,
+        "entry": "2024-11-23 03:00:00",
+        "exit": "2024-11-23 15:00:00",
+        "reason": "target",
+        "max_abs_error": 3.552713678800501e-15
+      },
+      {
+        "bp": 15,
+        "index": 203,
+        "sym": "LINKUSDT",
+        "side": 1,
+        "entry": "2026-09-25 10:00:00",
+        "exit": "2026-09-25 22:00:00",
+        "reason": "time",
+        "max_abs_error": 1.7763568394002505e-15
+      },
+      {
+        "bp": 23,
+        "index": 0,
+        "sym": "BNBUSDT",
+        "side": 1,
+        "entry": "2024-10-15 13:00:00",
+        "exit": "2024-10-15 15:00:00",
+        "reason": "stop",
+        "max_abs_error": 1.7763568394002505e-15
+      },
+      {
+        "bp": 23,
+        "index": 2,
+        "sym": "XRPUSDT",
+        "side": -1,
+        "entry": "2024-10-23 09:00:00",
+        "exit": "2024-10-23 21:00:00",
+        "reason": "time",
+        "max_abs_error": 4.440892098500626e-16
+      },
+      {
+        "bp": 23,
+        "index": 14,
+        "sym": "BNBUSDT",
+        "side": 1,
+        "entry": "2024-11-23 03:00:00",
+        "exit": "2024-11-23 15:00:00",
+        "reason": "target",
+        "max_abs_error": 3.552713678800501e-15
+      },
+      {
+        "bp": 23,
+        "index": 203,
+        "sym": "LINKUSDT",
+        "side": 1,
+        "entry": "2026-09-25 10:00:00",
+        "exit": "2026-09-25 22:00:00",
+        "reason": "time",
+        "max_abs_error": 1.7763568394002505e-15
+      }
+    ],
+    "max_abs_error": 3.552713678800501e-15,
+    "scope": "selected order0 causal lots across all3costs; mirrored sides and available stop/target/time/terminal reasons; no4h diagnostic or whole40order independent portfolio rerun"
+  },
+  "impretest1h": {
+    "freeze_sha256": "21027cb2435ef079def13b828f11b6b3860c49c600c32ce595afc0ef64ab4ed5",
+    "matched_source_input_pins": 55,
+    "causal_cash_checks": [
+      {
+        "bp": 7,
+        "index": 0,
+        "sym": "FILUSDT",
+        "side": 1,
+        "entry": "2024-10-11 18:00:00",
+        "exit": "2024-10-12 06:00:00",
+        "reason": "time",
+        "max_abs_error": 8.326672684688674e-17
+      },
+      {
+        "bp": 7,
+        "index": 2,
+        "sym": "ETCUSDT",
+        "side": -1,
+        "entry": "2024-10-13 04:00:00",
+        "exit": "2024-10-13 16:00:00",
+        "reason": "time",
+        "max_abs_error": 3.552713678800501e-15
+      },
+      {
+        "bp": 7,
+        "index": 3,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-13 16:00:00",
+        "exit": "2024-10-14 04:00:00",
+        "reason": "stop",
+        "max_abs_error": 8.326672684688674e-17
+      },
+      {
+        "bp": 7,
+        "index": 15,
+        "sym": "ARBUSDT",
+        "side": 1,
+        "entry": "2024-10-20 10:00:00",
+        "exit": "2024-10-20 15:00:00",
+        "reason": "target",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 7,
+        "index": 1040,
+        "sym": "DOGEUSDT",
+        "side": -1,
+        "entry": "2026-09-27 17:00:00",
+        "exit": "2026-09-28 00:00:00",
+        "reason": "TERMINAL_OPEN",
+        "max_abs_error": 9.71445146547012e-17
+      },
+      {
+        "bp": 15,
+        "index": 0,
+        "sym": "FILUSDT",
+        "side": 1,
+        "entry": "2024-10-11 18:00:00",
+        "exit": "2024-10-12 06:00:00",
+        "reason": "time",
+        "max_abs_error": 1.1102230246251565e-16
+      },
+      {
+        "bp": 15,
+        "index": 2,
+        "sym": "ETCUSDT",
+        "side": -1,
+        "entry": "2024-10-13 04:00:00",
+        "exit": "2024-10-13 16:00:00",
+        "reason": "time",
+        "max_abs_error": 3.552713678800501e-15
+      },
+      {
+        "bp": 15,
+        "index": 3,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-13 16:00:00",
+        "exit": "2024-10-14 04:00:00",
+        "reason": "stop",
+        "max_abs_error": 8.326672684688674e-17
+      },
+      {
+        "bp": 15,
+        "index": 15,
+        "sym": "ARBUSDT",
+        "side": 1,
+        "entry": "2024-10-20 10:00:00",
+        "exit": "2024-10-20 15:00:00",
+        "reason": "target",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 15,
+        "index": 1040,
+        "sym": "DOGEUSDT",
+        "side": -1,
+        "entry": "2026-09-27 17:00:00",
+        "exit": "2026-09-28 00:00:00",
+        "reason": "TERMINAL_OPEN",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 23,
+        "index": 0,
+        "sym": "FILUSDT",
+        "side": 1,
+        "entry": "2024-10-11 18:00:00",
+        "exit": "2024-10-12 06:00:00",
+        "reason": "time",
+        "max_abs_error": 1.6653345369377348e-16
+      },
+      {
+        "bp": 23,
+        "index": 2,
+        "sym": "ETCUSDT",
+        "side": -1,
+        "entry": "2024-10-13 04:00:00",
+        "exit": "2024-10-13 16:00:00",
+        "reason": "time",
+        "max_abs_error": 3.552713678800501e-15
+      },
+      {
+        "bp": 23,
+        "index": 3,
+        "sym": "AVAXUSDT",
+        "side": -1,
+        "entry": "2024-10-13 16:00:00",
+        "exit": "2024-10-14 04:00:00",
+        "reason": "stop",
+        "max_abs_error": 2.220446049250313e-16
+      },
+      {
+        "bp": 23,
+        "index": 15,
+        "sym": "ARBUSDT",
+        "side": 1,
+        "entry": "2024-10-20 10:00:00",
+        "exit": "2024-10-20 15:00:00",
+        "reason": "target",
+        "max_abs_error": 1.7763568394002505e-15
+      },
+      {
+        "bp": 23,
+        "index": 1040,
+        "sym": "DOGEUSDT",
+        "side": -1,
+        "entry": "2026-09-27 17:00:00",
+        "exit": "2026-09-28 00:00:00",
+        "reason": "TERMINAL_OPEN",
+        "max_abs_error": 9.71445146547012e-17
+      }
+    ],
+    "max_abs_error": 3.552713678800501e-15,
+    "scope": "selected order0 causal lots across all3costs; mirrored sides and available stop/target/time/terminal reasons; no4h diagnostic or whole40order independent portfolio rerun"
+  }
+}

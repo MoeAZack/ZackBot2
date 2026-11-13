@@ -1,0 +1,275 @@
+{
+  "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "all_input_hashes_match": true,
+  "input_hashes": {
+    "1000PEPEUSDT": {
+      "actual": "7990e613a14a0d9a0265d841ef484e443eff304dfcb1969119f36dfa0b38f4dd",
+      "manifest": "7990e613a14a0d9a0265d841ef484e443eff304dfcb1969119f36dfa0b38f4dd",
+      "freeze": "7990e613a14a0d9a0265d841ef484e443eff304dfcb1969119f36dfa0b38f4dd",
+      "match": true
+    },
+    "AAVEUSDT": {
+      "actual": "03cb0f857f1a100a9b8436f26f5a09559f7a30c3df7b68aa329e47d929264af7",
+      "manifest": "03cb0f857f1a100a9b8436f26f5a09559f7a30c3df7b68aa329e47d929264af7",
+      "freeze": "03cb0f857f1a100a9b8436f26f5a09559f7a30c3df7b68aa329e47d929264af7",
+      "match": true
+    },
+    "ADAUSDT": {
+      "actual": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+      "manifest": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+      "freeze": "ef7e9a43f3493dcfc5bb27e712de5c943e3a4984f6f78d4152d4764c216b6c24",
+      "match": true
+    },
+    "APTUSDT": {
+      "actual": "fe731739140a1c72edef8e94de774cd1c6de19c374ab64175df3faa6de0ec44d",
+      "manifest": "fe731739140a1c72edef8e94de774cd1c6de19c374ab64175df3faa6de0ec44d",
+      "freeze": "fe731739140a1c72edef8e94de774cd1c6de19c374ab64175df3faa6de0ec44d",
+      "match": true
+    },
+    "ARBUSDT": {
+      "actual": "06d3606a23cf8837490ed268ad381e170fb70bbd01f71cad62e2590f7ac8de53",
+      "manifest": "06d3606a23cf8837490ed268ad381e170fb70bbd01f71cad62e2590f7ac8de53",
+      "freeze": "06d3606a23cf8837490ed268ad381e170fb70bbd01f71cad62e2590f7ac8de53",
+      "match": true
+    },
+    "ARKUSDT": {
+      "actual": "857acc5d85c4cd50a5bbeb7a2faf14803d7e34e9884562a576607d8e78977173",
+      "manifest": "857acc5d85c4cd50a5bbeb7a2faf14803d7e34e9884562a576607d8e78977173",
+      "freeze": "857acc5d85c4cd50a5bbeb7a2faf14803d7e34e9884562a576607d8e78977173",
+      "match": true
+    },
+    "AVAXUSDT": {
+      "actual": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+      "manifest": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+      "freeze": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420",
+      "match": true
+    },
+    "BCHUSDT": {
+      "actual": "bfe4da7c097125e495d2729c1e3a5b78d68970792e973402029b1794f885918b",
+      "manifest": "bfe4da7c097125e495d2729c1e3a5b78d68970792e973402029b1794f885918b",
+      "freeze": "bfe4da7c097125e495d2729c1e3a5b78d68970792e973402029b1794f885918b",
+      "match": true
+    },
+    "BNBUSDT": {
+      "actual": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+      "manifest": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+      "freeze": "62e12b475837de8e194be16c5af04ec31a963acaac848108f7b55fdc64797d62",
+      "match": true
+    },
+    "BTCUSDT": {
+      "actual": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+      "manifest": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+      "freeze": "a4a6acf4f5fd02d76d9b468b583322fecd89fa2ba87d743babecb161e7a084ea",
+      "match": true
+    },
+    "DOGEUSDT": {
+      "actual": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+      "manifest": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+      "freeze": "4a19ec95d26c5ffa8228f8c0e75ca00389d9bb5c148e01cd8a416360a9a96a32",
+      "match": true
+    },
+    "DOTUSDT": {
+      "actual": "31d53fa913fac775bc76d7a6d54167e7c65722c85455c9072797031b2e94629a",
+      "manifest": "31d53fa913fac775bc76d7a6d54167e7c65722c85455c9072797031b2e94629a",
+      "freeze": "31d53fa913fac775bc76d7a6d54167e7c65722c85455c9072797031b2e94629a",
+      "match": true
+    },
+    "ENAUSDT": {
+      "actual": "a5502e783174a5f30396333e6c4d2a137b4c79aad9b4c5c5e962bd3519b2b178",
+      "manifest": "a5502e783174a5f30396333e6c4d2a137b4c79aad9b4c5c5e962bd3519b2b178",
+      "freeze": "a5502e783174a5f30396333e6c4d2a137b4c79aad9b4c5c5e962bd3519b2b178",
+      "match": true
+    },
+    "ENJUSDT": {
+      "actual": "3347c592f8b874b4317459e3f6e0c66069f9004f09759398681d4b9c1059c6a3",
+      "manifest": "3347c592f8b874b4317459e3f6e0c66069f9004f09759398681d4b9c1059c6a3",
+      "freeze": "3347c592f8b874b4317459e3f6e0c66069f9004f09759398681d4b9c1059c6a3",
+      "match": true
+    },
+    "ETCUSDT": {
+      "actual": "af77d19e87587303271345533c1b72a01a1a9dafac4847ac98c693da30d27f87",
+      "manifest": "af77d19e87587303271345533c1b72a01a1a9dafac4847ac98c693da30d27f87",
+      "freeze": "af77d19e87587303271345533c1b72a01a1a9dafac4847ac98c693da30d27f87",
+      "match": true
+    },
+    "ETHUSDT": {
+      "actual": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+      "manifest": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+      "freeze": "a552e30b368fec7dda65a600e9fd542391eff86a6588f1ea7a9e9f09c2ef49de",
+      "match": true
+    },
+    "FETUSDT": {
+      "actual": "54dfb08138ad67a28573f30b964b64939329877d40e8b4ca1bc53bbcbce471b5",
+      "manifest": "54dfb08138ad67a28573f30b964b64939329877d40e8b4ca1bc53bbcbce471b5",
+      "freeze": "54dfb08138ad67a28573f30b964b64939329877d40e8b4ca1bc53bbcbce471b5",
+      "match": true
+    },
+    "FILUSDT": {
+      "actual": "d3377caf8019b8345f7254f07a1e850c49ed486a2da77fbf3636d11fe1222bed",
+      "manifest": "d3377caf8019b8345f7254f07a1e850c49ed486a2da77fbf3636d11fe1222bed",
+      "freeze": "d3377caf8019b8345f7254f07a1e850c49ed486a2da77fbf3636d11fe1222bed",
+      "match": true
+    },
+    "GALAUSDT": {
+      "actual": "979da8645427657fe9bed5d109788f735f346e7a6d11125b72d9a7219b0d15ef",
+      "manifest": "979da8645427657fe9bed5d109788f735f346e7a6d11125b72d9a7219b0d15ef",
+      "freeze": "979da8645427657fe9bed5d109788f735f346e7a6d11125b72d9a7219b0d15ef",
+      "match": true
+    },
+    "INJUSDT": {
+      "actual": "32044c7e6e0428656eb63fbc0d8a1890a18963f8e824cb96988dbe23440c27ca",
+      "manifest": "32044c7e6e0428656eb63fbc0d8a1890a18963f8e824cb96988dbe23440c27ca",
+      "freeze": "32044c7e6e0428656eb63fbc0d8a1890a18963f8e824cb96988dbe23440c27ca",
+      "match": true
+    },
+    "LINKUSDT": {
+      "actual": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
+      "manifest": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
+      "freeze": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
+      "match": true
+    },
+    "LTCUSDT": {
+      "actual": "a791e0730fecbf97488891cd4aecb1067298a6f0b5fc92074631b5b38a797b79",
+      "manifest": "a791e0730fecbf97488891cd4aecb1067298a6f0b5fc92074631b5b38a797b79",
+      "freeze": "a791e0730fecbf97488891cd4aecb1067298a6f0b5fc92074631b5b38a797b79",
+      "match": true
+    },
+    "MANAUSDT": {
+      "actual": "1a04d44ed60804c1b88e0f535573e085d5c402aa2e5f3cedcf186b0ea7ede013",
+      "manifest": "1a04d44ed60804c1b88e0f535573e085d5c402aa2e5f3cedcf186b0ea7ede013",
+      "freeze": "1a04d44ed60804c1b88e0f535573e085d5c402aa2e5f3cedcf186b0ea7ede013",
+      "match": true
+    },
+    "MOVRUSDT": {
+      "actual": "529344c17019a81ebaeb18b45d866062a9140784c9803c6662e5d05749fcb47b",
+      "manifest": "529344c17019a81ebaeb18b45d866062a9140784c9803c6662e5d05749fcb47b",
+      "freeze": "529344c17019a81ebaeb18b45d866062a9140784c9803c6662e5d05749fcb47b",
+      "match": true
+    },
+    "NEARUSDT": {
+      "actual": "8a0f42bb8e3c29ed2322b4b59af89b529979c7c8954feadf8f45b7ce6331ac18",
+      "manifest": "8a0f42bb8e3c29ed2322b4b59af89b529979c7c8954feadf8f45b7ce6331ac18",
+      "freeze": "8a0f42bb8e3c29ed2322b4b59af89b529979c7c8954feadf8f45b7ce6331ac18",
+      "match": true
+    },
+    "ONDOUSDT": {
+      "actual": "f8d44a5cec458cf0a523351bb5ac0ab86be7f221b1513f8f77136be5335d9519",
+      "manifest": "f8d44a5cec458cf0a523351bb5ac0ab86be7f221b1513f8f77136be5335d9519",
+      "freeze": "f8d44a5cec458cf0a523351bb5ac0ab86be7f221b1513f8f77136be5335d9519",
+      "match": true
+    },
+    "ONEUSDT": {
+      "actual": "7930c233e92066fbc68bec4bfe12efe0a030d5d7127d9abf75c316053b43f2dc",
+      "manifest": "7930c233e92066fbc68bec4bfe12efe0a030d5d7127d9abf75c316053b43f2dc",
+      "freeze": "7930c233e92066fbc68bec4bfe12efe0a030d5d7127d9abf75c316053b43f2dc",
+      "match": true
+    },
+    "QNTUSDT": {
+      "actual": "7e09a8ff536e3b79ea9f1294c5655dfa1a055a9e1af333c8b6d895b515d80ab1",
+      "manifest": "7e09a8ff536e3b79ea9f1294c5655dfa1a055a9e1af333c8b6d895b515d80ab1",
+      "freeze": "7e09a8ff536e3b79ea9f1294c5655dfa1a055a9e1af333c8b6d895b515d80ab1",
+      "match": true
+    },
+    "SANDUSDT": {
+      "actual": "c5e57c3e3f7f4add6142c8a7eaae20a39cf70eb39f5049c567b89dd2ec9afbdb",
+      "manifest": "c5e57c3e3f7f4add6142c8a7eaae20a39cf70eb39f5049c567b89dd2ec9afbdb",
+      "freeze": "c5e57c3e3f7f4add6142c8a7eaae20a39cf70eb39f5049c567b89dd2ec9afbdb",
+      "match": true
+    },
+    "SOLUSDT": {
+      "actual": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+      "manifest": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+      "freeze": "b7a36da974cb652a16f80525605b050c46a1f0157bf1466aa905d0104806cfcf",
+      "match": true
+    },
+    "STRKUSDT": {
+      "actual": "b708e6de63f0f02292e99aeb436ead6b481d25a2572d243fb350c0940358f5c4",
+      "manifest": "b708e6de63f0f02292e99aeb436ead6b481d25a2572d243fb350c0940358f5c4",
+      "freeze": "b708e6de63f0f02292e99aeb436ead6b481d25a2572d243fb350c0940358f5c4",
+      "match": true
+    },
+    "SUIUSDT": {
+      "actual": "2589a5179d1501cc96a17301de93729ccdc06620404459aa6acdd77c06788e8e",
+      "manifest": "2589a5179d1501cc96a17301de93729ccdc06620404459aa6acdd77c06788e8e",
+      "freeze": "2589a5179d1501cc96a17301de93729ccdc06620404459aa6acdd77c06788e8e",
+      "match": true
+    },
+    "SUPERUSDT": {
+      "actual": "eb4a35d2ae785df6e8d8bc3a870ba187be7f05ee5b0d308e7ce7248a70c219f8",
+      "manifest": "eb4a35d2ae785df6e8d8bc3a870ba187be7f05ee5b0d308e7ce7248a70c219f8",
+      "freeze": "eb4a35d2ae785df6e8d8bc3a870ba187be7f05ee5b0d308e7ce7248a70c219f8",
+      "match": true
+    },
+    "TAOUSDT": {
+      "actual": "4dd1b88f803b6ce745e9546aa90560dfad9fabf3dfc346bebe22de2053501eea",
+      "manifest": "4dd1b88f803b6ce745e9546aa90560dfad9fabf3dfc346bebe22de2053501eea",
+      "freeze": "4dd1b88f803b6ce745e9546aa90560dfad9fabf3dfc346bebe22de2053501eea",
+      "match": true
+    },
+    "UNIUSDT": {
+      "actual": "68f9c3c021fc3b9f3fd5fb4f3d5e0dfb16f3637f46e21810d630f536aae6d697",
+      "manifest": "68f9c3c021fc3b9f3fd5fb4f3d5e0dfb16f3637f46e21810d630f536aae6d697",
+      "freeze": "68f9c3c021fc3b9f3fd5fb4f3d5e0dfb16f3637f46e21810d630f536aae6d697",
+      "match": true
+    },
+    "WLDUSDT": {
+      "actual": "0ec8429c44371e815d8359ff9d50da55dc7c483d66941c125f6989a73ff105ba",
+      "manifest": "0ec8429c44371e815d8359ff9d50da55dc7c483d66941c125f6989a73ff105ba",
+      "freeze": "0ec8429c44371e815d8359ff9d50da55dc7c483d66941c125f6989a73ff105ba",
+      "match": true
+    },
+    "XLMUSDT": {
+      "actual": "99549218010e1a2d9592cd22508cad4df4388884a2de05f4772c44cc5f3977a1",
+      "manifest": "99549218010e1a2d9592cd22508cad4df4388884a2de05f4772c44cc5f3977a1",
+      "freeze": "99549218010e1a2d9592cd22508cad4df4388884a2de05f4772c44cc5f3977a1",
+      "match": true
+    },
+    "XRPUSDT": {
+      "actual": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+      "manifest": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+      "freeze": "25f4d6d2e5025c4339d5959c352bd931d7fba786144e2728aac96613a47e2806",
+      "match": true
+    },
+    "ZECUSDT": {
+      "actual": "d0a4228eededeb898852ef7365de3a83ab97e777ec354e85a54646800a0476a3",
+      "manifest": "d0a4228eededeb898852ef7365de3a83ab97e777ec354e85a54646800a0476a3",
+      "freeze": "d0a4228eededeb898852ef7365de3a83ab97e777ec354e85a54646800a0476a3",
+      "match": true
+    },
+    "ZROUSDT": {
+      "actual": "595ac28302f8eb886d0843e866a1309551d0b229c06ce1dc2c1de9a9270bd884",
+      "manifest": "595ac28302f8eb886d0843e866a1309551d0b229c06ce1dc2c1de9a9270bd884",
+      "freeze": "595ac28302f8eb886d0843e866a1309551d0b229c06ce1dc2c1de9a9270bd884",
+      "match": true
+    }
+  },
+  "state_counts": {
+    "setups": 29244,
+    "all_triggers": 12136,
+    "before_window": 5621,
+    "cancelled": 7293,
+    "expired": 9808,
+    "window_triggers": 6515,
+    "decisions": 5608,
+    "ineligible": 907
+  },
+  "raw_rows": 6515,
+  "own_rows": 6515,
+  "own_duplicate_keys": 0,
+  "raw_duplicate_keys": 0,
+  "matched": 6515,
+  "own_only": 0,
+  "raw_only": 0,
+  "impulse_time_mismatches": 0,
+  "refusal_mismatches": 0,
+  "entry_time_mismatches": 0,
+  "distance_compared": 5608,
+  "distance_mismatches": 0,
+  "max_abs_distance_error": 4.547473508864641e-13,
+  "pre_window_impulses_triggering_in_window": 3,
+  "notes": [
+    "Warmup impulses allowed; out-of-window and ineligible triggers consume setups.",
+    "Portfolio capacity is descriptive and does not change signal state; raw CSV has no explicit capacity refusals.",
+    "Next-hour check additionally requires valid OHLCV; any discrepancy is reported."
+  ]
+}
