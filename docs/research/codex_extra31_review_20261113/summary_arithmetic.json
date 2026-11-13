@@ -1,0 +1,74 @@
+{
+  "exp_trend_path": {
+    "recomputed_medians": {
+      "n": 321.0,
+      "meanR15": 0.12211390503072614,
+      "meanR23": 0.09762395912014826,
+      "meanR15_early": 0.16391962876066235,
+      "meanR15_late": 0.07335470060365876,
+      "meanR15_ex_best": 0.09149241679939495
+    },
+    "orders": 40,
+    "scope": "Arithmetic check of submitted summaries; only order0 admission independently simulated."
+  },
+  "exp_trend_worst": {
+    "recomputed_medians": {
+      "n": 321.0,
+      "meanR15": 0.12211390503072614,
+      "meanR23": 0.09762395912014826,
+      "meanR15_early": 0.16391962876066235,
+      "meanR15_late": 0.07335470060365876,
+      "meanR15_ex_best": 0.09149241679939495
+    },
+    "orders": 40,
+    "scope": "Arithmetic check of submitted summaries; only order0 admission independently simulated."
+  },
+  "bear_breakdown_path": {
+    "recomputed_medians": {
+      "n": 196.0,
+      "meanR15": 0.11744454950062559,
+      "meanR23": 0.08779758287814153,
+      "meanR15_early": 0.1089748070699314,
+      "meanR15_late": 0.13500134488819432,
+      "meanR15_ex_best": 0.07130608693317583
+    },
+    "orders": 40,
+    "scope": "Arithmetic check of submitted summaries; only order0 admission independently simulated."
+  },
+  "bear_breakdown_worst": {
+    "recomputed_medians": {
+      "n": 217.5,
+      "meanR15": 0.018261417764923103,
+      "meanR23": -0.011008570763325511,
+      "meanR15_early": -0.020101347358824136,
+      "meanR15_late": 0.06276494834463445,
+      "meanR15_ex_best": -0.009771251588437245
+    },
+    "orders": 40,
+    "scope": "Arithmetic check of submitted summaries; only order0 admission independently simulated."
+  },
+  "c101_path": {
+    "recomputed_medians": {
+      "n": 304.0,
+      "meanR15": -0.06797280750417442,
+      "meanR23": -0.10716031940185941,
+      "meanR15_early": -0.02025893850119069,
+      "meanR15_late": -0.13117881836204093,
+      "meanR15_ex_best": -0.0895220445402535
+    },
+    "orders": 40,
+    "scope": "Arithmetic check of submitted summaries; only order0 admission independently simulated."
+  },
+  "c101_worst": {
+    "recomputed_medians": {
+      "n": 304.0,
+      "meanR15": -0.06797280750417442,
+      "meanR23": -0.10716031940185941,
+      "meanR15_early": -0.02025893850119069,
+      "meanR15_late": -0.13117881836204093,
+      "meanR15_ex_best": -0.0895220445402535
+    },
+    "orders": 40,
+    "scope": "Arithmetic check of submitted summaries; only order0 admission independently simulated."
+  }
+}

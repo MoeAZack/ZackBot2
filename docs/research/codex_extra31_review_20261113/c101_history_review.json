@@ -1,0 +1,74 @@
+{
+  "source_identity": {
+    "6e52bb61e90005a80f511d04b3bd369504d46eaf": {
+      "params": "cc4da1870fe4710b57ebc5a0550678b0421c89d232cebebe44b54b0014289af8",
+      "_kalman_local_level_score": "d51da68df7e34c3704ed0e06c980fa456da3901a9abeeb12342588255b329f13",
+      "sig_kalman_innovation_recovery_long_1h": "09a0d6b0055090c6a47e6bbe08c14b0177029038e88e18498e42237a27fe4b40",
+      "registration": "bbba60d7f0227beaaac1c50da469db827e4e42fcede5795d1c710b836adad5b1"
+    },
+    "f7a1265b197fd226a62287fec352287b6926bdb3": {
+      "params": "cc4da1870fe4710b57ebc5a0550678b0421c89d232cebebe44b54b0014289af8",
+      "_kalman_local_level_score": "d51da68df7e34c3704ed0e06c980fa456da3901a9abeeb12342588255b329f13",
+      "sig_kalman_innovation_recovery_long_1h": "09a0d6b0055090c6a47e6bbe08c14b0177029038e88e18498e42237a27fe4b40",
+      "registration": "bbba60d7f0227beaaac1c50da469db827e4e42fcede5795d1c710b836adad5b1"
+    }
+  },
+  "identical": true,
+  "packet_sha256": "867996d0e7556b1441d947bff75d4936a557f762956e23f24964a739da231f0c",
+  "prior_recorded_coins": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "UNIUSDT",
+    "SUIUSDT",
+    "QNTUSDT",
+    "BNBUSDT",
+    "LSKUSDT",
+    "ENAUSDT",
+    "1000PEPEUSDT",
+    "WLDUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT"
+  ],
+  "excluded_extra31": [
+    "1000PEPEUSDT",
+    "ENAUSDT",
+    "NEARUSDT",
+    "QNTUSDT",
+    "SUIUSDT",
+    "UNIUSDT",
+    "WLDUSDT",
+    "ZECUSDT"
+  ],
+  "eligible_relative_to_this_packet": [
+    "AAVEUSDT",
+    "APTUSDT",
+    "ARBUSDT",
+    "ARKUSDT",
+    "BCHUSDT",
+    "DOTUSDT",
+    "ENJUSDT",
+    "ETCUSDT",
+    "FETUSDT",
+    "FILUSDT",
+    "GALAUSDT",
+    "INJUSDT",
+    "LTCUSDT",
+    "MANAUSDT",
+    "MOVRUSDT",
+    "ONDOUSDT",
+    "ONEUSDT",
+    "SANDUSDT",
+    "STRKUSDT",
+    "SUPERUSDT",
+    "TAOUSDT",
+    "XLMUSDT",
+    "ZROUSDT"
+  ],
+  "universal_untouched_status": "UNVERIFIED: this confirms the recorded packet complement only; the first-pass screen has now consumed all31."
+}
